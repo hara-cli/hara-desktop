@@ -26,13 +26,24 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/hara"],
+    "externalBin": [
+      "binaries/hara"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/hara-cli/hara-desktop/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdBQzUwMzgwMjg4QTg4NkQKUldSdGlJb29nQVBGZWsyN1ROVGZvZ1o2N1hjdkRQQ2ZZc2pRZ0N6WFBPeC83ejR1TFJNRUY1WGcK"
+    }
   }
 }

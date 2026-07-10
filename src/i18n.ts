@@ -63,6 +63,9 @@ const dict = {
     apprHint: "full-auto = it may edit files and run commands without asking",
     history: "History",
     search: "search…",
+    checkUpdate: "Check for updates",
+    upToDate: "up to date",
+    restartToApply: "downloaded — restart to apply",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -124,6 +127,9 @@ const dict = {
     apprHint: "full-auto = 它可以不问你就改文件、跑命令",
     history: "历史会话",
     search: "搜索…",
+    checkUpdate: "检查更新",
+    upToDate: "已是最新",
+    restartToApply: "已下载,重启应用生效",
   },
 } as const;
 

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
 import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type CronJobInfo } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import "./App.css";
@@ -116,6 +117,7 @@ export default function App() {
     sessionsRef.current = sessions;
   }, [sessions]);
   const [q, setQ] = useState("");
+  const [upd, setUpd] = useState("");
 
   const setZone = (z: Zone) => {
     setZoneRaw(z);
@@ -717,6 +719,26 @@ export default function App() {
             <div className="group-h">{t("setServer")}</div>
             <div className="setrow dim">
               hara {server?.version} · {server?.provider}:{server?.model}
+            </div>
+            <div className="setrow">
+              <button
+                className="ghost"
+                onClick={async () => {
+                  setUpd("…");
+                  try {
+                    const u = await checkForUpdate();
+                    if (!u) return setUpd(t("upToDate"));
+                    setUpd(`↓ ${u.version}`);
+                    await u.downloadAndInstall();
+                    setUpd(t("restartToApply"));
+                  } catch (e: any) {
+                    setUpd(String(e?.message ?? e).slice(0, 80));
+                  }
+                }}
+              >
+                {t("checkUpdate")}
+              </button>
+              {upd && <span className="dim">{upd}</span>}
             </div>
             <div className="group-h">{t("setSecurity")}</div>
             <div className="setrow" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>

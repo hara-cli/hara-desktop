@@ -56,6 +56,11 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # updater signing — add the TAURI_SIGNING_PRIVATE_KEY repo secret (contents of
+          # ~/.tauri/hara-desktop.key on the machine that ran `tauri signer generate`).
+          # Without it, builds still succeed but updater artifacts (latest.json) are unsigned/absent.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           args: --target ${{ matrix.target }}
           tagName: ${{ github.ref_name }}
