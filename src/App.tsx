@@ -31,8 +31,10 @@ const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
 const isAssistantCwd = (cwd: string): boolean => /[/\\]\.hara[/\\]workspace$/.test(cwd);
 const basename = (p: string): string => p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || p;
 
-/** Group sessions by cwd: assistant sessions pinned out, workspaces ordered by latest activity. */
-function groupSessions(sessions: SessionInfo[]): { assistant: SessionInfo[]; groups: [string, SessionInfo[]][] } {
+/** Group sessions by cwd: assistant sessions pinned out, workspaces ordered by latest activity.
+ *  `opened` = projects the user explicitly opened (persisted) — they show even with zero sessions,
+ *  newest-opened first, so "open folder → project appears" works like codex/VS Code. */
+function groupSessions(sessions: SessionInfo[], opened: string[]): { assistant: SessionInfo[]; groups: [string, SessionInfo[]][] } {
   const assistant: SessionInfo[] = [];
   const map = new Map<string, SessionInfo[]>();
   for (const s of sessions) {
@@ -40,8 +42,12 @@ function groupSessions(sessions: SessionInfo[]): { assistant: SessionInfo[]; gro
     else map.set(s.cwd, [...(map.get(s.cwd) ?? []), s]);
   }
   const latest = (list: SessionInfo[]): string => list.reduce((m, s) => (s.updatedAt > m ? s.updatedAt : m), "");
-  const groups = [...map.entries()].sort((a, b) => latest(b[1]).localeCompare(latest(a[1])));
-  return { assistant, groups };
+  const withSessions = [...map.entries()].sort((a, b) => latest(b[1]).localeCompare(latest(a[1])));
+  const empty: [string, SessionInfo[]][] = [...opened]
+    .reverse() // newest opened first
+    .filter((w) => !map.has(w) && !isAssistantCwd(w))
+    .map((w) => [w, []]);
+  return { assistant, groups: [...empty, ...withSessions] };
 }
 
 export default function App() {
@@ -55,8 +61,6 @@ export default function App() {
   const [panelBusy, setPanelBusy] = useState("");
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
-  const [newOpen, setNewOpen] = useState(false);
-  const [newCwd, setNewCwd] = useState("");
   const [locale, setLocale] = useState<Locale>(detectLocale());
   const [home, setHome] = useState("");
   const [unread, setUnread] = useState<Record<string, boolean>>({});
@@ -87,9 +91,27 @@ export default function App() {
     saveLocale(next);
     setLocale(next);
   };
-  const browseCwd = async () => {
-    const dir = await openDialog({ directory: true, defaultPath: newCwd || undefined, title: t("workdir") });
-    if (typeof dir === "string" && dir) setNewCwd(dir);
+  const [openedProjects, setOpenedProjects] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("hara.workspaces") ?? "[]");
+    } catch {
+      return [];
+    }
+  });
+  const rememberProject = (dir: string, remove = false) => {
+    setOpenedProjects((list) => {
+      const next = remove ? list.filter((w) => w !== dir) : [...list.filter((w) => w !== dir), dir];
+      localStorage.setItem("hara.workspaces", JSON.stringify(next));
+      return next;
+    });
+  };
+  /** codex-style "open folder = new project": pick a directory, pin it as a workspace group, and drop
+   *  straight into a fresh session there. */
+  const openProject = async () => {
+    const dir = await openDialog({ directory: true, title: t("openProject") });
+    if (typeof dir !== "string" || !dir) return;
+    rememberProject(dir);
+    await newSession(dir);
   };
   const [transcripts, setTranscripts] = useState<Record<string, Item[]>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
@@ -158,7 +180,6 @@ export default function App() {
       const info = await c.initialize(d.token);
       clientRef.current = c;
       setServer({ version: info.version, provider: info.provider, model: info.model, cwd: info.cwd });
-      setNewCwd(info.cwd);
       const list = await c.listSessions();
       setSessions(list.sessions);
       setPhase("ready");
@@ -211,7 +232,6 @@ export default function App() {
     const r = await c.createSession(cwd ? { cwd } : undefined);
     setActive(r.sessionId);
     setView("chat");
-    setNewOpen(false);
     setTranscripts((t) => ({ ...t, [r.sessionId]: [] }));
     const list = await c.listSessions();
     setSessions(list.sessions);
@@ -220,7 +240,7 @@ export default function App() {
   /** Global assistant — the pinned, chat-app-like entry (gateway's default workspace). Opens the most
    *  recent assistant session, or starts one. */
   const openAssistant = async () => {
-    const latest = groupSessions(sessions).assistant.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    const latest = groupSessions(sessions, openedProjects).assistant.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
     if (latest) return openSession(latest.id);
     if (home) return newSession(`${home}/.hara/workspace`);
   };
@@ -323,37 +343,12 @@ export default function App() {
         <div className="brand">
           hara <span className="ver">{server?.version}</span>
         </div>
-        {newOpen ? (
-          <div className="newform">
-            <div className="row" style={{ marginTop: 0 }}>
-              <input
-                value={newCwd}
-                onChange={(e) => setNewCwd(e.target.value)}
-                placeholder={t("workdir")}
-                spellCheck={false}
-                style={{ flex: 1 }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void newSession(newCwd.trim() || undefined);
-                  if (e.key === "Escape") setNewOpen(false);
-                }}
-              />
-              <button className="ghost" onClick={() => void browseCwd()} title={t("workdir")}>
-                📁
-              </button>
-            </div>
-            <div className="row" style={{ marginTop: 0 }}>
-              <button onClick={() => void newSession(newCwd.trim() || undefined)}>{t("create")}</button>
-              <button className="ghost" onClick={() => setNewOpen(false)}>{t("cancel")}</button>
-            </div>
-          </div>
-        ) : (
-          <button className="new" onClick={() => setNewOpen(true)}>
-            {t("newSession")}
-          </button>
-        )}
+        <button className="new" onClick={() => void openProject()}>
+          {t("openProject")}
+        </button>
         <div className="sessions">
           {(() => {
-            const { assistant, groups } = groupSessions(sessions);
+            const { assistant, groups } = groupSessions(sessions, openedProjects);
             const row = (s: SessionInfo) => (
               <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
                 <div className="title">

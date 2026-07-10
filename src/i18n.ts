@@ -35,6 +35,8 @@ const dict = {
     tokens: "tokens",
     assistant: "Assistant",
     newHere: "+ session here",
+    openProject: "+ open project",
+    removeProject: "remove from list (sessions are kept)",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -68,6 +70,8 @@ const dict = {
     tokens: "tokens",
     assistant: "助手",
     newHere: "+ 在此目录新会话",
+    openProject: "+ 打开项目",
+    removeProject: "从列表移除(会话保留)",
   },
 } as const;
 
