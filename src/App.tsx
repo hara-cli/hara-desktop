@@ -124,9 +124,13 @@ export default function App() {
     setErr("");
     try {
       await invoke("start_serve");
-      // serve needs a beat to boot + write the discovery file
       setPhase("connecting");
-      await new Promise((r) => setTimeout(r, 2500));
+      // poll for the discovery file: serve needs a moment to boot (provider build + bind)
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const raw = await invoke<string | null>("read_discovery");
+        if (raw) break;
+      }
       await connect();
     } catch (e: any) {
       setErr(String(e?.message ?? e));

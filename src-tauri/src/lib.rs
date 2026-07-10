@@ -22,17 +22,32 @@ fn read_discovery() -> Option<String> {
     Some(raw)
 }
 
-/// Spawn `hara serve` detached, through a login shell so the user's PATH (nvm etc.) resolves —
-/// GUI apps on macOS don't inherit the terminal PATH.
+/// Spawn `hara serve` detached. Two macOS traps handled here:
+/// 1. GUI apps don't inherit the terminal PATH → resolve `hara` via a login shell.
+/// 2. The resolved shim's `#!/usr/bin/env node` may pick an OLD system/MacPorts node that can't parse
+///    ESM (`SyntaxError: Unexpected token {`) → run the shim with the `node` that sits NEXT TO it
+///    (nvm keeps them in the same bin dir). Output goes to ~/.hara/serve.log so failures are diagnosable.
 #[tauri::command]
 fn start_serve() -> Result<String, String> {
+    let resolve = std::process::Command::new("/bin/zsh")
+        .args(["-lc", "command -v hara"])
+        .output()
+        .map_err(|e| format!("zsh: {e}"))?;
+    let hara = String::from_utf8_lossy(&resolve.stdout).trim().to_string();
+    if hara.is_empty() {
+        return Err("`hara` not found on PATH — install it first: npm i -g @nanhara/hara".into());
+    }
+    let script = format!(
+        "H='{hara}'; N=\"$(dirname \"$H\")/node\"; [ -x \"$N\" ] || N=node; \
+         nohup \"$N\" \"$H\" serve >\"$HOME/.hara/serve.log\" 2>&1 &"
+    );
     std::process::Command::new("/bin/zsh")
-        .args(["-lc", "nohup hara serve >/dev/null 2>&1 &"])
+        .args(["-lc", &script])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map(|_| "starting hara serve…".to_string())
+        .map(|_| format!("starting hara serve ({hara}) — log: ~/.hara/serve.log"))
         .map_err(|e| format!("could not start `hara serve`: {e}"))
 }
 
