@@ -551,6 +551,15 @@ button.deny {
   border-top: 1px solid var(--border);
   background: var(--bg2);
 }
+.botlab {
+  font-size: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 5px;
+  color: #c9a36a;
+  margin-right: 4px;
+}
 .search {
   background: var(--bg3);
   color: var(--fg);

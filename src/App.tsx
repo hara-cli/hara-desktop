@@ -26,6 +26,10 @@ type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
 type Zone = "chat" | "projects" | "settings";
 
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
+/** Junk cwd guard: sessions left behind by tests/one-offs in OS temp dirs are NOT projects. */
+const isJunkCwd = (cwd: string): boolean =>
+  /^\/(private\/)?(tmp|var\/folders)\//.test(cwd) || /[/\\]tmp\.[A-Za-z0-9]+([/\\]|$)/.test(cwd) || /[/\\]hara-(test|dbg|serve)-[^/\\]*([/\\]|$)/.test(cwd);
+
 const isAssistantCwd = (cwd: string): boolean => /[/\\]\.hara[/\\]workspace$/.test(cwd);
 const basename = (p: string): string => p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || p;
 const isAutomated = (s: SessionInfo): boolean => s.source === "cron" || s.source === "gateway";
@@ -36,7 +40,7 @@ const forkBase = (id: string): string => id.replace(/-\d+$/, "");
 function projectGroups(sessions: SessionInfo[], opened: string[]): [string, SessionInfo[]][] {
   const map = new Map<string, SessionInfo[]>();
   for (const s of sessions) {
-    if (isAssistantCwd(s.cwd) || isAutomated(s)) continue;
+    if (isAssistantCwd(s.cwd) || isAutomated(s) || isJunkCwd(s.cwd)) continue;
     map.set(s.cwd, [...(map.get(s.cwd) ?? []), s]);
   }
   const latest = (list: SessionInfo[]): string => list.reduce((m, s) => (s.updatedAt > m ? s.updatedAt : m), "");
@@ -45,16 +49,23 @@ function projectGroups(sessions: SessionInfo[], opened: string[]): [string, Sess
   return [...empty, ...withSessions];
 }
 
-/** Assistant threads: manual sessions in the workspace cwd + gateway sessions, forks folded. */
-function assistantThreads(sessions: SessionInfo[]): SessionInfo[] {
-  const pool = sessions.filter((s) => isAssistantCwd(s.cwd) || s.source === "gateway");
+/** The assistant zone (experts' ruling: SINGLE persistent desktop conversation + one thread per
+ *  external origin — the origin IS the dispatch key):
+ *  - `current`: THE desktop assistant session (latest interactive one in the workspace cwd)
+ *  - `bots`: gateway threads, one per platform+peer (forks folded) — WeChat etc., each its own lane
+ *  - `history`: older desktop assistant sessions, folded away so duplicates never clutter the zone */
+function assistantZone(sessions: SessionInfo[]): { current: SessionInfo | null; bots: SessionInfo[]; history: SessionInfo[] } {
+  const mine = sessions
+    .filter((s) => isAssistantCwd(s.cwd) && s.source !== "gateway" && s.source !== "cron")
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const folded = new Map<string, SessionInfo>();
-  for (const s of pool) {
-    const key = s.source === "gateway" ? forkBase(s.id) : s.id;
+  for (const s of sessions.filter((x) => x.source === "gateway")) {
+    const key = forkBase(s.id);
     const prev = folded.get(key);
     if (!prev || s.updatedAt > prev.updatedAt) folded.set(key, s);
   }
-  return [...folded.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const bots = [...folded.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return { current: mine[0] ?? null, bots, history: mine.slice(1) };
 }
 
 export default function App() {
@@ -318,11 +329,18 @@ export default function App() {
     await newSession(dir);
   };
 
+  const creatingRef = useRef(false); // double-click guard — the assistant is ONE session, never two
   const openAssistant = async () => {
     setZone("chat");
-    const latest = assistantThreads(sessions)[0];
-    if (latest) return openSession(latest.id);
-    if (home) return newSession(`${home}/.hara/workspace`);
+    const cur = assistantZone(sessions).current;
+    if (cur) return openSession(cur.id);
+    if (!home || creatingRef.current) return;
+    creatingRef.current = true;
+    try {
+      await newSession(`${home}/.hara/workspace`);
+    } finally {
+      creatingRef.current = false;
+    }
   };
 
   const toggleGroup = (cwd: string) => {
@@ -434,7 +452,9 @@ export default function App() {
 
   const manualUnreadIn = (list: SessionInfo[]): boolean => list.some((s) => unread[s.id]);
   const hit = (text: string): boolean => !q || text.toLowerCase().includes(q.toLowerCase());
-  const threads = assistantThreads(sessions).filter((s) => hit(s.title) || hit(s.sourceName ?? ""));
+  const az = assistantZone(sessions);
+  const azBots = az.bots.filter((s) => hit(s.title) || hit(s.sourceName ?? ""));
+  const azAll = [...(az.current ? [az.current] : []), ...az.bots, ...az.history];
   const groups = projectGroups(sessions, openedProjects)
     .map(([cwd, list]): [string, SessionInfo[]] => [cwd, hit(basename(cwd)) ? list : list.filter((s) => hit(s.title))])
     .filter(([cwd, list]) => hit(basename(cwd)) || list.length > 0);
@@ -602,7 +622,7 @@ export default function App() {
       {/* ── rail: the mode anchor. hairlines split the global cluster from the work cluster ── */}
       <nav className="rail">
         <button className={`rl ${zone === "chat" ? "on" : ""}`} title={t("zoneChat")} onClick={() => setZone("chat")}>
-          💬{(autoUnread > 0 || manualUnreadIn(threads)) && <span className="rdot" />}
+          💬{(autoUnread > 0 || manualUnreadIn(azAll)) && <span className="rdot" />}
         </button>
         <div className="rline" />
         <button className={`rl ${zone === "projects" ? "on" : ""}`} title={t("zoneProjects")} onClick={() => setZone("projects")}>
@@ -626,7 +646,29 @@ export default function App() {
           </button>
           {searchBox}
           <div className="sessions">
-            {threads.map(sessRow)}
+            {/* THE single desktop conversation (experts' ruling) — the ⌂ button above opens it */}
+            {az.current && sessRow(az.current)}
+            {/* one thread per external origin (WeChat bot etc.) — the origin is the dispatch key */}
+            {azBots.map((s) => (
+              <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
+                <div className="title">
+                  {busy[s.id] && <span className="live">●</span>}
+                  {unread[s.id] && <span className="dot" />}
+                  <span className="botlab">{s.sourceName || "bot"}</span> {s.title || t("untitled")}
+                </div>
+                <div className="meta">{s.updatedAt ? new Date(s.updatedAt).toLocaleString() : t("newLabel")}</div>
+              </div>
+            ))}
+            {/* older desktop-assistant sessions, folded away — duplicates never clutter the zone */}
+            {az.history.length > 0 && (
+              <>
+                <div className="group-h" onClick={() => toggleGroup("__history")}>
+                  <span className="caret">{collapsed["__history"] === false ? "▾" : "▸"}</span> {t("history")}
+                  <span className="count">{az.history.length}</span>
+                </div>
+                {collapsed["__history"] === false && az.history.filter((s) => hit(s.title)).map(sessRow)}
+              </>
+            )}
             {/* automation timeline — collapsed, ambient counter, never mixed with manual threads */}
             <div className="group-h" onClick={() => (setAutoOpen((o) => !o), !autoOpen && markAutoSeen())}>
               <span className="caret">{autoOpen ? "▾" : "▸"}</span> 🤖 {t("automations")}
