@@ -17,6 +17,7 @@ export interface SessionInfo {
   updatedAt: string;
   source?: "interactive" | "gateway" | "cron";
   sourceName?: string;
+  archived?: boolean;
 }
 
 export interface CronJobInfo {
@@ -145,6 +146,12 @@ export class HaraClient {
       if (e?.code === -32601) return null;
       throw e;
     }
+  }
+  renameSession(sessionId: string, title: string) {
+    return this.call<{ sessionId: string; title: string }>("session.rename", { sessionId, title });
+  }
+  archiveSession(sessionId: string, archived = true) {
+    return this.call<{ sessionId: string; archived: boolean }>("session.archive", { sessionId, archived });
   }
   setSessionModel(sessionId: string, model?: string, effort?: string) {
     return this.call<{ sessionId: string; model: string; effort: string | null }>("session.set-model", { sessionId, model, effort });

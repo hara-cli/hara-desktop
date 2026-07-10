@@ -9,6 +9,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
 import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type CronJobInfo } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
+import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar } from "./icons";
 import "./App.css";
 
 type Item =
@@ -129,6 +130,8 @@ export default function App() {
   }, [sessions]);
   const [q, setQ] = useState("");
   const [upd, setUpd] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
   // steer queue (codex composer pattern): messages typed while a turn runs are queued and auto-sent
   const [queue, setQueue] = useState<Record<string, string[]>>({});
   const queueRef = useRef(queue);
@@ -506,20 +509,69 @@ export default function App() {
   const items = active ? (transcripts[active] ?? []) : [];
 
   const sortPinned = (l: SessionInfo[]): SessionInfo[] => [...l].sort((a, b) => Number(pins.includes(b.id)) - Number(pins.includes(a.id)));
+  const commitRename = async () => {
+    const c = clientRef.current;
+    if (editingId && c && editTitle.trim()) {
+      await c.renameSession(editingId, editTitle.trim()).catch(() => {});
+      await refreshSessions();
+    }
+    setEditingId(null);
+  };
+  const archiveIt = async (id: string) => {
+    const c = clientRef.current;
+    if (!c) return;
+    await c.archiveSession(id, true).catch(() => {});
+    if (active === id) setActive(null);
+    await refreshSessions();
+  };
   const sessRow = (s: SessionInfo) => (
     <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
       <div className="title">
         {busy[s.id] && <span className="live">●</span>}
         {unread[s.id] && <span className="dot" />}
-        {s.title || t("untitled")}
+        {editingId === s.id ? (
+          <input
+            className="renamein"
+            autoFocus
+            value={editTitle}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void commitRename();
+              if (e.key === "Escape") setEditingId(null);
+            }}
+            onBlur={() => void commitRename()}
+          />
+        ) : (
+          <span className="ttext">{s.title || t("untitled")}</span>
+        )}
         <span
-          className={`pin ${pins.includes(s.id) ? "pinned" : ""}`}
+          className="act"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditingId(s.id);
+            setEditTitle(s.title);
+          }}
+        >
+          <IconEdit />
+        </span>
+        <span
+          className={`act pin ${pins.includes(s.id) ? "pinned" : ""}`}
           onClick={(e) => {
             e.stopPropagation();
             togglePin(s.id);
           }}
         >
-          {pins.includes(s.id) ? "★" : "☆"}
+          <IconStar filled={pins.includes(s.id)} />
+        </span>
+        <span
+          className="act"
+          onClick={(e) => {
+            e.stopPropagation();
+            void archiveIt(s.id);
+          }}
+        >
+          <IconArchive />
         </span>
       </div>
       <div className="meta">
@@ -699,16 +751,18 @@ export default function App() {
       {/* ── rail: the mode anchor. hairlines split the global cluster from the work cluster ── */}
       <nav className="rail">
         <button className={`rl ${zone === "chat" ? "on" : ""}`} title={t("zoneChat")} onClick={() => setZone("chat")}>
-          💬{(autoUnread > 0 || manualUnreadIn(azAll)) && <span className="rdot" />}
+          <IconChat />
+          {(autoUnread > 0 || manualUnreadIn(azAll)) && <span className="rdot" />}
         </button>
         <div className="rline" />
         <button className={`rl ${zone === "projects" ? "on" : ""}`} title={t("zoneProjects")} onClick={() => setZone("projects")}>
-          📁{manualUnreadIn(sessions.filter((s) => !isAssistantCwd(s.cwd) && !isAutomated(s))) && <span className="rdot" />}
+          <IconFolder />
+          {manualUnreadIn(sessions.filter((s) => !isAssistantCwd(s.cwd) && !isAutomated(s))) && <span className="rdot" />}
         </button>
         <div className="rspace" />
         <div className="rline" />
         <button className={`rl ${zone === "settings" ? "on" : ""}`} title={t("zoneSettings")} onClick={() => setZone("settings")}>
-          ⚙
+          <IconCog />
         </button>
       </nav>
 
@@ -718,8 +772,8 @@ export default function App() {
           <div className="brand">
             {t("zoneChat")} <span className="ver">{server?.version}</span>
           </div>
-          <button className="new" onClick={() => void openAssistant()}>
-            ⌂ {t("assistant")}
+          <button className="new withicon" onClick={() => void openAssistant()}>
+            <IconHome size={15} /> {t("assistant")}
           </button>
           {searchBox}
           <div className="sessions">
@@ -748,7 +802,7 @@ export default function App() {
             )}
             {/* automation timeline — collapsed, ambient counter, never mixed with manual threads */}
             <div className="group-h" onClick={() => (setAutoOpen((o) => !o), !autoOpen && markAutoSeen())}>
-              <span className="caret">{autoOpen ? "▾" : "▸"}</span> 🤖 {t("automations")}
+              <span className="caret">{autoOpen ? "▾" : "▸"}</span> <IconBot /> {t("automations")}
               {autoUnread > 0 && <span className="count accent">{autoUnread}</span>}
             </div>
             {autoOpen &&
