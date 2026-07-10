@@ -37,6 +37,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: npm ci
+      - name: Build hara sidecar (bun single-file, cross-compiled per target)
+        uses: oven-sh/setup-bun@v2
+      - shell: bash
+        run: |
+          git clone --depth 1 https://github.com/hara-cli/hara /tmp/hara-cli
+          cd /tmp/hara-cli && npm ci && npx tsc
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin)      BT=bun-darwin-arm64 ;;
+            x86_64-apple-darwin)       BT=bun-darwin-x64 ;;
+            x86_64-pc-windows-msvc)    BT=bun-windows-x64 ;;
+            x86_64-unknown-linux-gnu)  BT=bun-linux-x64 ;;
+          esac
+          bun scripts/build-binary.ts dist/bin/hara-sidecar "$BT"
+          mkdir -p "$GITHUB_WORKSPACE/src-tauri/binaries"
+          EXT=""; [[ "${{ matrix.target }}" == *windows* ]] && EXT=".exe"
+          cp dist/bin/hara-sidecar$EXT "$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}$EXT"
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

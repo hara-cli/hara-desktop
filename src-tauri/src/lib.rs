@@ -22,20 +22,43 @@ fn read_discovery() -> Option<String> {
     Some(raw)
 }
 
-/// Spawn `hara serve` detached. Two macOS traps handled here:
-/// 1. GUI apps don't inherit the terminal PATH → resolve `hara` via a login shell.
-/// 2. The resolved shim's `#!/usr/bin/env node` may pick an OLD system/MacPorts node that can't parse
-///    ESM (`SyntaxError: Unexpected token {`) → run the shim with the `node` that sits NEXT TO it
-///    (nvm keeps them in the same bin dir). Output goes to ~/.hara/serve.log so failures are diagnosable.
+/// Spawn `hara serve` detached. Resolution order (cc-haha sidecar blueprint, adapted):
+/// 1. **Bundled sidecar** — the `hara` binary Tauri ships next to the app executable (externalBin).
+///    Zero-dependency: the app works on a machine with no node/npm at all.
+/// 2. PATH fallback (dev mode / user-managed installs), with two macOS traps handled: GUI apps don't
+///    inherit the terminal PATH (→ login shell), and the npm shim's `#!/usr/bin/env node` may pick an
+///    old MacPorts node that can't parse ESM (→ run the shim with the node that sits NEXT TO it).
+/// Output → ~/.hara/serve.log (read back by `read_serve_log` for the failure UI).
 #[tauri::command]
 fn start_serve() -> Result<String, String> {
+    // 1. bundled sidecar next to the app executable
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sidecar = dir.join("hara");
+            if sidecar.is_file() {
+                let script = format!(
+                    "nohup '{}' serve >\"$HOME/.hara/serve.log\" 2>&1 &",
+                    sidecar.display()
+                );
+                return std::process::Command::new("/bin/zsh")
+                    .args(["-c", &script])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .map(|_| "starting bundled hara serve — log: ~/.hara/serve.log".to_string())
+                    .map_err(|e| format!("could not start bundled hara: {e}"));
+            }
+        }
+    }
+    // 2. PATH fallback
     let resolve = std::process::Command::new("/bin/zsh")
         .args(["-lc", "command -v hara"])
         .output()
         .map_err(|e| format!("zsh: {e}"))?;
     let hara = String::from_utf8_lossy(&resolve.stdout).trim().to_string();
     if hara.is_empty() {
-        return Err("`hara` not found on PATH — install it first: npm i -g @nanhara/hara".into());
+        return Err("`hara` not found — no bundled sidecar and nothing on PATH (npm i -g @nanhara/hara)".into());
     }
     let script = format!(
         "H='{hara}'; N=\"$(dirname \"$H\")/node\"; [ -x \"$N\" ] || N=node; \
@@ -49,6 +72,23 @@ fn start_serve() -> Result<String, String> {
         .spawn()
         .map(|_| format!("starting hara serve ({hara}) — log: ~/.hara/serve.log"))
         .map_err(|e| format!("could not start `hara serve`: {e}"))
+}
+
+/// Tail of ~/.hara/serve.log — shown in the UI when startup fails (cc-haha's 80-line startup buffer
+/// pattern: give the user the actual error, not "connection refused").
+#[tauri::command]
+fn read_serve_log() -> String {
+    let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) else {
+        return String::new();
+    };
+    match std::fs::read_to_string(format!("{home}/.hara/serve.log")) {
+        Ok(s) => {
+            let lines: Vec<&str> = s.lines().collect();
+            let start = lines.len().saturating_sub(40);
+            lines[start..].join("\n")
+        }
+        Err(_) => String::new(),
+    }
 }
 
 /// Home directory — the webview can't read env vars; used to place the global-assistant workspace
@@ -89,7 +129,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel, get_home])
+        .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel, get_home, read_serve_log])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

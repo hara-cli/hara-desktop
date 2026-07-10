@@ -53,7 +53,12 @@ button.deny {
 .err {
   color: #f0b3ab;
   font-size: 12px;
-  max-width: 420px;
+  max-width: 560px;
+  white-space: pre-wrap;
+  font-family: "SF Mono", ui-monospace, monospace;
+  max-height: 220px;
+  overflow-y: auto;
+  text-align: left;
 }
 .row {
   display: flex;

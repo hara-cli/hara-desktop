@@ -182,10 +182,21 @@ export default function App() {
       await invoke("start_serve");
       setPhase("connecting");
       // poll for the discovery file: serve needs a moment to boot (provider build + bind)
-      for (let i = 0; i < 10; i++) {
+      let up = false;
+      for (let i = 0; i < 12; i++) {
         await new Promise((r) => setTimeout(r, 1000));
         const raw = await invoke<string | null>("read_discovery");
-        if (raw) break;
+        if (raw) {
+          up = true;
+          break;
+        }
+      }
+      if (!up) {
+        // surface the actual serve output instead of a bare failure (cc-haha startup-log pattern)
+        const log = await invoke<string>("read_serve_log").catch(() => "");
+        setErr(log ? `hara serve did not come up. Log tail:\n${log}` : "hara serve did not come up (no log)");
+        setPhase("no-server");
+        return;
       }
       await connect();
     } catch (e: any) {
