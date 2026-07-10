@@ -51,6 +51,13 @@ fn start_serve() -> Result<String, String> {
         .map_err(|e| format!("could not start `hara serve`: {e}"))
 }
 
+/// Home directory — the webview can't read env vars; used to place the global-assistant workspace
+/// (`$HOME/.hara/workspace`, the same default the chat gateway uses).
+#[tauri::command]
+fn get_home() -> String {
+    std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default()
+}
+
 /// Launch a plugin panel command (e.g. `hara-design preview`) and return the URL it prints.
 /// Plugin bins live in ~/.hara/bin (added to PATH by the login shell) or on PATH generally; the
 /// command is expected to start/reuse its server, print `http://127.0.0.1:<port>…`, and exit.
@@ -82,7 +89,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel])
+        .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel, get_home])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -27,6 +27,23 @@ type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
 // strip ANSI color codes — serve relays the CLI's colored confirm/notice strings
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
 
+// S1 information architecture: workspace (project dir) × session, plus a pinned global assistant.
+const isAssistantCwd = (cwd: string): boolean => /[/\\]\.hara[/\\]workspace$/.test(cwd);
+const basename = (p: string): string => p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || p;
+
+/** Group sessions by cwd: assistant sessions pinned out, workspaces ordered by latest activity. */
+function groupSessions(sessions: SessionInfo[]): { assistant: SessionInfo[]; groups: [string, SessionInfo[]][] } {
+  const assistant: SessionInfo[] = [];
+  const map = new Map<string, SessionInfo[]>();
+  for (const s of sessions) {
+    if (isAssistantCwd(s.cwd)) assistant.push(s);
+    else map.set(s.cwd, [...(map.get(s.cwd) ?? []), s]);
+  }
+  const latest = (list: SessionInfo[]): string => list.reduce((m, s) => (s.updatedAt > m ? s.updatedAt : m), "");
+  const groups = [...map.entries()].sort((a, b) => latest(b[1]).localeCompare(latest(a[1])));
+  return { assistant, groups };
+}
+
 export default function App() {
   const clientRef = useRef<HaraClient | null>(null);
   const [phase, setPhase] = useState<Phase>("boot");
@@ -41,6 +58,29 @@ export default function App() {
   const [newOpen, setNewOpen] = useState(false);
   const [newCwd, setNewCwd] = useState("");
   const [locale, setLocale] = useState<Locale>(detectLocale());
+  const [home, setHome] = useState("");
+  const [unread, setUnread] = useState<Record<string, boolean>>({});
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("hara.collapsed") ?? "{}");
+    } catch {
+      return {};
+    }
+  });
+  const activeRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+  useEffect(() => {
+    void invoke<string>("get_home").then(setHome).catch(() => {});
+  }, []);
+  const toggleGroup = (cwd: string) => {
+    setCollapsed((c) => {
+      const next = { ...c, [cwd]: !c[cwd] };
+      localStorage.setItem("hara.collapsed", JSON.stringify(next));
+      return next;
+    });
+  };
   const t = makeT(locale);
   const flipLocale = () => {
     const next: Locale = locale === "en" ? "zh" : "en";
@@ -91,6 +131,7 @@ export default function App() {
         case "event.turn_end":
           push(e.sessionId, (items) => [...items, { kind: "end", usage: e.usage }]);
           setBusy((b) => ({ ...b, [e.sessionId]: false }));
+          if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
         case "approval.request":
           setApproval({ approvalId: e.approvalId, sessionId: e.sessionId, question: plain(e.question) });
@@ -165,6 +206,14 @@ export default function App() {
     setSessions(list.sessions);
   };
 
+  /** Global assistant — the pinned, chat-app-like entry (gateway's default workspace). Opens the most
+   *  recent assistant session, or starts one. */
+  const openAssistant = async () => {
+    const latest = groupSessions(sessions).assistant.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    if (latest) return openSession(latest.id);
+    if (home) return newSession(`${home}/.hara/workspace`);
+  };
+
   const openPlugins = async () => {
     const c = clientRef.current;
     if (!c) return;
@@ -197,6 +246,7 @@ export default function App() {
   const openSession = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
+    setUnread((u) => ({ ...u, [id]: false }));
     if (transcripts[id]) {
       setActive(id);
       return;
@@ -291,14 +341,47 @@ export default function App() {
           </button>
         )}
         <div className="sessions">
-          {sessions.map((s) => (
-            <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
-              <div className="title">{s.title || t("untitled")}</div>
-              <div className="meta">
-                {s.model} · {s.updatedAt ? new Date(s.updatedAt).toLocaleString() : t("newLabel")}
+          {(() => {
+            const { assistant, groups } = groupSessions(sessions);
+            const row = (s: SessionInfo) => (
+              <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
+                <div className="title">
+                  {busy[s.id] && <span className="live">●</span>}
+                  {unread[s.id] && <span className="dot" />}
+                  {s.title || t("untitled")}
+                </div>
+                <div className="meta">
+                  {s.model} · {s.updatedAt ? new Date(s.updatedAt).toLocaleString() : t("newLabel")}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+            return (
+              <>
+                <div className="group-h assistant" onClick={() => void openAssistant()}>
+                  ⌂ {t("assistant")}
+                  {assistant.some((s) => unread[s.id]) && <span className="dot" />}
+                </div>
+                {assistant.slice(0, 3).map(row)}
+                {groups.map(([cwd, list]) => (
+                  <div key={cwd}>
+                    <div className="group-h" title={cwd} onClick={() => toggleGroup(cwd)}>
+                      <span className="caret">{collapsed[cwd] ? "▸" : "▾"}</span> {basename(cwd)}
+                      <span className="count">{list.length}</span>
+                      {collapsed[cwd] && list.some((s) => unread[s.id]) && <span className="dot" />}
+                    </div>
+                    {!collapsed[cwd] && (
+                      <>
+                        {list.map(row)}
+                        <div className="newhere" onClick={() => void newSession(cwd)}>
+                          {t("newHere")}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </>
+            );
+          })()}
         </div>
         <div className="foot">
           <span>

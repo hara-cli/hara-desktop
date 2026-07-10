@@ -128,6 +128,62 @@ button.deny {
   font-size: 11px;
   color: var(--dim);
 }
+.group-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dim);
+  cursor: pointer;
+  user-select: none;
+}
+.group-h:hover {
+  color: var(--fg);
+}
+.group-h.assistant {
+  color: var(--accent);
+  font-size: 13px;
+  padding-top: 2px;
+}
+.caret {
+  width: 12px;
+  display: inline-block;
+}
+.count {
+  font-size: 10px;
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 0 6px;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  margin-left: 2px;
+}
+.live {
+  color: var(--accent);
+  margin-right: 4px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+.newhere {
+  font-size: 11px;
+  color: var(--dim);
+  padding: 3px 10px 6px 26px;
+  cursor: pointer;
+}
+.newhere:hover {
+  color: var(--accent);
+}
 .foot {
   font-size: 11px;
   color: var(--dim);

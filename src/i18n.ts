@@ -33,6 +33,8 @@ const dict = {
     untitled: "(untitled)",
     newLabel: "new",
     tokens: "tokens",
+    assistant: "Assistant",
+    newHere: "+ session here",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -64,6 +66,8 @@ const dict = {
     untitled: "(未命名)",
     newLabel: "新",
     tokens: "tokens",
+    assistant: "助手",
+    newHere: "+ 在此目录新会话",
   },
 } as const;
 
