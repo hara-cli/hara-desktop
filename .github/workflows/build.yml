@@ -8,6 +8,9 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: write # tauri-action uploads assets to the release for the tag
+
 jobs:
   build:
     strategy:
@@ -61,11 +64,12 @@ jobs:
           # Without it, builds still succeed but updater artifacts (latest.json) are unsigned/absent.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          NO_STRIP: "true" # linuxdeploy strip breaks the AppImage bundling step on ubuntu-22.04
         with:
           args: --target ${{ matrix.target }}
           tagName: ${{ github.ref_name }}
-          releaseName: "hara desktop ${{ github.ref_name }}"
-          releaseDraft: true
+          releaseName: "Hara Desktop ${{ github.ref_name }}"
+          releaseDraft: false # upload straight onto the (already published) release for this tag
           prerelease: false
       - name: package smoke (bundle structure + sidecar runs)
         shell: bash

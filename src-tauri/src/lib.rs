@@ -10,6 +10,7 @@ use std::fs;
 fn read_discovery() -> Option<String> {
     let home = std::env::var("HOME").ok()?;
     let raw = fs::read_to_string(format!("{home}/.hara/serve.json")).ok()?;
+    #[cfg(unix)]
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
         if let Some(pid) = v.get("pid").and_then(|p| p.as_i64()) {
             let alive = unsafe { libc::kill(pid as i32, 0) } == 0
@@ -19,6 +20,8 @@ fn read_discovery() -> Option<String> {
             }
         }
     }
+    // non-unix: no cheap pid probe — trust the file (a stale one just makes the UI dial a dead port
+    // and fall back to the start button)
     Some(raw)
 }
 
