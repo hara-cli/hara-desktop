@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type CronJobInfo } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import "./App.css";
@@ -101,7 +102,20 @@ export default function App() {
   }, [active]);
   useEffect(() => {
     void invoke<string>("get_home").then(setHome).catch(() => {});
+    void (async () => {
+      if (!(await isPermissionGranted().catch(() => false))) await requestPermission().catch(() => {});
+    })();
   }, []);
+  // dock badge = manual unread count (interruption-grade only; ambient automation never badges)
+  useEffect(() => {
+    const n = Object.values(unread).filter(Boolean).length;
+    void invoke("set_badge", { count: n > 0 ? n : null }).catch(() => {});
+  }, [unread]);
+  const sessionsRef = useRef<SessionInfo[]>([]);
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+  const [q, setQ] = useState("");
 
   const setZone = (z: Zone) => {
     setZoneRaw(z);
@@ -151,7 +165,16 @@ export default function App() {
         case "event.turn_end":
           push(e.sessionId, (items) => [...items, { kind: "end", usage: e.usage }]);
           setBusy((b) => ({ ...b, [e.sessionId]: false }));
-          if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
+          if (e.sessionId !== activeRef.current) {
+            setUnread((u) => ({ ...u, [e.sessionId]: true }));
+            const s = sessionsRef.current.find((x) => x.id === e.sessionId);
+            if (!s || !isAutomated(s)) {
+              // interruption-grade: a manual session finished while you were elsewhere
+              void isPermissionGranted()
+                .then((ok) => ok && sendNotification({ title: s?.title || "hara", body: (e.reply || "").slice(0, 120) }))
+                .catch(() => {});
+            }
+          }
           break;
         case "approval.request":
           push(e.sessionId, (items) => [...items, { kind: "approval", approvalId: e.approvalId, question: plain(e.question) }]);
@@ -408,8 +431,14 @@ export default function App() {
   }
 
   const manualUnreadIn = (list: SessionInfo[]): boolean => list.some((s) => unread[s.id]);
-  const threads = assistantThreads(sessions);
-  const groups = projectGroups(sessions, openedProjects);
+  const hit = (text: string): boolean => !q || text.toLowerCase().includes(q.toLowerCase());
+  const threads = assistantThreads(sessions).filter((s) => hit(s.title) || hit(s.sourceName ?? ""));
+  const groups = projectGroups(sessions, openedProjects)
+    .map(([cwd, list]): [string, SessionInfo[]] => [cwd, hit(basename(cwd)) ? list : list.filter((s) => hit(s.title))])
+    .filter(([cwd, list]) => hit(basename(cwd)) || list.length > 0);
+  const searchBox = (
+    <input className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} spellCheck={false} />
+  );
   const activeSession = sessions.find((s) => s.id === active);
   const items = active ? (transcripts[active] ?? []) : [];
 
@@ -593,6 +622,7 @@ export default function App() {
           <button className="new" onClick={() => void openAssistant()}>
             ⌂ {t("assistant")}
           </button>
+          {searchBox}
           <div className="sessions">
             {threads.map(sessRow)}
             {/* automation timeline — collapsed, ambient counter, never mixed with manual threads */}
@@ -640,6 +670,7 @@ export default function App() {
           <button className="new" onClick={() => void openProject()}>
             {t("openProject")}
           </button>
+          {searchBox}
           <div className="sessions">
             {groups.map(([cwd, list]) => (
               <div key={cwd}>

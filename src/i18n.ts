@@ -62,6 +62,7 @@ const dict = {
     setSecurity: "Security",
     apprHint: "full-auto = it may edit files and run commands without asking",
     history: "History",
+    search: "search…",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -122,6 +123,7 @@ const dict = {
     setSecurity: "安全",
     apprHint: "full-auto = 它可以不问你就改文件、跑命令",
     history: "历史会话",
+    search: "搜索…",
   },
 } as const;
 

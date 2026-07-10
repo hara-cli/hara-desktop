@@ -98,6 +98,15 @@ fn get_home() -> String {
     std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default()
 }
 
+/// Dock badge = manual unread count (macOS). None clears it.
+#[tauri::command]
+fn set_badge(app: tauri::AppHandle, count: Option<i64>) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_badge_count(count);
+    }
+}
+
 /// Launch a plugin panel command (e.g. `hara-design preview`) and return the URL it prints.
 /// Plugin bins live in ~/.hara/bin (added to PATH by the login shell) or on PATH generally; the
 /// command is expected to start/reuse its server, print `http://127.0.0.1:<port>…`, and exit.
@@ -129,7 +138,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel, get_home, read_serve_log])
+        .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel, get_home, read_serve_log, set_badge])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

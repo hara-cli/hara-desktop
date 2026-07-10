@@ -551,6 +551,18 @@ button.deny {
   border-top: 1px solid var(--border);
   background: var(--bg2);
 }
+.search {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  outline: none;
+}
+.search:focus {
+  border-color: var(--accent);
+}
 .picker {
   display: flex;
   flex-direction: column;
