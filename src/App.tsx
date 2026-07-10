@@ -132,6 +132,13 @@ export default function App() {
   const [upd, setUpd] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  // first-run onboarding (serve refused to start: no credentials)
+  const [setupNeeded, setSetupNeeded] = useState(false);
+  const [setup, setSetup] = useState({ provider: "anthropic", apiKey: "", model: "", baseURL: "" });
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [updAvail, setUpdAvail] = useState("");
+  const pendingRef = useRef<"assistant" | "project" | null>(null);
+  const apiRef = useRef<{ setZone: (z: Zone) => void; openAssistant: () => void; openProject: () => void }>({ setZone: () => {}, openAssistant: () => {}, openProject: () => {} });
   // steer queue (codex composer pattern): messages typed while a turn runs are queued and auto-sent
   const [queue, setQueue] = useState<Record<string, string[]>>({});
   const queueRef = useRef(queue);
@@ -283,6 +290,38 @@ export default function App() {
   }, [connect]);
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === "1") (e.preventDefault(), apiRef.current.setZone("chat"));
+      else if (e.key === "2") (e.preventDefault(), apiRef.current.setZone("projects"));
+      else if (e.key === ",") (e.preventDefault(), apiRef.current.setZone("settings"));
+      else if (e.key === "n") (e.preventDefault(), apiRef.current.openProject());
+      else if (e.key === "f") {
+        e.preventDefault();
+        (document.getElementById("haraSearch") as HTMLInputElement | null)?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // pending empty-state card action fires once we're connected
+  useEffect(() => {
+    if (phase !== "ready" || !pendingRef.current) return;
+    const act = pendingRef.current;
+    pendingRef.current = null;
+    if (act === "assistant") void apiRef.current.openAssistant();
+    else void apiRef.current.openProject();
+  }, [phase]);
+
+  // silent update probe at launch — a dot on the settings gear, never a popup
+  useEffect(() => {
+    void checkForUpdate()
+      .then((u) => u && setUpdAvail(u.version))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcripts, active]);
 
@@ -313,6 +352,12 @@ export default function App() {
       }
       if (!up) {
         const log = await invoke<string>("read_serve_log").catch(() => "");
+        // "Not authenticated" → onboarding form, not a log dump
+        if (/not authenticated/i.test(log)) {
+          setSetupNeeded(true);
+          setPhase("no-server");
+          return;
+        }
         setErr(log ? `hara serve did not come up. Log tail:\n${log}` : "hara serve did not come up (no log)");
         setPhase("no-server");
         return;
@@ -455,6 +500,23 @@ export default function App() {
     setLocale(next);
   };
 
+  // keep latest handlers reachable from the once-registered shortcut listener + pending-card effect
+  apiRef.current = { setZone, openAssistant, openProject };
+
+  const submitSetup = async () => {
+    if (!setup.apiKey.trim() || !setup.model.trim()) return;
+    setSetupBusy(true);
+    try {
+      await invoke("write_config", { provider: setup.provider, apiKey: setup.apiKey.trim(), model: setup.model.trim(), baseUrl: setup.baseURL.trim() || null });
+      setSetupNeeded(false);
+      await startServer();
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setSetupBusy(false);
+    }
+  };
+
   // ── boot / error screen ────────────────────────────────────────────────────
   if (phase !== "ready") {
     return (
@@ -463,18 +525,49 @@ export default function App() {
         <div className="herotag dim">{t("heroTag")}</div>
         {phase === "boot" || phase === "connecting" ? (
           <div className="dim">{phase === "connecting" ? t("starting") : t("connecting")}</div>
+        ) : setupNeeded ? (
+          <div className="setup">
+            <div className="card-t">{t("setupTitle")}</div>
+            <div className="card-b dim">{t("setupHint")}</div>
+            <select value={setup.provider} onChange={(e) => setSetup((s) => ({ ...s, provider: e.target.value }))}>
+              {["anthropic", "openai", "deepseek", "qwen", "glm", "ollama", "openrouter"].map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <input type="password" placeholder={t("apiKeyLbl")} value={setup.apiKey} onChange={(e) => setSetup((s) => ({ ...s, apiKey: e.target.value }))} spellCheck={false} />
+            <input placeholder={t("modelLbl")} value={setup.model} onChange={(e) => setSetup((s) => ({ ...s, model: e.target.value }))} spellCheck={false} />
+            <input placeholder={t("baseUrlLbl")} value={setup.baseURL} onChange={(e) => setSetup((s) => ({ ...s, baseURL: e.target.value }))} spellCheck={false} />
+            <button disabled={setupBusy || !setup.apiKey.trim() || !setup.model.trim()} onClick={() => void submitSetup()}>
+              {setupBusy ? "…" : t("saveAndStart")}
+            </button>
+          </div>
         ) : (
           <>
             <div className="cards">
               <div className="card">
                 <div className="card-t">{t("cardChatTitle")}</div>
                 <div className="card-b dim">{t("cardChatBody")}</div>
-                <button onClick={startServer}>{t("cardChatBtn")}</button>
+                <button
+                  onClick={() => {
+                    pendingRef.current = "assistant";
+                    void startServer();
+                  }}
+                >
+                  {t("cardChatBtn")}
+                </button>
               </div>
               <div className="card">
                 <div className="card-t">{t("cardProjTitle")}</div>
                 <div className="card-b dim">{t("cardProjBody")}</div>
-                <button className="ghost" onClick={startServer}>
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    pendingRef.current = "project";
+                    void startServer();
+                  }}
+                >
                   {t("cardProjBtn")}
                 </button>
               </div>
@@ -503,7 +596,7 @@ export default function App() {
     .map(([cwd, list]): [string, SessionInfo[]] => [cwd, hit(basename(cwd)) ? list : list.filter((s) => hit(s.title))])
     .filter(([cwd, list]) => hit(basename(cwd)) || list.length > 0);
   const searchBox = (
-    <input className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} spellCheck={false} />
+    <input id="haraSearch" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} spellCheck={false} />
   );
   const activeSession = sessions.find((s) => s.id === active);
   const items = active ? (transcripts[active] ?? []) : [];
@@ -765,8 +858,9 @@ export default function App() {
       <span className="dim">
         {server?.provider}:{server?.model}
       </span>
-      <button className={`cog ${zone === "settings" ? "on" : ""}`} title={t("zoneSettings")} onClick={() => setZone("settings")}>
+      <button className={`cog ${zone === "settings" ? "on" : ""}`} title={updAvail ? `${t("updateAvail")}: ${updAvail}` : t("zoneSettings")} onClick={() => setZone("settings")} style={{ position: "relative" }}>
         <IconCog size={16} />
+        {updAvail && <span className="rdot" style={{ position: "absolute", top: 2, right: 2, width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />}
       </button>
     </div>
   );

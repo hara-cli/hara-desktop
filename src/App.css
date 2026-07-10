@@ -460,6 +460,31 @@ button.deny {
   font-size: 12px;
   flex: 1;
 }
+.setup {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.setup select,
+.setup input {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+  max-width: none;
+}
+.setup input:focus {
+  border-color: var(--accent);
+}
 .errbox {
   max-width: 560px;
 }

@@ -66,6 +66,13 @@ const dict = {
     checkUpdate: "Check for updates",
     upToDate: "up to date",
     restartToApply: "downloaded — restart to apply",
+    setupTitle: "Connect a model",
+    setupHint: "hara needs an API key to start (stored locally in ~/.hara/config.json, never uploaded).",
+    apiKeyLbl: "API key",
+    modelLbl: "model",
+    baseUrlLbl: "base URL (optional)",
+    saveAndStart: "Save & start",
+    updateAvail: "update available",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -130,6 +137,13 @@ const dict = {
     checkUpdate: "检查更新",
     upToDate: "已是最新",
     restartToApply: "已下载,重启应用生效",
+    setupTitle: "接入模型",
+    setupHint: "hara 需要一个 API key 才能启动(只存本机 ~/.hara/config.json,不上传)。",
+    apiKeyLbl: "API key",
+    modelLbl: "模型",
+    baseUrlLbl: "接口地址(可选)",
+    saveAndStart: "保存并启动",
+    updateAvail: "有新版本",
   },
 } as const;
 
