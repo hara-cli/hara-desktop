@@ -194,6 +194,20 @@ button.deny {
   font-family: "SF Mono", ui-monospace, monospace;
   color: #c9a36a;
 }
+.panelbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.panelframe {
+  flex: 1;
+  border: 0;
+  width: 100%;
+  background: #fff;
+}
 
 .chat {
   flex: 1;

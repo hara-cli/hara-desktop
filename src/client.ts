@@ -17,6 +17,14 @@ export interface SessionInfo {
   updatedAt: string;
 }
 
+export interface PanelSpec {
+  id: string;
+  title: string;
+  command: string;
+  args?: string[];
+  port?: number;
+}
+
 export interface PluginInfo {
   name: string;
   version: string;
@@ -25,6 +33,7 @@ export interface PluginInfo {
   skills: number;
   agents: number;
   mcpServers: number;
+  panels?: PanelSpec[];
 }
 
 export interface SkillInfo {

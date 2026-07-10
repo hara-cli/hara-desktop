@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo } from "./client";
+import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import "./App.css";
 
@@ -34,6 +34,8 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [view, setView] = useState<"chat" | "plugins">("chat");
+  const [panel, setPanel] = useState<{ title: string; url: string } | null>(null);
+  const [panelBusy, setPanelBusy] = useState("");
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [newOpen, setNewOpen] = useState(false);
@@ -180,6 +182,18 @@ export default function App() {
     setPlugins(pl.plugins);
   };
 
+  const openPanel = async (spec: PanelSpec) => {
+    setPanelBusy(spec.id);
+    try {
+      const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [] });
+      setPanel({ title: spec.title, url });
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setPanelBusy("");
+    }
+  };
+
   const openSession = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
@@ -298,7 +312,16 @@ export default function App() {
           </span>
         </div>
       </aside>
-      {view === "plugins" ? (
+      {panel ? (
+        <main className="chat">
+          <div className="panelbar">
+            <button className="ghost" onClick={() => setPanel(null)}>{t("backToChat")}</button>
+            <span className="dim">{panel.title}</span>
+            <span className="dim" style={{ fontSize: 11 }}>{panel.url}</span>
+          </div>
+          <iframe className="panelframe" src={panel.url} title={panel.title} />
+        </main>
+      ) : view === "plugins" ? (
         <main className="chat">
           <div className="scroll panel">
             <h2>{t("plugins")}</h2>
@@ -318,9 +341,16 @@ export default function App() {
                       {p.skills} skills · {p.agents} agents · {p.mcpServers} MCP
                     </div>
                   </div>
-                  <button className={p.enabled ? "" : "ghost"} onClick={() => void togglePlugin(p.name, !p.enabled)}>
-                    {p.enabled ? t("enabled") : t("disabled")}
-                  </button>
+                  <span className="row" style={{ marginTop: 0 }}>
+                    {(p.panels ?? []).map((sp) => (
+                      <button key={sp.id} disabled={panelBusy === sp.id} onClick={() => void openPanel(sp)}>
+                        {panelBusy === sp.id ? "…" : sp.title}
+                      </button>
+                    ))}
+                    <button className={p.enabled ? "" : "ghost"} onClick={() => void togglePlugin(p.name, !p.enabled)}>
+                      {p.enabled ? t("enabled") : t("disabled")}
+                    </button>
+                  </span>
                 </div>
               ))
             )}

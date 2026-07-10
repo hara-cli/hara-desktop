@@ -51,12 +51,38 @@ fn start_serve() -> Result<String, String> {
         .map_err(|e| format!("could not start `hara serve`: {e}"))
 }
 
+/// Launch a plugin panel command (e.g. `hara-design preview`) and return the URL it prints.
+/// Plugin bins live in ~/.hara/bin (added to PATH by the login shell) or on PATH generally; the
+/// command is expected to start/reuse its server, print `http://127.0.0.1:<port>…`, and exit.
+#[tauri::command]
+fn start_panel(command: String, args: Vec<String>) -> Result<String, String> {
+    // basic hygiene: a panel command is a bare bin name from a plugin manifest, never shell syntax
+    if !command.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err("invalid panel command".into());
+    }
+    let joined = args
+        .iter()
+        .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let script = format!("export PATH=\"$HOME/.hara/bin:$PATH\"; {command} {joined} 2>&1");
+    let out = std::process::Command::new("/bin/zsh")
+        .args(["-lc", &script])
+        .output()
+        .map_err(|e| format!("spawn: {e}"))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    match text.split_whitespace().find(|w| w.starts_with("http://127.0.0.1") || w.starts_with("http://localhost")) {
+        Some(url) => Ok(url.to_string()),
+        None => Err(format!("panel command printed no URL: {}", text.chars().take(300).collect::<String>())),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![read_discovery, start_serve])
+        .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

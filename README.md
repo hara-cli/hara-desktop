@@ -1,8 +1,18 @@
-# hara desktop
+# Hara Desktop
 
 A native desktop shell for [hara](https://hara.run) — the coding agent CLI that runs like an
 engineering org. Tauri (Rust thin host) + React, driving a local **`hara serve`** over
 WebSocket JSON-RPC (protocol v1).
+
+## Naming
+
+| Layer | Name | Rationale |
+|---|---|---|
+| Product (site/docs) | **Hara Desktop** | the CLI's desktop companion — Docker Desktop / GitHub Desktop convention |
+| App (Dock/Finder) | **Hara** | short bundle name, Docker.app-style |
+| CLI / command | `hara` (always lowercase) | command-line + npm convention |
+| In-app wordmark | `hara` lowercase | matches the hara.run wordmark |
+| Bundle id | `com.nanhara.hara` | fixed — registered with Apple |
 
 ```
 ┌───────────────────────┐        ws://127.0.0.1:8790 (JSON-RPC v1)
