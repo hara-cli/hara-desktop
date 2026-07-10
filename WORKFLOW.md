@@ -56,10 +56,11 @@ Desktop-only bug: fix → desktop patch tag (sidecar unchanged, stamp already re
 
 ## Quality-gate roadmap (adopt from cc-haha, in order)
 
-1. ✅ today: unit+e2e (cli 498), tsc/cargo gates, manual smoke
-2. next: **package-smoke** — launch the packaged Hara.app headless, assert sidecar spawns +
-   `initialize` handshake succeeds (cc-haha `desktop-smoke` lane)
-3. later: release-notes file required by CI before publish; checksum manifest on releases;
+1. ✅ unit+e2e (cli 498), tsc/cargo gates, manual smoke
+2. ✅ **package-smoke** (`scripts/package-smoke.mjs`, local + CI post-build): bundle structure,
+   sidecar executes + matches SIDECAR_VERSION stamp, dmg/updater archive/.sig present
+3. next: full handshake smoke (launch packaged app headless, assert serve `initialize` succeeds)
+4. later: release-notes file required by CI before publish; checksum manifest on releases;
    quarantine list for flaky tests (14-day review rule)
 
 ## Secrets & signing

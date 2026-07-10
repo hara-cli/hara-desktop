@@ -67,3 +67,6 @@ jobs:
           releaseName: "hara desktop ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false
+      - name: package smoke (bundle structure + sidecar runs)
+        shell: bash
+        run: node scripts/package-smoke.mjs
