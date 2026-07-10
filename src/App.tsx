@@ -187,6 +187,8 @@ export default function App() {
       setBusy((b) => ({ ...b, [sessionId]: true }));
       try {
         await c.send(sessionId, text);
+        // the first turn sets the server-side derived title — refresh so the sidebar shows it now
+        void c.listSessions().then((l) => setSessions(l.sessions)).catch(() => {});
       } catch (e: any) {
         push(sessionId, (items) => [...items, { kind: "notice", text: `error: ${e?.message ?? e}` }]);
         setBusy((b) => ({ ...b, [sessionId]: false }));
@@ -883,8 +885,9 @@ export default function App() {
           </button>
           {searchBox}
           <div className="sessions" key={zone}>
-            {/* THE single desktop conversation (experts' ruling) — the ⌂ button above opens it */}
-            {az.current && sessRow(az.current)}
+            {/* THE single desktop conversation (experts' ruling) — the ⌂ button above opens it.
+                It never shows a derived/"untitled" title: it IS the assistant. */}
+            {az.current && sessRow({ ...az.current, title: t("assistant") })}
             {/* one thread per external origin (WeChat bot etc.) — the origin is the dispatch key */}
             {azBots.map((s) => (
               <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
