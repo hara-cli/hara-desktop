@@ -746,37 +746,49 @@ export default function App() {
     </main>
   );
 
+  // segmented mode switch (顾雅终审: segments hug the content they control; settings sinks to the
+  // footer — a rail is the wrong control type for a permanent 2-mode app)
+  const segBar = (
+    <div className="seg">
+      <button className={zone === "chat" ? "on" : ""} onClick={() => setZone("chat")}>
+        <IconChat size={16} /> {t("zoneChat")}
+        {(autoUnread > 0 || manualUnreadIn(azAll)) && <span className="rdot" />}
+      </button>
+      <button className={zone === "projects" ? "on" : ""} onClick={() => setZone("projects")}>
+        <IconFolder size={16} /> {t("zoneProjects")}
+        {manualUnreadIn(sessions.filter((s) => !isAssistantCwd(s.cwd) && !isAutomated(s) && !isJunkCwd(s.cwd))) && <span className="rdot" />}
+      </button>
+    </div>
+  );
+  const footBar = (
+    <div className="foot">
+      <span className="dim">
+        {server?.provider}:{server?.model}
+      </span>
+      <button className={`cog ${zone === "settings" ? "on" : ""}`} title={t("zoneSettings")} onClick={() => setZone("settings")}>
+        <IconCog size={16} />
+      </button>
+    </div>
+  );
+  const brandBar = (
+    <div className="brand">
+      hara <span className="ver">{server?.version}</span>
+    </div>
+  );
+
   return (
     <div className="app">
-      {/* ── rail: the mode anchor. hairlines split the global cluster from the work cluster ── */}
-      <nav className="rail">
-        <button className={`rl ${zone === "chat" ? "on" : ""}`} title={t("zoneChat")} onClick={() => setZone("chat")}>
-          <IconChat />
-          {(autoUnread > 0 || manualUnreadIn(azAll)) && <span className="rdot" />}
-        </button>
-        <div className="rline" />
-        <button className={`rl ${zone === "projects" ? "on" : ""}`} title={t("zoneProjects")} onClick={() => setZone("projects")}>
-          <IconFolder />
-          {manualUnreadIn(sessions.filter((s) => !isAssistantCwd(s.cwd) && !isAutomated(s))) && <span className="rdot" />}
-        </button>
-        <div className="rspace" />
-        <div className="rline" />
-        <button className={`rl ${zone === "settings" ? "on" : ""}`} title={t("zoneSettings")} onClick={() => setZone("settings")}>
-          <IconCog />
-        </button>
-      </nav>
 
       {/* ── context list (switches with the rail) ── */}
       {zone === "chat" && (
         <aside className="sidebar">
-          <div className="brand">
-            {t("zoneChat")} <span className="ver">{server?.version}</span>
-          </div>
+          {brandBar}
+          {segBar}
           <button className="new withicon" onClick={() => void openAssistant()}>
             <IconHome size={15} /> {t("assistant")}
           </button>
           {searchBox}
-          <div className="sessions">
+          <div className="sessions" key={zone}>
             {/* THE single desktop conversation (experts' ruling) — the ⌂ button above opens it */}
             {az.current && sessRow(az.current)}
             {/* one thread per external origin (WeChat bot etc.) — the origin is the dispatch key */}
@@ -829,24 +841,19 @@ export default function App() {
                 </div>
               ))}
           </div>
-          <div className="foot">
-            <span className="dim">
-              {server?.provider}:{server?.model}
-            </span>
-          </div>
+          {footBar}
         </aside>
       )}
 
       {zone === "projects" && (
         <aside className="sidebar">
-          <div className="brand">
-            {t("zoneProjects")} <span className="ver">{server?.version}</span>
-          </div>
+          {brandBar}
+          {segBar}
           <button className="new" onClick={() => void openProject()}>
             {t("openProject")}
           </button>
           {searchBox}
-          <div className="sessions">
+          <div className="sessions" key={zone}>
             {groups.map(([cwd, list]) => (
               <div key={cwd}>
                 <div className="group-h" title={cwd} onClick={() => toggleGroup(cwd)}>
@@ -877,18 +884,15 @@ export default function App() {
               </div>
             ))}
           </div>
-          <div className="foot">
-            <span className="dim">
-              {server?.provider}:{server?.model}
-            </span>
-          </div>
+          {footBar}
         </aside>
       )}
 
       {zone === "settings" && (
         <aside className="sidebar">
-          <div className="brand">{t("zoneSettings")}</div>
-          <div className="sessions setlist">
+          {brandBar}
+          {segBar}
+          <div className="sessions setlist" key={zone}>
             <div className="group-h">{t("setServer")}</div>
             <div className="setrow dim">
               hara {server?.version} · {server?.provider}:{server?.model}
@@ -976,6 +980,7 @@ export default function App() {
               </div>
             ))}
           </div>
+          {footBar}
         </aside>
       )}
 
