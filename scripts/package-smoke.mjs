@@ -5,8 +5,9 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url)); // URL.pathname breaks on Windows (/C:/…)
 // CI builds with --target <triple> → bundles live under target/<triple>/release; local default builds
 // under target/release. Resolve whichever exists (TAURI_TARGET is set by the CI matrix).
 const triple = process.env.TAURI_TARGET || "";

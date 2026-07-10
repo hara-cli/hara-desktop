@@ -25,6 +25,8 @@ jobs:
             target: x86_64-pc-windows-msvc
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            # AppImage's linuxdeploy chokes on this project (66MB sidecar suspected) — ship deb+rpm
+            extraArgs: "--bundles deb,rpm"
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -66,7 +68,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
           NO_STRIP: "true" # linuxdeploy strip breaks the AppImage bundling step on ubuntu-22.04
         with:
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} ${{ matrix.extraArgs || '' }}
           tagName: ${{ github.ref_name }}
           releaseName: "Hara Desktop ${{ github.ref_name }}"
           releaseDraft: false # upload straight onto the (already published) release for this tag
