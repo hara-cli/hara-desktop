@@ -2,7 +2,7 @@
 // happens server-side, this UI only renders the event stream and answers approvals.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { HaraClient, type Discovery, type SessionInfo, type ServerEvent } from "./client";
+import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo } from "./client";
 import "./App.css";
 
 type Item =
@@ -28,9 +28,14 @@ const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
 export default function App() {
   const clientRef = useRef<HaraClient | null>(null);
   const [phase, setPhase] = useState<Phase>("boot");
-  const [server, setServer] = useState<{ version: string; provider: string; model: string } | null>(null);
+  const [server, setServer] = useState<{ version: string; provider: string; model: string; cwd: string } | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
+  const [view, setView] = useState<"chat" | "plugins">("chat");
+  const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
+  const [skills, setSkills] = useState<SkillInfo[] | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [newCwd, setNewCwd] = useState("");
   const [transcripts, setTranscripts] = useState<Record<string, Item[]>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [approval, setApproval] = useState<Approval | null>(null);
@@ -96,7 +101,8 @@ export default function App() {
       await c.connect(d.host, d.port);
       const info = await c.initialize(d.token);
       clientRef.current = c;
-      setServer({ version: info.version, provider: info.provider, model: info.model });
+      setServer({ version: info.version, provider: info.provider, model: info.model, cwd: info.cwd });
+      setNewCwd(info.cwd);
       const list = await c.listSessions();
       setSessions(list.sessions);
       setPhase("ready");
@@ -128,14 +134,33 @@ export default function App() {
     }
   };
 
-  const newSession = async () => {
+  const newSession = async (cwd?: string) => {
     const c = clientRef.current;
     if (!c) return;
-    const r = await c.createSession();
+    const r = await c.createSession(cwd ? { cwd } : undefined);
     setActive(r.sessionId);
+    setView("chat");
+    setNewOpen(false);
     setTranscripts((t) => ({ ...t, [r.sessionId]: [] }));
     const list = await c.listSessions();
     setSessions(list.sessions);
+  };
+
+  const openPlugins = async () => {
+    const c = clientRef.current;
+    if (!c) return;
+    setView("plugins");
+    const [pl, sk] = await Promise.all([c.listPlugins(), c.listSkills()]);
+    setPlugins(pl.plugins);
+    setSkills(sk.skills);
+  };
+
+  const togglePlugin = async (name: string, enabled: boolean) => {
+    const c = clientRef.current;
+    if (!c) return;
+    await c.setPlugin(name, enabled);
+    const pl = await c.listPlugins();
+    setPlugins(pl.plugins);
   };
 
   const openSession = async (id: string) => {
@@ -206,9 +231,28 @@ export default function App() {
         <div className="brand">
           hara <span className="ver">{server?.version}</span>
         </div>
-        <button className="new" onClick={newSession}>
-          + new session
-        </button>
+        {newOpen ? (
+          <div className="newform">
+            <input
+              value={newCwd}
+              onChange={(e) => setNewCwd(e.target.value)}
+              placeholder="working directory"
+              spellCheck={false}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void newSession(newCwd.trim() || undefined);
+                if (e.key === "Escape") setNewOpen(false);
+              }}
+            />
+            <div className="row">
+              <button onClick={() => void newSession(newCwd.trim() || undefined)}>create</button>
+              <button className="ghost" onClick={() => setNewOpen(false)}>cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button className="new" onClick={() => setNewOpen(true)}>
+            + new session
+          </button>
+        )}
         <div className="sessions">
           {sessions.map((s) => (
             <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
@@ -220,9 +264,54 @@ export default function App() {
           ))}
         </div>
         <div className="foot">
-          {server?.provider}:{server?.model}
+          <span>
+            {server?.provider}:{server?.model}
+          </span>
+          <button className="linky" onClick={() => (view === "plugins" ? setView("chat") : void openPlugins())}>
+            {view === "plugins" ? "‹ chat" : "plugins"}
+          </button>
         </div>
       </aside>
+      {view === "plugins" ? (
+        <main className="chat">
+          <div className="scroll panel">
+            <h2>plugins</h2>
+            {!plugins ? (
+              <div className="dim">loading…</div>
+            ) : plugins.length === 0 ? (
+              <div className="dim">no plugins installed — `hara plugin install &lt;source&gt;`</div>
+            ) : (
+              plugins.map((p) => (
+                <div key={p.name} className="plug">
+                  <div className="plug-main">
+                    <div className="plug-name">
+                      {p.name} <span className="dim">v{p.version}</span>
+                    </div>
+                    <div className="plug-desc dim">{p.description || "—"}</div>
+                    <div className="plug-meta dim">
+                      {p.skills} skills · {p.agents} agents · {p.mcpServers} MCP
+                    </div>
+                  </div>
+                  <button className={p.enabled ? "" : "ghost"} onClick={() => void togglePlugin(p.name, !p.enabled)}>
+                    {p.enabled ? "enabled" : "disabled"}
+                  </button>
+                </div>
+              ))
+            )}
+            <h2>skills</h2>
+            {!skills ? (
+              <div className="dim">loading…</div>
+            ) : (
+              skills.map((s) => (
+                <div key={s.id} className="skill">
+                  <span className="skill-id">{s.id}</span> <span className="dim">[{s.source}]</span>
+                  <div className="plug-desc dim">{s.description}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </main>
+      ) : (
       <main className="chat">
         {!active ? (
           <div className="center dim">pick a session or start a new one</div>
@@ -304,6 +393,7 @@ export default function App() {
           </>
         )}
       </main>
+      )}
       {approval && (
         <div className="overlay">
           <div className="modal">

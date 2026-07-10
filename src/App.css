@@ -133,6 +133,66 @@ button.deny {
   color: var(--dim);
   padding: 6px 4px 0;
   border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.linky {
+  background: none;
+  color: var(--accent);
+  padding: 2px 6px;
+  font-size: 11px;
+}
+.newform {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.newform input {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: "SF Mono", ui-monospace, monospace;
+  outline: none;
+}
+.newform input:focus {
+  border-color: var(--accent);
+}
+.panel h2 {
+  font-size: 14px;
+  margin: 14px 0 6px;
+  color: var(--accent);
+}
+.plug {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.plug-name {
+  font-weight: 600;
+}
+.plug-desc {
+  font-size: 12px;
+}
+.plug-meta {
+  font-size: 11px;
+}
+.skill {
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.skill-id {
+  font-family: "SF Mono", ui-monospace, monospace;
+  color: #c9a36a;
 }
 
 .chat {

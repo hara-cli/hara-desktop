@@ -17,6 +17,22 @@ export interface SessionInfo {
   updatedAt: string;
 }
 
+export interface PluginInfo {
+  name: string;
+  version: string;
+  description: string;
+  enabled: boolean;
+  skills: number;
+  agents: number;
+  mcpServers: number;
+}
+
+export interface SkillInfo {
+  id: string;
+  description: string;
+  source: string;
+}
+
 export type ServerEvent =
   | { method: "event.text"; sessionId: string; delta: string }
   | { method: "event.reasoning"; sessionId: string; delta: string }
@@ -88,6 +104,15 @@ export class HaraClient {
   }
   createSession(opts?: { cwd?: string; approval?: string }) {
     return this.call<{ sessionId: string; model: string }>("session.create", opts ?? {});
+  }
+  listPlugins() {
+    return this.call<{ plugins: PluginInfo[] }>("plugins.list", {});
+  }
+  setPlugin(name: string, enabled: boolean) {
+    return this.call<{ name: string; enabled: boolean }>("plugins.set", { name, enabled });
+  }
+  listSkills(cwd?: string) {
+    return this.call<{ skills: SkillInfo[] }>("skills.list", cwd ? { cwd } : {});
   }
   resumeSession(sessionId: string) {
     return this.call<{ sessionId: string; model: string; history: { role: string; text: string }[] }>("session.resume", { sessionId });
