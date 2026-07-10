@@ -551,6 +551,46 @@ button.deny {
   border-top: 1px solid var(--border);
   background: var(--bg2);
 }
+.pin {
+  margin-left: auto;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+.sess:hover .pin {
+  opacity: 0.6;
+}
+.pin.pinned {
+  opacity: 0.9;
+  color: #c9a36a;
+}
+.sess .title {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.steerq {
+  border-top: 1px dashed var(--border);
+  background: var(--bg2);
+  padding: 6px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.steer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.steer-txt {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .botlab {
   font-size: 10px;
   background: var(--bg3);

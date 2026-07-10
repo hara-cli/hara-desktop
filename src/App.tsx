@@ -129,6 +129,26 @@ export default function App() {
   }, [sessions]);
   const [q, setQ] = useState("");
   const [upd, setUpd] = useState("");
+  // steer queue (codex composer pattern): messages typed while a turn runs are queued and auto-sent
+  const [queue, setQueue] = useState<Record<string, string[]>>({});
+  const queueRef = useRef(queue);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+  const [pins, setPins] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("hara.pins") ?? "[]");
+    } catch {
+      return [];
+    }
+  });
+  const togglePin = (id: string) => {
+    setPins((p) => {
+      const next = p.includes(id) ? p.filter((x) => x !== id) : [...p, id];
+      localStorage.setItem("hara.pins", JSON.stringify(next));
+      return next;
+    });
+  };
 
   const setZone = (z: Zone) => {
     setZoneRaw(z);
@@ -148,6 +168,22 @@ export default function App() {
   const push = useCallback((sessionId: string, mut: (items: Item[]) => Item[]) => {
     setTranscripts((tr) => ({ ...tr, [sessionId]: mut(tr[sessionId] ?? []) }));
   }, []);
+
+  const sendText = useCallback(
+    async (sessionId: string, text: string) => {
+      const c = clientRef.current;
+      if (!c) return;
+      push(sessionId, (items) => [...items, { kind: "user", text }]);
+      setBusy((b) => ({ ...b, [sessionId]: true }));
+      try {
+        await c.send(sessionId, text);
+      } catch (e: any) {
+        push(sessionId, (items) => [...items, { kind: "notice", text: `error: ${e?.message ?? e}` }]);
+        setBusy((b) => ({ ...b, [sessionId]: false }));
+      }
+    },
+    [push],
+  );
 
   const handleEvent = useCallback(
     (e: ServerEvent) => {
@@ -175,9 +211,16 @@ export default function App() {
         case "event.diff":
           push(e.sessionId, (items) => [...items, { kind: "diff", text: plain(e.text) }]);
           break;
-        case "event.turn_end":
+        case "event.turn_end": {
           push(e.sessionId, (items) => [...items, { kind: "end", usage: e.usage }]);
           setBusy((b) => ({ ...b, [e.sessionId]: false }));
+          // steer queue: auto-dispatch the next queued message for this session
+          const pending = queueRef.current[e.sessionId];
+          if (pending && pending.length > 0) {
+            const [next, ...rest] = pending;
+            setQueue((qs) => ({ ...qs, [e.sessionId]: rest }));
+            setTimeout(() => void sendText(e.sessionId, next), 50);
+          }
           if (e.sessionId !== activeRef.current) {
             setUnread((u) => ({ ...u, [e.sessionId]: true }));
             const s = sessionsRef.current.find((x) => x.id === e.sessionId);
@@ -189,13 +232,14 @@ export default function App() {
             }
           }
           break;
+        }
         case "approval.request":
           push(e.sessionId, (items) => [...items, { kind: "approval", approvalId: e.approvalId, question: plain(e.question) }]);
           if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
       }
     },
-    [push],
+    [push, sendText],
   );
 
   const connect = useCallback(async () => {
@@ -352,18 +396,15 @@ export default function App() {
   };
 
   const sendMsg = async () => {
-    const c = clientRef.current;
     const text = input.trim();
-    if (!c || !active || !text || busy[active]) return;
+    if (!active || !text) return;
     setInput("");
-    push(active, (items) => [...items, { kind: "user", text }]);
-    setBusy((b) => ({ ...b, [active]: true }));
-    try {
-      await c.send(active, text);
-    } catch (e: any) {
-      push(active, (items) => [...items, { kind: "notice", text: `error: ${e?.message ?? e}` }]);
-      setBusy((b) => ({ ...b, [active]: false }));
+    if (busy[active]) {
+      // steer: queue it; auto-dispatched when the running turn ends
+      setQueue((qs) => ({ ...qs, [active]: [...(qs[active] ?? []), text] }));
+      return;
     }
+    await sendText(active, text);
   };
 
   const answer = async (sessionId: string, approvalId: string, verdict: "allow" | "always" | "deny") => {
@@ -464,12 +505,22 @@ export default function App() {
   const activeSession = sessions.find((s) => s.id === active);
   const items = active ? (transcripts[active] ?? []) : [];
 
+  const sortPinned = (l: SessionInfo[]): SessionInfo[] => [...l].sort((a, b) => Number(pins.includes(b.id)) - Number(pins.includes(a.id)));
   const sessRow = (s: SessionInfo) => (
     <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
       <div className="title">
         {busy[s.id] && <span className="live">●</span>}
         {unread[s.id] && <span className="dot" />}
         {s.title || t("untitled")}
+        <span
+          className={`pin ${pins.includes(s.id) ? "pinned" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            togglePin(s.id);
+          }}
+        >
+          {pins.includes(s.id) ? "★" : "☆"}
+        </span>
       </div>
       <div className="meta">
         {s.model} · {s.updatedAt ? new Date(s.updatedAt).toLocaleString() : t("newLabel")}
@@ -562,9 +613,35 @@ export default function App() {
                   );
               }
             })}
-            {active && busy[active] && <div className="busy">{t("working")}</div>}
+            {active &&
+              busy[active] &&
+              (() => {
+                const lastUser = items.map((x) => x.kind).lastIndexOf("user");
+                const tail = items.slice(lastUser + 1);
+                const nt = tail.filter((x) => x.kind === "tool").length;
+                const nd = tail.filter((x) => x.kind === "diff").length;
+                return (
+                  <div className="busy">
+                    {t("working")}
+                    {nt > 0 && ` · ⚙${nt}`}
+                    {nd > 0 && ` · ±${nd}`}
+                  </div>
+                );
+              })()}
             <div ref={bottomRef} />
           </div>
+          {(queue[active!] ?? []).length > 0 && (
+            <div className="steerq">
+              {(queue[active!] ?? []).map((m, i) => (
+                <div key={i} className="steer-item">
+                  <span className="steer-txt">{m}</span>
+                  <button className="linky" onClick={() => setQueue((qs) => ({ ...qs, [active!]: qs[active!].filter((_, j) => j !== i) }))}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="inputbar">
             {activeSession && (
               <div className="picker">
@@ -737,7 +814,7 @@ export default function App() {
                 </div>
                 {!collapsed[cwd] && (
                   <>
-                    {list.map(sessRow)}
+                    {sortPinned(list).map(sessRow)}
                     <div className="newhere" onClick={() => void newSession(cwd)}>
                       {t("newHere")}
                     </div>
