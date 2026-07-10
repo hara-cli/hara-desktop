@@ -2,7 +2,9 @@
 // happens server-side, this UI only renders the event stream and answers approvals.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo } from "./client";
+import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import "./App.css";
 
 type Item =
@@ -36,6 +38,17 @@ export default function App() {
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [newCwd, setNewCwd] = useState("");
+  const [locale, setLocale] = useState<Locale>(detectLocale());
+  const t = makeT(locale);
+  const flipLocale = () => {
+    const next: Locale = locale === "en" ? "zh" : "en";
+    saveLocale(next);
+    setLocale(next);
+  };
+  const browseCwd = async () => {
+    const dir = await openDialog({ directory: true, defaultPath: newCwd || undefined, title: t("workdir") });
+    if (typeof dir === "string" && dir) setNewCwd(dir);
+  };
   const [transcripts, setTranscripts] = useState<Record<string, Item[]>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [approval, setApproval] = useState<Approval | null>(null);
@@ -213,14 +226,14 @@ export default function App() {
       <div className="center">
         <div className="brand">hara</div>
         {phase === "boot" || phase === "connecting" ? (
-          <div className="dim">connecting to hara serve…</div>
+          <div className="dim">{t("connecting")}</div>
         ) : (
           <>
-            <div className="dim">{phase === "lost" ? "connection lost — is `hara serve` still running?" : "no running `hara serve` found"}</div>
+            <div className="dim">{phase === "lost" ? t("lost") : t("noServer")}</div>
             {err && <div className="err">{err}</div>}
             <div className="row">
-              <button onClick={startServer}>start hara serve</button>
-              <button className="ghost" onClick={connect}>retry</button>
+              <button onClick={startServer}>{t("startServe")}</button>
+              <button className="ghost" onClick={connect}>{t("retry")}</button>
             </div>
           </>
         )}
@@ -237,32 +250,38 @@ export default function App() {
         </div>
         {newOpen ? (
           <div className="newform">
-            <input
-              value={newCwd}
-              onChange={(e) => setNewCwd(e.target.value)}
-              placeholder="working directory"
-              spellCheck={false}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void newSession(newCwd.trim() || undefined);
-                if (e.key === "Escape") setNewOpen(false);
-              }}
-            />
-            <div className="row">
-              <button onClick={() => void newSession(newCwd.trim() || undefined)}>create</button>
-              <button className="ghost" onClick={() => setNewOpen(false)}>cancel</button>
+            <div className="row" style={{ marginTop: 0 }}>
+              <input
+                value={newCwd}
+                onChange={(e) => setNewCwd(e.target.value)}
+                placeholder={t("workdir")}
+                spellCheck={false}
+                style={{ flex: 1 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void newSession(newCwd.trim() || undefined);
+                  if (e.key === "Escape") setNewOpen(false);
+                }}
+              />
+              <button className="ghost" onClick={() => void browseCwd()} title={t("workdir")}>
+                📁
+              </button>
+            </div>
+            <div className="row" style={{ marginTop: 0 }}>
+              <button onClick={() => void newSession(newCwd.trim() || undefined)}>{t("create")}</button>
+              <button className="ghost" onClick={() => setNewOpen(false)}>{t("cancel")}</button>
             </div>
           </div>
         ) : (
           <button className="new" onClick={() => setNewOpen(true)}>
-            + new session
+            {t("newSession")}
           </button>
         )}
         <div className="sessions">
           {sessions.map((s) => (
             <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
-              <div className="title">{s.title || "(untitled)"}</div>
+              <div className="title">{s.title || t("untitled")}</div>
               <div className="meta">
-                {s.model} · {s.updatedAt ? new Date(s.updatedAt).toLocaleString() : "new"}
+                {s.model} · {s.updatedAt ? new Date(s.updatedAt).toLocaleString() : t("newLabel")}
               </div>
             </div>
           ))}
@@ -271,19 +290,22 @@ export default function App() {
           <span>
             {server?.provider}:{server?.model}
           </span>
-          <button className="linky" onClick={() => (view === "plugins" ? setView("chat") : void openPlugins())}>
-            {view === "plugins" ? "‹ chat" : "plugins"}
-          </button>
+          <span>
+            <button className="linky" onClick={flipLocale}>{locale === "en" ? "中" : "EN"}</button>
+            <button className="linky" onClick={() => (view === "plugins" ? setView("chat") : void openPlugins())}>
+              {view === "plugins" ? t("backToChat") : t("plugins")}
+            </button>
+          </span>
         </div>
       </aside>
       {view === "plugins" ? (
         <main className="chat">
           <div className="scroll panel">
-            <h2>plugins</h2>
+            <h2>{t("plugins")}</h2>
             {!plugins ? (
-              <div className="dim">loading…</div>
+              <div className="dim">{t("loading")}</div>
             ) : plugins.length === 0 ? (
-              <div className="dim">no plugins installed — `hara plugin install &lt;source&gt;`</div>
+              <div className="dim">{t("noPlugins")}</div>
             ) : (
               plugins.map((p) => (
                 <div key={p.name} className="plug">
@@ -297,14 +319,14 @@ export default function App() {
                     </div>
                   </div>
                   <button className={p.enabled ? "" : "ghost"} onClick={() => void togglePlugin(p.name, !p.enabled)}>
-                    {p.enabled ? "enabled" : "disabled"}
+                    {p.enabled ? t("enabled") : t("disabled")}
                   </button>
                 </div>
               ))
             )}
-            <h2>skills</h2>
+            <h2>{t("skills")}</h2>
             {!skills ? (
-              <div className="dim">loading…</div>
+              <div className="dim">{t("loading")}</div>
             ) : (
               skills.map((s) => (
                 <div key={s.id} className="skill">
@@ -318,7 +340,7 @@ export default function App() {
       ) : (
       <main className="chat">
         {!active ? (
-          <div className="center dim">pick a session or start a new one</div>
+          <div className="center dim">{t("pickSession")}</div>
         ) : (
           <>
             <div className="scroll">
@@ -339,7 +361,7 @@ export default function App() {
                   case "reasoning":
                     return (
                       <details key={i} className="reasoning">
-                        <summary>thinking…</summary>
+                        <summary>{t("thinking")}</summary>
                         {it.text}
                       </details>
                     );
@@ -364,18 +386,18 @@ export default function App() {
                   case "end":
                     return (
                       <div key={i} className="usage dim">
-                        · {it.usage.input}→{it.usage.output} tokens ·
+                        · {it.usage.input}→{it.usage.output} {t("tokens")} ·
                       </div>
                     );
                 }
               })}
-              {active && busy[active] && <div className="busy">▍working…</div>}
+              {active && busy[active] && <div className="busy">{t("working")}</div>}
               <div ref={bottomRef} />
             </div>
             <div className="inputbar">
               <textarea
                 value={input}
-                placeholder="message hara… (Enter to send, Shift+Enter for newline)"
+                placeholder={t("placeholder")}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -386,11 +408,11 @@ export default function App() {
               />
               {active && busy[active] ? (
                 <button className="stop" onClick={() => void clientRef.current?.interrupt(active)}>
-                  stop
+                  {t("stop")}
                 </button>
               ) : (
                 <button onClick={() => void sendMsg()} disabled={!input.trim()}>
-                  send
+                  {t("send")}
                 </button>
               )}
             </div>
@@ -401,15 +423,15 @@ export default function App() {
       {approval && (
         <div className="overlay">
           <div className="modal">
-            <div className="modal-title">approval needed</div>
+            <div className="modal-title">{t("approvalTitle")}</div>
             <div className="question">{approval.question}</div>
             <div className="row">
-              <button onClick={() => void answer(true)}>allow</button>
+              <button onClick={() => void answer(true)}>{t("allow")}</button>
               <button className="ghost" onClick={() => void answer(true, true)}>
-                always allow
+                {t("always")}
               </button>
               <button className="deny" onClick={() => void answer(false)}>
-                deny
+                {t("deny")}
               </button>
             </div>
           </div>
