@@ -47,8 +47,13 @@ No file → the app offers to start one.
 npm run tauri build   # bundles hara.app / dmg
 ```
 
-## Status
+## Status — v0.1.0 (public beta, all platforms)
 
-P1 MVP: connect/discover · session list + new/resume · streaming chat (text / thinking /
-tool / notice / diff) · approval dialogs (allow / always / deny) · interrupt.
-Next (P2): plugin manager panel, bundled sidecar, auto-update, multi-workspace.
+Shipped: segmented assistant/projects IA (one persistent assistant conversation + per-origin bot
+threads + collapsed automations timeline) · open-folder-as-project · bundled hara sidecar
+(zero-dependency) · first-run key onboarding · per-session model & thinking-effort switch · inline
+approvals · steer queue · notifications + dock badge · search / pin / rename / archive · `@file`
+mentions · i18n (en/zh) · signed auto-updates from GitHub Releases · 4-platform CI with
+package-smoke gate. See `WORKFLOW.md` for the two-repo release train.
+
+Next: macOS notarization (Developer ID) · cron management UI · attachments.
