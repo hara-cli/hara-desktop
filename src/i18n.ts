@@ -59,6 +59,8 @@ const dict = {
     setLang: "Language",
     setServer: "Engine",
     setPlugins: "Capabilities (plugins)",
+    setSecurity: "Security",
+    apprHint: "full-auto = it may edit files and run commands without asking",
     history: "History",
   },
   zh: {
@@ -117,6 +119,8 @@ const dict = {
     setLang: "语言",
     setServer: "引擎",
     setPlugins: "能力(插件)",
+    setSecurity: "安全",
+    apprHint: "full-auto = 它可以不问你就改文件、跑命令",
     history: "历史会话",
   },
 } as const;

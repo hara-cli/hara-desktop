@@ -551,6 +551,33 @@ button.deny {
   border-top: 1px solid var(--border);
   background: var(--bg2);
 }
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-self: flex-end;
+}
+select {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 4px 6px;
+  font-size: 11px;
+  max-width: 170px;
+  outline: none;
+}
+.appr {
+  align-self: stretch;
+  background: var(--bg2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.appr.done {
+  border-color: var(--border);
+  opacity: 0.75;
+}
 .inputbar textarea {
   flex: 1;
   resize: none;

@@ -16,13 +16,9 @@ type Item =
   | { kind: "tool"; name: string; preview: string }
   | { kind: "notice"; text: string }
   | { kind: "diff"; text: string }
-  | { kind: "end"; usage: { input: number; output: number } };
-
-interface Approval {
-  approvalId: string;
-  sessionId: string;
-  question: string;
-}
+  | { kind: "end"; usage: { input: number; output: number } }
+  // in-flow approval card (IA ruling I: approvals live IN the transcript, not a modal)
+  | { kind: "approval"; approvalId: string; question: string; answered?: "allow" | "always" | "deny" };
 
 type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
 type Zone = "chat" | "projects" | "settings";
@@ -67,8 +63,10 @@ export default function App() {
   const [active, setActive] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<Record<string, Item[]>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
-  const [approval, setApproval] = useState<Approval | null>(null);
   const [input, setInput] = useState("");
+  const [modelInfo, setModelInfo] = useState<{ models: string[]; current: string; effortLevels: string[] } | null>(null);
+  const [sessEffort, setSessEffort] = useState<Record<string, string>>({});
+  const [defaultApproval, setDefaultApproval] = useState<string>(() => localStorage.getItem("hara.approval") || "");
   const [err, setErr] = useState("");
   const [zone, setZoneRaw] = useState<Zone>(() => (localStorage.getItem("hara.zone") as Zone) || "chat");
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
@@ -156,7 +154,8 @@ export default function App() {
           if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
         case "approval.request":
-          setApproval({ approvalId: e.approvalId, sessionId: e.sessionId, question: plain(e.question) });
+          push(e.sessionId, (items) => [...items, { kind: "approval", approvalId: e.approvalId, question: plain(e.question) }]);
+          if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
       }
     },
@@ -187,6 +186,7 @@ export default function App() {
       const manual = list.sessions.filter((s) => !isAutomated(s) && !isAssistantCwd(s.cwd));
       if (manual.length === 0 && openedProjects.length === 0) setZoneRaw("chat");
       void c.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
+      void c.listModels().then(setModelInfo).catch(() => {});
       setPhase("ready");
     } catch (e: any) {
       setErr(String(e?.message ?? e));
@@ -251,7 +251,7 @@ export default function App() {
   const newSession = async (cwd?: string) => {
     const c = clientRef.current;
     if (!c) return;
-    const r = await c.createSession(cwd ? { cwd } : undefined);
+    const r = await c.createSession({ ...(cwd ? { cwd } : {}), ...(defaultApproval ? { approval: defaultApproval } : {}) });
     setActive(r.sessionId);
     setTranscripts((tr) => ({ ...tr, [r.sessionId]: [] }));
     await refreshSessions();
@@ -323,11 +323,23 @@ export default function App() {
     }
   };
 
-  const answer = async (allow: boolean, always = false) => {
+  const answer = async (sessionId: string, approvalId: string, verdict: "allow" | "always" | "deny") => {
     const c = clientRef.current;
-    if (!c || !approval) return;
-    await c.approvalReply(approval.approvalId, allow, always);
-    setApproval(null);
+    if (!c) return;
+    await c.approvalReply(approvalId, verdict !== "deny", verdict === "always");
+    push(sessionId, (items) => items.map((it) => (it.kind === "approval" && it.approvalId === approvalId ? { ...it, answered: verdict } : it)));
+  };
+
+  const changeModel = async (model?: string, effort?: string) => {
+    const c = clientRef.current;
+    if (!c || !active) return;
+    try {
+      const r = await c.setSessionModel(active, model, effort);
+      setSessions((list) => list.map((s) => (s.id === active ? { ...s, model: r.model } : s)));
+      if (effort) setSessEffort((m) => ({ ...m, [active]: effort }));
+    } catch (e: any) {
+      push(active, (items) => [...items, { kind: "notice", text: `model switch: ${e?.message ?? e}` }]);
+    }
   };
 
   const openPanel = async (spec: PanelSpec) => {
@@ -477,12 +489,57 @@ export default function App() {
                       · {it.usage.input}→{it.usage.output} {t("tokens")} ·
                     </div>
                   );
+                case "approval":
+                  return (
+                    <div key={i} className={`appr ${it.answered ? "done" : ""}`}>
+                      <div className="modal-title">{t("approvalTitle")}</div>
+                      <div className="question">{it.question}</div>
+                      {it.answered ? (
+                        <div className="dim">{t(it.answered)}</div>
+                      ) : (
+                        <div className="row">
+                          <button onClick={() => void answer(active!, it.approvalId, "allow")}>{t("allow")}</button>
+                          <button className="ghost" onClick={() => void answer(active!, it.approvalId, "always")}>
+                            {t("always")}
+                          </button>
+                          <button className="deny" onClick={() => void answer(active!, it.approvalId, "deny")}>
+                            {t("deny")}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
               }
             })}
             {active && busy[active] && <div className="busy">{t("working")}</div>}
             <div ref={bottomRef} />
           </div>
           <div className="inputbar">
+            {activeSession && (
+              <div className="picker">
+                {modelInfo && modelInfo.models.length > 0 ? (
+                  <select value={activeSession.model} onChange={(e) => void changeModel(e.target.value, undefined)} disabled={!!busy[active!]}>
+                    {[...new Set([activeSession.model, ...modelInfo.models])].map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="dim">{activeSession.model}</span>
+                )}
+                {modelInfo && modelInfo.effortLevels.length > 0 && (
+                  <select value={sessEffort[active!] ?? ""} onChange={(e) => void changeModel(undefined, e.target.value || undefined)} disabled={!!busy[active!]}>
+                    <option value="">thinking·auto</option>
+                    {modelInfo.effortLevels.map((l) => (
+                      <option key={l} value={l}>
+                        thinking·{l}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
             <textarea
               value={input}
               placeholder={t("placeholder")}
@@ -630,6 +687,24 @@ export default function App() {
             <div className="setrow dim">
               hara {server?.version} · {server?.provider}:{server?.model}
             </div>
+            <div className="group-h">{t("setSecurity")}</div>
+            <div className="setrow" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+              <select
+                value={defaultApproval}
+                onChange={(e) => {
+                  setDefaultApproval(e.target.value);
+                  localStorage.setItem("hara.approval", e.target.value);
+                }}
+              >
+                <option value="">auto-edit</option>
+                <option value="suggest">suggest</option>
+                <option value="auto-edit">auto-edit</option>
+                <option value="full-auto">full-auto</option>
+              </select>
+              <span className="dim" style={{ fontSize: 11 }}>
+                {t("apprHint")}
+              </span>
+            </div>
             <div className="group-h">{t("setLang")}</div>
             <div className="setrow">
               <button className={locale === "zh" ? "" : "ghost"} onClick={() => locale !== "zh" && flipLocale()}>
@@ -700,23 +775,6 @@ export default function App() {
         conversation(zone === "chat" ? "im" : "ide")
       )}
 
-      {approval && (
-        <div className="overlay">
-          <div className="modal">
-            <div className="modal-title">{t("approvalTitle")}</div>
-            <div className="question">{approval.question}</div>
-            <div className="row">
-              <button onClick={() => void answer(true)}>{t("allow")}</button>
-              <button className="ghost" onClick={() => void answer(true, true)}>
-                {t("always")}
-              </button>
-              <button className="deny" onClick={() => void answer(false)}>
-                {t("deny")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

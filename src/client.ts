@@ -137,6 +137,18 @@ export class HaraClient {
   listSkills(cwd?: string) {
     return this.call<{ skills: SkillInfo[] }>("skills.list", cwd ? { cwd } : {});
   }
+  /** Model catalog + effort levels (serve ≥0.116). Null on older serves. */
+  async listModels(): Promise<{ models: string[]; current: string; effortLevels: string[] } | null> {
+    try {
+      return await this.call("models.list", {});
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  setSessionModel(sessionId: string, model?: string, effort?: string) {
+    return this.call<{ sessionId: string; model: string; effort: string | null }>("session.set-model", { sessionId, model, effort });
+  }
   /** Automation timeline data (serve ≥0.116). Gracefully returns null on older serves (-32601). */
   async listAutomation(): Promise<{ jobs: CronJobInfo[]; sessions: SessionInfo[] } | null> {
     try {
