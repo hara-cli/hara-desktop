@@ -7,7 +7,14 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 const root = new URL("..", import.meta.url).pathname;
-const rel = (p) => join(root, p);
+// CI builds with --target <triple> → bundles live under target/<triple>/release; local default builds
+// under target/release. Resolve whichever exists (TAURI_TARGET is set by the CI matrix).
+const triple = process.env.TAURI_TARGET || "";
+const releaseBase =
+  [`src-tauri/target/${triple}/release`, "src-tauri/target/release"].map((p) => join(root, p)).find((p) => existsSync(p)) ??
+  join(root, "src-tauri/target/release");
+const REL_PREFIX = "src-tauri/target/release/";
+const rel = (p) => (p.startsWith(REL_PREFIX) ? join(releaseBase, p.slice(REL_PREFIX.length)) : join(root, p));
 const plat = process.platform; // darwin | win32 | linux
 let failures = 0;
 const ok = (msg) => console.log(`  ✓ ${msg}`);
