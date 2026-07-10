@@ -15,6 +15,20 @@ export interface SessionInfo {
   cwd: string;
   model: string;
   updatedAt: string;
+  source?: "interactive" | "gateway" | "cron";
+  sourceName?: string;
+}
+
+export interface CronJobInfo {
+  id: string;
+  name: string;
+  mode: string;
+  cwd: string;
+  enabled: boolean;
+  deliver?: string;
+  lastRunAt?: number;
+  lastStatus?: "ok" | "error";
+  lastError?: string;
 }
 
 export interface PanelSpec {
@@ -122,6 +136,15 @@ export class HaraClient {
   }
   listSkills(cwd?: string) {
     return this.call<{ skills: SkillInfo[] }>("skills.list", cwd ? { cwd } : {});
+  }
+  /** Automation timeline data (serve ≥0.116). Gracefully returns null on older serves (-32601). */
+  async listAutomation(): Promise<{ jobs: CronJobInfo[]; sessions: SessionInfo[] } | null> {
+    try {
+      return await this.call("automation.list", {});
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
   }
   resumeSession(sessionId: string) {
     return this.call<{ sessionId: string; model: string; history: { role: string; text: string }[] }>("session.resume", { sessionId });
