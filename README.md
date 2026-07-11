@@ -72,3 +72,6 @@ continue) · ⚙ settings (context anchors + stage forms). Invariants:
   place (split view); settings only manages enable/disable.
 - One persistent desktop assistant; one thread per external origin (WeChat etc.), separated by the
   "external channels" divider.
+Free code signing for Windows builds is provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+
