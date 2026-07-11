@@ -27,7 +27,8 @@ type Item =
   | { kind: "approval"; approvalId: string; question: string; answered?: "allow" | "always" | "deny" };
 
 type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
-type Zone = "chat" | "projects" | "settings";
+// the four PLACES (顾雅 2026-07-11 four-places ruling): talk / work / orchestrate / configure
+type Zone = "chat" | "projects" | "auto" | "settings";
 
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
 /** Junk cwd guard: sessions left behind by tests/one-offs in OS temp dirs are NOT projects. */
@@ -109,7 +110,6 @@ export default function App() {
   const [home, setHome] = useState("");
   const [unread, setUnread] = useState<Record<string, boolean>>({});
   const [autoUnread, setAutoUnread] = useState(0); // ambient counter — never mixes with manual unread
-  const [autoOpen, setAutoOpen] = useState(false);
   const [jobForm, setJobForm] = useState<{ open: boolean; name: string; schedule: string; task: string }>({ open: false, name: "", schedule: "", task: "" });
   const refreshAuto = () => clientRef.current && void clientRef.current.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
   const submitJob = async () => {
@@ -124,6 +124,8 @@ export default function App() {
     }
   };
   const [auto, setAuto] = useState<{ jobs: CronJobInfo[]; sessions: SessionInfo[] } | null | "old-server">(null);
+  // 🤖 place: read-only replay of an automated run (never a live conversation — fork to continue)
+  const [autoReplay, setAutoReplay] = useState<{ id: string; title: string; sourceName?: string; cwd: string; items: { role: string; text: string }[] } | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
       return JSON.parse(localStorage.getItem("hara.collapsed") ?? "{}");
@@ -204,6 +206,7 @@ export default function App() {
     setZoneRaw(z);
     setPanel(null);
     setSplit(null);
+    setAutoReplay(null);
     localStorage.setItem("hara.zone", z);
     if (z === "settings" && clientRef.current) {
       void Promise.all([clientRef.current.listPlugins(), clientRef.current.listSkills()]).then(([pl, sk]) => {
@@ -211,8 +214,9 @@ export default function App() {
         setSkills(sk.skills);
       });
     }
-    if (z === "chat" && clientRef.current) {
+    if (z === "auto" && clientRef.current) {
       void clientRef.current.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
+      markAutoSeen();
     }
   };
 
@@ -338,6 +342,7 @@ export default function App() {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "1") (e.preventDefault(), apiRef.current.setZone("chat"));
       else if (e.key === "2") (e.preventDefault(), apiRef.current.setZone("projects"));
+      else if (e.key === "3") (e.preventDefault(), apiRef.current.setZone("auto"));
       else if (e.key === ",") (e.preventDefault(), apiRef.current.setZone("settings"));
       else if (e.key === "n") (e.preventDefault(), apiRef.current.openProject());
       else if (e.key === "f") {
@@ -844,6 +849,37 @@ export default function App() {
       setErr(String(e?.message ?? e));
     }
   };
+  /** Open an automated run as a READ-ONLY replay in the 🤖 stage (fork to continue it manually). */
+  const openReplay = async (s: { id: string; title: string; sourceName?: string; cwd: string }) => {
+    const c = clientRef.current;
+    if (!c) return;
+    try {
+      const r = await c.resumeSession(s.id);
+      setAutoReplay({ id: s.id, title: s.title, sourceName: s.sourceName, cwd: s.cwd, items: r.history });
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    }
+  };
+
+  /** The replay's escape hatch: fork the automated run into an interactive session and jump there. */
+  const continueManually = async () => {
+    const c = clientRef.current;
+    if (!c || !autoReplay) return;
+    const home = isAssistantCwd(autoReplay.cwd);
+    try {
+      const r = await c.forkSession(autoReplay.id);
+      setTranscripts((tr) => ({
+        ...tr,
+        [r.sessionId]: r.history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
+      }));
+      setActive(r.sessionId);
+      await refreshSessions();
+      setZone(home ? "chat" : "projects");
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    }
+  };
+
   const forkIt = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
@@ -1164,29 +1200,36 @@ export default function App() {
     </main>
   );
 
-  // segmented mode switch (顾雅终审: segments hug the content they control; settings sinks to the
-  // footer — a rail is the wrong control type for a permanent 2-mode app)
-  const segBar = (
-    <div className="seg">
-      <button className={zone === "chat" ? "on" : ""} onClick={() => setZone("chat")}>
-        <IconChat size={16} /> {t("zoneChat")}
-        {(autoUnread > 0 || manualUnreadIn(azAll)) && <span className="rdot" />}
+  // icon rail — four PLACES (顾雅 four-places ruling: 4+ peer places each with its own context
+  // column and density → a rail IS the right control now; the 2-mode segmented era ended when
+  // automations grew into a first-class place). Notification invariant on the rail: interruption
+  // (needs a human) → red dot; ambient (ran, left a trace) → count chip.
+  const rail = (
+    <nav className="rail">
+      <button className={zone === "chat" ? "on" : ""} title={`${t("zoneChat")} ⌘1`} onClick={() => setZone("chat")}>
+        <IconChat size={19} />
+        {manualUnreadIn(azAll) && <span className="rdot" />}
       </button>
-      <button className={zone === "projects" ? "on" : ""} onClick={() => setZone("projects")}>
-        <IconFolder size={16} /> {t("zoneProjects")}
+      <button className={zone === "projects" ? "on" : ""} title={`${t("zoneProjects")} ⌘2`} onClick={() => setZone("projects")}>
+        <IconFolder size={19} />
         {manualUnreadIn(sessions.filter((s) => !isAssistantCwd(s.cwd) && !isAutomated(s) && !isJunkCwd(s.cwd))) && <span className="rdot" />}
       </button>
-    </div>
+      <button className={zone === "auto" ? "on" : ""} title={`${t("zoneAuto")} ⌘3`} onClick={() => setZone("auto")}>
+        <IconBot size={19} />
+        {autoUnread > 0 && <span className="chip">{autoUnread > 9 ? "9+" : autoUnread}</span>}
+      </button>
+      <div className="railgap" />
+      <button className={zone === "settings" ? "on" : ""} title={updAvail ? `${t("updateAvail")}: ${updAvail}` : `${t("zoneSettings")} ⌘,`} onClick={() => setZone("settings")}>
+        <IconCog size={18} />
+        {updAvail && <span className="rdot" />}
+      </button>
+    </nav>
   );
   const footBar = (
     <div className="foot">
       <span className="dim">
         {server?.provider}:{server?.model}
       </span>
-      <button className={`cog ${zone === "settings" ? "on" : ""}`} title={updAvail ? `${t("updateAvail")}: ${updAvail}` : t("zoneSettings")} onClick={() => setZone("settings")} style={{ position: "relative" }}>
-        <IconCog size={16} />
-        {updAvail && <span className="rdot" style={{ position: "absolute", top: 2, right: 2, width: 6, height: 6, borderRadius: "50%", background: "var(--accent)" }} />}
-      </button>
     </div>
   );
   const brandBar = (
@@ -1197,12 +1240,12 @@ export default function App() {
 
   return (
     <div className="app">
+      {rail}
 
       {/* ── context list (switches with the rail) ── */}
       {zone === "chat" && (
         <aside className="sidebar">
           {brandBar}
-          {segBar}
           <button className="new withicon" onClick={() => void openAssistant()}>
             <IconHome size={15} /> {t("assistant")}
           </button>
@@ -1232,63 +1275,7 @@ export default function App() {
                 {collapsed["__history"] === false && az.history.filter((s) => hit(s.title)).map(sessRow)}
               </>
             )}
-            {/* automation timeline — collapsed, ambient counter, never mixed with manual threads */}
-            <div className="group-h" onClick={() => (setAutoOpen((o) => !o), !autoOpen && markAutoSeen())}>
-              <span className="caret">{autoOpen ? "▾" : "▸"}</span> <IconBot /> {t("automations")}
-              {autoUnread > 0 && <span className="count accent">{autoUnread}</span>}
-            </div>
-            {autoOpen &&
-              (auto === "old-server" ? (
-                <div className="autohint dim">{t("autoNeedsUpdate")}</div>
-              ) : !auto || (auto.sessions.length === 0 && auto.jobs.length === 0) ? (
-                <div className="autohint dim">{t("autoNone")}</div>
-              ) : (
-                <div className="timeline">
-                  {jobForm.open ? (
-                    <div className="jobform">
-                      <input placeholder={t("jobName")} value={jobForm.name} onChange={(e) => setJobForm((f) => ({ ...f, name: e.target.value }))} spellCheck={false} />
-                      <input placeholder={t("jobSchedule")} value={jobForm.schedule} onChange={(e) => setJobForm((f) => ({ ...f, schedule: e.target.value }))} spellCheck={false} />
-                      <textarea placeholder={t("jobTask")} value={jobForm.task} onChange={(e) => setJobForm((f) => ({ ...f, task: e.target.value }))} rows={2} />
-                      <div className="row" style={{ marginTop: 0 }}>
-                        <button onClick={() => void submitJob()} disabled={!jobForm.name.trim() || !jobForm.schedule.trim() || !jobForm.task.trim()}>
-                          {t("create")}
-                        </button>
-                        <button className="ghost" onClick={() => setJobForm((f) => ({ ...f, open: false }))}>
-                          {t("cancel")}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="newhere" style={{ paddingLeft: 6 }} onClick={() => setJobForm((f) => ({ ...f, open: true }))}>
-                      {t("addJob")}
-                    </div>
-                  )}
-                  {auto.jobs.map((j) => (
-                    <div key={j.id} className={`trow ${j.enabled ? "" : "off"}`}>
-                      <span className={`tstat ${j.lastStatus ?? ""}`}>{j.lastStatus === "ok" ? "✓" : j.lastStatus === "error" ? "✗" : "○"}</span>
-                      <span className="tname" title={j.schedule ?? ""}>{j.name}</span>
-                      <span className="ttime dim">{j.lastRunAt ? fmtTime(new Date(j.lastRunAt).toISOString()) : (j.schedule ?? "—")}</span>
-                      <span
-                        className="act"
-                        title={j.enabled ? "pause" : "resume"}
-                        onClick={() => void clientRef.current?.toggleAutomation(j.id, !j.enabled).then(refreshAuto)}
-                      >
-                        {j.enabled ? "⏸" : "▶"}
-                      </span>
-                      <span className="act" title="delete" onClick={() => void clientRef.current?.deleteAutomation(j.id).then(refreshAuto)}>
-                        ✕
-                      </span>
-                    </div>
-                  ))}
-                  {auto.sessions.slice(0, 20).map((s) => (
-                    <div key={s.id} className="trow click" onClick={() => void openSession(s.id)}>
-                      <span className="tstat">·</span>
-                      <span className="tname">{s.title || s.sourceName || s.source}</span>
-                      <span className="ttime dim">{s.updatedAt ? new Date(s.updatedAt).toLocaleTimeString() : ""}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
+            {/* automations moved to their own 🤖 place (four-places ruling) — nothing of them lives here */}
           </div>
           {footBar}
         </aside>
@@ -1297,7 +1284,6 @@ export default function App() {
       {zone === "projects" && (
         <aside className="sidebar">
           {brandBar}
-          {segBar}
           <button className="new" onClick={() => void openProject()}>
             {t("openProject")}
           </button>
@@ -1337,10 +1323,47 @@ export default function App() {
         </aside>
       )}
 
+      {zone === "auto" && (
+        <aside className="sidebar">
+          {brandBar}
+          <button className="new" onClick={() => setJobForm((f) => ({ ...f, open: true }))}>
+            {t("addJob")}
+          </button>
+          <div className="sessions" key={zone}>
+            {auto === "old-server" ? (
+              <div className="autohint dim">{t("autoNeedsUpdate")}</div>
+            ) : (
+              <>
+                <div className="group-h">{t("autoJobs")}</div>
+                {(auto ? auto.jobs : []).map((j) => (
+                  <div key={j.id} className={`trow ${j.enabled ? "" : "off"}`} title={j.schedule ?? ""}>
+                    <span className={`tstat ${j.lastStatus ?? ""}`}>{j.lastStatus === "ok" ? "✓" : j.lastStatus === "error" ? "✗" : "○"}</span>
+                    <span className="tname">{j.name}</span>
+                  </div>
+                ))}
+                <div className="group-h" onClick={() => toggleGroup("__runs")}>
+                  <span className="caret">{collapsed["__runs"] ? "▸" : "▾"}</span> {t("autoRuns")}
+                  <span className="count">{auto ? auto.sessions.length : 0}</span>
+                </div>
+                {!collapsed["__runs"] &&
+                  (auto ? auto.sessions : []).slice(0, 30).map((s) => (
+                    <div key={s.id} className={`sess ${autoReplay?.id === s.id ? "on" : ""}`} onClick={() => void openReplay(s)}>
+                      <div className="title">
+                        <span className="botlab">{s.sourceName || s.source}</span> {botTitle(s) || t("untitled")}
+                      </div>
+                      <div className="meta">{s.updatedAt ? fmtTime(s.updatedAt) : ""}</div>
+                    </div>
+                  ))}
+              </>
+            )}
+          </div>
+          {footBar}
+        </aside>
+      )}
+
       {zone === "settings" && (
         <aside className="sidebar">
           {brandBar}
-          {segBar}
           <div className="sessions setlist" key={zone}>
             <div className="group-h">{t("setServer")}</div>
             <div className="setrow dim">
@@ -1450,6 +1473,113 @@ export default function App() {
       ) : zone === "settings" ? (
         <main className="chat">
           <div className="center dim">⚙</div>
+        </main>
+      ) : zone === "auto" ? (
+        // 🤖 the orchestration place — console density: job table on top, run timeline below;
+        // a run opens as a READ-ONLY replay (fork is the only way to continue — automated
+        // sessions never become live conversations here)
+        <main className="chat board">
+          {autoReplay ? (
+            <>
+              <div className="anchor">
+                <button className="linky" onClick={() => setAutoReplay(null)}>
+                  {t("backToBoard")}
+                </button>
+                <span className="botlab">{autoReplay.sourceName || "auto"}</span>
+                <b className="rotitle">{autoReplay.title}</b>
+                <span className="robadge">{t("readonlyAuto")}</span>
+                <button className="paneltab" onClick={() => void continueManually()}>
+                  ⑂ {t("forkFromHere")}
+                </button>
+              </div>
+              <div className="scroll">
+                {autoReplay.items.map((m, i) =>
+                  m.role === "user" ? (
+                    <div key={i} className="msg user ro">
+                      {m.text}
+                    </div>
+                  ) : (
+                    <div key={i} className="msg assistant">
+                      <Md text={m.text} />
+                    </div>
+                  ),
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="scroll boardpad">
+              {auto === "old-server" ? (
+                <div className="autohint dim">{t("autoNeedsUpdate")}</div>
+              ) : (
+                <>
+                  <div className="bandhead">
+                    {t("autoJobs")}
+                    {!jobForm.open && (
+                      <button className="paneltab" onClick={() => setJobForm((f) => ({ ...f, open: true }))}>
+                        {t("addJob")}
+                      </button>
+                    )}
+                  </div>
+                  {jobForm.open && (
+                    <div className="jobform wide">
+                      <input placeholder={t("jobName")} value={jobForm.name} onChange={(e) => setJobForm((f) => ({ ...f, name: e.target.value }))} spellCheck={false} />
+                      <input placeholder={t("jobSchedule")} value={jobForm.schedule} onChange={(e) => setJobForm((f) => ({ ...f, schedule: e.target.value }))} spellCheck={false} />
+                      <input placeholder={t("jobTask")} value={jobForm.task} onChange={(e) => setJobForm((f) => ({ ...f, task: e.target.value }))} spellCheck={false} />
+                      <button onClick={() => void submitJob()} disabled={!jobForm.name.trim() || !jobForm.schedule.trim() || !jobForm.task.trim()}>
+                        {t("create")}
+                      </button>
+                      <button className="ghost" onClick={() => setJobForm((f) => ({ ...f, open: false }))}>
+                        {t("cancel")}
+                      </button>
+                    </div>
+                  )}
+                  <table className="jobtable">
+                    <thead>
+                      <tr>
+                        <th>{t("colStatus")}</th>
+                        <th>{t("colName")}</th>
+                        <th>{t("colSchedule")}</th>
+                        <th>{t("colLast")}</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(auto ? auto.jobs : []).map((j) => (
+                        <tr key={j.id} className={j.enabled ? "" : "off"}>
+                          <td>
+                            <span className={`tstat ${j.lastStatus ?? ""}`}>{j.lastStatus === "ok" ? "✓" : j.lastStatus === "error" ? "✗" : "○"}</span>
+                          </td>
+                          <td>{j.name}</td>
+                          <td className="dim">{j.schedule ?? "—"}</td>
+                          <td className="dim">{j.lastRunAt ? fmtTime(new Date(j.lastRunAt).toISOString()) : "—"}</td>
+                          <td className="ops">
+                            <span className="act" title={j.enabled ? "pause" : "resume"} onClick={() => void clientRef.current?.toggleAutomation(j.id, !j.enabled).then(refreshAuto)}>
+                              {j.enabled ? "⏸" : "▶"}
+                            </span>
+                            <span className="act" title="delete" onClick={() => void clientRef.current?.deleteAutomation(j.id).then(refreshAuto)}>
+                              ✕
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="bandhead">{t("autoRuns")}</div>
+                  {(auto ? auto.sessions : []).length === 0 ? (
+                    <div className="autohint dim">{t("noRuns")}</div>
+                  ) : (
+                    (auto ? auto.sessions : []).map((s) => (
+                      <div key={s.id} className="trow click wide" onClick={() => void openReplay(s)}>
+                        <span className="botlab">{s.sourceName || s.source}</span>
+                        <span className="tname">{botTitle(s) || t("untitled")}</span>
+                        <span className="ttime dim">{s.updatedAt ? fmtTime(s.updatedAt) : ""}</span>
+                      </div>
+                    ))
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </main>
       ) : split && zone === "projects" ? (
         // the design/video loop: talk to the agent on the left, watch the live preview react on the right

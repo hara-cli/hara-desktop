@@ -1077,3 +1077,151 @@ select {
   background: var(--bg2);
   z-index: 1;
 }
+
+/* ── the icon rail: four places (顾雅 four-places ruling) ── */
+.rail {
+  width: 46px;
+  flex: 0 0 46px;
+  background: #0c0c0e;
+  border-right: 1px solid var(--bg3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+}
+.rail button {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--dim);
+  cursor: pointer;
+}
+.rail button:hover {
+  color: var(--fg);
+  background: var(--bg3);
+}
+.rail button.on {
+  color: var(--accent);
+  background: var(--bg3);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.rail .rdot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.rail .chip {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--bg3);
+  color: var(--fg);
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+}
+.railgap {
+  flex: 1;
+}
+
+/* ── 🤖 orchestration board (console density) ── */
+.board .boardpad {
+  padding: 14px 22px;
+}
+.bandhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  margin: 14px 0 8px;
+}
+.bandhead .paneltab {
+  margin-left: 0;
+}
+.jobtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.jobtable th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--dim);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--bg3);
+}
+.jobtable td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--bg2);
+}
+.jobtable tr.off td {
+  opacity: 0.45;
+}
+.jobtable .ops .act {
+  cursor: pointer;
+  padding: 0 5px;
+  color: var(--dim);
+}
+.jobtable .ops .act:hover {
+  color: var(--accent);
+}
+.jobform.wide {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.jobform.wide input {
+  flex: 1;
+}
+.jobform.wide input:nth-child(3) {
+  flex: 2;
+}
+.trow.wide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--bg2);
+  cursor: pointer;
+}
+.trow.wide:hover {
+  background: var(--bg2);
+}
+.trow.wide .tname {
+  flex: 1;
+}
+.robadge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 9px;
+  border: 1px solid #d9a43c;
+  color: #d9a43c;
+  white-space: nowrap;
+}
+.rotitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg.user.ro .rew {
+  display: none;
+}
