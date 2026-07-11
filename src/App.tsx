@@ -11,6 +11,7 @@ import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type Pl
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
+import HaraLogo from "./mark";
 import "./App.css";
 
 type Item =
@@ -34,6 +35,19 @@ const isJunkCwd = (cwd: string): boolean =>
 
 const isAssistantCwd = (cwd: string): boolean => /[/\\]\.hara[/\\]workspace$/.test(cwd);
 const basename = (p: string): string => p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || p;
+/** Compact "MM-DD HH:mm" (year only when it differs) — locale toLocaleString is too chatty for a sidebar. */
+const fmtTime = (iso: string): string => {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const yr = d.getFullYear() === new Date().getFullYear() ? "" : `${d.getFullYear()}-`;
+  return `${yr}${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+/** Automated titles are "sourceName · time" — next to the origin chip that prefix is noise. */
+const botTitle = (s: SessionInfo): string => {
+  const t = s.title || "";
+  return s.sourceName && t.startsWith(`${s.sourceName} · `) ? t.slice(s.sourceName.length + 3) : t;
+};
 const isAutomated = (s: SessionInfo): boolean => s.source === "cron" || s.source === "gateway";
 /** gateway idle-rotation forks share an id prefix (`wechat-<chat>-<tag>[-N]`) — fold to one thread */
 const forkBase = (id: string): string => id.replace(/-\d+$/, "");
@@ -675,7 +689,10 @@ export default function App() {
   if (phase !== "ready") {
     return (
       <div className="center">
-        <div className="brand">hara</div>
+        <HaraLogo size={72} className="bootmark" />
+        <div className="brand big">
+          <span className="wordmark">Hara</span>
+        </div>
         <div className="herotag dim">{t("heroTag")}</div>
         {phase === "boot" || phase === "connecting" ? (
           <div className="dim">{phase === "connecting" ? t("starting") : t("connecting")}</div>
@@ -869,7 +886,7 @@ export default function App() {
         </span>
       </div>
       <div className="meta">
-        {s.model} · {s.updatedAt ? new Date(s.updatedAt).toLocaleString() : t("newLabel")}
+        {s.model} · {s.updatedAt ? fmtTime(s.updatedAt) : t("newLabel")}
       </div>
     </div>
   );
@@ -1123,7 +1140,7 @@ export default function App() {
   );
   const brandBar = (
     <div className="brand">
-      hara <span className="ver">{server?.version}</span>
+      <HaraLogo size={20} /> <span className="wordmark">Hara</span> <span className="ver">{server?.version}</span>
     </div>
   );
 
@@ -1149,9 +1166,9 @@ export default function App() {
                 <div className="title">
                   {busy[s.id] && <span className="live">●</span>}
                   {unread[s.id] && <span className="dot" />}
-                  <span className="botlab">{s.sourceName || "bot"}</span> {s.title || t("untitled")}
+                  <span className="botlab">{s.sourceName || "bot"}</span> {botTitle(s) || t("untitled")}
                 </div>
-                <div className="meta">{s.updatedAt ? new Date(s.updatedAt).toLocaleString() : t("newLabel")}</div>
+                <div className="meta">{s.updatedAt ? fmtTime(s.updatedAt) : t("newLabel")}</div>
               </div>
             ))}
             {/* older desktop-assistant sessions, folded away — duplicates never clutter the zone */}
@@ -1199,7 +1216,7 @@ export default function App() {
                     <div key={j.id} className={`trow ${j.enabled ? "" : "off"}`}>
                       <span className={`tstat ${j.lastStatus ?? ""}`}>{j.lastStatus === "ok" ? "✓" : j.lastStatus === "error" ? "✗" : "○"}</span>
                       <span className="tname" title={j.schedule ?? ""}>{j.name}</span>
-                      <span className="ttime dim">{j.lastRunAt ? new Date(j.lastRunAt).toLocaleString() : (j.schedule ?? "—")}</span>
+                      <span className="ttime dim">{j.lastRunAt ? fmtTime(new Date(j.lastRunAt).toISOString()) : (j.schedule ?? "—")}</span>
                       <span
                         className="act"
                         title={j.enabled ? "pause" : "resume"}

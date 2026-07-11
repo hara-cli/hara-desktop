@@ -983,3 +983,24 @@ select {
 .sess .act.danger:hover {
   color: var(--accent);
 }
+
+/* ── brand with the hara mark (capital wordmark per Jeff 2026-07-11; vermilion H kept) ── */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.wordmark {
+  display: inline-block;
+}
+.wordmark::first-letter {
+  color: var(--accent);
+}
+.brand.big {
+  font-size: 30px;
+  justify-content: center;
+  margin-top: 10px;
+}
+.bootmark {
+  display: block;
+}
