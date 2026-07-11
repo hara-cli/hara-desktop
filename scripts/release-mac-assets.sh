@@ -15,6 +15,15 @@ trap 'rm -rf "$WORK"' EXIT
 VER="${TAG#v}"
 [ -f "$B/dmg/Hara_${VER}_aarch64.dmg" ] || { echo "no local signed dmg for $VER — run build-mac-signed.sh first"; exit 1; }
 
+# HARD GATE: the tag's CI must be fully done — a still-running mac job will re-upload its unsigned
+# artifacts AFTER our clobber and silently undo the merge (caught live on v0.1.5).
+CI_STATE=$(gh run list -R "$REPO" --branch "$TAG" --limit 1 --json status,conclusion -q '.[0].status+" "+.[0].conclusion' 2>/dev/null || echo "unknown")
+case "$CI_STATE" in
+  "completed success") ;;
+  "completed "*) echo "CI for $TAG completed with: $CI_STATE — fix CI first"; exit 1 ;;
+  *) echo "CI for $TAG is '$CI_STATE' — wait for it to finish, then re-run"; exit 1 ;;
+esac
+
 # gh upload's `file#label` only sets a display label — the ASSET NAME is the basename, so copy first
 cp "$B/macos/Hara.app.tar.gz" "$WORK/Hara_aarch64.app.tar.gz"
 cp "$B/macos/Hara.app.tar.gz.sig" "$WORK/Hara_aarch64.app.tar.gz.sig"
