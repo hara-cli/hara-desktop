@@ -193,13 +193,13 @@ export default function App() {
   }, []);
 
   const sendText = useCallback(
-    async (sessionId: string, text: string) => {
+    async (sessionId: string, text: string, images?: { path: string }[]) => {
       const c = clientRef.current;
       if (!c) return;
-      push(sessionId, (items) => [...items, { kind: "user", text }]);
+      push(sessionId, (items) => [...items, { kind: "user", text: images?.length ? `${text}  🖼×${images.length}` : text }]);
       setBusy((b) => ({ ...b, [sessionId]: true }));
       try {
-        await c.send(sessionId, text);
+        await c.send(sessionId, text, images);
         // the first turn sets the server-side derived title — refresh so the sidebar shows it now
         void c.listSessions().then((l) => setSessions(l.sessions)).catch(() => {});
       } catch (e: any) {
@@ -458,16 +458,42 @@ export default function App() {
     });
   };
 
+  const [pendImgs, setPendImgs] = useState<string[]>([]);
+  const pasteImages = async (e: React.ClipboardEvent) => {
+    const files = [...(e.clipboardData?.items ?? [])].filter((it) => it.kind === "file" && it.type.startsWith("image/"));
+    if (!files.length) return;
+    e.preventDefault();
+    for (const it of files) {
+      const f = it.getAsFile();
+      if (!f) continue;
+      const b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(",")[1] ?? "");
+        r.onerror = rej;
+        r.readAsDataURL(f);
+      });
+      try {
+        const path = await invoke<string>("write_temp_image", { dataBase64: b64 });
+        setPendImgs((l) => [...l, path]);
+      } catch (err: any) {
+        setErr(String(err?.message ?? err));
+      }
+    }
+  };
+
   const sendMsg = async () => {
     const text = input.trim();
-    if (!active || !text) return;
+    if (!active || (!text && pendImgs.length === 0)) return;
     setInput("");
     if (busy[active]) {
-      // steer: queue it; auto-dispatched when the running turn ends
-      setQueue((qs) => ({ ...qs, [active]: [...(qs[active] ?? []), text] }));
+      // steer: queue it; auto-dispatched when the running turn ends (pasted images stay pending
+      // and go with the next immediate send — queued steers are text-only)
+      if (text) setQueue((qs) => ({ ...qs, [active]: [...(qs[active] ?? []), text] }));
       return;
     }
-    await sendText(active, text);
+    const imgs = pendImgs.map((p) => ({ path: p }));
+    setPendImgs([]);
+    await sendText(active, text || "(image)", imgs.length ? imgs : undefined);
   };
 
   const answer = async (sessionId: string, approvalId: string, verdict: "allow" | "always" | "deny") => {
@@ -802,6 +828,18 @@ export default function App() {
               ))}
             </div>
           )}
+          {pendImgs.length > 0 && (
+            <div className="steerq">
+              {pendImgs.map((p, i) => (
+                <div key={p} className="steer-item">
+                  <span className="steer-txt">🖼 {p.split("/").pop()}</span>
+                  <button className="linky" onClick={() => setPendImgs((l) => l.filter((_, j) => j !== i))}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="inputbar">
             {activeSession && (
               <div className="picker">
@@ -831,6 +869,7 @@ export default function App() {
             <textarea
               value={input}
               placeholder={t("placeholder")}
+              onPaste={(e) => void pasteImages(e)}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {

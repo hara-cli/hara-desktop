@@ -134,6 +134,29 @@ fn write_config(provider: String, api_key: String, model: String, base_url: Opti
     Ok(format!("configured {provider}"))
 }
 
+/// Persist a pasted clipboard image (base64 png bytes from the webview) to ~/.hara/tmp so the serve
+/// side can inline it into the turn. Returns the absolute path.
+#[tauri::command]
+fn write_temp_image(data_base64: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|e| format!("bad base64: {e}"))?;
+    if bytes.len() > 20 * 1024 * 1024 {
+        return Err("image too large (>20MB)".into());
+    }
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).map_err(|_| "no HOME")?;
+    let dir = format!("{home}/.hara/tmp");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let name = format!(
+        "paste-{}.png",
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
+    );
+    let path = format!("{dir}/{name}");
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 /// Dock badge = manual unread count (macOS). None clears it.
 #[tauri::command]
 fn set_badge(app: tauri::AppHandle, count: Option<i64>) {
@@ -177,7 +200,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel, get_home, read_serve_log, set_badge, write_config])
+        .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel, get_home, read_serve_log, set_badge, write_config, write_temp_image])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

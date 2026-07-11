@@ -178,8 +178,8 @@ export class HaraClient {
   resumeSession(sessionId: string) {
     return this.call<{ sessionId: string; model: string; history: { role: string; text: string }[] }>("session.resume", { sessionId });
   }
-  send(sessionId: string, text: string) {
-    return this.call<{ reply: string; usage: { input: number; output: number } }>("session.send", { sessionId, text });
+  send(sessionId: string, text: string, images?: { path: string; mediaType?: string }[]) {
+    return this.call<{ reply: string; usage: { input: number; output: number } }>("session.send", { sessionId, text, ...(images && images.length ? { images } : {}) });
   }
   interrupt(sessionId: string) {
     return this.call("session.interrupt", { sessionId });
