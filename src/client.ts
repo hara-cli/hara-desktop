@@ -209,6 +209,9 @@ export class HaraClient {
   deleteSession(sessionId: string) {
     return this.call<{ sessionId: string; deleted: boolean }>("session.delete", { sessionId });
   }
+  forkSession(sessionId: string) {
+    return this.call<{ sessionId: string; title: string; model: string; history: { role: string; text: string }[] }>("session.fork", { sessionId });
+  }
   interrupt(sessionId: string) {
     return this.call("session.interrupt", { sessionId });
   }

@@ -9,7 +9,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
 import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type CronJobInfo, type CtxInfo } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
-import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash } from "./icons";
+import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
 import "./App.css";
 
@@ -783,6 +783,21 @@ export default function App() {
       setErr(String(e?.message ?? e));
     }
   };
+  const forkIt = async (id: string) => {
+    const c = clientRef.current;
+    if (!c) return;
+    try {
+      const r = await c.forkSession(id);
+      setTranscripts((tr) => ({
+        ...tr,
+        [r.sessionId]: r.history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
+      }));
+      setActive(r.sessionId);
+      await refreshSessions();
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    }
+  };
   const sessRow = (s: SessionInfo) => (
     <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
       <div className="title">
@@ -822,6 +837,16 @@ export default function App() {
           }}
         >
           <IconStar filled={pins.includes(s.id)} />
+        </span>
+        <span
+          className="act"
+          title={t("forkSess")}
+          onClick={(e) => {
+            e.stopPropagation();
+            void forkIt(s.id);
+          }}
+        >
+          <IconFork />
         </span>
         <span
           className="act"

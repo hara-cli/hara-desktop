@@ -84,6 +84,7 @@ const dict = {
     compacted: "(compacted — history replaced with a summary)",
     deleteSess: "delete permanently",
     deleteConfirm: "Delete this session permanently? Unlike archive, this cannot be undone.",
+    forkSess: "fork — duplicate and diverge",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -166,6 +167,7 @@ const dict = {
     compacted: "(已压缩 —— 历史已替换为摘要)",
     deleteSess: "永久删除",
     deleteConfirm: "永久删除这个会话?与归档不同,删除不可恢复。",
+    forkSess: "分叉 —— 复制一份走不同方向",
   },
 } as const;
 
