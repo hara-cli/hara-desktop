@@ -1100,7 +1100,9 @@ select {
   background: none;
   border: none;
   border-radius: 8px;
-  color: var(--dim);
+  /* icon-only nav needs more luminance than text at the same hierarchy — --dim reads as
+     invisible on the near-black rail (Jeff, v0.1.6 live feedback) */
+  color: #b8b4ad;
   cursor: pointer;
 }
 .rail button:hover {
