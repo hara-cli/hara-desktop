@@ -102,8 +102,9 @@ export default function App() {
   const [zone, setZoneRaw] = useState<Zone>(() => (localStorage.getItem("hara.zone") as Zone) || "chat");
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
-  const [panel, setPanel] = useState<{ title: string; url: string } | null>(null);
   const [panelBusy, setPanelBusy] = useState("");
+  // settings place: context column = group anchors, stage = the selected group's forms
+  const [setSec, setSetSec] = useState<"engine" | "security" | "lang" | "plugins" | "skills">("engine");
   // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [split, setSplit] = useState<{ id: string; title: string; url: string } | null>(null);
@@ -204,7 +205,6 @@ export default function App() {
 
   const setZone = (z: Zone) => {
     setZoneRaw(z);
-    setPanel(null);
     setSplit(null);
     setAutoReplay(null);
     localStorage.setItem("hara.zone", z);
@@ -664,11 +664,17 @@ export default function App() {
     }
   };
 
+  /** Launch a plugin panel from settings — it opens WHERE WORK HAPPENS (顾雅 ruling: a panel is a
+   *  work stage, not a settings artifact): jump to the projects place with the panel as the split.
+   *  No more full-screen hijack overlay. */
   const openPanel = async (spec: PanelSpec) => {
     setPanelBusy(spec.id);
     try {
       const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd: null, portHint: spec.port ?? null });
-      setPanel({ title: spec.title, url });
+      setZoneRaw("projects");
+      localStorage.setItem("hara.zone", "projects");
+      setSplitLoading(true);
+      setSplit({ id: spec.id, title: spec.title, url });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -1254,7 +1260,10 @@ export default function App() {
             {/* THE single desktop conversation (experts' ruling) — the ⌂ button above opens it.
                 It never shows a derived/"untitled" title: it IS the assistant. */}
             {az.current && sessRow({ ...az.current, title: t("assistant") })}
-            {/* one thread per external origin (WeChat bot etc.) — the origin is the dispatch key */}
+            {/* one thread per external origin (WeChat bot etc.) — the origin is the dispatch key.
+                The divider keeps identities straight: above = YOUR desktop assistant, below = its
+                external-channel avatars (顾雅 P2). */}
+            {azBots.length > 0 && <div className="chandiv">{t("extChannels")}</div>}
             {azBots.map((s) => (
               <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
                 <div className="title">
@@ -1365,90 +1374,17 @@ export default function App() {
         <aside className="sidebar">
           {brandBar}
           <div className="sessions setlist" key={zone}>
-            <div className="group-h">{t("setServer")}</div>
-            <div className="setrow dim">
-              hara {server?.version} · {server?.provider}:{server?.model}
-            </div>
-            <div className="setrow">
-              <button
-                className="ghost"
-                onClick={async () => {
-                  setUpd("…");
-                  try {
-                    const u = await checkForUpdate();
-                    if (!u) return setUpd(t("upToDate"));
-                    setUpd(`↓ ${u.version}`);
-                    await u.downloadAndInstall();
-                    setUpd(t("restartToApply"));
-                  } catch (e: any) {
-                    setUpd(String(e?.message ?? e).slice(0, 80));
-                  }
-                }}
-              >
-                {t("checkUpdate")}
-              </button>
-              {upd && <span className="dim">{upd}</span>}
-            </div>
-            <div className="group-h">{t("setSecurity")}</div>
-            <div className="setrow" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
-              <select
-                value={defaultApproval}
-                onChange={(e) => {
-                  setDefaultApproval(e.target.value);
-                  localStorage.setItem("hara.approval", e.target.value);
-                }}
-              >
-                <option value="">auto-edit</option>
-                <option value="suggest">suggest</option>
-                <option value="auto-edit">auto-edit</option>
-                <option value="full-auto">full-auto</option>
-              </select>
-              <span className="dim" style={{ fontSize: 11 }}>
-                {t("apprHint")}
-              </span>
-            </div>
-            <div className="group-h">{t("setLang")}</div>
-            <div className="setrow">
-              <button className={locale === "zh" ? "" : "ghost"} onClick={() => locale !== "zh" && flipLocale()}>
-                中文
-              </button>
-              <button className={locale === "en" ? "" : "ghost"} onClick={() => locale !== "en" && flipLocale()}>
-                EN
-              </button>
-            </div>
-            <div className="group-h">{t("setPlugins")}</div>
-            {!plugins ? (
-              <div className="setrow dim">{t("loading")}</div>
-            ) : plugins.length === 0 ? (
-              <div className="setrow dim">{t("noPlugins")}</div>
-            ) : (
-              plugins.map((p) => (
-                <div key={p.name} className="plug">
-                  <div className="plug-main">
-                    <div className="plug-name">
-                      {p.name} <span className="dim">v{p.version}</span>
-                    </div>
-                    <div className="plug-meta dim">
-                      {p.skills} skills · {p.agents} agents · {p.mcpServers} MCP
-                    </div>
-                  </div>
-                  <span className="row" style={{ marginTop: 0 }}>
-                    {(p.panels ?? []).map((sp) => (
-                      <button key={sp.id} disabled={panelBusy === sp.id} onClick={() => void openPanel(sp)}>
-                        {panelBusy === sp.id ? "…" : sp.title}
-                      </button>
-                    ))}
-                    <button className={p.enabled ? "" : "ghost"} onClick={() => void togglePlugin(p.name, !p.enabled)}>
-                      {p.enabled ? t("enabled") : t("disabled")}
-                    </button>
-                  </span>
-                </div>
-              ))
-            )}
-            <div className="group-h">{t("skills")}</div>
-            {(skills ?? []).map((s) => (
-              <div key={s.id} className="skill">
-                <span className="skill-id">{s.id}</span> <span className="dim">[{s.source}]</span>
+            {(
+              [
+                ["engine", t("setServer")],
+                ["security", t("setSecurity")],
+                ["lang", t("setLang")],
+                ["plugins", t("setPlugins")],
+                ["skills", t("skills")],
+              ] as const
+            ).map(([k, label]) => (
+              <div key={k} className={`setnav ${setSec === k ? "on" : ""}`} onClick={() => setSetSec(k)}>
+                {label}
               </div>
             ))}
           </div>
@@ -1457,22 +1393,117 @@ export default function App() {
       )}
 
       {/* ── main area ── */}
-      {panel ? (
-        <main className="chat">
-          <div className="panelbar">
-            <button className="ghost" onClick={() => setPanel(null)}>
-              ‹
-            </button>
-            <span className="dim">{panel.title}</span>
-            <span className="dim" style={{ fontSize: 11 }}>
-              {panel.url}
-            </span>
+      {zone === "settings" ? (
+        // ⚙ configure place — context column picked a group, the stage renders its forms
+        <main className="chat board">
+          <div className="scroll boardpad setstage">
+            {setSec === "engine" && (
+              <>
+                <div className="bandhead">{t("setServer")}</div>
+                <div className="setrow dim">
+                  hara {server?.version} · {server?.provider}:{server?.model}
+                </div>
+                <div className="setrow">
+                  <button
+                    className="ghost"
+                    onClick={async () => {
+                      setUpd("…");
+                      try {
+                        const u = await checkForUpdate();
+                        if (!u) return setUpd(t("upToDate"));
+                        setUpd(`↓ ${u.version}`);
+                        await u.downloadAndInstall();
+                        setUpd(t("restartToApply"));
+                      } catch (e: any) {
+                        setUpd(String(e?.message ?? e).slice(0, 80));
+                      }
+                    }}
+                  >
+                    {t("checkUpdate")}
+                  </button>
+                  {upd && <span className="dim">{upd}</span>}
+                </div>
+              </>
+            )}
+            {setSec === "security" && (
+              <>
+                <div className="bandhead">{t("setSecurity")}</div>
+                <div className="setrow" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+                  <select
+                    value={defaultApproval}
+                    onChange={(e) => {
+                      setDefaultApproval(e.target.value);
+                      localStorage.setItem("hara.approval", e.target.value);
+                    }}
+                  >
+                    <option value="">auto-edit</option>
+                    <option value="suggest">suggest</option>
+                    <option value="auto-edit">auto-edit</option>
+                    <option value="full-auto">full-auto</option>
+                  </select>
+                  <span className="dim" style={{ fontSize: 11 }}>
+                    {t("apprHint")}
+                  </span>
+                </div>
+              </>
+            )}
+            {setSec === "lang" && (
+              <>
+                <div className="bandhead">{t("setLang")}</div>
+                <div className="setrow">
+                  <button className={locale === "zh" ? "" : "ghost"} onClick={() => locale !== "zh" && flipLocale()}>
+                    中文
+                  </button>
+                  <button className={locale === "en" ? "" : "ghost"} onClick={() => locale !== "en" && flipLocale()}>
+                    EN
+                  </button>
+                </div>
+              </>
+            )}
+            {setSec === "plugins" && (
+              <>
+                <div className="bandhead">{t("setPlugins")}</div>
+                {!plugins ? (
+                  <div className="setrow dim">{t("loading")}</div>
+                ) : plugins.length === 0 ? (
+                  <div className="setrow dim">{t("noPlugins")}</div>
+                ) : (
+                  plugins.map((p) => (
+                    <div key={p.name} className="plug">
+                      <div className="plug-main">
+                        <div className="plug-name">
+                          {p.name} <span className="dim">v{p.version}</span>
+                        </div>
+                        <div className="plug-meta dim">
+                          {p.skills} skills · {p.agents} agents · {p.mcpServers} MCP
+                        </div>
+                      </div>
+                      <span className="row" style={{ marginTop: 0 }}>
+                        {(p.panels ?? []).map((sp) => (
+                          <button key={sp.id} disabled={panelBusy === sp.id} onClick={() => void openPanel(sp)}>
+                            {panelBusy === sp.id ? "…" : sp.title}
+                          </button>
+                        ))}
+                        <button className={p.enabled ? "" : "ghost"} onClick={() => void togglePlugin(p.name, !p.enabled)}>
+                          {p.enabled ? t("enabled") : t("disabled")}
+                        </button>
+                      </span>
+                    </div>
+                  ))
+                )}
+              </>
+            )}
+            {setSec === "skills" && (
+              <>
+                <div className="bandhead">{t("skills")}</div>
+                {(skills ?? []).map((s) => (
+                  <div key={s.id} className="skill">
+                    <span className="skill-id">{s.id}</span> <span className="dim">[{s.source}]</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
-          <iframe className="panelframe" src={panel.url} title={panel.title} />
-        </main>
-      ) : zone === "settings" ? (
-        <main className="chat">
-          <div className="center dim">⚙</div>
         </main>
       ) : zone === "auto" ? (
         // 🤖 the orchestration place — console density: job table on top, run timeline below;

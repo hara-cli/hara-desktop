@@ -57,3 +57,18 @@ mentions · i18n (en/zh) · signed auto-updates from GitHub Releases · 4-platfo
 package-smoke gate. See `WORKFLOW.md` for the two-repo release train.
 
 Next: macOS notarization (Developer ID) · cron management UI · attachments.
+
+## Design invariants (四场所模型, 顾雅 2026-07-11)
+
+Four places on the icon rail — 💬 chat (IM density) · 📁 projects (IDE density, chat↔preview split)
+· 🤖 automations (console density: job table + run timeline, runs open as READ-ONLY replays; fork to
+continue) · ⚙ settings (context anchors + stage forms). Invariants:
+
+- **Notification rule**: interruption-grade (a human must respond) → red dot + dock badge;
+  ambient-grade (an automation ran and left a trace) → count chip, NEVER a dock badge.
+- Automated sessions never mix into manual session lists, and never open as live conversations —
+  replay is read-only; `session.fork` is the only continuation path.
+- A plugin panel is a WORK stage, not a settings artifact: launching one goes to the projects
+  place (split view); settings only manages enable/disable.
+- One persistent desktop assistant; one thread per external origin (WeChat etc.), separated by the
+  "external channels" divider.

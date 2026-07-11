@@ -98,6 +98,7 @@ const dict = {
     forkFromHere: "continue as a manual session",
     backToBoard: "‹ board",
     noRuns: "no runs yet",
+    extChannels: "external channels",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -194,6 +195,7 @@ const dict = {
     forkFromHere: "以此为起点新建手动会话",
     backToBoard: "‹ 总览",
     noRuns: "还没有运行记录",
+    extChannels: "外部渠道",
   },
 } as const;
 
