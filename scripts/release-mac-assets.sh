@@ -14,6 +14,10 @@ trap 'rm -rf "$WORK"' EXIT
 
 VER="${TAG#v}"
 [ -f "$B/dmg/Hara_${VER}_aarch64.dmg" ] || { echo "no local signed dmg for $VER — run build-mac-signed.sh first"; exit 1; }
+# HARD GATE 2: the local dmg must be stapled (fully notarized). A build that died mid-way (e.g. the
+# notary upload timed out) leaves a signed-but-unnotarized dmg — shipping it regresses Gatekeeper
+# (caught live on v0.1.8, where a `| tail` pipe also masked the build's failure exit).
+xcrun stapler validate "$B/dmg/Hara_${VER}_aarch64.dmg" >/dev/null 2>&1 || { echo "local dmg is NOT stapled — the signed build didn't finish (re-run build-mac-signed.sh)"; exit 1; }
 
 # HARD GATE: the tag's CI must be fully done — a still-running mac job will re-upload its unsigned
 # artifacts AFTER our clobber and silently undo the merge (caught live on v0.1.5).
