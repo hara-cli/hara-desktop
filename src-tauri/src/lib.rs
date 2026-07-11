@@ -166,11 +166,37 @@ fn set_badge(app: tauri::AppHandle, count: Option<i64>) {
     }
 }
 
+/// Panel servers WE started (their port wasn't listening before start_panel ran) — terminated on app
+/// exit so design/video preview servers don't pile up as orphans. A server the user already had
+/// running (pre-listening on the hinted port) is never touched.
+struct OwnedPanels(std::sync::Mutex<Vec<u16>>);
+
+fn port_listening(port: u16) -> bool {
+    std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        std::time::Duration::from_millis(150),
+    )
+    .is_ok()
+}
+
+fn kill_owned_panels(ports: &[u16]) {
+    #[cfg(unix)]
+    for p in ports {
+        let _ = std::process::Command::new("/bin/sh")
+            .args(["-c", &format!("lsof -ti tcp:{p} | xargs kill 2>/dev/null")])
+            .status();
+    }
+    #[cfg(not(unix))]
+    let _ = ports; // windows: no orphan cleanup yet (panels are unix-first plugins today)
+}
+
 /// Launch a plugin panel command (e.g. `hara-design preview`) and return the URL it prints.
 /// Plugin bins live in ~/.hara/bin (added to PATH by the login shell) or on PATH generally; the
 /// command is expected to start/reuse its server, print `http://127.0.0.1:<port>…`, and exit.
+/// `port_hint` (the manifest's declared port) drives ownership tracking for exit cleanup.
 #[tauri::command]
-fn start_panel(command: String, args: Vec<String>, cwd: Option<String>) -> Result<String, String> {
+fn start_panel(state: tauri::State<OwnedPanels>, command: String, args: Vec<String>, cwd: Option<String>, port_hint: Option<u16>) -> Result<String, String> {
+    let pre_listening = port_hint.map(port_listening).unwrap_or(false);
     // basic hygiene: a panel command is a bare bin name from a plugin manifest, never shell syntax
     if !command.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
         return Err("invalid panel command".into());
@@ -193,7 +219,20 @@ fn start_panel(command: String, args: Vec<String>, cwd: Option<String>) -> Resul
         .map_err(|e| format!("spawn: {e}"))?;
     let text = String::from_utf8_lossy(&out.stdout);
     match text.split_whitespace().find(|w| w.starts_with("http://127.0.0.1") || w.starts_with("http://localhost")) {
-        Some(url) => Ok(url.to_string()),
+        Some(url) => {
+            // ownership: we only claim (and later kill) a server when the hinted port was NOT
+            // listening before we ran the command and the URL confirms that same port came up
+            if let Some(hint) = port_hint {
+                let actual: Option<u16> = url.rsplit(':').next().and_then(|r| r.split('/').next()).and_then(|p| p.parse().ok());
+                if !pre_listening && actual == Some(hint) {
+                    let mut owned = state.0.lock().unwrap();
+                    if !owned.contains(&hint) {
+                        owned.push(hint);
+                    }
+                }
+            }
+            Ok(url.to_string())
+        }
         None => Err(format!("panel command printed no URL: {}", text.chars().take(300).collect::<String>())),
     }
 }
@@ -201,12 +240,21 @@ fn start_panel(command: String, args: Vec<String>, cwd: Option<String>) -> Resul
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(OwnedPanels(std::sync::Mutex::new(Vec::new())))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![read_discovery, start_serve, start_panel, get_home, read_serve_log, set_badge, write_config, write_temp_image])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // app exit: terminate the panel servers WE started (never a server the user had running)
+            if let tauri::RunEvent::Exit = event {
+                use tauri::Manager;
+                let ports = app.state::<OwnedPanels>().0.lock().map(|v| v.clone()).unwrap_or_default();
+                kill_owned_panels(&ports);
+            }
+        });
 }

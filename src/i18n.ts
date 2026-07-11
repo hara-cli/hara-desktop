@@ -85,6 +85,8 @@ const dict = {
     deleteSess: "delete permanently",
     deleteConfirm: "Delete this session permanently? Unlike archive, this cannot be undone.",
     forkSess: "fork — duplicate and diverge",
+    openInWindow: "open in its own window",
+    panelStarting: "starting preview…",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -168,6 +170,8 @@ const dict = {
     deleteSess: "永久删除",
     deleteConfirm: "永久删除这个会话?与归档不同,删除不可恢复。",
     forkSess: "分叉 —— 复制一份走不同方向",
+    openInWindow: "在独立窗口打开",
+    panelStarting: "预览启动中…",
   },
 } as const;
 

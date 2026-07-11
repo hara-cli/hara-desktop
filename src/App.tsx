@@ -4,6 +4,7 @@
 // settings. The two minds never share a list; each has a permanent target anchor.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
@@ -661,7 +662,7 @@ export default function App() {
   const openPanel = async (spec: PanelSpec) => {
     setPanelBusy(spec.id);
     try {
-      const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd: null });
+      const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd: null, portHint: spec.port ?? null });
       setPanel({ title: spec.title, url });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
@@ -671,16 +672,29 @@ export default function App() {
   };
 
   /** Toggle the chat ↔ preview split for a project panel (runs the panel command IN the project). */
+  const [splitLoading, setSplitLoading] = useState(false);
   const toggleSplit = async (spec: ProjectPanel, cwd: string) => {
     if (split?.id === spec.id) return setSplit(null);
     setPanelBusy(spec.id);
     try {
-      const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd });
+      const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd, portHint: spec.port ?? null });
+      setSplitLoading(true);
       setSplit({ id: spec.id, title: spec.title, url });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
       setPanelBusy("");
+    }
+  };
+
+  /** Pop the split panel into its own window (big-screen mode); the split closes. */
+  const popOutSplit = () => {
+    if (!split) return;
+    try {
+      new WebviewWindow(`panel-${split.id}-${Date.now() % 100000}`, { url: split.url, title: `Hara — ${split.title}`, width: 1100, height: 780 });
+      setSplit(null);
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
     }
   };
 
@@ -1445,11 +1459,17 @@ export default function App() {
             <div className="panelbar">
               <span className="dim">{split.title}</span>
               <span className="dim" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis" }}>{split.url}</span>
+              <button className="ghost" title={t("openInWindow")} onClick={popOutSplit}>
+                ⧉
+              </button>
               <button className="ghost" onClick={() => setSplit(null)}>
                 ✕
               </button>
             </div>
-            <iframe className="panelframe" src={split.url} title={split.title} />
+            <div className="framewrap">
+              {splitLoading && <div className="frameload dim">{t("panelStarting")}</div>}
+              <iframe className="panelframe" src={split.url} title={split.title} onLoad={() => setSplitLoading(false)} />
+            </div>
           </aside>
         </div>
       ) : (
