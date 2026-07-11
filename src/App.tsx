@@ -7,7 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
-import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type CronJobInfo, type CtxInfo } from "./client";
+import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type ProjectPanel, type CronJobInfo, type CtxInfo } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
@@ -102,6 +102,9 @@ export default function App() {
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [panel, setPanel] = useState<{ title: string; url: string } | null>(null);
   const [panelBusy, setPanelBusy] = useState("");
+  // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
+  const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
+  const [split, setSplit] = useState<{ id: string; title: string; url: string } | null>(null);
   const [home, setHome] = useState("");
   const [unread, setUnread] = useState<Record<string, boolean>>({});
   const [autoUnread, setAutoUnread] = useState(0); // ambient counter — never mixes with manual unread
@@ -199,6 +202,7 @@ export default function App() {
   const setZone = (z: Zone) => {
     setZoneRaw(z);
     setPanel(null);
+    setSplit(null);
     localStorage.setItem("hara.zone", z);
     if (z === "settings" && clientRef.current) {
       void Promise.all([clientRef.current.listPlugins(), clientRef.current.listSkills()]).then(([pl, sk]) => {
@@ -352,6 +356,18 @@ export default function App() {
     if (act === "assistant") void apiRef.current.openAssistant();
     else void apiRef.current.openProject();
   }, [phase]);
+
+  // project panels for the active project (cached per cwd; empty array caches the miss)
+  const activeCwd = sessions.find((s) => s.id === active)?.cwd;
+  useEffect(() => {
+    const c = clientRef.current;
+    if (!c || zone !== "projects" || !active || !activeCwd || projPanels[activeCwd] !== undefined) return;
+    void c
+      .projectPanels({ sessionId: active })
+      .then((r) => setProjPanels((m) => ({ ...m, [activeCwd]: r?.panels ?? [] })))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zone, active, activeCwd]);
 
   // silent update probe at launch — a dot on the settings gear, never a popup
   useEffect(() => {
@@ -645,8 +661,22 @@ export default function App() {
   const openPanel = async (spec: PanelSpec) => {
     setPanelBusy(spec.id);
     try {
-      const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [] });
+      const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd: null });
       setPanel({ title: spec.title, url });
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setPanelBusy("");
+    }
+  };
+
+  /** Toggle the chat ↔ preview split for a project panel (runs the panel command IN the project). */
+  const toggleSplit = async (spec: ProjectPanel, cwd: string) => {
+    if (split?.id === spec.id) return setSplit(null);
+    setPanelBusy(spec.id);
+    try {
+      const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd });
+      setSplit({ id: spec.id, title: spec.title, url });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -903,6 +933,13 @@ export default function App() {
             <b>{activeSession ? basename(activeSession.cwd) : "—"}</b> <span className="dim">{activeSession?.cwd}</span>
           </span>
         )}
+        {temperament === "ide" &&
+          activeSession &&
+          (projPanels[activeSession.cwd] ?? []).map((sp) => (
+            <button key={sp.id} className={`paneltab ${split?.id === sp.id ? "on" : ""}`} disabled={panelBusy === sp.id} onClick={() => void toggleSplit(sp, activeSession.cwd)}>
+              {panelBusy === sp.id ? "…" : `◧ ${sp.title}`}
+            </button>
+          ))}
       </div>
       {!active ? (
         <div className="center dim">{t("pickSession")}</div>
@@ -1400,6 +1437,21 @@ export default function App() {
         <main className="chat">
           <div className="center dim">⚙</div>
         </main>
+      ) : split && zone === "projects" ? (
+        // the design/video loop: talk to the agent on the left, watch the live preview react on the right
+        <div className="work">
+          {conversation("ide")}
+          <aside className="sidepanel">
+            <div className="panelbar">
+              <span className="dim">{split.title}</span>
+              <span className="dim" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis" }}>{split.url}</span>
+              <button className="ghost" onClick={() => setSplit(null)}>
+                ✕
+              </button>
+            </div>
+            <iframe className="panelframe" src={split.url} title={split.title} />
+          </aside>
+        </div>
       ) : (
         conversation(zone === "chat" ? "im" : "ide")
       )}

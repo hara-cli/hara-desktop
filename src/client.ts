@@ -41,6 +41,11 @@ export interface PanelSpec {
   port?: number;
 }
 
+/** A panel applicable to a specific project (manifest `detect` markers matched its cwd). */
+export interface ProjectPanel extends PanelSpec {
+  plugin: string;
+}
+
 export interface PluginInfo {
   name: string;
   version: string;
@@ -211,6 +216,15 @@ export class HaraClient {
   }
   forkSession(sessionId: string) {
     return this.call<{ sessionId: string; title: string; model: string; history: { role: string; text: string }[] }>("session.fork", { sessionId });
+  }
+  /** Panels applicable to a project cwd (serve ≥0.119). Null on older serves. */
+  async projectPanels(opts: { sessionId?: string; cwd?: string }): Promise<{ cwd: string; panels: ProjectPanel[] } | null> {
+    try {
+      return await this.call("project.panels", opts);
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
   }
   interrupt(sessionId: string) {
     return this.call("session.interrupt", { sessionId });

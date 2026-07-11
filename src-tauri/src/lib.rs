@@ -170,7 +170,7 @@ fn set_badge(app: tauri::AppHandle, count: Option<i64>) {
 /// Plugin bins live in ~/.hara/bin (added to PATH by the login shell) or on PATH generally; the
 /// command is expected to start/reuse its server, print `http://127.0.0.1:<port>…`, and exit.
 #[tauri::command]
-fn start_panel(command: String, args: Vec<String>) -> Result<String, String> {
+fn start_panel(command: String, args: Vec<String>, cwd: Option<String>) -> Result<String, String> {
     // basic hygiene: a panel command is a bare bin name from a plugin manifest, never shell syntax
     if !command.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
         return Err("invalid panel command".into());
@@ -180,7 +180,13 @@ fn start_panel(command: String, args: Vec<String>) -> Result<String, String> {
         .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
         .collect::<Vec<_>>()
         .join(" ");
-    let script = format!("export PATH=\"$HOME/.hara/bin:$PATH\"; {command} {joined} 2>&1");
+    // project panels run FROM the project dir (e.g. `hara-design preview` picks up that project's
+    // .hara/design/); global panels (settings page) pass no cwd
+    let cd = cwd
+        .filter(|d| !d.is_empty())
+        .map(|d| format!("cd '{}' && ", d.replace('\'', "'\\''")))
+        .unwrap_or_default();
+    let script = format!("export PATH=\"$HOME/.hara/bin:$PATH\"; {cd}{command} {joined} 2>&1");
     let out = std::process::Command::new("/bin/zsh")
         .args(["-lc", &script])
         .output()

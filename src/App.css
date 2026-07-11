@@ -1004,3 +1004,60 @@ select {
 .bootmark {
   display: block;
 }
+
+/* ── chat ↔ live-preview split (project panels) ── */
+.work {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+.work .chat {
+  flex: 1;
+  min-width: 0;
+}
+.sidepanel {
+  width: 46%;
+  min-width: 320px;
+  border-left: 1px solid var(--bg3);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+}
+.sidepanel .panelbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--bg3);
+}
+.sidepanel .panelbar .ghost {
+  margin-left: auto;
+}
+.sidepanel .panelframe {
+  flex: 1;
+  border: 0;
+  background: #fff;
+}
+.paneltab {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bg3);
+  background: var(--bg2);
+  color: var(--dim);
+  cursor: pointer;
+}
+.paneltab:hover {
+  color: var(--fg);
+  border-color: var(--dim);
+}
+.paneltab.on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.anchor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
