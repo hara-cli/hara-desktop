@@ -58,13 +58,20 @@ export interface SkillInfo {
   source: string;
 }
 
+/** Context watermark — how full the model's window was on the last turn (serve ≥0.117). */
+export interface CtxInfo {
+  lastInput: number;
+  window: number;
+  pct: number;
+}
+
 export type ServerEvent =
   | { method: "event.text"; sessionId: string; delta: string }
   | { method: "event.reasoning"; sessionId: string; delta: string }
   | { method: "event.tool"; sessionId: string; name: string; preview: string }
   | { method: "event.diff"; sessionId: string; text: string }
   | { method: "event.notice"; sessionId: string; text: string }
-  | { method: "event.turn_end"; sessionId: string; reply: string; usage: { input: number; output: number } }
+  | { method: "event.turn_end"; sessionId: string; reply: string; usage: { input: number; output: number }; ctx?: CtxInfo }
   | { method: "approval.request"; sessionId: string; approvalId: string; question: string };
 
 interface Pending {
@@ -179,7 +186,25 @@ export class HaraClient {
     return this.call<{ sessionId: string; model: string; history: { role: string; text: string }[] }>("session.resume", { sessionId });
   }
   send(sessionId: string, text: string, images?: { path: string; mediaType?: string }[]) {
-    return this.call<{ reply: string; usage: { input: number; output: number } }>("session.send", { sessionId, text, ...(images && images.length ? { images } : {}) });
+    return this.call<{ reply: string; usage: { input: number; output: number }; ctx?: CtxInfo }>("session.send", { sessionId, text, ...(images && images.length ? { images } : {}) });
+  }
+  /** Fuzzy project-file lookup for the @-mention autocomplete (serve ≥0.117). Null on older serves. */
+  async filesSearch(query: string, opts?: { sessionId?: string; cwd?: string; limit?: number }): Promise<{ files: string[]; cwd: string } | null> {
+    try {
+      return await this.call("files.search", { query, ...(opts ?? {}) });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  sessionContext(sessionId: string) {
+    return this.call<CtxInfo & { sessionId: string; total: number; rows: { label: string; tokens: number; pct: number }[] }>("session.context", { sessionId });
+  }
+  compactSession(sessionId: string) {
+    return this.call<{ sessionId: string; ctx: CtxInfo; notes: number; history: { role: string; text: string }[] }>("session.compact", { sessionId });
+  }
+  rewindSession(sessionId: string, n: number) {
+    return this.call<{ sessionId: string; history: { role: string; text: string }[] }>("session.rewind", { sessionId, n });
   }
   interrupt(sessionId: string) {
     return this.call("session.interrupt", { sessionId });

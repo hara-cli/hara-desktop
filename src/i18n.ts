@@ -77,6 +77,11 @@ const dict = {
     jobName: "name",
     jobSchedule: "every 30m · 0 9 * * * · in 2h",
     jobTask: "what should it do?",
+    compact: "compact",
+    ctxTip: "context window used — compact summarizes the history to free it up",
+    rewindHere: "rewind to before this message",
+    rewindConfirm: "Rewind the conversation to before this message? Later exchanges are dropped (file edits are NOT reverted).",
+    compacted: "(compacted — history replaced with a summary)",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -152,6 +157,11 @@ const dict = {
     jobName: "名称",
     jobSchedule: "every 30m · 0 9 * * * · in 2h",
     jobTask: "要它做什么?",
+    compact: "压缩",
+    ctxTip: "上下文占用 —— 压缩会把历史归纳成摘要,腾出窗口",
+    rewindHere: "回滚到这条消息之前",
+    rewindConfirm: "把对话回滚到这条消息之前?之后的往来会被丢弃(文件改动不会回退)。",
+    compacted: "(已压缩 —— 历史已替换为摘要)",
   },
 } as const;
 

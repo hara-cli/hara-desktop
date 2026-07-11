@@ -7,9 +7,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
-import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type CronJobInfo } from "./client";
+import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type CronJobInfo, type CtxInfo } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar } from "./icons";
+import { Md } from "./markdown";
 import "./App.css";
 
 type Item =
@@ -165,6 +166,12 @@ export default function App() {
       return [];
     }
   });
+  // context watermark per session (rides on every turn_end; codex thread/tokenUsage pattern)
+  const [ctxMap, setCtxMap] = useState<Record<string, CtxInfo>>({});
+  // @-mention file autocomplete (codex fuzzyFileSearch): open while the caret sits on an @token
+  const [ac, setAc] = useState<{ open: boolean; items: string[]; sel: number; token: string }>({ open: false, items: [], sel: 0, token: "" });
+  const acTimer = useRef<number | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const togglePin = (id: string) => {
     setPins((p) => {
       const next = p.includes(id) ? p.filter((x) => x !== id) : [...p, id];
@@ -239,6 +246,7 @@ export default function App() {
         case "event.turn_end": {
           push(e.sessionId, (items) => [...items, { kind: "end", usage: e.usage }]);
           setBusy((b) => ({ ...b, [e.sessionId]: false }));
+          if (e.ctx) setCtxMap((m) => ({ ...m, [e.sessionId]: e.ctx! }));
           // steer queue: auto-dispatch the next queued message for this session
           const pending = queueRef.current[e.sessionId];
           if (pending && pending.length > 0) {
@@ -481,10 +489,83 @@ export default function App() {
     }
   };
 
+  /** Replace a session's transcript from a serve-returned history (compact / rewind). */
+  const loadHistory = (sessionId: string, history: { role: string; text: string }[], tailNotice?: string) => {
+    setTranscripts((tr) => ({
+      ...tr,
+      [sessionId]: [
+        ...history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
+        ...(tailNotice ? [{ kind: "notice", text: tailNotice } as Item] : []),
+      ],
+    }));
+  };
+
+  const compactNow = async () => {
+    const c = clientRef.current;
+    if (!c || !active || busy[active]) return;
+    setBusy((b) => ({ ...b, [active]: true }));
+    try {
+      const r = await c.compactSession(active);
+      loadHistory(active, r.history, t("compacted"));
+      setCtxMap((m) => ({ ...m, [active]: r.ctx }));
+    } catch (e: any) {
+      push(active, (items) => [...items, { kind: "notice", text: `compact: ${e?.message ?? e}` }]);
+    } finally {
+      setBusy((b) => ({ ...b, [active!]: false }));
+    }
+  };
+
+  /** Rewind to before the user message at transcript index i (codex thread/rollback). */
+  const rewindHere = async (i: number) => {
+    const c = clientRef.current;
+    if (!c || !active || busy[active]) return;
+    if (!window.confirm(t("rewindConfirm"))) return;
+    const items = transcripts[active] ?? [];
+    const n = items.slice(i).filter((x) => x.kind === "user").length; // n-th-most-recent user turn
+    try {
+      const r = await c.rewindSession(active, n);
+      loadHistory(active, r.history);
+    } catch (e: any) {
+      push(active, (list) => [...list, { kind: "notice", text: `rewind: ${e?.message ?? e}` }]);
+    }
+  };
+
+  /** @-mention autocomplete: track the @token under the caret; debounce a fuzzy search per keystroke. */
+  const trackMention = (val: string, caret: number) => {
+    const m = /(^|[\s(])@([\w./-]{0,60})$/.exec(val.slice(0, caret));
+    if (!m || !active) {
+      if (ac.open) setAc((a) => ({ ...a, open: false }));
+      return;
+    }
+    const token = m[2];
+    if (acTimer.current) window.clearTimeout(acTimer.current);
+    acTimer.current = window.setTimeout(() => {
+      void clientRef.current
+        ?.filesSearch(token, { sessionId: active, limit: 8 })
+        .then((r) => r && setAc({ open: r.files.length > 0, items: r.files, sel: 0, token }))
+        .catch(() => {});
+    }, 120);
+  };
+
+  /** Insert the picked path, replacing the @token before the caret. */
+  const pickMention = (path: string) => {
+    const el = inputRef.current;
+    const caret = el?.selectionStart ?? input.length;
+    const head = input.slice(0, caret).replace(/@[\w./-]{0,60}$/, `@${path} `);
+    const next = head + input.slice(caret);
+    setInput(next);
+    setAc((a) => ({ ...a, open: false }));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(head.length, head.length);
+    });
+  };
+
   const sendMsg = async () => {
     const text = input.trim();
     if (!active || (!text && pendImgs.length === 0)) return;
     setInput("");
+    setAc((a) => ({ ...a, open: false }));
     if (busy[active]) {
       // steer: queue it; auto-dispatched when the running turn ends (pasted images stay pending
       // and go with the next immediate send — queued steers are text-only)
@@ -738,12 +819,17 @@ export default function App() {
                   return (
                     <div key={i} className="msg user">
                       {it.text}
+                      {!busy[active!] && (
+                        <span className="rew" title={t("rewindHere")} onClick={() => void rewindHere(i)}>
+                          ↺
+                        </span>
+                      )}
                     </div>
                   );
                 case "text":
                   return (
                     <div key={i} className="msg assistant">
-                      {it.text}
+                      <Md text={it.text} />
                     </div>
                   );
                 case "reasoning":
@@ -864,14 +950,51 @@ export default function App() {
                     ))}
                   </select>
                 )}
+                {(() => {
+                  const cx = active ? ctxMap[active] : undefined;
+                  if (!cx || cx.pct <= 0) return null;
+                  const heat = cx.pct >= 80 ? "hot" : cx.pct >= 60 ? "warm" : "";
+                  return (
+                    <span className={`ctxm ${heat}`} title={`${t("ctxTip")} — ${cx.lastInput.toLocaleString()} / ${cx.window.toLocaleString()} tokens`}>
+                      <span className="ctxbar">
+                        <span style={{ width: `${Math.min(cx.pct, 100)}%` }} />
+                      </span>
+                      {cx.pct}%
+                      {cx.pct >= 50 && (
+                        <button className="linky" disabled={!!busy[active!]} onClick={() => void compactNow()}>
+                          {t("compact")}
+                        </button>
+                      )}
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
+            {ac.open && (
+              <div className="fileac">
+                {ac.items.map((f, i) => (
+                  <div key={f} className={`fitem ${i === ac.sel ? "on" : ""}`} onMouseDown={(e) => (e.preventDefault(), pickMention(f))}>
+                    {f}
+                  </div>
+                ))}
               </div>
             )}
             <textarea
+              ref={inputRef}
               value={input}
               placeholder={t("placeholder")}
               onPaste={(e) => void pasteImages(e)}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                trackMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
+              }}
               onKeyDown={(e) => {
+                if (ac.open && ac.items.length > 0) {
+                  if (e.key === "ArrowDown") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel + 1) % a.items.length })));
+                  if (e.key === "ArrowUp") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel - 1 + a.items.length) % a.items.length })));
+                  if (e.key === "Tab" || e.key === "Enter") return (e.preventDefault(), pickMention(ac.items[ac.sel]));
+                  if (e.key === "Escape") return (e.preventDefault(), setAc((a) => ({ ...a, open: false })));
+                }
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   void sendMsg();
