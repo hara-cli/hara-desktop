@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Post-CI asset merge: overwrite the release's UNSIGNED CI mac artifacts with the locally signed +
+# notarized ones, and patch latest.json's darwin signatures to match. Run AFTER both:
+#   1. scripts/build-mac-signed.sh succeeded locally
+#   2. the tag's CI run fully completed (earlier: later CI jobs rewrite latest.json)
+# Usage: scripts/release-mac-assets.sh v0.1.3
+set -euo pipefail
+cd "$(dirname "$0")/.."
+TAG="${1:?usage: release-mac-assets.sh <tag>}"
+REPO="hara-cli/hara-desktop"
+B=src-tauri/target/release/bundle
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+VER="${TAG#v}"
+[ -f "$B/dmg/Hara_${VER}_aarch64.dmg" ] || { echo "no local signed dmg for $VER — run build-mac-signed.sh first"; exit 1; }
+
+# gh upload's `file#label` only sets a display label — the ASSET NAME is the basename, so copy first
+cp "$B/macos/Hara.app.tar.gz" "$WORK/Hara_aarch64.app.tar.gz"
+cp "$B/macos/Hara.app.tar.gz.sig" "$WORK/Hara_aarch64.app.tar.gz.sig"
+
+gh release upload "$TAG" "$B/dmg/Hara_${VER}_aarch64.dmg" "$WORK/Hara_aarch64.app.tar.gz" "$WORK/Hara_aarch64.app.tar.gz.sig" --clobber -R "$REPO"
+
+cd "$WORK"
+gh release download "$TAG" -p latest.json -R "$REPO" --clobber
+python3 - << 'EOF'
+import json
+sig = open('Hara_aarch64.app.tar.gz.sig').read().strip()
+d = json.load(open('latest.json'))
+for k in ('darwin-aarch64', 'darwin-aarch64-app'):
+    if k in d['platforms']:
+        d['platforms'][k]['signature'] = sig
+        print('patched', k)
+json.dump(d, open('latest.json', 'w'), indent=2)
+EOF
+gh release upload "$TAG" latest.json --clobber -R "$REPO"
+
+# public end-to-end check: the artifact users actually download must pass Gatekeeper
+curl -sL -o pub-check.dmg "https://github.com/$REPO/releases/download/$TAG/Hara_${VER}_aarch64.dmg"
+spctl -a -t open --context context:primary-signature -v pub-check.dmg
+echo "✓ $TAG mac assets signed + merged + publicly verified"
