@@ -206,6 +206,9 @@ export class HaraClient {
   rewindSession(sessionId: string, n: number) {
     return this.call<{ sessionId: string; history: { role: string; text: string }[] }>("session.rewind", { sessionId, n });
   }
+  deleteSession(sessionId: string) {
+    return this.call<{ sessionId: string; deleted: boolean }>("session.delete", { sessionId });
+  }
   interrupt(sessionId: string) {
     return this.call("session.interrupt", { sessionId });
   }

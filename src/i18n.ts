@@ -82,6 +82,8 @@ const dict = {
     rewindHere: "rewind to before this message",
     rewindConfirm: "Rewind the conversation to before this message? Later exchanges are dropped (file edits are NOT reverted).",
     compacted: "(compacted — history replaced with a summary)",
+    deleteSess: "delete permanently",
+    deleteConfirm: "Delete this session permanently? Unlike archive, this cannot be undone.",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -162,6 +164,8 @@ const dict = {
     rewindHere: "回滚到这条消息之前",
     rewindConfirm: "把对话回滚到这条消息之前?之后的往来会被丢弃(文件改动不会回退)。",
     compacted: "(已压缩 —— 历史已替换为摘要)",
+    deleteSess: "永久删除",
+    deleteConfirm: "永久删除这个会话?与归档不同,删除不可恢复。",
   },
 } as const;
 

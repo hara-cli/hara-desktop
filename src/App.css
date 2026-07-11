@@ -974,3 +974,12 @@ select {
   background: var(--bg3);
   color: var(--accent);
 }
+
+/* skill hint in the autocomplete popup + destructive action tint */
+.fhint {
+  color: var(--dim);
+  font-family: inherit;
+}
+.sess .act.danger:hover {
+  color: var(--accent);
+}

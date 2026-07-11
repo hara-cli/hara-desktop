@@ -9,7 +9,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
 import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type CronJobInfo, type CtxInfo } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
-import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar } from "./icons";
+import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash } from "./icons";
 import { Md } from "./markdown";
 import "./App.css";
 
@@ -168,10 +168,12 @@ export default function App() {
   });
   // context watermark per session (rides on every turn_end; codex thread/tokenUsage pattern)
   const [ctxMap, setCtxMap] = useState<Record<string, CtxInfo>>({});
-  // @-mention file autocomplete (codex fuzzyFileSearch): open while the caret sits on an @token
-  const [ac, setAc] = useState<{ open: boolean; items: string[]; sel: number; token: string }>({ open: false, items: [], sel: 0, token: "" });
+  // composer autocomplete — "file" while the caret sits on an @token (codex fuzzyFileSearch),
+  // "skill" while the input is a bare /command (codex slash popup)
+  const [ac, setAc] = useState<{ open: boolean; items: { v: string; hint?: string }[]; sel: number; mode: "file" | "skill" }>({ open: false, items: [], sel: 0, mode: "file" });
   const acTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const skillsRef = useRef<SkillInfo[] | null>(null); // lazy-loaded on the first "/" keystroke
   const togglePin = (id: string) => {
     setPins((p) => {
       const next = p.includes(id) ? p.filter((x) => x !== id) : [...p, id];
@@ -530,8 +532,30 @@ export default function App() {
     }
   };
 
-  /** @-mention autocomplete: track the @token under the caret; debounce a fuzzy search per keystroke. */
-  const trackMention = (val: string, caret: number) => {
+  /** Composer autocomplete tracking: a bare leading /command opens the skill popup; an @token under
+   *  the caret opens the fuzzy file popup; anything else closes whatever is open. */
+  const trackComposer = (val: string, caret: number) => {
+    const slash = /^\/([\w-]{0,40})$/.exec(val);
+    if (slash && active) {
+      const token = slash[1].toLowerCase();
+      const show = (skills: SkillInfo[]) => {
+        const items = skills
+          .filter((s) => s.id.toLowerCase().startsWith(token))
+          .slice(0, 8)
+          .map((s) => ({ v: s.id, hint: s.description }));
+        setAc({ open: items.length > 0, items, sel: 0, mode: "skill" });
+      };
+      if (skillsRef.current) show(skillsRef.current);
+      else
+        void clientRef.current
+          ?.listSkills(sessionsRef.current.find((s) => s.id === active)?.cwd)
+          .then((r) => {
+            skillsRef.current = r.skills;
+            show(r.skills);
+          })
+          .catch(() => {});
+      return;
+    }
     const m = /(^|[\s(])@([\w./-]{0,60})$/.exec(val.slice(0, caret));
     if (!m || !active) {
       if (ac.open) setAc((a) => ({ ...a, open: false }));
@@ -542,17 +566,25 @@ export default function App() {
     acTimer.current = window.setTimeout(() => {
       void clientRef.current
         ?.filesSearch(token, { sessionId: active, limit: 8 })
-        .then((r) => r && setAc({ open: r.files.length > 0, items: r.files, sel: 0, token }))
+        .then((r) => r && setAc({ open: r.files.length > 0, items: r.files.map((f) => ({ v: f })), sel: 0, mode: "file" }))
         .catch(() => {});
     }, 120);
   };
 
-  /** Insert the picked path, replacing the @token before the caret. */
-  const pickMention = (path: string) => {
+  /** Insert the picked item: file mode replaces the @token before the caret; skill mode replaces the
+   *  whole input with "/skill-id ". */
+  const pickMention = (v: string) => {
     const el = inputRef.current;
-    const caret = el?.selectionStart ?? input.length;
-    const head = input.slice(0, caret).replace(/@[\w./-]{0,60}$/, `@${path} `);
-    const next = head + input.slice(caret);
+    let head: string;
+    let next: string;
+    if (ac.mode === "skill") {
+      head = `/${v} `;
+      next = head;
+    } else {
+      const caret = el?.selectionStart ?? input.length;
+      head = input.slice(0, caret).replace(/@[\w./-]{0,60}$/, `@${v} `);
+      next = head + input.slice(caret);
+    }
     setInput(next);
     setAc((a) => ({ ...a, open: false }));
     requestAnimationFrame(() => {
@@ -739,6 +771,18 @@ export default function App() {
     if (active === id) setActive(null);
     await refreshSessions();
   };
+  const deleteIt = async (id: string) => {
+    const c = clientRef.current;
+    if (!c || !window.confirm(t("deleteConfirm"))) return;
+    try {
+      await c.deleteSession(id);
+      if (active === id) setActive(null);
+      setTranscripts(({ [id]: _gone, ...rest }) => rest);
+      await refreshSessions();
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    }
+  };
   const sessRow = (s: SessionInfo) => (
     <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
       <div className="title">
@@ -787,6 +831,16 @@ export default function App() {
           }}
         >
           <IconArchive />
+        </span>
+        <span
+          className="act danger"
+          title={t("deleteSess")}
+          onClick={(e) => {
+            e.stopPropagation();
+            void deleteIt(s.id);
+          }}
+        >
+          <IconTrash />
         </span>
       </div>
       <div className="meta">
@@ -972,9 +1026,10 @@ export default function App() {
             )}
             {ac.open && (
               <div className="fileac">
-                {ac.items.map((f, i) => (
-                  <div key={f} className={`fitem ${i === ac.sel ? "on" : ""}`} onMouseDown={(e) => (e.preventDefault(), pickMention(f))}>
-                    {f}
+                {ac.items.map((it, i) => (
+                  <div key={it.v} className={`fitem ${i === ac.sel ? "on" : ""}`} onMouseDown={(e) => (e.preventDefault(), pickMention(it.v))}>
+                    {ac.mode === "skill" ? `/${it.v}` : it.v}
+                    {it.hint && <span className="fhint"> — {it.hint}</span>}
                   </div>
                 ))}
               </div>
@@ -986,13 +1041,13 @@ export default function App() {
               onPaste={(e) => void pasteImages(e)}
               onChange={(e) => {
                 setInput(e.target.value);
-                trackMention(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                trackComposer(e.target.value, e.target.selectionStart ?? e.target.value.length);
               }}
               onKeyDown={(e) => {
                 if (ac.open && ac.items.length > 0) {
                   if (e.key === "ArrowDown") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel + 1) % a.items.length })));
                   if (e.key === "ArrowUp") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel - 1 + a.items.length) % a.items.length })));
-                  if (e.key === "Tab" || e.key === "Enter") return (e.preventDefault(), pickMention(ac.items[ac.sel]));
+                  if (e.key === "Tab" || e.key === "Enter") return (e.preventDefault(), pickMention(ac.items[ac.sel].v));
                   if (e.key === "Escape") return (e.preventDefault(), setAc((a) => ({ ...a, open: false })));
                 }
                 if (e.key === "Enter" && !e.shiftKey) {
