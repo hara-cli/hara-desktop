@@ -30,6 +30,7 @@ export interface CronJobInfo {
   lastRunAt?: number;
   lastStatus?: "ok" | "error";
   lastError?: string;
+  schedule?: string; // human description ("every 30m", "cron 0 9 * * *")
 }
 
 export interface PanelSpec {
@@ -146,6 +147,15 @@ export class HaraClient {
       if (e?.code === -32601) return null;
       throw e;
     }
+  }
+  addAutomation(name: string, schedule: string, task: string, cwd?: string) {
+    return this.call<{ id: string; name: string; schedule: string }>("automation.add", { name, schedule, task, ...(cwd ? { cwd } : {}) });
+  }
+  toggleAutomation(idJob: string, enabled: boolean) {
+    return this.call("automation.toggle", { id: idJob, enabled });
+  }
+  deleteAutomation(idJob: string) {
+    return this.call("automation.delete", { id: idJob });
   }
   renameSession(sessionId: string, title: string) {
     return this.call<{ sessionId: string; title: string }>("session.rename", { sessionId, title });

@@ -411,6 +411,38 @@ button.deny {
 .ttime {
   font-size: 10px;
 }
+.trow.off {
+  opacity: 0.45;
+}
+.trow .act {
+  padding: 0 3px;
+  font-size: 10px;
+}
+.trow:hover .act {
+  opacity: 0.7;
+}
+.jobform {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+.jobform input,
+.jobform textarea {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+}
 .autohint {
   font-size: 11px;
   padding: 4px 14px 8px 26px;

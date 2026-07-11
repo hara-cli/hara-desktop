@@ -73,6 +73,10 @@ const dict = {
     baseUrlLbl: "base URL (optional)",
     saveAndStart: "Save & start",
     updateAvail: "update available",
+    addJob: "+ scheduled task",
+    jobName: "name",
+    jobSchedule: "every 30m · 0 9 * * * · in 2h",
+    jobTask: "what should it do?",
   },
   zh: {
     connecting: "正在连接 hara serve…",
@@ -144,6 +148,10 @@ const dict = {
     baseUrlLbl: "接口地址(可选)",
     saveAndStart: "保存并启动",
     updateAvail: "有新版本",
+    addJob: "+ 定时任务",
+    jobName: "名称",
+    jobSchedule: "every 30m · 0 9 * * * · in 2h",
+    jobTask: "要它做什么?",
   },
 } as const;
 

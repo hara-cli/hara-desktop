@@ -91,6 +91,19 @@ export default function App() {
   const [unread, setUnread] = useState<Record<string, boolean>>({});
   const [autoUnread, setAutoUnread] = useState(0); // ambient counter — never mixes with manual unread
   const [autoOpen, setAutoOpen] = useState(false);
+  const [jobForm, setJobForm] = useState<{ open: boolean; name: string; schedule: string; task: string }>({ open: false, name: "", schedule: "", task: "" });
+  const refreshAuto = () => clientRef.current && void clientRef.current.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
+  const submitJob = async () => {
+    const c = clientRef.current;
+    if (!c || !jobForm.name.trim() || !jobForm.schedule.trim() || !jobForm.task.trim()) return;
+    try {
+      await c.addAutomation(jobForm.name.trim(), jobForm.schedule.trim(), jobForm.task.trim(), home ? `${home}/.hara/workspace` : undefined);
+      setJobForm({ open: false, name: "", schedule: "", task: "" });
+      refreshAuto();
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    }
+  };
   const [auto, setAuto] = useState<{ jobs: CronJobInfo[]; sessions: SessionInfo[] } | null | "old-server">(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -921,11 +934,40 @@ export default function App() {
                 <div className="autohint dim">{t("autoNone")}</div>
               ) : (
                 <div className="timeline">
+                  {jobForm.open ? (
+                    <div className="jobform">
+                      <input placeholder={t("jobName")} value={jobForm.name} onChange={(e) => setJobForm((f) => ({ ...f, name: e.target.value }))} spellCheck={false} />
+                      <input placeholder={t("jobSchedule")} value={jobForm.schedule} onChange={(e) => setJobForm((f) => ({ ...f, schedule: e.target.value }))} spellCheck={false} />
+                      <textarea placeholder={t("jobTask")} value={jobForm.task} onChange={(e) => setJobForm((f) => ({ ...f, task: e.target.value }))} rows={2} />
+                      <div className="row" style={{ marginTop: 0 }}>
+                        <button onClick={() => void submitJob()} disabled={!jobForm.name.trim() || !jobForm.schedule.trim() || !jobForm.task.trim()}>
+                          {t("create")}
+                        </button>
+                        <button className="ghost" onClick={() => setJobForm((f) => ({ ...f, open: false }))}>
+                          {t("cancel")}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="newhere" style={{ paddingLeft: 6 }} onClick={() => setJobForm((f) => ({ ...f, open: true }))}>
+                      {t("addJob")}
+                    </div>
+                  )}
                   {auto.jobs.map((j) => (
-                    <div key={j.id} className="trow">
+                    <div key={j.id} className={`trow ${j.enabled ? "" : "off"}`}>
                       <span className={`tstat ${j.lastStatus ?? ""}`}>{j.lastStatus === "ok" ? "✓" : j.lastStatus === "error" ? "✗" : "○"}</span>
-                      <span className="tname">{j.name}</span>
-                      <span className="ttime dim">{j.lastRunAt ? new Date(j.lastRunAt).toLocaleString() : "—"}</span>
+                      <span className="tname" title={j.schedule ?? ""}>{j.name}</span>
+                      <span className="ttime dim">{j.lastRunAt ? new Date(j.lastRunAt).toLocaleString() : (j.schedule ?? "—")}</span>
+                      <span
+                        className="act"
+                        title={j.enabled ? "pause" : "resume"}
+                        onClick={() => void clientRef.current?.toggleAutomation(j.id, !j.enabled).then(refreshAuto)}
+                      >
+                        {j.enabled ? "⏸" : "▶"}
+                      </span>
+                      <span className="act" title="delete" onClick={() => void clientRef.current?.deleteAutomation(j.id).then(refreshAuto)}>
+                        ✕
+                      </span>
                     </div>
                   ))}
                   {auto.sessions.slice(0, 20).map((s) => (
