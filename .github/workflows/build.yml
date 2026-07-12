@@ -1,7 +1,7 @@
 # Multi-platform desktop builds — macOS (arm64 + x64), Windows x64, Linux x64.
-# Trigger: push a v* tag (draft GitHub Release gets the installers) or run manually.
-# Signing/notarization intentionally NOT wired yet (unsigned artifacts for internal testing);
-# add APPLE_* / WINDOWS_* secrets + tauri-action signing envs when certificates are ready.
+# Trigger: push a v* tag (published GitHub Release gets the installers) or run manually.
+# Updater artifacts are signed when TAURI_SIGNING_PRIVATE_KEY is configured. macOS app signing and
+# notarization are completed by the guarded local merge flow in scripts/release-mac-assets.sh.
 name: build
 on:
   push:
@@ -33,6 +33,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Validate desktop, tag, and sidecar metadata
+        run: node scripts/check-release-metadata.mjs
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -46,7 +48,12 @@ jobs:
         uses: oven-sh/setup-bun@v2
       - shell: bash
         run: |
-          git clone --depth 1 https://github.com/hara-cli/hara /tmp/hara-cli
+          CLI_VERSION="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/src-tauri/binaries/SIDECAR_VERSION")"
+          [[ "$CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || {
+            echo "invalid SIDECAR_VERSION: $CLI_VERSION" >&2
+            exit 1
+          }
+          git clone --depth 1 --branch "v${CLI_VERSION}" https://github.com/hara-cli/hara /tmp/hara-cli
           cd /tmp/hara-cli && npm ci && npx tsc
           case "${{ matrix.target }}" in
             aarch64-apple-darwin)      BT=bun-darwin-arm64 ;;
@@ -57,6 +64,11 @@ jobs:
           bun scripts/build-binary.ts dist/bin/hara-sidecar "$BT"
           mkdir -p "$GITHUB_WORKSPACE/src-tauri/binaries"
           EXT=""; [[ "${{ matrix.target }}" == *windows* ]] && EXT=".exe"
+          BUILT_VERSION="$("dist/bin/hara-sidecar${EXT}" --version)"
+          [[ "$BUILT_VERSION" == "$CLI_VERSION" ]] || {
+            echo "sidecar version mismatch: expected $CLI_VERSION, built $BUILT_VERSION" >&2
+            exit 1
+          }
           cp dist/bin/hara-sidecar$EXT "$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}$EXT"
       - uses: tauri-apps/tauri-action@v0
         env:

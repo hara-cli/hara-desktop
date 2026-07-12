@@ -47,7 +47,7 @@ No file → the app offers to start one.
 npm run tauri build   # bundles hara.app / dmg
 ```
 
-## Status — v0.1.0 (public beta, all platforms)
+## Status — public beta (all platforms)
 
 Shipped: segmented assistant/projects IA (one persistent assistant conversation + per-origin bot
 threads + collapsed automations timeline) · open-folder-as-project · bundled hara sidecar
@@ -73,5 +73,4 @@ continue) · ⚙ settings (context anchors + stage forms). Invariants:
 - One persistent desktop assistant; one thread per external origin (WeChat etc.), separated by the
   "external channels" divider.
 Free code signing for Windows builds is provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
 

@@ -27,7 +27,7 @@ Gates before ANY push (either repo):
 - hara-cli: `npx tsc && node --test test/*.test.mjs` — all green, no exceptions.
   ⚠️ if another session's WIP is in the tree, gate with `git stash push -- <wip files>` (targeted),
   never a bare `git stash` (it hides your own work too).
-- hara-desktop: `npm run build` (tsc+vite) + `cargo check`.
+- hara-desktop: `npm run check:release` + `npm run build` (tsc+vite) + `cargo check`.
 
 ## Release train (strict order — CLI first, desktop rides behind)
 
@@ -37,9 +37,10 @@ Gates before ANY push (either repo):
    (npmmirror lags minutes) → docs.hara.run changelog (en+zh) → Feishu notice @冬芹 @汉青.
 2. **hara-desktop**: `./scripts/refresh-sidecar.sh` (now bundles the released CLI) → commit →
    bump desktop version → `git tag vA.B.C && git push origin vA.B.C` →
-   CI `build.yml` (4 platforms, cross-compiles the sidecar from hara-cli **main**,
-   signs updater artifacts with `TAURI_SIGNING_PRIVATE_KEY` secret) → **draft** GitHub Release →
-   validate assets (dmg/msi/AppImage + latest.json + .sig per platform) → publish.
+   CI `build.yml` (4 platforms, cross-compiles the sidecar from the exact
+   `v<SIDECAR_VERSION>` hara-cli tag, signs updater artifacts with
+   `TAURI_SIGNING_PRIVATE_KEY` secret) → published GitHub Release → validate assets
+   (dmg/msi/deb/rpm + latest.json + .sig per platform).
 
 Local signed build (updater artifacts):
 ```bash
@@ -56,7 +57,7 @@ Desktop-only bug: fix → desktop patch tag (sidecar unchanged, stamp already re
 
 ## Quality-gate roadmap (adopt from cc-haha, in order)
 
-1. ✅ unit+e2e (cli 498), tsc/cargo gates, manual smoke
+1. ✅ unit+e2e, tsc/cargo gates, manual smoke
 2. ✅ **package-smoke** (`scripts/package-smoke.mjs`, local + CI post-build): bundle structure,
    sidecar executes + matches SIDECAR_VERSION stamp, dmg/updater archive/.sig present
 3. next: full handshake smoke (launch packaged app headless, assert serve `initialize` succeeds)
