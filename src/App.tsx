@@ -88,6 +88,7 @@ function assistantZone(sessions: SessionInfo[]): { current: SessionInfo | null; 
 
 export default function App() {
   const clientRef = useRef<HaraClient | null>(null);
+  const connectGenerationRef = useRef(0);
   const [phase, setPhase] = useState<Phase>("boot");
   const [server, setServer] = useState<{ version: string; provider: string; model: string; cwd: string } | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -301,23 +302,38 @@ export default function App() {
   );
 
   const connect = useCallback(async () => {
+    const generation = ++connectGenerationRef.current;
+    const stale = () => generation !== connectGenerationRef.current;
+    const previous = clientRef.current;
+    clientRef.current = null;
+    previous?.close();
     setPhase("connecting");
     setErr("");
+    let c: HaraClient | null = null;
     try {
       const raw = await invoke<string | null>("read_discovery");
+      if (stale()) return;
       if (!raw) {
         setPhase("no-server");
         return;
       }
       const d: Discovery = JSON.parse(raw);
-      const c = new HaraClient();
+      c = new HaraClient();
       c.onEvent = handleEvent;
-      c.onClose = () => setPhase("lost");
+      c.onClose = () => {
+        if (clientRef.current !== c) return;
+        clientRef.current = null;
+        setPhase("lost");
+      };
       await c.connect(d.host, d.port);
       const info = await c.initialize(d.token);
+      const list = await c.listSessions();
+      if (stale()) {
+        c.close();
+        return;
+      }
       clientRef.current = c;
       setServer({ version: info.version, provider: info.provider, model: info.model, cwd: info.cwd });
-      const list = await c.listSessions();
       setSessions(list.sessions);
       // cold start: returning users land on their last zone; brand-new (no manual sessions, no
       // opened projects) land on the assistant — the soft first touch.
@@ -327,6 +343,8 @@ export default function App() {
       void c.listModels().then(setModelInfo).catch(() => {});
       setPhase("ready");
     } catch (e: any) {
+      c?.close();
+      if (stale()) return;
       setErr(String(e?.message ?? e));
       setPhase("no-server");
     }
@@ -335,6 +353,12 @@ export default function App() {
 
   useEffect(() => {
     void connect();
+    return () => {
+      connectGenerationRef.current += 1;
+      const c = clientRef.current;
+      clientRef.current = null;
+      c?.close();
+    };
   }, [connect]);
 
   useEffect(() => {
