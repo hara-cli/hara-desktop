@@ -20,6 +20,15 @@ security find-identity -v -p codesigning | grep -q "Developer ID Application" ||
 
 [ "${SKIP_SIDECAR:-}" = "1" ] || ./scripts/refresh-sidecar.sh
 
+# Bun standalone binaries carry a linker-generated ad-hoc signature. Tauri's nested-binary signer
+# cannot reliably replace that signature with a timestamped Developer ID signature in one pass
+# (codesign reports "A timestamp was expected but was not found"). Normalize the sidecar first.
+SIDECAR="src-tauri/binaries/hara-$(rustc -vV | awk '/^host:/{print $2}')"
+[ -f "$SIDECAR" ] || { echo "missing sidecar $SIDECAR"; exit 1; }
+codesign --remove-signature "$SIDECAR"
+codesign --force --options runtime --timestamp --sign "$IDENTITY" "$SIDECAR"
+"$SIDECAR" --version
+
 # dmg-bundling traps: a mounted Hara volume or stale rw image makes bundle_dmg.sh flake
 for v in /Volumes/Hara*; do [ -d "$v" ] && hdiutil detach "$v" -force 2>/dev/null || true; done
 rm -f src-tauri/target/release/bundle/dmg/rw.*.dmg

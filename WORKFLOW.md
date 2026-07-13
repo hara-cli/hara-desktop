@@ -68,4 +68,6 @@ Desktop-only bug: fix → desktop patch tag (sidecar unchanged, stamp already re
 
 - `TAURI_SIGNING_PRIVATE_KEY` (GH secret, hara-desktop) = contents of `~/.tauri/hara-desktop.key`
   — updater artifact signing. **Never commit the key.**
-- Apple Developer ID Application cert (pending) → tauri.conf signing config → notarized dmg.
+- Apple Developer ID Application cert is held on the controlled release Mac; CI macOS artifacts
+  stay unsigned until `scripts/build-mac-signed.sh` + `scripts/release-mac-assets.sh` replace them
+  with signed, notarized, stapled assets.

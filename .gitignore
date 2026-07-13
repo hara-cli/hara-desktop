@@ -23,4 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 src-tauri/target
-src-tauri/binaries/
+src-tauri/binaries/*
+!src-tauri/binaries/SIDECAR_VERSION

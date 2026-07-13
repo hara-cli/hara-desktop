@@ -17,6 +17,16 @@ const releaseBase =
 const REL_PREFIX = "src-tauri/target/release/";
 const rel = (p) => (p.startsWith(REL_PREFIX) ? join(releaseBase, p.slice(REL_PREFIX.length)) : join(root, p));
 const plat = process.platform; // darwin | win32 | linux
+const hostTarget =
+  plat === "darwin"
+    ? process.arch === "arm64"
+      ? "aarch64-apple-darwin"
+      : "x86_64-apple-darwin"
+    : plat === "win32"
+      ? "x86_64-pc-windows-msvc"
+      : process.arch === "arm64"
+        ? "aarch64-unknown-linux-gnu"
+        : "x86_64-unknown-linux-gnu";
 let failures = 0;
 const ok = (msg) => console.log(`  ✓ ${msg}`);
 const fail = (msg) => (console.error(`  ✗ ${msg}`), failures++);
@@ -29,18 +39,21 @@ if (plat === "darwin") {
   const sidecar = join(app, "Contents/MacOS/hara");
   existsSync(app) ? ok("Hara.app present") : fail("Hara.app missing");
   existsSync(shell) && statSync(shell).mode & 0o111 ? ok("shell executable") : fail("shell missing/not executable");
+  const stamp = rel("src-tauri/binaries/SIDECAR_VERSION");
+  const want = existsSync(stamp) ? readFileSync(stamp, "utf8").trim() : "";
+  want ? ok(`sidecar stamp present (${want})`) : fail("SIDECAR_VERSION missing/empty");
   if (existsSync(sidecar) && statSync(sidecar).mode & 0o111) {
     ok("sidecar bundled + executable");
-    try {
-      const v = execFileSync(sidecar, ["--version"], { timeout: 30_000 }).toString().trim();
-      ok(`sidecar runs: hara ${v}`);
-      const stamp = rel("src-tauri/binaries/SIDECAR_VERSION");
-      if (existsSync(stamp)) {
-        const want = readFileSync(stamp, "utf8").trim();
+    if (!triple || triple === hostTarget) {
+      try {
+        const v = execFileSync(sidecar, ["--version"], { timeout: 30_000 }).toString().trim();
+        ok(`sidecar runs: hara ${v}`);
         v === want ? ok(`version matches stamp (${want})`) : fail(`version ${v} != stamp ${want}`);
+      } catch (e) {
+        fail(`sidecar --version failed: ${e.message}`);
       }
-    } catch (e) {
-      fail(`sidecar --version failed: ${e.message}`);
+    } else {
+      ok(`cross-target sidecar execution deferred (${triple} on ${hostTarget})`);
     }
   } else fail("sidecar missing/not executable");
   const dmgDir = rel("src-tauri/target/release/bundle/dmg");

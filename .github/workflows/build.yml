@@ -44,6 +44,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2
       - run: npm ci
+      - run: npm audit --omit=dev --registry https://registry.npmjs.org/
       - name: Build hara sidecar (bun single-file, cross-compiled per target)
         uses: oven-sh/setup-bun@v2
       - shell: bash
@@ -64,11 +65,16 @@ jobs:
           bun scripts/build-binary.ts dist/bin/hara-sidecar "$BT"
           mkdir -p "$GITHUB_WORKSPACE/src-tauri/binaries"
           EXT=""; [[ "${{ matrix.target }}" == *windows* ]] && EXT=".exe"
-          BUILT_VERSION="$("dist/bin/hara-sidecar${EXT}" --version)"
-          [[ "$BUILT_VERSION" == "$CLI_VERSION" ]] || {
-            echo "sidecar version mismatch: expected $CLI_VERSION, built $BUILT_VERSION" >&2
-            exit 1
-          }
+          HOST_TARGET="$(rustc -vV | awk '/^host:/{print $2}')"
+          if [[ "${{ matrix.target }}" == "$HOST_TARGET" ]]; then
+            BUILT_VERSION="$("dist/bin/hara-sidecar${EXT}" --version)"
+            [[ "$BUILT_VERSION" == "$CLI_VERSION" ]] || {
+              echo "sidecar version mismatch: expected $CLI_VERSION, built $BUILT_VERSION" >&2
+              exit 1
+            }
+          else
+            echo "cross-target sidecar ${{ matrix.target }} built from v${CLI_VERSION}; execution smoke deferred to its native runner"
+          fi
           cp dist/bin/hara-sidecar$EXT "$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}$EXT"
       - uses: tauri-apps/tauri-action@v0
         env:
