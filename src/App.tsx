@@ -1203,6 +1203,9 @@ export default function App() {
                 trackComposer(e.target.value, e.target.selectionStart ?? e.target.value.length);
               }}
               onKeyDown={(e) => {
+                // Enter commits an active CJK IME composition. Treating that key as a composer
+                // command either sends an unfinished message or selects an autocomplete result.
+                if (e.nativeEvent.isComposing) return;
                 if (ac.open && ac.items.length > 0) {
                   if (e.key === "ArrowDown") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel + 1) % a.items.length })));
                   if (e.key === "ArrowUp") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel - 1 + a.items.length) % a.items.length })));
