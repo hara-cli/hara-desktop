@@ -25,3 +25,4 @@ dist-ssr
 src-tauri/target
 src-tauri/binaries/*
 !src-tauri/binaries/SIDECAR_VERSION
+!src-tauri/binaries/SIDECAR_COMMIT

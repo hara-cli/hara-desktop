@@ -1,98 +1,682 @@
-# Multi-platform desktop builds — macOS (arm64 + x64), Windows x64, Linux x64.
-# Trigger: push a v* tag (published GitHub Release gets the installers) or run manually.
-# Updater artifacts are signed when TAURI_SIGNING_PRIVATE_KEY is configured. macOS app signing and
-# notarization are completed by the guarded local merge flow in scripts/release-mac-assets.sh.
+# Tag-driven desktop release pipeline. Native matrix jobs only build and smoke local packages.
+# A single aggregation job is the sole writer of the hidden GitHub draft and latest.json. The
+# draft remains hidden until controlled macOS signing/notarization replaces both Mac architectures.
 name: build
+
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
-  contents: write # tauri-action uploads assets to the release for the tag
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
+  # GitHub's numeric user ID is immutable across username changes. Keep this in source so an
+  # ordinary repository writer cannot broaden the stable-tag bypass set at release time.
+  HARA_RELEASE_ADMIN_ID: "23243740"
+
+concurrency:
+  group: hara-desktop-release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
+  prepare_release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    outputs:
+      desktop_sha: ${{ steps.release_source.outputs.desktop_sha }}
+      cli_sha: ${{ steps.release_source.outputs.cli_sha }}
+      cli_version: ${{ steps.release_source.outputs.cli_version }}
+    steps:
+      - name: Require an exact stable tag invocation before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "stable desktop releases require a vX.Y.Z tag: $RELEASE_TAG" >&2
+            exit 1
+          }
+          [ "$GITHUB_EVENT_NAME" = "push" ] || {
+            echo "only a pushed stable tag authorizes a release" >&2
+            exit 1
+          }
+          [ "$GITHUB_REF_PROTECTED" = "true" ] || {
+            echo "release tag must be protected by the active v* tag ruleset" >&2
+            exit 1
+          }
+          jq -e '.created == true and .forced == false and .deleted == false' "$GITHUB_EVENT_PATH" >/dev/null || {
+            echo "only creation of a new stable tag authorizes a release; tag updates/deletions are rejected" >&2
+            exit 1
+          }
+          jq -e --argjson release_admin_id "$HARA_RELEASE_ADMIN_ID" \
+            '.sender.id == $release_admin_id' "$GITHUB_EVENT_PATH" >/dev/null || {
+            echo "stable tag creation must be performed by the pinned release administrator" >&2
+            exit 1
+          }
+          [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" = "$RELEASE_TAG" ] || {
+            echo "release workflow must be invoked from the exact tag ref $RELEASE_TAG" >&2
+            exit 1
+          }
+          [ "$GITHUB_WORKFLOW_REF" = \
+            "$GITHUB_REPOSITORY/.github/workflows/build.yml@refs/tags/$RELEASE_TAG" ] || {
+            echo "release workflow policy must come from refs/tags/$RELEASE_TAG" >&2
+            exit 1
+          }
+          [ "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA" ] || {
+            echo "release workflow policy and tag event must come from the same commit" >&2
+            exit 1
+          }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify event source before executing repository code
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ] || {
+            echo "checkout does not match the tag event commit" >&2
+            exit 1
+          }
+          REMOTE_TAGS="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}")"
+          REMOTE_TAG_COMMIT="$(awk -v direct="refs/tags/$RELEASE_TAG" -v peeled="refs/tags/$RELEASE_TAG^{}" '
+            $2 == peeled { peeled_commit = $1 }
+            $2 == direct { direct_commit = $1 }
+            END { print peeled_commit ? peeled_commit : direct_commit }
+          ' <<<"$REMOTE_TAGS")"
+          [ "$REMOTE_TAG_COMMIT" = "$GITHUB_SHA" ] || {
+            echo "remote tag moved after the release event: $REMOTE_TAG_COMMIT != $GITHUB_SHA" >&2
+            exit 1
+          }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: ".node-version"
+      - name: Validate tag and release metadata
+        env:
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ env.RELEASE_TAG }}
+        run: node scripts/check-release-metadata.mjs
+      - name: Run release-pipeline regression tests
+        run: npm test
+      - name: Pin exact Desktop and CLI source commits
+        id: release_source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "stable desktop releases require a vX.Y.Z tag: $RELEASE_TAG" >&2
+            exit 1
+          }
+
+          resolve_tag_commit() {
+            local repository="$1" tag="$2" refs
+            refs="$(git ls-remote --tags "$repository" "refs/tags/$tag" "refs/tags/$tag^{}")"
+            awk -v direct="refs/tags/$tag" -v peeled="refs/tags/$tag^{}" '
+              $2 == peeled { peeled_commit = $1 }
+              $2 == direct { direct_commit = $1 }
+              END { print peeled_commit ? peeled_commit : direct_commit }
+            ' <<<"$refs"
+          }
+
+          DESKTOP_SHA="$(git rev-parse HEAD)"
+          [ "$DESKTOP_SHA" = "$GITHUB_SHA" ] || {
+            echo "Desktop checkout no longer matches the tag event" >&2
+            exit 1
+          }
+          DESKTOP_TAG_SHA="$(resolve_tag_commit origin "$RELEASE_TAG")"
+          [ "$DESKTOP_TAG_SHA" = "$DESKTOP_SHA" ] || {
+            echo "desktop tag moved or checkout mismatch: $DESKTOP_TAG_SHA != $DESKTOP_SHA" >&2
+            exit 1
+          }
+
+          CLI_VERSION="$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_VERSION)"
+          CLI_COMMIT_LOCK="$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_COMMIT)"
+          [[ "$CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "stable desktop releases require a stable CLI version: $CLI_VERSION" >&2
+            exit 1
+          }
+          CLI_TAG="v$CLI_VERSION"
+          CLI_REPOSITORY="https://github.com/hara-cli/hara.git"
+          CLI_SHA="$(resolve_tag_commit "$CLI_REPOSITORY" "$CLI_TAG")"
+          [[ "$CLI_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "could not resolve $CLI_TAG to a full CLI commit" >&2
+            exit 1
+          }
+          [ "$CLI_SHA" = "$CLI_COMMIT_LOCK" ] || {
+            echo "hara-cli $CLI_TAG resolves to $CLI_SHA, Desktop locks $CLI_COMMIT_LOCK" >&2
+            exit 1
+          }
+
+          CLI_DIR="$RUNNER_TEMP/hara-cli-source"
+          git init --quiet "$CLI_DIR"
+          git -C "$CLI_DIR" remote add origin "$CLI_REPOSITORY"
+          git -C "$CLI_DIR" fetch --quiet --depth 1 origin "refs/tags/$CLI_TAG"
+          FETCHED_CLI_SHA="$(git -C "$CLI_DIR" rev-parse 'FETCH_HEAD^{commit}')"
+          [ "$FETCHED_CLI_SHA" = "$CLI_SHA" ] || {
+            echo "CLI tag moved while pinning: $FETCHED_CLI_SHA != $CLI_SHA" >&2
+            exit 1
+          }
+          git -C "$CLI_DIR" checkout --quiet --detach "$CLI_SHA"
+          [ "$(node -p 'require(process.argv[1]).version' "$CLI_DIR/package.json")" = "$CLI_VERSION" ] || {
+            echo "hara-cli tag/package version mismatch" >&2
+            exit 1
+          }
+
+          {
+            echo "desktop_sha=$DESKTOP_SHA"
+            echo "cli_sha=$CLI_SHA"
+            echo "cli_version=$CLI_VERSION"
+          } >>"$GITHUB_OUTPUT"
+          echo "Pinned desktop $DESKTOP_SHA and hara-cli $CLI_SHA"
+  create_draft:
+    name: Create the hidden draft without executing repository code
+    needs: [prepare_release, promotion_preflight]
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Create or reuse hidden draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          }
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            IS_DRAFT="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)"
+            [ "$IS_DRAFT" = "true" ] || {
+              echo "release $RELEASE_TAG already exists and is not a draft; refusing to replace published assets" >&2
+              exit 1
+            }
+          else
+            gh release create "$RELEASE_TAG" \
+              --draft \
+              --verify-tag \
+              --generate-notes \
+              --title "Hara Desktop $RELEASE_TAG"
+          fi
+
   build:
+    needs: [prepare_release, promotion_preflight, create_draft]
+    environment:
+      name: hara-desktop-production
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
+          # Dedicated native runners make sidecar execution evidence meaningful. Cross-target
+          # compilation never substitutes for --version/--help/serve --help on the real host.
+          - platform: macos-15
             target: aarch64-apple-darwin
-          - platform: macos-latest
+          - platform: macos-15-intel
             target: x86_64-apple-darwin
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            # AppImage's linuxdeploy chokes on this project (66MB sidecar suspected) — ship deb+rpm
-            extraArgs: "--bundles deb,rpm"
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
-          node-version: 22
-      - name: Validate desktop, tag, and sidecar metadata
-        run: node scripts/check-release-metadata.mjs
-      - uses: dtolnay/rust-toolchain@stable
+          ref: ${{ needs.prepare_release.outputs.desktop_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
+          node-version-file: ".node-version"
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
           targets: ${{ matrix.target }}
-      - name: Linux system deps
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.0.2
+        with:
+          bun-version-file: ".bun-version"
+      - name: Validate pinned build toolchain
+        shell: bash
+        run: bash scripts/check-build-toolchain.sh
+      - name: Validate desktop, tag, and sidecar metadata
+        env:
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ env.RELEASE_TAG }}
+        run: node scripts/check-release-metadata.mjs
+      - name: Linux system dependencies and package extractors
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 \
+            rpm2cpio cpio
       - run: npm ci
       - run: npm audit --omit=dev --registry https://registry.npmjs.org/
-      - name: Build hara sidecar (bun single-file, cross-compiled per target)
-        uses: oven-sh/setup-bun@v2
-      - shell: bash
+      - name: Require updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.HARA_TAURI_SIGNING_PRIVATE_KEY }}
         run: |
+          [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] || {
+            echo "TAURI_SIGNING_PRIVATE_KEY is required for updater artifacts" >&2
+            exit 1
+          }
+      - name: Build and execute-smoke pinned hara sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
           CLI_VERSION="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/src-tauri/binaries/SIDECAR_VERSION")"
-          [[ "$CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || {
+          PINNED_CLI_VERSION="${{ needs.prepare_release.outputs.cli_version }}"
+          CLI_SHA="${{ needs.prepare_release.outputs.cli_sha }}"
+          [ "$CLI_VERSION" = "$PINNED_CLI_VERSION" ] || {
+            echo "SIDECAR_VERSION changed after source pinning: $CLI_VERSION != $PINNED_CLI_VERSION" >&2
+            exit 1
+          }
+          [[ "$CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
             echo "invalid SIDECAR_VERSION: $CLI_VERSION" >&2
             exit 1
           }
-          git clone --depth 1 --branch "v${CLI_VERSION}" https://github.com/hara-cli/hara /tmp/hara-cli
-          cd /tmp/hara-cli && npm ci && npx tsc
+          CLI_DIR="$RUNNER_TEMP/hara-cli"
+          git init --quiet "$CLI_DIR"
+          git -C "$CLI_DIR" remote add origin https://github.com/hara-cli/hara.git
+          git -C "$CLI_DIR" fetch --quiet --depth 1 origin "refs/tags/v${CLI_VERSION}"
+          [ "$(git -C "$CLI_DIR" rev-parse 'FETCH_HEAD^{commit}')" = "$CLI_SHA" ] || {
+            echo "hara-cli tag moved after source pinning" >&2
+            exit 1
+          }
+          git -C "$CLI_DIR" checkout --quiet --detach "$CLI_SHA"
+          cd "$CLI_DIR"
+          [ "$(node -p 'require("./package.json").version')" = "$CLI_VERSION" ] || {
+            echo "hara-cli tag/package version mismatch" >&2
+            exit 1
+          }
+          npm ci
+          npm run build
           case "${{ matrix.target }}" in
-            aarch64-apple-darwin)      BT=bun-darwin-arm64 ;;
-            x86_64-apple-darwin)       BT=bun-darwin-x64 ;;
-            x86_64-pc-windows-msvc)    BT=bun-windows-x64 ;;
-            x86_64-unknown-linux-gnu)  BT=bun-linux-x64 ;;
+            aarch64-apple-darwin)      BUN_TARGET=bun-darwin-arm64 ;;
+            x86_64-apple-darwin)       BUN_TARGET=bun-darwin-x64-baseline ;;
+            x86_64-pc-windows-msvc)    BUN_TARGET=bun-windows-x64-baseline ;;
+            x86_64-unknown-linux-gnu)  BUN_TARGET=bun-linux-x64-baseline ;;
+            *) echo "unsupported sidecar target: ${{ matrix.target }}" >&2; exit 1 ;;
           esac
-          bun scripts/build-binary.ts dist/bin/hara-sidecar "$BT"
+          EXT=""
+          case "${{ matrix.target }}" in
+            *windows*) EXT=".exe" ;;
+          esac
+          bun scripts/build-binary.ts dist/bin/hara-sidecar "$BUN_TARGET"
+          [ "$(git -C "$CLI_DIR" rev-parse HEAD)" = "$CLI_SHA" ] || {
+            echo "hara-cli HEAD changed while building the sidecar" >&2
+            exit 1
+          }
+          CLI_STATUS="$(git -C "$CLI_DIR" status --porcelain)"
+          [ -z "$CLI_STATUS" ] || {
+            echo "hara-cli source changed while building the sidecar" >&2
+            git -C "$CLI_DIR" status --short >&2
+            exit 1
+          }
+          node "$GITHUB_WORKSPACE/scripts/sidecar-smoke.mjs" \
+            "dist/bin/hara-sidecar${EXT}" "$CLI_VERSION" "${{ matrix.target }}"
           mkdir -p "$GITHUB_WORKSPACE/src-tauri/binaries"
-          EXT=""; [[ "${{ matrix.target }}" == *windows* ]] && EXT=".exe"
-          HOST_TARGET="$(rustc -vV | awk '/^host:/{print $2}')"
-          if [[ "${{ matrix.target }}" == "$HOST_TARGET" ]]; then
-            BUILT_VERSION="$("dist/bin/hara-sidecar${EXT}" --version)"
-            [[ "$BUILT_VERSION" == "$CLI_VERSION" ]] || {
-              echo "sidecar version mismatch: expected $CLI_VERSION, built $BUILT_VERSION" >&2
-              exit 1
-            }
-          else
-            echo "cross-target sidecar ${{ matrix.target }} built from v${CLI_VERSION}; execution smoke deferred to its native runner"
-          fi
-          cp dist/bin/hara-sidecar$EXT "$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}$EXT"
-      - uses: tauri-apps/tauri-action@v0
+          cp "dist/bin/hara-sidecar${EXT}" \
+            "$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}${EXT}"
+      - name: Build local packages (no release API access)
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # updater signing — add the TAURI_SIGNING_PRIVATE_KEY repo secret (contents of
-          # ~/.tauri/hara-desktop.key on the machine that ran `tauri signer generate`).
-          # Without it, builds still succeed but updater artifacts (latest.json) are unsigned/absent.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.HARA_TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-          NO_STRIP: "true" # linuxdeploy strip breaks the AppImage bundling step on ubuntu-22.04
-        with:
-          args: --target ${{ matrix.target }} ${{ matrix.extraArgs || '' }}
-          tagName: ${{ github.ref_name }}
-          releaseName: "Hara Desktop ${{ github.ref_name }}"
-          releaseDraft: false # upload straight onto the (already published) release for this tag
-          prerelease: false
-      - name: package smoke (bundle structure + sidecar runs)
+          NO_STRIP: "true"
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
+            # linuxdeploy is unreliable for this large sidecar; updater-supported deb+rpm ship.
+            npm run tauri build -- --target "${{ matrix.target }}" --bundles deb,rpm
+          else
+            npm run tauri build -- --target "${{ matrix.target }}"
+          fi
+      - name: Package smoke (sidecar extracted from real installer/updater packages)
         shell: bash
         env:
           TAURI_TARGET: ${{ matrix.target }}
         run: node scripts/package-smoke.mjs
+      - name: Collect canonical release assets after smoke
+        shell: bash
+        run: >-
+          node scripts/collect-release-assets.mjs
+          "${{ matrix.target }}"
+          "$RUNNER_TEMP/release-assets-${{ matrix.target }}"
+          "${{ needs.prepare_release.outputs.desktop_sha }}"
+          "${{ needs.prepare_release.outputs.cli_sha }}"
+      - name: Upload verified matrix assets for single-writer assembly
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-assets-${{ matrix.target }}
+          path: ${{ runner.temp }}/release-assets-${{ matrix.target }}/*
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble_draft:
+    name: Assemble verified hidden draft (do not publish unsigned macOS assets)
+    needs: [prepare_release, build]
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: ${{ needs.prepare_release.outputs.desktop_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: ".node-version"
+      - name: Download all verified matrix assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-assets-*
+          path: ${{ runner.temp }}/release-assets
+          merge-multiple: true
+      - name: Build exact updater manifest once
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-matrix-receipts.mjs \
+            "$RUNNER_TEMP/release-assets" \
+            "${{ needs.prepare_release.outputs.desktop_sha }}" \
+            "${{ needs.prepare_release.outputs.cli_sha }}"
+          node scripts/release-source-provenance.mjs build \
+            "$RUNNER_TEMP/release-assets/release-source-provenance.json" \
+            "$RELEASE_TAG" \
+            "${{ needs.prepare_release.outputs.desktop_sha }}" \
+            "${{ needs.prepare_release.outputs.cli_sha }}"
+          PUB_DATE="$(git show -s --format=%cI HEAD)"
+          node scripts/updater-manifest.mjs build "$RUNNER_TEMP/release-assets" "$RELEASE_TAG" "$PUB_DATE"
+      - name: Confirm release tags still match the pinned commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolve_tag_commit() {
+            local repository="$1" tag="$2" refs
+            refs="$(git ls-remote --tags "$repository" "refs/tags/$tag" "refs/tags/$tag^{}")"
+            awk -v direct="refs/tags/$tag" -v peeled="refs/tags/$tag^{}" '
+              $2 == peeled { peeled_commit = $1 }
+              $2 == direct { direct_commit = $1 }
+              END { print peeled_commit ? peeled_commit : direct_commit }
+            ' <<<"$refs"
+          }
+          [ "$(resolve_tag_commit origin "$RELEASE_TAG")" = "${{ needs.prepare_release.outputs.desktop_sha }}" ]
+          [ "$(resolve_tag_commit https://github.com/hara-cli/hara.git "v${{ needs.prepare_release.outputs.cli_version }}")" = \
+            "${{ needs.prepare_release.outputs.cli_sha }}" ]
+      - name: Replace hidden draft assets after every native gate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          IS_DRAFT="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)"
+          [ "$IS_DRAFT" = "true" ] || {
+            echo "release $RELEASE_TAG is no longer a draft; refusing to replace published assets" >&2
+            exit 1
+          }
+
+          RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .id)"
+          mapfile -t EXISTING_ASSET_IDS < <(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" --jq '.[].id'
+          )
+          for asset_id in "${EXISTING_ASSET_IDS[@]}"; do
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+          done
+
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP"/release-assets/*
+      - name: Download the exact remote draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERIFY_DIR="$RUNNER_TEMP/remote-release-assets"
+          mkdir -p "$VERIFY_DIR"
+          gh release download "$RELEASE_TAG" --dir "$VERIFY_DIR"
+      - name: Revalidate downloaded draft without a release token
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERIFY_DIR="$RUNNER_TEMP/remote-release-assets"
+          node scripts/updater-manifest.mjs validate "$VERIFY_DIR" "$RELEASE_TAG"
+          node scripts/release-source-provenance.mjs validate \
+            "$VERIFY_DIR/release-source-provenance.json" \
+            "$RELEASE_TAG" \
+            "${{ needs.prepare_release.outputs.desktop_sha }}" \
+            "${{ needs.prepare_release.outputs.cli_sha }}"
+      - name: Confirm the remote release remains a hidden draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = "true" ]
+          echo "Draft $RELEASE_TAG is complete but intentionally hidden."
+          echo "The protected signing job will now promote $RELEASE_TAG automatically."
+
+  promotion_preflight:
+    name: Verify protected signing infrastructure
+    needs: prepare_release
+    if: >-
+      github.event_name == 'push' &&
+      github.ref_type == 'tag' &&
+      github.event.created == true &&
+      github.event.forced == false &&
+      github.event.deleted == false
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Require the exact stable tag workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "stable promotion requires a vX.Y.Z tag: $RELEASE_TAG" >&2
+            exit 1
+          }
+          [ "$GITHUB_EVENT_NAME" = "push" ] || {
+            echo "only the pushed stable tag run may promote a release" >&2
+            exit 1
+          }
+          [ "$GITHUB_REF_PROTECTED" = "true" ] || {
+            echo "release tag is not protected by the required v* tag ruleset" >&2
+            exit 1
+          }
+          jq -e '.created == true and .forced == false and .deleted == false' "$GITHUB_EVENT_PATH" >/dev/null || {
+            echo "only the original stable tag creation run may promote a release" >&2
+            exit 1
+          }
+          [ "$GITHUB_WORKFLOW_REF" = \
+            "$GITHUB_REPOSITORY/.github/workflows/build.yml@refs/tags/$RELEASE_TAG" ] || {
+            echo "release promotion must run from the exact pushed tag workflow" >&2
+            exit 1
+          }
+          [ "$GITHUB_SHA" = "${{ needs.prepare_release.outputs.desktop_sha }}" ] || {
+            echo "tag event commit does not match the pinned Desktop source" >&2
+            exit 1
+          }
+          jq -e --argjson release_admin_id "$HARA_RELEASE_ADMIN_ID" \
+            '.sender.id == $release_admin_id' "$GITHUB_EVENT_PATH" >/dev/null || {
+            echo "stable tag creation must be performed by the pinned release administrator" >&2
+            exit 1
+          }
+
+      - name: Require the tag-scoped release environment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CUSTOM_POLICIES="$(
+            gh api "repos/$GITHUB_REPOSITORY/environments/hara-desktop-production" \
+              --jq '.deployment_branch_policy.custom_branch_policies'
+          )"
+          [ "$CUSTOM_POLICIES" = "true" ] || {
+            echo "hara-desktop-production must use custom deployment branch/tag policies" >&2
+            exit 1
+          }
+          REQUIRED_REVIEW_RULES="$(
+            gh api "repos/$GITHUB_REPOSITORY/environments/hara-desktop-production" \
+              --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length'
+          )"
+          [ "$REQUIRED_REVIEW_RULES" -eq 0 ] || {
+            echo "the pushed stable tag is the release authorization; remove the second manual environment approval" >&2
+            exit 1
+          }
+          DEPLOYMENT_POLICIES="$(
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/environments/hara-desktop-production/deployment-branch-policies?per_page=100" \
+              --jq '.branch_policies[]? | [.type, .name] | @tsv'
+          )"
+          TOTAL_POLICY_COUNT="$(awk 'NF { count++ } END { print count + 0 }' <<<"$DEPLOYMENT_POLICIES")"
+          TAG_POLICY_COUNT="$(awk -F '\t' '$1 == "tag" && $2 == "v*" { count++ } END { print count + 0 }' \
+            <<<"$DEPLOYMENT_POLICIES")"
+          [ "$TOTAL_POLICY_COUNT" -eq 1 ] && [ "$TAG_POLICY_COUNT" -eq 1 ] || {
+            echo "hara-desktop-production must contain exactly one deployment policy: tag v*" >&2
+            exit 1
+          }
+
+  sign_and_promote:
+    name: Sign, notarize, verify, and promote automatically
+    needs: [prepare_release, assemble_draft, promotion_preflight]
+    permissions:
+      actions: read
+      contents: write
+    environment:
+      name: hara-desktop-production
+      url: https://github.com/hara-cli/hara-desktop/releases/tag/${{ env.RELEASE_TAG }}
+    runs-on: [self-hosted, macOS, ARM64, hara-desktop-release]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: ${{ needs.prepare_release.outputs.desktop_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: hara-desktop
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: "hara-desktop/.node-version"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.0.2
+        with:
+          bun-version-file: hara-desktop/.bun-version
+
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Check out the exact pinned CLI source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          repository: hara-cli/hara
+          ref: ${{ needs.prepare_release.outputs.cli_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: hara-cli
+
+      - name: Validate pinned release sources and metadata
+        working-directory: hara-desktop
+        shell: bash
+        env:
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ env.RELEASE_TAG }}
+          PINNED_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
+          PINNED_CLI_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
+          PINNED_CLI_VERSION: ${{ needs.prepare_release.outputs.cli_version }}
+        run: |
+          set -euo pipefail
+          node scripts/check-release-metadata.mjs
+          [ "$(git rev-parse HEAD)" = "$PINNED_DESKTOP_SHA" ]
+          [ "$(git -C ../hara-cli rev-parse HEAD)" = "$PINNED_CLI_SHA" ]
+          [ "$(git -C ../hara-cli rev-parse "refs/tags/v${PINNED_CLI_VERSION}^{commit}")" = "$PINNED_CLI_SHA" ]
+          [ "$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_COMMIT)" = "$PINNED_CLI_SHA" ]
+          [ "$(node -p 'require(process.argv[1]).version' ../hara-cli/package.json)" = "$PINNED_CLI_VERSION" ]
+
+      - name: Require immutable releases and the restricted stable-tag ruleset before signing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.HARA_RELEASE_POLICY_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "$GH_TOKEN" ] || {
+            echo "HARA_RELEASE_POLICY_TOKEN is required from the protected environment" >&2
+            exit 1
+          }
+          [ "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = "true" ] || {
+            echo "immutable releases must be enabled before signing or promotion" >&2
+            exit 1
+          }
+          RULESET_OK=0
+          while IFS= read -r ruleset_id; do
+            [ -n "$ruleset_id" ] || continue
+            if gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id" | jq -e \
+              --argjson release_admin_id "$HARA_RELEASE_ADMIN_ID" '
+              .target == "tag" and
+              .enforcement == "active" and
+              (.conditions.ref_name.include | index("refs/tags/v*") != null) and
+              ([.rules[].type] | index("creation") != null and index("update") != null and index("deletion") != null) and
+              (.bypass_actors | length == 1) and
+              (.bypass_actors[0].actor_type == "User") and
+              (.bypass_actors[0].actor_id == $release_admin_id) and
+              (.bypass_actors[0].bypass_mode == "always")
+            ' >/dev/null; then
+              RULESET_OK=1
+              break
+            fi
+          done < <(
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/rulesets?targets=tag&per_page=100" \
+              --jq '.[].id'
+          )
+          [ "$RULESET_OK" = "1" ] || {
+            echo "stable v* tags must restrict creation, update, and deletion to exactly the pinned release administrator" >&2
+            exit 1
+          }
+
+      - name: Install locked Desktop dependencies
+        working-directory: hara-desktop
+        run: npm ci
+
+      - name: Re-run release-pipeline regression tests on the signing host
+        working-directory: hara-desktop
+        run: npm test
+
+      - name: Build signed and notarized arm64 assets
+        working-directory: hara-desktop
+        shell: bash
+        run: ./scripts/build-mac-signed.sh
+
+      - name: Build signed and notarized Intel assets under Rosetta
+        working-directory: hara-desktop
+        shell: bash
+        env:
+          HARA_MAC_TARGET: x86_64-apple-darwin
+          HARA_ALLOW_ROSETTA_SMOKE: "1"
+          HARA_PROTECTED_SIGNING_JOB: ${{ github.run_id }}
+        run: ./scripts/build-mac-signed.sh
+
+      - name: Merge signed assets and atomically expose the verified release
+        working-directory: hara-desktop
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HARA_RELEASE_POLICY_TOKEN: ${{ secrets.HARA_RELEASE_POLICY_TOKEN }}
+          HARA_PROMOTION_WORKFLOW_LOCK: ${{ github.run_id }}
+          HARA_PROMOTION_TAG: ${{ env.RELEASE_TAG }}
+          HARA_DRAFT_ASSEMBLED_RUN_ID: ${{ github.run_id }}
+          HARA_PROTECTED_SIGNING_JOB: ${{ github.run_id }}
+        run: ./scripts/release-mac-assets.sh "$RELEASE_TAG"

@@ -1425,10 +1425,11 @@ dependencies = [
 
 [[package]]
 name = "hara-desktop"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "base64 0.22.1",
  "libc",
+ "minisign-verify",
  "serde",
  "serde_json",
  "tauri",

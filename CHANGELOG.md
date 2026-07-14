@@ -1,6 +1,34 @@
 # Changelog
 
-## 0.1.11 — hara 0.122.2 trust boundaries and resilient input
+## 0.1.12 — hara 0.122.5 standalone boundary and release gates
+
+- Bundle hara CLI `0.122.5`, retaining the gateway delivery/lifecycle fixes from `0.122.4` while
+  disabling Bun's ambient `.env` and `bunfig.toml` loaders before the Desktop sidecar starts. The
+  release gate now launches every packaged sidecar from a hostile working directory and rejects
+  any project preload execution or environment injection.
+- Pin Node.js `22.23.1`, Bun, and Rust `1.97.0` for reproducible release builds with actionable
+  upgrade guidance; verify the target architecture before signing or packaging.
+- Keep tag builds in a hidden GitHub draft until every native platform has built and executed the
+  packaged sidecar both normally and with `SharedArrayBuffer` disabled; a single writer constructs
+  `latest.json`, then the same tag workflow automatically enters protected signing under the same
+  server-side concurrency lock and waits for signed/notarized arm64 and Intel macOS replacements.
+- Run sidecar smoke before signing, after Developer ID signing, and again from the packaged app so a
+  startup or architecture regression cannot reach the automatic updater channel.
+- Compile every x64 sidecar with Bun's baseline target so Intel hosts and Rosetta validation do not
+  inherit the modern/AVX assumption from an unqualified x64 build.
+- Recognize sibling CLI repositories through Git itself so sidecar refreshes also work when
+  `hara-cli` is checked out as a linked worktree whose `.git` entry is a file.
+- Cryptographically verify every updater artifact, extract and execute the actual macOS/deb/rpm/
+  MSI/NSIS payloads, pin every native build to the committed Desktop/CLI commits and toolchains, and
+  publish source provenance alongside SHA-256-bound matrix receipts. Stable release jobs reject
+  prerelease or moved tags and verify GitHub's immutable-release attestation. The promotion gate
+  accepts exactly one pinned user bypass for stable tags and carries its protected-job identity into
+  every Rosetta-based Intel verification.
+
+## 0.1.11 — WITHDRAWN (hara 0.122.2)
+
+> Withdrawn from automatic updates on 2026-07-14. The bundled Bun standalone could fail at startup
+> when `SharedArrayBuffer` was unavailable. Keep using `0.1.10` or upgrade directly to `0.1.12`.
 
 - Bundle the released hara CLI `0.122.2`, with explicit trust boundaries for project configuration,
   permissions, profiles, sensitive files, Git history, subprocess environments, and external agents.

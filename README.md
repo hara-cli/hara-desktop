@@ -53,10 +53,11 @@ Shipped: segmented assistant/projects IA (one persistent assistant conversation 
 threads + collapsed automations timeline) · open-folder-as-project · bundled hara sidecar
 (zero-dependency) · first-run key onboarding · per-session model & thinking-effort switch · inline
 approvals · steer queue · notifications + dock badge · search / pin / rename / archive · `@file`
-mentions · i18n (en/zh) · signed auto-updates from GitHub Releases · 4-platform CI with
+mentions · i18n (en/zh) · signed auto-updates from GitHub Releases · notarized Developer ID macOS
+builds · 4-platform CI with
 package-smoke gate. See `WORKFLOW.md` for the two-repo release train.
 
-Next: macOS notarization (Developer ID) · cron management UI · attachments.
+Next: Windows Authenticode signing · cron management UI · attachments.
 
 ## Design invariants (四场所模型, 顾雅 2026-07-11)
 
@@ -72,5 +73,6 @@ continue) · ⚙ settings (context anchors + stage forms). Invariants:
   place (split view); settings only manages enable/disable.
 - One persistent desktop assistant; one thread per external origin (WeChat etc.), separated by the
   "external channels" divider.
-Free code signing for Windows builds is provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
+Windows updater payloads carry Hara's cryptographically verified Tauri/minisign signatures, but the
+MSI/NSIS executables are not yet Authenticode-signed. Windows may therefore show a SmartScreen
+warning until the planned signing service is integrated; the release notes must not claim otherwise.
