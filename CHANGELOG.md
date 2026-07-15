@@ -1,11 +1,15 @@
 # Changelog
 
-## 0.1.16 — hara 0.122.5 standalone boundary and release gates
+## 0.1.16 — hara 0.122.7 resume/Home boundary and release gates
 
-- Bundle hara CLI `0.122.5`, retaining the gateway delivery/lifecycle fixes from `0.122.4` while
-  disabling Bun's ambient `.env` and `bunfig.toml` loaders before the Desktop sidecar starts. The
-  release gate now launches every packaged sidecar from a hostile working directory and rejects
-  any project preload execution or environment injection.
+- Bundle hara CLI `0.122.7`, retaining the standalone boundary that disables Bun's ambient `.env`
+  and `bunfig.toml` loaders before the Desktop sidecar starts. Resumed sessions now continue their
+  persisted task instead of rediscovering the workspace; when a session starts at the user's Home,
+  directory inventory, recursive search, directory references, coding mutations, and shell/external
+  agents are blocked while explicit single-file reads remain available. Tab input also renders at
+  the same width as the cursor without changing the submitted text.
+- Launch every packaged sidecar from a hostile working directory and reject project preload execution
+  or environment injection before the Hara permission boundary.
 - Pin Node.js `22.23.1`, Bun, and Rust `1.97.0` for reproducible release builds with actionable
   upgrade guidance; verify the target architecture before signing or packaging.
 - Keep tag builds in a hidden GitHub draft until every native platform has built and executed the
