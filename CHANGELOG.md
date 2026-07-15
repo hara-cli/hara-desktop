@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.15 — hara 0.122.5 standalone boundary and release gates
+## 0.1.16 — hara 0.122.5 standalone boundary and release gates
 
 - Bundle hara CLI `0.122.5`, retaining the gateway delivery/lifecycle fixes from `0.122.4` while
   disabling Bun's ambient `.env` and `bunfig.toml` loaders before the Desktop sidecar starts. The
@@ -28,6 +28,9 @@
   injecting managed features; without this rule a Windows CRLF checkout became a false dirty-worktree
   failure after otherwise verified MSI/NSIS builds. The release still requires a completely clean
   worktree before collecting assets.
+- Resolve the hidden GitHub draft through `gh release view`'s numeric database ID before replacing
+  assets. GitHub's tag endpoint does not expose an unpublished draft, so using that endpoint caused
+  a false 404 after all four native build lanes and asset receipts had already passed.
 - Extract RPM payloads directly with libarchive instead of buffering `rpm2cpio` output; this covers
   current RPM payload variants while keeping package extraction time and memory bounded.
 - Cryptographically verify every updater artifact, extract and execute the actual macOS/deb/rpm/
@@ -37,31 +40,39 @@
   accepts exactly one pinned user bypass for stable tags and carries its protected-job identity into
   every Rosetta-based Intel verification.
 
+## 0.1.15 — WITHHELD (never published)
+
+> All four native build lanes, installer extraction checks, sidecar smoke tests, updater signatures,
+> and the 14-asset aggregation passed. Draft assembly then used GitHub's tag endpoint to look up the
+> unpublished release; that endpoint returned 404 for the otherwise visible hidden draft. The empty
+> draft was deleted, no installer or updater was exposed, and the immutable tag remains at its
+> original commit. Upgrade directly from `0.1.10` or earlier to `0.1.16`.
+
 ## 0.1.14 — WITHHELD (never published)
 
 > The tag candidate remained a hidden draft. Using the pinned baseline Bun fixed Windows standalone
 > compilation, and both Windows installers passed signature, extraction, and native sidecar smoke.
 > Tauri then normalized `Cargo.toml` from CRLF to LF, so the clean-worktree release gate correctly
 > stopped collection. No `0.1.14` installer or updater was exposed. Upgrade directly from `0.1.10`
-> or earlier to `0.1.15`.
+> or earlier to `0.1.16`.
 
 ## 0.1.13 — WITHHELD (never published)
 
 > The tag candidate remained a hidden draft: Bun 1.3.9's Windows standalone compiler repeatedly
 > failed to extract its baseline target runtime even though the upstream package was present and
 > valid. The bounded retries failed closed and no `0.1.13` installer or updater was exposed. Upgrade
-> directly from `0.1.10` or earlier to `0.1.15`.
+> directly from `0.1.10` or earlier to `0.1.16`.
 
 ## 0.1.12 — WITHHELD (never published)
 
 > The tag candidate remained a hidden draft: its Windows lane received an incomplete Bun target
 > download and Ubuntu's `rpm2cpio` rejected the generated RPM. No `0.1.12` installer or updater was
-> exposed. Upgrade directly from `0.1.10` or earlier to `0.1.15`.
+> exposed. Upgrade directly from `0.1.10` or earlier to `0.1.16`.
 
 ## 0.1.11 — WITHDRAWN (hara 0.122.2)
 
 > Withdrawn from automatic updates on 2026-07-14. The bundled Bun standalone could fail at startup
-> when `SharedArrayBuffer` was unavailable. Keep using `0.1.10` or upgrade directly to `0.1.15`.
+> when `SharedArrayBuffer` was unavailable. Keep using `0.1.10` or upgrade directly to `0.1.16`.
 
 - Bundle the released hara CLI `0.122.2`, with explicit trust boundaries for project configuration,
   permissions, profiles, sensitive files, Git history, subprocess environments, and external agents.

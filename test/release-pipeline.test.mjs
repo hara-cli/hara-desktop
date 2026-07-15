@@ -372,6 +372,17 @@ test("draft validation executes repository code without a release token", () => 
   assert.doesNotMatch(validation, /GH_TOKEN|github\.token/);
 });
 
+test("draft asset replacement resolves a hidden release through its database ID", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const replaceStart = workflow.indexOf("Replace hidden draft assets after every native gate");
+  const downloadStart = workflow.indexOf("Download the exact remote draft", replaceStart);
+  const replacement = workflow.slice(replaceStart, downloadStart);
+
+  assert.match(replacement, /gh release view "\$RELEASE_TAG" --json databaseId --jq \.databaseId/);
+  assert.match(replacement, /\[\[ "\$RELEASE_ID" =~ \^\[0-9\]\+\$ \]\]/);
+  assert.doesNotMatch(replacement, /releases\/tags\/\$RELEASE_TAG/);
+});
+
 test("promotion rechecks both remote tags at the publication boundary and verifies immutability", () => {
   const releaseScript = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
   const immutablePolicyCheck = releaseScript.indexOf('gh api "repos/$REPO/immutable-releases"');
