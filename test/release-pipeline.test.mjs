@@ -402,6 +402,10 @@ test("target-runtime downloads and RPM extraction fail only after bounded portab
   const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
   assert.match(workflow, /for attempt in 1 2 3; do[\s\S]*?bun scripts\/build-binary\.ts/);
   assert.match(refresh, /for attempt in 1 2 3; do[\s\S]*?bun scripts\/build-binary\.ts/);
+  assert.match(workflow, /matrix\.target == 'x86_64-pc-windows-msvc'/);
+  assert.match(workflow, /bun-v1\.3\.9\/bun-windows-x64-baseline\.zip/);
+  assert.match(workflow, /BUN_WINDOWS_BASELINE_SHA256: "39f12024edc27d3706baa7b72a06156896b536af61472e0f9a6fe9c5e25b97cc"/);
+  assert.match(workflow, /sha256sum "\$\(command -v bun\)"/);
   assert.match(workflow, /libarchive-tools/);
   assert.match(packageSmoke, /runExtractionTool\(\s*"bsdtar"/);
   assert.doesNotMatch(packageSmoke, /"rpm2cpio"/);
