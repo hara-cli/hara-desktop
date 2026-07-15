@@ -197,6 +197,20 @@ test("Linux and Windows smoke execute sidecars extracted from real installers", 
   assert.match(packageSmoke, /smokeInstalledSidecars\(nsis, "nsis", "NSIS installer", "hara\.exe"\)/);
 });
 
+test("Tauri Cargo manifest is checked out as LF on Windows without weakening the clean-tree gate", () => {
+  const attributes = readFileSync(join(root, ".gitattributes"), "utf8");
+  const manifest = readFileSync(join(root, "src-tauri/Cargo.toml"));
+  const configuredEol = run("git", ["check-attr", "eol", "--", "src-tauri/Cargo.toml"]);
+  const collector = readFileSync(join(root, "scripts/collect-release-assets.mjs"), "utf8");
+
+  assert.match(attributes, /^src-tauri\/Cargo\.toml text eol=lf$/m);
+  assert.equal(configuredEol.status, 0, configuredEol.stderr);
+  assert.match(configuredEol.stdout, /src-tauri\/Cargo\.toml: eol: lf/);
+  assert.equal(manifest.includes(13), false, "tracked Cargo.toml must not contain CR bytes");
+  assert.match(collector, /git", \["status", "--porcelain"\]/);
+  assert.match(collector, /Desktop worktree changed during the matrix build/);
+});
+
 test("macOS package and promotion gates mount the real DMG before release", () => {
   const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
   const signedBuild = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
