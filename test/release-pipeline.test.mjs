@@ -396,6 +396,17 @@ test("native sidecar builds attest CLI HEAD and cleanliness after compilation", 
   assert.ok(cleanGate > compile && cleanGate < copy);
 });
 
+test("target-runtime downloads and RPM extraction fail only after bounded portable retries", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
+  const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
+  assert.match(workflow, /for attempt in 1 2 3; do[\s\S]*?bun scripts\/build-binary\.ts/);
+  assert.match(refresh, /for attempt in 1 2 3; do[\s\S]*?bun scripts\/build-binary\.ts/);
+  assert.match(workflow, /libarchive-tools/);
+  assert.match(packageSmoke, /runExtractionTool\(\s*"bsdtar"/);
+  assert.doesNotMatch(packageSmoke, /"rpm2cpio"/);
+});
+
 test("every x64 sidecar uses a baseline CPU target and executes the hostile-cwd boundary smoke", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");

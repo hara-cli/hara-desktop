@@ -109,14 +109,29 @@ OUT="$BUILD_CLI/dist/bin/hara-refresh"
 EXT=""
 [[ "$TRIPLE" == *windows* ]] && EXT=".exe"
 
+build_sidecar_binary() {
+  local attempt
+  for attempt in 1 2 3; do
+    rm -f "$OUT" "$OUT.exe"
+    if (cd "$BUILD_CLI" && bun scripts/build-binary.ts "dist/bin/hara-refresh" "$BUN_TARGET" >/dev/null); then
+      return 0
+    fi
+    [ "$attempt" -lt 3 ] || {
+      echo "error: sidecar compilation failed after $attempt attempts" >&2
+      return 1
+    }
+    echo "warning: sidecar compilation attempt $attempt failed; retrying a possibly incomplete Bun target download" >&2
+    sleep $((attempt * 5))
+  done
+}
+
 echo "▸ building hara $EXPECTED standalone sidecar ($TRIPLE, Bun $(bun --version))…"
 if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
-  (cd "$BUILD_CLI" && npm ci >/dev/null && npm run build >/dev/null && \
-    bun scripts/build-binary.ts "dist/bin/hara-refresh" "$BUN_TARGET" >/dev/null)
+  (cd "$BUILD_CLI" && npm ci >/dev/null && npm run build >/dev/null)
 else
-  (cd "$BUILD_CLI" && npm run build >/dev/null && \
-    bun scripts/build-binary.ts "dist/bin/hara-refresh" "$BUN_TARGET" >/dev/null)
+  (cd "$BUILD_CLI" && npm run build >/dev/null)
 fi
+build_sidecar_binary
 
 if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
   POST_STATUS="$(git -C "$BUILD_CLI" status --porcelain)"

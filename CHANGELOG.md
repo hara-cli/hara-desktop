@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.12 — hara 0.122.5 standalone boundary and release gates
+## 0.1.13 — hara 0.122.5 standalone boundary and release gates
 
 - Bundle hara CLI `0.122.5`, retaining the gateway delivery/lifecycle fixes from `0.122.4` while
   disabling Bun's ambient `.env` and `bunfig.toml` loaders before the Desktop sidecar starts. The
@@ -18,6 +18,11 @@
   inherit the modern/AVX assumption from an unqualified x64 build.
 - Recognize sibling CLI repositories through Git itself so sidecar refreshes also work when
   `hara-cli` is checked out as a linked worktree whose `.git` entry is a file.
+- Retry Bun standalone target downloads at most three times, so a truncated compiler-runtime
+  transfer fails with a finite, actionable result instead of making a clean release require a new
+  runner immediately.
+- Extract RPM payloads directly with libarchive instead of buffering `rpm2cpio` output; this covers
+  current RPM payload variants while keeping package extraction time and memory bounded.
 - Cryptographically verify every updater artifact, extract and execute the actual macOS/deb/rpm/
   MSI/NSIS payloads, pin every native build to the committed Desktop/CLI commits and toolchains, and
   publish source provenance alongside SHA-256-bound matrix receipts. Stable release jobs reject
@@ -25,10 +30,16 @@
   accepts exactly one pinned user bypass for stable tags and carries its protected-job identity into
   every Rosetta-based Intel verification.
 
+## 0.1.12 — WITHHELD (never published)
+
+> The tag candidate remained a hidden draft: its Windows lane received an incomplete Bun target
+> download and Ubuntu's `rpm2cpio` rejected the generated RPM. No `0.1.12` installer or updater was
+> exposed. Upgrade directly from `0.1.10` or earlier to `0.1.13`.
+
 ## 0.1.11 — WITHDRAWN (hara 0.122.2)
 
 > Withdrawn from automatic updates on 2026-07-14. The bundled Bun standalone could fail at startup
-> when `SharedArrayBuffer` was unavailable. Keep using `0.1.10` or upgrade directly to `0.1.12`.
+> when `SharedArrayBuffer` was unavailable. Keep using `0.1.10` or upgrade directly to `0.1.13`.
 
 - Bundle the released hara CLI `0.122.2`, with explicit trust boundaries for project configuration,
   permissions, profiles, sensitive files, Git history, subprocess environments, and external agents.

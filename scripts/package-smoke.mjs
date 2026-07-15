@@ -141,8 +141,14 @@ function extractPackage(artifact, kind, destination) {
   if (kind === "deb") {
     runExtractionTool("dpkg-deb", ["--extract", artifact, destination], "Debian package extraction");
   } else if (kind === "rpm") {
-    const archive = runExtractionTool("rpm2cpio", [artifact], "RPM conversion", { binaryOutput: true });
-    runExtractionTool("cpio", ["-idmu", "--quiet"], "RPM archive extraction", { cwd: destination, input: archive });
+    // libarchive reads the RPM container directly and streams files to disk. This avoids buffering
+    // an entire cpio payload in Node and works with payload/compression variants that older
+    // rpm2cpio builds can reject without an actionable diagnostic.
+    runExtractionTool(
+      "bsdtar",
+      ["--extract", "--file", artifact, "--directory", destination, "--no-same-owner", "--no-same-permissions"],
+      "RPM package extraction",
+    );
   } else if (kind === "msi") {
     runExtractionTool(
       "msiexec.exe",
