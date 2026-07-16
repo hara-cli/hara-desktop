@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { smokeSidecar } from "./sidecar-smoke.mjs";
+import { validateStapledArtifact } from "./stapler-validate.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sidecarVersion = readFileSync(join(root, "src-tauri", "binaries", "SIDECAR_VERSION"), "utf8").trim();
@@ -74,7 +75,7 @@ export function smokeMacDmg({ dmg, expectedTarget, requireSignatures = false }) 
     if (requireSignatures) {
       run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", app], "DMG app codesign");
       run("/usr/sbin/spctl", ["-a", "-vv", app], "DMG app Gatekeeper assessment");
-      run("/usr/bin/xcrun", ["stapler", "validate", app], "DMG app notarization staple");
+      validateStapledArtifact(app, "DMG app notarization staple");
     }
     console.log(
       `  ✓ DMG mounted and bundled sidecar executed (${expectedTarget}${requireSignatures ? "; signed + notarized app" : ""})`,

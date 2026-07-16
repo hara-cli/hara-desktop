@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { requireStableTag, requireStableVersion } from "../scripts/release-policy.mjs";
+import { isTransientStaplerFailure } from "../scripts/stapler-validate.mjs";
 import {
   assertReleaseSource,
   expectedReleaseSource,
@@ -261,6 +262,26 @@ test("Tauri performs the sole Developer ID signing pass after Bun signature remo
   assert.match(script, /PACKAGED_SIDECAR_SIGNATURE=.*codesign -d --verbose=4/);
   assert.match(script, /Authority=\$IDENTITY/);
   assert.match(script, /\^Timestamp=/);
+});
+
+test("Apple staple validation retries only bounded transient service failures", () => {
+  assert.equal(
+    isTransientStaplerFailure('Error Domain=NSURLErrorDomain Code=-1001 "The request timed out." CloudKit'),
+    true,
+  );
+  assert.equal(isTransientStaplerFailure("TLS handshake timeout contacting Apple ticket service"), true);
+  assert.equal(isTransientStaplerFailure("The validate action failed: no ticket stapled to this item"), false);
+
+  const helper = readFileSync(join(root, "scripts/stapler-validate.mjs"), "utf8");
+  const dmgSmoke = readFileSync(join(root, "scripts/mac-dmg-smoke.mjs"), "utf8");
+  const updaterSmoke = readFileSync(join(root, "scripts/mac-updater-smoke.mjs"), "utf8");
+  const promotion = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
+  assert.match(helper, /const STAPLER_ATTEMPTS = 3/);
+  assert.match(helper, /attempt === STAPLER_ATTEMPTS/);
+  assert.match(dmgSmoke, /validateStapledArtifact\(app, "DMG app notarization staple"\)/);
+  assert.match(updaterSmoke, /validateStapledArtifact\(app, "updater archive notarization staple"\)/);
+  assert.equal((promotion.match(/node scripts\/stapler-validate\.mjs/g) || []).length, 3);
+  assert.doesNotMatch(promotion, /xcrun stapler validate/);
 });
 
 test("signed builds select pinned Rust and preflight a dedicated unlocked keychain", () => {

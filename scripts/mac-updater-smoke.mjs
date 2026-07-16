@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { smokeSidecar } from "./sidecar-smoke.mjs";
+import { validateStapledArtifact } from "./stapler-validate.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sidecarVersion = readFileSync(join(root, "src-tauri", "binaries", "SIDECAR_VERSION"), "utf8").trim();
@@ -71,7 +72,7 @@ export function smokeMacUpdaterArchive({ archive, expectedTarget, requireSignatu
     if (requireSignatures) {
       run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", app], "updater archive codesign");
       run("/usr/sbin/spctl", ["-a", "-vv", app], "updater archive Gatekeeper assessment");
-      run("/usr/bin/xcrun", ["stapler", "validate", app], "updater archive notarization staple");
+      validateStapledArtifact(app, "updater archive notarization staple");
     }
     console.log(
       `  ✓ macOS updater archive extracted and executed (${expectedTarget}${requireSignatures ? "; signed + notarized" : ""})`,

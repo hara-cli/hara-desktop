@@ -170,7 +170,7 @@ if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
     else
       public_target="x86_64-apple-darwin"
     fi
-    xcrun stapler validate "$public_dmg"
+    node scripts/stapler-validate.mjs "$public_dmg" "public $public_target DMG notarization staple"
     spctl -a -t open --context context:primary-signature -v "$public_dmg"
     HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-dmg-smoke.mjs \
       "$public_dmg" "$public_target" --require-signatures
@@ -218,10 +218,7 @@ for spec in \
   "$ARM_DMG|$ARM_BASE/macos/Hara.app|arm64" \
   "$X64_DMG|$X64_BASE/macos/Hara.app|x86_64"; do
   IFS='|' read -r dmg app expected_arch <<<"$spec"
-  xcrun stapler validate "$dmg" >/dev/null 2>&1 || {
-    echo "error: DMG is not stapled/notarized: $dmg" >&2
-    exit 1
-  }
+  node scripts/stapler-validate.mjs "$dmg" "local $expected_arch DMG notarization staple"
   spctl -a -t open --context context:primary-signature -v "$dmg"
   codesign --verify --deep --strict --verbose=2 "$app"
   app_archs="$(/usr/bin/lipo -archs "$app/Contents/MacOS/hara-desktop")"
@@ -285,13 +282,13 @@ HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-updater-smoke.mjs \
   "$REMOTE_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
 for arch in aarch64 x64; do
   remote_dmg="$REMOTE_DIR/Hara_${VER}_${arch}.dmg"
-  xcrun stapler validate "$remote_dmg"
-  spctl -a -t open --context context:primary-signature -v "$remote_dmg"
   if [ "$arch" = "aarch64" ]; then
     remote_target="aarch64-apple-darwin"
   else
     remote_target="x86_64-apple-darwin"
   fi
+  node scripts/stapler-validate.mjs "$remote_dmg" "remote $remote_target DMG notarization staple"
+  spctl -a -t open --context context:primary-signature -v "$remote_dmg"
   HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-dmg-smoke.mjs \
     "$remote_dmg" "$remote_target" --require-signatures
 done
