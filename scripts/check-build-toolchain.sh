@@ -63,14 +63,32 @@ hara_check_rust() {
 
   local required
   required="$(tr -d '[:space:]' < "$version_file")"
-  if ! command -v rustc >/dev/null 2>&1; then
+  local rustc_command cargo_command toolchain_bin
+  if command -v rustup >/dev/null 2>&1; then
+    rustc_command="$(rustup which --toolchain "$required" rustc 2>/dev/null || true)"
+    cargo_command="$(rustup which --toolchain "$required" cargo 2>/dev/null || true)"
+    if [ -z "$rustc_command" ] || [ -z "$cargo_command" ]; then
+      hara_toolchain_error "Rust $required is required to build Hara Desktop. Install it with: rustup toolchain install $required"
+      return 1
+    fi
+    # A self-hosted macOS runner may put Homebrew's /usr/local/bin ahead of rustup even after the
+    # setup action. Select the pinned binaries explicitly for this shell and every Cargo child.
+    toolchain_bin="$(dirname "$cargo_command")"
+    export PATH="$toolchain_bin:$PATH"
+    export RUSTC="$rustc_command"
+    export CARGO="$cargo_command"
+  else
+    rustc_command="$(command -v rustc 2>/dev/null || true)"
+    cargo_command="$(command -v cargo 2>/dev/null || true)"
+  fi
+  if [ -z "$rustc_command" ] || [ -z "$cargo_command" ]; then
     hara_toolchain_error "Rust $required is required to build Hara Desktop. Install it with: rustup toolchain install $required"
     return 1
   fi
 
-  local release host active
-  release="$(rustc -vV 2>/dev/null | awk '/^release:/{print $2}')"
-  host="$(rustc -vV 2>/dev/null | awk '/^host:/{print $2}')"
+  local release host
+  release="$("$rustc_command" -vV 2>/dev/null | awk '/^release:/{print $2}')"
+  host="$("$rustc_command" -vV 2>/dev/null | awk '/^host:/{print $2}')"
   [ -n "$release" ] && [ -n "$host" ] || {
     hara_toolchain_error "could not read the active Rust toolchain; install it with: rustup toolchain install $required"
     return 1
@@ -78,16 +96,6 @@ hara_check_rust() {
   if [ "$release" != "$required" ]; then
     hara_toolchain_error "Rust $required is pinned for release builds (detected ${release:-unknown}). Upgrade with: rustup toolchain install $required"
     return 1
-  fi
-  if command -v rustup >/dev/null 2>&1; then
-    active="$(rustup show active-toolchain 2>/dev/null | awk '{print $1}')"
-    case "$active" in
-      "$required"-*|stable-*) ;;
-      *)
-        hara_toolchain_error "Rust $required is required (active ${active:-unknown}). Select it with: rustup override set $required"
-        return 1
-        ;;
-    esac
   fi
   echo "  ✓ Rust $release ($host, pinned)"
 }

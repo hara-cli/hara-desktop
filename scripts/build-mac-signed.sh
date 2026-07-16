@@ -10,6 +10,31 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+CODESIGN_KEYCHAIN="${HARA_CODESIGN_KEYCHAIN:-$HOME/Library/Keychains/hara-ci-signing.keychain-db}"
+CODESIGN_PASSWORD_FILE="${HARA_CODESIGN_KEYCHAIN_PASSWORD_FILE:-$HOME/.tauri/hara-codesign-keychain.password}"
+CODESIGN_KEYCHAIN_UNLOCKED=0
+CODESIGN_PROBE_DIR=""
+KEYCHAIN_LIST_CHANGED=0
+ORIGINAL_KEYCHAINS=()
+clear_signing_environment() {
+  unset APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
+  unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  unset HARA_CODESIGN_KEYCHAIN_PASSWORD
+  if [ -n "$CODESIGN_PROBE_DIR" ]; then
+    rm -rf "$CODESIGN_PROBE_DIR"
+    CODESIGN_PROBE_DIR=""
+  fi
+  if [ "$KEYCHAIN_LIST_CHANGED" = "1" ] && [ "${#ORIGINAL_KEYCHAINS[@]}" -gt 0 ]; then
+    security list-keychains -d user -s "${ORIGINAL_KEYCHAINS[@]}" >/dev/null 2>&1 || true
+    KEYCHAIN_LIST_CHANGED=0
+  fi
+  if [ "$CODESIGN_KEYCHAIN_UNLOCKED" = "1" ]; then
+    security lock-keychain "$CODESIGN_KEYCHAIN" >/dev/null 2>&1 || true
+    CODESIGN_KEYCHAIN_UNLOCKED=0
+  fi
+}
+trap clear_signing_environment EXIT
+
 # Fail before touching signing material when a login shell resolves an old Node, an unpinned Bun,
 # or the Intel Rust toolchain on an Apple Silicon release machine.
 # shellcheck source=scripts/check-build-toolchain.sh
@@ -108,7 +133,39 @@ KEY_ID="LPV3VLR842"
 ISSUER="69a6de87-a919-47e3-e053-5b8c7c11a4d1"
 
 [ -f "$P8" ] || { echo "missing notary key $P8"; exit 1; }
-if ! IDENTITIES="$(security find-identity -v -p codesigning 2>&1)"; then
+[ -f "$CODESIGN_KEYCHAIN" ] || {
+  echo "dedicated codesigning keychain is missing: $CODESIGN_KEYCHAIN" >&2
+  exit 1
+}
+[ -f "$CODESIGN_PASSWORD_FILE" ] || {
+  echo "local codesigning keychain password is missing: $CODESIGN_PASSWORD_FILE" >&2
+  exit 1
+}
+[ "$(stat -f '%Lp' "$CODESIGN_PASSWORD_FILE")" = "600" ] || {
+  echo "local codesigning keychain password must have mode 600: $CODESIGN_PASSWORD_FILE" >&2
+  exit 1
+}
+CODESIGN_PASSWORD="$(tr -d '\r\n' < "$CODESIGN_PASSWORD_FILE")"
+[ -n "$CODESIGN_PASSWORD" ] || {
+  echo "local codesigning keychain password is empty: $CODESIGN_PASSWORD_FILE" >&2
+  exit 1
+}
+security unlock-keychain -p "$CODESIGN_PASSWORD" "$CODESIGN_KEYCHAIN"
+unset CODESIGN_PASSWORD HARA_CODESIGN_KEYCHAIN_PASSWORD
+CODESIGN_KEYCHAIN_UNLOCKED=1
+security set-keychain-settings -lut 21600 "$CODESIGN_KEYCHAIN"
+while IFS= read -r keychain; do
+  keychain="${keychain#*\"}"
+  keychain="${keychain%\"*}"
+  [ -n "$keychain" ] && ORIGINAL_KEYCHAINS+=("$keychain")
+done < <(security list-keychains -d user)
+SEARCH_KEYCHAINS=("$CODESIGN_KEYCHAIN")
+for keychain in "${ORIGINAL_KEYCHAINS[@]}"; do
+  [ "$keychain" = "$CODESIGN_KEYCHAIN" ] || SEARCH_KEYCHAINS+=("$keychain")
+done
+security list-keychains -d user -s "${SEARCH_KEYCHAINS[@]}"
+KEYCHAIN_LIST_CHANGED=1
+if ! IDENTITIES="$(security find-identity -v -p codesigning "$CODESIGN_KEYCHAIN" 2>&1)"; then
   echo "unable to inspect codesigning identities" >&2
   echo "$IDENTITIES" >&2
   exit 1
@@ -117,6 +174,16 @@ case "$IDENTITIES" in
   *"$IDENTITY"*) ;;
   *) echo "Developer ID cert not in keychain: $IDENTITY" >&2; exit 1 ;;
 esac
+# Enumeration alone does not prove that a non-interactive Actions worker may use the private key.
+# Sign an ephemeral executable before spending time on either build; dry-run against a sealed system
+# binary can itself fail inside Apple's signing subsystem and is therefore not a reliable probe.
+CODESIGN_PROBE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hara-codesign-probe.XXXXXX")"
+cp /usr/bin/true "$CODESIGN_PROBE_DIR/probe"
+codesign --force --options runtime --timestamp --keychain "$CODESIGN_KEYCHAIN" \
+  --sign "$IDENTITY" "$CODESIGN_PROBE_DIR/probe" >/dev/null
+codesign --verify --strict "$CODESIGN_PROBE_DIR/probe"
+rm -rf "$CODESIGN_PROBE_DIR"
+CODESIGN_PROBE_DIR=""
 
 EXPECTED_SIDECAR_VERSION="$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_VERSION)"
 HARA_RELEASE_BUILD=1 HARA_SIDECAR_TARGET="$TARGET" ./scripts/refresh-sidecar.sh
@@ -133,7 +200,8 @@ SIDECAR="src-tauri/binaries/hara-$TARGET"
 # so never run the sidecar in the gap between removing that signature and applying Developer ID.
 echo "▸ replacing Bun ad-hoc signature with Developer ID"
 codesign --remove-signature "$SIDECAR"
-codesign --force --options runtime --timestamp --sign "$IDENTITY" "$SIDECAR"
+codesign --force --options runtime --timestamp --keychain "$CODESIGN_KEYCHAIN" \
+  --sign "$IDENTITY" "$SIDECAR"
 codesign --verify --strict --verbose=2 "$SIDECAR"
 echo "▸ validating Developer ID signed sidecar"
 node scripts/sidecar-smoke.mjs "$SIDECAR" "$EXPECTED_SIDECAR_VERSION" "$TARGET"
@@ -160,12 +228,6 @@ export APPLE_API_KEY="$KEY_ID" APPLE_API_ISSUER="$ISSUER" APPLE_API_KEY_PATH="$P
 TAURI_SIGNING_PRIVATE_KEY="$(cat "$HOME/.tauri/hara-desktop.key")"
 export TAURI_SIGNING_PRIVATE_KEY
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-
-clear_signing_environment() {
-  unset APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
-  unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-}
-trap clear_signing_environment EXIT
 
 if [ "$TARGET" = "x86_64-apple-darwin" ]; then
   npm run tauri build -- --target "$TARGET"

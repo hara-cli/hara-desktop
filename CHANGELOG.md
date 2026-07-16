@@ -1,6 +1,29 @@
 # Changelog
 
-## 0.1.16 — hara 0.122.7 resume/Home boundary and release gates
+## 0.1.17 — hara 0.124.0 task pets and navigation visibility
+
+- Keep the four left navigation icons at their intended 19 px size and raise inactive contrast. The
+  global button padding had reduced a 34 px rail button to a 2 px flex content box, shrinking each
+  SVG into the dot-like marks seen in the live report.
+- Add an optional non-focusable desktop pet that reflects running, needs-input, ready, and blocked
+  task states without changing the agent loop or taking keyboard focus. Multi-task priority and
+  reduced-motion behavior match the Codex desktop model.
+- Bundle a CSS-native Hara companion and discover compatible local Codex/Hara v1 and v2 sprite
+  packages. Native validation confines reads to fixed catalog roots, rejects traversal and symlinks,
+  bounds metadata/assets, verifies PNG/WebP geometry, and gives the pet webview validated image data
+  instead of filesystem access.
+- Bundle hara CLI `0.124.0` so Desktop consumes explicit turn lifecycle and approval events while
+  retaining a safe fallback for older event streams.
+- Make the protected release host select the exact rustup toolchain even when Homebrew appears first
+  on `PATH`, and require an unlocked dedicated codesigning keychain with a real ephemeral signing
+  probe before either notarized macOS build starts.
+
+## 0.1.16 — WITHHELD (never published; hara 0.122.7)
+
+> All native build lanes, installer extraction checks, updater signatures, and hidden-draft assembly
+> passed. The protected macOS worker could enumerate but not use the login-keychain private key, so
+> Developer ID signing failed closed and the draft was never published. Upgrade directly from
+> `0.1.10` or earlier to `0.1.17`.
 
 - Bundle hara CLI `0.122.7`, retaining the standalone boundary that disables Bun's ambient `.env`
   and `bunfig.toml` loaders before the Desktop sidecar starts. Resumed sessions now continue their
@@ -50,7 +73,7 @@
 > and the 14-asset aggregation passed. Draft assembly then used GitHub's tag endpoint to look up the
 > unpublished release; that endpoint returned 404 for the otherwise visible hidden draft. The empty
 > draft was deleted, no installer or updater was exposed, and the immutable tag remains at its
-> original commit. Upgrade directly from `0.1.10` or earlier to `0.1.16`.
+> original commit. Upgrade directly from `0.1.10` or earlier to `0.1.17`.
 
 ## 0.1.14 — WITHHELD (never published)
 
@@ -58,25 +81,25 @@
 > compilation, and both Windows installers passed signature, extraction, and native sidecar smoke.
 > Tauri then normalized `Cargo.toml` from CRLF to LF, so the clean-worktree release gate correctly
 > stopped collection. No `0.1.14` installer or updater was exposed. Upgrade directly from `0.1.10`
-> or earlier to `0.1.16`.
+> or earlier to `0.1.17`.
 
 ## 0.1.13 — WITHHELD (never published)
 
 > The tag candidate remained a hidden draft: Bun 1.3.9's Windows standalone compiler repeatedly
 > failed to extract its baseline target runtime even though the upstream package was present and
 > valid. The bounded retries failed closed and no `0.1.13` installer or updater was exposed. Upgrade
-> directly from `0.1.10` or earlier to `0.1.16`.
+> directly from `0.1.10` or earlier to `0.1.17`.
 
 ## 0.1.12 — WITHHELD (never published)
 
 > The tag candidate remained a hidden draft: its Windows lane received an incomplete Bun target
 > download and Ubuntu's `rpm2cpio` rejected the generated RPM. No `0.1.12` installer or updater was
-> exposed. Upgrade directly from `0.1.10` or earlier to `0.1.16`.
+> exposed. Upgrade directly from `0.1.10` or earlier to `0.1.17`.
 
 ## 0.1.11 — WITHDRAWN (hara 0.122.2)
 
 > Withdrawn from automatic updates on 2026-07-14. The bundled Bun standalone could fail at startup
-> when `SharedArrayBuffer` was unavailable. Keep using `0.1.10` or upgrade directly to `0.1.16`.
+> when `SharedArrayBuffer` was unavailable. Keep using `0.1.10` or upgrade directly to `0.1.17`.
 
 - Bundle the released hara CLI `0.122.2`, with explicit trust boundaries for project configuration,
   permissions, profiles, sensitive files, Git history, subprocess environments, and external agents.

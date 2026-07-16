@@ -124,7 +124,10 @@ test("matrix receipt aggregation accepts only one pinned source identity", () =>
 test("Apple Silicon sidecar is re-signed before post-normalization smoke", () => {
   const script = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
   const removeSignature = script.indexOf('codesign --remove-signature "$SIDECAR"');
-  const developerIdSign = script.indexOf('codesign --force --options runtime --timestamp --sign "$IDENTITY" "$SIDECAR"');
+  const developerIdSign = script.indexOf(
+    'codesign --force --options runtime --timestamp --keychain "$CODESIGN_KEYCHAIN"',
+    removeSignature,
+  );
   const signedSmoke = script.indexOf(
     'node scripts/sidecar-smoke.mjs "$SIDECAR" "$EXPECTED_SIDECAR_VERSION" "$TARGET"',
     removeSignature,
@@ -132,6 +135,29 @@ test("Apple Silicon sidecar is re-signed before post-normalization smoke", () =>
   assert.ok(removeSignature >= 0, "remove-signature step missing");
   assert.ok(developerIdSign > removeSignature, "Developer ID signing must follow signature removal");
   assert.ok(signedSmoke > developerIdSign, "sidecar must not execute while its arm64 Mach-O is unsigned");
+});
+
+test("signed builds select pinned Rust and preflight a dedicated unlocked keychain", () => {
+  const toolchain = readFileSync(join(root, "scripts/check-build-toolchain.sh"), "utf8");
+  const script = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+
+  assert.match(toolchain, /rustup which --toolchain "\$required" rustc/);
+  assert.match(toolchain, /export PATH="\$toolchain_bin:\$PATH"/);
+  assert.match(toolchain, /export RUSTC="\$rustc_command"/);
+  assert.match(toolchain, /export CARGO="\$cargo_command"/);
+
+  const unlock = script.indexOf('security unlock-keychain -p "$CODESIGN_PASSWORD"');
+  const forgetPassword = script.indexOf("unset CODESIGN_PASSWORD HARA_CODESIGN_KEYCHAIN_PASSWORD", unlock);
+  const keyProbe = script.indexOf('cp /usr/bin/true "$CODESIGN_PROBE_DIR/probe"', unlock);
+  const actualSign = script.indexOf('codesign --remove-signature "$SIDECAR"');
+  assert.ok(unlock >= 0 && forgetPassword > unlock && keyProbe > forgetPassword && actualSign > keyProbe);
+  assert.match(script, /codesign --verify --strict "\$CODESIGN_PROBE_DIR\/probe"/);
+  assert.match(script, /security lock-keychain "\$CODESIGN_KEYCHAIN"/);
+  assert.match(script, /security list-keychains -d user -s "\$\{ORIGINAL_KEYCHAINS\[@\]\}"/);
+  assert.match(script, /hara-codesign-keychain\.password/);
+  assert.match(script, /stat -f '%Lp'.*CODESIGN_PASSWORD_FILE/);
+  assert.doesNotMatch(workflow, /HARA_CODESIGN_KEYCHAIN_PASSWORD/);
 });
 
 test("CI Rosetta smoke is limited to the protected tag signing job", () => {

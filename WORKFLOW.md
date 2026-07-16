@@ -107,7 +107,11 @@ until then, documentation and release notices must disclose possible SmartScreen
 - Apple Developer ID Application cert is held on the controlled self-hosted release Mac; tag CI
   macOS artifacts stay unsigned and hidden until protected `build.yml` promotion invokes
   `scripts/build-mac-signed.sh` + `scripts/release-mac-assets.sh` to replace them with signed,
-  notarized, stapled assets.
+  notarized, stapled assets. The runner uses the dedicated
+  `~/Library/Keychains/hara-ci-signing.keychain-db`; its random unlock password stays only in
+  `~/.tauri/hara-codesign-keychain.password` with mode `0600`. The signed-build script unlocks it,
+  performs an ephemeral Developer ID signing probe, restores the prior keychain search list, and
+  locks it again on every exit. Do not copy that password into Actions logs or chat.
 - Put the signing Mac in a dedicated runner group restricted to `hara-cli/hara-desktop` and the
   release workflow; never schedule pull requests or ordinary CI on it. Prefer an ephemeral runner,
   or clean the workspace completely after every run.
