@@ -16,12 +16,15 @@ export interface PetSnapshot {
   activityCount: number;
 }
 
+/** Package provenance is separate from its selector/path so remote installs can become Hara-local. */
+export type PetSource = "builtin" | "hara-local" | "codex-local" | "hara-market";
+
 export interface PetCatalogEntry {
   selector: string;
   id: string;
   displayName: string;
   description: string;
-  source: "hara" | "codex";
+  source: PetSource;
   spriteVersionNumber?: number;
   rows?: number;
   compatible: boolean;
@@ -46,7 +49,7 @@ export const BUILTIN_HARA_PET: PetCatalogEntry = {
   id: "hara",
   displayName: "Hara",
   description: "The quiet vermilion companion bundled with Hara Desktop.",
-  source: "hara",
+  source: "builtin",
   compatible: true,
 };
 

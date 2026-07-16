@@ -49,20 +49,105 @@ plugins from them. Native validation enforces:
 
 The pet webview receives a validated data URL, not filesystem permission or an arbitrary local path.
 
-## Market roadmap
+## Product ownership and compatibility
 
-The local package contract is the first layer of a future Hara skill/pet market:
+Hara owns `~/.hara/pets`. The Codex root is a read-only compatibility/import source, not Hara's
+long-term registry and never a write target. A future installer must copy an explicitly selected and
+license-compatible package through Hara's validator into its own root. Hara must not upload, mutate,
+or silently claim ownership of a Codex package.
 
-1. Local catalog (implemented): built-in Hara pet plus safe Hara/Codex v1/v2 discovery.
-2. Explicit install/import: stage to a temporary directory, validate, hash, and atomically rename into
-   `~/.hara/pets/<id>`; never execute package content.
-3. Open marketplace metadata: author, license, provenance, preview, SHA-256, format compatibility, and
-   minimum Desktop version. A signed index authenticates listings; the asset hash authenticates bytes.
-4. Creation workflow: publish a Hara-compatible pet-generation skill that produces the same v2 atlas,
-   validation report, and manifest. Generated assets remain local unless the user explicitly publishes.
-5. Shared surfaces: Desktop gets the multi-task activity tray; CLI may render compatible pets only when
-   its terminal image protocol supports them. Neither surface owns task execution.
+The client should introduce a source-neutral `PetProvider` boundary before adding a remote catalog:
 
-Remote install links should require HTTPS, an allowlisted manifest schema, bounded redirects and bytes,
-content decoding, hash verification, and atomic installation. A marketplace entry is data, never a way
-to grant a pet executable capability.
+- `builtin`: the code-native Hara companion;
+- `hara-local`: installed or locally generated packages under `~/.hara/pets`;
+- `codex-local`: read-only compatibility discovery under `~/.codex/pets`;
+- `hara-market`: signed remote metadata whose downloaded bytes are installed into `hara-local`.
+
+Selectors stored in user settings are opaque, provider-qualified logical IDs. Filesystem paths and
+CDN URLs are never selectors. An explicit Codex-to-Hara import creates a new `hara` selector only
+after validation rather than silently remapping the existing read-only selector.
+
+## Generation contract
+
+The first Hara generator should be a local skill, not a server dependency. It produces a v2 package
+containing only:
+
+- `pet.json` with stable ID, display name, author, semantic version, sprite format, minimum Hara
+  version, license, and provenance declarations;
+- the exact 1536 × 2288 atlas with all nine standard animation rows and sixteen look directions;
+- a bounded preview image plus a machine-readable validation report containing image dimensions and
+  SHA-256 values.
+
+Generation defaults to private and local. Publishing is a separate, explicit operation with a final
+preview, license/provenance confirmation, and moderation result. The generation skill may use local or
+remote image models, but API credentials stay in Hara's credential boundary and never enter the pet
+package. A hosted generation worker is useful only after Hara needs cross-device generation, quotas,
+billing, or centrally enforced safety policy.
+
+## Marketplace architecture
+
+```mermaid
+flowchart LR
+  G[Local generation skill] -->|validate + explicit publish| I[Creator ingestion]
+  I --> Q[Schema, malware, license and visual moderation]
+  Q --> O[Immutable object storage + CDN]
+  Q --> DB[(Catalog database)]
+  DB --> S[Signed catalog snapshot/API]
+  O -->|bounded HTTPS download| D[Hara Desktop installer]
+  S -->|manifest + hashes + key ID| D
+  D --> V[Native validator]
+  V -->|atomic install| L[~/.hara/pets]
+  A[OIDC account service] -. optional identity / entitlement .-> S
+  A -. creator identity .-> I
+```
+
+The minimum service is deliberately small:
+
+1. Immutable object storage and a CDN for atlases, previews, and manifests.
+2. A public read-only catalog API or versioned static snapshot.
+3. An offline/CI-controlled Ed25519 catalog signer. Entries bind package ID, version, byte length,
+   SHA-256, compatibility, and asset URLs; clients ship trusted public keys and support key rotation.
+4. A creator-ingestion worker that unpacks into an isolated temporary area, rejects links and extra
+   executable content, runs the same native geometry/schema validator, and queues license and visual
+   moderation before publication.
+5. A small catalog database for publishers, pets, immutable versions, moderation state, and optional
+   entitlements. Install state remains local and need not be tracked by the server.
+
+Remote installation is always: fetch signed metadata, enforce HTTPS and bounded redirects/bytes,
+download to a staging directory, verify length and SHA-256, validate schema and image dimensions,
+then atomically rename into `~/.hara/pets/<id>`. Failed updates preserve the last valid version. A
+marketplace package is inert data and can never grant scripts, tools, commands, HTML, or plugin
+permissions.
+
+## Login boundary
+
+Login is not a prerequisite for the first marketplace release. Browsing, installing free public pets,
+local generation, import, uninstall, and update checks should work without an account. This keeps the
+first server surface cacheable and avoids coupling the pet overlay to service availability.
+
+Add accounts only for a concrete identity-bearing feature:
+
+- creator publishing and ownership;
+- paid/private entitlements;
+- ratings, favourites, or cross-device library sync;
+- hosted generation quotas or billing.
+
+Desktop authentication should use an external browser with OAuth/OIDC authorization code + PKCE (or
+device authorization where deep links are unavailable). Access and refresh tokens belong in the OS
+credential store, never localStorage, a project file, `.env`, logs, or chat. The pet renderer receives
+no token; only the main trusted process talks to the account/catalog service. Logout revokes tokens but
+does not silently delete locally installed public packages.
+
+## Delivery phases
+
+1. **Local foundation (current):** built-in Hara pet plus validated Hara/Codex v1/v2 discovery.
+2. **Independent creation:** publish the Hara v2 generation/validation skill and explicit local import;
+   add install receipts (`source`, version, hashes, license) without adding an account.
+3. **Open market:** signed public catalog, CDN downloads, atomic install/update/rollback, no login.
+4. **Creator accounts:** OIDC/PKCE, submission, provenance and moderation console.
+5. **Entitlements and sync:** introduce login for paid/private content or cross-device state only when
+   those product requirements exist.
+
+CLI may render compatible pets only when its terminal image protocol supports them. Desktop, CLI, the
+market, and the generator all consume the same package contract; none of them owns or changes agent
+execution.

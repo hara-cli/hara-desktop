@@ -6,6 +6,8 @@ use std::path::{Component, Path, PathBuf};
 
 const MAX_PET_MANIFEST_BYTES: u64 = 64 * 1024;
 const MAX_PET_ASSET_BYTES: u64 = 20 * 1024 * 1024;
+const MAX_PET_CATALOG_SCAN_ENTRIES: usize = 512;
+const MAX_PET_CATALOG_ENTRIES: usize = 256;
 const PET_SHEET_WIDTH: u32 = 1536;
 const PET_FRAME_WIDTH: u32 = 192;
 const PET_FRAME_HEIGHT: u32 = 208;
@@ -218,8 +220,10 @@ fn scan_pet_root(source: &str) -> Vec<PetCatalogEntry> {
     let Ok(entries) = fs::read_dir(root) else {
         return Vec::new();
     };
-    let mut catalog = Vec::new();
-    for entry in entries.flatten() {
+    // A user-controlled local directory must not make Settings perform an unbounded scan/decode.
+    // Collect a bounded candidate set first, sort it for a stable UI, and validate at most 256.
+    let mut directories = Vec::new();
+    for entry in entries.flatten().take(MAX_PET_CATALOG_SCAN_ENTRIES) {
         let Ok(file_type) = entry.file_type() else {
             continue;
         };
@@ -230,6 +234,18 @@ fn scan_pet_root(source: &str) -> Vec<PetCatalogEntry> {
         if selector_parts(&format!("{source}:{directory}")).is_err() {
             continue;
         }
+        directories.push(directory);
+    }
+    directories.sort_by_key(|directory| directory.to_lowercase());
+    directories.dedup();
+
+    let catalog_source = match source {
+        "hara" => "hara-local",
+        "codex" => "codex-local",
+        _ => return Vec::new(),
+    };
+    let mut catalog = Vec::new();
+    for directory in directories.into_iter().take(MAX_PET_CATALOG_ENTRIES) {
         let selector = format!("{source}:{directory}");
         match read_pet(&selector) {
             Ok(pet) => catalog.push(PetCatalogEntry {
@@ -244,7 +260,7 @@ fn scan_pet_root(source: &str) -> Vec<PetCatalogEntry> {
                     120,
                 ),
                 description: display_text(pet.manifest.description.as_deref(), "", 500),
-                source: source.to_string(),
+                source: catalog_source.to_string(),
                 sprite_version_number: Some(pet.version),
                 rows: Some(pet.rows),
                 compatible: true,
@@ -255,7 +271,7 @@ fn scan_pet_root(source: &str) -> Vec<PetCatalogEntry> {
                 id: directory.clone(),
                 display_name: directory,
                 description: String::new(),
-                source: source.to_string(),
+                source: catalog_source.to_string(),
                 sprite_version_number: None,
                 rows: None,
                 compatible: false,

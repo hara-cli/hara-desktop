@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   acknowledgePetActivity,
+  BUILTIN_HARA_PET,
   selectPetSnapshot,
   setPetActivity,
 } from "../src/pets.ts";
+
+test("built-in pet provenance is independent from local and future market providers", () => {
+  assert.equal(BUILTIN_HARA_PET.source, "builtin");
+  assert.equal(BUILTIN_HARA_PET.selector, "builtin:hara");
+});
 
 test("pet activity priority matches needs-input, blocked, ready, running", () => {
   let activities = {};

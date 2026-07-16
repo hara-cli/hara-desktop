@@ -1613,7 +1613,14 @@ export default function App() {
                 <div className="pet-hint dim">{t("petHint")}</div>
                 <div className="pet-grid">
                   {[BUILTIN_HARA_PET, ...petCatalog].map((pet) => {
-                    const source = pet.selector === BUILTIN_HARA_PET.selector ? t("petBuiltin") : pet.source === "codex" ? t("petCodex") : t("petHaraLocal");
+                    const source =
+                      pet.source === "builtin"
+                        ? t("petBuiltin")
+                        : pet.source === "codex-local"
+                          ? t("petCodex")
+                          : pet.source === "hara-market"
+                            ? t("petMarket")
+                            : t("petHaraLocal");
                     return (
                       <button
                         key={pet.selector}
