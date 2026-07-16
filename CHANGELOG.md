@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.19 — hara 0.124.1 task pets, navigation visibility, and Windows sidecar recovery
+## 0.1.20 — hara 0.124.1 task pets, navigation visibility, and Windows sidecar recovery
 
 - Keep the four left navigation icons at their intended 19 px size and raise inactive contrast. The
   global button padding had reduced a 34 px rail button to a 2 px flex content box, shrinking each
@@ -26,6 +26,18 @@
 - Compile the Windows sidecar from the already installed and SHA-256-verified native baseline Bun
   runtime instead of asking Bun 1.3.9 to download that same target runtime a second time. Sanitize the
   macOS keychain search list so malformed stale entries cannot survive a protected signing build.
+- Make the protected signer compatible with macOS Bash 3.2 when its original keychain list starts
+  empty, and require an explicit verified-completion sentinel so a fatal shell error can never be
+  mistaken for a successful signing step. Store atomic, per-run architecture provenance outside
+  Tauri-owned bundle directories and invalidate stale markers before every attempt.
+
+## 0.1.19 — WITHHELD (never published; hara 0.124.1)
+
+> All four native lanes, installer extraction checks, updater signatures, and hidden-draft assembly
+> passed. On the protected macOS runner, Bash 3.2 rejected empty-array iteration under `set -u` before
+> either signed build started, then supplied a false zero status to the EXIT cleanup trap. The final
+> promotion still failed closed because both signed-build provenance markers were absent. No signed
+> asset, installer, or updater was published; upgrade directly from `0.1.10` or earlier to `0.1.20`.
 
 ## 0.1.18 — WITHHELD (never published; hara 0.124.0)
 
@@ -33,21 +45,21 @@
 > compiled successfully, then failed the isolated `doctor` smoke while opening a newly created
 > `.hara-private-*.tmp` staging file. The root cause was CLI 0.124.0's non-portable numeric POSIX open
 > flags and Windows descriptor/path identity assumptions. No installer or updater was exposed;
-> upgrade directly from `0.1.10` or earlier to `0.1.19`.
+> upgrade directly from `0.1.10` or earlier to `0.1.20`.
 
 ## 0.1.17 — WITHHELD (never published; hara 0.124.0)
 
 > The release stayed hidden. Windows installed and SHA-256-verified the pinned baseline Bun runtime,
 > but an explicit same-target compile made Bun 1.3.9 download it again and that redundant transfer
 > timed out before packaging. No installer or updater was exposed. Upgrade directly from `0.1.10` or
-> earlier to `0.1.19`.
+> earlier to `0.1.20`.
 
 ## 0.1.16 — WITHHELD (never published; hara 0.122.7)
 
 > All native build lanes, installer extraction checks, updater signatures, and hidden-draft assembly
 > passed. The protected macOS worker could enumerate but not use the login-keychain private key, so
 > Developer ID signing failed closed and the draft was never published. Upgrade directly from
-> `0.1.10` or earlier to `0.1.19`.
+> `0.1.10` or earlier to `0.1.20`.
 
 - Bundle hara CLI `0.122.7`, retaining the standalone boundary that disables Bun's ambient `.env`
   and `bunfig.toml` loaders before the Desktop sidecar starts. Resumed sessions now continue their
@@ -97,7 +109,7 @@
 > and the 14-asset aggregation passed. Draft assembly then used GitHub's tag endpoint to look up the
 > unpublished release; that endpoint returned 404 for the otherwise visible hidden draft. The empty
 > draft was deleted, no installer or updater was exposed, and the immutable tag remains at its
-> original commit. Upgrade directly from `0.1.10` or earlier to `0.1.19`.
+> original commit. Upgrade directly from `0.1.10` or earlier to `0.1.20`.
 
 ## 0.1.14 — WITHHELD (never published)
 
@@ -105,25 +117,25 @@
 > compilation, and both Windows installers passed signature, extraction, and native sidecar smoke.
 > Tauri then normalized `Cargo.toml` from CRLF to LF, so the clean-worktree release gate correctly
 > stopped collection. No `0.1.14` installer or updater was exposed. Upgrade directly from `0.1.10`
-> or earlier to `0.1.19`.
+> or earlier to `0.1.20`.
 
 ## 0.1.13 — WITHHELD (never published)
 
 > The tag candidate remained a hidden draft: Bun 1.3.9's Windows standalone compiler repeatedly
 > failed to extract its baseline target runtime even though the upstream package was present and
 > valid. The bounded retries failed closed and no `0.1.13` installer or updater was exposed. Upgrade
-> directly from `0.1.10` or earlier to `0.1.19`.
+> directly from `0.1.10` or earlier to `0.1.20`.
 
 ## 0.1.12 — WITHHELD (never published)
 
 > The tag candidate remained a hidden draft: its Windows lane received an incomplete Bun target
 > download and Ubuntu's `rpm2cpio` rejected the generated RPM. No `0.1.12` installer or updater was
-> exposed. Upgrade directly from `0.1.10` or earlier to `0.1.19`.
+> exposed. Upgrade directly from `0.1.10` or earlier to `0.1.20`.
 
 ## 0.1.11 — WITHDRAWN (hara 0.122.2)
 
 > Withdrawn from automatic updates on 2026-07-14. The bundled Bun standalone could fail at startup
-> when `SharedArrayBuffer` was unavailable. Keep using `0.1.10` or upgrade directly to `0.1.19`.
+> when `SharedArrayBuffer` was unavailable. Keep using `0.1.10` or upgrade directly to `0.1.20`.
 
 - Bundle the released hara CLI `0.122.2`, with explicit trust boundaries for project configuration,
   permissions, profiles, sensitive files, Git history, subprocess environments, and external agents.
