@@ -171,7 +171,7 @@ if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
       public_target="x86_64-apple-darwin"
     fi
     node scripts/stapler-validate.mjs "$public_dmg" "public $public_target DMG notarization staple"
-    spctl -a -t open --context context:primary-signature -v "$public_dmg"
+    /usr/sbin/spctl -a -t open --context context:primary-signature -v "$public_dmg"
     HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-dmg-smoke.mjs \
       "$public_dmg" "$public_target" --require-signatures
   done
@@ -219,7 +219,7 @@ for spec in \
   "$X64_DMG|$X64_BASE/macos/Hara.app|x86_64"; do
   IFS='|' read -r dmg app expected_arch <<<"$spec"
   node scripts/stapler-validate.mjs "$dmg" "local $expected_arch DMG notarization staple"
-  spctl -a -t open --context context:primary-signature -v "$dmg"
+  /usr/sbin/spctl -a -t open --context context:primary-signature -v "$dmg"
   codesign --verify --deep --strict --verbose=2 "$app"
   app_archs="$(/usr/bin/lipo -archs "$app/Contents/MacOS/hara-desktop")"
   case " $app_archs " in
@@ -288,7 +288,7 @@ for arch in aarch64 x64; do
     remote_target="x86_64-apple-darwin"
   fi
   node scripts/stapler-validate.mjs "$remote_dmg" "remote $remote_target DMG notarization staple"
-  spctl -a -t open --context context:primary-signature -v "$remote_dmg"
+  /usr/sbin/spctl -a -t open --context context:primary-signature -v "$remote_dmg"
   HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-dmg-smoke.mjs \
     "$remote_dmg" "$remote_target" --require-signatures
 done
@@ -358,7 +358,7 @@ for arch in aarch64 x64; do
   curl --fail --location --retry 5 --retry-all-errors \
     --output "$public_dmg" \
     "https://github.com/$REPO/releases/download/$TAG/Hara_${VER}_${arch}.dmg"
-  spctl -a -t open --context context:primary-signature -v "$public_dmg"
+  /usr/sbin/spctl -a -t open --context context:primary-signature -v "$public_dmg"
 done
 LATEST_MATCHED=0
 for attempt in {1..12}; do

@@ -127,6 +127,9 @@ until then, documentation and release notices must disclose possible SmartScreen
 - Apple `stapler validate` goes through `scripts/stapler-validate.mjs` everywhere. It retries only
   explicit CloudKit/network service failures three times with bounded command deadlines; a missing
   ticket, invalid signature, or final transient failure is never waived.
+- The protected runner uses a non-login Actions shell. Invoke system security tools outside the
+  guaranteed `/usr/bin` PATH by absolute path (notably `/usr/sbin/spctl`); never assume an interactive
+  user's `/usr/sbin` PATH is present.
 - Put the signing Mac in a dedicated runner group restricted to `hara-cli/hara-desktop` and the
   release workflow; never schedule pull requests or ordinary CI on it. Prefer an ephemeral runner,
   or clean the workspace completely after every run.

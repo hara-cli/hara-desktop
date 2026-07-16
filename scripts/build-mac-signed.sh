@@ -293,8 +293,8 @@ DMG="$RELEASE_BASE/bundle/dmg/Hara_${DESKTOP_VERSION}_${DMG_ARCH}.dmg"
 echo "▸ notarizing dmg container: $DMG"
 xcrun notarytool submit "$DMG" --key "$P8" --key-id "$KEY_ID" --issuer "$ISSUER" --wait
 xcrun stapler staple "$DMG"
-spctl -a -t open --context context:primary-signature -v "$DMG"
-spctl -a -vv "$APP"
+/usr/sbin/spctl -a -t open --context context:primary-signature -v "$DMG"
+/usr/sbin/spctl -a -vv "$APP"
 node scripts/mac-dmg-smoke.mjs "$DMG" "$TARGET" --require-signatures
 [ -z "$(git status --porcelain)" ] && [ "$(git rev-parse HEAD)" = "$DESKTOP_COMMIT" ] || {
   echo "error: hara-desktop source changed during the signed release build" >&2

@@ -284,6 +284,15 @@ test("Apple staple validation retries only bounded transient service failures", 
   assert.doesNotMatch(promotion, /xcrun stapler validate/);
 });
 
+test("protected Gatekeeper checks never depend on a login-shell PATH", () => {
+  const signedBuild = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
+  const promotion = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
+  for (const script of [signedBuild, promotion]) {
+    assert.match(script, /\/usr\/sbin\/spctl/);
+    assert.doesNotMatch(script, /(?:^|\n)\s*spctl\b/);
+  }
+});
+
 test("signed builds select pinned Rust and preflight a dedicated unlocked keychain", () => {
   const toolchain = readFileSync(join(root, "scripts/check-build-toolchain.sh"), "utf8");
   const script = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
