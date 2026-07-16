@@ -3,7 +3,7 @@
 // marker is not a replacement for code signing; it prevents accidentally promoting stale output
 // left in target/ from a different commit.
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireGitCommit, requireStableTag } from "./release-policy.mjs";
@@ -15,11 +15,19 @@ const sidecarCommit = requireGitCommit(
   readFileSync(join(root, "src-tauri", "binaries", "SIDECAR_COMMIT"), "utf8").trim(),
   "locked sidecar commit",
 );
-const [, , command, bundleArgument, target, tag, desktopCommit, cliCommit] = process.argv;
+const [, , command, bundleArgument, markerDirectoryArgument, target, tag, desktopCommit, cliCommit] = process.argv;
 
-if (!bundleArgument || !target || !tag || !desktopCommit || !cliCommit || !["write", "verify"].includes(command)) {
+if (
+  !bundleArgument ||
+  !markerDirectoryArgument ||
+  !target ||
+  !tag ||
+  !desktopCommit ||
+  !cliCommit ||
+  !["write", "verify"].includes(command)
+) {
   console.error(
-    "usage: node scripts/release-provenance.mjs <write|verify> <bundle-directory> <target> <tag> <desktop-commit> <cli-commit>",
+    "usage: node scripts/release-provenance.mjs <write|verify> <bundle-directory> <marker-directory> <target> <tag> <desktop-commit> <cli-commit>",
   );
   process.exit(2);
 }
@@ -35,12 +43,13 @@ const architecture =
 if (!architecture) throw new Error(`unsupported signed Mac target: ${target}`);
 
 const bundle = resolve(bundleArgument);
+const markerDirectory = resolve(markerDirectoryArgument);
 const paths = {
   dmg: join(bundle, "dmg", `Hara_${version}_${architecture}.dmg`),
   updaterArchive: join(bundle, "macos", "Hara.app.tar.gz"),
   updaterSignature: join(bundle, "macos", "Hara.app.tar.gz.sig"),
 };
-const marker = join(bundle, `hara-release-provenance-${target}.json`);
+const marker = join(markerDirectory, `hara-release-provenance-${target}.json`);
 
 function sha256(path) {
   if (!existsSync(path) || !statSync(path).isFile() || statSync(path).size === 0) {
@@ -64,7 +73,10 @@ function expected() {
 
 if (command === "write") {
   const value = expected();
-  writeFileSync(marker, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  mkdirSync(markerDirectory, { recursive: true, mode: 0o700 });
+  const temporaryMarker = `${marker}.${process.pid}.tmp`;
+  writeFileSync(temporaryMarker, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  renameSync(temporaryMarker, marker);
   console.log(`release-provenance: wrote ${marker}`);
 } else {
   if (!existsSync(marker)) throw new Error(`release provenance marker is missing: ${marker}`);

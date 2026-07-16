@@ -69,6 +69,8 @@ fi
 VER="${TAG#v}"
 ARM_BASE="src-tauri/target/release/bundle"
 X64_BASE="src-tauri/target/x86_64-apple-darwin/release/bundle"
+PROVENANCE_RUN="${GITHUB_RUN_ID:-local}"
+PROVENANCE_DIR="${HARA_RELEASE_PROVENANCE_DIR:-${RUNNER_TEMP:-$PWD/src-tauri/target}/hara-release-provenance/$PROVENANCE_RUN/$TAG}"
 WORK="$(mktemp -d)"
 ASSET_DIR="$WORK/assets"
 REMOTE_DIR="$WORK/remote"
@@ -190,9 +192,9 @@ fi
 }
 
 node scripts/release-provenance.mjs verify \
-  "$ARM_BASE" aarch64-apple-darwin "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
+  "$ARM_BASE" "$PROVENANCE_DIR" aarch64-apple-darwin "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
 node scripts/release-provenance.mjs verify \
-  "$X64_BASE" x86_64-apple-darwin "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
+  "$X64_BASE" "$PROVENANCE_DIR" x86_64-apple-darwin "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
 
 ARM_DMG="$ARM_BASE/dmg/Hara_${VER}_aarch64.dmg"
 X64_DMG="$X64_BASE/dmg/Hara_${VER}_x64.dmg"

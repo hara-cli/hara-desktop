@@ -11,12 +11,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/release-shell-safety.sh
+source scripts/release-shell-safety.sh
+
 CODESIGN_KEYCHAIN="${HARA_CODESIGN_KEYCHAIN:-$HOME/Library/Keychains/hara-ci-signing.keychain-db}"
 CODESIGN_PASSWORD_FILE="${HARA_CODESIGN_KEYCHAIN_PASSWORD_FILE:-$HOME/.tauri/hara-codesign-keychain.password}"
 CODESIGN_KEYCHAIN_UNLOCKED=0
 CODESIGN_PROBE_DIR=""
 KEYCHAIN_LIST_CHANGED=0
 ORIGINAL_KEYCHAINS=()
+ORIGINAL_KEYCHAIN_COUNT=0
+SIGNED_BUILD_COMPLETED=0
 clear_signing_environment() {
   unset APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
   unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
@@ -25,7 +30,7 @@ clear_signing_environment() {
     rm -rf "$CODESIGN_PROBE_DIR"
     CODESIGN_PROBE_DIR=""
   fi
-  if [ "$KEYCHAIN_LIST_CHANGED" = "1" ] && [ "${#ORIGINAL_KEYCHAINS[@]}" -gt 0 ]; then
+  if [ "$KEYCHAIN_LIST_CHANGED" = "1" ] && [ "$ORIGINAL_KEYCHAIN_COUNT" -gt 0 ]; then
     security list-keychains -d user -s "${ORIGINAL_KEYCHAINS[@]}" >/dev/null 2>&1 || true
     KEYCHAIN_LIST_CHANGED=0
   fi
@@ -34,7 +39,7 @@ clear_signing_environment() {
     CODESIGN_KEYCHAIN_UNLOCKED=0
   fi
 }
-trap clear_signing_environment EXIT
+trap 'hara_exit_with_cleanup "${SIGNED_BUILD_COMPLETED:-0}" clear_signing_environment' EXIT
 
 # Fail before touching signing material when a login shell resolves an old Node, an unpinned Bun,
 # or the Intel Rust toolchain on an Apple Silicon release machine.
@@ -110,6 +115,11 @@ case "$TARGET" in
     exit 1
     ;;
 esac
+PROVENANCE_RUN="${GITHUB_RUN_ID:-local}"
+PROVENANCE_DIR="${HARA_RELEASE_PROVENANCE_DIR:-${RUNNER_TEMP:-$PWD/src-tauri/target}/hara-release-provenance/$PROVENANCE_RUN/$DESKTOP_TAG}"
+# A failed architecture build must never leave a marker that lets promotion consume stale output
+# from an earlier attempt on the persistent signing runner.
+rm -f "$PROVENANCE_DIR/hara-release-provenance-$TARGET.json"
 
 command -v rustup >/dev/null 2>&1 || {
   echo "error: rustup is required to verify the installed release target" >&2
@@ -159,11 +169,13 @@ security set-keychain-settings -lut 21600 "$CODESIGN_KEYCHAIN"
 append_original_keychain() {
   local candidate="$1"
   [ -f "$candidate" ] || return 0
-  local existing
-  for existing in "${ORIGINAL_KEYCHAINS[@]}"; do
+  local existing index
+  for ((index = 0; index < ORIGINAL_KEYCHAIN_COUNT; index += 1)); do
+    existing="${ORIGINAL_KEYCHAINS[$index]}"
     [ "$existing" = "$candidate" ] && return 0
   done
-  ORIGINAL_KEYCHAINS+=("$candidate")
+  ORIGINAL_KEYCHAINS[$ORIGINAL_KEYCHAIN_COUNT]="$candidate"
+  ORIGINAL_KEYCHAIN_COUNT=$((ORIGINAL_KEYCHAIN_COUNT + 1))
 }
 
 while IFS= read -r keychain; do
@@ -177,7 +189,8 @@ done < <(security list-keychains -d user)
 append_original_keychain "$HOME/Library/Keychains/login.keychain-db"
 append_original_keychain "$HOME/Library/Keychains/VIP.UserKeychain.1.0.0-503-db"
 SEARCH_KEYCHAINS=("$CODESIGN_KEYCHAIN")
-for keychain in "${ORIGINAL_KEYCHAINS[@]}"; do
+for ((index = 0; index < ORIGINAL_KEYCHAIN_COUNT; index += 1)); do
+  keychain="${ORIGINAL_KEYCHAINS[$index]}"
   [ "$keychain" = "$CODESIGN_KEYCHAIN" ] || SEARCH_KEYCHAINS+=("$keychain")
 done
 security list-keychains -d user -s "${SEARCH_KEYCHAINS[@]}"
@@ -277,5 +290,6 @@ node scripts/mac-dmg-smoke.mjs "$DMG" "$TARGET" --require-signatures
   exit 1
 }
 node scripts/release-provenance.mjs write \
-  "$RELEASE_BASE/bundle" "$TARGET" "$DESKTOP_TAG" "$DESKTOP_COMMIT" "$CLI_COMMIT"
+  "$RELEASE_BASE/bundle" "$PROVENANCE_DIR" "$TARGET" "$DESKTOP_TAG" "$DESKTOP_COMMIT" "$CLI_COMMIT"
 echo "✓ signed + notarized: $DMG"
+SIGNED_BUILD_COMPLETED=1

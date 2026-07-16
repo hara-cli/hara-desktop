@@ -60,7 +60,11 @@ CLI/Desktop tags, both architectures, the sidecar before and after Developer ID 
 `Hara.app`, then notarizes/staples both DMGs. Matrix receipts and the public source-provenance asset
 bind every platform to the committed Desktop/CLI source locks and Node/Bun/Rust versions; every updater artifact receives
 streaming minisign verification against the public key embedded in `tauri.conf.json`. The promotion
-job re-downloads and validates the entire draft before it alone promotes stable. Afterward,
+job also requires run-scoped, atomic provenance markers for both signed Mac architectures. Those markers
+live outside Tauri-owned bundle directories, are invalidated before each attempt, and can be written only
+after signing, notarization, and package smoke complete. The signing script uses an explicit completion
+sentinel because macOS Bash 3.2 can otherwise report some fatal `set -u` exits as status zero. The job
+re-downloads and validates the entire draft before it alone promotes stable. Afterward,
 send the required notice to Feishu `hara 反馈群` and reply to the original fixed bug reports.
 Repository settings must keep immutable releases enabled and `hara-desktop-production` restricted
 to exactly one custom deployment policy, the `v*` tag policy, with no manual reviewer rule. An

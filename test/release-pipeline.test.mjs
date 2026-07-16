@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -70,6 +70,15 @@ function writeReceiptFixture(directory, { mismatchedCliTarget } = {}) {
   }
 }
 
+function writeMacProvenanceFixture(bundle, target) {
+  const architecture = target === "aarch64-apple-darwin" ? "aarch64" : "x64";
+  mkdirSync(join(bundle, "dmg"), { recursive: true });
+  mkdirSync(join(bundle, "macos"), { recursive: true });
+  writeFileSync(join(bundle, "dmg", `Hara_${version}_${architecture}.dmg`), `${target} dmg\n`);
+  writeFileSync(join(bundle, "macos", "Hara.app.tar.gz"), `${target} updater\n`);
+  writeFileSync(join(bundle, "macos", "Hara.app.tar.gz.sig"), `${target} signature\n`);
+}
+
 test("stable policy rejects prerelease versions and tags", () => {
   assert.equal(requireStableVersion("1.2.3"), "1.2.3");
   assert.equal(requireStableTag("v1.2.3", "1.2.3"), "v1.2.3");
@@ -91,6 +100,122 @@ test("release source provenance binds Desktop, CLI, build toolchains, and every 
     () => assertReleaseSource({ ...expected, cliCommit: "3".repeat(40) }, expected),
     /does not match/,
   );
+});
+
+test("signed Mac provenance is atomic, run-scoped, and independent from Tauri bundle cleanup", () => {
+  const directory = mkdtempSync(join(tmpdir(), "hara-signed-provenance-"));
+  const markerDirectory = join(directory, "markers", "run-123", `v${version}`);
+  const armBundle = join(directory, "arm-bundle");
+  const x64Bundle = join(directory, "x64-bundle");
+  try {
+    for (const [bundle, target] of [
+      [armBundle, "aarch64-apple-darwin"],
+      [x64Bundle, "x86_64-apple-darwin"],
+    ]) {
+      writeMacProvenanceFixture(bundle, target);
+      const written = run(node, [
+        "scripts/release-provenance.mjs",
+        "write",
+        bundle,
+        markerDirectory,
+        target,
+        `v${version}`,
+        desktopCommit,
+        cliCommit,
+      ]);
+      assert.equal(written.status, 0, written.stderr);
+      assert.equal(
+        existsSync(join(markerDirectory, `hara-release-provenance-${target}.json`)),
+        true,
+      );
+      assert.equal(
+        existsSync(join(bundle, `hara-release-provenance-${target}.json`)),
+        false,
+        "Tauri-owned bundle directories must not own promotion markers",
+      );
+    }
+
+    for (const [bundle, target] of [
+      [armBundle, "aarch64-apple-darwin"],
+      [x64Bundle, "x86_64-apple-darwin"],
+    ]) {
+      const verified = run(node, [
+        "scripts/release-provenance.mjs",
+        "verify",
+        bundle,
+        markerDirectory,
+        target,
+        `v${version}`,
+        desktopCommit,
+        cliCommit,
+      ]);
+      assert.equal(verified.status, 0, verified.stderr);
+    }
+
+    writeFileSync(join(armBundle, "macos", "Hara.app.tar.gz"), "tampered\n");
+    const tampered = run(node, [
+      "scripts/release-provenance.mjs",
+      "verify",
+      armBundle,
+      markerDirectory,
+      "aarch64-apple-darwin",
+      `v${version}`,
+      desktopCommit,
+      cliCommit,
+    ]);
+    assert.notEqual(tampered.status, 0);
+    assert.match(tampered.stderr, /do not match their tagged build provenance/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("signed build cleanup preserves the original failure on macOS Bash 3.2", () => {
+  const signedBuild = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
+  const shellSafety = readFileSync(join(root, "scripts/release-shell-safety.sh"), "utf8");
+  assert.match(signedBuild, /source scripts\/release-shell-safety\.sh/);
+  assert.match(
+    signedBuild,
+    /trap 'hara_exit_with_cleanup "\$\{SIGNED_BUILD_COMPLETED:-0\}" clear_signing_environment' EXIT/,
+  );
+  assert.match(signedBuild, /SIGNED_BUILD_COMPLETED=1\s*$/);
+  assert.match(signedBuild, /ORIGINAL_KEYCHAIN_COUNT=0/);
+  assert.doesNotMatch(signedBuild, /for (?:existing|keychain) in "\$\{ORIGINAL_KEYCHAINS\[@\]\}"/);
+  assert.match(
+    shellSafety,
+    /local status="\$\?"[\s\S]*completed[\s\S]*trap - EXIT[\s\S]*completed.*status[\s\S]*exit "\$status"/,
+  );
+
+  const preserved = run("/bin/bash", [
+    "-c",
+    [
+      "set -euo pipefail",
+      "source scripts/release-shell-safety.sh",
+      'cleanup() { printf "cleanup-ran\\n"; }',
+      "trap 'hara_exit_with_cleanup 0 cleanup' EXIT",
+      "exit 37",
+    ].join("\n"),
+  ]);
+  assert.equal(preserved.status, 37, preserved.stderr);
+  assert.match(preserved.stdout, /cleanup-ran/);
+
+  const bashMajor = run("/bin/bash", ["-c", 'printf "%s" "${BASH_VERSINFO[0]}"']);
+  if (bashMajor.stdout === "3") {
+    const nounsetFailure = run("/bin/bash", [
+      "-c",
+      [
+        "set -euo pipefail",
+        "source scripts/release-shell-safety.sh",
+        'cleanup() { printf "cleanup-ran\\n"; }',
+        "trap 'hara_exit_with_cleanup 0 cleanup' EXIT",
+        "empty=()",
+        'explode() { printf "%s" "${empty[@]}"; }',
+        "explode",
+      ].join("\n"),
+    ]);
+    assert.notEqual(nounsetFailure.status, 0, nounsetFailure.stderr);
+    assert.match(nounsetFailure.stdout, /cleanup-ran/);
+  }
 });
 
 test("matrix receipt aggregation accepts only one pinned source identity", () => {
