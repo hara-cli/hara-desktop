@@ -4,6 +4,7 @@
 // settings. The two minds never share a list; each has a permanent target anchor.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
@@ -13,6 +14,24 @@ import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
 import HaraLogo from "./mark";
+import {
+  acknowledgePetActivity,
+  BUILTIN_HARA_PET,
+  clearPetActivity,
+  selectPetSnapshot,
+  setPetActivity,
+  type ActivePetStatus,
+  type PetActivities,
+  type PetCatalogEntry,
+} from "./pets";
+import {
+  DEFAULT_PET_SELECTOR,
+  emitPetConfig,
+  emitPetState,
+  PET_AWAKE_KEY,
+  PET_SELECTOR_KEY,
+  syncPetWindow,
+} from "./pet-runtime";
 import "./App.css";
 
 type Item =
@@ -105,7 +124,7 @@ export default function App() {
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [panelBusy, setPanelBusy] = useState("");
   // settings place: context column = group anchors, stage = the selected group's forms
-  const [setSec, setSetSec] = useState<"engine" | "security" | "lang" | "plugins" | "skills">("engine");
+  const [setSec, setSetSec] = useState<"engine" | "security" | "lang" | "pets" | "plugins" | "skills">("engine");
   // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [split, setSplit] = useState<{ id: string; title: string; url: string } | null>(null);
@@ -126,6 +145,13 @@ export default function App() {
     }
   };
   const [auto, setAuto] = useState<{ jobs: CronJobInfo[]; sessions: SessionInfo[] } | null | "old-server">(null);
+  const [petAwake, setPetAwake] = useState(() => localStorage.getItem(PET_AWAKE_KEY) === "1");
+  const [petSelector, setPetSelector] = useState(() => localStorage.getItem(PET_SELECTOR_KEY) || DEFAULT_PET_SELECTOR);
+  const [petActivities, setPetActivities] = useState<PetActivities>({});
+  const [petCatalog, setPetCatalog] = useState<PetCatalogEntry[]>([]);
+  const [petCatalogError, setPetCatalogError] = useState("");
+  const petSelectorRef = useRef(petSelector);
+  const petActivitiesRef = useRef(petActivities);
   // 🤖 place: read-only replay of an automated run (never a live conversation — fork to continue)
   const [autoReplay, setAutoReplay] = useState<{ id: string; title: string; sourceName?: string; cwd: string; items: { role: string; text: string }[] } | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -164,6 +190,41 @@ export default function App() {
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
+  const interruptedSessionsRef = useRef(new Set<string>());
+  const openPetSessionRef = useRef<(sessionId: string) => Promise<void>>(async () => {});
+  const petTitle = (sessionId: string): string => sessionsRef.current.find((session) => session.id === sessionId)?.title || "Hara task";
+  const notePet = useCallback((sessionId: string, status: ActivePetStatus) => {
+    setPetActivities((activities) => setPetActivity(activities, sessionId, status, petTitle(sessionId)));
+  }, []);
+  const acknowledgePet = useCallback((sessionId: string) => {
+    setPetActivities((activities) => acknowledgePetActivity(activities, sessionId));
+  }, []);
+  const removePet = useCallback((sessionId: string) => {
+    setPetActivities((activities) => clearPetActivity(activities, sessionId));
+  }, []);
+  const refreshPets = useCallback(async () => {
+    setPetCatalogError("");
+    try {
+      setPetCatalog(await invoke<PetCatalogEntry[]>("list_pets"));
+    } catch (error) {
+      setPetCatalog([]);
+      setPetCatalogError(String(error));
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(PET_AWAKE_KEY, petAwake ? "1" : "0");
+    void syncPetWindow(petAwake).catch((error) => setPetCatalogError(String(error)));
+  }, [petAwake]);
+  useEffect(() => {
+    localStorage.setItem(PET_SELECTOR_KEY, petSelector);
+    petSelectorRef.current = petSelector;
+    if (petAwake) void emitPetConfig({ selector: petSelector }).catch(() => {});
+  }, [petAwake, petSelector]);
+  useEffect(() => {
+    petActivitiesRef.current = petActivities;
+    if (petAwake) void emitPetState(selectPetSnapshot(petActivities)).catch(() => {});
+  }, [petActivities, petAwake]);
   const [q, setQ] = useState("");
   const [upd, setUpd] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -214,6 +275,7 @@ export default function App() {
         setPlugins(pl.plugins);
         setSkills(sk.skills);
       });
+      void refreshPets();
     }
     if (z === "auto" && clientRef.current) {
       void clientRef.current.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
@@ -231,22 +293,31 @@ export default function App() {
       if (!c) return;
       push(sessionId, (items) => [...items, { kind: "user", text: images?.length ? `${text}  🖼×${images.length}` : text }]);
       setBusy((b) => ({ ...b, [sessionId]: true }));
+      notePet(sessionId, "running");
       try {
         await c.send(sessionId, text, images);
+        if (interruptedSessionsRef.current.delete(sessionId)) removePet(sessionId);
         // the first turn sets the server-side derived title — refresh so the sidebar shows it now
         void c.listSessions().then((l) => setSessions(l.sessions)).catch(() => {});
       } catch (e: any) {
         push(sessionId, (items) => [...items, { kind: "notice", text: `error: ${e?.message ?? e}` }]);
         setBusy((b) => ({ ...b, [sessionId]: false }));
+        if (!interruptedSessionsRef.current.delete(sessionId)) notePet(sessionId, "blocked");
+        else removePet(sessionId);
       }
     },
-    [push],
+    [notePet, push, removePet],
   );
 
   const handleEvent = useCallback(
     (e: ServerEvent) => {
       switch (e.method) {
+        case "event.turn_start":
+          notePet(e.sessionId, "running");
+          setBusy((busySessions) => ({ ...busySessions, [e.sessionId]: true }));
+          break;
         case "event.text":
+          notePet(e.sessionId, "running");
           push(e.sessionId, (items) => {
             const last = items[items.length - 1];
             if (last?.kind === "text") return [...items.slice(0, -1), { kind: "text", text: last.text + e.delta }];
@@ -254,6 +325,7 @@ export default function App() {
           });
           break;
         case "event.reasoning":
+          notePet(e.sessionId, "running");
           push(e.sessionId, (items) => {
             const last = items[items.length - 1];
             if (last?.kind === "reasoning") return [...items.slice(0, -1), { kind: "reasoning", text: last.text + e.delta }];
@@ -261,18 +333,26 @@ export default function App() {
           });
           break;
         case "event.tool":
+          notePet(e.sessionId, "running");
           push(e.sessionId, (items) => [...items, { kind: "tool", name: e.name, preview: plain(e.preview) }]);
           break;
         case "event.notice":
           push(e.sessionId, (items) => [...items, { kind: "notice", text: plain(e.text) }]);
           break;
         case "event.diff":
+          notePet(e.sessionId, "running");
           push(e.sessionId, (items) => [...items, { kind: "diff", text: plain(e.text) }]);
           break;
         case "event.turn_end": {
           push(e.sessionId, (items) => [...items, { kind: "end", usage: e.usage }]);
           setBusy((b) => ({ ...b, [e.sessionId]: false }));
           if (e.ctx) setCtxMap((m) => ({ ...m, [e.sessionId]: e.ctx! }));
+          const interrupted = interruptedSessionsRef.current.has(e.sessionId);
+          const failed = !!e.error || (!!e.status && e.status !== "completed");
+          if (interrupted) removePet(e.sessionId);
+          else if (failed) notePet(e.sessionId, "blocked");
+          else if (e.sessionId === activeRef.current && document.hasFocus()) removePet(e.sessionId);
+          else notePet(e.sessionId, "ready");
           // steer queue: auto-dispatch the next queued message for this session
           const pending = queueRef.current[e.sessionId];
           if (pending && pending.length > 0) {
@@ -293,12 +373,13 @@ export default function App() {
           break;
         }
         case "approval.request":
+          notePet(e.sessionId, "waiting");
           push(e.sessionId, (items) => [...items, { kind: "approval", approvalId: e.approvalId, question: plain(e.question) }]);
           if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
       }
     },
-    [push, sendText],
+    [notePet, push, removePet, sendText],
   );
 
   const connect = useCallback(async () => {
@@ -474,6 +555,7 @@ export default function App() {
     const c = clientRef.current;
     if (!c) return;
     setUnread((u) => ({ ...u, [id]: false }));
+    acknowledgePet(id);
     if (transcripts[id]) {
       setActive(id);
       return;
@@ -489,6 +571,24 @@ export default function App() {
       setErr(String(e?.message ?? e));
     }
   };
+  openPetSessionRef.current = openSession;
+
+  useEffect(() => {
+    const unlisteners: Array<() => void> = [];
+    let disposed = false;
+    void listen("hara-pet-ready", () => {
+      void emitPetConfig({ selector: petSelectorRef.current }).catch(() => {});
+      void emitPetState(selectPetSnapshot(petActivitiesRef.current)).catch(() => {});
+    }).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)));
+    void listen<{ sessionId?: string }>("hara-pet-open", ({ payload }) => {
+      if (payload?.sessionId) void openPetSessionRef.current(payload.sessionId);
+    }).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)));
+    void listen("hara-pet-tuck", () => setPetAwake(false)).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)));
+    return () => {
+      disposed = true;
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, []);
 
   const rememberProject = (dir: string, remove = false) => {
     setOpenedProjects((list) => {
@@ -673,7 +773,20 @@ export default function App() {
     const c = clientRef.current;
     if (!c) return;
     await c.approvalReply(approvalId, verdict !== "deny", verdict === "always");
+    notePet(sessionId, "running");
     push(sessionId, (items) => items.map((it) => (it.kind === "approval" && it.approvalId === approvalId ? { ...it, answered: verdict } : it)));
+  };
+
+  const stopTurn = async (sessionId: string) => {
+    const c = clientRef.current;
+    if (!c) return;
+    interruptedSessionsRef.current.add(sessionId);
+    try {
+      await c.interrupt(sessionId);
+    } catch (error) {
+      interruptedSessionsRef.current.delete(sessionId);
+      setErr(String(error));
+    }
   };
 
   const changeModel = async (model?: string, effort?: string) => {
@@ -1219,7 +1332,7 @@ export default function App() {
               }}
             />
             {active && busy[active] ? (
-              <button className="stop" onClick={() => void clientRef.current?.interrupt(active)}>
+              <button className="stop" onClick={() => void stopTurn(active)}>
                 {t("stop")}
               </button>
             ) : (
@@ -1406,6 +1519,7 @@ export default function App() {
                 ["engine", t("setServer")],
                 ["security", t("setSecurity")],
                 ["lang", t("setLang")],
+                ["pets", t("setPets")],
                 ["plugins", t("setPlugins")],
                 ["skills", t("skills")],
               ] as const
@@ -1485,6 +1599,44 @@ export default function App() {
                     EN
                   </button>
                 </div>
+              </>
+            )}
+            {setSec === "pets" && (
+              <>
+                <div className="bandhead">{t("setPets")}</div>
+                <div className="setrow pet-controls">
+                  <button onClick={() => setPetAwake((awake) => !awake)}>{petAwake ? t("petTuck") : t("petWake")}</button>
+                  <button className="ghost" onClick={() => void refreshPets()}>
+                    {t("petRefresh")}
+                  </button>
+                </div>
+                <div className="pet-hint dim">{t("petHint")}</div>
+                <div className="pet-grid">
+                  {[BUILTIN_HARA_PET, ...petCatalog].map((pet) => {
+                    const source = pet.selector === BUILTIN_HARA_PET.selector ? t("petBuiltin") : pet.source === "codex" ? t("petCodex") : t("petHaraLocal");
+                    return (
+                      <button
+                        key={pet.selector}
+                        className={`pet-card ${petSelector === pet.selector ? "on" : ""} ${pet.compatible ? "" : "invalid"}`}
+                        disabled={!pet.compatible}
+                        title={pet.error || pet.description}
+                        onClick={() => setPetSelector(pet.selector)}
+                      >
+                        <span className="pet-card-mark">{pet.selector === BUILTIN_HARA_PET.selector ? "ハ" : pet.displayName.slice(0, 1).toUpperCase()}</span>
+                        <span className="pet-card-copy">
+                          <strong>{pet.displayName}</strong>
+                          <small>
+                            {source}
+                            {pet.spriteVersionNumber ? ` · v${pet.spriteVersionNumber}` : ""}
+                          </small>
+                        </span>
+                        {petSelector === pet.selector && <span className="pet-selected">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {petCatalog.length === 0 && !petCatalogError && <div className="setrow dim">{t("petNone")}</div>}
+                {petCatalogError && <div className="setrow err">{petCatalogError}</div>}
               </>
             )}
             {setSec === "plugins" && (

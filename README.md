@@ -53,7 +53,8 @@ Shipped: segmented assistant/projects IA (one persistent assistant conversation 
 threads + collapsed automations timeline) · open-folder-as-project · bundled hara sidecar
 (zero-dependency) · first-run key onboarding · per-session model & thinking-effort switch · inline
 approvals · steer queue · notifications + dock badge · search / pin / rename / archive · `@file`
-mentions · i18n (en/zh) · signed auto-updates from GitHub Releases · notarized Developer ID macOS
+mentions · optional non-focusable task-status pet with local Codex v1/v2 package compatibility ·
+i18n (en/zh) · signed auto-updates from GitHub Releases · notarized Developer ID macOS
 builds · 4-platform CI with
 package-smoke gate. See `WORKFLOW.md` for the two-repo release train.
 

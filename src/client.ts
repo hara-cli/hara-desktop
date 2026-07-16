@@ -71,12 +71,13 @@ export interface CtxInfo {
 }
 
 export type ServerEvent =
+  | { method: "event.turn_start"; sessionId: string; taskId?: string; turnId?: string }
   | { method: "event.text"; sessionId: string; delta: string }
   | { method: "event.reasoning"; sessionId: string; delta: string }
   | { method: "event.tool"; sessionId: string; name: string; preview: string }
   | { method: "event.diff"; sessionId: string; text: string }
   | { method: "event.notice"; sessionId: string; text: string }
-  | { method: "event.turn_end"; sessionId: string; reply: string; usage: { input: number; output: number }; ctx?: CtxInfo }
+  | { method: "event.turn_end"; sessionId: string; reply: string; error?: string; status?: string; taskId?: string; turnId?: string; usage: { input: number; output: number }; ctx?: CtxInfo }
   | { method: "approval.request"; sessionId: string; approvalId: string; question: string };
 
 interface Pending {
