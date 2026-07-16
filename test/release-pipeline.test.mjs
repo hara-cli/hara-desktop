@@ -246,20 +246,21 @@ test("matrix receipt aggregation accepts only one pinned source identity", () =>
   }
 });
 
-test("Apple Silicon sidecar is re-signed before post-normalization smoke", () => {
+test("Tauri performs the sole Developer ID signing pass after Bun signature removal", () => {
   const script = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
+  const refresh = script.indexOf("./scripts/refresh-sidecar.sh");
   const removeSignature = script.indexOf('codesign --remove-signature "$SIDECAR"');
-  const developerIdSign = script.indexOf(
-    'codesign --force --options runtime --timestamp --keychain "$CODESIGN_KEYCHAIN"',
-    removeSignature,
-  );
-  const signedSmoke = script.indexOf(
-    'node scripts/sidecar-smoke.mjs "$SIDECAR" "$EXPECTED_SIDECAR_VERSION" "$TARGET"',
-    removeSignature,
-  );
-  assert.ok(removeSignature >= 0, "remove-signature step missing");
-  assert.ok(developerIdSign > removeSignature, "Developer ID signing must follow signature removal");
-  assert.ok(signedSmoke > developerIdSign, "sidecar must not execute while its arm64 Mach-O is unsigned");
+  const tauriBuild = script.indexOf("npm run tauri build", removeSignature);
+  const packagedSmoke = script.indexOf("node scripts/package-smoke.mjs", tauriBuild);
+  assert.ok(refresh >= 0 && refresh < removeSignature, "boundary smoke must precede signature removal");
+  assert.ok(removeSignature < tauriBuild, "Tauri must receive the unsigned source sidecar");
+  const unsignedGap = script.slice(removeSignature, tauriBuild);
+  assert.doesNotMatch(unsignedGap, /codesign --force|sidecar-smoke\.mjs/);
+  assert.match(unsignedGap, /if codesign --verify "\$SIDECAR"/);
+  assert.ok(packagedSmoke > tauriBuild, "only the Tauri-packaged sidecar may execute after normalization");
+  assert.match(script, /PACKAGED_SIDECAR_SIGNATURE=.*codesign -d --verbose=4/);
+  assert.match(script, /Authority=\$IDENTITY/);
+  assert.match(script, /\^Timestamp=/);
 });
 
 test("signed builds select pinned Rust and preflight a dedicated unlocked keychain", () => {

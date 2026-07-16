@@ -219,22 +219,22 @@ EXPECTED_SIDECAR_VERSION="$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_VERSI
 HARA_RELEASE_BUILD=1 HARA_SIDECAR_TARGET="$TARGET" ./scripts/refresh-sidecar.sh
 CLI_COMMIT="$(git -C ../hara-cli rev-parse "refs/tags/v$EXPECTED_SIDECAR_VERSION^{commit}")"
 
-# Bun standalone binaries carry a linker-generated ad-hoc signature. Tauri's nested-binary signer
-# cannot reliably replace that signature with a timestamped Developer ID signature in one pass
-# (codesign reports "A timestamp was expected but was not found"). Normalize the sidecar first.
+# Bun standalone binaries carry a linker-generated ad-hoc signature. Strip it only after
+# refresh-sidecar has executed every boundary smoke, then let Tauri apply the sole Developer ID
+# signature to the copied binary inside Hara.app. Pre-signing here makes Tauri replace a Developer
+# ID signature a second time and can lose the trusted timestamp.
 SIDECAR="src-tauri/binaries/hara-$TARGET"
 [ -f "$SIDECAR" ] || { echo "missing sidecar $SIDECAR"; exit 1; }
 
 # refresh-sidecar already executed the compiler output while Bun's valid linker-generated ad-hoc
 # signature was still attached. Apple Silicon refuses to execute an entirely unsigned arm64 Mach-O,
-# so never run the sidecar in the gap between removing that signature and applying Developer ID.
-echo "▸ replacing Bun ad-hoc signature with Developer ID"
+# so never run the source sidecar in the gap between signature removal and Tauri packaging.
+echo "▸ removing Bun ad-hoc signature before Tauri's single nested-binary signing pass"
 codesign --remove-signature "$SIDECAR"
-codesign --force --options runtime --timestamp --keychain "$CODESIGN_KEYCHAIN" \
-  --sign "$IDENTITY" "$SIDECAR"
-codesign --verify --strict --verbose=2 "$SIDECAR"
-echo "▸ validating Developer ID signed sidecar"
-node scripts/sidecar-smoke.mjs "$SIDECAR" "$EXPECTED_SIDECAR_VERSION" "$TARGET"
+if codesign --verify "$SIDECAR" >/dev/null 2>&1; then
+  echo "error: Bun signature removal left the source sidecar signed" >&2
+  exit 1
+fi
 
 # dmg-bundling traps: failed Tauri builds can leave either /Volumes/Hara* or a random /Volumes/dmg.*
 # mounted, with the writable image in bundle/macos (older Tauri) or bundle/dmg (newer Tauri).
@@ -270,12 +270,23 @@ echo "▸ validating packaged application and bundled sidecar"
 HARA_REQUIRE_MAC_SIGNATURES=1 node scripts/package-smoke.mjs
 APP="$RELEASE_BASE/bundle/macos/Hara.app"
 APP_SHELL="$APP/Contents/MacOS/hara-desktop"
+PACKAGED_SIDECAR="$APP/Contents/MacOS/hara"
 APP_ARCHS="$(/usr/bin/lipo -archs "$APP_SHELL")"
 case " $APP_ARCHS " in
   *" $MACHO_ARCH "*) ;;
   *) echo "error: packaged app architecture mismatch: expected $MACHO_ARCH, found ${APP_ARCHS:-unknown}" >&2; exit 1 ;;
 esac
 codesign --verify --deep --strict --verbose=2 "$APP"
+codesign --verify --strict --verbose=2 "$PACKAGED_SIDECAR"
+PACKAGED_SIDECAR_SIGNATURE="$(codesign -d --verbose=4 "$PACKAGED_SIDECAR" 2>&1)"
+grep -Fq "Authority=$IDENTITY" <<<"$PACKAGED_SIDECAR_SIGNATURE" || {
+  echo "error: packaged sidecar is not signed by the expected Developer ID identity" >&2
+  exit 1
+}
+grep -Eq '^Timestamp=' <<<"$PACKAGED_SIDECAR_SIGNATURE" || {
+  echo "error: packaged sidecar Developer ID signature has no trusted timestamp" >&2
+  exit 1
+}
 
 DMG="$RELEASE_BASE/bundle/dmg/Hara_${DESKTOP_VERSION}_${DMG_ARCH}.dmg"
 [ -f "$DMG" ] || { echo "expected $DMG_ARCH dmg missing: $DMG" >&2; exit 1; }

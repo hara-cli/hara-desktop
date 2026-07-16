@@ -119,6 +119,11 @@ until then, documentation and release notices must disclose possible SmartScreen
   launch never touches this keychain; cancel any unexpected GUI prompt instead of guessing a
   password, then run only the guarded build script, which unlocks it automatically. Do not copy the
   password into Actions logs, notes, or chat.
+- Bun's linker-generated ad-hoc signature remains attached while the freshly compiled source sidecar
+  executes its boundary smoke, then the script removes it and does not execute or pre-sign that source
+  binary again. Tauri must perform the sole Developer ID signing pass on the nested copy inside
+  `Hara.app`; promotion verifies that copy's expected authority and trusted timestamp before any
+  notarized asset can become public.
 - Put the signing Mac in a dedicated runner group restricted to `hara-cli/hara-desktop` and the
   release workflow; never schedule pull requests or ordinary CI on it. Prefer an ephemeral runner,
   or clean the workspace completely after every run.
