@@ -156,6 +156,8 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(script, /security lock-keychain "\$CODESIGN_KEYCHAIN"/);
   assert.match(script, /security list-keychains -d user -s "\$\{ORIGINAL_KEYCHAINS\[@\]\}"/);
   assert.match(script, /hara-codesign-keychain\.password/);
+  assert.match(script, /append_original_keychain/);
+  assert.match(script, /\[ -f "\$candidate" \] \|\| return 0/);
   assert.match(script, /stat -f '%Lp'.*CODESIGN_PASSWORD_FILE/);
   assert.doesNotMatch(workflow, /HARA_CODESIGN_KEYCHAIN_PASSWORD/);
 });
@@ -457,6 +459,8 @@ test("target-runtime downloads and RPM extraction fail only after bounded portab
   assert.match(workflow, /bun-v1\.3\.9\/bun-windows-x64-baseline\.zip/);
   assert.match(workflow, /BUN_WINDOWS_BASELINE_SHA256: "39f12024edc27d3706baa7b72a06156896b536af61472e0f9a6fe9c5e25b97cc"/);
   assert.match(workflow, /sha256sum "\$\(command -v bun\)"/);
+  assert.match(workflow, /x86_64-pc-windows-msvc\)\s+BUN_TARGET=""/);
+  assert.match(workflow, /BUILD_COMMAND=\(bun scripts\/build-binary\.ts dist\/bin\/hara-sidecar\)/);
   assert.match(workflow, /libarchive-tools/);
   assert.match(packageSmoke, /runExtractionTool\(\s*"bsdtar"/);
   assert.doesNotMatch(packageSmoke, /"rpm2cpio"/);

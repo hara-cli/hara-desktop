@@ -154,11 +154,27 @@ security unlock-keychain -p "$CODESIGN_PASSWORD" "$CODESIGN_KEYCHAIN"
 unset CODESIGN_PASSWORD HARA_CODESIGN_KEYCHAIN_PASSWORD
 CODESIGN_KEYCHAIN_UNLOCKED=1
 security set-keychain-settings -lut 21600 "$CODESIGN_KEYCHAIN"
+
+append_original_keychain() {
+  local candidate="$1"
+  [ -f "$candidate" ] || return 0
+  local existing
+  for existing in "${ORIGINAL_KEYCHAINS[@]}"; do
+    [ "$existing" = "$candidate" ] && return 0
+  done
+  ORIGINAL_KEYCHAINS+=("$candidate")
+}
+
 while IFS= read -r keychain; do
   keychain="${keychain#*\"}"
   keychain="${keychain%\"*}"
-  [ -n "$keychain" ] && ORIGINAL_KEYCHAINS+=("$keychain")
+  [ -n "$keychain" ] && append_original_keychain "$keychain"
 done < <(security list-keychains -d user)
+
+# Ignore malformed stale search-list entries and retain the normal local keychains when present.
+# This also repairs lists polluted by an earlier incorrectly quoted `security list-keychains -s` call.
+append_original_keychain "$HOME/Library/Keychains/login.keychain-db"
+append_original_keychain "$HOME/Library/Keychains/VIP.UserKeychain.1.0.0-503-db"
 SEARCH_KEYCHAINS=("$CODESIGN_KEYCHAIN")
 for keychain in "${ORIGINAL_KEYCHAINS[@]}"; do
   [ "$keychain" = "$CODESIGN_KEYCHAIN" ] || SEARCH_KEYCHAINS+=("$keychain")

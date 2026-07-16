@@ -314,7 +314,10 @@ jobs:
           case "${{ matrix.target }}" in
             aarch64-apple-darwin)      BUN_TARGET=bun-darwin-arm64 ;;
             x86_64-apple-darwin)       BUN_TARGET=bun-darwin-x64-baseline ;;
-            x86_64-pc-windows-msvc)    BUN_TARGET=bun-windows-x64-baseline ;;
+            # setup-bun installed and SHA-256-verified the native baseline executable above. Passing
+            # the same target again makes Bun 1.3.9 download a second compiler runtime and can time
+            # out; an omitted target compiles from the already verified native baseline runtime.
+            x86_64-pc-windows-msvc)    BUN_TARGET="" ;;
             x86_64-unknown-linux-gnu)  BUN_TARGET=bun-linux-x64-baseline ;;
             *) echo "unsupported sidecar target: ${{ matrix.target }}" >&2; exit 1 ;;
           esac
@@ -324,7 +327,12 @@ jobs:
           esac
           for attempt in 1 2 3; do
             rm -f dist/bin/hara-sidecar dist/bin/hara-sidecar.exe
-            if bun scripts/build-binary.ts dist/bin/hara-sidecar "$BUN_TARGET"; then
+            if [ -n "$BUN_TARGET" ]; then
+              BUILD_COMMAND=(bun scripts/build-binary.ts dist/bin/hara-sidecar "$BUN_TARGET")
+            else
+              BUILD_COMMAND=(bun scripts/build-binary.ts dist/bin/hara-sidecar)
+            fi
+            if "${BUILD_COMMAND[@]}"; then
               break
             fi
             [ "$attempt" -lt 3 ] || {
