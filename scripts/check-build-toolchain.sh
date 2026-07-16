@@ -102,12 +102,12 @@ hara_check_rust() {
 
 hara_check_build_toolchain() {
   echo "▸ checking release build toolchain"
-  hara_check_node
-  hara_check_bun
-  hara_check_rust
+  hara_check_node || return 1
+  hara_check_bun || return 1
+  hara_check_rust || return 1
 }
 
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+if [ -n "${BASH_VERSION:-}" ] && [ "${BASH_SOURCE[0]}" = "$0" ]; then
   set -euo pipefail
   cd "$(dirname "$0")/.."
   hara_check_build_toolchain

@@ -72,8 +72,8 @@ authorization; do not add a second manual dispatch or environment approval. Prom
 immutable release attestation after publication. Store a fine-grained token with repository
 `Administration: read` only as the environment secret `HARA_RELEASE_POLICY_TOKEN`; it is used solely
 to fail closed on the immutable-release policy immediately before publication. Assign the custom
-runner label only to the signing Mac whose login keychain
-contains the Developer ID identity and whose `~/.tauri` contains the notarization/updater keys. A
+runner label only to the signing Mac whose dedicated `hara-ci-signing` keychain contains the
+Developer ID identity and whose `~/.tauri` contains the notarization/updater keys. A
 GitHub-hosted preflight fails before signing unless the tag-scoped environment protection exists;
 GitHub's `runs-on` scheduler then requires the labelled signing runner to be online.
 The dmg bundling step (`bundle_dmg.sh`) is flaky when a previous Hara volume is mounted —
@@ -111,7 +111,10 @@ until then, documentation and release notices must disclose possible SmartScreen
   `~/Library/Keychains/hara-ci-signing.keychain-db`; its random unlock password stays only in
   `~/.tauri/hara-codesign-keychain.password` with mode `0600`. The signed-build script unlocks it,
   performs an ephemeral Developer ID signing probe, restores the prior keychain search list, and
-  locks it again on every exit. Do not copy that password into Actions logs or chat.
+  locks it again on every exit. This random password is not the Mac login password. Ordinary Hara
+  launch never touches this keychain; cancel any unexpected GUI prompt instead of guessing a
+  password, then run only the guarded build script, which unlocks it automatically. Do not copy the
+  password into Actions logs, notes, or chat.
 - Put the signing Mac in a dedicated runner group restricted to `hara-cli/hara-desktop` and the
   release workflow; never schedule pull requests or ordinary CI on it. Prefer an ephemeral runner,
   or clean the workspace completely after every run.

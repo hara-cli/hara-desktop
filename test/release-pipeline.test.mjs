@@ -146,12 +146,23 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(toolchain, /export PATH="\$toolchain_bin:\$PATH"/);
   assert.match(toolchain, /export RUSTC="\$rustc_command"/);
   assert.match(toolchain, /export CARGO="\$cargo_command"/);
+  assert.match(toolchain, /\[ -n "\$\{BASH_VERSION:-\}" \]/);
+  for (const check of ["hara_check_node", "hara_check_bun", "hara_check_rust"]) {
+    assert.match(toolchain, new RegExp(`${check} \\|\\| return 1`));
+  }
 
   const unlock = script.indexOf('security unlock-keychain -p "$CODESIGN_PASSWORD"');
   const forgetPassword = script.indexOf("unset CODESIGN_PASSWORD HARA_CODESIGN_KEYCHAIN_PASSWORD", unlock);
+  const inspectIdentity = script.indexOf('security find-identity -v -p codesigning "$CODESIGN_KEYCHAIN"', unlock);
   const keyProbe = script.indexOf('cp /usr/bin/true "$CODESIGN_PROBE_DIR/probe"', unlock);
   const actualSign = script.indexOf('codesign --remove-signature "$SIDECAR"');
-  assert.ok(unlock >= 0 && forgetPassword > unlock && keyProbe > forgetPassword && actualSign > keyProbe);
+  assert.ok(
+    unlock >= 0
+      && forgetPassword > unlock
+      && inspectIdentity > forgetPassword
+      && keyProbe > inspectIdentity
+      && actualSign > keyProbe,
+  );
   assert.match(script, /codesign --verify --strict "\$CODESIGN_PROBE_DIR\/probe"/);
   assert.match(script, /security lock-keychain "\$CODESIGN_KEYCHAIN"/);
   assert.match(script, /security list-keychains -d user -s "\$\{ORIGINAL_KEYCHAINS\[@\]\}"/);
@@ -159,6 +170,7 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(script, /append_original_keychain/);
   assert.match(script, /\[ -f "\$candidate" \] \|\| return 0/);
   assert.match(script, /stat -f '%Lp'.*CODESIGN_PASSWORD_FILE/);
+  assert.doesNotMatch(script, /security show-keychain-info/);
   assert.doesNotMatch(workflow, /HARA_CODESIGN_KEYCHAIN_PASSWORD/);
 });
 

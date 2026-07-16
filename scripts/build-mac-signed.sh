@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Signed + notarized macOS release build — Jeff's Apple Silicon machine only (Developer ID cert
-# lives in the login keychain; CI mac builds stay unsigned until the cert goes to GH secrets, if ever).
+# Signed + notarized macOS release build — controlled Apple Silicon release machine only. The
+# Developer ID certificate and private key live in the dedicated hara-ci-signing keychain; ordinary
+# Hara startup never accesses it. CI mac builds stay unsigned until protected promotion replaces them.
 #
 # Chain: verify and rebuild the sidecar from the clean, exactly tagged CLI source → tauri build with
 #   • APPLE_SIGNING_IDENTITY  — Developer ID signing (config stays identity-free so CI doesn't break)
