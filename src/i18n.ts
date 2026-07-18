@@ -57,6 +57,7 @@ const dict = {
     showDetails: "show details",
     // settings
     setLang: "Language",
+    setProviders: "Models & providers",
     setServer: "Engine",
     setPlugins: "Capabilities (plugins)",
     setSecurity: "Security",
@@ -77,7 +78,7 @@ const dict = {
     upToDate: "up to date",
     restartToApply: "downloaded — restart to apply",
     setupTitle: "Connect a model",
-    setupHint: "hara needs an API key to start (stored locally in ~/.hara/config.json, never uploaded).",
+    setupHint: "Choose a cloud provider or a local Ollama / LM Studio server. Credentials stay in Hara's private local state.",
     apiKeyLbl: "API key",
     modelLbl: "model",
     baseUrlLbl: "base URL (optional)",
@@ -164,6 +165,7 @@ const dict = {
     showDetails: "查看详情",
     // settings
     setLang: "语言",
+    setProviders: "模型与供应商",
     setServer: "引擎",
     setPlugins: "能力(插件)",
     setSecurity: "安全",
@@ -184,7 +186,7 @@ const dict = {
     upToDate: "已是最新",
     restartToApply: "已下载,重启应用生效",
     setupTitle: "接入模型",
-    setupHint: "hara 需要一个 API key 才能启动(只存本机 ~/.hara/config.json,不上传)。",
+    setupHint: "可选择云端供应商，或无需密钥的本机 Ollama / LM Studio；凭据只保存在 Hara 本机私有状态中。",
     apiKeyLbl: "API key",
     modelLbl: "模型",
     baseUrlLbl: "接口地址(可选)",

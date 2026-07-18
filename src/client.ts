@@ -63,6 +63,60 @@ export interface SkillInfo {
   source: string;
 }
 
+export interface ProviderCatalogEntry {
+  id: string;
+  label: string;
+  location: "cloud" | "local" | "managed";
+  auth: "api-key" | "oauth" | "none" | "managed";
+  defaultModel: string;
+  defaultBaseURL?: string;
+  customBaseURL: boolean;
+}
+
+export interface ProviderSettingsState {
+  current: {
+    provider: string;
+    model: string;
+    baseURL?: string;
+    location: "cloud" | "local" | "managed";
+    auth: "api-key" | "oauth" | "none" | "managed";
+    keyConfigured: boolean;
+    authenticated: boolean;
+    profileId: string;
+    profileKind: "byok" | "gateway";
+    profileSource: "flag" | "env" | "pin" | "default" | "fallback";
+    editable: boolean;
+    environmentOverride?: boolean;
+  };
+  providers: ProviderCatalogEntry[];
+}
+
+export interface ProviderSettingsInput {
+  provider: string;
+  model: string;
+  baseURL?: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+  activatePersonal?: boolean;
+}
+
+export interface ProviderSettingsTestResult {
+  ok: boolean;
+  models: string[];
+  error?: string;
+}
+
+export interface InitializeResult {
+  name: string;
+  version: string;
+  protocol: number;
+  cwd: string;
+  provider: string;
+  model: string;
+  setupState?: "ready" | "needs-credentials";
+  capabilities?: { methods?: string[] };
+}
+
 /** Context watermark — how full the model's window was on the last turn (serve ≥0.117). */
 export interface CtxInfo {
   lastInput: number;
@@ -89,6 +143,7 @@ export class HaraClient {
   private ws: WebSocket | null = null;
   private pending = new Map<number, Pending>();
   private nextId = 1;
+  private methods = new Set<string>();
   onEvent: (e: ServerEvent) => void = () => {};
   onClose: () => void = () => {};
 
@@ -134,8 +189,13 @@ export class HaraClient {
     });
   }
 
-  initialize(token: string) {
-    return this.call<{ name: string; version: string; protocol: number; cwd: string; provider: string; model: string }>("initialize", { token });
+  async initialize(token: string): Promise<InitializeResult> {
+    const result = await this.call<InitializeResult>("initialize", { token });
+    this.methods = new Set(result.capabilities?.methods ?? []);
+    return result;
+  }
+  supports(method: string): boolean {
+    return this.methods.has(method);
   }
   listSessions(cwd?: string) {
     return this.call<{ sessions: SessionInfo[] }>("session.list", cwd ? { cwd } : {});
@@ -153,13 +213,29 @@ export class HaraClient {
     return this.call<{ skills: SkillInfo[] }>("skills.list", cwd ? { cwd } : {});
   }
   /** Model catalog + effort levels (serve ≥0.116). Null on older serves. */
-  async listModels(): Promise<{ models: string[]; current: string; effortLevels: string[] } | null> {
+  async listModels(opts?: { sessionId?: string; cwd?: string }): Promise<{ models: string[]; current: string; effortLevels: string[] } | null> {
     try {
-      return await this.call("models.list", {});
+      return await this.call("models.list", opts ?? {});
     } catch (e: any) {
       if (e?.code === -32601) return null;
       throw e;
     }
+  }
+  /** Redacted provider catalog and current connection (serve ≥0.126). */
+  async listProviderSettings(cwd?: string): Promise<ProviderSettingsState | null> {
+    if (this.methods.size > 0 && !this.supports("settings.providers.list")) return null;
+    try {
+      return await this.call("settings.providers.list", cwd ? { cwd } : {});
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  testProviderSettings(input: ProviderSettingsInput, cwd?: string) {
+    return this.call<ProviderSettingsTestResult>("settings.providers.test", { ...input, ...(cwd ? { cwd } : {}) });
+  }
+  saveProviderSettings(input: ProviderSettingsInput, cwd?: string) {
+    return this.call<ProviderSettingsState>("settings.providers.save", { ...input, ...(cwd ? { cwd } : {}) });
   }
   addAutomation(name: string, schedule: string, task: string, cwd?: string) {
     return this.call<{ id: string; name: string; schedule: string }>("automation.add", { name, schedule, task, ...(cwd ? { cwd } : {}) });

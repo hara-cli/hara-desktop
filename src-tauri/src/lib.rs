@@ -424,50 +424,6 @@ fn get_home() -> String {
         .unwrap_or_default()
 }
 
-/// First-run onboarding: merge provider credentials into ~/.hara/config.json (0600) so the bundled
-/// serve can authenticate — the desktop equivalent of `hara setup`. Never logs or returns the key.
-#[tauri::command]
-fn write_config(
-    provider: String,
-    api_key: String,
-    model: String,
-    base_url: Option<String>,
-) -> Result<String, String> {
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map_err(|_| "no HOME")?;
-    let dir = format!("{home}/.hara");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = format!("{dir}/config.json");
-    let mut cfg: serde_json::Value = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    let obj = cfg.as_object_mut().ok_or("config.json is not an object")?;
-    obj.insert("provider".into(), provider.clone().into());
-    obj.insert("apiKey".into(), api_key.into());
-    obj.insert("model".into(), model.into());
-    match base_url {
-        Some(u) if !u.is_empty() => {
-            obj.insert("baseURL".into(), u.into());
-        }
-        _ => {
-            obj.remove("baseURL");
-        }
-    }
-    std::fs::write(
-        &path,
-        serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    }
-    Ok(format!("configured {provider}"))
-}
-
 /// Persist a pasted clipboard image (base64 png bytes from the webview) to ~/.hara/tmp so the serve
 /// side can inline it into the turn. Returns the absolute path.
 #[tauri::command]
@@ -611,7 +567,6 @@ pub fn run() {
             get_home,
             read_serve_log,
             set_badge,
-            write_config,
             write_temp_image,
             list_pets,
             read_pet_asset

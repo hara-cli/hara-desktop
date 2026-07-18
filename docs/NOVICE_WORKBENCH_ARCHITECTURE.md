@@ -1,7 +1,7 @@
 # Hara Desktop 小白工作台与能力中心架构
 
 > 决策日期：2026-07-18
-> 状态：实施规划；不代表现有版本已经提供以下能力。
+> 状态：分阶段实施。模型供应商控制面已在当前未发布改动中落地；办公工作台、能力市场和账号服务仍是规划。
 > 目标：在不复制第二套 Agent Runtime 的前提下，把 Hara Desktop 从 coding shell 扩展为普通职员可用的工作助理。
 
 ## 1. 不变边界
@@ -16,6 +16,31 @@ Hara Desktop 继续是 `hara serve` 的薄客户端：
 
 这是参考 Codex Desktop 最重要的部分。需要学习其 Chat/Work、Goal、Projects、Plugins、Artifact
 和 Permissions 结构，不照搬其仓库、终端、worktree 和代码 diff 心智。
+
+```mermaid
+flowchart LR
+    U[普通职员] --> D[Hara Desktop<br/>工作助理 / 文件 / 自动任务 / 设置]
+    D -->|带 token 的本机 JSON-RPC| S[hara serve 控制面]
+
+    S --> C[Conversation<br/>澄清与 steer]
+    S --> T[TaskRun<br/>目标 / 步骤 / deadline]
+    S --> A[Artifact Runtime<br/>Revision / Validation / ExportReceipt]
+    S --> M[ModelConnection<br/>供应商 / 模型 / 凭据引用 / 数据区域]
+    S --> P[Capability Runtime<br/>Skill + Tool + Panel + Template + Policy]
+
+    M --> ML[Ollama / LM Studio<br/>本机回环]
+    M --> MC[云模型供应商]
+    M --> MG[企业 Gateway]
+
+    P --> PS[表格]
+    P --> PD[Markdown / Word]
+    P --> PP[PPT / PDF]
+    P --> PI[企业行业能力包]
+
+    A --> W[本地 worker]
+    A --> WO[WPS WebOffice]
+    A --> OO[ONLYOFFICE / 私有部署]
+```
 
 官方参考：
 
@@ -33,6 +58,9 @@ Hara Desktop 继续是 `hara serve` 的薄客户端：
 - `hara serve` WebSocket JSON-RPC 客户端；
 - session create/resume/send/interrupt；
 - model、approval、context、compact、rewind、fork；
+- 云端、本机和企业托管模型供应商目录；
+- `hara serve` 统一管理供应商列表、无持久化连接测试和安全保存；
+- Ollama、LM Studio 本机无密钥连接；
 - Skill/Plugin 列表和启停；
 - project Panel 左右分屏；
 - 图片粘贴；
@@ -50,6 +78,41 @@ Hara Desktop 继续是 `hara serve` 的薄客户端：
 8. Panel 通过 shell 启动，缺少适合第三方市场的独立 CSP、origin、token 和 capability；
 9. Windows Panel 生命周期和 Authenticode 仍是商用发行门槛；
 10. 审批只有 question + allow/always/deny，不能清楚说明文件、数据去向和可撤销性。
+
+### 2.1 模型连接控制面
+
+Desktop 的“设置 → 模型与供应商”只调用 `hara serve`，不再保留 Rust 或 renderer 的第二套配置写入器。
+
+当前目录分三类：
+
+| 类型 | 当前连接 |
+|---|---|
+| 云端 | Anthropic、OpenAI/兼容接口、Qwen、Qwen OAuth、GLM、DeepSeek、OpenRouter |
+| 本机 | Ollama、LM Studio |
+| 企业托管 | Hara Enterprise Gateway |
+
+边界：
+
+- 本机预设无需伪造 API Key，只允许 `localhost`、`127.0.0.1` 或 `::1`；
+- 非本机 HTTP 地址拒绝保存，云端自定义地址必须使用 HTTPS；
+- 地址不能携带用户名、密码、query 或 fragment；
+- API Key 只在密码框短暂停留，传给 Serve 后写入 Hara 的本机私有状态，接口永不回传；
+- 切换供应商且未输入新密钥时，绝不复用上一供应商的扁平密钥；
+- 命名 Profile 是供应商、地址和密钥的路由边界，Personal 全局配置不能覆盖它；
+- `HARA_*`、启动参数和 `.hara-profile` 固定连接时，Desktop 只读展示并解释解除方式；
+- 连接测试最长 12 秒，不保存候选配置，错误返回前统一脱敏；
+- 未配置模型时 `hara serve` 仍可启动，并通过 `setupState: needs-credentials` 引导到系统设置；
+- 保存只影响新会话，正在执行的会话不热切换供应商。
+
+发布门槛：当前 Desktop `0.1.22` 仍锁定 CLI sidecar `0.124.1`，不具备上述 RPC。这里的源代码改动
+不得直接打 Desktop tag。必须先按 CLI 发布流程发布包含 `settings.providers.*` 的版本，再运行
+`scripts/refresh-sidecar.sh` 记录该 CLI 的正式 tag 与完整提交，完成打包握手 smoke 后才可发布 Desktop。
+安装包始终优先使用内置 sidecar，因此不能用“升级全局 npm CLI”冒充 Desktop 的修复路径。
+
+下一阶段把 `provider + model + endpoint + credentialRef + policy + dataRegion` 收敛为版本化
+`ModelConnection`。Session 固定 `connectionId + revision`，管理员更新连接时已有任务继续使用原 revision，
+新任务才使用新 revision。密钥再从 CLI 私有文件迁移为平台 Keychain/Credential Manager 的 `secretRef`，
+但不得让 renderer 获得读取密钥的能力。
 
 ## 3. 用户信息架构
 
@@ -161,6 +224,65 @@ Desktop 不能再把所有输入都调用 `session.send`。
 - Session rewind 不回滚二进制文件；
 - 崩溃后可恢复最后已提交 Revision。
 
+### 5.1 普通职员看到的核心对象
+
+产品首页不要求用户理解“仓库、会话、Agent、Skill”。普通用户只处理：
+
+```text
+任务简报 TaskBrief
+  ├─ 输入文件 FileRef
+  ├─ 执行记录 TaskRun
+  └─ 交付物 Artifact
+       ├─ 版本 Revision
+       ├─ 校验 Validation
+       └─ 导出回执 ExportReceipt
+```
+
+`ExportReceipt` 至少记录 Artifact/Revision、导出格式、生成器及版本、校验结果、输出文件摘要和时间。
+这样“这份表是谁改的、导出的是否是当前版本、为什么 Excel 打不开”都可以追溯。
+
+### 5.2 办公格式技术选型
+
+| 能力 | 本地首选 | 导出 | 明确限制 |
+|---|---|---|---|
+| 表格 | Univer OSS 编辑器 + 独立计算/导出 worker | CSV；受限 XLSX | OSS 适合表格交互和公式；高保真导入导出、打印、图表、透视表需评估 Univer Pro 或办公 Provider |
+| Markdown | Milkdown（ProseMirror/remark） | `.md`、PDF、受限 DOCX | Markdown 是规范源；DOCX 不承诺任意 Word 文件往返不丢版式 |
+| Word | `docx` 生成受控模板的新 DOCX | `.docx` | 适合报告、合同草稿、通知等新文档；复杂既有 DOCX 用 WPS/ONLYOFFICE |
+| 演示 | Slidev 作为 Web/演讲/PDF 渲染；PptxGenJS 生成受控可编辑 PPTX | PDF、HTML、PPTX | Slidev 的 PPTX 页面是图片，不能称为可编辑交付；可编辑的新 PPTX 走 PptxGenJS 模板 |
+| 既有 Office 文件 | WPS WebOffice（国内 SaaS）或 ONLYOFFICE Developer（私有化/全球） | 原生 Office 格式 | 接入前完成授权、数据驻留、回调签名、病毒扫描和真实文件兼容测试 |
+
+首版不做“万能 Office 克隆”。每个能力都声明自己的 fidelity：
+
+- `data-only`：保证单元格值/公式，样式可能降级；
+- `template-editable`：由 Hara 模板生成，可继续编辑；
+- `visual-fidelity`：保证观看效果，但元素可能不可编辑；
+- `roundtrip`：只有通过真实文件语料验收后才能标记。
+
+官方技术参考：
+
+- [Slidev exporting](https://sli.dev/guide/exporting.html)
+- [Univer](https://github.com/dream-num/univer)
+- [WPS WebOffice 开放平台](https://solution.wps.cn/docs/)
+- [ONLYOFFICE DocumentServer](https://github.com/ONLYOFFICE/DocumentServer)
+- [PptxGenJS](https://github.com/gitbrent/PptxGenJS)
+- [docx](https://github.com/dolanmiu/docx)
+- [Milkdown](https://github.com/Milkdown/milkdown)
+- [SheetJS CE write options](https://docs.sheetjs.com/docs/api/write-options/)
+
+### 5.3 文件数据路径
+
+每个编辑器、任务简报和行动卡都显示同一套数据路径：
+
+| 路径 | 用户可见说明 |
+|---|---|
+| 本地文件 + 本地模型 + 本地 worker | 文件与模型请求都不离开电脑 |
+| 本地文件 + 云模型 | 只把本任务选择的内容发送给当前模型供应商 |
+| WPS/其他在线 Office | 文件会上传到该办公服务，显示区域、保存期限和删除入口 |
+| 企业私有部署 | 文件发送到企业配置的内网地址，由企业策略管理 |
+
+默认不执行宏、不自动刷新外部链接、不上传整个目录。覆盖原文件、发给他人、发布链接和跨境发送必须是
+结构化重要动作，不能藏在 Skill Prompt 里。
+
 ## 6. Serve Protocol v2 需求
 
 Desktop 不实现这些逻辑，只增加 client bindings 和 UI。
@@ -246,6 +368,47 @@ approval.request.v2
 
 首版只安装 Hara 官方签名能力，不开放第三方 executable/MCP/native Panel。
 
+### 7.1 能力包，而不是 Prompt 包
+
+一个办公能力包是下面五部分的不可分割版本：
+
+```text
+CapabilityPackage
+  ├─ Skill       任务理解、步骤和质量标准
+  ├─ Tool        确定性读取、计算、校验和导出
+  ├─ Panel       人工预览与局部编辑
+  ├─ Template    行业交付格式、示例和品牌变量
+  └─ Policy      文件范围、网络目的地、审批和数据区域
+```
+
+Agent 可以自动发现并建议能力，但不能因为 Prompt 写了“调用财务助手”就绕过安装、权限和签名。
+能力的激活由任务意图、文件 MIME/扩展名、显式用户选择和企业策略共同决定；真正执行前仍走工具权限管道。
+
+首批能力组合：
+
+1. 表格整理：清洗、公式、汇总、图表、校验和 XLSX/CSV 导出；
+2. 周报与经营汇报：资料归集、Markdown 主稿、DOCX 与 PPT 双交付；
+3. 会议纪要：录音/文字输入、行动项、负责人、可编辑 Word；
+4. 销售与运营：客户清单、区域分析、活动复盘；
+5. 人事行政：通知、招聘汇总、排班和培训材料；
+6. 企业内部包：品牌模板、术语、审批流、内部数据连接器。
+
+财务、法务、人事等行业包必须把规则计算放进可测试 Tool，把语言说明放进 Skill；不能只依赖角色 Prompt。
+
+### 7.2 市场供应链
+
+现有 Plugin/Panel 安装器不适合直接开放第三方可执行市场。P0 只接受 Hara 官方签名包，并逐步补齐：
+
+- 规范化 manifest、内容 digest、Ed25519 签名和发布者身份；
+- 安装计划绑定 package digest 与 permission hash；
+- 下载到不可变缓存，校验后原子激活；
+- 安装 receipt、版本 pin、撤回名单和一键回滚；
+- Panel 独立 origin/CSP/token/capability；
+- MCP/native/外部命令按风险单独审核；
+- 企业私有目录只能分发管理员签名且组织策略允许的包。
+
+在这些门槛完成前，“上传一个 zip 就上架”必须被拒绝。
+
 ## 8. 行动卡
 
 `approval.request.v2` 应返回结构化字段：
@@ -321,6 +484,22 @@ expiresAt
 
 没有 Authenticode 时不能宣称“Windows 无安全警告”。
 
+### 10.1 国内版与全球版
+
+保持一套开源 Runtime/协议和一套 Desktop 基础客户端，避免国内外形成两个不可维护分支。商业差异放在服务控制面：
+
+| 层 | 国内版 | 全球版 |
+|---|---|---|
+| 账号、计费、组织 | 国内独立服务与数据存储 | 全球独立服务与数据存储 |
+| 模型目录 | 国内可用供应商、本地模型、企业网关 | 全球供应商、本地模型、企业网关 |
+| Office Provider | 优先 WPS WebOffice/企业私有部署 | 优先 ONLYOFFICE/企业私有部署 |
+| 能力目录 | 国内审核、中文模板、国内结算 | 全球审核、国际模板和结算 |
+| 遥测与 Artifact | 默认区域内，不做隐式跨境 | 默认区域内，不做隐式跨境 |
+
+建议继续开源 `hara-cli`、协议、基础 Desktop 和官方能力 SDK；把账号、计费、企业策略、签名市场、
+托管同步、审计和 SLA 作为商业服务。闭源整个 Desktop 不会自动保护商业价值，反而会降低本地模型、
+文件边界和企业部署的可验证性。
+
 ## 11. 实施顺序
 
 ### P0-A：执行状态
@@ -349,19 +528,38 @@ expiresAt
 
 ### P0-D：表格助手
 
-- 表格 Panel；
-- CSV + 受限 XLSX；
+- Univer 表格 Panel；
+- CSV + 受限 XLSX worker；
 - 版本、变更、校验和导出；
 - 小白任务模板；
-- 10 名非技术用户可用性测试。
+- 至少 10 名非技术用户可用性测试。
+
+### P0-E：模型连接
+
+- ✅ Serve 供应商目录、测试与保存控制面；
+- ✅ Desktop 系统设置；
+- ✅ Ollama/LM Studio 本机无密钥连接；
+- ✅ 命名 Profile 路由隔离、密钥不回显和地址边界；
+- ModelConnection revision 与 Session 固定；
+- macOS Keychain / Windows Credential Manager / Linux secret service；
+- Qwen OAuth 从 Desktop 发起并回到连接页。
 
 ### P1
 
 - 国内登录和 entitlement；
-- WPS 或飞书 Sheets 一个在线 Provider；
+- WPS WebOffice Provider 与真实文件兼容评估；
 - 云 Artifact 和协作；
-- 文档/PPT/PDF 能力；
+- Milkdown + DOCX 报告能力；
+- Slidev 预览/PDF + PptxGenJS 可编辑模板能力；
+- ONLYOFFICE Developer 私有化 PoC；
 - 企业内部目录。
+
+### P2
+
+- 第三方发布者审核和收费市场；
+- 多人实时共同编辑；
+- 高保真既有 PPTX/DOCX roundtrip；
+- 按行业认证的财务、法务和人事能力包。
 
 ## 12. 验收
 
@@ -373,3 +571,8 @@ expiresAt
 - Panel 无主窗口 Tauri 权限；
 - Windows/macOS/Linux 安装和 Panel 退出均无孤儿进程；
 - 低版本 sidecar 给出明确升级命令。
+- 用 30–50 份脱敏真实中文业务文件建立格式语料库，逐格式记录打开、编辑、保存、再打开结果；
+- Excel/WPS 公式错误、截断、日期/货币类型和外部链接都有确定性校验；
+- PPTX 标明“可编辑”或“视觉稿”，不能以文件扩展名代替能力承诺；
+- DOCX/PPTX/XLSX 导出均产生绑定 Revision 的 ExportReceipt；
+- 本地模型连接在 Ollama/LM Studio 未启动、无模型和超时时给出可执行修复建议。

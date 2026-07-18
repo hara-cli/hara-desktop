@@ -9,8 +9,21 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
-import { HaraClient, type Discovery, type SessionInfo, type ServerEvent, type PluginInfo, type SkillInfo, type PanelSpec, type ProjectPanel, type CronJobInfo, type CtxInfo } from "./client";
+import {
+  HaraClient,
+  type Discovery,
+  type SessionInfo,
+  type ServerEvent,
+  type PluginInfo,
+  type SkillInfo,
+  type PanelSpec,
+  type ProjectPanel,
+  type CronJobInfo,
+  type CtxInfo,
+  type ProviderSettingsState,
+} from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
+import { ProviderSettings } from "./ProviderSettings";
 import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
 import HaraLogo from "./mark";
@@ -124,7 +137,7 @@ export default function App() {
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [panelBusy, setPanelBusy] = useState("");
   // settings place: context column = group anchors, stage = the selected group's forms
-  const [setSec, setSetSec] = useState<"engine" | "security" | "lang" | "pets" | "plugins" | "skills">("engine");
+  const [setSec, setSetSec] = useState<"providers" | "engine" | "security" | "lang" | "pets" | "plugins" | "skills">("providers");
   // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [split, setSplit] = useState<{ id: string; title: string; url: string } | null>(null);
@@ -229,12 +242,9 @@ export default function App() {
   const [upd, setUpd] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  // first-run onboarding (serve refused to start: no credentials)
-  const [setupNeeded, setSetupNeeded] = useState(false);
-  const [setup, setSetup] = useState({ provider: "anthropic", apiKey: "", model: "", baseURL: "" });
-  const [setupBusy, setSetupBusy] = useState(false);
   const [updAvail, setUpdAvail] = useState("");
   const pendingRef = useRef<"assistant" | "project" | null>(null);
+  const [setupRequired, setSetupRequired] = useState(false);
   const apiRef = useRef<{ setZone: (z: Zone) => void; openAssistant: () => void; openProject: () => void }>({ setZone: () => {}, openAssistant: () => {}, openProject: () => {} });
   // steer queue (codex composer pattern): messages typed while a turn runs are queued and auto-sent
   const [queue, setQueue] = useState<Record<string, string[]>>({});
@@ -416,10 +426,16 @@ export default function App() {
       clientRef.current = c;
       setServer({ version: info.version, provider: info.provider, model: info.model, cwd: info.cwd });
       setSessions(list.sessions);
+      const needsCredentials = info.setupState === "needs-credentials";
+      setSetupRequired(needsCredentials);
+      if (needsCredentials) {
+        setZoneRaw("settings");
+        setSetSec("providers");
+      }
       // cold start: returning users land on their last zone; brand-new (no manual sessions, no
       // opened projects) land on the assistant — the soft first touch.
       const manual = list.sessions.filter((s) => !isAutomated(s) && !isAssistantCwd(s.cwd));
-      if (manual.length === 0 && openedProjects.length === 0) setZoneRaw("chat");
+      if (info.setupState !== "needs-credentials" && manual.length === 0 && openedProjects.length === 0) setZoneRaw("chat");
       void c.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
       void c.listModels().then(setModelInfo).catch(() => {});
       setPhase("ready");
@@ -461,12 +477,12 @@ export default function App() {
 
   // pending empty-state card action fires once we're connected
   useEffect(() => {
-    if (phase !== "ready" || !pendingRef.current) return;
+    if (phase !== "ready" || setupRequired || !pendingRef.current) return;
     const act = pendingRef.current;
     pendingRef.current = null;
     if (act === "assistant") void apiRef.current.openAssistant();
     else void apiRef.current.openProject();
-  }, [phase]);
+  }, [phase, setupRequired]);
 
   // project panels for the active project (cached per cwd; empty array caches the miss)
   const activeCwd = sessions.find((s) => s.id === active)?.cwd;
@@ -518,9 +534,10 @@ export default function App() {
       }
       if (!up) {
         const log = await invoke<string>("read_serve_log").catch(() => "");
-        // "Not authenticated" → onboarding form, not a log dump
+        // Old serves exited before exposing the secure provider-settings RPC. Do not fall back to a
+        // second config writer in Rust; the user explicitly gets an upgrade path instead.
         if (/not authenticated/i.test(log)) {
-          setSetupNeeded(true);
+          setErr("This Hara Desktop includes an engine that is too old for model settings. Update Hara Desktop and restart it.");
           setPhase("no-server");
           return;
         }
@@ -863,20 +880,6 @@ export default function App() {
   // keep latest handlers reachable from the once-registered shortcut listener + pending-card effect
   apiRef.current = { setZone, openAssistant, openProject };
 
-  const submitSetup = async () => {
-    if (!setup.apiKey.trim() || !setup.model.trim()) return;
-    setSetupBusy(true);
-    try {
-      await invoke("write_config", { provider: setup.provider, apiKey: setup.apiKey.trim(), model: setup.model.trim(), baseUrl: setup.baseURL.trim() || null });
-      setSetupNeeded(false);
-      await startServer();
-    } catch (e: any) {
-      setErr(String(e?.message ?? e));
-    } finally {
-      setSetupBusy(false);
-    }
-  };
-
   // ── boot / error screen ────────────────────────────────────────────────────
   if (phase !== "ready") {
     return (
@@ -888,24 +891,6 @@ export default function App() {
         <div className="herotag dim">{t("heroTag")}</div>
         {phase === "boot" || phase === "connecting" ? (
           <div className="dim">{phase === "connecting" ? t("starting") : t("connecting")}</div>
-        ) : setupNeeded ? (
-          <div className="setup">
-            <div className="card-t">{t("setupTitle")}</div>
-            <div className="card-b dim">{t("setupHint")}</div>
-            <select value={setup.provider} onChange={(e) => setSetup((s) => ({ ...s, provider: e.target.value }))}>
-              {["anthropic", "openai", "deepseek", "qwen", "glm", "ollama", "openrouter"].map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-            <input type="password" placeholder={t("apiKeyLbl")} value={setup.apiKey} onChange={(e) => setSetup((s) => ({ ...s, apiKey: e.target.value }))} spellCheck={false} />
-            <input placeholder={t("modelLbl")} value={setup.model} onChange={(e) => setSetup((s) => ({ ...s, model: e.target.value }))} spellCheck={false} />
-            <input placeholder={t("baseUrlLbl")} value={setup.baseURL} onChange={(e) => setSetup((s) => ({ ...s, baseURL: e.target.value }))} spellCheck={false} />
-            <button disabled={setupBusy || !setup.apiKey.trim() || !setup.model.trim()} onClick={() => void submitSetup()}>
-              {setupBusy ? "…" : t("saveAndStart")}
-            </button>
-          </div>
         ) : (
           <>
             <div className="cards">
@@ -1516,6 +1501,7 @@ export default function App() {
           <div className="sessions setlist" key={zone}>
             {(
               [
+                ["providers", t("setProviders")],
                 ["engine", t("setServer")],
                 ["security", t("setSecurity")],
                 ["lang", t("setLang")],
@@ -1538,6 +1524,20 @@ export default function App() {
         // ⚙ configure place — context column picked a group, the stage renders its forms
         <main className="chat board">
           <div className="scroll boardpad setstage">
+            {setSec === "providers" && (
+              <ProviderSettings
+                client={clientRef.current}
+                cwd={server?.cwd}
+                locale={locale}
+                onSaved={(next: ProviderSettingsState) => {
+                  setSetupRequired(!next.current.authenticated);
+                  setServer((current) => current
+                    ? { ...current, provider: next.current.provider, model: next.current.model }
+                    : current);
+                  void clientRef.current?.listModels({ cwd: server?.cwd }).then(setModelInfo).catch(() => {});
+                }}
+              />
+            )}
             {setSec === "engine" && (
               <>
                 <div className="bandhead">{t("setServer")}</div>

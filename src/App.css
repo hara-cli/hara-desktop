@@ -1253,7 +1253,310 @@ select {
   color: var(--accent);
 }
 .setstage {
-  max-width: 680px;
+  max-width: 920px;
+}
+
+/* model/provider control plane — a compact connection rack, not a generic settings card */
+.provider-console {
+  --provider-line: #303038;
+  width: min(100%, 880px);
+  padding-bottom: 28px;
+}
+.provider-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 8px 0 14px;
+  border-bottom: 1px solid var(--provider-line);
+}
+.provider-heading h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.provider-heading p {
+  max-width: 620px;
+  margin: 7px 0 0;
+  color: var(--dim);
+  font-size: 12px;
+}
+button.compact {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+.provider-route {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 14px;
+  margin-top: 14px;
+  border: 1px solid var(--provider-line);
+  border-left: 3px solid #69706b;
+  background: #151518;
+}
+.provider-route.configured {
+  border-left-color: #5b9b73;
+}
+.provider-route.missing {
+  border-left-color: #c66a54;
+}
+.provider-status-dot,
+.provider-mini-dot {
+  display: inline-block;
+  border-radius: 999px;
+  background: #73736f;
+}
+.provider-status-dot {
+  width: 8px;
+  height: 8px;
+}
+.provider-route.configured .provider-status-dot {
+  background: #6bb184;
+  box-shadow: 0 0 0 3px rgba(107, 177, 132, 0.12);
+}
+.provider-route.missing .provider-status-dot {
+  background: #dd7058;
+}
+.provider-route span,
+.provider-route strong {
+  display: block;
+}
+.provider-route span {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.provider-route strong {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.provider-route-meta {
+  color: var(--dim);
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 10px;
+  text-align: right;
+}
+.provider-warning,
+.provider-unsupported {
+  padding: 10px 12px;
+  margin-top: 10px;
+  border: 1px solid #654338;
+  background: #261b19;
+  color: #e1a692;
+  font-size: 12px;
+}
+.provider-workbench {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  min-height: 430px;
+  margin-top: 14px;
+  border: 1px solid var(--provider-line);
+  background: #141416;
+}
+.provider-presets {
+  padding: 12px 9px;
+  border-right: 1px solid var(--provider-line);
+  background: #111113;
+}
+.provider-group + .provider-group {
+  margin-top: 13px;
+}
+.provider-group-label {
+  padding: 0 8px 5px;
+  color: #74716d;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+button.provider-preset {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dim);
+  text-align: left;
+}
+button.provider-preset:hover:not(:disabled) {
+  filter: none;
+  background: #1b1b1f;
+  color: var(--fg);
+}
+button.provider-preset.on {
+  border-color: #3a3737;
+  background: #201b1b;
+  color: var(--fg);
+}
+.provider-preset span:last-child {
+  min-width: 0;
+}
+.provider-preset strong,
+.provider-preset small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-preset strong {
+  font-size: 11px;
+  font-weight: 550;
+}
+.provider-preset small {
+  margin-top: 1px;
+  color: #716e69;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 8px;
+}
+.provider-mini-dot {
+  width: 6px;
+  height: 6px;
+}
+.provider-mini-dot.cloud {
+  background: #b06758;
+}
+.provider-mini-dot.local {
+  background: #5b9b73;
+}
+.provider-mini-dot.managed {
+  background: #697e9e;
+}
+.provider-form {
+  padding: 22px 24px;
+}
+.provider-form label {
+  display: block;
+  margin-bottom: 16px;
+}
+.provider-form label > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #aaa6a0;
+  font-size: 11px;
+  font-weight: 600;
+}
+.provider-form input {
+  width: 100%;
+  max-width: none;
+  padding: 9px 10px;
+  border: 1px solid #34343a;
+  border-radius: 5px;
+  outline: none;
+  background: #1a1a1e;
+  color: var(--fg);
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+.provider-form input:focus {
+  border-color: #7b4a41;
+  box-shadow: 0 0 0 2px rgba(217, 68, 44, 0.08);
+}
+.provider-form label small {
+  display: block;
+  margin-top: 5px;
+  color: #716e69;
+  font-size: 10px;
+}
+.provider-note,
+.provider-data-path {
+  padding: 9px 10px;
+  margin: 2px 0 13px;
+  border-left: 2px solid #665149;
+  background: #1d1a19;
+  color: #bcb3ad;
+  font-size: 11px;
+}
+.provider-note.local,
+.provider-data-path.local {
+  border-left-color: #4e8060;
+  background: #17201a;
+  color: #a9c3b0;
+}
+.provider-data-path.cloud {
+  border-left-color: #845a4e;
+}
+.provider-models {
+  margin: 16px 0;
+}
+.provider-models > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.provider-models > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 112px;
+  overflow: auto;
+}
+.provider-models button {
+  padding: 3px 7px;
+  border: 1px solid #34343a;
+  border-radius: 4px;
+  background: #1a1a1e;
+  color: var(--dim);
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 9px;
+}
+.provider-models button.on {
+  border-color: #8d4b3f;
+  color: #f0b3a7;
+}
+.provider-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 15px;
+  border-top: 1px solid var(--provider-line);
+}
+.provider-result {
+  margin-top: 10px;
+  padding: 8px 10px;
+  font-size: 11px;
+}
+.provider-result.ok {
+  background: #17201a;
+  color: #9ec1aa;
+}
+.provider-result.error {
+  background: #261b19;
+  color: #e1a692;
+  white-space: pre-wrap;
+}
+@media (max-width: 760px) {
+  .provider-workbench {
+    grid-template-columns: 1fr;
+  }
+  .provider-presets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--provider-line);
+  }
+  .provider-group + .provider-group {
+    margin-top: 0;
+  }
+  .provider-route {
+    grid-template-columns: 10px minmax(0, 1fr);
+  }
+  .provider-route-meta {
+    grid-column: 2;
+    text-align: left;
+  }
 }
 
 /* external-channel divider in the chat context column (identity separation, 顾雅 P2) */
