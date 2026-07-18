@@ -1,11 +1,10 @@
 // Hara Desktop — Tauri shell over `hara serve` (WS JSON-RPC). IA per the 2026-07-11 decision doc:
-// a left icon RAIL switches three PHYSICAL views — 💬 global assistant (chat temperament, WeChat-synced
-// workspace + collapsed automation timeline) · 📁 projects (IDE temperament, workspace groups) · ⚙
-// settings. The two minds never share a list; each has a permanent target anchor.
+// a left icon RAIL switches four PHYSICAL places — 💬 global assistant (chat temperament,
+// WeChat-synced workspace) · 📁 projects (IDE temperament, workspace groups) · 🤖 automations ·
+// ⚙ settings. Places never share an active session; each has a permanent target anchor.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
@@ -41,44 +40,23 @@ import {
   SettingsNotice,
   SettingsPage,
 } from "./SettingsUI";
-import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
+import { AppRail, type AppPlace } from "./AppRail";
+import {
+  ConversationTimeline,
+  type ApprovalVerdict,
+  type ConversationItem,
+} from "./ConversationTimeline";
+import { DesktopCompanionSettings } from "./companion/DesktopCompanionSettings";
+import { useDesktopCompanion } from "./companion/useDesktopCompanion";
+import { IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
 import HaraLogo from "./mark";
-import {
-  acknowledgePetActivity,
-  BUILTIN_HARA_PET,
-  clearPetActivity,
-  selectPetSnapshot,
-  setPetActivity,
-  type ActivePetStatus,
-  type PetActivities,
-  type PetCatalogEntry,
-} from "./pets";
-import {
-  DEFAULT_PET_SELECTOR,
-  emitPetConfig,
-  emitPetState,
-  PET_AWAKE_KEY,
-  PET_SELECTOR_KEY,
-  syncPetWindow,
-} from "./pet-runtime";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
-type Item =
-  | { kind: "user"; text: string }
-  | { kind: "text"; text: string }
-  | { kind: "reasoning"; text: string }
-  | { kind: "tool"; name: string; preview: string }
-  | { kind: "notice"; text: string }
-  | { kind: "diff"; text: string }
-  | { kind: "end"; usage: { input: number; output: number } }
-  // in-flow approval card (IA ruling I: approvals live IN the transcript, not a modal)
-  | { kind: "approval"; approvalId: string; question: string; answered?: "allow" | "always" | "deny" };
-
 type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
 // the four PLACES (顾雅 2026-07-11 four-places ruling): talk / work / orchestrate / configure
-type Zone = "chat" | "projects" | "auto" | "settings";
+type Zone = AppPlace;
 
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
 /** Junk cwd guard: sessions left behind by tests/one-offs in OS temp dirs are NOT projects. */
@@ -146,7 +124,7 @@ export default function App() {
   const [server, setServer] = useState<{ version: string; provider: string; model: string; cwd: string } | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
-  const [transcripts, setTranscripts] = useState<Record<string, Item[]>>({});
+  const [transcripts, setTranscripts] = useState<Record<string, ConversationItem[]>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [input, setInput] = useState("");
   const [modelInfo, setModelInfo] = useState<{ models: string[]; current: string; effortLevels: string[] } | null>(null);
@@ -183,13 +161,6 @@ export default function App() {
     }
   };
   const [auto, setAuto] = useState<{ jobs: CronJobInfo[]; sessions: SessionInfo[] } | null | "old-server">(null);
-  const [petAwake, setPetAwake] = useState(() => localStorage.getItem(PET_AWAKE_KEY) === "1");
-  const [petSelector, setPetSelector] = useState(() => localStorage.getItem(PET_SELECTOR_KEY) || DEFAULT_PET_SELECTOR);
-  const [petActivities, setPetActivities] = useState<PetActivities>({});
-  const [petCatalog, setPetCatalog] = useState<PetCatalogEntry[]>([]);
-  const [petCatalogError, setPetCatalogError] = useState("");
-  const petSelectorRef = useRef(petSelector);
-  const petActivitiesRef = useRef(petActivities);
   // 🤖 place: read-only replay of an automated run (never a live conversation — fork to continue)
   const [autoReplay, setAutoReplay] = useState<{ id: string; title: string; sourceName?: string; cwd: string; items: { role: string; text: string }[] } | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -251,39 +222,22 @@ export default function App() {
   };
   const interruptedSessionsRef = useRef(new Set<string>());
   const openPetSessionRef = useRef<(sessionId: string) => Promise<void>>(async () => {});
-  const petTitle = (sessionId: string): string => sessionsRef.current.find((session) => session.id === sessionId)?.title || "Hara task";
-  const notePet = useCallback((sessionId: string, status: ActivePetStatus) => {
-    setPetActivities((activities) => setPetActivity(activities, sessionId, status, petTitle(sessionId)));
-  }, []);
-  const acknowledgePet = useCallback((sessionId: string) => {
-    setPetActivities((activities) => acknowledgePetActivity(activities, sessionId));
-  }, []);
-  const removePet = useCallback((sessionId: string) => {
-    setPetActivities((activities) => clearPetActivity(activities, sessionId));
-  }, []);
-  const refreshPets = useCallback(async () => {
-    setPetCatalogError("");
-    try {
-      setPetCatalog(await invoke<PetCatalogEntry[]>("list_pets"));
-    } catch (error) {
-      setPetCatalog([]);
-      setPetCatalogError(String(error));
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(PET_AWAKE_KEY, petAwake ? "1" : "0");
-    void syncPetWindow(petAwake).catch((error) => setPetCatalogError(String(error)));
-  }, [petAwake]);
-  useEffect(() => {
-    localStorage.setItem(PET_SELECTOR_KEY, petSelector);
-    petSelectorRef.current = petSelector;
-    if (petAwake) void emitPetConfig({ selector: petSelector }).catch(() => {});
-  }, [petAwake, petSelector]);
-  useEffect(() => {
-    petActivitiesRef.current = petActivities;
-    if (petAwake) void emitPetState(selectPetSnapshot(petActivities)).catch(() => {});
-  }, [petActivities, petAwake]);
+  const {
+    awake: petAwake,
+    setAwake: setPetAwake,
+    selector: petSelector,
+    setSelector: setPetSelector,
+    catalog: petCatalog,
+    catalogError: petCatalogError,
+    refreshCatalog: refreshPets,
+    note: notePet,
+    acknowledge: acknowledgePet,
+    clear: removePet,
+  } = useDesktopCompanion({
+    getActivityTitle: (sessionId) =>
+      sessionsRef.current.find((session) => session.id === sessionId)?.title || "Hara task",
+    onOpenActivity: (sessionId) => openPetSessionRef.current(sessionId),
+  });
   const [q, setQ] = useState("");
   const [upd, setUpd] = useState("");
   const [updateTone, setUpdateTone] = useState<"neutral" | "success" | "warning" | "error">("neutral");
@@ -356,9 +310,12 @@ export default function App() {
     }
   };
 
-  const push = useCallback((sessionId: string, mut: (items: Item[]) => Item[]) => {
-    setTranscripts((tr) => ({ ...tr, [sessionId]: mut(tr[sessionId] ?? []) }));
-  }, []);
+  const push = useCallback(
+    (sessionId: string, mut: (items: ConversationItem[]) => ConversationItem[]) => {
+      setTranscripts((tr) => ({ ...tr, [sessionId]: mut(tr[sessionId] ?? []) }));
+    },
+    [],
+  );
 
   const sendText = useCallback(
     async (sessionId: string, text: string, images?: { path: string }[]) => {
@@ -697,42 +654,55 @@ export default function App() {
       const r = await c.resumeSession(id);
       setTranscripts((tr) => ({
         ...tr,
-        [id]: r.history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
+        [id]: r.history.map((m): ConversationItem =>
+          m.role === "user"
+            ? { kind: "user", text: m.text }
+            : { kind: "text", text: m.text },
+        ),
       }));
       if (mayActivate()) activateSession(id, expected);
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     }
   };
+
+  /** Open an automated run as a READ-ONLY replay in the automation place. */
+  const openReplay = async (session: {
+    id: string;
+    title: string;
+    sourceName?: string;
+    cwd: string;
+  }) => {
+    const c = clientRef.current;
+    if (!c) return;
+    try {
+      const result = await c.resumeSession(session.id);
+      setAutoReplay({
+        id: session.id,
+        title: session.title,
+        sourceName: session.sourceName,
+        cwd: session.cwd,
+        items: result.history,
+      });
+    } catch (error: any) {
+      setErr(String(error?.message ?? error));
+    }
+  };
+
   openPetSessionRef.current = async (sessionId: string) => {
     const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
     if (session) {
       const place = sessionPlace(session);
       if (place === "auto") {
+        acknowledgePet(sessionId);
         setZone("auto");
+        await openReplay(session);
         return;
       }
       setZone(place);
     }
     await openSession(sessionId);
   };
-
-  useEffect(() => {
-    const unlisteners: Array<() => void> = [];
-    let disposed = false;
-    void listen("hara-pet-ready", () => {
-      void emitPetConfig({ selector: petSelectorRef.current }).catch(() => {});
-      void emitPetState(selectPetSnapshot(petActivitiesRef.current)).catch(() => {});
-    }).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)));
-    void listen<{ sessionId?: string }>("hara-pet-open", ({ payload }) => {
-      if (payload?.sessionId) void openPetSessionRef.current(payload.sessionId);
-    }).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)));
-    void listen("hara-pet-tuck", () => setPetAwake(false)).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)));
-    return () => {
-      disposed = true;
-      unlisteners.forEach((unlisten) => unlisten());
-    };
-  }, []);
 
   const rememberProject = (dir: string, remove = false) => {
     setOpenedProjects((list) => {
@@ -803,8 +773,14 @@ export default function App() {
     setTranscripts((tr) => ({
       ...tr,
       [sessionId]: [
-        ...history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
-        ...(tailNotice ? [{ kind: "notice", text: tailNotice } as Item] : []),
+        ...history.map((m): ConversationItem =>
+          m.role === "user"
+            ? { kind: "user", text: m.text }
+            : { kind: "text", text: m.text },
+        ),
+        ...(tailNotice
+          ? [{ kind: "notice", text: tailNotice } as ConversationItem]
+          : []),
       ],
     }));
   };
@@ -931,7 +907,11 @@ export default function App() {
     }
   };
 
-  const answer = async (sessionId: string, approvalId: string, verdict: "allow" | "always" | "deny") => {
+  const answer = async (
+    sessionId: string,
+    approvalId: string,
+    verdict: ApprovalVerdict,
+  ) => {
     const c = clientRef.current;
     if (!c) return;
     await c.approvalReply(approvalId, verdict !== "deny", verdict === "always");
@@ -1251,18 +1231,6 @@ export default function App() {
       setErr(String(e?.message ?? e));
     }
   };
-  /** Open an automated run as a READ-ONLY replay in the 🤖 stage (fork to continue it manually). */
-  const openReplay = async (s: { id: string; title: string; sourceName?: string; cwd: string }) => {
-    const c = clientRef.current;
-    if (!c) return;
-    try {
-      const r = await c.resumeSession(s.id);
-      setAutoReplay({ id: s.id, title: s.title, sourceName: s.sourceName, cwd: s.cwd, items: r.history });
-    } catch (e: any) {
-      setErr(String(e?.message ?? e));
-    }
-  };
-
   /** The replay's escape hatch: fork the automated run into an interactive session and jump there. */
   const continueManually = async () => {
     const c = clientRef.current;
@@ -1273,7 +1241,11 @@ export default function App() {
       const r = await c.forkSession(autoReplay.id);
       setTranscripts((tr) => ({
         ...tr,
-        [r.sessionId]: r.history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
+        [r.sessionId]: r.history.map((m): ConversationItem =>
+          m.role === "user"
+            ? { kind: "user", text: m.text }
+            : { kind: "text", text: m.text },
+        ),
       }));
       rememberSession(r.sessionId, { cwd: autoReplay.cwd, source: "interactive" });
       await refreshSessions();
@@ -1295,7 +1267,11 @@ export default function App() {
       const r = await c.forkSession(id);
       setTranscripts((tr) => ({
         ...tr,
-        [r.sessionId]: r.history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
+        [r.sessionId]: r.history.map((m): ConversationItem =>
+          m.role === "user"
+            ? { kind: "user", text: m.text }
+            : { kind: "text", text: m.text },
+        ),
       }));
       rememberSession(r.sessionId, sessionHint);
       if (sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, sessionHint)) {
@@ -1419,96 +1395,17 @@ export default function App() {
         )
       ) : (
         <>
-          <div className="scroll">
-            {items.map((it, i) => {
-              switch (it.kind) {
-                case "user":
-                  return (
-                    <div key={i} className="msg user">
-                      {it.text}
-                      {!busy[active!] && (
-                        <span className="rew" title={t("rewindHere")} onClick={() => void rewindHere(i)}>
-                          ↺
-                        </span>
-                      )}
-                    </div>
-                  );
-                case "text":
-                  return (
-                    <div key={i} className="msg assistant">
-                      <Md text={it.text} />
-                    </div>
-                  );
-                case "reasoning":
-                  return (
-                    <details key={i} className="reasoning" open={temperament === "ide"}>
-                      <summary>{t("thinking")}</summary>
-                      {it.text}
-                    </details>
-                  );
-                case "tool":
-                  return (
-                    <div key={i} className="tool">
-                      ⚙ {it.name} <span className="dim">{it.preview}</span>
-                    </div>
-                  );
-                case "notice":
-                  return (
-                    <div key={i} className="notice">
-                      {it.text}
-                    </div>
-                  );
-                case "diff":
-                  return (
-                    <pre key={i} className="diff">
-                      {it.text}
-                    </pre>
-                  );
-                case "end":
-                  return (
-                    <div key={i} className="usage dim">
-                      · {it.usage.input}→{it.usage.output} {t("tokens")} ·
-                    </div>
-                  );
-                case "approval":
-                  return (
-                    <div key={i} className={`appr ${it.answered ? "done" : ""}`}>
-                      <div className="modal-title">{t("approvalTitle")}</div>
-                      <div className="question">{it.question}</div>
-                      {it.answered ? (
-                        <div className="dim">{t(it.answered)}</div>
-                      ) : (
-                        <div className="row">
-                          <button onClick={() => void answer(active!, it.approvalId, "allow")}>{t("allow")}</button>
-                          <button className="ghost" onClick={() => void answer(active!, it.approvalId, "always")}>
-                            {t("always")}
-                          </button>
-                          <button className="deny" onClick={() => void answer(active!, it.approvalId, "deny")}>
-                            {t("deny")}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-              }
-            })}
-            {active &&
-              busy[active] &&
-              (() => {
-                const lastUser = items.map((x) => x.kind).lastIndexOf("user");
-                const tail = items.slice(lastUser + 1);
-                const nt = tail.filter((x) => x.kind === "tool").length;
-                const nd = tail.filter((x) => x.kind === "diff").length;
-                return (
-                  <div className="busy">
-                    {t("working")}
-                    {nt > 0 && ` · ⚙${nt}`}
-                    {nd > 0 && ` · ±${nd}`}
-                  </div>
-                );
-              })()}
-            <div ref={bottomRef} />
-          </div>
+          <ConversationTimeline
+            items={items}
+            busy={!!busy[active]}
+            temperament={temperament}
+            bottomRef={bottomRef}
+            t={t}
+            onRewind={(index) => void rewindHere(index)}
+            onApproval={(approvalId, verdict) =>
+              void answer(active, approvalId, verdict)
+            }
+          />
           {(queue[active!] ?? []).length > 0 && (
             <div className="steerq">
               {(queue[active!] ?? []).map((m, i) => (
@@ -1632,31 +1529,29 @@ export default function App() {
   // automations grew into a first-class place). Notification invariant on the rail: interruption
   // (needs a human) → red dot; ambient (ran, left a trace) → count chip.
   const rail = (
-    <nav className="rail" aria-label={t("mainNavigation")}>
-      <button className={zone === "chat" ? "on" : ""} aria-label={t("zoneChat")} aria-current={zone === "chat" ? "page" : undefined} title={`${t("zoneChat")} ⌘1`} onClick={() => setZone("chat")}>
-        <IconChat size={19} />
-        {manualUnreadIn(azAll) && <span className="rdot" />}
-      </button>
-      <button className={zone === "projects" ? "on" : ""} aria-label={t("zoneProjects")} aria-current={zone === "projects" ? "page" : undefined} title={`${t("zoneProjects")} ⌘2`} onClick={() => setZone("projects")}>
-        <IconFolder size={19} />
-        {manualUnreadIn(sessions.filter((s) => !isAssistantCwd(s.cwd) && !isAutomated(s) && !isJunkCwd(s.cwd))) && <span className="rdot" />}
-      </button>
-      <button className={zone === "auto" ? "on" : ""} aria-label={t("zoneAuto")} aria-current={zone === "auto" ? "page" : undefined} title={`${t("zoneAuto")} ⌘3`} onClick={() => setZone("auto")}>
-        <IconBot size={19} />
-        {autoUnread > 0 && <span className="chip">{autoUnread > 9 ? "9+" : autoUnread}</span>}
-      </button>
-      <div className="railgap" />
-      <button
-        className={zone === "settings" ? "on" : ""}
-        aria-label={updAvail ? `${t("zoneSettings")}, ${t("updateAvail")} ${updAvail}` : t("zoneSettings")}
-        aria-current={zone === "settings" ? "page" : undefined}
-        title={updAvail ? `${t("updateAvail")}: ${updAvail}` : `${t("zoneSettings")} ⌘,`}
-        onClick={() => setZone("settings")}
-      >
-        <IconCog size={18} />
-        {updAvail && <span className="rdot" />}
-      </button>
-    </nav>
+    <AppRail
+      activePlace={zone}
+      labels={{
+        mainNavigation: t("mainNavigation"),
+        chat: t("zoneChat"),
+        projects: t("zoneProjects"),
+        automations: t("zoneAuto"),
+        settings: t("zoneSettings"),
+        updateAvailable: t("updateAvail"),
+      }}
+      assistantUnread={manualUnreadIn(azAll)}
+      projectsUnread={manualUnreadIn(
+        sessions.filter(
+          (session) =>
+            !isAssistantCwd(session.cwd) &&
+            !isAutomated(session) &&
+            !isJunkCwd(session.cwd),
+        ),
+      )}
+      automationUnread={autoUnread}
+      updateAvailable={updAvail}
+      onSelect={setZone}
+    />
   );
   const footBar = (
     <div className="foot">
@@ -2041,71 +1936,16 @@ export default function App() {
               </SettingsPage>
             )}
             {setSec === "pets" && (
-              <SettingsPage
-                id="settings-pet-title"
-                eyebrow={t("settingsPersonalize")}
-                title={t("setPets")}
-                description={t("petHint")}
-              >
-                <SettingsCard
-                  title={t("petCompanionTitle")}
-                  description={t("petCompanionHint")}
-                  aside={
-                    <SettingsBadge tone={petAwake ? "success" : "neutral"}>
-                      {petAwake ? t("petAwake") : t("petAsleep")}
-                    </SettingsBadge>
-                  }
-                >
-                  <SettingsItem title={t("petVisibility")} description={t("petVisibilityHint")}>
-                    <div className="settings-choice">
-                      <button type="button" onClick={() => setPetAwake((awake) => !awake)}>
-                        {petAwake ? t("petTuck") : t("petWake")}
-                      </button>
-                      <button type="button" className="ghost" onClick={() => void refreshPets()}>
-                        {t("petRefresh")}
-                      </button>
-                    </div>
-                  </SettingsItem>
-                </SettingsCard>
-
-                <SettingsCard title={t("petChoose")} description={t("petChooseHint")}>
-                  <div className="pet-grid">
-                    {[BUILTIN_HARA_PET, ...petCatalog].map((pet) => {
-                      const source =
-                        pet.source === "builtin"
-                          ? t("petBuiltin")
-                          : pet.source === "codex-local"
-                            ? t("petCodex")
-                            : pet.source === "hara-market"
-                              ? t("petMarket")
-                              : t("petHaraLocal");
-                      return (
-                        <button
-                          type="button"
-                          key={pet.selector}
-                          className={`pet-card ${petSelector === pet.selector ? "on" : ""} ${pet.compatible ? "" : "invalid"}`}
-                          disabled={!pet.compatible}
-                          title={pet.error || pet.description}
-                          aria-pressed={petSelector === pet.selector}
-                          onClick={() => setPetSelector(pet.selector)}
-                        >
-                          <span className="pet-card-mark">{pet.selector === BUILTIN_HARA_PET.selector ? "ハ" : pet.displayName.slice(0, 1).toUpperCase()}</span>
-                          <span className="pet-card-copy">
-                            <strong>{pet.displayName}</strong>
-                            <small>
-                              {source}
-                              {pet.spriteVersionNumber ? ` · v${pet.spriteVersionNumber}` : ""}
-                            </small>
-                          </span>
-                          {petSelector === pet.selector && <span className="pet-selected">✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {petCatalog.length === 0 && !petCatalogError && <div className="settings-empty">{t("petNone")}</div>}
-                  {petCatalogError && <div className="settings-inline-error">{petCatalogError}</div>}
-                </SettingsCard>
-              </SettingsPage>
+              <DesktopCompanionSettings
+                t={t}
+                awake={petAwake}
+                selector={petSelector}
+                catalog={petCatalog}
+                error={petCatalogError}
+                onToggleAwake={() => setPetAwake((awake) => !awake)}
+                onRefresh={() => void refreshPets()}
+                onSelect={setPetSelector}
+              />
             )}
             {setSec === "plugins" && (
               <SettingsPage

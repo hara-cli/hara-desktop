@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 test("rail buttons reset global padding so navigation SVGs cannot collapse into dots", () => {
   const css = readFileSync(`${root}/src/App.css`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const rail = readFileSync(`${root}/src/AppRail.tsx`, "utf8");
   const railButton = css.match(/\.rail button \{([\s\S]*?)\n\}/)?.[1] ?? "";
   const railSvg = css.match(/\.rail button > svg \{([\s\S]*?)\n\}/)?.[1] ?? "";
 
@@ -16,8 +17,22 @@ test("rail buttons reset global padding so navigation SVGs cannot collapse into 
   assert.match(railButton, /flex:\s*0\s+0\s+34px\s*;/);
   assert.match(railButton, /color:\s*#d0cdc6\s*;/);
   assert.match(railSvg, /flex:\s*0\s+0\s+auto\s*;/);
-  assert.match(app, /<nav className="rail" aria-label=/);
-  assert.match(app, /aria-current=\{zone === "settings" \? "page" : undefined\}/);
+  assert.match(app, /<AppRail/);
+  assert.match(rail, /<nav className="rail" aria-label=\{labels\.mainNavigation\}>/);
+  assert.match(rail, /aria-current=\{activePlace === "settings" \? "page" : undefined\}/);
+});
+
+test("the app shell delegates stable navigation and transcript presentation", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const rail = readFileSync(`${root}/src/AppRail.tsx`, "utf8");
+  const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
+
+  assert.match(app, /import \{ AppRail, type AppPlace \} from "\.\/AppRail"/);
+  assert.match(app, /<ConversationTimeline/);
+  assert.doesNotMatch(app, /<nav className="rail"/);
+  assert.match(rail, /export type AppPlace = "chat" \| "projects" \| "auto" \| "settings"/);
+  assert.match(timeline, /case "approval"/, "approvals stay in the session timeline");
+  assert.match(timeline, /const lastUser = items\.map/, "busy progress remains scoped to the current turn");
 });
 
 test("settings use shared page templates and keep Desktop, engine, and update state distinct", () => {

@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   acknowledgePetActivity,
   BUILTIN_HARA_PET,
   selectPetSnapshot,
   setPetActivity,
 } from "../src/pets.ts";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 test("built-in pet provenance is independent from local and future market providers", () => {
   assert.equal(BUILTIN_HARA_PET.source, "builtin");
@@ -50,4 +54,34 @@ test("tracked pet activity is bounded", () => {
   assert.equal(Object.keys(activities).length, 64);
   assert.equal(selectPetSnapshot(activities).activity.sessionId, "s-79");
   assert.equal(activities["s-0"], undefined);
+});
+
+test("desktop companion owns its window bridge and registers listeners before window sync", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const companion = readFileSync(
+    `${root}/src/companion/useDesktopCompanion.ts`,
+    "utf8",
+  );
+  const settings = readFileSync(
+    `${root}/src/companion/DesktopCompanionSettings.tsx`,
+    "utf8",
+  );
+
+  assert.match(app, /useDesktopCompanion\(\{/);
+  assert.match(app, /<DesktopCompanionSettings/);
+  assert.doesNotMatch(app, /listen\("hara-pet-ready"/);
+  assert.match(
+    app,
+    /place === "auto"[\s\S]*setZone\("auto"\)[\s\S]*await openReplay\(session\)/,
+    "clicking an automation activity opens that exact read-only run",
+  );
+  assert.ok(
+    companion.indexOf('listen("hara-pet-ready"') <
+      companion.indexOf("syncPetWindow(awake)"),
+    "a fast companion boot cannot lose its initial configuration",
+  );
+  assert.match(companion, /onOpenActivity: \(sessionId: string\)/);
+  assert.match(settings, /case "codex-local":/);
+  assert.match(settings, /case "hara-market":/);
+  assert.match(settings, /disabled=\{!pet\.compatible\}/);
 });
