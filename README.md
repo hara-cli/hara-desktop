@@ -63,6 +63,10 @@ novice workbench and signed capability center. See
 [`docs/NOVICE_WORKBENCH_ARCHITECTURE.md`](./docs/NOVICE_WORKBENCH_ARCHITECTURE.md),
 [`docs/OFFICE_OPEN_CORE_EXECUTION_PLAN.md`](./docs/OFFICE_OPEN_CORE_EXECUTION_PLAN.md), and
 [`docs/OFFICE_TEMPLATE_COMPONENT_SYSTEM.md`](./docs/OFFICE_TEMPLATE_COMPONENT_SYSTEM.md).
+The presentation path, including the audited `ppt-master` source-import and native PPTX candidate,
+is documented in
+[`docs/PRESENTATION_CAPABILITY_ARCHITECTURE.md`](./docs/PRESENTATION_CAPABILITY_ARCHITECTURE.md) and
+[`docs/PPT_MASTER_INTEGRATION_AUDIT.md`](./docs/PPT_MASTER_INTEGRATION_AUDIT.md).
 
 ## Design invariants (四场所模型, 顾雅 2026-07-11)
 
