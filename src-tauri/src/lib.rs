@@ -57,21 +57,79 @@ struct ValidatedPet {
 }
 
 fn user_home() -> Result<PathBuf, String> {
-    // Git Bash commonly exports HOME on Windows, but Hara's native data directory follows the
-    // Windows profile. Prefer USERPROFILE there so a shell override cannot expose another catalog.
-    #[cfg(windows)]
-    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
-    #[cfg(not(windows))]
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
-    home.map(PathBuf::from)
-        .ok_or_else(|| "no user home directory".to_string())
+    resolve_user_home(
+        std::env::var_os("HOME").map(PathBuf::from),
+        std::env::var_os("USERPROFILE").map(PathBuf::from),
+        cfg!(windows),
+    )
+}
+
+/// Mirror hara-cli's portable-home contract without depending on the host running these tests.
+/// Git Bash/MSYS exposes native Windows homes through POSIX-looking environment values, while a
+/// native Desktop process must use drive or UNC syntax when it opens those paths.
+fn normalize_portable_home(value: PathBuf, windows: bool) -> PathBuf {
+    if !windows {
+        return value;
+    }
+
+    let Some(raw) = value.to_str() else {
+        // Preserve an unusual, non-Unicode environment value instead of lossy-converting it.
+        return value;
+    };
+    let home = raw.trim();
+    let bytes = home.as_bytes();
+
+    // MSYS/Git Bash drive form: /c/Users/alice -> C:\Users\alice.
+    if bytes.len() >= 2
+        && bytes[0] == b'/'
+        && bytes[1].is_ascii_alphabetic()
+        && (bytes.len() == 2 || bytes.get(2) == Some(&b'/'))
+    {
+        let drive = char::from(bytes[1]).to_ascii_uppercase();
+        let rest = if bytes.len() > 3 { &home[3..] } else { "" };
+        return PathBuf::from(format!("{drive}:\\{}", rest.replace('/', "\\")));
+    }
+
+    // MSYS UNC form: //server/share -> \\server\share.
+    if home.starts_with("//") && bytes.get(2).is_some_and(|byte| *byte != b'/') {
+        return PathBuf::from(format!("\\\\{}", home[2..].replace('/', "\\")));
+    }
+
+    // Already-native drive form, possibly with forward or mixed separators.
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\')
+    {
+        let drive = char::from(bytes[0]).to_ascii_uppercase();
+        return PathBuf::from(format!("{drive}{}", home[1..].replace('/', "\\")));
+    }
+
+    PathBuf::from(home)
+}
+
+fn resolve_user_home(
+    home: Option<PathBuf>,
+    user_profile: Option<PathBuf>,
+    windows: bool,
+) -> Result<PathBuf, String> {
+    // Hara CLI treats an explicit HOME as an intentional portable-home override on every platform.
+    // Native Windows GUI launches commonly omit it, so USERPROFILE is the required fallback there.
+    home.filter(|path| !path.as_os_str().is_empty())
+        .map(|path| normalize_portable_home(path, windows))
+        .filter(|path| !path.as_os_str().is_empty())
+        .or_else(|| user_profile.filter(|path| !path.as_os_str().is_empty()))
+        .ok_or_else(|| "no user home directory (HOME and USERPROFILE are unset)".to_string())
+}
+
+fn hara_data_dir() -> Result<PathBuf, String> {
+    Ok(user_home()?.join(".hara"))
 }
 
 fn pet_root(source: &str) -> Result<PathBuf, String> {
-    let home = user_home()?;
     match source {
-        "hara" => Ok(home.join(".hara").join("pets")),
-        "codex" => Ok(home.join(".codex").join("pets")),
+        "hara" => Ok(hara_data_dir()?.join("pets")),
+        "codex" => Ok(user_home()?.join(".codex").join("pets")),
         _ => Err("unsupported pet source".into()),
     }
 }
@@ -326,8 +384,7 @@ fn read_pet_asset(selector: String) -> Result<PetAsset, String> {
 /// so the UI can offer to start the server instead of dialing a ghost.
 #[tauri::command]
 fn read_discovery() -> Option<String> {
-    let home = std::env::var("HOME").ok()?;
-    let raw = fs::read_to_string(format!("{home}/.hara/serve.json")).ok()?;
+    let raw = fs::read_to_string(hara_data_dir().ok()?.join("serve.json")).ok()?;
     #[cfg(unix)]
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
         if let Some(pid) = v.get("pid").and_then(|p| p.as_i64()) {
@@ -343,69 +400,138 @@ fn read_discovery() -> Option<String> {
     Some(raw)
 }
 
+fn bundled_sidecar_name(windows: bool) -> &'static str {
+    if windows {
+        "hara.exe"
+    } else {
+        "hara"
+    }
+}
+
+fn bundled_sidecar_path(app_executable: &Path, windows: bool) -> Option<PathBuf> {
+    app_executable
+        .parent()
+        .map(|directory| directory.join(bundled_sidecar_name(windows)))
+}
+
+fn fallback_sidecar_path(
+    data_directory: &Path,
+    path_environment: Option<&std::ffi::OsStr>,
+    windows: bool,
+) -> Option<PathBuf> {
+    let name = bundled_sidecar_name(windows);
+    let managed = data_directory.join("bin").join(name);
+    if managed.is_file() {
+        return Some(managed);
+    }
+    path_environment.and_then(|path| {
+        std::env::split_paths(path)
+            // Never let a relative/empty PATH entry turn Desktop's current directory into an
+            // executable search root.
+            .filter(|directory| directory.is_absolute())
+            .map(|directory| directory.join(name))
+            .find(|candidate| candidate.is_file())
+    })
+}
+
+fn serve_command(executable: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new(executable);
+    command.arg("serve");
+    command
+}
+
+fn spawn_serve_process(executable: &Path, log_path: &Path) -> Result<u32, String> {
+    let log_directory = log_path
+        .parent()
+        .ok_or_else(|| "serve log has no parent directory".to_string())?;
+    fs::create_dir_all(log_directory)
+        .map_err(|error| format!("create Hara data directory: {error}"))?;
+    let stdout = fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(log_path)
+        .map_err(|error| format!("open serve log: {error}"))?;
+    let stderr = stdout
+        .try_clone()
+        .map_err(|error| format!("clone serve log handle: {error}"))?;
+
+    let mut command = serve_command(executable);
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::from(stdout))
+        .stderr(std::process::Stdio::from(stderr));
+
+    // Keep the engine outside the Desktop process group. Direct process spawning avoids shell
+    // quoting, login-shell PATH differences, and the absence of zsh/nohup on Windows.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+    }
+
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("could not start {}: {error}", executable.display()))?;
+    let pid = child.id();
+    // Dropping Child does not reap it on Unix. A tiny waiter prevents a stopped Serve process from
+    // remaining as a zombie while Desktop stays open.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(pid)
+}
+
 /// Spawn `hara serve` detached. Resolution order (cc-haha sidecar blueprint, adapted):
 /// 1. **Bundled sidecar** — the `hara` binary Tauri ships next to the app executable (externalBin).
 ///    Zero-dependency: the app works on a machine with no node/npm at all.
-/// 2. PATH fallback (dev mode / user-managed installs), with two macOS traps handled: GUI apps don't
-///    inherit the terminal PATH (→ login shell), and the npm shim's `#!/usr/bin/env node` may pick an
-///    old MacPorts node that can't parse ESM (→ run the shim with the node that sits NEXT TO it).
+/// 2. PATH fallback (dev mode / user-managed standalone installs).
+///
+/// Both paths launch the engine directly through `std::process::Command`; no shell is involved.
 /// Output → ~/.hara/serve.log (read back by `read_serve_log` for the failure UI).
 #[tauri::command]
-fn start_serve() -> Result<String, String> {
-    // 1. bundled sidecar next to the app executable
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let sidecar = dir.join("hara");
-            if sidecar.is_file() {
-                let script = format!(
-                    "nohup '{}' serve >\"$HOME/.hara/serve.log\" 2>&1 &",
-                    sidecar.display()
-                );
-                return std::process::Command::new("/bin/zsh")
-                    .args(["-c", &script])
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                    .map(|_| "starting bundled hara serve — log: ~/.hara/serve.log".to_string())
-                    .map_err(|e| format!("could not start bundled hara: {e}"));
-            }
+fn start_serve() -> Result<u32, String> {
+    let data_directory = hara_data_dir()?;
+    let log_path = data_directory.join("serve.log");
+    let bundled = std::env::current_exe()
+        .ok()
+        .and_then(|executable| bundled_sidecar_path(&executable, cfg!(windows)))
+        .filter(|sidecar| sidecar.is_file());
+    let executable = match bundled {
+        Some(sidecar) => sidecar,
+        None => {
+            let path = std::env::var_os("PATH");
+            let Some(fallback) =
+                fallback_sidecar_path(&data_directory, path.as_deref(), cfg!(windows))
+            else {
+                return Err(format!(
+                    "`{}` not found — no bundled sidecar, {} or absolute PATH entry contains it",
+                    bundled_sidecar_name(cfg!(windows)),
+                    data_directory.join("bin").display()
+                ));
+            };
+            fallback
         }
-    }
-    // 2. PATH fallback
-    let resolve = std::process::Command::new("/bin/zsh")
-        .args(["-lc", "command -v hara"])
-        .output()
-        .map_err(|e| format!("zsh: {e}"))?;
-    let hara = String::from_utf8_lossy(&resolve.stdout).trim().to_string();
-    if hara.is_empty() {
-        return Err(
-            "`hara` not found — no bundled sidecar and nothing on PATH (npm i -g @nanhara/hara)"
-                .into(),
-        );
-    }
-    let script = format!(
-        "H='{hara}'; N=\"$(dirname \"$H\")/node\"; [ -x \"$N\" ] || N=node; \
-         nohup \"$N\" \"$H\" serve >\"$HOME/.hara/serve.log\" 2>&1 &"
-    );
-    std::process::Command::new("/bin/zsh")
-        .args(["-lc", &script])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|_| format!("starting hara serve ({hara}) — log: ~/.hara/serve.log"))
-        .map_err(|e| format!("could not start `hara serve`: {e}"))
+    };
+    let pid = spawn_serve_process(&executable, &log_path)?;
+    Ok(pid)
 }
 
 /// Tail of ~/.hara/serve.log — shown in the UI when startup fails (cc-haha's 80-line startup buffer
 /// pattern: give the user the actual error, not "connection refused").
 #[tauri::command]
 fn read_serve_log() -> String {
-    let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) else {
+    let Ok(log_path) = hara_data_dir().map(|directory| directory.join("serve.log")) else {
         return String::new();
     };
-    match std::fs::read_to_string(format!("{home}/.hara/serve.log")) {
+    match fs::read_to_string(log_path) {
         Ok(s) => {
             let lines: Vec<&str> = s.lines().collect();
             let start = lines.len().saturating_sub(40);
@@ -419,8 +545,8 @@ fn read_serve_log() -> String {
 /// (`$HOME/.hara/workspace`, the same default the chat gateway uses).
 #[tauri::command]
 fn get_home() -> String {
-    std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
+    user_home()
+        .map(|home| home.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
 
@@ -435,11 +561,8 @@ fn write_temp_image(data_base64: String) -> Result<String, String> {
     if bytes.len() > 20 * 1024 * 1024 {
         return Err("image too large (>20MB)".into());
     }
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .map_err(|_| "no HOME")?;
-    let dir = format!("{home}/.hara/tmp");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dir = hara_data_dir()?.join("tmp");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let name = format!(
         "paste-{}.png",
         std::time::SystemTime::now()
@@ -447,9 +570,9 @@ fn write_temp_image(data_base64: String) -> Result<String, String> {
             .map(|d| d.as_millis())
             .unwrap_or(0)
     );
-    let path = format!("{dir}/{name}");
-    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
-    Ok(path)
+    let path = dir.join(name);
+    fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 /// Dock badge = manual unread count (macOS). None clears it.
@@ -459,6 +582,71 @@ fn set_badge(app: tauri::AppHandle, count: Option<i64>) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_badge_count(count);
     }
+}
+
+const UPDATE_RESTART_MARKER: &str = "update-restart.pending";
+
+fn arm_update_restart_marker_at(marker: &Path) -> Result<(), String> {
+    use std::io::Write;
+
+    let parent = marker
+        .parent()
+        .ok_or_else(|| "update restart marker has no parent directory".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| format!("create app data directory: {e}"))?;
+    match fs::symlink_metadata(marker) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err("update restart marker is not a regular file".into())
+        }
+        Ok(_) => {
+            fs::remove_file(marker).map_err(|e| format!("replace update restart marker: {e}"))?
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("inspect update restart marker: {error}")),
+    }
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(marker)
+        .map_err(|e| format!("create update restart marker: {e}"))?;
+    file.write_all(b"start-bundled-sidecar-once\n")
+        .and_then(|_| file.sync_all())
+        .map_err(|e| format!("persist update restart marker: {e}"))
+}
+
+fn take_update_restart_marker_at(marker: &Path) -> Result<bool, String> {
+    let metadata = match fs::symlink_metadata(marker) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("inspect update restart marker: {error}")),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 128 {
+        return Err("update restart marker is invalid".into());
+    }
+    fs::remove_file(marker).map_err(|e| format!("consume update restart marker: {e}"))?;
+    Ok(true)
+}
+
+fn update_restart_marker(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    app.path()
+        .app_data_dir()
+        .map(|dir| dir.join(UPDATE_RESTART_MARKER))
+        .map_err(|e| format!("resolve app data directory: {e}"))
+}
+
+/// This one-shot marker is the only path that auto-starts a sidecar on launch. Ordinary launches
+/// continue to discover an existing Serve process and otherwise wait for the user.
+#[tauri::command]
+fn take_update_restart_marker(app: tauri::AppHandle) -> Result<bool, String> {
+    take_update_restart_marker_at(&update_restart_marker(&app)?)
+}
+
+/// Relaunch only after the renderer has observed authenticated Serve shutdown and discovery cleanup.
+/// The marker survives the process boundary, is consumed once, and grants no general process control.
+#[tauri::command]
+fn restart_after_update(app: tauri::AppHandle) -> Result<(), String> {
+    arm_update_restart_marker_at(&update_restart_marker(&app)?)?;
+    app.restart();
 }
 
 /// Panel servers WE started (their port wasn't listening before start_panel ran) — terminated on app
@@ -516,7 +704,11 @@ fn start_panel(
         .filter(|d| !d.is_empty())
         .map(|d| format!("cd '{}' && ", d.replace('\'', "'\\''")))
         .unwrap_or_default();
-    let script = format!("export PATH=\"$HOME/.hara/bin:$PATH\"; {cd}{command} {joined} 2>&1");
+    let plugin_bin = hara_data_dir()?
+        .join("bin")
+        .to_string_lossy()
+        .replace('\'', "'\\''");
+    let script = format!("export PATH='{plugin_bin}':$PATH; {cd}{command} {joined} 2>&1");
     let out = std::process::Command::new("/bin/zsh")
         .args(["-lc", &script])
         .output()
@@ -567,6 +759,8 @@ pub fn run() {
             get_home,
             read_serve_log,
             set_badge,
+            take_update_restart_marker,
+            restart_after_update,
             write_temp_image,
             list_pets,
             read_pet_asset
@@ -591,6 +785,124 @@ pub fn run() {
 #[cfg(test)]
 mod pet_tests {
     use super::*;
+
+    #[test]
+    fn home_resolution_uses_explicit_home_and_falls_back_to_windows_profile() {
+        let home = PathBuf::from("/portable/home");
+        let profile = PathBuf::from("/windows/profile");
+        for windows in [false, true] {
+            assert_eq!(
+                resolve_user_home(Some(home.clone()), Some(profile.clone()), windows).unwrap(),
+                home
+            );
+            assert_eq!(
+                resolve_user_home(None, Some(profile.clone()), windows).unwrap(),
+                profile
+            );
+            assert_eq!(
+                resolve_user_home(Some(PathBuf::new()), Some(profile.clone()), windows).unwrap(),
+                profile
+            );
+            assert!(resolve_user_home(None, None, windows).is_err());
+        }
+    }
+
+    #[test]
+    fn portable_home_normalization_is_platform_parameterized() {
+        let cases = [
+            ("/c/Users/alice", r"C:\Users\alice"),
+            ("/d", r"D:\"),
+            ("//server/share/alice", r"\\server\share\alice"),
+            ("c:/Users/alice", r"C:\Users\alice"),
+            (r"d:\Users/alice", r"D:\Users\alice"),
+        ];
+
+        for (input, windows_expected) in cases {
+            assert_eq!(
+                normalize_portable_home(PathBuf::from(input), true),
+                PathBuf::from(windows_expected),
+                "Windows normalization failed for {input}"
+            );
+            assert_eq!(
+                normalize_portable_home(PathBuf::from(input), false),
+                PathBuf::from(input),
+                "non-Windows behavior changed for {input}"
+            );
+        }
+
+        assert_eq!(
+            resolve_user_home(
+                Some(PathBuf::from(" /c/Users/alice ")),
+                Some(PathBuf::from(r"C:\fallback")),
+                true,
+            )
+            .unwrap(),
+            PathBuf::from(r"C:\Users\alice")
+        );
+    }
+
+    #[test]
+    fn bundled_sidecar_name_and_path_are_platform_specific() {
+        let app = Path::new("/opt/hara/Hara");
+        assert_eq!(
+            bundled_sidecar_path(app, false).unwrap(),
+            Path::new("/opt/hara/hara")
+        );
+        assert_eq!(
+            bundled_sidecar_path(app, true).unwrap(),
+            Path::new("/opt/hara/hara.exe")
+        );
+    }
+
+    #[test]
+    fn fallback_sidecar_uses_the_managed_hara_bin_without_a_shell() {
+        let unique = format!(
+            "hara-desktop-sidecar-path-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let data = root.join(".hara");
+        let sidecar = data.join("bin").join("hara.exe");
+        fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        fs::write(&sidecar, b"test sidecar").unwrap();
+        assert_eq!(fallback_sidecar_path(&data, None, true).unwrap(), sidecar);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn serve_command_executes_the_sidecar_directly() {
+        use std::ffi::OsStr;
+
+        let command = serve_command(Path::new("/opt/hara/hara"));
+        assert_eq!(command.get_program(), OsStr::new("/opt/hara/hara"));
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            vec![OsStr::new("serve")]
+        );
+    }
+
+    #[test]
+    fn update_restart_marker_is_consumed_exactly_once() {
+        let unique = format!(
+            "hara-desktop-update-marker-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        let marker = dir.join(UPDATE_RESTART_MARKER);
+        assert!(!take_update_restart_marker_at(&marker).unwrap());
+        arm_update_restart_marker_at(&marker).unwrap();
+        assert!(take_update_restart_marker_at(&marker).unwrap());
+        assert!(!take_update_restart_marker_at(&marker).unwrap());
+        let _ = fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn selector_is_bound_to_one_catalog_child() {

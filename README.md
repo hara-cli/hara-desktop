@@ -60,7 +60,9 @@ package-smoke gate. See `WORKFLOW.md` for the two-repo release train.
 
 Next: Windows Authenticode signing · cron management UI · attachments · task/artifact protocol ·
 novice workbench and signed capability center. See
-[`docs/NOVICE_WORKBENCH_ARCHITECTURE.md`](./docs/NOVICE_WORKBENCH_ARCHITECTURE.md).
+[`docs/NOVICE_WORKBENCH_ARCHITECTURE.md`](./docs/NOVICE_WORKBENCH_ARCHITECTURE.md),
+[`docs/OFFICE_OPEN_CORE_EXECUTION_PLAN.md`](./docs/OFFICE_OPEN_CORE_EXECUTION_PLAN.md), and
+[`docs/OFFICE_TEMPLATE_COMPONENT_SYSTEM.md`](./docs/OFFICE_TEMPLATE_COMPONENT_SYSTEM.md).
 
 ## Design invariants (四场所模型, 顾雅 2026-07-11)
 

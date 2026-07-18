@@ -18,6 +18,7 @@ interface ProviderSettingsProps {
   cwd?: string;
   locale: Locale;
   onSaved: (state: ProviderSettingsState) => void;
+  embedded?: boolean;
 }
 
 const words = {
@@ -118,7 +119,7 @@ const groupLabel = (
   copy: (typeof words)[Locale],
 ): string => copy[location];
 
-export function ProviderSettings({ client, cwd, locale, onSaved }: ProviderSettingsProps) {
+export function ProviderSettings({ client, cwd, locale, onSaved, embedded = false }: ProviderSettingsProps) {
   const copy = words[locale];
   const [state, setState] = useState<ProviderSettingsState | null>(null);
   const [draft, setDraft] = useState<Draft>({ provider: "", model: "", baseURL: "" });
@@ -257,16 +258,29 @@ export function ProviderSettings({ client, cwd, locale, onSaved }: ProviderSetti
 
   const locations: ProviderCatalogEntry["location"][] = ["cloud", "local", "managed"];
   return (
-    <section className="provider-console" aria-labelledby="provider-settings-title">
-      <header className="provider-heading">
-        <div>
-          <h2 id="provider-settings-title">{copy.title}</h2>
-          <p>{copy.subtitle}</p>
+    <section
+      className={`provider-console ${embedded ? "embedded" : ""}`}
+      aria-labelledby={embedded ? undefined : "provider-settings-title"}
+      aria-label={embedded ? copy.title : undefined}
+    >
+      {embedded ? (
+        <div className="provider-embedded-toolbar">
+          <span>{copy.choose}</span>
+          <button type="button" className="ghost compact" disabled={phase !== "idle"} onClick={() => void load()}>
+            {copy.refresh}
+          </button>
         </div>
-        <button type="button" className="ghost compact" disabled={phase !== "idle"} onClick={() => void load()}>
-          {copy.refresh}
-        </button>
-      </header>
+      ) : (
+        <header className="provider-heading">
+          <div>
+            <h2 id="provider-settings-title">{copy.title}</h2>
+            <p>{copy.subtitle}</p>
+          </div>
+          <button type="button" className="ghost compact" disabled={phase !== "idle"} onClick={() => void load()}>
+            {copy.refresh}
+          </button>
+        </header>
+      )}
 
       <div className={`provider-route ${state.current.authenticated ? "configured" : "missing"}`}>
         <span className="provider-status-dot" aria-hidden="true" />
@@ -299,6 +313,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved }: ProviderSetti
                     type="button"
                     key={provider.id}
                     className={`provider-preset ${draft.provider === provider.id ? "on" : ""}`}
+                    aria-pressed={draft.provider === provider.id}
                     disabled={
                       phase !== "idle" ||
                       (provider.location === "managed" && state.current.provider !== provider.id)
@@ -378,7 +393,14 @@ export function ProviderSettings({ client, cwd, locale, onSaved }: ProviderSetti
               <span>{copy.discovered}</span>
               <div>
                 {models.slice(0, 24).map((model) => (
-                  <button type="button" className={draft.model === model ? "on" : ""} key={model} disabled={phase !== "idle"} onClick={() => setDraft((current) => ({ ...current, model }))}>
+                  <button
+                    type="button"
+                    className={draft.model === model ? "on" : ""}
+                    key={model}
+                    aria-pressed={draft.model === model}
+                    disabled={phase !== "idle"}
+                    onClick={() => setDraft((current) => ({ ...current, model }))}
+                  >
                     {model}
                   </button>
                 ))}
@@ -393,13 +415,26 @@ export function ProviderSettings({ client, cwd, locale, onSaved }: ProviderSetti
             <button type="button" disabled={!valid || phase !== "idle"} onClick={() => void save()}>
               {phase === "saving"
                 ? copy.saving
-                : state.current.profileId === "personal"
+              : state.current.profileId === "personal"
                   ? copy.save
                   : copy.switchSave}
             </button>
           </div>
-          {message && <div className="provider-result ok">{message}</div>}
-          {error && <div className="provider-result error">{error}</div>}
+          {(phase === "testing" || phase === "saving") && (
+            <div className="provider-result pending" role="status" aria-live="polite">
+              {phase === "testing" ? copy.testing : copy.saving}
+            </div>
+          )}
+          {message && (
+            <div className="provider-result ok" role="status" aria-live="polite">
+              {message}
+            </div>
+          )}
+          {error && (
+            <div className="provider-result error" role="alert" aria-live="assertive">
+              {error}
+            </div>
+          )}
         </div>
       </div>
     </section>

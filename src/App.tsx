@@ -3,6 +3,7 @@
 // workspace + collapsed automation timeline) · 📁 projects (IDE temperament, workspace groups) · ⚙
 // settings. The two minds never share a list; each has a permanent target anchor.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -24,6 +25,7 @@ import {
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
+import { classifyEngineVersion } from "./engine-version.js";
 import {
   isAssistantWorkspace as isAssistantCwd,
   sessionActivationAllowed,
@@ -32,6 +34,13 @@ import {
   type SessionPlaceInput,
 } from "./session-place";
 import { WorkStarter } from "./WorkStarter";
+import {
+  SettingsBadge,
+  SettingsCard,
+  SettingsItem,
+  SettingsNotice,
+  SettingsPage,
+} from "./SettingsUI";
 import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
 import HaraLogo from "./mark";
@@ -53,6 +62,7 @@ import {
   PET_SELECTOR_KEY,
   syncPetWindow,
 } from "./pet-runtime";
+import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
 type Item =
@@ -92,6 +102,8 @@ const botTitle = (s: SessionInfo): string => {
 const isAutomated = (s: SessionInfo): boolean => s.source === "cron" || s.source === "gateway";
 /** gateway idle-rotation forks share an id prefix (`wechat-<chat>-<tag>[-N]`) — fold to one thread */
 const forkBase = (id: string): string => id.replace(/-\d+$/, "");
+const BUNDLED_ENGINE_VERSION = bundledEngineVersionText.trim();
+const SERVER_BUSY = -32002;
 
 /** Project groups (manual sessions only): opened-but-empty projects first, then by latest activity. */
 function projectGroups(sessions: SessionInfo[], opened: string[]): [string, SessionInfo[]][] {
@@ -128,6 +140,8 @@ function assistantZone(sessions: SessionInfo[]): { current: SessionInfo | null; 
 export default function App() {
   const clientRef = useRef<HaraClient | null>(null);
   const connectGenerationRef = useRef(0);
+  const bootstrapStartedRef = useRef(false);
+  const plannedUpdateRestartRef = useRef(false);
   const [phase, setPhase] = useState<Phase>("boot");
   const [server, setServer] = useState<{ version: string; provider: string; model: string; cwd: string } | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -272,6 +286,10 @@ export default function App() {
   }, [petActivities, petAwake]);
   const [q, setQ] = useState("");
   const [upd, setUpd] = useState("");
+  const [updateTone, setUpdateTone] = useState<"neutral" | "success" | "warning" | "error">("neutral");
+  const [updating, setUpdating] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
+  const [desktopVersion, setDesktopVersion] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [updAvail, setUpdAvail] = useState("");
@@ -437,7 +455,7 @@ export default function App() {
     [notePet, push, removePet, sendText],
   );
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (expectedPid: number | null = null) => {
     const generation = ++connectGenerationRef.current;
     const stale = () => generation !== connectGenerationRef.current;
     const previous = clientRef.current;
@@ -454,11 +472,18 @@ export default function App() {
         return;
       }
       const d: Discovery = JSON.parse(raw);
+      // A start request may race a stale discovery file left by an earlier Windows process. Only
+      // the child we just spawned is allowed to satisfy that startup handshake.
+      if (expectedPid !== null && d.pid !== expectedPid) {
+        setPhase("no-server");
+        return;
+      }
       c = new HaraClient();
       c.onEvent = handleEvent;
       c.onClose = () => {
         if (clientRef.current !== c) return;
         clientRef.current = null;
+        if (plannedUpdateRestartRef.current) return;
         setPhase("lost");
       };
       await c.connect(d.host, d.port);
@@ -501,16 +526,6 @@ export default function App() {
   }, [handleEvent]);
 
   useEffect(() => {
-    void connect();
-    return () => {
-      connectGenerationRef.current += 1;
-      const c = clientRef.current;
-      clientRef.current = null;
-      c?.close();
-    };
-  }, [connect]);
-
-  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "1") (e.preventDefault(), apiRef.current.setZone("chat"));
@@ -550,6 +565,7 @@ export default function App() {
 
   // silent update probe at launch — a dot on the settings gear, never a popup
   useEffect(() => {
+    void getVersion().then(setDesktopVersion).catch(() => {});
     void checkForUpdate()
       .then((u) => u && setUpdAvail(u.version))
       .catch(() => {});
@@ -573,15 +589,23 @@ export default function App() {
   const startServer = async () => {
     setErr("");
     try {
-      await invoke("start_serve");
+      const pid = await invoke<number>("start_serve");
       setPhase("connecting");
       let up = false;
       for (let i = 0; i < 12; i++) {
         await new Promise((r) => setTimeout(r, 1000));
         const raw = await invoke<string | null>("read_discovery");
         if (raw) {
-          up = true;
-          break;
+          try {
+            const discovery: Discovery = JSON.parse(raw);
+            if (discovery.pid === pid) {
+              up = true;
+              break;
+            }
+          } catch {
+            // Serve writes discovery atomically, but tolerate a malformed/stale local file while
+            // the new child is still starting and keep polling for its authenticated endpoint.
+          }
         }
       }
       if (!up) {
@@ -597,12 +621,35 @@ export default function App() {
         setPhase("no-server");
         return;
       }
-      await connect();
+      await connect(pid);
     } catch (e: any) {
       setErr(String(e?.message ?? e));
       setPhase("no-server");
     }
   };
+
+  useEffect(() => {
+    // React StrictMode runs effects twice in development. Consume the native one-shot marker and
+    // choose the launch path once per renderer lifetime: ordinary launches only discover; an
+    // updater relaunch starts the newly bundled sidecar before reconnecting.
+    if (bootstrapStartedRef.current) return;
+    bootstrapStartedRef.current = true;
+    void invoke<boolean>("take_update_restart_marker")
+      .then((updateRestart) => (updateRestart ? startServer() : connect()))
+      .catch(() => connect());
+    // `startServer` intentionally participates only in this one-shot bootstrap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connect]);
+
+  useEffect(
+    () => () => {
+      connectGenerationRef.current += 1;
+      const client = clientRef.current;
+      clientRef.current = null;
+      client?.close();
+    },
+    [],
+  );
 
   const refreshSessions = async () => {
     const c = clientRef.current;
@@ -1018,6 +1065,83 @@ export default function App() {
     }
   };
 
+  const waitForDiscoveryRetirement = async () => {
+    const deadline = Date.now() + 4_000;
+    while (Date.now() < deadline) {
+      if (!(await invoke<string | null>("read_discovery"))) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(t("restartShutdownTimeout"));
+  };
+
+  const downloadDesktopUpdate = async () => {
+    if (updating || updateReady) return;
+    setUpdating(true);
+    setUpd("");
+    setUpdateTone("neutral");
+    try {
+      const update = await checkForUpdate();
+      if (!update) {
+        setUpdAvail("");
+        setUpd(t("upToDate"));
+        setUpdateTone("success");
+        return;
+      }
+      setUpdAvail(update.version);
+      setUpd(`${t("downloadingUpdate")} ${update.version}`);
+      await update.downloadAndInstall();
+      setUpdAvail("");
+      setUpdateReady(true);
+      setUpd(t("restartToApply"));
+      setUpdateTone("success");
+    } catch (error: any) {
+      setUpd(String(error?.message ?? error).slice(0, 160));
+      setUpdateTone("error");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const restartForUpdate = async () => {
+    if (Object.values(busy).some(Boolean)) {
+      setUpd(t("restartBusy"));
+      setUpdateTone("warning");
+      return;
+    }
+    const client = clientRef.current;
+    if (client && !client.supports("server.shutdown")) {
+      // A plain app relaunch would reconnect to the already-running old sidecar and leave the
+      // screenshot's Desktop/engine version split in place. Fail honestly on this one-time upgrade.
+      setUpd(t("restartLegacy"));
+      setUpdateTone("warning");
+      return;
+    }
+    setUpdating(true);
+    setUpd(t("restarting"));
+    setUpdateTone("neutral");
+    plannedUpdateRestartRef.current = true;
+    try {
+      if (client) {
+        await client.shutdownServer();
+        await waitForDiscoveryRetirement();
+      }
+      await invoke("restart_after_update");
+    } catch (error: any) {
+      plannedUpdateRestartRef.current = false;
+      const serverBusy = error?.code === SERVER_BUSY;
+      const message = serverBusy
+        ? t("restartServerBusy")
+        : String(error?.message ?? error).slice(0, 160);
+      setUpd(message);
+      setUpdateTone(serverBusy ? "warning" : "error");
+      setUpdating(false);
+      if (client && !client.connected) {
+        setErr(message);
+        setPhase("no-server");
+      }
+    }
+  };
+
   const flipLocale = () => {
     const next: Locale = locale === "en" ? "zh" : "en";
     saveLocale(next);
@@ -1073,7 +1197,7 @@ export default function App() {
                 <div className="err">{err}</div>
               </details>
             )}
-            <button className="linky" onClick={connect}>
+            <button className="linky" onClick={() => void connect()}>
               {t("retry")}
             </button>
           </>
@@ -1087,6 +1211,9 @@ export default function App() {
   const az = assistantZone(sessions);
   const azBots = az.bots.filter((s) => hit(s.title) || hit(s.sourceName ?? ""));
   const azAll = [...(az.current ? [az.current] : []), ...az.bots, ...az.history];
+  const engineVersionState = classifyEngineVersion(server?.version ?? "", BUNDLED_ENGINE_VERSION);
+  const engineVersionNeedsAttention =
+    engineVersionState === "older" || engineVersionState === "incompatible";
   const groups = projectGroups(sessions, openedProjects)
     .map(([cwd, list]): [string, SessionInfo[]] => [cwd, hit(basename(cwd)) ? list : list.filter((s) => hit(s.title))])
     .filter(([cwd, list]) => hit(basename(cwd)) || list.length > 0);
@@ -1505,21 +1632,27 @@ export default function App() {
   // automations grew into a first-class place). Notification invariant on the rail: interruption
   // (needs a human) → red dot; ambient (ran, left a trace) → count chip.
   const rail = (
-    <nav className="rail">
-      <button className={zone === "chat" ? "on" : ""} title={`${t("zoneChat")} ⌘1`} onClick={() => setZone("chat")}>
+    <nav className="rail" aria-label={t("mainNavigation")}>
+      <button className={zone === "chat" ? "on" : ""} aria-label={t("zoneChat")} aria-current={zone === "chat" ? "page" : undefined} title={`${t("zoneChat")} ⌘1`} onClick={() => setZone("chat")}>
         <IconChat size={19} />
         {manualUnreadIn(azAll) && <span className="rdot" />}
       </button>
-      <button className={zone === "projects" ? "on" : ""} title={`${t("zoneProjects")} ⌘2`} onClick={() => setZone("projects")}>
+      <button className={zone === "projects" ? "on" : ""} aria-label={t("zoneProjects")} aria-current={zone === "projects" ? "page" : undefined} title={`${t("zoneProjects")} ⌘2`} onClick={() => setZone("projects")}>
         <IconFolder size={19} />
         {manualUnreadIn(sessions.filter((s) => !isAssistantCwd(s.cwd) && !isAutomated(s) && !isJunkCwd(s.cwd))) && <span className="rdot" />}
       </button>
-      <button className={zone === "auto" ? "on" : ""} title={`${t("zoneAuto")} ⌘3`} onClick={() => setZone("auto")}>
+      <button className={zone === "auto" ? "on" : ""} aria-label={t("zoneAuto")} aria-current={zone === "auto" ? "page" : undefined} title={`${t("zoneAuto")} ⌘3`} onClick={() => setZone("auto")}>
         <IconBot size={19} />
         {autoUnread > 0 && <span className="chip">{autoUnread > 9 ? "9+" : autoUnread}</span>}
       </button>
       <div className="railgap" />
-      <button className={zone === "settings" ? "on" : ""} title={updAvail ? `${t("updateAvail")}: ${updAvail}` : `${t("zoneSettings")} ⌘,`} onClick={() => setZone("settings")}>
+      <button
+        className={zone === "settings" ? "on" : ""}
+        aria-label={updAvail ? `${t("zoneSettings")}, ${t("updateAvail")} ${updAvail}` : t("zoneSettings")}
+        aria-current={zone === "settings" ? "page" : undefined}
+        title={updAvail ? `${t("updateAvail")}: ${updAvail}` : `${t("zoneSettings")} ⌘,`}
+        onClick={() => setZone("settings")}
+      >
         <IconCog size={18} />
         {updAvail && <span className="rdot" />}
       </button>
@@ -1527,14 +1660,20 @@ export default function App() {
   );
   const footBar = (
     <div className="foot">
-      <span className="dim">
+      <span className="dim" title={`${t("engineVersion")} ${server?.version ?? "—"}`}>
+        {t("engineShort")} {server?.version ?? "—"}
+      </span>
+      <span className="dim foot-route" title={`${server?.provider ?? ""}:${server?.model ?? ""}`}>
         {server?.provider}:{server?.model}
       </span>
     </div>
   );
   const brandBar = (
     <div className="brand">
-      <HaraLogo size={20} /> <span className="wordmark">Hara</span> <span className="ver">{server?.version}</span>
+      <HaraLogo size={20} /> <span className="wordmark">Hara</span>{" "}
+      <span className="ver" title={t("desktopVersion")}>
+        {desktopVersion || "…"}
+      </span>
     </div>
   );
 
@@ -1679,23 +1818,51 @@ export default function App() {
       {zone === "settings" && (
         <aside className="sidebar">
           {brandBar}
-          <div className="sessions setlist" key={zone}>
+          <nav className="sessions setlist" key={zone} aria-label={t("settingsNavigation")}>
             {(
               [
-                ["providers", t("setProviders")],
-                ["engine", t("setServer")],
-                ["security", t("setSecurity")],
-                ["lang", t("setLang")],
-                ["pets", t("setPets")],
-                ["plugins", t("setPlugins")],
-                ["skills", t("skills")],
+                {
+                  label: t("settingsGroupGeneral"),
+                  items: [
+                    ["providers", t("setProviders")],
+                    ["engine", t("setServer")],
+                    ["security", t("setSecurity")],
+                    ["lang", t("setLang")],
+                  ],
+                },
+                {
+                  label: t("settingsGroupCapabilities"),
+                  items: [
+                    ["pets", t("setPets")],
+                    ["plugins", t("setPlugins")],
+                    ["skills", t("setSkills")],
+                  ],
+                },
               ] as const
-            ).map(([k, label]) => (
-              <div key={k} className={`setnav ${setSec === k ? "on" : ""}`} onClick={() => setSetSec(k)}>
-                {label}
+            ).map((group, groupIndex) => (
+              <div
+                className="setnav-group"
+                role="group"
+                aria-labelledby={`settings-nav-group-${groupIndex}`}
+                key={group.label}
+              >
+                <div className="setnav-label" id={`settings-nav-group-${groupIndex}`}>
+                  {group.label}
+                </div>
+                {group.items.map(([k, label]) => (
+                  <button
+                    type="button"
+                    key={k}
+                    className={`setnav ${setSec === k ? "on" : ""}`}
+                    aria-current={setSec === k ? "page" : undefined}
+                    onClick={() => setSetSec(k)}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             ))}
-          </div>
+          </nav>
           {footBar}
         </aside>
       )}
@@ -1706,169 +1873,316 @@ export default function App() {
         <main className="chat board">
           <div className="scroll boardpad setstage">
             {setSec === "providers" && (
-              <ProviderSettings
-                client={clientRef.current}
-                cwd={server?.cwd}
-                locale={locale}
-                onSaved={(next: ProviderSettingsState) => {
-                  setSetupRequired(!next.current.authenticated);
-                  setServer((current) => current
-                    ? { ...current, provider: next.current.provider, model: next.current.model }
-                    : current);
-                  void clientRef.current?.listModels({ cwd: server?.cwd }).then(setModelInfo).catch(() => {});
-                }}
-              />
+              <SettingsPage
+                id="settings-provider-title"
+                eyebrow={t("settingsSystem")}
+                title={t("setProviders")}
+                description={t("providerSettingsDescription")}
+              >
+                <ProviderSettings
+                  embedded
+                  client={clientRef.current}
+                  cwd={server?.cwd}
+                  locale={locale}
+                  onSaved={(next: ProviderSettingsState) => {
+                    setSetupRequired(!next.current.authenticated);
+                    setServer((current) => current
+                      ? { ...current, provider: next.current.provider, model: next.current.model }
+                      : current);
+                    void clientRef.current?.listModels({ cwd: server?.cwd }).then(setModelInfo).catch(() => {});
+                  }}
+                />
+              </SettingsPage>
             )}
             {setSec === "engine" && (
-              <>
-                <div className="bandhead">{t("setServer")}</div>
-                <div className="setrow dim">
-                  hara {server?.version} · {server?.provider}:{server?.model}
-                </div>
-                <div className="setrow">
-                  <button
-                    className="ghost"
-                    onClick={async () => {
-                      setUpd("…");
-                      try {
-                        const u = await checkForUpdate();
-                        if (!u) return setUpd(t("upToDate"));
-                        setUpd(`↓ ${u.version}`);
-                        await u.downloadAndInstall();
-                        setUpd(t("restartToApply"));
-                      } catch (e: any) {
-                        setUpd(String(e?.message ?? e).slice(0, 80));
-                      }
-                    }}
+              <SettingsPage
+                id="settings-engine-title"
+                eyebrow={t("settingsSystem")}
+                title={t("setServer")}
+                description={t("engineDescription")}
+              >
+                <SettingsCard
+                  title={t("versionTitle")}
+                  description={t("versionDescription")}
+                >
+                  <SettingsItem
+                    title={t("desktopVersion")}
+                    description={t("desktopVersionHint")}
                   >
-                    {t("checkUpdate")}
-                  </button>
-                  {upd && <span className="dim">{upd}</span>}
-                </div>
-              </>
+                    <SettingsBadge>{desktopVersion || "…"}</SettingsBadge>
+                  </SettingsItem>
+                  <SettingsItem
+                    title={t("engineVersion")}
+                    description={t("engineVersionHint")}
+                  >
+                    <SettingsBadge
+                      tone={
+                        engineVersionState === "matching"
+                          ? "success"
+                          : engineVersionNeedsAttention
+                            ? "warning"
+                            : "neutral"
+                      }
+                    >
+                      {server?.version || "…"}
+                    </SettingsBadge>
+                  </SettingsItem>
+                  <SettingsItem title={t("activeModel")} description={t("activeModelHint")}>
+                    <span className="settings-mono">{server?.provider}:{server?.model}</span>
+                  </SettingsItem>
+                  {server?.version && engineVersionNeedsAttention && (
+                    <SettingsNotice tone="warning" title={t("engineMismatchTitle")}>
+                      {t("engineMismatchHint")} {BUNDLED_ENGINE_VERSION}
+                    </SettingsNotice>
+                  )}
+                  {server?.version && engineVersionState === "newer" && (
+                    <SettingsNotice tone="neutral" title={t("engineNewerTitle")}>
+                      {t("engineNewerHint")} {BUNDLED_ENGINE_VERSION}
+                    </SettingsNotice>
+                  )}
+                </SettingsCard>
+
+                <SettingsCard
+                  title={t("updatesTitle")}
+                  description={t("updatesDescription")}
+                  aside={
+                    updAvail
+                      ? <SettingsBadge tone="warning">{t("updateAvail")} · {updAvail}</SettingsBadge>
+                      : undefined
+                  }
+                >
+                  <SettingsItem title={t("automaticCheck")} description={t("automaticCheckHint")}>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={updating || updateReady}
+                      onClick={() => void downloadDesktopUpdate()}
+                    >
+                      {updating ? t("workingUpdate") : t("checkUpdate")}
+                    </button>
+                  </SettingsItem>
+                  {updateReady ? (
+                    <SettingsNotice
+                      tone={updateTone}
+                      title={
+                        updateTone === "warning" || updateTone === "error"
+                          ? t("restartBlockedTitle")
+                          : t("updateReadyTitle")
+                      }
+                      actions={
+                        <button type="button" disabled={updating} onClick={() => void restartForUpdate()}>
+                          {t("restartNow")}
+                        </button>
+                      }
+                    >
+                      {upd || t("restartToApply")}
+                    </SettingsNotice>
+                  ) : upd ? (
+                    <SettingsNotice tone={updateTone} title={upd} />
+                  ) : null}
+                </SettingsCard>
+              </SettingsPage>
             )}
             {setSec === "security" && (
-              <>
-                <div className="bandhead">{t("setSecurity")}</div>
-                <div className="setrow" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+              <SettingsPage
+                id="settings-security-title"
+                eyebrow={t("settingsSystem")}
+                title={t("setSecurity")}
+                description={t("securityDescription")}
+              >
+                <SettingsCard title={t("approvalTitleSetting")} description={t("approvalDescription")}>
+                  <SettingsItem
+                    title={t("defaultApprovalTitle")}
+                    description={t("apprHint")}
+                    htmlFor="hara-default-approval"
+                  >
                   <select
+                    id="hara-default-approval"
                     value={defaultApproval}
                     onChange={(e) => {
                       setDefaultApproval(e.target.value);
                       localStorage.setItem("hara.approval", e.target.value);
                     }}
                   >
-                    <option value="">auto-edit</option>
-                    <option value="suggest">suggest</option>
-                    <option value="auto-edit">auto-edit</option>
-                    <option value="full-auto">full-auto</option>
+                    <option value="">{t("approvalDefault")}</option>
+                    <option value="suggest">{t("approvalSuggest")}</option>
+                    <option value="auto-edit">{t("approvalAutoEdit")}</option>
+                    <option value="full-auto">{t("approvalFullAuto")}</option>
                   </select>
-                  <span className="dim" style={{ fontSize: 11 }}>
-                    {t("apprHint")}
-                  </span>
-                </div>
-              </>
+                  </SettingsItem>
+                  <SettingsNotice
+                    tone={defaultApproval === "full-auto" ? "warning" : "neutral"}
+                    title={defaultApproval === "full-auto" ? t("fullAutoWarning") : t("boundaryTitle")}
+                  >
+                    {defaultApproval === "full-auto" ? t("fullAutoWarningHint") : t("boundaryHint")}
+                  </SettingsNotice>
+                </SettingsCard>
+              </SettingsPage>
             )}
             {setSec === "lang" && (
-              <>
-                <div className="bandhead">{t("setLang")}</div>
-                <div className="setrow">
-                  <button className={locale === "zh" ? "" : "ghost"} onClick={() => locale !== "zh" && flipLocale()}>
-                    中文
-                  </button>
-                  <button className={locale === "en" ? "" : "ghost"} onClick={() => locale !== "en" && flipLocale()}>
-                    EN
-                  </button>
-                </div>
-              </>
+              <SettingsPage
+                id="settings-language-title"
+                eyebrow={t("settingsSystem")}
+                title={t("setLang")}
+                description={t("languageDescription")}
+              >
+                <SettingsCard title={t("displayLanguage")} description={t("displayLanguageHint")}>
+                  <SettingsItem title={t("languageChoice")}>
+                    <div className="settings-choice">
+                      <button className={locale === "zh" ? "" : "ghost"} aria-pressed={locale === "zh"} onClick={() => locale !== "zh" && flipLocale()}>
+                        中文
+                      </button>
+                      <button className={locale === "en" ? "" : "ghost"} aria-pressed={locale === "en"} onClick={() => locale !== "en" && flipLocale()}>
+                        English
+                      </button>
+                    </div>
+                  </SettingsItem>
+                </SettingsCard>
+              </SettingsPage>
             )}
             {setSec === "pets" && (
-              <>
-                <div className="bandhead">{t("setPets")}</div>
-                <div className="setrow pet-controls">
-                  <button onClick={() => setPetAwake((awake) => !awake)}>{petAwake ? t("petTuck") : t("petWake")}</button>
-                  <button className="ghost" onClick={() => void refreshPets()}>
-                    {t("petRefresh")}
-                  </button>
-                </div>
-                <div className="pet-hint dim">{t("petHint")}</div>
-                <div className="pet-grid">
-                  {[BUILTIN_HARA_PET, ...petCatalog].map((pet) => {
-                    const source =
-                      pet.source === "builtin"
-                        ? t("petBuiltin")
-                        : pet.source === "codex-local"
-                          ? t("petCodex")
-                          : pet.source === "hara-market"
-                            ? t("petMarket")
-                            : t("petHaraLocal");
-                    return (
-                      <button
-                        key={pet.selector}
-                        className={`pet-card ${petSelector === pet.selector ? "on" : ""} ${pet.compatible ? "" : "invalid"}`}
-                        disabled={!pet.compatible}
-                        title={pet.error || pet.description}
-                        onClick={() => setPetSelector(pet.selector)}
-                      >
-                        <span className="pet-card-mark">{pet.selector === BUILTIN_HARA_PET.selector ? "ハ" : pet.displayName.slice(0, 1).toUpperCase()}</span>
-                        <span className="pet-card-copy">
-                          <strong>{pet.displayName}</strong>
-                          <small>
-                            {source}
-                            {pet.spriteVersionNumber ? ` · v${pet.spriteVersionNumber}` : ""}
-                          </small>
-                        </span>
-                        {petSelector === pet.selector && <span className="pet-selected">✓</span>}
+              <SettingsPage
+                id="settings-pet-title"
+                eyebrow={t("settingsPersonalize")}
+                title={t("setPets")}
+                description={t("petHint")}
+              >
+                <SettingsCard
+                  title={t("petCompanionTitle")}
+                  description={t("petCompanionHint")}
+                  aside={
+                    <SettingsBadge tone={petAwake ? "success" : "neutral"}>
+                      {petAwake ? t("petAwake") : t("petAsleep")}
+                    </SettingsBadge>
+                  }
+                >
+                  <SettingsItem title={t("petVisibility")} description={t("petVisibilityHint")}>
+                    <div className="settings-choice">
+                      <button type="button" onClick={() => setPetAwake((awake) => !awake)}>
+                        {petAwake ? t("petTuck") : t("petWake")}
                       </button>
-                    );
-                  })}
-                </div>
-                {petCatalog.length === 0 && !petCatalogError && <div className="setrow dim">{t("petNone")}</div>}
-                {petCatalogError && <div className="setrow err">{petCatalogError}</div>}
-              </>
+                      <button type="button" className="ghost" onClick={() => void refreshPets()}>
+                        {t("petRefresh")}
+                      </button>
+                    </div>
+                  </SettingsItem>
+                </SettingsCard>
+
+                <SettingsCard title={t("petChoose")} description={t("petChooseHint")}>
+                  <div className="pet-grid">
+                    {[BUILTIN_HARA_PET, ...petCatalog].map((pet) => {
+                      const source =
+                        pet.source === "builtin"
+                          ? t("petBuiltin")
+                          : pet.source === "codex-local"
+                            ? t("petCodex")
+                            : pet.source === "hara-market"
+                              ? t("petMarket")
+                              : t("petHaraLocal");
+                      return (
+                        <button
+                          type="button"
+                          key={pet.selector}
+                          className={`pet-card ${petSelector === pet.selector ? "on" : ""} ${pet.compatible ? "" : "invalid"}`}
+                          disabled={!pet.compatible}
+                          title={pet.error || pet.description}
+                          aria-pressed={petSelector === pet.selector}
+                          onClick={() => setPetSelector(pet.selector)}
+                        >
+                          <span className="pet-card-mark">{pet.selector === BUILTIN_HARA_PET.selector ? "ハ" : pet.displayName.slice(0, 1).toUpperCase()}</span>
+                          <span className="pet-card-copy">
+                            <strong>{pet.displayName}</strong>
+                            <small>
+                              {source}
+                              {pet.spriteVersionNumber ? ` · v${pet.spriteVersionNumber}` : ""}
+                            </small>
+                          </span>
+                          {petSelector === pet.selector && <span className="pet-selected">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {petCatalog.length === 0 && !petCatalogError && <div className="settings-empty">{t("petNone")}</div>}
+                  {petCatalogError && <div className="settings-inline-error">{petCatalogError}</div>}
+                </SettingsCard>
+              </SettingsPage>
             )}
             {setSec === "plugins" && (
-              <>
-                <div className="bandhead">{t("setPlugins")}</div>
-                {!plugins ? (
-                  <div className="setrow dim">{t("loading")}</div>
-                ) : plugins.length === 0 ? (
-                  <div className="setrow dim">{t("noPlugins")}</div>
-                ) : (
-                  plugins.map((p) => (
-                    <div key={p.name} className="plug">
-                      <div className="plug-main">
-                        <div className="plug-name">
-                          {p.name} <span className="dim">v{p.version}</span>
-                        </div>
-                        <div className="plug-meta dim">
-                          {p.skills} skills · {p.agents} agents · {p.mcpServers} MCP
-                        </div>
-                      </div>
-                      <span className="row" style={{ marginTop: 0 }}>
-                        {p.enabled && (p.panels ?? []).map((sp) => (
-                          <button key={sp.id} disabled={panelBusy === sp.id} onClick={() => void openPanel(p.name, sp)}>
-                            {panelBusy === sp.id ? "…" : sp.title}
-                          </button>
-                        ))}
-                        <button className={p.enabled ? "" : "ghost"} onClick={() => void togglePlugin(p.name, !p.enabled)}>
-                          {p.enabled ? t("enabled") : t("disabled")}
-                        </button>
-                      </span>
+              <SettingsPage
+                id="settings-capabilities-title"
+                eyebrow={t("settingsCapabilities")}
+                title={t("setPlugins")}
+                description={t("capabilitiesDescription")}
+              >
+                <SettingsCard title={t("installedCapabilities")} description={t("installedCapabilitiesHint")}>
+                  {!plugins ? (
+                    <div className="settings-empty">{t("loading")}</div>
+                  ) : plugins.length === 0 ? (
+                    <div className="settings-empty">
+                      <strong>{t("noCapabilities")}</strong>
+                      <span>{t("capabilityInstallHint")}</span>
                     </div>
-                  ))
-                )}
-              </>
+                  ) : (
+                    <div className="settings-capability-list">
+                      {plugins.map((p) => (
+                        <div key={p.name} className="plug">
+                          <div className="plug-main">
+                            <div className="plug-name">
+                              {p.name} <span className="dim">v{p.version}</span>
+                            </div>
+                            <div className="plug-description">{p.description}</div>
+                            <div className="plug-meta dim">
+                              {p.skills} {t("capabilityRecipes")} · {p.agents} {t("capabilitySpecialists")} · {p.mcpServers} {t("capabilityConnections")}
+                            </div>
+                          </div>
+                          <span className="settings-capability-actions">
+                            {p.enabled && (p.panels ?? []).map((sp) => (
+                              <button type="button" key={sp.id} disabled={panelBusy === sp.id} onClick={() => void openPanel(p.name, sp)}>
+                                {panelBusy === sp.id ? "…" : sp.title}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              className={p.enabled ? "" : "ghost"}
+                              aria-pressed={p.enabled}
+                              aria-label={`${p.name}: ${p.enabled ? t("disableCapability") : t("enableCapability")}`}
+                              onClick={() => void togglePlugin(p.name, !p.enabled)}
+                            >
+                              {p.enabled ? t("enabled") : t("disabled")}
+                            </button>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </SettingsCard>
+              </SettingsPage>
             )}
             {setSec === "skills" && (
-              <>
-                <div className="bandhead">{t("skills")}</div>
-                {(skills ?? []).map((s) => (
-                  <div key={s.id} className="skill">
-                    <span className="skill-id">{s.id}</span> <span className="dim">[{s.source}]</span>
-                  </div>
-                ))}
-              </>
+              <SettingsPage
+                id="settings-skills-title"
+                eyebrow={t("settingsAdvanced")}
+                title={t("setSkills")}
+                description={t("skillsDescription")}
+              >
+                <SettingsCard title={t("availableSkills")} description={t("availableSkillsHint")}>
+                  {(skills ?? []).length === 0 ? (
+                    <div className="settings-empty">{t("noSkills")}</div>
+                  ) : (
+                    <div className="settings-skill-list">
+                      {(skills ?? []).map((s) => (
+                        <div key={s.id} className="skill">
+                          <span>
+                            <strong className="skill-id">{s.id}</strong>
+                            <small>{s.description}</small>
+                          </span>
+                          <SettingsBadge>{s.source}</SettingsBadge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </SettingsCard>
+              </SettingsPage>
             )}
           </div>
         </main>

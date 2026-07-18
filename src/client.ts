@@ -144,6 +144,10 @@ export class HaraClient {
   private pending = new Map<number, Pending>();
   private nextId = 1;
   private methods = new Set<string>();
+  private closeWaiters = new Set<{
+    resolve: () => void;
+    timer: number;
+  }>();
   onEvent: (e: ServerEvent) => void = () => {};
   onClose: () => void = () => {};
 
@@ -159,6 +163,11 @@ export class HaraClient {
         this.ws = null;
         for (const p of this.pending.values()) p.reject(new Error("connection closed"));
         this.pending.clear();
+        for (const waiter of this.closeWaiters) {
+          window.clearTimeout(waiter.timer);
+          waiter.resolve();
+        }
+        this.closeWaiters.clear();
         this.onClose();
       };
       ws.onmessage = (ev) => {
@@ -196,6 +205,29 @@ export class HaraClient {
   }
   supports(method: string): boolean {
     return this.methods.has(method);
+  }
+  /** Resolve only after the transport has actually closed, including the close-before-wait race. */
+  waitForClose(timeoutMs = 4_000): Promise<void> {
+    if (!this.ws) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      let waiter: {
+        resolve: () => void;
+        timer: number;
+      };
+      const timer = window.setTimeout(() => {
+        this.closeWaiters.delete(waiter);
+        reject(new Error("timed out waiting for the Hara engine connection to close"));
+      }, timeoutMs);
+      waiter = { resolve, timer };
+      this.closeWaiters.add(waiter);
+    });
+  }
+  /** Gracefully stop the authenticated local engine before a Desktop updater relaunch. */
+  async shutdownServer(): Promise<{ accepted: true }> {
+    const result = await this.call<{ accepted: boolean }>("server.shutdown", {});
+    if (!result.accepted) throw new Error("the Hara engine did not accept the shutdown request");
+    await this.waitForClose();
+    return { accepted: true };
   }
   listSessions(cwd?: string) {
     return this.call<{ sessions: SessionInfo[] }>("session.list", cwd ? { cwd } : {});
