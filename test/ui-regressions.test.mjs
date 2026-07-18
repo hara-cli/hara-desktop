@@ -42,3 +42,44 @@ test("an unconfigured serve routes Desktop into provider settings instead of par
   assert.match(app, /Update Hara Desktop/, "an old bundled engine gives the actionable product upgrade path");
   assert.doesNotMatch(app, /npm install -g @nanhara\/hara@latest/, "a global CLI upgrade cannot replace the bundled Desktop engine");
 });
+
+test("the assistant empty state is a plain-language workbench backed by real sessions", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const starter = readFileSync(`${root}/src/WorkStarter.tsx`, "utf8");
+  const prompt = readFileSync(`${root}/src/work-starter-prompt.ts`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+
+  assert.match(app, /<WorkStarter/);
+  assert.match(app, /const sessionId = await openAssistant\(\)/);
+  assert.match(app, /await sendText\(sessionId, prompt\)/, "a starter job must enter the normal serve-backed conversation");
+  assert.doesNotMatch(starter, /\b(?:Agent|Skill|MCP|cwd)\b/, "novice-facing copy must not expose runtime jargon");
+  assert.match(prompt, /可编辑 PPTX/);
+  assert.match(prompt, /视觉保真 PPTX\/PDF/, "presentation prompts must state the export-fidelity boundary");
+  assert.match(prompt, /能力已经安装/, "artifact cards must verify capability availability before promising an export");
+  assert.match(starter, /aria-label=\{copy\.describe\}/);
+  assert.match(css, /\.workstarter-grid/);
+  assert.match(css, /@media \(max-width: 760px\)/, "the workbench must remain usable in a narrow window");
+});
+
+test("switching places cannot reuse a conversation from the wrong place", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+
+  assert.match(app, /activeByZoneRef/);
+  assert.match(app, /sessionOpenRequestRef/);
+  assert.match(app, /sessionActivationAllowed/, "late async session results must pass both generation and place checks");
+  assert.match(app, /sessionPlace\(candidate\) === z/);
+  assert.match(app, /setActive\(candidate && sessionPlace\(candidate\) === z \? candidate\.id : null\)/);
+  assert.match(app, /sessionsRef\.current = list\.sessions;\s+setSessions\(list\.sessions\)/, "fork routing sees a refreshed session before changing place");
+  assert.match(app, /clearActiveSession\(id\)/, "archiving or deleting must also clear the remembered place");
+});
+
+test("disabled plugins cannot launch a panel from settings", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+
+  assert.match(app, /p\.enabled && \(p\.panels \?\? \[\]\)\.map/);
+  assert.match(app, /pluginsRef\.current\?\.find\(\(plugin\) => plugin\.name === pluginName\)\?\.enabled !== true/);
+  assert.match(app, /!enabled && split\?\.plugin === name/);
+  assert.match(app, /panels\.filter\(\(panel\) => panel\.plugin !== name\)/, "disabling a plugin evicts cached project panels");
+  assert.match(app, /const plugin = pluginsRef\.current\?\.find/, "cached project panels are gated again before launch");
+  assert.match(app, /className="ready-error" role="alert"/, "ready-state failures stay visible and dismissible");
+});

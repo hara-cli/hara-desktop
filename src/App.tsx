@@ -24,6 +24,14 @@ import {
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
+import {
+  isAssistantWorkspace as isAssistantCwd,
+  sessionActivationAllowed,
+  sessionPlace,
+  type SessionPlace,
+  type SessionPlaceInput,
+} from "./session-place";
+import { WorkStarter } from "./WorkStarter";
 import { IconChat, IconFolder, IconCog, IconBot, IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
 import HaraLogo from "./mark";
@@ -67,7 +75,6 @@ const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
 const isJunkCwd = (cwd: string): boolean =>
   /^\/(private\/)?(tmp|var\/folders)\//.test(cwd) || /[/\\]tmp\.[A-Za-z0-9]+([/\\]|$)/.test(cwd) || /[/\\]hara-(test|dbg|serve)-[^/\\]*([/\\]|$)/.test(cwd);
 
-const isAssistantCwd = (cwd: string): boolean => /[/\\]\.hara[/\\]workspace$/.test(cwd);
 const basename = (p: string): string => p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || p;
 /** Compact "MM-DD HH:mm" (year only when it differs) — locale toLocaleString is too chatty for a sidebar. */
 const fmtTime = (iso: string): string => {
@@ -133,14 +140,18 @@ export default function App() {
   const [defaultApproval, setDefaultApproval] = useState<string>(() => localStorage.getItem("hara.approval") || "");
   const [err, setErr] = useState("");
   const [zone, setZoneRaw] = useState<Zone>(() => (localStorage.getItem("hara.zone") as Zone) || "chat");
+  const zoneRef = useRef<Zone>(zone);
+  const sessionOpenRequestRef = useRef(0);
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
+  const pluginsRef = useRef<PluginInfo[] | null>(null);
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [panelBusy, setPanelBusy] = useState("");
+  const [starterBusy, setStarterBusy] = useState(false);
   // settings place: context column = group anchors, stage = the selected group's forms
   const [setSec, setSetSec] = useState<"providers" | "engine" | "security" | "lang" | "pets" | "plugins" | "skills">("providers");
   // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
-  const [split, setSplit] = useState<{ id: string; title: string; url: string } | null>(null);
+  const [split, setSplit] = useState<{ plugin: string; id: string; title: string; url: string } | null>(null);
   const [home, setHome] = useState("");
   const [unread, setUnread] = useState<Record<string, boolean>>({});
   const [autoUnread, setAutoUnread] = useState(0); // ambient counter — never mixes with manual unread
@@ -200,9 +211,30 @@ export default function App() {
     void invoke("set_badge", { count: n > 0 ? n : null }).catch(() => {});
   }, [unread]);
   const sessionsRef = useRef<SessionInfo[]>([]);
+  const activeByZoneRef = useRef<Record<Extract<SessionPlace, "chat" | "projects">, string | null>>({
+    chat: null,
+    projects: null,
+  });
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
+  useEffect(() => {
+    pluginsRef.current = plugins;
+  }, [plugins]);
+  const rememberSession = (id: string, session: SessionPlaceInput) => {
+    const place = sessionPlace(session);
+    if (place === "chat" || place === "projects") activeByZoneRef.current[place] = id;
+  };
+  const activateSession = (id: string, hint?: SessionPlaceInput) => {
+    const session = hint ?? sessionsRef.current.find((candidate) => candidate.id === id);
+    if (session) rememberSession(id, session);
+    setActive(id);
+  };
+  const clearActiveSession = (id: string) => {
+    if (activeByZoneRef.current.chat === id) activeByZoneRef.current.chat = null;
+    if (activeByZoneRef.current.projects === id) activeByZoneRef.current.projects = null;
+    if (active === id) setActive(null);
+  };
   const interruptedSessionsRef = useRef(new Set<string>());
   const openPetSessionRef = useRef<(sessionId: string) => Promise<void>>(async () => {});
   const petTitle = (sessionId: string): string => sessionsRef.current.find((session) => session.id === sessionId)?.title || "Hara task";
@@ -276,10 +308,23 @@ export default function App() {
   };
 
   const setZone = (z: Zone) => {
+    if ((zone === "chat" || zone === "projects") && active) {
+      const current = sessionsRef.current.find((candidate) => candidate.id === active);
+      if (current && sessionPlace(current) === zone) activeByZoneRef.current[zone] = active;
+    }
+    zoneRef.current = z;
+    sessionOpenRequestRef.current += 1;
     setZoneRaw(z);
     setSplit(null);
     setAutoReplay(null);
     localStorage.setItem("hara.zone", z);
+    if (z === "chat" || z === "projects") {
+      const candidateId = activeByZoneRef.current[z];
+      const candidate = candidateId ? sessionsRef.current.find((session) => session.id === candidateId) : undefined;
+      setActive(candidate && sessionPlace(candidate) === z ? candidate.id : null);
+    } else {
+      setActive(null);
+    }
     if (z === "settings" && clientRef.current) {
       void Promise.all([clientRef.current.listPlugins(), clientRef.current.listSkills()]).then(([pl, sk]) => {
         setPlugins(pl.plugins);
@@ -425,17 +470,24 @@ export default function App() {
       }
       clientRef.current = c;
       setServer({ version: info.version, provider: info.provider, model: info.model, cwd: info.cwd });
+      sessionsRef.current = list.sessions;
       setSessions(list.sessions);
       const needsCredentials = info.setupState === "needs-credentials";
       setSetupRequired(needsCredentials);
       if (needsCredentials) {
+        zoneRef.current = "settings";
+        sessionOpenRequestRef.current += 1;
         setZoneRaw("settings");
         setSetSec("providers");
       }
       // cold start: returning users land on their last zone; brand-new (no manual sessions, no
       // opened projects) land on the assistant — the soft first touch.
       const manual = list.sessions.filter((s) => !isAutomated(s) && !isAssistantCwd(s.cwd));
-      if (info.setupState !== "needs-credentials" && manual.length === 0 && openedProjects.length === 0) setZoneRaw("chat");
+      if (info.setupState !== "needs-credentials" && manual.length === 0 && openedProjects.length === 0) {
+        zoneRef.current = "chat";
+        sessionOpenRequestRef.current += 1;
+        setZoneRaw("chat");
+      }
       void c.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
       void c.listModels().then(setModelInfo).catch(() => {});
       setPhase("ready");
@@ -556,25 +608,42 @@ export default function App() {
     const c = clientRef.current;
     if (!c) return;
     const list = await c.listSessions();
+    // Keep imperative routing in sync before React commits the state update. Fork → refresh → setZone
+    // happens in one async continuation and must be able to select the newly returned session.
+    sessionsRef.current = list.sessions;
     setSessions(list.sessions);
   };
 
-  const newSession = async (cwd?: string) => {
+  const newSession = async (cwd?: string): Promise<string | null> => {
     const c = clientRef.current;
-    if (!c) return;
+    if (!c) return null;
+    const sessionHint = { cwd: cwd ?? server?.cwd ?? "", source: "interactive" };
+    const requestId = ++sessionOpenRequestRef.current;
     const r = await c.createSession({ ...(cwd ? { cwd } : {}), ...(defaultApproval ? { approval: defaultApproval } : {}) });
-    setActive(r.sessionId);
+    rememberSession(r.sessionId, sessionHint);
+    if (sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, sessionHint)) {
+      setActive(r.sessionId);
+    }
     setTranscripts((tr) => ({ ...tr, [r.sessionId]: [] }));
     await refreshSessions();
+    return r.sessionId;
   };
 
   const openSession = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
+    const session = sessionsRef.current.find((candidate) => candidate.id === id);
+    const expected = session ?? {
+      cwd: zoneRef.current === "chat" && home ? `${home}/.hara/workspace` : server?.cwd ?? "",
+      source: "interactive",
+    };
+    const requestId = ++sessionOpenRequestRef.current;
+    const mayActivate = () =>
+      sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, expected);
     setUnread((u) => ({ ...u, [id]: false }));
     acknowledgePet(id);
     if (transcripts[id]) {
-      setActive(id);
+      if (mayActivate()) activateSession(id, expected);
       return;
     }
     try {
@@ -583,12 +652,23 @@ export default function App() {
         ...tr,
         [id]: r.history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
       }));
-      setActive(id);
+      if (mayActivate()) activateSession(id, expected);
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     }
   };
-  openPetSessionRef.current = openSession;
+  openPetSessionRef.current = async (sessionId: string) => {
+    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+    if (session) {
+      const place = sessionPlace(session);
+      if (place === "auto") {
+        setZone("auto");
+        return;
+      }
+      setZone(place);
+    }
+    await openSession(sessionId);
+  };
 
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
@@ -624,14 +704,17 @@ export default function App() {
   };
 
   const creatingRef = useRef(false); // double-click guard — the assistant is ONE session, never two
-  const openAssistant = async () => {
+  const openAssistant = async (): Promise<string | null> => {
     setZone("chat");
     const cur = assistantZone(sessions).current;
-    if (cur) return openSession(cur.id);
-    if (!home || creatingRef.current) return;
+    if (cur) {
+      await openSession(cur.id);
+      return cur.id;
+    }
+    if (!home || creatingRef.current) return null;
     creatingRef.current = true;
     try {
-      await newSession(`${home}/.hara/workspace`);
+      return await newSession(`${home}/.hara/workspace`);
     } finally {
       creatingRef.current = false;
     }
@@ -786,6 +869,21 @@ export default function App() {
     await sendText(active, text || "(image)", imgs.length ? imgs : undefined);
   };
 
+  const startFromWorkbench = async (prompt: string) => {
+    if (starterBusy) return;
+    setStarterBusy(true);
+    setErr("");
+    try {
+      const sessionId = await openAssistant();
+      if (!sessionId) throw new Error(locale === "zh" ? "工作助理尚未准备好，请稍后重试。" : "The work assistant is not ready yet. Please try again.");
+      await sendText(sessionId, prompt);
+    } catch (error: any) {
+      setErr(String(error?.message ?? error));
+    } finally {
+      setStarterBusy(false);
+    }
+  };
+
   const answer = async (sessionId: string, approvalId: string, verdict: "allow" | "always" | "deny") => {
     const c = clientRef.current;
     if (!c) return;
@@ -821,14 +919,20 @@ export default function App() {
   /** Launch a plugin panel from settings — it opens WHERE WORK HAPPENS (顾雅 ruling: a panel is a
    *  work stage, not a settings artifact): jump to the projects place with the panel as the split.
    *  No more full-screen hijack overlay. */
-  const openPanel = async (spec: PanelSpec) => {
+  const openPanel = async (pluginName: string, spec: PanelSpec) => {
+    if (pluginsRef.current?.find((plugin) => plugin.name === pluginName)?.enabled !== true) {
+      setErr(locale === "zh" ? "该能力已停用，不能启动它的工作面板。" : "This capability is disabled, so its work panel cannot be started.");
+      return;
+    }
     setPanelBusy(spec.id);
     try {
       const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd: null, portHint: spec.port ?? null });
+      zoneRef.current = "projects";
+      sessionOpenRequestRef.current += 1;
       setZoneRaw("projects");
       localStorage.setItem("hara.zone", "projects");
       setSplitLoading(true);
-      setSplit({ id: spec.id, title: spec.title, url });
+      setSplit({ plugin: pluginName, id: spec.id, title: spec.title, url });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -840,11 +944,16 @@ export default function App() {
   const [splitLoading, setSplitLoading] = useState(false);
   const toggleSplit = async (spec: ProjectPanel, cwd: string) => {
     if (split?.id === spec.id) return setSplit(null);
+    const plugin = pluginsRef.current?.find((candidate) => candidate.name === spec.plugin);
+    if (plugin && !plugin.enabled) {
+      setErr(locale === "zh" ? "该能力已停用，不能启动它的工作面板。" : "This capability is disabled, so its work panel cannot be started.");
+      return;
+    }
     setPanelBusy(spec.id);
     try {
       const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd, portHint: spec.port ?? null });
       setSplitLoading(true);
-      setSplit({ id: spec.id, title: spec.title, url });
+      setSplit({ plugin: spec.plugin, id: spec.id, title: spec.title, url });
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -866,9 +975,47 @@ export default function App() {
   const togglePlugin = async (name: string, enabled: boolean) => {
     const c = clientRef.current;
     if (!c) return;
-    await c.setPlugin(name, enabled);
-    const pl = await c.listPlugins();
-    setPlugins(pl.plugins);
+    const previous = pluginsRef.current;
+    const optimistic = previous?.map((plugin) =>
+      plugin.name === name ? { ...plugin, enabled } : plugin,
+    ) ?? null;
+    pluginsRef.current = optimistic;
+    setPlugins(optimistic);
+    if (!enabled && split?.plugin === name) setSplit(null);
+    if (!enabled) {
+      setProjPanels((current) =>
+        Object.fromEntries(
+          Object.entries(current).map(([cwd, panels]) => [
+            cwd,
+            panels.filter((panel) => panel.plugin !== name),
+          ]),
+        ),
+      );
+    } else {
+      // Enabling a capability can add a project panel; discard cached misses so the server is asked again.
+      setProjPanels({});
+    }
+    try {
+      await c.setPlugin(name, enabled);
+      const pl = await c.listPlugins();
+      pluginsRef.current = pl.plugins;
+      setPlugins(pl.plugins);
+      if (!enabled) {
+        setProjPanels((current) =>
+          Object.fromEntries(
+            Object.entries(current).map(([cwd, panels]) => [
+              cwd,
+              panels.filter((panel) => panel.plugin !== name),
+            ]),
+          ),
+        );
+      }
+    } catch (error: any) {
+      pluginsRef.current = previous;
+      setPlugins(previous);
+      setProjPanels({});
+      setErr(String(error?.message ?? error));
+    }
   };
 
   const flipLocale = () => {
@@ -962,7 +1109,7 @@ export default function App() {
     const c = clientRef.current;
     if (!c) return;
     await c.archiveSession(id, true).catch(() => {});
-    if (active === id) setActive(null);
+    clearActiveSession(id);
     await refreshSessions();
   };
   const deleteIt = async (id: string) => {
@@ -970,7 +1117,7 @@ export default function App() {
     if (!c || !window.confirm(t("deleteConfirm"))) return;
     try {
       await c.deleteSession(id);
-      if (active === id) setActive(null);
+      clearActiveSession(id);
       setTranscripts(({ [id]: _gone, ...rest }) => rest);
       await refreshSessions();
     } catch (e: any) {
@@ -994,15 +1141,18 @@ export default function App() {
     const c = clientRef.current;
     if (!c || !autoReplay) return;
     const home = isAssistantCwd(autoReplay.cwd);
+    const requestId = ++sessionOpenRequestRef.current;
     try {
       const r = await c.forkSession(autoReplay.id);
       setTranscripts((tr) => ({
         ...tr,
         [r.sessionId]: r.history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
       }));
-      setActive(r.sessionId);
+      rememberSession(r.sessionId, { cwd: autoReplay.cwd, source: "interactive" });
       await refreshSessions();
-      setZone(home ? "chat" : "projects");
+      if (requestId === sessionOpenRequestRef.current && zoneRef.current === "auto") {
+        setZone(home ? "chat" : "projects");
+      }
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     }
@@ -1011,13 +1161,19 @@ export default function App() {
   const forkIt = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
+    const source = sessionsRef.current.find((session) => session.id === id);
+    const sessionHint = { cwd: source?.cwd ?? server?.cwd ?? "", source: "interactive" };
+    const requestId = ++sessionOpenRequestRef.current;
     try {
       const r = await c.forkSession(id);
       setTranscripts((tr) => ({
         ...tr,
         [r.sessionId]: r.history.map((m): Item => (m.role === "user" ? { kind: "user", text: m.text } : { kind: "text", text: m.text })),
       }));
-      setActive(r.sessionId);
+      rememberSession(r.sessionId, sessionHint);
+      if (sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, sessionHint)) {
+        setActive(r.sessionId);
+      }
       await refreshSessions();
     } catch (e: any) {
       setErr(String(e?.message ?? e));
@@ -1113,14 +1269,27 @@ export default function App() {
         )}
         {temperament === "ide" &&
           activeSession &&
-          (projPanels[activeSession.cwd] ?? []).map((sp) => (
-            <button key={sp.id} className={`paneltab ${split?.id === sp.id ? "on" : ""}`} disabled={panelBusy === sp.id} onClick={() => void toggleSplit(sp, activeSession.cwd)}>
-              {panelBusy === sp.id ? "…" : `◧ ${sp.title}`}
-            </button>
-          ))}
+          (projPanels[activeSession.cwd] ?? [])
+            .filter((sp) => plugins?.find((plugin) => plugin.name === sp.plugin)?.enabled !== false)
+            .map((sp) => (
+              <button key={sp.id} className={`paneltab ${split?.id === sp.id ? "on" : ""}`} disabled={panelBusy === sp.id} onClick={() => void toggleSplit(sp, activeSession.cwd)}>
+                {panelBusy === sp.id ? "…" : `◧ ${sp.title}`}
+              </button>
+            ))}
       </div>
       {!active ? (
-        <div className="center dim">{t("pickSession")}</div>
+        temperament === "im" ? (
+          <div className="workstarter-scroll">
+            <WorkStarter
+              locale={locale}
+              busy={starterBusy}
+              onStart={startFromWorkbench}
+              onOpenProject={() => void openProject()}
+            />
+          </div>
+        ) : (
+          <div className="center dim">{t("pickSession")}</div>
+        )
       ) : (
         <>
           <div className="scroll">
@@ -1372,6 +1541,18 @@ export default function App() {
   return (
     <div className="app">
       {rail}
+      {err && (
+        <div className="ready-error" role="alert">
+          <span>{err}</span>
+          <button
+            className="ghost"
+            aria-label={locale === "zh" ? "关闭错误提示" : "Dismiss error"}
+            onClick={() => setErr("")}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* ── context list (switches with the rail) ── */}
       {zone === "chat" && (
@@ -1665,8 +1846,8 @@ export default function App() {
                         </div>
                       </div>
                       <span className="row" style={{ marginTop: 0 }}>
-                        {(p.panels ?? []).map((sp) => (
-                          <button key={sp.id} disabled={panelBusy === sp.id} onClick={() => void openPanel(sp)}>
+                        {p.enabled && (p.panels ?? []).map((sp) => (
+                          <button key={sp.id} disabled={panelBusy === sp.id} onClick={() => void openPanel(p.name, sp)}>
                             {panelBusy === sp.id ? "…" : sp.title}
                           </button>
                         ))}

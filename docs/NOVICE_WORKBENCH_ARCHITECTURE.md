@@ -1,8 +1,11 @@
 # Hara Desktop 小白工作台与能力中心架构
 
 > 决策日期：2026-07-18
-> 状态：分阶段实施。模型供应商控制面已在当前未发布改动中落地；办公工作台、能力市场和账号服务仍是规划。
+> 状态：分阶段实施。模型供应商控制面与普通语言工作首页已在当前未发布改动中落地；办公 Artifact、能力市场和账号服务仍是规划。
 > 目标：在不复制第二套 Agent Runtime 的前提下，把 Hara Desktop 从 coding shell 扩展为普通职员可用的工作助理。
+
+PPT/Slidev 的专项审计、唯一真源、双导出、worker、Panel v2 和模板市场设计见
+[`PRESENTATION_CAPABILITY_ARCHITECTURE.md`](./PRESENTATION_CAPABILITY_ARCHITECTURE.md)。
 
 ## 1. 不变边界
 

@@ -49,6 +49,22 @@ export const IconFork = ({ size }: { size?: number }) => (
 export const IconTrash = ({ size }: { size?: number }) => (
   <I size={size ?? 13} d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
 );
+/** presentation screen */
+export const IconPresentation = ({ size }: { size?: number }) => (
+  <I size={size} d="M3.75 4.5h16.5v11.25H3.75V4.5Zm3.75 3.75h4.5m-4.5 3h8.25M12 15.75V21m-3.75 0h7.5" />
+);
+/** spreadsheet grid */
+export const IconSpreadsheet = ({ size }: { size?: number }) => (
+  <I size={size} d="M4.5 3.75h15v16.5h-15V3.75Zm0 5.25h15M9 3.75v16.5m5.25-11.25v11.25M4.5 14.25h15" />
+);
+/** editable document */
+export const IconDocument = ({ size }: { size?: number }) => (
+  <I size={size} d="M6 2.25h7.5L18 6.75v15H6V2.25Zm7.5 0v4.5H18M9 11.25h6m-6 3h6m-6 3h4.5" />
+);
+/** files and extracted summary */
+export const IconSummary = ({ size }: { size?: number }) => (
+  <I size={size} d="M7.5 3.75h9v4.5h-9v-4.5Zm-3 6h15v10.5h-15V9.75Zm3 3h5.25m-5.25 3h9" />
+);
 /** star (pin) */
 export const IconStar = ({ size, filled }: { size?: number; filled?: boolean }) => (
   <svg width={size ?? 13} height={size ?? 13} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
