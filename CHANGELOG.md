@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.24 — hara 0.126.1 verified Plugin package and ownership boundary
+
+- Bundle Hara CLI `0.126.1` from its exact public tag and commit so Desktop's built-in engine receives
+  the same Plugin manifest, path-containment, private staging, atomic activation, ownership-receipt,
+  update rollback, and safe-uninstall boundary as the standalone CLI.
+- Bind Plugin MCP relative executables and conventional runtime entry scripts to the installed package
+  root and use that root as the process working directory. Desktop no longer falls back to the user's
+  project when its built-in engine resolves a reviewed Plugin entry.
+- Keep the `0.1.23` place/session isolation and disabled-Panel protections unchanged. Third-party
+  executable Panel v2 remains closed until its CSP/origin/token/capability/process boundary is complete;
+  this sidecar refresh does not claim that open-market boundary.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.23 — hara 0.126.0 novice workbench, provider settings, and safe engine replacement
 
 - Reframe the four-place shell as a plain-language personal workbench: specialist cards start
