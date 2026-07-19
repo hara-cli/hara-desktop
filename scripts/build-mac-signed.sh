@@ -65,15 +65,10 @@ DESKTOP_COMMIT="$(git rev-parse HEAD)"
   echo "error: hara-desktop HEAD ($DESKTOP_COMMIT) does not match $DESKTOP_TAG ($DESKTOP_TAG_COMMIT)" >&2
   exit 1
 }
-REMOTE_DESKTOP_TAGS="$(git ls-remote --tags origin "refs/tags/$DESKTOP_TAG" "refs/tags/$DESKTOP_TAG^{}")" || {
+REMOTE_DESKTOP_COMMIT="$(node scripts/resolve-remote-tag.mjs . origin "$DESKTOP_TAG")" || {
   echo "error: could not read remote desktop tag $DESKTOP_TAG" >&2
   exit 1
 }
-REMOTE_DESKTOP_COMMIT="$(awk -v direct="refs/tags/$DESKTOP_TAG" -v peeled="refs/tags/$DESKTOP_TAG^{}" '
-  $2 == peeled { peeled_commit = $1 }
-  $2 == direct { direct_commit = $1 }
-  END { print peeled_commit ? peeled_commit : direct_commit }
-' <<<"$REMOTE_DESKTOP_TAGS")"
 [ "$REMOTE_DESKTOP_COMMIT" = "$DESKTOP_COMMIT" ] || {
   echo "error: local desktop $DESKTOP_TAG ($DESKTOP_COMMIT) does not match origin ($REMOTE_DESKTOP_COMMIT)" >&2
   exit 1

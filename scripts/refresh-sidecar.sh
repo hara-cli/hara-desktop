@@ -65,15 +65,10 @@ if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
     echo "error: local hara-cli $TAG resolves to $TAG_COMMIT, locked Desktop source is $EXPECTED_COMMIT" >&2
     exit 1
   }
-  REMOTE_TAGS="$(git -C "$CLI" ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")" || {
+  REMOTE_TAG_COMMIT="$(node scripts/resolve-remote-tag.mjs "$CLI" origin "$TAG")" || {
     echo "error: could not read remote hara-cli tag $TAG" >&2
     exit 1
   }
-  REMOTE_TAG_COMMIT="$(awk -v direct="refs/tags/$TAG" -v peeled="refs/tags/$TAG^{}" '
-    $2 == peeled { peeled_commit = $1 }
-    $2 == direct { direct_commit = $1 }
-    END { print peeled_commit ? peeled_commit : direct_commit }
-  ' <<<"$REMOTE_TAGS")"
   [ "$REMOTE_TAG_COMMIT" = "$TAG_COMMIT" ] || {
     echo "error: local hara-cli $TAG ($TAG_COMMIT) does not match origin ($REMOTE_TAG_COMMIT)" >&2
     exit 1

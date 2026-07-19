@@ -51,7 +51,7 @@ require_immutable_releases() {
   local enabled
   enabled="$(
     GH_TOKEN="$RELEASE_POLICY_TOKEN" \
-      command gh api "repos/$REPO/immutable-releases" --jq .enabled
+      node scripts/github-api-read.mjs "repos/$REPO/immutable-releases" --jq .enabled
   )" || {
     echo "error: could not verify the repository immutable-release policy" >&2
     return 1
@@ -102,15 +102,10 @@ TAG_COMMIT="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null ||
   echo "error: desktop HEAD must exactly match $TAG before release promotion" >&2
   exit 1
 }
-REMOTE_DESKTOP_TAGS="$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")" || {
+REMOTE_DESKTOP_COMMIT="$(node scripts/resolve-remote-tag.mjs . origin "$TAG")" || {
   echo "error: could not read remote desktop tag $TAG" >&2
   exit 1
 }
-REMOTE_DESKTOP_COMMIT="$(awk -v direct="refs/tags/$TAG" -v peeled="refs/tags/$TAG^{}" '
-  $2 == peeled { peeled_commit = $1 }
-  $2 == direct { direct_commit = $1 }
-  END { print peeled_commit ? peeled_commit : direct_commit }
-' <<<"$REMOTE_DESKTOP_TAGS")"
 [ "$REMOTE_DESKTOP_COMMIT" = "$TAG_COMMIT" ] || {
   echo "error: local desktop $TAG ($TAG_COMMIT) does not match origin ($REMOTE_DESKTOP_COMMIT)" >&2
   exit 1
@@ -128,15 +123,10 @@ CLI_TAG_COMMIT="$(git -C ../hara-cli rev-parse -q --verify "refs/tags/$CLI_TAG^{
   echo "error: local hara-cli $CLI_TAG ($CLI_TAG_COMMIT) does not match locked SIDECAR_COMMIT ($SIDECAR_COMMIT)" >&2
   exit 1
 }
-REMOTE_CLI_TAGS="$(git -C ../hara-cli ls-remote --tags origin "refs/tags/$CLI_TAG" "refs/tags/$CLI_TAG^{}")" || {
+REMOTE_CLI_COMMIT="$(node scripts/resolve-remote-tag.mjs ../hara-cli origin "$CLI_TAG")" || {
   echo "error: could not read remote hara-cli tag $CLI_TAG" >&2
   exit 1
 }
-REMOTE_CLI_COMMIT="$(awk -v direct="refs/tags/$CLI_TAG" -v peeled="refs/tags/$CLI_TAG^{}" '
-  $2 == peeled { peeled_commit = $1 }
-  $2 == direct { direct_commit = $1 }
-  END { print peeled_commit ? peeled_commit : direct_commit }
-' <<<"$REMOTE_CLI_TAGS")"
 [ "$REMOTE_CLI_COMMIT" = "$CLI_TAG_COMMIT" ] || {
   echo "error: local hara-cli $CLI_TAG ($CLI_TAG_COMMIT) does not match origin ($REMOTE_CLI_COMMIT)" >&2
   exit 1
@@ -304,28 +294,18 @@ unset RELEASE_POLICY_TOKEN
 
 # Close the last tag-mutation window immediately before publication. Earlier checks bind every
 # local and draft artifact, while these reads prove both remote refs still name those same commits.
-FINAL_REMOTE_DESKTOP_TAGS="$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")" || {
+FINAL_REMOTE_DESKTOP_COMMIT="$(node scripts/resolve-remote-tag.mjs . origin "$TAG")" || {
   echo "error: could not re-read remote desktop tag $TAG before publication" >&2
   exit 1
 }
-FINAL_REMOTE_DESKTOP_COMMIT="$(awk -v direct="refs/tags/$TAG" -v peeled="refs/tags/$TAG^{}" '
-  $2 == peeled { peeled_commit = $1 }
-  $2 == direct { direct_commit = $1 }
-  END { print peeled_commit ? peeled_commit : direct_commit }
-' <<<"$FINAL_REMOTE_DESKTOP_TAGS")"
 [ "$FINAL_REMOTE_DESKTOP_COMMIT" = "$TAG_COMMIT" ] || {
   echo "error: remote desktop tag moved before publication: $FINAL_REMOTE_DESKTOP_COMMIT != $TAG_COMMIT" >&2
   exit 1
 }
-FINAL_REMOTE_CLI_TAGS="$(git -C ../hara-cli ls-remote --tags origin "refs/tags/$CLI_TAG" "refs/tags/$CLI_TAG^{}")" || {
+FINAL_REMOTE_CLI_COMMIT="$(node scripts/resolve-remote-tag.mjs ../hara-cli origin "$CLI_TAG")" || {
   echo "error: could not re-read remote hara-cli tag $CLI_TAG before publication" >&2
   exit 1
 }
-FINAL_REMOTE_CLI_COMMIT="$(awk -v direct="refs/tags/$CLI_TAG" -v peeled="refs/tags/$CLI_TAG^{}" '
-  $2 == peeled { peeled_commit = $1 }
-  $2 == direct { direct_commit = $1 }
-  END { print peeled_commit ? peeled_commit : direct_commit }
-' <<<"$FINAL_REMOTE_CLI_TAGS")"
 [ "$FINAL_REMOTE_CLI_COMMIT" = "$CLI_TAG_COMMIT" ] || {
   echo "error: remote hara-cli tag moved before publication: $FINAL_REMOTE_CLI_COMMIT != $CLI_TAG_COMMIT" >&2
   exit 1

@@ -557,8 +557,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          gh_api_read() {
+            local attempt output
+            for attempt in 1 2 3; do
+              if output="$(timeout --signal=KILL 45s gh api "$@")"; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+              [ "$attempt" -lt 3 ] || return 1
+              echo "GitHub API read failed ($attempt/3); retrying after a bounded delay" >&2
+              sleep $((attempt * 2))
+            done
+          }
           CUSTOM_POLICIES="$(
-            gh api "repos/$GITHUB_REPOSITORY/environments/hara-desktop-production" \
+            gh_api_read "repos/$GITHUB_REPOSITORY/environments/hara-desktop-production" \
               --jq '.deployment_branch_policy.custom_branch_policies'
           )"
           [ "$CUSTOM_POLICIES" = "true" ] || {
@@ -566,7 +578,7 @@ jobs:
             exit 1
           }
           REQUIRED_REVIEW_RULES="$(
-            gh api "repos/$GITHUB_REPOSITORY/environments/hara-desktop-production" \
+            gh_api_read "repos/$GITHUB_REPOSITORY/environments/hara-desktop-production" \
               --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length'
           )"
           [ "$REQUIRED_REVIEW_RULES" -eq 0 ] || {
@@ -574,8 +586,9 @@ jobs:
             exit 1
           }
           DEPLOYMENT_POLICIES="$(
-            gh api --paginate \
+            gh_api_read \
               "repos/$GITHUB_REPOSITORY/environments/hara-desktop-production/deployment-branch-policies?per_page=100" \
+              --paginate \
               --jq '.branch_policies[]? | [.type, .name] | @tsv'
           )"
           TOTAL_POLICY_COUNT="$(awk 'NF { count++ } END { print count + 0 }' <<<"$DEPLOYMENT_POLICIES")"
@@ -646,6 +659,7 @@ jobs:
           [ "$(node -p 'require(process.argv[1]).version' ../hara-cli/package.json)" = "$PINNED_CLI_VERSION" ]
 
       - name: Require immutable releases and the restricted stable-tag ruleset before signing
+        working-directory: hara-desktop
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.HARA_RELEASE_POLICY_TOKEN }}
@@ -655,14 +669,36 @@ jobs:
             echo "HARA_RELEASE_POLICY_TOKEN is required from the protected environment" >&2
             exit 1
           }
-          [ "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = "true" ] || {
+          IMMUTABLE_ENABLED="$(
+            node scripts/github-api-read.mjs \
+              "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled
+          )" || {
+            echo "could not read the immutable-release policy after bounded retries" >&2
+            exit 1
+          }
+          [ "$IMMUTABLE_ENABLED" = "true" ] || {
             echo "immutable releases must be enabled before signing or promotion" >&2
+            exit 1
+          }
+          RULESET_IDS="$(
+            node scripts/github-api-read.mjs \
+              "repos/$GITHUB_REPOSITORY/rulesets?targets=tag&per_page=100" \
+              --paginate --jq '.[].id'
+          )" || {
+            echo "could not list stable-tag rulesets after bounded retries" >&2
             exit 1
           }
           RULESET_OK=0
           while IFS= read -r ruleset_id; do
             [ -n "$ruleset_id" ] || continue
-            if gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id" | jq -e \
+            RULESET_JSON="$(
+              node scripts/github-api-read.mjs \
+                "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id"
+            )" || {
+              echo "could not read tag ruleset $ruleset_id after bounded retries" >&2
+              exit 1
+            }
+            if jq -e \
               --argjson release_admin_id "$HARA_RELEASE_ADMIN_ID" '
               .target == "tag" and
               .enforcement == "active" and
@@ -672,15 +708,11 @@ jobs:
               (.bypass_actors[0].actor_type == "User") and
               (.bypass_actors[0].actor_id == $release_admin_id) and
               (.bypass_actors[0].bypass_mode == "always")
-            ' >/dev/null; then
+            ' >/dev/null <<<"$RULESET_JSON"; then
               RULESET_OK=1
               break
             fi
-          done < <(
-            gh api --paginate \
-              "repos/$GITHUB_REPOSITORY/rulesets?targets=tag&per_page=100" \
-              --jq '.[].id'
-          )
+          done <<<"$RULESET_IDS"
           [ "$RULESET_OK" = "1" ] || {
             echo "stable v* tags must restrict creation, update, and deletion to exactly the pinned release administrator" >&2
             exit 1

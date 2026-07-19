@@ -6,6 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { readGitHubApi } from "../scripts/github-api-read.mjs";
+import {
+  parseRemoteTagRefs,
+  resolveRemoteTagCommit,
+} from "../scripts/resolve-remote-tag.mjs";
 import { requireStableTag, requireStableVersion } from "../scripts/release-policy.mjs";
 import { isTransientStaplerFailure } from "../scripts/stapler-validate.mjs";
 import {
@@ -85,6 +90,81 @@ test("stable policy rejects prerelease versions and tags", () => {
   assert.equal(requireStableTag("v1.2.3", "1.2.3"), "v1.2.3");
   assert.throws(() => requireStableVersion("1.2.3-rc.1"), /stable X\.Y\.Z/);
   assert.throws(() => requireStableTag("v1.2.3-rc.1", "1.2.3-rc.1"), /stable X\.Y\.Z/);
+});
+
+test("remote tag resolution prefers the peeled commit and retries within hard bounds", () => {
+  const directCommit = "a".repeat(40);
+  const peeledCommit = "b".repeat(40);
+  const tag = "v1.2.3";
+  const refs = `${directCommit}\trefs/tags/${tag}\n${peeledCommit}\trefs/tags/${tag}^{}\n`;
+  assert.equal(parseRemoteTagRefs(refs, tag), peeledCommit);
+  assert.throws(
+    () => parseRemoteTagRefs(`${directCommit}\trefs/tags/v9.9.9\n`, tag),
+    /unexpected tag ref/,
+  );
+
+  let calls = 0;
+  const commit = resolveRemoteTagCommit(".", "origin", tag, {
+    timeoutMs: 1_234,
+    sleep: () => {},
+    execute(command, args, options) {
+      calls++;
+      assert.equal(command, "git");
+      assert.equal(options.timeout, 1_234);
+      assert.equal(options.killSignal, "SIGKILL");
+      assert.deepEqual(args.slice(0, 6), [
+        "-c",
+        "http.version=HTTP/1.1",
+        "-c",
+        "http.lowSpeedLimit=1024",
+        "-c",
+        "http.lowSpeedTime=20",
+      ]);
+      if (calls < 3) throw new Error("transient transport reset");
+      return refs;
+    },
+  });
+  assert.equal(commit, peeledCommit);
+  assert.equal(calls, 3);
+});
+
+test("release policy API reads retry without exposing mutation flags", () => {
+  let calls = 0;
+  const result = readGitHubApi(
+    "repos/hara-cli/hara-desktop/immutable-releases",
+    ["--jq", ".enabled"],
+    {
+      timeoutMs: 2_345,
+      sleep: () => {},
+      execute(command, args, options) {
+        calls++;
+        assert.equal(command, "gh");
+        assert.deepEqual(args, [
+          "api",
+          "repos/hara-cli/hara-desktop/immutable-releases",
+          "--jq",
+          ".enabled",
+        ]);
+        assert.equal(options.timeout, 2_345);
+        if (calls === 1) throw new Error("TLS handshake timeout");
+        return "true\n";
+      },
+    },
+  );
+  assert.equal(result, "true");
+  assert.equal(calls, 2);
+  assert.throws(
+    () => readGitHubApi("https://api.github.com/repos/hara-cli/hara-desktop", []),
+    /repository-relative/,
+  );
+  assert.throws(
+    () =>
+      readGitHubApi("repos/hara-cli/hara-desktop/releases", [
+        "--method",
+        "DELETE",
+      ]),
+    /unsupported read-only/,
+  );
 });
 
 test("release source provenance binds Desktop, CLI, build toolchains, and every native target", () => {
@@ -472,7 +552,10 @@ test("tag workflow automatically enters the protected promotion job under one co
   assert.match(buildWorkflow, /\.bypass_actors\[0\]\.actor_id == \$release_admin_id/);
   assert.match(buildWorkflow, /\.bypass_actors\[0\]\.bypass_mode == "always"/);
   assert.doesNotMatch(buildWorkflow, /\.bypass_actors \| length > 0/);
-  assert.match(buildWorkflow, /gh api --paginate[\s\S]*?rulesets\?targets=tag&per_page=100/);
+  assert.match(
+    buildWorkflow,
+    /github-api-read\.mjs[\s\S]*?rulesets\?targets=tag&per_page=100[\s\S]*?--paginate/,
+  );
   assert.match(buildWorkflow, /\.sender\.id == \$release_admin_id/);
   assert.match(
     buildWorkflow,
@@ -581,9 +664,11 @@ test("draft asset replacement resolves a hidden release through its database ID"
 
 test("promotion rechecks both remote tags at the publication boundary and verifies immutability", () => {
   const releaseScript = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
-  const immutablePolicyCheck = releaseScript.indexOf('gh api "repos/$REPO/immutable-releases"');
-  const finalDesktopTagCheck = releaseScript.indexOf("FINAL_REMOTE_DESKTOP_TAGS");
-  const finalCliTagCheck = releaseScript.indexOf("FINAL_REMOTE_CLI_TAGS");
+  const immutablePolicyCheck = releaseScript.indexOf(
+    'github-api-read.mjs "repos/$REPO/immutable-releases"',
+  );
+  const finalDesktopTagCheck = releaseScript.indexOf("FINAL_REMOTE_DESKTOP_COMMIT");
+  const finalCliTagCheck = releaseScript.indexOf("FINAL_REMOTE_CLI_COMMIT");
   const publish = releaseScript.indexOf('release_gh release edit "$TAG"');
   const immutableAttestation = releaseScript.indexOf('release_gh release verify "$TAG"', publish);
   assert.ok(immutablePolicyCheck >= 0 && immutablePolicyCheck < publish);
@@ -591,6 +676,33 @@ test("promotion rechecks both remote tags at the publication boundary and verifi
   assert.ok(finalCliTagCheck >= 0 && finalCliTagCheck < publish);
   assert.ok(immutableAttestation > publish);
   assert.match(releaseScript, /RELEASE_GH_TOKEN="\$\{GH_TOKEN:-\}"\n(?:.*\n)?unset GH_TOKEN/);
+});
+
+test("release trust reads use bounded retries and hard timeouts", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const remoteHelper = readFileSync(join(root, "scripts/resolve-remote-tag.mjs"), "utf8");
+  const apiHelper = readFileSync(join(root, "scripts/github-api-read.mjs"), "utf8");
+  const releaseScripts = [
+    "scripts/refresh-sidecar.sh",
+    "scripts/build-mac-signed.sh",
+    "scripts/release-mac-assets.sh",
+  ].map((path) => readFileSync(join(root, path), "utf8"));
+
+  assert.match(remoteHelper, /REMOTE_TAG_ATTEMPTS = 3/);
+  assert.match(remoteHelper, /REMOTE_TAG_TIMEOUT_MS = 45_000/);
+  assert.match(remoteHelper, /http\.version=HTTP\/1\.1/);
+  assert.match(remoteHelper, /http\.lowSpeedTime=20/);
+  assert.match(apiHelper, /API_ATTEMPTS = 3/);
+  assert.match(apiHelper, /API_TIMEOUT_MS = 45_000/);
+  for (const script of releaseScripts) {
+    assert.match(script, /resolve-remote-tag\.mjs/);
+    assert.doesNotMatch(script, /\bls-remote\b/);
+  }
+  assert.match(workflow, /timeout --signal=KILL 45s gh api/);
+  assert.match(
+    workflow,
+    /Require immutable releases[\s\S]*?github-api-read\.mjs[\s\S]*?could not read the immutable-release policy after bounded retries/,
+  );
 });
 
 test("a post-publication rerun switches to immutable verification without rewriting assets", () => {
