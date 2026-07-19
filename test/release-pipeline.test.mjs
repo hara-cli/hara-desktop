@@ -643,7 +643,11 @@ test("release source cannot resolve a branch before exact tag validation or inhe
 });
 
 test("release workflows pin every external action and the exact Rust toolchain", () => {
-  const workflows = [readFileSync(join(root, ".github/workflows/build.yml"), "utf8")];
+  const releaseWorkflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const workflows = [
+    releaseWorkflow,
+    readFileSync(join(root, ".github/workflows/ci.yml"), "utf8"),
+  ];
   for (const workflow of workflows) {
     const actionRefs = [...workflow.matchAll(/uses:\s+[^\s@]+@([^\s#]+)/g)].map((match) => match[1]);
     assert.ok(actionRefs.length > 0, "expected external actions in release workflow");
@@ -651,8 +655,29 @@ test("release workflows pin every external action and the exact Rust toolchain",
     const checkoutCount = (workflow.match(/uses: actions\/checkout@/g) || []).length;
     const nonPersistentCheckoutCount = (workflow.match(/persist-credentials: false/g) || []).length;
     assert.equal(nonPersistentCheckoutCount, checkoutCount, "every checkout must remove its Git credential");
-    assert.match(workflow, new RegExp(`toolchain: ["']?${rustVersion.replaceAll(".", "\\.")}["']?`));
   }
+  assert.match(
+    releaseWorkflow,
+    new RegExp(`toolchain: ["']?${rustVersion.replaceAll(".", "\\.")}["']?`),
+  );
+});
+
+test("main and pull requests run Desktop quality gates without release authority", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+  assert.match(workflow, /push:\n\s+branches: \[main\]/);
+  assert.match(workflow, /pull_request:\n\s+branches: \[main\]/);
+  assert.match(workflow, /permissions:\n\s+contents: read/);
+  assert.match(workflow, /timeout-minutes: 20/);
+  for (const command of [
+    "npm ci",
+    "npm audit --omit=dev",
+    "npm run check:release",
+    "npm test",
+    "npm run build",
+  ]) {
+    assert.match(workflow, new RegExp(command.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.doesNotMatch(workflow, /contents: write|environment:|GH_TOKEN|HARA_RELEASE/);
 });
 
 test("draft validation executes repository code without a release token", () => {
