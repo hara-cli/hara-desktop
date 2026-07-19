@@ -1,7 +1,10 @@
 # Hara Office 开源内核与商业产品执行方案
 
-> 状态：方案已形成，`hara-office` 仓库尚未创建。
+> 状态：方案已落库。公开仓库
+> [`hara-cli/hara-office`](https://github.com/hara-cli/hara-office) 已于 2026-07-19
+> 创建并推送九个 `0.1.0-alpha.0` 契约包；npm 尚未首发，Desktop/Serve 尚未接入。
 > 决策日期：2026-07-18。
+> 执行更新：2026-07-19。
 > 适用范围：Hara Desktop、Hara CLI、PPT、表格、文档、能力市场、国内/全球服务。
 > 核心原则：先冻结协议、安全、许可和保真承诺，再建库；安全能力不作为付费墙。
 
@@ -22,7 +25,7 @@
 
 ## 2. 仓库拓扑
 
-方案门禁通过后创建一个公开 monorepo，包独立发布、独立版本：
+已创建一个公开 monorepo；包按工作区独立发布、独立版本：
 
 ```text
 hara-office/                         Public / Apache-2.0
@@ -44,7 +47,7 @@ condition/data-binding evaluator、包验证和 conformance fixtures；不含 re
 这不是一个强制整包安装的“大 Office 包”。Desktop、CLI 和用户只安装所需能力；
 npm workspaces + Changesets 负责独立版本和发布，CI 只运行受影响包与跨包契约测试。
 
-商业实现保持物理隔离：
+商业实现已创建私有仓库并保持物理隔离：
 
 ```text
 hara-office-pro         高保真 Office adapter、品牌治理、批量处理
@@ -247,9 +250,9 @@ Panel v2：
 - token 绑定 artifact、revision、panel 和 capability，禁止重放和任意导航。
 - 能力停用、撤回或 App 退出时，关闭 Panel 并清理 owned worker。
 
-## 8. 建库前门禁
+## 8. 建库与首发门禁
 
-以下十份 ADR 评审通过后才创建 `hara-office`：
+以下十份 ADR 已在公开仓库接受，`hara-office` 基础仓库据此创建：
 
 1. `ADR-001_OPEN_CORE_BOUNDARY`
 2. `ADR-002_OFFICE_MONOREPO_AND_PACKAGES`
@@ -262,7 +265,8 @@ Panel v2：
 9. `ADR-009_COMPONENT_DSL_LAYOUT_AND_DEGRADATION`
 10. `ADR-010_DOCUMENT_PROFILE_AND_TEMPLATE_TRUST`
 
-同时要求：
+以下要求继续作为首次 npm 发布、Desktop/Serve 接入和可安装能力上线的门禁；建库不等于
+这些产品能力已经交付：
 
 - PPT、表格、文档各有一份通过 Schema 的示例 JSON。
 - 每种示例同时具备独立 `manifest.json`、内容入口、输入 Schema、preview digest、
@@ -396,8 +400,8 @@ TRADEMARKS.md
 ```text
 ADR / 法律与安全边界
 → CI 防泄漏
-→ 创建 hara-office
-→ Artifact Core
+→ 创建 hara-office（已完成，2026-07-19）
+→ Artifact Core 契约与 conformance（alpha 基础已完成）
 → PPT / 表格 / 文档纵向切片
 → Desktop Artifact 工作台
 → 免费签名目录

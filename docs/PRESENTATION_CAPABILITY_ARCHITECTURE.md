@@ -1,8 +1,10 @@
 # Hara Presentation 能力包与普通用户桌面工作流
 
 > 决策日期：2026-07-18
-> 状态：架构确定，Desktop 第一阶段入口已开始实施；`hara-office` 仓库及其中的
-> Presentation 能力包尚未创建。
+> 状态：架构确定，Desktop 第一阶段入口已开始实施；公开
+> [`hara-office`](https://github.com/hara-cli/hara-office) 仓库及
+> `@nanhara/hara-presentation@0.1.0-alpha.0` 契约包已经创建并推送，但尚未 npm
+> 发布，也尚未交付 renderer、Panel、worker 或 Desktop/Serve 集成。
 > 本地参考：`/Users/zhujianbo/work/projects/slidev`（只读审计，保留其现有未提交改动）。
 > 补充审计：[`PPT_MASTER_INTEGRATION_AUDIT.md`](./PPT_MASTER_INTEGRATION_AUDIT.md)
 > 记录多格式资料导入、原生 PPTX exporter 候选和模板许可边界。

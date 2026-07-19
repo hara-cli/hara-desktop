@@ -3,7 +3,9 @@
 > 决策日期：2026-07-19
 > 审计对象：`ppt-master` 本地提交 `bb384ab6`，上游
 > `https://github.com/hugohe3/ppt-master.git`
-> 状态：架构审计完成，尚未复制代码、模板或创建独立 PPT 仓库。
+> 状态：架构审计完成，尚未复制 `ppt-master` 代码或模板。PPT 能力按既定边界进入公开
+> [`hara-office`](https://github.com/hara-cli/hara-office) monorepo，不另建独立仓库；
+> alpha 契约已推送，renderer、导入器和 npm 首发尚未完成。
 
 ## 1. 结论
 
@@ -33,11 +35,12 @@ Desktop 的上传应用，也不应作为运行时 Git 依赖整库安装。
 |---|---|---|
 | `hara-desktop` | 已发布 | 普通用户工作台入口与 Presentation/Office 架构文档 |
 | `hara-design` | 已发布 | HTML 演示设计 Skill、主题和参考模板 |
-| `hara-presentation` | 不存在 | 尚未形成可安装、可发布的独立能力包 |
-| `hara-office` | 不存在 | 仍受 ADR、许可、安全和 conformance 门禁约束 |
+| `@nanhara/hara-presentation` | 已进入 `hara-office` | `0.1.0-alpha.0` 结构验证契约；尚未发布 npm |
+| `hara-office` | [公开仓库已创建](https://github.com/hara-cli/hara-office) | 九个 alpha 契约包、十份 ADR、威胁模型和 conformance 门禁 |
 
-因此，“刚刚规划的 PPT 插件”目前**没有作为独立插件发布到 GitHub**。不能向用户宣称已经
-可以安装 `@nanhara/hara-presentation`。现阶段 GitHub 上的是产品入口、参考能力和架构方案。
+因此，“刚刚规划的 PPT 插件”已经有公开的契约代码，但**没有独立 GitHub 仓库，也还不能
+从 npm 安装**。当前交付是可审查的协议与验证基础，不应宣称已经具备上传资料、渲染或导出
+PPTX 的完整能力。
 
 ## 3. ppt-master 实际提供了什么
 
