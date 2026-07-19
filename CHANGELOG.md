@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.25 — hara 0.127.0 task-aware companion chat and typed execution state
+
+- Bundle Hara CLI `0.127.0` from its exact public tag and commit. Prompt context now has stable
+  system/session and dynamic turn/digest sections, while Desktop consumes the versioned typed task
+  lifecycle instead of inferring execution state from conversation text.
+- Separate conversation input from execution control. Live text refinements use expected-turn
+  steering; attachments remain one queued next turn; stable local identities keep optimistic messages,
+  retries, cancellation, and rewind aligned with what Hara Serve actually persisted.
+- Add a focusable companion chat beside the non-focusable desktop pet. It pins one session when opened,
+  can submit work or answer the current one-time approval, restores failed drafts, resumes cold sessions
+  before sending, and never redirects a draft when another task becomes active.
+- Keep the companion least-privilege: its dedicated webview has only event/window permissions and a
+  production deny-by-default CSP with no browser network channel. Agent execution, files, credentials,
+  model access, Native commands, and approval validation remain owned by the trusted main window and
+  authenticated Hara Serve.
+- Harden failure and reconnect boundaries: accepted failed turns remain in durable history, partial
+  disconnected output is replaced by authoritative resumed history, late BUSY steering retries cannot
+  strand input, simultaneous main/companion sends share one synchronous execution lock, and disconnected
+  approvals fail visibly instead of being shown as accepted.
+- Ambient always-on-top status uses fixed state/phase labels only; command previews, paths, task text,
+  checkpoints, and tool output remain inside an explicitly opened conversation.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.24 — hara 0.126.1 verified Plugin package and ownership boundary
 
 - Bundle Hara CLI `0.126.1` from its exact public tag and commit so Desktop's built-in engine receives
