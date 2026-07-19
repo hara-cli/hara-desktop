@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.23 — hara 0.126.0 novice workbench, provider settings, and safe engine replacement
+
+- Reframe the four-place shell as a plain-language personal workbench: specialist cards start
+  guided PPT, spreadsheet, document, video, research, and data-analysis tasks without making users
+  understand agents or skills first. Keep place/session ownership explicit so project and chat
+  contexts cannot silently cross-wire.
+- Redesign Settings around model providers, engine lifecycle, security, language, companions,
+  capabilities, and skills. Shared setting rows, notices, status chips, and accessible navigation
+  improve hierarchy, keyboard behavior, contrast, and version visibility.
+- Manage cloud, OpenAI-compatible, Qwen OAuth, enterprise, Ollama, and LM Studio connections only
+  through authenticated Hara Serve RPC. Candidate endpoints are validated, tests are bounded and
+  redacted, credentials are write-only, environment-managed settings remain read-only, and changes
+  apply only to new sessions.
+- Display Desktop, bundled-engine, and connected-engine versions separately. When an older engine
+  survives an app relaunch, offer an explicit “Use bundled engine” action instead of reconnecting
+  forever: modern engines use authenticated `server.shutdown`; the one-time legacy bridge reopens
+  the owner-only discovery record, verifies the exact PID and Hara executable, and terminates it
+  with a five-second bound before starting the bundled sidecar.
+- Add the optional companion shell and lifecycle surfaces while keeping it non-focusable and
+  separate from the task runtime. Record the novice Office architecture and the reusable Hara
+  Slides, Sheets, and Docs repository boundaries without claiming unsupported editable-PPTX
+  fidelity.
+- Bundle Hara CLI `0.126.0`, including bounded human-input waits, stronger session leases and tool
+  execution, provider-control RPC, and the WeCom-compatible WebSocket transport. The sidecar remains
+  pinned to the exact public CLI tag and commit.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show
+  a SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.22 — hara 0.124.1 task pets, navigation visibility, and Windows sidecar recovery
 
 - Keep the four left navigation icons at their intended 19 px size and raise inactive contrast. The

@@ -107,10 +107,10 @@ Desktop 的“设置 → 模型与供应商”只调用 `hara serve`，不再保
 - 未配置模型时 `hara serve` 仍可启动，并通过 `setupState: needs-credentials` 引导到系统设置；
 - 保存只影响新会话，正在执行的会话不热切换供应商。
 
-发布门槛：当前 Desktop `0.1.22` 仍锁定 CLI sidecar `0.124.1`，不具备上述 RPC。这里的源代码改动
-不得直接打 Desktop tag。必须先按 CLI 发布流程发布包含 `settings.providers.*` 的版本，再运行
-`scripts/refresh-sidecar.sh` 记录该 CLI 的正式 tag 与完整提交，完成打包握手 smoke 后才可发布 Desktop。
-安装包始终优先使用内置 sidecar，因此不能用“升级全局 npm CLI”冒充 Desktop 的修复路径。
+发布状态：Desktop `0.1.23` 锁定正式发布的 CLI sidecar `0.126.0`，已具备上述
+`settings.providers.*` RPC。正式构建仍必须从 origin 上与 `SIDECAR_COMMIT` 完全一致的 CLI tag
+创建隔离 worktree，完成打包握手 smoke 后才可发布 Desktop。安装包始终优先使用内置 sidecar，
+因此不能用“升级全局 npm CLI”冒充 Desktop 的修复路径。
 
 下一阶段把 `provider + model + endpoint + credentialRef + policy + dataRegion` 收敛为版本化
 `ModelConnection`。Session 固定 `connectionId + revision`，管理员更新连接时已有任务继续使用原 revision，
