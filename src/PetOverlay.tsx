@@ -10,9 +10,9 @@ import "./PetOverlay.css";
 type MoveDirection = "left" | "right" | null;
 
 const EMPTY_SNAPSHOT: PetSnapshot = { status: "idle", activityCount: 0 };
-const FRAME_COUNTS: Record<PetStatus, number> = { idle: 6, running: 6, waiting: 6, ready: 6, blocked: 8 };
-const FRAME_MS: Record<PetStatus, number> = { idle: 840, running: 120, waiting: 150, ready: 150, blocked: 140 };
-const STATUS_ROWS: Record<PetStatus, number> = { idle: 0, blocked: 5, waiting: 6, running: 7, ready: 8 };
+const FRAME_COUNTS: Record<PetStatus, number> = { idle: 6, running: 6, waiting: 6, paused: 6, ready: 6, blocked: 8 };
+const FRAME_MS: Record<PetStatus, number> = { idle: 840, running: 120, waiting: 150, paused: 260, ready: 150, blocked: 140 };
+const STATUS_ROWS: Record<PetStatus, number> = { idle: 0, blocked: 5, waiting: 6, paused: 6, running: 7, ready: 8 };
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -77,8 +77,8 @@ function HaraPet({ status, reduced }: { status: PetStatus; reduced: boolean }) {
 
 function statusText(status: PetStatus, zh: boolean): string {
   const copy = zh
-    ? { idle: "待命", running: "处理中", waiting: "需要你确认", ready: "任务完成", blocked: "遇到问题" }
-    : { idle: "Idle", running: "Working", waiting: "Needs input", ready: "Ready", blocked: "Blocked" };
+    ? { idle: "待命", running: "处理中", waiting: "需要你确认", paused: "已暂停，可继续", ready: "任务完成", blocked: "遇到问题" }
+    : { idle: "Idle", running: "Working", waiting: "Needs input", paused: "Paused · ready to resume", ready: "Ready", blocked: "Blocked" };
   return copy[status];
 }
 
@@ -182,6 +182,20 @@ export default function PetOverlay() {
       )}
       <button className="pet-tuck" title={zh ? "收起桌宠" : "Tuck away"} onClick={() => void emitTo("main", "hara-pet-tuck", null)}>
         ×
+      </button>
+      <button
+        className="pet-chat-launch"
+        aria-label={zh ? "和 Hara 对话" : "Chat with Hara"}
+        title={zh ? "和 Hara 对话" : "Chat with Hara"}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => void emitTo("main", "hara-pet-chat-open", { sessionId: snapshot.activity?.sessionId })}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5.4 5.5h13.2a2.4 2.4 0 0 1 2.4 2.4v6.2a2.4 2.4 0 0 1-2.4 2.4h-7.3l-4.7 3v-3H5.4A2.4 2.4 0 0 1 3 14.1V7.9a2.4 2.4 0 0 1 2.4-2.4Z" />
+          <circle cx="8" cy="11" r="1" />
+          <circle cx="12" cy="11" r="1" />
+          <circle cx="16" cy="11" r="1" />
+        </svg>
       </button>
       <button className="pet-stage" aria-label={zh ? "打开 Hara" : "Open Hara"} onPointerDown={beginDrag} onClick={() => void openActivity()}>
         {asset && !assetError ? <AtlasPet asset={asset} status={snapshot.status} movement={movement} reduced={reduced} /> : <HaraPet status={snapshot.status} reduced={reduced} />}

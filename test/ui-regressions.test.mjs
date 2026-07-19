@@ -35,6 +35,99 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(timeline, /const lastUser = items\.map/, "busy progress remains scoped to the current turn");
 });
 
+test("typed task lifecycle drives status while conversation and execution inputs stay separate", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const lifecycle = readFileSync(`${root}/src/task-lifecycle.ts`, "utf8");
+
+  assert.match(client, /capabilities\?: \{ methods\?: string\[\]; events\?: string\[\] \}/);
+  assert.match(client, /this\.events = new Set\(result\.capabilities\?\.events \?\? \[\]\)/);
+  assert.match(client, /supportsEvent\(event: string\)/);
+  assert.match(client, /"session\.steer"/);
+  assert.match(app, /case "event\.task_state"/);
+  assert.match(app, /clientRef\.current\?\.supportsEvent\("event\.task_state"\)/);
+  assert.match(app, /await c\.steer\(sessionId, text, turnId\)/);
+  assert.match(app, /const live = taskStateIsLive\(e\.state\)/);
+  assert.match(app, /interface QueuedInput[\s\S]*images\?: \{ path: string \}\[\]/);
+  assert.match(app, /next\.images,[\s\S]*recordUser: next\.recorded !== true/);
+  assert.match(app, /queueRef\.current = next;[\s\S]*return next;/);
+  assert.match(app, /const BUSY_SEND_RETRIES = 4/);
+  assert.match(app, /busyAttempt < BUSY_SEND_RETRIES[\s\S]*window\.setTimeout/);
+  assert.match(app, /if \(!live\) \{\s*setSessionBusy\(sessionId, false\)/);
+  assert.match(app, /const retryQueuedInput = useCallback/);
+  assert.match(app, /const currentTurnId = activeTurnsRef\.current\[sessionId\]/);
+  assert.match(app, /if \(!live\) \{\s+await sendText\(sessionId, text\);\s+return "sent";/, "a late stale-steer rejection starts a fresh turn");
+  assert.match(app, /const pendingApproval = target && busyRef\.current\[target\][\s\S]*item\.kind === "approval" && !item\.answered/);
+  assert.match(app, /legacyState[\s\S]*phase: pendingApproval \? "approval"/, "older engines still project approval state into companion chat");
+  assert.match(app, /setInput\(\(draft\) => draft \? `\$\{text\}\\n\$\{draft\}` : text\)/, "failed composer sends restore their draft");
+  assert.match(
+    app,
+    /e\.phase === "restored" && e\.state === "completed"\)[\s\S]*removePet\(e\.sessionId\)/,
+    "restored completion clears a stale disconnect activity without creating a notification",
+  );
+  assert.match(app, /answered: "expired"/, "turn end retires legacy approvals");
+  assert.match(app, /requeueFrontOnBusy: true/, "a drained message retains FIFO order if the engine is still busy");
+  assert.match(app, /position === "front" \? \[input, \.\.\.current\]/);
+  assert.match(app, /!attachedSessionsRef\.current\.has\(sessionId\)[\s\S]*const resumed = await c\.resumeSession\(sessionId\)/, "cold companion sends attach persisted sessions first");
+  assert.match(app, /resolveOptimisticUser\(items, removed\.id, false\)/, "canceling a queue item removes its never-persisted optimistic transcript entry");
+  assert.match(app, /persistedUserTurnsFrom\(items, i\)/, "rewind counts only server-persisted user turns");
+  assert.match(app, /const pendingSendDispatchesRef = useRef/, "accepted sends are tracked until their matching turn settles");
+  assert.match(
+    app,
+    /const setSessionBusy = useCallback[\s\S]*busyRef\.current = next;\s*setBusy\(next\)/,
+    "the execution lock becomes visible synchronously across the main and companion composers",
+  );
+  assert.match(
+    app,
+    /case "event\.turn_start"[\s\S]*dispatch\.turnId = e\.turnId/,
+    "a send binds its optimistic message to the turn that actually accepted it",
+  );
+  assert.match(
+    app,
+    /case "event\.turn_end"[\s\S]*dispatch\.completed = true;[\s\S]*resolvePendingUser\(e\.sessionId, dispatch\.pendingId, true\)/,
+    "a failed model/tool turn still makes the accepted user message durable and rewindable",
+  );
+  assert.match(
+    app,
+    /const pending = queueRef\.current\[e\.sessionId\][\s\S]*setSessionBusy\(e\.sessionId, true\)[\s\S]*setTimeout/,
+    "the next queued turn holds the local execution lock during its drain handoff",
+  );
+  const retryStart = app.indexOf("const retryQueuedInput = useCallback");
+  const retryEnd = app.indexOf("/** Submit against the authoritative execution plane", retryStart);
+  const retryFlow = app.slice(retryStart, retryEnd);
+  assert.ok(
+    retryFlow.indexOf("await c.resumeSession(sessionId)") <
+      retryFlow.indexOf("latest.filter"),
+    "a reconnect retry attaches the persisted session before removing its queue item",
+  );
+  assert.match(
+    retryFlow,
+    /restoreAuthoritativeConversation\(\s*conversationHistory\(resumed\.history\)/,
+    "reconnect hydration replaces partial local output with authoritative serve history",
+  );
+  assert.match(
+    app,
+    /catch \(steerError: any\)[\s\S]*const currentTurnId = activeTurnsRef\.current\[sessionId\][\s\S]*if \(!live\) \{\s*busyAttempt = 0;\s*continue;/,
+    "a late fallback-steer BUSY response rechecks live state and retries as a fresh send",
+  );
+  assert.match(
+    app,
+    /const answer = async[\s\S]*if \(!c\?\.connected\) \{\s*throw new Error/,
+    "disconnected approvals fail visibly instead of being marked as accepted",
+  );
+  assert.match(app, /hydrateLegacyTaskState\(c, id, r\.task\)/, "legacy resume status reaches the task and companion projection");
+  assert.match(app, /attachedSessionsRef\.current\.clear\(\)/, "a new serve connection invalidates old live attachments");
+  assert.match(app, /displayHistoryText\(m\.text\)/, "resumed history hides internal steering wrappers");
+  assert.doesNotMatch(app, /notePet\(sessionId, "running", text\)/, "raw user text never becomes an always-on-top pet title");
+  assert.doesNotMatch(
+    lifecycle,
+    /event\.(?:detail|objective|brief|checkpoint)/,
+    "ambient pet titles do not use raw lifecycle content",
+  );
+  assert.match(app, /activeTurnsRef\.current = \{\}/, "disconnect clears stale execution identity");
+  assert.match(lifecycle, /state === "completed" \? "ready" : state/);
+});
+
 test("settings use shared page templates and keep Desktop, engine, and update state distinct", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const settings = readFileSync(`${root}/src/SettingsUI.tsx`, "utf8");

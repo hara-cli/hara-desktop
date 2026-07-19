@@ -108,13 +108,16 @@ ConversationTimeline
   用户消息、回答、工具、diff、审批和执行尾部状态
 
 DesktopCompanionController
-  目录、选择、窗口同步、活动归约与点击回到任务
+  目录、选择、窗口同步、活动归约、对话桥接与点击回到任务
 
 DesktopCompanionSettings
   显示开关、本地目录和兼容性状态
 
 PetOverlay
   只渲染已验证素材和语义状态
+
+PetChat
+  独立可聚焦窗口；只通过事件向主渲染器提交消息、steer 与一次性审批
 ```
 
 后续阶段再引入 `TaskHeader`、`TaskTimeline`、`AttentionCenter`、`ArtifactWorkbench` 和声明式
@@ -129,14 +132,16 @@ Settings Registry。不能为了拆文件复制状态或建立第二个运行时
 - `idle`：待命；
 - `running`：正在执行；
 - `waiting`：需要用户输入或审批；
+- `paused`：已在安全边界暂停，可继续；
 - `ready`：结果可查看；
 - `blocked`：任务遇到可见问题。
 
-优先级固定为 `waiting → blocked → ready → running`，同级以最近更新时间优先。点击伙伴必须
+优先级固定为 `waiting → blocked → paused → ready → running`，同级以最近更新时间优先。点击伙伴必须
 回到拥有该 activity 的场所和 session；不能打开一个标题正确但 cwd 错误的会话。
 
-伙伴只显示简短状态和任务标题，不显示 chain-of-thought、密钥、完整路径、命令输出或文件正文。
-多个任务同时存在时显示数量，详细列表由 Desktop 的注意力中心负责。
+伙伴只显示简短状态和由 `state/phase` 映射出的固定安全标题；原始 `objective`、brief、checkpoint
+和 detail 都不能进入置顶窗口，以免显示 chain-of-thought、密钥、客户文本、完整路径、命令输出
+或文件正文。多个任务同时存在时显示数量，详细列表由 Desktop 的注意力中心负责。
 
 ### 3.2 现有素材统一
 
@@ -157,7 +162,16 @@ Selector 是 provider-qualified 逻辑 ID，不能是任意路径或 URL。Codex
 - 包只允许 manifest 和一张 PNG/WebP spritesheet，不执行 HTML、CSS、脚本或命令；
 - Native 层重复校验根目录、路径、符号链接、MIME、大小和 v1/v2 几何；
 - Pet webview 只收到验证后的 data URL，不拥有文件系统或市场 Token；
-- 窗口默认不抢键盘焦点；所有显示、选择和收起操作在主设置页必须有等价入口；
+- 动画 Pet 窗口默认不抢键盘焦点；聊天使用独立可聚焦窗口，只拥有 event/window
+  capability；生产构建只对专用 `pet-chat.html` 注入 `connect-src 'none'` 的
+  deny-by-default CSP，封死 `fetch`、WebSocket、beacon 等浏览器网络通道，因此不能直接调用
+  Native、文件、网络、更新器或 Agent。开发构建不注入该 CSP，以保留 Vite HMR；
+- 聊天打开时固定目标 session，broker 会拒绝来自旧页面状态的跨 session 请求；切换目标会清空
+  旧草稿和 pending request。明确的桥接失败会恢复草稿；仅仅超过响应阈值时仍保持 pending
+  并禁止重发，因为可信主窗口可能已经开始派发，不能把慢响应伪装成可重试失败而重复执行；
+- 新引擎以 typed lifecycle 为状态真相；兼容旧 sidecar 时仍从受限的运行/完成事件和未答复
+  approval 生成状态；turn 结束时旧 approval 会明确过期，不让“等待确认”错误持续存在；
+- 所有显示、选择和收起操作在主设置页必须有等价入口；
 - reduced-motion 固定首帧；
 - 市场浏览和免费安装不强制登录，发布、付费和同步才引入账号。
 
@@ -187,9 +201,12 @@ Selector 是 provider-qualified 逻辑 ID，不能是任意路径或 URL。Codex
 - 保持现有 protocol-v1 行为和视觉结果；
 - 补组件边界、场所归属、伙伴优先级与点击回路回归。
 
-### Phase 2：任务交互
+### Phase 2：任务交互（协议基础已落地）
 
-- `hara serve` 暴露 TaskRun、step、waiting、pause、deadline 和 steer RPC；
+- `hara serve` 已暴露版本化 `event.task_state`、waiting/pause/checkpoint 和 expected-turn
+  `session.steer`；Desktop 通过 capability negotiation 兼容旧引擎；
+- Desktop 已将运行中纯文本输入路由到真实 steer，将附件与文本作为一个可见、可撤回的新回合
+  队列，并用结构化状态驱动桌面伙伴；
 - Desktop 增加 TaskHeader、折叠步骤、运行中输入选择和 Attention Center；
 - 人工等待不显示为“仍在执行”，活跃预算与墙钟时间分开。
 
@@ -211,5 +228,7 @@ Selector 是 provider-qualified 逻辑 ID，不能是任意路径或 URL。Codex
 - 结构拆分前后的 protocol-v1 事件、审批、interrupt、队列和 Panel 行为一致；
 - 桌面伙伴可选择内置、Hara 本地和 Codex 只读兼容包；
 - 伙伴窗口不抢输入焦点，等待/失败/完成优先级稳定，点击回到正确场所；
+- 伙伴聊天不直接执行 Agent/Native 操作，目标 session 不因其他任务活动而串线；明确发送失败会
+  恢复草稿，慢请求保持单一 pending 且提示不得重发；冷启动时会先恢复持久 session，再发送消息；
 - 不兼容包不能加载，错误不泄露本机路径或凭据；
 - Node 测试、TypeScript/Vite 构建、Rust 单测、Cargo check 和 release metadata 全部通过。

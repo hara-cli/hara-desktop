@@ -21,6 +21,7 @@ import {
   type CronJobInfo,
   type CtxInfo,
   type ProviderSettingsState,
+  type TaskLifecycleEvent,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
@@ -46,11 +47,28 @@ import {
   type ApprovalVerdict,
   type ConversationItem,
 } from "./ConversationTimeline";
+import {
+  persistedUserTurnsFrom,
+  resolveOptimisticUser,
+  restoreAuthoritativeConversation,
+} from "./conversation-state";
 import { DesktopCompanionSettings } from "./companion/DesktopCompanionSettings";
 import { useDesktopCompanion } from "./companion/useDesktopCompanion";
 import { IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
 import HaraLogo from "./mark";
+import type {
+  PetChatApproval,
+  PetChatState,
+  PetChatSubmit,
+} from "./pets";
+import {
+  restoredTaskLifecycle,
+  taskStateIsLive,
+  taskStatePetStatus,
+  taskStateTitle,
+  type ResumedTaskSnapshot,
+} from "./task-lifecycle";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
@@ -82,6 +100,42 @@ const isAutomated = (s: SessionInfo): boolean => s.source === "cron" || s.source
 const forkBase = (id: string): string => id.replace(/-\d+$/, "");
 const BUNDLED_ENGINE_VERSION = bundledEngineVersionText.trim();
 const SERVER_BUSY = -32002;
+const BUSY_SEND_RETRIES = 4;
+const STEERING_HISTORY_PREFIX = "[Sent while you were working on the above — TRIAGE before continuing:";
+
+interface QueuedInput {
+  id: string;
+  text: string;
+  images?: { path: string }[];
+  /** The optimistic transcript entry already exists; a later retry must not duplicate it. */
+  recorded?: boolean;
+}
+
+const recentPetMessages = (items: ConversationItem[]): PetChatState["messages"] =>
+  items
+    .flatMap((item): PetChatState["messages"] => {
+      if (item.kind === "user") return [{ role: "user", text: item.text.slice(0, 900) }];
+      if (item.kind === "text") return [{ role: "assistant", text: plain(item.text).slice(0, 1_200) }];
+      if (item.kind === "notice") return [{ role: "notice", text: plain(item.text).slice(0, 500) }];
+      return [];
+    })
+    .slice(-6);
+
+/** Serve persists steering with an internal triage wrapper for the model. Render only the user's text. */
+const displayHistoryText = (text: string): string => {
+  if (!text.startsWith(STEERING_HISTORY_PREFIX)) return text;
+  const boundary = text.indexOf("]\n\n");
+  return boundary >= 0 ? text.slice(boundary + 3) : text;
+};
+
+const conversationHistory = (
+  history: { role: string; text: string }[],
+): ConversationItem[] =>
+  history.map((message): ConversationItem =>
+    message.role === "user"
+      ? { kind: "user", text: displayHistoryText(message.text) }
+      : { kind: "text", text: message.text },
+  );
 
 /** Project groups (manual sessions only): opened-but-empty projects first, then by latest activity. */
 function projectGroups(sessions: SessionInfo[], opened: string[]): [string, SessionInfo[]][] {
@@ -126,6 +180,25 @@ export default function App() {
   const [active, setActive] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<Record<string, ConversationItem[]>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [taskStates, setTaskStates] = useState<Record<string, TaskLifecycleEvent>>({});
+  const transcriptsRef = useRef(transcripts);
+  const busyRef = useRef(busy);
+  const taskStatesRef = useRef(taskStates);
+  const activeTurnsRef = useRef<Record<string, string>>({});
+  const pendingSendDispatchesRef = useRef<Record<string, {
+    pendingId: string;
+    turnId?: string;
+    completed?: boolean;
+  }>>({});
+  const attachedSessionsRef = useRef(new Set<string>());
+  transcriptsRef.current = transcripts;
+  busyRef.current = busy;
+  taskStatesRef.current = taskStates;
+  const setSessionBusy = useCallback((sessionId: string, value: boolean) => {
+    const next = { ...busyRef.current, [sessionId]: value };
+    busyRef.current = next;
+    setBusy(next);
+  }, []);
   const [input, setInput] = useState("");
   const [modelInfo, setModelInfo] = useState<{ models: string[]; current: string; effortLevels: string[] } | null>(null);
   const [sessEffort, setSessEffort] = useState<Record<string, string>>({});
@@ -223,6 +296,8 @@ export default function App() {
   };
   const interruptedSessionsRef = useRef(new Set<string>());
   const openPetSessionRef = useRef<(sessionId: string) => Promise<void>>(async () => {});
+  const petChatSubmitRef = useRef<(request: PetChatSubmit) => Promise<string | undefined>>(async () => undefined);
+  const petChatApprovalRef = useRef<(request: PetChatApproval) => Promise<void>>(async () => {});
   const {
     awake: petAwake,
     setAwake: setPetAwake,
@@ -234,11 +309,94 @@ export default function App() {
     note: notePet,
     acknowledge: acknowledgePet,
     clear: removePet,
+    refreshChat: refreshPetChat,
   } = useDesktopCompanion({
     getActivityTitle: (sessionId) =>
       sessionsRef.current.find((session) => session.id === sessionId)?.title || "Hara task",
     onOpenActivity: (sessionId) => openPetSessionRef.current(sessionId),
+    resolveChatSession: (requestedSessionId) => {
+      if (requestedSessionId !== undefined) return requestedSessionId;
+      return assistantZone(sessionsRef.current).current?.id;
+    },
+    getChatState: (sessionId, petStatus): PetChatState => {
+      const target = sessionId;
+      const session = target
+        ? sessionsRef.current.find((candidate) => candidate.id === sessionId)
+        : undefined;
+      const unavailable = !!target && !session;
+      const task = target ? taskStatesRef.current[target] : undefined;
+      const transcript = target ? transcriptsRef.current[target] ?? [] : [];
+      const pendingApproval = target && busyRef.current[target]
+        ? [...transcript]
+            .reverse()
+            .find((item) => item.kind === "approval" && !item.answered)
+        : undefined;
+      const legacyState = pendingApproval
+        ? "waiting"
+        : petStatus === "idle"
+          ? undefined
+          : petStatus === "ready"
+            ? "completed"
+            : petStatus;
+      const projectedTask: PetChatState["task"] = task
+        ? {
+            state: task.state,
+            phase: task.phase,
+            objective: task.objective,
+            checkpoint: task.checkpoint,
+            ...(task.approval ? { approval: task.approval } : {}),
+          }
+        : legacyState
+          ? {
+              state: legacyState,
+              phase: pendingApproval ? "approval" : legacyState === "completed" ? "finished" : "legacy",
+              objective: session?.title || (locale === "zh" ? "个人助理" : "Personal assistant"),
+              checkpoint: { done: 0, total: 0 },
+              ...(pendingApproval?.kind === "approval"
+                ? { approval: { id: pendingApproval.approvalId, question: pendingApproval.question } }
+                : {}),
+            }
+          : undefined;
+      const connected = !!clientRef.current?.connected && phase === "ready";
+      return {
+        connected,
+        canSubmit: connected && !unavailable && (!session || !isAutomated(session)),
+        ...(unavailable ? { unavailable: true } : {}),
+        locale,
+        ...(target ? { sessionId: target } : {}),
+        title: session?.title || (
+          unavailable
+            ? locale === "zh" ? "会话不可用" : "Conversation unavailable"
+            : locale === "zh" ? "个人助理" : "Personal assistant"
+        ),
+        petStatus,
+        ...(projectedTask ? { task: projectedTask } : {}),
+        messages: recentPetMessages(transcript),
+      };
+    },
+    onChatSubmit: (request) => petChatSubmitRef.current(request),
+    onChatApproval: (request) => petChatApprovalRef.current(request),
   });
+  const hydrateLegacyTaskState = useCallback((
+    client: HaraClient,
+    sessionId: string,
+    task?: ResumedTaskSnapshot,
+  ) => {
+    if (!task || client.supportsEvent("event.task_state")) return;
+    const event = restoredTaskLifecycle(sessionId, task);
+    const nextTaskStates = { ...taskStatesRef.current, [sessionId]: event };
+    taskStatesRef.current = nextTaskStates;
+    setTaskStates(nextTaskStates);
+    const live = taskStateIsLive(event.state);
+    if (live) activeTurnsRef.current[sessionId] = event.turnId;
+    else delete activeTurnsRef.current[sessionId];
+    setSessionBusy(sessionId, live);
+    if (event.state === "completed") removePet(sessionId);
+    else notePet(sessionId, taskStatePetStatus(event.state), taskStateTitle(event));
+  }, [notePet, removePet, setSessionBusy]);
+  useEffect(() => {
+    refreshPetChat();
+  }, [active, locale, phase, refreshPetChat, sessions, taskStates, transcripts]);
   const [q, setQ] = useState("");
   const [upd, setUpd] = useState("");
   const [updateTone, setUpdateTone] = useState<"neutral" | "success" | "warning" | "error">("neutral");
@@ -251,9 +409,12 @@ export default function App() {
   const pendingRef = useRef<"assistant" | "project" | null>(null);
   const [setupRequired, setSetupRequired] = useState(false);
   const apiRef = useRef<{ setZone: (z: Zone) => void; openAssistant: () => void; openProject: () => void }>({ setZone: () => {}, openAssistant: () => {}, openProject: () => {} });
-  // steer queue (codex composer pattern): messages typed while a turn runs are queued and auto-sent
-  const [queue, setQueue] = useState<Record<string, string[]>>({});
+  // steer queue (codex composer pattern): inputs typed while a turn runs are queued and auto-sent.
+  // Attachments stay with their text as one fresh turn because session.steer is deliberately text-only.
+  const [queue, setQueue] = useState<Record<string, QueuedInput[]>>({});
   const queueRef = useRef(queue);
+  const pendingInputSequenceRef = useRef(0);
+  const retryingQueuedInputsRef = useRef(new Set<string>());
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
@@ -313,42 +474,319 @@ export default function App() {
 
   const push = useCallback(
     (sessionId: string, mut: (items: ConversationItem[]) => ConversationItem[]) => {
-      setTranscripts((tr) => ({ ...tr, [sessionId]: mut(tr[sessionId] ?? []) }));
+      setTranscripts((tr) => {
+        const next = { ...tr, [sessionId]: mut(tr[sessionId] ?? []) };
+        transcriptsRef.current = next;
+        return next;
+      });
     },
     [],
   );
 
+  const nextPendingInputId = useCallback(
+    () => `pending-${Date.now()}-${++pendingInputSequenceRef.current}`,
+    [],
+  );
+
+  const resolvePendingUser = useCallback((
+    sessionId: string,
+    pendingId: string,
+    accepted: boolean,
+  ) => {
+    push(sessionId, (items) => resolveOptimisticUser(items, pendingId, accepted));
+  }, [push]);
+
+  const enqueueInput = useCallback((
+    sessionId: string,
+    input: QueuedInput,
+    position: "front" | "back" = "back",
+  ) => {
+    setQueue((queues) => {
+      const current = queues[sessionId] ?? [];
+      const next = {
+        ...queues,
+        [sessionId]: position === "front" ? [input, ...current] : [...current, input],
+      };
+      queueRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const cancelQueuedInput = useCallback((sessionId: string, index: number) => {
+    const current = queueRef.current[sessionId] ?? [];
+    const removed = current[index];
+    if (!removed) return;
+    const next = {
+      ...queueRef.current,
+      [sessionId]: current.filter((_, queuedIndex) => queuedIndex !== index),
+    };
+    queueRef.current = next;
+    setQueue(next);
+    if (removed.recorded) {
+      push(sessionId, (items) => [...resolveOptimisticUser(items, removed.id, false), {
+        kind: "notice",
+        text: locale === "zh" ? "已取消尚未执行的补充消息。" : "Canceled the queued follow-up before it ran.",
+      }]);
+    }
+  }, [locale, push]);
+
   const sendText = useCallback(
-    async (sessionId: string, text: string, images?: { path: string }[]) => {
+    async (
+      sessionId: string,
+      text: string,
+      images?: { path: string }[],
+      options?: {
+        recordUser?: boolean;
+        requeueFrontOnBusy?: boolean;
+        pendingId?: string;
+      },
+    ) => {
       const c = clientRef.current;
-      if (!c) return;
-      push(sessionId, (items) => [...items, { kind: "user", text: images?.length ? `${text}  🖼×${images.length}` : text }]);
-      setBusy((b) => ({ ...b, [sessionId]: true }));
+      if (!c?.connected) throw new Error("Hara engine is not connected");
+      const pendingId = options?.pendingId ?? nextPendingInputId();
+      if (options?.recordUser !== false) {
+        push(sessionId, (items) => [...items, {
+          kind: "user",
+          text: images?.length ? `${text}  🖼×${images.length}` : text,
+          pendingId,
+        }]);
+      }
+      setSessionBusy(sessionId, true);
       notePet(sessionId, "running");
-      try {
-        await c.send(sessionId, text, images);
-        if (interruptedSessionsRef.current.delete(sessionId)) removePet(sessionId);
-        // the first turn sets the server-side derived title — refresh so the sidebar shows it now
-        void c.listSessions().then((l) => setSessions(l.sessions)).catch(() => {});
-      } catch (e: any) {
-        push(sessionId, (items) => [...items, { kind: "notice", text: `error: ${e?.message ?? e}` }]);
-        setBusy((b) => ({ ...b, [sessionId]: false }));
-        if (!interruptedSessionsRef.current.delete(sessionId)) notePet(sessionId, "blocked");
-        else removePet(sessionId);
+      let busyAttempt = 0;
+      const clearPendingDispatch = () => {
+        if (pendingSendDispatchesRef.current[sessionId]?.pendingId === pendingId) {
+          delete pendingSendDispatchesRef.current[sessionId];
+        }
+      };
+      while (true) {
+        pendingSendDispatchesRef.current[sessionId] = { pendingId };
+        try {
+          await c.send(sessionId, text, images);
+          clearPendingDispatch();
+          resolvePendingUser(sessionId, pendingId, true);
+          if (interruptedSessionsRef.current.delete(sessionId)) removePet(sessionId);
+          // the first turn sets the server-side derived title — refresh so the sidebar shows it now
+          void c.listSessions().then((l) => setSessions(l.sessions)).catch(() => {});
+          return;
+        } catch (e: any) {
+          const interrupted = interruptedSessionsRef.current.delete(sessionId);
+          if (e?.code === SERVER_BUSY && !interrupted) {
+            let turnId = activeTurnsRef.current[sessionId];
+            let taskState = taskStatesRef.current[sessionId];
+            let live = !!turnId || (taskState ? taskStateIsLive(taskState.state) : false);
+            if (!live && busyAttempt < BUSY_SEND_RETRIES) {
+              // Provider reconfiguration and turn-start delivery can briefly set BUSY before a lifecycle
+              // identity is observable. Retry only within this hard bound; never leave the UI spinning forever.
+              busyAttempt += 1;
+              await new Promise<void>((resolve) => window.setTimeout(resolve, busyAttempt * 120));
+              turnId = activeTurnsRef.current[sessionId];
+              taskState = taskStatesRef.current[sessionId];
+              live = !!turnId || (taskState ? taskStateIsLive(taskState.state) : false);
+              if (!live) continue;
+            }
+            if (!images?.length && turnId && c.supports("session.steer")) {
+              // The attempted session.send did not start a turn. A following turn_end belongs to the
+              // existing turn and must never acknowledge this optimistic message.
+              clearPendingDispatch();
+              try {
+                await c.steer(sessionId, text, turnId);
+                resolvePendingUser(sessionId, pendingId, true);
+                notePet(sessionId, "running");
+                return;
+              } catch (steerError: any) {
+                if (steerError?.code !== SERVER_BUSY) {
+                  push(sessionId, (items) => [...items, {
+                    kind: "notice",
+                    text: `error: ${steerError?.message ?? steerError}`,
+                  }]);
+                  setSessionBusy(sessionId, false);
+                  notePet(sessionId, "blocked");
+                  return;
+                }
+                const currentTurnId = activeTurnsRef.current[sessionId];
+                const currentState = taskStatesRef.current[sessionId];
+                live = !!currentTurnId || (
+                  currentState ? taskStateIsLive(currentState.state) : false
+                );
+                if (!live) {
+                  busyAttempt = 0;
+                  continue;
+                }
+              }
+            }
+            // A real live turn will auto-dispatch on turn_end. If BUSY had no observable task after the
+            // bounded retries, keep the exact input visible but release the false busy state so Retry works.
+            clearPendingDispatch();
+            enqueueInput(
+              sessionId,
+              { id: pendingId, text, ...(images?.length ? { images } : {}), recorded: true },
+              options?.requeueFrontOnBusy ? "front" : "back",
+            );
+            if (!live) {
+              setSessionBusy(sessionId, false);
+              notePet(sessionId, "paused", "Message queued — engine is still preparing");
+            }
+            return;
+          }
+          const dispatch = pendingSendDispatchesRef.current[sessionId];
+          const persisted = dispatch?.pendingId === pendingId && dispatch.completed === true;
+          clearPendingDispatch();
+          if (persisted) resolvePendingUser(sessionId, pendingId, true);
+          push(sessionId, (items) => [...items, { kind: "notice", text: `error: ${e?.message ?? e}` }]);
+          setSessionBusy(sessionId, false);
+          if (c.supportsEvent("event.task_state")) {
+            const state = taskStatesRef.current[sessionId];
+            if (!state || taskStateIsLive(state.state)) {
+              if (interrupted) removePet(sessionId);
+              else notePet(sessionId, "blocked");
+            }
+          } else if (!interrupted) notePet(sessionId, "blocked");
+          else removePet(sessionId);
+          return;
+        }
       }
     },
-    [notePet, push, removePet],
+    [enqueueInput, nextPendingInputId, notePet, push, removePet, resolvePendingUser, setSessionBusy],
+  );
+
+  const retryQueuedInput = useCallback(async (sessionId: string, index: number) => {
+    if (busyRef.current[sessionId]) return;
+    const current = queueRef.current[sessionId] ?? [];
+    const retry = current[index];
+    if (!retry) return;
+    const retryKey = `${sessionId}:${retry.id}`;
+    if (retryingQueuedInputsRef.current.has(retryKey)) return;
+    retryingQueuedInputsRef.current.add(retryKey);
+    const c = clientRef.current;
+    try {
+      if (!c) throw new Error("Hara engine is not connected");
+      if (!attachedSessionsRef.current.has(sessionId)) {
+        // A reconnect invalidates every live serve attachment. Keep the queue item until resume has
+        // succeeded so NO_SESSION can never turn a visible retry into dropped work.
+        const resumed = await c.resumeSession(sessionId);
+        if (clientRef.current !== c) throw new Error("Hara engine reconnected; retry the message again");
+        attachedSessionsRef.current.add(sessionId);
+        const currentTranscripts = transcriptsRef.current;
+        const nextTranscripts = {
+          ...currentTranscripts,
+          [sessionId]: restoreAuthoritativeConversation(
+            conversationHistory(resumed.history),
+            currentTranscripts[sessionId] ?? [],
+          ),
+        };
+        transcriptsRef.current = nextTranscripts;
+        setTranscripts(nextTranscripts);
+        hydrateLegacyTaskState(c, sessionId, resumed.task);
+      }
+      const latest = queueRef.current[sessionId] ?? [];
+      const retryIndex = latest.findIndex((item) => item.id === retry.id);
+      if (retryIndex < 0) return;
+      const next = {
+        ...queueRef.current,
+        [sessionId]: latest.filter((_, queuedIndex) => queuedIndex !== retryIndex),
+      };
+      queueRef.current = next;
+      setQueue(next);
+      await sendText(
+        sessionId,
+        retry.text,
+        retry.images,
+        {
+          recordUser: retry.recorded !== true,
+          pendingId: retry.id,
+        },
+      );
+    } catch (error: any) {
+      push(sessionId, (items) => [...items, {
+        kind: "notice",
+        text: `retry: ${error?.message ?? error}`,
+      }]);
+      notePet(sessionId, "paused");
+    } finally {
+      retryingQueuedInputsRef.current.delete(retryKey);
+    }
+  }, [hydrateLegacyTaskState, notePet, push, sendText]);
+
+  /** Submit against the authoritative execution plane. A live turn receives real `session.steer`;
+   * only the end-of-turn race falls back to the visible queue, so user input is never rejected or lost. */
+  const submitSessionText = useCallback(
+    async (sessionId: string, text: string): Promise<"sent" | "steered" | "queued"> => {
+      const c = clientRef.current;
+      if (!c) throw new Error("Hara engine is not connected");
+      const state = taskStatesRef.current[sessionId];
+      const turnId = state?.taskStatus === "running"
+        ? state.turnId
+        : activeTurnsRef.current[sessionId];
+      let live = busyRef.current[sessionId] || (
+        state ? taskStateIsLive(state.state) : false
+      );
+      if (live && turnId && c.supports("session.steer")) {
+        try {
+          await c.steer(sessionId, text, turnId);
+          push(sessionId, (items) => [...items, { kind: "user", text }]);
+          notePet(sessionId, "running");
+          return "steered";
+        } catch (error: any) {
+          if (error?.code !== SERVER_BUSY) throw error;
+          // The turn may have ended and emitted its sole queue-drain event before this rejection arrived.
+          // Re-read the synchronous execution refs: a finished turn must receive a fresh send now.
+          const currentTurnId = activeTurnsRef.current[sessionId];
+          const currentState = taskStatesRef.current[sessionId];
+          live = !!currentTurnId || (currentState ? taskStateIsLive(currentState.state) : false);
+          if (!live) {
+            await sendText(sessionId, text);
+            return "sent";
+          }
+        }
+      }
+      if (live) {
+        const pendingId = nextPendingInputId();
+        push(sessionId, (items) => [...items, { kind: "user", text, pendingId }]);
+        enqueueInput(sessionId, { id: pendingId, text, recorded: true });
+        notePet(sessionId, "running");
+        return "queued";
+      }
+      await sendText(sessionId, text);
+      return "sent";
+    },
+    [enqueueInput, nextPendingInputId, notePet, push, sendText],
   );
 
   const handleEvent = useCallback(
     (e: ServerEvent) => {
       switch (e.method) {
         case "event.turn_start":
-          notePet(e.sessionId, "running");
-          setBusy((busySessions) => ({ ...busySessions, [e.sessionId]: true }));
+          if (e.turnId) {
+            activeTurnsRef.current[e.sessionId] = e.turnId;
+            const dispatch = pendingSendDispatchesRef.current[e.sessionId];
+            if (dispatch && !dispatch.turnId) dispatch.turnId = e.turnId;
+          }
+          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
+          setSessionBusy(e.sessionId, true);
           break;
+        case "event.task_state": {
+          const nextTaskStates = { ...taskStatesRef.current, [e.sessionId]: e };
+          taskStatesRef.current = nextTaskStates;
+          setTaskStates(nextTaskStates);
+          const live = taskStateIsLive(e.state);
+          if (live) activeTurnsRef.current[e.sessionId] = e.turnId;
+          else delete activeTurnsRef.current[e.sessionId];
+          setSessionBusy(e.sessionId, live);
+          const title = taskStateTitle(e);
+          if (e.phase === "restored" && e.state === "completed") {
+            // A restored terminal snapshot hydrates state; it is not a new completion notification.
+            // Clear any stale disconnect/blocked activity left by the previous transport.
+            removePet(e.sessionId);
+          } else if (e.state === "completed" && e.sessionId === activeRef.current && document.hasFocus()) {
+            removePet(e.sessionId);
+          } else {
+            notePet(e.sessionId, taskStatePetStatus(e.state), title);
+          }
+          break;
+        }
         case "event.text":
-          notePet(e.sessionId, "running");
+          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => {
             const last = items[items.length - 1];
             if (last?.kind === "text") return [...items.slice(0, -1), { kind: "text", text: last.text + e.delta }];
@@ -356,7 +794,7 @@ export default function App() {
           });
           break;
         case "event.reasoning":
-          notePet(e.sessionId, "running");
+          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => {
             const last = items[items.length - 1];
             if (last?.kind === "reasoning") return [...items.slice(0, -1), { kind: "reasoning", text: last.text + e.delta }];
@@ -364,23 +802,38 @@ export default function App() {
           });
           break;
         case "event.tool":
-          notePet(e.sessionId, "running");
+          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => [...items, { kind: "tool", name: e.name, preview: plain(e.preview) }]);
           break;
         case "event.notice":
           push(e.sessionId, (items) => [...items, { kind: "notice", text: plain(e.text) }]);
           break;
         case "event.diff":
-          notePet(e.sessionId, "running");
+          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => [...items, { kind: "diff", text: plain(e.text) }]);
           break;
         case "event.turn_end": {
-          push(e.sessionId, (items) => [...items, { kind: "end", usage: e.usage }]);
-          setBusy((b) => ({ ...b, [e.sessionId]: false }));
+          const dispatch = pendingSendDispatchesRef.current[e.sessionId];
+          if (dispatch?.turnId && e.turnId === dispatch.turnId) {
+            dispatch.completed = true;
+            resolvePendingUser(e.sessionId, dispatch.pendingId, true);
+          }
+          delete activeTurnsRef.current[e.sessionId];
+          push(e.sessionId, (items) => [
+            ...items.map((item): ConversationItem =>
+              item.kind === "approval" && !item.answered
+                ? { ...item, answered: "expired" }
+                : item,
+            ),
+            { kind: "end", usage: e.usage },
+          ]);
+          setSessionBusy(e.sessionId, false);
           if (e.ctx) setCtxMap((m) => ({ ...m, [e.sessionId]: e.ctx! }));
           const interrupted = interruptedSessionsRef.current.has(e.sessionId);
           const failed = !!e.error || (!!e.status && e.status !== "completed");
-          if (interrupted) removePet(e.sessionId);
+          if (clientRef.current?.supportsEvent("event.task_state")) {
+            interruptedSessionsRef.current.delete(e.sessionId);
+          } else if (interrupted) removePet(e.sessionId);
           else if (failed) notePet(e.sessionId, "blocked");
           else if (e.sessionId === activeRef.current && document.hasFocus()) removePet(e.sessionId);
           else notePet(e.sessionId, "ready");
@@ -388,8 +841,36 @@ export default function App() {
           const pending = queueRef.current[e.sessionId];
           if (pending && pending.length > 0) {
             const [next, ...rest] = pending;
-            setQueue((qs) => ({ ...qs, [e.sessionId]: rest }));
-            setTimeout(() => void sendText(e.sessionId, next), 50);
+            // Hold the session locally across the short drain handoff. A composer submit that lands
+            // in this window must queue behind `next`, never overtake it as a fresh session.send.
+            setSessionBusy(e.sessionId, true);
+            setQueue((queues) => {
+              const updated = { ...queues, [e.sessionId]: rest };
+              queueRef.current = updated;
+              return updated;
+            });
+            setTimeout(
+              () => void sendText(
+                  e.sessionId,
+                  next.text,
+                  next.images,
+                  {
+                    recordUser: next.recorded !== true,
+                    requeueFrontOnBusy: true,
+                    pendingId: next.id,
+                  },
+                )
+                .catch((error) => {
+                  enqueueInput(e.sessionId, next, "front");
+                  setSessionBusy(e.sessionId, false);
+                  notePet(e.sessionId, "paused");
+                  push(e.sessionId, (items) => [...items, {
+                    kind: "notice",
+                    text: `retry: ${error instanceof Error ? error.message : String(error)}`,
+                  }]);
+                }),
+              50,
+            );
           }
           if (e.sessionId !== activeRef.current) {
             setUnread((u) => ({ ...u, [e.sessionId]: true }));
@@ -404,13 +885,13 @@ export default function App() {
           break;
         }
         case "approval.request":
-          notePet(e.sessionId, "waiting");
+          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "waiting");
           push(e.sessionId, (items) => [...items, { kind: "approval", approvalId: e.approvalId, question: plain(e.question) }]);
           if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
       }
     },
-    [notePet, push, removePet, sendText],
+    [enqueueInput, notePet, push, removePet, resolvePendingUser, sendText, setSessionBusy],
   );
 
   const connect = useCallback(async (expectedPid: number | null = null) => {
@@ -418,6 +899,8 @@ export default function App() {
     const stale = () => generation !== connectGenerationRef.current;
     const previous = clientRef.current;
     clientRef.current = null;
+    attachedSessionsRef.current.clear();
+    pendingSendDispatchesRef.current = {};
     previous?.close();
     setPhase("connecting");
     setErr("");
@@ -442,6 +925,16 @@ export default function App() {
         if (clientRef.current !== c) return;
         clientRef.current = null;
         if (plannedUpdateRestartRef.current) return;
+        for (const [sessionId, running] of Object.entries(busyRef.current)) {
+          if (running) notePet(sessionId, "blocked", "Hara engine disconnected");
+        }
+        activeTurnsRef.current = {};
+        attachedSessionsRef.current.clear();
+        pendingSendDispatchesRef.current = {};
+        taskStatesRef.current = {};
+        setTaskStates({});
+        busyRef.current = {};
+        setBusy({});
         setPhase("lost");
       };
       await c.connect(d.host, d.port);
@@ -625,6 +1118,7 @@ export default function App() {
     const sessionHint = { cwd: cwd ?? server?.cwd ?? "", source: "interactive" };
     const requestId = ++sessionOpenRequestRef.current;
     const r = await c.createSession({ ...(cwd ? { cwd } : {}), ...(defaultApproval ? { approval: defaultApproval } : {}) });
+    attachedSessionsRef.current.add(r.sessionId);
     rememberSession(r.sessionId, sessionHint);
     if (sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, sessionHint)) {
       setActive(r.sessionId);
@@ -647,21 +1141,26 @@ export default function App() {
       sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, expected);
     setUnread((u) => ({ ...u, [id]: false }));
     acknowledgePet(id);
-    if (transcripts[id]) {
+    if (transcriptsRef.current[id] && attachedSessionsRef.current.has(id)) {
       if (mayActivate()) activateSession(id, expected);
       return;
     }
     try {
       const r = await c.resumeSession(id);
+      attachedSessionsRef.current.add(id);
+      hydrateLegacyTaskState(c, id, r.task);
       setTranscripts((tr) => ({
         ...tr,
         [id]: r.history.map((m): ConversationItem =>
           m.role === "user"
-            ? { kind: "user", text: m.text }
+            ? { kind: "user", text: displayHistoryText(m.text) }
             : { kind: "text", text: m.text },
         ),
       }));
-      if (mayActivate()) activateSession(id, expected);
+      if (mayActivate()) {
+        activateSession(id, expected);
+        acknowledgePet(id);
+      }
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     }
@@ -678,12 +1177,18 @@ export default function App() {
     if (!c) return;
     try {
       const result = await c.resumeSession(session.id);
+      attachedSessionsRef.current.add(session.id);
       setAutoReplay({
         id: session.id,
         title: session.title,
         sourceName: session.sourceName,
         cwd: session.cwd,
-        items: result.history,
+        items: result.history.map((message) => ({
+          ...message,
+          text: message.role === "user"
+            ? displayHistoryText(message.text)
+            : message.text,
+        })),
       });
     } catch (error: any) {
       setErr(String(error?.message ?? error));
@@ -724,7 +1229,7 @@ export default function App() {
   const creatingRef = useRef(false); // double-click guard — the assistant is ONE session, never two
   const openAssistant = async (): Promise<string | null> => {
     setZone("chat");
-    const cur = assistantZone(sessions).current;
+    const cur = assistantZone(sessionsRef.current).current;
     if (cur) {
       await openSession(cur.id);
       return cur.id;
@@ -771,25 +1276,29 @@ export default function App() {
 
   /** Replace a session's transcript from a serve-returned history (compact / rewind). */
   const loadHistory = (sessionId: string, history: { role: string; text: string }[], tailNotice?: string) => {
-    setTranscripts((tr) => ({
-      ...tr,
-      [sessionId]: [
+    setTranscripts((tr) => {
+      const next = {
+        ...tr,
+        [sessionId]: [
         ...history.map((m): ConversationItem =>
           m.role === "user"
-            ? { kind: "user", text: m.text }
+            ? { kind: "user", text: displayHistoryText(m.text) }
             : { kind: "text", text: m.text },
         ),
         ...(tailNotice
           ? [{ kind: "notice", text: tailNotice } as ConversationItem]
           : []),
-      ],
-    }));
+        ],
+      };
+      transcriptsRef.current = next;
+      return next;
+    });
   };
 
   const compactNow = async () => {
     const c = clientRef.current;
     if (!c || !active || busy[active]) return;
-    setBusy((b) => ({ ...b, [active]: true }));
+    setSessionBusy(active, true);
     try {
       const r = await c.compactSession(active);
       loadHistory(active, r.history, t("compacted"));
@@ -797,7 +1306,7 @@ export default function App() {
     } catch (e: any) {
       push(active, (items) => [...items, { kind: "notice", text: `compact: ${e?.message ?? e}` }]);
     } finally {
-      setBusy((b) => ({ ...b, [active!]: false }));
+      setSessionBusy(active, false);
     }
   };
 
@@ -807,7 +1316,7 @@ export default function App() {
     if (!c || !active || busy[active]) return;
     if (!window.confirm(t("rewindConfirm"))) return;
     const items = transcripts[active] ?? [];
-    const n = items.slice(i).filter((x) => x.kind === "user").length; // n-th-most-recent user turn
+    const n = persistedUserTurnsFrom(items, i); // n-th-most-recent server-persisted user turn
     try {
       const r = await c.rewindSession(active, n);
       loadHistory(active, r.history);
@@ -880,17 +1389,35 @@ export default function App() {
   const sendMsg = async () => {
     const text = input.trim();
     if (!active || (!text && pendImgs.length === 0)) return;
+    const sessionId = active;
+    const imagePaths = pendImgs;
     setInput("");
     setAc((a) => ({ ...a, open: false }));
-    if (busy[active]) {
-      // steer: queue it; auto-dispatched when the running turn ends (pasted images stay pending
-      // and go with the next immediate send — queued steers are text-only)
-      if (text) setQueue((qs) => ({ ...qs, [active]: [...(qs[active] ?? []), text] }));
+    if (busy[sessionId] && imagePaths.length > 0) {
+      const images = imagePaths.map((path) => ({ path }));
+      setPendImgs([]);
+      enqueueInput(sessionId, {
+        id: nextPendingInputId(),
+        text: text || "(image)",
+        images,
+      });
       return;
     }
-    const imgs = pendImgs.map((p) => ({ path: p }));
+    const imgs = imagePaths.map((path) => ({ path }));
     setPendImgs([]);
-    await sendText(active, text || "(image)", imgs.length ? imgs : undefined);
+    try {
+      if (imgs.length) await sendText(sessionId, text || "(image)", imgs);
+      else await submitSessionText(sessionId, text);
+    } catch (error: any) {
+      if (text) setInput((draft) => draft ? `${text}\n${draft}` : text);
+      if (imagePaths.length) {
+        setPendImgs((current) => [
+          ...imagePaths.filter((path) => !current.includes(path)),
+          ...current,
+        ]);
+      }
+      setErr(String(error?.message ?? error));
+    }
   };
 
   const startFromWorkbench = async (prompt: string) => {
@@ -914,10 +1441,74 @@ export default function App() {
     verdict: ApprovalVerdict,
   ) => {
     const c = clientRef.current;
-    if (!c) return;
+    if (!c?.connected) {
+      throw new Error(
+        locale === "zh"
+          ? "Hara 引擎已断开，审批未提交。重新连接后请重新确认。"
+          : "The Hara engine disconnected, so the approval was not submitted. Reconnect and review it again.",
+      );
+    }
     await c.approvalReply(approvalId, verdict !== "deny", verdict === "always");
-    notePet(sessionId, "running");
+    if (!c.supportsEvent("event.task_state")) notePet(sessionId, "running");
     push(sessionId, (items) => items.map((it) => (it.kind === "approval" && it.approvalId === approvalId ? { ...it, answered: verdict } : it)));
+  };
+
+  petChatSubmitRef.current = async (request: PetChatSubmit): Promise<string | undefined> => {
+    const text = request.text.trim();
+    if (!text) return request.sessionId;
+    const c = clientRef.current;
+    if (!c) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "The Hara engine is not connected.");
+    let sessionId = request.sessionId;
+    const requestedSession = sessionId
+      ? sessionsRef.current.find((session) => session.id === sessionId)
+      : undefined;
+    if (sessionId && !requestedSession) {
+      throw new Error(locale === "zh" ? "原会话已不可用，请关闭聊天后重新打开。" : "The original conversation is unavailable. Close and reopen the chat.");
+    }
+    if (requestedSession && isAutomated(requestedSession)) {
+      throw new Error(locale === "zh" ? "自动任务记录是只读的，请在主窗口创建分支后继续。" : "Automated runs are read-only. Fork one in the main window to continue.");
+    }
+    if (!sessionId) sessionId = await openAssistant() || undefined;
+    if (!sessionId) throw new Error(locale === "zh" ? "个人助理尚未准备好。" : "The personal assistant is not ready yet.");
+
+    const task = taskStatesRef.current[sessionId];
+    const live = busyRef.current[sessionId] || (
+      task ? taskStateIsLive(task.state) : false
+    );
+    if (!live && !attachedSessionsRef.current.has(sessionId)) {
+      // session.list contains persisted metadata, not a live serve attachment. Resume before the
+      // companion dispatches so a cold Desktop start cannot acknowledge a doomed NO_SESSION send.
+      const resumed = await c.resumeSession(sessionId);
+      attachedSessionsRef.current.add(sessionId);
+      hydrateLegacyTaskState(c, sessionId, resumed.task);
+      loadHistory(sessionId, resumed.history);
+    }
+    if (live) {
+      await submitSessionText(sessionId, text);
+    } else {
+      // Starting a normal turn can take minutes. The companion acknowledges local dispatch immediately;
+      // transcript/task events stream the real progress and any later failure back into the same window.
+      void submitSessionText(sessionId, text).catch((error) => setErr(String(error)));
+    }
+    return sessionId;
+  };
+
+  petChatApprovalRef.current = async (request: PetChatApproval): Promise<void> => {
+    const session = sessionsRef.current.find((candidate) => candidate.id === request.sessionId);
+    if (!session || isAutomated(session)) {
+      throw new Error(locale === "zh" ? "该会话不能从桌面伙伴确认。" : "This conversation cannot be approved from the companion.");
+    }
+    const typedApproval = taskStatesRef.current[request.sessionId]?.approval?.id;
+    const legacyApproval = [...(transcriptsRef.current[request.sessionId] ?? [])]
+      .reverse()
+      .find((item) => item.kind === "approval" && !item.answered);
+    const expectedApprovalId = typedApproval || (
+      legacyApproval?.kind === "approval" ? legacyApproval.approvalId : undefined
+    );
+    if (!expectedApprovalId || expectedApprovalId !== request.approvalId) {
+      throw new Error(locale === "zh" ? "这条确认已过期，请刷新状态。" : "This approval is stale. Refresh the conversation state.");
+    }
+    await answer(request.sessionId, request.approvalId, request.allow ? "allow" : "deny");
   };
 
   const stopTurn = async (sessionId: string) => {
@@ -1254,6 +1845,13 @@ export default function App() {
     if (!c) return;
     await c.archiveSession(id, true).catch(() => {});
     clearActiveSession(id);
+    removePet(id);
+    delete activeTurnsRef.current[id];
+    setTaskStates((states) => {
+      const { [id]: _gone, ...rest } = states;
+      taskStatesRef.current = rest;
+      return rest;
+    });
     await refreshSessions();
   };
   const deleteIt = async (id: string) => {
@@ -1261,7 +1859,15 @@ export default function App() {
     if (!c || !window.confirm(t("deleteConfirm"))) return;
     try {
       await c.deleteSession(id);
+      attachedSessionsRef.current.delete(id);
       clearActiveSession(id);
+      removePet(id);
+      delete activeTurnsRef.current[id];
+      setTaskStates((states) => {
+        const { [id]: _goneTask, ...rest } = states;
+        taskStatesRef.current = rest;
+        return rest;
+      });
       setTranscripts(({ [id]: _gone, ...rest }) => rest);
       await refreshSessions();
     } catch (e: any) {
@@ -1276,11 +1882,12 @@ export default function App() {
     const requestId = ++sessionOpenRequestRef.current;
     try {
       const r = await c.forkSession(autoReplay.id);
+      attachedSessionsRef.current.add(r.sessionId);
       setTranscripts((tr) => ({
         ...tr,
         [r.sessionId]: r.history.map((m): ConversationItem =>
           m.role === "user"
-            ? { kind: "user", text: m.text }
+            ? { kind: "user", text: displayHistoryText(m.text) }
             : { kind: "text", text: m.text },
         ),
       }));
@@ -1302,11 +1909,12 @@ export default function App() {
     const requestId = ++sessionOpenRequestRef.current;
     try {
       const r = await c.forkSession(id);
+      attachedSessionsRef.current.add(r.sessionId);
       setTranscripts((tr) => ({
         ...tr,
         [r.sessionId]: r.history.map((m): ConversationItem =>
           m.role === "user"
-            ? { kind: "user", text: m.text }
+            ? { kind: "user", text: displayHistoryText(m.text) }
             : { kind: "text", text: m.text },
         ),
       }));
@@ -1440,15 +2048,35 @@ export default function App() {
             t={t}
             onRewind={(index) => void rewindHere(index)}
             onApproval={(approvalId, verdict) =>
-              void answer(active, approvalId, verdict)
+              void answer(active, approvalId, verdict).catch((error) =>
+                setErr(String(error?.message ?? error)),
+              )
             }
           />
           {(queue[active!] ?? []).length > 0 && (
             <div className="steerq">
-              {(queue[active!] ?? []).map((m, i) => (
+              {(queue[active!] ?? []).map((queued, i) => (
                 <div key={i} className="steer-item">
-                  <span className="steer-txt">{m}</span>
-                  <button className="linky" onClick={() => setQueue((qs) => ({ ...qs, [active!]: qs[active!].filter((_, j) => j !== i) }))}>
+                  <span className="steer-txt">
+                    {queued.text}
+                    {!!queued.images?.length && `  🖼×${queued.images.length}`}
+                  </span>
+                  {!busy[active!] && (
+                    <button
+                      className="linky"
+                      aria-label={locale === "zh" ? "重试这条排队消息" : "Retry this queued message"}
+                      title={locale === "zh" ? "重试" : "Retry"}
+                      onClick={() => retryQueuedInput(active!, i)}
+                    >
+                      ↻
+                    </button>
+                  )}
+                  <button
+                    className="linky"
+                    aria-label={locale === "zh" ? "取消这条排队消息" : "Cancel this queued message"}
+                    title={locale === "zh" ? "取消排队" : "Cancel queued input"}
+                    onClick={() => cancelQueuedInput(active!, i)}
+                  >
                     ✕
                   </button>
                 </div>

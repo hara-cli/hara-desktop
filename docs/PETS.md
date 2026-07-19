@@ -20,19 +20,40 @@ Codex artwork.
 
 ```mermaid
 flowchart LR
-  S[hara serve\nagent + permissions] -->|turn / tool / approval / end events| D[Hara Desktop\nactivity reducer]
-  D -->|running · waiting · ready · blocked| P[Non-focusable pet window]
+  S[hara serve\nagent + permissions] -->|typed task lifecycle + conversation stream| D[Hara Desktop\nactivity reducer]
+  D -->|running · waiting · paused · ready · blocked| P[Non-focusable pet window]
   P -->|open task| D
+  P -->|open chat| CHAT[Focusable companion chat\nleast-privilege event bridge]
+  CHAT -->|message · steer · approval reply| D
   M[~/.hara/pets] --> V[Native package validator]
-  C[~/.codex/pets] --> V
+  CX[~/.codex/pets] --> V
   V -->|validated PNG/WebP data only| P
 ```
 
 - `hara serve` remains the only owner of agent execution and approvals.
 - Desktop derives a bounded semantic activity map. It never parses model prose to guess state.
-- Priority is needs input, blocked, ready, then running; newest wins ties.
+- Priority is needs input, blocked, paused, ready, then running; newest wins ties.
 - The overlay starts with `focus: false` and `focusable: false`, so merely showing or moving it cannot
   take keyboard focus from the composer or another application.
+- Chat opens in a separate focusable window. That webview has only Tauri event/window permissions,
+  and the production build injects `connect-src 'none'` plus a deny-by-default CSP into its dedicated
+  `pet-chat.html`. Native capabilities and browser networking are therefore separate enforced
+  boundaries: it cannot invoke native commands, read files, open a fetch/WebSocket/beacon channel,
+  reach the model, install capabilities, or answer an approval by itself. The trusted main renderer
+  validates the pinned target session and forwards work to `hara serve`. Development builds omit this
+  production CSP so Vite HMR can operate.
+- The companion pins the session selected when it opens. A new high-priority background activity can
+  change the pet badge but cannot silently redirect text typed into an already-open chat. Requests
+  carrying a stale target are rejected, and switching targets clears the old draft and pending request.
+- Each chat request has a finite slow-response threshold. A definitive bridge failure restores unsent
+  draft text without overwriting a newer draft. Crossing the threshold alone keeps the one request
+  pending and disables resend because the trusted main renderer may already be dispatching it; a slow
+  acknowledgement can never become a duplicate task. Queued follow-ups and attachments stay together
+  and can be retried or cancelled before execution. A persisted session is resumed before the first
+  cold-start send, and a BUSY requeue preserves FIFO ordering.
+- Current engines supply typed task lifecycle state. The legacy projection still maps bounded
+  running/completion state and unanswered approval events while a turn is live; turn end expires those
+  controls so an old approval cannot be replayed.
 - Reduced-motion mode holds the first frame rather than running the atlas animation.
 
 ## Package security
@@ -140,7 +161,8 @@ does not silently delete locally installed public packages.
 
 ## Delivery phases
 
-1. **Local foundation (current):** built-in Hara pet plus validated Hara/Codex v1/v2 discovery.
+1. **Local foundation (current):** built-in Hara pet, validated Hara/Codex v1/v2 discovery, typed task
+   states, and a least-privilege companion chat for messages, steering, and one-time approvals.
 2. **Independent creation:** publish the Hara v2 generation/validation skill and explicit local import;
    add install receipts (`source`, version, hashes, license) without adding an account.
 3. **Open market:** signed public catalog, CDN downloads, atomic install/update/rollback, no login.

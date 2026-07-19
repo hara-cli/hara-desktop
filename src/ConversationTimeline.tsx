@@ -3,9 +3,15 @@ import type { Key } from "./i18n";
 import { Md } from "./markdown";
 
 export type ApprovalVerdict = "allow" | "always" | "deny";
+export type ApprovalResolution = ApprovalVerdict | "expired";
 
 export type ConversationItem =
-  | { kind: "user"; text: string }
+  | {
+      kind: "user";
+      text: string;
+      /** Present only while a locally displayed message has not been accepted by hara serve. */
+      pendingId?: string;
+    }
   | { kind: "text"; text: string }
   | { kind: "reasoning"; text: string }
   | { kind: "tool"; name: string; preview: string }
@@ -16,7 +22,7 @@ export type ConversationItem =
       kind: "approval";
       approvalId: string;
       question: string;
-      answered?: ApprovalVerdict;
+      answered?: ApprovalResolution;
     };
 
 interface ConversationTimelineProps {
@@ -47,7 +53,7 @@ export function ConversationTimeline({
             return (
               <div key={index} className="msg user">
                 {item.text}
-                {!busy && (
+                {!busy && !item.pendingId && (
                   <span
                     className="rew"
                     title={t("rewindHere")}

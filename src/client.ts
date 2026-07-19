@@ -114,7 +114,7 @@ export interface InitializeResult {
   provider: string;
   model: string;
   setupState?: "ready" | "needs-credentials";
-  capabilities?: { methods?: string[] };
+  capabilities?: { methods?: string[]; events?: string[] };
 }
 
 /** Context watermark — how full the model's window was on the last turn (serve ≥0.117). */
@@ -124,8 +124,40 @@ export interface CtxInfo {
   pct: number;
 }
 
+export type TaskLifecycleState = "running" | "waiting" | "paused" | "completed" | "blocked";
+export type TaskLifecyclePhase =
+  | "restored"
+  | "starting"
+  | "thinking"
+  | "responding"
+  | "tool"
+  | "approval"
+  | "checkpoint"
+  | "steering"
+  | "stopping"
+  | "finished";
+
+export interface TaskLifecycleEvent {
+  version: 1;
+  sessionId: string;
+  taskId: string;
+  turnId: string;
+  objective: string;
+  state: TaskLifecycleState;
+  taskStatus: Exclude<TaskLifecycleState, "waiting">;
+  phase: TaskLifecyclePhase;
+  at: string;
+  updatedAt: string;
+  lastOutcome?: "completed" | "error" | "empty" | "halted" | "interrupted";
+  brief?: { intent: "answer" | "investigate" | "change"; goal: string };
+  checkpoint: { done: number; total: number; current?: string; owner?: string };
+  detail?: string;
+  approval?: { id: string; question: string };
+}
+
 export type ServerEvent =
   | { method: "event.turn_start"; sessionId: string; taskId?: string; turnId?: string }
+  | ({ method: "event.task_state" } & TaskLifecycleEvent)
   | { method: "event.text"; sessionId: string; delta: string }
   | { method: "event.reasoning"; sessionId: string; delta: string }
   | { method: "event.tool"; sessionId: string; name: string; preview: string }
@@ -144,6 +176,7 @@ export class HaraClient {
   private pending = new Map<number, Pending>();
   private nextId = 1;
   private methods = new Set<string>();
+  private events = new Set<string>();
   private closeWaiters = new Set<{
     resolve: () => void;
     timer: number;
@@ -201,10 +234,14 @@ export class HaraClient {
   async initialize(token: string): Promise<InitializeResult> {
     const result = await this.call<InitializeResult>("initialize", { token });
     this.methods = new Set(result.capabilities?.methods ?? []);
+    this.events = new Set(result.capabilities?.events ?? []);
     return result;
   }
   supports(method: string): boolean {
     return this.methods.has(method);
+  }
+  supportsEvent(event: string): boolean {
+    return this.events.has(event);
   }
   /** Resolve only after the transport has actually closed, including the close-before-wait race. */
   waitForClose(timeoutMs = 4_000): Promise<void> {
@@ -297,10 +334,22 @@ export class HaraClient {
     }
   }
   resumeSession(sessionId: string) {
-    return this.call<{ sessionId: string; model: string; history: { role: string; text: string }[] }>("session.resume", { sessionId });
+    return this.call<{
+      sessionId: string;
+      model: string;
+      history: { role: string; text: string }[];
+      task?: { id: string; objective: string; status: Exclude<TaskLifecycleState, "waiting">; turnId: string; updatedAt: string };
+    }>("session.resume", { sessionId });
   }
   send(sessionId: string, text: string, images?: { path: string; mediaType?: string }[]) {
-    return this.call<{ reply: string; usage: { input: number; output: number }; ctx?: CtxInfo }>("session.send", { sessionId, text, ...(images && images.length ? { images } : {}) });
+    return this.call<{ reply: string; usage: { input: number; output: number }; ctx?: CtxInfo; taskId: string; turnId: string }>("session.send", { sessionId, text, ...(images && images.length ? { images } : {}) });
+  }
+  steer(sessionId: string, text: string, expectedTurnId: string) {
+    return this.call<{ accepted: true; taskId: string; turnId: string }>("session.steer", {
+      sessionId,
+      text,
+      expectedTurnId,
+    });
   }
   /** Fuzzy project-file lookup for the @-mention autocomplete (serve ≥0.117). Null on older serves. */
   async filesSearch(query: string, opts?: { sessionId?: string; cwd?: string; limit?: number }): Promise<{ files: string[]; cwd: string } | null> {
