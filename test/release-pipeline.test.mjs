@@ -120,12 +120,24 @@ test("remote tag resolution prefers the peeled commit and retries within hard bo
         "-c",
         "http.lowSpeedTime=20",
       ]);
+      assert.equal(options.env.GIT_TERMINAL_PROMPT, "0");
       if (calls < 3) throw new Error("transient transport reset");
       return refs;
     },
   });
   assert.equal(commit, peeledCommit);
   assert.equal(calls, 3);
+  let invalidCalls = 0;
+  assert.throws(
+    () =>
+      resolveRemoteTagCommit(".", "origin", "--upload-pack=malicious", {
+        execute() {
+          invalidCalls++;
+        },
+      }),
+    /stable vX\.Y\.Z/,
+  );
+  assert.equal(invalidCalls, 0);
 });
 
 test("release policy API reads retry without exposing mutation flags", () => {
@@ -146,6 +158,8 @@ test("release policy API reads retry without exposing mutation flags", () => {
           ".enabled",
         ]);
         assert.equal(options.timeout, 2_345);
+        assert.equal(options.env.GH_HOST, "github.com");
+        assert.equal(options.env.GH_PROMPT_DISABLED, "true");
         if (calls === 1) throw new Error("TLS handshake timeout");
         return "true\n";
       },

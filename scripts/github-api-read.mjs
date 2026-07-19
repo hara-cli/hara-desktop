@@ -64,7 +64,11 @@ export function readGitHubApi(
         timeout: timeoutMs,
         killSignal: "SIGKILL",
         maxBuffer: 4 * 1024 * 1024,
-        env: process.env,
+        env: {
+          ...process.env,
+          GH_HOST: "github.com",
+          GH_PROMPT_DISABLED: "true",
+        },
       }).trimEnd();
     } catch (error) {
       lastError = error;

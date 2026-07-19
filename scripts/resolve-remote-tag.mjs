@@ -16,10 +16,14 @@ function wait(milliseconds) {
   });
 }
 
-export function parseRemoteTagRefs(value, tag) {
+function requireStableTag(tag) {
   if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
     throw new Error(`expected a stable vX.Y.Z tag, received ${JSON.stringify(tag)}`);
   }
+}
+
+export function parseRemoteTagRefs(value, tag) {
+  requireStableTag(tag);
 
   const directRef = `refs/tags/${tag}`;
   const peeledRef = `${directRef}^{}`;
@@ -62,6 +66,7 @@ export function resolveRemoteTagCommit(
   if (!/^[A-Za-z0-9._/-]+$/.test(remote) || remote.startsWith("-")) {
     throw new Error("remote name is invalid");
   }
+  requireStableTag(tag);
   if (!Number.isSafeInteger(attempts) || attempts < 1 || attempts > REMOTE_TAG_ATTEMPTS) {
     throw new Error(`attempts must be between 1 and ${REMOTE_TAG_ATTEMPTS}`);
   }
@@ -95,6 +100,10 @@ export function resolveRemoteTagCommit(
           timeout: timeoutMs,
           killSignal: "SIGKILL",
           maxBuffer: 1024 * 1024,
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: "0",
+          },
         },
       );
       return parseRemoteTagRefs(output, tag);
