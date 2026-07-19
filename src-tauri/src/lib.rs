@@ -2,7 +2,11 @@
 // desktop is a WebSocket JSON-RPC client rendered in the webview. Rust only does what the webview
 // can't: read the serve discovery file and spawn the server.
 use std::fs;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
+
+#[cfg(windows)]
+mod windows_process;
 
 const MAX_PET_MANIFEST_BYTES: u64 = 64 * 1024;
 const MAX_PET_ASSET_BYTES: u64 = 20 * 1024 * 1024;
@@ -11,6 +15,7 @@ const MAX_PET_CATALOG_ENTRIES: usize = 256;
 const PET_SHEET_WIDTH: u32 = 1536;
 const PET_FRAME_WIDTH: u32 = 192;
 const PET_FRAME_HEIGHT: u32 = 208;
+const MAX_SERVE_DISCOVERY_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -379,25 +384,137 @@ fn read_pet_asset(selector: String) -> Result<PetAsset, String> {
     })
 }
 
-/// Read ~/.hara/serve.json — written by a running `hara serve` ({host, port, token, pid, version}).
-/// Returns None when the file is missing OR its recorded pid is dead (stale file after a crash),
-/// so the UI can offer to start the server instead of dialing a ghost.
-#[tauri::command]
-fn read_discovery() -> Option<String> {
-    let raw = fs::read_to_string(hara_data_dir().ok()?.join("serve.json")).ok()?;
+#[derive(Debug, serde::Deserialize)]
+struct ServeDiscoveryRecord {
+    pid: u32,
+}
+
+fn discovery_path() -> Result<PathBuf, String> {
+    Ok(hara_data_dir()?.join("serve.json"))
+}
+
+/// Read the CLI-owned discovery file through a bounded, no-follow descriptor. The renderer receives its
+/// token because it must authenticate to Serve, but it never receives a native "kill arbitrary pid" API:
+/// the legacy bridge below re-reads and validates this same private record itself.
+fn read_private_discovery_at(path: &Path) -> Result<(String, ServeDiscoveryRecord), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "serve discovery has no parent directory".to_string())?;
+    let parent_metadata = fs::symlink_metadata(parent)
+        .map_err(|error| format!("inspect Hara data directory: {error}"))?;
+    if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
+        return Err("Hara data directory must be a real private directory".into());
+    }
+
+    let path_metadata =
+        fs::symlink_metadata(path).map_err(|error| format!("inspect serve discovery: {error}"))?;
+    if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
+        return Err("serve discovery must be a regular file".into());
+    }
+    if path_metadata.len() > MAX_SERVE_DISCOVERY_BYTES {
+        return Err("serve discovery is too large".into());
+    }
+
     #[cfg(unix)]
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
-        if let Some(pid) = v.get("pid").and_then(|p| p.as_i64()) {
-            let alive = unsafe { libc::kill(pid as i32, 0) } == 0
-                || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
-            if !alive {
-                return None;
-            }
+    {
+        use std::os::unix::fs::MetadataExt;
+        let uid = unsafe { libc::geteuid() };
+        if parent_metadata.uid() != uid || parent_metadata.mode() & 0o077 != 0 {
+            return Err("Hara data directory must be owned by this user with mode 0700".into());
+        }
+        if path_metadata.uid() != uid
+            || path_metadata.mode() & 0o077 != 0
+            || path_metadata.nlink() != 1
+        {
+            return Err("serve discovery must be an owner-only, single-link file".into());
         }
     }
-    // non-unix: no cheap pid probe — trust the file (a stale one just makes the UI dial a dead port
-    // and fall back to the start button)
-    Some(raw)
+
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options
+        .open(path)
+        .map_err(|error| format!("open serve discovery: {error}"))?;
+    let opened = file
+        .metadata()
+        .map_err(|error| format!("inspect opened serve discovery: {error}"))?;
+    if !opened.is_file() || opened.len() > MAX_SERVE_DISCOVERY_BYTES {
+        return Err("opened serve discovery is not a bounded regular file".into());
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if opened.dev() != path_metadata.dev()
+            || opened.ino() != path_metadata.ino()
+            || opened.uid() != path_metadata.uid()
+            || opened.nlink() != 1
+        {
+            return Err("serve discovery changed while opening".into());
+        }
+    }
+
+    let mut raw = String::new();
+    (&mut file)
+        .take(MAX_SERVE_DISCOVERY_BYTES + 1)
+        .read_to_string(&mut raw)
+        .map_err(|error| format!("read serve discovery: {error}"))?;
+    if raw.len() as u64 > MAX_SERVE_DISCOVERY_BYTES {
+        return Err("serve discovery is too large".into());
+    }
+
+    let after =
+        fs::symlink_metadata(path).map_err(|error| format!("recheck serve discovery: {error}"))?;
+    if after.file_type().is_symlink() || !after.is_file() {
+        return Err("serve discovery changed while reading".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if after.dev() != path_metadata.dev()
+            || after.ino() != path_metadata.ino()
+            || after.uid() != path_metadata.uid()
+            || after.nlink() != 1
+        {
+            return Err("serve discovery changed while reading".into());
+        }
+    }
+
+    let record: ServeDiscoveryRecord =
+        serde_json::from_str(&raw).map_err(|error| format!("parse serve discovery: {error}"))?;
+    if record.pid <= 1 {
+        return Err("serve discovery contains an invalid pid".into());
+    }
+    Ok((raw, record))
+}
+
+#[cfg(unix)]
+fn process_is_alive(pid: u32) -> bool {
+    let result = unsafe { libc::kill(pid as i32, 0) };
+    result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(windows)]
+fn process_is_alive(pid: u32) -> bool {
+    windows_process::process_is_alive(pid)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn process_is_alive(_pid: u32) -> bool {
+    true
+}
+
+/// Read ~/.hara/serve.json — written by a running `hara serve` ({host, port, token, pid, version}).
+/// Returns None when the file is missing, unsafe, malformed, or records a dead process.
+#[tauri::command]
+fn read_discovery() -> Option<String> {
+    let (raw, record) = read_private_discovery_at(&discovery_path().ok()?).ok()?;
+    process_is_alive(record.pid).then_some(raw)
 }
 
 fn bundled_sidecar_name(windows: bool) -> &'static str {
@@ -432,6 +549,147 @@ fn fallback_sidecar_path(
             .map(|directory| directory.join(name))
             .find(|candidate| candidate.is_file())
     })
+}
+
+fn normalized_process_path(path: &Path, windows: bool) -> String {
+    let raw = path.to_string_lossy();
+    let without_deleted_suffix = raw.strip_suffix(" (deleted)").unwrap_or(&raw);
+    let normalized = without_deleted_suffix.replace('\\', "/");
+    if windows {
+        normalized.to_lowercase()
+    } else {
+        normalized
+    }
+}
+
+fn same_executable_path(candidate: &Path, allowed: &Path, windows: bool) -> bool {
+    if normalized_process_path(candidate, windows) == normalized_process_path(allowed, windows) {
+        return true;
+    }
+    let Ok(candidate) = candidate.canonicalize() else {
+        return false;
+    };
+    let Ok(allowed) = allowed.canonicalize() else {
+        return false;
+    };
+    normalized_process_path(&candidate, windows) == normalized_process_path(&allowed, windows)
+}
+
+fn allowed_sidecar_paths() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(sidecar) = bundled_sidecar_path(&executable, cfg!(windows)) {
+            candidates.push(sidecar);
+        }
+    }
+    if let Ok(data_directory) = hara_data_dir() {
+        candidates.push(
+            data_directory
+                .join("bin")
+                .join(bundled_sidecar_name(cfg!(windows))),
+        );
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(
+            std::env::split_paths(&path)
+                .filter(|directory| directory.is_absolute())
+                .take(128)
+                .map(|directory| directory.join(bundled_sidecar_name(cfg!(windows)))),
+        );
+    }
+    candidates.sort();
+    candidates.dedup();
+    candidates
+}
+
+fn process_path_is_hara_sidecar(candidate: &Path) -> bool {
+    allowed_sidecar_paths()
+        .iter()
+        .any(|allowed| same_executable_path(candidate, allowed, cfg!(windows)))
+}
+
+#[cfg(target_os = "linux")]
+fn process_executable_path(pid: u32) -> Result<PathBuf, String> {
+    fs::read_link(format!("/proc/{pid}/exe"))
+        .map_err(|error| format!("inspect legacy Hara process: {error}"))
+}
+
+#[cfg(target_os = "macos")]
+fn process_executable_path(pid: u32) -> Result<PathBuf, String> {
+    let mut buffer = vec![0_u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    let length =
+        unsafe { libc::proc_pidpath(pid as i32, buffer.as_mut_ptr().cast(), buffer.len() as u32) };
+    if length <= 0 {
+        return Err(format!(
+            "inspect legacy Hara process: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    buffer.truncate(length as usize);
+    while buffer.last() == Some(&0) {
+        buffer.pop();
+    }
+    Ok(PathBuf::from(String::from_utf8_lossy(&buffer).into_owned()))
+}
+
+#[cfg(unix)]
+fn terminate_verified_legacy_process(pid: u32) -> Result<(), String> {
+    let executable = process_executable_path(pid)?;
+    if !process_path_is_hara_sidecar(&executable) {
+        return Err(format!(
+            "refusing to stop pid {pid}: {} is not a Desktop-managed Hara engine",
+            executable.display()
+        ));
+    }
+    let result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+    if result != 0 {
+        return Err(format!(
+            "stop legacy Hara engine: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn terminate_verified_legacy_process(pid: u32) -> Result<(), String> {
+    windows_process::terminate_verified_process(pid, process_path_is_hara_sidecar)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn terminate_verified_legacy_process(_pid: u32) -> Result<(), String> {
+    Err("legacy engine replacement is not supported on this platform".into())
+}
+
+/// One-time bridge for engines that predate authenticated `server.shutdown`. The renderer supplies only
+/// the pid it already authenticated to; native code independently reopens the private record and refuses
+/// to signal anything except a Desktop-bundled, managed, or absolute-PATH `hara` executable.
+#[tauri::command]
+fn terminate_legacy_serve(expected_pid: u32) -> Result<(), String> {
+    let path = discovery_path()?;
+    let (raw, record) = read_private_discovery_at(&path)?;
+    if record.pid != expected_pid {
+        return Err("the running Hara engine changed; reconnect before restarting it".into());
+    }
+    terminate_verified_legacy_process(record.pid)?;
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while process_is_alive(record.pid) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    if process_is_alive(record.pid) {
+        return Err("legacy Hara engine did not stop within 5 seconds".into());
+    }
+
+    // A graceful old engine normally removes its own record. Windows legacy termination cannot, so remove
+    // only the exact owner-only contents we opened before signalling; never unlink a replacement instance.
+    if let Ok((current, _)) = read_private_discovery_at(&path) {
+        if current == raw {
+            fs::remove_file(&path)
+                .map_err(|error| format!("remove retired serve discovery: {error}"))?;
+        }
+    }
+    Ok(())
 }
 
 fn serve_command(executable: &Path) -> std::process::Command {
@@ -755,6 +1013,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_discovery,
             start_serve,
+            terminate_legacy_serve,
             start_panel,
             get_home,
             read_serve_log,
@@ -902,6 +1161,70 @@ mod pet_tests {
         assert!(take_update_restart_marker_at(&marker).unwrap());
         assert!(!take_update_restart_marker_at(&marker).unwrap());
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn process_path_matching_is_exact_case_aware_and_handles_replaced_linux_images() {
+        assert!(same_executable_path(
+            Path::new("/Applications/Hara.app/Contents/MacOS/hara"),
+            Path::new("/Applications/Hara.app/Contents/MacOS/hara"),
+            false,
+        ));
+        assert!(same_executable_path(
+            Path::new("/opt/Hara/HARA.EXE"),
+            Path::new(r"\opt\hara\hara.exe"),
+            true,
+        ));
+        assert_eq!(
+            normalized_process_path(Path::new("/opt/hara (deleted)"), false),
+            "/opt/hara"
+        );
+        assert!(!same_executable_path(
+            Path::new("/tmp/hara"),
+            Path::new("/opt/hara"),
+            false,
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_discovery_reader_rejects_links_and_non_private_state() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let unique = format!(
+            "hara-desktop-discovery-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let directory = root.join(".hara");
+        let discovery = directory.join("serve.json");
+        fs::create_dir_all(&directory).unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::write(&discovery, b"{\"pid\":1234}\n").unwrap();
+        fs::set_permissions(&discovery, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let (_, record) = read_private_discovery_at(&discovery).unwrap();
+        assert_eq!(record.pid, 1234);
+
+        let alias = root.join("alias.json");
+        fs::hard_link(&discovery, &alias).unwrap();
+        assert!(read_private_discovery_at(&discovery).is_err());
+        fs::remove_file(&alias).unwrap();
+
+        fs::set_permissions(&discovery, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(read_private_discovery_at(&discovery).is_err());
+        fs::set_permissions(&discovery, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let target = root.join("outside.json");
+        fs::write(&target, b"{\"pid\":1234}\n").unwrap();
+        fs::remove_file(&discovery).unwrap();
+        symlink(&target, &discovery).unwrap();
+        assert!(read_private_discovery_at(&discovery).is_err());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

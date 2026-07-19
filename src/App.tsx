@@ -121,7 +121,7 @@ export default function App() {
   const bootstrapStartedRef = useRef(false);
   const plannedUpdateRestartRef = useRef(false);
   const [phase, setPhase] = useState<Phase>("boot");
-  const [server, setServer] = useState<{ version: string; provider: string; model: string; cwd: string } | null>(null);
+  const [server, setServer] = useState<{ pid: number; version: string; provider: string; model: string; cwd: string } | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<Record<string, ConversationItem[]>>({});
@@ -139,6 +139,7 @@ export default function App() {
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [panelBusy, setPanelBusy] = useState("");
   const [starterBusy, setStarterBusy] = useState(false);
+  const [engineRestarting, setEngineRestarting] = useState(false);
   // settings place: context column = group anchors, stage = the selected group's forms
   const [setSec, setSetSec] = useState<"providers" | "engine" | "security" | "lang" | "pets" | "plugins" | "skills">("providers");
   // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
@@ -451,7 +452,7 @@ export default function App() {
         return;
       }
       clientRef.current = c;
-      setServer({ version: info.version, provider: info.provider, model: info.model, cwd: info.cwd });
+      setServer({ pid: d.pid, version: info.version, provider: info.provider, model: info.model, cwd: info.cwd });
       sessionsRef.current = list.sessions;
       setSessions(list.sessions);
       const needsCredentials = info.setupState === "needs-credentials";
@@ -1054,6 +1055,42 @@ export default function App() {
     throw new Error(t("restartShutdownTimeout"));
   };
 
+  const restartBundledEngine = async () => {
+    if (engineRestarting || !server) return;
+    if (Object.values(busy).some(Boolean)) {
+      setErr(t("engineRestartBusy"));
+      return;
+    }
+    const client = clientRef.current;
+    if (!client) {
+      setErr(t("engineRestartReconnect"));
+      return;
+    }
+
+    setErr("");
+    setEngineRestarting(true);
+    plannedUpdateRestartRef.current = true;
+    try {
+      if (client.supports("server.shutdown")) {
+        await client.shutdownServer();
+      } else {
+        // Engines before 0.126 cannot shut themselves down through RPC. Close the authenticated renderer
+        // transport first, then let native code independently re-open the private discovery record, match
+        // the pid and Hara executable path, and send the one-time legacy termination.
+        clientRef.current = null;
+        client.close();
+        await invoke("terminate_legacy_serve", { expectedPid: server.pid });
+      }
+      await waitForDiscoveryRetirement();
+      await startServer();
+    } catch (error: any) {
+      setErr(String(error?.message ?? error).slice(0, 220));
+    } finally {
+      plannedUpdateRestartRef.current = false;
+      setEngineRestarting(false);
+    }
+  };
+
   const downloadDesktopUpdate = async () => {
     if (updating || updateReady) return;
     setUpdating(true);
@@ -1089,20 +1126,20 @@ export default function App() {
       return;
     }
     const client = clientRef.current;
-    if (client && !client.supports("server.shutdown")) {
-      // A plain app relaunch would reconnect to the already-running old sidecar and leave the
-      // screenshot's Desktop/engine version split in place. Fail honestly on this one-time upgrade.
-      setUpd(t("restartLegacy"));
-      setUpdateTone("warning");
-      return;
-    }
     setUpdating(true);
     setUpd(t("restarting"));
     setUpdateTone("neutral");
     plannedUpdateRestartRef.current = true;
     try {
       if (client) {
-        await client.shutdownServer();
+        if (client.supports("server.shutdown")) {
+          await client.shutdownServer();
+        } else {
+          if (!server) throw new Error(t("engineRestartReconnect"));
+          clientRef.current = null;
+          client.close();
+          await invoke("terminate_legacy_serve", { expectedPid: server.pid });
+        }
         await waitForDiscoveryRetirement();
       }
       await invoke("restart_after_update");
@@ -1826,7 +1863,20 @@ export default function App() {
                     <span className="settings-mono">{server?.provider}:{server?.model}</span>
                   </SettingsItem>
                   {server?.version && engineVersionNeedsAttention && (
-                    <SettingsNotice tone="warning" title={t("engineMismatchTitle")}>
+                    <SettingsNotice
+                      tone="warning"
+                      title={t("engineMismatchTitle")}
+                      actions={
+                        <button
+                          type="button"
+                          className="compact"
+                          disabled={engineRestarting || Object.values(busy).some(Boolean)}
+                          onClick={() => void restartBundledEngine()}
+                        >
+                          {engineRestarting ? t("engineRestarting") : t("engineRestartNow")}
+                        </button>
+                      }
+                    >
                       {t("engineMismatchHint")} {BUNDLED_ENGINE_VERSION}
                     </SettingsNotice>
                   )}
