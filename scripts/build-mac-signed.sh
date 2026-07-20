@@ -22,10 +22,15 @@ KEYCHAIN_LIST_CHANGED=0
 ORIGINAL_KEYCHAINS=()
 ORIGINAL_KEYCHAIN_COUNT=0
 SIGNED_BUILD_COMPLETED=0
+TAURI_BUILD_LOG=""
 clear_signing_environment() {
   unset APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
   unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
   unset HARA_CODESIGN_KEYCHAIN_PASSWORD
+  if [ -n "$TAURI_BUILD_LOG" ]; then
+    rm -f "$TAURI_BUILD_LOG"
+    TAURI_BUILD_LOG=""
+  fi
   if [ -n "$CODESIGN_PROBE_DIR" ]; then
     rm -rf "$CODESIGN_PROBE_DIR"
     CODESIGN_PROBE_DIR=""
@@ -231,22 +236,25 @@ if codesign --verify "$SIDECAR" >/dev/null 2>&1; then
   exit 1
 fi
 
-# dmg-bundling traps: failed Tauri builds can leave either /Volumes/Hara* or a random /Volumes/dmg.*
-# mounted, with the writable image in bundle/macos (older Tauri) or bundle/dmg (newer Tauri).
-for v in /Volumes/Hara* /Volumes/dmg.*; do
-  [ -d "$v" ] || continue
-  # Only detach random dmg.* volumes that are clearly prior Hara bundles.
-  case "$v" in
-    /Volumes/Hara*) ;;
-    /Volumes/dmg.*) [ -d "$v/Hara.app" ] || continue ;;
-  esac
-  hdiutil detach "$v" -force >/dev/null 2>&1 || {
-    echo "error: could not detach stale Hara build volume: $v" >&2
-    exit 1
-  }
-done
-rm -f "$RELEASE_BASE"/bundle/dmg/rw.*.dmg \
-  "$RELEASE_BASE"/bundle/macos/rw.*.dmg
+clean_tauri_bundle_attempt() {
+  local v
+  # Failed Tauri builds can leave either /Volumes/Hara* or a random /Volumes/dmg.* mounted.
+  for v in /Volumes/Hara* /Volumes/dmg.*; do
+    [ -d "$v" ] || continue
+    # Only detach random dmg.* volumes that are clearly prior Hara bundles.
+    case "$v" in
+      /Volumes/Hara*) ;;
+      /Volumes/dmg.*) [ -d "$v/Hara.app" ] || continue ;;
+    esac
+    hdiutil detach "$v" -force >/dev/null 2>&1 || {
+      echo "error: could not detach stale Hara build volume: $v" >&2
+      return 1
+    }
+  done
+  # Never reuse an app, updater archive, DMG, or signature from a failed signing attempt. Cargo's
+  # compiled target cache remains available, so a bounded retry does not need to rebuild every crate.
+  rm -rf "$RELEASE_BASE/bundle"
+}
 
 export APPLE_SIGNING_IDENTITY="$IDENTITY"
 export APPLE_API_KEY="$KEY_ID" APPLE_API_ISSUER="$ISSUER" APPLE_API_KEY_PATH="$P8"
@@ -254,11 +262,44 @@ TAURI_SIGNING_PRIVATE_KEY="$(cat "$HOME/.tauri/hara-desktop.key")"
 export TAURI_SIGNING_PRIVATE_KEY
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
 
-if [ "$TARGET" = "x86_64-apple-darwin" ]; then
-  npm run tauri build -- --target "$TARGET"
-else
-  npm run tauri build
-fi
+run_tauri_bundle_attempt() {
+  if [ "$TARGET" = "x86_64-apple-darwin" ]; then
+    npm run tauri build -- --target "$TARGET"
+  else
+    npm run tauri build
+  fi
+}
+
+TAURI_BUILD_ATTEMPTS=3
+attempt=1
+while [ "$attempt" -le "$TAURI_BUILD_ATTEMPTS" ]; do
+  clean_tauri_bundle_attempt
+  TAURI_BUILD_LOG="$(mktemp "${TMPDIR:-/tmp}/hara-tauri-signed-build.XXXXXX")"
+  chmod 600 "$TAURI_BUILD_LOG"
+  if run_tauri_bundle_attempt >"$TAURI_BUILD_LOG" 2>&1; then
+    cat "$TAURI_BUILD_LOG"
+    rm -f "$TAURI_BUILD_LOG"
+    TAURI_BUILD_LOG=""
+    break
+  else
+    build_status=$?
+  fi
+  cat "$TAURI_BUILD_LOG" >&2
+  if ! node scripts/codesign-timestamp-retry.mjs "$TAURI_BUILD_LOG"; then
+    rm -f "$TAURI_BUILD_LOG"
+    TAURI_BUILD_LOG=""
+    exit "$build_status"
+  fi
+  rm -f "$TAURI_BUILD_LOG"
+  TAURI_BUILD_LOG=""
+  if [ "$attempt" -eq "$TAURI_BUILD_ATTEMPTS" ]; then
+    echo "error: Apple codesign timestamp service remained unavailable after $attempt attempts" >&2
+    exit "$build_status"
+  fi
+  echo "warning: Apple codesign timestamp service had a transient failure ($attempt/$TAURI_BUILD_ATTEMPTS); rebuilding the clean bundle" >&2
+  /bin/sleep "$((attempt * 10))"
+  attempt=$((attempt + 1))
+done
 clear_signing_environment
 
 echo "▸ validating packaged application and bundled sidecar"

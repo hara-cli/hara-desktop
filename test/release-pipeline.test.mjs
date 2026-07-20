@@ -23,6 +23,7 @@ import {
   expectedReleaseSource,
 } from "../scripts/release-source-provenance.mjs";
 import { canUseRosettaSmoke } from "../scripts/sidecar-smoke.mjs";
+import { isTransientCodesignTimestampFailure } from "../scripts/codesign-timestamp-retry.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const node = process.execPath;
@@ -361,6 +362,32 @@ test("Tauri performs the sole Developer ID signing pass after Bun signature remo
   assert.match(script, /PACKAGED_SIDECAR_SIGNATURE=.*codesign -d --verbose=4/);
   assert.match(script, /Authority=\$IDENTITY/);
   assert.match(script, /\^Timestamp=/);
+});
+
+test("signed Tauri bundling retries only bounded Apple timestamp service failures", () => {
+  assert.equal(
+    isTransientCodesignTimestampFailure("codesign: A timestamp was expected but was not found."),
+    true,
+  );
+  assert.equal(
+    isTransientCodesignTimestampFailure(
+      "codesign timestamp request failed: NSURLErrorDomain Code=-1001 request timed out",
+    ),
+    true,
+  );
+  assert.equal(
+    isTransientCodesignTimestampFailure("codesign: The timestamp service is temporarily unavailable"),
+    true,
+  );
+  assert.equal(isTransientCodesignTimestampFailure("codesign: errSecInternalComponent"), false);
+  assert.equal(isTransientCodesignTimestampFailure("Developer ID signing identity was not found"), false);
+
+  const script = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
+  assert.match(script, /TAURI_BUILD_ATTEMPTS=3/);
+  assert.match(script, /node scripts\/codesign-timestamp-retry\.mjs "\$TAURI_BUILD_LOG"/);
+  assert.match(script, /rm -rf "\$RELEASE_BASE\/bundle"/);
+  assert.match(script, /chmod 600 "\$TAURI_BUILD_LOG"/);
+  assert.doesNotMatch(script, /--timestamp(?:=none|\s+none)|APPLE_SIGNING_IDENTITY=""/);
 });
 
 test("Apple staple validation retries only bounded transient service failures", () => {
