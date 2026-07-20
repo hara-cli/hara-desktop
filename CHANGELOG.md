@@ -1,6 +1,21 @@
 # Changelog
 
-## 0.1.29 — hara 0.129.0 workspace recovery and resilient signing
+## 0.1.30 — hara 0.129.0 workspace recovery and resilient release transfers
+
+- Carry the complete local Deliverables workbench, Hara CLI `0.129.0` workspace recovery, Apple
+  timestamp retry, and recoverable notarization changes prepared in the withheld `0.1.27` through
+  `0.1.29` drafts.
+- Download every hidden or public GitHub Release asset set into a new private staging directory and
+  replace the verification directory only after a complete transfer. A failed attempt is discarded,
+  so a partial installer or updater can never be reused on the next attempt.
+- Retry release uploads and downloads at most three times only when a bounded private log proves a
+  GitHub transport transient such as the connection reset that blocked `0.1.29`. Authentication,
+  authorization, missing releases, digest/signature mismatches, and exhausted retries remain
+  terminal; uploads retry the entire canonical clobber set while the release is still hidden.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
+## 0.1.29 — WITHHELD (never published; hara 0.129.0 workspace recovery and resilient signing)
 
 - Ship the local Deliverables workbench originally prepared in the withheld `0.1.27`/`0.1.28`
   drafts, now backed by the exact Hara CLI `0.129.0` sidecar. The engine adds immutable Artifact

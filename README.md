@@ -60,7 +60,7 @@ builds · 4-platform CI with
 package-smoke gate. See `WORKFLOW.md` for the two-repo release train.
 
 The Deliverables foundation does not yet render, edit, or export imported Office files; the format
-card in 0.1.29 is explicitly decorative until a reviewed capability supplies a real preview.
+card in 0.1.30 is explicitly decorative until a reviewed capability supplies a real preview.
 
 Next: Windows Authenticode signing · richer cron policy UI · attachments · real Presentation,
 Spreadsheet, and Document render/edit/export slices · signed capability center. See
