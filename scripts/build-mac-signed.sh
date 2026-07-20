@@ -286,8 +286,9 @@ grep -Eq '^Timestamp=' <<<"$PACKAGED_SIDECAR_SIGNATURE" || {
 DMG="$RELEASE_BASE/bundle/dmg/Hara_${DESKTOP_VERSION}_${DMG_ARCH}.dmg"
 [ -f "$DMG" ] || { echo "expected $DMG_ARCH dmg missing: $DMG" >&2; exit 1; }
 echo "▸ notarizing dmg container: $DMG"
-xcrun notarytool submit "$DMG" --key "$P8" --key-id "$KEY_ID" --issuer "$ISSUER" --wait
-xcrun stapler staple "$DMG"
+node scripts/notarize-artifact.mjs \
+  "$DMG" --key "$P8" --key-id "$KEY_ID" --issuer "$ISSUER"
+/usr/bin/xcrun stapler staple "$DMG"
 /usr/sbin/spctl -a -t open --context context:primary-signature -v "$DMG"
 /usr/sbin/spctl -a -vv "$APP"
 node scripts/mac-dmg-smoke.mjs "$DMG" "$TARGET" --require-signatures

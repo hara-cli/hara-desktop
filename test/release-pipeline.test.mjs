@@ -11,6 +11,11 @@ import {
   parseRemoteTagRefs,
   resolveRemoteTagCommit,
 } from "../scripts/resolve-remote-tag.mjs";
+import {
+  isTransientNotaryFailure,
+  notarizeArtifact,
+  parseNotaryResponse,
+} from "../scripts/notarize-artifact.mjs";
 import { requireStableTag, requireStableVersion } from "../scripts/release-policy.mjs";
 import { isTransientStaplerFailure } from "../scripts/stapler-validate.mjs";
 import {
@@ -376,6 +381,85 @@ test("Apple staple validation retries only bounded transient service failures", 
   assert.match(updaterSmoke, /validateStapledArtifact\(app, "updater archive notarization staple"\)/);
   assert.equal((promotion.match(/node scripts\/stapler-validate\.mjs/g) || []).length, 3);
   assert.doesNotMatch(promotion, /xcrun stapler validate/);
+});
+
+test("DMG notarization separates submission from bounded status polling", () => {
+  assert.equal(isTransientNotaryFailure({ signal: "SIGBUS" }), true);
+  assert.equal(isTransientNotaryFailure({ status: 138, stderr: "Bus error: 10" }), true);
+  assert.equal(isTransientNotaryFailure({ stderr: "NSURLErrorDomain Code=-1001 request timed out" }), true);
+  assert.equal(isTransientNotaryFailure({ stderr: "401 Unauthorized: invalid credentials" }), false);
+
+  assert.deepEqual(
+    parseNotaryResponse(
+      '{"id":"f4eef6df-79c6-48c0-b2f1-0811dcce57eb","status":"In Progress"}',
+      "fixture",
+    ),
+    {
+      id: "f4eef6df-79c6-48c0-b2f1-0811dcce57eb",
+      status: "In Progress",
+    },
+  );
+  assert.throws(() => parseNotaryResponse('{"id":"not-a-uuid","status":"Accepted"}', "fixture"));
+  assert.throws(() =>
+    parseNotaryResponse(
+      '{"id":"f4eef6df-79c6-48c0-b2f1-0811dcce57eb","status":"Unexpected"}',
+      "fixture",
+    ),
+  );
+
+  const helper = readFileSync(join(root, "scripts/notarize-artifact.mjs"), "utf8");
+  const signedBuild = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
+  assert.match(helper, /"submit"[\s\S]*"--no-wait"/);
+  assert.match(helper, /"info", submitted\.id/);
+  assert.match(helper, /const SUBMIT_ATTEMPTS = 3/);
+  assert.match(helper, /const INFO_ATTEMPTS = 3/);
+  assert.match(helper, /const TOTAL_WAIT_MS = 30 \* 60_000/);
+  assert.match(helper, /spawnSync\("\/usr\/bin\/xcrun"/);
+  assert.match(signedBuild, /node scripts\/notarize-artifact\.mjs/);
+  assert.doesNotMatch(signedBuild, /notarytool submit[\s\S]*--wait/);
+});
+
+test("DMG notarization survives a crashed status child without resubmitting", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "hara-notary-state-"));
+  const artifact = join(directory, "Hara.dmg");
+  const key = join(directory, "AuthKey.p8");
+  const submissionId = "f4eef6df-79c6-48c0-b2f1-0811dcce57eb";
+  writeFileSync(artifact, "signed dmg fixture\n");
+  writeFileSync(key, "private key fixture\n");
+  const calls = [];
+  let infoCall = 0;
+  try {
+    const result = await notarizeArtifact(
+      artifact,
+      { key, keyId: "KEY123", issuer: "issuer-fixture" },
+      {
+        pollIntervalMs: 0,
+        totalWaitMs: 1_000,
+        wait: async () => {},
+        run(args) {
+          calls.push(args);
+          if (args[0] === "submit") return JSON.stringify({ id: submissionId });
+          infoCall += 1;
+          if (infoCall === 1) {
+            const error = new Error("notarytool status child crashed");
+            error.signal = "SIGBUS";
+            throw error;
+          }
+          return JSON.stringify({
+            id: submissionId,
+            status: infoCall === 2 ? "In Progress" : "Accepted",
+          });
+        },
+      },
+    );
+    assert.equal(result, submissionId);
+    assert.equal(calls.filter((args) => args[0] === "submit").length, 1);
+    assert.equal(calls.filter((args) => args[0] === "info").length, 3);
+    assert.ok(calls[0].includes("--no-wait"));
+    assert.equal(calls[0].includes("--wait"), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("protected Gatekeeper checks never depend on a login-shell PATH", () => {
