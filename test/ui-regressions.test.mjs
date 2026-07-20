@@ -148,7 +148,8 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.doesNotMatch(app, /server\.version === BUNDLED_ENGINE_VERSION/, "engine health is not a raw string comparison");
   assert.match(app, /<ProviderSettings\s+embedded/, "the default provider page uses the shared settings shell");
   assert.match(app, /t\("restartNow"\)/);
-  assert.match(app, /await update\.downloadAndInstall\(\);\s+setUpdAvail\(""\)/, "ready and available update states cannot conflict");
+  assert.match(app, /await candidate\.download\(\);[\s\S]*setUpdAvail\(""\)/, "ready and available update states cannot conflict");
+  assert.doesNotMatch(app, /downloadAndInstall/, "the updater must not install while the Windows sidecar is running");
   assert.match(app, /setUpdateTone\("error"\)/, "updater failures render as errors");
   assert.match(app, /role="group"\s+aria-labelledby=/, "settings navigation groups have accessible names");
   assert.match(app, /htmlFor="hara-default-approval"/);
@@ -200,13 +201,19 @@ test("updater restart waits for real shutdown and one-shot relaunch starts the b
   assert.match(app, /if \(discovery\.pid === pid\)/, "startup ignores a stale discovery from another process");
   assert.match(app, /expectedPid !== null && d\.pid !== expectedPid/, "the final connection repeats the pid handshake");
   assert.match(app, /await connect\(pid\)/);
-  assert.match(app, /await invoke\("restart_after_update"\)/);
   assert.match(nativeHost, /fn take_update_restart_marker\(app: tauri::AppHandle\)/);
   assert.match(nativeHost, /fn restart_after_update\(app: tauri::AppHandle\)/);
   assert.match(nativeHost, /arm_update_restart_marker_at/);
   assert.match(nativeHost, /app\.restart\(\)/);
   assert.match(nativeHost, /take_update_restart_marker,/);
   assert.match(nativeHost, /restart_after_update,/);
+
+  assert.match(app, /applyDesktopUpdateHandoff\(pendingUpdate/);
+  assert.match(
+    app,
+    /retireEngine: async \(\) => \{[\s\S]*await waitForDiscoveryRetirement\(\);[\s\S]*install: \(\) => pendingUpdate\.update\.install\(\),[\s\S]*restart: \(\) => invoke\("restart_after_update"\)/,
+    "Desktop wires authenticated retirement, install, and relaunch into the tested handoff state machine",
+  );
 });
 
 test("provider settings keep credentials transient and support local no-key presets", () => {

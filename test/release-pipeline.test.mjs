@@ -646,6 +646,21 @@ test("Linux and Windows smoke execute sidecars extracted from real installers", 
   assert.match(packageSmoke, /smokeInstalledSidecars\(nsis, "nsis", "NSIS installer", "hara\.exe"\)/);
 });
 
+test("Windows NSIS upgrades retire the detached sidecar before replacing it", () => {
+  const config = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"));
+  const hooksPath = config.bundle?.windows?.nsis?.installerHooks;
+  assert.equal(hooksPath, "./windows/installer-hooks.nsh");
+  const hooks = readFileSync(join(root, "src-tauri", hooksPath), "utf8");
+  assert.match(
+    hooks,
+    /!macro NSIS_HOOK_PREINSTALL[\s\S]*!insertmacro CheckIfAppIsRunning "hara\.exe" "Hara task engine"[\s\S]*!macroend/,
+  );
+  assert.match(
+    hooks,
+    /!macro NSIS_HOOK_PREUNINSTALL[\s\S]*!insertmacro CheckIfAppIsRunning "hara\.exe" "Hara task engine"[\s\S]*!macroend/,
+  );
+});
+
 test("Tauri Cargo manifest is checked out as LF on Windows without weakening the clean-tree gate", () => {
   const attributes = readFileSync(join(root, ".gitattributes"), "utf8");
   const manifest = readFileSync(join(root, "src-tauri/Cargo.toml"));

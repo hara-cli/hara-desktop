@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.32 — hara 0.130.1 Windows serve and updater handoff
+
+- Bundle Hara CLI `0.130.1`, which omits inapplicable POSIX descriptor-mode operations on Windows
+  while retaining private discovery type, identity, atomic replacement, and authentication checks.
+  The official Windows sidecar can start `hara serve` without the reported `fchmod` `EPERM`.
+- Split Desktop update download from installation. Hara now keeps the task engine available during
+  download, waits for active work to finish, performs authenticated engine shutdown, confirms
+  `serve.json` retirement, and only then installs and restarts.
+- NSIS setup and uninstall now use Tauri's current-user-aware process gate for the detached
+  `hara.exe`. Interactive upgrades ask before closing it; silent updates close it or abort rather
+  than claiming success while retaining a locked old sidecar.
+- Make the update handoff retry-safe: an already installed package is not installed twice, and a
+  failed installer/relaunch restores the task engine when possible. This prevents Windows in-place
+  upgrades from leaving the adjacent `hara.exe` at an older version because it was still locked.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.31 — hara 0.130.0 ordered task-state delivery
 
 - Bundle Hara CLI `0.130.0` from its exact public tag and commit. Typed task lifecycle events now

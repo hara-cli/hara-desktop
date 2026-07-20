@@ -8,7 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
-import { check as checkForUpdate } from "@tauri-apps/plugin-updater";
+import { check as checkForUpdate, type Update } from "@tauri-apps/plugin-updater";
 import {
   HaraClient,
   type Discovery,
@@ -29,6 +29,7 @@ import {
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
 import { classifyEngineVersion } from "./engine-version.js";
+import { applyDesktopUpdateHandoff } from "./desktop-update.js";
 import {
   isAssistantWorkspace as isAssistantCwd,
   sessionActivationAllowed,
@@ -80,6 +81,11 @@ import "./App.css";
 type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
 // the four PLACES (顾雅 2026-07-11 four-places ruling): talk / work / orchestrate / configure
 type Zone = AppPlace;
+type PendingDesktopUpdate = {
+  update: Update;
+  version: string;
+  phase: "downloaded" | "installed";
+};
 
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
 /** Junk cwd guard: sessions left behind by tests/one-offs in OS temp dirs are NOT projects. */
@@ -426,6 +432,7 @@ export default function App() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [updAvail, setUpdAvail] = useState("");
+  const pendingDesktopUpdateRef = useRef<PendingDesktopUpdate | null>(null);
   const pendingRef = useRef<"assistant" | "project" | null>(null);
   const [setupRequired, setSetupRequired] = useState(false);
   const apiRef = useRef<{ setZone: (z: Zone) => void; openAssistant: () => void; openProject: () => void }>({ setZone: () => {}, openAssistant: () => {}, openProject: () => {} });
@@ -1046,7 +1053,11 @@ export default function App() {
   useEffect(() => {
     void getVersion().then(setDesktopVersion).catch(() => {});
     void checkForUpdate()
-      .then((u) => u && setUpdAvail(u.version))
+      .then((u) => {
+        if (!u) return;
+        setUpdAvail(u.version);
+        void u.close().catch(() => {});
+      })
       .catch(() => {});
   }, []);
 
@@ -1807,22 +1818,33 @@ export default function App() {
     setUpdating(true);
     setUpd("");
     setUpdateTone("neutral");
+    let candidate: Update | null = null;
     try {
-      const update = await checkForUpdate();
-      if (!update) {
+      candidate = await checkForUpdate();
+      if (!candidate) {
         setUpdAvail("");
         setUpd(t("upToDate"));
         setUpdateTone("success");
         return;
       }
-      setUpdAvail(update.version);
-      setUpd(`${t("downloadingUpdate")} ${update.version}`);
-      await update.downloadAndInstall();
+      setUpdAvail(candidate.version);
+      setUpd(`${t("downloadingUpdate")} ${candidate.version}`);
+      // Keep the live task engine available during the network transfer. Installation is deliberately
+      // deferred to restartForUpdate, after authenticated shutdown has retired the discovery record. On
+      // Windows this ordering is mandatory: a running adjacent hara.exe cannot be replaced reliably.
+      await candidate.download();
+      pendingDesktopUpdateRef.current = {
+        update: candidate,
+        version: candidate.version,
+        phase: "downloaded",
+      };
+      candidate = null;
       setUpdAvail("");
       setUpdateReady(true);
       setUpd(t("restartToApply"));
       setUpdateTone("success");
     } catch (error: any) {
+      if (candidate) void candidate.close().catch(() => {});
       setUpd(String(error?.message ?? error).slice(0, 160));
       setUpdateTone("error");
     } finally {
@@ -1836,24 +1858,40 @@ export default function App() {
       setUpdateTone("warning");
       return;
     }
-    const client = clientRef.current;
+    const pendingUpdate = pendingDesktopUpdateRef.current;
+    if (!pendingUpdate) {
+      setUpdateReady(false);
+      setUpd(t("updateStateLost"));
+      setUpdateTone("error");
+      return;
+    }
     setUpdating(true);
     setUpd(t("restarting"));
     setUpdateTone("neutral");
     plannedUpdateRestartRef.current = true;
+    let engineRetired = false;
     try {
-      if (client) {
-        if (client.supports("server.shutdown")) {
-          await client.shutdownServer();
-        } else {
-          if (!server) throw new Error(t("engineRestartReconnect"));
-          clientRef.current = null;
-          client.close();
-          await invoke("terminate_legacy_serve", { expectedPid: server.pid });
-        }
-        await waitForDiscoveryRetirement();
-      }
-      await invoke("restart_after_update");
+      await applyDesktopUpdateHandoff(pendingUpdate, {
+        retireEngine: async () => {
+          const client = clientRef.current;
+          if (client) {
+            if (client.supports("server.shutdown")) {
+              await client.shutdownServer();
+            } else {
+              if (!server) throw new Error(t("engineRestartReconnect"));
+              clientRef.current = null;
+              client.close();
+              await invoke("terminate_legacy_serve", { expectedPid: server.pid });
+            }
+          } else if (await invoke<string | null>("read_discovery")) {
+            throw new Error(t("engineRestartReconnect"));
+          }
+          await waitForDiscoveryRetirement();
+          engineRetired = true;
+        },
+        install: () => pendingUpdate.update.install(),
+        restart: () => invoke("restart_after_update"),
+      });
     } catch (error: any) {
       plannedUpdateRestartRef.current = false;
       const serverBusy = error?.code === SERVER_BUSY;
@@ -1863,9 +1901,13 @@ export default function App() {
       setUpd(message);
       setUpdateTone(serverBusy ? "warning" : "error");
       setUpdating(false);
-      if (client && !client.connected) {
-        setErr(message);
-        setPhase("no-server");
+      // If installation or native relaunch failed after the engine was safely retired, restore task
+      // availability. A retry will retire it again but never re-install an already installed package.
+      if (engineRetired) {
+        await startServer().catch(() => {
+          setErr(message);
+          setPhase("no-server");
+        });
       }
     }
   };
