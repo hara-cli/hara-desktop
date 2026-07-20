@@ -1,6 +1,26 @@
 # Changelog
 
-## 0.1.28 — hara 0.128.0 local deliverables and recoverable macOS notarization
+## 0.1.29 — hara 0.129.0 workspace recovery and resilient signing
+
+- Ship the local Deliverables workbench originally prepared in the withheld `0.1.27`/`0.1.28`
+  drafts, now backed by the exact Hara CLI `0.129.0` sidecar. The engine adds immutable Artifact
+  commit/revert transactions and conflict protection; the current Desktop workbench remains an
+  explicitly non-editing foundation until reviewed Office capabilities are connected.
+- Carry Hara CLI workspace recovery into Desktop: a Home-root interactive engine can offer a
+  confirmed recent-project switch, cross-tool Home-boundary failures share one bounded root-cause
+  breaker, private Plugin Git failures are actionable without leaking remote diagnostics, and
+  Feishu WebSocket reconnect health is observable.
+- Retry a signed Tauri bundle at most three times only when its private build log proves an Apple
+  timestamp network/service transient. Every attempt discards partial bundle assets; identity,
+  keychain, malformed-signature, and persistent timestamp failures still fail closed, and the
+  release never falls back to a Developer ID signature without a trusted timestamp.
+- Preserve the recoverable DMG notarization flow from `0.1.28`: a validated submission ID survives
+  a crashed status child, while bounded native status queries still reject invalid or missing
+  notarization facts.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
+## 0.1.28 — WITHHELD (never published; hara 0.128.0 recoverable notarization)
 
 - Ship the local Deliverables workbench originally prepared in the withheld `0.1.27` draft: safe
   presentation/spreadsheet/document import, file facts, integrity verification, and immutable
