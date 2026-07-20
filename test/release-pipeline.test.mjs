@@ -413,7 +413,7 @@ test("DMG notarization separates submission from bounded status polling", () => 
   assert.match(helper, /"info", submitted\.id/);
   assert.match(helper, /const SUBMIT_ATTEMPTS = 3/);
   assert.match(helper, /const INFO_ATTEMPTS = 3/);
-  assert.match(helper, /const TOTAL_WAIT_MS = 30 \* 60_000/);
+  assert.match(helper, /const TOTAL_WAIT_MS = 60 \* 60_000/);
   assert.match(helper, /spawnSync\("\/usr\/bin\/xcrun"/);
   assert.match(signedBuild, /node scripts\/notarize-artifact\.mjs/);
   assert.doesNotMatch(signedBuild, /notarytool submit[\s\S]*--wait/);

@@ -1,6 +1,20 @@
 # Changelog
 
-## 0.1.27 — hara 0.128.0 local deliverable workbench
+## 0.1.28 — hara 0.128.0 local deliverables and recoverable macOS notarization
+
+- Ship the local Deliverables workbench originally prepared in the withheld `0.1.27` draft: safe
+  presentation/spreadsheet/document import, file facts, integrity verification, and immutable
+  revision history through the authenticated Hara CLI `0.128.0` sidecar.
+- Separate DMG submission from status waiting on the protected macOS release host. A validated
+  submission ID now survives a crashed `notarytool` status child, while bounded native status
+  queries retry only explicit process/network failures and still fail closed on invalid responses,
+  rejected artifacts, or a one-hour processing deadline.
+- Keep all four native package gates, Developer ID signing, app and DMG notarization, stapling,
+  Gatekeeper checks, exact updater verification, and hidden-draft promotion unchanged.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
+## 0.1.27 — WITHHELD (never published; hara 0.128.0 local deliverable workbench)
 
 - Bundle Hara CLI `0.128.0` from its exact public tag and commit, including the authenticated
   `artifact/1` import, list, integrity-check, and revision-history runtime plus quiet cron delivery
