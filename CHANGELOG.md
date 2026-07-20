@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.31 — hara 0.130.0 ordered task-state delivery
+
+- Bundle Hara CLI `0.130.0` from its exact public tag and commit. Typed task lifecycle events now
+  carry one server-stream identity and a monotonically increasing sequence across sessions,
+  steering, approvals, checkpoints, resume, and completion.
+- Reject duplicated or stale lifecycle events from the same engine stream before they can overwrite
+  the current Desktop busy state, active turn, approval, checkpoint, completion notification, or
+  companion status. A restarted server begins a new accepted stream.
+- Keep the protocol-v1 compatibility boundary additive: Desktop still connects to older supported
+  engines that do not send ordering metadata, while new engines provide deterministic ordering
+  without mixing task execution into conversation text.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.30 — hara 0.129.0 workspace recovery and resilient release transfers
 
 - Carry the complete local Deliverables workbench, Hara CLI `0.129.0` workspace recovery, Apple

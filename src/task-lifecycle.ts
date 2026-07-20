@@ -29,6 +29,27 @@ export function restoredTaskLifecycle(
   };
 }
 
+function hasOrderedCursor(
+  event: TaskLifecycleEvent | undefined,
+): event is TaskLifecycleEvent & { streamId: string; sequence: number } {
+  return Boolean(
+    event?.streamId &&
+    Number.isSafeInteger(event.sequence) &&
+    (event.sequence ?? 0) > 0,
+  );
+}
+
+/** Reject duplicated or stale task state from the same server stream. Legacy engines and a newly
+ * restarted server remain compatible because they do not share a comparable ordered cursor. */
+export function taskLifecycleIsNewer(
+  current: TaskLifecycleEvent | undefined,
+  incoming: TaskLifecycleEvent,
+): boolean {
+  if (!hasOrderedCursor(current) || !hasOrderedCursor(incoming)) return true;
+  if (current.streamId !== incoming.streamId) return true;
+  return incoming.sequence > current.sequence;
+}
+
 export function taskStateIsLive(state: TaskLifecycleEvent["state"]): boolean {
   return state === "running" || state === "waiting";
 }

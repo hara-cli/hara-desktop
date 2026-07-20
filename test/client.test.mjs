@@ -98,6 +98,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
       method: "event.task_state",
       params: {
         version: 1,
+        streamId: "serve-1",
+        sequence: 12,
         sessionId: "session-1",
         taskId: "task-1",
         turnId: "turn-1",
@@ -113,6 +115,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     }),
   });
   assert.equal(received.method, "event.task_state");
+  assert.equal(received.streamId, "serve-1");
+  assert.equal(received.sequence, 12);
   assert.equal(received.state, "waiting");
   assert.equal(received.approval.id, "approval-1");
 });

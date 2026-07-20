@@ -10,6 +10,7 @@ import {
 } from "../src/pets.ts";
 import {
   restoredTaskLifecycle,
+  taskLifecycleIsNewer,
   taskStateIsLive,
   taskStatePetStatus,
   taskStateTitle,
@@ -106,6 +107,37 @@ test("legacy resume snapshots become deterministic restored lifecycle events", (
       checkpoint: { done: 0, total: 0 },
     },
   );
+});
+
+test("ordered task lifecycle rejects duplicate and stale events from one server stream", () => {
+  const current = {
+    ...restoredTaskLifecycle("session-1", {
+      id: "task-1",
+      objective: "Continue the report",
+      status: "running",
+      turnId: "turn-1",
+      updatedAt: "2026-07-19T01:02:03.000Z",
+    }),
+    streamId: "serve-a",
+    sequence: 5,
+  };
+  assert.equal(taskLifecycleIsNewer(current, { ...current, sequence: 4 }), false);
+  assert.equal(taskLifecycleIsNewer(current, { ...current, sequence: 5 }), false);
+  assert.equal(taskLifecycleIsNewer(current, { ...current, sequence: 6 }), true);
+  assert.equal(
+    taskLifecycleIsNewer(current, { ...current, streamId: "serve-b", sequence: 1 }),
+    true,
+    "a restarted server begins a new incomparable stream",
+  );
+  const legacy = restoredTaskLifecycle("session-1", {
+    id: "task-1",
+    objective: "Continue the report",
+    status: "paused",
+    turnId: "turn-1",
+    updatedAt: "2026-07-19T01:03:03.000Z",
+  });
+  assert.equal(taskLifecycleIsNewer(current, legacy), true, "old local engines stay compatible");
+  assert.equal(taskLifecycleIsNewer(legacy, { ...current, sequence: 1 }), true);
 });
 
 test("tracked pet activity is bounded", () => {

@@ -68,6 +68,7 @@ import type {
 } from "./pets";
 import {
   restoredTaskLifecycle,
+  taskLifecycleIsNewer,
   taskStateIsLive,
   taskStatePetStatus,
   taskStateTitle,
@@ -788,6 +789,7 @@ export default function App() {
           setSessionBusy(e.sessionId, true);
           break;
         case "event.task_state": {
+          if (!taskLifecycleIsNewer(taskStatesRef.current[e.sessionId], e)) break;
           const nextTaskStates = { ...taskStatesRef.current, [e.sessionId]: e };
           taskStatesRef.current = nextTaskStates;
           setTaskStates(nextTaskStates);

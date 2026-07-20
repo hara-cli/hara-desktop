@@ -209,6 +209,10 @@ export type TaskLifecyclePhase =
 
 export interface TaskLifecycleEvent {
   version: 1;
+  /** Present in Hara CLI 0.130.0+. Optional so Desktop can still attach to an older local engine. */
+  streamId?: string;
+  /** Strictly increases within streamId. */
+  sequence?: number;
   sessionId: string;
   taskId: string;
   turnId: string;
