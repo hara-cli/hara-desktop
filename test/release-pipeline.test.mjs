@@ -24,6 +24,7 @@ import {
 } from "../scripts/release-source-provenance.mjs";
 import { canUseRosettaSmoke } from "../scripts/sidecar-smoke.mjs";
 import { isTransientCodesignTimestampFailure } from "../scripts/codesign-timestamp-retry.mjs";
+import { isTransientGitHubReleaseTransferFailure } from "../scripts/github-release-transfer-retry.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const node = process.execPath;
@@ -388,6 +389,53 @@ test("signed Tauri bundling retries only bounded Apple timestamp service failure
   assert.match(script, /rm -rf "\$RELEASE_BASE\/bundle"/);
   assert.match(script, /chmod 600 "\$TAURI_BUILD_LOG"/);
   assert.doesNotMatch(script, /--timestamp(?:=none|\s+none)|APPLE_SIGNING_IDENTITY=""/);
+});
+
+test("release asset transfers retry only bounded GitHub transport failures from clean staging", () => {
+  assert.equal(
+    isTransientGitHubReleaseTransferFailure(
+      "read tcp 198.18.15.206:57233->185.199.110.133:443: read: connection reset by peer",
+    ),
+    true,
+  );
+  assert.equal(
+    isTransientGitHubReleaseTransferFailure("TLS handshake timeout while downloading release asset"),
+    true,
+  );
+  assert.equal(
+    isTransientGitHubReleaseTransferFailure("HTTP 503 Service Unavailable"),
+    true,
+  );
+  assert.equal(
+    isTransientGitHubReleaseTransferFailure("HTTP 403: Resource not accessible by integration"),
+    false,
+  );
+  assert.equal(
+    isTransientGitHubReleaseTransferFailure(
+      "HTTP 403: Resource not accessible by integration; connection reset by peer",
+    ),
+    false,
+  );
+  assert.equal(
+    isTransientGitHubReleaseTransferFailure("release not found"),
+    false,
+  );
+  assert.equal(
+    isTransientGitHubReleaseTransferFailure("updater signature digest mismatch"),
+    false,
+  );
+
+  const script = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
+  assert.match(script, /readonly RELEASE_TRANSFER_ATTEMPTS=3/);
+  assert.match(script, /attempt <= RELEASE_TRANSFER_ATTEMPTS/g);
+  assert.match(script, /mktemp -d "\$WORK\/release-download\.XXXXXX"/);
+  assert.match(script, /chmod 600 "\$log"/);
+  assert.match(script, /github-release-transfer-retry\.mjs "\$log"/);
+  assert.match(script, /release_download_all "\$ASSET_DIR" "hidden draft download"/);
+  assert.match(script, /release_download_all "\$REMOTE_DIR" "signed draft verification download"/);
+  assert.match(script, /release_download_all "\$PUBLIC_DIR" "public immutable release download"/);
+  assert.match(script, /release_upload_signed_assets/);
+  assert.match(script, /retrying from a fresh private staging directory/);
 });
 
 test("Apple staple validation retries only bounded transient service failures", () => {
@@ -863,7 +911,7 @@ test("a post-publication rerun switches to immutable verification without rewrit
   assert.ok(verificationOnly >= 0 && verificationOnly < localSignedOutputGate && verificationOnly < publish);
   const branch = script.slice(verificationOnly, localSignedOutputGate);
   assert.match(branch, /release_gh release verify/);
-  assert.match(branch, /release_gh release download/);
+  assert.match(branch, /release_download_all/);
   assert.match(branch, /updater-manifest\.mjs validate/);
   assert.match(branch, /mac-dmg-smoke\.mjs/);
   assert.match(branch, /exit 0/);

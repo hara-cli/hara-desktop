@@ -76,6 +76,74 @@ ASSET_DIR="$WORK/assets"
 REMOTE_DIR="$WORK/remote"
 PUBLIC_DIR="$WORK/public"
 trap 'rm -rf "$WORK"' EXIT
+readonly RELEASE_TRANSFER_ATTEMPTS=3
+
+release_download_all() {
+  local target="$1"
+  local label="$2"
+  local attempt stage log
+  for ((attempt = 1; attempt <= RELEASE_TRANSFER_ATTEMPTS; attempt++)); do
+    stage="$(mktemp -d "$WORK/release-download.XXXXXX")"
+    log="$(mktemp "$WORK/release-download-log.XXXXXX")"
+    chmod 600 "$log"
+    if release_gh release download "$TAG" -R "$REPO" --dir "$stage" >"$log" 2>&1; then
+      cat "$log"
+      rm -rf "$target"
+      mv "$stage" "$target"
+      rm -f "$log"
+      return 0
+    fi
+    cat "$log" >&2
+    rm -rf "$stage"
+    if ! node scripts/github-release-transfer-retry.mjs "$log"; then
+      rm -f "$log"
+      echo "error: $label failed without a retryable GitHub transport error" >&2
+      return 1
+    fi
+    if [ "$attempt" -eq "$RELEASE_TRANSFER_ATTEMPTS" ]; then
+      rm -f "$log"
+      echo "error: $label exhausted $RELEASE_TRANSFER_ATTEMPTS transient GitHub transport attempts" >&2
+      return 1
+    fi
+    rm -f "$log"
+    echo "warning: $label hit a transient GitHub transport failure ($attempt/$RELEASE_TRANSFER_ATTEMPTS); retrying from a fresh private staging directory" >&2
+    sleep $((attempt * 5))
+  done
+}
+
+release_upload_signed_assets() {
+  local attempt log
+  for ((attempt = 1; attempt <= RELEASE_TRANSFER_ATTEMPTS; attempt++)); do
+    log="$(mktemp "$WORK/release-upload-log.XXXXXX")"
+    chmod 600 "$log"
+    if release_gh release upload "$TAG" -R "$REPO" --clobber \
+      "$ASSET_DIR/Hara_${VER}_aarch64.dmg" \
+      "$ASSET_DIR/Hara_aarch64.app.tar.gz" \
+      "$ASSET_DIR/Hara_aarch64.app.tar.gz.sig" \
+      "$ASSET_DIR/Hara_${VER}_x64.dmg" \
+      "$ASSET_DIR/Hara_x64.app.tar.gz" \
+      "$ASSET_DIR/Hara_x64.app.tar.gz.sig" \
+      "$ASSET_DIR/latest.json" >"$log" 2>&1; then
+      cat "$log"
+      rm -f "$log"
+      return 0
+    fi
+    cat "$log" >&2
+    if ! node scripts/github-release-transfer-retry.mjs "$log"; then
+      rm -f "$log"
+      echo "error: signed draft upload failed without a retryable GitHub transport error" >&2
+      return 1
+    fi
+    if [ "$attempt" -eq "$RELEASE_TRANSFER_ATTEMPTS" ]; then
+      rm -f "$log"
+      echo "error: signed draft upload exhausted $RELEASE_TRANSFER_ATTEMPTS transient GitHub transport attempts" >&2
+      return 1
+    fi
+    rm -f "$log"
+    echo "warning: signed draft upload hit a transient GitHub transport failure ($attempt/$RELEASE_TRANSFER_ATTEMPTS); retrying the complete clobber set" >&2
+    sleep $((attempt * 5))
+  done
+}
 
 # shellcheck source=scripts/check-build-toolchain.sh
 source scripts/check-build-toolchain.sh
@@ -143,8 +211,7 @@ if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
   echo "Published immutable release detected; entering verification-only rerun for $TAG."
   require_immutable_releases
   release_gh release verify "$TAG" -R "$REPO"
-  mkdir -p "$PUBLIC_DIR"
-  release_gh release download "$TAG" -R "$REPO" --dir "$PUBLIC_DIR"
+  release_download_all "$PUBLIC_DIR" "public immutable release download"
   node scripts/updater-manifest.mjs validate "$PUBLIC_DIR" "$TAG"
   node scripts/release-source-provenance.mjs validate \
     "$PUBLIC_DIR/release-source-provenance.json" "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
@@ -235,7 +302,7 @@ done
 }
 
 mkdir -p "$ASSET_DIR" "$REMOTE_DIR" "$PUBLIC_DIR"
-release_gh release download "$TAG" -R "$REPO" --dir "$ASSET_DIR"
+release_download_all "$ASSET_DIR" "hidden draft download"
 node scripts/updater-manifest.mjs validate "$ASSET_DIR" "$TAG"
 node scripts/release-source-provenance.mjs validate \
   "$ASSET_DIR/release-source-provenance.json" "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
@@ -251,17 +318,10 @@ cp "$X64_BASE/macos/Hara.app.tar.gz" "$ASSET_DIR/Hara_x64.app.tar.gz"
 cp "$X64_BASE/macos/Hara.app.tar.gz.sig" "$ASSET_DIR/Hara_x64.app.tar.gz.sig"
 node scripts/updater-manifest.mjs build "$ASSET_DIR" "$TAG" "$PUB_DATE"
 
-release_gh release upload "$TAG" -R "$REPO" --clobber \
-  "$ASSET_DIR/Hara_${VER}_aarch64.dmg" \
-  "$ASSET_DIR/Hara_aarch64.app.tar.gz" \
-  "$ASSET_DIR/Hara_aarch64.app.tar.gz.sig" \
-  "$ASSET_DIR/Hara_${VER}_x64.dmg" \
-  "$ASSET_DIR/Hara_x64.app.tar.gz" \
-  "$ASSET_DIR/Hara_x64.app.tar.gz.sig" \
-  "$ASSET_DIR/latest.json"
+release_upload_signed_assets
 
 # Validate the bytes retrieved from the remote draft, not merely the local upload inputs.
-release_gh release download "$TAG" -R "$REPO" --dir "$REMOTE_DIR"
+release_download_all "$REMOTE_DIR" "signed draft verification download"
 node scripts/updater-manifest.mjs validate "$REMOTE_DIR" "$TAG"
 node scripts/release-source-provenance.mjs validate \
   "$REMOTE_DIR/release-source-provenance.json" "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
