@@ -87,6 +87,9 @@ export interface ProviderSettingsState {
     profileSource: "flag" | "env" | "pin" | "default" | "fallback";
     editable: boolean;
     environmentOverride?: boolean;
+    /** Managed device-token lifecycle; absent for Personal and legacy control planes. */
+    tokenExpiresAt?: string;
+    tokenExpired?: boolean;
   };
   providers: ProviderCatalogEntry[];
 }

@@ -220,6 +220,8 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /endpointIdentity/, "credential reuse is bound to the exact provider endpoint");
   assert.match(providerSettings, /profileId === "personal"/, "named-profile credentials are never offered for Personal reuse");
   assert.match(providerSettings, /setApiKey\(""\)[\s\S]*await client\.listProviderSettings/, "refresh clears a credential before replacing its draft");
+  assert.match(providerSettings, /managedExpiryWarning/, "managed provider settings surface token lifecycle warnings");
+  assert.match(providerSettings, /role="alert"/, "an expired managed token is announced accessibly");
   assert.match(providerSettings, /disabled=\{phase !== "idle"\}/, "draft fields are locked while an async connection test is in flight");
   assert.match(providerSettings, /aria-pressed=\{draft\.model === model\}/, "discovered models expose selection state");
   assert.match(providerSettings, /className="provider-result pending" role="status" aria-live="polite"/);

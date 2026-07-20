@@ -39,6 +39,8 @@ const words = {
     noKey: "No API key is required. Hara only connects to this loopback endpoint.",
     oauth: "This connection uses browser sign-in. Run `hara login qwen` once, then test again.",
     managedHint: "This connection is controlled by your organization.",
+    managedExpired: "Organization access has expired. Ask your administrator for a new enrollment code, then re-enroll this profile.",
+    managedExpiresSoon: "Organization access expires in {time}. Ask your administrator for a new enrollment code before it stops.",
     test: "Test connection",
     save: "Save for new sessions",
     switchSave: "Save & switch to Personal",
@@ -74,6 +76,8 @@ const words = {
     noKey: "不需要 API 密钥，Hara 只连接这个本机回环地址。",
     oauth: "此连接使用浏览器登录。先运行一次 `hara login qwen`，再回来测试。",
     managedHint: "此连接由所在企业统一管理。",
+    managedExpired: "企业访问权限已经过期。请向管理员申请新的注册码，然后重新注册此身份。",
+    managedExpiresSoon: "企业访问权限将在 {time} 后到期，请在失效前向管理员申请新的注册码。",
     test: "测试连接",
     save: "保存，供新会话使用",
     switchSave: "保存并切换到个人连接",
@@ -118,6 +122,26 @@ const groupLabel = (
   location: ProviderCatalogEntry["location"],
   copy: (typeof words)[Locale],
 ): string => copy[location];
+
+const managedExpiryWarning = (
+  state: ProviderSettingsState,
+  copy: (typeof words)[Locale],
+  locale: Locale,
+  now = Date.now(),
+): string | null => {
+  if (state.current.profileKind !== "gateway" || !state.current.tokenExpiresAt) return null;
+  const expiry = Date.parse(state.current.tokenExpiresAt);
+  if (!Number.isFinite(expiry)) return copy.managedExpired;
+  const remaining = expiry - now;
+  if (state.current.tokenExpired || remaining <= 0) return copy.managedExpired;
+  if (remaining > 24 * 60 * 60_000) return null;
+  const minutes = Math.max(1, Math.ceil(remaining / 60_000));
+  const amount =
+    minutes < 60
+      ? locale === "zh" ? `${minutes} 分钟` : `${minutes}m`
+      : locale === "zh" ? `${Math.ceil(minutes / 60)} 小时` : `${Math.ceil(minutes / 60)}h`;
+  return copy.managedExpiresSoon.replace("{time}", amount);
+};
 
 export function ProviderSettings({ client, cwd, locale, onSaved, embedded = false }: ProviderSettingsProps) {
   const copy = words[locale];
@@ -180,6 +204,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     ["flag", "env", "pin"].includes(state.current.profileSource);
   const blocked = !!state?.current.environmentOverride || lockedProfile || selected?.location === "managed";
   const valid = !!selected && !!draft.model.trim() && !keyMissing && !blocked;
+  const expiryWarning = state ? managedExpiryWarning(state, copy, locale) : null;
 
   const chooseProvider = (provider: ProviderCatalogEntry) => {
     if (provider.location === "managed") return;
@@ -299,6 +324,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
 
       {state.current.environmentOverride && <div className="provider-warning">{copy.environment}</div>}
       {lockedProfile && <div className="provider-warning">{copy.pinned}</div>}
+      {expiryWarning && <div className="provider-warning" role="alert">{expiryWarning}</div>}
 
       <div className="provider-workbench">
         <nav className="provider-presets" aria-label={copy.choose}>

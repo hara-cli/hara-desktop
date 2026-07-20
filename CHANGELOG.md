@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.26 — hara 0.127.1 managed access lifecycle
+
+- Bundle Hara CLI `0.127.1` from its exact public tag and commit.
+- Show an accessible warning when organization-managed access is corrupt, expired, or within its
+  final 24 hours, with a focused instruction to request a new enrollment code.
+- Treat expired managed profiles as unauthenticated instead of letting a new task fail later at the
+  model gateway. Personal/local providers and legacy control planes remain unchanged.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.25 — hara 0.127.0 task-aware companion chat and typed execution state
 
 - Bundle Hara CLI `0.127.0` from its exact public tag and commit. Prompt context now has stable
