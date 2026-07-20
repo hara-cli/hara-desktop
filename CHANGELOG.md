@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.27 — hara 0.128.0 local deliverable workbench
+
+- Bundle Hara CLI `0.128.0` from its exact public tag and commit, including the authenticated
+  `artifact/1` import, list, integrity-check, and revision-history runtime plus quiet cron delivery
+  policies from `0.127.2`.
+- Add a plain-language Deliverables shelf to Projects. People can choose a presentation, spreadsheet,
+  or document and Hara imports an immutable owner-only snapshot without changing the original file or
+  retaining its absolute source path.
+- Add a responsive, keyboard-accessible local workbench with file facts, digest verification, and
+  revision history. The decorative format card is explicitly labeled as a placeholder: this release
+  does not claim to show the real layout or provide editing/export before a reviewed Office capability
+  is installed.
+- Negotiate Artifact methods with the connected engine and show a focused upgrade message for an older
+  sidecar instead of maintaining an indefinite compatibility branch. Corrupt local entries stay hidden
+  while healthy deliverables remain usable.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.26 — hara 0.127.1 managed access lifecycle
 
 - Bundle Hara CLI `0.127.1` from its exact public tag and commit.

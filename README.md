@@ -54,12 +54,16 @@ threads + collapsed automations timeline) · open-folder-as-project · bundled h
 (zero-dependency) · first-run key onboarding · per-session model & thinking-effort switch · inline
 approvals · steer queue · notifications + dock badge · search / pin / rename / archive · `@file`
 mentions · optional non-focusable task-status pet with local Codex v1/v2 package compatibility ·
-i18n (en/zh) · signed auto-updates from GitHub Releases · notarized Developer ID macOS
+i18n (en/zh) · local Deliverables shelf for safe import, integrity checks, and revision history ·
+plain-language specialist work starters · signed auto-updates from GitHub Releases · notarized Developer ID macOS
 builds · 4-platform CI with
 package-smoke gate. See `WORKFLOW.md` for the two-repo release train.
 
-Next: Windows Authenticode signing · cron management UI · attachments · task/artifact protocol ·
-novice workbench and signed capability center. See
+The Deliverables foundation does not yet render, edit, or export imported Office files; the format
+card in 0.1.27 is explicitly decorative until a reviewed capability supplies a real preview.
+
+Next: Windows Authenticode signing · richer cron policy UI · attachments · real Presentation,
+Spreadsheet, and Document render/edit/export slices · signed capability center. See
 [`docs/NOVICE_WORKBENCH_ARCHITECTURE.md`](./docs/NOVICE_WORKBENCH_ARCHITECTURE.md),
 [`docs/OFFICE_OPEN_CORE_EXECUTION_PLAN.md`](./docs/OFFICE_OPEN_CORE_EXECUTION_PLAN.md), and
 [`docs/OFFICE_TEMPLATE_COMPONENT_SYSTEM.md`](./docs/OFFICE_TEMPLATE_COMPONENT_SYSTEM.md).

@@ -22,6 +22,9 @@ import {
   type CtxInfo,
   type ProviderSettingsState,
   type TaskLifecycleEvent,
+  type ArtifactDetails,
+  type ArtifactRevision,
+  type ArtifactSummary,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
@@ -34,6 +37,7 @@ import {
   type SessionPlaceInput,
 } from "./session-place";
 import { WorkStarter } from "./WorkStarter";
+import { ArtifactWorkbench } from "./ArtifactWorkbench";
 import {
   SettingsBadge,
   SettingsCard,
@@ -235,6 +239,21 @@ export default function App() {
     }
   };
   const [auto, setAuto] = useState<{ jobs: CronJobInfo[]; sessions: SessionInfo[] } | null | "old-server">(null);
+  const [artifacts, setArtifacts] = useState<{ artifacts: ArtifactSummary[]; invalid: number; truncated: boolean } | null | "old-server">(null);
+  const [activeArtifact, setActiveArtifact] = useState<ArtifactDetails | null>(null);
+  const [artifactRevisions, setArtifactRevisions] = useState<ArtifactRevision[]>([]);
+  const [artifactBusy, setArtifactBusy] = useState<"" | "import" | "open" | "verify">("");
+  const artifactOpenRequestRef = useRef(0);
+  const refreshArtifacts = useCallback(async (): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) return;
+    try {
+      const next = await client.listArtifacts();
+      setArtifacts(next ?? "old-server");
+    } catch {
+      // The main connection banner owns transport failures; a later zone entry retries this read.
+    }
+  }, []);
   // 🤖 place: read-only replay of an automated run (never a live conversation — fork to continue)
   const [autoReplay, setAutoReplay] = useState<{ id: string; title: string; sourceName?: string; cwd: string; items: { role: string; text: string }[] } | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -455,10 +474,13 @@ export default function App() {
     if (z === "chat" || z === "projects") {
       const candidateId = activeByZoneRef.current[z];
       const candidate = candidateId ? sessionsRef.current.find((session) => session.id === candidateId) : undefined;
-      setActive(candidate && sessionPlace(candidate) === z ? candidate.id : null);
+      setActive(z === "projects" && activeArtifact
+        ? null
+        : candidate && sessionPlace(candidate) === z ? candidate.id : null);
     } else {
       setActive(null);
     }
+    if (z === "projects") void refreshArtifacts();
     if (z === "settings" && clientRef.current) {
       void Promise.all([clientRef.current.listPlugins(), clientRef.current.listSkills()]).then(([pl, sk]) => {
         setPlugins(pl.plugins);
@@ -902,6 +924,9 @@ export default function App() {
     attachedSessionsRef.current.clear();
     pendingSendDispatchesRef.current = {};
     previous?.close();
+    artifactOpenRequestRef.current += 1;
+    setActiveArtifact(null);
+    setArtifactRevisions([]);
     setPhase("connecting");
     setErr("");
     let c: HaraClient | null = null;
@@ -965,6 +990,7 @@ export default function App() {
         setZoneRaw("chat");
       }
       void c.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
+      void c.listArtifacts().then((a) => setArtifacts(a ?? "old-server")).catch(() => {});
       void c.listModels().then(setModelInfo).catch(() => {});
       setPhase("ready");
     } catch (e: any) {
@@ -1115,6 +1141,10 @@ export default function App() {
   const newSession = async (cwd?: string): Promise<string | null> => {
     const c = clientRef.current;
     if (!c) return null;
+    artifactOpenRequestRef.current += 1;
+    setArtifactBusy("");
+    setActiveArtifact(null);
+    setArtifactRevisions([]);
     const sessionHint = { cwd: cwd ?? server?.cwd ?? "", source: "interactive" };
     const requestId = ++sessionOpenRequestRef.current;
     const r = await c.createSession({ ...(cwd ? { cwd } : {}), ...(defaultApproval ? { approval: defaultApproval } : {}) });
@@ -1131,6 +1161,10 @@ export default function App() {
   const openSession = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
+    artifactOpenRequestRef.current += 1;
+    setArtifactBusy("");
+    setActiveArtifact(null);
+    setArtifactRevisions([]);
     const session = sessionsRef.current.find((candidate) => candidate.id === id);
     const expected = session ?? {
       cwd: zoneRef.current === "chat" && home ? `${home}/.hara/workspace` : server?.cwd ?? "",
@@ -1221,9 +1255,93 @@ export default function App() {
   const openProject = async () => {
     const dir = await openDialog({ directory: true, title: t("openProject") });
     if (typeof dir !== "string" || !dir) return;
+    setActiveArtifact(null);
+    setArtifactRevisions([]);
     rememberProject(dir);
     setZone("projects");
     await newSession(dir);
+  };
+
+  const importArtifactFile = async () => {
+    const client = clientRef.current;
+    if (!client) return;
+    if (!client.supports("artifact.import")) {
+      setArtifacts("old-server");
+      setErr(t("artifactNeedsUpdate"));
+      return;
+    }
+    const selected = await openDialog({
+      title: t("importFile"),
+      multiple: false,
+      filters: [{
+        name: t("deliverables"),
+        extensions: ["pptx", "ppt", "odp", "xlsx", "xls", "csv", "ods", "docx", "doc", "odt", "rtf", "md", "txt"],
+      }],
+    });
+    if (typeof selected !== "string" || !selected) return;
+    const requestId = ++artifactOpenRequestRef.current;
+    setArtifactBusy("import");
+    setErr("");
+    try {
+      const imported = await client.importArtifact(selected);
+      const [verified, revisionResult, list] = await Promise.all([
+        client.getArtifact(imported.artifact.artifactId),
+        client.listArtifactRevisions(imported.artifact.artifactId),
+        client.listArtifacts(),
+      ]);
+      if (requestId !== artifactOpenRequestRef.current) return;
+      setArtifacts(list ?? "old-server");
+      setActiveArtifact(verified);
+      setArtifactRevisions(revisionResult.revisions);
+      setActive(null);
+      setSplit(null);
+      setAutoReplay(null);
+    } catch (error: any) {
+      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+    } finally {
+      if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+    }
+  };
+
+  const openArtifact = async (artifactId: string) => {
+    const client = clientRef.current;
+    if (!client) return;
+    const requestId = ++artifactOpenRequestRef.current;
+    setArtifactBusy("open");
+    setErr("");
+    try {
+      const [details, revisionResult] = await Promise.all([
+        client.getArtifact(artifactId),
+        client.listArtifactRevisions(artifactId),
+      ]);
+      if (requestId !== artifactOpenRequestRef.current) return;
+      setActiveArtifact(details);
+      setArtifactRevisions(revisionResult.revisions);
+      setActive(null);
+      setSplit(null);
+      setAutoReplay(null);
+    } catch (error: any) {
+      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+    } finally {
+      if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+    }
+  };
+
+  const verifyActiveArtifact = async () => {
+    const client = clientRef.current;
+    const artifactId = activeArtifact?.artifact.artifactId;
+    if (!client || !artifactId) return;
+    const requestId = ++artifactOpenRequestRef.current;
+    setArtifactBusy("verify");
+    setErr("");
+    try {
+      const details = await client.getArtifact(artifactId);
+      if (requestId === artifactOpenRequestRef.current) setActiveArtifact(details);
+    } catch (error: any) {
+      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+    } finally {
+      if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+    }
   };
 
   const creatingRef = useRef(false); // double-click guard — the assistant is ONE session, never two
@@ -2298,11 +2416,53 @@ export default function App() {
       {zone === "projects" && (
         <aside className="sidebar">
           {brandBar}
-          <button className="new" onClick={() => void openProject()}>
-            {t("openProject")}
-          </button>
+          <div className="artifact-sidebar-actions">
+            <button className="new" onClick={() => void openProject()} disabled={Boolean(artifactBusy)}>
+              {t("openProject")}
+            </button>
+            <button className="new ghost" onClick={() => void importArtifactFile()} disabled={Boolean(artifactBusy)}>
+              {artifactBusy === "import" ? t("artifactImporting") : t("importFile")}
+            </button>
+          </div>
           {searchBox}
           <div className="sessions" key={zone}>
+            <div className="group-h artifact-shelf-head">
+              {t("deliverables")}
+              <span className="count">{artifacts && artifacts !== "old-server" ? artifacts.artifacts.length : 0}</span>
+            </div>
+            {artifacts === "old-server" ? (
+              <div className="artifact-sidebar-empty">{t("artifactNeedsUpdate")}</div>
+            ) : artifacts?.artifacts.length ? (
+              artifacts.artifacts.map((artifact) => (
+                <button
+                  type="button"
+                  className={`artifact-sidebar-card ${activeArtifact?.artifact.artifactId === artifact.artifactId ? "on" : ""}`}
+                  key={artifact.artifactId}
+                  onClick={() => void openArtifact(artifact.artifactId)}
+                  title={artifact.title}
+                >
+                  <span className={`artifact-sidebar-mark ${artifact.kind}`} />
+                  <span className="artifact-sidebar-copy">
+                    <strong>{artifact.title}</strong>
+                    <small>
+                      {artifact.kind === "presentation"
+                        ? t("artifactTypePresentation")
+                        : artifact.kind === "spreadsheet"
+                          ? t("artifactTypeSpreadsheet")
+                          : t("artifactTypeDocument")}
+                      {" · "}
+                      {artifact.extension.toUpperCase().slice(1)}
+                    </small>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="artifact-sidebar-empty">{artifacts ? t("noDeliverables") : t("loading")}</div>
+            )}
+            {artifacts !== "old-server" && artifacts && artifacts.invalid > 0 && (
+              <div className="artifact-sidebar-empty" role="alert">{t("artifactNeedsRepair")}</div>
+            )}
+            <div className="group-h artifact-shelf-head">{t("zoneProjects")}</div>
             {groups.map(([cwd, list]) => (
               <div key={cwd}>
                 <div className="group-h" title={cwd} onClick={() => toggleGroup(cwd)}>
@@ -2811,6 +2971,35 @@ export default function App() {
             </div>
           )}
         </main>
+      ) : activeArtifact && zone === "projects" ? (
+        <ArtifactWorkbench
+          details={activeArtifact}
+          revisions={artifactRevisions}
+          verifying={artifactBusy === "verify"}
+          onVerify={() => void verifyActiveArtifact()}
+          onImportAnother={() => void importArtifactFile()}
+          copy={{
+            workbench: t("artifactWorkbench"),
+            local: t("artifactLocal"),
+            safeImport: t("artifactSafeImport"),
+            safeImportHint: t("artifactSafeImportHint"),
+            previewPending: t("artifactPreviewPending"),
+            verify: t("artifactVerify"),
+            verifying: t("artifactVerifying"),
+            verified: t("artifactVerified"),
+            importAnother: t("artifactImportAnother"),
+            currentVersion: t("artifactCurrentVersion"),
+            fileType: t("artifactFileType"),
+            size: t("artifactSize"),
+            integrity: t("artifactIntegrity"),
+            history: t("artifactHistory"),
+            nextStage: t("artifactNextStage"),
+            nextStageHint: t("artifactNextStageHint"),
+            typePresentation: t("artifactTypePresentation"),
+            typeSpreadsheet: t("artifactTypeSpreadsheet"),
+            typeDocument: t("artifactTypeDocument"),
+          }}
+        />
       ) : split && zone === "projects" ? (
         // the design/video loop: talk to the agent on the left, watch the live preview react on the right
         <div className="work">

@@ -34,7 +34,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
             provider: "qwen",
             model: "glm-5",
             capabilities: {
-              methods: ["session.send", "session.steer"],
+              methods: ["session.send", "session.steer", "artifact.import", "artifact.list"],
               events: ["event.task_state"],
             },
           }
@@ -61,6 +61,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   await client.connect("127.0.0.1", 4242);
   await client.initialize("redacted-token");
   assert.equal(client.supports("session.steer"), true);
+  assert.equal(client.supports("artifact.import"), true);
   assert.equal(client.supportsEvent("event.task_state"), true);
 
   await client.steer("session-1", "Use the new title", "turn-1");
@@ -72,6 +73,18 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
       sessionId: "session-1",
       text: "Use the new title",
       expectedTurnId: "turn-1",
+    },
+  });
+
+  await client.importArtifact("/workspace/brief.docx", { title: "Client brief", kind: "document" });
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 3,
+    method: "artifact.import",
+    params: {
+      sourcePath: "/workspace/brief.docx",
+      title: "Client brief",
+      kind: "document",
     },
   });
 

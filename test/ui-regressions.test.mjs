@@ -271,6 +271,34 @@ test("the assistant empty state is a plain-language workbench backed by real ses
   assert.match(css, /@media \(max-width: 760px\)/, "the workbench must remain usable in a narrow window");
 });
 
+test("the deliverables workbench stays serve-backed, local-first, and honest about the phase-one boundary", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const workbench = readFileSync(`${root}/src/ArtifactWorkbench.tsx`, "utf8");
+  const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+
+  for (const method of ["artifact.import", "artifact.list", "artifact.get", "artifact.revisions"]) {
+    assert.match(client, new RegExp(method.replace(".", "\\.")));
+  }
+  assert.match(app, /openDialog\(\{[\s\S]*extensions: \["pptx"[\s\S]*"docx"[\s\S]*"md"/);
+  assert.match(app, /await client\.importArtifact\(selected\)/);
+  assert.match(app, /client\.getArtifact\(imported\.artifact\.artifactId\)/, "a new import is integrity-checked before display");
+  assert.match(app, /<ArtifactWorkbench/);
+  assert.doesNotMatch(app, /invoke\([^)]*"artifact\./, "the renderer never bypasses hara serve for Artifact authority");
+  assert.match(workbench, /<button[\s\S]*artifact-verify-action/, "integrity verification is keyboard accessible");
+  assert.match(workbench, /artifact-preview-disclaimer/, "the decorative placeholder is explicitly labeled as not being a real layout preview");
+  assert.match(copy, /原文件没有被修改/);
+  assert.match(copy, /才会显示真实版面预览/);
+  assert.match(copy, /当前底座不会修改或执行导入文件/);
+  assert.match(copy, /matching reviewed capability/, "English copy also avoids promising an unavailable editor/exporter");
+  assert.match(css, /\.artifact-workbench-grid/);
+  assert.match(css, /\.artifact-sidebar-card:focus-visible/);
+  assert.match(css, /\.artifact-verify-action:focus-visible/);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.artifact-workbench/);
+  assert.match(css, /@media \(prefers-reduced-motion: no-preference\)/);
+});
+
 test("switching places cannot reuse a conversation from the wrong place", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
 
@@ -278,7 +306,11 @@ test("switching places cannot reuse a conversation from the wrong place", () => 
   assert.match(app, /sessionOpenRequestRef/);
   assert.match(app, /sessionActivationAllowed/, "late async session results must pass both generation and place checks");
   assert.match(app, /sessionPlace\(candidate\) === z/);
-  assert.match(app, /setActive\(candidate && sessionPlace\(candidate\) === z \? candidate\.id : null\)/);
+  assert.match(
+    app,
+    /setActive\(z === "projects" && activeArtifact\s+\? null\s+: candidate && sessionPlace\(candidate\) === z \? candidate\.id : null\)/,
+    "an open deliverable must not be replaced by the remembered project conversation",
+  );
   assert.match(app, /sessionsRef\.current = list\.sessions;\s+setSessions\(list\.sessions\)/, "fork routing sees a refreshed session before changing place");
   assert.match(app, /clearActiveSession\(id\)/, "archiving or deleting must also clear the remembered place");
 });

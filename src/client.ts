@@ -27,10 +27,77 @@ export interface CronJobInfo {
   cwd: string;
   enabled: boolean;
   deliver?: string;
+  deliverMode?: "always" | "on-output" | "on-error";
+  alertAfter?: number;
   lastRunAt?: number;
   lastStatus?: "ok" | "error";
   lastError?: string;
   schedule?: string; // human description ("every 30m", "cron 0 9 * * *")
+}
+
+export type ArtifactKind = "presentation" | "spreadsheet" | "document";
+
+export interface ArtifactLockRef {
+  id: string;
+  version: string;
+  sha256: string;
+}
+
+export interface ArtifactRecord {
+  protocol: "artifact/1";
+  artifactId: string;
+  kind: ArtifactKind;
+  title: string;
+  currentRevisionId: string;
+  origin?: string;
+  dataResidency?: "local" | "cn" | "global";
+  capabilityLock?: ArtifactLockRef;
+  templateLock?: ArtifactLockRef;
+}
+
+export interface ArtifactRevision {
+  revisionId: string;
+  artifactId: string;
+  parentRevisionId?: string;
+  baseRevisionId: string;
+  actor: "user" | "agent" | "migration";
+  taskRunId?: string;
+  contentRef: string;
+  assetRefs: string[];
+  contentDigest: string;
+  changedPaths: string[];
+  createdAt: string;
+}
+
+export interface ArtifactContentInfo {
+  contentRef: string;
+  extension: string;
+  mediaType: string;
+  byteSize: number;
+  sha256: string;
+}
+
+export interface ArtifactDetails {
+  artifact: ArtifactRecord;
+  currentRevision: ArtifactRevision;
+  content: ArtifactContentInfo;
+}
+
+export interface ArtifactSummary {
+  artifactId: string;
+  kind: ArtifactKind;
+  title: string;
+  currentRevisionId: string;
+  updatedAt: string;
+  extension: string;
+  mediaType: string;
+  byteSize: number;
+}
+
+export interface ArtifactListResult {
+  artifacts: ArtifactSummary[];
+  invalid: number;
+  truncated: boolean;
 }
 
 export interface PanelSpec {
@@ -335,6 +402,25 @@ export class HaraClient {
       if (e?.code === -32601) return null;
       throw e;
     }
+  }
+  /** Local-first Office Artifact runtime (serve ≥0.128). Null list means the connected engine is older. */
+  async listArtifacts(): Promise<ArtifactListResult | null> {
+    if (this.methods.size > 0 && !this.supports("artifact.list")) return null;
+    try {
+      return await this.call("artifact.list", {});
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  importArtifact(sourcePath: string, opts?: { title?: string; kind?: ArtifactKind }) {
+    return this.call<ArtifactDetails>("artifact.import", { sourcePath, ...(opts ?? {}) });
+  }
+  getArtifact(artifactId: string) {
+    return this.call<ArtifactDetails>("artifact.get", { artifactId });
+  }
+  listArtifactRevisions(artifactId: string) {
+    return this.call<{ artifactId: string; revisions: ArtifactRevision[] }>("artifact.revisions", { artifactId });
   }
   resumeSession(sessionId: string) {
     return this.call<{
