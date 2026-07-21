@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.33 — Hara 0.132.4 managed CLI and connection settings
+
+- Add a user-owned Enterprise connections card: users enter their own Hara Control URL and one-time
+  registration code, then can switch, re-enroll, explicitly check, or locally remove the connection. No
+  enterprise URL is prefilled; one-time codes leave renderer state before the request, and device tokens never
+  cross into the renderer. Local removal warns that administrator-side revocation remains separate.
+- Show redacted WeChat and Feishu runtime health from the local Hara engine, with actual connection/activity
+  timestamps and focused recovery steps. The status refreshes every two minutes and never calls a model or
+  spends model tokens.
+- Automatically install command-line Hara from Desktop's exact verified sidecar when the managed
+  path is missing, then keep only Desktop-owned, unmodified copies synchronized after later Desktop
+  updates. Each install is staged, content-verified, atomically replaced, and bound to a private
+  SHA-256 ownership receipt at `~/.hara/desktop-cli.json`.
+- Show whether the CLI is missing, stale, current, manually managed, blocked, or unavailable, plus
+  the bundled version, destination path, and PATH guidance. Existing npm/source/manual installs are
+  never silently overwritten; users can explicitly opt the managed path into automatic updates.
+- Bundle the exact verified Hara CLI `0.132.4` release, including observable chat-gateway status, scoped Web
+  proxy support, complete configuration redaction, immediate prompt-key routing, and reliable non-Git
+  `@path` completion on slow machines.
+
 ## 0.1.32 — hara 0.130.1 Windows serve and updater handoff
 
 - Bundle Hara CLI `0.130.1`, which omits inapplicable POSIX descriptor-mode operations on Windows

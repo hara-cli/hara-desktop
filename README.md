@@ -56,7 +56,7 @@ approvals · steer queue · notifications + dock badge · search / pin / rename 
 mentions · optional non-focusable task-status pet with local Codex v1/v2 package compatibility ·
 i18n (en/zh) · local Deliverables shelf for safe import, integrity checks, and revision history ·
 plain-language specialist work starters · signed auto-updates from GitHub Releases · notarized Developer ID macOS
-builds · 4-platform CI with
+builds · user-added Hara Control connections and redacted WeChat/Feishu connection health · safe automatic installation/update of Desktop's exact bundled CLI at `~/.hara/bin/hara` · 4-platform CI with
 package-smoke gate. See `WORKFLOW.md` for the two-repo release train.
 
 The Deliverables foundation does not yet render, edit, or export imported Office files; the format

@@ -1900,6 +1900,97 @@ select {
   }
 }
 
+/* Organization routes are explicit user-owned connections, separate from provider presets. */
+.organization-connection + .organization-connection {
+  border-top: 1px solid #242429;
+}
+.organization-connection .settings-item {
+  border-bottom: 0;
+}
+.organization-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 0 18px 12px;
+}
+.organization-check {
+  margin-right: auto;
+  font-size: 10px;
+}
+.organization-check.ok {
+  color: #93c9a3;
+}
+.organization-check.error {
+  color: #e3a08f;
+}
+button.organization-remove {
+  color: #d99080;
+}
+.organization-form {
+  padding: 18px;
+  border-top: 1px solid #303038;
+  background: #131315;
+}
+.organization-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+.organization-form label {
+  display: block;
+  margin-bottom: 14px;
+}
+.organization-form label > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #aaa6a0;
+  font-size: 11px;
+  font-weight: 600;
+}
+.organization-form input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #34343a;
+  border-radius: 5px;
+  outline: none;
+  background: #1a1a1e;
+  color: var(--fg);
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+.organization-form input:focus {
+  border-color: #7b4a41;
+  box-shadow: 0 0 0 2px rgba(217, 68, 44, 0.08);
+}
+.organization-form label small {
+  display: block;
+  margin-top: 5px;
+  color: #716e69;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.organization-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid #303038;
+}
+@media (max-width: 760px) {
+  .organization-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .organization-actions {
+    justify-content: flex-start;
+  }
+  .organization-check {
+    width: 100%;
+  }
+}
+
 /* model/provider control plane — a compact connection rack, not a generic settings card */
 .provider-console {
   --provider-line: #303038;

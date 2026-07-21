@@ -2,7 +2,7 @@
 // desktop is a WebSocket JSON-RPC client rendered in the webview. Rust only does what the webview
 // can't: read the serve discovery file and spawn the server.
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 #[cfg(windows)]
@@ -16,6 +16,10 @@ const PET_SHEET_WIDTH: u32 = 1536;
 const PET_FRAME_WIDTH: u32 = 192;
 const PET_FRAME_HEIGHT: u32 = 208;
 const MAX_SERVE_DISCOVERY_BYTES: u64 = 64 * 1024;
+const MAX_MANAGED_CLI_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_MANAGED_CLI_RECEIPT_BYTES: u64 = 16 * 1024;
+const MANAGED_CLI_RECEIPT_SCHEMA: u8 = 1;
+const BUNDLED_CLI_VERSION: &str = include_str!("../binaries/SIDECAR_VERSION");
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +54,27 @@ struct PetAsset {
     rows: u32,
     frame_width: u32,
     frame_height: u32,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CommandLineHaraStatus {
+    path: String,
+    bundled_version: String,
+    available: bool,
+    installed: bool,
+    current: bool,
+    managed: bool,
+    blocked: bool,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ManagedCliReceipt {
+    schema_version: u8,
+    managed_path: String,
+    bundled_version: String,
+    sha256: String,
 }
 
 #[derive(Debug)]
@@ -531,13 +556,433 @@ fn bundled_sidecar_path(app_executable: &Path, windows: bool) -> Option<PathBuf>
         .map(|directory| directory.join(bundled_sidecar_name(windows)))
 }
 
+fn managed_cli_path(data_directory: &Path, windows: bool) -> PathBuf {
+    data_directory
+        .join("bin")
+        .join(bundled_sidecar_name(windows))
+}
+
+fn managed_cli_receipt_path(data_directory: &Path) -> PathBuf {
+    data_directory.join("desktop-cli.json")
+}
+
+fn bounded_regular_file(path: &Path, label: &str) -> Result<Option<fs::Metadata>, String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("inspect {label}: {error}")),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(format!("{label} must be a regular file, not a link"));
+    }
+    if metadata.len() == 0 || metadata.len() > MAX_MANAGED_CLI_BYTES {
+        return Err(format!("{label} has an invalid size"));
+    }
+    Ok(Some(metadata))
+}
+
+fn files_are_identical(left: &Path, right: &Path) -> Result<bool, String> {
+    let Some(left_metadata) = bounded_regular_file(left, "bundled Hara CLI")? else {
+        return Ok(false);
+    };
+    let Some(right_metadata) = bounded_regular_file(right, "installed command-line Hara")? else {
+        return Ok(false);
+    };
+    if left_metadata.len() != right_metadata.len() {
+        return Ok(false);
+    }
+
+    let mut left_file =
+        fs::File::open(left).map_err(|error| format!("open bundled Hara CLI: {error}"))?;
+    let mut right_file = fs::File::open(right)
+        .map_err(|error| format!("open installed command-line Hara: {error}"))?;
+    let mut left_buffer = [0_u8; 64 * 1024];
+    let mut right_buffer = [0_u8; 64 * 1024];
+    loop {
+        let left_read = left_file
+            .read(&mut left_buffer)
+            .map_err(|error| format!("read bundled Hara CLI: {error}"))?;
+        let right_read = right_file
+            .read(&mut right_buffer)
+            .map_err(|error| format!("read installed command-line Hara: {error}"))?;
+        if left_read != right_read || left_buffer[..left_read] != right_buffer[..right_read] {
+            return Ok(false);
+        }
+        if left_read == 0 {
+            return Ok(true);
+        }
+    }
+}
+
+fn regular_file_sha256(path: &Path, label: &str) -> Result<Option<String>, String> {
+    use sha2::{Digest, Sha256};
+
+    let Some(_) = bounded_regular_file(path, label)? else {
+        return Ok(None);
+    };
+    let mut file = fs::File::open(path).map_err(|error| format!("open {label}: {error}"))?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("read {label}: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(Some(format!("{:x}", digest.finalize())))
+}
+
+fn read_managed_cli_receipt(data_directory: &Path) -> Result<Option<ManagedCliReceipt>, String> {
+    let path = managed_cli_receipt_path(data_directory);
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("inspect Desktop CLI receipt: {error}")),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Desktop CLI receipt must be a regular file, not a link".into());
+    }
+    if metadata.len() == 0 || metadata.len() > MAX_MANAGED_CLI_RECEIPT_BYTES {
+        return Err("Desktop CLI receipt has an invalid size".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o077 != 0 {
+            return Err("Desktop CLI receipt must be private and owned by this user".into());
+        }
+    }
+    let raw =
+        fs::read_to_string(&path).map_err(|error| format!("read Desktop CLI receipt: {error}"))?;
+    let receipt: ManagedCliReceipt = serde_json::from_str(&raw)
+        .map_err(|error| format!("parse Desktop CLI receipt: {error}"))?;
+    if receipt.schema_version != MANAGED_CLI_RECEIPT_SCHEMA
+        || receipt.managed_path.trim().is_empty()
+        || receipt.bundled_version.trim().is_empty()
+        || receipt.sha256.len() != 64
+        || !receipt.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err("Desktop CLI receipt is invalid".into());
+    }
+    Ok(Some(receipt))
+}
+
+fn command_line_hara_status_at(
+    app_executable: &Path,
+    data_directory: &Path,
+    windows: bool,
+) -> CommandLineHaraStatus {
+    let source = bundled_sidecar_path(app_executable, windows);
+    let destination = managed_cli_path(data_directory, windows);
+    let available = source
+        .as_deref()
+        .and_then(|path| {
+            bounded_regular_file(path, "bundled Hara CLI")
+                .ok()
+                .flatten()
+        })
+        .is_some();
+    let destination_state = bounded_regular_file(&destination, "installed command-line Hara");
+    let installed = matches!(destination_state, Ok(Some(_)));
+    let receipt_state = read_managed_cli_receipt(data_directory);
+    let destination_digest = if installed && matches!(receipt_state, Ok(Some(_))) {
+        regular_file_sha256(&destination, "installed command-line Hara")
+    } else {
+        Ok(None)
+    };
+    let managed = matches!(
+        (&receipt_state, &destination_digest),
+        (Ok(Some(receipt)), Ok(Some(digest)))
+            if receipt.managed_path == destination.to_string_lossy()
+                && receipt.sha256.eq_ignore_ascii_case(digest)
+    );
+    let blocked =
+        destination_state.is_err() || receipt_state.is_err() || destination_digest.is_err();
+    let current = available
+        && installed
+        && source
+            .as_deref()
+            .is_some_and(|path| files_are_identical(path, &destination).unwrap_or(false));
+    CommandLineHaraStatus {
+        path: destination.to_string_lossy().into_owned(),
+        bundled_version: BUNDLED_CLI_VERSION.trim().to_string(),
+        available,
+        installed,
+        current,
+        managed,
+        blocked,
+    }
+}
+
+fn ensure_managed_cli_directory(data_directory: &Path) -> Result<PathBuf, String> {
+    for (directory, label) in [
+        (data_directory, "Hara data directory"),
+        (&data_directory.join("bin"), "Hara command directory"),
+    ] {
+        match fs::symlink_metadata(directory) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(format!("{label} must be a real directory, not a link"));
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::MetadataExt;
+                    if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o022 != 0
+                    {
+                        return Err(format!(
+                            "{label} must be owned by this user and not writable by other users"
+                        ));
+                    }
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(directory).map_err(|error| format!("create {label}: {error}"))?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    fs::set_permissions(directory, fs::Permissions::from_mode(0o700))
+                        .map_err(|error| format!("secure {label}: {error}"))?;
+                }
+            }
+            Err(error) => return Err(format!("inspect {label}: {error}")),
+        }
+    }
+    Ok(data_directory.join("bin"))
+}
+
+fn create_managed_cli_temp(directory: &Path) -> Result<(PathBuf, fs::File), String> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    for attempt in 0..32_u8 {
+        let path = directory.join(format!(
+            ".hara-install-{}-{nonce}-{attempt}",
+            std::process::id()
+        ));
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o700).custom_flags(libc::O_NOFOLLOW);
+        }
+        match options.open(&path) {
+            Ok(file) => return Ok((path, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("create staged Hara CLI: {error}")),
+        }
+    }
+    Err("could not reserve a staged Hara CLI path".into())
+}
+
+fn create_managed_cli_receipt_temp(directory: &Path) -> Result<(PathBuf, fs::File), String> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    for attempt in 0..32_u8 {
+        let path = directory.join(format!(
+            ".desktop-cli-receipt-{}-{nonce}-{attempt}",
+            std::process::id()
+        ));
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        }
+        match options.open(&path) {
+            Ok(file) => return Ok((path, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("create staged Desktop CLI receipt: {error}")),
+        }
+    }
+    Err("could not reserve a staged Desktop CLI receipt path".into())
+}
+
+#[cfg(not(windows))]
+fn replace_managed_file(staged: &Path, destination: &Path, label: &str) -> Result<(), String> {
+    fs::rename(staged, destination).map_err(|error| format!("{label}: {error}"))
+}
+
+#[cfg(windows)]
+fn replace_managed_file(staged: &Path, destination: &Path, label: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+    let staged_wide: Vec<u16> = staged.as_os_str().encode_wide().chain(Some(0)).collect();
+    let destination_wide: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let result = unsafe {
+        MoveFileExW(
+            staged_wide.as_ptr(),
+            destination_wide.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if result == 0 {
+        return Err(format!("{label}: {}", std::io::Error::last_os_error()));
+    }
+    Ok(())
+}
+
+fn write_managed_cli_receipt(
+    data_directory: &Path,
+    destination: &Path,
+    sha256: String,
+) -> Result<(), String> {
+    let receipt = ManagedCliReceipt {
+        schema_version: MANAGED_CLI_RECEIPT_SCHEMA,
+        managed_path: destination.to_string_lossy().into_owned(),
+        bundled_version: BUNDLED_CLI_VERSION.trim().to_string(),
+        sha256,
+    };
+    let serialized = serde_json::to_vec(&receipt)
+        .map_err(|error| format!("serialize Desktop CLI receipt: {error}"))?;
+    let path = managed_cli_receipt_path(data_directory);
+    let (staged_path, mut staged_file) = create_managed_cli_receipt_temp(data_directory)?;
+    let result = (|| -> Result<(), String> {
+        staged_file
+            .write_all(&serialized)
+            .and_then(|_| staged_file.flush())
+            .and_then(|_| staged_file.sync_all())
+            .map_err(|error| format!("persist staged Desktop CLI receipt: {error}"))?;
+        drop(staged_file);
+        replace_managed_file(&staged_path, &path, "install Desktop CLI receipt")?;
+        if let Ok(directory_file) = fs::File::open(data_directory) {
+            let _ = directory_file.sync_all();
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_file(&staged_path);
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn install_command_line_hara_at(
+    app_executable: &Path,
+    data_directory: &Path,
+    windows: bool,
+) -> Result<CommandLineHaraStatus, String> {
+    let source = bundled_sidecar_path(app_executable, windows)
+        .ok_or_else(|| "could not resolve the Desktop-bundled Hara CLI".to_string())?;
+    bounded_regular_file(&source, "bundled Hara CLI")?
+        .ok_or_else(|| "this Desktop build does not contain an installable Hara CLI".to_string())?;
+    let directory = ensure_managed_cli_directory(data_directory)?;
+    let destination = managed_cli_path(data_directory, windows);
+    read_managed_cli_receipt(data_directory)?;
+    if let Err(error) = bounded_regular_file(&destination, "installed command-line Hara") {
+        return Err(error);
+    }
+
+    let source_sha256 = regular_file_sha256(&source, "bundled Hara CLI")?
+        .ok_or_else(|| "this Desktop build does not contain an installable Hara CLI".to_string())?;
+
+    let mut source_file =
+        fs::File::open(&source).map_err(|error| format!("open bundled Hara CLI: {error}"))?;
+    let source_length = source_file
+        .metadata()
+        .map_err(|error| format!("inspect opened Hara CLI: {error}"))?
+        .len();
+    let (staged_path, mut staged_file) = create_managed_cli_temp(&directory)?;
+    let staged_result = (|| -> Result<(), String> {
+        let copied = std::io::copy(&mut source_file, &mut staged_file)
+            .map_err(|error| format!("copy bundled Hara CLI: {error}"))?;
+        if copied != source_length {
+            return Err("the staged Hara CLI is incomplete".into());
+        }
+        staged_file
+            .flush()
+            .and_then(|_| staged_file.sync_all())
+            .map_err(|error| format!("persist staged Hara CLI: {error}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&staged_path, fs::Permissions::from_mode(0o755))
+                .map_err(|error| format!("make staged Hara CLI executable: {error}"))?;
+        }
+        if !files_are_identical(&source, &staged_path)? {
+            return Err("the staged Hara CLI did not match the Desktop bundle".into());
+        }
+        drop(staged_file);
+        replace_managed_file(&staged_path, &destination, "install command-line Hara")?;
+        if let Ok(directory_file) = fs::File::open(&directory) {
+            let _ = directory_file.sync_all();
+        }
+        Ok(())
+    })();
+    if let Err(error) = staged_result {
+        let _ = fs::remove_file(&staged_path);
+        return Err(error);
+    }
+
+    write_managed_cli_receipt(data_directory, &destination, source_sha256)?;
+
+    let status = command_line_hara_status_at(app_executable, data_directory, windows);
+    if !status.current || !status.managed {
+        return Err("installed command-line Hara could not be verified".into());
+    }
+    Ok(status)
+}
+
+fn synchronize_command_line_hara_at(
+    app_executable: &Path,
+    data_directory: &Path,
+    windows: bool,
+) -> Result<CommandLineHaraStatus, String> {
+    let status = command_line_hara_status_at(app_executable, data_directory, windows);
+    if status.blocked || !status.available || status.current {
+        return Ok(status);
+    }
+    if !status.installed || status.managed {
+        return install_command_line_hara_at(app_executable, data_directory, windows);
+    }
+    Ok(status)
+}
+
+#[tauri::command]
+fn inspect_command_line_hara() -> Result<CommandLineHaraStatus, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("resolve Hara Desktop executable: {error}"))?;
+    Ok(command_line_hara_status_at(
+        &executable,
+        &hara_data_dir()?,
+        cfg!(windows),
+    ))
+}
+
+#[tauri::command]
+fn synchronize_command_line_hara() -> Result<CommandLineHaraStatus, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("resolve Hara Desktop executable: {error}"))?;
+    synchronize_command_line_hara_at(&executable, &hara_data_dir()?, cfg!(windows))
+}
+
+#[tauri::command]
+fn install_command_line_hara() -> Result<CommandLineHaraStatus, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("resolve Hara Desktop executable: {error}"))?;
+    install_command_line_hara_at(&executable, &hara_data_dir()?, cfg!(windows))
+}
+
 fn fallback_sidecar_path(
     data_directory: &Path,
     path_environment: Option<&std::ffi::OsStr>,
     windows: bool,
 ) -> Option<PathBuf> {
     let name = bundled_sidecar_name(windows);
-    let managed = data_directory.join("bin").join(name);
+    let managed = managed_cli_path(data_directory, windows);
     if managed.is_file() {
         return Some(managed);
     }
@@ -1013,6 +1458,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_discovery,
             start_serve,
+            inspect_command_line_hara,
+            synchronize_command_line_hara,
+            install_command_line_hara,
             terminate_legacy_serve,
             start_panel,
             get_home,
@@ -1129,6 +1577,160 @@ mod pet_tests {
         fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
         fs::write(&sidecar, b"test sidecar").unwrap();
         assert_eq!(fallback_sidecar_path(&data, None, true).unwrap(), sidecar);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn desktop_installs_and_refreshes_an_exact_managed_command_line_hara() {
+        let unique = format!(
+            "hara-desktop-managed-cli-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let app_directory = root.join("app");
+        let home = root.join("home");
+        let data = home.join(".hara");
+        let app = app_directory.join("hara-desktop");
+        let bundled = app_directory.join("hara");
+        fs::create_dir_all(&app_directory).unwrap();
+        fs::create_dir_all(&home).unwrap();
+        fs::write(&bundled, b"bundled-cli-v1").unwrap();
+
+        let before = command_line_hara_status_at(&app, &data, false);
+        assert!(before.available);
+        assert!(!before.installed);
+        assert!(!before.current);
+        assert!(!before.blocked);
+
+        let installed = synchronize_command_line_hara_at(&app, &data, false).unwrap();
+        let destination = data.join("bin").join("hara");
+        assert!(installed.current);
+        assert!(installed.managed);
+        assert_eq!(installed.path, destination.to_string_lossy());
+        assert_eq!(fs::read(&destination).unwrap(), b"bundled-cli-v1");
+        assert_eq!(installed.bundled_version, BUNDLED_CLI_VERSION.trim());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_ne!(
+                fs::metadata(&destination).unwrap().permissions().mode() & 0o111,
+                0
+            );
+            assert_eq!(
+                fs::metadata(managed_cli_receipt_path(&data))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o077,
+                0
+            );
+        }
+
+        fs::write(&bundled, b"bundled-cli-v2").unwrap();
+        let stale = command_line_hara_status_at(&app, &data, false);
+        assert!(stale.installed);
+        assert!(stale.managed);
+        assert!(!stale.current);
+        synchronize_command_line_hara_at(&app, &data, false).unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), b"bundled-cli-v2");
+        let refreshed = command_line_hara_status_at(&app, &data, false);
+        assert!(refreshed.current);
+        assert!(refreshed.managed);
+        let staged = fs::read_dir(data.join("bin"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".hara-install-")
+            })
+            .count();
+        assert_eq!(
+            staged, 0,
+            "successful installation leaves no staged executable"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn automatic_sync_never_overwrites_an_unmanaged_or_modified_cli() {
+        let unique = format!(
+            "hara-desktop-unmanaged-cli-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let app_directory = root.join("app");
+        let data = root.join("home").join(".hara");
+        let app = app_directory.join("hara-desktop");
+        let bundled = app_directory.join("hara");
+        let destination = data.join("bin").join("hara");
+        fs::create_dir_all(&app_directory).unwrap();
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        fs::write(&bundled, b"trusted-bundle").unwrap();
+        fs::write(&destination, b"user-managed-cli").unwrap();
+
+        let unmanaged = synchronize_command_line_hara_at(&app, &data, false).unwrap();
+        assert!(unmanaged.installed);
+        assert!(!unmanaged.current);
+        assert!(!unmanaged.managed);
+        assert_eq!(fs::read(&destination).unwrap(), b"user-managed-cli");
+        assert!(!managed_cli_receipt_path(&data).exists());
+
+        let adopted = install_command_line_hara_at(&app, &data, false).unwrap();
+        assert!(adopted.current);
+        assert!(adopted.managed);
+        fs::write(&destination, b"externally-modified-cli").unwrap();
+
+        let modified = synchronize_command_line_hara_at(&app, &data, false).unwrap();
+        assert!(modified.installed);
+        assert!(!modified.current);
+        assert!(!modified.managed);
+        assert_eq!(fs::read(&destination).unwrap(), b"externally-modified-cli");
+
+        let repaired = install_command_line_hara_at(&app, &data, false).unwrap();
+        assert!(repaired.current);
+        assert!(repaired.managed);
+        assert_eq!(fs::read(&destination).unwrap(), b"trusted-bundle");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn managed_command_line_hara_rejects_link_destinations() {
+        use std::os::unix::fs::symlink;
+
+        let unique = format!(
+            "hara-desktop-managed-cli-link-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let app_directory = root.join("app");
+        let data = root.join("home").join(".hara");
+        let app = app_directory.join("hara-desktop");
+        fs::create_dir_all(&app_directory).unwrap();
+        fs::create_dir_all(data.join("bin")).unwrap();
+        fs::write(app_directory.join("hara"), b"trusted-bundle").unwrap();
+        let outside = root.join("outside");
+        fs::write(&outside, b"do-not-touch").unwrap();
+        symlink(&outside, data.join("bin").join("hara")).unwrap();
+
+        let status = command_line_hara_status_at(&app, &data, false);
+        assert!(status.blocked);
+        assert!(install_command_line_hara_at(&app, &data, false).is_err());
+        assert_eq!(fs::read(&outside).unwrap(), b"do-not-touch");
         let _ = fs::remove_dir_all(root);
     }
 

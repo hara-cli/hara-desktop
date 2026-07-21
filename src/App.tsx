@@ -28,6 +28,8 @@ import {
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
+import { GatewaySettings } from "./GatewaySettings";
+import { OrganizationSettings } from "./OrganizationSettings";
 import { classifyEngineVersion } from "./engine-version.js";
 import { applyDesktopUpdateHandoff } from "./desktop-update.js";
 import {
@@ -85,6 +87,15 @@ type PendingDesktopUpdate = {
   update: Update;
   version: string;
   phase: "downloaded" | "installed";
+};
+type CommandLineHaraStatus = {
+  path: string;
+  bundledVersion: string;
+  available: boolean;
+  installed: boolean;
+  current: boolean;
+  managed: boolean;
+  blocked: boolean;
 };
 
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
@@ -226,6 +237,7 @@ export default function App() {
   const [engineRestarting, setEngineRestarting] = useState(false);
   // settings place: context column = group anchors, stage = the selected group's forms
   const [setSec, setSetSec] = useState<"providers" | "engine" | "security" | "lang" | "pets" | "plugins" | "skills">("providers");
+  const [profileRevision, setProfileRevision] = useState(0);
   // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [split, setSplit] = useState<{ plugin: string; id: string; title: string; url: string } | null>(null);
@@ -429,6 +441,10 @@ export default function App() {
   const [updating, setUpdating] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
   const [desktopVersion, setDesktopVersion] = useState("");
+  const [commandLineHara, setCommandLineHara] = useState<CommandLineHaraStatus | null>(null);
+  const [commandLineBusy, setCommandLineBusy] = useState(false);
+  const [commandLineNotice, setCommandLineNotice] = useState("");
+  const [commandLineTone, setCommandLineTone] = useState<"success" | "error">("success");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [updAvail, setUpdAvail] = useState("");
@@ -1052,6 +1068,15 @@ export default function App() {
   // silent update probe at launch — a dot on the settings gear, never a popup
   useEffect(() => {
     void getVersion().then(setDesktopVersion).catch(() => {});
+    void invoke<CommandLineHaraStatus>("synchronize_command_line_hara")
+      .then(setCommandLineHara)
+      .catch((error: any) => {
+        setCommandLineTone("error");
+        setCommandLineNotice(String(error?.message ?? error).slice(0, 220));
+        void invoke<CommandLineHaraStatus>("inspect_command_line_hara")
+          .then(setCommandLineHara)
+          .catch(() => {});
+      });
     void checkForUpdate()
       .then((u) => {
         if (!u) return;
@@ -1852,6 +1877,23 @@ export default function App() {
     }
   };
 
+  const installCommandLineHara = async () => {
+    if (commandLineBusy || (commandLineHara?.current && commandLineHara.managed) || commandLineHara?.blocked || commandLineHara?.available === false) return;
+    setCommandLineBusy(true);
+    setCommandLineNotice("");
+    try {
+      const status = await invoke<CommandLineHaraStatus>("install_command_line_hara");
+      setCommandLineHara(status);
+      setCommandLineTone("success");
+      setCommandLineNotice(`${t("cliInstallSuccess")} ${status.bundledVersion}`);
+    } catch (error: any) {
+      setCommandLineTone("error");
+      setCommandLineNotice(String(error?.message ?? error).slice(0, 220));
+    } finally {
+      setCommandLineBusy(false);
+    }
+  };
+
   const restartForUpdate = async () => {
     if (Object.values(busy).some(Boolean)) {
       setUpd(t("restartBusy"));
@@ -2645,6 +2687,7 @@ export default function App() {
               >
                 <ProviderSettings
                   embedded
+                  key={profileRevision}
                   client={clientRef.current}
                   cwd={server?.cwd}
                   locale={locale}
@@ -2656,6 +2699,23 @@ export default function App() {
                     void clientRef.current?.listModels({ cwd: server?.cwd }).then(setModelInfo).catch(() => {});
                   }}
                 />
+                <OrganizationSettings
+                  client={clientRef.current}
+                  cwd={server?.cwd}
+                  locale={locale}
+                  onChanged={() => {
+                    setProfileRevision((current) => current + 1);
+                    void clientRef.current?.listProviderSettings(server?.cwd).then((next) => {
+                      if (!next) return;
+                      setSetupRequired(!next.current.authenticated);
+                      setServer((current) => current
+                        ? { ...current, provider: next.current.provider, model: next.current.model }
+                        : current);
+                      void clientRef.current?.listModels({ cwd: server?.cwd }).then(setModelInfo).catch(() => {});
+                    }).catch(() => {});
+                  }}
+                />
+                <GatewaySettings client={clientRef.current} locale={locale} />
               </SettingsPage>
             )}
             {setSec === "engine" && (
@@ -2717,6 +2777,90 @@ export default function App() {
                       {t("engineNewerHint")} {BUNDLED_ENGINE_VERSION}
                     </SettingsNotice>
                   )}
+                </SettingsCard>
+
+                <SettingsCard
+                  title={t("cliTitle")}
+                  description={t("cliDescription")}
+                  aside={
+                    commandLineHara ? (
+                      <SettingsBadge
+                        tone={
+                          commandLineHara.current && commandLineHara.managed
+                            ? "success"
+                            : commandLineHara.installed || commandLineHara.blocked
+                              ? "warning"
+                              : "neutral"
+                        }
+                      >
+                        {commandLineHara.blocked
+                          ? t("cliBlocked")
+                          : !commandLineHara.available
+                            ? t("cliUnavailable")
+                            : commandLineHara.current && commandLineHara.managed
+                              ? t("cliCurrent")
+                              : commandLineHara.current
+                                ? t("cliManual")
+                              : commandLineHara.installed
+                                ? t("cliNeedsUpdate")
+                                : t("cliNotInstalled")}
+                      </SettingsBadge>
+                    ) : undefined
+                  }
+                >
+                  <SettingsItem title={t("cliBundledVersion")} description={t("cliBundledVersionHint")}>
+                    <div className="settings-choice">
+                      <SettingsBadge>{commandLineHara?.bundledVersion || BUNDLED_ENGINE_VERSION}</SettingsBadge>
+                      <button
+                        type="button"
+                        className="ghost"
+                        disabled={
+                          commandLineBusy ||
+                          !commandLineHara ||
+                          (commandLineHara.current && commandLineHara.managed) ||
+                          commandLineHara.blocked ||
+                          !commandLineHara.available
+                        }
+                        onClick={() => void installCommandLineHara()}
+                      >
+                        {commandLineBusy
+                          ? t("cliInstalling")
+                          : commandLineHara?.current && commandLineHara.managed
+                            ? t("cliCurrent")
+                            : commandLineHara?.current
+                              ? t("cliManage")
+                            : commandLineHara?.installed
+                              ? t("cliUpdate")
+                              : t("cliInstall")}
+                      </button>
+                    </div>
+                  </SettingsItem>
+                  <SettingsItem title={t("cliInstallPath")} description={t("cliInstallPathHint")}>
+                    <span className="settings-mono">{commandLineHara?.path || "~/.hara/bin/hara"}</span>
+                  </SettingsItem>
+                  {commandLineHara?.blocked && (
+                    <SettingsNotice tone="error" title={t("cliBlockedTitle")}>
+                      {t("cliBlockedHint")}
+                    </SettingsNotice>
+                  )}
+                  {commandLineHara?.available === false && !commandLineHara.blocked && (
+                    <SettingsNotice tone="error" title={t("cliUnavailableTitle")}>
+                      {t("cliUnavailableHint")}
+                    </SettingsNotice>
+                  )}
+                  {commandLineNotice ? (
+                    <SettingsNotice tone={commandLineTone} title={commandLineNotice}>
+                      {commandLineTone === "success" ? t("cliPathReminder") : undefined}
+                    </SettingsNotice>
+                  ) : commandLineHara?.current && commandLineHara.managed ? (
+                    <SettingsNotice tone="success" title={t("cliReadyTitle")}>
+                      {t("cliPathReminder")}
+                    </SettingsNotice>
+                  ) : commandLineHara?.current ? (
+                    <SettingsNotice tone="neutral" title={t("cliManualTitle")}>
+                      {t("cliManualHint")}
+                    </SettingsNotice>
+                  ) : null}
                 </SettingsCard>
 
                 <SettingsCard

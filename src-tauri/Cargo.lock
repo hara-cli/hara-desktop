@@ -1431,7 +1431,7 @@ dependencies = [
 
 [[package]]
 name = "hara-desktop"
-version = "0.1.32"
+version = "0.1.33"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -1439,6 +1439,7 @@ dependencies = [
  "minisign-verify",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

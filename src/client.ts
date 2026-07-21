@@ -176,6 +176,59 @@ export interface ProviderSettingsTestResult {
   error?: string;
 }
 
+export interface GatewayStatus {
+  platform: "weixin" | "feishu" | string;
+  label: string;
+  configuration: "ready" | "process-only" | "missing" | "incomplete" | "unreadable";
+  configured: boolean;
+  running: boolean;
+  runningInstances: number;
+  runtimeState: "starting" | "connected" | "degraded" | "stopped" | "failed" | "unknown" | "unreadable";
+  pid?: number;
+  startedAt?: number;
+  lastConnectedAt?: number;
+  lastPollAt?: number;
+  lastMessageAt?: number;
+  lastErrorAt?: number;
+  lastErrorCode?: string;
+  recommendation: string;
+}
+
+export type OrganizationAccessState = "valid" | "expiring" | "expired" | "legacy" | "invalid";
+
+export interface OrganizationConnection {
+  id: string;
+  label: string;
+  active: boolean;
+  gatewayUrl: string;
+  gatewayHost: string;
+  model: string;
+  enrolledAt?: string;
+  expiresAt?: string;
+  accessState: OrganizationAccessState;
+}
+
+export interface OrganizationConnectionsState {
+  activeId: string;
+  activeSource: "flag" | "env" | "pin" | "default" | "fallback";
+  switchLocked: boolean;
+  connections: OrganizationConnection[];
+}
+
+export interface OrganizationEnrollmentInput {
+  id: string;
+  label?: string;
+  gatewayUrl: string;
+  code: string;
+  activate?: boolean;
+}
+
+export interface OrganizationConnectionCheck {
+  id: string;
+  ok: boolean;
+  checkedAt: number;
+}
+
 export interface InitializeResult {
   name: string;
   version: string;
@@ -379,6 +432,39 @@ export class HaraClient {
   }
   saveProviderSettings(input: ProviderSettingsInput, cwd?: string) {
     return this.call<ProviderSettingsState>("settings.providers.save", { ...input, ...(cwd ? { cwd } : {}) });
+  }
+  /** Redacted local connector health (serve ≥0.132). Null on older bundled engines. */
+  async listGatewayStatuses(): Promise<GatewayStatus[] | null> {
+    if (this.methods.size > 0 && !this.supports("settings.gateways.list")) return null;
+    try {
+      const result = await this.call<{ gateways: GatewayStatus[] }>("settings.gateways.list", {});
+      return result.gateways;
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  /** User-added organization routes. Codes are one-shot request fields and tokens never cross this API. */
+  async listOrganizationConnections(cwd?: string): Promise<OrganizationConnectionsState | null> {
+    if (this.methods.size > 0 && !this.supports("settings.organizations.list")) return null;
+    try {
+      return await this.call("settings.organizations.list", cwd ? { cwd } : {});
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  enrollOrganizationConnection(input: OrganizationEnrollmentInput, cwd?: string) {
+    return this.call<OrganizationConnectionsState>("settings.organizations.enroll", { ...input, ...(cwd ? { cwd } : {}) });
+  }
+  useOrganizationConnection(id: string, cwd?: string) {
+    return this.call<OrganizationConnectionsState>("settings.organizations.use", { id, ...(cwd ? { cwd } : {}) });
+  }
+  removeOrganizationConnection(id: string, cwd?: string) {
+    return this.call<OrganizationConnectionsState>("settings.organizations.remove", { id, ...(cwd ? { cwd } : {}) });
+  }
+  checkOrganizationConnection(id: string, cwd?: string) {
+    return this.call<OrganizationConnectionCheck>("settings.organizations.check", { id, ...(cwd ? { cwd } : {}) });
   }
   addAutomation(name: string, schedule: string, task: string, cwd?: string) {
     return this.call<{ id: string; name: string; schedule: string }>("automation.add", { name, schedule, task, ...(cwd ? { cwd } : {}) });

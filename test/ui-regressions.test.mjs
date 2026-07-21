@@ -142,11 +142,20 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.match(app, /getVersion\(\)\.then\(setDesktopVersion\)/);
   assert.match(app, /title=\{t\("desktopVersion"\)\}/);
   assert.match(app, /t\("engineVersion"\)/);
+  assert.match(app, /invoke<CommandLineHaraStatus>\("synchronize_command_line_hara"\)/);
+  assert.match(app, /invoke<CommandLineHaraStatus>\("inspect_command_line_hara"\)/);
+  assert.match(app, /invoke<CommandLineHaraStatus>\("install_command_line_hara"\)/);
+  assert.match(app, /commandLineHara\.current && commandLineHara\.managed[\s\S]*t\("cliCurrent"\)/);
+  assert.match(app, /commandLineHara\?\.current[\s\S]*t\("cliManage"\)/);
+  assert.match(app, /commandLineHara\.installed[\s\S]*t\("cliUpdate"\)/);
+  assert.match(app, /~\/\.hara\/bin\/hara/);
   assert.match(app, /classifyEngineVersion\(server\?\.version \?\? "", BUNDLED_ENGINE_VERSION\)/);
   assert.match(app, /engineVersionState === "older" \|\| engineVersionState === "incompatible"/);
   assert.match(app, /engineVersionState === "newer"[\s\S]*<SettingsNotice tone="neutral"/);
   assert.doesNotMatch(app, /server\.version === BUNDLED_ENGINE_VERSION/, "engine health is not a raw string comparison");
   assert.match(app, /<ProviderSettings\s+embedded/, "the default provider page uses the shared settings shell");
+  assert.match(app, /<OrganizationSettings[\s\S]*client=\{clientRef\.current\}/);
+  assert.match(app, /<GatewaySettings client=\{clientRef\.current\} locale=\{locale\}/);
   assert.match(app, /t\("restartNow"\)/);
   assert.match(app, /await candidate\.download\(\);[\s\S]*setUpdAvail\(""\)/, "ready and available update states cannot conflict");
   assert.doesNotMatch(app, /downloadAndInstall/, "the updater must not install while the Windows sidecar is running");
@@ -192,6 +201,16 @@ test("updater restart waits for real shutdown and one-shot relaunch starts the b
   assert.match(app, /invoke<boolean>\("take_update_restart_marker"\)/);
   assert.match(app, /updateRestart \? startServer\(\) : connect\(\)/);
   assert.match(nativeHost, /fn start_serve\(\) -> Result<u32, String>/);
+  assert.match(nativeHost, /fn inspect_command_line_hara\(\) -> Result<CommandLineHaraStatus, String>/);
+  assert.match(nativeHost, /fn synchronize_command_line_hara\(\) -> Result<CommandLineHaraStatus, String>/);
+  assert.match(nativeHost, /fn install_command_line_hara\(\) -> Result<CommandLineHaraStatus, String>/);
+  assert.match(nativeHost, /replace_managed_file/);
+  assert.match(nativeHost, /files_are_identical/);
+  assert.match(nativeHost, /ManagedCliReceipt/);
+  assert.match(nativeHost, /regular_file_sha256/);
+  assert.match(nativeHost, /inspect_command_line_hara,/);
+  assert.match(nativeHost, /synchronize_command_line_hara,/);
+  assert.match(nativeHost, /install_command_line_hara,/);
   assert.match(nativeHost, /fn terminate_legacy_serve\(expected_pid: u32\) -> Result<\(\), String>/);
   assert.match(nativeHost, /read_private_discovery_at\(&path\)/);
   assert.match(nativeHost, /process_path_is_hara_sidecar/);
@@ -238,6 +257,41 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(client, /settings\.providers\.list/);
   assert.match(client, /settings\.providers\.test/);
   assert.match(client, /settings\.providers\.save/);
+});
+
+test("bot settings show redacted live gateway health without model polling", () => {
+  const gatewaySettings = readFileSync(`${root}/src/GatewaySettings.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+
+  assert.match(client, /settings\.gateways\.list/);
+  assert.match(gatewaySettings, /const REFRESH_MS = 120_000/);
+  assert.match(gatewaySettings, /client\.listGatewayStatuses\(\)/);
+  assert.match(gatewaySettings, /lastConnectedAt, status\.lastPollAt, status\.lastMessageAt/);
+  assert.match(gatewaySettings, /lastErrorCode === "session-expired"/);
+  assert.match(gatewaySettings, /status\.runtimeState !== "connected"/);
+  assert.match(gatewaySettings, /processOnly/);
+  assert.match(gatewaySettings, /不调用模型，也不消耗 Token/);
+  assert.doesNotMatch(gatewaySettings, /apiKey|appSecret|token\s*:/i, "renderer status never accepts connector credentials");
+});
+
+test("organization settings are user-added, keep registration codes transient, and expose explicit status actions", () => {
+  const organizations = readFileSync(`${root}/src/OrganizationSettings.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+
+  for (const method of ["list", "enroll", "use", "remove", "check"]) {
+    assert.match(client, new RegExp(`settings\\.organizations\\.${method}`));
+  }
+  assert.match(organizations, /type="password"/);
+  assert.doesNotMatch(organizations, /localStorage\.(setItem|getItem)/);
+  assert.match(
+    organizations,
+    /const transientCode = code\.trim\(\);[\s\S]*setCode\(""\);[\s\S]*await client\.enrollOrganizationConnection/,
+    "the one-time registration code leaves renderer state before the network request",
+  );
+  assert.match(organizations, /Nothing is preconfigured|这里不会预置任何企业地址/);
+  assert.match(organizations, /window\.confirm\(words\.removeConfirm\)/, "local removal explains that server-side revocation is separate");
+  assert.match(organizations, /client\.checkOrganizationConnection/, "connection health is checked explicitly rather than by model polling");
+  assert.doesNotMatch(organizations, /deviceToken|apiKey|authorization/i, "renderer never accepts the organization device credential");
 });
 
 test("engine health follows SemVer precedence instead of raw text equality", () => {
