@@ -19,6 +19,7 @@
 - Bundle the exact verified Hara CLI `0.132.4` release, including observable chat-gateway status, scoped Web
   proxy support, complete configuration redaction, immediate prompt-key routing, and reliable non-Git
   `@path` completion on slow machines.
+- Update DOMPurify to `3.4.12`, closing the newly disclosed custom-element hook bypass before release.
 
 ## 0.1.32 — hara 0.130.1 Windows serve and updater handoff
 
