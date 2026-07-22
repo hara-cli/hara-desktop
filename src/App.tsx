@@ -29,7 +29,6 @@ import {
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
 import { GatewaySettings } from "./GatewaySettings";
-import { OrganizationSettings } from "./OrganizationSettings";
 import { classifyEngineVersion } from "./engine-version.js";
 import { applyDesktopUpdateHandoff } from "./desktop-update.js";
 import {
@@ -237,7 +236,6 @@ export default function App() {
   const [engineRestarting, setEngineRestarting] = useState(false);
   // settings place: context column = group anchors, stage = the selected group's forms
   const [setSec, setSetSec] = useState<"providers" | "engine" | "security" | "lang" | "pets" | "plugins" | "skills">("providers");
-  const [profileRevision, setProfileRevision] = useState(0);
   // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [split, setSplit] = useState<{ plugin: string; id: string; title: string; url: string } | null>(null);
@@ -2687,7 +2685,6 @@ export default function App() {
               >
                 <ProviderSettings
                   embedded
-                  key={profileRevision}
                   client={clientRef.current}
                   cwd={server?.cwd}
                   locale={locale}
@@ -2697,22 +2694,6 @@ export default function App() {
                       ? { ...current, provider: next.current.provider, model: next.current.model }
                       : current);
                     void clientRef.current?.listModels({ cwd: server?.cwd }).then(setModelInfo).catch(() => {});
-                  }}
-                />
-                <OrganizationSettings
-                  client={clientRef.current}
-                  cwd={server?.cwd}
-                  locale={locale}
-                  onChanged={() => {
-                    setProfileRevision((current) => current + 1);
-                    void clientRef.current?.listProviderSettings(server?.cwd).then((next) => {
-                      if (!next) return;
-                      setSetupRequired(!next.current.authenticated);
-                      setServer((current) => current
-                        ? { ...current, provider: next.current.provider, model: next.current.model }
-                        : current);
-                      void clientRef.current?.listModels({ cwd: server?.cwd }).then(setModelInfo).catch(() => {});
-                    }).catch(() => {});
                   }}
                 />
                 <GatewaySettings client={clientRef.current} locale={locale} />

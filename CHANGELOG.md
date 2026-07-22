@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Replace the model picker's fixed Enterprise Gateway preset and detached organization card with one
+  connection switchboard: cloud/local options remain presets, while every enterprise row is a named,
+  user-enrolled Hara Control deployment. Users can add multiple deployments, inspect authorization and
+  endpoint state, heartbeat-check, re-enroll, remove locally, and explicitly switch the route used by new
+  sessions. One-time codes are cleared before enrollment and device credentials never enter the renderer.
+- Launch plugin panels from their verified installed entry instead of a login shell. Node-based panels now
+  skip obsolete runtimes such as Node 11, prefer Node 22 from PATH or common version managers, preserve a
+  bounded actionable failure when no supported runtime exists, and execute arguments without shell parsing.
+  Native regressions cover repeated launch and rejection of command links outside the plugin store.
+
 ## 0.1.34 — visible window recovery and Hara 0.133.0
 
 - Recover the main window after display disconnection, rearrangement, or resolution changes whenever

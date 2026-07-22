@@ -2,17 +2,24 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import PetOverlay from "./PetOverlay";
+import { ProviderSettingsPreview } from "./ProviderSettingsPreview";
 import { WorkStarter } from "./WorkStarter";
 
 const params = new URLSearchParams(window.location.search);
 const petMode = params.get("pet") === "1";
 const workbenchPreview = import.meta.env.DEV && params.get("preview") === "workbench";
+const providersPreview = import.meta.env.DEV && params.get("preview") === "providers";
 document.documentElement.classList.toggle("pet-mode", petMode);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     {petMode ? (
       <PetOverlay />
+    ) : providersPreview ? (
+      <ProviderSettingsPreview
+        locale={params.get("locale") === "en" ? "en" : "zh"}
+        scenario={params.get("scenario")}
+      />
     ) : workbenchPreview ? (
       <div className="app">
         <main className="chat im">

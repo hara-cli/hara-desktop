@@ -154,7 +154,7 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.match(app, /engineVersionState === "newer"[\s\S]*<SettingsNotice tone="neutral"/);
   assert.doesNotMatch(app, /server\.version === BUNDLED_ENGINE_VERSION/, "engine health is not a raw string comparison");
   assert.match(app, /<ProviderSettings\s+embedded/, "the default provider page uses the shared settings shell");
-  assert.match(app, /<OrganizationSettings[\s\S]*client=\{clientRef\.current\}/);
+  assert.doesNotMatch(app, /<OrganizationSettings/, "enterprise routes live in the model switchboard instead of a detached card");
   assert.match(app, /<GatewaySettings client=\{clientRef\.current\} locale=\{locale\}/);
   assert.match(app, /t\("restartNow"\)/);
   assert.match(app, /await candidate\.download\(\);[\s\S]*setUpdAvail\(""\)/, "ready and available update states cannot conflict");
@@ -274,24 +274,30 @@ test("bot settings show redacted live gateway health without model polling", () 
   assert.doesNotMatch(gatewaySettings, /apiKey|appSecret|token\s*:/i, "renderer status never accepts connector credentials");
 });
 
-test("organization settings are user-added, keep registration codes transient, and expose explicit status actions", () => {
-  const organizations = readFileSync(`${root}/src/OrganizationSettings.tsx`, "utf8");
+test("the model switchboard uses user-added enterprise connections instead of a static managed preset", () => {
+  const providers = readFileSync(`${root}/src/ProviderSettings.tsx`, "utf8");
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
 
   for (const method of ["list", "enroll", "use", "remove", "check"]) {
     assert.match(client, new RegExp(`settings\\.organizations\\.${method}`));
   }
-  assert.match(organizations, /type="password"/);
-  assert.doesNotMatch(organizations, /localStorage\.(setItem|getItem)/);
+  assert.match(providers, /Promise\.allSettled\(\[[\s\S]*listProviderSettings[\s\S]*listOrganizationConnections/);
+  assert.match(providers, /provider\.location !== "managed"/, "the provider catalog's generic gateway is not rendered as a fixed choice");
+  assert.match(providers, /organizations\?\.connections\.map/, "every user-added Hara Control is rendered in the switchboard");
+  assert.match(providers, /uniqueOrganizationId/, "multiple deployments receive collision-safe local identities");
+  assert.match(providers, /type="password"/);
+  assert.doesNotMatch(providers, /localStorage\.(setItem|getItem)/);
   assert.match(
-    organizations,
-    /const transientCode = code\.trim\(\);[\s\S]*setCode\(""\);[\s\S]*await client\.enrollOrganizationConnection/,
+    providers,
+    /const transientCode = registrationCode\.trim\(\);[\s\S]*setRegistrationCode\(""\);[\s\S]*await client\.enrollOrganizationConnection/,
     "the one-time registration code leaves renderer state before the network request",
   );
-  assert.match(organizations, /Nothing is preconfigured|这里不会预置任何企业地址/);
-  assert.match(organizations, /window\.confirm\(words\.removeConfirm\)/, "local removal explains that server-side revocation is separate");
-  assert.match(organizations, /client\.checkOrganizationConnection/, "connection health is checked explicitly rather than by model polling");
-  assert.doesNotMatch(organizations, /deviceToken|apiKey|authorization/i, "renderer never accepts the organization device credential");
+  assert.match(providers, /No enterprise is preconfigured|没有预置任何企业/);
+  assert.match(providers, /window\.confirm\(copy\.removeConfirm\)/, "local removal explains that server-side revocation is separate");
+  assert.match(providers, /client\.checkOrganizationConnection/, "connection health is checked explicitly rather than by model polling");
+  assert.doesNotMatch(providers, /deviceToken|authorization/i, "renderer never accepts the organization device credential");
+  assert.doesNotMatch(app, /OrganizationSettings/, "the old detached enterprise card is not left below the model picker");
 });
 
 test("engine health follows SemVer precedence instead of raw text equality", () => {
