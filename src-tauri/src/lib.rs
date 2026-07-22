@@ -22,6 +22,9 @@ const MANAGED_CLI_RECEIPT_SCHEMA: u8 = 1;
 const BUNDLED_CLI_VERSION: &str = include_str!("../binaries/SIDECAR_VERSION");
 const DEFAULT_MAIN_WINDOW_WIDTH: u32 = 1100;
 const DEFAULT_MAIN_WINDOW_HEIGHT: u32 = 760;
+const MIN_PANEL_NODE_MAJOR: u32 = 18;
+const PREFERRED_PANEL_NODE_MAJOR: u32 = 22;
+const PANEL_NODE_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct WindowRect {
@@ -1496,6 +1499,288 @@ fn restart_after_update(app: tauri::AppHandle) -> Result<(), String> {
 /// running (pre-listening on the hinted port) is never touched.
 struct OwnedPanels(std::sync::Mutex<Vec<u16>>);
 
+#[derive(Debug, PartialEq, Eq)]
+enum PanelLaunchPlan {
+    Direct(PathBuf),
+    Node { runtime: PathBuf, script: PathBuf },
+}
+
+fn bounded_command_output(
+    command: &mut std::process::Command,
+    timeout: std::time::Duration,
+) -> std::io::Result<std::process::Output> {
+    use std::process::Stdio;
+
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut stdout_pipe = child.stdout.take();
+    let mut stderr_pipe = child.stderr.take();
+    let stdout_reader = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+        let mut output = Vec::new();
+        if let Some(mut pipe) = stdout_pipe.take() {
+            pipe.read_to_end(&mut output)?;
+        }
+        Ok(output)
+    });
+    let stderr_reader = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+        let mut output = Vec::new();
+        if let Some(mut pipe) = stderr_pipe.take() {
+            pipe.read_to_end(&mut output)?;
+        }
+        Ok(output)
+    });
+    let started = std::time::Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            let stdout = stdout_reader
+                .join()
+                .map_err(|_| std::io::Error::other("stdout reader failed"))??;
+            let stderr = stderr_reader
+                .join()
+                .map_err(|_| std::io::Error::other("stderr reader failed"))??;
+            return Ok(std::process::Output {
+                status,
+                stdout,
+                stderr,
+            });
+        }
+        if started.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "command timed out",
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+fn parse_node_major(output: &[u8]) -> Option<u32> {
+    String::from_utf8_lossy(output)
+        .trim()
+        .strip_prefix('v')?
+        .split('.')
+        .next()?
+        .parse()
+        .ok()
+}
+
+fn supported_node_runtime(candidates: Vec<PathBuf>) -> Option<PathBuf> {
+    let mut checked = Vec::<PathBuf>::new();
+    let mut fallback = None;
+    for candidate in candidates {
+        if !candidate.is_absolute() || !candidate.is_file() {
+            continue;
+        }
+        let identity = candidate
+            .canonicalize()
+            .unwrap_or_else(|_| candidate.clone());
+        if checked.iter().any(|seen| seen == &identity) {
+            continue;
+        }
+        checked.push(identity);
+        let Ok(output) = bounded_command_output(
+            std::process::Command::new(&candidate).arg("--version"),
+            PANEL_NODE_PROBE_TIMEOUT,
+        ) else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        if let Some(major) = parse_node_major(&output.stdout) {
+            if major >= PREFERRED_PANEL_NODE_MAJOR {
+                return Some(candidate);
+            }
+            if major >= MIN_PANEL_NODE_MAJOR && fallback.is_none() {
+                fallback = Some(candidate);
+            }
+        }
+    }
+    fallback
+}
+
+fn append_versioned_node_candidates(
+    candidates: &mut Vec<PathBuf>,
+    versions_root: &Path,
+    suffix: &Path,
+) {
+    let Ok(entries) = fs::read_dir(versions_root) else {
+        return;
+    };
+    let mut paths = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join(suffix))
+        .take(128)
+        .collect::<Vec<_>>();
+    paths.sort_by(|a, b| b.cmp(a));
+    candidates.extend(paths);
+}
+
+fn node_runtime_candidates(
+    home: &Path,
+    path_environment: Option<&std::ffi::OsStr>,
+    windows: bool,
+) -> Vec<PathBuf> {
+    let node_name = if windows { "node.exe" } else { "node" };
+    let mut candidates = path_environment
+        .into_iter()
+        .flat_map(std::env::split_paths)
+        .filter(|directory| directory.is_absolute())
+        .take(128)
+        .map(|directory| directory.join(node_name))
+        .collect::<Vec<_>>();
+
+    candidates.extend([
+        home.join(".volta").join("bin").join(node_name),
+        home.join(".local")
+            .join("share")
+            .join("mise")
+            .join("shims")
+            .join(node_name),
+        home.join(".asdf").join("shims").join(node_name),
+    ]);
+    append_versioned_node_candidates(
+        &mut candidates,
+        &home.join(".nvm").join("versions").join("node"),
+        &PathBuf::from("bin").join(node_name),
+    );
+    append_versioned_node_candidates(
+        &mut candidates,
+        &home.join(".fnm").join("node-versions"),
+        &PathBuf::from("installation").join("bin").join(node_name),
+    );
+
+    if windows {
+        if let Some(program_files) = std::env::var_os("ProgramFiles") {
+            candidates.push(PathBuf::from(program_files).join("nodejs").join(node_name));
+        }
+    } else {
+        candidates.extend([
+            PathBuf::from("/opt/homebrew/bin/node"),
+            PathBuf::from("/usr/local/bin/node"),
+            PathBuf::from("/usr/bin/node"),
+        ]);
+    }
+    candidates
+}
+
+fn verified_panel_entry(data_directory: &Path, command: &str) -> Result<PathBuf, String> {
+    let link = data_directory.join("bin").join(command);
+    let link_metadata = fs::symlink_metadata(&link)
+        .map_err(|error| format!("installed panel command is unavailable: {error}"))?;
+    if !link_metadata.file_type().is_symlink() {
+        return Err("installed panel command is not a verified plugin link".into());
+    }
+
+    let target = link
+        .canonicalize()
+        .map_err(|error| format!("resolve installed panel command: {error}"))?;
+    let plugin_root = data_directory
+        .join("plugins")
+        .canonicalize()
+        .map_err(|error| format!("resolve installed plugins directory: {error}"))?;
+    if !target.starts_with(&plugin_root) || !target.is_file() {
+        return Err("installed panel command escaped its verified plugin directory".into());
+    }
+    Ok(target)
+}
+
+fn panel_entry_requires_node(entry: &Path) -> Result<bool, String> {
+    if entry.extension().and_then(|value| value.to_str()) == Some("mjs") {
+        return Ok(true);
+    }
+    let mut source = fs::File::open(entry)
+        .map_err(|error| format!("inspect installed panel command: {error}"))?;
+    let mut prefix = [0_u8; 256];
+    let length = source
+        .read(&mut prefix)
+        .map_err(|error| format!("inspect installed panel command: {error}"))?;
+    let first_line = String::from_utf8_lossy(&prefix[..length])
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    Ok(first_line.starts_with("#!")
+        && first_line
+            .split(|character: char| character.is_ascii_whitespace() || character == '/')
+            .any(|part| part == "node" || part == "node.exe"))
+}
+
+fn panel_launch_plan(
+    data_directory: &Path,
+    home: &Path,
+    path_environment: Option<&std::ffi::OsStr>,
+    command: &str,
+    windows: bool,
+) -> Result<PanelLaunchPlan, String> {
+    let entry = verified_panel_entry(data_directory, command)?;
+    if !panel_entry_requires_node(&entry)? {
+        return Ok(PanelLaunchPlan::Direct(entry));
+    }
+    let runtime = supported_node_runtime(node_runtime_candidates(home, path_environment, windows))
+        .ok_or_else(|| {
+            format!(
+                "This plugin requires Node.js {MIN_PANEL_NODE_MAJOR} or newer. Install Node.js 22 LTS, then try again."
+            )
+        })?;
+    Ok(PanelLaunchPlan::Node {
+        runtime,
+        script: entry,
+    })
+}
+
+fn panel_process(
+    plan: &PanelLaunchPlan,
+    data_directory: &Path,
+    home: &Path,
+    args: &[String],
+    cwd: Option<&Path>,
+) -> Result<std::process::Command, String> {
+    let mut process = match plan {
+        PanelLaunchPlan::Direct(program) => std::process::Command::new(program),
+        PanelLaunchPlan::Node { runtime, script } => {
+            let mut process = std::process::Command::new(runtime);
+            process.arg(script);
+            process
+        }
+    };
+    process.args(args);
+    if let Some(directory) = cwd {
+        if !directory.is_absolute() || !directory.is_dir() {
+            return Err("panel project directory is unavailable".into());
+        }
+        process.current_dir(directory);
+    }
+
+    let runtime_directory = match plan {
+        PanelLaunchPlan::Node { runtime, .. } => runtime.parent(),
+        PanelLaunchPlan::Direct(_) => None,
+    };
+    let mut path = vec![data_directory.join("bin")];
+    path.extend(runtime_directory.map(Path::to_path_buf));
+    path.extend([
+        home.join(".local").join("bin"),
+        home.join(".bun").join("bin"),
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+    ]);
+    if let Some(environment) = std::env::var_os("PATH") {
+        path.extend(
+            std::env::split_paths(&environment).filter(|directory| directory.is_absolute()),
+        );
+    }
+    if let Ok(path) = std::env::join_paths(path) {
+        process.env("PATH", path);
+    }
+    Ok(process)
+}
+
 fn port_listening(port: u16) -> bool {
     std::net::TcpStream::connect_timeout(
         &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
@@ -1516,7 +1801,8 @@ fn kill_owned_panels(ports: &[u16]) {
 }
 
 /// Launch a plugin panel command (e.g. `hara-design preview`) and return the URL it prints.
-/// Plugin bins live in ~/.hara/bin (added to PATH by the login shell) or on PATH generally; the
+/// Plugin bins are verified links under ~/.hara/bin. Node-based panels are launched with a checked
+/// Node >=18 runtime, never whichever interpreter a login shell happens to put first on PATH. The
 /// command is expected to start/reuse its server, print `http://127.0.0.1:<port>…`, and exit.
 /// `port_hint` (the manifest's declared port) drives ownership tracking for exit cleanup.
 #[tauri::command]
@@ -1535,27 +1821,24 @@ fn start_panel(
     {
         return Err("invalid panel command".into());
     }
-    let joined = args
-        .iter()
-        .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
-        .collect::<Vec<_>>()
-        .join(" ");
-    // project panels run FROM the project dir (e.g. `hara-design preview` picks up that project's
-    // .hara/design/); global panels (settings page) pass no cwd
-    let cd = cwd
-        .filter(|d| !d.is_empty())
-        .map(|d| format!("cd '{}' && ", d.replace('\'', "'\\''")))
-        .unwrap_or_default();
-    let plugin_bin = hara_data_dir()?
-        .join("bin")
-        .to_string_lossy()
-        .replace('\'', "'\\''");
-    let script = format!("export PATH='{plugin_bin}':$PATH; {cd}{command} {joined} 2>&1");
-    let out = std::process::Command::new("/bin/zsh")
-        .args(["-lc", &script])
-        .output()
-        .map_err(|e| format!("spawn: {e}"))?;
-    let text = String::from_utf8_lossy(&out.stdout);
+    let data_directory = hara_data_dir()?;
+    let home = user_home()?;
+    let plan = panel_launch_plan(
+        &data_directory,
+        &home,
+        std::env::var_os("PATH").as_deref(),
+        &command,
+        cfg!(windows),
+    )?;
+    let cwd = cwd
+        .filter(|directory| !directory.is_empty())
+        .map(PathBuf::from);
+    let mut process = panel_process(&plan, &data_directory, &home, &args, cwd.as_deref())?;
+    let out = bounded_command_output(&mut process, std::time::Duration::from_secs(20))
+        .map_err(|error| format!("start panel command: {error}"))?;
+    let mut combined = out.stdout;
+    combined.extend_from_slice(&out.stderr);
+    let text = String::from_utf8_lossy(&combined);
     match text
         .split_whitespace()
         .find(|w| w.starts_with("http://127.0.0.1") || w.starts_with("http://localhost"))
@@ -1893,6 +2176,122 @@ mod pet_tests {
             command.get_args().collect::<Vec<_>>(),
             vec![OsStr::new("serve")]
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn panel_launch_skips_an_old_path_node_and_remains_repeatable() {
+        use std::ffi::OsStr;
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let unique = format!(
+            "hara-desktop-panel-runtime-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let data = root.join("home").join(".hara");
+        let home = root.join("home");
+        let plugin_script = data
+            .join("plugins")
+            .join("design")
+            .join("bin")
+            .join("hara-design.mjs");
+        let old_node = root.join("old-node").join("bin").join("node");
+        let supported_node = home
+            .join(".nvm")
+            .join("versions")
+            .join("node")
+            .join("v22.22.3")
+            .join("bin")
+            .join("node");
+        fs::create_dir_all(plugin_script.parent().unwrap()).unwrap();
+        fs::create_dir_all(data.join("bin")).unwrap();
+        fs::create_dir_all(old_node.parent().unwrap()).unwrap();
+        fs::create_dir_all(supported_node.parent().unwrap()).unwrap();
+        fs::write(
+            &plugin_script,
+            b"#!/usr/bin/env node\nimport { spawn } from 'node:child_process';\n",
+        )
+        .unwrap();
+        fs::write(&old_node, b"#!/bin/sh\necho v11.4.0\n").unwrap();
+        fs::write(
+            &supported_node,
+            b"#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo v22.22.3; else echo http://127.0.0.1:4321; fi\n",
+        )
+        .unwrap();
+        for executable in [&plugin_script, &old_node, &supported_node] {
+            fs::set_permissions(executable, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        symlink(&plugin_script, data.join("bin").join("hara-design")).unwrap();
+        let canonical_plugin_script = plugin_script.canonicalize().unwrap();
+        let path = std::env::join_paths([old_node.parent().unwrap()]).unwrap();
+
+        for _ in 0..2 {
+            let plan = panel_launch_plan(&data, &home, Some(&path), "hara-design", false)
+                .expect("a supported NVM runtime should be selected after the old PATH node");
+            assert_eq!(
+                plan,
+                PanelLaunchPlan::Node {
+                    runtime: supported_node.clone(),
+                    script: canonical_plugin_script.clone(),
+                }
+            );
+            let mut process = panel_process(
+                &plan,
+                &data,
+                &home,
+                &["preview".into()],
+                Some(root.as_path()),
+            )
+            .unwrap();
+            assert_eq!(process.get_program(), supported_node.as_os_str());
+            assert_eq!(
+                process.get_args().collect::<Vec<_>>(),
+                vec![canonical_plugin_script.as_os_str(), OsStr::new("preview")]
+            );
+            let output =
+                bounded_command_output(&mut process, std::time::Duration::from_secs(2)).unwrap();
+            assert!(output.status.success());
+            assert_eq!(
+                String::from_utf8(output.stdout).unwrap().trim(),
+                "http://127.0.0.1:4321"
+            );
+        }
+
+        assert_eq!(parse_node_major(b"v18.20.8\n"), Some(18));
+        assert_eq!(parse_node_major(b"11.4.0\n"), None);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn panel_launch_rejects_a_command_link_outside_the_plugin_store() {
+        use std::os::unix::fs::symlink;
+
+        let unique = format!(
+            "hara-desktop-panel-link-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let data = root.join(".hara");
+        let outside = root.join("foreign-panel");
+        fs::create_dir_all(data.join("bin")).unwrap();
+        fs::create_dir_all(data.join("plugins")).unwrap();
+        fs::write(&outside, b"#!/bin/sh\n").unwrap();
+        symlink(&outside, data.join("bin").join("foreign")).unwrap();
+
+        assert!(verified_panel_entry(&data, "foreign")
+            .unwrap_err()
+            .contains("escaped its verified plugin directory"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
