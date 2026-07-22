@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.34 — visible window recovery and Hara 0.133.0
+
+- Recover the main window after display disconnection, rearrangement, or resolution changes whenever
+  its restored rectangle no longer overlaps any current display work area. The window keeps its saved
+  size when possible, is constrained to the primary work area when necessary, and is centered where
+  its title bar and controls are reachable again.
+- Add native geometry regressions for negative monitor coordinates, disconnected displays, exact edge
+  contact, oversized saved windows, and missing-primary fallback, and run the Rust host suite in CI.
+- Bundle the exact verified Hara CLI `0.133.0` release so Desktop-managed CLI installs and updates stay
+  on the current public CLI version.
+
 ## 0.1.33 — Hara 0.132.4 managed CLI and connection settings
 
 - Add a user-owned Enterprise connections card: users enter their own Hara Control URL and one-time

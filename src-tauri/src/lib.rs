@@ -20,6 +20,145 @@ const MAX_MANAGED_CLI_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_MANAGED_CLI_RECEIPT_BYTES: u64 = 16 * 1024;
 const MANAGED_CLI_RECEIPT_SCHEMA: u8 = 1;
 const BUNDLED_CLI_VERSION: &str = include_str!("../binaries/SIDECAR_VERSION");
+const DEFAULT_MAIN_WINDOW_WIDTH: u32 = 1100;
+const DEFAULT_MAIN_WINDOW_HEIGHT: u32 = 760;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WindowRect {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+impl WindowRect {
+    fn has_area(self) -> bool {
+        self.width > 0 && self.height > 0
+    }
+
+    fn intersects(self, other: Self) -> bool {
+        if !self.has_area() || !other.has_area() {
+            return false;
+        }
+
+        let self_left = i64::from(self.x);
+        let self_top = i64::from(self.y);
+        let self_right = self_left + i64::from(self.width);
+        let self_bottom = self_top + i64::from(self.height);
+        let other_left = i64::from(other.x);
+        let other_top = i64::from(other.y);
+        let other_right = other_left + i64::from(other.width);
+        let other_bottom = other_top + i64::from(other.height);
+
+        self_left < other_right
+            && self_right > other_left
+            && self_top < other_bottom
+            && self_bottom > other_top
+    }
+}
+
+fn clamp_i64_to_i32(value: i64) -> i32 {
+    value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
+
+/// Return a safe replacement only when the restored main window has no visible overlap at all.
+/// Work areas exclude menu bars, taskbars, and docks, which keeps the recovered title bar usable.
+fn offscreen_window_recovery(
+    window: WindowRect,
+    work_areas: &[WindowRect],
+    primary_work_area: Option<WindowRect>,
+) -> Option<WindowRect> {
+    if window.has_area()
+        && work_areas
+            .iter()
+            .copied()
+            .any(|work_area| window.intersects(work_area))
+    {
+        return None;
+    }
+
+    let target = primary_work_area
+        .filter(|work_area| work_area.has_area())
+        .or_else(|| {
+            work_areas
+                .iter()
+                .copied()
+                .find(|work_area| work_area.has_area())
+        })?;
+    let requested_width = if window.width == 0 {
+        DEFAULT_MAIN_WINDOW_WIDTH
+    } else {
+        window.width
+    };
+    let requested_height = if window.height == 0 {
+        DEFAULT_MAIN_WINDOW_HEIGHT
+    } else {
+        window.height
+    };
+    let width = requested_width.min(target.width);
+    let height = requested_height.min(target.height);
+    let x = i64::from(target.x) + i64::from(target.width.saturating_sub(width) / 2);
+    let y = i64::from(target.y) + i64::from(target.height.saturating_sub(height) / 2);
+
+    Some(WindowRect {
+        x: clamp_i64_to_i32(x),
+        y: clamp_i64_to_i32(y),
+        width,
+        height,
+    })
+}
+
+#[cfg(desktop)]
+fn recover_main_window_if_offscreen<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> tauri_plugin_window_state::Result<bool> {
+    use tauri::Manager;
+    use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+
+    let position = window.outer_position()?;
+    let size = window.outer_size()?;
+    let current = WindowRect {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    };
+    let monitors = window.available_monitors()?;
+    let work_areas = monitors
+        .iter()
+        .map(|monitor| {
+            let area = monitor.work_area();
+            WindowRect {
+                x: area.position.x,
+                y: area.position.y,
+                width: area.size.width,
+                height: area.size.height,
+            }
+        })
+        .collect::<Vec<_>>();
+    let primary_work_area = window.primary_monitor()?.map(|monitor| {
+        let area = monitor.work_area();
+        WindowRect {
+            x: area.position.x,
+            y: area.position.y,
+            width: area.size.width,
+            height: area.size.height,
+        }
+    });
+
+    let Some(recovered) = offscreen_window_recovery(current, &work_areas, primary_work_area) else {
+        return Ok(false);
+    };
+
+    if recovered.width != current.width || recovered.height != current.height {
+        window.set_size(tauri::PhysicalSize::new(recovered.width, recovered.height))?;
+    }
+    window.set_position(tauri::PhysicalPosition::new(recovered.x, recovered.y))?;
+    window.show()?;
+    window.set_focus()?;
+    window.app_handle().save_window_state(StateFlags::all())?;
+    Ok(true)
+}
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1474,9 +1613,18 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
+        .run(|app, event| match event {
+            #[cfg(desktop)]
+            tauri::RunEvent::Ready => {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = recover_main_window_if_offscreen(&window) {
+                        eprintln!("main window visibility recovery failed: {error}");
+                    }
+                }
+            }
             // app exit: terminate the panel servers WE started (never a server the user had running)
-            if let tauri::RunEvent::Exit = event {
+            tauri::RunEvent::Exit => {
                 use tauri::Manager;
                 let ports = app
                     .state::<OwnedPanels>()
@@ -1486,6 +1634,7 @@ pub fn run() {
                     .unwrap_or_default();
                 kill_owned_panels(&ports);
             }
+            _ => {}
         });
 }
 
@@ -1852,5 +2001,146 @@ mod pet_tests {
         assert_eq!(sprite_geometry(1536, 2288, Some(2)).unwrap(), (2, 11));
         assert!(sprite_geometry(1536, 2288, Some(1)).is_err());
         assert!(sprite_geometry(1536, 2000, None).is_err());
+    }
+
+    #[test]
+    fn visible_window_geometry_is_preserved_across_negative_coordinate_monitors() {
+        let work_areas = [
+            WindowRect {
+                x: -1920,
+                y: 0,
+                width: 1920,
+                height: 1040,
+            },
+            WindowRect {
+                x: 0,
+                y: 0,
+                width: 2560,
+                height: 1400,
+            },
+        ];
+        let window = WindowRect {
+            x: -1700,
+            y: 100,
+            width: 1100,
+            height: 760,
+        };
+
+        assert_eq!(
+            offscreen_window_recovery(window, &work_areas, Some(work_areas[1])),
+            None
+        );
+    }
+
+    #[test]
+    fn disconnected_monitor_window_is_centered_on_the_primary_work_area() {
+        let primary = WindowRect {
+            x: 0,
+            y: 24,
+            width: 1920,
+            height: 1056,
+        };
+        let offscreen = WindowRect {
+            x: 4703,
+            y: 788,
+            width: 1100,
+            height: 760,
+        };
+
+        assert_eq!(
+            offscreen_window_recovery(offscreen, &[primary], Some(primary)),
+            Some(WindowRect {
+                x: 410,
+                y: 172,
+                width: 1100,
+                height: 760,
+            })
+        );
+    }
+
+    #[test]
+    fn edge_touch_without_visible_overlap_is_recovered() {
+        let primary = WindowRect {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let offscreen = WindowRect {
+            x: 1920,
+            y: 100,
+            width: 800,
+            height: 600,
+        };
+
+        assert!(offscreen_window_recovery(offscreen, &[primary], Some(primary)).is_some());
+    }
+
+    #[test]
+    fn oversized_or_zero_sized_offscreen_windows_recover_to_safe_dimensions() {
+        let primary = WindowRect {
+            x: -1280,
+            y: -200,
+            width: 1280,
+            height: 720,
+        };
+        assert_eq!(
+            offscreen_window_recovery(
+                WindowRect {
+                    x: 5000,
+                    y: 5000,
+                    width: 5000,
+                    height: 4000,
+                },
+                &[primary],
+                Some(primary),
+            ),
+            Some(primary)
+        );
+        assert_eq!(
+            offscreen_window_recovery(
+                WindowRect {
+                    x: 5000,
+                    y: 5000,
+                    width: 0,
+                    height: 0,
+                },
+                &[primary],
+                Some(primary),
+            ),
+            Some(WindowRect {
+                x: -1190,
+                y: -200,
+                width: 1100,
+                height: 720,
+            })
+        );
+    }
+
+    #[test]
+    fn recovery_falls_back_to_an_available_monitor_and_never_invents_one() {
+        let secondary = WindowRect {
+            x: 1920,
+            y: -100,
+            width: 1600,
+            height: 900,
+        };
+        let offscreen = WindowRect {
+            x: -9000,
+            y: -9000,
+            width: 800,
+            height: 600,
+        };
+
+        assert_eq!(
+            offscreen_window_recovery(offscreen, &[secondary], None),
+            Some(WindowRect {
+                x: 2320,
+                y: 50,
+                width: 800,
+                height: 600,
+            })
+        );
+        assert_eq!(offscreen_window_recovery(offscreen, &[], None), None);
     }
 }
