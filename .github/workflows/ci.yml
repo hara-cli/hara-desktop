@@ -54,5 +54,8 @@ jobs:
         with:
           toolchain: "1.97.0"
 
+      - name: Prepare the test-only sidecar fixture
+        run: cp /usr/bin/true src-tauri/binaries/hara-aarch64-apple-darwin
+
       - name: Run native host regressions
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
