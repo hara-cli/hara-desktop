@@ -556,6 +556,8 @@ struct ServeDiscoveryRecord {
     pid: u32,
 }
 
+const DEFAULT_SERVE_PORT: u16 = 8790;
+
 fn discovery_path() -> Result<PathBuf, String> {
     Ok(hara_data_dir()?.join("serve.json"))
 }
@@ -654,7 +656,7 @@ fn read_private_discovery_at(path: &Path) -> Result<(String, ServeDiscoveryRecor
 
     let record: ServeDiscoveryRecord =
         serde_json::from_str(&raw).map_err(|error| format!("parse serve discovery: {error}"))?;
-    if record.pid <= 1 {
+    if record.pid <= 1 || (cfg!(unix) && record.pid > i32::MAX as u32) {
         return Err("serve discovery contains an invalid pid".into());
     }
     Ok((raw, record))
@@ -1248,44 +1250,122 @@ fn terminate_verified_legacy_process(_pid: u32) -> Result<(), String> {
     Err("legacy engine replacement is not supported on this platform".into())
 }
 
-/// One-time bridge for engines that predate authenticated `server.shutdown`. The renderer supplies only
-/// the pid it already authenticated to; native code independently reopens the private record and refuses
-/// to signal anything except a Desktop-bundled, managed, or absolute-PATH `hara` executable.
-#[tauri::command]
-fn terminate_legacy_serve(expected_pid: u32) -> Result<(), String> {
-    let path = discovery_path()?;
+fn retire_discovered_serve_at(
+    path: &Path,
+    expected_pid: Option<u32>,
+    is_alive: impl Fn(u32) -> bool,
+    terminate: impl Fn(u32) -> Result<(), String>,
+) -> Result<(), String> {
     let (raw, record) = read_private_discovery_at(&path)?;
-    if record.pid != expected_pid {
+    if expected_pid.is_some_and(|expected| record.pid != expected) {
         return Err("the running Hara engine changed; reconnect before restarting it".into());
     }
-    terminate_verified_legacy_process(record.pid)?;
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while process_is_alive(record.pid) && std::time::Instant::now() < deadline {
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    if process_is_alive(record.pid) {
-        return Err("legacy Hara engine did not stop within 5 seconds".into());
+    if is_alive(record.pid) {
+        terminate(record.pid)?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while is_alive(record.pid) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        if is_alive(record.pid) {
+            return Err("legacy Hara engine did not stop within 5 seconds".into());
+        }
     }
 
     // A graceful old engine normally removes its own record. Windows legacy termination cannot, so remove
     // only the exact owner-only contents we opened before signalling; never unlink a replacement instance.
-    if let Ok((current, _)) = read_private_discovery_at(&path) {
-        if current == raw {
-            fs::remove_file(&path)
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("recheck retired serve discovery: {error}")),
+        Ok(_) => {
+            let (current, _) = read_private_discovery_at(path)?;
+            if current != raw {
+                return Err(
+                    "another Hara engine started while the old engine was retiring; reconnect and retry"
+                        .into(),
+                );
+            }
+            fs::remove_file(path)
                 .map_err(|error| format!("remove retired serve discovery: {error}"))?;
         }
     }
     Ok(())
 }
 
-fn serve_command(executable: &Path) -> std::process::Command {
+/// One-time bridge for engines that predate authenticated `server.shutdown`. The renderer supplies only
+/// the pid it already authenticated to; native code independently reopens the private record and refuses
+/// to signal anything except a Desktop-bundled, managed, or absolute-PATH `hara` executable.
+#[tauri::command]
+fn terminate_legacy_serve(expected_pid: u32) -> Result<(), String> {
+    retire_discovered_serve_at(
+        &discovery_path()?,
+        Some(expected_pid),
+        process_is_alive,
+        terminate_verified_legacy_process,
+    )
+}
+
+/// A failed authenticated connection followed by an explicit Start is a recovery request. Retire only the
+/// process named by the owner-only discovery record and only after executable-path verification. A stale
+/// record for a dead process is removed without signalling anything.
+fn recover_discovered_serve_before_start() -> Result<(), String> {
+    let path = discovery_path()?;
+    match fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("inspect previous Hara engine: {error}")),
+        Ok(_) => {}
+    }
+    retire_discovered_serve_at(
+        &path,
+        None,
+        process_is_alive,
+        terminate_verified_legacy_process,
+    )
+    .map_err(|error| {
+        format!(
+            "Hara Desktop could not safely recover the previous engine: {error}. \
+             Stop the identified process or remove ~/.hara/serve.json after confirming it is stale, then retry."
+        )
+    })
+}
+
+/// Prefer Hara's conventional port when it is available. If another application owns 8790, choose a
+/// loopback-only ephemeral port and let the authenticated discovery record advertise it. This avoids
+/// killing or probing unrelated applications and removes Desktop's fixed-port startup dependency.
+fn available_serve_port() -> Result<u16, String> {
+    let default_address = std::net::SocketAddr::from(([127, 0, 0, 1], DEFAULT_SERVE_PORT));
+    match std::net::TcpListener::bind(default_address) {
+        Ok(listener) => {
+            drop(listener);
+            Ok(DEFAULT_SERVE_PORT)
+        }
+        Err(default_error) => {
+            let listener = std::net::TcpListener::bind(std::net::SocketAddr::from((
+                [127, 0, 0, 1],
+                0,
+            )))
+            .map_err(|error| {
+                format!(
+                    "port {DEFAULT_SERVE_PORT} is occupied ({default_error}) and no fallback loopback port is available ({error})"
+                )
+            })?;
+            let port = listener
+                .local_addr()
+                .map_err(|error| format!("inspect fallback Hara port: {error}"))?
+                .port();
+            drop(listener);
+            Ok(port)
+        }
+    }
+}
+
+fn serve_command(executable: &Path, port: u16) -> std::process::Command {
     let mut command = std::process::Command::new(executable);
-    command.arg("serve");
+    command.args(["serve", "--port", &port.to_string()]);
     command
 }
 
-fn spawn_serve_process(executable: &Path, log_path: &Path) -> Result<u32, String> {
+fn spawn_serve_process(executable: &Path, log_path: &Path, port: u16) -> Result<u32, String> {
     let log_directory = log_path
         .parent()
         .ok_or_else(|| "serve log has no parent directory".to_string())?;
@@ -1301,7 +1381,7 @@ fn spawn_serve_process(executable: &Path, log_path: &Path) -> Result<u32, String
         .try_clone()
         .map_err(|error| format!("clone serve log handle: {error}"))?;
 
-    let mut command = serve_command(executable);
+    let mut command = serve_command(executable, port);
     command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::from(stdout))
@@ -1365,7 +1445,9 @@ fn start_serve() -> Result<u32, String> {
             fallback
         }
     };
-    let pid = spawn_serve_process(&executable, &log_path)?;
+    recover_discovered_serve_before_start()?;
+    let port = available_serve_port()?;
+    let pid = spawn_serve_process(&executable, &log_path, port)?;
     Ok(pid)
 }
 
@@ -2170,12 +2252,115 @@ mod pet_tests {
     fn serve_command_executes_the_sidecar_directly() {
         use std::ffi::OsStr;
 
-        let command = serve_command(Path::new("/opt/hara/hara"));
+        let command = serve_command(Path::new("/opt/hara/hara"), 49152);
         assert_eq!(command.get_program(), OsStr::new("/opt/hara/hara"));
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
-            vec![OsStr::new("serve")]
+            vec![
+                OsStr::new("serve"),
+                OsStr::new("--port"),
+                OsStr::new("49152")
+            ]
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn startup_retires_only_the_exact_private_discovery_owner() {
+        use std::cell::Cell;
+        use std::os::unix::fs::PermissionsExt;
+
+        let unique = format!(
+            "hara-desktop-startup-recovery-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let directory = root.join(".hara");
+        let discovery = directory.join("serve.json");
+        fs::create_dir_all(&directory).unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::write(&discovery, b"{\"pid\":4242}\n").unwrap();
+        fs::set_permissions(&discovery, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let alive = Cell::new(true);
+        let terminated = Cell::new(None);
+        retire_discovered_serve_at(
+            &discovery,
+            None,
+            |_| alive.get(),
+            |pid| {
+                terminated.set(Some(pid));
+                alive.set(false);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(terminated.get(), Some(4242));
+        assert!(!discovery.exists());
+
+        fs::write(&discovery, b"{\"pid\":4243}\n").unwrap();
+        fs::set_permissions(&discovery, fs::Permissions::from_mode(0o600)).unwrap();
+        let error = retire_discovered_serve_at(
+            &discovery,
+            None,
+            |_| true,
+            |pid| {
+                Err(format!(
+                    "refusing to stop pid {pid}: not a managed Hara engine"
+                ))
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("refusing to stop pid 4243"));
+        assert!(discovery.exists(), "a refused owner is never removed");
+
+        fs::write(&discovery, b"{\"pid\":4244}\n").unwrap();
+        fs::set_permissions(&discovery, fs::Permissions::from_mode(0o600)).unwrap();
+        retire_discovered_serve_at(
+            &discovery,
+            None,
+            |_| false,
+            |_| panic!("a dead discovery owner must never be signalled"),
+        )
+        .unwrap();
+        assert!(!discovery.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn fallback_serve_port_is_loopback_bindable_and_nonzero() {
+        let default = std::net::SocketAddr::from(([127, 0, 0, 1], DEFAULT_SERVE_PORT));
+        let listener = match std::net::TcpListener::bind(default) {
+            Ok(listener) => listener,
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                // Some local agent sandboxes prohibit even loopback binds. CI and the packaged-app smoke
+                // run outside that restriction; keep the rest of the native suite useful in the sandbox.
+                return;
+            }
+            Err(_) => {
+                match std::net::TcpListener::bind(std::net::SocketAddr::from(([127, 0, 0, 1], 0))) {
+                    Ok(listener) => listener,
+                    Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+                    Err(error) => panic!("reserve occupied-port test listener: {error}"),
+                }
+            }
+        };
+        let occupied = listener.local_addr().unwrap().port();
+        let selected = if occupied == DEFAULT_SERVE_PORT {
+            available_serve_port().unwrap()
+        } else {
+            // The default may already be owned by another test or local process; the production selector
+            // still has to return a usable non-zero loopback port.
+            available_serve_port().unwrap()
+        };
+        assert_ne!(selected, 0);
+        if occupied == DEFAULT_SERVE_PORT {
+            assert_ne!(selected, DEFAULT_SERVE_PORT);
+        }
     }
 
     #[cfg(unix)]

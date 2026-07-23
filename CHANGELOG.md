@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Recover Desktop startup when `127.0.0.1:8790` is already occupied. A healthy authenticated Hara
+  remains reusable through its private discovery record; an explicitly retried stale Hara is stopped
+  only after its PID and executable path are revalidated; dead records are removed without signalling;
+  and unrelated applications are left untouched while Desktop starts its managed engine on a
+  loopback-only fallback port advertised through authenticated discovery.
+- Restore both visible eye apertures in the static Desktop cat mark instead of filling them with the
+  website animation's detached blink-overlay circles.
+- Keep `write_file`, edit, and patch difference cards from shrinking their body to an empty strip inside
+  the flex transcript. Difference text now has a stable minimum height, preserves unified alignment, and
+  scrolls within a bounded responsive card for long lines, high display scaling, and narrow windows.
 - Replace the model picker's fixed Enterprise Gateway preset and detached organization card with one
   connection switchboard: cloud/local options remain presets, while every enterprise row is a named,
   user-enrolled Hara Control deployment. Users can add multiple deployments, inspect authorization and

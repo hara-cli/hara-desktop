@@ -904,12 +904,23 @@ button.deny {
   white-space: pre-wrap;
 }
 .diff {
+  flex: 0 0 auto;
+  align-self: stretch;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 3.5rem;
+  max-height: min(48vh, 420px);
+  margin: 0;
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
   font-size: 12px;
-  overflow-x: auto;
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: pre;
+  overflow: auto;
   font-family: "SF Mono", ui-monospace, monospace;
 }
 .usage {

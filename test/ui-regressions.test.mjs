@@ -6,6 +6,18 @@ import { classifyEngineVersion } from "../src/engine-version.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+test("the static Desktop cat mark keeps both traced eye apertures visible", () => {
+  const mark = readFileSync(`${root}/src/mark.tsx`, "utf8");
+
+  assert.match(mark, /The two eye apertures are already cut out/);
+  assert.match(mark, /<path d="/);
+  assert.doesNotMatch(
+    mark,
+    /<circle\b/,
+    "website blink-overlay circles fill the eye apertures when copied without their animation",
+  );
+});
+
 test("rail buttons reset global padding so navigation SVGs cannot collapse into dots", () => {
   const css = readFileSync(`${root}/src/App.css`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
@@ -26,6 +38,8 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const rail = readFileSync(`${root}/src/AppRail.tsx`, "utf8");
   const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const diff = css.match(/\.diff \{([\s\S]*?)\n\}/)?.[1] ?? "";
 
   assert.match(app, /import \{ AppRail, type AppPlace \} from "\.\/AppRail"/);
   assert.match(app, /<ConversationTimeline/);
@@ -33,6 +47,12 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(rail, /export type AppPlace = "chat" \| "projects" \| "auto" \| "settings"/);
   assert.match(timeline, /case "approval"/, "approvals stay in the session timeline");
   assert.match(timeline, /const lastUser = items\.map/, "busy progress remains scoped to the current turn");
+  assert.match(timeline, /<pre key=\{index\} className="diff">/);
+  assert.match(diff, /flex:\s*0 0 auto\s*;/, "diff cards cannot be flex-shrunk until their body disappears");
+  assert.match(diff, /min-height:\s*3\.5rem\s*;/);
+  assert.match(diff, /max-height:\s*min\(48vh,\s*420px\)\s*;/);
+  assert.match(diff, /overflow:\s*auto\s*;/, "long or wide diffs remain scrollable inside the card");
+  assert.match(diff, /white-space:\s*pre\s*;/, "unified diff alignment is preserved");
 });
 
 test("typed task lifecycle drives status while conversation and execution inputs stay separate", () => {
@@ -216,6 +236,10 @@ test("updater restart waits for real shutdown and one-shot relaunch starts the b
   assert.match(nativeHost, /process_path_is_hara_sidecar/);
   assert.match(nativeHost, /libc::kill\(pid as i32, libc::SIGTERM\)/);
   assert.match(nativeHost, /terminate_legacy_serve,/);
+  assert.match(nativeHost, /recover_discovered_serve_before_start\(\)\?/);
+  assert.match(nativeHost, /SocketAddr::from\(\(\[127, 0, 0, 1\], DEFAULT_SERVE_PORT\)\)/);
+  assert.match(nativeHost, /SocketAddr::from\(\([\s\S]*\[127, 0, 0, 1\],[\s\S]*0,[\s\S]*\)\)/);
+  assert.match(nativeHost, /command\.args\(\["serve", "--port"/);
   assert.match(app, /const pid = await invoke<number>\("start_serve"\)/);
   assert.match(app, /if \(discovery\.pid === pid\)/, "startup ignores a stale discovery from another process");
   assert.match(app, /expectedPid !== null && d\.pid !== expectedPid/, "the final connection repeats the pid handshake");
