@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.35 — managed connections and resilient Desktop workflows
 
 - Recover Desktop startup when `127.0.0.1:8790` is already occupied. A healthy authenticated Hara
   remains reusable through its private discovery record; an explicitly retried stale Hara is stopped
@@ -21,6 +21,8 @@
   skip obsolete runtimes such as Node 11, prefer Node 22 from PATH or common version managers, preserve a
   bounded actionable failure when no supported runtime exists, and execute arguments without shell parsing.
   Native regressions cover repeated launch and rejection of command links outside the plugin store.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
 
 ## 0.1.34 — visible window recovery and Hara 0.133.0
 
