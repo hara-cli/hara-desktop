@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.37 — scoped DeepSeek V4 controls and Hara 0.134.1
+
+- Refresh the model catalog and thinking controls from the active session and enterprise connection,
+  so each Hara Control token shows only its authorized DeepSeek V4 model and the documented `off`,
+  `high`, and `max` choices. Switching connections or sessions immediately replaces stale model state.
+- Bundle the exact verified Hara CLI `0.134.1` release. Managed gateway requests now preserve DeepSeek
+  V4 thinking parameters and reject model or effort choices outside the enrolled token's server-advertised
+  scope before they reach Hara Control.
+- Ship the Desktop-owned WeChat QR login lifecycle prepared in 0.1.36: the QR renders inside Settings,
+  expired codes can be retried, closing the panel cancels safely, and transient task shells no longer leave
+  an orphaned login process.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.36 — managed WeChat login and Hara 0.134.0
 
 - Move WeChat QR login out of transient agent commands and into a single Desktop-owned session

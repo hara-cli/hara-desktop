@@ -429,7 +429,12 @@ export class HaraClient {
     return this.call<{ skills: SkillInfo[] }>("skills.list", cwd ? { cwd } : {});
   }
   /** Model catalog + effort levels (serve ≥0.116). Null on older serves. */
-  async listModels(opts?: { sessionId?: string; cwd?: string }): Promise<{ models: string[]; current: string; effortLevels: string[] } | null> {
+  async listModels(opts?: { sessionId?: string; cwd?: string }): Promise<{
+    models: string[];
+    current: string;
+    effort: string | null;
+    effortLevels: string[];
+  } | null> {
     try {
       return await this.call("models.list", opts ?? {});
     } catch (e: any) {

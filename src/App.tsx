@@ -221,8 +221,21 @@ export default function App() {
     setBusy(next);
   }, []);
   const [input, setInput] = useState("");
-  const [modelInfo, setModelInfo] = useState<{ models: string[]; current: string; effortLevels: string[] } | null>(null);
+  const [modelInfo, setModelInfo] = useState<{ models: string[]; current: string; effort: string | null; effortLevels: string[] } | null>(null);
   const [sessEffort, setSessEffort] = useState<Record<string, string>>({});
+  const modelInfoRequestRef = useRef(0);
+  const refreshModelInfo = useCallback(async (opts?: { sessionId?: string; cwd?: string }) => {
+    const client = clientRef.current;
+    if (!client) return null;
+    const requestId = ++modelInfoRequestRef.current;
+    const info = await client.listModels(opts);
+    if (requestId !== modelInfoRequestRef.current) return info;
+    setModelInfo(info);
+    if (opts?.sessionId && info) {
+      setSessEffort((current) => ({ ...current, [opts.sessionId!]: info.effort ?? "" }));
+    }
+    return info;
+  }, []);
   const [defaultApproval, setDefaultApproval] = useState<string>(() => localStorage.getItem("hara.approval") || "");
   const [err, setErr] = useState("");
   const [zone, setZoneRaw] = useState<Zone>(() => (localStorage.getItem("hara.zone") as Zone) || "chat");
@@ -1014,7 +1027,7 @@ export default function App() {
       }
       void c.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
       void c.listArtifacts().then((a) => setArtifacts(a ?? "old-server")).catch(() => {});
-      void c.listModels().then(setModelInfo).catch(() => {});
+      void refreshModelInfo().catch(() => {});
       setPhase("ready");
     } catch (e: any) {
       c?.close();
@@ -1023,7 +1036,13 @@ export default function App() {
       setPhase("no-server");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleEvent]);
+  }, [handleEvent, refreshModelInfo]);
+
+  useEffect(() => {
+    if (phase !== "ready" || !active) return;
+    void refreshModelInfo({ sessionId: active }).catch(() => {});
+    return () => { modelInfoRequestRef.current += 1; };
+  }, [active, phase, refreshModelInfo]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1683,7 +1702,8 @@ export default function App() {
     try {
       const r = await c.setSessionModel(active, model, effort);
       setSessions((list) => list.map((s) => (s.id === active ? { ...s, model: r.model } : s)));
-      if (effort) setSessEffort((m) => ({ ...m, [active]: effort }));
+      setSessEffort((current) => ({ ...current, [active]: r.effort ?? "" }));
+      await refreshModelInfo({ sessionId: active });
     } catch (e: any) {
       push(active, (items) => [...items, { kind: "notice", text: `model switch: ${e?.message ?? e}` }]);
     }
@@ -2693,7 +2713,9 @@ export default function App() {
                     setServer((current) => current
                       ? { ...current, provider: next.current.provider, model: next.current.model }
                       : current);
-                    void clientRef.current?.listModels({ cwd: server?.cwd }).then(setModelInfo).catch(() => {});
+                    void refreshModelInfo(active
+                      ? { sessionId: active }
+                      : { cwd: server?.cwd }).catch(() => {});
                   }}
                 />
                 <GatewaySettings client={clientRef.current} locale={locale} />

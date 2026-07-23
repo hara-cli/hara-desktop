@@ -148,6 +148,21 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(lifecycle, /state === "completed" \? "ready" : state/);
 });
 
+test("the model picker follows the active session's managed catalog and refreshes after every switch", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+
+  assert.match(client, /listModels\(opts\?: \{ sessionId\?: string; cwd\?: string \}\)/);
+  assert.match(client, /effort: string \| null/);
+  assert.match(app, /refreshModelInfo\(\{ sessionId: active \}\)/, "active-session changes request a scoped catalog");
+  assert.match(
+    app,
+    /await c\.setSessionModel\(active, model, effort\)[\s\S]*await refreshModelInfo\(\{ sessionId: active \}\)/,
+    "model and thinking changes reload the authoritative catalog",
+  );
+  assert.match(app, /\[opts\.sessionId!\]: info\.effort \?\? ""/, "the server's per-session effort replaces stale UI state");
+});
+
 test("settings use shared page templates and keep Desktop, engine, and update state distinct", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const settings = readFileSync(`${root}/src/SettingsUI.tsx`, "utf8");
