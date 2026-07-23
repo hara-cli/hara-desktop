@@ -25,8 +25,17 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     send(raw) {
       const request = JSON.parse(raw);
       requests.push(request);
-      const result = request.method === "initialize"
-        ? {
+      const login = {
+        id: "weixin-login-1",
+        platform: "weixin",
+        phase: request.method === "settings.gateways.login.cancel" ? "cancelled" : "waiting",
+        qrPayload: request.method === "settings.gateways.login.cancel" ? undefined : "weixin://local-qr",
+        qrRevision: 1,
+        startedAt: 100,
+        updatedAt: 100,
+        deadlineAt: 1_000,
+      };
+      const result = request.method === "initialize" ? {
             name: "hara",
             version: "0.127.0",
             protocol: 1,
@@ -34,11 +43,20 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
             provider: "qwen",
             model: "glm-5",
             capabilities: {
-              methods: ["session.send", "session.steer", "artifact.import", "artifact.list"],
+              methods: [
+                "session.send",
+                "session.steer",
+                "artifact.import",
+                "artifact.list",
+                "settings.gateways.login.start",
+                "settings.gateways.login.status",
+                "settings.gateways.login.cancel",
+              ],
               events: ["event.task_state"],
             },
-          }
-        : { accepted: true, taskId: "task-1", turnId: "turn-1" };
+          } : request.method.startsWith("settings.gateways.login.")
+            ? { login }
+            : { accepted: true, taskId: "task-1", turnId: "turn-1" };
       queueMicrotask(() => this.onmessage?.({
         data: JSON.stringify({ jsonrpc: "2.0", id: request.id, result }),
       }));
@@ -86,6 +104,30 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
       title: "Client brief",
       kind: "document",
     },
+  });
+
+  const startedLogin = await client.startGatewayLogin("weixin");
+  assert.equal(startedLogin.qrPayload, "weixin://local-qr");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 4,
+    method: "settings.gateways.login.start",
+    params: { platform: "weixin" },
+  });
+  await client.gatewayLoginStatus("weixin", "weixin-login-1");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 5,
+    method: "settings.gateways.login.status",
+    params: { platform: "weixin", id: "weixin-login-1" },
+  });
+  const cancelledLogin = await client.cancelGatewayLogin("weixin", "weixin-login-1");
+  assert.equal(cancelledLogin.phase, "cancelled");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 6,
+    method: "settings.gateways.login.cancel",
+    params: { platform: "weixin", id: "weixin-login-1" },
   });
 
   let received;

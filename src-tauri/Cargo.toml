@@ -1,6 +1,6 @@
 [package]
 name = "hara-desktop"
-version = "0.1.35"
+version = "0.1.36"
 description = "hara desktop — a Tauri shell over `hara serve` (WebSocket JSON-RPC)"
 authors = ["Nanhara"]
 edition = "2021"

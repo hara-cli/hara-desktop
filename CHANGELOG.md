@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.36 — managed WeChat login and Hara 0.134.0
+
+- Move WeChat QR login out of transient agent commands and into a single Desktop-owned session
+  controller exposed through authenticated loopback RPC. Settings can start or retry login, render
+  the QR locally, show each login phase, refresh expired codes, and cancel safely when the panel or
+  app closes without leaving an orphaned login process.
+- Keep WeChat credentials inside Hara's owner-only local state. QR payloads are bounded and the
+  renderer receives only the short-lived code plus redacted phase/error data; token persistence
+  failures stop the session with a focused local-state recovery message.
+- Block `hara gateway --platform weixin --login` when an automated task tries to launch it in a
+  headless task shell, directing users to Desktop or a real interactive terminal where the QR and
+  process lifetime can be managed reliably.
+- Bundle the exact verified Hara CLI `0.134.0` release. It also prioritizes project-local memory and
+  skills before global/plugin material when building the bounded context digest, so installed plugin
+  volume cannot push current-project guidance out of memory search context.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.35 — managed connections and resilient Desktop workflows
 
 - Recover Desktop startup when `127.0.0.1:8790` is already occupied. A healthy authenticated Hara

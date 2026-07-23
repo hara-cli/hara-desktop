@@ -194,6 +194,26 @@ export interface GatewayStatus {
   recommendation: string;
 }
 
+export type GatewayLoginPhase =
+  | "waiting"
+  | "scanned"
+  | "confirmed"
+  | "cancelled"
+  | "timed-out"
+  | "failed";
+
+export interface GatewayLoginSnapshot {
+  id: string;
+  platform: "weixin";
+  phase: GatewayLoginPhase;
+  qrPayload?: string;
+  qrRevision: number;
+  startedAt: number;
+  updatedAt: number;
+  deadlineAt: number;
+  errorCode?: "network" | "invalid-response" | "qr-expired" | "local-state";
+}
+
 export type OrganizationAccessState = "valid" | "expiring" | "expired" | "legacy" | "invalid";
 
 export interface OrganizationConnection {
@@ -443,6 +463,25 @@ export class HaraClient {
       if (e?.code === -32601) return null;
       throw e;
     }
+  }
+  /** Start an in-process connector login owned by the local serve engine (serve ≥0.134). */
+  async startGatewayLogin(platform: "weixin"): Promise<GatewayLoginSnapshot | null> {
+    if (this.methods.size > 0 && !this.supports("settings.gateways.login.start")) return null;
+    try {
+      const result = await this.call<{ login: GatewayLoginSnapshot }>("settings.gateways.login.start", { platform });
+      return result.login;
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  gatewayLoginStatus(platform: "weixin", id: string) {
+    return this.call<{ login: GatewayLoginSnapshot }>("settings.gateways.login.status", { platform, id })
+      .then((result) => result.login);
+  }
+  cancelGatewayLogin(platform: "weixin", id: string) {
+    return this.call<{ login: GatewayLoginSnapshot }>("settings.gateways.login.cancel", { platform, id })
+      .then((result) => result.login);
   }
   /** User-added organization routes. Codes are one-shot request fields and tokens never cross this API. */
   async listOrganizationConnections(cwd?: string): Promise<OrganizationConnectionsState | null> {

@@ -286,8 +286,13 @@ test("provider settings keep credentials transient and support local no-key pres
 test("bot settings show redacted live gateway health without model polling", () => {
   const gatewaySettings = readFileSync(`${root}/src/GatewaySettings.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const pkg = JSON.parse(readFileSync(`${root}/package.json`, "utf8"));
 
   assert.match(client, /settings\.gateways\.list/);
+  for (const method of ["start", "status", "cancel"]) {
+    assert.match(client, new RegExp(`settings\\.gateways\\.login\\.${method}`));
+  }
   assert.match(gatewaySettings, /const REFRESH_MS = 120_000/);
   assert.match(gatewaySettings, /client\.listGatewayStatuses\(\)/);
   assert.match(gatewaySettings, /lastConnectedAt, status\.lastPollAt, status\.lastMessageAt/);
@@ -295,6 +300,14 @@ test("bot settings show redacted live gateway health without model polling", () 
   assert.match(gatewaySettings, /status\.runtimeState !== "connected"/);
   assert.match(gatewaySettings, /processOnly/);
   assert.match(gatewaySettings, /不调用模型，也不消耗 Token/);
+  assert.match(gatewaySettings, /import\("qrcode"\)/, "the QR encoder is loaded only after login starts");
+  assert.match(gatewaySettings, /window\.setTimeout\(\(\) => void poll\(\), LOGIN_POLL_MS\)/, "polling is recursive and non-overlapping");
+  assert.match(gatewaySettings, /window\.clearTimeout\(timer\)/, "polling is cancelled when the panel unmounts");
+  assert.match(gatewaySettings, /client\.cancelGatewayLogin\("weixin", active\.id\)/, "unmount closes the owned login session");
+  assert.match(gatewaySettings, /Generated locally · not uploaded|仅在本机生成 · 不上传/);
+  assert.doesNotMatch(gatewaySettings, /api\.qrserver|chart\.google|quickchart|fetch\(/i, "QR payloads are never uploaded to a renderer service");
+  assert.match(css, /\.gateway-login-panel/);
+  assert.equal(pkg.dependencies.qrcode.length > 0, true);
   assert.doesNotMatch(gatewaySettings, /apiKey|appSecret|token\s*:/i, "renderer status never accepts connector credentials");
 });
 
