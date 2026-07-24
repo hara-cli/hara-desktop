@@ -1,11 +1,11 @@
 # Changelog
 
-## 0.1.38 — session-bound enterprise routes and Hara 0.134.2
+## 0.1.38 — session-bound enterprise routes and Hara 0.134.6
 
 - Show the persisted Personal or enterprise `profileId` beside the active conversation's model picker.
   A resumed thread remains visibly bound to the connection that created it even after the user switches
   the default connection for new sessions.
-- Bundle the exact verified Hara CLI `0.134.2` release. Existing conversations keep their provider,
+- Bundle the exact verified Hara CLI `0.134.6` release. Existing conversations keep their provider,
   model, guardian, subagent, managed-role, heartbeat, and gateway specialist routes on the same profile;
   removed or unauthorized connections fail closed instead of silently changing organization.
 - Surface new Desktop versions with a visible in-app guide instead of only a settings dot. Users can
