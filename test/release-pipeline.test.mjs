@@ -462,6 +462,8 @@ test("DMG notarization separates submission from bounded status polling", () => 
   assert.equal(isTransientNotaryFailure({ signal: "SIGBUS" }), true);
   assert.equal(isTransientNotaryFailure({ status: 138, stderr: "Bus error: 10" }), true);
   assert.equal(isTransientNotaryFailure({ stderr: "NSURLErrorDomain Code=-1001 request timed out" }), true);
+  assert.equal(isTransientNotaryFailure({ stderr: "HTTPClientError.connectTimeout" }), true);
+  assert.equal(isTransientNotaryFailure({ stderr: "HTTPClientError.unauthorized" }), false);
   assert.equal(isTransientNotaryFailure({ stderr: "401 Unauthorized: invalid credentials" }), false);
 
   assert.deepEqual(
@@ -532,6 +534,46 @@ test("DMG notarization survives a crashed status child without resubmitting", as
     assert.equal(calls.filter((args) => args[0] === "info").length, 3);
     assert.ok(calls[0].includes("--no-wait"));
     assert.equal(calls[0].includes("--wait"), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("DMG notarization retries Apple's connect-timeout upload before polling", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "hara-notary-submit-retry-"));
+  const artifact = join(directory, "Hara.dmg");
+  const key = join(directory, "AuthKey.p8");
+  const submissionId = "bc426ba9-5387-4684-a67c-10ddf091f8e2";
+  writeFileSync(artifact, "signed dmg fixture\n");
+  writeFileSync(key, "private key fixture\n");
+  const calls = [];
+  let submitCall = 0;
+  try {
+    const result = await notarizeArtifact(
+      artifact,
+      { key, keyId: "KEY123", issuer: "issuer-fixture" },
+      {
+        pollIntervalMs: 0,
+        totalWaitMs: 1_000,
+        wait: async () => {},
+        run(args) {
+          calls.push(args);
+          if (args[0] === "submit") {
+            submitCall += 1;
+            if (submitCall === 1) {
+              const error = new Error("HTTPClientError.connectTimeout");
+              error.stderr = "HTTPClientError.connectTimeout";
+              throw error;
+            }
+            return JSON.stringify({ id: submissionId });
+          }
+          return JSON.stringify({ id: submissionId, status: "Accepted" });
+        },
+      },
+    );
+    assert.equal(result, submissionId);
+    assert.equal(calls.filter((args) => args[0] === "submit").length, 2);
+    assert.equal(calls.filter((args) => args[0] === "info").length, 1);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

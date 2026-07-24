@@ -18,7 +18,8 @@ import {
   type SkillInfo,
   type PanelSpec,
   type ProjectPanel,
-  type CronJobInfo,
+  type AutomationDraftInput,
+  type AutomationListResult,
   type CtxInfo,
   type ProviderSettingsState,
   type TaskLifecycleEvent,
@@ -40,6 +41,14 @@ import {
 } from "./session-place";
 import { WorkStarter } from "./WorkStarter";
 import { ArtifactWorkbench } from "./ArtifactWorkbench";
+import {
+  AutomationSidebar,
+  AutomationsPage,
+  type AutomationDraft,
+  type AutomationRun,
+  type AutomationViewId,
+} from "./Automations";
+import { AUTOMATION_COPY_EN } from "./automation-copy-en";
 import {
   SettingsBadge,
   SettingsCard,
@@ -87,6 +96,10 @@ type PendingDesktopUpdate = {
   version: string;
   phase: "downloaded" | "installed";
 };
+type DesktopUpdateProgress = {
+  downloaded: number;
+  total?: number;
+};
 type CommandLineHaraStatus = {
   path: string;
   bundledVersion: string;
@@ -117,12 +130,49 @@ const botTitle = (s: SessionInfo): string => {
   return s.sourceName && t.startsWith(`${s.sourceName} · `) ? t.slice(s.sourceName.length + 3) : t;
 };
 const isAutomated = (s: SessionInfo): boolean => s.source === "cron" || s.source === "gateway";
+const automationDraftInput = (
+  draft: AutomationDraft,
+  fallbackCwd?: string,
+): AutomationDraftInput => ({
+  name: draft.name,
+  schedule: draft.schedule,
+  task: draft.task,
+  ...(draft.cwd || fallbackCwd ? { cwd: draft.cwd || fallbackCwd } : {}),
+  ...(draft.tz || draft.timezone ? { tz: draft.tz || draft.timezone } : {}),
+  ...(draft.mode === "print" || draft.mode === "org" || draft.mode === "command"
+    ? { mode: draft.mode }
+    : {}),
+  ...(draft.deliver ? { deliver: draft.deliver } : {}),
+  ...(draft.deliverMode ? { deliverMode: draft.deliverMode } : {}),
+  ...(draft.alertAfter ? { alertAfter: draft.alertAfter } : {}),
+});
 /** gateway idle-rotation forks share an id prefix (`wechat-<chat>-<tag>[-N]`) — fold to one thread */
 const forkBase = (id: string): string => id.replace(/-\d+$/, "");
 const BUNDLED_ENGINE_VERSION = bundledEngineVersionText.trim();
 const SERVER_BUSY = -32002;
 const BUSY_SEND_RETRIES = 4;
 const STEERING_HISTORY_PREFIX = "[Sent while you were working on the above — TRIAGE before continuing:";
+const UPDATE_SNOOZE_KEY = "hara.desktopUpdateSnooze";
+const UPDATE_SNOOZE_MS = 24 * 60 * 60 * 1_000;
+
+const desktopUpdateIsSnoozed = (version: string): boolean => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(UPDATE_SNOOZE_KEY) ?? "{}") as {
+      version?: unknown;
+      until?: unknown;
+    };
+    return saved.version === version && typeof saved.until === "number" && saved.until > Date.now();
+  } catch {
+    return false;
+  }
+};
+
+const snoozeDesktopUpdate = (version: string): void => {
+  localStorage.setItem(
+    UPDATE_SNOOZE_KEY,
+    JSON.stringify({ version, until: Date.now() + UPDATE_SNOOZE_MS }),
+  );
+};
 
 interface QueuedInput {
   id: string;
@@ -221,7 +271,7 @@ export default function App() {
     setBusy(next);
   }, []);
   const [input, setInput] = useState("");
-  const [modelInfo, setModelInfo] = useState<{ models: string[]; current: string; effort: string | null; effortLevels: string[] } | null>(null);
+  const [modelInfo, setModelInfo] = useState<{ models: string[]; current: string; profileId?: string; effort: string | null; effortLevels: string[] } | null>(null);
   const [sessEffort, setSessEffort] = useState<Record<string, string>>({});
   const modelInfoRequestRef = useRef(0);
   const refreshModelInfo = useCallback(async (opts?: { sessionId?: string; cwd?: string }) => {
@@ -255,20 +305,18 @@ export default function App() {
   const [home, setHome] = useState("");
   const [unread, setUnread] = useState<Record<string, boolean>>({});
   const [autoUnread, setAutoUnread] = useState(0); // ambient counter — never mixes with manual unread
-  const [jobForm, setJobForm] = useState<{ open: boolean; name: string; schedule: string; task: string }>({ open: false, name: "", schedule: "", task: "" });
-  const refreshAuto = () => clientRef.current && void clientRef.current.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
-  const submitJob = async () => {
-    const c = clientRef.current;
-    if (!c || !jobForm.name.trim() || !jobForm.schedule.trim() || !jobForm.task.trim()) return;
+  const [autoView, setAutoView] = useState<AutomationViewId>("tasks");
+  const [auto, setAuto] = useState<AutomationListResult | null | "old-server">(null);
+  const refreshAuto = useCallback(async (): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) return;
     try {
-      await c.addAutomation(jobForm.name.trim(), jobForm.schedule.trim(), jobForm.task.trim(), home ? `${home}/.hara/workspace` : undefined);
-      setJobForm({ open: false, name: "", schedule: "", task: "" });
-      refreshAuto();
-    } catch (e: any) {
-      setErr(String(e?.message ?? e));
+      const next = await client.listAutomation();
+      setAuto(next ?? "old-server");
+    } catch {
+      // The connection banner owns transport failures. Focus/interval refresh will retry.
     }
-  };
-  const [auto, setAuto] = useState<{ jobs: CronJobInfo[]; sessions: SessionInfo[] } | null | "old-server">(null);
+  }, []);
   const [artifacts, setArtifacts] = useState<{ artifacts: ArtifactSummary[]; invalid: number; truncated: boolean } | null | "old-server">(null);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactDetails | null>(null);
   const [artifactRevisions, setArtifactRevisions] = useState<ArtifactRevision[]>([]);
@@ -313,6 +361,19 @@ export default function App() {
       if (!(await isPermissionGranted().catch(() => false))) await requestPermission().catch(() => {});
     })();
   }, []);
+  // Automation state is local RPC data, not a model turn. Refreshing it on focus and every 30 seconds
+  // keeps next-run/health/result state honest without consuming model tokens.
+  useEffect(() => {
+    if (phase !== "ready" || zone !== "auto") return;
+    void refreshAuto();
+    const intervalId = window.setInterval(() => void refreshAuto(), 30_000);
+    const onFocus = () => void refreshAuto();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [phase, zone, refreshAuto]);
   // dock badge = manual unread count (interruption-grade only; ambient automation never badges)
   useEffect(() => {
     const n = Object.values(unread).filter(Boolean).length;
@@ -451,6 +512,8 @@ export default function App() {
   const [updateTone, setUpdateTone] = useState<"neutral" | "success" | "warning" | "error">("neutral");
   const [updating, setUpdating] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
+  const [updateNoticeVisible, setUpdateNoticeVisible] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<DesktopUpdateProgress | null>(null);
   const [desktopVersion, setDesktopVersion] = useState("");
   const [commandLineHara, setCommandLineHara] = useState<CommandLineHaraStatus | null>(null);
   const [commandLineBusy, setCommandLineBusy] = useState(false);
@@ -524,7 +587,7 @@ export default function App() {
       void refreshPets();
     }
     if (z === "auto" && clientRef.current) {
-      void clientRef.current.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
+      void refreshAuto();
       markAutoSeen();
     }
   };
@@ -933,10 +996,12 @@ export default function App() {
           if (e.sessionId !== activeRef.current) {
             setUnread((u) => ({ ...u, [e.sessionId]: true }));
             const s = sessionsRef.current.find((x) => x.id === e.sessionId);
-            if (!s || !isAutomated(s)) {
-              // interruption-grade: a manual session finished while you were elsewhere
+            if (s && !isAutomated(s)) {
+              // Only a positively identified local/manual session gets a Desktop notification. A newly
+              // arrived Feishu/WeChat/cron session may finish before session.list refreshes; treating that
+              // unknown id as manual duplicates the channel app's own operating-system notification.
               void isPermissionGranted()
-                .then((ok) => ok && sendNotification({ title: s?.title || "hara", body: (e.reply || "").slice(0, 120) }))
+                .then((ok) => ok && sendNotification({ title: s.title || "hara", body: (e.reply || "").slice(0, 120) }))
                 .catch(() => {});
             }
           }
@@ -1025,7 +1090,7 @@ export default function App() {
         sessionOpenRequestRef.current += 1;
         setZoneRaw("chat");
       }
-      void c.listAutomation().then((a) => setAuto(a ?? "old-server")).catch(() => {});
+      void refreshAuto();
       void c.listArtifacts().then((a) => setArtifacts(a ?? "old-server")).catch(() => {});
       void refreshModelInfo().catch(() => {});
       setPhase("ready");
@@ -1036,7 +1101,7 @@ export default function App() {
       setPhase("no-server");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleEvent, refreshModelInfo]);
+  }, [handleEvent, refreshAuto, refreshModelInfo]);
 
   useEffect(() => {
     if (phase !== "ready" || !active) return;
@@ -1082,7 +1147,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zone, active, activeCwd]);
 
-  // silent update probe at launch — a dot on the settings gear, never a popup
+  // Check at launch without using a duplicate OS notification. A new version gets one in-app guide;
+  // choosing "Later" snoozes that exact version for 24 hours while the settings badge stays available.
   useEffect(() => {
     void getVersion().then(setDesktopVersion).catch(() => {});
     void invoke<CommandLineHaraStatus>("synchronize_command_line_hara")
@@ -1098,6 +1164,7 @@ export default function App() {
       .then((u) => {
         if (!u) return;
         setUpdAvail(u.version);
+        if (!desktopUpdateIsSnoozed(u.version)) setUpdateNoticeVisible(true);
         void u.close().catch(() => {});
       })
       .catch(() => {});
@@ -1256,7 +1323,7 @@ export default function App() {
   };
 
   /** Open an automated run as a READ-ONLY replay in the automation place. */
-  const openReplay = async (session: {
+  const openReplay = useCallback(async (session: {
     id: string;
     title: string;
     sourceName?: string;
@@ -1282,7 +1349,53 @@ export default function App() {
     } catch (error: any) {
       setErr(String(error?.message ?? error));
     }
-  };
+  }, []);
+  const addAutomationDraft = useCallback(async (draft: AutomationDraft): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
+    await client.addAutomationDraft(
+      automationDraftInput(draft, home ? `${home}/.hara/workspace` : undefined),
+    );
+    await refreshAuto();
+  }, [home, locale, refreshAuto]);
+  const updateAutomationDraft = useCallback(async (jobId: string, draft: AutomationDraft): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
+    await client.updateAutomation(
+      jobId,
+      automationDraftInput(draft, home ? `${home}/.hara/workspace` : undefined),
+    );
+    await refreshAuto();
+  }, [home, locale, refreshAuto]);
+  const runAutomationNow = useCallback(async (jobId: string): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
+    await client.runAutomation(jobId);
+    await refreshAuto();
+  }, [locale, refreshAuto]);
+  const toggleAutomation = useCallback(async (jobId: string, enabled: boolean): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
+    await client.toggleAutomation(jobId, enabled);
+    await refreshAuto();
+  }, [locale, refreshAuto]);
+  const deleteAutomation = useCallback(async (jobId: string): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
+    await client.deleteAutomation(jobId);
+    await refreshAuto();
+  }, [locale, refreshAuto]);
+  const installAutomationScheduler = useCallback(async (): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
+    await client.installAutomationScheduler();
+    await refreshAuto();
+  }, [locale, refreshAuto]);
+  const openAutomationReplay = useCallback(async (run: AutomationRun): Promise<void> => {
+    if (!auto || auto === "old-server") return;
+    const session = auto.sessions.find((candidate) => candidate.id === run.id);
+    if (session) await openReplay(session);
+  }, [auto, openReplay]);
 
   openPetSessionRef.current = async (sessionId: string) => {
     const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
@@ -1859,6 +1972,8 @@ export default function App() {
   const downloadDesktopUpdate = async () => {
     if (updating || updateReady) return;
     setUpdating(true);
+    setUpdateNoticeVisible(true);
+    setUpdateProgress(null);
     setUpd("");
     setUpdateTone("neutral");
     let candidate: Update | null = null;
@@ -1866,6 +1981,7 @@ export default function App() {
       candidate = await checkForUpdate();
       if (!candidate) {
         setUpdAvail("");
+        setUpdateNoticeVisible(false);
         setUpd(t("upToDate"));
         setUpdateTone("success");
         return;
@@ -1875,7 +1991,24 @@ export default function App() {
       // Keep the live task engine available during the network transfer. Installation is deliberately
       // deferred to restartForUpdate, after authenticated shutdown has retired the discovery record. On
       // Windows this ordering is mandatory: a running adjacent hara.exe cannot be replaced reliably.
-      await candidate.download();
+      let downloaded = 0;
+      let total: number | undefined;
+      await candidate.download((event) => {
+        if (event.event === "Started") {
+          downloaded = 0;
+          total = event.data.contentLength;
+          setUpdateProgress({ downloaded, ...(total ? { total } : {}) });
+          return;
+        }
+        if (event.event === "Progress") {
+          downloaded += event.data.chunkLength;
+          setUpdateProgress({ downloaded, ...(total ? { total } : {}) });
+          return;
+        }
+        if (event.event === "Finished") {
+          setUpdateProgress({ downloaded: total ?? downloaded, ...(total ? { total } : {}) });
+        }
+      });
       pendingDesktopUpdateRef.current = {
         update: candidate,
         version: candidate.version,
@@ -1884,10 +2017,13 @@ export default function App() {
       candidate = null;
       setUpdAvail("");
       setUpdateReady(true);
+      setUpdateProgress(null);
       setUpd(t("restartToApply"));
       setUpdateTone("success");
     } catch (error: any) {
       if (candidate) void candidate.close().catch(() => {});
+      setUpdateNoticeVisible(true);
+      setUpdateProgress(null);
       setUpd(String(error?.message ?? error).slice(0, 160));
       setUpdateTone("error");
     } finally {
@@ -1914,12 +2050,14 @@ export default function App() {
 
   const restartForUpdate = async () => {
     if (Object.values(busy).some(Boolean)) {
+      setUpdateNoticeVisible(true);
       setUpd(t("restartBusy"));
       setUpdateTone("warning");
       return;
     }
     const pendingUpdate = pendingDesktopUpdateRef.current;
     if (!pendingUpdate) {
+      setUpdateNoticeVisible(true);
       setUpdateReady(false);
       setUpd(t("updateStateLost"));
       setUpdateTone("error");
@@ -1959,6 +2097,7 @@ export default function App() {
         ? t("restartServerBusy")
         : String(error?.message ?? error).slice(0, 160);
       setUpd(message);
+      setUpdateNoticeVisible(true);
       setUpdateTone(serverBusy ? "warning" : "error");
       setUpdating(false);
       // If installation or native relaunch failed after the engine was safely retired, restore task
@@ -1970,6 +2109,17 @@ export default function App() {
         });
       }
     }
+  };
+
+  const openDesktopUpdateSettings = () => {
+    setSetSec("engine");
+    setZone("settings");
+  };
+
+  const deferDesktopUpdate = () => {
+    const version = pendingDesktopUpdateRef.current?.version || updAvail;
+    if (version) snoozeDesktopUpdate(version);
+    setUpdateNoticeVisible(false);
   };
 
   const flipLocale = () => {
@@ -2320,6 +2470,16 @@ export default function App() {
           <div className="inputbar">
             {activeSession && (
               <div className="picker">
+                {modelInfo?.profileId && (
+                  <span
+                    className={`session-profile-chip ${modelInfo.profileId === "personal" ? "personal" : "managed"}`}
+                    title={modelInfo.profileId === "personal"
+                      ? (locale === "zh" ? "此会话使用个人连接" : "This conversation uses your Personal connection")
+                      : (locale === "zh" ? `此会话已绑定企业连接 ${modelInfo.profileId}` : `This conversation is bound to organization connection ${modelInfo.profileId}`)}
+                  >
+                    {modelInfo.profileId === "personal" ? (locale === "zh" ? "个人" : "Personal") : `${modelInfo.profileId} · ORG`}
+                  </span>
+                )}
                 {modelInfo && modelInfo.models.length > 0 ? (
                   <select value={activeSession.model} onChange={(e) => void changeModel(e.target.value, undefined)} disabled={!!busy[active!]}>
                     {[...new Set([activeSession.model, ...modelInfo.models])].map((m) => (
@@ -2458,6 +2618,14 @@ export default function App() {
       </span>
     </div>
   );
+  const updateNoticeVersion = pendingDesktopUpdateRef.current?.version || updAvail;
+  const updatePercent = updateProgress?.total
+    ? Math.min(100, Math.round((updateProgress.downloaded / updateProgress.total) * 100))
+    : null;
+  const showUpdateNotice =
+    updateNoticeVisible &&
+    (Boolean(updateNoticeVersion) || updating || updateReady || updateTone === "error") &&
+    !(zone === "settings" && setSec === "engine");
 
   return (
     <div className="app">
@@ -2473,6 +2641,79 @@ export default function App() {
             ×
           </button>
         </div>
+      )}
+      {showUpdateNotice && (
+        <section
+          className={`desktop-update-notice ${updateTone === "error" ? "is-error" : updateReady ? "is-ready" : ""}`}
+          aria-labelledby="desktop-update-notice-title"
+          aria-live="polite"
+        >
+          <div className="desktop-update-seal" aria-hidden="true">
+            ↑
+          </div>
+          <div className="desktop-update-copy">
+            <div className="desktop-update-meta">
+              <span>{t("desktopUpdateLabel")}</span>
+              {updateNoticeVersion && <b>v{updateNoticeVersion}</b>}
+            </div>
+            <strong id="desktop-update-notice-title">
+              {updateReady
+                ? t("updateReadyTitle")
+                : updating
+                  ? t("updateDownloadingTitle")
+                  : updateTone === "error"
+                    ? t("updateFailedTitle")
+                    : t("updateNoticeTitle")}
+            </strong>
+            <p>
+              {updateReady
+                ? t("updateNoticeReadyBody")
+                : updating
+                  ? t("updateDownloadingBody")
+                  : updateTone === "error"
+                    ? `${t("updateFailureHint")}${upd ? ` ${upd}` : ""}`
+                    : t("updateNoticeBody")}
+            </p>
+            {updating && (
+              <div
+                className={`desktop-update-progress ${updatePercent === null ? "indeterminate" : ""}`}
+                role="progressbar"
+                aria-label={t("updateProgressLabel")}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                {...(updatePercent === null ? {} : { "aria-valuenow": updatePercent })}
+              >
+                <span style={{ width: updatePercent === null ? "32%" : `${updatePercent}%` }} />
+              </div>
+            )}
+            {upd && (updateReady || updateTone === "warning") && (
+              <small className="desktop-update-status">{upd}</small>
+            )}
+            <div className="desktop-update-actions">
+              {updateReady ? (
+                <button type="button" disabled={updating} onClick={() => void restartForUpdate()}>
+                  {t("restartNow")}
+                </button>
+              ) : updateTone === "error" ? (
+                <button type="button" disabled={updating} onClick={() => void downloadDesktopUpdate()}>
+                  {t("updateRetry")}
+                </button>
+              ) : !updating ? (
+                <button type="button" onClick={() => void downloadDesktopUpdate()}>
+                  {t("updateNow")}
+                </button>
+              ) : null}
+              {!updating && (
+                <button type="button" className="ghost" onClick={deferDesktopUpdate}>
+                  {t("updateLater")}
+                </button>
+              )}
+              <button type="button" className="linky" onClick={openDesktopUpdateSettings}>
+                {t("updateDetails")}
+              </button>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* ── context list (switches with the rail) ── */}
@@ -2602,41 +2843,26 @@ export default function App() {
       )}
 
       {zone === "auto" && (
-        <aside className="sidebar">
+        <div className="sidebar automation-sidebar-shell">
           {brandBar}
-          <button className="new" onClick={() => setJobForm((f) => ({ ...f, open: true }))}>
-            {t("addJob")}
-          </button>
-          <div className="sessions" key={zone}>
-            {auto === "old-server" ? (
-              <div className="autohint dim">{t("autoNeedsUpdate")}</div>
-            ) : (
-              <>
-                <div className="group-h">{t("autoJobs")}</div>
-                {(auto ? auto.jobs : []).map((j) => (
-                  <div key={j.id} className={`trow ${j.enabled ? "" : "off"}`} title={j.schedule ?? ""}>
-                    <span className={`tstat ${j.lastStatus ?? ""}`}>{j.lastStatus === "ok" ? "✓" : j.lastStatus === "error" ? "✗" : "○"}</span>
-                    <span className="tname">{j.name}</span>
-                  </div>
-                ))}
-                <div className="group-h" onClick={() => toggleGroup("__runs")}>
-                  <span className="caret">{collapsed["__runs"] ? "▸" : "▾"}</span> {t("autoRuns")}
-                  <span className="count">{auto ? auto.sessions.length : 0}</span>
-                </div>
-                {!collapsed["__runs"] &&
-                  (auto ? auto.sessions : []).slice(0, 30).map((s) => (
-                    <div key={s.id} className={`sess ${autoReplay?.id === s.id ? "on" : ""}`} onClick={() => void openReplay(s)}>
-                      <div className="title">
-                        <span className="botlab">{s.sourceName || s.source}</span> {botTitle(s) || t("untitled")}
-                      </div>
-                      <div className="meta">{s.updatedAt ? fmtTime(s.updatedAt) : ""}</div>
-                    </div>
-                  ))}
-              </>
-            )}
-          </div>
+          {auto === "old-server" ? (
+            <div className="autohint dim">{t("autoNeedsUpdate")}</div>
+          ) : (
+            <AutomationSidebar
+              copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
+              jobs={auto?.jobs ?? null}
+              sessions={auto?.sessions ?? null}
+              scheduler={auto?.scheduler}
+              view={autoView}
+              onViewChange={(next) => {
+                setAutoView(next);
+                setAutoReplay(null);
+                markAutoSeen();
+              }}
+            />
+          )}
           {footBar}
-        </aside>
+        </div>
       )}
 
       {zone === "settings" && (
@@ -2694,7 +2920,7 @@ export default function App() {
       {/* ── main area ── */}
       {zone === "settings" ? (
         // ⚙ configure place — context column picked a group, the stage renders its forms
-        <main className="chat board">
+        <div className="chat board automation-board">
           <div className="scroll boardpad setstage">
             {setSec === "providers" && (
               <SettingsPage
@@ -3054,7 +3280,7 @@ export default function App() {
               </SettingsPage>
             )}
           </div>
-        </main>
+        </div>
       ) : zone === "auto" ? (
         // 🤖 the orchestration place — console density: job table on top, run timeline below;
         // a run opens as a READ-ONLY replay (fork is the only way to continue — automated
@@ -3087,79 +3313,25 @@ export default function App() {
                 )}
               </div>
             </>
-          ) : (
+          ) : auto === "old-server" ? (
             <div className="scroll boardpad">
-              {auto === "old-server" ? (
-                <div className="autohint dim">{t("autoNeedsUpdate")}</div>
-              ) : (
-                <>
-                  <div className="bandhead">
-                    {t("autoJobs")}
-                    {!jobForm.open && (
-                      <button className="paneltab" onClick={() => setJobForm((f) => ({ ...f, open: true }))}>
-                        {t("addJob")}
-                      </button>
-                    )}
-                  </div>
-                  {jobForm.open && (
-                    <div className="jobform wide">
-                      <input placeholder={t("jobName")} value={jobForm.name} onChange={(e) => setJobForm((f) => ({ ...f, name: e.target.value }))} spellCheck={false} />
-                      <input placeholder={t("jobSchedule")} value={jobForm.schedule} onChange={(e) => setJobForm((f) => ({ ...f, schedule: e.target.value }))} spellCheck={false} />
-                      <input placeholder={t("jobTask")} value={jobForm.task} onChange={(e) => setJobForm((f) => ({ ...f, task: e.target.value }))} spellCheck={false} />
-                      <button onClick={() => void submitJob()} disabled={!jobForm.name.trim() || !jobForm.schedule.trim() || !jobForm.task.trim()}>
-                        {t("create")}
-                      </button>
-                      <button className="ghost" onClick={() => setJobForm((f) => ({ ...f, open: false }))}>
-                        {t("cancel")}
-                      </button>
-                    </div>
-                  )}
-                  <table className="jobtable">
-                    <thead>
-                      <tr>
-                        <th>{t("colStatus")}</th>
-                        <th>{t("colName")}</th>
-                        <th>{t("colSchedule")}</th>
-                        <th>{t("colLast")}</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(auto ? auto.jobs : []).map((j) => (
-                        <tr key={j.id} className={j.enabled ? "" : "off"}>
-                          <td>
-                            <span className={`tstat ${j.lastStatus ?? ""}`}>{j.lastStatus === "ok" ? "✓" : j.lastStatus === "error" ? "✗" : "○"}</span>
-                          </td>
-                          <td>{j.name}</td>
-                          <td className="dim">{j.schedule ?? "—"}</td>
-                          <td className="dim">{j.lastRunAt ? fmtTime(new Date(j.lastRunAt).toISOString()) : "—"}</td>
-                          <td className="ops">
-                            <span className="act" title={j.enabled ? "pause" : "resume"} onClick={() => void clientRef.current?.toggleAutomation(j.id, !j.enabled).then(refreshAuto)}>
-                              {j.enabled ? "⏸" : "▶"}
-                            </span>
-                            <span className="act" title="delete" onClick={() => void clientRef.current?.deleteAutomation(j.id).then(refreshAuto)}>
-                              ✕
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div className="bandhead">{t("autoRuns")}</div>
-                  {(auto ? auto.sessions : []).length === 0 ? (
-                    <div className="autohint dim">{t("noRuns")}</div>
-                  ) : (
-                    (auto ? auto.sessions : []).map((s) => (
-                      <div key={s.id} className="trow click wide" onClick={() => void openReplay(s)}>
-                        <span className="botlab">{s.sourceName || s.source}</span>
-                        <span className="tname">{botTitle(s) || t("untitled")}</span>
-                        <span className="ttime dim">{s.updatedAt ? fmtTime(s.updatedAt) : ""}</span>
-                      </div>
-                    ))
-                  )}
-                </>
-              )}
+              <div className="autohint dim">{t("autoNeedsUpdate")}</div>
             </div>
+          ) : (
+            <AutomationsPage
+              copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
+              jobs={auto?.jobs ?? null}
+              sessions={auto?.sessions ?? null}
+              scheduler={auto?.scheduler}
+              view={autoView}
+              add={addAutomationDraft}
+              update={updateAutomationDraft}
+              run={runAutomationNow}
+              toggle={toggleAutomation}
+              delete={deleteAutomation}
+              install={installAutomationScheduler}
+              openReplay={openAutomationReplay}
+            />
           )}
         </main>
       ) : activeArtifact && zone === "projects" ? (

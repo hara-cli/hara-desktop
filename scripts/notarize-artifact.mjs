@@ -16,7 +16,7 @@ const INFO_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 15_000;
 const TOTAL_WAIT_MS = 60 * 60_000;
 const TRANSIENT_NOTARY_FAILURE =
-  /SIGBUS|bus error|exit (?:code )?138|NSURLErrorDomain|kCFErrorDomainCFNetwork|request timed out|timed out|network connection was lost|could not connect to (?:the )?server|Internet connection appears to be offline|TLS handshake|HTTP 5\d\d|service unavailable|connection reset/i;
+  /SIGBUS|bus error|exit (?:code )?138|NSURLErrorDomain|kCFErrorDomainCFNetwork|HTTPClientError\.(?:connectTimeout|readTimeout)|request timed out|timed out|network connection was lost|could not connect to (?:the )?server|Internet connection appears to be offline|TLS handshake|HTTP 5\d\d|service unavailable|connection reset/i;
 
 function sleep(milliseconds) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));

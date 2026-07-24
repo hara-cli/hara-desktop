@@ -14,10 +14,30 @@ export interface SessionInfo {
   title: string;
   cwd: string;
   model: string;
+  /** Identity route persisted by Hara serve. Missing only for older engine/session files. */
+  profileId?: string;
   updatedAt: string;
   source?: "interactive" | "gateway" | "cron";
   sourceName?: string;
+  /** Stable automation identity for cron runs. Older engines only expose sourceName. */
+  jobId?: string;
   archived?: boolean;
+}
+
+export type CronJobStatus = "ok" | "error" | "running" | "timed_out";
+
+export interface AutomationSchedulerInfo {
+  installed: boolean;
+  supported: boolean;
+  platform?: string;
+  detail?: string;
+}
+
+export interface AutomationDeliverySummary {
+  /** Delivery targets are intentionally redacted before they cross into the renderer. */
+  kind: "none" | "feishu" | "weixin" | "telegram" | "webhook" | "other";
+  label: string;
+  mode?: "always" | "on-output" | "on-error";
 }
 
 export interface CronJobInfo {
@@ -26,13 +46,49 @@ export interface CronJobInfo {
   mode: string;
   cwd: string;
   enabled: boolean;
-  deliver?: string;
+  /** Full task text is available only over the authenticated local Desktop connection. */
+  task?: string;
+  taskPreview?: string;
+  /** Parseable schedule value for editing; schedule remains the human-readable presentation. */
+  scheduleSpec?: string;
+  tz?: string;
+  nextRunAt?: number;
+  createdAt?: number;
+  runningSince?: number;
+  lastDurationMs?: number;
+  consecutiveErrors?: number;
+  delivery?: AutomationDeliverySummary;
   deliverMode?: "always" | "on-output" | "on-error";
   alertAfter?: number;
   lastRunAt?: number;
-  lastStatus?: "ok" | "error";
+  lastStatus?: CronJobStatus;
   lastError?: string;
   schedule?: string; // human description ("every 30m", "cron 0 9 * * *")
+}
+
+export interface AutomationListResult {
+  jobs: CronJobInfo[];
+  sessions: SessionInfo[];
+  scheduler?: AutomationSchedulerInfo;
+}
+
+export interface AutomationDraftInput {
+  name: string;
+  schedule: string;
+  task: string;
+  cwd?: string;
+  tz?: string;
+  mode?: "print" | "org" | "command";
+  /** Optional result delivery. Raw targets are write-only and never returned by automation.list. */
+  deliver?: string;
+  deliverMode?: "always" | "on-output" | "on-error";
+  alertAfter?: number;
+}
+
+export interface AutomationScheduleValidation {
+  schedule: string;
+  description: string;
+  nextRuns: number[];
 }
 
 export type ArtifactKind = "presentation" | "spreadsheet" | "document";
@@ -417,7 +473,7 @@ export class HaraClient {
     return this.call<{ sessions: SessionInfo[] }>("session.list", cwd ? { cwd } : {});
   }
   createSession(opts?: { cwd?: string; approval?: string }) {
-    return this.call<{ sessionId: string; model: string }>("session.create", opts ?? {});
+    return this.call<{ sessionId: string; model: string; profileId?: string }>("session.create", opts ?? {});
   }
   listPlugins() {
     return this.call<{ plugins: PluginInfo[] }>("plugins.list", {});
@@ -432,6 +488,7 @@ export class HaraClient {
   async listModels(opts?: { sessionId?: string; cwd?: string }): Promise<{
     models: string[];
     current: string;
+    profileId?: string;
     effort: string | null;
     effortLevels: string[];
   } | null> {
@@ -513,11 +570,32 @@ export class HaraClient {
   addAutomation(name: string, schedule: string, task: string, cwd?: string) {
     return this.call<{ id: string; name: string; schedule: string }>("automation.add", { name, schedule, task, ...(cwd ? { cwd } : {}) });
   }
+  addAutomationDraft(input: AutomationDraftInput) {
+    return this.call<{ id: string; name: string; schedule: string }>("automation.add", { ...input });
+  }
+  validateAutomationSchedule(schedule: string, tz?: string) {
+    return this.call<AutomationScheduleValidation>("automation.validate", {
+      schedule,
+      ...(tz ? { tz } : {}),
+    });
+  }
+  updateAutomation(idJob: string, input: AutomationDraftInput) {
+    return this.call<{ id: string; name: string; schedule: string }>("automation.update", {
+      id: idJob,
+      ...input,
+    });
+  }
+  runAutomation(idJob: string) {
+    return this.call<{ id: string; ok: boolean; error?: string }>("automation.run", { id: idJob });
+  }
   toggleAutomation(idJob: string, enabled: boolean) {
     return this.call("automation.toggle", { id: idJob, enabled });
   }
   deleteAutomation(idJob: string) {
     return this.call("automation.delete", { id: idJob });
+  }
+  installAutomationScheduler() {
+    return this.call<{ scheduler: AutomationSchedulerInfo }>("automation.scheduler.install", {});
   }
   renameSession(sessionId: string, title: string) {
     return this.call<{ sessionId: string; title: string }>("session.rename", { sessionId, title });
@@ -529,7 +607,7 @@ export class HaraClient {
     return this.call<{ sessionId: string; model: string; effort: string | null }>("session.set-model", { sessionId, model, effort });
   }
   /** Automation timeline data (serve ≥0.116). Gracefully returns null on older serves (-32601). */
-  async listAutomation(): Promise<{ jobs: CronJobInfo[]; sessions: SessionInfo[] } | null> {
+  async listAutomation(): Promise<AutomationListResult | null> {
     try {
       return await this.call("automation.list", {});
     } catch (e: any) {
@@ -560,6 +638,7 @@ export class HaraClient {
     return this.call<{
       sessionId: string;
       model: string;
+      profileId?: string;
       history: { role: string; text: string }[];
       task?: { id: string; objective: string; status: Exclude<TaskLifecycleState, "waiting">; turnId: string; updatedAt: string };
     }>("session.resume", { sessionId });

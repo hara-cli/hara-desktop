@@ -1086,8 +1086,54 @@ fn synchronize_command_line_hara_at(
     windows: bool,
 ) -> Result<CommandLineHaraStatus, String> {
     let status = command_line_hara_status_at(app_executable, data_directory, windows);
-    if status.blocked || !status.available || status.current {
+    if status.blocked || !status.available {
         return Ok(status);
+    }
+    if status.current {
+        if status.managed {
+            return Ok(status);
+        }
+
+        // The executable replacement and its ownership receipt are two separately durable renames.
+        // A crash between them leaves the exact new bundle at the managed path with the previous valid
+        // receipt. Recover only that already opted-in path: a missing receipt or a receipt naming any
+        // other path remains unmanaged and requires an explicit install/adoption.
+        let destination = managed_cli_path(data_directory, windows);
+        let Some(receipt) = read_managed_cli_receipt(data_directory)? else {
+            return Ok(status);
+        };
+        if receipt.managed_path != destination.to_string_lossy() {
+            return Ok(status);
+        }
+        let Some(source) = bundled_sidecar_path(app_executable, windows) else {
+            return Ok(status);
+        };
+        let Some(source_sha256) = regular_file_sha256(&source, "bundled Hara CLI")? else {
+            return Ok(status);
+        };
+        let Some(destination_sha256) =
+            regular_file_sha256(&destination, "installed command-line Hara")?
+        else {
+            return Ok(command_line_hara_status_at(
+                app_executable,
+                data_directory,
+                windows,
+            ));
+        };
+        if source_sha256 != destination_sha256 {
+            return Ok(command_line_hara_status_at(
+                app_executable,
+                data_directory,
+                windows,
+            ));
+        }
+
+        write_managed_cli_receipt(data_directory, &destination, destination_sha256)?;
+        let repaired = command_line_hara_status_at(app_executable, data_directory, windows);
+        if !repaired.current || !repaired.managed {
+            return Err("recovered command-line Hara receipt could not be verified".into());
+        }
+        return Ok(repaired);
     }
     if !status.installed || status.managed {
         return install_command_line_hara_at(app_executable, data_directory, windows);
@@ -2168,6 +2214,129 @@ mod pet_tests {
             staged, 0,
             "successful installation leaves no staged executable"
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn automatic_sync_recovers_a_current_bundle_after_receipt_write_was_interrupted() {
+        let unique = format!(
+            "hara-desktop-managed-cli-receipt-recovery-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let app_directory = root.join("app");
+        let data = root.join("home").join(".hara");
+        let app = app_directory.join("hara-desktop");
+        let bundled = app_directory.join("hara");
+        fs::create_dir_all(&app_directory).unwrap();
+        fs::create_dir_all(data.parent().unwrap()).unwrap();
+        fs::write(&bundled, b"bundled-cli-v1").unwrap();
+
+        let installed = install_command_line_hara_at(&app, &data, false).unwrap();
+        assert!(installed.current);
+        assert!(installed.managed);
+        let destination = data.join("bin").join("hara");
+        let old_receipt = fs::read(managed_cli_receipt_path(&data)).unwrap();
+
+        // Simulate the durable executable rename completing for the new Desktop, followed by a
+        // power loss before the new receipt could replace the old one.
+        fs::write(&bundled, b"bundled-cli-v2").unwrap();
+        fs::write(&destination, b"bundled-cli-v2").unwrap();
+        assert_eq!(
+            fs::read(managed_cli_receipt_path(&data)).unwrap(),
+            old_receipt
+        );
+        let interrupted = command_line_hara_status_at(&app, &data, false);
+        assert!(interrupted.current);
+        assert!(!interrupted.managed);
+        assert!(!interrupted.blocked);
+
+        let recovered = synchronize_command_line_hara_at(&app, &data, false).unwrap();
+        assert!(recovered.current);
+        assert!(recovered.managed);
+        assert_eq!(fs::read(&destination).unwrap(), b"bundled-cli-v2");
+        assert_ne!(
+            fs::read(managed_cli_receipt_path(&data)).unwrap(),
+            old_receipt
+        );
+        let receipt = read_managed_cli_receipt(&data).unwrap().unwrap();
+        assert_eq!(receipt.managed_path, destination.to_string_lossy());
+        assert_eq!(
+            receipt.sha256,
+            regular_file_sha256(&destination, "installed command-line Hara")
+                .unwrap()
+                .unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn automatic_sync_does_not_adopt_a_current_bundle_without_a_matching_receipt() {
+        let unique = format!(
+            "hara-desktop-managed-cli-no-receipt-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        let app_directory = root.join("app");
+        let data = root.join("home").join(".hara");
+        let app = app_directory.join("hara-desktop");
+        let bundled = app_directory.join("hara");
+        let destination = data.join("bin").join("hara");
+        fs::create_dir_all(&app_directory).unwrap();
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        fs::write(&bundled, b"trusted-bundle").unwrap();
+        fs::write(&destination, b"trusted-bundle").unwrap();
+
+        let unmanaged = synchronize_command_line_hara_at(&app, &data, false).unwrap();
+        assert!(unmanaged.current);
+        assert!(!unmanaged.managed);
+        assert!(!unmanaged.blocked);
+        assert!(!managed_cli_receipt_path(&data).exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"trusted-bundle");
+
+        let malicious_receipt = ManagedCliReceipt {
+            schema_version: MANAGED_CLI_RECEIPT_SCHEMA,
+            managed_path: root.join("outside").to_string_lossy().into_owned(),
+            bundled_version: BUNDLED_CLI_VERSION.trim().to_string(),
+            sha256: regular_file_sha256(&destination, "installed command-line Hara")
+                .unwrap()
+                .unwrap(),
+        };
+        fs::write(
+            managed_cli_receipt_path(&data),
+            serde_json::to_vec(&malicious_receipt).unwrap(),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(
+                managed_cli_receipt_path(&data),
+                fs::Permissions::from_mode(0o600),
+            )
+            .unwrap();
+        }
+
+        let still_unmanaged = synchronize_command_line_hara_at(&app, &data, false).unwrap();
+        assert!(still_unmanaged.current);
+        assert!(!still_unmanaged.managed);
+        assert!(!still_unmanaged.blocked);
+        assert_eq!(
+            read_managed_cli_receipt(&data)
+                .unwrap()
+                .unwrap()
+                .managed_path,
+            malicious_receipt.managed_path
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"trusted-bundle");
         let _ = fs::remove_dir_all(root);
     }
 

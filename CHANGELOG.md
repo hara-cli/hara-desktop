@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.38 — session-bound enterprise routes and Hara 0.134.2
+
+- Show the persisted Personal or enterprise `profileId` beside the active conversation's model picker.
+  A resumed thread remains visibly bound to the connection that created it even after the user switches
+  the default connection for new sessions.
+- Bundle the exact verified Hara CLI `0.134.2` release. Existing conversations keep their provider,
+  model, guardian, subagent, managed-role, heartbeat, and gateway specialist routes on the same profile;
+  removed or unauthorized connections fail closed instead of silently changing organization.
+- Surface new Desktop versions with a visible in-app guide instead of only a settings dot. Users can
+  download in the background with real progress, keep working, defer one version for 24 hours, inspect
+  details, and explicitly restart after tasks stop; the ready state explains that a Desktop-managed CLI
+  is synchronized by the same update.
+- Refresh an existing Hara Control connection's authorized model catalog during heartbeat, so the same
+  device Token can expose both DeepSeek V4 Flash and V4 Pro without re-enrollment or manual Key changes.
+- Include Hara CLI's macOS cron LaunchAgent fix. Existing macOS cron users should run
+  `hara cron install` once after upgrading so calendar-minute events replace the coalescible 60-second
+  interval timer; saved jobs and run history remain unchanged.
+- Treat Apple's explicit `HTTPClientError.connectTimeout` as a bounded transient notarization upload
+  failure, while authentication and other permanent errors still fail immediately. This stabilizes the
+  protected signed-macOS promotion lane without weakening notarization.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.37 — scoped DeepSeek V4 controls and Hara 0.134.1
 
 - Refresh the model catalog and thinking controls from the active session and enterprise connection,

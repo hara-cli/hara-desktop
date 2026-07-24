@@ -55,6 +55,49 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(diff, /white-space:\s*pre\s*;/, "unified diff alignment is preserved");
 });
 
+test("external and not-yet-classified sessions never duplicate channel system notifications", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const notificationBranch =
+    app.match(/const s = sessionsRef\.current\.find\(\(x\) => x\.id === e\.sessionId\);([\s\S]*?)\n\s*}\n\s*}\n\s*break;/)?.[1] ?? "";
+
+  assert.match(notificationBranch, /if \(s && !isAutomated\(s\)\)/);
+  assert.doesNotMatch(
+    notificationBranch,
+    /!s \|\| !isAutomated\(s\)/,
+    "an unknown gateway session must fail closed instead of being mistaken for a local manual task",
+  );
+  assert.match(notificationBranch, /sendNotification\(\{ title: s\.title \|\| "hara"/);
+});
+
+test("automation is one guided control console with local-only status refresh", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const automation = readFileSync(`${root}/src/Automations.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+
+  assert.match(app, /<AutomationSidebar/);
+  assert.match(app, /<AutomationsPage/);
+  assert.doesNotMatch(app, /jobForm|className="jobtable"/, "the legacy duplicate task editor and table are gone");
+  assert.match(
+    app,
+    /window\.setInterval\(\(\) => void refreshAuto\(\), 30_000\)/,
+    "task status refreshes from the authenticated local serve connection",
+  );
+  assert.match(app, /Refreshing it on focus and every 30 seconds[\s\S]*without consuming model tokens/);
+  for (const method of ["automation.validate", "automation.update", "automation.run", "automation.scheduler.install"]) {
+    assert.match(client, new RegExp(method.replace(".", "\\.")));
+  }
+  assert.match(automation, /onContextMenu=\{\(event\) => onOpenMenu\(event, job, true\)\}/);
+  assert.match(automation, /setEditor\(\{ kind: "duplicate", job \}\)/);
+  assert.match(automation, /<DeleteDialog/);
+  assert.match(automation, /buildAutomationSchedule\(scheduleDraft\(values\)\)\.spec/);
+  assert.match(automation, /deliveryTarget:\s*""/, "saved delivery destinations are write-only in the editor");
+  assert.doesNotMatch(
+    automation,
+    /return job\.deliver;/,
+    "a stored webhook or channel target is never rendered back into the task list",
+  );
+});
+
 test("typed task lifecycle drives status while conversation and execution inputs stay separate", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
@@ -192,9 +235,16 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.doesNotMatch(app, /<OrganizationSettings/, "enterprise routes live in the model switchboard instead of a detached card");
   assert.match(app, /<GatewaySettings client=\{clientRef\.current\} locale=\{locale\}/);
   assert.match(app, /t\("restartNow"\)/);
-  assert.match(app, /await candidate\.download\(\);[\s\S]*setUpdAvail\(""\)/, "ready and available update states cannot conflict");
+  assert.match(app, /await candidate\.download\(\(event\) => \{[\s\S]*setUpdAvail\(""\)/, "ready and available update states cannot conflict");
   assert.doesNotMatch(app, /downloadAndInstall/, "the updater must not install while the Windows sidecar is running");
   assert.match(app, /setUpdateTone\("error"\)/, "updater failures render as errors");
+  assert.match(app, /desktopUpdateIsSnoozed\(u\.version\)[\s\S]*setUpdateNoticeVisible\(true\)/, "launch checks surface a visible in-app update guide");
+  assert.match(app, /UPDATE_SNOOZE_MS = 24 \* 60 \* 60 \* 1_000/, "later snoozes one version instead of permanently hiding updates");
+  assert.match(app, /event\.event === "Progress"[\s\S]*event\.data\.chunkLength/, "background downloads expose real progress");
+  assert.match(app, /setSetSec\("engine"\)[\s\S]*setZone\("settings"\)/, "update details route to the existing update settings");
+  assert.match(app, /updateNoticeReadyBody/, "the ready state explains that Desktop and its managed CLI update together");
+  assert.match(css, /\.desktop-update-notice/);
+  assert.match(css, /\.desktop-update-progress/);
   assert.match(app, /role="group"\s+aria-labelledby=/, "settings navigation groups have accessible names");
   assert.match(app, /htmlFor="hara-default-approval"/);
   assert.match(app, /id="hara-default-approval"/);
@@ -350,6 +400,20 @@ test("the model switchboard uses user-added enterprise connections instead of a 
   assert.match(providers, /client\.checkOrganizationConnection/, "connection health is checked explicitly rather than by model polling");
   assert.doesNotMatch(providers, /deviceToken|authorization/i, "renderer never accepts the organization device credential");
   assert.doesNotMatch(app, /OrganizationSettings/, "the old detached enterprise card is not left below the model picker");
+});
+
+test("a resumed conversation exposes its persisted profile beside the session model picker", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+
+  assert.match(client, /interface SessionInfo[\s\S]*profileId\?: string/);
+  assert.match(client, /resumeSession[\s\S]*profileId\?: string/);
+  assert.match(client, /listModels[\s\S]*profileId\?: string/);
+  assert.match(app, /modelInfo\?\.profileId/);
+  assert.match(app, /session-profile-chip/);
+  assert.match(app, /此会话已绑定企业连接/);
+  assert.match(css, /\.session-profile-chip/);
 });
 
 test("engine health follows SemVer precedence instead of raw text equality", () => {
