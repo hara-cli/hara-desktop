@@ -435,6 +435,17 @@ test("release asset transfers retry only bounded GitHub transport failures from 
   assert.match(script, /release_download_all "\$REMOTE_DIR" "signed draft verification download"/);
   assert.match(script, /release_download_all "\$PUBLIC_DIR" "public immutable release download"/);
   assert.match(script, /release_upload_signed_assets/);
+  assert.match(script, /release_upload_signed_asset "\$asset_path"/);
+  assert.match(script, /release_remote_asset_matches "\$asset_path"/);
+  assert.match(script, /--pattern "\$asset_name" --dir "\$stage"/);
+  assert.match(script, /cmp -s "\$source" "\$stage\/\$asset_name"/);
+  assert.match(script, /for asset_path in "\$\{assets\[@\]\}"/);
+  assert.match(script, /retrying only this asset/);
+  assert.doesNotMatch(
+    script,
+    /retrying the complete clobber set/,
+    "a partial upload must never replay all signed assets",
+  );
   assert.match(script, /retrying from a fresh private staging directory/);
 });
 

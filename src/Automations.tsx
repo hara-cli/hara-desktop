@@ -12,6 +12,7 @@ import {
 } from "react";
 import { IconBot, IconEdit, IconFork, IconTrash } from "./icons";
 import {
+  AutomationScheduleError,
   buildAutomationSchedule,
   type AutomationScheduleDraft,
   type AutomationWeekday,
@@ -49,6 +50,8 @@ export interface AutomationJob {
   tz?: string;
   nextRunAt?: number | string | null;
   nextRuns?: Array<number | string>;
+  /** The bounded list preview is still pending; this does not pause the actual scheduler. */
+  nextRunDeferred?: boolean;
   lastRunAt?: number | string | null;
   runningSince?: number | string | null;
   lastStatus?: "ok" | "error" | "running" | "timed_out" | string;
@@ -114,6 +117,7 @@ export interface AutomationDraft {
   weekdays?: number[];
   deliver?: string;
   deliverMode?: "always" | "on-output" | "on-error";
+  clearDeliver?: boolean;
   alertAfter?: number;
 }
 
@@ -135,6 +139,7 @@ export interface AutomationCopy {
   schedule: string;
   lastRun: string;
   nextRun: string;
+  nextRunDeferred: string;
   neverRun: string;
   noNextRun: string;
   workspace: string;
@@ -285,6 +290,7 @@ const DEFAULT_COPY: AutomationCopy = {
   schedule: "计划",
   lastRun: "上次运行",
   nextRun: "下次运行",
+  nextRunDeferred: "正在计算",
   neverRun: "尚未运行",
   noNextRun: "暂无计划",
   workspace: "工作目录",
@@ -626,6 +632,12 @@ function getNextRun(job: AutomationJob): number | string | null | undefined {
   return job.nextRunAt ?? job.nextRuns?.[0];
 }
 
+function getNextRunLabel(job: AutomationJob, copy: AutomationCopy): string {
+  const next = getNextRun(job);
+  if (next !== null && next !== undefined) return formatInstant(next, copy);
+  return job.nextRunDeferred ? copy.nextRunDeferred : copy.noNextRun;
+}
+
 function isOneShot(job: AutomationJob): boolean {
   if (typeof job.schedule === "object" && job.schedule?.kind === "once") return true;
   const expression = scheduleExpression(job);
@@ -648,7 +660,9 @@ function getAutomationState(
   ) {
     return "attention";
   }
-  if (isOneShot(job) && job.lastRunAt && !getNextRun(job)) return "completed";
+  if (isOneShot(job) && job.lastRunAt && !getNextRun(job) && !job.nextRunDeferred) {
+    return "completed";
+  }
   if (!job.lastRunAt) return "scheduled";
   return "active";
 }
@@ -1033,6 +1047,9 @@ function PageMetrics({
 }) {
   const attention = jobs.filter((job) => getAutomationState(job, scheduler) === "attention").length;
   const upcoming = nextUpcoming(jobs);
+  const hasDeferredPreview = jobs.some(
+    (job) => job.enabled !== false && job.nextRunDeferred && !getNextRun(job),
+  );
   return (
     <div className="hara-automation-metrics" aria-label="任务概览">
       <div>
@@ -1045,7 +1062,13 @@ function PageMetrics({
       </div>
       <div className="is-upcoming">
         <span>{copy.upcoming}</span>
-        <strong>{upcoming ? formatInstant(getNextRun(upcoming), copy) : "—"}</strong>
+        <strong>
+          {upcoming
+            ? formatInstant(getNextRun(upcoming), copy)
+            : hasDeferredPreview
+              ? copy.nextRunDeferred
+              : "—"}
+        </strong>
         {upcoming ? <small>{upcoming.name}</small> : null}
       </div>
     </div>
@@ -1201,7 +1224,9 @@ function TaskRow({
         <span className="hara-automation-column-label">{copy.schedule}</span>
         <strong>{getScheduleLabel(job, copy)}</strong>
         <small>
-          {next ? `${copy.nextRun} · ${formatInstant(next, copy)}` : copy.noNextRun}
+          {next || job.nextRunDeferred
+            ? `${copy.nextRun} · ${getNextRunLabel(job, copy)}`
+            : copy.noNextRun}
         </small>
       </div>
       <div className="hara-automation-task-result">
@@ -1452,7 +1477,7 @@ function TaskDetail({
           {getScheduleLabel(job, copy)}
         </DetailField>
         <DetailField icon="clock" label={copy.nextRun}>
-          {getNextRun(job) ? formatInstant(getNextRun(job), copy) : copy.noNextRun}
+          {getNextRunLabel(job, copy)}
         </DetailField>
         <DetailField icon="folder" label={copy.workspace}>
           {job.workspaceLabel || job.cwd || "—"}
@@ -1614,6 +1639,15 @@ function defaultRunAt(): string {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
+function editorRunAtValue(value: number | string | null | undefined): string | null {
+  const millis = toMillis(value);
+  if (millis === null) return null;
+  const date = new Date(millis);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
 function parseEditorValues(
   kind: EditorKind,
   job: AutomationJob | undefined,
@@ -1630,11 +1664,7 @@ function parseEditorValues(
   const scheduleObject = typeof job?.schedule === "object" ? job.schedule : undefined;
   if (scheduleObject?.kind === "once") {
     cadence = "once";
-    const date = toMillis(scheduleObject.runAt);
-    if (date !== null) {
-      const local = new Date(date - new Date(date).getTimezoneOffset() * 60_000);
-      runAt = local.toISOString().slice(0, 16);
-    }
+    runAt = editorRunAtValue(scheduleObject.runAt) ?? runAt;
   } else if (scheduleObject?.kind === "interval" && scheduleObject.everyMs) {
     cadence = "interval";
     const minutes = scheduleObject.everyMs / 60_000;
@@ -1666,10 +1696,7 @@ function parseEditorValues(
       intervalUnit = interval[2].toLowerCase() as EditorValues["intervalUnit"];
     } else if (instant !== null) {
       cadence = "once";
-      const date = new Date(instant);
-      runAt = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-        .toISOString()
-        .slice(0, 16);
+      runAt = editorRunAtValue(instant) ?? runAt;
     } else if (
       fields.length === 5 &&
       /^\d+$/.test(fields[0]) &&
@@ -1694,6 +1721,7 @@ function parseEditorValues(
     }
   }
   const duplicateSuffix = kind === "duplicate" ? ` · ${copy.duplicate}` : "";
+  const savedDeliverMode = kind === "edit" ? job?.deliverMode ?? job?.delivery?.mode : undefined;
   return {
     name: `${job?.name ?? ""}${duplicateSuffix}`,
     task: job?.task ?? job?.description ?? job?.taskPreview ?? "",
@@ -1713,12 +1741,12 @@ function parseEditorValues(
       job?.timezone || job?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     deliveryTarget: "",
     deliverMode:
-      job?.deliverMode === "always" ||
-      job?.deliverMode === "on-output" ||
-      job?.deliverMode === "on-error"
-        ? job.deliverMode
+      savedDeliverMode === "always" ||
+      savedDeliverMode === "on-output" ||
+      savedDeliverMode === "on-error"
+        ? savedDeliverMode
         : "off",
-    alertAfter: String(job?.alertAfter ?? 1),
+    alertAfter: String(job?.alertAfter ?? 3),
   };
 }
 
@@ -1759,25 +1787,65 @@ function scheduleDraft(values: EditorValues): AutomationScheduleDraft {
   return { mode: "advanced", cron: values.customSchedule };
 }
 
-function buildSchedule(values: EditorValues): string {
-  return buildAutomationSchedule(scheduleDraft(values)).spec;
+function unchangedPastOneShotSpec(values: EditorValues, state: EditorState): string | null {
+  if (state.kind !== "edit" || values.cadence !== "once" || !state.job) return null;
+  const original = scheduleExpression(state.job).trim();
+  const originalMillis = toMillis(original);
+  if (originalMillis === null || originalMillis > Date.now()) return null;
+  return editorRunAtValue(originalMillis) === values.runAt ? original : null;
 }
 
-function valuesToDraft(values: EditorValues): AutomationDraft {
+function buildSchedule(values: EditorValues, state: EditorState): string {
+  try {
+    return buildAutomationSchedule(scheduleDraft(values)).spec;
+  } catch (scheduleError) {
+    if (
+      scheduleError instanceof AutomationScheduleError
+      && scheduleError.code === "PAST_TIME"
+    ) {
+      const original = unchangedPastOneShotSpec(values, state);
+      if (original) return original;
+    }
+    throw scheduleError;
+  }
+}
+
+function valuesToDraft(values: EditorValues, state: EditorState): AutomationDraft {
+  const timezone = values.timezone.trim();
+  const timezoneApplies =
+    values.cadence === "daily"
+    || values.cadence === "weekly"
+    || values.cadence === "custom";
+  const savedTimezone = state.kind === "edit"
+    ? state.job?.timezone || state.job?.tz
+    : undefined;
+  const timezoneInput = timezone || (timezoneApplies && savedTimezone ? "" : undefined);
   const draft: AutomationDraft = {
     name: values.name.trim(),
     task: values.task.trim(),
     description: values.task.trim(),
     cwd: values.cwd.trim() || undefined,
     mode: values.mode,
-    schedule: buildSchedule(values),
+    schedule: buildSchedule(values, state),
     scheduleKind: values.cadence,
-    timezone: values.timezone.trim() || undefined,
-    tz: values.timezone.trim() || undefined,
-    alertAfter: Math.max(1, Number(values.alertAfter) || 1),
+    timezone: timezone || undefined,
+    tz: timezoneInput,
+    alertAfter: Math.max(1, Number(values.alertAfter) || 3),
   };
-  if (values.deliverMode !== "off" && values.deliveryTarget.trim()) {
+  const hasSavedDelivery =
+    state.kind === "edit"
+    && Boolean(
+      (state.job?.delivery?.kind && state.job.delivery.kind !== "none")
+      || state.job?.deliver,
+    );
+  if (values.deliverMode === "off") {
+    if (hasSavedDelivery) draft.clearDeliver = true;
+  } else if (values.deliveryTarget.trim()) {
     draft.deliver = values.deliveryTarget.trim();
+    draft.deliverMode = values.deliverMode;
+  } else if (hasSavedDelivery) {
+    // The target itself is intentionally not returned to the renderer. Sending only the policy asks Serve
+    // to preserve the private stored target while changing when it is used.
     draft.deliverMode = values.deliverMode;
   }
   if (values.cadence === "once") draft.runAt = values.runAt;
@@ -1855,7 +1923,7 @@ function AutomationEditor({
     }
     if (target >= 1) {
       try {
-        if (!buildSchedule(values)) errors.schedule = copy.scheduleRequired;
+        if (!buildSchedule(values, state)) errors.schedule = copy.scheduleRequired;
       } catch {
         errors.schedule = copy.scheduleRequired;
       }
@@ -1873,11 +1941,11 @@ function AutomationEditor({
       goNext();
       return;
     }
-    if (validateStep(2)) onSubmit(valuesToDraft(values));
+    if (validateStep(2)) onSubmit(valuesToDraft(values, state));
   };
   let scheduleSpec = "";
   try {
-    scheduleSpec = buildSchedule(values);
+    scheduleSpec = buildSchedule(values, state);
   } catch {
     // The field-level validator owns the message. Keep the preview stable while the user edits.
   }
@@ -2102,7 +2170,7 @@ function AutomationEditor({
                 <div>
                   <small>{copy.schedulePreview}</small>
                   <strong>{scheduleLabel}</strong>
-                  <code>{buildSchedule(values) || "—"}</code>
+                  <code>{scheduleSpec || "—"}</code>
                 </div>
               </div>
             </div>

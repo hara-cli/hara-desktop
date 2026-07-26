@@ -53,6 +53,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "settings.gateways.login.cancel",
               ],
               events: ["event.task_state"],
+              features: ["composer.attachments.v1", "models.capabilities.v1"],
             },
           } : request.method.startsWith("settings.gateways.login.")
             ? { login }
@@ -81,6 +82,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supports("session.steer"), true);
   assert.equal(client.supports("artifact.import"), true);
   assert.equal(client.supportsEvent("event.task_state"), true);
+  assert.equal(client.supportsFeature("composer.attachments.v1"), true);
 
   await client.steer("session-1", "Use the new title", "turn-1");
   assert.deepEqual(requests.at(-1), {
@@ -128,6 +130,26 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     id: 6,
     method: "settings.gateways.login.cancel",
     params: { platform: "weixin", id: "weixin-login-1" },
+  });
+
+  await client.send("session-1", "", [{
+    clientId: "attachment-1",
+    kind: "directory",
+    path: "/workspace/参考 目录",
+  }]);
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 7,
+    method: "session.send",
+    params: {
+      sessionId: "session-1",
+      text: "",
+      attachments: [{
+        clientId: "attachment-1",
+        kind: "directory",
+        path: "/workspace/参考 目录",
+      }],
+    },
   });
 
   let received;

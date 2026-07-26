@@ -26,6 +26,10 @@ import {
   type ArtifactDetails,
   type ArtifactRevision,
   type ArtifactSummary,
+  type ClientHistoryMessage,
+  type EffectiveAttachmentCapabilities,
+  type ModelCatalogEntry,
+  type SessionAttachmentIntent,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
@@ -67,6 +71,15 @@ import {
   resolveOptimisticUser,
   restoreAuthoritativeConversation,
 } from "./conversation-state";
+import {
+  appendComposerAttachments,
+  composerAttachment,
+  composerAttachmentIssue,
+  composerCanSend,
+  emptyComposerDraft,
+  type ComposerAttachment,
+  type ComposerDraft,
+} from "./composer-state";
 import { DesktopCompanionSettings } from "./companion/DesktopCompanionSettings";
 import { useDesktopCompanion } from "./companion/useDesktopCompanion";
 import { IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
@@ -133,19 +146,29 @@ const isAutomated = (s: SessionInfo): boolean => s.source === "cron" || s.source
 const automationDraftInput = (
   draft: AutomationDraft,
   fallbackCwd?: string,
-): AutomationDraftInput => ({
-  name: draft.name,
-  schedule: draft.schedule,
-  task: draft.task,
-  ...(draft.cwd || fallbackCwd ? { cwd: draft.cwd || fallbackCwd } : {}),
-  ...(draft.tz || draft.timezone ? { tz: draft.tz || draft.timezone } : {}),
-  ...(draft.mode === "print" || draft.mode === "org" || draft.mode === "command"
-    ? { mode: draft.mode }
-    : {}),
-  ...(draft.deliver ? { deliver: draft.deliver } : {}),
-  ...(draft.deliverMode ? { deliverMode: draft.deliverMode } : {}),
-  ...(draft.alertAfter ? { alertAfter: draft.alertAfter } : {}),
-});
+): AutomationDraftInput => {
+  // Empty `tz` is an intentional, serializable clear request. Falling back with `||` would silently
+  // restore the old saved timezone because JSON cannot represent `undefined`.
+  const timezone = draft.tz !== undefined ? draft.tz : draft.timezone;
+  const timezoneApplies =
+    draft.scheduleKind === "daily"
+    || draft.scheduleKind === "weekly"
+    || draft.scheduleKind === "custom";
+  return {
+    name: draft.name,
+    schedule: draft.schedule,
+    task: draft.task,
+    ...(draft.cwd || fallbackCwd ? { cwd: draft.cwd || fallbackCwd } : {}),
+    ...(timezone !== undefined && timezoneApplies ? { tz: timezone } : {}),
+    ...(draft.mode === "print" || draft.mode === "org" || draft.mode === "command"
+      ? { mode: draft.mode }
+      : {}),
+    ...(draft.deliver ? { deliver: draft.deliver } : {}),
+    ...(draft.deliverMode ? { deliverMode: draft.deliverMode } : {}),
+    ...(draft.clearDeliver ? { clearDeliver: true } : {}),
+    ...(draft.alertAfter ? { alertAfter: draft.alertAfter } : {}),
+  };
+};
 /** gateway idle-rotation forks share an id prefix (`wechat-<chat>-<tag>[-N]`) — fold to one thread */
 const forkBase = (id: string): string => id.replace(/-\d+$/, "");
 const BUNDLED_ENGINE_VERSION = bundledEngineVersionText.trim();
@@ -154,6 +177,7 @@ const BUSY_SEND_RETRIES = 4;
 const STEERING_HISTORY_PREFIX = "[Sent while you were working on the above — TRIAGE before continuing:";
 const UPDATE_SNOOZE_KEY = "hara.desktopUpdateSnooze";
 const UPDATE_SNOOZE_MS = 24 * 60 * 60 * 1_000;
+const ATTACHMENT_FEATURE = "composer.attachments.v1";
 
 const desktopUpdateIsSnoozed = (version: string): boolean => {
   try {
@@ -174,10 +198,57 @@ const snoozeDesktopUpdate = (version: string): void => {
   );
 };
 
+const attachmentIssueText = (
+  locale: Locale,
+  issue: ReturnType<typeof composerAttachmentIssue>,
+): string => {
+  if (locale === "zh") {
+    if (issue === "engine-update-required") return "当前 Hara 引擎太旧，请先更新 Desktop 后再添加附件。";
+    if (issue === "model-capabilities-loading") return "正在读取当前模型的图片能力，请稍后再发送。";
+    if (issue === "image-unsupported") return "当前模型不能读取图片；请选择支持图片的模型，或配置视觉辅助模型。";
+    if (issue === "image-unknown") return "当前模型的图片能力尚未验证；请选择已验证模型，或在模型设置中明确配置。";
+    return "";
+  }
+  if (issue === "engine-update-required") return "Update Hara Desktop before adding attachments.";
+  if (issue === "model-capabilities-loading") return "Loading the selected model's image capability.";
+  if (issue === "image-unsupported") return "This model cannot read images. Choose an image-capable model or configure a vision helper.";
+  if (issue === "image-unknown") return "This model's image capability is unverified. Choose a verified model or configure it explicitly.";
+  return "";
+};
+
+const imageCapabilityText = (
+  locale: Locale,
+  capabilities: EffectiveAttachmentCapabilities | undefined,
+): string => {
+  const mode = capabilities?.image.mode;
+  if (locale === "zh") {
+    if (mode === "native") return "原生读取图片";
+    if (mode === "vision-sidecar") return `视觉辅助${capabilities?.image.viaModel ? ` · ${capabilities.image.viaModel}` : ""}`;
+    if (mode === "unsupported") return "不支持图片";
+    return "图片能力未验证";
+  }
+  if (mode === "native") return "Native image input";
+  if (mode === "vision-sidecar") return `Vision helper${capabilities?.image.viaModel ? ` · ${capabilities.image.viaModel}` : ""}`;
+  if (mode === "unsupported") return "No image input";
+  return "Image capability unverified";
+};
+
+const thinkingLabel = (locale: Locale, effort: string): string => {
+  const labels: Record<string, [string, string]> = {
+    off: ["关闭思考", "Thinking off"],
+    low: ["快速", "Fast"],
+    medium: ["平衡", "Balanced"],
+    high: ["深入", "Deep"],
+    max: ["最强", "Maximum"],
+    xhigh: ["极深", "Extra deep"],
+  };
+  return labels[effort]?.[locale === "zh" ? 0 : 1] ?? effort;
+};
+
 interface QueuedInput {
   id: string;
   text: string;
-  images?: { path: string }[];
+  attachments?: ComposerAttachment[];
   /** The optimistic transcript entry already exists; a later retry must not duplicate it. */
   recorded?: boolean;
 }
@@ -200,11 +271,15 @@ const displayHistoryText = (text: string): string => {
 };
 
 const conversationHistory = (
-  history: { role: string; text: string }[],
+  history: ClientHistoryMessage[],
 ): ConversationItem[] =>
   history.map((message): ConversationItem =>
     message.role === "user"
-      ? { kind: "user", text: displayHistoryText(message.text) }
+      ? {
+          kind: "user",
+          text: displayHistoryText(message.text),
+          ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+        }
       : { kind: "text", text: message.text },
   );
 
@@ -270,8 +345,40 @@ export default function App() {
     busyRef.current = next;
     setBusy(next);
   }, []);
-  const [input, setInput] = useState("");
-  const [modelInfo, setModelInfo] = useState<{ models: string[]; current: string; profileId?: string; effort: string | null; effortLevels: string[] } | null>(null);
+  const [composerDrafts, setComposerDrafts] = useState<Record<string, ComposerDraft>>({});
+  const activeDraft = active
+    ? composerDrafts[active] ?? emptyComposerDraft()
+    : emptyComposerDraft();
+  const input = activeDraft.text;
+  const pendingAttachments = activeDraft.attachments;
+  const updateComposerDraft = useCallback((
+    sessionId: string,
+    update: (draft: ComposerDraft) => ComposerDraft,
+  ) => {
+    setComposerDrafts((drafts) => ({
+      ...drafts,
+      [sessionId]: update(drafts[sessionId] ?? emptyComposerDraft()),
+    }));
+  }, []);
+  const setInput = (
+    value: string | ((current: string) => string),
+  ) => {
+    if (!active) return;
+    updateComposerDraft(active, (draft) => ({
+      ...draft,
+      text: typeof value === "function" ? value(draft.text) : value,
+    }));
+  };
+  const [modelInfo, setModelInfo] = useState<{
+    models: string[];
+    entries?: ModelCatalogEntry[];
+    current: string;
+    profileId?: string;
+    effort: string | null;
+    effortLevels: string[];
+    attachmentCapabilities?: EffectiveAttachmentCapabilities;
+  } | null>(null);
+  const [modelInfoScope, setModelInfoScope] = useState<string | null>(null);
   const [sessEffort, setSessEffort] = useState<Record<string, string>>({});
   const modelInfoRequestRef = useRef(0);
   const refreshModelInfo = useCallback(async (opts?: { sessionId?: string; cwd?: string }) => {
@@ -281,6 +388,7 @@ export default function App() {
     const info = await client.listModels(opts);
     if (requestId !== modelInfoRequestRef.current) return info;
     setModelInfo(info);
+    setModelInfoScope(opts?.sessionId ?? null);
     if (opts?.sessionId && info) {
       setSessEffort((current) => ({ ...current, [opts.sessionId!]: info.effort ?? "" }));
     }
@@ -654,7 +762,7 @@ export default function App() {
     async (
       sessionId: string,
       text: string,
-      images?: { path: string }[],
+      attachments?: ComposerAttachment[],
       options?: {
         recordUser?: boolean;
         requeueFrontOnBusy?: boolean;
@@ -663,11 +771,26 @@ export default function App() {
     ) => {
       const c = clientRef.current;
       if (!c?.connected) throw new Error("Hara engine is not connected");
+      if (attachments?.length && !c.supportsFeature("composer.attachments.v1")) {
+        throw new Error(
+          locale === "zh"
+            ? "当前 Hara 引擎版本不支持安全附件，请先更新 Hara Desktop。"
+            : "This Hara engine cannot send safe attachments. Update Hara Desktop first.",
+        );
+      }
       const pendingId = options?.pendingId ?? nextPendingInputId();
       if (options?.recordUser !== false) {
         push(sessionId, (items) => [...items, {
           kind: "user",
-          text: images?.length ? `${text}  🖼×${images.length}` : text,
+          text,
+          ...(attachments?.length
+            ? {
+                attachments: attachments.map((attachment) => ({
+                  kind: attachment.kind,
+                  name: attachment.name,
+                })),
+              }
+            : {}),
           pendingId,
         }]);
       }
@@ -682,13 +805,19 @@ export default function App() {
       while (true) {
         pendingSendDispatchesRef.current[sessionId] = { pendingId };
         try {
-          await c.send(sessionId, text, images);
+          const attachmentIntents: SessionAttachmentIntent[] | undefined = attachments?.map(
+            ({ id, name: _name, ...attachment }) => ({
+              ...attachment,
+              clientId: id,
+            }),
+          );
+          await c.send(sessionId, text, attachmentIntents);
           clearPendingDispatch();
           resolvePendingUser(sessionId, pendingId, true);
           if (interruptedSessionsRef.current.delete(sessionId)) removePet(sessionId);
           // the first turn sets the server-side derived title — refresh so the sidebar shows it now
           void c.listSessions().then((l) => setSessions(l.sessions)).catch(() => {});
-          return;
+          return true;
         } catch (e: any) {
           const interrupted = interruptedSessionsRef.current.delete(sessionId);
           if (e?.code === SERVER_BUSY && !interrupted) {
@@ -705,7 +834,7 @@ export default function App() {
               live = !!turnId || (taskState ? taskStateIsLive(taskState.state) : false);
               if (!live) continue;
             }
-            if (!images?.length && turnId && c.supports("session.steer")) {
+            if (!attachments?.length && turnId && c.supports("session.steer")) {
               // The attempted session.send did not start a turn. A following turn_end belongs to the
               // existing turn and must never acknowledge this optimistic message.
               clearPendingDispatch();
@@ -713,16 +842,17 @@ export default function App() {
                 await c.steer(sessionId, text, turnId);
                 resolvePendingUser(sessionId, pendingId, true);
                 notePet(sessionId, "running");
-                return;
+                return true;
               } catch (steerError: any) {
                 if (steerError?.code !== SERVER_BUSY) {
+                  resolvePendingUser(sessionId, pendingId, false);
                   push(sessionId, (items) => [...items, {
                     kind: "notice",
                     text: `error: ${steerError?.message ?? steerError}`,
                   }]);
                   setSessionBusy(sessionId, false);
                   notePet(sessionId, "blocked");
-                  return;
+                  return false;
                 }
                 const currentTurnId = activeTurnsRef.current[sessionId];
                 const currentState = taskStatesRef.current[sessionId];
@@ -740,19 +870,24 @@ export default function App() {
             clearPendingDispatch();
             enqueueInput(
               sessionId,
-              { id: pendingId, text, ...(images?.length ? { images } : {}), recorded: true },
+              {
+                id: pendingId,
+                text,
+                ...(attachments?.length ? { attachments } : {}),
+                recorded: true,
+              },
               options?.requeueFrontOnBusy ? "front" : "back",
             );
             if (!live) {
               setSessionBusy(sessionId, false);
               notePet(sessionId, "paused", "Message queued — engine is still preparing");
             }
-            return;
+            return true;
           }
           const dispatch = pendingSendDispatchesRef.current[sessionId];
           const persisted = dispatch?.pendingId === pendingId && dispatch.completed === true;
           clearPendingDispatch();
-          if (persisted) resolvePendingUser(sessionId, pendingId, true);
+          resolvePendingUser(sessionId, pendingId, persisted);
           push(sessionId, (items) => [...items, { kind: "notice", text: `error: ${e?.message ?? e}` }]);
           setSessionBusy(sessionId, false);
           if (c.supportsEvent("event.task_state")) {
@@ -763,11 +898,11 @@ export default function App() {
             }
           } else if (!interrupted) notePet(sessionId, "blocked");
           else removePet(sessionId);
-          return;
+          return persisted;
         }
       }
     },
-    [enqueueInput, nextPendingInputId, notePet, push, removePet, resolvePendingUser, setSessionBusy],
+    [enqueueInput, locale, nextPendingInputId, notePet, push, removePet, resolvePendingUser, setSessionBusy],
   );
 
   const retryQueuedInput = useCallback(async (sessionId: string, index: number) => {
@@ -811,7 +946,7 @@ export default function App() {
       await sendText(
         sessionId,
         retry.text,
-        retry.images,
+        retry.attachments,
         {
           recordUser: retry.recorded !== true,
           pendingId: retry.id,
@@ -974,7 +1109,7 @@ export default function App() {
               () => void sendText(
                   e.sessionId,
                   next.text,
-                  next.images,
+                  next.attachments,
                   {
                     recordUser: next.recorded !== true,
                     requeueFrontOnBusy: true,
@@ -1353,18 +1488,17 @@ export default function App() {
   const addAutomationDraft = useCallback(async (draft: AutomationDraft): Promise<void> => {
     const client = clientRef.current;
     if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
-    await client.addAutomationDraft(
-      automationDraftInput(draft, home ? `${home}/.hara/workspace` : undefined),
-    );
+    const input = automationDraftInput(draft, home ? `${home}/.hara/workspace` : undefined);
+    await client.validateAutomationSchedule(input.schedule, input.tz);
+    await client.addAutomationDraft(input);
     await refreshAuto();
   }, [home, locale, refreshAuto]);
   const updateAutomationDraft = useCallback(async (jobId: string, draft: AutomationDraft): Promise<void> => {
     const client = clientRef.current;
     if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
-    await client.updateAutomation(
-      jobId,
-      automationDraftInput(draft, home ? `${home}/.hara/workspace` : undefined),
-    );
+    const input = automationDraftInput(draft, home ? `${home}/.hara/workspace` : undefined);
+    await client.validateAutomationSchedule(input.schedule, input.tz, jobId);
+    await client.updateAutomation(jobId, input);
     await refreshAuto();
   }, [home, locale, refreshAuto]);
   const runAutomationNow = useCallback(async (jobId: string): Promise<void> => {
@@ -1537,11 +1671,83 @@ export default function App() {
     });
   };
 
-  const [pendImgs, setPendImgs] = useState<string[]>([]);
+  const attachmentSequenceRef = useRef(0);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelSearch, setModelSearch] = useState("");
+  const nextAttachmentId = () =>
+    `attachment-${Date.now()}-${++attachmentSequenceRef.current}`;
+  const attachmentFeatureReady = clientRef.current?.supportsFeature(ATTACHMENT_FEATURE) ?? false;
+  const activeModelInfo = active && modelInfoScope === active ? modelInfo : null;
+  const activeAttachmentIssue = composerAttachmentIssue(
+    pendingAttachments,
+    activeModelInfo?.attachmentCapabilities,
+    attachmentFeatureReady,
+  );
+  const activeDraftCanSend = composerCanSend(activeDraft, activeAttachmentIssue);
+  const requireAttachmentFeature = (): boolean => {
+    if (clientRef.current?.supportsFeature(ATTACHMENT_FEATURE)) return true;
+    setErr(attachmentIssueText(locale, "engine-update-required"));
+    return false;
+  };
+  const addComposerAttachments = (
+    sessionId: string,
+    additions: ComposerAttachment[],
+  ) => {
+    updateComposerDraft(sessionId, (draft) => ({
+      ...draft,
+      attachments: appendComposerAttachments(draft.attachments, additions),
+    }));
+  };
+  const attachPickedFiles = async (kind: "image" | "file") => {
+    const sessionId = activeRef.current;
+    if (!sessionId || !requireAttachmentFeature()) return;
+    setAttachmentMenuOpen(false);
+    const selected = await openDialog({
+      title: kind === "image"
+        ? (locale === "zh" ? "选择图片" : "Choose images")
+        : (locale === "zh" ? "选择文件" : "Choose files"),
+      multiple: true,
+      ...(kind === "image"
+        ? {
+            filters: [{
+              name: locale === "zh" ? "图片" : "Images",
+              extensions: ["png", "jpg", "jpeg", "gif", "webp"],
+            }],
+          }
+        : {}),
+    });
+    const paths = typeof selected === "string"
+      ? [selected]
+      : Array.isArray(selected) ? selected : [];
+    if (!paths.length) return;
+    addComposerAttachments(
+      sessionId,
+      paths.map((path) => composerAttachment(path, kind, nextAttachmentId())),
+    );
+  };
+  const attachPickedDirectory = async () => {
+    const sessionId = activeRef.current;
+    if (!sessionId || !requireAttachmentFeature()) return;
+    setAttachmentMenuOpen(false);
+    const selected = await openDialog({
+      title: locale === "zh" ? "添加目录作为本轮上下文" : "Add a folder as turn context",
+      directory: true,
+      multiple: false,
+    });
+    if (typeof selected !== "string" || !selected) return;
+    addComposerAttachments(
+      sessionId,
+      [composerAttachment(selected, "directory", nextAttachmentId())],
+    );
+  };
   const pasteImages = async (e: React.ClipboardEvent) => {
     const files = [...(e.clipboardData?.items ?? [])].filter((it) => it.kind === "file" && it.type.startsWith("image/"));
     if (!files.length) return;
     e.preventDefault();
+    const sessionId = activeRef.current;
+    if (!sessionId || !requireAttachmentFeature()) return;
+    const additions: ComposerAttachment[] = [];
     for (const it of files) {
       const f = it.getAsFile();
       if (!f) continue;
@@ -1553,22 +1759,27 @@ export default function App() {
       });
       try {
         const path = await invoke<string>("write_temp_image", { dataBase64: b64 });
-        setPendImgs((l) => [...l, path]);
+        additions.push(composerAttachment(path, "image", nextAttachmentId(), f.type));
       } catch (err: any) {
         setErr(String(err?.message ?? err));
       }
     }
+    if (additions.length) addComposerAttachments(sessionId, additions);
   };
 
   /** Replace a session's transcript from a serve-returned history (compact / rewind). */
-  const loadHistory = (sessionId: string, history: { role: string; text: string }[], tailNotice?: string) => {
+  const loadHistory = (sessionId: string, history: ClientHistoryMessage[], tailNotice?: string) => {
     setTranscripts((tr) => {
       const next = {
         ...tr,
         [sessionId]: [
         ...history.map((m): ConversationItem =>
           m.role === "user"
-            ? { kind: "user", text: displayHistoryText(m.text) }
+            ? {
+                kind: "user",
+                text: displayHistoryText(m.text),
+                ...(m.attachments?.length ? { attachments: m.attachments } : {}),
+              }
             : { kind: "text", text: m.text },
         ),
         ...(tailNotice
@@ -1674,34 +1885,46 @@ export default function App() {
 
   const sendMsg = async () => {
     const text = input.trim();
-    if (!active || (!text && pendImgs.length === 0)) return;
+    if (!active || (!text && pendingAttachments.length === 0)) return;
+    if (activeAttachmentIssue) {
+      setErr(attachmentIssueText(locale, activeAttachmentIssue));
+      return;
+    }
     const sessionId = active;
-    const imagePaths = pendImgs;
-    setInput("");
+    const attachments = pendingAttachments;
+    updateComposerDraft(sessionId, () => emptyComposerDraft());
     setAc((a) => ({ ...a, open: false }));
-    if (busy[sessionId] && imagePaths.length > 0) {
-      const images = imagePaths.map((path) => ({ path }));
-      setPendImgs([]);
+    setAttachmentMenuOpen(false);
+    setModelPickerOpen(false);
+    if (busy[sessionId] && attachments.length > 0) {
       enqueueInput(sessionId, {
         id: nextPendingInputId(),
-        text: text || "(image)",
-        images,
+        text,
+        attachments,
       });
       return;
     }
-    const imgs = imagePaths.map((path) => ({ path }));
-    setPendImgs([]);
     try {
-      if (imgs.length) await sendText(sessionId, text || "(image)", imgs);
-      else await submitSessionText(sessionId, text);
-    } catch (error: any) {
-      if (text) setInput((draft) => draft ? `${text}\n${draft}` : text);
-      if (imagePaths.length) {
-        setPendImgs((current) => [
-          ...imagePaths.filter((path) => !current.includes(path)),
-          ...current,
-        ]);
+      if (attachments.length) {
+        const accepted = await sendText(sessionId, text, attachments);
+        if (!accepted) {
+          updateComposerDraft(sessionId, (draft) => ({
+            text: text
+              ? (draft.text ? `${text}\n${draft.text}` : text)
+              : draft.text,
+            attachments: appendComposerAttachments(attachments, draft.attachments),
+          }));
+        }
+      } else {
+        await submitSessionText(sessionId, text);
       }
+    } catch (error: any) {
+      updateComposerDraft(sessionId, (draft) => ({
+        text: text
+          ? (draft.text ? `${text}\n${draft.text}` : text)
+          : draft.text,
+        attachments: appendComposerAttachments(attachments, draft.attachments),
+      }));
       setErr(String(error?.message ?? error));
     }
   };
@@ -1817,6 +2040,8 @@ export default function App() {
       setSessions((list) => list.map((s) => (s.id === active ? { ...s, model: r.model } : s)));
       setSessEffort((current) => ({ ...current, [active]: r.effort ?? "" }));
       await refreshModelInfo({ sessionId: active });
+      setModelPickerOpen(false);
+      setModelSearch("");
     } catch (e: any) {
       push(active, (items) => [...items, { kind: "notice", text: `model switch: ${e?.message ?? e}` }]);
     }
@@ -2202,6 +2427,25 @@ export default function App() {
   );
   const activeSession = sessions.find((s) => s.id === active);
   const items = active ? (transcripts[active] ?? []) : [];
+  const modelEntries = [...new Set([
+    ...(activeSession ? [activeSession.model] : []),
+    ...(activeModelInfo?.models ?? []),
+  ])].map((modelId): ModelCatalogEntry => {
+    const entry = activeModelInfo?.entries?.find((candidate) => candidate.id === modelId);
+    if (entry) return entry;
+    return {
+      id: modelId,
+      providerId: server?.provider ?? "",
+      effortLevels: modelId === activeModelInfo?.current ? activeModelInfo.effortLevels : [],
+      ...(modelId === activeModelInfo?.current && activeModelInfo.attachmentCapabilities
+        ? { attachmentCapabilities: activeModelInfo.attachmentCapabilities }
+        : {}),
+    };
+  });
+  const visibleModelEntries = modelEntries.filter((entry) =>
+    !modelSearch.trim()
+    || `${entry.id} ${entry.providerId}`.toLowerCase().includes(modelSearch.trim().toLowerCase()),
+  );
 
   const sortPinned = (l: SessionInfo[]): SessionInfo[] => [...l].sort((a, b) => Number(pins.includes(b.id)) - Number(pins.includes(a.id)));
   const commitRename = async () => {
@@ -2430,8 +2674,8 @@ export default function App() {
               {(queue[active!] ?? []).map((queued, i) => (
                 <div key={i} className="steer-item">
                   <span className="steer-txt">
-                    {queued.text}
-                    {!!queued.images?.length && `  🖼×${queued.images.length}`}
+                    {queued.text || (locale === "zh" ? "附件消息" : "Attachment message")}
+                    {!!queued.attachments?.length && `  · ${queued.attachments.length} ${locale === "zh" ? "个上下文" : "items"}`}
                   </span>
                   {!busy[active!] && (
                     <button
@@ -2455,48 +2699,249 @@ export default function App() {
               ))}
             </div>
           )}
-          {pendImgs.length > 0 && (
-            <div className="steerq">
-              {pendImgs.map((p, i) => (
-                <div key={p} className="steer-item">
-                  <span className="steer-txt">🖼 {p.split("/").pop()}</span>
-                  <button className="linky" onClick={() => setPendImgs((l) => l.filter((_, j) => j !== i))}>
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
           <div className="inputbar">
-            {activeSession && (
-              <div className="picker">
-                {modelInfo?.profileId && (
+            {ac.open && (
+              <div className="fileac">
+                {ac.items.map((it, i) => (
+                  <div key={it.v} className={`fitem ${i === ac.sel ? "on" : ""}`} onMouseDown={(e) => (e.preventDefault(), pickMention(it.v))}>
+                    {ac.mode === "skill" ? `/${it.v}` : it.v}
+                    {it.hint && <span className="fhint"> — {it.hint}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="composer-shell">
+              <div className="composer-context-row">
+                {activeSession && (
                   <span
-                    className={`session-profile-chip ${modelInfo.profileId === "personal" ? "personal" : "managed"}`}
-                    title={modelInfo.profileId === "personal"
-                      ? (locale === "zh" ? "此会话使用个人连接" : "This conversation uses your Personal connection")
-                      : (locale === "zh" ? `此会话已绑定企业连接 ${modelInfo.profileId}` : `This conversation is bound to organization connection ${modelInfo.profileId}`)}
+                    className="composer-workspace"
+                    title={activeSession.cwd}
                   >
-                    {modelInfo.profileId === "personal" ? (locale === "zh" ? "个人" : "Personal") : `${modelInfo.profileId} · ORG`}
+                    <span aria-hidden="true">▱</span>
+                    {basename(activeSession.cwd)}
+                    <span className="composer-workspace-label">
+                      {locale === "zh" ? "工作区" : "workspace"}
+                    </span>
                   </span>
                 )}
-                {modelInfo && modelInfo.models.length > 0 ? (
-                  <select value={activeSession.model} onChange={(e) => void changeModel(e.target.value, undefined)} disabled={!!busy[active!]}>
-                    {[...new Set([activeSession.model, ...modelInfo.models])].map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="dim">{activeSession.model}</span>
+                {pendingAttachments.map((attachment) => (
+                  <span
+                    key={attachment.id}
+                    className={`composer-attachment-chip ${attachment.kind}`}
+                    title={attachment.path}
+                  >
+                    <span aria-hidden="true">
+                      {attachment.kind === "image" ? "▧" : attachment.kind === "directory" ? "▱" : "▤"}
+                    </span>
+                    <span className="composer-attachment-name">{attachment.name}</span>
+                    <button
+                      className="composer-chip-remove"
+                      aria-label={`${locale === "zh" ? "移除" : "Remove"} ${attachment.name}`}
+                      onClick={() => updateComposerDraft(active, (draft) => ({
+                        ...draft,
+                        attachments: draft.attachments.filter((item) => item.id !== attachment.id),
+                      }))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              {activeAttachmentIssue && (
+                <div className="composer-capability-warning" role="status">
+                  <span>{attachmentIssueText(locale, activeAttachmentIssue)}</span>
+                  {(activeAttachmentIssue === "image-unsupported" || activeAttachmentIssue === "image-unknown") && (
+                    <button
+                      className="linky"
+                      onClick={() => {
+                        setAttachmentMenuOpen(false);
+                        setModelPickerOpen(true);
+                      }}
+                    >
+                      {locale === "zh" ? "选择模型" : "Choose model"}
+                    </button>
+                  )}
+                </div>
+              )}
+              {pendingAttachments.some((attachment) => attachment.kind === "image")
+                && activeModelInfo?.attachmentCapabilities?.image.mode === "vision-sidecar" && (
+                  <div className="composer-capability-note">
+                    {locale === "zh"
+                      ? `图片将先由 ${activeModelInfo.attachmentCapabilities.image.viaModel ?? "视觉辅助模型"} 读取，再交给 ${activeSession?.model ?? "当前模型"}。`
+                      : `Images will be read by ${activeModelInfo.attachmentCapabilities.image.viaModel ?? "a vision helper"} before ${activeSession?.model ?? "the selected model"} continues.`}
+                  </div>
                 )}
-                {modelInfo && modelInfo.effortLevels.length > 0 && (
-                  <select value={sessEffort[active!] ?? ""} onChange={(e) => void changeModel(undefined, e.target.value || undefined)} disabled={!!busy[active!]}>
-                    <option value="">thinking·auto</option>
-                    {modelInfo.effortLevels.map((l) => (
-                      <option key={l} value={l}>
-                        thinking·{l}
+              <div className="composer-input-row">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  placeholder={locale === "zh"
+                    ? "描述要做什么；可粘贴图片，或用 + / @ 添加上下文…"
+                    : "Describe the task; paste an image, or use + / @ to add context…"}
+                  onPaste={(e) => void pasteImages(e)}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    trackComposer(e.target.value, e.target.selectionStart ?? e.target.value.length);
+                  }}
+                  onKeyDown={(e) => {
+                    // Enter commits an active CJK IME composition. Treating that key as a composer
+                    // command either sends an unfinished message or selects an autocomplete result.
+                    if (e.nativeEvent.isComposing) return;
+                    if (ac.open && ac.items.length > 0) {
+                      if (e.key === "ArrowDown") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel + 1) % a.items.length })));
+                      if (e.key === "ArrowUp") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel - 1 + a.items.length) % a.items.length })));
+                      if (e.key === "Tab" || e.key === "Enter") return (e.preventDefault(), pickMention(ac.items[ac.sel].v));
+                      if (e.key === "Escape") return (e.preventDefault(), setAc((a) => ({ ...a, open: false })));
+                    }
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendMsg();
+                    }
+                  }}
+                />
+                {active && busy[active] ? (
+                  <button className="composer-send stop" onClick={() => void stopTurn(active)}>
+                    {t("stop")}
+                  </button>
+                ) : (
+                  <button
+                    className="composer-send"
+                    onClick={() => void sendMsg()}
+                    disabled={!activeDraftCanSend}
+                  >
+                    {t("send")} <span aria-hidden="true">↑</span>
+                  </button>
+                )}
+              </div>
+              <div className="composer-toolbar">
+                <div className="composer-popover-anchor">
+                  <button
+                    className="composer-tool-button"
+                    aria-expanded={attachmentMenuOpen}
+                    onClick={() => {
+                      setModelPickerOpen(false);
+                      setAttachmentMenuOpen((open) => !open);
+                    }}
+                  >
+                    <span aria-hidden="true">＋</span>
+                    {locale === "zh" ? "添加上下文" : "Add context"}
+                  </button>
+                  {attachmentMenuOpen && (
+                    <div className="composer-menu attachment-menu">
+                      <button onClick={() => void attachPickedFiles("image")}>
+                        <span aria-hidden="true">▧</span>
+                        <span>
+                          <strong>{locale === "zh" ? "选择图片" : "Choose images"}</strong>
+                          <small>{locale === "zh" ? "支持 PNG、JPEG、GIF、WebP" : "PNG, JPEG, GIF, or WebP"}</small>
+                        </span>
+                      </button>
+                      <button onClick={() => void attachPickedFiles("file")}>
+                        <span aria-hidden="true">▤</span>
+                        <span>
+                          <strong>{locale === "zh" ? "选择文件" : "Choose files"}</strong>
+                          <small>{locale === "zh" ? "文本直接读取；其他格式交给本地工具" : "Text is read locally; other formats use tools"}</small>
+                        </span>
+                      </button>
+                      <button onClick={() => void attachPickedDirectory()}>
+                        <span aria-hidden="true">▱</span>
+                        <span>
+                          <strong>{locale === "zh" ? "添加目录到本轮" : "Add folder to this turn"}</strong>
+                          <small>{locale === "zh" ? "只建立有界清单，不整目录注入模型" : "Bounded inventory; never injects the whole folder"}</small>
+                        </span>
+                      </button>
+                      <button onClick={() => {
+                        setAttachmentMenuOpen(false);
+                        void openProject();
+                      }}>
+                        <span aria-hidden="true">↗</span>
+                        <span>
+                          <strong>{locale === "zh" ? "打开为新项目" : "Open as a new project"}</strong>
+                          <small>{locale === "zh" ? "切换持续工作区，而不是一次性附件" : "Switch the persistent workspace"}</small>
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {activeSession && (
+                  <div className="composer-popover-anchor model-anchor">
+                    <button
+                      className="model-pill"
+                      aria-expanded={modelPickerOpen}
+                      disabled={!!busy[active]}
+                      onClick={() => {
+                        setAttachmentMenuOpen(false);
+                        setModelPickerOpen((open) => !open);
+                      }}
+                    >
+                      <span className="model-pill-main">{activeSession.model}</span>
+                      <span className={`model-route ${activeModelInfo?.profileId === "personal" ? "personal" : "managed"}`}>
+                        {activeModelInfo?.profileId === "personal"
+                          ? (locale === "zh" ? "个人" : "Personal")
+                          : activeModelInfo?.profileId ?? (locale === "zh" ? "当前连接" : "Current route")}
+                      </span>
+                      <span aria-hidden="true">⌄</span>
+                    </button>
+                    {modelPickerOpen && (
+                      <div className="composer-menu model-menu">
+                        <div className="model-menu-head">
+                          <strong>{locale === "zh" ? "选择模型" : "Choose a model"}</strong>
+                          <input
+                            autoFocus
+                            value={modelSearch}
+                            onChange={(event) => setModelSearch(event.target.value)}
+                            placeholder={locale === "zh" ? "搜索模型或供应商" : "Search models or providers"}
+                          />
+                        </div>
+                        <div className="model-menu-list">
+                          {visibleModelEntries.map((entry) => (
+                            <button
+                              key={entry.id}
+                              className={entry.id === activeSession.model ? "selected" : ""}
+                              onClick={() => void changeModel(entry.id, undefined)}
+                            >
+                              <span className="model-row-copy">
+                                <strong>{entry.id}</strong>
+                                <small>
+                                  {entry.providerId || (locale === "zh" ? "当前供应商" : "Current provider")}
+                                  {" · "}
+                                  {imageCapabilityText(locale, entry.attachmentCapabilities)}
+                                </small>
+                              </span>
+                              {entry.id === activeSession.model && <span aria-hidden="true">✓</span>}
+                            </button>
+                          ))}
+                          {visibleModelEntries.length === 0 && (
+                            <div className="model-empty">
+                              {locale === "zh" ? "没有匹配的模型" : "No matching models"}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          className="model-manage"
+                          onClick={() => {
+                            setModelPickerOpen(false);
+                            setSetSec("providers");
+                            setZone("settings");
+                          }}
+                        >
+                          {locale === "zh" ? "管理模型与企业连接…" : "Manage models and organization connections…"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {activeModelInfo && activeModelInfo.effortLevels.length > 0 && (
+                  <select
+                    className="effort-select"
+                    aria-label={locale === "zh" ? "思考强度" : "Reasoning effort"}
+                    value={sessEffort[active] ?? ""}
+                    onChange={(e) => void changeModel(undefined, e.target.value || undefined)}
+                    disabled={!!busy[active]}
+                  >
+                    <option value="">{locale === "zh" ? "思考 · 自动" : "Thinking · Auto"}</option>
+                    {activeModelInfo.effortLevels.map((level) => (
+                      <option key={level} value={level}>
+                        {locale === "zh" ? "思考" : "Thinking"} · {thinkingLabel(locale, level)}
                       </option>
                     ))}
                   </select>
@@ -2512,59 +2957,18 @@ export default function App() {
                       </span>
                       {cx.pct}%
                       {cx.pct >= 50 && (
-                        <button className="linky" disabled={!!busy[active!]} onClick={() => void compactNow()}>
+                        <button className="linky" disabled={!!busy[active]} onClick={() => void compactNow()}>
                           {t("compact")}
                         </button>
                       )}
                     </span>
                   );
                 })()}
+                <span className="composer-capability-summary">
+                  {imageCapabilityText(locale, activeModelInfo?.attachmentCapabilities)}
+                </span>
               </div>
-            )}
-            {ac.open && (
-              <div className="fileac">
-                {ac.items.map((it, i) => (
-                  <div key={it.v} className={`fitem ${i === ac.sel ? "on" : ""}`} onMouseDown={(e) => (e.preventDefault(), pickMention(it.v))}>
-                    {ac.mode === "skill" ? `/${it.v}` : it.v}
-                    {it.hint && <span className="fhint"> — {it.hint}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-            <textarea
-              ref={inputRef}
-              value={input}
-              placeholder={t("placeholder")}
-              onPaste={(e) => void pasteImages(e)}
-              onChange={(e) => {
-                setInput(e.target.value);
-                trackComposer(e.target.value, e.target.selectionStart ?? e.target.value.length);
-              }}
-              onKeyDown={(e) => {
-                // Enter commits an active CJK IME composition. Treating that key as a composer
-                // command either sends an unfinished message or selects an autocomplete result.
-                if (e.nativeEvent.isComposing) return;
-                if (ac.open && ac.items.length > 0) {
-                  if (e.key === "ArrowDown") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel + 1) % a.items.length })));
-                  if (e.key === "ArrowUp") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel - 1 + a.items.length) % a.items.length })));
-                  if (e.key === "Tab" || e.key === "Enter") return (e.preventDefault(), pickMention(ac.items[ac.sel].v));
-                  if (e.key === "Escape") return (e.preventDefault(), setAc((a) => ({ ...a, open: false })));
-                }
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void sendMsg();
-                }
-              }}
-            />
-            {active && busy[active] ? (
-              <button className="stop" onClick={() => void stopTurn(active)}>
-                {t("stop")}
-              </button>
-            ) : (
-              <button onClick={() => void sendMsg()} disabled={!input.trim()}>
-                {t("send")}
-              </button>
-            )}
+            </div>
           </div>
         </>
       )}

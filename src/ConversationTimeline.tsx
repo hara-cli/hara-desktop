@@ -9,6 +9,11 @@ export type ConversationItem =
   | {
       kind: "user";
       text: string;
+      attachments?: {
+        kind: "image" | "file" | "directory";
+        name: string;
+        strategy?: string;
+      }[];
       /** Present only while a locally displayed message has not been accepted by hara serve. */
       pendingId?: string;
     }
@@ -52,7 +57,23 @@ export function ConversationTimeline({
           case "user":
             return (
               <div key={index} className="msg user">
-                {item.text}
+                {item.text && <div className="user-message-text">{item.text}</div>}
+                {!!item.attachments?.length && (
+                  <div className="message-attachments">
+                    {item.attachments.map((attachment, attachmentIndex) => (
+                      <span
+                        key={`${attachment.kind}:${attachment.name}:${attachmentIndex}`}
+                        className={`message-attachment ${attachment.kind}`}
+                        title={attachment.strategy}
+                      >
+                        <span aria-hidden="true">
+                          {attachment.kind === "image" ? "▧" : attachment.kind === "directory" ? "▱" : "▤"}
+                        </span>
+                        {attachment.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {!busy && !item.pendingId && (
                   <span
                     className="rew"

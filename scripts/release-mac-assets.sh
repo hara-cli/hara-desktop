@@ -111,37 +111,79 @@ release_download_all() {
   done
 }
 
-release_upload_signed_assets() {
-  local attempt log
-  for ((attempt = 1; attempt <= RELEASE_TRANSFER_ATTEMPTS; attempt++)); do
-    log="$(mktemp "$WORK/release-upload-log.XXXXXX")"
-    chmod 600 "$log"
+release_remote_asset_matches() {
+  local source="$1"
+  local asset_name stage probe_log
+  asset_name="$(basename "$source")"
+  stage="$(mktemp -d "$WORK/release-reconcile.XXXXXX")"
+  probe_log="$(mktemp "$WORK/release-reconcile-log.XXXXXX")"
+  chmod 600 "$probe_log"
+  if release_gh release download "$TAG" -R "$REPO" \
+    --pattern "$asset_name" --dir "$stage" >"$probe_log" 2>&1 &&
+    [ -f "$stage/$asset_name" ] &&
+    cmp -s "$source" "$stage/$asset_name"; then
+    cat "$probe_log"
+    rm -rf "$stage"
+    rm -f "$probe_log"
+    return 0
+  fi
+  rm -rf "$stage"
+  rm -f "$probe_log"
+  return 1
+}
+
+release_upload_signed_asset() {
+  local asset_path="$1"
+  local asset_name attempt_idx upload_log
+  asset_name="$(basename "$asset_path")"
+  for ((attempt_idx = 1; attempt_idx <= RELEASE_TRANSFER_ATTEMPTS; attempt_idx++)); do
+    upload_log="$(mktemp "$WORK/release-upload-log.XXXXXX")"
+    chmod 600 "$upload_log"
     if release_gh release upload "$TAG" -R "$REPO" --clobber \
-      "$ASSET_DIR/Hara_${VER}_aarch64.dmg" \
-      "$ASSET_DIR/Hara_aarch64.app.tar.gz" \
-      "$ASSET_DIR/Hara_aarch64.app.tar.gz.sig" \
-      "$ASSET_DIR/Hara_${VER}_x64.dmg" \
-      "$ASSET_DIR/Hara_x64.app.tar.gz" \
-      "$ASSET_DIR/Hara_x64.app.tar.gz.sig" \
-      "$ASSET_DIR/latest.json" >"$log" 2>&1; then
-      cat "$log"
-      rm -f "$log"
+      "$asset_path" >"$upload_log" 2>&1; then
+      cat "$upload_log"
+      rm -f "$upload_log"
       return 0
     fi
-    cat "$log" >&2
-    if ! node scripts/github-release-transfer-retry.mjs "$log"; then
-      rm -f "$log"
-      echo "error: signed draft upload failed without a retryable GitHub transport error" >&2
+    cat "$upload_log" >&2
+
+    # GitHub can commit an asset before the client observes a transient transport failure. Reconcile
+    # the exact remote bytes before retrying so a partial response never causes the whole asset set
+    # to be replayed or a successfully uploaded asset to be replaced unnecessarily.
+    if release_remote_asset_matches "$asset_path"; then
+      rm -f "$upload_log"
+      echo "warning: $asset_name upload response failed, but the remote draft already has identical bytes" >&2
+      return 0
+    fi
+    if ! node scripts/github-release-transfer-retry.mjs "$upload_log"; then
+      rm -f "$upload_log"
+      echo "error: signed draft upload for $asset_name failed without a retryable GitHub transport error" >&2
       return 1
     fi
-    if [ "$attempt" -eq "$RELEASE_TRANSFER_ATTEMPTS" ]; then
-      rm -f "$log"
-      echo "error: signed draft upload exhausted $RELEASE_TRANSFER_ATTEMPTS transient GitHub transport attempts" >&2
+    if [ "$attempt_idx" -eq "$RELEASE_TRANSFER_ATTEMPTS" ]; then
+      rm -f "$upload_log"
+      echo "error: signed draft upload for $asset_name exhausted $RELEASE_TRANSFER_ATTEMPTS transient GitHub transport attempts" >&2
       return 1
     fi
-    rm -f "$log"
-    echo "warning: signed draft upload hit a transient GitHub transport failure ($attempt/$RELEASE_TRANSFER_ATTEMPTS); retrying the complete clobber set" >&2
-    sleep $((attempt * 5))
+    rm -f "$upload_log"
+    echo "warning: signed draft upload for $asset_name hit a transient GitHub transport failure ($attempt_idx/$RELEASE_TRANSFER_ATTEMPTS); retrying only this asset" >&2
+    sleep $((attempt_idx * 5))
+  done
+}
+
+release_upload_signed_assets() {
+  local asset_path
+  local assets=(
+    "$ASSET_DIR/Hara_${VER}_aarch64.dmg"
+    "$ASSET_DIR/Hara_aarch64.app.tar.gz"
+    "$ASSET_DIR/Hara_aarch64.app.tar.gz.sig"
+    "$ASSET_DIR/Hara_${VER}_x64.dmg"
+    "$ASSET_DIR/Hara_x64.app.tar.gz"
+    "$ASSET_DIR/Hara_x64.app.tar.gz.sig"
+    "$ASSET_DIR/latest.json"
+  )
+  for asset_path in "${assets[@]}"; do
+    release_upload_signed_asset "$asset_path"
   done
 }
 

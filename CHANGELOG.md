@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.1.39 — guided automation, rich context, and Hara 0.135.0
+
+- Consolidate scheduled work into one guided automation console with plain-language task descriptions,
+  status and next-run visibility, search and filters, detail and run history views, plus edit, duplicate,
+  run-now, pause/resume, and delete actions from the task row or its context menu.
+- Replace the text-only conversation footer with one session-scoped composer for text, pasted or selected
+  images, ordinary files, and one-turn folder context. Attachments remain visible and removable, attachment-
+  only turns can be sent, failed validation restores the exact draft, and a persistent project workspace is
+  kept distinct from a bounded folder inventory attached to one turn.
+- Move model selection into the composer as a searchable, session-bound catalog showing provider,
+  enterprise connection, image-input route, and plain-language thinking levels. Unsupported or unverified
+  image routes block sending without deleting the draft; configured vision helpers are explained before
+  the user sends.
+- Keep automation delivery destinations write-only. Desktop can replace, preserve, change the policy for,
+  or explicitly clear a saved Feishu, WeCom, Telegram, or webhook destination without reading the private
+  target back into the renderer; duplicating a task never implies that its private destination was copied.
+- Validate task changes against the local authenticated Hara engine before saving, surface run-now
+  failures, install or repair the native scheduler from the same console, and distinguish a bounded
+  next-run calculation from a task that genuinely has no future schedule. Clearing an existing cron
+  timezone now sends an explicit local-time request instead of silently preserving the old timezone.
+- Keep a completed one-shot task editable when its original run time is unchanged, while new, duplicated,
+  or modified one-shot tasks still reject past times. Invalid schedule previews remain inert instead of
+  throwing during form rendering.
+- Stop sending a second macOS system notification for gateway-originated or not-yet-classified sessions;
+  Feishu and other channel notifications remain owned by their channel client.
+- Upload protected signed macOS release assets independently and reconcile exact remote bytes after a
+  transient GitHub response failure, so one interrupted upload cannot replay or replace an already verified
+  asset set.
+- Bundle the exact verified Hara CLI `0.135.0` release, including redacted automation controls plus the
+  structured attachment protocol, authoritative local file safety checks, path-free renderer history,
+  model capability discovery, and session-pinned native or vision-helper image handling.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.38 — session-bound enterprise routes and Hara 0.134.6
 
 - Show the persisted Personal or enterprise `profileId` beside the active conversation's model picker.

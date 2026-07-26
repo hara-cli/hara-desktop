@@ -19,6 +19,7 @@ export const AUTOMATION_COPY_EN: AutomationCopy = {
   schedule: "Schedule",
   lastRun: "Last run",
   nextRun: "Next run",
+  nextRunDeferred: "Calculating",
   neverRun: "Not run yet",
   noNextRun: "No upcoming run",
   workspace: "Workspace",

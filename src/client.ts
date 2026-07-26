@@ -53,6 +53,8 @@ export interface CronJobInfo {
   scheduleSpec?: string;
   tz?: string;
   nextRunAt?: number;
+  /** Preview calculation exceeded the bounded list budget; the scheduler itself remains active. */
+  nextRunDeferred?: boolean;
   createdAt?: number;
   runningSince?: number;
   lastDurationMs?: number;
@@ -82,6 +84,8 @@ export interface AutomationDraftInput {
   /** Optional result delivery. Raw targets are write-only and never returned by automation.list. */
   deliver?: string;
   deliverMode?: "always" | "on-output" | "on-error";
+  /** Explicitly remove a previously saved write-only target. Omission preserves it during updates. */
+  clearDeliver?: boolean;
   alertAfter?: number;
 }
 
@@ -89,6 +93,7 @@ export interface AutomationScheduleValidation {
   schedule: string;
   description: string;
   nextRuns: number[];
+  nextRunDeferred?: boolean;
 }
 
 export type ArtifactKind = "presentation" | "spreadsheet" | "document";
@@ -305,6 +310,50 @@ export interface OrganizationConnectionCheck {
   checkedAt: number;
 }
 
+export type ImageInputMode = "native" | "vision-sidecar" | "unsupported" | "unknown";
+
+export interface EffectiveAttachmentCapabilities {
+  image: {
+    mode: ImageInputMode;
+    viaModel?: string;
+  };
+  textFile: "inline-text";
+  directory: "bounded-inventory-and-tools";
+  binaryFile: "agent-tool";
+}
+
+export interface ModelCatalogEntry {
+  id: string;
+  providerId: string;
+  effortLevels: string[];
+  attachmentCapabilities?: EffectiveAttachmentCapabilities;
+}
+
+export interface SessionAttachmentIntent {
+  clientId?: string;
+  kind: "image" | "file" | "directory";
+  path: string;
+  mediaType?: string;
+}
+
+export interface UserAttachmentView {
+  kind: "image" | "file" | "directory";
+  name: string;
+  mediaType?: string;
+  byteSize?: number;
+  strategy:
+    | "native-image"
+    | "vision-sidecar"
+    | "inline-or-agent-tool"
+    | "directory-inventory";
+}
+
+export interface ClientHistoryMessage {
+  role: string;
+  text: string;
+  attachments?: UserAttachmentView[];
+}
+
 export interface InitializeResult {
   name: string;
   version: string;
@@ -313,7 +362,7 @@ export interface InitializeResult {
   provider: string;
   model: string;
   setupState?: "ready" | "needs-credentials";
-  capabilities?: { methods?: string[]; events?: string[] };
+  capabilities?: { methods?: string[]; events?: string[]; features?: string[] };
 }
 
 /** Context watermark — how full the model's window was on the last turn (serve ≥0.117). */
@@ -380,6 +429,7 @@ export class HaraClient {
   private nextId = 1;
   private methods = new Set<string>();
   private events = new Set<string>();
+  private features = new Set<string>();
   private closeWaiters = new Set<{
     resolve: () => void;
     timer: number;
@@ -438,6 +488,7 @@ export class HaraClient {
     const result = await this.call<InitializeResult>("initialize", { token });
     this.methods = new Set(result.capabilities?.methods ?? []);
     this.events = new Set(result.capabilities?.events ?? []);
+    this.features = new Set(result.capabilities?.features ?? []);
     return result;
   }
   supports(method: string): boolean {
@@ -445,6 +496,9 @@ export class HaraClient {
   }
   supportsEvent(event: string): boolean {
     return this.events.has(event);
+  }
+  supportsFeature(feature: string): boolean {
+    return this.features.has(feature);
   }
   /** Resolve only after the transport has actually closed, including the close-before-wait race. */
   waitForClose(timeoutMs = 4_000): Promise<void> {
@@ -487,10 +541,12 @@ export class HaraClient {
   /** Model catalog + effort levels (serve ≥0.116). Null on older serves. */
   async listModels(opts?: { sessionId?: string; cwd?: string }): Promise<{
     models: string[];
+    entries?: ModelCatalogEntry[];
     current: string;
     profileId?: string;
     effort: string | null;
     effortLevels: string[];
+    attachmentCapabilities?: EffectiveAttachmentCapabilities;
   } | null> {
     try {
       return await this.call("models.list", opts ?? {});
@@ -573,10 +629,11 @@ export class HaraClient {
   addAutomationDraft(input: AutomationDraftInput) {
     return this.call<{ id: string; name: string; schedule: string }>("automation.add", { ...input });
   }
-  validateAutomationSchedule(schedule: string, tz?: string) {
+  validateAutomationSchedule(schedule: string, tz?: string, idJob?: string) {
     return this.call<AutomationScheduleValidation>("automation.validate", {
       schedule,
-      ...(tz ? { tz } : {}),
+      ...(tz !== undefined ? { tz } : {}),
+      ...(idJob ? { id: idJob } : {}),
     });
   }
   updateAutomation(idJob: string, input: AutomationDraftInput) {
@@ -585,8 +642,12 @@ export class HaraClient {
       ...input,
     });
   }
-  runAutomation(idJob: string) {
-    return this.call<{ id: string; ok: boolean; error?: string }>("automation.run", { id: idJob });
+  async runAutomation(idJob: string) {
+    const result = await this.call<{ id: string; ok: boolean; error?: string }>("automation.run", {
+      id: idJob,
+    });
+    if (!result.ok) throw new Error(result.error || "Automation run failed.");
+    return result;
   }
   toggleAutomation(idJob: string, enabled: boolean) {
     return this.call("automation.toggle", { id: idJob, enabled });
@@ -639,12 +700,15 @@ export class HaraClient {
       sessionId: string;
       model: string;
       profileId?: string;
-      history: { role: string; text: string }[];
+      history: ClientHistoryMessage[];
       task?: { id: string; objective: string; status: Exclude<TaskLifecycleState, "waiting">; turnId: string; updatedAt: string };
     }>("session.resume", { sessionId });
   }
-  send(sessionId: string, text: string, images?: { path: string; mediaType?: string }[]) {
-    return this.call<{ reply: string; usage: { input: number; output: number }; ctx?: CtxInfo; taskId: string; turnId: string }>("session.send", { sessionId, text, ...(images && images.length ? { images } : {}) });
+  send(sessionId: string, text: string, attachments?: SessionAttachmentIntent[]) {
+    return this.call<{ reply: string; usage: { input: number; output: number }; ctx?: CtxInfo; taskId: string; turnId: string }>(
+      "session.send",
+      { sessionId, text, ...(attachments?.length ? { attachments } : {}) },
+    );
   }
   steer(sessionId: string, text: string, expectedTurnId: string) {
     return this.call<{ accepted: true; taskId: string; turnId: string }>("session.steer", {
@@ -666,16 +730,16 @@ export class HaraClient {
     return this.call<CtxInfo & { sessionId: string; total: number; rows: { label: string; tokens: number; pct: number }[] }>("session.context", { sessionId });
   }
   compactSession(sessionId: string) {
-    return this.call<{ sessionId: string; ctx: CtxInfo; notes: number; history: { role: string; text: string }[] }>("session.compact", { sessionId });
+    return this.call<{ sessionId: string; ctx: CtxInfo; notes: number; history: ClientHistoryMessage[] }>("session.compact", { sessionId });
   }
   rewindSession(sessionId: string, n: number) {
-    return this.call<{ sessionId: string; history: { role: string; text: string }[] }>("session.rewind", { sessionId, n });
+    return this.call<{ sessionId: string; history: ClientHistoryMessage[] }>("session.rewind", { sessionId, n });
   }
   deleteSession(sessionId: string) {
     return this.call<{ sessionId: string; deleted: boolean }>("session.delete", { sessionId });
   }
   forkSession(sessionId: string) {
-    return this.call<{ sessionId: string; title: string; model: string; history: { role: string; text: string }[] }>("session.fork", { sessionId });
+    return this.call<{ sessionId: string; title: string; model: string; history: ClientHistoryMessage[] }>("session.fork", { sessionId });
   }
   /** Panels applicable to a project cwd (serve ≥0.119). Null on older serves. */
   async projectPanels(opts: { sessionId?: string; cwd?: string }): Promise<{ cwd: string; panels: ProjectPanel[] } | null> {

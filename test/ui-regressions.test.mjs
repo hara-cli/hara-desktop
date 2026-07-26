@@ -90,7 +90,60 @@ test("automation is one guided control console with local-only status refresh", 
   assert.match(automation, /setEditor\(\{ kind: "duplicate", job \}\)/);
   assert.match(automation, /<DeleteDialog/);
   assert.match(automation, /buildAutomationSchedule\(scheduleDraft\(values\)\)\.spec/);
+  assert.match(
+    automation,
+    /function unchangedPastOneShotSpec[\s\S]*state\.kind !== "edit"[\s\S]*editorRunAtValue\(originalMillis\) === values\.runAt/,
+    "an unchanged completed one-shot remains editable without allowing arbitrary past schedules",
+  );
+  assert.match(
+    automation,
+    /scheduleError instanceof AutomationScheduleError[\s\S]*scheduleError\.code === "PAST_TIME"[\s\S]*unchangedPastOneShotSpec/,
+  );
+  assert.match(automation, /schedule: buildSchedule\(values, state\)/);
+  assert.match(
+    automation,
+    /<code>\{scheduleSpec \|\| "—"\}<\/code>/,
+    "invalid schedule previews stay inert instead of throwing during render",
+  );
   assert.match(automation, /deliveryTarget:\s*""/, "saved delivery destinations are write-only in the editor");
+  assert.match(
+    automation,
+    /const savedDeliverMode = kind === "edit" \? job\?\.deliverMode \?\? job\?\.delivery\?\.mode : undefined/,
+    "duplicating a task cannot imply that its private write-only destination was copied",
+  );
+  assert.match(
+    automation,
+    /hasSavedDelivery[\s\S]*draft\.clearDeliver = true[\s\S]*draft\.deliverMode = values\.deliverMode/,
+    "editing can clear a private target or change its policy without reading the target back",
+  );
+  assert.match(
+    automation,
+    /const savedTimezone = state\.kind === "edit"[\s\S]*const timezoneInput = timezone \|\| \(timezoneApplies && savedTimezone \? "" : undefined\)/,
+    "clearing an existing cron timezone produces an explicit empty-string update",
+  );
+  assert.match(app, /const timezone = draft\.tz !== undefined \? draft\.tz : draft\.timezone/);
+  assert.match(app, /timezone !== undefined && timezoneApplies \? \{ tz: timezone \} : \{\}/);
+  assert.match(client, /tz !== undefined \? \{ tz \} : \{\}/);
+  assert.match(
+    app,
+    /await client\.validateAutomationSchedule\(input\.schedule, input\.tz\);\s*await client\.addAutomationDraft\(input\)/,
+    "new tasks are engine-validated before they are persisted",
+  );
+  assert.match(
+    app,
+    /await client\.validateAutomationSchedule\(input\.schedule, input\.tz, jobId\);\s*await client\.updateAutomation\(jobId, input\)/,
+    "edits are engine-validated against their existing task before they are persisted",
+  );
+  assert.match(app, /draft\.clearDeliver \? \{ clearDeliver: true \}/);
+  assert.match(client, /if \(!result\.ok\) throw new Error/);
+  assert.match(client, /nextRunDeferred\?: boolean/);
+  assert.match(
+    automation,
+    /job\.nextRunDeferred \? copy\.nextRunDeferred : copy\.noNextRun/,
+    "a bounded preview timeout is shown as still calculating, not as a task with no schedule",
+  );
+  assert.match(automation, /job\?\.deliverMode \?\? job\?\.delivery\?\.mode/);
+  assert.match(automation, /alertAfter: String\(job\?\.alertAfter \?\? 3\)/);
   assert.doesNotMatch(
     automation,
     /return job\.deliver;/,
@@ -103,16 +156,18 @@ test("typed task lifecycle drives status while conversation and execution inputs
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const lifecycle = readFileSync(`${root}/src/task-lifecycle.ts`, "utf8");
 
-  assert.match(client, /capabilities\?: \{ methods\?: string\[\]; events\?: string\[\] \}/);
+  assert.match(client, /capabilities\?: \{ methods\?: string\[\]; events\?: string\[\]; features\?: string\[\] \}/);
   assert.match(client, /this\.events = new Set\(result\.capabilities\?\.events \?\? \[\]\)/);
+  assert.match(client, /this\.features = new Set\(result\.capabilities\?\.features \?\? \[\]\)/);
   assert.match(client, /supportsEvent\(event: string\)/);
+  assert.match(client, /supportsFeature\(feature: string\)/);
   assert.match(client, /"session\.steer"/);
   assert.match(app, /case "event\.task_state"/);
   assert.match(app, /clientRef\.current\?\.supportsEvent\("event\.task_state"\)/);
   assert.match(app, /await c\.steer\(sessionId, text, turnId\)/);
   assert.match(app, /const live = taskStateIsLive\(e\.state\)/);
-  assert.match(app, /interface QueuedInput[\s\S]*images\?: \{ path: string \}\[\]/);
-  assert.match(app, /next\.images,[\s\S]*recordUser: next\.recorded !== true/);
+  assert.match(app, /interface QueuedInput[\s\S]*attachments\?: ComposerAttachment\[\]/);
+  assert.match(app, /next\.attachments,[\s\S]*recordUser: next\.recorded !== true/);
   assert.match(app, /queueRef\.current = next;[\s\S]*return next;/);
   assert.match(app, /const BUSY_SEND_RETRIES = 4/);
   assert.match(app, /busyAttempt < BUSY_SEND_RETRIES[\s\S]*window\.setTimeout/);
@@ -122,7 +177,16 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(app, /if \(!live\) \{\s+await sendText\(sessionId, text\);\s+return "sent";/, "a late stale-steer rejection starts a fresh turn");
   assert.match(app, /const pendingApproval = target && busyRef\.current\[target\][\s\S]*item\.kind === "approval" && !item\.answered/);
   assert.match(app, /legacyState[\s\S]*phase: pendingApproval \? "approval"/, "older engines still project approval state into companion chat");
-  assert.match(app, /setInput\(\(draft\) => draft \? `\$\{text\}\\n\$\{draft\}` : text\)/, "failed composer sends restore their draft");
+  assert.match(
+    app,
+    /updateComposerDraft\(sessionId, \(draft\) => \(\{[\s\S]*appendComposerAttachments\(attachments, draft\.attachments\)/,
+    "failed composer sends restore the original session's text and attachments",
+  );
+  assert.match(
+    app,
+    /const accepted = await sendText\(sessionId, text, attachments\);[\s\S]*if \(!accepted\)[\s\S]*appendComposerAttachments\(attachments, draft\.attachments\)/,
+    "authoritative Serve validation failures also restore attachment drafts",
+  );
   assert.match(
     app,
     /e\.phase === "restored" && e\.state === "completed"\)[\s\S]*removePet\(e\.sessionId\)/,
@@ -402,7 +466,7 @@ test("the model switchboard uses user-added enterprise connections instead of a 
   assert.doesNotMatch(app, /OrganizationSettings/, "the old detached enterprise card is not left below the model picker");
 });
 
-test("a resumed conversation exposes its persisted profile beside the session model picker", () => {
+test("a resumed conversation exposes its persisted profile inside the searchable model picker", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
@@ -410,10 +474,40 @@ test("a resumed conversation exposes its persisted profile beside the session mo
   assert.match(client, /interface SessionInfo[\s\S]*profileId\?: string/);
   assert.match(client, /resumeSession[\s\S]*profileId\?: string/);
   assert.match(client, /listModels[\s\S]*profileId\?: string/);
-  assert.match(app, /modelInfo\?\.profileId/);
-  assert.match(app, /session-profile-chip/);
-  assert.match(app, /此会话已绑定企业连接/);
-  assert.match(css, /\.session-profile-chip/);
+  assert.match(app, /activeModelInfo\?\.profileId/);
+  assert.match(app, /className=\{`model-route/);
+  assert.match(app, /管理模型与企业连接/);
+  assert.match(css, /\.model-route/);
+});
+
+test("the composer has per-session attachments, bounded folders, and capability-aware model selection", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const composer = readFileSync(`${root}/src/composer-state.ts`, "utf8");
+  const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+
+  assert.match(app, /useState<Record<string, ComposerDraft>>/);
+  assert.match(app, /composerDrafts\[active\]/, "text and attachments are resolved by the active session");
+  assert.doesNotMatch(app, /pendImgs|setPendImgs/, "attachments cannot leak through one global image list");
+  assert.match(app, /attachPickedFiles\("image"\)/);
+  assert.match(app, /attachPickedFiles\("file"\)/);
+  assert.match(app, /attachPickedDirectory\(\)/);
+  assert.match(app, /只建立有界清单，不整目录注入模型/);
+  assert.match(app, /打开为新项目/, "persistent workspace and one-turn folder context are distinguished");
+  assert.match(app, /disabled=\{!activeDraftCanSend\}/, "an attachment-only compatible turn can be sent");
+  assert.match(app, /activeAttachmentIssue/, "incompatible image routes block send without deleting the draft");
+  assert.match(app, /vision-sidecar/);
+  assert.match(app, /modelSearch/);
+  assert.match(app, /visibleModelEntries/);
+  assert.match(client, /features\?: string\[\]/);
+  assert.match(client, /supportsFeature\(feature: string\)/);
+  assert.match(client, /attachments\?: SessionAttachmentIntent\[\]/);
+  assert.match(composer, /image-unsupported/);
+  assert.match(composer, /engine-update-required/);
+  assert.match(timeline, /message-attachments/);
+  assert.match(css, /\.composer-shell/);
+  assert.match(css, /\.composer-menu/);
 });
 
 test("engine health follows SemVer precedence instead of raw text equality", () => {
