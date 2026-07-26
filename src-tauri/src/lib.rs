@@ -36,6 +36,12 @@ struct WindowRect {
     height: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct DisplayWorkArea {
+    rect: WindowRect,
+    scale_factor: f64,
+}
+
 impl WindowRect {
     fn has_area(self) -> bool {
         self.width > 0 && self.height > 0
@@ -81,53 +87,62 @@ fn clamp_i64_to_i32(value: i64) -> i32 {
     value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
+fn logical_to_physical_dimension(logical: u32, scale_factor: f64) -> u32 {
+    if !scale_factor.is_finite() || scale_factor <= 0.0 {
+        return logical;
+    }
+
+    (f64::from(logical) * scale_factor)
+        .round()
+        .clamp(1.0, f64::from(u32::MAX)) as u32
+}
+
 /// Return a safe replacement when the restored main window is off-screen or cannot fit a usable
 /// size on the display it overlaps most. Work areas exclude menu bars, taskbars, and docks.
 fn offscreen_window_recovery(
     window: WindowRect,
-    work_areas: &[WindowRect],
-    primary_work_area: Option<WindowRect>,
+    work_areas: &[DisplayWorkArea],
+    primary_work_area: Option<DisplayWorkArea>,
 ) -> Option<WindowRect> {
     let visible_work_area = if window.has_area() {
         work_areas
             .iter()
             .copied()
-            .filter(|work_area| work_area.has_area() && window.intersects(*work_area))
-            .max_by_key(|work_area| window.intersection_area(*work_area))
+            .filter(|work_area| work_area.rect.has_area() && window.intersects(work_area.rect))
+            .max_by_key(|work_area| window.intersection_area(work_area.rect))
     } else {
         None
     };
-    let undersized = window.width < MIN_MAIN_WINDOW_WIDTH || window.height < MIN_MAIN_WINDOW_HEIGHT;
-    let oversized = visible_work_area
-        .map(|work_area| window.width > work_area.width || window.height > work_area.height)
-        .unwrap_or(false);
-    if visible_work_area.is_some() && !undersized && !oversized {
-        return None;
-    }
-
     let target = visible_work_area
-        .or_else(|| primary_work_area.filter(|work_area| work_area.has_area()))
+        .or_else(|| primary_work_area.filter(|work_area| work_area.rect.has_area()))
         .or_else(|| {
             work_areas
                 .iter()
                 .copied()
-                .find(|work_area| work_area.has_area())
+                .find(|work_area| work_area.rect.has_area())
         })?;
-    let requested_width = if window.width < MIN_MAIN_WINDOW_WIDTH || window.width > target.width {
-        DEFAULT_MAIN_WINDOW_WIDTH
+    let minimum_width = logical_to_physical_dimension(MIN_MAIN_WINDOW_WIDTH, target.scale_factor);
+    let minimum_height = logical_to_physical_dimension(MIN_MAIN_WINDOW_HEIGHT, target.scale_factor);
+    let size_is_invalid = window.width < minimum_width
+        || window.height < minimum_height
+        || window.width > target.rect.width
+        || window.height > target.rect.height;
+    if visible_work_area.is_some() && !size_is_invalid {
+        return None;
+    }
+
+    let (requested_width, requested_height) = if size_is_invalid {
+        (
+            logical_to_physical_dimension(DEFAULT_MAIN_WINDOW_WIDTH, target.scale_factor),
+            logical_to_physical_dimension(DEFAULT_MAIN_WINDOW_HEIGHT, target.scale_factor),
+        )
     } else {
-        window.width
+        (window.width, window.height)
     };
-    let requested_height =
-        if window.height < MIN_MAIN_WINDOW_HEIGHT || window.height > target.height {
-            DEFAULT_MAIN_WINDOW_HEIGHT
-        } else {
-            window.height
-        };
-    let width = requested_width.min(target.width);
-    let height = requested_height.min(target.height);
-    let x = i64::from(target.x) + i64::from(target.width.saturating_sub(width) / 2);
-    let y = i64::from(target.y) + i64::from(target.height.saturating_sub(height) / 2);
+    let width = requested_width.min(target.rect.width);
+    let height = requested_height.min(target.rect.height);
+    let x = i64::from(target.rect.x) + i64::from(target.rect.width.saturating_sub(width) / 2);
+    let y = i64::from(target.rect.y) + i64::from(target.rect.height.saturating_sub(height) / 2);
 
     Some(WindowRect {
         x: clamp_i64_to_i32(x),
@@ -157,21 +172,27 @@ fn recover_main_window_if_offscreen<R: tauri::Runtime>(
         .iter()
         .map(|monitor| {
             let area = monitor.work_area();
-            WindowRect {
-                x: area.position.x,
-                y: area.position.y,
-                width: area.size.width,
-                height: area.size.height,
+            DisplayWorkArea {
+                rect: WindowRect {
+                    x: area.position.x,
+                    y: area.position.y,
+                    width: area.size.width,
+                    height: area.size.height,
+                },
+                scale_factor: monitor.scale_factor(),
             }
         })
         .collect::<Vec<_>>();
     let primary_work_area = window.primary_monitor()?.map(|monitor| {
         let area = monitor.work_area();
-        WindowRect {
-            x: area.position.x,
-            y: area.position.y,
-            width: area.size.width,
-            height: area.size.height,
+        DisplayWorkArea {
+            rect: WindowRect {
+                x: area.position.x,
+                y: area.position.y,
+                width: area.size.width,
+                height: area.size.height,
+            },
+            scale_factor: monitor.scale_factor(),
         }
     });
 
@@ -2145,6 +2166,13 @@ pub fn run() {
 mod pet_tests {
     use super::*;
 
+    fn unscaled_work_area(rect: WindowRect) -> DisplayWorkArea {
+        DisplayWorkArea {
+            rect,
+            scale_factor: 1.0,
+        }
+    }
+
     #[test]
     fn home_resolution_uses_explicit_home_and_falls_back_to_windows_profile() {
         let home = PathBuf::from("/portable/home");
@@ -2851,18 +2879,18 @@ mod pet_tests {
     #[test]
     fn visible_window_geometry_is_preserved_across_negative_coordinate_monitors() {
         let work_areas = [
-            WindowRect {
+            unscaled_work_area(WindowRect {
                 x: -1920,
                 y: 0,
                 width: 1920,
                 height: 1040,
-            },
-            WindowRect {
+            }),
+            unscaled_work_area(WindowRect {
                 x: 0,
                 y: 0,
                 width: 2560,
                 height: 1400,
-            },
+            }),
         ];
         let window = WindowRect {
             x: -1700,
@@ -2879,12 +2907,12 @@ mod pet_tests {
 
     #[test]
     fn disconnected_monitor_window_is_centered_on_the_primary_work_area() {
-        let primary = WindowRect {
+        let primary = unscaled_work_area(WindowRect {
             x: 0,
             y: 24,
             width: 1920,
             height: 1056,
-        };
+        });
         let offscreen = WindowRect {
             x: 4703,
             y: 788,
@@ -2905,12 +2933,12 @@ mod pet_tests {
 
     #[test]
     fn tiny_restored_window_is_recovered_on_its_current_monitor() {
-        let secondary = WindowRect {
+        let secondary = unscaled_work_area(WindowRect {
             x: 1920,
             y: 30,
             width: 2560,
             height: 1050,
-        };
+        });
         let tiny = WindowRect {
             x: 1936,
             y: 501,
@@ -2931,18 +2959,18 @@ mod pet_tests {
 
     #[test]
     fn oversized_restored_window_uses_the_monitor_with_the_largest_overlap() {
-        let primary = WindowRect {
+        let primary = unscaled_work_area(WindowRect {
             x: 0,
             y: 30,
             width: 1920,
             height: 1050,
-        };
-        let secondary = WindowRect {
+        });
+        let secondary = unscaled_work_area(WindowRect {
             x: 1920,
             y: 30,
             width: 2560,
             height: 1050,
-        };
+        });
         let oversized = WindowRect {
             x: 688,
             y: 62,
@@ -2962,13 +2990,42 @@ mod pet_tests {
     }
 
     #[test]
+    fn retina_single_axis_oversize_resets_both_logical_dimensions() {
+        let retina = DisplayWorkArea {
+            rect: WindowRect {
+                x: 0,
+                y: 62,
+                width: 3024,
+                height: 1964,
+            },
+            scale_factor: 2.0,
+        };
+        let stale = WindowRect {
+            x: 2740,
+            y: 62,
+            width: 4080,
+            height: 1964,
+        };
+
+        assert_eq!(
+            offscreen_window_recovery(stale, &[retina], Some(retina)),
+            Some(WindowRect {
+                x: 412,
+                y: 284,
+                width: DEFAULT_MAIN_WINDOW_WIDTH * 2,
+                height: DEFAULT_MAIN_WINDOW_HEIGHT * 2,
+            })
+        );
+    }
+
+    #[test]
     fn edge_touch_without_visible_overlap_is_recovered() {
-        let primary = WindowRect {
+        let primary = unscaled_work_area(WindowRect {
             x: 0,
             y: 0,
             width: 1920,
             height: 1080,
-        };
+        });
         let offscreen = WindowRect {
             x: 1920,
             y: 100,
@@ -2981,12 +3038,12 @@ mod pet_tests {
 
     #[test]
     fn oversized_or_zero_sized_offscreen_windows_recover_to_safe_dimensions() {
-        let primary = WindowRect {
+        let primary = unscaled_work_area(WindowRect {
             x: -1280,
             y: -200,
             width: 1280,
             height: 720,
-        };
+        });
         assert_eq!(
             offscreen_window_recovery(
                 WindowRect {
@@ -3027,12 +3084,12 @@ mod pet_tests {
 
     #[test]
     fn recovery_falls_back_to_an_available_monitor_and_never_invents_one() {
-        let secondary = WindowRect {
+        let secondary = unscaled_work_area(WindowRect {
             x: 1920,
             y: -100,
             width: 1600,
             height: 900,
-        };
+        });
         let offscreen = WindowRect {
             x: -9000,
             y: -9000,

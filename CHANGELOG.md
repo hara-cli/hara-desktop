@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.42 — keep recovered windows usable across display scales
+
+- Recover stale main-window geometry in the target display's physical scale while preserving the
+  intended 1100 × 760 logical size on Retina and standard-density monitors.
+- Reset both dimensions together when either restored axis is too small or larger than the target
+  work area, preventing a visible but unusably tall or narrow window after monitor changes.
+- Keep the 0.1.41 macOS reopen behavior: closing the main window and launching Hara again recreates
+  a visible, focused window. The bundled Hara CLI remains the verified `0.135.2`.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.41 — recover the main window after closing or display changes
 
 - Restore or recreate the macOS main window when Hara is launched again from Finder or the Dock,

@@ -399,6 +399,12 @@ test("macOS Dock reopen restores or recreates the main window", () => {
   assert.match(nativeHost, /window\s*\.set_focus\(\)/);
   assert.match(nativeHost, /const MIN_MAIN_WINDOW_WIDTH: u32 = 720/);
   assert.match(nativeHost, /const MIN_MAIN_WINDOW_HEIGHT: u32 = 480/);
+  assert.match(nativeHost, /scale_factor: monitor\.scale_factor\(\)/);
+  assert.match(
+    nativeHost,
+    /let \(requested_width, requested_height\) = if size_is_invalid \{[\s\S]*logical_to_physical_dimension\(DEFAULT_MAIN_WINDOW_WIDTH, target\.scale_factor\)[\s\S]*logical_to_physical_dimension\(DEFAULT_MAIN_WINDOW_HEIGHT, target\.scale_factor\)/,
+    "one invalid axis must restore both logical dimensions at the target display scale",
+  );
   assert.match(
     nativeHost,
     /tauri::RunEvent::Reopen \{ \.\. \} => \{[\s\S]*reopen_main_window\(app\)/,
