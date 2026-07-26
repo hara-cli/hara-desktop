@@ -1024,6 +1024,8 @@ test("every x64 sidecar uses a baseline CPU target and executes the hostile-cwd 
   assert.match(smoke, /bunfig\.toml/);
   assert.match(smoke, /HARA_DESKTOP_DOTENV_MUST_NOT_LOAD/);
   assert.match(smoke, /runSidecar\(\["doctor"\]/);
+  assert.match(smoke, /runSidecar\(\["sessions"\]/);
+  assert.match(smoke, /No sessions yet\./);
   assert.match(smoke, /AMBIENT_PRELOAD_EXECUTED/);
 });
 

@@ -173,6 +173,19 @@ export function smokeSidecar({ binary, expectedVersion, expectedTarget = nativeT
       throw new Error(`${label} executed cwd bunfig.toml preload during Hara startup`);
     }
 
+    let sessions;
+    try {
+      sessions = runSidecar(["sessions"], true, env);
+    } catch (error) {
+      throw new Error(`${label} sessions failed: ${shortError(error)}`);
+    }
+    if (!sessions.includes("No sessions yet.")) {
+      throw new Error(`${label} sessions did not initialize an empty session index: ${sessions.trim() || "<empty>"}`);
+    }
+    if (existsSync(ambientPreloadMarker)) {
+      throw new Error(`${label} executed cwd bunfig.toml preload during session index initialization`);
+    }
+
     // v0.122.2 only crashed on Bun hosts where SAB was unavailable. Recreate that runtime boundary
     // before the compiled entrypoint loads so a normal-host smoke cannot hide the regression.
     const noSabPreload = join(smokeHome, "without-shared-array-buffer.cjs");
@@ -218,7 +231,7 @@ export function smokeSidecar({ binary, expectedVersion, expectedTarget = nativeT
 
   const execution = translated ? "translated via Rosetta on Apple Silicon" : "natively";
   console.log(
-    `  ✓ ${label} runs ${execution} (${expectedTarget}, hara ${version}; ambient config blocked; SAB-disabled; --help; serve --help)`,
+    `  ✓ ${label} runs ${execution} (${expectedTarget}, hara ${version}; ambient config blocked; sessions; SAB-disabled; --help; serve --help)`,
   );
   return version;
 }

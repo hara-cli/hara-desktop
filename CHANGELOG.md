@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.40 — restore conversation startup with Hara 0.135.2
+
+- Restore “Start conversation” and project opening after the 0.1.39 regression. The bundled Hara
+  engine now initializes and lists sessions correctly under Bun 1.3.9 instead of failing while
+  closing a session-index directory handle.
+- Extend the final sidecar, packaged-app, DMG, and updater smoke path to run `hara sessions` under an
+  isolated HOME. Release candidates now exercise the same session-index startup path as Desktop,
+  rather than passing only version, doctor, and help checks.
+- Bundle the exact verified Hara CLI `0.135.2` hotfix. Existing model routes, attachments, schedules,
+  sessions, and project data remain unchanged.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.39 — guided automation, rich context, and Hara 0.135.0
 
 - Consolidate scheduled work into one guided automation console with plain-language task descriptions,
