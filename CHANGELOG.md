@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.41 — recover the main window after closing or display changes
+
+- Restore or recreate the macOS main window when Hara is launched again from Finder or the Dock,
+  including when the previous window was closed.
+- Recover stale window state that leaves the app off-screen, smaller than a usable conversation
+  window, or larger than the display after monitor and scaling changes. The recovered window stays
+  on the display with the largest visible overlap.
+- Bundle the unchanged, verified Hara CLI `0.135.2`; conversations, project data, connections, and
+  credentials are preserved by this Desktop-only update.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.40 — restore conversation startup with Hara 0.135.2
 
 - Restore “Start conversation” and project opening after the 0.1.39 regression. The bundled Hara

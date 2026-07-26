@@ -388,6 +388,34 @@ test("updater restart waits for real shutdown and one-shot relaunch starts the b
   );
 });
 
+test("macOS Dock reopen restores or recreates the main window", () => {
+  const nativeHost = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
+
+  assert.match(nativeHost, /fn reopen_main_window<R: tauri::Runtime>/);
+  assert.match(nativeHost, /app\.get_webview_window\("main"\)/);
+  assert.match(nativeHost, /WebviewWindowBuilder::from_config\(app, &config\)/);
+  assert.match(nativeHost, /window\s*\.unminimize\(\)/);
+  assert.match(nativeHost, /window\s*\.show\(\)/);
+  assert.match(nativeHost, /window\s*\.set_focus\(\)/);
+  assert.match(nativeHost, /const MIN_MAIN_WINDOW_WIDTH: u32 = 720/);
+  assert.match(nativeHost, /const MIN_MAIN_WINDOW_HEIGHT: u32 = 480/);
+  assert.match(
+    nativeHost,
+    /tauri::RunEvent::Reopen \{ \.\. \} => \{[\s\S]*reopen_main_window\(app\)/,
+    "the macOS applicationShouldHandleReopen event must restore the main window",
+  );
+  assert.match(
+    nativeHost,
+    /tauri::RunEvent::Ready => \{[\s\S]*#\[cfg\(target_os = "macos"\)\][\s\S]*reopen_main_window\(app\)/,
+    "a fresh macOS launch must recover when state restoration suppresses the configured main window",
+  );
+  assert.match(
+    nativeHost,
+    /#\[cfg\(target_os = "macos"\)\][\s\S]*tauri::RunEvent::WindowEvent \{[\s\S]*tauri::WindowEvent::Resized\(size\)[\s\S]*label == "main"[\s\S]*recover_main_window_if_offscreen\(&window\)/,
+    "late window-state restoration must not leave an unusable on-screen main window",
+  );
+});
+
 test("provider settings keep credentials transient and support local no-key presets", () => {
   const providerSettings = readFileSync(`${root}/src/ProviderSettings.tsx`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");

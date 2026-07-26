@@ -9,6 +9,9 @@ Preserve protocol-v1 session, approval, interruption, and capability negotiation
 ## Development & Tests
 
 - Use the exact Node, Bun, and Rust versions pinned by `.node-version`, `.bun-version`, and `.rust-version`.
+- On this workstation, unqualified `cargo`/`rustc` may resolve the legacy Homebrew 1.84.1
+  toolchain even when rustup reports the pinned version. Put the exact pinned rustup toolchain
+  `bin` directory first on `PATH` and verify both Cargo and rustc before every Rust gate.
 - `npm ci` installs the locked frontend/tooling dependencies.
 - `npm test` runs release, protocol, packaging, and UI regression tests.
 - `npm run check:release` validates Desktop, Tauri, Cargo, sidecar, and toolchain metadata.

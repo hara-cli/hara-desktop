@@ -22,6 +22,8 @@ const MANAGED_CLI_RECEIPT_SCHEMA: u8 = 1;
 const BUNDLED_CLI_VERSION: &str = include_str!("../binaries/SIDECAR_VERSION");
 const DEFAULT_MAIN_WINDOW_WIDTH: u32 = 1100;
 const DEFAULT_MAIN_WINDOW_HEIGHT: u32 = 760;
+const MIN_MAIN_WINDOW_WIDTH: u32 = 720;
+const MIN_MAIN_WINDOW_HEIGHT: u32 = 480;
 const MIN_PANEL_NODE_MAJOR: u32 = 18;
 const PREFERRED_PANEL_NODE_MAJOR: u32 = 22;
 const PANEL_NODE_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
@@ -58,46 +60,70 @@ impl WindowRect {
             && self_top < other_bottom
             && self_bottom > other_top
     }
+
+    fn intersection_area(self, other: Self) -> u64 {
+        if !self.intersects(other) {
+            return 0;
+        }
+
+        let left = i64::from(self.x).max(i64::from(other.x));
+        let top = i64::from(self.y).max(i64::from(other.y));
+        let right = (i64::from(self.x) + i64::from(self.width))
+            .min(i64::from(other.x) + i64::from(other.width));
+        let bottom = (i64::from(self.y) + i64::from(self.height))
+            .min(i64::from(other.y) + i64::from(other.height));
+        u64::try_from(right - left).unwrap_or_default()
+            * u64::try_from(bottom - top).unwrap_or_default()
+    }
 }
 
 fn clamp_i64_to_i32(value: i64) -> i32 {
     value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
-/// Return a safe replacement only when the restored main window has no visible overlap at all.
-/// Work areas exclude menu bars, taskbars, and docks, which keeps the recovered title bar usable.
+/// Return a safe replacement when the restored main window is off-screen or cannot fit a usable
+/// size on the display it overlaps most. Work areas exclude menu bars, taskbars, and docks.
 fn offscreen_window_recovery(
     window: WindowRect,
     work_areas: &[WindowRect],
     primary_work_area: Option<WindowRect>,
 ) -> Option<WindowRect> {
-    if window.has_area()
-        && work_areas
+    let visible_work_area = if window.has_area() {
+        work_areas
             .iter()
             .copied()
-            .any(|work_area| window.intersects(work_area))
-    {
+            .filter(|work_area| work_area.has_area() && window.intersects(*work_area))
+            .max_by_key(|work_area| window.intersection_area(*work_area))
+    } else {
+        None
+    };
+    let undersized = window.width < MIN_MAIN_WINDOW_WIDTH || window.height < MIN_MAIN_WINDOW_HEIGHT;
+    let oversized = visible_work_area
+        .map(|work_area| window.width > work_area.width || window.height > work_area.height)
+        .unwrap_or(false);
+    if visible_work_area.is_some() && !undersized && !oversized {
         return None;
     }
 
-    let target = primary_work_area
-        .filter(|work_area| work_area.has_area())
+    let target = visible_work_area
+        .or_else(|| primary_work_area.filter(|work_area| work_area.has_area()))
         .or_else(|| {
             work_areas
                 .iter()
                 .copied()
                 .find(|work_area| work_area.has_area())
         })?;
-    let requested_width = if window.width == 0 {
+    let requested_width = if window.width < MIN_MAIN_WINDOW_WIDTH || window.width > target.width {
         DEFAULT_MAIN_WINDOW_WIDTH
     } else {
         window.width
     };
-    let requested_height = if window.height == 0 {
-        DEFAULT_MAIN_WINDOW_HEIGHT
-    } else {
-        window.height
-    };
+    let requested_height =
+        if window.height < MIN_MAIN_WINDOW_HEIGHT || window.height > target.height {
+            DEFAULT_MAIN_WINDOW_HEIGHT
+        } else {
+            window.height
+        };
     let width = requested_width.min(target.width);
     let height = requested_height.min(target.height);
     let x = i64::from(target.x) + i64::from(target.width.saturating_sub(width) / 2);
@@ -161,6 +187,43 @@ fn recover_main_window_if_offscreen<R: tauri::Runtime>(
     window.set_focus()?;
     window.app_handle().save_window_state(StateFlags::all())?;
     Ok(true)
+}
+
+#[cfg(target_os = "macos")]
+fn reopen_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
+    use tauri::Manager;
+
+    let window = if let Some(window) = app.get_webview_window("main") {
+        window
+    } else {
+        let config = app
+            .config()
+            .app
+            .windows
+            .iter()
+            .find(|config| config.label == "main")
+            .cloned()
+            .ok_or_else(|| "main window configuration is missing".to_string())?;
+        tauri::WebviewWindowBuilder::from_config(app, &config)
+            .map_err(|error| format!("prepare main window: {error}"))?
+            .build()
+            .map_err(|error| format!("recreate main window: {error}"))?
+    };
+
+    window
+        .unminimize()
+        .map_err(|error| format!("restore main window: {error}"))?;
+    window
+        .show()
+        .map_err(|error| format!("show main window: {error}"))?;
+    let recovered = recover_main_window_if_offscreen(&window)
+        .map_err(|error| format!("recover main window position: {error}"))?;
+    if !recovered {
+        window
+            .set_focus()
+            .map_err(|error| format!("focus main window: {error}"))?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -2027,10 +2090,39 @@ pub fn run() {
         .run(|app, event| match event {
             #[cfg(desktop)]
             tauri::RunEvent::Ready => {
+                #[cfg(target_os = "macos")]
+                if let Err(error) = reopen_main_window(app) {
+                    eprintln!("main window startup recovery failed: {error}");
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    use tauri::Manager;
+                    if let Some(window) = app.get_webview_window("main") {
+                        if let Err(error) = recover_main_window_if_offscreen(&window) {
+                            eprintln!("main window visibility recovery failed: {error}");
+                        }
+                    }
+                }
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                if let Err(error) = reopen_main_window(app) {
+                    eprintln!("main window reopen failed: {error}");
+                }
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Resized(size),
+                ..
+            } if label == "main" => {
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     if let Err(error) = recover_main_window_if_offscreen(&window) {
-                        eprintln!("main window visibility recovery failed: {error}");
+                        eprintln!(
+                            "main window resize recovery failed at {}x{}: {error}",
+                            size.width, size.height
+                        );
                     }
                 }
             }
@@ -2812,6 +2904,64 @@ mod pet_tests {
     }
 
     #[test]
+    fn tiny_restored_window_is_recovered_on_its_current_monitor() {
+        let secondary = WindowRect {
+            x: 1920,
+            y: 30,
+            width: 2560,
+            height: 1050,
+        };
+        let tiny = WindowRect {
+            x: 1936,
+            y: 501,
+            width: 116,
+            height: 109,
+        };
+
+        assert_eq!(
+            offscreen_window_recovery(tiny, &[secondary], None),
+            Some(WindowRect {
+                x: 2650,
+                y: 175,
+                width: DEFAULT_MAIN_WINDOW_WIDTH,
+                height: DEFAULT_MAIN_WINDOW_HEIGHT,
+            })
+        );
+    }
+
+    #[test]
+    fn oversized_restored_window_uses_the_monitor_with_the_largest_overlap() {
+        let primary = WindowRect {
+            x: 0,
+            y: 30,
+            width: 1920,
+            height: 1050,
+        };
+        let secondary = WindowRect {
+            x: 1920,
+            y: 30,
+            width: 2560,
+            height: 1050,
+        };
+        let oversized = WindowRect {
+            x: 688,
+            y: 62,
+            width: 3708,
+            height: 1826,
+        };
+
+        assert_eq!(
+            offscreen_window_recovery(oversized, &[primary, secondary], Some(primary)),
+            Some(WindowRect {
+                x: 2650,
+                y: 175,
+                width: DEFAULT_MAIN_WINDOW_WIDTH,
+                height: DEFAULT_MAIN_WINDOW_HEIGHT,
+            })
+        );
+    }
+
+    #[test]
     fn edge_touch_without_visible_overlap_is_recovered() {
         let primary = WindowRect {
             x: 0,
@@ -2848,7 +2998,12 @@ mod pet_tests {
                 &[primary],
                 Some(primary),
             ),
-            Some(primary)
+            Some(WindowRect {
+                x: -1190,
+                y: -200,
+                width: DEFAULT_MAIN_WINDOW_WIDTH,
+                height: 720,
+            })
         );
         assert_eq!(
             offscreen_window_recovery(
