@@ -334,6 +334,25 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*\.settings-capability-list \.plug[\s\S]*flex-direction:\s*column/);
 });
 
+test("skills settings can start a safe conversational skill builder", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
+
+  assert.match(
+    app,
+    /const startSkillCreation = async \(\) => \{[\s\S]*await startNewAssistantConversation\(\)[\s\S]*updateComposerDraft\(sessionId,[\s\S]*t\("skillCreationPrompt"\)/,
+    "the builder starts in a fresh assistant conversation and prefills a guided request",
+  );
+  assert.match(app, /onClick=\{\(\) => void startSkillCreation\(\)\}/);
+  assert.match(app, /s\.source === "project"[\s\S]*skillSourceProject/);
+  assert.match(app, /s\.source === "global"[\s\S]*skillSourcePersonal/);
+  assert.match(app, /s\.source === "plugin"[\s\S]*skillSourceCapability/);
+  assert.match(i18n, /Only after I explicitly confirm may you use skill_create/);
+  assert.match(i18n, /只有我明确确认后，才可以调用 skill_create/);
+  assert.match(i18n, /remove API keys, tokens, passwords/);
+  assert.match(i18n, /移除 API Key、令牌、密码/);
+});
+
 test("updater restart waits for real shutdown and one-shot relaunch starts the bundled engine", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");

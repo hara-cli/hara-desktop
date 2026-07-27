@@ -1694,6 +1694,16 @@ export default function App() {
     }
   };
 
+  /** Start a fresh guided conversation that previews a custom skill before any file is written. */
+  const startSkillCreation = async () => {
+    const sessionId = await startNewAssistantConversation();
+    if (!sessionId) return;
+    updateComposerDraft(sessionId, (draft) => ({
+      ...draft,
+      text: t("skillCreationPrompt"),
+    }));
+  };
+
   /** Resume the current assistant conversation; create one only when none exists yet. */
   const openAssistant = async (): Promise<string | null> => {
     setZone("chat");
@@ -3787,10 +3797,27 @@ export default function App() {
             {setSec === "skills" && (
               <SettingsPage
                 id="settings-skills-title"
-                eyebrow={t("settingsAdvanced")}
+                eyebrow={t("settingsCapabilities")}
                 title={t("setSkills")}
                 description={t("skillsDescription")}
+                actions={(
+                  <button
+                    type="button"
+                    disabled={assistantCreating}
+                    onClick={() => void startSkillCreation()}
+                  >
+                    {assistantCreating ? t("skillConversationStarting") : t("createSkill")}
+                  </button>
+                )}
               >
+                <SettingsCard
+                  title={t("skillBuilderTitle")}
+                  description={t("skillBuilderDescription")}
+                >
+                  <SettingsNotice title={t("skillBuilderSafetyTitle")}>
+                    {t("skillBuilderSafetyDescription")}
+                  </SettingsNotice>
+                </SettingsCard>
                 <SettingsCard title={t("availableSkills")} description={t("availableSkillsHint")}>
                   {(skills ?? []).length === 0 ? (
                     <div className="settings-empty">{t("noSkills")}</div>
@@ -3802,7 +3829,15 @@ export default function App() {
                             <strong className="skill-id">{s.id}</strong>
                             <small>{s.description}</small>
                           </span>
-                          <SettingsBadge>{s.source}</SettingsBadge>
+                          <SettingsBadge>
+                            {s.source === "project"
+                              ? t("skillSourceProject")
+                              : s.source === "global"
+                                ? t("skillSourcePersonal")
+                                : s.source === "plugin"
+                                  ? t("skillSourceCapability")
+                                  : s.source}
+                          </SettingsBadge>
                         </div>
                       ))}
                     </div>
