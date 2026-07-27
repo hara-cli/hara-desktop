@@ -49,8 +49,8 @@ npm run tauri build   # bundles hara.app / dmg
 
 ## Status — public beta (all platforms)
 
-Shipped: segmented assistant/projects IA (one persistent assistant conversation + per-origin bot
-threads + collapsed automations timeline) · open-folder-as-project · bundled hara sidecar
+Shipped: configurable module-dock IA (fresh assistant conversations + folded history + per-origin bot
+threads + task console) · open-folder-as-project · bundled hara sidecar
 (zero-dependency) · first-run key onboarding · per-session model & thinking-effort switch · inline
 approvals · steer queue · notifications + dock badge · search / pin / rename / archive · `@file`
 mentions · optional non-focusable task-status pet with local Codex v1/v2 package compatibility ·
@@ -73,20 +73,26 @@ is documented in
 [`docs/PRESENTATION_CAPABILITY_ARCHITECTURE.md`](./docs/PRESENTATION_CAPABILITY_ARCHITECTURE.md) and
 [`docs/PPT_MASTER_INTEGRATION_AUDIT.md`](./docs/PPT_MASTER_INTEGRATION_AUDIT.md).
 
-## Design invariants (四场所模型, 顾雅 2026-07-11)
+## Design invariants (模块坞 + 四场所模型)
 
-Four places on the icon rail — 💬 chat (IM density) · 📁 projects (IDE density, chat↔preview split)
-· 🤖 automations (console density: job table + run timeline, runs open as READ-ONLY replays; fork to
-continue) · ⚙ settings (context anchors + stage forms). Invariants:
+Three open-core work modules contribute to the icon dock — 💬 chat (IM density) · 📁 projects
+(IDE density, chat↔preview split) · 🤖 tasks (console density: scheduled tasks + run timeline).
+People may hide or reorder these entries. ⚙ settings (context anchors + stage forms) stays fixed at
+the lower left so hidden modules always remain recoverable. Runtime places still preserve separate
+session ownership and density. Invariants:
 
 - **Notification rule**: interruption-grade (a human must respond) → red dot + dock badge;
   ambient-grade (an automation ran and left a trace) → count chip, NEVER a dock badge.
 - Automated sessions never mix into manual session lists, and never open as live conversations —
   replay is read-only; `session.fork` is the only continuation path.
 - A plugin panel is a WORK stage, not a settings artifact: launching one goes to the projects
-  place (split view); settings only manages enable/disable.
-- One persistent desktop assistant; one thread per external origin (WeChat etc.), separated by the
-  "external channels" divider.
+  place (split view); settings only manages enable/disable. A plugin does not receive a primary dock
+  surface until the isolated plugin-surface contract is implemented and reviewed.
+- One active desktop assistant conversation plus folded, switchable history; one thread per external
+  origin (WeChat etc.), separated by the "external channels" divider.
+
+The module contribution and future plugin-surface boundary are documented in
+[`docs/MODULE_DOCK_ARCHITECTURE.md`](./docs/MODULE_DOCK_ARCHITECTURE.md).
 Windows updater payloads carry Hara's cryptographically verified Tauri/minisign signatures, but the
 MSI/NSIS executables are not yet Authenticode-signed. Windows may therefore show a SmartScreen
 warning until the planned signing service is integrated; the release notes must not claim otherwise.

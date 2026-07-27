@@ -1,7 +1,6 @@
-// Hara Desktop — Tauri shell over `hara serve` (WS JSON-RPC). IA per the 2026-07-11 decision doc:
-// a left icon RAIL switches four PHYSICAL places — 💬 global assistant (chat temperament,
-// WeChat-synced workspace) · 📁 projects (IDE temperament, workspace groups) · 🤖 automations ·
-// ⚙ settings. Places never share an active session; each has a permanent target anchor.
+// Hara Desktop — Tauri shell over `hara serve` (WS JSON-RPC). The left module dock switches
+// open-core work surfaces; people may hide/reorder entries while recovery/settings stays fixed.
+// Places never share an active session, and each has a permanent target anchor.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
@@ -60,7 +59,22 @@ import {
   SettingsNotice,
   SettingsPage,
 } from "./SettingsUI";
-import { AppRail, type AppPlace } from "./AppRail";
+import {
+  AppRail,
+  type AppPlace,
+  type AppRailItem,
+} from "./AppRail";
+import { ModuleDockSettings } from "./ModuleDockSettings";
+import {
+  CORE_NAVIGATION_CONTRIBUTIONS,
+  NAVIGATION_PREFERENCES_KEY,
+  initialAppPlace,
+  moveNavigation,
+  parseNavigationPreferences,
+  visibleNavigation,
+  withNavigationVisibility,
+  type NavigationPreferences,
+} from "./navigation";
 import {
   ConversationTimeline,
   type ApprovalVerdict,
@@ -82,7 +96,7 @@ import {
 } from "./composer-state";
 import { DesktopCompanionSettings } from "./companion/DesktopCompanionSettings";
 import { useDesktopCompanion } from "./companion/useDesktopCompanion";
-import { IconHome, IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
+import { IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
 import HaraLogo from "./mark";
 import type {
@@ -102,7 +116,7 @@ import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw"
 import "./App.css";
 
 type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
-// the four PLACES (顾雅 2026-07-11 four-places ruling): talk / work / orchestrate / configure
+// Module destinations currently backed by the shell: talk / work / orchestrate / configure.
 type Zone = AppPlace;
 type PendingDesktopUpdate = {
   update: Update;
@@ -296,11 +310,11 @@ function projectGroups(sessions: SessionInfo[], opened: string[]): [string, Sess
   return [...empty, ...withSessions];
 }
 
-/** The assistant zone (experts' ruling: SINGLE persistent desktop conversation + one thread per
- *  external origin — the origin IS the dispatch key):
- *  - `current`: THE desktop assistant session (latest interactive one in the workspace cwd)
+/** The assistant zone: one active desktop conversation + one thread per external origin.
+ *  Starting a fresh conversation promotes the previous active one into folded history:
+ *  - `current`: latest interactive desktop conversation in the assistant workspace
  *  - `bots`: gateway threads, one per platform+peer (forks folded) — WeChat etc., each its own lane
- *  - `history`: older desktop assistant sessions, folded away so duplicates never clutter the zone */
+ *  - `history`: older desktop conversations, folded away until the user opens them */
 function assistantZone(sessions: SessionInfo[]): { current: SessionInfo | null; bots: SessionInfo[]; history: SessionInfo[] } {
   const mine = sessions
     .filter((s) => isAssistantCwd(s.cwd) && s.source !== "gateway" && s.source !== "cron")
@@ -396,7 +410,11 @@ export default function App() {
   }, []);
   const [defaultApproval, setDefaultApproval] = useState<string>(() => localStorage.getItem("hara.approval") || "");
   const [err, setErr] = useState("");
-  const [zone, setZoneRaw] = useState<Zone>(() => (localStorage.getItem("hara.zone") as Zone) || "chat");
+  const [navigationPreferences, setNavigationPreferences] =
+    useState<NavigationPreferences>(() =>
+      parseNavigationPreferences(localStorage.getItem(NAVIGATION_PREFERENCES_KEY)));
+  const [zone, setZoneRaw] = useState<Zone>(() =>
+    initialAppPlace(localStorage.getItem("hara.zone"), navigationPreferences));
   const zoneRef = useRef<Zone>(zone);
   const sessionOpenRequestRef = useRef(0);
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
@@ -404,9 +422,10 @@ export default function App() {
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [panelBusy, setPanelBusy] = useState("");
   const [starterBusy, setStarterBusy] = useState(false);
+  const [assistantCreating, setAssistantCreating] = useState(false);
   const [engineRestarting, setEngineRestarting] = useState(false);
   // settings place: context column = group anchors, stage = the selected group's forms
-  const [setSec, setSetSec] = useState<"providers" | "engine" | "security" | "lang" | "pets" | "plugins" | "skills">("providers");
+  const [setSec, setSetSec] = useState<"providers" | "engine" | "security" | "lang" | "modules" | "pets" | "plugins" | "skills">("providers");
   // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [split, setSplit] = useState<{ plugin: string; id: string; title: string; url: string } | null>(null);
@@ -665,6 +684,18 @@ export default function App() {
       return next;
     });
   };
+
+  const saveNavigationPreferences = useCallback((
+    update: (current: NavigationPreferences) => NavigationPreferences,
+  ) => {
+    setNavigationPreferences((current) => {
+      const next = update(current);
+      if (next !== current) {
+        localStorage.setItem(NAVIGATION_PREFERENCES_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  }, []);
 
   const setZone = (z: Zone) => {
     if ((zone === "chat" || zone === "projects") && active) {
@@ -1646,7 +1677,24 @@ export default function App() {
     }
   };
 
-  const creatingRef = useRef(false); // double-click guard — the assistant is ONE session, never two
+  const assistantCreationRef = useRef(false);
+  const startNewAssistantConversation = async (): Promise<string | null> => {
+    setZone("chat");
+    if (!home || assistantCreationRef.current) return null;
+    assistantCreationRef.current = true;
+    setAssistantCreating(true);
+    try {
+      return await newSession(`${home}/.hara/workspace`);
+    } catch (error: any) {
+      setErr(String(error?.message ?? error));
+      return null;
+    } finally {
+      assistantCreationRef.current = false;
+      setAssistantCreating(false);
+    }
+  };
+
+  /** Resume the current assistant conversation; create one only when none exists yet. */
   const openAssistant = async (): Promise<string | null> => {
     setZone("chat");
     const cur = assistantZone(sessionsRef.current).current;
@@ -1654,13 +1702,7 @@ export default function App() {
       await openSession(cur.id);
       return cur.id;
     }
-    if (!home || creatingRef.current) return null;
-    creatingRef.current = true;
-    try {
-      return await newSession(`${home}/.hara/workspace`);
-    } finally {
-      creatingRef.current = false;
-    }
+    return startNewAssistantConversation();
   };
 
   const toggleGroup = (cwd: string) => {
@@ -2975,33 +3017,58 @@ export default function App() {
     </main>
   );
 
-  // icon rail — four PLACES (顾雅 four-places ruling: 4+ peer places each with its own context
-  // column and density → a rail IS the right control now; the 2-mode segmented era ended when
-  // automations grew into a first-class place). Notification invariant on the rail: interruption
-  // (needs a human) → red dot; ambient (ran, left a trace) → count chip.
+  // The module dock is preference-driven. Core modules contribute stable IDs now; reviewed plugin
+  // surfaces can join the same registry once the isolated plugin-host contract lands. Notification
+  // invariant: interruption (needs a human) → red dot; ambient (ran, left a trace) → count chip.
+  const railLabelsById: Record<string, string> = {
+    "core.chat": t("zoneChat"),
+    "core.projects": t("zoneProjects"),
+    "core.tasks": t("zoneAuto"),
+  };
+  const projectSessions = sessions.filter(
+    (session) =>
+      !isAssistantCwd(session.cwd)
+      && !isAutomated(session)
+      && !isJunkCwd(session.cwd),
+  );
+  const railItems: AppRailItem[] = visibleNavigation(
+    CORE_NAVIGATION_CONTRIBUTIONS,
+    navigationPreferences,
+  ).map((contribution) => {
+    let badge: AppRailItem["badge"];
+    if (contribution.target === "chat" && manualUnreadIn(azAll)) {
+      badge = { kind: "dot" };
+    } else if (contribution.target === "projects" && manualUnreadIn(projectSessions)) {
+      badge = { kind: "dot" };
+    } else if (contribution.target === "auto" && autoUnread > 0) {
+      badge = { kind: "count", count: autoUnread };
+    }
+    return {
+      id: contribution.id,
+      label: railLabelsById[contribution.id] ?? contribution.id,
+      icon: contribution.icon,
+      shortcut: contribution.shortcut,
+      active: zone === contribution.target,
+      badge,
+    };
+  });
   const rail = (
     <AppRail
       activePlace={zone}
+      items={railItems}
       labels={{
         mainNavigation: t("mainNavigation"),
-        chat: t("zoneChat"),
-        projects: t("zoneProjects"),
-        automations: t("zoneAuto"),
         settings: t("zoneSettings"),
         updateAvailable: t("updateAvail"),
       }}
-      assistantUnread={manualUnreadIn(azAll)}
-      projectsUnread={manualUnreadIn(
-        sessions.filter(
-          (session) =>
-            !isAssistantCwd(session.cwd) &&
-            !isAutomated(session) &&
-            !isJunkCwd(session.cwd),
-        ),
-      )}
-      automationUnread={autoUnread}
       updateAvailable={updAvail}
-      onSelect={setZone}
+      onSelect={(id) => {
+        const contribution = CORE_NAVIGATION_CONTRIBUTIONS.find(
+          (item) => item.id === id,
+        );
+        if (contribution) setZone(contribution.target);
+      }}
+      onSelectSettings={() => setZone("settings")}
     />
   );
   const footBar = (
@@ -3124,13 +3191,18 @@ export default function App() {
       {zone === "chat" && (
         <aside className="sidebar">
           {brandBar}
-          <button className="new withicon" onClick={() => void openAssistant()}>
-            <IconHome size={15} /> {t("assistant")}
+          <button
+            className="new withicon"
+            disabled={assistantCreating}
+            onClick={() => void startNewAssistantConversation()}
+          >
+            <span className="new-conversation-plus" aria-hidden>＋</span>
+            {assistantCreating ? t("startingConversation") : t("newConversation")}
           </button>
           {searchBox}
           <div className="sessions" key={zone}>
-            {/* THE single desktop conversation (experts' ruling) — the ⌂ button above opens it.
-                It never shows a derived/"untitled" title: it IS the assistant. */}
+            {/* The latest desktop conversation is the active assistant lane. Starting another
+                conversation moves this one into the folded history list below. */}
             {az.current && sessRow({ ...az.current, title: t("assistant") })}
             {/* one thread per external origin (WeChat bot etc.) — the origin is the dispatch key.
                 The divider keeps identities straight: above = YOUR desktop assistant, below = its
@@ -3287,6 +3359,7 @@ export default function App() {
                 {
                   label: t("settingsGroupCapabilities"),
                   items: [
+                    ["modules", t("setModules")],
                     ["pets", t("setPets")],
                     ["plugins", t("setPlugins")],
                     ["skills", t("setSkills")],
@@ -3593,6 +3666,60 @@ export default function App() {
                   </SettingsItem>
                 </SettingsCard>
               </SettingsPage>
+            )}
+            {setSec === "modules" && (
+              <ModuleDockSettings
+                contributions={CORE_NAVIGATION_CONTRIBUTIONS}
+                preferences={navigationPreferences}
+                labels={{
+                  "core.chat": {
+                    title: t("zoneChat"),
+                    description: t("moduleChatDescription"),
+                  },
+                  "core.projects": {
+                    title: t("zoneProjects"),
+                    description: t("moduleProjectsDescription"),
+                  },
+                  "core.tasks": {
+                    title: t("zoneAuto"),
+                    description: t("moduleTasksDescription"),
+                  },
+                }}
+                copy={{
+                  eyebrow: t("settingsPersonalize"),
+                  title: t("setModules"),
+                  description: t("moduleDockDescription"),
+                  cardTitle: t("moduleDockCardTitle"),
+                  cardDescription: t("moduleDockCardDescription"),
+                  core: t("moduleSourceCore"),
+                  visible: t("moduleVisible"),
+                  hidden: t("moduleHidden"),
+                  show: t("showModule"),
+                  hide: t("hideModule"),
+                  moveUp: t("moveModuleUp"),
+                  moveDown: t("moveModuleDown"),
+                  fixedTitle: t("moduleSettingsFixed"),
+                  fixedDescription: t("moduleSettingsFixedHint"),
+                }}
+                onVisibilityChange={(id, visible) => {
+                  saveNavigationPreferences((current) =>
+                    withNavigationVisibility(
+                      CORE_NAVIGATION_CONTRIBUTIONS,
+                      current,
+                      id,
+                      visible,
+                    ));
+                }}
+                onMove={(id, direction) => {
+                  saveNavigationPreferences((current) =>
+                    moveNavigation(
+                      CORE_NAVIGATION_CONTRIBUTIONS,
+                      current,
+                      id,
+                      direction,
+                    ));
+                }}
+              />
             )}
             {setSec === "pets" && (
               <DesktopCompanionSettings

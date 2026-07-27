@@ -1151,6 +1151,10 @@ button.deny {
   justify-content: center;
   gap: 7px;
 }
+.new-conversation-plus {
+  margin-left: -2px;
+  font: 600 17px/1 "SF Mono", ui-monospace, monospace;
+}
 .group-h svg {
   flex-shrink: 0;
 }
@@ -2533,6 +2537,91 @@ button:focus-visible,
   display: flex;
   flex-direction: column;
 }
+.module-dock-list {
+  display: flex;
+  flex-direction: column;
+}
+.module-dock-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 76px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #242429;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.module-dock-item:last-child {
+  border-bottom: 0;
+}
+.module-dock-item:hover {
+  background: #18181b;
+}
+.module-dock-item.is-hidden .module-dock-icon,
+.module-dock-item.is-hidden .module-dock-copy {
+  opacity: 0.64;
+}
+.module-dock-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #35353b;
+  border-radius: 9px;
+  background: #1e1e22;
+  color: #d5d1cb;
+}
+.module-dock-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.module-dock-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.module-dock-title strong {
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 620;
+}
+.module-dock-copy small {
+  max-width: 520px;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.module-dock-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.module-dock-state {
+  min-width: 46px;
+  color: #77746f;
+  font-size: 10px;
+  text-align: right;
+}
+.module-dock-state.is-visible {
+  color: #91bd9d;
+}
+.module-dock-actions button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 11px;
+}
+.module-dock-actions .module-dock-move {
+  width: 30px;
+  padding: 0;
+  font: 600 14px/1 "SF Mono", ui-monospace, monospace;
+}
+.module-dock-toggle {
+  min-width: 52px;
+}
 .settings-capability-list .plug {
   padding: 14px 18px;
   border: 0;
@@ -2604,6 +2693,17 @@ button:focus-visible,
   .settings-capability-list .plug {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .module-dock-item {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+  .module-dock-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .module-dock-state {
+    margin-right: auto;
+    text-align: left;
   }
   .settings-capability-actions {
     width: 100%;

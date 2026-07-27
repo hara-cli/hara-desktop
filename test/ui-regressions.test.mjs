@@ -41,10 +41,11 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   const css = readFileSync(`${root}/src/App.css`, "utf8");
   const diff = css.match(/\.diff \{([\s\S]*?)\n\}/)?.[1] ?? "";
 
-  assert.match(app, /import \{ AppRail, type AppPlace \} from "\.\/AppRail"/);
+  assert.match(app, /type AppPlace,[\s\S]*type AppRailItem,[\s\S]*from "\.\/AppRail"/);
   assert.match(app, /<ConversationTimeline/);
   assert.doesNotMatch(app, /<nav className="rail"/);
-  assert.match(rail, /export type AppPlace = "chat" \| "projects" \| "auto" \| "settings"/);
+  assert.match(rail, /export type \{ AppPlace \} from "\.\/navigation"/);
+  assert.match(rail, /items\.map\(\(item\) =>/);
   assert.match(timeline, /case "approval"/, "approvals stay in the session timeline");
   assert.match(timeline, /const lastUser = items\.map/, "busy progress remains scoped to the current turn");
   assert.match(timeline, /<pre key=\{index\} className="diff">/);

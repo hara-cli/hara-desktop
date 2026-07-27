@@ -1,0 +1,202 @@
+export type CoreAppPlace = "chat" | "projects" | "auto";
+export type AppPlace = CoreAppPlace | "settings";
+export type NavigationIconName = "chat" | "projects" | "tasks";
+
+export interface NavigationContribution {
+  /** Stable owner-scoped ID. Plugin contributions will use `plugin.<plugin-id>.<surface-id>`. */
+  id: string;
+  /** Routing target. Core targets are places; plugin surfaces can add their own targets later. */
+  target: string;
+  source: "core" | "plugin";
+  icon: NavigationIconName;
+  defaultOrder: number;
+  defaultVisible: boolean;
+  canHide: boolean;
+  shortcut?: string;
+}
+
+export interface CoreNavigationContribution extends NavigationContribution {
+  target: CoreAppPlace;
+  source: "core";
+}
+
+export interface NavigationPreferences {
+  version: 1;
+  /** IDs present here were explicitly ordered by the user. Missing contributions use defaults. */
+  order: string[];
+  hidden: string[];
+}
+
+export const NAVIGATION_PREFERENCES_KEY = "hara.navigation.v1";
+
+export const CORE_NAVIGATION_CONTRIBUTIONS = [
+  {
+    id: "core.chat",
+    target: "chat",
+    source: "core",
+    icon: "chat",
+    defaultOrder: 10,
+    defaultVisible: true,
+    canHide: true,
+    shortcut: "⌘1",
+  },
+  {
+    id: "core.projects",
+    target: "projects",
+    source: "core",
+    icon: "projects",
+    defaultOrder: 20,
+    defaultVisible: true,
+    canHide: true,
+    shortcut: "⌘2",
+  },
+  {
+    id: "core.tasks",
+    target: "auto",
+    source: "core",
+    icon: "tasks",
+    defaultOrder: 30,
+    defaultVisible: true,
+    canHide: true,
+    shortcut: "⌘3",
+  },
+] as const satisfies readonly CoreNavigationContribution[];
+
+const emptyPreferences = (): NavigationPreferences => ({
+  version: 1,
+  order: [],
+  hidden: [],
+});
+
+const stringIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const unique = new Set<string>();
+  for (const item of value) {
+    if (typeof item === "string" && item.trim()) unique.add(item);
+  }
+  return [...unique];
+};
+
+/** Parse untrusted local preferences without letting stale plugin IDs break the shell. */
+export function parseNavigationPreferences(raw: string | null): NavigationPreferences {
+  if (!raw) return emptyPreferences();
+  try {
+    const parsed = JSON.parse(raw) as {
+      version?: unknown;
+      order?: unknown;
+      hidden?: unknown;
+    };
+    if (parsed.version !== 1) return emptyPreferences();
+    return {
+      version: 1,
+      order: stringIds(parsed.order),
+      hidden: stringIds(parsed.hidden),
+    };
+  } catch {
+    return emptyPreferences();
+  }
+}
+
+/** Known contributions in user order, with newly installed contributions appended by defaults. */
+export function orderedNavigation<T extends NavigationContribution>(
+  contributions: readonly T[],
+  preferences: NavigationPreferences,
+): T[] {
+  const byId = new Map(contributions.map((item) => [item.id, item]));
+  const explicit = preferences.order
+    .map((id) => byId.get(id))
+    .filter((item): item is T => Boolean(item));
+  const explicitIds = new Set(explicit.map((item) => item.id));
+  const remaining = contributions
+    .filter((item) => !explicitIds.has(item.id))
+    .sort((left, right) => left.defaultOrder - right.defaultOrder);
+  return [...explicit, ...remaining];
+}
+
+export function navigationIsVisible(
+  contribution: NavigationContribution,
+  preferences: NavigationPreferences,
+): boolean {
+  if (!contribution.canHide) return true;
+  if (preferences.hidden.includes(contribution.id)) return false;
+  return contribution.defaultVisible || preferences.order.includes(contribution.id);
+}
+
+export function visibleNavigation<T extends NavigationContribution>(
+  contributions: readonly T[],
+  preferences: NavigationPreferences,
+): T[] {
+  return orderedNavigation(contributions, preferences).filter((item) =>
+    navigationIsVisible(item, preferences),
+  );
+}
+
+function normalizedHidden(
+  contributions: readonly NavigationContribution[],
+  preferences: NavigationPreferences,
+): string[] {
+  const hideable = new Set(
+    contributions.filter((item) => item.canHide).map((item) => item.id),
+  );
+  return preferences.hidden.filter((id) => hideable.has(id));
+}
+
+export function withNavigationVisibility(
+  contributions: readonly NavigationContribution[],
+  preferences: NavigationPreferences,
+  id: string,
+  visible: boolean,
+): NavigationPreferences {
+  const contribution = contributions.find((item) => item.id === id);
+  if (!contribution || (!visible && !contribution.canHide)) return preferences;
+  const hidden = new Set(normalizedHidden(contributions, preferences));
+  if (visible) hidden.delete(id);
+  else hidden.add(id);
+  return {
+    version: 1,
+    order: orderedNavigation(contributions, preferences).map((item) => item.id),
+    hidden: [...hidden],
+  };
+}
+
+export function moveNavigation(
+  contributions: readonly NavigationContribution[],
+  preferences: NavigationPreferences,
+  id: string,
+  direction: -1 | 1,
+): NavigationPreferences {
+  const order = orderedNavigation(contributions, preferences).map((item) => item.id);
+  const from = order.indexOf(id);
+  const to = from + direction;
+  if (from < 0 || to < 0 || to >= order.length) return preferences;
+  [order[from], order[to]] = [order[to], order[from]];
+  return {
+    version: 1,
+    order,
+    hidden: normalizedHidden(contributions, preferences),
+  };
+}
+
+export function isAppPlace(value: string | null): value is AppPlace {
+  return value === "chat"
+    || value === "projects"
+    || value === "auto"
+    || value === "settings";
+}
+
+export function initialAppPlace(
+  saved: string | null,
+  preferences: NavigationPreferences,
+): AppPlace {
+  if (saved === "settings") return "settings";
+  if (saved && isAppPlace(saved)) {
+    const savedContribution = CORE_NAVIGATION_CONTRIBUTIONS.find(
+      (item) => item.target === saved,
+    );
+    if (savedContribution && navigationIsVisible(savedContribution, preferences)) {
+      return saved;
+    }
+  }
+  return visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences)[0]?.target
+    ?? "settings";
+}
