@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.43 — fresh conversations and a configurable work dock
+
+- Add a visible “New conversation” action to the Assistant sidebar. Starting a fresh thread keeps
+  the previous Desktop conversation available under a folded History section, while gateway chats
+  remain separated by their external origin.
+- Turn the far-left rail into a user-configurable module dock. Chat, Projects, and Tasks can be
+  shown, hidden, and reordered without deleting any work; Settings remains fixed as the recovery
+  path, and corrupted or stale plugin preferences fail safely.
+- Add a guided “Create skill” action in Settings. It starts a separate conversation with a bounded
+  skill-design brief, requires a preview before any file is written, and keeps installation,
+  replacement, and external dependency changes behind explicit approval.
+- Document the reviewed Panel v2 boundary required before an installed plugin can become a
+  first-class dock module. Arbitrary command panels do not receive trusted navigation, credentials,
+  files, network, notifications, or task-dispatch access.
+- Bundle the unchanged, verified Hara CLI `0.135.2`; existing sessions, projects, model routes,
+  schedules, connections, and credentials are not migrated by this Desktop-only update.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.42 — keep recovered windows usable across display scales
 
 - Recover stale main-window geometry in the target display's physical scale while preserving the
