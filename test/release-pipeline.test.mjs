@@ -1027,6 +1027,15 @@ test("every x64 sidecar uses a baseline CPU target and executes the hostile-cwd 
   assert.match(smoke, /runSidecar\(\["sessions"\]/);
   assert.match(smoke, /No sessions yet\./);
   assert.match(smoke, /AMBIENT_PRELOAD_EXECUTED/);
+  assert.match(smoke, /--serve-capabilities/);
+  for (const capability of [
+    "desk.connections.list",
+    "desk.snapshot",
+    "desk.task.get",
+    "collaboration.remote.v1",
+  ]) {
+    assert.match(smoke, new RegExp(capability.replaceAll(".", "\\.")));
+  }
 });
 
 test("sidecar refresh accepts both normal repositories and linked Git worktrees", () => {

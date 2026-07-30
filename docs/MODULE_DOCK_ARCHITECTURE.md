@@ -5,7 +5,7 @@
 The far-left rail is a configurable **module dock**, not a fixed list of pages and not a list of
 every skill inside every plugin.
 
-- Chat, Projects, Tasks, and the local Groups shell are open-core modules.
+- Chat, Projects, Tasks, and the Groups client are open-core modules.
 - Groups is default-hidden. Showing its dock entry is not the same action as enabling remote
   collaboration.
 - Settings, update recovery, and future safe-mode recovery stay fixed at the lower left.
@@ -59,10 +59,64 @@ make a newly installed default-hidden module appear.
 }
 ```
 
-Its current page is a local-only architecture preview. Rendering it performs no Account or Collab
-request, starts no polling or worker, and creates no collaboration state directory. A future
-`collab.login` / enable action must remain separate and explicit; `collab.logout` is required before
-that connected capability ships.
+Older engines render a local-only architecture preview. Engines advertising
+`collaboration.remote.v1` render the native, read-only organization Desk described below. Merely
+showing the module, starting Desktop, or entering Groups performs no remote Desk request, starts no
+polling or worker, and creates no collaboration state directory.
+
+## Phase 1.5: native organization Desk
+
+The first connected Groups slice is intentionally smaller than a general Discord/Matrix client:
+
+- one existing organization profile may have one local Desk binding;
+- the context sidebar lists all existing organization profiles and whether each has a Desk binding;
+- selecting an organization in the sidebar changes only the Groups browsing context; it never changes
+  the engine's active profile;
+- **Use for new work** is the separate, explicit action that changes the default organization route;
+- clicking **Read board** performs a bounded, explicit read for that exact profile;
+- task detail stays pinned to `{profileId, taskId}` even if the user later changes the default
+  organization;
+- changing the default organization affects only new work. Existing conversations retain their
+  persisted profile route;
+- this phase is read-only. Posting, claiming, acknowledging, completing, cancelling, enrollment-key
+  administration, token rotation, and owner actions remain in the managed web/CLI surface.
+
+The renderer consumes three typed Serve methods:
+
+```text
+desk.connections.list {}
+desk.snapshot { profileId, state? }
+desk.task.get { profileId, taskId }
+```
+
+`desk.connections.list` is a redacted local inventory read. Only the latter two methods contact an
+organization Desk, and both capture the caller-supplied `profileId` before starting any network work.
+There is no active-profile lookup in flight.
+
+Desk credentials are separate from Hara Control device tokens. They stay in the Serve process inside
+the private `~/.hara/desk-connections.json` file and never enter renderer props, RPC responses, local
+storage, logs, URLs, or error text. Each binding includes a fingerprint of the gateway enrollment
+identity, so removing and re-enrolling a different company under the same profile ID cannot revive
+the previous company's Desk token. Every registration also rotates a random, non-secret binding
+revision exposed only in the redacted local inventory. Profile removal deletes the local binding. The
+CLI sensitive-file policy blocks both stores from file reads and broad searches. The legacy MCP retains
+its separate flat `~/.hara/desk.json`; it remains visible only as `legacyUnbound` until the user
+explicitly registers a native profile connection, and neither writer can overwrite the other.
+
+The transport accepts HTTPS origins only, except loopback HTTP for local development. It rejects URL
+credentials, paths, query strings, fragments, cross-origin redirects, invalid task IDs, oversized
+responses, and raw upstream error bodies. Returned arrays and strings are bounded before they cross
+the authenticated loopback protocol. Unknown state, risk, role, and authorization enum values fail
+closed instead of being downgraded. Board snapshots include only a short task excerpt; full task
+content crosses the protocol only after an explicit task-detail read. In-memory board and task caches
+are partitioned by organization enrollment identity plus the opaque Desk binding revision, ignore
+stale async generations, and are removed when the corresponding organization disappears or an old
+profile ID is reused for a new enrollment/binding.
+
+The managed web surface remains necessary for account/OIDC login, enrollment, token administration,
+write operations, audit recovery, and emergency access. Desktop does not iframe or WebView the
+legacy Desk page because that page owns browser storage and streaming behavior that do not satisfy the
+native renderer credential boundary.
 
 ## Phase 2: reviewed plugin surfaces
 

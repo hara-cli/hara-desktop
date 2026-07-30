@@ -1,13 +1,14 @@
 // Hara Desktop — Tauri shell over `hara serve` (WS JSON-RPC). The left module dock switches
 // open-core work surfaces; people may hide/reorder entries while recovery/settings stays fixed.
-// Places never share an active session. The default-hidden Groups place is a
-// local-only shell until remote collaboration is explicitly enabled.
+// Places never share an active session. The default-hidden Groups place performs only explicit,
+// profile-pinned organization Desk reads; it never runs background collaboration.
 import {
   Suspense,
   lazy,
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from "react";
@@ -38,6 +39,9 @@ import {
   type EffectiveAttachmentCapabilities,
   type ModelCatalogEntry,
   type SessionAttachmentIntent,
+  type DeskConnection,
+  type DeskTaskState,
+  type OrganizationConnection,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
@@ -74,7 +78,14 @@ import {
   type AppRailItem,
 } from "./AppRail";
 import { ModuleDockSettings } from "./ModuleDockSettings";
-import type { GroupsPreviewCopy } from "./GroupsPreview";
+import type {
+  GroupsCopy,
+  GroupsDirectoryState,
+} from "./Groups";
+import {
+  groupsReducer,
+  initialGroupsState,
+} from "./groups-state";
 import {
   CORE_NAVIGATION_CONTRIBUTIONS,
   NAVIGATION_PREFERENCES_KEY,
@@ -125,11 +136,38 @@ import {
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
-const GroupsStage = lazy(() => import("./GroupsPreview"));
+const GroupsStage = lazy(() => import("./Groups"));
 const GroupsContextSidebar = lazy(() =>
-  import("./GroupsPreview").then((module) => ({
+  import("./Groups").then((module) => ({
     default: module.GroupsSidebar,
   })));
+
+const groupsDirectoryProfiles = (
+  organizations: OrganizationConnection[],
+  deskConnections: DeskConnection[],
+) => {
+  const deskByProfile = new Map(
+    deskConnections.map((connection) => [connection.profileId, connection]),
+  );
+  return organizations.map((organization) => {
+    const desk = deskByProfile.get(organization.id);
+    return {
+      profileId: organization.id,
+      // This is an in-memory partition key, not a credential. Enrollment identity and the CLI's
+      // opaque binding epoch ensure a reused organization id cannot inherit an old Desk snapshot.
+      revision: JSON.stringify([
+        organization.gatewayUrl,
+        organization.enrolledAt ?? "",
+        organization.accessState,
+        desk?.bindingRevision ?? "",
+        desk?.configured === true,
+        desk?.needsRebind === true,
+        desk?.host ?? "",
+        desk?.agentId ?? "",
+      ]),
+    };
+  });
+};
 
 type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
 // Module destinations backed by the shell: talk / work / orchestrate / groups preview / configure.
@@ -493,9 +531,10 @@ export default function App() {
   });
   const [locale, setLocale] = useState<Locale>(detectLocale());
   const t = makeT(locale);
-  const groupsCopy = useMemo<GroupsPreviewCopy>(() => {
+  const groupsCopy = useMemo<GroupsCopy>(() => {
     const translate = makeT(locale);
     return {
+      locale,
       sidebarTitle: translate("groupsSidebarTitle"),
       disabled: translate("groupsDisabled"),
       sidebarHint: translate("groupsSidebarHint"),
@@ -514,8 +553,69 @@ export default function App() {
       boundaryHint: translate("groupsBoundaryHint"),
       manage: translate("groupsManage"),
       hide: translate("groupsHide"),
+      directoryLoading: translate("groupsDirectoryLoading"),
+      directoryError: translate("groupsDirectoryError"),
+      retry: translate("groupsRetry"),
+      organizations: translate("groupsOrganizations"),
+      noOrganizations: translate("groupsNoOrganizations"),
+      noOrganizationsHint: translate("groupsNoOrganizationsHint"),
+      manageOrganizations: translate("groupsManageOrganizations"),
+      activeOrganization: translate("groupsActiveOrganization"),
+      selectedOrganization: translate("groupsSelectedOrganization"),
+      deskConnected: translate("groupsDeskConnected"),
+      deskNotConnected: translate("groupsDeskNotConnected"),
+      deskNeedsRebind: translate("groupsDeskNeedsRebind"),
+      switchLocked: translate("groupsSwitchLocked"),
+      switchOrganization: translate("groupsSwitchOrganization"),
+      switchingOrganization: translate("groupsSwitchingOrganization"),
+      readOnly: translate("groupsReadOnly"),
+      readyTitle: translate("groupsReadyTitle"),
+      readyHint: translate("groupsReadyHint"),
+      readBoard: translate("groupsReadBoard"),
+      readingBoard: translate("groupsReadingBoard"),
+      refreshBoard: translate("groupsRefreshBoard"),
+      registrationTitle: translate("groupsRegistrationTitle"),
+      registrationHint: translate("groupsRegistrationHint"),
+      rebindHint: translate("groupsRebindHint"),
+      legacyUnbound: translate("groupsLegacyUnbound"),
+      tasksMetric: translate("groupsTasksMetric"),
+      agentsMetric: translate("groupsAgentsMetric"),
+      activityMetric: translate("groupsActivityMetric"),
+      circlesMetric: translate("groupsCirclesMetric"),
+      lastRead: translate("groupsLastRead"),
+      truncated: translate("groupsTruncated"),
+      noTasks: translate("groupsNoTasks"),
+      noTasksHint: translate("groupsNoTasksHint"),
+      taskDetails: translate("groupsTaskDetails"),
+      backToBoard: translate("groupsBackToBoard"),
+      pinnedOrganization: translate("groupsPinnedOrganization"),
+      taskTimeline: translate("groupsTaskTimeline"),
+      noTimeline: translate("groupsNoTimeline"),
+      createdBy: translate("groupsCreatedBy"),
+      claimedBy: translate("groupsClaimedBy"),
+      risk: translate("groupsRisk"),
+      stateOpen: translate("groupsStateOpen"),
+      stateClaimed: translate("groupsStateClaimed"),
+      stateDone: translate("groupsStateDone"),
+      stateCancelled: translate("groupsStateCancelled"),
+      kindFeedback: translate("groupsKindFeedback"),
+      kindDispatch: translate("groupsKindDispatch"),
+      riskLow: translate("groupsRiskLow"),
+      riskHigh: translate("groupsRiskHigh"),
     };
   }, [locale]);
+  const [groupsDirectory, setGroupsDirectory] = useState<GroupsDirectoryState>({
+    phase: "idle",
+  });
+  const [groupsState, dispatchGroups] = useReducer(
+    groupsReducer,
+    undefined,
+    initialGroupsState,
+  );
+  const groupsRequestGenerationRef = useRef(0);
+  const groupsDirectoryRequestRef = useRef(0);
+  const groupsActivationRequestRef = useRef(0);
+  const [groupsSwitchingProfileId, setGroupsSwitchingProfileId] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -735,6 +835,184 @@ export default function App() {
       return next;
     });
   }, []);
+
+  const refreshGroupsDirectory = useCallback(async (): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) return;
+    const requestId = ++groupsDirectoryRequestRef.current;
+    setGroupsDirectory((current) => ({
+      ...current,
+      phase: "loading",
+      error: undefined,
+    }));
+    try {
+      // Both RPCs are local private-state reads. They run in parallel and do not contact Hara Desk.
+      const cwd = home ? `${home}/.hara/workspace` : undefined;
+      const [organizations, desk] = await Promise.all([
+        client.listOrganizationConnections(cwd),
+        client.listDeskConnections(),
+      ]);
+      if (requestId !== groupsDirectoryRequestRef.current || clientRef.current !== client) return;
+      if (!organizations || !desk || !client.supportsFeature("collaboration.remote.v1")) {
+        setGroupsDirectory({ phase: "unsupported" });
+        return;
+      }
+      setGroupsDirectory({
+        phase: "ready",
+        organizations,
+        desk,
+      });
+      dispatchGroups({
+        type: "directorySynced",
+        profiles: groupsDirectoryProfiles(organizations.connections, desk.connections),
+        preferredProfileId: organizations.connections.find((connection) => connection.active)?.id,
+      });
+    } catch (error) {
+      if (requestId !== groupsDirectoryRequestRef.current || clientRef.current !== client) return;
+      setGroupsDirectory({
+        phase: "error",
+        error: String(error instanceof Error ? error.message : error).slice(0, 240),
+      });
+    }
+  }, [home]);
+
+  const selectGroupsOrganization = useCallback((profileId: string): void => {
+    dispatchGroups({ type: "selectProfile", profileId });
+  }, []);
+
+  const activateGroupsOrganization = useCallback(async (profileId: string): Promise<void> => {
+    const client = clientRef.current;
+    const organizations = groupsDirectory.organizations;
+    const selected = organizations?.connections.find((connection) => connection.id === profileId);
+    if (!client || !organizations || !selected || selected.active || organizations.switchLocked) return;
+    const requestId = ++groupsActivationRequestRef.current;
+    setGroupsSwitchingProfileId(profileId);
+    try {
+      const targetCwd = home ? `${home}/.hara/workspace` : server?.cwd;
+      const next = await client.useOrganizationConnection(profileId, targetCwd);
+      if (
+        requestId !== groupsActivationRequestRef.current
+        || clientRef.current !== client
+      ) return;
+      setGroupsDirectory((current) => ({
+        ...current,
+        phase: "ready",
+        organizations: next,
+      }));
+      dispatchGroups({
+        type: "directorySynced",
+        profiles: groupsDirectoryProfiles(
+          next.connections,
+          groupsDirectory.desk?.connections ?? [],
+        ),
+        preferredProfileId: profileId,
+      });
+      const providerRoute = await client.listProviderSettings(targetCwd);
+      if (
+        requestId !== groupsActivationRequestRef.current
+        || clientRef.current !== client
+      ) return;
+      if (providerRoute) {
+        setSetupRequired(!providerRoute.current.authenticated);
+        setServer((current) => current
+          ? {
+              ...current,
+              provider: providerRoute.current.provider,
+              model: providerRoute.current.model,
+            }
+          : current);
+        await refreshModelInfo(active
+          ? { sessionId: active }
+          : { cwd: targetCwd });
+      }
+    } catch (error) {
+      if (
+        requestId === groupsActivationRequestRef.current
+        && clientRef.current === client
+      ) {
+        setErr(String(error instanceof Error ? error.message : error).slice(0, 240));
+      }
+    } finally {
+      if (
+        requestId === groupsActivationRequestRef.current
+        && clientRef.current === client
+      ) setGroupsSwitchingProfileId("");
+    }
+  }, [
+    active,
+    groupsDirectory.desk?.connections,
+    groupsDirectory.organizations,
+    home,
+    refreshModelInfo,
+    server?.cwd,
+  ]);
+
+  const readGroupsBoard = useCallback(async (
+    profileId: string,
+    state: DeskTaskState,
+  ): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) return;
+    const generation = ++groupsRequestGenerationRef.current;
+    dispatchGroups({ type: "snapshotStarted", profileId, generation });
+    try {
+      const data = await client.deskSnapshot(profileId, state);
+      if (!data) throw new Error(
+        locale === "zh"
+          ? "当前 Hara 引擎不支持组织 Desk，请更新 Desktop。"
+          : "This Hara engine does not support organization Desk. Update Desktop.",
+      );
+      dispatchGroups({ type: "snapshotSucceeded", profileId, generation, data });
+    } catch (error) {
+      dispatchGroups({
+        type: "snapshotFailed",
+        profileId,
+        generation,
+        error: String(error instanceof Error ? error.message : error).slice(0, 240),
+      });
+    }
+  }, [locale]);
+
+  const openGroupsTask = useCallback(async (
+    profileId: string,
+    taskId: string,
+  ): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) return;
+    dispatchGroups({ type: "openTask", profileId, taskId });
+    const generation = ++groupsRequestGenerationRef.current;
+    dispatchGroups({ type: "taskStarted", profileId, taskId, generation });
+    try {
+      const data = await client.getDeskTask(profileId, taskId);
+      if (!data) throw new Error(
+        locale === "zh"
+          ? "当前 Hara 引擎不支持组织任务详情，请更新 Desktop。"
+          : "This Hara engine does not support organization task details. Update Desktop.",
+      );
+      dispatchGroups({
+        type: "taskSucceeded",
+        profileId,
+        taskId,
+        generation,
+        data,
+      });
+    } catch (error) {
+      dispatchGroups({
+        type: "taskFailed",
+        profileId,
+        taskId,
+        generation,
+        error: String(error instanceof Error ? error.message : error).slice(0, 240),
+      });
+    }
+  }, [locale]);
+
+  // Entering Groups performs only two local, redacted inventory reads. Remote Desk data is fetched
+  // exclusively by the user's "Read board" or task-detail action; there is no polling or timer.
+  useEffect(() => {
+    if (phase !== "ready" || zone !== "groups") return;
+    void refreshGroupsDirectory();
+  }, [phase, zone, refreshGroupsDirectory]);
 
   const setZone = (z: Zone) => {
     if ((zone === "chat" || zone === "projects") && active) {
@@ -1231,6 +1509,12 @@ export default function App() {
     pendingSendDispatchesRef.current = {};
     previous?.close();
     artifactOpenRequestRef.current += 1;
+    groupsDirectoryRequestRef.current += 1;
+    groupsRequestGenerationRef.current += 1;
+    groupsActivationRequestRef.current += 1;
+    dispatchGroups({ type: "reset" });
+    setGroupsDirectory({ phase: "idle" });
+    setGroupsSwitchingProfileId("");
     setActiveArtifact(null);
     setArtifactRevisions([]);
     setPhase("connecting");
@@ -1263,6 +1547,12 @@ export default function App() {
         attachedSessionsRef.current.clear();
         pendingSendDispatchesRef.current = {};
         taskStatesRef.current = {};
+        groupsDirectoryRequestRef.current += 1;
+        groupsRequestGenerationRef.current += 1;
+        groupsActivationRequestRef.current += 1;
+        dispatchGroups({ type: "reset" });
+        setGroupsDirectory({ phase: "idle" });
+        setGroupsSwitchingProfileId("");
         setTaskStates({});
         busyRef.current = {};
         setBusy({});
@@ -3418,6 +3708,15 @@ export default function App() {
             brand={brandBar}
             footer={footBar}
             copy={groupsCopy}
+            directory={groupsDirectory}
+            state={groupsState}
+            switchingProfileId={groupsSwitchingProfileId || undefined}
+            onSelectOrganization={selectGroupsOrganization}
+            onRetryDirectory={() => void refreshGroupsDirectory()}
+            onManageOrganizations={() => {
+              setZone("settings");
+              setSetSec("providers");
+            }}
           />
         </Suspense>
       ) : null}
@@ -3937,7 +4236,20 @@ export default function App() {
         >
           <GroupsStage
             copy={groupsCopy}
-            onManage={() => {
+            directory={groupsDirectory}
+            state={groupsState}
+            switchingProfileId={groupsSwitchingProfileId || undefined}
+            onSelectOrganization={selectGroupsOrganization}
+            onActivateOrganization={(profileId) => void activateGroupsOrganization(profileId)}
+            onRetryDirectory={() => void refreshGroupsDirectory()}
+            onManageOrganizations={() => {
+              setZone("settings");
+              setSetSec("providers");
+            }}
+            onReadBoard={(profileId, taskState) => void readGroupsBoard(profileId, taskState)}
+            onOpenTask={(profileId, taskId) => void openGroupsTask(profileId, taskId)}
+            onCloseTask={() => dispatchGroups({ type: "closeTask" })}
+            onManageModules={() => {
               setZone("settings");
               setSetSec("modules");
             }}

@@ -2,11 +2,12 @@
 // Native sidecar release gate shared by CI, local signed builds, and package-smoke.
 // A target-specific binary must run on its native host; cross-target "built successfully" is not
 // accepted as execution evidence.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const COMMAND_TIMEOUT_MS = 30_000;
 
@@ -70,6 +71,169 @@ function run(binary, args, capture = false, env = process.env, cwd) {
     timeout: COMMAND_TIMEOUT_MS,
     windowsHide: true,
   });
+}
+
+const waitFor = async (condition, timeoutMs, message) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await condition();
+    if (value) return value;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+  }
+  throw new Error(message);
+};
+
+const reservePort = () => new Promise((resolvePort, reject) => {
+  const server = createServer();
+  server.once("error", reject);
+  server.listen(0, "127.0.0.1", () => {
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    server.close((error) => error ? reject(error) : resolvePort(port));
+  });
+});
+
+const waitForChildExit = (processHandle, timeoutMs) => {
+  if (processHandle.exitCode !== null || processHandle.signalCode !== null) return Promise.resolve(true);
+  return new Promise((resolveExit) => {
+    const onExit = () => {
+      clearTimeout(timeout);
+      resolveExit(true);
+    };
+    const timeout = setTimeout(() => {
+      processHandle.off("exit", onExit);
+      resolveExit(false);
+    }, timeoutMs);
+    processHandle.once("exit", onExit);
+  });
+};
+
+const rpcCall = (socket, id, method, params, timeoutMs = 10_000) =>
+  new Promise((resolveCall, reject) => {
+    const timeout = setTimeout(() => {
+      socket.removeEventListener("message", onMessage);
+      reject(new Error(`${method} response timed out`));
+    }, timeoutMs);
+    const onMessage = (event) => {
+      let message;
+      try {
+        message = JSON.parse(typeof event.data === "string" ? event.data : String(event.data));
+      } catch {
+        return;
+      }
+      if (message.id !== id) return;
+      clearTimeout(timeout);
+      socket.removeEventListener("message", onMessage);
+      resolveCall(message);
+    };
+    socket.addEventListener("message", onMessage);
+    socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+  });
+
+async function smokeServeCapabilities(binary, expectedVersion) {
+  const home = process.env.HOME;
+  if (!home) throw new Error("sidecar capability smoke requires an isolated HOME");
+  const discoveryPath = join(home, ".hara", "serve.json");
+  const port = await reservePort();
+  const child = spawn(binary, [
+    "serve",
+    "--host", "127.0.0.1",
+    "--port", String(port),
+    "--cwd", process.cwd(),
+    "--approval", "suggest",
+  ], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  let stderr = "";
+  let stdout = "";
+  child.stdout.on("data", (chunk) => {
+    stdout = `${stdout}${String(chunk)}`.slice(-8_000);
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr = `${stderr}${String(chunk)}`.slice(-8_000);
+  });
+  let socket;
+  try {
+    const record = await waitFor(() => {
+      if (child.exitCode !== null) {
+        throw new Error(`Serve exited ${child.exitCode}: ${(stderr || stdout).trim().slice(-2_000)}`);
+      }
+      if (!existsSync(discoveryPath)) return null;
+      try {
+        return JSON.parse(readFileSync(discoveryPath, "utf8"));
+      } catch {
+        return null;
+      }
+    }, 15_000, "Serve discovery timed out");
+    if (
+      record.version !== expectedVersion
+      || record.port !== port
+      || record.pid !== child.pid
+      || typeof record.token !== "string"
+      || record.token.length < 16
+    ) throw new Error("Serve discovery identity did not match the sidecar process");
+
+    socket = new WebSocket(`ws://127.0.0.1:${port}`);
+    await new Promise((resolveOpen, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Serve WebSocket open timed out")), 10_000);
+      socket.addEventListener("open", () => {
+        clearTimeout(timeout);
+        resolveOpen();
+      }, { once: true });
+      socket.addEventListener("error", () => {
+        clearTimeout(timeout);
+        reject(new Error("Serve WebSocket open failed"));
+      }, { once: true });
+    });
+    const initialized = await rpcCall(socket, 1, "initialize", { token: record.token });
+    if (initialized.error || initialized.result?.version !== expectedVersion) {
+      throw new Error("Serve initialize failed");
+    }
+    const methods = new Set(initialized.result?.capabilities?.methods ?? []);
+    const features = new Set(initialized.result?.capabilities?.features ?? []);
+    for (const method of ["desk.connections.list", "desk.snapshot", "desk.task.get"]) {
+      if (!methods.has(method)) throw new Error(`actual sidecar is missing ${method}`);
+    }
+    if (!features.has("collaboration.remote.v1")) {
+      throw new Error("actual sidecar is missing collaboration.remote.v1");
+    }
+    const connections = await rpcCall(socket, 2, "desk.connections.list", {});
+    if (
+      connections.error
+      || !Array.isArray(connections.result?.connections)
+      || typeof connections.result?.legacyUnbound !== "boolean"
+    ) throw new Error("actual sidecar Desk inventory RPC failed");
+    const shutdown = await rpcCall(socket, 3, "server.shutdown", {});
+    if (shutdown.error || shutdown.result?.accepted !== true) {
+      throw new Error("actual sidecar authenticated shutdown failed");
+    }
+    await waitFor(
+      () => child.exitCode !== null,
+      10_000,
+      "actual sidecar did not exit after authenticated shutdown",
+    );
+    if (child.exitCode !== 0) {
+      throw new Error(`actual sidecar exited ${child.exitCode}: ${(stderr || stdout).trim().slice(-2_000)}`);
+    }
+    if (existsSync(discoveryPath)) throw new Error("actual sidecar left a stale Serve discovery file");
+    console.log("✓ actual sidecar advertises and serves native organization Desk capabilities");
+  } finally {
+    try {
+      socket?.close();
+    } catch {
+      // best effort
+    }
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill();
+      if (!(await waitForChildExit(child, 5_000))) {
+        child.kill("SIGKILL");
+        await waitForChildExit(child, 5_000);
+      }
+    }
+  }
 }
 
 function assertMacArchitecture(binary, target) {
@@ -186,6 +350,18 @@ export function smokeSidecar({ binary, expectedVersion, expectedTarget = nativeT
       throw new Error(`${label} executed cwd bunfig.toml preload during session index initialization`);
     }
 
+    try {
+      run(
+        process.execPath,
+        [fileURLToPath(import.meta.url), "--serve-capabilities", path, expectedVersion],
+        true,
+        env,
+        smokeHome,
+      );
+    } catch (error) {
+      throw new Error(`${label} native Desk capability smoke failed: ${shortError(error)}`);
+    }
+
     // v0.122.2 only crashed on Bun hosts where SAB was unavailable. Recreate that runtime boundary
     // before the compiled entrypoint loads so a normal-host smoke cannot hide the regression.
     const noSabPreload = join(smokeHome, "without-shared-array-buffer.cjs");
@@ -231,14 +407,30 @@ export function smokeSidecar({ binary, expectedVersion, expectedTarget = nativeT
 
   const execution = translated ? "translated via Rosetta on Apple Silicon" : "natively";
   console.log(
-    `  ✓ ${label} runs ${execution} (${expectedTarget}, hara ${version}; ambient config blocked; sessions; SAB-disabled; --help; serve --help)`,
+    `  ✓ ${label} runs ${execution} (${expectedTarget}, hara ${version}; ambient config blocked; sessions; native Desk RPCs; SAB-disabled; --help; serve --help)`,
   );
   return version;
 }
 
 const invoked = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 if (invoked) {
-  const [, , binary, expectedVersion, expectedTarget] = process.argv;
+  const [, , first, second, third] = process.argv;
+  if (first === "--serve-capabilities") {
+    if (!second || !third) {
+      console.error("usage: node scripts/sidecar-smoke.mjs --serve-capabilities <binary> <expected-version>");
+      process.exit(2);
+    }
+    try {
+      await smokeServeCapabilities(resolve(second), third);
+    } catch (error) {
+      console.error(`sidecar capability smoke: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+  const binary = first;
+  const expectedVersion = second;
+  const expectedTarget = third;
   if (!binary || !expectedVersion) {
     console.error("usage: node scripts/sidecar-smoke.mjs <binary> <expected-version> [expected-target]");
     process.exit(2);

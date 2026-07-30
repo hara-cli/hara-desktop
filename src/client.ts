@@ -310,6 +310,90 @@ export interface OrganizationConnectionCheck {
   checkedAt: number;
 }
 
+export type DeskTaskState = "open" | "claimed" | "done" | "cancelled";
+export type DeskTaskKind = "feedback" | "dispatch";
+export type DeskRisk = "low" | "high";
+
+export interface DeskConnection {
+  profileId: string;
+  configured: boolean;
+  needsRebind?: boolean;
+  /** Opaque, non-secret epoch that changes when this profile's Desk binding changes. */
+  bindingRevision?: string;
+  host?: string;
+  agentId?: string;
+  owner?: string;
+}
+
+export interface DeskConnectionsState {
+  connections: DeskConnection[];
+  legacyUnbound: boolean;
+}
+
+export interface DeskAgent {
+  id: string;
+  name: string;
+  owner: string;
+  client: string;
+  role: "member" | "owner";
+  createdAt: number;
+  lastSeen: number;
+  revoked: boolean;
+}
+
+export interface DeskTask {
+  id: string;
+  kind: DeskTaskKind;
+  title: string;
+  excerpt: string;
+  risk: DeskRisk;
+  state: DeskTaskState;
+  createdBy: string;
+  claimedBy: string | null;
+  ackedBy: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DeskTaskDetail extends DeskTask {
+  body: string;
+}
+
+export interface DeskEvent {
+  id: number;
+  taskId: string;
+  actor: string;
+  action: string;
+  detail: string;
+  at: number;
+  title?: string;
+  kind?: DeskTaskKind;
+}
+
+export interface DeskCircle {
+  id: string;
+  name: string;
+  owner: string;
+  createdAt: number;
+}
+
+export interface DeskSnapshot {
+  profileId: string;
+  fetchedAt: number;
+  me: DeskAgent;
+  tasks: DeskTask[];
+  agents: DeskAgent[];
+  events: DeskEvent[];
+  circles: DeskCircle[];
+  truncated: boolean;
+}
+
+export interface DeskTaskDetails {
+  profileId: string;
+  task: DeskTaskDetail;
+  events: DeskEvent[];
+}
+
 export type ImageInputMode = "native" | "vision-sidecar" | "unsupported" | "unknown";
 
 export interface EffectiveAttachmentCapabilities {
@@ -622,6 +706,39 @@ export class HaraClient {
   }
   checkOrganizationConnection(id: string, cwd?: string) {
     return this.call<OrganizationConnectionCheck>("settings.organizations.check", { id, ...(cwd ? { cwd } : {}) });
+  }
+  /** Local, redacted Desk binding inventory. Null means the bundled engine predates native Groups. */
+  async listDeskConnections(): Promise<DeskConnectionsState | null> {
+    if (this.methods.size > 0 && !this.supports("desk.connections.list")) return null;
+    try {
+      return await this.call("desk.connections.list", {});
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  /** Explicit organization-pinned read. Entering Groups never calls this method automatically. */
+  async deskSnapshot(profileId: string, state?: DeskTaskState): Promise<DeskSnapshot | null> {
+    if (this.methods.size > 0 && !this.supports("desk.snapshot")) return null;
+    try {
+      return await this.call("desk.snapshot", {
+        profileId,
+        ...(state ? { state } : {}),
+      });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  /** Task identity remains pinned to the organization that opened it, even after a later switch. */
+  async getDeskTask(profileId: string, taskId: string): Promise<DeskTaskDetails | null> {
+    if (this.methods.size > 0 && !this.supports("desk.task.get")) return null;
+    try {
+      return await this.call("desk.task.get", { profileId, taskId });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
   }
   addAutomation(name: string, schedule: string, task: string, cwd?: string) {
     return this.call<{ id: string; name: string; schedule: string }>("automation.add", { name, schedule, task, ...(cwd ? { cwd } : {}) });

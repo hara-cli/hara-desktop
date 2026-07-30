@@ -126,8 +126,8 @@ test("default-hidden Groups requires an explicit show choice independent of orde
   assert.equal(initialAppPlace("groups", preferences), "chat");
 });
 
-test("Groups preview remains a local-only shell with no collaboration side effects", () => {
-  const groups = readFileSync(`${root}/src/GroupsPreview.tsx`, "utf8");
+test("Groups is a native, explicit-read work surface with no renderer-owned transport", () => {
+  const groups = readFileSync(`${root}/src/Groups.tsx`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   for (const forbidden of [
     "HaraClient",
@@ -135,18 +135,32 @@ test("Groups preview remains a local-only shell with no collaboration side effec
     "WebSocket",
     "setInterval",
     "invoke(",
+    "localStorage",
     ".hara/collab",
   ]) {
     assert.equal(
       groups.includes(forbidden),
       false,
-      `Groups preview must not contain ${forbidden}`,
+      `Groups must not contain ${forbidden}`,
     );
   }
   assert.match(
     app,
-    /const GroupsStage = lazy\(\(\) => import\("\.\/GroupsPreview"\)\)/,
+    /const GroupsStage = lazy\(\(\) => import\("\.\/Groups"\)\)/,
   );
+  assert.match(app, /await client\.deskSnapshot\(profileId, state\)/);
+  assert.match(app, /await client\.getDeskTask\(profileId, taskId\)/);
+  const selectStart = app.indexOf("const selectGroupsOrganization");
+  const activateStart = app.indexOf("const activateGroupsOrganization");
+  const readStart = app.indexOf("const readGroupsBoard");
+  assert.ok(selectStart >= 0 && activateStart > selectStart && readStart > activateStart);
+  const selectSource = app.slice(selectStart, activateStart);
+  const activateSource = app.slice(activateStart, readStart);
+  assert.match(selectSource, /dispatchGroups\(\{ type: "selectProfile", profileId \}\)/);
+  assert.equal(selectSource.includes("useOrganizationConnection"), false);
+  assert.match(activateSource, /await client\.useOrganizationConnection\(profileId, targetCwd\)/);
+  assert.match(activateSource, /await client\.listProviderSettings\(targetCwd\)/);
+  assert.match(app, /if \(phase !== "ready" \|\| zone !== "groups"\) return;/);
   assert.match(
     app,
     /const preferredPlace = initialAppPlace\([\s\S]*setZoneRaw\(preferredPlace\)/,
