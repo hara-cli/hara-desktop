@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.44 — Groups foundation and reliable Windows proxy routing
+
+- Add the first, default-hidden Groups module shell to the configurable work dock. It establishes the
+  public community, organization workspace, and task-hall information architecture without starting a
+  remote service, polling in the background, or changing existing Chat, Projects, and Tasks behavior.
+- Keep Settings fixed as the recovery path while allowing Groups to be shown, hidden, and reordered like
+  other dock modules. The current preview clearly marks future collaboration surfaces instead of
+  presenting placeholder data as live work.
+- Bundle the exact verified Hara CLI `0.135.4`. Windows standalone builds now keep Node's proxy transport
+  lazy, use Bun's native proxy path, and honor explicit/environment/static WinINET proxy configuration
+  without stalling Desktop's local Serve handshake.
+- Existing conversations, project data, schedules, organization profiles, and credentials are preserved.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.43 — fresh conversations and a configurable work dock
 
 - Add a visible “New conversation” action to the Assistant sidebar. Starting a fresh thread keeps
