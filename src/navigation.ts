@@ -1,6 +1,6 @@
-export type CoreAppPlace = "chat" | "projects" | "auto";
+export type CoreAppPlace = "chat" | "projects" | "auto" | "groups";
 export type AppPlace = CoreAppPlace | "settings";
-export type NavigationIconName = "chat" | "projects" | "tasks";
+export type NavigationIconName = "chat" | "projects" | "tasks" | "groups";
 
 export interface NavigationContribution {
   /** Stable owner-scoped ID. Plugin contributions will use `plugin.<plugin-id>.<surface-id>`. */
@@ -25,6 +25,8 @@ export interface NavigationPreferences {
   /** IDs present here were explicitly ordered by the user. Missing contributions use defaults. */
   order: string[];
   hidden: string[];
+  /** Default-hidden contributions the user explicitly chose to show. */
+  shown: string[];
 }
 
 export const NAVIGATION_PREFERENCES_KEY = "hara.navigation.v1";
@@ -60,12 +62,22 @@ export const CORE_NAVIGATION_CONTRIBUTIONS = [
     canHide: true,
     shortcut: "⌘3",
   },
+  {
+    id: "core.groups",
+    target: "groups",
+    source: "core",
+    icon: "groups",
+    defaultOrder: 40,
+    defaultVisible: false,
+    canHide: true,
+  },
 ] as const satisfies readonly CoreNavigationContribution[];
 
 const emptyPreferences = (): NavigationPreferences => ({
   version: 1,
   order: [],
   hidden: [],
+  shown: [],
 });
 
 const stringIds = (value: unknown): string[] => {
@@ -85,12 +97,14 @@ export function parseNavigationPreferences(raw: string | null): NavigationPrefer
       version?: unknown;
       order?: unknown;
       hidden?: unknown;
+      shown?: unknown;
     };
     if (parsed.version !== 1) return emptyPreferences();
     return {
       version: 1,
       order: stringIds(parsed.order),
       hidden: stringIds(parsed.hidden),
+      shown: stringIds(parsed.shown),
     };
   } catch {
     return emptyPreferences();
@@ -119,7 +133,7 @@ export function navigationIsVisible(
 ): boolean {
   if (!contribution.canHide) return true;
   if (preferences.hidden.includes(contribution.id)) return false;
-  return contribution.defaultVisible || preferences.order.includes(contribution.id);
+  return contribution.defaultVisible || preferences.shown.includes(contribution.id);
 }
 
 export function visibleNavigation<T extends NavigationContribution>(
@@ -141,6 +155,18 @@ function normalizedHidden(
   return preferences.hidden.filter((id) => hideable.has(id));
 }
 
+function normalizedShown(
+  contributions: readonly NavigationContribution[],
+  preferences: NavigationPreferences,
+): string[] {
+  const defaultHidden = new Set(
+    contributions
+      .filter((item) => item.canHide && !item.defaultVisible)
+      .map((item) => item.id),
+  );
+  return preferences.shown.filter((id) => defaultHidden.has(id));
+}
+
 export function withNavigationVisibility(
   contributions: readonly NavigationContribution[],
   preferences: NavigationPreferences,
@@ -150,12 +176,19 @@ export function withNavigationVisibility(
   const contribution = contributions.find((item) => item.id === id);
   if (!contribution || (!visible && !contribution.canHide)) return preferences;
   const hidden = new Set(normalizedHidden(contributions, preferences));
-  if (visible) hidden.delete(id);
-  else hidden.add(id);
+  const shown = new Set(normalizedShown(contributions, preferences));
+  if (visible) {
+    hidden.delete(id);
+    if (!contribution.defaultVisible) shown.add(id);
+  } else {
+    hidden.add(id);
+    shown.delete(id);
+  }
   return {
     version: 1,
     order: orderedNavigation(contributions, preferences).map((item) => item.id),
     hidden: [...hidden],
+    shown: [...shown],
   };
 }
 
@@ -174,6 +207,7 @@ export function moveNavigation(
     version: 1,
     order,
     hidden: normalizedHidden(contributions, preferences),
+    shown: normalizedShown(contributions, preferences),
   };
 }
 
@@ -181,6 +215,7 @@ export function isAppPlace(value: string | null): value is AppPlace {
   return value === "chat"
     || value === "projects"
     || value === "auto"
+    || value === "groups"
     || value === "settings";
 }
 

@@ -1,7 +1,16 @@
 // Hara Desktop — Tauri shell over `hara serve` (WS JSON-RPC). The left module dock switches
 // open-core work surfaces; people may hide/reorder entries while recovery/settings stays fixed.
-// Places never share an active session, and each has a permanent target anchor.
-import { useCallback, useEffect, useRef, useState } from "react";
+// Places never share an active session. The default-hidden Groups place is a
+// local-only shell until remote collaboration is explicitly enabled.
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -65,6 +74,7 @@ import {
   type AppRailItem,
 } from "./AppRail";
 import { ModuleDockSettings } from "./ModuleDockSettings";
+import type { GroupsPreviewCopy } from "./GroupsPreview";
 import {
   CORE_NAVIGATION_CONTRIBUTIONS,
   NAVIGATION_PREFERENCES_KEY,
@@ -115,8 +125,14 @@ import {
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
+const GroupsStage = lazy(() => import("./GroupsPreview"));
+const GroupsContextSidebar = lazy(() =>
+  import("./GroupsPreview").then((module) => ({
+    default: module.GroupsSidebar,
+  })));
+
 type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
-// Module destinations currently backed by the shell: talk / work / orchestrate / configure.
+// Module destinations backed by the shell: talk / work / orchestrate / groups preview / configure.
 type Zone = AppPlace;
 type PendingDesktopUpdate = {
   update: Update;
@@ -477,6 +493,29 @@ export default function App() {
   });
   const [locale, setLocale] = useState<Locale>(detectLocale());
   const t = makeT(locale);
+  const groupsCopy = useMemo<GroupsPreviewCopy>(() => {
+    const translate = makeT(locale);
+    return {
+      sidebarTitle: translate("groupsSidebarTitle"),
+      disabled: translate("groupsDisabled"),
+      sidebarHint: translate("groupsSidebarHint"),
+      eyebrow: translate("groupsEyebrow"),
+      title: translate("groupsTitle"),
+      description: translate("groupsDescription"),
+      entryVisible: translate("groupsEntryVisible"),
+      entryVisibleHint: translate("groupsEntryVisibleHint"),
+      remoteOff: translate("groupsRemoteOff"),
+      remoteOffHint: translate("groupsRemoteOffHint"),
+      publicTitle: translate("groupsPublicTitle"),
+      publicHint: translate("groupsPublicHint"),
+      organizationTitle: translate("groupsOrganizationTitle"),
+      organizationHint: translate("groupsOrganizationHint"),
+      boundaryTitle: translate("groupsBoundaryTitle"),
+      boundaryHint: translate("groupsBoundaryHint"),
+      manage: translate("groupsManage"),
+      hide: translate("groupsHide"),
+    };
+  }, [locale]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1248,13 +1287,20 @@ export default function App() {
         setZoneRaw("settings");
         setSetSec("providers");
       }
-      // cold start: returning users land on their last zone; brand-new (no manual sessions, no
-      // opened projects) land on the assistant — the soft first touch.
+      // Cold start uses the latest persisted navigation contract. A brand-new
+      // profile still resolves to Chat, while an explicitly shown/saved Groups
+      // shell or Settings remains respected.
       const manual = list.sessions.filter((s) => !isAutomated(s) && !isAssistantCwd(s.cwd));
       if (info.setupState !== "needs-credentials" && manual.length === 0 && openedProjects.length === 0) {
-        zoneRef.current = "chat";
+        const preferredPlace = initialAppPlace(
+          localStorage.getItem("hara.zone"),
+          parseNavigationPreferences(
+            localStorage.getItem(NAVIGATION_PREFERENCES_KEY),
+          ),
+        );
+        zoneRef.current = preferredPlace;
         sessionOpenRequestRef.current += 1;
-        setZoneRaw("chat");
+        setZoneRaw(preferredPlace);
       }
       void refreshAuto();
       void c.listArtifacts().then((a) => setArtifacts(a ?? "old-server")).catch(() => {});
@@ -3034,6 +3080,7 @@ export default function App() {
     "core.chat": t("zoneChat"),
     "core.projects": t("zoneProjects"),
     "core.tasks": t("zoneAuto"),
+    "core.groups": t("zoneGroups"),
   };
   const projectSessions = sessions.filter(
     (session) =>
@@ -3057,7 +3104,9 @@ export default function App() {
       id: contribution.id,
       label: railLabelsById[contribution.id] ?? contribution.id,
       icon: contribution.icon,
-      shortcut: contribution.shortcut,
+      shortcut: "shortcut" in contribution
+        ? contribution.shortcut
+        : undefined,
       active: zone === contribution.target,
       badge,
     };
@@ -3238,7 +3287,7 @@ export default function App() {
                 {collapsed["__history"] === false && az.history.filter((s) => hit(s.title)).map(sessRow)}
               </>
             )}
-            {/* automations moved to their own 🤖 place (four-places ruling) — nothing of them lives here */}
+            {/* automations keep their own module — nothing scheduled is mixed into chat history */}
           </div>
           {footBar}
         </aside>
@@ -3350,6 +3399,28 @@ export default function App() {
           {footBar}
         </div>
       )}
+
+      {zone === "groups" ? (
+        <Suspense
+          fallback={(
+            <aside className="sidebar groups-sidebar">
+              {brandBar}
+              <div className="groups-sidebar-status">
+                <span className="groups-status-light" aria-hidden />
+                <span>{t("loading")}</span>
+              </div>
+              <div className="groups-sidebar-space" />
+              {footBar}
+            </aside>
+          )}
+        >
+          <GroupsContextSidebar
+            brand={brandBar}
+            footer={footBar}
+            copy={groupsCopy}
+          />
+        </Suspense>
+      ) : null}
 
       {zone === "settings" && (
         <aside className="sidebar">
@@ -3694,6 +3765,10 @@ export default function App() {
                     title: t("zoneAuto"),
                     description: t("moduleTasksDescription"),
                   },
+                  "core.groups": {
+                    title: t("zoneGroups"),
+                    description: t("moduleGroupsDescription"),
+                  },
                 }}
                 copy={{
                   eyebrow: t("settingsPersonalize"),
@@ -3847,6 +3922,38 @@ export default function App() {
             )}
           </div>
         </div>
+      ) : zone === "groups" ? (
+        <Suspense
+          fallback={(
+            <main className="groups-stage">
+              <div className="groups-stage-shell">
+                <span className="groups-eyebrow">
+                  {t("groupsEyebrow")}
+                </span>
+                <p className="dim">{t("loading")}</p>
+              </div>
+            </main>
+          )}
+        >
+          <GroupsStage
+            copy={groupsCopy}
+            onManage={() => {
+              setZone("settings");
+              setSetSec("modules");
+            }}
+            onHide={() => {
+              saveNavigationPreferences((current) =>
+                withNavigationVisibility(
+                  CORE_NAVIGATION_CONTRIBUTIONS,
+                  current,
+                  "core.groups",
+                  false,
+                ));
+              setZone("settings");
+              setSetSec("modules");
+            }}
+          />
+        </Suspense>
       ) : zone === "auto" ? (
         // 🤖 the orchestration place — console density: job table on top, run timeline below;
         // a run opens as a READ-ONLY replay (fork is the only way to continue — automated

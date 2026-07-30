@@ -1927,7 +1927,7 @@ select {
   z-index: 1;
 }
 
-/* ── the icon rail: four places (顾雅 four-places ruling) ── */
+/* ── the configurable icon rail ── */
 .rail {
   width: 46px;
   flex: 0 0 46px;
@@ -1999,6 +1999,306 @@ select {
 }
 .railgap {
   flex: 1;
+}
+
+/* ── default-hidden Groups shell: local navigation only, no remote activation ── */
+.groups-sidebar {
+  position: relative;
+}
+.groups-sidebar-heading {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 11px 10px;
+  border: 1px solid #303035;
+  border-radius: 10px;
+  background: #1b1b1f;
+}
+.groups-sidebar-mark {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #40312e;
+  border-radius: 8px;
+  color: #d96650;
+  background: #241a18;
+}
+.groups-sidebar-heading strong,
+.groups-sidebar-heading small {
+  display: block;
+}
+.groups-sidebar-heading strong {
+  color: #e6e2dc;
+  font-size: 13px;
+}
+.groups-sidebar-heading small {
+  margin-top: 2px;
+  color: #77746f;
+  font: 600 9px/1.4 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.groups-sidebar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 0;
+  color: #8c8882;
+  font-size: 11px;
+}
+.groups-status-light {
+  width: 7px;
+  height: 7px;
+  border: 1px solid #67635e;
+  border-radius: 50%;
+  background: transparent;
+}
+.groups-sidebar > p {
+  margin: 0;
+  padding: 2px 10px;
+  color: #77746f;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.groups-sidebar-space {
+  flex: 1;
+}
+.groups-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  isolation: isolate;
+  background: #111113;
+}
+.groups-stage-grid {
+  position: fixed;
+  z-index: -1;
+  inset: 0 0 0 286px;
+  opacity: 0.34;
+  pointer-events: none;
+  background-image:
+    linear-gradient(#29292d 1px, transparent 1px),
+    linear-gradient(90deg, #29292d 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 88%);
+}
+.groups-stage-shell {
+  width: min(100%, 1080px);
+  margin: 0 auto;
+  padding: clamp(46px, 8vh, 88px) clamp(34px, 6vw, 76px) 52px;
+  animation: groups-stage-arrive 260ms ease-out both;
+}
+.groups-stage-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 28px;
+}
+.groups-eyebrow {
+  display: block;
+  color: #d96650;
+  font: 650 10px/1.5 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.groups-stage-head h1 {
+  max-width: 760px;
+  margin: 13px 0 0;
+  color: #f0ede8;
+  font-size: clamp(30px, 4vw, 54px);
+  font-weight: 680;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+.groups-stage-head p {
+  max-width: 680px;
+  margin: 16px 0 0;
+  color: #9a9690;
+  font-size: 14px;
+  line-height: 1.75;
+}
+.groups-local-seal {
+  margin-top: 2px;
+  padding: 6px 9px;
+  border: 1px solid #463b37;
+  border-radius: 4px;
+  color: #b7ada5;
+  background: #191718;
+  font: 650 9px/1.4 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.groups-boundary-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  gap: 20px;
+  margin-top: 42px;
+  padding: 18px;
+  border: 1px solid #333238;
+  background: rgba(20, 20, 23, 0.88);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.2);
+}
+.groups-boundary-state {
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr);
+  gap: 11px;
+}
+.groups-state-index,
+.groups-lane-index,
+.groups-safety-code {
+  color: #d96650;
+  font: 650 9px/1.5 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+}
+.groups-boundary-state strong,
+.groups-boundary-state small {
+  display: block;
+}
+.groups-boundary-state strong {
+  color: #ddd9d3;
+  font-size: 13px;
+}
+.groups-boundary-state small {
+  margin-top: 4px;
+  color: #85817b;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.groups-boundary-state.is-off strong {
+  color: #9e9992;
+}
+.groups-boundary-state.is-off .groups-state-index {
+  color: #6e6a65;
+}
+.groups-boundary-rule {
+  width: 1px;
+  background: #323137;
+}
+.groups-lanes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 18px;
+  border: 1px solid #2e2e33;
+}
+.groups-lane {
+  min-height: 220px;
+  padding: 25px 26px 22px;
+  background: rgba(18, 18, 20, 0.78);
+}
+.groups-lane + .groups-lane {
+  border-left: 1px solid #2e2e33;
+}
+.groups-lane h2 {
+  margin: 50px 0 0;
+  color: #e4e0da;
+  font-size: 18px;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+}
+.groups-lane p {
+  max-width: 380px;
+  margin: 7px 0 0;
+  color: #85817b;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.groups-lane-route {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
+}
+.groups-lane-route i {
+  width: 7px;
+  height: 7px;
+  border: 1px solid #555159;
+  border-radius: 50%;
+}
+.groups-lane-route i + i::before {
+  content: "";
+  display: block;
+  width: 10px;
+  margin: 2px 0 0 -11px;
+  border-top: 1px solid #3b3940;
+}
+.groups-safety-note {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-left: 2px solid #d9442c;
+  background: #191719;
+}
+.groups-safety-note strong,
+.groups-safety-note small {
+  display: block;
+}
+.groups-safety-note strong {
+  color: #d8d3cc;
+  font-size: 12px;
+}
+.groups-safety-note small {
+  margin-top: 3px;
+  color: #827e78;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.groups-stage-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.groups-stage-actions button {
+  min-height: 32px;
+  padding: 6px 11px;
+  font-size: 11px;
+}
+@keyframes groups-stage-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 880px) {
+  .groups-stage-head {
+    grid-template-columns: 1fr;
+  }
+  .groups-local-seal {
+    justify-self: start;
+  }
+  .groups-boundary-panel,
+  .groups-lanes {
+    grid-template-columns: 1fr;
+  }
+  .groups-boundary-rule {
+    width: 100%;
+    height: 1px;
+  }
+  .groups-lane + .groups-lane {
+    border-top: 1px solid #2e2e33;
+    border-left: 0;
+  }
+  .groups-safety-note {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+  .groups-stage-actions {
+    grid-column: 1 / -1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .groups-stage-shell {
+    animation: none;
+  }
 }
 
 /* ── 🤖 orchestration board (console density) ── */

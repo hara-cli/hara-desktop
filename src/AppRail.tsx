@@ -1,4 +1,10 @@
-import { IconBot, IconChat, IconCog, IconFolder } from "./icons";
+import {
+  IconBot,
+  IconChat,
+  IconCog,
+  IconFolder,
+  IconUsers,
+} from "./icons";
 import type {
   AppPlace,
   NavigationIconName,
@@ -43,6 +49,7 @@ export function NavigationGlyph({
 }) {
   if (name === "chat") return <IconChat size={size} />;
   if (name === "projects") return <IconFolder size={size} />;
+  if (name === "groups") return <IconUsers size={size} />;
   return <IconBot size={size} />;
 }
 
@@ -70,12 +77,12 @@ export function AppRail({
           onClick={() => onSelect(item.id)}
         >
           <NavigationGlyph name={item.icon} />
-          {item.badge?.kind === "dot" && <span className="rdot" />}
-          {item.badge?.kind === "count" && item.badge.count > 0 && (
+          {item.badge?.kind === "dot" ? <span className="rdot" /> : null}
+          {item.badge?.kind === "count" && item.badge.count > 0 ? (
             <span className="chip">
               {item.badge.count > 9 ? "9+" : item.badge.count}
             </span>
-          )}
+          ) : null}
         </button>
       ))}
       <div className="railgap" />
@@ -95,7 +102,7 @@ export function AppRail({
         onClick={onSelectSettings}
       >
         <IconCog size={18} />
-        {updateAvailable && <span className="rdot" />}
+        {updateAvailable ? <span className="rdot" /> : null}
       </button>
     </nav>
   );
