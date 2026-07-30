@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.45 — native multi-organization Desk
+
+- Turn the default-hidden Groups foundation into a native, read-only organization Desk. Users can
+  browse every enrolled organization, see its local Desk connection state, explicitly load a bounded
+  task board, and open one task dossier without an iframe, embedded web login, background polling, or
+  renderer-owned credential.
+- Keep browsing separate from routing: selecting an organization changes only the Groups view, while
+  “Use for new work” is the explicit action that changes the default route. Existing conversations
+  remain pinned to the organization profile they started with.
+- Partition in-memory board and task data by enrollment identity and an opaque Desk binding revision.
+  Removing, re-enrolling, or rotating the same organization ID immediately discards prior cached
+  content, while stale asynchronous responses cannot repopulate it.
+- Bundle the exact verified Hara CLI `0.136.0`, which adds profile-scoped Desk registration and
+  authenticated Serve reads, keeps native bearers separate from the legacy MCP store, and blocks both
+  credential stores from agent file/search access.
+- Existing conversations, projects, schedules, organization profiles, and credentials are preserved.
+  Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.44 — Groups foundation and reliable Windows proxy routing
 
 - Add the first, default-hidden Groups module shell to the configurable work dock. It establishes the
