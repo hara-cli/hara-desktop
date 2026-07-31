@@ -5,9 +5,9 @@
 The far-left rail is a configurable **module dock**, not a fixed list of pages and not a list of
 every skill inside every plugin.
 
-- Chat, Projects, Tasks, and the Groups client are open-core modules.
-- Groups is default-hidden. Showing its dock entry is not the same action as enabling remote
-  collaboration.
+- Chat, Projects, Tasks, Groups, and Office are open-core modules and are visible by default.
+- Office owns presentations, spreadsheets, documents, and local Artifact history. Projects owns
+  local-folder conversations; the two no longer compete inside one sidebar.
 - Settings, update recovery, and future safe-mode recovery stay fixed at the lower left.
 - A plugin may contribute at most one primary dock entry. Its secondary views belong in that
   module's context sidebar or stage.
@@ -34,7 +34,7 @@ Preferences use `hara.navigation.v1` in local storage:
 ```json
 {
   "version": 1,
-  "order": ["core.chat", "core.projects", "core.tasks", "core.groups"],
+  "order": ["core.chat", "core.projects", "core.tasks", "core.groups", "core.office"],
   "hidden": [],
   "shown": []
 }
@@ -45,7 +45,7 @@ contributions are appended in default order. If every work module is hidden, sta
 Settings. `shown` is deliberately separate from `order`: reordering an existing module must never
 make a newly installed default-hidden module appear.
 
-`core.groups` contributes:
+Groups and Office contribute:
 
 ```json
 {
@@ -54,7 +54,19 @@ make a newly installed default-hidden module appear.
   "source": "core",
   "icon": "groups",
   "defaultOrder": 40,
-  "defaultVisible": false,
+  "defaultVisible": true,
+  "canHide": true
+}
+```
+
+```json
+{
+  "id": "core.office",
+  "target": "office",
+  "source": "core",
+  "icon": "office",
+  "defaultOrder": 50,
+  "defaultVisible": true,
   "canHide": true
 }
 ```
@@ -70,9 +82,9 @@ The first connected Groups slice is intentionally smaller than a general Discord
 
 - one existing organization profile may have one local Desk binding;
 - the context sidebar lists all existing organization profiles and whether each has a Desk binding;
-- selecting an organization in the sidebar changes only the Groups browsing context; it never changes
-  the engine's active profile;
-- **Use for new work** is the separate, explicit action that changes the default organization route;
+- selecting an organization in the sidebar is the organization switch. There is no second
+  **Use for new work** setting;
+- the switch changes the active model route and organization workspace as one context;
 - clicking **Read board** performs a bounded, explicit read for that exact profile;
 - task detail stays pinned to `{profileId, taskId}` even if the user later changes the default
   organization;
@@ -117,6 +129,47 @@ The managed web surface remains necessary for account/OIDC login, enrollment, to
 write operations, audit recovery, and emergency access. Desktop does not iframe or WebView the
 legacy Desk page because that page owns browser storage and streaming behavior that do not satisfy the
 native renderer credential boundary.
+
+### One enrollment, separated credentials
+
+The ordinary Desktop flow accepts one Hara Control origin and one one-time enrollment code. A
+compatible Control may return:
+
+```json
+{
+  "device_token": "<model gateway device token>",
+  "desk": {
+    "url": "https://desk.example.com",
+    "agent_id": "<desk agent id>",
+    "owner": "<organization identity>",
+    "token": "<separate desk device token>"
+  }
+}
+```
+
+The CLI consumes the model token into the protected profile store and the Desk token into the
+profile-pinned Desk store. Neither secret crosses the renderer protocol. If Control does not
+advertise Desk, Desktop says that the organization has not provided it; it does not ask an ordinary
+user to configure another key. The old `hara desk register` command remains a compatibility and
+operator path, not the target Desktop setup flow.
+
+## Capability directory
+
+Settings separates four concepts instead of presenting one flat enable/disable list:
+
+- **Hara**: included open-core surfaces; present without installation;
+- **Organization**: resources provisioned by the currently active organization, such as its managed
+  model route and Desk;
+- **Market**: the explicit future catalog boundary. The current client shows an honest unavailable
+  state until signed packages, permission review, revocation, and isolated Panel v2 are enforced;
+- **Installed**: optional local plugins that a user installed and may enable or disable.
+
+Installation/enablement and connector authorization remain distinct security states. An enabled
+plugin is not presented as connected to organization data unless its connector has separately
+received authorization. This follows the same source/installed separation used by the Codex plugin
+directory while preserving Hara's renderer and Serve boundaries. Office and the capability directory
+are loaded only when their corresponding work surface or Settings section is opened, so this expansion
+does not inflate the initial Assistant path.
 
 ## Phase 2: reviewed plugin surfaces
 

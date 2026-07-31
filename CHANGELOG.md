@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Make Chat, Projects, Tasks, Groups, and Office first-class open-core modules in one configurable
+  dock. Groups and Office are visible for new profiles, every work entry may be hidden or reordered,
+  and Settings remains fixed as the recovery path.
+- Add a dedicated local-first Office surface for presentation, spreadsheet, and document imports.
+  Imported files are validated and integrity-checked through Hara Serve, while the UI stays explicit
+  that high-fidelity editing and export require a reviewed capability.
+- Replace the flat plugin list with a capability directory that keeps Hara, the active organization,
+  the future signed market, and installed packages separate. The market has an honest unavailable
+  state until package signatures, permission review, revocation, and isolated Panel v2 are enforced.
+- Treat organization selection as one context switch for its managed model route and native Desk,
+  without exposing model or Desk credentials to the renderer. Existing conversations remain pinned
+  to the profile they started with.
+- Load Groups, Office, and the capability directory only when their surface is opened, keeping the
+  initial Assistant path smaller.
+
 ## 0.1.47 — actionable Windows organization-network diagnostics
 
 - Bundle the exact verified Hara CLI `0.137.0`. When an organization model request fails before

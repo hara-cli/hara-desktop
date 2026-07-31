@@ -172,12 +172,8 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
           : "";
       if (selector) document.querySelector<HTMLButtonElement>(selector)?.click();
     }, 120);
-    const switchTimer = scenario === "switch" ? window.setTimeout(() => {
-      document.querySelector<HTMLButtonElement>("[data-preview-action='use-organization']")?.click();
-    }, 260) : 0;
     return () => {
       window.clearTimeout(timer);
-      if (switchTimer) window.clearTimeout(switchTimer);
     };
   }, [scenario]);
 

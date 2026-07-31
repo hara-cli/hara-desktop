@@ -68,7 +68,7 @@ const words = {
     dataLocal: "Data path: model requests stay on this computer.",
     dataCloud: "Data path: task context is sent to the selected provider endpoint.",
     nextSession: "Saved. New sessions use this connection; running sessions keep their current runtime.",
-    switched: "Connection switched. New sessions will use this enterprise route.",
+    switched: "Organization switched. Its model route and organization workspace now form the active context; existing sessions stay pinned to where they started.",
     refresh: "Refresh",
     choose: "Choose a model connection",
     keySafety: "The key is masked, never stored in localStorage, and cleared from this form after save.",
@@ -90,8 +90,8 @@ const words = {
     never: "Not reported",
     controlAddress: "Hara Control",
     organizationModel: "Managed model",
-    managedData: "Your administrator controls the model, quota, and policy. The scoped device credential stays in Hara's protected local state and never enters this window.",
-    useOrganization: "Switch for new sessions",
+    managedData: "Your administrator controls the model, quota, policy, and any organization Desk made available during enrollment. Their credentials remain isolated in Hara's protected local engine and never enter this window.",
+    useOrganization: "Switch organization",
     usingOrganization: "Switching…",
     currentOrganization: "Current connection",
     checkOrganization: "Check connection",
@@ -122,7 +122,7 @@ const words = {
     enrolling: "Enrolling…",
     enrolled: "Enterprise connection added and selected.",
     enrolledLocked: "Enterprise connection added. The current project lock kept the existing route active.",
-    reenrolled: "Enterprise access updated without changing the active connection.",
+    reenrolled: "Enterprise access updated and the organization context is active.",
     cancel: "Cancel",
     advanced: "Advanced identity",
     loadFailed: "Could not load model connections",
@@ -159,7 +159,7 @@ const words = {
     dataLocal: "数据路径：模型请求只在这台电脑上处理。",
     dataCloud: "数据路径：任务上下文会发送到所选供应商地址。",
     nextSession: "已保存。新会话使用此连接；正在运行的会话保持原运行环境。",
-    switched: "连接已切换，新会话将使用这个企业路由。",
+    switched: "组织已切换；它的模型路由与组织工作区现已成为同一个当前上下文，已有会话仍保持创建时的身份。",
     refresh: "刷新",
     choose: "选择模型连接",
     keySafety: "密钥只在密码框中短暂停留，不写入 localStorage，保存后立即从表单清空。",
@@ -181,8 +181,8 @@ const words = {
     never: "未提供",
     controlAddress: "Hara Control",
     organizationModel: "托管模型",
-    managedData: "模型、额度与策略由企业管理员管理；设备凭据只留在 Hara 的本机受保护状态中，不会进入这个窗口。",
-    useOrganization: "切换，供新会话使用",
+    managedData: "模型、额度、策略以及注册时可用的组织 Desk 都由企业管理员管理；各自凭据隔离保存在 Hara 本机引擎中，不会进入这个窗口。",
+    useOrganization: "切换组织",
     usingOrganization: "正在切换…",
     currentOrganization: "当前连接",
     checkOrganization: "检查连接",
@@ -213,7 +213,7 @@ const words = {
     enrolling: "正在注册…",
     enrolled: "企业连接已添加并选中。",
     enrolledLocked: "企业连接已添加；当前项目锁定仍保持原路由。",
-    reenrolled: "企业授权已更新，当前使用的连接没有改变。",
+    reenrolled: "企业授权已更新，并已成为当前组织上下文。",
     cancel: "取消",
     advanced: "高级标识",
     loadFailed: "无法读取模型连接",
@@ -581,7 +581,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     try {
       const id = organizationDraft.id.trim();
       const existing = organizations?.connections.find((connection) => connection.id === id);
-      const activate = !organizations?.switchLocked && (existing ? existing.active : true);
+      const activate = !organizations?.switchLocked;
       const nextOrganizations = await client.enrollOrganizationConnection({
         id,
         label: organizationDraft.label.trim(),
@@ -593,7 +593,11 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       await refreshProviderRoute();
       setOrganizationDraft({ id: "", label: "", gatewayUrl: "" });
       setView({ kind: "organization", id });
-      setMessage(existing ? copy.reenrolled : activate ? copy.enrolled : copy.enrolledLocked);
+      setMessage(
+        activate
+          ? existing ? copy.reenrolled : copy.enrolled
+          : copy.enrolledLocked,
+      );
     } catch (reason) {
       const raw = String(reason instanceof Error ? reason.message : reason);
       setError(transientCode ? raw.split(transientCode).join("[redacted]") : raw);
@@ -704,6 +708,8 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
             </p>
             {!organizationsUnsupported && organizations?.connections.map((connection) => {
               const connectionStatus = statusFor(connection, locale);
+              const canActivate = !organizations.switchLocked
+                && !["expired", "invalid"].includes(connection.accessState);
               return (
                 <button
                   type="button"
@@ -712,7 +718,10 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                   data-connection-id={connection.id}
                   aria-pressed={view.kind === "organization" && view.id === connection.id}
                   disabled={!!organizationBusy}
-                  onClick={() => chooseOrganization(connection)}
+                  onClick={() => {
+                    chooseOrganization(connection);
+                    if (!connection.active && canActivate) void useOrganization(connection);
+                  }}
                 >
                   <span className={`provider-mini-dot managed ${connectionStatus.tone}`} />
                   <span>
@@ -832,7 +841,6 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
             const expiry = selectedOrganization.expiresAt && Number.isFinite(Date.parse(selectedOrganization.expiresAt))
               ? new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en", { dateStyle: "medium", timeStyle: "short" }).format(Date.parse(selectedOrganization.expiresAt))
               : copy.never;
-            const canSwitch = !organizations?.switchLocked && !["expired", "invalid"].includes(selectedOrganization.accessState);
             return (
               <div className="provider-organization-detail">
                 <header className="provider-detail-heading enterprise">
@@ -867,20 +875,6 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                   </button>
                   <button type="button" className="ghost danger" disabled={!!organizationBusy} onClick={() => void removeOrganization(selectedOrganization)}>
                     {organizationBusy === `remove:${selectedOrganization.id}` ? copy.removing : copy.remove}
-                  </button>
-                </div>
-                <div className="provider-actions organization-switch-action">
-                  <button
-                    type="button"
-                    data-preview-action="use-organization"
-                    disabled={selectedOrganization.active || !canSwitch || !!organizationBusy}
-                    onClick={() => void useOrganization(selectedOrganization)}
-                  >
-                    {organizationBusy === `use:${selectedOrganization.id}`
-                      ? copy.usingOrganization
-                      : selectedOrganization.active
-                        ? copy.currentOrganization
-                        : copy.useOrganization}
                   </button>
                 </div>
               </div>

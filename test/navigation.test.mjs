@@ -29,7 +29,7 @@ test("module dock preferences tolerate corruption and stale plugin IDs", () => {
 
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
-    ["core.tasks", "core.chat", "core.projects"],
+    ["core.tasks", "core.chat", "core.projects", "core.groups", "core.office"],
   );
 });
 
@@ -43,13 +43,13 @@ test("core modules can be hidden, restored, and reordered without hiding Setting
   );
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
-    ["core.chat", "core.tasks"],
+    ["core.chat", "core.tasks", "core.groups", "core.office"],
   );
   assert.equal(initialAppPlace("projects", preferences), "chat");
   assert.equal(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences)
       .some((item) => item.id === "core.groups"),
-    false,
+    true,
   );
 
   preferences = withNavigationVisibility(
@@ -66,7 +66,7 @@ test("core modules can be hidden, restored, and reordered without hiding Setting
   );
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
-    ["core.projects", "core.chat", "core.tasks"],
+    ["core.projects", "core.chat", "core.tasks", "core.groups", "core.office"],
   );
 
   for (const item of CORE_NAVIGATION_CONTRIBUTIONS) {
@@ -80,7 +80,7 @@ test("core modules can be hidden, restored, and reordered without hiding Setting
   assert.equal(initialAppPlace("chat", preferences), "settings");
 });
 
-test("default-hidden Groups requires an explicit show choice independent of ordering", () => {
+test("Groups and Office are default-visible but remain local navigation preferences", () => {
   let preferences = parseNavigationPreferences(JSON.stringify({
     version: 1,
     order: [
@@ -88,6 +88,7 @@ test("default-hidden Groups requires an explicit show choice independent of orde
       "core.projects",
       "core.tasks",
       "core.groups",
+      "core.office",
     ],
     hidden: [],
   }));
@@ -95,26 +96,9 @@ test("default-hidden Groups requires an explicit show choice independent of orde
   assert.equal(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences)
       .some((item) => item.id === "core.groups"),
-    false,
-  );
-  assert.equal(initialAppPlace("groups", preferences), "chat");
-
-  preferences = withNavigationVisibility(
-    CORE_NAVIGATION_CONTRIBUTIONS,
-    preferences,
-    "core.groups",
     true,
   );
-  assert.deepEqual(preferences.shown, ["core.groups"]);
   assert.equal(initialAppPlace("groups", preferences), "groups");
-
-  preferences = moveNavigation(
-    CORE_NAVIGATION_CONTRIBUTIONS,
-    preferences,
-    "core.groups",
-    -1,
-  );
-  assert.deepEqual(preferences.shown, ["core.groups"]);
 
   preferences = withNavigationVisibility(
     CORE_NAVIGATION_CONTRIBUTIONS,
@@ -123,7 +107,28 @@ test("default-hidden Groups requires an explicit show choice independent of orde
     false,
   );
   assert.deepEqual(preferences.shown, []);
+  assert.deepEqual(preferences.hidden, ["core.groups"]);
   assert.equal(initialAppPlace("groups", preferences), "chat");
+
+  preferences = moveNavigation(
+    CORE_NAVIGATION_CONTRIBUTIONS,
+    preferences,
+    "core.groups",
+    -1,
+  );
+  assert.deepEqual(preferences.shown, []);
+  assert.deepEqual(preferences.hidden, ["core.groups"]);
+
+  preferences = withNavigationVisibility(
+    CORE_NAVIGATION_CONTRIBUTIONS,
+    preferences,
+    "core.groups",
+    true,
+  );
+  assert.deepEqual(preferences.shown, []);
+  assert.deepEqual(preferences.hidden, []);
+  assert.equal(initialAppPlace("groups", preferences), "groups");
+  assert.equal(initialAppPlace("office", preferences), "office");
 });
 
 test("Groups is a native, explicit-read work surface with no renderer-owned transport", () => {
@@ -151,15 +156,14 @@ test("Groups is a native, explicit-read work surface with no renderer-owned tran
   assert.match(app, /await client\.deskSnapshot\(profileId, state\)/);
   assert.match(app, /await client\.getDeskTask\(profileId, taskId\)/);
   const selectStart = app.indexOf("const selectGroupsOrganization");
-  const activateStart = app.indexOf("const activateGroupsOrganization");
   const readStart = app.indexOf("const readGroupsBoard");
-  assert.ok(selectStart >= 0 && activateStart > selectStart && readStart > activateStart);
-  const selectSource = app.slice(selectStart, activateStart);
-  const activateSource = app.slice(activateStart, readStart);
+  assert.ok(selectStart >= 0 && readStart > selectStart);
+  const selectSource = app.slice(selectStart, readStart);
   assert.match(selectSource, /dispatchGroups\(\{ type: "selectProfile", profileId \}\)/);
-  assert.equal(selectSource.includes("useOrganizationConnection"), false);
-  assert.match(activateSource, /await client\.useOrganizationConnection\(profileId, targetCwd\)/);
-  assert.match(activateSource, /await client\.listProviderSettings\(targetCwd\)/);
+  assert.match(selectSource, /groupsSwitchingProfileRef\.current/, "organization switches are serialized");
+  assert.match(selectSource, /await client\.useOrganizationConnection\(profileId, targetCwd\)/);
+  assert.match(selectSource, /await client\.listProviderSettings\(targetCwd\)/);
+  assert.match(groups, /disabled=\{Boolean\(switchingProfileId\)\}/);
   assert.match(app, /if \(phase !== "ready" \|\| zone !== "groups"\) return;/);
   assert.match(
     app,

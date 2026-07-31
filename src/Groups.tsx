@@ -100,7 +100,6 @@ interface GroupsSharedProps {
 }
 
 interface GroupsStageProps extends GroupsSharedProps {
-  onActivateOrganization: (profileId: string) => void;
   onReadBoard: (profileId: string, state: DeskTaskState) => void;
   onOpenTask: (profileId: string, taskId: string) => void;
   onCloseTask: () => void;
@@ -248,7 +247,8 @@ export function GroupsSidebar({
                 key={organization.id}
                 className={selected ? "is-selected" : ""}
                 aria-current={selected ? "page" : undefined}
-                disabled={switching}
+                aria-busy={switching || undefined}
+                disabled={Boolean(switchingProfileId)}
                 onClick={() => onSelectOrganization(organization.id)}
               >
                 <span className="groups-org-avatar" aria-hidden>
@@ -435,8 +435,6 @@ export default function Groups({
   copy,
   directory,
   state,
-  switchingProfileId,
-  onActivateOrganization,
   onRetryDirectory,
   onManageOrganizations,
   onReadBoard,
@@ -490,22 +488,6 @@ export default function Groups({
           </div>
           <div className="groups-board-actions">
             <span className="groups-local-seal">{copy.readOnly}</span>
-            {selectedOrganization && !selectedOrganization.active ? (
-              <button
-                type="button"
-                className="ghost"
-                disabled={
-                  directory.organizations?.switchLocked
-                  || switchingProfileId === selectedOrganization.id
-                }
-                title={directory.organizations?.switchLocked ? copy.switchLocked : undefined}
-                onClick={() => onActivateOrganization(selectedOrganization.id)}
-              >
-                {switchingProfileId === selectedOrganization.id
-                  ? copy.switchingOrganization
-                  : copy.switchOrganization}
-              </button>
-            ) : null}
           </div>
         </header>
 
@@ -533,9 +515,6 @@ export default function Groups({
             {directory.desk?.legacyUnbound ? (
               <p className="groups-legacy-note">{copy.legacyUnbound}</p>
             ) : null}
-            <code>
-              hara desk register --profile {selectedOrganization.id} --url https://desk.example.com --key …
-            </code>
             <button type="button" className="ghost" onClick={onManageOrganizations}>
               {copy.manageOrganizations}
             </button>

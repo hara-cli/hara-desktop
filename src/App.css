@@ -2001,7 +2001,7 @@ select {
   flex: 1;
 }
 
-/* ── default-hidden Groups shell: local navigation only, no remote activation ── */
+/* ── Groups shell: default-visible navigation; remote reads remain explicit ── */
 .groups-sidebar {
   position: relative;
 }
@@ -3429,6 +3429,144 @@ button:focus-visible,
   display: flex;
   flex-direction: column;
 }
+.capability-directory-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+.capability-directory-tabs {
+  display: flex;
+  min-width: 0;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid #2f2f34;
+  border-radius: 10px;
+  background: #151518;
+}
+.capability-directory-tabs button {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #8d8a85;
+  font-size: 11px;
+}
+.capability-directory-tabs button:hover,
+.capability-directory-tabs button.is-active {
+  background: #25252a;
+  color: #f0ede7;
+}
+.capability-directory-tabs button span {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #34343a;
+  color: #a9a6a0;
+  font: 500 9px/1.5 "SF Mono", ui-monospace, monospace;
+  text-align: center;
+}
+.capability-directory-toolbar input {
+  width: min(260px, 36%);
+  min-width: 150px;
+  height: 38px;
+  margin: 0;
+  border-color: #303036;
+  background: #151518;
+  font-size: 12px;
+}
+.capability-directory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.capability-directory-card {
+  position: relative;
+  min-height: 150px;
+  padding: 22px 20px 19px;
+  border-right: 1px solid #29292e;
+  border-bottom: 1px solid #29292e;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.018), transparent 62%);
+}
+.capability-directory-card:nth-child(2n) {
+  border-right: 0;
+}
+.capability-directory-card-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding-right: 34px;
+}
+.capability-directory-card-head strong {
+  overflow: hidden;
+  color: #ece9e3;
+  font-size: 13px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capability-directory-card p {
+  max-width: 440px;
+  min-height: 42px;
+  margin: 12px 0 20px;
+  color: #94918b;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.capability-directory-index {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  color: #5d5a5f;
+  font: 500 9px/1 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.1em;
+}
+.capability-directory-state {
+  color: #8db699;
+  font: 500 10px/1.4 "SF Mono", ui-monospace, monospace;
+}
+.capability-organization-bundle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.capability-organization-bundle > div {
+  display: grid;
+  min-height: 128px;
+  align-content: start;
+  gap: 10px;
+  padding: 22px;
+  border-right: 1px solid #29292e;
+}
+.capability-organization-bundle > div:last-child {
+  border-right: 0;
+}
+.capability-organization-bundle span:first-child {
+  color: #817e79;
+  font: 500 9px/1.4 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.capability-organization-bundle strong {
+  overflow: hidden;
+  color: #ece9e3;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capability-organization-bundle .settings-badge {
+  justify-self: start;
+}
+.capability-organization-empty {
+  min-height: 140px;
+}
+.capability-installed-list .plug {
+  min-height: 82px;
+}
 .module-dock-list {
   display: flex;
   flex-direction: column;
@@ -3585,6 +3723,21 @@ button:focus-visible,
   .settings-capability-list .plug {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .capability-directory-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .capability-directory-toolbar input {
+    width: 100%;
+  }
+  .capability-directory-grid,
+  .capability-organization-bundle {
+    grid-template-columns: 1fr;
+  }
+  .capability-directory-card,
+  .capability-organization-bundle > div {
+    border-right: 0;
   }
   .module-dock-item {
     grid-template-columns: 36px minmax(0, 1fr);
@@ -4418,6 +4571,252 @@ button.provider-preset.enterprise.on {
 .pet-selected {
   color: var(--accent);
   font-size: 14px;
+}
+
+/* Office home — an open-core, local-first work surface rather than a marketplace placeholder. */
+.office-home {
+  position: relative;
+  min-width: 0;
+  min-height: 100%;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 78% 12%, rgba(232, 67, 42, 0.08), transparent 28rem),
+    #111114;
+  color: #ece8df;
+}
+
+.office-home-grid {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.44;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 72px 72px;
+}
+
+.office-home-shell {
+  position: relative;
+  width: min(1120px, calc(100% - 72px));
+  margin: 0 auto;
+  padding: 72px 0 64px;
+}
+
+.office-home-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid #343238;
+}
+
+.office-home-head > div {
+  max-width: 720px;
+}
+
+.office-home-eyebrow {
+  display: block;
+  margin-bottom: 14px;
+  color: #e85a42;
+  font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.office-home-head h1 {
+  margin: 0;
+  font-size: clamp(34px, 5vw, 62px);
+  font-weight: 650;
+  letter-spacing: -0.055em;
+}
+
+.office-home-head p {
+  max-width: 650px;
+  margin: 16px 0 0;
+  color: #a6a19a;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.office-home-head button {
+  flex: 0 0 auto;
+  min-width: 138px;
+}
+
+.office-home-meta {
+  display: flex;
+  gap: 10px;
+  padding: 22px 0;
+}
+
+.office-home-meta span {
+  padding: 6px 10px;
+  border: 1px solid #3b383e;
+  border-radius: 999px;
+  color: #b8b2aa;
+  font-size: 11px;
+}
+
+.office-kind-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid #343238;
+  border-left: 1px solid #343238;
+}
+
+.office-kind-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 300px;
+  padding: 30px;
+  border: 0;
+  border-right: 1px solid #343238;
+  border-bottom: 1px solid #343238;
+  border-radius: 0;
+  background: rgba(22, 22, 25, 0.76);
+  color: inherit;
+  text-align: left;
+}
+
+.office-kind-card::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: #e8432a;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 180ms ease;
+}
+
+.office-kind-card:hover:not(:disabled)::after,
+.office-kind-card:focus-visible::after {
+  transform: scaleX(1);
+}
+
+.office-kind-card:hover:not(:disabled) {
+  background: rgba(29, 28, 32, 0.92);
+  filter: none;
+}
+
+.office-kind-card:focus-visible {
+  z-index: 1;
+  outline: 2px solid #e85a42;
+  outline-offset: -2px;
+}
+
+.office-kind-index {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  color: #5f5b5f;
+  font: 500 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.12em;
+}
+
+.office-kind-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 46px;
+  place-items: center;
+  border: 1px solid #454149;
+  color: #e85a42;
+}
+
+.office-kind-card h2 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.025em;
+}
+
+.office-kind-card p {
+  min-height: 76px;
+  margin: 13px 0 28px;
+  color: #9b9690;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.office-kind-card small {
+  display: block;
+  color: #c28d82;
+  font: 500 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.055em;
+}
+
+.office-kind-action {
+  position: absolute;
+  right: 28px;
+  bottom: 24px;
+  left: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #ded9d0;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.office-safety {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 24px;
+  padding: 18px 20px;
+  border: 1px solid #37343a;
+  background: rgba(18, 18, 21, 0.82);
+}
+
+.office-safety > span {
+  color: #e85a42;
+  font-size: 18px;
+}
+
+.office-safety strong,
+.office-safety p {
+  display: block;
+  margin: 0;
+}
+
+.office-safety strong {
+  font-size: 13px;
+}
+
+.office-safety p {
+  margin-top: 6px;
+  color: #918c86;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .office-home-shell {
+    width: min(100% - 36px, 700px);
+    padding-top: 42px;
+  }
+
+  .office-home-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .office-kind-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .office-kind-card {
+    min-height: 230px;
+  }
+
+  .office-kind-card p {
+    min-height: auto;
+  }
 }
 
 /* Artifact workbench — a quiet editorial folio for ordinary office files. */

@@ -1,7 +1,7 @@
 // Hara Desktop — Tauri shell over `hara serve` (WS JSON-RPC). The left module dock switches
 // open-core work surfaces; people may hide/reorder entries while recovery/settings stays fixed.
-// Places never share an active session. The default-hidden Groups place performs only explicit,
-// profile-pinned organization Desk reads; it never runs background collaboration.
+// Places never share an active session. Groups performs explicit, profile-pinned organization Desk
+// reads; Office owns local Artifact files instead of mixing them into project conversations.
 import {
   Suspense,
   lazy,
@@ -33,6 +33,7 @@ import {
   type ProviderSettingsState,
   type TaskLifecycleEvent,
   type ArtifactDetails,
+  type ArtifactKind,
   type ArtifactRevision,
   type ArtifactSummary,
   type ClientHistoryMessage,
@@ -140,6 +141,14 @@ const GroupsStage = lazy(() => import("./Groups"));
 const GroupsContextSidebar = lazy(() =>
   import("./Groups").then((module) => ({
     default: module.GroupsSidebar,
+  })));
+const OfficeHome = lazy(() =>
+  import("./OfficeHome").then((module) => ({
+    default: module.OfficeHome,
+  })));
+const CapabilityDirectory = lazy(() =>
+  import("./CapabilityDirectory").then((module) => ({
+    default: module.CapabilityDirectory,
   })));
 
 const groupsDirectoryProfiles = (
@@ -615,6 +624,7 @@ export default function App() {
   const groupsRequestGenerationRef = useRef(0);
   const groupsDirectoryRequestRef = useRef(0);
   const groupsActivationRequestRef = useRef(0);
+  const groupsSwitchingProfileRef = useRef("");
   const [groupsSwitchingProfileId, setGroupsSwitchingProfileId] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef<string | null>(null);
@@ -876,16 +886,25 @@ export default function App() {
     }
   }, [home]);
 
-  const selectGroupsOrganization = useCallback((profileId: string): void => {
-    dispatchGroups({ type: "selectProfile", profileId });
-  }, []);
-
-  const activateGroupsOrganization = useCallback(async (profileId: string): Promise<void> => {
+  const selectGroupsOrganization = useCallback(async (profileId: string): Promise<void> => {
     const client = clientRef.current;
     const organizations = groupsDirectory.organizations;
     const selected = organizations?.connections.find((connection) => connection.id === profileId);
-    if (!client || !organizations || !selected || selected.active || organizations.switchLocked) return;
+    if (!client || !organizations || !selected || groupsSwitchingProfileRef.current) return;
+    if (selected.active) {
+      dispatchGroups({ type: "selectProfile", profileId });
+      return;
+    }
+    if (organizations.switchLocked) {
+      setErr(
+        locale === "zh"
+          ? "当前项目或启动配置固定了组织，解除固定后才能切换。"
+          : "This project or launch configuration pins the organization. Remove the pin before switching.",
+      );
+      return;
+    }
     const requestId = ++groupsActivationRequestRef.current;
+    groupsSwitchingProfileRef.current = profileId;
     setGroupsSwitchingProfileId(profileId);
     try {
       const targetCwd = home ? `${home}/.hara/workspace` : server?.cwd;
@@ -933,6 +952,9 @@ export default function App() {
         setErr(String(error instanceof Error ? error.message : error).slice(0, 240));
       }
     } finally {
+      if (groupsSwitchingProfileRef.current === profileId) {
+        groupsSwitchingProfileRef.current = "";
+      }
       if (
         requestId === groupsActivationRequestRef.current
         && clientRef.current === client
@@ -943,6 +965,7 @@ export default function App() {
     groupsDirectory.desk?.connections,
     groupsDirectory.organizations,
     home,
+    locale,
     refreshModelInfo,
     server?.cwd,
   ]);
@@ -1028,18 +1051,17 @@ export default function App() {
     if (z === "chat" || z === "projects") {
       const candidateId = activeByZoneRef.current[z];
       const candidate = candidateId ? sessionsRef.current.find((session) => session.id === candidateId) : undefined;
-      setActive(z === "projects" && activeArtifact
-        ? null
-        : candidate && sessionPlace(candidate) === z ? candidate.id : null);
+      setActive(candidate && sessionPlace(candidate) === z ? candidate.id : null);
     } else {
       setActive(null);
     }
-    if (z === "projects") void refreshArtifacts();
+    if (z === "office") void refreshArtifacts();
     if (z === "settings" && clientRef.current) {
       void Promise.all([clientRef.current.listPlugins(), clientRef.current.listSkills()]).then(([pl, sk]) => {
         setPlugins(pl.plugins);
         setSkills(sk.skills);
       });
+      void refreshGroupsDirectory();
       void refreshPets();
     }
     if (z === "auto" && clientRef.current) {
@@ -1578,8 +1600,8 @@ export default function App() {
         setSetSec("providers");
       }
       // Cold start uses the latest persisted navigation contract. A brand-new
-      // profile still resolves to Chat, while an explicitly shown/saved Groups
-      // shell or Settings remains respected.
+      // profile still resolves to Chat, while a saved core module or Settings
+      // destination remains respected.
       const manual = list.sessions.filter((s) => !isAutomated(s) && !isAssistantCwd(s.cwd));
       if (info.setupState !== "needs-credentials" && manual.length === 0 && openedProjects.length === 0) {
         const preferredPlace = initialAppPlace(
@@ -1617,6 +1639,8 @@ export default function App() {
       if (e.key === "1") (e.preventDefault(), apiRef.current.setZone("chat"));
       else if (e.key === "2") (e.preventDefault(), apiRef.current.setZone("projects"));
       else if (e.key === "3") (e.preventDefault(), apiRef.current.setZone("auto"));
+      else if (e.key === "4") (e.preventDefault(), apiRef.current.setZone("groups"));
+      else if (e.key === "5") (e.preventDefault(), apiRef.current.setZone("office"));
       else if (e.key === ",") (e.preventDefault(), apiRef.current.setZone("settings"));
       else if (e.key === "n") (e.preventDefault(), apiRef.current.openProject());
       else if (e.key === "f") {
@@ -1931,7 +1955,7 @@ export default function App() {
     await newSession(dir);
   };
 
-  const importArtifactFile = async () => {
+  const importArtifactFile = async (kind?: ArtifactKind) => {
     const client = clientRef.current;
     if (!client) return;
     if (!client.supports("artifact.import")) {
@@ -1939,12 +1963,23 @@ export default function App() {
       setErr(t("artifactNeedsUpdate"));
       return;
     }
+    const extensions: Record<ArtifactKind, string[]> = {
+      presentation: ["pptx", "ppt", "odp"],
+      spreadsheet: ["xlsx", "xls", "csv", "ods"],
+      document: ["docx", "doc", "odt", "rtf", "md", "txt"],
+    };
     const selected = await openDialog({
       title: t("importFile"),
       multiple: false,
       filters: [{
-        name: t("deliverables"),
-        extensions: ["pptx", "ppt", "odp", "xlsx", "xls", "csv", "ods", "docx", "doc", "odt", "rtf", "md", "txt"],
+        name: kind === "presentation"
+          ? t("artifactTypePresentation")
+          : kind === "spreadsheet"
+            ? t("artifactTypeSpreadsheet")
+            : kind === "document"
+              ? t("artifactTypeDocument")
+              : t("deliverables"),
+        extensions: kind ? extensions[kind] : Object.values(extensions).flat(),
       }],
     });
     if (typeof selected !== "string" || !selected) return;
@@ -1952,7 +1987,7 @@ export default function App() {
     setArtifactBusy("import");
     setErr("");
     try {
-      const imported = await client.importArtifact(selected);
+      const imported = await client.importArtifact(selected, kind ? { kind } : undefined);
       const [verified, revisionResult, list] = await Promise.all([
         client.getArtifact(imported.artifact.artifactId),
         client.listArtifactRevisions(imported.artifact.artifactId),
@@ -1965,6 +2000,7 @@ export default function App() {
       setActive(null);
       setSplit(null);
       setAutoReplay(null);
+      setZone("office");
     } catch (error: any) {
       if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
     } finally {
@@ -3371,6 +3407,7 @@ export default function App() {
     "core.projects": t("zoneProjects"),
     "core.tasks": t("zoneAuto"),
     "core.groups": t("zoneGroups"),
+    "core.office": t("zoneOffice"),
   };
   const projectSessions = sessions.filter(
     (session) =>
@@ -3378,6 +3415,13 @@ export default function App() {
       && !isAutomated(session)
       && !isJunkCwd(session.cwd),
   );
+  const activeOrganizationConnection =
+    groupsDirectory.organizations?.connections.find((connection) => connection.active);
+  const activeOrganizationDesk = activeOrganizationConnection
+    ? groupsDirectory.desk?.connections.find(
+        (connection) => connection.profileId === activeOrganizationConnection.id,
+      )
+    : undefined;
   const railItems: AppRailItem[] = visibleNavigation(
     CORE_NAVIGATION_CONTRIBUTIONS,
     navigationPreferences,
@@ -3587,51 +3631,12 @@ export default function App() {
         <aside className="sidebar">
           {brandBar}
           <div className="artifact-sidebar-actions">
-            <button className="new" onClick={() => void openProject()} disabled={Boolean(artifactBusy)}>
+            <button className="new" onClick={() => void openProject()}>
               {t("openProject")}
-            </button>
-            <button className="new ghost" onClick={() => void importArtifactFile()} disabled={Boolean(artifactBusy)}>
-              {artifactBusy === "import" ? t("artifactImporting") : t("importFile")}
             </button>
           </div>
           {searchBox}
           <div className="sessions" key={zone}>
-            <div className="group-h artifact-shelf-head">
-              {t("deliverables")}
-              <span className="count">{artifacts && artifacts !== "old-server" ? artifacts.artifacts.length : 0}</span>
-            </div>
-            {artifacts === "old-server" ? (
-              <div className="artifact-sidebar-empty">{t("artifactNeedsUpdate")}</div>
-            ) : artifacts?.artifacts.length ? (
-              artifacts.artifacts.map((artifact) => (
-                <button
-                  type="button"
-                  className={`artifact-sidebar-card ${activeArtifact?.artifact.artifactId === artifact.artifactId ? "on" : ""}`}
-                  key={artifact.artifactId}
-                  onClick={() => void openArtifact(artifact.artifactId)}
-                  title={artifact.title}
-                >
-                  <span className={`artifact-sidebar-mark ${artifact.kind}`} />
-                  <span className="artifact-sidebar-copy">
-                    <strong>{artifact.title}</strong>
-                    <small>
-                      {artifact.kind === "presentation"
-                        ? t("artifactTypePresentation")
-                        : artifact.kind === "spreadsheet"
-                          ? t("artifactTypeSpreadsheet")
-                          : t("artifactTypeDocument")}
-                      {" · "}
-                      {artifact.extension.toUpperCase().slice(1)}
-                    </small>
-                  </span>
-                </button>
-              ))
-            ) : (
-              <div className="artifact-sidebar-empty">{artifacts ? t("noDeliverables") : t("loading")}</div>
-            )}
-            {artifacts !== "old-server" && artifacts && artifacts.invalid > 0 && (
-              <div className="artifact-sidebar-empty" role="alert">{t("artifactNeedsRepair")}</div>
-            )}
             <div className="group-h artifact-shelf-head">{t("zoneProjects")}</div>
             {groups.map(([cwd, list]) => (
               <div key={cwd}>
@@ -3662,6 +3667,66 @@ export default function App() {
                 )}
               </div>
             ))}
+          </div>
+          {footBar}
+        </aside>
+      )}
+
+      {zone === "office" && (
+        <aside className="sidebar office-sidebar">
+          {brandBar}
+          <div className="artifact-sidebar-actions">
+            <button
+              className="new"
+              onClick={() => void importArtifactFile()}
+              disabled={Boolean(artifactBusy)}
+            >
+              {artifactBusy === "import" ? t("artifactImporting") : t("importFile")}
+            </button>
+          </div>
+          <div className="sessions" key={zone}>
+            <div className="group-h artifact-shelf-head">
+              {t("deliverables")}
+              <span className="count">
+                {artifacts && artifacts !== "old-server" ? artifacts.artifacts.length : 0}
+              </span>
+            </div>
+            {artifacts === "old-server" ? (
+              <div className="artifact-sidebar-empty">{t("artifactNeedsUpdate")}</div>
+            ) : artifacts?.artifacts.length ? (
+              artifacts.artifacts.map((artifact) => (
+                <button
+                  type="button"
+                  className={`artifact-sidebar-card ${activeArtifact?.artifact.artifactId === artifact.artifactId ? "on" : ""}`}
+                  key={artifact.artifactId}
+                  onClick={() => void openArtifact(artifact.artifactId)}
+                  title={artifact.title}
+                >
+                  <span className={`artifact-sidebar-mark ${artifact.kind}`} />
+                  <span className="artifact-sidebar-copy">
+                    <strong>{artifact.title}</strong>
+                    <small>
+                      {artifact.kind === "presentation"
+                        ? t("artifactTypePresentation")
+                        : artifact.kind === "spreadsheet"
+                          ? t("artifactTypeSpreadsheet")
+                          : t("artifactTypeDocument")}
+                      {" · "}
+                      {artifact.extension.toUpperCase().slice(1)}
+                    </small>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="artifact-sidebar-empty">
+                {artifacts ? t("noDeliverables") : t("loading")}
+              </div>
+            )}
+            {artifacts !== "old-server" && artifacts && artifacts.invalid > 0 && (
+              <div className="artifact-sidebar-empty" role="alert">
+                {t("artifactNeedsRepair")}
+              </div>
+            )}
           </div>
           {footBar}
         </aside>
@@ -3796,6 +3861,7 @@ export default function App() {
                     setServer((current) => current
                       ? { ...current, provider: next.current.provider, model: next.current.model }
                       : current);
+                    void refreshGroupsDirectory();
                     void refreshModelInfo(active
                       ? { sessionId: active }
                       : { cwd: server?.cwd }).catch(() => {});
@@ -4068,6 +4134,10 @@ export default function App() {
                     title: t("zoneGroups"),
                     description: t("moduleGroupsDescription"),
                   },
+                  "core.office": {
+                    title: t("zoneOffice"),
+                    description: t("moduleOfficeDescription"),
+                  },
                 }}
                 copy={{
                   eyebrow: t("settingsPersonalize"),
@@ -4118,55 +4188,70 @@ export default function App() {
               />
             )}
             {setSec === "plugins" && (
-              <SettingsPage
-                id="settings-capabilities-title"
-                eyebrow={t("settingsCapabilities")}
-                title={t("setPlugins")}
-                description={t("capabilitiesDescription")}
+              <Suspense
+                fallback={(
+                  <div className="settings-empty" role="status">
+                    {t("loading")}
+                  </div>
+                )}
               >
-                <SettingsCard title={t("installedCapabilities")} description={t("installedCapabilitiesHint")}>
-                  {!plugins ? (
-                    <div className="settings-empty">{t("loading")}</div>
-                  ) : plugins.length === 0 ? (
-                    <div className="settings-empty">
-                      <strong>{t("noCapabilities")}</strong>
-                      <span>{t("capabilityInstallHint")}</span>
-                    </div>
-                  ) : (
-                    <div className="settings-capability-list">
-                      {plugins.map((p) => (
-                        <div key={p.name} className="plug">
-                          <div className="plug-main">
-                            <div className="plug-name">
-                              {p.name} <span className="dim">v{p.version}</span>
-                            </div>
-                            <div className="plug-description">{p.description}</div>
-                            <div className="plug-meta dim">
-                              {p.skills} {t("capabilityRecipes")} · {p.agents} {t("capabilitySpecialists")} · {p.mcpServers} {t("capabilityConnections")}
-                            </div>
-                          </div>
-                          <span className="settings-capability-actions">
-                            {p.enabled && (p.panels ?? []).map((sp) => (
-                              <button type="button" key={sp.id} disabled={panelBusy === sp.id} onClick={() => void openPanel(p.name, sp)}>
-                                {panelBusy === sp.id ? "…" : sp.title}
-                              </button>
-                            ))}
-                            <button
-                              type="button"
-                              className={p.enabled ? "" : "ghost"}
-                              aria-pressed={p.enabled}
-                              aria-label={`${p.name}: ${p.enabled ? t("disableCapability") : t("enableCapability")}`}
-                              onClick={() => void togglePlugin(p.name, !p.enabled)}
-                            >
-                              {p.enabled ? t("enabled") : t("disabled")}
-                            </button>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </SettingsCard>
-              </SettingsPage>
+                <CapabilityDirectory
+                  plugins={plugins}
+                  panelBusy={panelBusy}
+                  core={[
+                    { id: "core.chat", title: t("zoneChat"), description: t("moduleChatDescription") },
+                    { id: "core.projects", title: t("zoneProjects"), description: t("moduleProjectsDescription") },
+                    { id: "core.tasks", title: t("zoneAuto"), description: t("moduleTasksDescription") },
+                    { id: "core.groups", title: t("zoneGroups"), description: t("moduleGroupsDescription") },
+                    { id: "core.office", title: t("zoneOffice"), description: t("moduleOfficeDescription") },
+                  ]}
+                  organization={activeOrganizationConnection ? {
+                    label: activeOrganizationConnection.label,
+                    model: activeOrganizationConnection.model,
+                    deskConnected: activeOrganizationDesk?.configured === true,
+                    deskHost: activeOrganizationDesk?.host,
+                  } : undefined}
+                  copy={{
+                    eyebrow: t("settingsCapabilities"),
+                    title: t("setPlugins"),
+                    description: t("capabilitiesDescription"),
+                    search: t("capabilityDirectorySearch"),
+                    hara: t("capabilitySourceHara"),
+                    organization: t("capabilitySourceOrganization"),
+                    market: t("capabilitySourceMarket"),
+                    installed: t("capabilitySourceInstalled"),
+                    included: t("capabilityIncluded"),
+                    openCore: t("capabilityOpenCore"),
+                    currentOrganization: t("capabilityCurrentOrganization"),
+                    noOrganization: t("capabilityNoOrganization"),
+                    noOrganizationHint: t("capabilityNoOrganizationHint"),
+                    modelRoute: t("capabilityModelRoute"),
+                    organizationDesk: t("capabilityOrganizationDesk"),
+                    connected: t("capabilityConnected"),
+                    notProvided: t("capabilityNotProvided"),
+                    organizationCatalogHint: t("capabilityOrgCatalogHint"),
+                    marketTitle: t("capabilityMarketTitle"),
+                    marketHint: t("capabilityMarketHint"),
+                    marketGateTitle: t("capabilityMarketGateTitle"),
+                    marketGateHint: t("capabilityMarketGateHint"),
+                    installedTitle: t("installedCapabilities"),
+                    installedHint: t("installedCapabilitiesHint"),
+                    loading: t("loading"),
+                    empty: t("noCapabilities"),
+                    installHint: t("capabilityInstallHint"),
+                    recipes: t("capabilityRecipes"),
+                    specialists: t("capabilitySpecialists"),
+                    connections: t("capabilityConnections"),
+                    enable: t("enableCapability"),
+                    disable: t("disableCapability"),
+                    enabled: t("enabled"),
+                    disabled: t("disabled"),
+                    noResults: t("capabilityNoResults"),
+                  }}
+                  onTogglePlugin={(name, enabled) => void togglePlugin(name, enabled)}
+                  onOpenPanel={(pluginName, panel) => void openPanel(pluginName, panel)}
+                />
+              </Suspense>
             )}
             {setSec === "skills" && (
               <SettingsPage
@@ -4240,7 +4325,6 @@ export default function App() {
             state={groupsState}
             switchingProfileId={groupsSwitchingProfileId || undefined}
             onSelectOrganization={selectGroupsOrganization}
-            onActivateOrganization={(profileId) => void activateGroupsOrganization(profileId)}
             onRetryDirectory={() => void refreshGroupsDirectory()}
             onManageOrganizations={() => {
               setZone("settings");
@@ -4319,7 +4403,7 @@ export default function App() {
             />
           )}
         </main>
-      ) : activeArtifact && zone === "projects" ? (
+      ) : activeArtifact && zone === "office" ? (
         <ArtifactWorkbench
           details={activeArtifact}
           revisions={artifactRevisions}
@@ -4348,6 +4432,40 @@ export default function App() {
             typeDocument: t("artifactTypeDocument"),
           }}
         />
+      ) : zone === "office" ? (
+        <Suspense
+          fallback={(
+            <main className="office-home" aria-busy="true">
+              <p className="dim" role="status">{t("loading")}</p>
+            </main>
+          )}
+        >
+          <OfficeHome
+            importing={artifactBusy === "import"}
+            onImport={(kind) => void importArtifactFile(kind)}
+            copy={{
+              eyebrow: t("officeEyebrow"),
+              title: t("officeTitle"),
+              description: t("officeDescription"),
+              included: t("officeIncluded"),
+              localFirst: t("officeLocalFirst"),
+              importFile: t("importFile"),
+              importType: t("officeImportType"),
+              importing: t("artifactImporting"),
+              presentation: t("artifactTypePresentation"),
+              presentationHint: t("officePresentationHint"),
+              presentationFormats: t("officePresentationFormats"),
+              spreadsheet: t("artifactTypeSpreadsheet"),
+              spreadsheetHint: t("officeSpreadsheetHint"),
+              spreadsheetFormats: t("officeSpreadsheetFormats"),
+              document: t("artifactTypeDocument"),
+              documentHint: t("officeDocumentHint"),
+              documentFormats: t("officeDocumentFormats"),
+              safetyTitle: t("officeSafetyTitle"),
+              safetyHint: t("officeSafetyHint"),
+            }}
+          />
+        </Suspense>
       ) : split && zone === "projects" ? (
         // the design/video loop: talk to the agent on the left, watch the live preview react on the right
         <div className="work">

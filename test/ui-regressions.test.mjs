@@ -517,6 +517,11 @@ test("the model switchboard uses user-added enterprise connections instead of a 
   assert.match(providers, /window\.confirm\(copy\.removeConfirm\)/, "local removal explains that server-side revocation is separate");
   assert.match(providers, /client\.checkOrganizationConnection/, "connection health is checked explicitly rather than by model polling");
   assert.doesNotMatch(providers, /deviceToken|authorization/i, "renderer never accepts the organization device credential");
+  assert.match(
+    app,
+    /onSaved=\{\(next: ProviderSettingsState\) => \{[\s\S]*void refreshGroupsDirectory\(\)/,
+    "a one-click organization switch refreshes the model route and Desk bundle together",
+  );
   assert.doesNotMatch(app, /OrganizationSettings/, "the old detached enterprise card is not left below the model picker");
 });
 
@@ -606,16 +611,24 @@ test("the deliverables workbench stays serve-backed, local-first, and honest abo
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const workbench = readFileSync(`${root}/src/ArtifactWorkbench.tsx`, "utf8");
+  const office = readFileSync(`${root}/src/OfficeHome.tsx`, "utf8");
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
 
   for (const method of ["artifact.import", "artifact.list", "artifact.get", "artifact.revisions"]) {
     assert.match(client, new RegExp(method.replace(".", "\\.")));
   }
-  assert.match(app, /openDialog\(\{[\s\S]*extensions: \["pptx"[\s\S]*"docx"[\s\S]*"md"/);
-  assert.match(app, /await client\.importArtifact\(selected\)/);
+  assert.match(app, /presentation: \["pptx", "ppt", "odp"\]/);
+  assert.match(app, /spreadsheet: \["xlsx", "xls", "csv", "ods"\]/);
+  assert.match(app, /document: \["docx", "doc", "odt", "rtf", "md", "txt"\]/);
+  assert.match(app, /await client\.importArtifact\(selected, kind \? \{ kind \} : undefined\)/);
   assert.match(app, /client\.getArtifact\(imported\.artifact\.artifactId\)/, "a new import is integrity-checked before display");
   assert.match(app, /<ArtifactWorkbench/);
+  assert.match(app, /zone === "office"/, "Office owns the deliverables shelf and workbench");
+  assert.match(app, /<OfficeHome/);
+  assert.match(office, /copy\.included/);
+  assert.match(office, /copy\.localFirst/);
+  assert.match(office, /onClick=\{\(\) => onImport\(item\.id\)\}/, "each Office type card starts a matching filtered import");
   assert.doesNotMatch(app, /invoke\([^)]*"artifact\./, "the renderer never bypasses hara serve for Artifact authority");
   assert.match(workbench, /<button[\s\S]*artifact-verify-action/, "integrity verification is keyboard accessible");
   assert.match(workbench, /artifact-preview-disclaimer/, "the decorative placeholder is explicitly labeled as not being a real layout preview");
@@ -630,6 +643,36 @@ test("the deliverables workbench stays serve-backed, local-first, and honest abo
   assert.match(css, /@media \(prefers-reduced-motion: no-preference\)/);
 });
 
+test("the capability directory keeps Hara, organization, market, and installed sources distinct", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const directory = readFileSync(`${root}/src/CapabilityDirectory.tsx`, "utf8");
+  const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
+
+  assert.match(directory, /type DirectorySource = "hara" \| "organization" \| "market" \| "installed"/);
+  assert.match(directory, /\["hara", copy\.hara\]/);
+  assert.match(directory, /\["organization", copy\.organization\]/);
+  assert.match(directory, /\["market", copy\.market\]/);
+  assert.match(directory, /\["installed", copy\.installed\]/);
+  assert.match(directory, /aria-controls=\{`capability-panel-\$\{id\}`\}/);
+  assert.match(directory, /event\.key === "ArrowRight"/, "directory tabs support keyboard navigation");
+  assert.match(directory, /organization\.model/);
+  assert.match(directory, /organization\.deskConnected/);
+  assert.match(directory, /plugin\.enabled && \(plugin\.panels \?\? \[\]\)\.map/);
+  assert.doesNotMatch(
+    directory,
+    /deviceToken|authorization|enrollKey/,
+    "the renderer receives status and catalog metadata, never organization credentials",
+  );
+  assert.match(app, /"core\.office", title: t\("zoneOffice"\)/);
+  assert.match(app, /activeOrganizationConnection/);
+  assert.match(app, /activeOrganizationDesk/);
+  assert.match(app, /const OfficeHome = lazy/);
+  assert.match(app, /const CapabilityDirectory = lazy/);
+  assert.match(copy, /officeIncluded: "Included in the open core"/);
+  assert.match(copy, /capabilityOpenCore: "开源核心"/);
+  assert.match(copy, /capabilityMarketGateTitle: "当前版本尚未启用市场服务"/);
+});
+
 test("switching places cannot reuse a conversation from the wrong place", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
 
@@ -639,8 +682,8 @@ test("switching places cannot reuse a conversation from the wrong place", () => 
   assert.match(app, /sessionPlace\(candidate\) === z/);
   assert.match(
     app,
-    /setActive\(z === "projects" && activeArtifact\s+\? null\s+: candidate && sessionPlace\(candidate\) === z \? candidate\.id : null\)/,
-    "an open deliverable must not be replaced by the remembered project conversation",
+    /setActive\(candidate && sessionPlace\(candidate\) === z \? candidate\.id : null\)/,
+    "each conversation place restores only a session that belongs to that place",
   );
   assert.match(app, /sessionsRef\.current = list\.sessions;\s+setSessions\(list\.sessions\)/, "fork routing sees a refreshed session before changing place");
   assert.match(app, /clearActiveSession\(id\)/, "archiving or deleting must also clear the remembered place");
@@ -648,8 +691,9 @@ test("switching places cannot reuse a conversation from the wrong place", () => 
 
 test("disabled plugins cannot launch a panel from settings", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const directory = readFileSync(`${root}/src/CapabilityDirectory.tsx`, "utf8");
 
-  assert.match(app, /p\.enabled && \(p\.panels \?\? \[\]\)\.map/);
+  assert.match(directory, /plugin\.enabled && \(plugin\.panels \?\? \[\]\)\.map/);
   assert.match(app, /pluginsRef\.current\?\.find\(\(plugin\) => plugin\.name === pluginName\)\?\.enabled !== true/);
   assert.match(app, /!enabled && split\?\.plugin === name/);
   assert.match(app, /panels\.filter\(\(panel\) => panel\.plugin !== name\)/, "disabling a plugin evicts cached project panels");

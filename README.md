@@ -54,7 +54,8 @@ threads + task console) · open-folder-as-project · bundled hara sidecar
 (zero-dependency) · first-run key onboarding · per-session model & thinking-effort switch · inline
 approvals · steer queue · notifications + dock badge · search / pin / rename / archive · `@file`
 mentions · optional non-focusable task-status pet with local Codex v1/v2 package compatibility ·
-i18n (en/zh) · local Deliverables shelf for safe import, integrity checks, and revision history ·
+i18n (en/zh) · a dedicated, default-visible Office surface for safe import, integrity checks, and
+revision history ·
 plain-language specialist work starters · signed auto-updates from GitHub Releases · notarized Developer ID macOS
 builds · a unified model switchboard with preset personal providers plus any number of user-added,
 directly switchable Hara Control connections · redacted WeChat/Feishu connection health · safe automatic installation/update of Desktop's exact bundled CLI at `~/.hara/bin/hara` · 4-platform CI with
@@ -73,13 +74,13 @@ is documented in
 [`docs/PRESENTATION_CAPABILITY_ARCHITECTURE.md`](./docs/PRESENTATION_CAPABILITY_ARCHITECTURE.md) and
 [`docs/PPT_MASTER_INTEGRATION_AUDIT.md`](./docs/PPT_MASTER_INTEGRATION_AUDIT.md).
 
-## Design invariants (模块坞 + 四场所模型)
+## Design invariants (模块坞 + 核心场所模型)
 
-Three open-core work modules contribute to the icon dock — 💬 chat (IM density) · 📁 projects
-(IDE density, chat↔preview split) · 🤖 tasks (console density: scheduled tasks + run timeline).
-People may hide or reorder these entries. ⚙ settings (context anchors + stage forms) stays fixed at
-the lower left so hidden modules always remain recoverable. Runtime places still preserve separate
-session ownership and density. Invariants:
+Five open-core work modules are visible in the icon dock by default — chat, projects, tasks, groups,
+and Office. Projects owns local-folder conversations and preview splits; Office owns presentations,
+spreadsheets, documents, and their local Artifact revisions. People may hide or reorder these
+entries. Settings stays fixed at the lower left so hidden modules always remain recoverable. Runtime
+places still preserve separate session ownership and density. Invariants:
 
 - **Notification rule**: interruption-grade (a human must respond) → red dot + dock badge;
   ambient-grade (an automation ran and left a trace) → count chip, NEVER a dock badge.

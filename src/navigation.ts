@@ -1,6 +1,6 @@
-export type CoreAppPlace = "chat" | "projects" | "auto" | "groups";
+export type CoreAppPlace = "chat" | "projects" | "auto" | "groups" | "office";
 export type AppPlace = CoreAppPlace | "settings";
-export type NavigationIconName = "chat" | "projects" | "tasks" | "groups";
+export type NavigationIconName = "chat" | "projects" | "tasks" | "groups" | "office";
 
 export interface NavigationContribution {
   /** Stable owner-scoped ID. Plugin contributions will use `plugin.<plugin-id>.<surface-id>`. */
@@ -68,8 +68,19 @@ export const CORE_NAVIGATION_CONTRIBUTIONS = [
     source: "core",
     icon: "groups",
     defaultOrder: 40,
-    defaultVisible: false,
+    defaultVisible: true,
     canHide: true,
+    shortcut: "⌘4",
+  },
+  {
+    id: "core.office",
+    target: "office",
+    source: "core",
+    icon: "office",
+    defaultOrder: 50,
+    defaultVisible: true,
+    canHide: true,
+    shortcut: "⌘5",
   },
 ] as const satisfies readonly CoreNavigationContribution[];
 
@@ -216,6 +227,7 @@ export function isAppPlace(value: string | null): value is AppPlace {
     || value === "projects"
     || value === "auto"
     || value === "groups"
+    || value === "office"
     || value === "settings";
 }
 
