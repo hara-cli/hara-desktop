@@ -25,6 +25,10 @@ import {
 import { canUseRosettaSmoke } from "../scripts/sidecar-smoke.mjs";
 import { isTransientCodesignTimestampFailure } from "../scripts/codesign-timestamp-retry.mjs";
 import { isTransientGitHubReleaseTransferFailure } from "../scripts/github-release-transfer-retry.mjs";
+import {
+  buildMirrorManifest,
+  validateMirrorManifest,
+} from "../scripts/updater-mirror-manifest.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const node = process.execPath;
@@ -97,6 +101,72 @@ test("stable policy rejects prerelease versions and tags", () => {
   assert.equal(requireStableTag("v1.2.3", "1.2.3"), "v1.2.3");
   assert.throws(() => requireStableVersion("1.2.3-rc.1"), /stable X\.Y\.Z/);
   assert.throws(() => requireStableTag("v1.2.3-rc.1", "1.2.3-rc.1"), /stable X\.Y\.Z/);
+});
+
+test("desktop updater uses the first-party signed channel before GitHub", () => {
+  const tauri = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"));
+  assert.deepEqual(tauri.plugins.updater.endpoints, [
+    "https://assets.nanhara.com/hara/desktop/stable/latest.json",
+    "https://github.com/hara-cli/hara-desktop/releases/latest/download/latest.json",
+  ]);
+});
+
+test("first-party updater manifest preserves signatures and rewrites only exact release assets", () => {
+  const tag = `v${version}`;
+  const signature = "trusted updater signature ".repeat(4);
+  const assets = {
+    "darwin-aarch64": "Hara_aarch64.app.tar.gz",
+    "darwin-aarch64-app": "Hara_aarch64.app.tar.gz",
+    "darwin-x86_64": "Hara_x64.app.tar.gz",
+    "darwin-x86_64-app": "Hara_x64.app.tar.gz",
+    "linux-x86_64": `Hara_${version}_amd64.deb`,
+    "linux-x86_64-deb": `Hara_${version}_amd64.deb`,
+    "linux-x86_64-rpm": `Hara-${version}-1.x86_64.rpm`,
+    "windows-x86_64": `Hara_${version}_x64_en-US.msi`,
+    "windows-x86_64-msi": `Hara_${version}_x64_en-US.msi`,
+    "windows-x86_64-nsis": `Hara_${version}_x64-setup.exe`,
+  };
+  const canonical = {
+    version,
+    notes: `Hara Desktop ${version}`,
+    pub_date: "2026-07-31T03:30:00.000Z",
+    platforms: Object.fromEntries(
+      Object.entries(assets).map(([platform, asset]) => [
+        platform,
+        {
+          signature,
+          url: `https://github.com/hara-cli/hara-desktop/releases/download/${tag}/${encodeURIComponent(asset)}`,
+        },
+      ]),
+    ),
+  };
+
+  const mirror = buildMirrorManifest(canonical, tag);
+  validateMirrorManifest(mirror, tag);
+  assert.deepEqual(
+    {
+      version: mirror.version,
+      notes: mirror.notes,
+      pub_date: mirror.pub_date,
+    },
+    {
+      version: canonical.version,
+      notes: canonical.notes,
+      pub_date: canonical.pub_date,
+    },
+  );
+  for (const [platform, asset] of Object.entries(assets)) {
+    assert.equal(mirror.platforms[platform].signature, signature);
+    assert.equal(
+      mirror.platforms[platform].url,
+      `https://assets.nanhara.com/hara/desktop/${tag}/${encodeURIComponent(asset)}`,
+    );
+  }
+
+  const hostile = structuredClone(mirror);
+  hostile.platforms["darwin-aarch64"].url =
+    `https://assets.nanhara.com/hara/desktop/${tag}/Hara_aarch64.app.tar.gz?redirect=github`;
+  assert.throws(() => validateMirrorManifest(hostile, tag), /URL mismatch/);
 });
 
 test("remote tag resolution prefers the peeled commit and retries within hard bounds", () => {

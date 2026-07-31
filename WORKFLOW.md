@@ -88,6 +88,27 @@ detach `/Volumes/Hara*` and delete `bundle/*/rw.*.dmg` before retrying.
 CLI bug: fix on hara-cli main → patch tag → npm → desktop `refresh-sidecar` → desktop patch tag.
 Desktop-only bug: fix → desktop patch tag (sidecar unchanged, stamp already recorded).
 
+## First-party updater mirror
+
+`https://assets.nanhara.com/hara/desktop/stable/latest.json` is the primary updater endpoint because a
+transport failure at GitHub does not advance Tauri to a later endpoint. GitHub remains second for
+non-successful first-party responses. After the protected release is public:
+
+1. Download and run the normal release/updater validation against the complete GitHub asset set.
+2. Upload the identical updater payloads and matching `.sig` files under
+   `hara/desktop/vX.Y.Z/`. Treat that versioned prefix as immutable.
+3. Download every uploaded object through the public CDN and compare its size and SHA-256 with the
+   release asset. Verify byte-range delivery before making the channel discoverable.
+4. Build the mirror manifest with
+   `node scripts/updater-mirror-manifest.mjs build <canonical-latest.json> <tag> <mirror-latest.json>`.
+   This fails closed on unexpected platforms, assets, URLs, versions, or signatures.
+5. Upload the mirror manifest to `hara/desktop/stable/latest.json` **last**, with a short cache lifetime,
+   then download it publicly and run `updater-mirror-manifest.mjs validate`.
+
+The bucket remains private behind the existing CDN. Never use public-read ACLs, overwrite a versioned
+release object, or publish the stable manifest before all referenced bytes have passed public-CDN
+verification.
+
 ## Quality-gate roadmap (adopt from cc-haha, in order)
 
 1. ✅ unit+e2e, tsc/cargo gates, manual smoke

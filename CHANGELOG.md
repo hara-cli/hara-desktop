@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.46 — first-party signed updater channel
+
+- Check Hara's first-party CDN updater manifest before GitHub so ordinary in-app upgrades no longer
+  depend on a working GitHub connection. GitHub remains a secondary endpoint for non-successful CDN
+  responses.
+- Keep the exact release artifacts and embedded minisign signatures unchanged on the mirror. Versioned
+  payloads are immutable and byte-verified through the public CDN before the short-lived stable
+  manifest is published last.
+- Users still on `0.1.45` whose GitHub request already fails need one manual upgrade from Hara's
+  domestic download page; upgrades after `0.1.46` use the first-party signed channel automatically.
+- Bundle the unchanged, verified Hara CLI `0.136.0`; existing conversations, projects, schedules,
+  organization profiles, Desk connections, and credentials are preserved.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.45 — native multi-organization Desk
 
 - Turn the default-hidden Groups foundation into a native, read-only organization Desk. Users can
