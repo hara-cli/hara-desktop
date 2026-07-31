@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.47 — actionable Windows organization-network diagnostics
+
+- Bundle the exact verified Hara CLI `0.137.0`. When an organization model request fails before
+  generation, Desktop now preserves Hara's bounded network-route diagnosis instead of reducing it to
+  the OpenAI SDK's generic `Connection error`.
+- On Windows, the error identifies whether the request used an explicit proxy, the enabled static
+  WinINET proxy, or no supported HTTP(S) route, and gives a focused `hara config set proxy
+  http://127.0.0.1:<port>` action for PAC-only or SOCKS-only setups. Proxy credentials, organization
+  keys, private gateway addresses, and unrelated nested errors remain redacted.
+- Support atomic organization enrollment responses that may include a separate native Desk binding.
+  Existing Control deployments that do not return one keep the current model-only behavior, and
+  existing conversations, projects, schedules, profiles, Desk connections, and credentials are
+  preserved.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so Windows may show a
+  SmartScreen warning until the planned signing service is integrated.
+
 ## 0.1.46 — first-party signed updater channel
 
 - Check Hara's first-party CDN updater manifest before GitHub so ordinary in-app upgrades no longer
