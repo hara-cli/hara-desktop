@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.48 — open-core workspaces and context-owned extension dock
 
 - Make Chat, Projects, Tasks, Groups, and Office first-class open-core modules in one configurable
   dock. Groups and Office are visible for new profiles, every work entry may be hidden or reordered,
