@@ -149,10 +149,9 @@ test("Groups is a native, explicit-read work surface with no renderer-owned tran
       `Groups must not contain ${forbidden}`,
     );
   }
-  assert.match(
-    app,
-    /const GroupsStage = lazy\(\(\) => import\("\.\/Groups"\)\)/,
-  );
+  assert.match(app, /const loadGroups = \(\) => import\("\.\/Groups"\)/);
+  assert.match(app, /const GroupsStage = lazy\(loadGroups\)/);
+  assert.match(app, /warmModule\(loadGroups\(\)\)/);
   assert.match(app, /await client\.deskSnapshot\(profileId, state\)/);
   assert.match(app, /await client\.getDeskTask\(profileId, taskId\)/);
   const selectStart = app.indexOf("const selectGroupsOrganization");

@@ -45,8 +45,6 @@ import {
   type OrganizationConnection,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
-import { ProviderSettings } from "./ProviderSettings";
-import { GatewaySettings } from "./GatewaySettings";
 import { classifyEngineVersion } from "./engine-version.js";
 import { applyDesktopUpdateHandoff } from "./desktop-update.js";
 import {
@@ -57,13 +55,10 @@ import {
   type SessionPlaceInput,
 } from "./session-place";
 import { WorkStarter } from "./WorkStarter";
-import { ArtifactWorkbench } from "./ArtifactWorkbench";
-import {
-  AutomationSidebar,
-  AutomationsPage,
-  type AutomationDraft,
-  type AutomationRun,
-  type AutomationViewId,
+import type {
+  AutomationDraft,
+  AutomationRun,
+  AutomationViewId,
 } from "./Automations";
 import { AUTOMATION_COPY_EN } from "./automation-copy-en";
 import {
@@ -116,7 +111,6 @@ import {
   type ComposerAttachment,
   type ComposerDraft,
 } from "./composer-state";
-import { DesktopCompanionSettings } from "./companion/DesktopCompanionSettings";
 import { useDesktopCompanion } from "./companion/useDesktopCompanion";
 import { IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
@@ -137,19 +131,84 @@ import {
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
-const GroupsStage = lazy(() => import("./Groups"));
+type SettingsSection =
+  | "providers"
+  | "engine"
+  | "security"
+  | "lang"
+  | "modules"
+  | "pets"
+  | "plugins"
+  | "skills";
+
+const loadGroups = () => import("./Groups");
+const loadAutomations = () => import("./Automations");
+const loadOfficeHome = () => import("./OfficeHome").then((module) => ({
+  default: module.OfficeHome,
+}));
+const loadArtifactWorkbench = () => import("./ArtifactWorkbench").then((module) => ({
+  default: module.ArtifactWorkbench,
+}));
+const loadCapabilityDirectory = () => import("./CapabilityDirectory").then((module) => ({
+  default: module.CapabilityDirectory,
+}));
+const loadProviderSettings = () => import("./ProviderSettings").then((module) => ({
+  default: module.ProviderSettings,
+}));
+const loadGatewaySettings = () => import("./GatewaySettings").then((module) => ({
+  default: module.GatewaySettings,
+}));
+const loadDesktopCompanionSettings = () =>
+  import("./companion/DesktopCompanionSettings").then((module) => ({
+    default: module.DesktopCompanionSettings,
+  }));
+
+const GroupsStage = lazy(loadGroups);
 const GroupsContextSidebar = lazy(() =>
-  import("./Groups").then((module) => ({
+  loadGroups().then((module) => ({
     default: module.GroupsSidebar,
   })));
-const OfficeHome = lazy(() =>
-  import("./OfficeHome").then((module) => ({
-    default: module.OfficeHome,
+const AutomationSidebar = lazy(() =>
+  loadAutomations().then((module) => ({
+    default: module.AutomationSidebar,
   })));
-const CapabilityDirectory = lazy(() =>
-  import("./CapabilityDirectory").then((module) => ({
-    default: module.CapabilityDirectory,
+const AutomationsPage = lazy(() =>
+  loadAutomations().then((module) => ({
+    default: module.AutomationsPage,
   })));
+const OfficeHome = lazy(loadOfficeHome);
+const ArtifactWorkbench = lazy(loadArtifactWorkbench);
+const CapabilityDirectory = lazy(loadCapabilityDirectory);
+const ProviderSettings = lazy(loadProviderSettings);
+const GatewaySettings = lazy(loadGatewaySettings);
+const DesktopCompanionSettings = lazy(loadDesktopCompanionSettings);
+
+const warmModule = (promise: Promise<unknown>): void => {
+  void promise.catch(() => {
+    // Preloading is opportunistic. The lazy boundary remains authoritative and surfaces a real
+    // module-load failure if the user opens the destination.
+  });
+};
+
+const preloadSettingsSection = (section: SettingsSection): void => {
+  if (section === "providers") {
+    warmModule(Promise.all([loadProviderSettings(), loadGatewaySettings()]));
+  } else if (section === "pets") {
+    warmModule(loadDesktopCompanionSettings());
+  } else if (section === "plugins") {
+    warmModule(loadCapabilityDirectory());
+  }
+};
+
+const preloadPlace = (place: AppPlace): void => {
+  if (place === "auto") {
+    warmModule(loadAutomations());
+  } else if (place === "groups") {
+    warmModule(loadGroups());
+  } else if (place === "office") {
+    warmModule(Promise.all([loadOfficeHome(), loadArtifactWorkbench()]));
+  }
+};
 
 const groupsDirectoryProfiles = (
   organizations: OrganizationConnection[],
@@ -179,7 +238,7 @@ const groupsDirectoryProfiles = (
 };
 
 type Phase = "boot" | "no-server" | "connecting" | "ready" | "lost";
-// Module destinations backed by the shell: talk / work / orchestrate / groups preview / configure.
+// Module destinations backed by the shell: talk / projects / orchestrate / groups / office / configure.
 type Zone = AppPlace;
 type PendingDesktopUpdate = {
   update: Update;
@@ -488,7 +547,7 @@ export default function App() {
   const [assistantCreating, setAssistantCreating] = useState(false);
   const [engineRestarting, setEngineRestarting] = useState(false);
   // settings place: context column = group anchors, stage = the selected group's forms
-  const [setSec, setSetSec] = useState<"providers" | "engine" | "security" | "lang" | "modules" | "pets" | "plugins" | "skills">("providers");
+  const [setSec, setSetSec] = useState<SettingsSection>("providers");
   // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [split, setSplit] = useState<{ plugin: string; id: string; title: string; url: string } | null>(null);
@@ -1038,6 +1097,8 @@ export default function App() {
   }, [phase, zone, refreshGroupsDirectory]);
 
   const setZone = (z: Zone) => {
+    preloadPlace(z);
+    if (z === "settings") preloadSettingsSection(setSec);
     if ((zone === "chat" || zone === "projects") && active) {
       const current = sessionsRef.current.find((candidate) => candidate.id === active);
       if (current && sessionPlace(current) === zone) activeByZoneRef.current[zone] = active;
@@ -3461,7 +3522,14 @@ export default function App() {
         );
         if (contribution) setZone(contribution.target);
       }}
+      onIntent={(id) => {
+        const contribution = CORE_NAVIGATION_CONTRIBUTIONS.find(
+          (item) => item.id === id,
+        );
+        if (contribution) preloadPlace(contribution.target);
+      }}
       onSelectSettings={() => setZone("settings")}
+      onIntentSettings={() => preloadSettingsSection(setSec)}
     />
   );
   const footBar = (
@@ -3738,18 +3806,24 @@ export default function App() {
           {auto === "old-server" ? (
             <div className="autohint dim">{t("autoNeedsUpdate")}</div>
           ) : (
-            <AutomationSidebar
-              copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
-              jobs={auto?.jobs ?? null}
-              sessions={auto?.sessions ?? null}
-              scheduler={auto?.scheduler}
-              view={autoView}
-              onViewChange={(next) => {
-                setAutoView(next);
-                setAutoReplay(null);
-                markAutoSeen();
-              }}
-            />
+            <Suspense
+              fallback={(
+                <div className="autohint dim" role="status">{t("loading")}</div>
+              )}
+            >
+              <AutomationSidebar
+                copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
+                jobs={auto?.jobs ?? null}
+                sessions={auto?.sessions ?? null}
+                scheduler={auto?.scheduler}
+                view={autoView}
+                onViewChange={(next) => {
+                  setAutoView(next);
+                  setAutoReplay(null);
+                  markAutoSeen();
+                }}
+              />
+            </Suspense>
           )}
           {footBar}
         </div>
@@ -3827,6 +3901,8 @@ export default function App() {
                     key={k}
                     className={`setnav ${setSec === k ? "on" : ""}`}
                     aria-current={setSec === k ? "page" : undefined}
+                    onMouseEnter={() => preloadSettingsSection(k)}
+                    onFocus={() => preloadSettingsSection(k)}
                     onClick={() => setSetSec(k)}
                   >
                     {label}
@@ -3851,23 +3927,31 @@ export default function App() {
                 title={t("setProviders")}
                 description={t("providerSettingsDescription")}
               >
-                <ProviderSettings
-                  embedded
-                  client={clientRef.current}
-                  cwd={server?.cwd}
-                  locale={locale}
-                  onSaved={(next: ProviderSettingsState) => {
-                    setSetupRequired(!next.current.authenticated);
-                    setServer((current) => current
-                      ? { ...current, provider: next.current.provider, model: next.current.model }
-                      : current);
-                    void refreshGroupsDirectory();
-                    void refreshModelInfo(active
-                      ? { sessionId: active }
-                      : { cwd: server?.cwd }).catch(() => {});
-                  }}
-                />
-                <GatewaySettings client={clientRef.current} locale={locale} />
+                <Suspense
+                  fallback={(
+                    <div className="settings-empty" role="status">
+                      {t("loading")}
+                    </div>
+                  )}
+                >
+                  <ProviderSettings
+                    embedded
+                    client={clientRef.current}
+                    cwd={server?.cwd}
+                    locale={locale}
+                    onSaved={(next: ProviderSettingsState) => {
+                      setSetupRequired(!next.current.authenticated);
+                      setServer((current) => current
+                        ? { ...current, provider: next.current.provider, model: next.current.model }
+                        : current);
+                      void refreshGroupsDirectory();
+                      void refreshModelInfo(active
+                        ? { sessionId: active }
+                        : { cwd: server?.cwd }).catch(() => {});
+                    }}
+                  />
+                  <GatewaySettings client={clientRef.current} locale={locale} />
+                </Suspense>
               </SettingsPage>
             )}
             {setSec === "engine" && (
@@ -4176,16 +4260,24 @@ export default function App() {
               />
             )}
             {setSec === "pets" && (
-              <DesktopCompanionSettings
-                t={t}
-                awake={petAwake}
-                selector={petSelector}
-                catalog={petCatalog}
-                error={petCatalogError}
-                onToggleAwake={() => setPetAwake((awake) => !awake)}
-                onRefresh={() => void refreshPets()}
-                onSelect={setPetSelector}
-              />
+              <Suspense
+                fallback={(
+                  <div className="settings-empty" role="status">
+                    {t("loading")}
+                  </div>
+                )}
+              >
+                <DesktopCompanionSettings
+                  t={t}
+                  awake={petAwake}
+                  selector={petSelector}
+                  catalog={petCatalog}
+                  error={petCatalogError}
+                  onToggleAwake={() => setPetAwake((awake) => !awake)}
+                  onRefresh={() => void refreshPets()}
+                  onSelect={setPetSelector}
+                />
+              </Suspense>
             )}
             {setSec === "plugins" && (
               <Suspense
@@ -4387,51 +4479,67 @@ export default function App() {
               <div className="autohint dim">{t("autoNeedsUpdate")}</div>
             </div>
           ) : (
-            <AutomationsPage
-              copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
-              jobs={auto?.jobs ?? null}
-              sessions={auto?.sessions ?? null}
-              scheduler={auto?.scheduler}
-              view={autoView}
-              add={addAutomationDraft}
-              update={updateAutomationDraft}
-              run={runAutomationNow}
-              toggle={toggleAutomation}
-              delete={deleteAutomation}
-              install={installAutomationScheduler}
-              openReplay={openAutomationReplay}
-            />
+            <Suspense
+              fallback={(
+                <div className="scroll boardpad">
+                  <div className="autohint dim" role="status">{t("loading")}</div>
+                </div>
+              )}
+            >
+              <AutomationsPage
+                copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
+                jobs={auto?.jobs ?? null}
+                sessions={auto?.sessions ?? null}
+                scheduler={auto?.scheduler}
+                view={autoView}
+                add={addAutomationDraft}
+                update={updateAutomationDraft}
+                run={runAutomationNow}
+                toggle={toggleAutomation}
+                delete={deleteAutomation}
+                install={installAutomationScheduler}
+                openReplay={openAutomationReplay}
+              />
+            </Suspense>
           )}
         </main>
       ) : activeArtifact && zone === "office" ? (
-        <ArtifactWorkbench
-          details={activeArtifact}
-          revisions={artifactRevisions}
-          verifying={artifactBusy === "verify"}
-          onVerify={() => void verifyActiveArtifact()}
-          onImportAnother={() => void importArtifactFile()}
-          copy={{
-            workbench: t("artifactWorkbench"),
-            local: t("artifactLocal"),
-            safeImport: t("artifactSafeImport"),
-            safeImportHint: t("artifactSafeImportHint"),
-            previewPending: t("artifactPreviewPending"),
-            verify: t("artifactVerify"),
-            verifying: t("artifactVerifying"),
-            verified: t("artifactVerified"),
-            importAnother: t("artifactImportAnother"),
-            currentVersion: t("artifactCurrentVersion"),
-            fileType: t("artifactFileType"),
-            size: t("artifactSize"),
-            integrity: t("artifactIntegrity"),
-            history: t("artifactHistory"),
-            nextStage: t("artifactNextStage"),
-            nextStageHint: t("artifactNextStageHint"),
-            typePresentation: t("artifactTypePresentation"),
-            typeSpreadsheet: t("artifactTypeSpreadsheet"),
-            typeDocument: t("artifactTypeDocument"),
-          }}
-        />
+        <Suspense
+          fallback={(
+            <main className="artifact-workbench" aria-busy="true">
+              <p className="dim" role="status">{t("loading")}</p>
+            </main>
+          )}
+        >
+          <ArtifactWorkbench
+            details={activeArtifact}
+            revisions={artifactRevisions}
+            verifying={artifactBusy === "verify"}
+            onVerify={() => void verifyActiveArtifact()}
+            onImportAnother={() => void importArtifactFile()}
+            copy={{
+              workbench: t("artifactWorkbench"),
+              local: t("artifactLocal"),
+              safeImport: t("artifactSafeImport"),
+              safeImportHint: t("artifactSafeImportHint"),
+              previewPending: t("artifactPreviewPending"),
+              verify: t("artifactVerify"),
+              verifying: t("artifactVerifying"),
+              verified: t("artifactVerified"),
+              importAnother: t("artifactImportAnother"),
+              currentVersion: t("artifactCurrentVersion"),
+              fileType: t("artifactFileType"),
+              size: t("artifactSize"),
+              integrity: t("artifactIntegrity"),
+              history: t("artifactHistory"),
+              nextStage: t("artifactNextStage"),
+              nextStageHint: t("artifactNextStageHint"),
+              typePresentation: t("artifactTypePresentation"),
+              typeSpreadsheet: t("artifactTypeSpreadsheet"),
+              typeDocument: t("artifactTypeDocument"),
+            }}
+          />
+        </Suspense>
       ) : zone === "office" ? (
         <Suspense
           fallback={(

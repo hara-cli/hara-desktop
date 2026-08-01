@@ -14,8 +14,10 @@
 - Treat organization selection as one context switch for its managed model route and native Desk,
   without exposing model or Desk credentials to the renderer. Existing conversations remain pinned
   to the profile they started with.
-- Load Groups, Office, and the capability directory only when their surface is opened, keeping the
-  initial Assistant path smaller.
+- Split the Tasks automation console, Groups, Office, Artifact details, model/bot settings, Desktop
+  companion settings, and the capability directory from the initial Assistant bundle. Dock and
+  Settings entries preload their matching module on pointer hover or keyboard focus to keep
+  intentional navigation responsive.
 
 ## 0.1.47 — actionable Windows organization-network diagnostics
 

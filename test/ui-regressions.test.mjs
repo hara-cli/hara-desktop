@@ -334,6 +334,33 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*\.settings-capability-list \.plug[\s\S]*flex-direction:\s*column/);
 });
 
+test("secondary work surfaces are split from startup and preload on navigation intent", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const rail = readFileSync(`${root}/src/AppRail.tsx`, "utf8");
+
+  for (const component of [
+    "AutomationSidebar",
+    "AutomationsPage",
+    "ArtifactWorkbench",
+    "CapabilityDirectory",
+    "ProviderSettings",
+    "GatewaySettings",
+    "DesktopCompanionSettings",
+  ]) {
+    assert.match(app, new RegExp(`const ${component} = lazy\\(`));
+  }
+  assert.match(app, /const GroupsStage = lazy\(loadGroups\)/);
+  assert.match(app, /warmModule\(loadAutomations\(\)\)/);
+  assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\)\]\)\)/);
+  assert.match(app, /warmModule\(Promise\.all\(\[loadProviderSettings\(\), loadGatewaySettings\(\)\]\)\)/);
+  assert.match(app, /onMouseEnter=\{\(\) => preloadSettingsSection\(k\)\}/);
+  assert.match(app, /onFocus=\{\(\) => preloadSettingsSection\(k\)\}/);
+  assert.match(rail, /onMouseEnter=\{\(\) => onIntent\(item\.id\)\}/);
+  assert.match(rail, /onFocus=\{\(\) => onIntent\(item\.id\)\}/);
+  assert.match(rail, /onMouseEnter=\{onIntentSettings\}/);
+  assert.match(rail, /onFocus=\{onIntentSettings\}/);
+});
+
 test("skills settings can start a safe conversational skill builder", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");

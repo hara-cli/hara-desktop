@@ -38,7 +38,9 @@ interface AppRailProps {
   labels: AppRailLabels;
   updateAvailable: string;
   onSelect: (id: string) => void;
+  onIntent: (id: string) => void;
   onSelectSettings: () => void;
+  onIntentSettings: () => void;
 }
 
 export function NavigationGlyph({
@@ -65,7 +67,9 @@ export function AppRail({
   labels,
   updateAvailable,
   onSelect,
+  onIntent,
   onSelectSettings,
+  onIntentSettings,
 }: AppRailProps) {
   return (
     <nav className="rail" aria-label={labels.mainNavigation}>
@@ -76,6 +80,8 @@ export function AppRail({
           aria-label={item.label}
           aria-current={item.active ? "page" : undefined}
           title={item.shortcut ? `${item.label} ${item.shortcut}` : item.label}
+          onMouseEnter={() => onIntent(item.id)}
+          onFocus={() => onIntent(item.id)}
           onClick={() => onSelect(item.id)}
         >
           <NavigationGlyph name={item.icon} />
@@ -101,6 +107,8 @@ export function AppRail({
             ? `${labels.updateAvailable}: ${updateAvailable}`
             : `${labels.settings} ⌘,`
         }
+        onMouseEnter={onIntentSettings}
+        onFocus={onIntentSettings}
         onClick={onSelectSettings}
       >
         <IconCog size={18} />

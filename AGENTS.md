@@ -4,7 +4,10 @@
 
 Hara Desktop is a Tauri shell around the Hara CLI server; agent logic and permission decisions remain in `hara serve`. React/TypeScript UI code is in `src/`, Rust host code and Tauri metadata in `src-tauri/`, release/build helpers in `scripts/`, and tests in `test/`. Read `WORKFLOW.md` before changing sidecar, updater, signing, or release behavior.
 
-Preserve protocol-v1 session, approval, interruption, and capability negotiation semantics. Keep the four-place UI model and notification rules documented in `README.md`; automated runs remain read-only replays unless explicitly forked.
+Preserve protocol-v1 session, approval, interruption, and capability negotiation semantics. Keep the
+open-core work-place isolation and notification rules documented in `README.md`; Chat, Projects,
+Tasks, Groups, and Office must not reuse one another's active session or data authority. Automated
+runs remain read-only replays unless explicitly forked, and Settings remains the fixed recovery path.
 
 ## Development & Tests
 

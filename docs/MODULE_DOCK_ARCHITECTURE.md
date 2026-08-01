@@ -167,9 +167,11 @@ Settings separates four concepts instead of presenting one flat enable/disable l
 Installation/enablement and connector authorization remain distinct security states. An enabled
 plugin is not presented as connected to organization data unless its connector has separately
 received authorization. This follows the same source/installed separation used by the Codex plugin
-directory while preserving Hara's renderer and Serve boundaries. Office and the capability directory
-are loaded only when their corresponding work surface or Settings section is opened, so this expansion
-does not inflate the initial Assistant path.
+directory while preserving Hara's renderer and Serve boundaries. The Tasks automation console,
+Groups, Office, Artifact details, model/bot settings, Desktop companion settings, and the capability
+directory are split from the initial Assistant bundle. Dock and Settings entries preload their
+matching module on pointer hover or keyboard focus, keeping startup lean without making the first
+intentional navigation feel delayed.
 
 ## Phase 2: reviewed plugin surfaces
 
