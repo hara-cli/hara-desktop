@@ -86,9 +86,12 @@ places still preserve separate session ownership and density. Invariants:
   ambient-grade (an automation ran and left a trace) → count chip, NEVER a dock badge.
 - Automated sessions never mix into manual session lists, and never open as live conversations —
   replay is read-only; `session.fork` is the only continuation path.
-- A plugin panel is a WORK stage, not a settings artifact: launching one goes to the projects
-  place (split view); settings only manages enable/disable. A plugin does not receive a primary dock
-  surface until the isolated plugin-surface contract is implemented and reviewed.
+- A plugin panel is a WORK stage, not a settings artifact: Settings may start an enabled panel, but
+  the work surface moves to Projects and binds the Extension Dock to one concrete project session.
+  A plugin does not receive a primary dock surface until the isolated plugin-surface contract is
+  reviewed.
+- Office Artifacts use that same owner-bound Extension Dock. Browser pages stay in the system browser
+  until a reviewed Browser surface can isolate origin, storage, navigation, and short-lived tokens.
 - One active desktop assistant conversation plus folded, switchable history; one thread per external
   origin (WeChat etc.), separated by the "external channels" divider.
 

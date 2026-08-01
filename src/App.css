@@ -1001,21 +1001,6 @@ button.deny {
   align-items: center;
 }
 
-.panelbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg2);
-}
-.panelframe {
-  flex: 1;
-  border: 0;
-  width: 100%;
-  background: #fff;
-}
-
 .chat {
   flex: 1;
   display: flex;
@@ -1854,39 +1839,27 @@ select {
   display: block;
 }
 
-/* ── chat ↔ live-preview split (project panels) ── */
-.work {
+/* The lightweight host stays in the startup CSS; the actual ExtensionDock remains lazy. */
+.extension-work {
   flex: 1;
   display: flex;
   min-width: 0;
+  min-height: 0;
+  container-name: extension-work;
+  container-type: inline-size;
 }
-.work .chat {
+.extension-primary {
+  flex: 1 1 auto;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.extension-primary > * {
   flex: 1;
   min-width: 0;
 }
-.sidepanel {
-  width: 46%;
-  min-width: 320px;
-  border-left: 1px solid var(--bg3);
-  display: flex;
-  flex-direction: column;
-  background: var(--bg2);
-}
-.sidepanel .panelbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--bg3);
-}
-.sidepanel .panelbar .ghost {
-  margin-left: auto;
-}
-.sidepanel .panelframe {
-  flex: 1;
-  border: 0;
-  background: #fff;
-}
+
+/* Project capability launcher. The active work surface is hosted by ExtensionDock. */
 .paneltab {
   margin-left: auto;
   font-size: 12px;
@@ -1909,22 +1882,6 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-/* panel loading overlay */
-.framewrap {
-  position: relative;
-  flex: 1;
-  display: flex;
-}
-.frameload {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg2);
-  z-index: 1;
 }
 
 /* ── the configurable icon rail ── */
@@ -5357,6 +5314,42 @@ button.provider-preset.enterprise.on {
   color: #8d8781;
   font-size: 10px;
   line-height: 1.65;
+}
+.artifact-workbench.is-embedded {
+  padding: 20px 18px 30px;
+}
+.artifact-workbench.is-embedded .artifact-workbench-head {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+}
+.artifact-workbench.is-embedded .artifact-workbench-head h1 {
+  max-width: 100%;
+  font-size: 24px;
+  white-space: normal;
+}
+.artifact-workbench.is-embedded .artifact-workbench-grid {
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+.artifact-workbench.is-embedded .artifact-preview-stage {
+  min-height: 360px;
+  padding-inline: 12px;
+}
+.artifact-workbench.is-embedded .artifact-paper {
+  width: 88%;
+}
+.artifact-workbench.is-embedded .artifact-paper-document {
+  width: 66%;
+}
+.artifact-workbench.is-embedded .artifact-inspector {
+  display: block;
+  padding: 0 2px;
+}
+.artifact-workbench.is-embedded .artifact-inspector > * + * {
+  margin-top: 24px;
 }
 @media (max-width: 980px) {
   .artifact-workbench-grid {

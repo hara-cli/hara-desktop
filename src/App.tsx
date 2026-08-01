@@ -111,6 +111,16 @@ import {
   type ComposerAttachment,
   type ComposerDraft,
 } from "./composer-state";
+import {
+  classifyPanelSurface,
+  extensionMatchesContext,
+  publicPanelOrigin,
+  type ArtifactExtension,
+  type ExtensionDockItem,
+  type ExtensionDockMode,
+  type ExtensionSurfaceKind,
+  type LegacyPanelExtension,
+} from "./extension-dock-state";
 import { useDesktopCompanion } from "./companion/useDesktopCompanion";
 import { IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
@@ -143,6 +153,7 @@ type SettingsSection =
 
 const loadGroups = () => import("./Groups");
 const loadAutomations = () => import("./Automations");
+const loadExtensionDock = () => import("./ExtensionDock");
 const loadOfficeHome = () => import("./OfficeHome").then((module) => ({
   default: module.OfficeHome,
 }));
@@ -176,6 +187,7 @@ const AutomationsPage = lazy(() =>
   loadAutomations().then((module) => ({
     default: module.AutomationsPage,
   })));
+const ExtensionDock = lazy(loadExtensionDock);
 const OfficeHome = lazy(loadOfficeHome);
 const ArtifactWorkbench = lazy(loadArtifactWorkbench);
 const CapabilityDirectory = lazy(loadCapabilityDirectory);
@@ -206,9 +218,38 @@ const preloadPlace = (place: AppPlace): void => {
   } else if (place === "groups") {
     warmModule(loadGroups());
   } else if (place === "office") {
-    warmModule(Promise.all([loadOfficeHome(), loadArtifactWorkbench()]));
+    warmModule(Promise.all([loadOfficeHome(), loadArtifactWorkbench(), loadExtensionDock()]));
   }
 };
+
+const artifactExtensionFor = (details: ArtifactDetails): ArtifactExtension => ({
+  type: "artifact",
+  id: `artifact:${details.artifact.artifactId}:${details.currentRevision.revisionId}`,
+  title: details.artifact.title,
+  surfaceKind: details.artifact.kind,
+  owner: {
+    place: "office",
+    artifactId: details.artifact.artifactId,
+    revisionId: details.currentRevision.revisionId,
+  },
+  // Preserve the existing full workbench on first open. Users can restore the Office library beside it.
+  mode: "maximized",
+});
+
+const panelExtensionFor = (
+  panel: PanelSpec & { plugin: string },
+  url: string,
+  owner: LegacyPanelExtension["owner"],
+): LegacyPanelExtension => ({
+  type: "legacy-panel",
+  id: `panel:${owner.sessionId}:${panel.plugin}:${panel.id}`,
+  title: panel.title,
+  plugin: panel.plugin,
+  url,
+  surfaceKind: classifyPanelSurface(panel.plugin, panel.id, panel.title),
+  owner,
+  mode: "docked",
+});
 
 const groupsDirectoryProfiles = (
   organizations: OrganizationConnection[],
@@ -548,9 +589,10 @@ export default function App() {
   const [engineRestarting, setEngineRestarting] = useState(false);
   // settings place: context column = group anchors, stage = the selected group's forms
   const [setSec, setSetSec] = useState<SettingsSection>("providers");
-  // chat ↔ live-preview split (project panels via manifest detect markers) — the design/video loop
+  // Context-owned extension screen. A panel/file never changes owner when the user changes place.
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
-  const [split, setSplit] = useState<{ plugin: string; id: string; title: string; url: string } | null>(null);
+  const [extensionDock, setExtensionDock] = useState<ExtensionDockItem | null>(null);
+  const [extensionLoading, setExtensionLoading] = useState(false);
   const [home, setHome] = useState("");
   const [unread, setUnread] = useState<Record<string, boolean>>({});
   const [autoUnread, setAutoUnread] = useState(0); // ambient counter — never mixes with manual unread
@@ -1106,7 +1148,6 @@ export default function App() {
     zoneRef.current = z;
     sessionOpenRequestRef.current += 1;
     setZoneRaw(z);
-    setSplit(null);
     setAutoReplay(null);
     localStorage.setItem("hara.zone", z);
     if (z === "chat" || z === "projects") {
@@ -2059,9 +2100,9 @@ export default function App() {
       setActiveArtifact(verified);
       setArtifactRevisions(revisionResult.revisions);
       setActive(null);
-      setSplit(null);
       setAutoReplay(null);
       setZone("office");
+      setExtensionDock(artifactExtensionFor(verified));
     } catch (error: any) {
       if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
     } finally {
@@ -2084,8 +2125,8 @@ export default function App() {
       setActiveArtifact(details);
       setArtifactRevisions(revisionResult.revisions);
       setActive(null);
-      setSplit(null);
       setAutoReplay(null);
+      setExtensionDock(artifactExtensionFor(details));
     } catch (error: any) {
       if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
     } finally {
@@ -2101,8 +2142,20 @@ export default function App() {
     setArtifactBusy("verify");
     setErr("");
     try {
-      const details = await client.getArtifact(artifactId);
-      if (requestId === artifactOpenRequestRef.current) setActiveArtifact(details);
+      const [details, revisionResult] = await Promise.all([
+        client.getArtifact(artifactId),
+        client.listArtifactRevisions(artifactId),
+      ]);
+      if (requestId === artifactOpenRequestRef.current) {
+        setActiveArtifact(details);
+        setArtifactRevisions(revisionResult.revisions);
+        setExtensionDock((current) => {
+          if (current?.type !== "artifact" || current.owner.artifactId !== artifactId) {
+            return current;
+          }
+          return { ...artifactExtensionFor(details), mode: current.mode };
+        });
+      }
     } catch (error: any) {
       if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
     } finally {
@@ -2532,23 +2585,87 @@ export default function App() {
     }
   };
 
-  /** Launch a plugin panel from settings — it opens WHERE WORK HAPPENS (顾雅 ruling: a panel is a
-   *  work stage, not a settings artifact): jump to the projects place with the panel as the split.
-   *  No more full-screen hijack overlay. */
+  /** A capability panel is project work. Settings may launch it only when a real project owner exists. */
   const openPanel = async (pluginName: string, spec: PanelSpec) => {
     if (pluginsRef.current?.find((plugin) => plugin.name === pluginName)?.enabled !== true) {
       setErr(locale === "zh" ? "该能力已停用，不能启动它的工作面板。" : "This capability is disabled, so its work panel cannot be started.");
       return;
     }
+    const projectSessionId = activeByZoneRef.current.projects;
+    const projectSession = projectSessionId
+      ? sessionsRef.current.find((session) => session.id === projectSessionId)
+      : undefined;
+    if (!projectSession || sessionPlace(projectSession) !== "projects") {
+      setErr(locale === "zh"
+        ? "先打开一个项目，再从能力中心启动工作面板。面板不会在没有项目归属时运行。"
+        : "Open a project before starting this work panel. A panel never runs without a project owner.");
+      setZone("projects");
+      return;
+    }
+    const projectClient = clientRef.current;
+    if (!projectClient) {
+      setErr(locale === "zh" ? "Hara 引擎尚未连接。" : "The Hara engine is not connected.");
+      return;
+    }
+    const launchZone = zoneRef.current;
+    const assertPanelLaunchContext = () => {
+      const currentProjectId = activeByZoneRef.current.projects;
+      const currentProject = currentProjectId
+        ? sessionsRef.current.find((session) => session.id === currentProjectId)
+        : undefined;
+      if (
+        clientRef.current !== projectClient
+        || zoneRef.current !== launchZone
+        || !currentProject
+        || currentProject.id !== projectSession.id
+        || sessionPlace(currentProject) !== "projects"
+        || currentProject.cwd !== projectSession.cwd
+      ) {
+        throw new Error(locale === "zh"
+          ? "项目上下文已变化，请在当前项目中重新启动该面板。"
+          : "The project context changed. Start the panel again from the current project.");
+      }
+      if (pluginsRef.current?.find((plugin) => plugin.name === pluginName)?.enabled !== true) {
+        throw new Error(locale === "zh"
+          ? "该能力已停用，不能启动它的工作面板。"
+          : "This capability is disabled, so its work panel cannot be started.");
+      }
+    };
+    warmModule(loadExtensionDock());
     setPanelBusy(spec.id);
     try {
-      const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd: null, portHint: spec.port ?? null });
+      // The Settings catalog is descriptive, not an execution authority. Ask Serve which panels
+      // actually match this exact project and execute only the authoritative returned descriptor.
+      const detected = await projectClient.projectPanels({ sessionId: projectSession.id });
+      assertPanelLaunchContext();
+      const applicable = detected?.cwd === projectSession.cwd
+        ? detected.panels.find((panel) => panel.plugin === pluginName && panel.id === spec.id)
+        : undefined;
+      if (!applicable) {
+        throw new Error(locale === "zh"
+          ? "该面板不适用于当前项目；请打开包含其识别文件的项目后重试。"
+          : "This panel does not apply to the current project. Open a project with its detection markers and try again.");
+      }
+      const url = await invoke<string>("start_panel", {
+        command: applicable.command,
+        args: applicable.args ?? [],
+        cwd: projectSession.cwd,
+        portHint: applicable.port ?? null,
+      });
+      // start_panel may take up to 20 seconds. Never revive stale work after navigation, disconnect,
+      // project replacement, or capability disablement during that wait.
+      assertPanelLaunchContext();
       zoneRef.current = "projects";
       sessionOpenRequestRef.current += 1;
       setZoneRaw("projects");
+      setActive(projectSession.id);
       localStorage.setItem("hara.zone", "projects");
-      setSplitLoading(true);
-      setSplit({ plugin: pluginName, id: spec.id, title: spec.title, url });
+      setExtensionLoading(true);
+      setExtensionDock(panelExtensionFor(
+        applicable,
+        url,
+        { place: "projects", sessionId: projectSession.id, cwd: projectSession.cwd },
+      ));
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -2556,20 +2673,59 @@ export default function App() {
     }
   };
 
-  /** Toggle the chat ↔ preview split for a project panel (runs the panel command IN the project). */
-  const [splitLoading, setSplitLoading] = useState(false);
-  const toggleSplit = async (spec: ProjectPanel, cwd: string) => {
-    if (split?.id === spec.id) return setSplit(null);
+  /** Toggle the project-owned extension screen; it can never migrate to another session implicitly. */
+  const toggleExtensionPanel = async (spec: ProjectPanel, cwd: string) => {
+    if (!active) return;
+    const ownerSessionId = active;
+    if (
+      extensionDock?.type === "legacy-panel"
+      && extensionDock.plugin === spec.plugin
+      && extensionDock.owner.sessionId === ownerSessionId
+      && extensionDock.id === `panel:${ownerSessionId}:${spec.plugin}:${spec.id}`
+    ) {
+      setExtensionDock(null);
+      return;
+    }
     const plugin = pluginsRef.current?.find((candidate) => candidate.name === spec.plugin);
     if (plugin && !plugin.enabled) {
       setErr(locale === "zh" ? "该能力已停用，不能启动它的工作面板。" : "This capability is disabled, so its work panel cannot be started.");
       return;
     }
+    const launchGeneration = sessionOpenRequestRef.current;
+    const assertDirectPanelLaunchContext = () => {
+      const currentProjectId = activeByZoneRef.current.projects;
+      const currentProject = currentProjectId
+        ? sessionsRef.current.find((session) => session.id === currentProjectId)
+        : undefined;
+      if (
+        sessionOpenRequestRef.current !== launchGeneration
+        || zoneRef.current !== "projects"
+        || !currentProject
+        || currentProject.id !== ownerSessionId
+        || sessionPlace(currentProject) !== "projects"
+        || currentProject.cwd !== cwd
+      ) {
+        throw new Error(locale === "zh"
+          ? "项目上下文已变化，请在当前项目中重新启动该面板。"
+          : "The project context changed. Start the panel again from the current project.");
+      }
+      if (pluginsRef.current?.find((candidate) => candidate.name === spec.plugin)?.enabled === false) {
+        throw new Error(locale === "zh"
+          ? "该能力已停用，不能启动它的工作面板。"
+          : "This capability is disabled, so its work panel cannot be started.");
+      }
+    };
+    warmModule(loadExtensionDock());
     setPanelBusy(spec.id);
     try {
       const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd, portHint: spec.port ?? null });
-      setSplitLoading(true);
-      setSplit({ plugin: spec.plugin, id: spec.id, title: spec.title, url });
+      assertDirectPanelLaunchContext();
+      setExtensionLoading(true);
+      setExtensionDock(panelExtensionFor(
+        spec,
+        url,
+        { place: "projects", sessionId: ownerSessionId, cwd },
+      ));
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -2577,12 +2733,12 @@ export default function App() {
     }
   };
 
-  /** Pop the split panel into its own window (big-screen mode); the split closes. */
-  const popOutSplit = () => {
-    if (!split) return;
+  /** Legacy local panels may still pop out; native Office/Desk surfaces stay inside their owner. */
+  const popOutExtension = () => {
+    if (extensionDock?.type !== "legacy-panel") return;
     try {
-      new WebviewWindow(`panel-${split.id}-${Date.now() % 100000}`, { url: split.url, title: `Hara — ${split.title}`, width: 1100, height: 780 });
-      setSplit(null);
+      new WebviewWindow(`panel-${extensionDock.id}-${Date.now() % 100000}`, { url: extensionDock.url, title: `Hara — ${extensionDock.title}`, width: 1100, height: 780 });
+      setExtensionDock(null);
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     }
@@ -2597,7 +2753,9 @@ export default function App() {
     ) ?? null;
     pluginsRef.current = optimistic;
     setPlugins(optimistic);
-    if (!enabled && split?.plugin === name) setSplit(null);
+    if (!enabled && extensionDock?.type === "legacy-panel" && extensionDock.plugin === name) {
+      setExtensionDock(null);
+    }
     if (!enabled) {
       setProjPanels((current) =>
         Object.fromEntries(
@@ -3121,7 +3279,19 @@ export default function App() {
           (projPanels[activeSession.cwd] ?? [])
             .filter((sp) => plugins?.find((plugin) => plugin.name === sp.plugin)?.enabled !== false)
             .map((sp) => (
-              <button key={sp.id} className={`paneltab ${split?.id === sp.id ? "on" : ""}`} disabled={panelBusy === sp.id} onClick={() => void toggleSplit(sp, activeSession.cwd)}>
+              <button
+                key={sp.id}
+                className={`paneltab ${
+                  extensionDock?.type === "legacy-panel"
+                  && extensionDock.id === `panel:${activeSession.id}:${sp.plugin}:${sp.id}`
+                    ? "on"
+                    : ""
+                }`}
+                disabled={panelBusy === sp.id}
+                onMouseEnter={() => warmModule(loadExtensionDock())}
+                onFocus={() => warmModule(loadExtensionDock())}
+                onClick={() => void toggleExtensionPanel(sp, activeSession.cwd)}
+              >
                 {panelBusy === sp.id ? "…" : `◧ ${sp.title}`}
               </button>
             ))}
@@ -3550,6 +3720,115 @@ export default function App() {
       </span>
     </div>
   );
+  const panelExtension = extensionDock?.type === "legacy-panel"
+    && extensionMatchesContext(extensionDock, {
+      place: "projects",
+      sessionId: zone === "projects" ? active : null,
+    })
+      ? extensionDock
+      : null;
+  const artifactExtension = extensionDock?.type === "artifact"
+    && activeArtifact
+    && extensionMatchesContext(extensionDock, {
+      place: "office",
+      artifactId: activeArtifact.artifact.artifactId,
+      revisionId: activeArtifact.currentRevision.revisionId,
+    })
+      ? extensionDock
+      : null;
+  const extensionKindLabel = (kind: ExtensionSurfaceKind): string => {
+    if (kind === "presentation") return t("artifactTypePresentation");
+    if (kind === "spreadsheet") return t("artifactTypeSpreadsheet");
+    if (kind === "document") return t("artifactTypeDocument");
+    if (kind === "design") return t("extensionDesign");
+    if (kind === "browser") return t("extensionBrowser");
+    return t("extensionCapability");
+  };
+  const extensionCopy = {
+    extension: t("extensionScreen"),
+    resize: t("extensionResize"),
+    maximize: t("extensionMaximize"),
+    restore: t("extensionRestore"),
+    popOut: t("openInWindow"),
+    close: t("extensionClose"),
+  };
+  const setExtensionMode = (itemId: string, mode: ExtensionDockMode) => {
+    setExtensionDock((current) => current?.id === itemId ? { ...current, mode } : current);
+  };
+  const officeHomeSurface = (
+    <Suspense
+      fallback={(
+        <main className="office-home" aria-busy="true">
+          <p className="dim" role="status">{t("loading")}</p>
+        </main>
+      )}
+    >
+      <OfficeHome
+        importing={artifactBusy === "import"}
+        onImport={(kind) => void importArtifactFile(kind)}
+        copy={{
+          eyebrow: t("officeEyebrow"),
+          title: t("officeTitle"),
+          description: t("officeDescription"),
+          included: t("officeIncluded"),
+          localFirst: t("officeLocalFirst"),
+          importFile: t("importFile"),
+          importType: t("officeImportType"),
+          importing: t("artifactImporting"),
+          presentation: t("artifactTypePresentation"),
+          presentationHint: t("officePresentationHint"),
+          presentationFormats: t("officePresentationFormats"),
+          spreadsheet: t("artifactTypeSpreadsheet"),
+          spreadsheetHint: t("officeSpreadsheetHint"),
+          spreadsheetFormats: t("officeSpreadsheetFormats"),
+          document: t("artifactTypeDocument"),
+          documentHint: t("officeDocumentHint"),
+          documentFormats: t("officeDocumentFormats"),
+          safetyTitle: t("officeSafetyTitle"),
+          safetyHint: t("officeSafetyHint"),
+        }}
+      />
+    </Suspense>
+  );
+  const artifactWorkbenchSurface = activeArtifact ? (
+    <Suspense
+      fallback={(
+        <main className={`artifact-workbench${artifactExtension?.mode === "docked" ? " is-embedded" : ""}`} aria-busy="true">
+          <p className="dim" role="status">{t("loading")}</p>
+        </main>
+      )}
+    >
+      <ArtifactWorkbench
+        embedded={artifactExtension?.mode === "docked"}
+        details={activeArtifact}
+        revisions={artifactRevisions}
+        verifying={artifactBusy === "verify"}
+        onVerify={() => void verifyActiveArtifact()}
+        onImportAnother={() => void importArtifactFile()}
+        copy={{
+          workbench: t("artifactWorkbench"),
+          local: t("artifactLocal"),
+          safeImport: t("artifactSafeImport"),
+          safeImportHint: t("artifactSafeImportHint"),
+          previewPending: t("artifactPreviewPending"),
+          verify: t("artifactVerify"),
+          verifying: t("artifactVerifying"),
+          verified: t("artifactVerified"),
+          importAnother: t("artifactImportAnother"),
+          currentVersion: t("artifactCurrentVersion"),
+          fileType: t("artifactFileType"),
+          size: t("artifactSize"),
+          integrity: t("artifactIntegrity"),
+          history: t("artifactHistory"),
+          nextStage: t("artifactNextStage"),
+          nextStageHint: t("artifactNextStageHint"),
+          typePresentation: t("artifactTypePresentation"),
+          typeSpreadsheet: t("artifactTypeSpreadsheet"),
+          typeDocument: t("artifactTypeDocument"),
+        }}
+      />
+    </Suspense>
+  ) : null;
   const updateNoticeVersion = pendingDesktopUpdateRef.current?.version || updAvail;
   const updatePercent = updateProgress?.total
     ? Math.min(100, Math.round((updateProgress.downloaded / updateProgress.total) * 100))
@@ -4503,97 +4782,61 @@ export default function App() {
             </Suspense>
           )}
         </main>
-      ) : activeArtifact && zone === "office" ? (
-        <Suspense
-          fallback={(
-            <main className="artifact-workbench" aria-busy="true">
-              <p className="dim" role="status">{t("loading")}</p>
-            </main>
-          )}
-        >
-          <ArtifactWorkbench
-            details={activeArtifact}
-            revisions={artifactRevisions}
-            verifying={artifactBusy === "verify"}
-            onVerify={() => void verifyActiveArtifact()}
-            onImportAnother={() => void importArtifactFile()}
-            copy={{
-              workbench: t("artifactWorkbench"),
-              local: t("artifactLocal"),
-              safeImport: t("artifactSafeImport"),
-              safeImportHint: t("artifactSafeImportHint"),
-              previewPending: t("artifactPreviewPending"),
-              verify: t("artifactVerify"),
-              verifying: t("artifactVerifying"),
-              verified: t("artifactVerified"),
-              importAnother: t("artifactImportAnother"),
-              currentVersion: t("artifactCurrentVersion"),
-              fileType: t("artifactFileType"),
-              size: t("artifactSize"),
-              integrity: t("artifactIntegrity"),
-              history: t("artifactHistory"),
-              nextStage: t("artifactNextStage"),
-              nextStageHint: t("artifactNextStageHint"),
-              typePresentation: t("artifactTypePresentation"),
-              typeSpreadsheet: t("artifactTypeSpreadsheet"),
-              typeDocument: t("artifactTypeDocument"),
-            }}
-          />
-        </Suspense>
       ) : zone === "office" ? (
-        <Suspense
-          fallback={(
-            <main className="office-home" aria-busy="true">
-              <p className="dim" role="status">{t("loading")}</p>
-            </main>
+        <div className={`extension-work office-extension-work${artifactExtension?.mode === "maximized" ? " is-extension-maximized" : ""}`}>
+          <div className="extension-primary">{officeHomeSurface}</div>
+          {artifactExtension && artifactWorkbenchSurface && (
+            <Suspense fallback={<aside className="extension-dock is-maximized" aria-busy="true" />}>
+              <ExtensionDock
+                kind={artifactExtension.surfaceKind}
+                kindLabel={extensionKindLabel(artifactExtension.surfaceKind)}
+                title={artifactExtension.title}
+                source={t("extensionLocalCapability")}
+                context={artifactExtension.owner.revisionId.slice(-8).toUpperCase()}
+                detail={activeArtifact?.artifact.dataResidency ?? "local"}
+                mode={artifactExtension.mode}
+                loading={artifactBusy === "open"}
+                copy={extensionCopy}
+                onModeChange={(mode) => setExtensionMode(artifactExtension.id, mode)}
+                onClose={() => {
+                  artifactOpenRequestRef.current += 1;
+                  setArtifactBusy("");
+                  setExtensionDock(null);
+                  setActiveArtifact(null);
+                  setArtifactRevisions([]);
+                }}
+              >
+                {artifactWorkbenchSurface}
+              </ExtensionDock>
+            </Suspense>
           )}
-        >
-          <OfficeHome
-            importing={artifactBusy === "import"}
-            onImport={(kind) => void importArtifactFile(kind)}
-            copy={{
-              eyebrow: t("officeEyebrow"),
-              title: t("officeTitle"),
-              description: t("officeDescription"),
-              included: t("officeIncluded"),
-              localFirst: t("officeLocalFirst"),
-              importFile: t("importFile"),
-              importType: t("officeImportType"),
-              importing: t("artifactImporting"),
-              presentation: t("artifactTypePresentation"),
-              presentationHint: t("officePresentationHint"),
-              presentationFormats: t("officePresentationFormats"),
-              spreadsheet: t("artifactTypeSpreadsheet"),
-              spreadsheetHint: t("officeSpreadsheetHint"),
-              spreadsheetFormats: t("officeSpreadsheetFormats"),
-              document: t("artifactTypeDocument"),
-              documentHint: t("officeDocumentHint"),
-              documentFormats: t("officeDocumentFormats"),
-              safetyTitle: t("officeSafetyTitle"),
-              safetyHint: t("officeSafetyHint"),
-            }}
-          />
-        </Suspense>
-      ) : split && zone === "projects" ? (
-        // the design/video loop: talk to the agent on the left, watch the live preview react on the right
-        <div className="work">
-          {conversation("ide")}
-          <aside className="sidepanel">
-            <div className="panelbar">
-              <span className="dim">{split.title}</span>
-              <span className="dim" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis" }}>{split.url}</span>
-              <button className="ghost" title={t("openInWindow")} onClick={popOutSplit}>
-                ⧉
-              </button>
-              <button className="ghost" onClick={() => setSplit(null)}>
-                ✕
-              </button>
-            </div>
-            <div className="framewrap">
-              {splitLoading && <div className="frameload dim">{t("panelStarting")}</div>}
-              <iframe className="panelframe" src={split.url} title={split.title} onLoad={() => setSplitLoading(false)} />
-            </div>
-          </aside>
+        </div>
+      ) : panelExtension && zone === "projects" ? (
+        <div className={`extension-work${panelExtension.mode === "maximized" ? " is-extension-maximized" : ""}`}>
+          <div className="extension-primary">{conversation("ide")}</div>
+          <Suspense fallback={<aside className="extension-dock is-docked" aria-busy="true" />}>
+            <ExtensionDock
+              kind={panelExtension.surfaceKind}
+              kindLabel={extensionKindLabel(panelExtension.surfaceKind)}
+              title={panelExtension.title}
+              source={panelExtension.plugin}
+              context={basename(panelExtension.owner.cwd)}
+              detail={publicPanelOrigin(panelExtension.url) ?? t("extensionLocalCapability")}
+              mode={panelExtension.mode}
+              loading={extensionLoading}
+              copy={extensionCopy}
+              onModeChange={(mode) => setExtensionMode(panelExtension.id, mode)}
+              onPopOut={popOutExtension}
+              onClose={() => setExtensionDock(null)}
+            >
+              <iframe
+                src={panelExtension.url}
+                title={panelExtension.title}
+                referrerPolicy="no-referrer"
+                onLoad={() => setExtensionLoading(false)}
+              />
+            </ExtensionDock>
+          </Suspense>
         </div>
       ) : (
         conversation(zone === "chat" ? "im" : "ide")

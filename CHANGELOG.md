@@ -18,6 +18,17 @@
   companion settings, and the capability directory from the initial Assistant bundle. Dock and
   Settings entries preload their matching module on pointer hover or keyboard focus to keep
   intentional navigation responsive.
+- Replace the anonymous Projects preview split with an owner-bound Extension Dock. Local Design and
+  plugin panels now require a real project session, display only a redacted origin, and keep their
+  owner while users move between modules. Office PPT, spreadsheet, and document Artifacts use the
+  same resizable/focusable shell without pretending that high-fidelity editing already exists.
+- Require Serve's project detection result before a Settings-launched panel can run, parse emitted
+  panel URLs as exact loopback HTTP origins with their declared port, re-check ownership after the
+  panel process wait, never echo invalid process output, and keep an Office dock pinned when
+  verification discovers a newer Artifact revision.
+- Document the target enterprise bootstrap contract for Hara-hosted and customer-hosted Desk/Collab.
+  Today an employee's one-time join can install the model route plus an optional native Desk binding;
+  administrator service bindings, signed manifests, and reviewed organization surfaces remain planned.
 
 ## 0.1.47 — actionable Windows organization-network diagnostics
 

@@ -173,6 +173,12 @@ directory are split from the initial Assistant bundle. Dock and Settings entries
 matching module on pointer hover or keyboard focus, keeping startup lean without making the first
 intentional navigation feel delayed.
 
+PPT, spreadsheet, document, and Design views do not add more primary dock entries. Their current
+surfaces use the context-owned Extension Dock described in
+`docs/EXTENSION_DOCK_AND_HOSTED_DESK.md`, pinned to one project session or Artifact revision. Browser
+continues in the system browser and organization Desk remains a native Groups surface; both are
+future candidates for the same contextual model after their isolation and realm contracts exist.
+
 ## Phase 2: reviewed plugin surfaces
 
 The current plugin manifest exposes skills, agents, MCP servers, hooks, binaries, command-launched
@@ -189,9 +195,10 @@ Before a plugin can add a dock entry, Panel v2 must define and enforce:
 7. unread/badge semantics that follow Hara's interruption-versus-ambient notification rule;
 8. a fallback route when a plugin is disabled, missing, incompatible, or removed.
 
-Until that contract exists, command panels continue opening inside Projects and Settings only manages
-their enabled state. The UI must not imply that arbitrary installed plugins already have trusted
-first-class navigation.
+Until that contract exists, command panels continue opening inside Projects. Settings may initiate a
+panel only after Serve confirms that its detection markers match the remembered project; the resulting
+surface still belongs to that exact Project session. The UI must not imply that arbitrary installed
+plugins already have trusted first-class navigation.
 
 ## Planned hosted Groups provider
 

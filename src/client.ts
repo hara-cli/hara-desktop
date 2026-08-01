@@ -167,6 +167,8 @@ export interface PanelSpec {
   command: string;
   args?: string[];
   port?: number;
+  /** Project markers declared by the plugin. A detected panel must never launch without a project owner. */
+  detect?: string[];
 }
 
 /** A panel applicable to a specific project (manifest `detect` markers matched its cwd). */

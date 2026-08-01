@@ -2001,6 +2001,32 @@ fn port_listening(port: u16) -> bool {
     .is_ok()
 }
 
+/// Parse the one URL emitted by a legacy panel command without trusting string prefixes. Legacy
+/// panels are local-only: exact loopback HTTP host, no URL credentials, and an explicit non-zero
+/// port. When the manifest declares a port, the emitted URL must use that same port.
+fn parse_local_panel_url(candidate: &str, port_hint: Option<u16>) -> Option<(String, u16)> {
+    let parsed = tauri::Url::parse(candidate).ok()?;
+    if parsed.scheme() != "http" || !parsed.username().is_empty() || parsed.password().is_some() {
+        return None;
+    }
+    let host = parsed.host_str()?;
+    let exact_localhost = host.eq_ignore_ascii_case("localhost");
+    let loopback_ip = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse::<std::net::IpAddr>()
+        .map(|address| address.is_loopback())
+        .unwrap_or(false);
+    if !exact_localhost && !loopback_ip {
+        return None;
+    }
+    let port = parsed.port().filter(|port| *port != 0)?;
+    if port_hint.is_some_and(|expected| expected != port) {
+        return None;
+    }
+    Some((parsed.to_string(), port))
+}
+
 fn kill_owned_panels(ports: &[u16]) {
     #[cfg(unix)]
     for p in ports {
@@ -2053,30 +2079,24 @@ fn start_panel(
     let text = String::from_utf8_lossy(&combined);
     match text
         .split_whitespace()
-        .find(|w| w.starts_with("http://127.0.0.1") || w.starts_with("http://localhost"))
+        .find_map(|candidate| parse_local_panel_url(candidate, port_hint))
     {
-        Some(url) => {
+        Some((url, actual_port)) => {
             // ownership: we only claim (and later kill) a server when the hinted port was NOT
             // listening before we ran the command and the URL confirms that same port came up
             if let Some(hint) = port_hint {
-                let actual: Option<u16> = url
-                    .rsplit(':')
-                    .next()
-                    .and_then(|r| r.split('/').next())
-                    .and_then(|p| p.parse().ok());
-                if !pre_listening && actual == Some(hint) {
+                if !pre_listening && actual_port == hint {
                     let mut owned = state.0.lock().unwrap();
                     if !owned.contains(&hint) {
                         owned.push(hint);
                     }
                 }
             }
-            Ok(url.to_string())
+            Ok(url)
         }
-        None => Err(format!(
-            "panel command printed no URL: {}",
-            text.chars().take(300).collect::<String>()
-        )),
+        // stdout/stderr may contain URL query tokens, authorization headers, or other plugin
+        // secrets. Keep renderer-visible errors useful but never echo untrusted process output.
+        None => Err("panel command did not return a valid local URL on its declared port".into()),
     }
 }
 
@@ -2650,6 +2670,41 @@ mod pet_tests {
         if occupied == DEFAULT_SERVE_PORT {
             assert_ne!(selected, DEFAULT_SERVE_PORT);
         }
+    }
+
+    #[test]
+    fn panel_urls_accept_only_exact_loopback_http_origins_and_declared_ports() {
+        assert_eq!(
+            parse_local_panel_url("http://127.0.0.1:4321/preview?token=local", Some(4321)),
+            Some((
+                "http://127.0.0.1:4321/preview?token=local".to_string(),
+                4321,
+            )),
+        );
+        assert_eq!(
+            parse_local_panel_url("http://localhost:4321/", None),
+            Some(("http://localhost:4321/".to_string(), 4321)),
+        );
+        assert_eq!(
+            parse_local_panel_url("http://[::1]:4321/preview", Some(4321)),
+            Some(("http://[::1]:4321/preview".to_string(), 4321)),
+        );
+
+        for rejected in [
+            "http://localhost.evil:4321/",
+            "http://127.0.0.1.evil:4321/",
+            "https://localhost:4321/",
+            "http://user:secret@localhost:4321/",
+            "http://localhost/",
+            "http://localhost:0/",
+            "http://192.168.1.10:4321/",
+        ] {
+            assert_eq!(parse_local_panel_url(rejected, None), None, "{rejected}");
+        }
+        assert_eq!(
+            parse_local_panel_url("http://localhost:4322/", Some(4321)),
+            None,
+        );
     }
 
     #[cfg(unix)]

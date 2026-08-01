@@ -341,6 +341,7 @@ test("secondary work surfaces are split from startup and preload on navigation i
   for (const component of [
     "AutomationSidebar",
     "AutomationsPage",
+    "ExtensionDock",
     "ArtifactWorkbench",
     "CapabilityDirectory",
     "ProviderSettings",
@@ -351,7 +352,7 @@ test("secondary work surfaces are split from startup and preload on navigation i
   }
   assert.match(app, /const GroupsStage = lazy\(loadGroups\)/);
   assert.match(app, /warmModule\(loadAutomations\(\)\)/);
-  assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\)\]\)\)/);
+  assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\), loadExtensionDock\(\)\]\)\)/);
   assert.match(app, /warmModule\(Promise\.all\(\[loadProviderSettings\(\), loadGatewaySettings\(\)\]\)\)/);
   assert.match(app, /onMouseEnter=\{\(\) => preloadSettingsSection\(k\)\}/);
   assert.match(app, /onFocus=\{\(\) => preloadSettingsSection\(k\)\}/);
@@ -722,8 +723,42 @@ test("disabled plugins cannot launch a panel from settings", () => {
 
   assert.match(directory, /plugin\.enabled && \(plugin\.panels \?\? \[\]\)\.map/);
   assert.match(app, /pluginsRef\.current\?\.find\(\(plugin\) => plugin\.name === pluginName\)\?\.enabled !== true/);
-  assert.match(app, /!enabled && split\?\.plugin === name/);
+  assert.match(app, /!enabled && extensionDock\?\.type === "legacy-panel" && extensionDock\.plugin === name/);
   assert.match(app, /panels\.filter\(\(panel\) => panel\.plugin !== name\)/, "disabling a plugin evicts cached project panels");
   assert.match(app, /const plugin = pluginsRef\.current\?\.find/, "cached project panels are gated again before launch");
   assert.match(app, /className="ready-error" role="alert"/, "ready-state failures stay visible and dismissible");
+});
+
+test("extension screens remain owner-bound and never display a raw panel URL", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const dock = readFileSync(`${root}/src/ExtensionDock.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/ExtensionDock.css`, "utf8");
+  const host = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
+
+  assert.match(app, /extensionMatchesContext\(extensionDock/);
+  assert.match(app, /sessionsRef\.current\.find\(\(session\) => session\.id === projectSessionId\)/);
+  assert.match(app, /if \(!projectSession \|\| sessionPlace\(projectSession\) !== "projects"\)/);
+  assert.match(app, /projectClient\.projectPanels\(\{ sessionId: projectSession\.id \}\)/);
+  assert.match(app, /detected\.panels\.find\(\(panel\) => panel\.plugin === pluginName && panel\.id === spec\.id\)/);
+  assert.equal(
+    app.match(/assertPanelLaunchContext\(\);/g)?.length,
+    2,
+    "project, client, zone, and plugin ownership are checked before and after the panel process wait",
+  );
+  assert.match(app, /sessionOpenRequestRef\.current !== launchGeneration/);
+  assert.match(app, /assertDirectPanelLaunchContext\(\);/);
+  assert.match(app, /cwd: projectSession\.cwd/, "settings-launched panels inherit a real project owner");
+  assert.match(app, /detail=\{publicPanelOrigin\(panelExtension\.url\)/);
+  assert.doesNotMatch(app, />\{panelExtension\.url\}</, "paths, queries, and URL tokens never become visible chrome");
+  assert.match(app, /referrerPolicy="no-referrer"/);
+  assert.match(app, /setArtifactRevisions\(revisionResult\.revisions\)/);
+  assert.match(app, /if \(current\?\.type !== "artifact" \|\| current\.owner\.artifactId !== artifactId\)/);
+  assert.match(app, /artifactOpenRequestRef\.current \+= 1/);
+  assert.match(host, /parse_local_panel_url\(candidate, port_hint\)/);
+  assert.doesNotMatch(host, /text\.chars\(\)\.take\(/, "invalid panel output never reaches renderer-visible errors");
+  assert.match(dock, /role="separator"/);
+  assert.match(dock, /aria-valuemin=\{36\}/);
+  assert.match(dock, /aria-valuemax=\{72\}/);
+  assert.match(css, /@container extension-work \(max-width: 1120px\)[\s\S]*\.extension-work > \.extension-primary[\s\S]*display:\s*none/);
+  assert.match(css, /\.extension-dock-mode-action[\s\S]*display:\s*none !important/);
 });

@@ -30,6 +30,7 @@ interface ArtifactWorkbenchProps {
   details: ArtifactDetails;
   revisions: ArtifactRevision[];
   copy: ArtifactWorkbenchCopy;
+  embedded?: boolean;
   verifying: boolean;
   onVerify: () => void;
   onImportAnother: () => void;
@@ -104,6 +105,7 @@ export function ArtifactWorkbench({
   details,
   revisions,
   copy,
+  embedded = false,
   verifying,
   onVerify,
   onImportAnother,
@@ -111,7 +113,7 @@ export function ArtifactWorkbench({
   const { artifact, currentRevision, content } = details;
   const digest = `${content.sha256.slice(0, 12)}…${content.sha256.slice(-8)}`;
   return (
-    <section className="artifact-workbench" aria-label={copy.workbench}>
+    <section className={`artifact-workbench${embedded ? " is-embedded" : ""}`} aria-label={copy.workbench}>
       <header className="artifact-workbench-head">
         <div>
           <div className="artifact-kicker">
