@@ -23,39 +23,54 @@ function withBinary(contents, verify) {
 }
 
 test("accepts every configured updater endpoint in configured order", () => {
-  withBinary(`prefix\0${configuredUpdaterEndpoints.join("\0middle\0")}\0suffix`, (binary) => {
-    const offsets = smokeUpdaterEndpoints({ binary, log: () => {} });
-    assert.equal(offsets.length, configuredUpdaterEndpoints.length);
-    assert.ok(offsets[0] < offsets[1]);
+  withBinary("fixture", (binary) => {
+    const actual = smokeUpdaterEndpoints({
+      binary,
+      execute: () => JSON.stringify(configuredUpdaterEndpoints),
+      log: () => {},
+    });
+    assert.deepEqual(actual, configuredUpdaterEndpoints);
   });
 });
 
 test("rejects a desktop executable missing the first-party endpoint", () => {
-  withBinary(`prefix\0${configuredUpdaterEndpoints[1]}\0suffix`, (binary) => {
+  withBinary("fixture", (binary) => {
     assert.throws(
-      () => smokeUpdaterEndpoints({ binary, log: () => {} }),
-      /does not embed configured updater endpoint/,
+      () =>
+        smokeUpdaterEndpoints({
+          binary,
+          execute: () => JSON.stringify([configuredUpdaterEndpoints[1]]),
+          log: () => {},
+        }),
+      /reports 1 updater endpoints; expected 2/,
     );
   });
 });
 
-test("rejects configured endpoints embedded in fallback-first order", () => {
-  withBinary([...configuredUpdaterEndpoints].reverse().join("\0"), (binary) => {
+test("rejects configured endpoints reported in fallback-first order", () => {
+  withBinary("fixture", (binary) => {
     assert.throws(
-      () => smokeUpdaterEndpoints({ binary, log: () => {} }),
-      /out of configured order/,
+      () =>
+        smokeUpdaterEndpoints({
+          binary,
+          execute: () => JSON.stringify([...configuredUpdaterEndpoints].reverse()),
+          log: () => {},
+        }),
+      /updater endpoint mismatch at index 0/,
     );
   });
 });
 
 test("rejects the deprecated updater path even when configured endpoints are present", () => {
-  withBinary(
-    `${configuredUpdaterEndpoints.join("\0")}\0${deprecatedUpdaterEndpoint}`,
-    (binary) => {
-      assert.throws(
-        () => smokeUpdaterEndpoints({ binary, log: () => {} }),
-        /embeds deprecated updater endpoint/,
-      );
-    },
-  );
+  withBinary("fixture", (binary) => {
+    assert.throws(
+      () =>
+        smokeUpdaterEndpoints({
+          binary,
+          execute: () => JSON.stringify([...configuredUpdaterEndpoints, deprecatedUpdaterEndpoint]),
+          log: () => {},
+        }),
+      /reports deprecated updater endpoint/,
+    );
+  });
 });

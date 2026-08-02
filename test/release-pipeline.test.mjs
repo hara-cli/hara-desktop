@@ -105,10 +105,19 @@ test("stable policy rejects prerelease versions and tags", () => {
 
 test("desktop updater uses the first-party signed channel before GitHub", () => {
   const tauri = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"));
-  assert.deepEqual(tauri.plugins.updater.endpoints, [
+  const endpoints = [
     "https://assets.nanhara.com/hara/desktop/stable/latest.json",
     "https://github.com/hara-cli/hara-desktop/releases/latest/download/latest.json",
-  ]);
+  ];
+  assert.deepEqual(tauri.plugins.updater.endpoints, endpoints);
+
+  const native = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
+  for (const endpoint of endpoints) assert.match(native, new RegExp(endpoint.replaceAll(".", "\\.")));
+  const context = native.indexOf("let context = tauri::generate_context!()");
+  const diagnostic = native.indexOf("release_updater_endpoints(context.config())", context);
+  const build = native.indexOf(".build(context)", diagnostic);
+  assert.ok(context >= 0 && diagnostic > context && build > diagnostic);
+  assert.match(native, /--hara-release-updater-endpoint-smoke/);
 });
 
 test("first-party updater manifest preserves signatures and rewrites only exact release assets", () => {
@@ -794,13 +803,17 @@ test("Linux and Windows smoke inspect desktop shells and execute sidecars from r
   assert.match(packageSmoke, /smokeUpdaterEndpoints\(\{ binary: path, label \}\)/);
 });
 
-test("every packaged desktop executable must embed the ordered updater endpoints", () => {
+test("every packaged desktop executable must report the ordered runtime updater endpoints", () => {
   const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
   const dmgSmoke = readFileSync(join(root, "scripts/mac-dmg-smoke.mjs"), "utf8");
   const updaterSmoke = readFileSync(join(root, "scripts/mac-updater-smoke.mjs"), "utf8");
   for (const script of [packageSmoke, dmgSmoke, updaterSmoke]) {
     assert.match(script, /smokeUpdaterEndpoints/);
   }
+  const endpointSmoke = readFileSync(join(root, "scripts/updater-endpoint-smoke.mjs"), "utf8");
+  assert.match(endpointSmoke, /spawnSync\(binary, \[updaterEndpointSmokeArg\]/);
+  assert.match(endpointSmoke, /JSON\.parse\(execute\(executable, label\)\)/);
+  assert.doesNotMatch(endpointSmoke, /bytes\.indexOf|readFileSync\(executable\)/);
   assert.match(dmgSmoke, /binary: shell, label: "DMG desktop shell"/);
   assert.match(updaterSmoke, /binary: shell, label: "updater archive desktop shell"/);
 });

@@ -1,15 +1,15 @@
 # Changelog
 
-## 0.1.49 — architecture-safe first-party updates
+## 0.1.50 — architecture-safe updater verification
 
-- Restore the first-party updater channel in the Intel macOS application. Versions 0.1.46 through
-  0.1.48 could ship an Intel executable generated from stale target-specific Tauri configuration,
-  leaving only the GitHub fallback even though the checked-in source configured both endpoints.
+- Add a read-only native release diagnostic that reports the updater configuration Tauri reconstructs
+  at runtime. Every final macOS, Linux, and Windows desktop executable must execute it and return the
+  exact first-party-CDN-then-GitHub order before a release can be promoted.
 - Invalidate `hara-desktop`'s architecture-specific Cargo/build-script output before each protected
   macOS signing build while retaining dependency caches.
-- Inspect the final desktop executable extracted from every macOS DMG and updater archive, Linux
-  package, and Windows installer. A release now fails unless it contains the exact first-party CDN
-  endpoint followed by the GitHub fallback, and contains no deprecated updater path.
+- Revalidate the Intel build through native execution: its generated runtime configuration contains
+  both correct endpoints. Raw Mach-O string presence was not a valid proxy because the Intel linker
+  can transform one URL while Tauri still reconstructs the configured value.
 - Upgrade the build-time PostCSS dependency to a release that fixes GHSA-r28c-9q8g-f849; the npm
   official-registry audit reports no remaining vulnerabilities.
 - Keep the bundled Hara CLI at the already verified `0.137.0`. Existing conversations, projects,
@@ -17,6 +17,13 @@
 - The valid first-party manifest remains
   `https://assets.nanhara.com/hara/desktop/stable/latest.json`; immutable 0.1.48 artifacts are not
   replaced.
+
+## 0.1.49 — unpublished release validation
+
+- Add the first final-executable updater endpoint gate across macOS, Linux, and Windows packages.
+- The first version of that gate searched raw executable bytes and blocked Intel macOS before draft
+  promotion. Native follow-up proved this was a linker-layout false positive, so version 0.1.49 was
+  never published or mirrored; its tag remains immutable as release evidence.
 
 ## 0.1.48 — open-core workspaces and context-owned extension dock
 

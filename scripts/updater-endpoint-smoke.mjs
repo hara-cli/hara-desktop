@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Verify the updater endpoints embedded in the desktop executable users actually receive. Source
-// configuration alone is not release evidence: persistent Cargo build-script output can survive a
-// clean checkout and produce an architecture-specific binary with stale generated configuration.
+// Execute the desktop binary users actually receive and verify the Tauri updater configuration it
+// reconstructs at runtime. Raw byte searches are not architecture-safe: linkers may split or
+// transform string data while the generated runtime value remains intact.
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -15,11 +16,33 @@ export const configuredUpdaterEndpoints = Object.freeze([
 
 const deprecatedUpdaterEndpoint =
   "https://assets.nanhara.com/hara-desktop/releases/latest.json";
+const updaterEndpointSmokeArg = "--hara-release-updater-endpoint-smoke";
+const SMOKE_TIMEOUT_MS = 30_000;
+
+function executeEndpointSmoke(binary, label) {
+  const result = spawnSync(binary, [updaterEndpointSmokeArg], {
+    encoding: "utf8",
+    timeout: SMOKE_TIMEOUT_MS,
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    const detail = [result.error?.message, result.stderr, result.stdout]
+      .filter(Boolean)
+      .join(" ")
+      .replaceAll(/\s+/g, " ")
+      .trim()
+      .slice(0, 800);
+    throw new Error(`${label} updater endpoint self-test failed: ${detail || `exit status ${result.status ?? "unknown"}`}`);
+  }
+  return result.stdout.trim();
+}
 
 export function smokeUpdaterEndpoints({
   binary,
   label = "desktop executable",
   endpoints = configuredUpdaterEndpoints,
+  execute = executeEndpointSmoke,
   log = console.log,
 }) {
   const executable = resolve(binary);
@@ -30,29 +53,32 @@ export function smokeUpdaterEndpoints({
     throw new Error("updater endpoint smoke requires at least two configured endpoints");
   }
 
-  const bytes = readFileSync(executable);
-  const offsets = [];
-  for (const endpoint of endpoints) {
-    const offset = bytes.indexOf(Buffer.from(endpoint, "utf8"));
-    if (offset < 0) {
-      throw new Error(`${label} does not embed configured updater endpoint: ${endpoint}`);
+  let actual;
+  try {
+    actual = JSON.parse(execute(executable, label));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`${label} updater endpoint self-test did not return valid JSON`);
     }
-    offsets.push(offset);
+    throw error;
   }
-  for (let index = 1; index < offsets.length; index++) {
-    if (offsets[index] <= offsets[index - 1]) {
-      throw new Error(`${label} embeds updater endpoints out of configured order`);
+  if (!Array.isArray(actual) || actual.some((endpoint) => typeof endpoint !== "string")) {
+    throw new Error(`${label} updater endpoint self-test must return a string array`);
+  }
+  if (!endpoints.includes(deprecatedUpdaterEndpoint) && actual.includes(deprecatedUpdaterEndpoint)) {
+    throw new Error(`${label} reports deprecated updater endpoint: ${deprecatedUpdaterEndpoint}`);
+  }
+  if (actual.length !== endpoints.length) {
+    throw new Error(`${label} reports ${actual.length} updater endpoints; expected ${endpoints.length}`);
+  }
+  for (let index = 0; index < endpoints.length; index++) {
+    if (actual[index] !== endpoints[index]) {
+      throw new Error(`${label} updater endpoint mismatch at index ${index}`);
     }
-  }
-  if (
-    !endpoints.includes(deprecatedUpdaterEndpoint) &&
-    bytes.includes(Buffer.from(deprecatedUpdaterEndpoint, "utf8"))
-  ) {
-    throw new Error(`${label} embeds deprecated updater endpoint: ${deprecatedUpdaterEndpoint}`);
   }
 
-  log(`  ✓ ${label} embeds ${endpoints.length} configured updater endpoints in order`);
-  return offsets;
+  log(`  ✓ ${label} reports ${endpoints.length} configured updater endpoints in order`);
+  return actual;
 }
 
 const invoked = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;

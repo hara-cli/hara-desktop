@@ -114,8 +114,10 @@ verification.
 1. ✅ unit+e2e, tsc/cargo gates, manual smoke
 2. ✅ **package-smoke** (`scripts/package-smoke.mjs`, local + CI post-build): bundle structure,
    native target architecture, sidecar version/help/serve-help execution, mounted-DMG inspection,
-   hostile-cwd boundary checks, signed updater assets, and exact ordered updater-endpoint bytes in
-   every desktop executable extracted from the final DMG/updater/archive/installer. Protected macOS
+   hostile-cwd boundary checks, signed updater assets, and a native runtime self-test of the exact
+   ordered updater endpoints in every desktop executable extracted from the final
+   DMG/updater/archive/installer. The gate executes the app's read-only release diagnostic instead of
+   searching raw ELF/PE/Mach-O bytes, whose linker layout is not runtime evidence. Protected macOS
    signing also invalidates the architecture-specific `hara-desktop` Cargo/build-script output before
    each build so a persistent runner cannot reuse stale generated Tauri configuration.
 3. next: full handshake smoke (launch packaged app headless, assert serve `initialize` succeeds)

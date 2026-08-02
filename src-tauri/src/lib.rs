@@ -2100,8 +2100,61 @@ fn start_panel(
     }
 }
 
+const FIRST_PARTY_UPDATER_ENDPOINT: &str =
+    "https://assets.nanhara.com/hara/desktop/stable/latest.json";
+const GITHUB_UPDATER_ENDPOINT: &str =
+    "https://github.com/hara-cli/hara-desktop/releases/latest/download/latest.json";
+const UPDATER_ENDPOINT_SMOKE_ARG: &str = "--hara-release-updater-endpoint-smoke";
+
+fn release_updater_endpoints(config: &tauri::utils::config::Config) -> Result<Vec<String>, String> {
+    let updater = config
+        .plugins
+        .0
+        .get("updater")
+        .ok_or_else(|| "updater plugin configuration is required".to_string())?;
+    let updater = updater
+        .as_object()
+        .ok_or_else(|| "updater plugin configuration must be an object".to_string())?;
+    let endpoints = updater
+        .get("endpoints")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "updater endpoints must be an array".to_string())?;
+    endpoints
+        .iter()
+        .map(|endpoint| {
+            endpoint
+                .as_str()
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| "updater endpoints must be strings".to_string())
+        })
+        .collect()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    // Release package smoke executes this exact desktop binary natively. Reading the generated
+    // runtime config is architecture-safe; searching Mach-O/PE/ELF bytes is not, because linkers may
+    // split or transform string data without changing the value Tauri reconstructs at runtime.
+    if std::env::args_os().any(|arg| arg == UPDATER_ENDPOINT_SMOKE_ARG) {
+        let endpoints = release_updater_endpoints(context.config())
+            .expect("release updater endpoint diagnostics require valid generated configuration");
+        let expected = vec![
+            FIRST_PARTY_UPDATER_ENDPOINT.to_string(),
+            GITHUB_UPDATER_ENDPOINT.to_string(),
+        ];
+        if endpoints != expected {
+            eprintln!("generated updater endpoints do not match the release contract");
+            std::process::exit(2);
+        }
+        println!(
+            "{}",
+            serde_json::to_string(&endpoints)
+                .expect("release updater endpoints must serialize as JSON")
+        );
+        return;
+    }
+
     tauri::Builder::default()
         .manage(OwnedPanels(std::sync::Mutex::new(Vec::new())))
         .plugin(tauri_plugin_opener::init())
@@ -2126,7 +2179,7 @@ pub fn run() {
             list_pets,
             read_pet_asset
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app, event| match event {
             #[cfg(desktop)]
@@ -2180,6 +2233,29 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod updater_tests {
+    use super::*;
+
+    #[test]
+    fn runtime_updater_endpoint_diagnostics_reads_generated_order_without_mutation() {
+        let mut config = tauri::utils::config::Config::default();
+        config.plugins.0.insert(
+            "updater".into(),
+            serde_json::json!({
+                "endpoints": [FIRST_PARTY_UPDATER_ENDPOINT, GITHUB_UPDATER_ENDPOINT],
+                "pubkey": "fixture"
+            }),
+        );
+
+        assert_eq!(
+            release_updater_endpoints(&config).unwrap(),
+            vec![FIRST_PARTY_UPDATER_ENDPOINT, GITHUB_UPDATER_ENDPOINT]
+        );
+        assert_eq!(config.plugins.0["updater"]["pubkey"], "fixture");
+    }
 }
 
 #[cfg(test)]
