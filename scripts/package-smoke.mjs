@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { nativeTarget, smokeSidecar } from "./sidecar-smoke.mjs";
 import { smokeMacDmg } from "./mac-dmg-smoke.mjs";
 import { smokeMacUpdaterArchive } from "./mac-updater-smoke.mjs";
+import { smokeUpdaterEndpoints } from "./updater-endpoint-smoke.mjs";
 import { verifyUpdaterArtifactSignature } from "./updater-signature.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -91,6 +92,14 @@ function sidecar(path, label = "packaged sidecar") {
   }
 }
 
+function updaterEndpoints(path, label = "packaged desktop shell") {
+  try {
+    smokeUpdaterEndpoints({ binary: path, label });
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
 function commandFailure(result, includeStdout) {
   const output = [result.error?.message, result.stderr?.toString(), includeStdout ? result.stdout?.toString() : undefined]
     .filter(Boolean)
@@ -163,7 +172,7 @@ function extractPackage(artifact, kind, destination) {
   }
 }
 
-function smokeInstalledSidecars(artifact, kind, label, wantedName) {
+function smokeInstalledSidecars(artifact, kind, label, wantedName, desktopName) {
   if (!artifact) return;
   const extractionRoot = mkdtempSync(join(tmpdir(), `hara-${kind}-smoke-`));
   try {
@@ -171,10 +180,20 @@ function smokeInstalledSidecars(artifact, kind, label, wantedName) {
     const candidates = findFilesNamed(extractionRoot, wantedName);
     if (candidates.length === 0) {
       fail(`${label} does not contain ${wantedName}: ${basename(artifact)}`);
-      return;
+    } else {
+      ok(`${label} extracted (${candidates.length} ${wantedName} candidate${candidates.length === 1 ? "" : "s"})`);
+      for (const candidate of candidates) sidecar(candidate, `${label} sidecar`);
     }
-    ok(`${label} extracted (${candidates.length} ${wantedName} candidate${candidates.length === 1 ? "" : "s"})`);
-    for (const candidate of candidates) sidecar(candidate, `${label} sidecar`);
+
+    const desktopCandidates = findFilesNamed(extractionRoot, desktopName);
+    if (desktopCandidates.length === 0) {
+      fail(`${label} does not contain ${desktopName}: ${basename(artifact)}`);
+    } else {
+      ok(
+        `${label} extracted (${desktopCandidates.length} ${desktopName} candidate${desktopCandidates.length === 1 ? "" : "s"})`,
+      );
+      for (const candidate of desktopCandidates) updaterEndpoints(candidate, `${label} desktop shell`);
+    }
   } catch (error) {
     fail(`${label} smoke failed: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
@@ -190,7 +209,7 @@ if (platform === "darwin") {
   const shell = join(app, "Contents", "MacOS", "hara-desktop");
   const bundledSidecar = join(app, "Contents", "MacOS", "hara");
   existsSync(app) ? ok("Hara.app present") : fail("Hara.app missing");
-  executable(shell, "desktop shell");
+  if (executable(shell, "desktop shell")) updaterEndpoints(shell, "desktop shell");
   sidecar(bundledSidecar);
   const dmg = updaterArtifact(join(releaseBase, "bundle", "dmg"), ".dmg", "DMG", true, false);
   if (dmg) {
@@ -224,13 +243,13 @@ if (platform === "darwin") {
 } else if (platform === "linux") {
   const deb = updaterArtifact(join(releaseBase, "bundle", "deb"), ".deb", "Debian package");
   const rpm = updaterArtifact(join(releaseBase, "bundle", "rpm"), ".rpm", "RPM package");
-  smokeInstalledSidecars(deb, "deb", "Debian package", "hara");
-  smokeInstalledSidecars(rpm, "rpm", "RPM package", "hara");
+  smokeInstalledSidecars(deb, "deb", "Debian package", "hara", "hara-desktop");
+  smokeInstalledSidecars(rpm, "rpm", "RPM package", "hara", "hara-desktop");
 } else if (platform === "win32") {
   const msi = updaterArtifact(join(releaseBase, "bundle", "msi"), ".msi", "MSI installer");
   const nsis = updaterArtifact(join(releaseBase, "bundle", "nsis"), "-setup.exe", "NSIS installer");
-  smokeInstalledSidecars(msi, "msi", "MSI installer", "hara.exe");
-  smokeInstalledSidecars(nsis, "nsis", "NSIS installer", "hara.exe");
+  smokeInstalledSidecars(msi, "msi", "MSI installer", "hara.exe", "hara-desktop.exe");
+  smokeInstalledSidecars(nsis, "nsis", "NSIS installer", "hara.exe", "hara-desktop.exe");
 } else {
   fail(`unsupported release platform: ${platform}`);
 }

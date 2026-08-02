@@ -422,9 +422,17 @@ test("Tauri performs the sole Developer ID signing pass after Bun signature remo
   const script = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
   const refresh = script.indexOf("./scripts/refresh-sidecar.sh");
   const removeSignature = script.indexOf('codesign --remove-signature "$SIDECAR"');
+  const cacheClean = script.indexOf(
+    "cargo clean --manifest-path src-tauri/Cargo.toml --package hara-desktop",
+    removeSignature,
+  );
   const tauriBuild = script.indexOf("npm run tauri build", removeSignature);
   const packagedSmoke = script.indexOf("node scripts/package-smoke.mjs", tauriBuild);
   assert.ok(refresh >= 0 && refresh < removeSignature, "boundary smoke must precede signature removal");
+  assert.ok(
+    removeSignature < cacheClean && cacheClean < tauriBuild,
+    "architecture-specific generated configuration must be invalidated before Tauri builds",
+  );
   assert.ok(removeSignature < tauriBuild, "Tauri must receive the unsigned source sidecar");
   const unsignedGap = script.slice(removeSignature, tauriBuild);
   assert.doesNotMatch(unsignedGap, /codesign --force|sidecar-smoke\.mjs/);
@@ -433,6 +441,10 @@ test("Tauri performs the sole Developer ID signing pass after Bun signature remo
   assert.match(script, /PACKAGED_SIDECAR_SIGNATURE=.*codesign -d --verbose=4/);
   assert.match(script, /Authority=\$IDENTITY/);
   assert.match(script, /\^Timestamp=/);
+  assert.match(
+    script,
+    /cargo clean --manifest-path src-tauri\/Cargo\.toml --package hara-desktop --target "\$TARGET"/,
+  );
 });
 
 test("signed Tauri bundling retries only bounded Apple timestamp service failures", () => {
@@ -760,13 +772,37 @@ test("CI Rosetta smoke is limited to the protected tag signing job", () => {
   );
 });
 
-test("Linux and Windows smoke execute sidecars extracted from real installers", () => {
+test("Linux and Windows smoke inspect desktop shells and execute sidecars from real installers", () => {
   const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
   assert.doesNotMatch(packageSmoke, /sidecar\(join\(releaseBase, "hara(?:\.exe)?"\), "staged sidecar"\)/);
-  assert.match(packageSmoke, /smokeInstalledSidecars\(deb, "deb", "Debian package", "hara"\)/);
-  assert.match(packageSmoke, /smokeInstalledSidecars\(rpm, "rpm", "RPM package", "hara"\)/);
-  assert.match(packageSmoke, /smokeInstalledSidecars\(msi, "msi", "MSI installer", "hara\.exe"\)/);
-  assert.match(packageSmoke, /smokeInstalledSidecars\(nsis, "nsis", "NSIS installer", "hara\.exe"\)/);
+  assert.match(
+    packageSmoke,
+    /smokeInstalledSidecars\(deb, "deb", "Debian package", "hara", "hara-desktop"\)/,
+  );
+  assert.match(
+    packageSmoke,
+    /smokeInstalledSidecars\(rpm, "rpm", "RPM package", "hara", "hara-desktop"\)/,
+  );
+  assert.match(
+    packageSmoke,
+    /smokeInstalledSidecars\(msi, "msi", "MSI installer", "hara\.exe", "hara-desktop\.exe"\)/,
+  );
+  assert.match(
+    packageSmoke,
+    /smokeInstalledSidecars\(nsis, "nsis", "NSIS installer", "hara\.exe", "hara-desktop\.exe"\)/,
+  );
+  assert.match(packageSmoke, /smokeUpdaterEndpoints\(\{ binary: path, label \}\)/);
+});
+
+test("every packaged desktop executable must embed the ordered updater endpoints", () => {
+  const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
+  const dmgSmoke = readFileSync(join(root, "scripts/mac-dmg-smoke.mjs"), "utf8");
+  const updaterSmoke = readFileSync(join(root, "scripts/mac-updater-smoke.mjs"), "utf8");
+  for (const script of [packageSmoke, dmgSmoke, updaterSmoke]) {
+    assert.match(script, /smokeUpdaterEndpoints/);
+  }
+  assert.match(dmgSmoke, /binary: shell, label: "DMG desktop shell"/);
+  assert.match(updaterSmoke, /binary: shell, label: "updater archive desktop shell"/);
 });
 
 test("Windows NSIS upgrades retire the detached sidecar before replacing it", () => {

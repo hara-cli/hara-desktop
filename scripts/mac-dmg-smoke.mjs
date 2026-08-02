@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { smokeSidecar } from "./sidecar-smoke.mjs";
 import { validateStapledArtifact } from "./stapler-validate.mjs";
+import { smokeUpdaterEndpoints } from "./updater-endpoint-smoke.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sidecarVersion = readFileSync(join(root, "src-tauri", "binaries", "SIDECAR_VERSION"), "utf8").trim();
@@ -70,6 +71,7 @@ export function smokeMacDmg({ dmg, expectedTarget, requireSignatures = false }) 
     if (!shellArchs.includes(expectedArch)) {
       throw new Error(`DMG shell architecture mismatch: expected ${expectedArch}, got ${shellArchs.join(", ")}`);
     }
+    smokeUpdaterEndpoints({ binary: shell, label: "DMG desktop shell" });
     smokeSidecar({ binary: sidecar, expectedVersion: sidecarVersion, expectedTarget, label: "DMG sidecar" });
 
     if (requireSignatures) {

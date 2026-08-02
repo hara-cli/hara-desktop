@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.49 — architecture-safe first-party updates
+
+- Restore the first-party updater channel in the Intel macOS application. Versions 0.1.46 through
+  0.1.48 could ship an Intel executable generated from stale target-specific Tauri configuration,
+  leaving only the GitHub fallback even though the checked-in source configured both endpoints.
+- Invalidate `hara-desktop`'s architecture-specific Cargo/build-script output before each protected
+  macOS signing build while retaining dependency caches.
+- Inspect the final desktop executable extracted from every macOS DMG and updater archive, Linux
+  package, and Windows installer. A release now fails unless it contains the exact first-party CDN
+  endpoint followed by the GitHub fallback, and contains no deprecated updater path.
+- Upgrade the build-time PostCSS dependency to a release that fixes GHSA-r28c-9q8g-f849; the npm
+  official-registry audit reports no remaining vulnerabilities.
+- Keep the bundled Hara CLI at the already verified `0.137.0`. Existing conversations, projects,
+  schedules, organization profiles, Desk connections, and credentials require no migration.
+- The valid first-party manifest remains
+  `https://assets.nanhara.com/hara/desktop/stable/latest.json`; immutable 0.1.48 artifacts are not
+  replaced.
+
 ## 0.1.48 — open-core workspaces and context-owned extension dock
 
 - Make Chat, Projects, Tasks, Groups, and Office first-class open-core modules in one configurable

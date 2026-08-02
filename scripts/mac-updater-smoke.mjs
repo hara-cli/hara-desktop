@@ -9,6 +9,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { smokeSidecar } from "./sidecar-smoke.mjs";
 import { validateStapledArtifact } from "./stapler-validate.mjs";
+import { smokeUpdaterEndpoints } from "./updater-endpoint-smoke.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sidecarVersion = readFileSync(join(root, "src-tauri", "binaries", "SIDECAR_VERSION"), "utf8").trim();
@@ -62,6 +63,7 @@ export function smokeMacUpdaterArchive({ archive, expectedTarget, requireSignatu
     if (!shellArchs.includes(expectedArch)) {
       throw new Error(`updater archive shell architecture mismatch: expected ${expectedArch}, got ${shellArchs.join(", ")}`);
     }
+    smokeUpdaterEndpoints({ binary: shell, label: "updater archive desktop shell" });
     smokeSidecar({
       binary: sidecar,
       expectedVersion: sidecarVersion,
