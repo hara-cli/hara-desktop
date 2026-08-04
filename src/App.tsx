@@ -54,7 +54,7 @@ import {
   type SessionPlace,
   type SessionPlaceInput,
 } from "./session-place";
-import { WorkStarter } from "./WorkStarter";
+import { WorkStarter, type WorkStarterSubmission } from "./WorkStarter";
 import type {
   AutomationDraft,
   AutomationRun,
@@ -298,6 +298,10 @@ type CommandLineHaraStatus = {
   current: boolean;
   managed: boolean;
   blocked: boolean;
+};
+type ClassifiedAttachmentPath = {
+  path: string;
+  kind: "file" | "directory";
 };
 
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
@@ -2237,71 +2241,111 @@ export default function App() {
       attachments: appendComposerAttachments(draft.attachments, additions),
     }));
   };
-  const attachPickedFiles = async (kind: "image" | "file") => {
-    const sessionId = activeRef.current;
-    if (!sessionId || !requireAttachmentFeature()) return;
-    setAttachmentMenuOpen(false);
-    const selected = await openDialog({
-      title: kind === "image"
-        ? (locale === "zh" ? "选择图片" : "Choose images")
-        : (locale === "zh" ? "选择文件" : "Choose files"),
-      multiple: true,
-      ...(kind === "image"
-        ? {
-            filters: [{
-              name: locale === "zh" ? "图片" : "Images",
-              extensions: ["png", "jpg", "jpeg", "gif", "webp"],
-            }],
-          }
-        : {}),
-    });
-    const paths = typeof selected === "string"
-      ? [selected]
-      : Array.isArray(selected) ? selected : [];
-    if (!paths.length) return;
-    addComposerAttachments(
-      sessionId,
-      paths.map((path) => composerAttachment(path, kind, nextAttachmentId())),
-    );
+  const pickComposerFiles = async (
+    kind: "image" | "file",
+  ): Promise<ComposerAttachment[]> => {
+    if (!requireAttachmentFeature()) return [];
+    try {
+      const selected = await openDialog({
+        title: kind === "image"
+          ? (locale === "zh" ? "选择图片" : "Choose images")
+          : (locale === "zh" ? "选择文件" : "Choose files"),
+        multiple: true,
+        ...(kind === "image"
+          ? {
+              filters: [{
+                name: locale === "zh" ? "图片" : "Images",
+                extensions: ["png", "jpg", "jpeg", "gif", "webp"],
+              }],
+            }
+          : {}),
+      });
+      const paths = typeof selected === "string"
+        ? [selected]
+        : Array.isArray(selected) ? selected : [];
+      return paths.map((path) => composerAttachment(path, kind, nextAttachmentId()));
+    } catch (error: any) {
+      setErr(String(error?.message ?? error));
+      return [];
+    }
   };
-  const attachPickedDirectory = async () => {
-    const sessionId = activeRef.current;
-    if (!sessionId || !requireAttachmentFeature()) return;
-    setAttachmentMenuOpen(false);
-    const selected = await openDialog({
-      title: locale === "zh" ? "添加目录作为本轮上下文" : "Add a folder as turn context",
-      directory: true,
-      multiple: false,
-    });
-    if (typeof selected !== "string" || !selected) return;
-    addComposerAttachments(
-      sessionId,
-      [composerAttachment(selected, "directory", nextAttachmentId())],
-    );
+  const pickComposerDirectory = async (): Promise<ComposerAttachment[]> => {
+    if (!requireAttachmentFeature()) return [];
+    try {
+      const selected = await openDialog({
+        title: locale === "zh" ? "添加目录作为本轮参考" : "Add a folder as reference material",
+        directory: true,
+        multiple: false,
+      });
+      return typeof selected === "string" && selected
+        ? [composerAttachment(selected, "directory", nextAttachmentId())]
+        : [];
+    } catch (error: any) {
+      setErr(String(error?.message ?? error));
+      return [];
+    }
   };
-  const pasteImages = async (e: React.ClipboardEvent) => {
+  const persistPastedImages = async (
+    e: React.ClipboardEvent,
+  ): Promise<ComposerAttachment[]> => {
     const files = [...(e.clipboardData?.items ?? [])].filter((it) => it.kind === "file" && it.type.startsWith("image/"));
-    if (!files.length) return;
+    if (!files.length) return [];
     e.preventDefault();
-    const sessionId = activeRef.current;
-    if (!sessionId || !requireAttachmentFeature()) return;
+    if (!requireAttachmentFeature()) return [];
     const additions: ComposerAttachment[] = [];
     for (const it of files) {
       const f = it.getAsFile();
       if (!f) continue;
-      const b64 = await new Promise<string>((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(String(r.result).split(",")[1] ?? "");
-        r.onerror = rej;
-        r.readAsDataURL(f);
-      });
       try {
+        const b64 = await new Promise<string>((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result).split(",")[1] ?? "");
+          r.onerror = rej;
+          r.readAsDataURL(f);
+        });
         const path = await invoke<string>("write_temp_image", { dataBase64: b64 });
         additions.push(composerAttachment(path, "image", nextAttachmentId(), f.type));
       } catch (err: any) {
         setErr(String(err?.message ?? err));
       }
     }
+    return additions;
+  };
+  const classifyDroppedComposerAttachments = async (
+    paths: string[],
+  ): Promise<ComposerAttachment[]> => {
+    if (!paths.length || !requireAttachmentFeature()) return [];
+    try {
+      const classified = await invoke<ClassifiedAttachmentPath[]>(
+        "classify_attachment_paths",
+        { paths },
+      );
+      return classified
+        .filter((entry) => entry.kind === "file" || entry.kind === "directory")
+        .map((entry) => composerAttachment(entry.path, entry.kind, nextAttachmentId()));
+    } catch (error: any) {
+      setErr(String(error?.message ?? error));
+      return [];
+    }
+  };
+  const attachPickedFiles = async (kind: "image" | "file") => {
+    const sessionId = activeRef.current;
+    if (!sessionId) return;
+    setAttachmentMenuOpen(false);
+    const additions = await pickComposerFiles(kind);
+    if (additions.length) addComposerAttachments(sessionId, additions);
+  };
+  const attachPickedDirectory = async () => {
+    const sessionId = activeRef.current;
+    if (!sessionId) return;
+    setAttachmentMenuOpen(false);
+    const additions = await pickComposerDirectory();
+    if (additions.length) addComposerAttachments(sessionId, additions);
+  };
+  const pasteImages = async (e: React.ClipboardEvent) => {
+    const sessionId = activeRef.current;
+    if (!sessionId) return;
+    const additions = await persistPastedImages(e);
     if (additions.length) addComposerAttachments(sessionId, additions);
   };
 
@@ -2467,15 +2511,43 @@ export default function App() {
     }
   };
 
-  const startFromWorkbench = async (prompt: string) => {
+  const startFromWorkbench = async ({
+    prompt,
+    draftText,
+    attachments,
+  }: WorkStarterSubmission) => {
     if (starterBusy) return;
     setStarterBusy(true);
     setErr("");
+    let sessionId: string | null = null;
+    const restoreDraft = () => {
+      if (!sessionId) return;
+      updateComposerDraft(sessionId, (draft) => ({
+        text: draftText
+          ? (draft.text ? `${draftText}\n${draft.text}` : draftText)
+          : draft.text,
+        attachments: appendComposerAttachments(attachments, draft.attachments),
+      }));
+    };
     try {
-      const sessionId = await openAssistant();
+      sessionId = await openAssistant();
       if (!sessionId) throw new Error(locale === "zh" ? "工作助理尚未准备好，请稍后重试。" : "The work assistant is not ready yet. Please try again.");
-      await sendText(sessionId, prompt);
+      if (attachments.length) {
+        const structuredAttachmentsSupported = clientRef.current?.supportsFeature(ATTACHMENT_FEATURE) ?? false;
+        const nextModelInfo = attachments.some((attachment) => attachment.kind === "image")
+          ? await refreshModelInfo({ sessionId })
+          : undefined;
+        const issue = composerAttachmentIssue(
+          attachments,
+          nextModelInfo?.attachmentCapabilities,
+          structuredAttachmentsSupported,
+        );
+        if (issue) throw new Error(attachmentIssueText(locale, issue));
+      }
+      const accepted = await sendText(sessionId, prompt, attachments);
+      if (!accepted) restoreDraft();
     } catch (error: any) {
+      restoreDraft();
       setErr(String(error?.message ?? error));
     } finally {
       setStarterBusy(false);
@@ -3303,6 +3375,10 @@ export default function App() {
               locale={locale}
               busy={starterBusy}
               onStart={startFromWorkbench}
+              onPickFiles={pickComposerFiles}
+              onPickDirectory={pickComposerDirectory}
+              onPasteImages={persistPastedImages}
+              onDropPaths={classifyDroppedComposerAttachments}
               onOpenProject={() => void openProject()}
             />
           </div>
@@ -4216,7 +4292,8 @@ export default function App() {
                   <ProviderSettings
                     embedded
                     client={clientRef.current}
-                    cwd={server?.cwd}
+                    cwd={activeSession?.cwd ?? server?.cwd}
+                    scope={activeSession ? "workspace" : "global"}
                     locale={locale}
                     onSaved={(next: ProviderSettingsState) => {
                       setSetupRequired(!next.current.authenticated);

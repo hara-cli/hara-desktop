@@ -492,6 +492,12 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(client, /settings\.providers\.list/);
   assert.match(client, /settings\.providers\.test/);
   assert.match(client, /settings\.providers\.save/);
+  assert.match(client, /settings\.profiles\.unpin/);
+  assert.match(providerSettings, /state\.current\.profileSource === "pin"/);
+  assert.match(providerSettings, /client\.unpinProjectProfile\(cwd\)/, "project route recovery is an explicit authenticated Serve action");
+  assert.match(providerSettings, /Existing sessions keep the identity they started with|已有会话仍保留创建时的身份/);
+  assert.match(app, /cwd=\{activeSession\?\.cwd \?\? server\?\.cwd\}/, "Settings resolves the same workspace cwd used by new sessions");
+  assert.match(app, /scope=\{activeSession \? "workspace" : "global"\}/);
 });
 
 test("bot settings show redacted live gateway health without model polling", () => {
@@ -632,8 +638,17 @@ test("the assistant empty state is a plain-language workbench backed by real ses
   const css = readFileSync(`${root}/src/App.css`, "utf8");
 
   assert.match(app, /<WorkStarter/);
-  assert.match(app, /const sessionId = await openAssistant\(\)/);
-  assert.match(app, /await sendText\(sessionId, prompt\)/, "a starter job must enter the normal serve-backed conversation");
+  assert.match(app, /sessionId = await openAssistant\(\)/);
+  assert.match(app, /await sendText\(sessionId, prompt, attachments\)/, "a starter job must enter the normal serve-backed conversation with structured attachments");
+  assert.match(starter, /onDragDropEvent/, "the native desktop drop channel accepts real file-system paths");
+  assert.match(starter, /onPickFiles\("image"\)/);
+  assert.match(starter, /onPickFiles\("file"\)/);
+  assert.match(starter, /onPickDirectory/);
+  assert.match(starter, /onPasteImages/);
+  assert.match(starter, /attachment\.name/, "the attachment tray shows a safe basename");
+  assert.doesNotMatch(starter, /attachment\.path/, "the homepage never renders a local absolute path");
+  assert.match(app, /"classify_attachment_paths"/);
+  assert.match(app, /appendComposerAttachments\(attachments, draft\.attachments\)/, "a failed first turn restores the exact selected material");
   assert.doesNotMatch(starter, /\b(?:Agent|Skill|MCP|cwd)\b/, "novice-facing copy must not expose runtime jargon");
   assert.match(prompt, /可编辑 PPTX/);
   assert.match(prompt, /视觉保真 PPTX\/PDF/, "presentation prompts must state the export-fidelity boundary");

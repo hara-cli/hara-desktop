@@ -65,6 +65,13 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
   const client = useMemo(() => {
     let providerState = initialProviders();
     let organizationState = initialOrganizations();
+    if (scenario === "pin") {
+      providerState = {
+        ...providerState,
+        current: { ...providerState.current, profileSource: "pin" },
+      };
+      organizationState = { ...organizationState, activeSource: "pin", switchLocked: true };
+    }
     const syncProvider = () => {
       const active = organizationState.connections.find((connection) => connection.active);
       if (active) {
@@ -116,6 +123,14 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
         };
         return providerState;
       },
+      unpinProjectProfile: async () => {
+        providerState = {
+          ...providerState,
+          current: { ...providerState.current, profileSource: "default" },
+        };
+        organizationState = { ...organizationState, activeSource: "default", switchLocked: false };
+        return { removed: true, providers: providerState, organizations: organizationState };
+      },
       useOrganizationConnection: async (id: string) => {
         organizationState = {
           ...organizationState,
@@ -160,7 +175,7 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
         return organizationState;
       },
     } as unknown as HaraClient;
-  }, []);
+  }, [scenario]);
 
   useEffect(() => {
     if (!scenario) return;
@@ -183,7 +198,7 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
         <span>Hara Desktop · visual QA</span>
         <h1>{locale === "zh" ? "模型与连接" : "Models & connections"}</h1>
       </div>
-      <ProviderSettings client={client} locale={locale} embedded onSaved={() => {}} />
+      <ProviderSettings client={client} locale={locale} embedded scope={scenario === "pin" ? "workspace" : "global"} onSaved={() => {}} />
     </main>
   );
 }

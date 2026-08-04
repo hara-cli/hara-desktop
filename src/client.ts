@@ -239,6 +239,12 @@ export interface ProviderSettingsTestResult {
   error?: string;
 }
 
+export interface ProjectProfileUnpinResult {
+  removed: boolean;
+  providers: ProviderSettingsState;
+  organizations: OrganizationConnectionsState;
+}
+
 export interface GatewayStatus {
   platform: "weixin" | "feishu" | string;
   label: string;
@@ -656,6 +662,16 @@ export class HaraClient {
   }
   saveProviderSettings(input: ProviderSettingsInput, cwd?: string) {
     return this.call<ProviderSettingsState>("settings.providers.save", { ...input, ...(cwd ? { cwd } : {}) });
+  }
+  /** Explicitly remove the project profile override governing cwd. Existing sessions remain pinned. */
+  async unpinProjectProfile(cwd?: string): Promise<ProjectProfileUnpinResult | null> {
+    if (this.methods.size > 0 && !this.supports("settings.profiles.unpin")) return null;
+    try {
+      return await this.call("settings.profiles.unpin", cwd ? { cwd } : {});
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
   }
   /** Redacted local connector health (serve ≥0.132). Null on older bundled engines. */
   async listGatewayStatuses(): Promise<GatewayStatus[] | null> {

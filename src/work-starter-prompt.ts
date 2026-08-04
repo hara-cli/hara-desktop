@@ -5,7 +5,9 @@ export type WorkKind = "general" | "presentation" | "spreadsheet" | "document" |
  * generic until the user deliberately selects a specialist card.
  */
 export function buildWorkPrompt(kind: WorkKind, brief: string, locale: "en" | "zh"): string {
-  const goal = brief.trim();
+  const goal = brief.trim() || (locale === "zh"
+    ? "请先审阅本轮附加的资料，说明你识别到的内容，再建议最合适的交付结果"
+    : "Review the attached material, tell me what you found, and recommend the most useful deliverable");
   if (locale === "en") {
     if (kind === "presentation") {
       return `Help me create a presentation: ${goal}

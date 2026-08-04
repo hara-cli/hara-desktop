@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.52 — 2026-08-05 — workspace route recovery and first-turn attachments
+
+- Let people add images, files, or one folder before opening their first Assistant conversation.
+  The homepage supports native file-system drag and drop, image paste, attachment-only turns, safe
+  basename chips, removal, and exact draft restoration when the first send cannot be accepted.
+- Reuse Serve's negotiated `composer.attachments.v1` protocol and model image-capability check. The
+  native shell only classifies a bounded drop as a regular file or directory; Hara Serve remains the
+  authority for protected paths, symlinks, content types, sizes, directory inventories, and model input.
+- Keep the homepage and formal conversation composer on the same attachment constructors and
+  deduplication rules. Existing conversations, projects, models, organization connections, and local
+  files require no migration.
+- Show the effective connection for the active workspace instead of silently displaying only the
+  global default. A visible recovery action can remove the project profile override governing future
+  conversations, including one inherited from a parent directory; existing conversations stay pinned.
+- Bundle Hara CLI `0.138.1`, whose authenticated, redacted Serve action performs that project-route
+  recovery. The Windows packages remain Tauri-updater signed but are not yet Authenticode-signed, so
+  Windows may still show a SmartScreen reputation warning.
+
 ## 0.1.51 — personal-first model connections and accurate local gateway recovery
 
 - Keep a user's personal provider as the safe default when adding Hara Control connections. The

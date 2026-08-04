@@ -754,11 +754,37 @@ button.deny {
   line-height: 1.75;
 }
 .workstarter-compose {
+  position: relative;
   background: #161619;
   border: 1px solid #34343a;
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+}
+.workstarter-compose.drop-active {
+  border-color: var(--accent);
+  box-shadow: 0 20px 58px rgba(0, 0, 0, 0.34), inset 0 0 0 1px rgba(232, 69, 46, 0.28);
+}
+.workstarter-drop-note {
+  position: absolute;
+  inset: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px dashed rgba(232, 69, 46, 0.75);
+  border-radius: 9px;
+  background: rgba(24, 19, 19, 0.96);
+  color: #ead8d2;
+  pointer-events: none;
+}
+.workstarter-drop-note svg {
+  color: var(--accent);
+}
+.workstarter-drop-note strong {
+  font-size: 13px;
+  font-weight: 650;
 }
 .workstarter-compose:focus-within {
   border-color: #62544f;
@@ -780,6 +806,98 @@ button.deny {
 }
 .workstarter-compose textarea::placeholder {
   color: #6f6d69;
+}
+.workstarter-reference-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 39px;
+  padding: 3px 18px 9px;
+  color: #8b8882;
+}
+.workstarter-reference-bar > span {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.workstarter-reference-actions {
+  display: flex;
+  gap: 5px;
+}
+.workstarter-reference-actions button {
+  min-width: 0;
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid #343238;
+  border-radius: 6px;
+  background: #1d1d20;
+  color: #c5c1ba;
+  font-size: 10px;
+  font-weight: 600;
+}
+.workstarter-reference-actions button:hover:not(:disabled) {
+  filter: none;
+  border-color: #514844;
+  background: #262326;
+  color: var(--fg);
+}
+.workstarter-reference-actions button svg {
+  color: #b68b80;
+}
+.workstarter-reference-bar > small {
+  margin-left: auto;
+  color: #66635f;
+  font-size: 10px;
+}
+.workstarter-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 18px 11px;
+}
+.workstarter-attachment {
+  max-width: min(270px, 100%);
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 4px 3px 8px;
+  border: 1px solid #39363a;
+  border-radius: 6px;
+  background: #211f21;
+  color: #cbc6bf;
+}
+.workstarter-attachment > svg {
+  color: #b98b80;
+}
+.workstarter-attachment b {
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workstarter-attachment button {
+  min-width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #817d78;
+  font-size: 15px;
+  line-height: 1;
+}
+.workstarter-attachment button:hover:not(:disabled) {
+  filter: none;
+  background: #352f30;
+  color: #f0e8e4;
 }
 .workstarter-compose-foot {
   min-height: 53px;
@@ -952,6 +1070,14 @@ button.deny {
   }
   .workstarter-shortcut {
     display: none;
+  }
+  .workstarter-reference-bar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .workstarter-reference-bar > small {
+    width: 100%;
+    margin-left: 0;
   }
 }
 .setup {
@@ -3873,6 +3999,44 @@ button.compact {
   color: #e1a692;
   font-size: 12px;
 }
+.provider-pin-recovery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 13px 12px 15px;
+  margin-top: 10px;
+  border: 1px solid #71483b;
+  border-left: 3px solid var(--accent);
+  background:
+    linear-gradient(100deg, rgba(217, 68, 44, 0.12), transparent 54%),
+    #211918;
+  color: #dcb2a5;
+}
+.provider-pin-recovery > div {
+  min-width: 0;
+}
+.provider-pin-recovery strong,
+.provider-pin-recovery span {
+  display: block;
+}
+.provider-pin-recovery strong {
+  color: #f0c1b5;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+.provider-pin-recovery span {
+  max-width: 760px;
+  margin-top: 3px;
+  color: #b89287;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.provider-pin-recovery button {
+  flex: 0 0 auto;
+  border-color: #815044;
+  color: #efb4a4;
+}
 .provider-workbench {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
@@ -4392,6 +4556,13 @@ button.provider-preset.enterprise.on {
   .provider-route-meta {
     grid-column: 2;
     text-align: left;
+  }
+  .provider-pin-recovery {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .provider-pin-recovery button {
+    align-self: flex-start;
   }
   .organization-facts {
     grid-template-columns: 1fr;

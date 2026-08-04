@@ -20,3 +20,11 @@ test("the presentation card adds narrative and export-fidelity gates", () => {
   assert.match(prompt, /视觉保真 PPTX\/PDF/);
   assert.match(prompt, /确认后再制作页面/);
 });
+
+test("an attachment-only starter turn gets a useful plain-language goal", () => {
+  const prompt = buildWorkPrompt("summary", "", "zh");
+
+  assert.match(prompt, /审阅本轮附加的资料/);
+  assert.match(prompt, /事实证据与推断分开/);
+  assert.doesNotMatch(prompt, /：\s*\n/);
+});

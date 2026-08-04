@@ -127,6 +127,8 @@ verification.
 Windows MSI/NSIS updater files are minisign-verified by the current pipeline but are not yet
 Authenticode-signed. Integrating a Windows signing service is a separate release-hardening item;
 until then, documentation and release notices must disclose possible SmartScreen warnings.
+The fail-closed trust model, current evidence and required release choreography are recorded in
+[`docs/WINDOWS_AUTHENTICODE_RELEASE_GATE.md`](docs/WINDOWS_AUTHENTICODE_RELEASE_GATE.md).
 
 ## Secrets & signing
 

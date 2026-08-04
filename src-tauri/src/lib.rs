@@ -18,6 +18,7 @@ const PET_FRAME_HEIGHT: u32 = 208;
 const MAX_SERVE_DISCOVERY_BYTES: u64 = 64 * 1024;
 const MAX_MANAGED_CLI_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_MANAGED_CLI_RECEIPT_BYTES: u64 = 16 * 1024;
+const MAX_DROPPED_ATTACHMENT_PATHS: usize = 32;
 const MANAGED_CLI_RECEIPT_SCHEMA: u8 = 1;
 const BUNDLED_CLI_VERSION: &str = include_str!("../binaries/SIDECAR_VERSION");
 const DEFAULT_MAIN_WINDOW_WIDTH: u32 = 1100;
@@ -1607,6 +1608,56 @@ fn get_home() -> String {
         .unwrap_or_default()
 }
 
+#[derive(Debug, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ClassifiedAttachmentPath {
+    path: String,
+    kind: String,
+}
+
+fn classify_attachment_paths_inner(
+    paths: Vec<String>,
+) -> Result<Vec<ClassifiedAttachmentPath>, String> {
+    if paths.len() > MAX_DROPPED_ATTACHMENT_PATHS {
+        return Err(format!(
+            "too many dropped items (maximum {MAX_DROPPED_ATTACHMENT_PATHS})"
+        ));
+    }
+
+    paths
+        .into_iter()
+        .map(|raw_path| {
+            let candidate = PathBuf::from(&raw_path);
+            if raw_path.is_empty() || !candidate.is_absolute() {
+                return Err("dropped material must use an absolute local path".to_string());
+            }
+            let metadata = fs::symlink_metadata(&candidate)
+                .map_err(|_| "a dropped item is no longer available".to_string())?;
+            if metadata.file_type().is_symlink() {
+                return Err("symbolic links cannot be added as dropped material".to_string());
+            }
+            let kind = if metadata.is_dir() {
+                "directory"
+            } else if metadata.is_file() {
+                "file"
+            } else {
+                return Err("a dropped item is not a regular file or folder".to_string());
+            };
+            Ok(ClassifiedAttachmentPath {
+                path: raw_path,
+                kind: kind.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Classify paths supplied by Tauri's native drop event without reading their contents. Hara Serve
+/// remains authoritative for protected-path, type, size and one-turn directory inventory checks.
+#[tauri::command]
+fn classify_attachment_paths(paths: Vec<String>) -> Result<Vec<ClassifiedAttachmentPath>, String> {
+    classify_attachment_paths_inner(paths)
+}
+
 /// Persist a pasted clipboard image (base64 png bytes from the webview) to ~/.hara/tmp so the serve
 /// side can inline it into the turn. Returns the absolute path.
 #[tauri::command]
@@ -2175,6 +2226,7 @@ pub fn run() {
             set_badge,
             take_update_restart_marker,
             restart_after_update,
+            classify_attachment_paths,
             write_temp_image,
             list_pets,
             read_pet_asset
@@ -2255,6 +2307,63 @@ mod updater_tests {
             vec![FIRST_PARTY_UPDATER_ENDPOINT, GITHUB_UPDATER_ENDPOINT]
         );
         assert_eq!(config.plugins.0["updater"]["pubkey"], "fixture");
+    }
+}
+
+#[cfg(test)]
+mod attachment_path_tests {
+    use super::*;
+
+    fn test_root() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "hara-desktop-drop-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn dropped_paths_are_bounded_and_classified_without_reading_contents() {
+        let root = test_root();
+        let folder = root.join("资料");
+        let file = root.join("reference image.png");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(&file, b"not decoded by the native classifier").unwrap();
+
+        let classified = classify_attachment_paths_inner(vec![
+            file.to_string_lossy().into_owned(),
+            folder.to_string_lossy().into_owned(),
+        ])
+        .unwrap();
+        assert_eq!(classified[0].kind, "file");
+        assert_eq!(classified[1].kind, "directory");
+        assert_eq!(classified[0].path, file.to_string_lossy());
+
+        let too_many = (0..=MAX_DROPPED_ATTACHMENT_PATHS)
+            .map(|index| root.join(index.to_string()).to_string_lossy().into_owned())
+            .collect();
+        assert!(classify_attachment_paths_inner(too_many).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dropped_symbolic_links_fail_closed() {
+        use std::os::unix::fs::symlink;
+
+        let root = test_root();
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("target.txt");
+        let link = root.join("link.txt");
+        fs::write(&target, b"target").unwrap();
+        symlink(&target, &link).unwrap();
+
+        let result = classify_attachment_paths_inner(vec![link.to_string_lossy().into_owned()]);
+        assert!(result.is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 }
 

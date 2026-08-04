@@ -14,6 +14,10 @@ export const IconChat = ({ size }: { size?: number }) => (
 export const IconFolder = ({ size }: { size?: number }) => (
   <I size={size} d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
 );
+/** photo */
+export const IconImage = ({ size }: { size?: number }) => (
+  <I size={size} d="M2.25 15.75 7.5 10.5l4.5 4.5 2.25-2.25 7.5 7.5m-18-15h16.5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H3.75a1.5 1.5 0 0 1-1.5-1.5v-12a1.5 1.5 0 0 1 1.5-1.5Zm11.25 4.5h.008v.008H15V9.75Z" />
+);
 /** cog-6-tooth (simplified single-path variant) */
 export const IconCog = ({ size }: { size?: number }) => (
   <svg width={size ?? 18} height={size ?? 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>

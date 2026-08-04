@@ -4,6 +4,7 @@ import {
   type OrganizationConnection,
   type OrganizationConnectionCheck,
   type OrganizationConnectionsState,
+  type ProjectProfileUnpinResult,
   type ProviderCatalogEntry,
   type ProviderSettingsInput,
   type ProviderSettingsState,
@@ -33,6 +34,7 @@ interface ProviderSettingsProps {
   locale: Locale;
   onSaved: (state: ProviderSettingsState) => void;
   embedded?: boolean;
+  scope?: "global" | "workspace";
 }
 
 const words = {
@@ -40,6 +42,7 @@ const words = {
     title: "Models & connections",
     subtitle: "Cloud models are ready-made options. Enterprise connections belong to you: add every Hara Control your teams provide and switch when your work changes.",
     current: "Current route",
+    currentWorkspace: "New sessions in this workspace",
     configured: "ready",
     needsAuth: "needs attention",
     cloud: "Cloud models",
@@ -63,7 +66,18 @@ const words = {
     discovered: "Models found",
     unavailable: "This Desktop build includes an engine that is too old for provider settings. Update Hara Desktop and restart it.",
     environment: "HARA_* environment variables currently override these fields. Remove them before editing here.",
-    pinned: "A command flag, environment variable, or project pin currently locks the active connection. Remove that override before switching.",
+    pinned: "A command flag or environment variable currently locks the active connection. Remove that launch override before switching.",
+    globalDefault: "global default",
+    projectOverride: "project override",
+    launchOverride: "launch override",
+    projectPinnedTitle: "This workspace overrides your global connection",
+    projectPinned: "A local .hara-profile selects this connection for new sessions here. Existing sessions keep the identity they started with.",
+    unpinProject: "Use global default here",
+    unpinningProject: "Removing override…",
+    projectUnpinned: "Project override removed. New sessions here now use the global default; existing sessions were not changed.",
+    projectStillPinned: "One project override was removed, but another parent-directory override still applies. Review the route above before creating a session.",
+    projectUnpinFailed: "The project override is still active and could not be removed safely.",
+    unpinUnavailable: "Update Hara Desktop to remove this project override from Settings, or use `hara profile unpin` in the directory reported by `hara whoami`.",
     profile: "Profile",
     dataLocal: "Data path: model requests stay on this computer.",
     dataCloud: "Data path: task context is sent to the selected provider endpoint.",
@@ -133,6 +147,7 @@ const words = {
     title: "模型与连接",
     subtitle: "云端模型是 Hara 预置选项；企业连接属于用户自己。可以把不同团队提供的 Hara Control 都加进来，并按工作需要随时切换。",
     current: "当前路由",
+    currentWorkspace: "此工作区的新会话",
     configured: "可用",
     needsAuth: "需要处理",
     cloud: "云端模型",
@@ -156,7 +171,18 @@ const words = {
     discovered: "发现的模型",
     unavailable: "当前 Desktop 内置引擎还不支持供应商设置；请升级 Hara Desktop 后重新启动。",
     environment: "当前有 HARA_* 环境变量覆盖这些字段，请先移除环境覆盖再在这里修改。",
-    pinned: "启动参数、环境变量或项目固定配置正在锁定当前连接；移除覆盖后才能切换。",
+    pinned: "启动参数或环境变量正在锁定当前连接；移除启动覆盖后才能切换。",
+    globalDefault: "全局默认",
+    projectOverride: "项目固定",
+    launchOverride: "启动覆盖",
+    projectPinnedTitle: "此工作区覆盖了全局连接",
+    projectPinned: "本地 `.hara-profile` 为这里的新会话固定了当前连接；已有会话仍保留创建时的身份。",
+    unpinProject: "在此恢复全局默认",
+    unpinningProject: "正在解除固定…",
+    projectUnpinned: "项目固定已解除。此处的新会话改用全局默认；已有会话没有变化。",
+    projectStillPinned: "已解除一层项目固定，但上级目录仍有另一层固定；新建会话前请再次核对上方路由。",
+    projectUnpinFailed: "项目固定仍在生效，Hara 未能安全移除它。",
+    unpinUnavailable: "请升级 Hara Desktop 后在设置中解除；也可以在 `hara whoami` 所示目录运行 `hara profile unpin`。",
     profile: "身份",
     dataLocal: "数据路径：模型请求只在这台电脑上处理。",
     dataCloud: "数据路径：任务上下文会发送到所选供应商地址。",
@@ -296,7 +322,7 @@ const managedExpiryWarning = (
   return words[locale].expiring;
 };
 
-export function ProviderSettings({ client, cwd, locale, onSaved, embedded = false }: ProviderSettingsProps) {
+export function ProviderSettings({ client, cwd, locale, onSaved, embedded = false, scope = "global" }: ProviderSettingsProps) {
   const copy = words[locale];
   const [state, setState] = useState<ProviderSettingsState | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationConnectionsState | null>(null);
@@ -519,6 +545,42 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     return next;
   };
 
+  const applyProjectUnpin = (result: ProjectProfileUnpinResult) => {
+    const next = result.providers;
+    const nextOrganization = result.organizations.connections.find(
+      (connection) => connection.active || connection.id === next.current.profileId,
+    );
+    setState(next);
+    setOrganizations(result.organizations);
+    setDraft(draftFromState(next));
+    setModels([]);
+    setApiKey("");
+    setRegistrationCode("");
+    setView(nextOrganization
+      ? { kind: "organization", id: nextOrganization.id }
+      : { kind: "provider", id: next.current.provider });
+    onSaved(next);
+  };
+
+  const unpinProject = async () => {
+    if (!client || state?.current.profileSource !== "pin" || organizationBusy) return;
+    setOrganizationBusy("unpin-project");
+    clearFeedback();
+    try {
+      const result = await client.unpinProjectProfile(cwd);
+      if (!result) throw new Error(copy.unpinUnavailable);
+      if (!result.removed && result.providers.current.profileSource === "pin") {
+        throw new Error(copy.projectUnpinFailed);
+      }
+      applyProjectUnpin(result);
+      setMessage(result.providers.current.profileSource === "pin" ? copy.projectStillPinned : copy.projectUnpinned);
+    } catch (reason) {
+      setError(String(reason instanceof Error ? reason.message : reason));
+    } finally {
+      setOrganizationBusy("");
+    }
+  };
+
   const useOrganization = async (connection: OrganizationConnection) => {
     if (!client || organizationBusy || organizations?.switchLocked) return;
     setOrganizationBusy(`use:${connection.id}`);
@@ -616,9 +678,15 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   if (!state || phase === "loading") return <div className="setrow dim">{error || "…"}</div>;
 
   const currentLabel = activeOrganization?.label || currentProvider?.label || state.current.provider;
+  const routeSource = state.current.profileSource === "pin"
+    ? copy.projectOverride
+    : state.current.profileSource === "flag" || state.current.profileSource === "env"
+      ? copy.launchOverride
+      : copy.globalDefault;
   const currentMeta = activeOrganization
-    ? `${activeOrganization.gatewayHost} · ${copy.managed}`
-    : `${copy.personal} · ${state.current.profileSource}`;
+    ? `${activeOrganization.gatewayHost} · ${routeSource}`
+    : `${copy.personal} · ${routeSource}`;
+  const projectPinned = state.current.profileSource === "pin";
   const providerGroups: ProviderCatalogEntry["location"][] = ["cloud", "local"];
 
   return (
@@ -649,14 +717,29 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       <div className={`provider-route ${state.current.authenticated ? "configured" : "missing"}`}>
         <span className="provider-status-dot" aria-hidden="true" />
         <div>
-          <span>{copy.current} · {state.current.authenticated ? copy.configured : copy.needsAuth}</span>
+          <span>{scope === "workspace" ? copy.currentWorkspace : copy.current} · {state.current.authenticated ? copy.configured : copy.needsAuth}</span>
           <strong>{currentLabel} · {state.current.model}</strong>
         </div>
         <div className="provider-route-meta">{currentMeta}</div>
       </div>
 
       {state.current.environmentOverride && <div className="provider-warning">{copy.environment}</div>}
-      {lockedProfile && <div className="provider-warning">{copy.pinned}</div>}
+      {projectPinned ? (
+        <div className="provider-pin-recovery" role="alert">
+          <div>
+            <strong>{copy.projectPinnedTitle}</strong>
+            <span>{copy.projectPinned}</span>
+          </div>
+          <button
+            type="button"
+            className="ghost compact"
+            disabled={!!organizationBusy}
+            onClick={() => void unpinProject()}
+          >
+            {organizationBusy === "unpin-project" ? copy.unpinningProject : copy.unpinProject}
+          </button>
+        </div>
+      ) : lockedProfile ? <div className="provider-warning">{copy.pinned}</div> : null}
       {expiryWarning && <div className="provider-warning" role="alert">{expiryWarning}</div>}
 
       <div className="provider-workbench">
@@ -864,7 +947,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                 </div>
 
                 <div className="provider-managed-note">{copy.managedData}</div>
-                {organizations?.switchLocked && <div className="provider-warning inline">{copy.pinned}</div>}
+                {organizations?.switchLocked && !projectPinned && <div className="provider-warning inline">{copy.pinned}</div>}
                 {checked && (
                   <div className={`organization-check-result ${checked.ok ? "ok" : "error"}`} role="status">
                     <span aria-hidden="true">{checked.ok ? "✓" : "!"}</span>
@@ -1008,9 +1091,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
             </div>
           )}
 
-          {(phase === "testing" || phase === "saving") && (
+          {(phase === "testing" || phase === "saving" || organizationBusy === "unpin-project") && (
             <div className="provider-result pending" role="status" aria-live="polite">
-              {phase === "testing" ? copy.testing : copy.saving}
+              {organizationBusy === "unpin-project" ? copy.unpinningProject : phase === "testing" ? copy.testing : copy.saving}
             </div>
           )}
           {message && <div className="provider-result ok" role="status" aria-live="polite">{message}</div>}

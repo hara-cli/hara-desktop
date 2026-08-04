@@ -29,6 +29,10 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
               locale={params.get("locale") === "en" ? "en" : "zh"}
               busy={false}
               onStart={async () => {}}
+              onPickFiles={async () => []}
+              onPickDirectory={async () => []}
+              onPasteImages={async () => []}
+              onDropPaths={async () => []}
               onOpenProject={() => {}}
             />
           </div>
