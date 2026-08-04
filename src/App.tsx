@@ -108,6 +108,7 @@ import {
   composerAttachmentIssue,
   composerCanSend,
   emptyComposerDraft,
+  maxImageAttachmentBytes,
   type ComposerAttachment,
   type ComposerDraft,
 } from "./composer-state";
@@ -302,6 +303,7 @@ type CommandLineHaraStatus = {
 type ClassifiedAttachmentPath = {
   path: string;
   kind: "file" | "directory";
+  byteSize?: number;
 };
 
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
@@ -385,12 +387,14 @@ const attachmentIssueText = (
 ): string => {
   if (locale === "zh") {
     if (issue === "engine-update-required") return "当前 Hara 引擎太旧，请先更新 Desktop 后再添加附件。";
+    if (issue === "image-too-large") return "图片超过 Hara 3.6 MB 附件上限，尚未发送给模型，也不会静默转用 OCR。请压缩或裁剪后重新添加。";
     if (issue === "model-capabilities-loading") return "正在读取当前模型的图片能力，请稍后再发送。";
     if (issue === "image-unsupported") return "当前模型不能读取图片；请选择支持图片的模型，或配置视觉辅助模型。";
     if (issue === "image-unknown") return "当前模型的图片能力尚未验证；请选择已验证模型，或在模型设置中明确配置。";
     return "";
   }
   if (issue === "engine-update-required") return "Update Hara Desktop before adding attachments.";
+  if (issue === "image-too-large") return "This image exceeds Hara's 3.6 MB attachment limit. It was not sent to the model or silently routed to OCR. Compress or crop it, then attach it again.";
   if (issue === "model-capabilities-loading") return "Loading the selected model's image capability.";
   if (issue === "image-unsupported") return "This model cannot read images. Choose an image-capable model or configure a vision helper.";
   if (issue === "image-unknown") return "This model's image capability is unverified. Choose a verified model or configure it explicitly.";
@@ -1282,7 +1286,7 @@ export default function App() {
         pendingSendDispatchesRef.current[sessionId] = { pendingId };
         try {
           const attachmentIntents: SessionAttachmentIntent[] | undefined = attachments?.map(
-            ({ id, name: _name, ...attachment }) => ({
+            ({ id, name: _name, byteSize: _byteSize, ...attachment }) => ({
               ...attachment,
               clientId: id,
             }),
@@ -2263,7 +2267,20 @@ export default function App() {
       const paths = typeof selected === "string"
         ? [selected]
         : Array.isArray(selected) ? selected : [];
-      return paths.map((path) => composerAttachment(path, kind, nextAttachmentId()));
+      if (!paths.length) return [];
+      const classified = await invoke<ClassifiedAttachmentPath[]>(
+        "classify_attachment_paths",
+        { paths },
+      );
+      return classified
+        .filter((entry) => entry.kind === "file")
+        .map((entry) => composerAttachment(
+          entry.path,
+          kind,
+          nextAttachmentId(),
+          undefined,
+          entry.byteSize,
+        ));
     } catch (error: any) {
       setErr(String(error?.message ?? error));
       return [];
@@ -2293,9 +2310,14 @@ export default function App() {
     e.preventDefault();
     if (!requireAttachmentFeature()) return [];
     const additions: ComposerAttachment[] = [];
+    const maxBytes = maxImageAttachmentBytes(activeModelInfo?.attachmentCapabilities);
     for (const it of files) {
       const f = it.getAsFile();
       if (!f) continue;
+      if (f.size > maxBytes) {
+        setErr(attachmentIssueText(locale, "image-too-large"));
+        continue;
+      }
       try {
         const b64 = await new Promise<string>((res, rej) => {
           const r = new FileReader();
@@ -2304,7 +2326,7 @@ export default function App() {
           r.readAsDataURL(f);
         });
         const path = await invoke<string>("write_temp_image", { dataBase64: b64 });
-        additions.push(composerAttachment(path, "image", nextAttachmentId(), f.type));
+        additions.push(composerAttachment(path, "image", nextAttachmentId(), f.type, f.size));
       } catch (err: any) {
         setErr(String(err?.message ?? err));
       }
@@ -2322,7 +2344,13 @@ export default function App() {
       );
       return classified
         .filter((entry) => entry.kind === "file" || entry.kind === "directory")
-        .map((entry) => composerAttachment(entry.path, entry.kind, nextAttachmentId()));
+        .map((entry) => composerAttachment(
+          entry.path,
+          entry.kind,
+          nextAttachmentId(),
+          undefined,
+          entry.byteSize,
+        ));
     } catch (error: any) {
       setErr(String(error?.message ?? error));
       return [];

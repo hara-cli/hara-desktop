@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.53 — 2026-08-05 — honest oversized-image handling
+
+- Preflight image size consistently for file selection, native drag and drop, and clipboard paste.
+  Picker and drop paths use file metadata without reading image contents; paste is rejected before
+  allocating or persisting an oversized Base64 payload.
+- Keep an oversized image visibly blocked in the composer and explain that it was not sent to the
+  selected model and was not silently routed to OCR. Users are asked to compress or crop it before
+  retrying; the authoritative Serve validation still applies to every persistent client.
+- Negotiate the image byte limit from Hara Serve while retaining a 3.6 MB fallback for older engines.
+  Local byte-size metadata is used only for renderer preflight and is removed before the attachment
+  intent crosses the authenticated RPC boundary.
+- Bundle Hara CLI `0.138.2`, which advertises the same limit and returns the actionable error before
+  any native vision or vision-helper request. Existing conversations, projects, organization
+  connections, schedules, and local files require no migration.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning on some computers.
+
 ## 0.1.52 — 2026-08-05 — workspace route recovery and first-turn attachments
 
 - Let people add images, files, or one folder before opening their first Assistant conversation.

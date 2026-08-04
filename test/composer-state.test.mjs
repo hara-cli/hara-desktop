@@ -9,7 +9,7 @@ import {
 } from "../src/composer-state.ts";
 
 const capabilities = (mode) => ({
-  image: { mode },
+  image: { mode, maxBytes: 3_600_000 },
   textFile: "inline-text",
   directory: "bounded-inventory-and-tools",
   binaryFile: "agent-tool",
@@ -37,6 +37,16 @@ test("files and directories remain local context while incompatible images block
   assert.equal(composerAttachmentIssue([image], capabilities("vision-sidecar"), true), null);
   assert.equal(composerAttachmentIssue([image], capabilities("native"), true), null);
   assert.equal(composerAttachmentIssue([file], capabilities("native"), false), "engine-update-required");
+});
+
+test("oversized images are blocked before capability loading or model dispatch", () => {
+  const huge = composerAttachment("/tmp/六十四卦.png", "image", "a-42", "image/png", 42_000_000);
+  const regular = composerAttachment("/tmp/screen.png", "image", "a-2", "image/png", 3_600_000);
+
+  assert.equal(huge.byteSize, 42_000_000);
+  assert.equal(composerAttachmentIssue([huge], undefined, true), "image-too-large");
+  assert.equal(composerAttachmentIssue([huge], capabilities("native"), true), "image-too-large");
+  assert.equal(composerAttachmentIssue([regular], capabilities("native"), true), null);
 });
 
 test("attachment-only turns are sendable when the model route is compatible", () => {

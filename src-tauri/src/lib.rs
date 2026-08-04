@@ -19,6 +19,8 @@ const MAX_SERVE_DISCOVERY_BYTES: u64 = 64 * 1024;
 const MAX_MANAGED_CLI_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_MANAGED_CLI_RECEIPT_BYTES: u64 = 16 * 1024;
 const MAX_DROPPED_ATTACHMENT_PATHS: usize = 32;
+const MAX_COMPOSER_IMAGE_BYTES: usize = 3_600_000;
+const MAX_COMPOSER_IMAGE_BASE64_BYTES: usize = (MAX_COMPOSER_IMAGE_BYTES + 2) / 3 * 4;
 const MANAGED_CLI_RECEIPT_SCHEMA: u8 = 1;
 const BUNDLED_CLI_VERSION: &str = include_str!("../binaries/SIDECAR_VERSION");
 const DEFAULT_MAIN_WINDOW_WIDTH: u32 = 1100;
@@ -1613,6 +1615,8 @@ fn get_home() -> String {
 struct ClassifiedAttachmentPath {
     path: String,
     kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    byte_size: Option<u64>,
 }
 
 fn classify_attachment_paths_inner(
@@ -1646,6 +1650,7 @@ fn classify_attachment_paths_inner(
             Ok(ClassifiedAttachmentPath {
                 path: raw_path,
                 kind: kind.to_string(),
+                byte_size: metadata.is_file().then(|| metadata.len()),
             })
         })
         .collect()
@@ -1660,15 +1665,29 @@ fn classify_attachment_paths(paths: Vec<String>) -> Result<Vec<ClassifiedAttachm
 
 /// Persist a pasted clipboard image (base64 png bytes from the webview) to ~/.hara/tmp so the serve
 /// side can inline it into the turn. Returns the absolute path.
+fn temp_image_size_error() -> String {
+    format!(
+        "image exceeds Hara's 3.6 MB ({MAX_COMPOSER_IMAGE_BYTES} byte) attachment limit; it was not sent to the model or to an OCR fallback. Compress or crop it, then attach it again"
+    )
+}
+
+fn validate_temp_image_size(byte_count: usize) -> Result<(), String> {
+    if byte_count > MAX_COMPOSER_IMAGE_BYTES {
+        return Err(temp_image_size_error());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn write_temp_image(data_base64: String) -> Result<String, String> {
     use base64::Engine;
+    if data_base64.len() > MAX_COMPOSER_IMAGE_BASE64_BYTES {
+        return Err(temp_image_size_error());
+    }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_base64.as_bytes())
         .map_err(|e| format!("bad base64: {e}"))?;
-    if bytes.len() > 20 * 1024 * 1024 {
-        return Err("image too large (>20MB)".into());
-    }
+    validate_temp_image_size(bytes.len())?;
     let dir = hara_data_dir()?.join("tmp");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let name = format!(
@@ -2341,12 +2360,24 @@ mod attachment_path_tests {
         assert_eq!(classified[0].kind, "file");
         assert_eq!(classified[1].kind, "directory");
         assert_eq!(classified[0].path, file.to_string_lossy());
+        assert_eq!(classified[0].byte_size, Some(36));
+        assert_eq!(classified[1].byte_size, None);
 
         let too_many = (0..=MAX_DROPPED_ATTACHMENT_PATHS)
             .map(|index| root.join(index.to_string()).to_string_lossy().into_owned())
             .collect();
         assert!(classify_attachment_paths_inner(too_many).is_err());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn pasted_images_use_the_same_authoritative_bound_as_serve() {
+        assert!(validate_temp_image_size(MAX_COMPOSER_IMAGE_BYTES).is_ok());
+        let error = validate_temp_image_size(MAX_COMPOSER_IMAGE_BYTES + 1).unwrap_err();
+        assert!(error.contains("3.6 MB"));
+        assert!(error.contains("not sent to the model"));
+        assert!(error.contains("OCR fallback"));
+        assert!(error.contains("Compress or crop"));
     }
 
     #[cfg(unix)]

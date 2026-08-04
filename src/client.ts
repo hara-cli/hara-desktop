@@ -407,6 +407,8 @@ export type ImageInputMode = "native" | "vision-sidecar" | "unsupported" | "unkn
 export interface EffectiveAttachmentCapabilities {
   image: {
     mode: ImageInputMode;
+    /** Missing only when an older Serve does not advertise its authoritative image bound. */
+    maxBytes?: number;
     viaModel?: string;
   };
   textFile: "inline-text";

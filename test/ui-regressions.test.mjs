@@ -636,6 +636,8 @@ test("the assistant empty state is a plain-language workbench backed by real ses
   const starter = readFileSync(`${root}/src/WorkStarter.tsx`, "utf8");
   const prompt = readFileSync(`${root}/src/work-starter-prompt.ts`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const native = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
 
   assert.match(app, /<WorkStarter/);
   assert.match(app, /sessionId = await openAssistant\(\)/);
@@ -648,6 +650,12 @@ test("the assistant empty state is a plain-language workbench backed by real ses
   assert.match(starter, /attachment\.name/, "the attachment tray shows a safe basename");
   assert.doesNotMatch(starter, /attachment\.path/, "the homepage never renders a local absolute path");
   assert.match(app, /"classify_attachment_paths"/);
+  assert.match(app, /entry\.byteSize/);
+  assert.match(app, /f\.size > maxBytes/);
+  assert.match(app, /尚未发送给模型，也不会静默转用 OCR/);
+  assert.match(client, /maxBytes\?: number/);
+  assert.match(native, /MAX_COMPOSER_IMAGE_BYTES: usize = 3_600_000/);
+  assert.match(native, /byte_size: Option<u64>/);
   assert.match(app, /appendComposerAttachments\(attachments, draft\.attachments\)/, "a failed first turn restores the exact selected material");
   assert.doesNotMatch(starter, /\b(?:Agent|Skill|MCP|cwd)\b/, "novice-facing copy must not expose runtime jargon");
   assert.match(prompt, /可编辑 PPTX/);

@@ -6,6 +6,8 @@ import type {
 export interface ComposerAttachment extends SessionAttachmentIntent {
   id: string;
   name: string;
+  /** Local metadata used only for preflight; never sent as part of the Serve attachment intent. */
+  byteSize?: number;
 }
 
 export interface ComposerDraft {
@@ -15,10 +17,12 @@ export interface ComposerDraft {
 
 export type ComposerAttachmentIssue =
   | "engine-update-required"
+  | "image-too-large"
   | "model-capabilities-loading"
   | "image-unsupported"
   | "image-unknown";
 
+export const DEFAULT_MAX_IMAGE_ATTACHMENT_BYTES = 3_600_000;
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
 
 const pathName = (path: string): string =>
@@ -34,6 +38,7 @@ export function composerAttachment(
   selectedKind: "image" | "file" | "directory",
   id: string,
   mediaType?: string,
+  byteSize?: number,
 ): ComposerAttachment {
   const extension = pathName(path).split(".").pop()?.toLowerCase() ?? "";
   const kind = selectedKind === "file" && (
@@ -47,7 +52,19 @@ export function composerAttachment(
     path,
     name: pathName(path),
     ...(mediaType ? { mediaType } : {}),
+    ...(typeof byteSize === "number" && Number.isSafeInteger(byteSize) && byteSize >= 0
+      ? { byteSize }
+      : {}),
   };
+}
+
+export function maxImageAttachmentBytes(
+  capabilities: EffectiveAttachmentCapabilities | undefined,
+): number {
+  const advertised = capabilities?.image.maxBytes;
+  return typeof advertised === "number" && Number.isSafeInteger(advertised) && advertised > 0
+    ? advertised
+    : DEFAULT_MAX_IMAGE_ATTACHMENT_BYTES;
 }
 
 export function appendComposerAttachments(
@@ -72,7 +89,12 @@ export function composerAttachmentIssue(
 ): ComposerAttachmentIssue | null {
   if (attachments.length === 0) return null;
   if (!structuredAttachmentsSupported) return "engine-update-required";
-  if (!attachments.some((attachment) => attachment.kind === "image")) return null;
+  const images = attachments.filter((attachment) => attachment.kind === "image");
+  if (images.length === 0) return null;
+  const maxBytes = maxImageAttachmentBytes(capabilities);
+  if (images.some((attachment) => (
+    typeof attachment.byteSize === "number" && attachment.byteSize > maxBytes
+  ))) return "image-too-large";
   if (!capabilities) return "model-capabilities-loading";
   if (capabilities.image.mode === "unsupported") return "image-unsupported";
   if (capabilities.image.mode === "unknown") return "image-unknown";
