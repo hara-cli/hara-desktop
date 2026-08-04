@@ -117,12 +117,14 @@ const words = {
     registrationCodeHint: "Sent once for enrollment, cleared before the request starts, and never saved in the window.",
     enrollmentSafety: "Only the Control URL and one-time code are sent. No existing API key or device token is exposed.",
     enrollAndUse: "Add & switch",
-    enrollOnly: "Save connection",
+    enrollOnly: "Save without switching",
     reenrollSave: "Update access",
     enrolling: "Enrolling…",
     enrolled: "Enterprise connection added and selected.",
+    enrolledOnly: "Enterprise connection saved. Your current personal or organization connection remains active.",
     enrolledLocked: "Enterprise connection added. The current project lock kept the existing route active.",
     reenrolled: "Enterprise access updated and the organization context is active.",
+    reenrolledInactive: "Enterprise access updated. Your current model connection remains active.",
     cancel: "Cancel",
     advanced: "Advanced identity",
     loadFailed: "Could not load model connections",
@@ -208,12 +210,14 @@ const words = {
     registrationCodeHint: "只用于本次注册，请求发出前即从表单清空，不会保存在窗口中。",
     enrollmentSafety: "这里只会发送 Control 地址与一次性注册码，不会暴露已有 API Key 或设备凭据。",
     enrollAndUse: "添加并切换",
-    enrollOnly: "仅保存连接",
+    enrollOnly: "仅保存，不切换当前连接",
     reenrollSave: "更新授权",
     enrolling: "正在注册…",
     enrolled: "企业连接已添加并选中。",
+    enrolledOnly: "企业连接已保存，当前个人直连或其他组织连接保持不变。",
     enrolledLocked: "企业连接已添加；当前项目锁定仍保持原路由。",
     reenrolled: "企业授权已更新，并已成为当前组织上下文。",
+    reenrolledInactive: "企业授权已更新，当前模型连接保持不变。",
     cancel: "取消",
     advanced: "高级标识",
     loadFailed: "无法读取模型连接",
@@ -572,7 +576,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     }
   };
 
-  const enrollOrganization = async () => {
+  const enrollOrganization = async (activateRequested: boolean) => {
     if (!client || !organizationValid || organizationBusy) return;
     const transientCode = registrationCode.trim();
     setRegistrationCode("");
@@ -581,7 +585,8 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     try {
       const id = organizationDraft.id.trim();
       const existing = organizations?.connections.find((connection) => connection.id === id);
-      const activate = !organizations?.switchLocked;
+      const activate = !organizations?.switchLocked
+        && (editingOrganization ? existing?.active === true : activateRequested);
       const nextOrganizations = await client.enrollOrganizationConnection({
         id,
         label: organizationDraft.label.trim(),
@@ -593,11 +598,12 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       await refreshProviderRoute();
       setOrganizationDraft({ id: "", label: "", gatewayUrl: "" });
       setView({ kind: "organization", id });
-      setMessage(
-        activate
-          ? existing ? copy.reenrolled : copy.enrolled
-          : copy.enrolledLocked,
-      );
+      const resultMessage = activate
+        ? existing ? copy.reenrolled : copy.enrolled
+        : existing
+          ? copy.reenrolledInactive
+          : organizations?.switchLocked ? copy.enrolledLocked : copy.enrolledOnly;
+      setMessage(resultMessage);
     } catch (reason) {
       const raw = String(reason instanceof Error ? reason.message : reason);
       setError(transientCode ? raw.split(transientCode).join("[redacted]") : raw);
@@ -882,7 +888,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
           })()}
 
           {view.kind === "enroll" && (
-            <form className="provider-enrollment-form" onSubmit={(event) => { event.preventDefault(); void enrollOrganization(); }}>
+            <form className="provider-enrollment-form" onSubmit={(event) => { event.preventDefault(); void enrollOrganization(false); }}>
               <header className="provider-detail-heading enterprise">
                 <div>
                   <span>{copy.managed} · {editingOrganization ? copy.reenroll : copy.addOrganization}</span>
@@ -977,14 +983,18 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
               </div>
               <div className="provider-actions">
                 <button type="button" className="ghost" disabled={!!organizationBusy} onClick={cancelEnrollment}>{copy.cancel}</button>
+                {!editingOrganization && !organizations?.switchLocked && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={!organizationValid || !!organizationBusy}
+                    onClick={() => void enrollOrganization(true)}
+                  >
+                    {organizationBusy === "enroll" ? copy.enrolling : copy.enrollAndUse}
+                  </button>
+                )}
                 <button type="submit" disabled={!organizationValid || !!organizationBusy}>
-                  {organizationBusy === "enroll"
-                    ? copy.enrolling
-                    : editingOrganization
-                      ? copy.reenrollSave
-                      : organizations?.switchLocked
-                        ? copy.enrollOnly
-                        : copy.enrollAndUse}
+                  {organizationBusy === "enroll" ? copy.enrolling : editingOrganization ? copy.reenrollSave : copy.enrollOnly}
                 </button>
               </div>
             </form>

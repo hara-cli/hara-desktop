@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.51 — personal-first model connections and accurate local gateway recovery
+
+- Keep a user's personal provider as the safe default when adding Hara Control connections. The
+  enrollment form now offers two explicit actions: save without switching, or add and switch. Pressing
+  Enter uses the non-switching action, and refreshing an inactive enterprise authorization no longer
+  replaces the current personal or organization route.
+- Bundle Hara CLI `0.138.0`. A stopped or stale loopback model/gateway is now reported as a local
+  endpoint lifecycle problem with focused recovery choices: start the local service, switch to a
+  working personal direct connection, or reconnect the selected organization. Loopback remains
+  intentionally proxy-bypassed and private endpoint details remain redacted.
+- Preserve the existing Windows PAC/SOCKS and HTTP(S) proxy guidance for actual remote failures, while
+  updating production dependencies for the latest npm security advisories. The bundled engine also
+  enforces skill-declared runtime tool allowlists.
+- Existing conversations remain pinned to the connection where they started; projects, schedules,
+  organization profiles, Desk connections, and credentials require no migration.
+
 ## 0.1.50 — architecture-safe updater verification
 
 - Add a read-only native release diagnostic that reports the updater configuration Tauri reconstructs

@@ -542,6 +542,14 @@ test("the model switchboard uses user-added enterprise connections instead of a 
     "the one-time registration code leaves renderer state before the network request",
   );
   assert.match(providers, /No enterprise is preconfigured|没有预置任何企业/);
+  assert.match(
+    providers,
+    /onSubmit=\{\(event\) => \{ event\.preventDefault\(\); void enrollOrganization\(false\); \}\}/,
+    "saving an enterprise connection is the default form action and does not replace Personal",
+  );
+  assert.match(providers, /onClick=\{\(\) => void enrollOrganization\(true\)\}/, "switching to an enterprise is explicit");
+  assert.match(providers, /editingOrganization \? existing\?\.active === true : activateRequested/, "re-enrollment preserves an inactive enterprise instead of stealing the current route");
+  assert.match(providers, /仅保存，不切换当前连接|Save without switching/, "the safe action explains that the current route stays active");
   assert.match(providers, /window\.confirm\(copy\.removeConfirm\)/, "local removal explains that server-side revocation is separate");
   assert.match(providers, /client\.checkOrganizationConnection/, "connection health is checked explicitly rather than by model polling");
   assert.doesNotMatch(providers, /deviceToken|authorization/i, "renderer never accepts the organization device credential");
