@@ -161,6 +161,47 @@ export interface ArtifactListResult {
   truncated: boolean;
 }
 
+export interface ArtifactFinding {
+  code: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  path?: string;
+  suggestion?: string;
+}
+
+export interface ArtifactValidationReport {
+  reportId: string;
+  revisionId: string;
+  validatorId: string;
+  validatorVersion: string;
+  createdAt: string;
+  snapshotDigest?: string;
+  status: "pass" | "revise" | "blocked";
+  findings: ArtifactFinding[];
+}
+
+export interface ArtifactExportReceipt {
+  receiptId: string;
+  artifactId: string;
+  revisionId: string;
+  createdAt: string;
+  format: string;
+  fidelity: "visual-fidelity" | "template-editable" | "semantic-editable" | "roundtrip";
+  validationReportId: string;
+  output: {
+    mediaType: string;
+    byteSize: number;
+    sha256: string;
+  };
+  warnings: Array<{
+    code: string;
+    severity: "warning";
+    message: string;
+    path?: string;
+    suggestion?: string;
+  }>;
+}
+
 export interface PanelSpec {
   id: string;
   title: string;
@@ -831,6 +872,17 @@ export class HaraClient {
   }
   listArtifactRevisions(artifactId: string) {
     return this.call<{ artifactId: string; revisions: ArtifactRevision[] }>("artifact.revisions", { artifactId });
+  }
+  validateArtifact(artifactId: string, revisionId: string) {
+    return this.call<{ report: ArtifactValidationReport }>("artifact.validate", { artifactId, revisionId });
+  }
+  exportArtifact(input: {
+    artifactId: string;
+    revisionId: string;
+    validationReportId: string;
+    destinationPath: string;
+  }) {
+    return this.call<{ receipt: ArtifactExportReceipt }>("artifact.export", input);
   }
   resumeSession(sessionId: string) {
     return this.call<{

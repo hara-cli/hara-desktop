@@ -48,6 +48,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "session.steer",
                 "artifact.import",
                 "artifact.list",
+                "artifact.validate",
+                "artifact.export",
                 "settings.gateways.login.start",
                 "settings.gateways.login.status",
                 "settings.gateways.login.cancel",
@@ -135,6 +137,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   await client.initialize("redacted-token");
   assert.equal(client.supports("session.steer"), true);
   assert.equal(client.supports("artifact.import"), true);
+  assert.equal(client.supports("artifact.validate"), true);
+  assert.equal(client.supports("artifact.export"), true);
   assert.equal(client.supportsEvent("event.task_state"), true);
   assert.equal(client.supportsFeature("composer.attachments.v1"), true);
   assert.equal(client.supportsFeature("collaboration.remote.v1"), true);
@@ -233,6 +237,31 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     id: 10,
     method: "desk.task.get",
     params: { profileId: "org-a", taskId: "t_abcd" },
+  });
+
+  await client.validateArtifact("art_123", "rev_456");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 11,
+    method: "artifact.validate",
+    params: { artifactId: "art_123", revisionId: "rev_456" },
+  });
+  await client.exportArtifact({
+    artifactId: "art_123",
+    revisionId: "rev_456",
+    validationReportId: "val_789",
+    destinationPath: "/workspace/brief-copy.docx",
+  });
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 12,
+    method: "artifact.export",
+    params: {
+      artifactId: "art_123",
+      revisionId: "rev_456",
+      validationReportId: "val_789",
+      destinationPath: "/workspace/brief-copy.docx",
+    },
   });
 
   let received;

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.55 — 2026-08-05 — honest Office validation and safe delivery
+
+- Replace the Office workbench's pre-labelled success state with an explicit “Not checked” state.
+  “Verified” now appears only after Hara Serve returns a pass report bound to the exact current
+  revision and digest; reopening or changing an Artifact invalidates the displayed proof.
+- Add a separate “Save safe copy” flow for the original Office format. It automatically obtains a
+  current validation report when needed, uses the native save dialog, never overwrites an existing
+  file, and shows the path-redacted export receipt only after the written bytes are reopened and
+  matched to the validated SHA-256.
+- Keep the product boundary visible: this release provides byte-identical PPTX, XLSX, and DOCX
+  delivery, not Office editing or format conversion. The workbench remains bilingual, keyboard
+  reachable, responsive, and clear about the next reviewed capability stage.
+- Bundle the exact verified Hara CLI `0.139.0` commit
+  `fd9b928c0ab8ad1bc6a870416b0379b5695f264c`. Existing conversations, projects, organization
+  connections, schedules, Artifacts, and local files require no migration. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.54 — 2026-08-05 — safe next-turn model selection
 
 - Keep the model and thinking controls interactive while a turn is running. A new visible “Next

@@ -15,7 +15,7 @@ import {
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { check as checkForUpdate, type Update } from "@tauri-apps/plugin-updater";
 import {
@@ -33,9 +33,11 @@ import {
   type ProviderSettingsState,
   type TaskLifecycleEvent,
   type ArtifactDetails,
+  type ArtifactExportReceipt,
   type ArtifactKind,
   type ArtifactRevision,
   type ArtifactSummary,
+  type ArtifactValidationReport,
   type ClientHistoryMessage,
   type EffectiveAttachmentCapabilities,
   type ModelCatalogEntry,
@@ -654,7 +656,9 @@ export default function App() {
   const [artifacts, setArtifacts] = useState<{ artifacts: ArtifactSummary[]; invalid: number; truncated: boolean } | null | "old-server">(null);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactDetails | null>(null);
   const [artifactRevisions, setArtifactRevisions] = useState<ArtifactRevision[]>([]);
-  const [artifactBusy, setArtifactBusy] = useState<"" | "import" | "open" | "verify">("");
+  const [artifactValidationReport, setArtifactValidationReport] = useState<ArtifactValidationReport | null>(null);
+  const [artifactExportReceipt, setArtifactExportReceipt] = useState<ArtifactExportReceipt | null>(null);
+  const [artifactBusy, setArtifactBusy] = useState<"" | "import" | "open" | "verify" | "export">("");
   const artifactOpenRequestRef = useRef(0);
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     const client = clientRef.current;
@@ -1781,6 +1785,8 @@ export default function App() {
     setGroupsSwitchingProfileId("");
     setActiveArtifact(null);
     setArtifactRevisions([]);
+    setArtifactValidationReport(null);
+    setArtifactExportReceipt(null);
     setPhase("connecting");
     setErr("");
     let c: HaraClient | null = null;
@@ -2036,6 +2042,8 @@ export default function App() {
     setArtifactBusy("");
     setActiveArtifact(null);
     setArtifactRevisions([]);
+    setArtifactValidationReport(null);
+    setArtifactExportReceipt(null);
     const sessionHint = { cwd: cwd ?? server?.cwd ?? "", source: "interactive" };
     const requestId = ++sessionOpenRequestRef.current;
     const r = await c.createSession({ ...(cwd ? { cwd } : {}), ...(defaultApproval ? { approval: defaultApproval } : {}) });
@@ -2056,6 +2064,8 @@ export default function App() {
     setArtifactBusy("");
     setActiveArtifact(null);
     setArtifactRevisions([]);
+    setArtifactValidationReport(null);
+    setArtifactExportReceipt(null);
     const session = sessionsRef.current.find((candidate) => candidate.id === id);
     const expected = session ?? {
       cwd: zoneRef.current === "chat" && home ? `${home}/.hara/workspace` : server?.cwd ?? "",
@@ -2193,6 +2203,8 @@ export default function App() {
     if (typeof dir !== "string" || !dir) return;
     setActiveArtifact(null);
     setArtifactRevisions([]);
+    setArtifactValidationReport(null);
+    setArtifactExportReceipt(null);
     rememberProject(dir);
     setZone("projects");
     await newSession(dir);
@@ -2240,6 +2252,8 @@ export default function App() {
       setArtifacts(list ?? "old-server");
       setActiveArtifact(verified);
       setArtifactRevisions(revisionResult.revisions);
+      setArtifactValidationReport(null);
+      setArtifactExportReceipt(null);
       setActive(null);
       setAutoReplay(null);
       setZone("office");
@@ -2265,6 +2279,8 @@ export default function App() {
       if (requestId !== artifactOpenRequestRef.current) return;
       setActiveArtifact(details);
       setArtifactRevisions(revisionResult.revisions);
+      setArtifactValidationReport(null);
+      setArtifactExportReceipt(null);
       setActive(null);
       setAutoReplay(null);
       setExtensionDock(artifactExtensionFor(details));
@@ -2277,26 +2293,71 @@ export default function App() {
 
   const verifyActiveArtifact = async () => {
     const client = clientRef.current;
-    const artifactId = activeArtifact?.artifact.artifactId;
-    if (!client || !artifactId) return;
+    const details = activeArtifact;
+    if (!client || !details) return;
+    if (!client.supports("artifact.validate")) {
+      setErr(t("artifactNeedsUpdate"));
+      return;
+    }
+    const artifactId = details.artifact.artifactId;
+    const revisionId = details.currentRevision.revisionId;
     const requestId = ++artifactOpenRequestRef.current;
     setArtifactBusy("verify");
     setErr("");
     try {
-      const [details, revisionResult] = await Promise.all([
-        client.getArtifact(artifactId),
-        client.listArtifactRevisions(artifactId),
-      ]);
+      const { report } = await client.validateArtifact(artifactId, revisionId);
       if (requestId === artifactOpenRequestRef.current) {
-        setActiveArtifact(details);
-        setArtifactRevisions(revisionResult.revisions);
-        setExtensionDock((current) => {
-          if (current?.type !== "artifact" || current.owner.artifactId !== artifactId) {
-            return current;
-          }
-          return { ...artifactExtensionFor(details), mode: current.mode };
-        });
+        setArtifactValidationReport(report);
       }
+    } catch (error: any) {
+      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+    } finally {
+      if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+    }
+  };
+
+  const exportActiveArtifact = async () => {
+    const client = clientRef.current;
+    const details = activeArtifact;
+    if (!client || !details) return;
+    if (!client.supports("artifact.validate") || !client.supports("artifact.export")) {
+      setErr(t("artifactNeedsUpdate"));
+      return;
+    }
+    const artifactId = details.artifact.artifactId;
+    const revisionId = details.currentRevision.revisionId;
+    const requestId = ++artifactOpenRequestRef.current;
+    setArtifactBusy("export");
+    setErr("");
+    try {
+      let report = artifactValidationReport;
+      if (report?.revisionId !== revisionId || report.snapshotDigest !== details.content.sha256 || report.status !== "pass") {
+        const result = await client.validateArtifact(artifactId, revisionId);
+        report = result.report;
+        if (requestId !== artifactOpenRequestRef.current) return;
+        setArtifactValidationReport(report);
+      }
+      const safeTitle = details.artifact.title
+        .replace(/[\\/:*?"<>|]/g, "-")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 160) || "Hara export";
+      const destinationPath = await saveDialog({
+        title: t("artifactExport"),
+        defaultPath: `${safeTitle}${details.content.extension}`,
+        filters: [{
+          name: `${details.content.extension.slice(1).toUpperCase()} · ${t("artifactRoundtrip")}`,
+          extensions: [details.content.extension.slice(1)],
+        }],
+      });
+      if (!destinationPath || requestId !== artifactOpenRequestRef.current) return;
+      const { receipt } = await client.exportArtifact({
+        artifactId,
+        revisionId,
+        validationReportId: report.reportId,
+        destinationPath,
+      });
+      if (requestId === artifactOpenRequestRef.current) setArtifactExportReceipt(receipt);
     } catch (error: any) {
       if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
     } finally {
@@ -4125,7 +4186,11 @@ export default function App() {
         details={activeArtifact}
         revisions={artifactRevisions}
         verifying={artifactBusy === "verify"}
+        exporting={artifactBusy === "export"}
+        validationReport={artifactValidationReport}
+        exportReceipt={artifactExportReceipt}
         onVerify={() => void verifyActiveArtifact()}
+        onExport={() => void exportActiveArtifact()}
         onImportAnother={() => void importArtifactFile()}
         copy={{
           workbench: t("artifactWorkbench"),
@@ -4136,6 +4201,14 @@ export default function App() {
           verify: t("artifactVerify"),
           verifying: t("artifactVerifying"),
           verified: t("artifactVerified"),
+          unverified: t("artifactUnverified"),
+          validationReport: t("artifactValidationReport"),
+          export: t("artifactExport"),
+          exporting: t("artifactExporting"),
+          exported: t("artifactExported"),
+          exportReceipt: t("artifactExportReceipt"),
+          roundtrip: t("artifactRoundtrip"),
+          noOverwrite: t("artifactNoOverwrite"),
           importAnother: t("artifactImportAnother"),
           currentVersion: t("artifactCurrentVersion"),
           fileType: t("artifactFileType"),
@@ -5127,6 +5200,8 @@ export default function App() {
                   setExtensionDock(null);
                   setActiveArtifact(null);
                   setArtifactRevisions([]);
+                  setArtifactValidationReport(null);
+                  setArtifactExportReceipt(null);
                 }}
               >
                 {artifactWorkbenchSurface}

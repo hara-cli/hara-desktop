@@ -5043,7 +5043,8 @@ button.provider-preset.enterprise.on {
 .artifact-sidebar-actions .new:focus-visible,
 .artifact-sidebar-card:focus-visible,
 .artifact-secondary-action:focus-visible,
-.artifact-verify-action:focus-visible {
+.artifact-verify-action:focus-visible,
+.artifact-export-action:focus-visible {
   outline: 2px solid #d76550;
   outline-offset: 2px;
 }
@@ -5497,6 +5498,16 @@ button.provider-preset.enterprise.on {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.artifact-facts dd.artifact-state-pending {
+  color: #8d8781;
+}
+.artifact-facts dd.artifact-state-pass {
+  color: #9db4a3;
+}
+.artifact-action-stack {
+  display: grid;
+  gap: 7px;
+}
 .artifact-verify-action {
   width: 100%;
   display: flex;
@@ -5504,14 +5515,81 @@ button.provider-preset.enterprise.on {
   justify-content: center;
   gap: 8px;
   padding: 9px 10px;
-  border: 1px solid #405044;
+  border: 1px solid #3a383d;
   border-radius: 3px;
+  background: #1b1a1d;
+  color: #9a958f;
+  font-size: 10px;
+  cursor: pointer;
+}
+.artifact-verify-action.is-verified {
+  border-color: #405044;
   background: #182019;
   color: #9db4a3;
-  font-size: 10px;
 }
 .artifact-verify-action span {
   font-family: "SF Mono", ui-monospace, monospace;
+}
+.artifact-export-action {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #7e392b;
+  border-radius: 3px;
+  background: #d9442c;
+  color: #fff3ed;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.artifact-verify-action:disabled,
+.artifact-export-action:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+.artifact-export-note {
+  margin: 1px 2px 0;
+  color: #6f6a65;
+  font-size: 9px;
+  line-height: 1.45;
+  text-align: center;
+}
+.artifact-proof {
+  margin-top: 16px;
+  border: 1px solid #2d2b30;
+  border-left-color: #5e735f;
+  background: linear-gradient(110deg, rgba(39, 53, 41, 0.32), rgba(24, 23, 26, 0.1));
+}
+.artifact-proof > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  padding: 10px 11px;
+}
+.artifact-proof > div + div {
+  border-top: 1px solid #2d2b30;
+}
+.artifact-proof span {
+  color: #77726d;
+  font: 650 8px/1.3 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.artifact-proof strong {
+  color: #aeb9ae;
+  font: 600 9px/1.3 "SF Mono", ui-monospace, monospace;
+  text-align: right;
+}
+.artifact-proof small {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: #706c67;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .artifact-history {
   margin-top: 30px;

@@ -694,7 +694,14 @@ test("the deliverables workbench stays serve-backed, local-first, and honest abo
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
 
-  for (const method of ["artifact.import", "artifact.list", "artifact.get", "artifact.revisions"]) {
+  for (const method of [
+    "artifact.import",
+    "artifact.list",
+    "artifact.get",
+    "artifact.revisions",
+    "artifact.validate",
+    "artifact.export",
+  ]) {
     assert.match(client, new RegExp(method.replace(".", "\\.")));
   }
   assert.match(app, /presentation: \["pptx", "ppt", "odp"\]/);
@@ -710,14 +717,20 @@ test("the deliverables workbench stays serve-backed, local-first, and honest abo
   assert.match(office, /onClick=\{\(\) => onImport\(item\.id\)\}/, "each Office type card starts a matching filtered import");
   assert.doesNotMatch(app, /invoke\([^)]*"artifact\./, "the renderer never bypasses hara serve for Artifact authority");
   assert.match(workbench, /<button[\s\S]*artifact-verify-action/, "integrity verification is keyboard accessible");
+  assert.match(workbench, /artifact-export-action/, "same-format export is a separate keyboard-accessible action");
+  assert.match(app, /client\.validateArtifact\(artifactId, revisionId\)/, "verification creates a Serve-backed report for the exact revision");
+  assert.match(app, /client\.exportArtifact\(\{/, "export authority remains in Hara Serve");
+  assert.doesNotMatch(workbench, /`\$\{copy\.verify\} · \$\{copy\.verified\}`/, "an unchecked revision is never labeled verified");
   assert.match(workbench, /artifact-preview-disclaimer/, "the decorative placeholder is explicitly labeled as not being a real layout preview");
   assert.match(copy, /原文件没有被修改/);
   assert.match(copy, /才会显示真实版面预览/);
-  assert.match(copy, /当前底座不会修改或执行导入文件/);
+  assert.match(copy, /只新建同格式副本；Hara 不会覆盖任何已有文件/);
+  assert.match(copy, /现已支持原格式安全另存/);
   assert.match(copy, /matching reviewed capability/, "English copy also avoids promising an unavailable editor/exporter");
   assert.match(css, /\.artifact-workbench-grid/);
   assert.match(css, /\.artifact-sidebar-card:focus-visible/);
   assert.match(css, /\.artifact-verify-action:focus-visible/);
+  assert.match(css, /\.artifact-export-action:focus-visible/);
   assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.artifact-workbench/);
   assert.match(css, /@media \(prefers-reduced-motion: no-preference\)/);
 });
@@ -803,7 +816,11 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   assert.doesNotMatch(app, />\{panelExtension\.url\}</, "paths, queries, and URL tokens never become visible chrome");
   assert.match(app, /referrerPolicy="no-referrer"/);
   assert.match(app, /setArtifactRevisions\(revisionResult\.revisions\)/);
-  assert.match(app, /if \(current\?\.type !== "artifact" \|\| current\.owner\.artifactId !== artifactId\)/);
+  assert.match(
+    app,
+    /report\?\.revisionId !== revisionId \|\| report\.snapshotDigest !== details\.content\.sha256/,
+    "validation and export proof stay bound to the active Artifact revision",
+  );
   assert.match(app, /artifactOpenRequestRef\.current \+= 1/);
   assert.match(host, /parse_local_panel_url\(candidate, port_hint\)/);
   assert.doesNotMatch(host, /text\.chars\(\)\.take\(/, "invalid panel output never reaches renderer-visible errors");

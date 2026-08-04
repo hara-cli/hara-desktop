@@ -1,7 +1,9 @@
 import type {
   ArtifactDetails,
+  ArtifactExportReceipt,
   ArtifactKind,
   ArtifactRevision,
+  ArtifactValidationReport,
 } from "./client";
 
 export interface ArtifactWorkbenchCopy {
@@ -12,12 +14,20 @@ export interface ArtifactWorkbenchCopy {
   previewPending: string;
   verify: string;
   verifying: string;
+  unverified: string;
   importAnother: string;
   currentVersion: string;
   fileType: string;
   size: string;
   integrity: string;
   verified: string;
+  validationReport: string;
+  export: string;
+  exporting: string;
+  exported: string;
+  exportReceipt: string;
+  roundtrip: string;
+  noOverwrite: string;
   history: string;
   nextStage: string;
   nextStageHint: string;
@@ -32,7 +42,11 @@ interface ArtifactWorkbenchProps {
   copy: ArtifactWorkbenchCopy;
   embedded?: boolean;
   verifying: boolean;
+  exporting: boolean;
+  validationReport: ArtifactValidationReport | null;
+  exportReceipt: ArtifactExportReceipt | null;
   onVerify: () => void;
+  onExport: () => void;
   onImportAnother: () => void;
 }
 
@@ -107,11 +121,20 @@ export function ArtifactWorkbench({
   copy,
   embedded = false,
   verifying,
+  exporting,
+  validationReport,
+  exportReceipt,
   onVerify,
+  onExport,
   onImportAnother,
 }: ArtifactWorkbenchProps) {
   const { artifact, currentRevision, content } = details;
   const digest = `${content.sha256.slice(0, 12)}…${content.sha256.slice(-8)}`;
+  const validated = validationReport?.revisionId === currentRevision.revisionId
+    && validationReport.snapshotDigest === content.sha256
+    && validationReport.status === "pass";
+  const exported = exportReceipt?.revisionId === currentRevision.revisionId
+    && exportReceipt.output.sha256 === content.sha256;
   return (
     <section className={`artifact-workbench${embedded ? " is-embedded" : ""}`} aria-label={copy.workbench}>
       <header className="artifact-workbench-head">
@@ -160,17 +183,54 @@ export function ArtifactWorkbench({
             <div><dt>{copy.fileType}</dt><dd>{content.extension.toUpperCase().slice(1)}</dd></div>
             <div><dt>{copy.size}</dt><dd>{formatBytes(content.byteSize)}</dd></div>
             <div><dt>{copy.integrity}</dt><dd title={content.sha256}>{digest}</dd></div>
+            <div>
+              <dt>{copy.validationReport}</dt>
+              <dd className={validated ? "artifact-state-pass" : "artifact-state-pending"}>
+                {validated ? copy.verified : copy.unverified}
+              </dd>
+            </div>
           </dl>
 
-          <button
-            className="artifact-verify-action"
-            type="button"
-            disabled={verifying}
-            onClick={onVerify}
-          >
-            <span>{verifying ? "◌" : "✓"}</span>
-            {verifying ? copy.verifying : `${copy.verify} · ${copy.verified}`}
-          </button>
+          <div className="artifact-action-stack">
+            <button
+              className={`artifact-verify-action${validated ? " is-verified" : ""}`}
+              type="button"
+              disabled={verifying || exporting}
+              onClick={onVerify}
+            >
+              <span>{verifying ? "◌" : validated ? "✓" : "○"}</span>
+              {verifying ? copy.verifying : validated ? copy.verified : copy.verify}
+            </button>
+            <button
+              className="artifact-export-action"
+              type="button"
+              disabled={verifying || exporting}
+              onClick={onExport}
+            >
+              <span>{exporting ? "◌" : "↗"}</span>
+              {exporting ? copy.exporting : copy.export}
+            </button>
+            <p className="artifact-export-note">{copy.noOverwrite}</p>
+          </div>
+
+          {(validated || exported) && (
+            <section className="artifact-proof" aria-live="polite">
+              {validated && validationReport && (
+                <div>
+                  <span>{copy.validationReport}</span>
+                  <strong>{validationReport.reportId.slice(-8).toUpperCase()}</strong>
+                  <small>{new Date(validationReport.createdAt).toLocaleString()}</small>
+                </div>
+              )}
+              {exported && exportReceipt && (
+                <div>
+                  <span>{copy.exportReceipt}</span>
+                  <strong>{copy.exported} · {exportReceipt.receiptId.slice(-8).toUpperCase()}</strong>
+                  <small>{copy.roundtrip} · {exportReceipt.format.toUpperCase()}</small>
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="artifact-history">
             <div className="artifact-section-label">{copy.history}</div>
