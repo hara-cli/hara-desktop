@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.54 — 2026-08-05 — safe next-turn model selection
+
+- Keep the model and thinking controls interactive while a turn is running. A new visible “Next
+  turn” state makes it explicit that the current turn retains its original route and the staged choice
+  applies only after that turn finishes.
+- Serialize rapid model or effort changes per session so the newest choice wins. Desktop bridges the
+  short terminal-event/BUSY handoff with bounded retries while Hara Serve remains authoritative for
+  organization authorization, image-history compatibility, model availability, and effort levels.
+- Confirm every staged choice before a fresh or queued message is dispatched. If Serve cannot apply
+  it, the message stays unsent instead of silently running on the previous model; actionable errors
+  remain in the conversation.
+- Use the staged model's attachment capabilities and reasoning options in the composer, preventing an
+  image from being validated against the old model while it is waiting for the next turn.
+- Continue to bundle Hara CLI `0.138.2`; existing conversations, projects, organization connections,
+  schedules, and local files require no migration. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning on some computers.
+
 ## 0.1.53 — 2026-08-05 — honest oversized-image handling
 
 - Preflight image size consistently for file selection, native drag and drop, and clipboard paste.

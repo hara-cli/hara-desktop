@@ -305,6 +305,13 @@ type ClassifiedAttachmentPath = {
   kind: "file" | "directory";
   byteSize?: number;
 };
+type StagedModelChange = {
+  revision: number;
+  model: string;
+  /** Empty string is the explicit Desktop representation of automatic effort. */
+  effort: string;
+};
+type ModelChangeFlushResult = "none" | "applied" | "deferred" | "failed";
 
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
 /** Junk cwd guard: sessions left behind by tests/one-offs in OS temp dirs are NOT projects. */
@@ -357,6 +364,7 @@ const forkBase = (id: string): string => id.replace(/-\d+$/, "");
 const BUNDLED_ENGINE_VERSION = bundledEngineVersionText.trim();
 const SERVER_BUSY = -32002;
 const BUSY_SEND_RETRIES = 4;
+const MODEL_CHANGE_BUSY_RETRY_DELAYS_MS = [50, 100, 180, 300, 480] as const;
 const STEERING_HISTORY_PREFIX = "[Sent while you were working on the above — TRIAGE before continuing:";
 const UPDATE_SNOOZE_KEY = "hara.desktopUpdateSnooze";
 const UPDATE_SNOOZE_MS = 24 * 60 * 60 * 1_000;
@@ -565,6 +573,33 @@ export default function App() {
   } | null>(null);
   const [modelInfoScope, setModelInfoScope] = useState<string | null>(null);
   const [sessEffort, setSessEffort] = useState<Record<string, string>>({});
+  const [stagedModelChanges, setStagedModelChanges] = useState<Record<string, StagedModelChange>>({});
+  const stagedModelChangesRef = useRef<Record<string, StagedModelChange>>({});
+  const stagedModelChangeSequenceRef = useRef(0);
+  const stagedModelChangeFlushesRef = useRef<Record<string, Promise<ModelChangeFlushResult>>>({});
+  const stageModelChange = useCallback((sessionId: string, model: string, effort: string) => {
+    const change: StagedModelChange = {
+      revision: ++stagedModelChangeSequenceRef.current,
+      model,
+      effort,
+    };
+    const next = { ...stagedModelChangesRef.current, [sessionId]: change };
+    stagedModelChangesRef.current = next;
+    setStagedModelChanges(next);
+    return change;
+  }, []);
+  const clearStagedModelChange = useCallback((sessionId: string, revision?: number) => {
+    const current = stagedModelChangesRef.current[sessionId];
+    if (!current || (revision !== undefined && current.revision !== revision)) return;
+    const { [sessionId]: _removed, ...rest } = stagedModelChangesRef.current;
+    stagedModelChangesRef.current = rest;
+    setStagedModelChanges(rest);
+  }, []);
+  const clearStagedModelChanges = useCallback(() => {
+    stagedModelChangesRef.current = {};
+    stagedModelChangeFlushesRef.current = {};
+    setStagedModelChanges({});
+  }, []);
   const modelInfoRequestRef = useRef(0);
   const refreshModelInfo = useCallback(async (opts?: { sessionId?: string; cwd?: string }) => {
     const client = clientRef.current;
@@ -1191,6 +1226,83 @@ export default function App() {
     [],
   );
 
+  /** Commit the latest staged composer route only when Serve accepts it between turns.
+   *  One in-flight loop owns each session: if the user changes their choice while an RPC is running,
+   *  the loop re-reads the newer revision before allowing the next send. */
+  const flushStagedModelChange = useCallback((sessionId: string): Promise<ModelChangeFlushResult> => {
+    const existing = stagedModelChangeFlushesRef.current[sessionId];
+    if (existing) return existing;
+
+    const run = async (): Promise<ModelChangeFlushResult> => {
+      let applied = false;
+      nextRevision: while (true) {
+        const staged = stagedModelChangesRef.current[sessionId];
+        if (!staged) return applied ? "applied" : "none";
+        const client = clientRef.current;
+        if (!client?.connected) return "deferred";
+
+        let result: Awaited<ReturnType<HaraClient["setSessionModel"]>> | null = null;
+        for (let attempt = 0; result === null; attempt += 1) {
+          try {
+            result = await client.setSessionModel(
+              sessionId,
+              staged.model,
+              staged.effort || undefined,
+            );
+          } catch (error: any) {
+            if (error?.code !== SERVER_BUSY) {
+              if (stagedModelChangesRef.current[sessionId]?.revision !== staged.revision) {
+                continue nextRevision;
+              }
+              clearStagedModelChange(sessionId, staged.revision);
+              push(sessionId, (items) => [...items, {
+                kind: "notice",
+                text: locale === "zh"
+                  ? `模型或思考模式切换失败：${error?.message ?? error}`
+                  : `Model or thinking mode switch failed: ${error?.message ?? error}`,
+              }]);
+              return "failed";
+            }
+            const delay = MODEL_CHANGE_BUSY_RETRY_DELAYS_MS[attempt];
+            if (delay === undefined) {
+              if (stagedModelChangesRef.current[sessionId]?.revision !== staged.revision) {
+                continue nextRevision;
+              }
+              return "deferred";
+            }
+            await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
+          }
+        }
+
+        if (clientRef.current !== client) return "deferred";
+        setSessions((list) => {
+          const next = list.map((session) => (
+            session.id === sessionId ? { ...session, model: result.model } : session
+          ));
+          sessionsRef.current = next;
+          return next;
+        });
+        setSessEffort((current) => ({ ...current, [sessionId]: result.effort ?? "" }));
+        clearStagedModelChange(sessionId, staged.revision);
+        applied = true;
+
+        // A newer click may have replaced this revision while Serve rebuilt the provider. Keep the
+        // optimistic badge stable and refresh authoritative capabilities only after the latest wins.
+        if (!stagedModelChangesRef.current[sessionId] && activeRef.current === sessionId) {
+          await refreshModelInfo({ sessionId }).catch(() => {});
+        }
+      }
+    };
+
+    const task = run().finally(() => {
+      if (stagedModelChangeFlushesRef.current[sessionId] === task) {
+        delete stagedModelChangeFlushesRef.current[sessionId];
+      }
+    });
+    stagedModelChangeFlushesRef.current[sessionId] = task;
+    return task;
+  }, [clearStagedModelChange, locale, push, refreshModelInfo]);
+
   const nextPendingInputId = useCallback(
     () => `pending-${Date.now()}-${++pendingInputSequenceRef.current}`,
     [],
@@ -1256,6 +1368,23 @@ export default function App() {
           locale === "zh"
             ? "当前 Hara 引擎版本不支持安全附件，请先更新 Hara Desktop。"
             : "This Hara engine cannot send safe attachments. Update Hara Desktop first.",
+        );
+      }
+      // A queued or freshly submitted turn must never overtake the user's staged model choice.
+      // Serve remains authoritative and revalidates the model, effort, organization, and history.
+      const modelChange = await flushStagedModelChange(sessionId);
+      if (modelChange === "deferred") {
+        throw new Error(
+          locale === "zh"
+            ? "所选模型或思考模式尚未应用；Hara 引擎仍在结束上一轮，请稍后重试。"
+            : "The selected model or thinking mode is not applied yet. The previous turn is still finishing; try again shortly.",
+        );
+      }
+      if (modelChange === "failed") {
+        throw new Error(
+          locale === "zh"
+            ? "所选模型或思考模式无法应用。请查看会话提示后重新选择。"
+            : "The selected model or thinking mode could not be applied. Review the conversation notice and choose again.",
         );
       }
       const pendingId = options?.pendingId ?? nextPendingInputId();
@@ -1382,7 +1511,7 @@ export default function App() {
         }
       }
     },
-    [enqueueInput, locale, nextPendingInputId, notePet, push, removePet, resolvePendingUser, setSessionBusy],
+    [enqueueInput, flushStagedModelChange, locale, nextPendingInputId, notePet, push, removePet, resolvePendingUser, setSessionBusy],
   );
 
   const retryQueuedInput = useCallback(async (sessionId: string, index: number) => {
@@ -1509,6 +1638,7 @@ export default function App() {
           if (live) activeTurnsRef.current[e.sessionId] = e.turnId;
           else delete activeTurnsRef.current[e.sessionId];
           setSessionBusy(e.sessionId, live);
+          if (!live) void flushStagedModelChange(e.sessionId);
           const title = taskStateTitle(e);
           if (e.phase === "restored" && e.state === "completed") {
             // A restored terminal snapshot hydrates state; it is not a new completion notification.
@@ -1564,6 +1694,7 @@ export default function App() {
             { kind: "end", usage: e.usage },
           ]);
           setSessionBusy(e.sessionId, false);
+          void flushStagedModelChange(e.sessionId);
           if (e.ctx) setCtxMap((m) => ({ ...m, [e.sessionId]: e.ctx! }));
           const interrupted = interruptedSessionsRef.current.has(e.sessionId);
           const failed = !!e.error || (!!e.status && e.status !== "completed");
@@ -1629,7 +1760,7 @@ export default function App() {
           break;
       }
     },
-    [enqueueInput, notePet, push, removePet, resolvePendingUser, sendText, setSessionBusy],
+    [enqueueInput, flushStagedModelChange, notePet, push, removePet, resolvePendingUser, sendText, setSessionBusy],
   );
 
   const connect = useCallback(async (expectedPid: number | null = null) => {
@@ -1639,6 +1770,7 @@ export default function App() {
     clientRef.current = null;
     attachedSessionsRef.current.clear();
     pendingSendDispatchesRef.current = {};
+    clearStagedModelChanges();
     previous?.close();
     artifactOpenRequestRef.current += 1;
     groupsDirectoryRequestRef.current += 1;
@@ -1678,6 +1810,7 @@ export default function App() {
         activeTurnsRef.current = {};
         attachedSessionsRef.current.clear();
         pendingSendDispatchesRef.current = {};
+        clearStagedModelChanges();
         taskStatesRef.current = {};
         groupsDirectoryRequestRef.current += 1;
         groupsRequestGenerationRef.current += 1;
@@ -1735,7 +1868,7 @@ export default function App() {
       setPhase("no-server");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleEvent, refreshAuto, refreshModelInfo]);
+  }, [clearStagedModelChanges, handleEvent, refreshAuto, refreshModelInfo]);
 
   useEffect(() => {
     if (phase !== "ready" || !active) return;
@@ -2225,9 +2358,25 @@ export default function App() {
     `attachment-${Date.now()}-${++attachmentSequenceRef.current}`;
   const attachmentFeatureReady = clientRef.current?.supportsFeature(ATTACHMENT_FEATURE) ?? false;
   const activeModelInfo = active && modelInfoScope === active ? modelInfo : null;
+  const activeStagedModelChange = active ? stagedModelChanges[active] : undefined;
+  const activeStagedModelEntry = activeStagedModelChange
+    ? activeModelInfo?.entries?.find((entry) => entry.id === activeStagedModelChange.model)
+    : undefined;
+  const activeComposerAttachmentCapabilities = activeStagedModelChange
+    ? activeStagedModelEntry?.attachmentCapabilities
+      ?? (activeStagedModelChange.model === activeModelInfo?.current
+        ? activeModelInfo?.attachmentCapabilities
+        : undefined)
+    : activeModelInfo?.attachmentCapabilities;
+  const activeComposerEffortLevels = activeStagedModelChange
+    ? activeStagedModelEntry?.effortLevels
+      ?? (activeStagedModelChange.model === activeModelInfo?.current
+        ? activeModelInfo?.effortLevels
+        : [])
+    : activeModelInfo?.effortLevels ?? [];
   const activeAttachmentIssue = composerAttachmentIssue(
     pendingAttachments,
-    activeModelInfo?.attachmentCapabilities,
+    activeComposerAttachmentCapabilities,
     attachmentFeatureReady,
   );
   const activeDraftCanSend = composerCanSend(activeDraft, activeAttachmentIssue);
@@ -2671,17 +2820,36 @@ export default function App() {
   };
 
   const changeModel = async (model?: string, effort?: string) => {
-    const c = clientRef.current;
-    if (!c || !active) return;
-    try {
-      const r = await c.setSessionModel(active, model, effort);
-      setSessions((list) => list.map((s) => (s.id === active ? { ...s, model: r.model } : s)));
-      setSessEffort((current) => ({ ...current, [active]: r.effort ?? "" }));
-      await refreshModelInfo({ sessionId: active });
-      setModelPickerOpen(false);
-      setModelSearch("");
-    } catch (e: any) {
-      push(active, (items) => [...items, { kind: "notice", text: `model switch: ${e?.message ?? e}` }]);
+    if (!clientRef.current?.connected || !active) return;
+    const sessionId = active;
+    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+    if (!session) return;
+    const staged = stagedModelChangesRef.current[sessionId];
+    const nextModel = model || staged?.model || session.model;
+    // Choosing a model resets effort to automatic, matching Serve's established picker contract.
+    // Choosing only effort preserves a previously staged model for the same next turn.
+    const nextEffort = model !== undefined
+      ? (effort ?? "")
+      : (effort ?? staged?.effort ?? sessEffort[sessionId] ?? "");
+    const unchanged = !staged
+      && nextModel === session.model
+      && nextEffort === (sessEffort[sessionId] ?? "");
+    setModelPickerOpen(false);
+    setModelSearch("");
+    if (unchanged) return;
+
+    stageModelChange(sessionId, nextModel, nextEffort);
+    if (!busyRef.current[sessionId]) {
+      try {
+        await flushStagedModelChange(sessionId);
+      } catch (error: any) {
+        push(sessionId, (items) => [...items, {
+          kind: "notice",
+          text: locale === "zh"
+            ? `模型切换发生意外错误：${error?.message ?? error}`
+            : `Unexpected model switch error: ${error?.message ?? error}`,
+        }]);
+      }
     }
   };
 
@@ -3172,6 +3340,7 @@ export default function App() {
   const items = active ? (transcripts[active] ?? []) : [];
   const modelEntries = [...new Set([
     ...(activeSession ? [activeSession.model] : []),
+    ...(activeStagedModelChange ? [activeStagedModelChange.model] : []),
     ...(activeModelInfo?.models ?? []),
   ])].map((modelId): ModelCatalogEntry => {
     const entry = activeModelInfo?.entries?.find((candidate) => candidate.id === modelId);
@@ -3185,6 +3354,8 @@ export default function App() {
         : {}),
     };
   });
+  const displayedModel = activeStagedModelChange?.model ?? activeSession?.model ?? "";
+  const displayedEffort = activeStagedModelChange?.effort ?? (active ? sessEffort[active] ?? "" : "");
   const visibleModelEntries = modelEntries.filter((entry) =>
     !modelSearch.trim()
     || `${entry.id} ${entry.providerId}`.toLowerCase().includes(modelSearch.trim().toLowerCase()),
@@ -3206,6 +3377,7 @@ export default function App() {
     clearActiveSession(id);
     removePet(id);
     delete activeTurnsRef.current[id];
+    clearStagedModelChange(id);
     setTaskStates((states) => {
       const { [id]: _gone, ...rest } = states;
       taskStatesRef.current = rest;
@@ -3222,6 +3394,7 @@ export default function App() {
       clearActiveSession(id);
       removePet(id);
       delete activeTurnsRef.current[id];
+      clearStagedModelChange(id);
       setTaskStates((states) => {
         const { [id]: _goneTask, ...rest } = states;
         taskStatesRef.current = rest;
@@ -3624,26 +3797,45 @@ export default function App() {
                 {activeSession && (
                   <div className="composer-popover-anchor model-anchor">
                     <button
-                      className="model-pill"
+                      className={`model-pill ${activeStagedModelChange ? "staged" : ""}`}
                       aria-expanded={modelPickerOpen}
-                      disabled={!!busy[active]}
+                      aria-label={locale === "zh" ? "选择模型" : "Choose a model"}
+                      title={busy[active]
+                        ? (locale === "zh" ? "当前轮保持不变；选择会用于下一轮" : "The current turn stays unchanged; selections apply to the next turn")
+                        : undefined}
                       onClick={() => {
                         setAttachmentMenuOpen(false);
                         setModelPickerOpen((open) => !open);
                       }}
                     >
-                      <span className="model-pill-main">{activeSession.model}</span>
+                      <span className="model-pill-main">{displayedModel}</span>
                       <span className={`model-route ${activeModelInfo?.profileId === "personal" ? "personal" : "managed"}`}>
                         {activeModelInfo?.profileId === "personal"
                           ? (locale === "zh" ? "个人" : "Personal")
                           : activeModelInfo?.profileId ?? (locale === "zh" ? "当前连接" : "Current route")}
                       </span>
+                      {activeStagedModelChange && (
+                        <span className="model-next-turn">
+                          {locale === "zh" ? "下一轮" : "Next turn"}
+                        </span>
+                      )}
                       <span aria-hidden="true">⌄</span>
                     </button>
                     {modelPickerOpen && (
                       <div className="composer-menu model-menu">
                         <div className="model-menu-head">
                           <strong>{locale === "zh" ? "选择模型" : "Choose a model"}</strong>
+                          {(busy[active] || activeStagedModelChange) && (
+                            <p className="model-menu-status" role="status">
+                              {busy[active]
+                                ? (locale === "zh"
+                                    ? `本轮继续使用 ${activeSession.model}；这里的选择从下一轮生效。`
+                                    : `This turn continues with ${activeSession.model}; choices here apply to the next turn.`)
+                                : (locale === "zh"
+                                    ? `正在应用 ${displayedModel}，发送前会再次确认。`
+                                    : `Applying ${displayedModel}; Hara will confirm it again before sending.`)}
+                            </p>
+                          )}
                           <input
                             autoFocus
                             value={modelSearch}
@@ -3655,7 +3847,8 @@ export default function App() {
                           {visibleModelEntries.map((entry) => (
                             <button
                               key={entry.id}
-                              className={entry.id === activeSession.model ? "selected" : ""}
+                              className={entry.id === displayedModel ? "selected" : ""}
+                              aria-current={entry.id === displayedModel ? "true" : undefined}
                               onClick={() => void changeModel(entry.id, undefined)}
                             >
                               <span className="model-row-copy">
@@ -3666,7 +3859,17 @@ export default function App() {
                                   {imageCapabilityText(locale, entry.attachmentCapabilities)}
                                 </small>
                               </span>
-                              {entry.id === activeSession.model && <span aria-hidden="true">✓</span>}
+                              <span className="model-row-state">
+                                {entry.id === activeSession.model && (
+                                  <small>{locale === "zh" ? "当前" : "Current"}</small>
+                                )}
+                                {entry.id === activeStagedModelChange?.model && (
+                                  <strong>{locale === "zh" ? "下一轮" : "Next"}</strong>
+                                )}
+                                {!activeStagedModelChange && entry.id === activeSession.model && (
+                                  <span aria-hidden="true">✓</span>
+                                )}
+                              </span>
                             </button>
                           ))}
                           {visibleModelEntries.length === 0 && (
@@ -3689,22 +3892,37 @@ export default function App() {
                     )}
                   </div>
                 )}
-                {activeModelInfo && activeModelInfo.effortLevels.length > 0 && (
+                {active && activeModelInfo && activeComposerEffortLevels.length > 0 && (
                   <select
-                    className="effort-select"
+                    className={`effort-select ${activeStagedModelChange ? "staged" : ""}`}
                     aria-label={locale === "zh" ? "思考强度" : "Reasoning effort"}
-                    value={sessEffort[active] ?? ""}
-                    onChange={(e) => void changeModel(undefined, e.target.value || undefined)}
-                    disabled={!!busy[active]}
+                    title={busy[active]
+                      ? (locale === "zh" ? "当前轮保持不变；选择会用于下一轮" : "The current turn stays unchanged; selections apply to the next turn")
+                      : undefined}
+                    value={displayedEffort}
+                    onChange={(e) => void changeModel(undefined, e.target.value)}
                   >
                     <option value="">{locale === "zh" ? "思考 · 自动" : "Thinking · Auto"}</option>
-                    {activeModelInfo.effortLevels.map((level) => (
+                    {activeComposerEffortLevels.map((level) => (
                       <option key={level} value={level}>
                         {locale === "zh" ? "思考" : "Thinking"} · {thinkingLabel(locale, level)}
                       </option>
                     ))}
                   </select>
                 )}
+                {activeStagedModelChange ? (
+                  <span className="model-change-status" role="status">
+                    {locale === "zh" ? "下一轮" : "Next"} · {activeStagedModelChange.model}
+                    {" · "}
+                    {locale === "zh" ? "思考" : "Thinking"} · {activeStagedModelChange.effort
+                      ? thinkingLabel(locale, activeStagedModelChange.effort)
+                      : (locale === "zh" ? "自动" : "Auto")}
+                  </span>
+                ) : active && busy[active] ? (
+                  <span className="model-change-status quiet">
+                    {locale === "zh" ? "运行中 · 可预选下一轮" : "Running · choose for next turn"}
+                  </span>
+                ) : null}
                 {(() => {
                   const cx = active ? ctxMap[active] : undefined;
                   if (!cx || cx.pct <= 0) return null;
@@ -3724,7 +3942,7 @@ export default function App() {
                   );
                 })()}
                 <span className="composer-capability-summary">
-                  {imageCapabilityText(locale, activeModelInfo?.attachmentCapabilities)}
+                  {imageCapabilityText(locale, activeComposerAttachmentCapabilities)}
                 </span>
               </div>
             </div>

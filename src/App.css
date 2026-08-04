@@ -1722,7 +1722,13 @@ select {
   color: var(--fg);
 }
 .inputbar .model-pill {
-  max-width: 310px;
+  max-width: 360px;
+}
+.inputbar .model-pill.staged,
+.effort-select.staged {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--fg);
 }
 .model-pill-main {
   max-width: 165px;
@@ -1743,6 +1749,14 @@ select {
   background: color-mix(in srgb, var(--fg) 6%, transparent);
   color: var(--dim);
 }
+.model-next-turn {
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+}
 .effort-select {
   height: 30px;
   max-width: 150px;
@@ -1754,6 +1768,19 @@ select {
 .effort-select:focus {
   border-color: var(--border);
   color: var(--fg);
+}
+.model-change-status {
+  max-width: 245px;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-change-status.quiet {
+  color: var(--dim);
+  font-weight: 500;
 }
 .composer-capability-summary {
   margin-left: auto;
@@ -1795,7 +1822,7 @@ select {
 .inputbar .composer-menu button.selected {
   background: color-mix(in srgb, var(--fg) 7%, transparent);
 }
-.composer-menu button > span:nth-child(2),
+.attachment-menu button > span:nth-child(2),
 .model-row-copy {
   min-width: 0;
   flex: 1;
@@ -1830,6 +1857,12 @@ select {
   display: block;
   margin-bottom: 8px;
 }
+.model-menu-status {
+  margin: -2px 0 9px;
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
 .model-menu-head input {
   width: 100%;
   box-sizing: border-box;
@@ -1850,6 +1883,22 @@ select {
 .inputbar .model-menu-list > button {
   min-height: 54px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 52%, transparent);
+}
+.model-row-state {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--dim);
+  font-size: 9px;
+}
+.model-row-state small {
+  color: inherit;
+  font-size: inherit;
+}
+.model-row-state strong {
+  color: var(--accent);
+  font-size: 9px;
 }
 .model-empty {
   padding: 18px;

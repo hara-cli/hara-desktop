@@ -256,7 +256,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(lifecycle, /state === "completed" \? "ready" : state/);
 });
 
-test("the model picker follows the active session's managed catalog and refreshes after every switch", () => {
+test("the model picker stages busy selections and confirms them before the next turn", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
 
@@ -265,10 +265,30 @@ test("the model picker follows the active session's managed catalog and refreshe
   assert.match(app, /refreshModelInfo\(\{ sessionId: active \}\)/, "active-session changes request a scoped catalog");
   assert.match(
     app,
-    /await c\.setSessionModel\(active, model, effort\)[\s\S]*await refreshModelInfo\(\{ sessionId: active \}\)/,
-    "model and thinking changes reload the authoritative catalog",
+    /const flushStagedModelChange = useCallback[\s\S]*client\.setSessionModel\(\s*sessionId,\s*staged\.model,\s*staged\.effort \|\| undefined[\s\S]*refreshModelInfo\(\{ sessionId \}\)/,
+    "the latest staged model and effort are validated by Serve before the authoritative catalog refreshes",
   );
   assert.match(app, /\[opts\.sessionId!\]: info\.effort \?\? ""/, "the server's per-session effort replaces stale UI state");
+  assert.match(app, /MODEL_CHANGE_BUSY_RETRY_DELAYS_MS/, "the turn-end BUSY handoff has a hard retry bound");
+  assert.match(app, /if \(!live\) void flushStagedModelChange\(e\.sessionId\)/);
+  const sendStart = app.indexOf("const sendText = useCallback");
+  const sendEnd = app.indexOf("const retryQueuedInput = useCallback", sendStart);
+  const sendFlow = app.slice(sendStart, sendEnd);
+  assert.ok(
+    sendFlow.indexOf("await flushStagedModelChange(sessionId)") < sendFlow.indexOf("await c.send(sessionId"),
+    "a fresh or queued send cannot overtake the staged model change",
+  );
+  const modelToolbarStart = app.indexOf('className={`model-pill');
+  const modelToolbarEnd = app.indexOf("{(() => {", modelToolbarStart);
+  const modelToolbar = app.slice(modelToolbarStart, modelToolbarEnd);
+  assert.doesNotMatch(
+    modelToolbar,
+    /disabled=\{!!busy\[active\]\}/,
+    "model and thinking controls stay interactive while the current turn runs",
+  );
+  assert.match(modelToolbar, /model-next-turn/);
+  assert.match(modelToolbar, /本轮继续使用/);
+  assert.match(modelToolbar, /onChange=\{\(e\) => void changeModel\(undefined, e\.target\.value\)\}/);
 });
 
 test("settings use shared page templates and keep Desktop, engine, and update state distinct", () => {
