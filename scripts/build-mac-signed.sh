@@ -304,10 +304,10 @@ while [ "$attempt" -le "$TAURI_BUILD_ATTEMPTS" ]; do
   rm -f "$TAURI_BUILD_LOG"
   TAURI_BUILD_LOG=""
   if [ "$attempt" -eq "$TAURI_BUILD_ATTEMPTS" ]; then
-    echo "error: Apple codesign timestamp service remained unavailable after $attempt attempts" >&2
+    echo "error: Apple signing/notarization service remained unavailable after $attempt attempts" >&2
     exit "$build_status"
   fi
-  echo "warning: Apple codesign timestamp service had a transient failure ($attempt/$TAURI_BUILD_ATTEMPTS); rebuilding the clean bundle" >&2
+  echo "warning: Apple signing/notarization service had a transient transport failure ($attempt/$TAURI_BUILD_ATTEMPTS); rebuilding the clean bundle" >&2
   /bin/sleep "$((attempt * 10))"
   attempt=$((attempt + 1))
 done

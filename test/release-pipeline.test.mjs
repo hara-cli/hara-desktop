@@ -456,7 +456,7 @@ test("Tauri performs the sole Developer ID signing pass after Bun signature remo
   );
 });
 
-test("signed Tauri bundling retries only bounded Apple timestamp service failures", () => {
+test("signed Tauri bundling retries only bounded Apple signing-service transport failures", () => {
   assert.equal(
     isTransientCodesignTimestampFailure("codesign: A timestamp was expected but was not found."),
     true,
@@ -471,8 +471,18 @@ test("signed Tauri bundling retries only bounded Apple timestamp service failure
     isTransientCodesignTimestampFailure("codesign: The timestamp service is temporarily unavailable"),
     true,
   );
+  assert.equal(
+    isTransientCodesignTimestampFailure(
+      "failed codesign application: failed to notarize app: Error: HTTPClientError.connectTimeout",
+    ),
+    true,
+  );
   assert.equal(isTransientCodesignTimestampFailure("codesign: errSecInternalComponent"), false);
   assert.equal(isTransientCodesignTimestampFailure("Developer ID signing identity was not found"), false);
+  assert.equal(
+    isTransientCodesignTimestampFailure("failed to notarize app: Invalid bundle signature"),
+    false,
+  );
 
   const script = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
   assert.match(script, /TAURI_BUILD_ATTEMPTS=3/);

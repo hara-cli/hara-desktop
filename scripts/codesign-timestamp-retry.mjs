@@ -11,9 +11,15 @@ const EXPLICIT_TIMESTAMP_TRANSIENT =
   /A timestamp was expected but was not found|timestamp(?:ing)? (?:service|server).{0,120}(?:not available|unavailable|temporarily unavailable|timed out|timeout|could not connect|connection (?:failed|reset|lost))/is;
 const NETWORK_TRANSIENT =
   /NSURLErrorDomain|kCFErrorDomainCFNetwork|network connection was lost|Internet connection appears to be offline|TLS handshake|request timed out|could not connect to (?:the )?server/i;
+// Tauri submits the signed app to Apple's notary service inside the same bundle command. Retry only
+// the narrow pre-submission transport timeout observed before Apple returns a submission id; an Apple
+// rejection, invalid ticket, authentication error, or any other notarization failure remains terminal.
+const NOTARY_CONNECT_TRANSIENT =
+  /failed to notarize (?:app|application): Error: HTTPClientError\.connectTimeout/i;
 
 export function isTransientCodesignTimestampFailure(value) {
   const text = String(value ?? "");
+  if (NOTARY_CONNECT_TRANSIENT.test(text)) return true;
   if (EXPLICIT_TIMESTAMP_TRANSIENT.test(text)) return true;
   if (!/timestamp/i.test(text)) return false;
   return NETWORK_TRANSIENT.test(text);
@@ -40,7 +46,7 @@ if (invoked) {
   try {
     process.exit(isTransientCodesignTimestampFailure(readBoundedLog(logPath)) ? 0 : 1);
   } catch (error) {
-    console.error(`codesign timestamp classifier: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`Apple signing-service classifier: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(2);
   }
 }
