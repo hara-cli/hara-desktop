@@ -8,6 +8,8 @@ import {
   initialAppPlace,
   moveNavigation,
   parseNavigationPreferences,
+  pluginNavigationContributionId,
+  pluginNavigationContributions,
   visibleNavigation,
   withNavigationVisibility,
 } from "../src/navigation.ts";
@@ -30,6 +32,63 @@ test("module dock preferences tolerate corruption and stale plugin IDs", () => {
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
     ["core.tasks", "core.chat", "core.projects", "core.groups", "core.office"],
+  );
+});
+
+test("enabled plugin panels contribute collision-safe, default-hidden dock entries", () => {
+  const pluginPanels = pluginNavigationContributions([
+    {
+      plugin: "design.tools",
+      panelId: "preview",
+      title: "Design preview",
+      description: "Project-owned live preview",
+      icon: "office",
+    },
+    {
+      plugin: "design",
+      panelId: "tools.preview",
+      title: "Other preview",
+      icon: "projects",
+    },
+    {
+      plugin: "design.tools",
+      panelId: "preview",
+      title: "Duplicate is ignored",
+    },
+    {
+      plugin: "",
+      panelId: "invalid",
+      title: "Invalid owner",
+    },
+    {
+      plugin: "unsafe",
+      panelId: "control",
+      title: "Unsafe\nlabel",
+    },
+  ]);
+
+  assert.equal(pluginPanels.length, 2);
+  assert.notEqual(pluginPanels[0].id, pluginPanels[1].id, "owner and panel segments cannot collide");
+  assert.equal(
+    pluginNavigationContributionId("design.tools", "preview"),
+    pluginPanels[0].id,
+  );
+  assert.equal(pluginPanels[0].source, "plugin");
+  assert.equal(pluginPanels[0].defaultVisible, false);
+  assert.equal(pluginPanels[0].canHide, true);
+  assert.equal(pluginPanels[0].icon, "office");
+
+  const contributions = [...CORE_NAVIGATION_CONTRIBUTIONS, ...pluginPanels];
+  let preferences = parseNavigationPreferences(null);
+  assert.equal(
+    visibleNavigation(contributions, preferences).some((item) => item.id === pluginPanels[0].id),
+    false,
+    "installing a plugin never clutters the dock without a user choice",
+  );
+  preferences = withNavigationVisibility(contributions, preferences, pluginPanels[0].id, true);
+  assert.equal(
+    visibleNavigation(contributions, preferences).some((item) => item.id === pluginPanels[0].id),
+    true,
   );
 });
 

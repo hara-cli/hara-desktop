@@ -67,6 +67,8 @@ interface CapabilityDirectoryCopy {
   disable: string;
   enabled: string;
   disabled: string;
+  showPanelInSidebar: string;
+  hidePanelFromSidebar: string;
   noResults: string;
 }
 
@@ -75,9 +77,11 @@ interface CapabilityDirectoryProps {
   core: CoreCapability[];
   plugins: PluginInfo[] | null;
   organization?: OrganizationCapabilityContext;
-  panelBusy: string;
+  isPanelBusy: (pluginName: string, panelId: string) => boolean;
   onTogglePlugin: (name: string, enabled: boolean) => void;
   onOpenPanel: (pluginName: string, panel: PanelSpec) => void;
+  panelInDock: (pluginName: string, panelId: string) => boolean;
+  onTogglePanelInDock: (pluginName: string, panelId: string, visible: boolean) => void;
 }
 
 const normalized = (value: string): string => value.trim().toLocaleLowerCase();
@@ -87,9 +91,11 @@ export function CapabilityDirectory({
   core,
   plugins,
   organization,
-  panelBusy,
+  isPanelBusy,
   onTogglePlugin,
   onOpenPanel,
+  panelInDock,
+  onTogglePanelInDock,
 }: CapabilityDirectoryProps) {
   const [source, setSource] = useState<DirectorySource>("hara");
   const [query, setQuery] = useState("");
@@ -283,16 +289,30 @@ export function CapabilityDirectory({
                       </div>
                     </div>
                     <span className="settings-capability-actions">
-                      {plugin.enabled && (plugin.panels ?? []).map((panel) => (
-                        <button
-                          type="button"
-                          key={panel.id}
-                          disabled={panelBusy === panel.id}
-                          onClick={() => onOpenPanel(plugin.name, panel)}
-                        >
-                          {panelBusy === panel.id ? "…" : panel.title}
-                        </button>
-                      ))}
+                      {plugin.enabled && (plugin.panels ?? []).map((panel) => {
+                        const inDock = panelInDock(plugin.name, panel.id);
+                        const busy = isPanelBusy(plugin.name, panel.id);
+                        return (
+                          <span className="capability-panel-actions" key={panel.id}>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => onOpenPanel(plugin.name, panel)}
+                            >
+                              {busy ? "…" : panel.title}
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost"
+                              aria-pressed={inDock}
+                              aria-label={`${inDock ? copy.hidePanelFromSidebar : copy.showPanelInSidebar}: ${panel.title}`}
+                              onClick={() => onTogglePanelInDock(plugin.name, panel.id, !inDock)}
+                            >
+                              {inDock ? copy.hidePanelFromSidebar : copy.showPanelInSidebar}
+                            </button>
+                          </span>
+                        );
+                      })}
                       <button
                         type="button"
                         className={plugin.enabled ? "" : "ghost"}

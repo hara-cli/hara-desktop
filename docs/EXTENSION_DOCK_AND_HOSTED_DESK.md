@@ -48,6 +48,8 @@ The first implementation intentionally supports only boundaries already present 
 - **Design and other local panels**: the existing verified local plugin launch path is hosted by the
   dock and bound to a real project session. Starting a panel from Settings without a project, or when
   Serve says its detection markers do not match that project, is rejected before the command runs.
+  An enabled panel can also be explicitly shown as a default-hidden module-dock shortcut; that shortcut
+  uses the same checked launch path and does not turn the legacy panel into an independent module.
 - **Browser**: existing links continue to open in the system browser, and the agent's browser tools
   remain a separate approved capability. Hara does not iframe arbitrary authenticated sites.
 - **Organization Desk**: the existing native, profile-pinned read surface remains authoritative.

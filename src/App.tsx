@@ -91,9 +91,14 @@ import {
   NAVIGATION_PREFERENCES_KEY,
   initialAppPlace,
   moveNavigation,
+  navigationIsVisible,
   parseNavigationPreferences,
+  pluginNavigationContributionId,
+  pluginNavigationContributions,
   visibleNavigation,
   withNavigationVisibility,
+  type NavigationContribution,
+  type PluginNavigationContribution,
   type NavigationPreferences,
 } from "./navigation";
 import {
@@ -250,11 +255,27 @@ const panelExtensionFor = (
   id: `panel:${owner.sessionId}:${panel.plugin}:${panel.id}`,
   title: panel.title,
   plugin: panel.plugin,
+  panelId: panel.id,
   url,
   surfaceKind: classifyPanelSurface(panel.plugin, panel.id, panel.title),
   owner,
   mode: "docked",
 });
+
+const panelNavigationIcon = (
+  plugin: string,
+  panel: Pick<PanelSpec, "id" | "title">,
+) => {
+  const kind = classifyPanelSurface(plugin, panel.id, panel.title);
+  if (kind === "presentation" || kind === "spreadsheet" || kind === "document" || kind === "design") {
+    return "office" as const;
+  }
+  if (kind === "browser") return "projects" as const;
+  return "tasks" as const;
+};
+
+const panelOperationKey = (plugin: string, panelId: string): string =>
+  `${plugin.length}:${plugin}:${panelId}`;
 
 const groupsDirectoryProfiles = (
   organizations: OrganizationConnection[],
@@ -678,6 +699,26 @@ export default function App() {
   const sessionOpenRequestRef = useRef(0);
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
   const pluginsRef = useRef<PluginInfo[] | null>(null);
+  const pluginNavigation = useMemo<PluginNavigationContribution[]>(() =>
+    pluginNavigationContributions(
+      (plugins ?? []).flatMap((plugin) => plugin.enabled
+        ? (plugin.panels ?? []).map((panel) => ({
+            plugin: plugin.name,
+            panelId: panel.id,
+            title: panel.title,
+            description: plugin.description,
+            icon: panelNavigationIcon(plugin.name, panel),
+          }))
+        : []),
+    ), [plugins]);
+  const navigationContributions = useMemo<NavigationContribution[]>(() => [
+    ...CORE_NAVIGATION_CONTRIBUTIONS,
+    ...pluginNavigation,
+  ], [pluginNavigation]);
+  const pluginNavigationById = useMemo(
+    () => new Map(pluginNavigation.map((contribution) => [contribution.id, contribution])),
+    [pluginNavigation],
+  );
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [panelBusy, setPanelBusy] = useState("");
   const [starterBusy, setStarterBusy] = useState(false);
@@ -1265,11 +1306,14 @@ export default function App() {
       setActive(null);
     }
     if (z === "office") void refreshArtifacts();
-    if (z === "settings" && clientRef.current) {
-      void Promise.all([clientRef.current.listPlugins(), clientRef.current.listSkills()]).then(([pl, sk]) => {
+    const settingsClient = z === "settings" ? clientRef.current : null;
+    if (settingsClient) {
+      void Promise.all([settingsClient.listPlugins(), settingsClient.listSkills()]).then(([pl, sk]) => {
+        if (clientRef.current !== settingsClient) return;
+        pluginsRef.current = pl.plugins;
         setPlugins(pl.plugins);
         setSkills(sk.skills);
-      });
+      }).catch(() => {});
       void refreshGroupsDirectory();
       void refreshPets();
     }
@@ -1834,6 +1878,10 @@ export default function App() {
     const stale = () => generation !== connectGenerationRef.current;
     const previous = clientRef.current;
     clientRef.current = null;
+    pluginsRef.current = null;
+    setPlugins(null);
+    setProjPanels({});
+    setExtensionDock(null);
     attachedSessionsRef.current.clear();
     pendingSendDispatchesRef.current = {};
     clearStagedModelChanges();
@@ -1876,6 +1924,10 @@ export default function App() {
         if (clientRef.current !== c) return;
         clientRef.current = null;
         if (plannedUpdateRestartRef.current) return;
+        pluginsRef.current = null;
+        setPlugins(null);
+        setProjPanels({});
+        setExtensionDock(null);
         for (const [sessionId, running] of Object.entries(busyRef.current)) {
           if (running) notePet(sessionId, "blocked", "Hara engine disconnected");
         }
@@ -1910,6 +1962,14 @@ export default function App() {
       setServer({ pid: d.pid, version: info.version, provider: info.provider, model: info.model, cwd: info.cwd });
       sessionsRef.current = list.sessions;
       setSessions(list.sessions);
+      // Plugin panels may contribute default-hidden module-dock entries. This is a local inventory read;
+      // panel execution remains project-bound and requires a later authoritative Serve lookup.
+      void c.listPlugins().then((result) => {
+        if (!stale() && clientRef.current === c) {
+          pluginsRef.current = result.plugins;
+          setPlugins(result.plugins);
+        }
+      }).catch(() => {});
       const needsCredentials = info.setupState === "needs-credentials";
       setSetupRequired(needsCredentials);
       if (needsCredentials) {
@@ -3220,7 +3280,7 @@ export default function App() {
       }
     };
     warmModule(loadExtensionDock());
-    setPanelBusy(spec.id);
+    setPanelBusy(panelOperationKey(pluginName, spec.id));
     try {
       // The Settings catalog is descriptive, not an execution authority. Ask Serve which panels
       // actually match this exact project and execute only the authoritative returned descriptor.
@@ -3304,7 +3364,7 @@ export default function App() {
       }
     };
     warmModule(loadExtensionDock());
-    setPanelBusy(spec.id);
+    setPanelBusy(panelOperationKey(spec.plugin, spec.id));
     try {
       const url = await invoke<string>("start_panel", { command: spec.command, args: spec.args ?? [], cwd, portHint: spec.port ?? null });
       assertDirectPanelLaunchContext();
@@ -3951,12 +4011,12 @@ export default function App() {
                     ? "on"
                     : ""
                 }`}
-                disabled={panelBusy === sp.id}
+                disabled={panelBusy === panelOperationKey(sp.plugin, sp.id)}
                 onMouseEnter={() => warmModule(loadExtensionDock())}
                 onFocus={() => warmModule(loadExtensionDock())}
                 onClick={() => void toggleExtensionPanel(sp, activeSession.cwd)}
               >
-                {panelBusy === sp.id ? "…" : `◧ ${sp.title}`}
+                {panelBusy === panelOperationKey(sp.plugin, sp.id) ? "…" : `◧ ${sp.title}`}
               </button>
             ))}
       </div>
@@ -4419,8 +4479,8 @@ export default function App() {
     </main>
   );
 
-  // The module dock is preference-driven. Core modules contribute stable IDs now; reviewed plugin
-  // surfaces can join the same registry once the isolated plugin-host contract lands. Notification
+  // The module dock is preference-driven. Core modules and enabled plugin work panels contribute stable
+  // IDs; panel clicks still pass through project detection and the isolated local launcher. Notification
   // invariant: interruption (needs a human) → red dot; ambient (ran, left a trace) → count chip.
   const railLabelsById: Record<string, string> = {
     "core.chat": t("zoneChat"),
@@ -4442,10 +4502,14 @@ export default function App() {
         (connection) => connection.profileId === activeOrganizationConnection.id,
       )
     : undefined;
+  const pluginRailLabels = Object.fromEntries(
+    pluginNavigation.map((contribution) => [contribution.id, contribution.title]),
+  );
   const railItems: AppRailItem[] = visibleNavigation(
-    CORE_NAVIGATION_CONTRIBUTIONS,
+    navigationContributions,
     navigationPreferences,
   ).map((contribution) => {
+    const pluginContribution = pluginNavigationById.get(contribution.id);
     let badge: AppRailItem["badge"];
     if (contribution.target === "chat" && manualUnreadIn(azAll)) {
       badge = { kind: "dot" };
@@ -4456,12 +4520,18 @@ export default function App() {
     }
     return {
       id: contribution.id,
-      label: railLabelsById[contribution.id] ?? contribution.id,
+      label: railLabelsById[contribution.id] ?? pluginRailLabels[contribution.id] ?? contribution.id,
       icon: contribution.icon,
       shortcut: "shortcut" in contribution
         ? contribution.shortcut
         : undefined,
-      active: zone === contribution.target,
+      active: pluginContribution
+        ? zone === "projects"
+          && extensionDock?.type === "legacy-panel"
+          && extensionDock.plugin === pluginContribution.plugin
+          && extensionDock.panelId === pluginContribution.panelId
+          && extensionDock.owner.sessionId === active
+        : zone === contribution.target,
       badge,
     };
   });
@@ -4479,13 +4549,36 @@ export default function App() {
         const contribution = CORE_NAVIGATION_CONTRIBUTIONS.find(
           (item) => item.id === id,
         );
-        if (contribution) setZone(contribution.target);
+        if (contribution) {
+          setZone(contribution.target);
+          return;
+        }
+        const pluginContribution = pluginNavigationById.get(id);
+        const plugin = pluginsRef.current?.find(
+          (candidate) => candidate.enabled && candidate.name === pluginContribution?.plugin,
+        );
+        const panel = plugin?.panels?.find(
+          (candidate) => candidate.id === pluginContribution?.panelId,
+        );
+        if (plugin && panel) {
+          if (
+            extensionDock?.type === "legacy-panel"
+            && extensionDock.plugin === plugin.name
+            && extensionDock.panelId === panel.id
+            && extensionDock.owner.sessionId === activeByZoneRef.current.projects
+          ) {
+            setZone("projects");
+          } else {
+            void openPanel(plugin.name, panel);
+          }
+        }
       }}
       onIntent={(id) => {
         const contribution = CORE_NAVIGATION_CONTRIBUTIONS.find(
           (item) => item.id === id,
         );
         if (contribution) preloadPlace(contribution.target);
+        else if (pluginNavigationById.has(id)) warmModule(loadExtensionDock());
       }}
       onSelectSettings={() => setZone("settings")}
       onIntentSettings={() => preloadSettingsSection(setSec)}
@@ -5319,7 +5412,7 @@ export default function App() {
             )}
             {setSec === "modules" && (
               <ModuleDockSettings
-                contributions={CORE_NAVIGATION_CONTRIBUTIONS}
+                contributions={navigationContributions}
                 preferences={navigationPreferences}
                 labels={{
                   "core.chat": {
@@ -5342,6 +5435,15 @@ export default function App() {
                     title: t("zoneOffice"),
                     description: t("moduleOfficeDescription"),
                   },
+                  ...Object.fromEntries(pluginNavigation.map((contribution) => [
+                    contribution.id,
+                    {
+                      title: contribution.title,
+                      description: [contribution.plugin, contribution.description]
+                        .filter(Boolean)
+                        .join(" · "),
+                    },
+                  ])),
                 }}
                 copy={{
                   eyebrow: t("settingsPersonalize"),
@@ -5350,6 +5452,7 @@ export default function App() {
                   cardTitle: t("moduleDockCardTitle"),
                   cardDescription: t("moduleDockCardDescription"),
                   core: t("moduleSourceCore"),
+                  plugin: t("moduleSourcePlugin"),
                   visible: t("moduleVisible"),
                   hidden: t("moduleHidden"),
                   show: t("showModule"),
@@ -5362,7 +5465,7 @@ export default function App() {
                 onVisibilityChange={(id, visible) => {
                   saveNavigationPreferences((current) =>
                     withNavigationVisibility(
-                      CORE_NAVIGATION_CONTRIBUTIONS,
+                      navigationContributions,
                       current,
                       id,
                       visible,
@@ -5371,7 +5474,7 @@ export default function App() {
                 onMove={(id, direction) => {
                   saveNavigationPreferences((current) =>
                     moveNavigation(
-                      CORE_NAVIGATION_CONTRIBUTIONS,
+                      navigationContributions,
                       current,
                       id,
                       direction,
@@ -5409,7 +5512,8 @@ export default function App() {
               >
                 <CapabilityDirectory
                   plugins={plugins}
-                  panelBusy={panelBusy}
+                  isPanelBusy={(pluginName, panelId) =>
+                    panelBusy === panelOperationKey(pluginName, panelId)}
                   core={[
                     { id: "core.chat", title: t("zoneChat"), description: t("moduleChatDescription") },
                     { id: "core.projects", title: t("zoneProjects"), description: t("moduleProjectsDescription") },
@@ -5458,10 +5562,23 @@ export default function App() {
                     disable: t("disableCapability"),
                     enabled: t("enabled"),
                     disabled: t("disabled"),
+                    showPanelInSidebar: t("showPanelInSidebar"),
+                    hidePanelFromSidebar: t("hidePanelFromSidebar"),
                     noResults: t("capabilityNoResults"),
                   }}
                   onTogglePlugin={(name, enabled) => void togglePlugin(name, enabled)}
                   onOpenPanel={(pluginName, panel) => void openPanel(pluginName, panel)}
+                  panelInDock={(pluginName, panelId) => {
+                    const id = pluginNavigationContributionId(pluginName, panelId);
+                    const contribution = id ? pluginNavigationById.get(id) : undefined;
+                    return Boolean(contribution && navigationIsVisible(contribution, navigationPreferences));
+                  }}
+                  onTogglePanelInDock={(pluginName, panelId, visible) => {
+                    const id = pluginNavigationContributionId(pluginName, panelId);
+                    if (!id || !pluginNavigationById.has(id)) return;
+                    saveNavigationPreferences((current) =>
+                      withNavigationVisibility(navigationContributions, current, id, visible));
+                  }}
                 />
               </Suspense>
             )}
@@ -5552,7 +5669,7 @@ export default function App() {
             onHide={() => {
               saveNavigationPreferences((current) =>
                 withNavigationVisibility(
-                  CORE_NAVIGATION_CONTRIBUTIONS,
+                  navigationContributions,
                   current,
                   "core.groups",
                   false,

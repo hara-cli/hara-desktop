@@ -877,6 +877,26 @@ test("disabled plugins cannot launch a panel from settings", () => {
   assert.match(app, /className="ready-error" role="alert"/, "ready-state failures stay visible and dismissible");
 });
 
+test("plugin dock shortcuts stay default-hidden and reuse the project-authorized panel path", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const navigation = readFileSync(`${root}/src/navigation.ts`, "utf8");
+  const modules = readFileSync(`${root}/src/ModuleDockSettings.tsx`, "utf8");
+  const directory = readFileSync(`${root}/src/CapabilityDirectory.tsx`, "utf8");
+
+  assert.match(navigation, /defaultVisible: false/);
+  assert.match(navigation, /plugin\.\$\{pluginSegment\}\.\$\{panelSegment\}/);
+  assert.match(navigation, /encodeURIComponent\(value\)\.replace\(\/\\\.\/g, "%2E"\)/);
+  assert.match(app, /pluginNavigationContributions/);
+  assert.match(app, /navigationContributions/);
+  assert.match(app, /void openPanel\(plugin\.name, panel\)/);
+  assert.match(app, /extensionDock\.panelId === pluginContribution\.panelId/);
+  assert.match(app, /extensionDock\.owner\.sessionId === active/);
+  assert.match(app, /projectClient\.projectPanels\(\{ sessionId: projectSession\.id \}\)/);
+  assert.match(modules, /item\.source === "core" \? copy\.core : copy\.plugin/);
+  assert.match(directory, /panelInDock\(plugin\.name, panel\.id\)/);
+  assert.match(directory, /onTogglePanelInDock\(plugin\.name, panel\.id, !inDock\)/);
+});
+
 test("extension screens remain owner-bound and never display a raw panel URL", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const dock = readFileSync(`${root}/src/ExtensionDock.tsx`, "utf8");

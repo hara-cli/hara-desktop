@@ -4029,6 +4029,19 @@ button:focus-visible,
   justify-content: flex-end;
   gap: 8px;
 }
+.capability-panel-actions {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #2f2f34;
+  border-radius: 8px;
+  background: #17171a;
+}
+.capability-panel-actions button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 11px;
+}
 .plug-description {
   max-width: 520px;
   margin-top: 3px;

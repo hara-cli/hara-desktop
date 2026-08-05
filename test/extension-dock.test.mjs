@@ -42,6 +42,7 @@ test("an extension never migrates to a different project session or Artifact rev
     id: "panel:s1:design:preview",
     title: "Design",
     plugin: "design",
+    panelId: "preview",
     url: "http://127.0.0.1:4312",
     surfaceKind: "design",
     owner: { place: "projects", sessionId: "s1", cwd: "/project/a" },

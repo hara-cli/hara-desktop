@@ -19,6 +19,7 @@ interface ModuleDockCopy {
   cardTitle: string;
   cardDescription: string;
   core: string;
+  plugin: string;
   visible: string;
   hidden: string;
   show: string;
@@ -75,7 +76,7 @@ export function ModuleDockSettings({
                 <span className="module-dock-copy">
                   <span className="module-dock-title">
                     <strong>{label.title}</strong>
-                    <SettingsBadge>{item.source === "core" ? copy.core : item.source}</SettingsBadge>
+                    <SettingsBadge>{item.source === "core" ? copy.core : copy.plugin}</SettingsBadge>
                   </span>
                   <small>{label.description}</small>
                 </span>

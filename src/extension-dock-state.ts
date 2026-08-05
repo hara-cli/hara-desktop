@@ -27,6 +27,7 @@ export interface LegacyPanelExtension {
   id: string;
   title: string;
   plugin: string;
+  panelId: string;
   url: string;
   surfaceKind: ExtensionSurfaceKind;
   owner: ProjectExtensionOwner;

@@ -9,8 +9,10 @@ every skill inside every plugin.
 - Office owns presentations, spreadsheets, documents, and local Artifact history. Projects owns
   local-folder conversations; the two no longer compete inside one sidebar.
 - Settings, update recovery, and future safe-mode recovery stay fixed at the lower left.
-- A plugin may contribute at most one primary dock entry. Its secondary views belong in that
-  module's context sidebar or stage.
+- Enabled legacy plugin panels may be explicitly pinned as default-hidden shortcuts. They remain
+  project-owned Extension Dock views, not independent modules.
+- A future Panel v2 plugin may contribute at most one true primary dock entry. Its secondary views
+  belong in that module's context sidebar or stage.
 - Hiding a module removes only its dock entry. It does not delete sessions, tasks, files, or plugin
   data, and keyboard routes may still reach the module.
 - Ordering and visibility are local user preferences, not organization policy.
@@ -28,6 +30,15 @@ Implemented in:
 - `src/AppRail.tsx`: presentational dock plus the fixed Settings entry.
 - `src/ModuleDockSettings.tsx`: user-facing show/hide/order controls.
 - `src/App.tsx`: routing, unread badges, and preference persistence.
+
+Enabled plugin panels are also converted into bounded, collision-safe `plugin.<owner>.<panel>`
+contributions. They start in `shown: []`, so installing or enabling a plugin never adds an icon by
+surprise. A person must choose **Settings → Sidebar modules → Show**. Clicking that shortcut does not
+trust the descriptive plugin inventory: Desktop asks Serve for the panels applicable to the active
+project and launches only the matching authoritative descriptor. With no project, a disabled plugin,
+or mismatched detection markers, nothing starts. The Installed tab in **Capabilities** exposes the
+same show/remove choice next to each enabled panel so people do not have to discover a second settings
+page first.
 
 Preferences use `hara.navigation.v1` in local storage:
 
@@ -173,8 +184,9 @@ directory are split from the initial Assistant bundle. Dock and Settings entries
 matching module on pointer hover or keyboard focus, keeping startup lean without making the first
 intentional navigation feel delayed.
 
-PPT, spreadsheet, document, and Design views do not add more primary dock entries. Their current
-surfaces use the context-owned Extension Dock described in
+PPT, spreadsheet, and document Artifact views do not add more primary dock entries. Design and other
+enabled local panels may be pinned as user-owned shortcuts, but their current surfaces still use the
+context-owned Extension Dock described in
 `docs/EXTENSION_DOCK_AND_HOSTED_DESK.md`, pinned to one project session or Artifact revision. Browser
 continues in the system browser and organization Desk remains a native Groups surface; both are
 future candidates for the same contextual model after their isolation and realm contracts exist.
@@ -182,9 +194,13 @@ future candidates for the same contextual model after their isolation and realm 
 ## Phase 2: reviewed plugin surfaces
 
 The current plugin manifest exposes skills, agents, MCP servers, hooks, binaries, command-launched
-panels, and project panels. Those panels are not yet safe primary navigation surfaces.
+panels, and project panels. Those panels are not yet safe independent primary navigation surfaces.
+Desktop therefore exposes only an explicit, default-hidden shortcut to the existing Projects-owned
+launch path. The shortcut has no autonomous lifecycle, unread badge, organization access, or renderer
+credential. It disappears when the plugin is disabled, and the launch is re-authorized against the
+current project every time.
 
-Before a plugin can add a dock entry, Panel v2 must define and enforce:
+Before a plugin can add an independent dock module, Panel v2 must define and enforce:
 
 1. a stable contribution ID such as `plugin.<plugin-id>.<surface-id>`;
 2. one declared icon from a reviewed icon set;
@@ -195,10 +211,10 @@ Before a plugin can add a dock entry, Panel v2 must define and enforce:
 7. unread/badge semantics that follow Hara's interruption-versus-ambient notification rule;
 8. a fallback route when a plugin is disabled, missing, incompatible, or removed.
 
-Until that contract exists, command panels continue opening inside Projects. Settings may initiate a
-panel only after Serve confirms that its detection markers match the remembered project; the resulting
-surface still belongs to that exact Project session. The UI must not imply that arbitrary installed
-plugins already have trusted first-class navigation.
+Until that contract exists, command panels continue opening inside Projects. Settings or a user-pinned
+dock shortcut may initiate a panel only after Serve confirms that its detection markers match the
+remembered project; the resulting surface still belongs to that exact Project session. The UI must not
+imply that arbitrary installed plugins already have trusted first-class navigation.
 
 ## Planned hosted Groups provider
 

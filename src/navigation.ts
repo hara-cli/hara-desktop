@@ -20,6 +20,22 @@ export interface CoreNavigationContribution extends NavigationContribution {
   source: "core";
 }
 
+export interface PluginNavigationSurface {
+  plugin: string;
+  panelId: string;
+  title: string;
+  description?: string;
+  icon?: NavigationIconName;
+}
+
+export interface PluginNavigationContribution extends NavigationContribution {
+  source: "plugin";
+  plugin: string;
+  panelId: string;
+  title: string;
+  description: string;
+}
+
 export interface NavigationPreferences {
   version: 1;
   /** IDs present here were explicitly ordered by the user. Missing contributions use defaults. */
@@ -83,6 +99,74 @@ export const CORE_NAVIGATION_CONTRIBUTIONS = [
     shortcut: "⌘5",
   },
 ] as const satisfies readonly CoreNavigationContribution[];
+
+const MAX_PLUGIN_NAVIGATION_SURFACES = 256;
+const MAX_PLUGIN_ID_LENGTH = 200;
+const MAX_PLUGIN_TITLE_LENGTH = 500;
+const MAX_PLUGIN_DESCRIPTION_LENGTH = 1_000;
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
+const encodedContributionSegment = (value: string): string | null => {
+  if (!value.trim() || value.length > MAX_PLUGIN_ID_LENGTH || value.includes("\0")) return null;
+  try {
+    // encodeURIComponent intentionally leaves dots untouched. Escape them as well so the two
+    // owner-scoped segments cannot collide (`a.b` + `c` versus `a` + `b.c`).
+    return encodeURIComponent(value).replace(/\./g, "%2E");
+  } catch {
+    return null;
+  }
+};
+
+export function pluginNavigationContributionId(
+  plugin: string,
+  panelId: string,
+): string | null {
+  const pluginSegment = encodedContributionSegment(plugin);
+  const panelSegment = encodedContributionSegment(panelId);
+  return pluginSegment && panelSegment
+    ? `plugin.${pluginSegment}.${panelSegment}`
+    : null;
+}
+
+/**
+ * Convert enabled plugin work panels into default-hidden dock entries. The shell keeps
+ * only descriptive routing metadata here; opening a panel still asks Serve for the authoritative
+ * descriptor that applies to the active project.
+ */
+export function pluginNavigationContributions(
+  surfaces: readonly PluginNavigationSurface[],
+): PluginNavigationContribution[] {
+  const contributions: PluginNavigationContribution[] = [];
+  const seen = new Set<string>();
+  for (const surface of surfaces.slice(0, MAX_PLUGIN_NAVIGATION_SURFACES)) {
+    const id = pluginNavigationContributionId(surface.plugin, surface.panelId);
+    const title = typeof surface.title === "string" ? surface.title.trim() : "";
+    if (
+      !id
+      || seen.has(id)
+      || !title
+      || title.length > MAX_PLUGIN_TITLE_LENGTH
+      || CONTROL_CHARACTERS.test(title)
+    ) continue;
+    seen.add(id);
+    contributions.push({
+      id,
+      target: `plugin-panel:${id}`,
+      source: "plugin",
+      icon: surface.icon ?? "tasks",
+      defaultOrder: 1_000 + contributions.length,
+      defaultVisible: false,
+      canHide: true,
+      plugin: surface.plugin,
+      panelId: surface.panelId,
+      title,
+      description: typeof surface.description === "string" && !CONTROL_CHARACTERS.test(surface.description)
+        ? surface.description.trim().slice(0, MAX_PLUGIN_DESCRIPTION_LENGTH)
+        : "",
+    });
+  }
+  return contributions;
+}
 
 const emptyPreferences = (): NavigationPreferences => ({
   version: 1,
