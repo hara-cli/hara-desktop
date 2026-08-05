@@ -3,6 +3,7 @@ import {
   type HaraClient,
   type OrganizationConnectionsState,
   type OrganizationEnrollmentInput,
+  type ProviderConnectionCreateInput,
   type ProviderSettingsInput,
   type ProviderSettingsState,
 } from "./client";
@@ -31,6 +32,39 @@ const initialProviders = (): ProviderSettingsState => ({
     { id: "ollama", label: "Ollama", location: "local", auth: "none", defaultModel: "qwen3", defaultBaseURL: "http://127.0.0.1:11434/v1", customBaseURL: true },
     { id: "hara-gateway", label: "Hara Enterprise Gateway", location: "managed", auth: "managed", defaultModel: "managed-model", customBaseURL: false },
   ],
+  connections: [
+    {
+      id: "personal",
+      label: "Personal",
+      provider: "deepseek",
+      model: "deepseek-chat",
+      baseURL: "https://api.deepseek.com",
+      location: "cloud",
+      auth: "api-key",
+      keyConfigured: true,
+      authenticated: true,
+      active: false,
+      legacyPersonal: true,
+      removable: false,
+      keyHint: "••••4821",
+    },
+    {
+      id: "qwen-coding",
+      label: "Qwen Coding",
+      provider: "openrouter",
+      model: "qwen/qwen3-coder",
+      baseURL: "https://openrouter.ai/api/v1",
+      location: "cloud",
+      auth: "api-key",
+      keyConfigured: true,
+      authenticated: true,
+      active: false,
+      legacyPersonal: false,
+      removable: true,
+      keyHint: "••••1907",
+    },
+  ],
+  switchLocked: false,
 });
 
 const initialOrganizations = (): OrganizationConnectionsState => ({
@@ -77,6 +111,7 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
       if (active) {
         providerState = {
           ...providerState,
+          connections: providerState.connections?.map((connection) => ({ ...connection, active: false })),
           current: {
             ...providerState.current,
             provider: "hara-gateway",
@@ -94,12 +129,26 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
       }
     };
     return {
+      supports: (method: string) => method.startsWith("settings.providers.connections.") || method.startsWith("settings.organizations."),
       listProviderSettings: async () => providerState,
       listOrganizationConnections: async () => organizationState,
       testProviderSettings: async () => ({ ok: true, models: ["deepseek-chat", "deepseek-reasoner"] }),
       saveProviderSettings: async (input: ProviderSettingsInput) => {
         providerState = {
           ...providerState,
+          connections: providerState.connections?.map((connection) => connection.id === "personal"
+            ? {
+                ...connection,
+                provider: input.provider,
+                model: input.model,
+                baseURL: input.baseURL,
+                location: input.provider === "ollama" ? "local" : "cloud",
+                auth: input.provider === "ollama" ? "none" : "api-key",
+                keyConfigured: true,
+                authenticated: true,
+                active: true,
+              }
+            : { ...connection, active: false }),
           current: {
             ...providerState.current,
             provider: input.provider,
@@ -120,6 +169,107 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
           ...organizationState,
           activeId: "personal",
           connections: organizationState.connections.map((connection) => ({ ...connection, active: false })),
+        };
+        return providerState;
+      },
+      createProviderConnection: async (input: ProviderConnectionCreateInput) => {
+        const provider = providerState.providers.find((candidate) => candidate.id === input.provider)!;
+        const connection = {
+          id: input.id,
+          label: input.label,
+          provider: input.provider,
+          model: input.model,
+          baseURL: input.baseURL,
+          location: provider.location as "cloud" | "local",
+          auth: provider.auth as "api-key" | "oauth" | "none",
+          keyConfigured: provider.auth === "none" || !!input.apiKey,
+          authenticated: true,
+          active: input.activate === true,
+          legacyPersonal: false,
+          removable: true,
+          keyHint: input.apiKey ? `••••${input.apiKey.slice(-4)}` : undefined,
+        };
+        providerState = {
+          ...providerState,
+          connections: [
+            ...(providerState.connections ?? []).map((candidate) => ({ ...candidate, active: connection.active ? false : candidate.active })),
+            connection,
+          ],
+          ...(connection.active ? {
+            current: {
+              ...providerState.current,
+              provider: connection.provider,
+              model: connection.model,
+              baseURL: connection.baseURL,
+              location: connection.location,
+              auth: connection.auth,
+              keyConfigured: connection.keyConfigured,
+              authenticated: true,
+              profileId: connection.id,
+              profileKind: "byok" as const,
+              editable: false,
+              tokenExpiresAt: undefined,
+            },
+          } : {}),
+        };
+        if (connection.active) {
+          organizationState = {
+            ...organizationState,
+            activeId: connection.id,
+            connections: organizationState.connections.map((candidate) => ({ ...candidate, active: false })),
+          };
+        }
+        return providerState;
+      },
+      testProviderConnection: async (id: string) => ({ ok: true, models: [providerState.connections?.find((connection) => connection.id === id)?.model ?? "model"] }),
+      useProviderConnection: async (id: string) => {
+        const connection = providerState.connections?.find((candidate) => candidate.id === id)!;
+        providerState = {
+          ...providerState,
+          connections: providerState.connections?.map((candidate) => ({ ...candidate, active: candidate.id === id })),
+          current: {
+            ...providerState.current,
+            provider: connection.provider,
+            model: connection.model,
+            baseURL: connection.baseURL,
+            location: connection.location,
+            auth: connection.auth,
+            keyConfigured: connection.keyConfigured,
+            authenticated: connection.auth === "none" || connection.keyConfigured,
+            profileId: connection.id,
+            profileKind: "byok",
+            editable: connection.legacyPersonal,
+            tokenExpiresAt: undefined,
+          },
+        };
+        organizationState = {
+          ...organizationState,
+          activeId: id,
+          connections: organizationState.connections.map((candidate) => ({ ...candidate, active: false })),
+        };
+        return providerState;
+      },
+      removeProviderConnection: async (id: string) => {
+        const removedActive = providerState.connections?.some((connection) => connection.id === id && connection.active);
+        providerState = {
+          ...providerState,
+          connections: providerState.connections?.filter((connection) => connection.id !== id).map((connection) => ({
+            ...connection,
+            active: removedActive ? connection.id === "personal" : connection.active,
+          })),
+          ...(removedActive ? {
+            current: {
+              ...providerState.current,
+              provider: "deepseek",
+              model: "deepseek-chat",
+              baseURL: "https://api.deepseek.com",
+              location: "cloud" as const,
+              auth: "api-key" as const,
+              profileId: "personal",
+              profileKind: "byok" as const,
+              editable: true,
+            },
+          } : {}),
         };
         return providerState;
       },

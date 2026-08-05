@@ -1922,6 +1922,16 @@ select {
 .inputbar .model-route-group .model-route-option:hover {
   background: color-mix(in srgb, var(--provider-enterprise, #7f91b7) 12%, transparent);
 }
+.model-route-group.personal {
+  border-top-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.model-route-group.personal .model-route-heading {
+  color: color-mix(in srgb, var(--fg) 80%, var(--accent));
+}
+.inputbar .model-route-group.personal .model-route-option:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
 .model-row-state {
   flex: 0 0 auto;
   display: inline-flex;
@@ -4215,6 +4225,16 @@ button.compact {
   font-size: 9px;
   line-height: 1.35;
 }
+.provider-catalog-caption {
+  margin: 16px 8px 6px;
+  padding-top: 13px;
+  border-top: 1px solid #29292f;
+  color: #6f6c68;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
 button.provider-preset {
   width: 100%;
   display: grid;
@@ -4309,6 +4329,27 @@ button.provider-preset.on {
 button.provider-preset.enterprise {
   grid-template-columns: 8px minmax(0, 1fr) auto;
 }
+button.provider-preset.personal {
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+}
+button.provider-preset.personal.on {
+  border-color: #5a413b;
+  background: #211b1a;
+}
+.provider-preset.personal em {
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: rgba(177, 85, 67, 0.14);
+  color: #c99a8f;
+  font-size: 8px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.provider-add-mini.personal {
+  border-color: #594039;
+  background: #211917;
+  color: #d19a8e;
+}
 button.provider-preset.enterprise.on {
   border-color: #414b61;
   background: #181c25;
@@ -4351,6 +4392,14 @@ button.provider-preset.enterprise.on {
   font-size: 8px;
   line-height: 1.3;
 }
+.provider-enterprise-empty.personal {
+  border-color: #5a4039;
+  background: rgba(105, 54, 44, 0.12);
+  color: #c9968a;
+}
+.provider-enterprise-empty.personal small {
+  color: #846d67;
+}
 .provider-detail {
   position: relative;
   min-width: 0;
@@ -4375,7 +4424,8 @@ button.provider-preset.enterprise.on {
   font-weight: 600;
 }
 .provider-form input,
-.provider-enrollment-form input {
+.provider-enrollment-form input,
+.provider-enrollment-form select {
   width: 100%;
   max-width: none;
   padding: 9px 10px;
@@ -4388,9 +4438,21 @@ button.provider-preset.enterprise.on {
   font-size: 12px;
 }
 .provider-form input:focus,
-.provider-enrollment-form input:focus {
+.provider-enrollment-form input:focus,
+.provider-enrollment-form select:focus {
   border-color: #7b4a41;
   box-shadow: 0 0 0 2px rgba(217, 68, 44, 0.08);
+}
+.provider-enrollment-form select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #827e78 50%),
+    linear-gradient(135deg, #827e78 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) calc(50% - 2px),
+    calc(100% - 9px) calc(50% - 2px);
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
 }
 .provider-form label small,
 .provider-enrollment-form label small {
@@ -4531,6 +4593,48 @@ button.provider-preset.enterprise.on {
 }
 .provider-managed-note {
   display: block;
+}
+.provider-managed-note.personal,
+.provider-enrollment-safety.personal {
+  border-left-color: #8a594d;
+  background: rgba(117, 61, 50, 0.1);
+  color: #c2a49d;
+}
+.personal-connection-endpoint {
+  min-width: 0;
+  padding: 10px 12px;
+  margin-bottom: 13px;
+  border: 1px solid #302f34;
+  border-radius: 5px;
+  background: #17171a;
+}
+.personal-connection-endpoint span,
+.personal-connection-endpoint strong {
+  display: block;
+}
+.personal-connection-endpoint span {
+  color: #6f6c68;
+  font-size: 9px;
+}
+.personal-connection-endpoint strong {
+  overflow: hidden;
+  margin-top: 4px;
+  color: #aaa6a0;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-model-readonly {
+  padding: 3px 7px;
+  border: 1px solid #34343a;
+  border-radius: 4px;
+  background: #1a1a1e;
+  color: #99958f;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 500;
 }
 .provider-warning.inline {
   margin: 12px 0 0;
@@ -4679,6 +4783,13 @@ button.provider-preset.enterprise.on {
     grid-column: 1 / -1;
     padding-top: 12px;
   }
+  .provider-personal-group {
+    grid-column: 1 / -1;
+  }
+  .provider-catalog-caption {
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
   .provider-enterprise-group button.provider-preset {
     width: 100%;
   }
@@ -4705,6 +4816,10 @@ button.provider-preset.enterprise.on {
     grid-template-columns: 1fr;
   }
   .provider-enterprise-group {
+    grid-column: auto;
+  }
+  .provider-personal-group,
+  .provider-catalog-caption {
     grid-column: auto;
   }
   .provider-enterprise-group button.provider-preset {

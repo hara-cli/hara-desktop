@@ -520,6 +520,14 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(client, /settings\.providers\.list/);
   assert.match(client, /settings\.providers\.test/);
   assert.match(client, /settings\.providers\.save/);
+  for (const method of ["create", "test", "use", "remove"]) {
+    assert.match(client, new RegExp(`settings\\.providers\\.connections\\.${method}`));
+  }
+  assert.match(providerSettings, /const transientKey = input\.apiKey \?\? "";[\s\S]*setApiKey\(""\);[\s\S]*await client\.createProviderConnection/,
+    "a newly saved connection removes its credential from renderer state before the RPC");
+  assert.match(providerSettings, /selectedConnection\.keyHint/, "saved connections expose only the engine's redacted key hint");
+  assert.match(providerSettings, /client\.testProviderConnection/, "each named connection can be checked independently");
+  assert.match(providerSettings, /client\.useProviderConnection/, "named personal routes can become the new-session default");
   assert.match(client, /settings\.profiles\.unpin/);
   assert.match(providerSettings, /state\.current\.profileSource === "pin"/);
   assert.match(providerSettings, /client\.unpinProjectProfile\(cwd\)/, "project route recovery is an explicit authenticated Serve action");
@@ -605,7 +613,7 @@ test("a resumed conversation exposes its persisted profile inside the searchable
   assert.match(client, /listModels[\s\S]*profileId\?: string/);
   assert.match(app, /activeModelInfo\?\.profileId/);
   assert.match(app, /className=\{`model-route/);
-  assert.match(app, /管理模型与企业连接/);
+  assert.match(app, /管理模型与连接/);
   assert.match(css, /\.model-route/);
 });
 
@@ -633,6 +641,27 @@ test("the chat model picker can start a profile-pinned organization conversation
   assert.match(providers, /selectedOrganization\.availableModels\.map/);
   assert.match(css, /\.model-route-group/);
   assert.match(css, /\.model-menu-route-notice/);
+});
+
+test("the chat model picker can safely return from an organization route to a named personal connection", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+
+  assert.match(client, /interface ProviderConnection[\s\S]*legacyPersonal: boolean/);
+  assert.match(app, /visiblePersonalConnectionRoutes/);
+  assert.match(app, /startPersonalConnectionSession\(connection\)/);
+  assert.match(
+    app,
+    /await client\.useProviderConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*await newSession\(sourceSession\.cwd\)/,
+    "personal selection changes only the future-session route before creating a separate conversation",
+  );
+  assert.match(app, /当前企业\/个人会话及历史仍留在原连接，不会静默迁移/);
+  assert.match(app, /当前未发送的文字和附件会移动到新对话/);
+  assert.match(app, /className="model-route-group personal"/);
+  assert.match(app, /个人直连/);
+  assert.match(app, /setProviderRoutes\(next\)/, "settings changes refresh the in-composer route catalog immediately");
+  assert.match(css, /\.model-route-group\.personal/);
 });
 
 test("the composer has per-session attachments, bounded folders, and capability-aware model selection", () => {

@@ -31,6 +31,7 @@ import {
   type AutomationListResult,
   type CtxInfo,
   type ProviderSettingsState,
+  type ProviderConnection,
   type TaskLifecycleEvent,
   type ArtifactDetails,
   type ArtifactExportReceipt,
@@ -613,6 +614,17 @@ export default function App() {
     setOrganizationRoutes(next);
     return next;
   }, []);
+  const [providerRoutes, setProviderRoutes] = useState<ProviderSettingsState | null>(null);
+  const providerRoutesRequestRef = useRef(0);
+  const refreshProviderRoutes = useCallback(async (cwd?: string) => {
+    const client = clientRef.current;
+    if (!client) return null;
+    const requestId = ++providerRoutesRequestRef.current;
+    const next = await client.listProviderSettings(cwd);
+    if (requestId !== providerRoutesRequestRef.current || clientRef.current !== client) return next;
+    setProviderRoutes(next);
+    return next;
+  }, []);
   const [sessEffort, setSessEffort] = useState<Record<string, string>>({});
   const [stagedModelChanges, setStagedModelChanges] = useState<Record<string, StagedModelChange>>({});
   const stagedModelChangesRef = useRef<Record<string, StagedModelChange>>({});
@@ -1127,6 +1139,7 @@ export default function App() {
         || clientRef.current !== client
       ) return;
       if (providerRoute) {
+        setProviderRoutes(providerRoute);
         setSetupRequired(!providerRoute.current.authenticated);
         setServer((current) => current
           ? {
@@ -1826,6 +1839,8 @@ export default function App() {
     artifactOpenRequestRef.current += 1;
     organizationRoutesRequestRef.current += 1;
     setOrganizationRoutes(null);
+    providerRoutesRequestRef.current += 1;
+    setProviderRoutes(null);
     groupsDirectoryRequestRef.current += 1;
     groupsRequestGenerationRef.current += 1;
     groupsActivationRequestRef.current += 1;
@@ -1869,6 +1884,8 @@ export default function App() {
         taskStatesRef.current = {};
         organizationRoutesRequestRef.current += 1;
         setOrganizationRoutes(null);
+        providerRoutesRequestRef.current += 1;
+        setProviderRoutes(null);
         groupsDirectoryRequestRef.current += 1;
         groupsRequestGenerationRef.current += 1;
         groupsActivationRequestRef.current += 1;
@@ -1918,6 +1935,7 @@ export default function App() {
       void c.listArtifacts().then((a) => setArtifacts(a ?? "old-server")).catch(() => {});
       void refreshModelInfo().catch(() => {});
       void refreshOrganizationRoutes().catch(() => {});
+      void refreshProviderRoutes().catch(() => {});
       setPhase("ready");
     } catch (e: any) {
       c?.close();
@@ -1926,18 +1944,20 @@ export default function App() {
       setPhase("no-server");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearStagedModelChanges, handleEvent, refreshAuto, refreshModelInfo, refreshOrganizationRoutes]);
+  }, [clearStagedModelChanges, handleEvent, refreshAuto, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
 
   useEffect(() => {
     if (phase !== "ready" || !active) return;
     void refreshModelInfo({ sessionId: active }).catch(() => {});
     const current = sessionsRef.current.find((session) => session.id === active);
     void refreshOrganizationRoutes(current?.cwd).catch(() => {});
+    void refreshProviderRoutes(current?.cwd).catch(() => {});
     return () => {
       modelInfoRequestRef.current += 1;
       organizationRoutesRequestRef.current += 1;
+      providerRoutesRequestRef.current += 1;
     };
-  }, [active, phase, refreshModelInfo, refreshOrganizationRoutes]);
+  }, [active, phase, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -2172,6 +2192,7 @@ export default function App() {
       setOrganizationRoutes(nextRoutes);
       const route = await client.listProviderSettings(sourceSession.cwd);
       if (route) {
+        setProviderRoutes(route);
         setSetupRequired(!route.current.authenticated);
         setServer((current) => current
           ? { ...current, provider: route.current.provider, model: route.current.model }
@@ -2193,12 +2214,103 @@ export default function App() {
       setActive(nextSessionId);
       await refreshModelInfo({ sessionId: nextSessionId });
       void refreshOrganizationRoutes(sourceSession.cwd).catch(() => {});
+      void refreshProviderRoutes(sourceSession.cwd).catch(() => {});
       void refreshGroupsDirectory();
     } catch (error) {
       const detail = String(error instanceof Error ? error.message : error);
       setErr(locale === "zh"
         ? `无法从企业连接新建对话：${detail}`
         : `Could not start the organization conversation: ${detail}`);
+    }
+  };
+
+  const startPersonalConnectionSession = async (connection: ProviderConnection): Promise<void> => {
+    const client = clientRef.current;
+    const sourceSessionId = active;
+    const sourceSession = sourceSessionId
+      ? sessionsRef.current.find((candidate) => candidate.id === sourceSessionId)
+      : undefined;
+    if (!client || !sourceSessionId || !sourceSession) return;
+    if (busyRef.current[sourceSessionId]) {
+      push(sourceSessionId, (items) => [...items, {
+        kind: "notice",
+        text: locale === "zh"
+          ? "当前任务仍在运行；请等待结束后再从其他连接新建对话。"
+          : "The current task is still running. Wait for it to finish before starting on another connection.",
+      }]);
+      return;
+    }
+    if (providerRoutes?.switchLocked || providerRoutes?.current.environmentOverride) {
+      setErr(locale === "zh"
+        ? "当前项目或启动配置固定了模型连接；请先在“模型与连接”中解除固定。"
+        : "This project or launch configuration pins the model connection. Remove the pin in Models & connections first.");
+      return;
+    }
+    if (!connection.authenticated) {
+      setErr(locale === "zh"
+        ? `个人连接“${connection.label}”尚未通过认证，请先到“模型与连接”检查。`
+        : `Personal connection “${connection.label}” is not authenticated. Check it in Models & connections first.`);
+      return;
+    }
+    const sourceDraft = composerDrafts[sourceSessionId] ?? emptyComposerDraft();
+    const hasDraft = !!sourceDraft.text.trim() || sourceDraft.attachments.length > 0;
+    const confirmed = window.confirm(locale === "zh"
+      ? [
+          `要使用“${connection.label} · ${connection.model}”新建一条个人对话吗？`,
+          "当前企业/个人会话及历史仍留在原连接，不会静默迁移。",
+          hasDraft
+            ? "当前未发送的文字和附件会移动到新对话；只有你再次点击发送后才会交给个人模型。"
+            : "新对话会绑定这条个人连接。",
+        ].join("\n\n")
+      : [
+          `Start a new personal conversation with “${connection.label} · ${connection.model}”?`,
+          "This organization/personal conversation and its history stay on the original connection and are never migrated silently.",
+          hasDraft
+            ? "Your unsent text and attachments move to the new conversation and are sent only after you press Send again."
+            : "The new conversation will be pinned to this personal connection.",
+        ].join("\n\n"));
+    if (!confirmed) return;
+
+    setModelPickerOpen(false);
+    setModelSearch("");
+    setErr("");
+    try {
+      const nextRoute = await client.useProviderConnection(connection.id, sourceSession.cwd);
+      setProviderRoutes(nextRoute);
+      setSetupRequired(!nextRoute.current.authenticated);
+      setServer((current) => current
+        ? { ...current, provider: nextRoute.current.provider, model: nextRoute.current.model }
+        : current);
+      setOrganizationRoutes((current) => current
+        ? {
+            ...current,
+            activeId: connection.id,
+            connections: current.connections.map((candidate) => ({ ...candidate, active: false })),
+          }
+        : current);
+      const nextSessionId = await newSession(sourceSession.cwd);
+      if (!nextSessionId) throw new Error("Hara did not create the personal conversation");
+      const created = sessionsRef.current.find((candidate) => candidate.id === nextSessionId);
+      if (created?.model !== connection.model) {
+        await client.setSessionModel(nextSessionId, connection.model);
+        await refreshSessions();
+      }
+      setComposerDrafts((current) => {
+        const draftToMove = current[sourceSessionId] ?? sourceDraft;
+        const next = { ...current, [nextSessionId]: draftToMove };
+        delete next[sourceSessionId];
+        return next;
+      });
+      setActive(nextSessionId);
+      await refreshModelInfo({ sessionId: nextSessionId });
+      void refreshProviderRoutes(sourceSession.cwd).catch(() => {});
+      void refreshOrganizationRoutes(sourceSession.cwd).catch(() => {});
+      void refreshGroupsDirectory();
+    } catch (error) {
+      const detail = String(error instanceof Error ? error.message : error);
+      setErr(locale === "zh"
+        ? `无法从个人连接新建对话：${detail}`
+        : `Could not start the personal conversation: ${detail}`);
     }
   };
 
@@ -3589,10 +3701,37 @@ export default function App() {
     || `${entry.id} ${entry.providerId}`.toLowerCase().includes(modelSearch.trim().toLowerCase()),
   );
   const currentSessionProfileId = activeModelInfo?.profileId ?? activeSession?.profileId;
+  const currentPersonalConnection = providerRoutes?.connections?.find(
+    (connection) => connection.id === currentSessionProfileId,
+  );
+  const currentOrganizationConnection = organizationRoutes?.connections.find(
+    (connection) => connection.id === currentSessionProfileId,
+  );
+  const currentRouteIsPersonal = currentSessionProfileId === "personal" || !!currentPersonalConnection;
+  const currentRouteLabel = currentPersonalConnection?.label
+    ?? currentOrganizationConnection?.label
+    ?? (currentSessionProfileId === "personal"
+      ? (locale === "zh" ? "个人" : "Personal")
+      : currentSessionProfileId ?? (locale === "zh" ? "当前连接" : "Current route"));
   const newSessionOrganizationRoute = organizationRoutes?.connections.find(
     (connection) => connection.active && connection.id !== currentSessionProfileId,
   );
+  const newSessionPersonalRoute = providerRoutes?.connections?.find(
+    (connection) => connection.active && connection.id !== currentSessionProfileId,
+  );
+  const newSessionDefaultRoute = newSessionOrganizationRoute
+    ? { kind: "organization" as const, label: newSessionOrganizationRoute.label }
+    : newSessionPersonalRoute
+      ? { kind: "personal" as const, label: newSessionPersonalRoute.label }
+      : null;
   const modelRouteQuery = modelSearch.trim().toLowerCase();
+  const visiblePersonalConnectionRoutes = (providerRoutes?.connections ?? [])
+    .filter((connection) => connection.id !== currentSessionProfileId && connection.authenticated)
+    .filter((connection) => !modelRouteQuery
+      || [connection.label, connection.id, connection.provider, connection.model, connection.baseURL ?? ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(modelRouteQuery));
   const visibleOrganizationModelRoutes = (organizationRoutes?.connections ?? [])
     .filter((connection) => connection.id !== currentSessionProfileId)
     .filter((connection) => ["valid", "permanent", "expiring", "legacy"].includes(connection.accessState))
@@ -4059,10 +4198,8 @@ export default function App() {
                       }}
                     >
                       <span className="model-pill-main">{displayedModel}</span>
-                      <span className={`model-route ${activeModelInfo?.profileId === "personal" ? "personal" : "managed"}`}>
-                        {activeModelInfo?.profileId === "personal"
-                          ? (locale === "zh" ? "个人" : "Personal")
-                          : activeModelInfo?.profileId ?? (locale === "zh" ? "当前连接" : "Current route")}
+                      <span className={`model-route ${currentRouteIsPersonal ? "personal" : "managed"}`}>
+                        {currentRouteLabel}
                       </span>
                       {activeStagedModelChange && (
                         <span className="model-next-turn">
@@ -4086,11 +4223,11 @@ export default function App() {
                                     : `Applying ${displayedModel}; Hara will confirm it again before sending.`)}
                             </p>
                           )}
-                          {newSessionOrganizationRoute && (
+                          {newSessionDefaultRoute && (
                             <p className="model-menu-route-notice" role="status">
                               {locale === "zh"
-                                ? `当前会话仍绑定 ${currentSessionProfileId === "personal" ? "个人连接" : currentSessionProfileId ?? "原连接"}；新会话默认使用“${newSessionOrganizationRoute.label}”。选择下方企业模型会安全新建对话。`
-                                : `This conversation stays on ${currentSessionProfileId === "personal" ? "Personal" : currentSessionProfileId ?? "its original connection"}; new conversations default to “${newSessionOrganizationRoute.label}”. Choose a managed model below to start one safely.`}
+                                ? `当前会话仍绑定“${currentRouteLabel}”；新会话默认使用“${newSessionDefaultRoute.label}”。选择下方${newSessionDefaultRoute.kind === "organization" ? "企业" : "个人"}连接会安全新建对话。`
+                                : `This conversation stays on “${currentRouteLabel}”; new conversations default to “${newSessionDefaultRoute.label}”. Choose a ${newSessionDefaultRoute.kind === "organization" ? "managed" : "personal"} connection below to start one safely.`}
                             </p>
                           )}
                           <input
@@ -4129,6 +4266,39 @@ export default function App() {
                               </span>
                             </button>
                           ))}
+                          {visiblePersonalConnectionRoutes.map((connection) => (
+                            <section
+                              className="model-route-group personal"
+                              data-profile-id={connection.id}
+                              key={connection.id}
+                            >
+                              <div className="model-route-heading">
+                                <span>
+                                  {locale === "zh" ? "个人连接" : "Personal"} · {connection.label}
+                                </span>
+                                <small>
+                                  {connection.active
+                                    ? (locale === "zh" ? "新会话默认" : "New-chat default")
+                                    : connection.provider}
+                                </small>
+                              </div>
+                              <button
+                                type="button"
+                                className="model-route-option"
+                                onClick={() => void startPersonalConnectionSession(connection)}
+                              >
+                                <span className="model-row-copy">
+                                  <strong>{connection.model}</strong>
+                                  <small>
+                                    {connection.label} · {locale === "zh" ? "个人直连" : "Direct"}
+                                  </small>
+                                </span>
+                                <span className="model-row-state">
+                                  <strong>{locale === "zh" ? "新对话" : "New chat"}</strong>
+                                </span>
+                              </button>
+                            </section>
+                          ))}
                           {visibleOrganizationModelRoutes.map(({ connection, models }) => (
                             <section
                               className="model-route-group"
@@ -4165,7 +4335,9 @@ export default function App() {
                               ))}
                             </section>
                           ))}
-                          {visibleModelEntries.length === 0 && visibleOrganizationModelRoutes.length === 0 && (
+                          {visibleModelEntries.length === 0
+                            && visiblePersonalConnectionRoutes.length === 0
+                            && visibleOrganizationModelRoutes.length === 0 && (
                             <div className="model-empty">
                               {locale === "zh" ? "没有匹配的模型" : "No matching models"}
                             </div>
@@ -4179,7 +4351,7 @@ export default function App() {
                             setZone("settings");
                           }}
                         >
-                          {locale === "zh" ? "管理模型与企业连接…" : "Manage models and organization connections…"}
+                          {locale === "zh" ? "管理模型与连接…" : "Manage models and connections…"}
                         </button>
                       </div>
                     )}
@@ -4847,6 +5019,7 @@ export default function App() {
                     scope={activeSession ? "workspace" : "global"}
                     locale={locale}
                     onSaved={(next: ProviderSettingsState) => {
+                      setProviderRoutes(next);
                       setSetupRequired(!next.current.authenticated);
                       setServer((current) => current
                         ? { ...current, provider: next.current.provider, model: next.current.model }

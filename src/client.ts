@@ -263,6 +263,28 @@ export interface ProviderSettingsState {
     tokenExpired?: boolean;
   };
   providers: ProviderCatalogEntry[];
+  /** Saved personal/BYOK identities. Absent on older bundled engines. Credentials are never returned. */
+  connections?: ProviderConnection[];
+  /** A launch override or project pin prevents changing the default connection for new sessions. */
+  switchLocked?: boolean;
+}
+
+export interface ProviderConnection {
+  id: string;
+  label: string;
+  provider: string;
+  model: string;
+  baseURL?: string;
+  location: "cloud" | "local";
+  auth: "api-key" | "oauth" | "none";
+  keyConfigured: boolean;
+  authenticated: boolean;
+  active: boolean;
+  legacyPersonal: boolean;
+  removable: boolean;
+  /** Redacted display hint such as ••••1234. Never a usable credential. */
+  keyHint?: string;
+  createdAt?: string;
 }
 
 export interface ProviderSettingsInput {
@@ -272,6 +294,12 @@ export interface ProviderSettingsInput {
   apiKey?: string;
   clearApiKey?: boolean;
   activatePersonal?: boolean;
+}
+
+export interface ProviderConnectionCreateInput extends ProviderSettingsInput {
+  id: string;
+  label: string;
+  activate?: boolean;
 }
 
 export interface ProviderSettingsTestResult {
@@ -709,6 +737,18 @@ export class HaraClient {
   }
   saveProviderSettings(input: ProviderSettingsInput, cwd?: string) {
     return this.call<ProviderSettingsState>("settings.providers.save", { ...input, ...(cwd ? { cwd } : {}) });
+  }
+  createProviderConnection(input: ProviderConnectionCreateInput, cwd?: string) {
+    return this.call<ProviderSettingsState>("settings.providers.connections.create", { ...input, ...(cwd ? { cwd } : {}) });
+  }
+  testProviderConnection(id: string, cwd?: string) {
+    return this.call<ProviderSettingsTestResult>("settings.providers.connections.test", { id, ...(cwd ? { cwd } : {}) });
+  }
+  useProviderConnection(id: string, cwd?: string) {
+    return this.call<ProviderSettingsState>("settings.providers.connections.use", { id, ...(cwd ? { cwd } : {}) });
+  }
+  removeProviderConnection(id: string, cwd?: string) {
+    return this.call<ProviderSettingsState>("settings.providers.connections.remove", { id, ...(cwd ? { cwd } : {}) });
   }
   /** Explicitly remove the project profile override governing cwd. Existing sessions remain pinned. */
   async unpinProjectProfile(cwd?: string): Promise<ProjectProfileUnpinResult | null> {

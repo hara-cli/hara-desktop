@@ -6,6 +6,8 @@ import {
   type OrganizationConnectionsState,
   type ProjectProfileUnpinResult,
   type ProviderCatalogEntry,
+  type ProviderConnection,
+  type ProviderConnectionCreateInput,
   type ProviderSettingsInput,
   type ProviderSettingsState,
 } from "./client";
@@ -23,8 +25,15 @@ interface OrganizationDraft {
   gatewayUrl: string;
 }
 
+interface PersonalConnectionDraft extends Draft {
+  id: string;
+  label: string;
+}
+
 type ConnectionView =
   | { kind: "provider"; id: string }
+  | { kind: "connection"; id: string }
+  | { kind: "add-personal" }
   | { kind: "organization"; id: string }
   | { kind: "enroll"; id?: string };
 
@@ -50,6 +59,35 @@ const words = {
     managed: "Enterprise managed",
     preset: "Preset",
     personal: "Personal",
+    personalConnections: "Your model connections",
+    personalConnectionCount: "{count} saved",
+    addPersonal: "Add model connection",
+    addFirstPersonal: "Save another provider or API key as its own named connection.",
+    personalUnavailable: "Update the bundled Hara engine to save more than one personal connection.",
+    providerCatalog: "Personal default presets",
+    savedConnection: "Saved connection",
+    connectionName: "Connection name",
+    connectionNamePlaceholder: "Example: DeepSeek personal",
+    connectionId: "Local connection ID",
+    connectionIdHint: "Generated from the name. It identifies this route on this device and is never a credential.",
+    addPersonalTitle: "Add a personal model connection",
+    addPersonalDescription: "Keep providers, endpoints, and API keys separate. Saving a new connection never overwrites an existing one.",
+    saveConnectionOnly: "Save without switching",
+    addAndUsePersonal: "Add & use for new sessions",
+    connectionAdded: "Connection saved. The current default route did not change.",
+    connectionAddedAndUsed: "Connection saved and selected for new sessions. Existing sessions keep their original route.",
+    usePersonal: "Use for new sessions",
+    usingPersonal: "Switching…",
+    personalSwitched: "Personal connection switched. Existing sessions keep the connection they started with.",
+    testSaved: "Test saved connection",
+    testingSaved: "Testing saved connection…",
+    keyHintLabel: "Saved key",
+    noSavedKey: "No API key required",
+    immutableConnection: "To rotate a key or change this route, add a replacement connection first, verify it, then remove this one. Existing sessions are never silently rewritten.",
+    removePersonal: "Remove connection",
+    removingPersonal: "Removing…",
+    removePersonalConfirm: "Remove this saved connection from this device? Sessions created with it keep their identity but cannot reconnect after the connection is removed. Add and test a replacement first.",
+    personalRemoved: "Saved connection removed from this device.",
     model: "Model",
     endpoint: "Endpoint",
     key: "API key",
@@ -157,6 +195,35 @@ const words = {
     managed: "企业托管",
     preset: "预置",
     personal: "个人连接",
+    personalConnections: "你的模型连接",
+    personalConnectionCount: "已保存 {count} 个",
+    addPersonal: "新增模型连接",
+    addFirstPersonal: "把另一家供应商或另一枚 API Key 保存为独立命名连接。",
+    personalUnavailable: "请升级 Desktop 内置 Hara 引擎后，再保存多个个人连接。",
+    providerCatalog: "个人默认连接预置",
+    savedConnection: "已保存连接",
+    connectionName: "连接名称",
+    connectionNamePlaceholder: "例如：DeepSeek 个人",
+    connectionId: "本机连接标识",
+    connectionIdHint: "根据名称生成，只用于在本机识别这条路由，不是凭据。",
+    addPersonalTitle: "新增个人模型连接",
+    addPersonalDescription: "不同供应商、接口和 API Key 分开保存；新增连接不会覆盖任何现有连接。",
+    saveConnectionOnly: "仅保存，不切换",
+    addAndUsePersonal: "添加并用于新会话",
+    connectionAdded: "连接已保存，当前默认路由保持不变。",
+    connectionAddedAndUsed: "连接已保存并用于新会话；已有会话仍保留原连接。",
+    usePersonal: "用于新会话",
+    usingPersonal: "正在切换…",
+    personalSwitched: "个人连接已切换；已有会话仍保留创建时的连接。",
+    testSaved: "测试已保存连接",
+    testingSaved: "正在测试已保存连接…",
+    keyHintLabel: "已保存密钥",
+    noSavedKey: "无需 API Key",
+    immutableConnection: "如需轮换 Key 或修改路由，请先新增替代连接并验证，再移除旧连接；已有会话不会被静默改写。",
+    removePersonal: "移除连接",
+    removingPersonal: "正在移除…",
+    removePersonalConfirm: "从本机移除这个连接吗？已用它创建的会话会保留原身份，但移除后将无法重新连接。请先新增并验证替代连接。",
+    personalRemoved: "已从本机移除该连接。",
     model: "模型",
     endpoint: "接口地址",
     key: "API 密钥",
@@ -303,6 +370,34 @@ const uniqueOrganizationId = (
   return `${base.slice(0, 54)}-${Date.now().toString(36)}`;
 };
 
+const uniquePersonalConnectionId = (
+  preferred: string,
+  personal: ProviderConnection[],
+  organizations: OrganizationConnection[],
+): string => {
+  const base = idFromLabel(preferred) || "personal-model";
+  const occupied = new Set([
+    "personal",
+    ...personal.map((item) => item.id),
+    ...organizations.map((item) => item.id),
+  ]);
+  if (!occupied.has(base)) return base;
+  for (let index = 2; index < 1000; index += 1) {
+    const suffix = `-${index}`;
+    const candidate = `${base.slice(0, 64 - suffix.length)}${suffix}`;
+    if (!occupied.has(candidate)) return candidate;
+  }
+  return `${base.slice(0, 54)}-${Date.now().toString(36)}`;
+};
+
+const personalDraftForProvider = (provider: ProviderCatalogEntry): PersonalConnectionDraft => ({
+  id: "",
+  label: "",
+  provider: provider.id,
+  model: provider.defaultModel,
+  baseURL: provider.defaultBaseURL ?? "",
+});
+
 const statusFor = (connection: OrganizationConnection, locale: Locale) => {
   const copy = words[locale];
   switch (connection.accessState) {
@@ -333,6 +428,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   const [organizations, setOrganizations] = useState<OrganizationConnectionsState | null>(null);
   const [organizationsUnsupported, setOrganizationsUnsupported] = useState(false);
   const [draft, setDraft] = useState<Draft>({ provider: "", model: "", baseURL: "" });
+  const [personalDraft, setPersonalDraft] = useState<PersonalConnectionDraft>({ id: "", label: "", provider: "", model: "", baseURL: "" });
+  const [personalIdEdited, setPersonalIdEdited] = useState(false);
+  const [personalBusy, setPersonalBusy] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [view, setView] = useState<ConnectionView>({ kind: "provider", id: "" });
@@ -370,6 +468,8 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       setUnsupported(false);
       setState(next);
       setDraft(draftFromState(next));
+      const firstPersonalProvider = next.providers.find((provider) => provider.location !== "managed");
+      if (firstPersonalProvider) setPersonalDraft(personalDraftForProvider(firstPersonalProvider));
       setModels([]);
 
       if (organizationResult.status === "fulfilled") {
@@ -378,9 +478,14 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
         const activeOrganization = organizationResult.value?.connections.find(
           (connection) => connection.active || connection.id === next.current.profileId,
         );
+        const activePersonal = next.connections?.find(
+          (connection) => connection.active || connection.id === next.current.profileId,
+        );
         setView(activeOrganization
           ? { kind: "organization", id: activeOrganization.id }
-          : { kind: "provider", id: next.current.provider });
+          : activePersonal && !activePersonal.legacyPersonal
+            ? { kind: "connection", id: activePersonal.id }
+            : { kind: "provider", id: next.current.provider });
       } else {
         setOrganizations(null);
         setOrganizationsUnsupported(false);
@@ -407,6 +512,12 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     () => view.kind === "provider" ? personalProviders.find((provider) => provider.id === view.id) : undefined,
     [personalProviders, view],
   );
+  const selectedConnection = useMemo(
+    () => view.kind === "connection"
+      ? state?.connections?.find((connection) => connection.id === view.id)
+      : undefined,
+    [state?.connections, view],
+  );
   const selectedOrganization = useMemo(
     () => view.kind === "organization"
       ? organizations?.connections.find((connection) => connection.id === view.id)
@@ -416,6 +527,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   const editingOrganization = view.kind === "enroll" && !!view.id;
   const activeOrganization = organizations?.connections.find(
     (connection) => connection.active || connection.id === state?.current.profileId,
+  );
+  const activePersonalConnection = state?.connections?.find(
+    (connection) => connection.active || connection.id === state.current.profileId,
   );
   const currentProvider = state?.providers.find((provider) => provider.id === state.current.provider);
   const sameProvider = state?.current.provider === draft.provider;
@@ -430,6 +544,17 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   const lockedProfile = !!state && ["flag", "env", "pin"].includes(state.current.profileSource);
   const blocked = !!state?.current.environmentOverride || lockedProfile;
   const valid = view.kind === "provider" && !!selected && !!draft.model.trim() && !keyMissing && !blocked;
+  const personalProvider = personalProviders.find((provider) => provider.id === personalDraft.provider);
+  const personalKeyMissing = personalProvider?.auth === "api-key" && !apiKey.trim();
+  const personalConnectionValid = view.kind === "add-personal"
+    && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(personalDraft.id.trim())
+    && personalDraft.id.trim() !== "personal"
+    && !!personalDraft.label.trim()
+    && !!personalProvider
+    && !!personalDraft.model.trim()
+    && !personalKeyMissing;
+  const personalConnectionsSupported = Array.isArray(state?.connections);
+  const personalSwitchLocked = !!state?.switchLocked || !!state?.current.environmentOverride;
   const organizationValid = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(organizationDraft.id.trim())
     && organizationDraft.id.trim() !== "personal"
     && !!organizationDraft.label.trim()
@@ -457,6 +582,50 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     clearFeedback();
   };
 
+  const choosePersonalConnection = (connection: ProviderConnection) => {
+    if (connection.legacyPersonal) {
+      const provider = personalProviders.find((candidate) => candidate.id === connection.provider);
+      if (provider) chooseProvider(provider);
+      return;
+    }
+    setView({ kind: "connection", id: connection.id });
+    setApiKey("");
+    setRegistrationCode("");
+    setModels([]);
+    clearFeedback();
+  };
+
+  const beginPersonalConnection = () => {
+    const provider = personalProviders.find((candidate) => candidate.id === state?.current.provider)
+      ?? personalProviders[0];
+    if (!provider) return;
+    const next = personalDraftForProvider(provider);
+    setPersonalDraft({
+      ...next,
+      id: uniquePersonalConnectionId(
+        provider.id,
+        state?.connections ?? [],
+        organizations?.connections ?? [],
+      ),
+    });
+    setPersonalIdEdited(false);
+    setView({ kind: "add-personal" });
+    setApiKey("");
+    setRegistrationCode("");
+    setModels([]);
+    clearFeedback();
+  };
+
+  const cancelPersonalConnection = () => {
+    setApiKey("");
+    setPersonalDraft({ id: "", label: "", provider: "", model: "", baseURL: "" });
+    if (activeOrganization) setView({ kind: "organization", id: activeOrganization.id });
+    else if (activePersonalConnection && !activePersonalConnection.legacyPersonal) {
+      setView({ kind: "connection", id: activePersonalConnection.id });
+    } else if (state) setView({ kind: "provider", id: state.current.provider });
+    clearFeedback();
+  };
+
   const chooseOrganization = (connection: OrganizationConnection) => {
     setView({ kind: "organization", id: connection.id });
     setApiKey("");
@@ -479,6 +648,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     setRegistrationCode("");
     setOrganizationDraft({ id: "", label: "", gatewayUrl: "" });
     if (activeOrganization) setView({ kind: "organization", id: activeOrganization.id });
+    else if (activePersonalConnection && !activePersonalConnection.legacyPersonal) {
+      setView({ kind: "connection", id: activePersonalConnection.id });
+    }
     else if (state) setView({ kind: "provider", id: state.current.provider });
     clearFeedback();
   };
@@ -541,6 +713,128 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     }
   };
 
+  const personalConnectionInput = (activate: boolean): ProviderConnectionCreateInput => ({
+    id: personalDraft.id.trim(),
+    label: personalDraft.label.trim(),
+    provider: personalDraft.provider,
+    model: personalDraft.model.trim(),
+    ...(personalDraft.baseURL.trim() ? { baseURL: personalDraft.baseURL.trim() } : {}),
+    ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+    activate,
+  });
+
+  const testNewPersonalConnection = async () => {
+    if (!client || !personalConnectionValid || personalBusy) return;
+    setPersonalBusy("test-new");
+    clearFeedback();
+    try {
+      const input = personalConnectionInput(false);
+      const result = await client.testProviderSettings(input, cwd);
+      setModels(result.models);
+      if (result.ok) setMessage(copy.connected);
+      else setError(result.error || "Connection failed");
+    } catch (reason) {
+      setError(String(reason instanceof Error ? reason.message : reason));
+    } finally {
+      setPersonalBusy("");
+    }
+  };
+
+  const createPersonalConnection = async (activate: boolean) => {
+    if (!client || !personalConnectionValid || personalBusy) return;
+    const input = personalConnectionInput(activate && !personalSwitchLocked);
+    const transientKey = input.apiKey ?? "";
+    setApiKey("");
+    setPersonalBusy("create");
+    clearFeedback();
+    try {
+      const next = await client.createProviderConnection(input, cwd);
+      setState(next);
+      setView({ kind: "connection", id: input.id });
+      setPersonalDraft({ id: "", label: "", provider: "", model: "", baseURL: "" });
+      setModels([]);
+      onSaved(next);
+      if (input.activate && organizations) {
+        setOrganizations({
+          ...organizations,
+          activeId: input.id,
+          connections: organizations.connections.map((connection) => ({ ...connection, active: false })),
+        });
+      }
+      setMessage(input.activate ? copy.connectionAddedAndUsed : copy.connectionAdded);
+    } catch (reason) {
+      const raw = String(reason instanceof Error ? reason.message : reason);
+      setError(transientKey ? raw.split(transientKey).join("[redacted]") : raw);
+    } finally {
+      setPersonalBusy("");
+    }
+  };
+
+  const testSavedPersonalConnection = async (connection: ProviderConnection) => {
+    if (!client || personalBusy) return;
+    setPersonalBusy(`test:${connection.id}`);
+    clearFeedback();
+    try {
+      const result = await client.testProviderConnection(connection.id, cwd);
+      setModels(result.models);
+      if (result.ok) setMessage(copy.connected);
+      else setError(result.error || "Connection failed");
+    } catch (reason) {
+      setError(String(reason instanceof Error ? reason.message : reason));
+    } finally {
+      setPersonalBusy("");
+    }
+  };
+
+  const usePersonalConnection = async (connection: ProviderConnection) => {
+    if (!client || personalBusy || personalSwitchLocked || connection.active) return;
+    setPersonalBusy(`use:${connection.id}`);
+    clearFeedback();
+    try {
+      const next = await client.useProviderConnection(connection.id, cwd);
+      setState(next);
+      setView(connection.legacyPersonal
+        ? { kind: "provider", id: next.current.provider }
+        : { kind: "connection", id: connection.id });
+      if (organizations) {
+        setOrganizations({
+          ...organizations,
+          activeId: connection.id,
+          connections: organizations.connections.map((candidate) => ({ ...candidate, active: false })),
+        });
+      }
+      onSaved(next);
+      setMessage(copy.personalSwitched);
+    } catch (reason) {
+      setError(String(reason instanceof Error ? reason.message : reason));
+    } finally {
+      setPersonalBusy("");
+    }
+  };
+
+  const removePersonalConnection = async (connection: ProviderConnection) => {
+    if (!client || personalBusy || !connection.removable || !window.confirm(copy.removePersonalConfirm)) return;
+    setPersonalBusy(`remove:${connection.id}`);
+    clearFeedback();
+    try {
+      const next = await client.removeProviderConnection(connection.id, cwd);
+      setState(next);
+      const nextActive = next.connections?.find(
+        (candidate) => candidate.active || candidate.id === next.current.profileId,
+      );
+      setView(nextActive && !nextActive.legacyPersonal
+        ? { kind: "connection", id: nextActive.id }
+        : { kind: "provider", id: next.current.provider });
+      setModels([]);
+      onSaved(next);
+      setMessage(copy.personalRemoved);
+    } catch (reason) {
+      setError(String(reason instanceof Error ? reason.message : reason));
+    } finally {
+      setPersonalBusy("");
+    }
+  };
+
   const refreshProviderRoute = async (): Promise<ProviderSettingsState | null> => {
     if (!client) return null;
     const next = await client.listProviderSettings(cwd);
@@ -555,6 +849,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     const nextOrganization = result.organizations.connections.find(
       (connection) => connection.active || connection.id === next.current.profileId,
     );
+    const nextPersonal = next.connections?.find(
+      (connection) => connection.active || connection.id === next.current.profileId,
+    );
     setState(next);
     setOrganizations(result.organizations);
     setDraft(draftFromState(next));
@@ -563,7 +860,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     setRegistrationCode("");
     setView(nextOrganization
       ? { kind: "organization", id: nextOrganization.id }
-      : { kind: "provider", id: next.current.provider });
+      : nextPersonal && !nextPersonal.legacyPersonal
+        ? { kind: "connection", id: nextPersonal.id }
+        : { kind: "provider", id: next.current.provider });
     onSaved(next);
   };
 
@@ -633,7 +932,12 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       if (nextActive) setView({ kind: "organization", id: nextActive.id });
       else if (nextProvider) {
         setDraft(draftFromState(nextProvider));
-        setView({ kind: "provider", id: nextProvider.current.provider });
+        const nextPersonal = nextProvider.connections?.find(
+          (connection) => connection.active || connection.id === nextProvider.current.profileId,
+        );
+        setView(nextPersonal && !nextPersonal.legacyPersonal
+          ? { kind: "connection", id: nextPersonal.id }
+          : { kind: "provider", id: nextProvider.current.provider });
       }
       setMessage(copy.removed);
     } catch (reason) {
@@ -682,7 +986,10 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   if (unsupported) return <div className="provider-unsupported">{copy.unavailable}</div>;
   if (!state || phase === "loading") return <div className="setrow dim">{error || "…"}</div>;
 
-  const currentLabel = activeOrganization?.label || currentProvider?.label || state.current.provider;
+  const currentLabel = activeOrganization?.label
+    || activePersonalConnection?.label
+    || currentProvider?.label
+    || state.current.provider;
   const routeSource = state.current.profileSource === "pin"
     ? copy.projectOverride
     : state.current.profileSource === "flag" || state.current.profileSource === "env"
@@ -690,7 +997,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       : copy.globalDefault;
   const currentMeta = activeOrganization
     ? `${activeOrganization.gatewayHost} · ${routeSource}`
-    : `${copy.personal} · ${routeSource}`;
+    : `${activePersonalConnection?.label || copy.personal} · ${routeSource}`;
   const projectPinned = state.current.profileSource === "pin";
   const providerGroups: ProviderCatalogEntry["location"][] = ["cloud", "local"];
 
@@ -703,7 +1010,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       {embedded ? (
         <div className="provider-embedded-toolbar">
           <span>{copy.choose}</span>
-          <button type="button" className="ghost compact" disabled={phase !== "idle" || !!organizationBusy} onClick={() => void load()}>
+          <button type="button" className="ghost compact" disabled={phase !== "idle" || !!personalBusy || !!organizationBusy} onClick={() => void load()}>
             {copy.refresh}
           </button>
         </div>
@@ -713,7 +1020,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
             <h2 id="provider-settings-title">{copy.title}</h2>
             <p>{copy.subtitle}</p>
           </div>
-          <button type="button" className="ghost compact" disabled={phase !== "idle" || !!organizationBusy} onClick={() => void load()}>
+          <button type="button" className="ghost compact" disabled={phase !== "idle" || !!personalBusy || !!organizationBusy} onClick={() => void load()}>
             {copy.refresh}
           </button>
         </header>
@@ -749,6 +1056,60 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
 
       <div className="provider-workbench">
         <nav className="provider-presets" aria-label={copy.choose}>
+          <div className="provider-group provider-personal-group">
+            <div className="provider-group-head">
+              <span className="provider-group-label">{copy.personalConnections}</span>
+              <button
+                type="button"
+                className="provider-add-mini personal"
+                data-preview-action="add-personal"
+                aria-label={copy.addPersonal}
+                title={copy.addPersonal}
+                disabled={!personalConnectionsSupported || phase !== "idle" || !!personalBusy || !!organizationBusy}
+                onClick={beginPersonalConnection}
+              >
+                +
+              </button>
+            </div>
+            <p className="provider-group-caption">
+              {personalConnectionsSupported
+                ? copy.personalConnectionCount.replace("{count}", String(state.connections?.length ?? 0))
+                : copy.personalUnavailable}
+            </p>
+            {state.connections?.map((connection) => (
+              <button
+                type="button"
+                key={connection.id}
+                className={`provider-preset personal ${
+                  (view.kind === "connection" && view.id === connection.id)
+                  || (connection.legacyPersonal && view.kind === "provider") ? "on" : ""
+                }`}
+                data-personal-connection-id={connection.id}
+                aria-pressed={
+                  (view.kind === "connection" && view.id === connection.id)
+                  || (connection.legacyPersonal && view.kind === "provider")
+                }
+                disabled={phase !== "idle" || !!personalBusy || !!organizationBusy}
+                onClick={() => choosePersonalConnection(connection)}
+              >
+                <span className={`provider-mini-dot ${connection.location}`} />
+                <span>
+                  <strong>{connection.label}</strong>
+                  <small>{connection.provider} · {connection.model}</small>
+                </span>
+                {connection.active && <em>{copy.active}</em>}
+              </button>
+            ))}
+            {personalConnectionsSupported && state.connections?.length === 0 && (
+              <button type="button" className="provider-enterprise-empty personal" onClick={beginPersonalConnection}>
+                <span>+</span>
+                <strong>{copy.addPersonal}</strong>
+                <small>{copy.addFirstPersonal}</small>
+              </button>
+            )}
+          </div>
+
+          <p className="provider-catalog-caption">{copy.providerCatalog}</p>
           {providerGroups.map((location) => {
             const entries = personalProviders.filter((provider) => provider.location === location);
             if (entries.length === 0) return null;
@@ -929,6 +1290,267 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
             </div>
           )}
 
+          {view.kind === "connection" && selectedConnection && (
+            <div className="provider-organization-detail provider-personal-detail">
+              <header className="provider-detail-heading">
+                <div>
+                  <span>{copy.personal} · {copy.savedConnection}</span>
+                  <h3>{selectedConnection.label}</h3>
+                </div>
+                <span className={`provider-kind-badge ${selectedConnection.location}`}>
+                  {selectedConnection.active ? copy.active : copy.available}
+                </span>
+              </header>
+
+              <div className="organization-facts personal">
+                <div><span>{copy.profile}</span><strong>{selectedConnection.provider}</strong></div>
+                <div><span>{copy.model}</span><strong>{selectedConnection.model}</strong></div>
+                <div>
+                  <span>{copy.keyHintLabel}</span>
+                  <strong>{selectedConnection.keyHint || copy.noSavedKey}</strong>
+                </div>
+              </div>
+              {selectedConnection.baseURL && (
+                <div className="personal-connection-endpoint">
+                  <span>{copy.endpoint}</span>
+                  <strong>{selectedConnection.baseURL}</strong>
+                </div>
+              )}
+              <div className={`provider-data-path ${selectedConnection.location}`}>
+                {selectedConnection.location === "local" ? copy.dataLocal : copy.dataCloud}
+              </div>
+              <div className="provider-managed-note personal">{copy.immutableConnection}</div>
+
+              {models.length > 0 && (
+                <div className="provider-models">
+                  <span>{copy.discovered}</span>
+                  <div>{models.slice(0, 24).map((model) => <strong className="provider-model-readonly" key={model}>{model}</strong>)}</div>
+                </div>
+              )}
+
+              <div className="organization-management-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!!personalBusy || !!organizationBusy}
+                  onClick={() => void testSavedPersonalConnection(selectedConnection)}
+                >
+                  {personalBusy === `test:${selectedConnection.id}` ? copy.testingSaved : copy.testSaved}
+                </button>
+                {!selectedConnection.active && (
+                  <button
+                    type="button"
+                    disabled={!!personalBusy || !!organizationBusy || personalSwitchLocked}
+                    onClick={() => void usePersonalConnection(selectedConnection)}
+                  >
+                    {personalBusy === `use:${selectedConnection.id}` ? copy.usingPersonal : copy.usePersonal}
+                  </button>
+                )}
+                {selectedConnection.removable && (
+                  <button
+                    type="button"
+                    className="ghost danger"
+                    disabled={!!personalBusy || !!organizationBusy || (selectedConnection.active && personalSwitchLocked)}
+                    onClick={() => void removePersonalConnection(selectedConnection)}
+                  >
+                    {personalBusy === `remove:${selectedConnection.id}` ? copy.removingPersonal : copy.removePersonal}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {view.kind === "add-personal" && personalProvider && (
+            <form
+              className="provider-enrollment-form provider-personal-form"
+              onSubmit={(event) => { event.preventDefault(); void createPersonalConnection(false); }}
+            >
+              <header className="provider-detail-heading">
+                <div>
+                  <span>{copy.personal} · {copy.addPersonal}</span>
+                  <h3>{copy.addPersonalTitle}</h3>
+                  <p>{copy.addPersonalDescription}</p>
+                </div>
+              </header>
+
+              <label>
+                <span>{copy.connectionName}</span>
+                <input
+                  value={personalDraft.label}
+                  placeholder={copy.connectionNamePlaceholder}
+                  maxLength={80}
+                  autoComplete="off"
+                  disabled={!!personalBusy}
+                  onChange={(event) => {
+                    const label = event.target.value;
+                    setPersonalDraft((current) => ({
+                      ...current,
+                      label,
+                      ...(!personalIdEdited
+                        ? {
+                            id: uniquePersonalConnectionId(
+                              label || current.provider,
+                              state.connections ?? [],
+                              organizations?.connections ?? [],
+                            ),
+                          }
+                        : {}),
+                    }));
+                  }}
+                />
+              </label>
+
+              <label>
+                <span>{copy.profile}</span>
+                <select
+                  value={personalDraft.provider}
+                  disabled={!!personalBusy}
+                  onChange={(event) => {
+                    const provider = personalProviders.find((candidate) => candidate.id === event.target.value);
+                    if (!provider) return;
+                    setPersonalDraft((current) => ({
+                      ...current,
+                      provider: provider.id,
+                      model: provider.defaultModel,
+                      baseURL: provider.defaultBaseURL ?? "",
+                      ...(!personalIdEdited && !current.label.trim()
+                        ? {
+                            id: uniquePersonalConnectionId(
+                              provider.id,
+                              state.connections ?? [],
+                              organizations?.connections ?? [],
+                            ),
+                          }
+                        : {}),
+                    }));
+                    setApiKey("");
+                    setModels([]);
+                    clearFeedback();
+                  }}
+                >
+                  {personalProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.label}</option>)}
+                </select>
+              </label>
+
+              <label>
+                <span>{copy.model}</span>
+                <input
+                  value={personalDraft.model}
+                  list="hara-new-connection-models"
+                  spellCheck={false}
+                  autoComplete="off"
+                  disabled={!!personalBusy}
+                  onChange={(event) => setPersonalDraft((current) => ({ ...current, model: event.target.value }))}
+                />
+                <datalist id="hara-new-connection-models">
+                  {models.map((model) => <option value={model} key={model} />)}
+                </datalist>
+              </label>
+
+              {personalProvider.customBaseURL && (
+                <label>
+                  <span>{copy.endpoint}</span>
+                  <input
+                    value={personalDraft.baseURL}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    disabled={!!personalBusy}
+                    onChange={(event) => setPersonalDraft((current) => ({ ...current, baseURL: event.target.value }))}
+                  />
+                </label>
+              )}
+
+              {personalProvider.auth === "api-key" && (
+                <label>
+                  <span>{copy.key}</span>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    placeholder={copy.keyNeed}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    autoComplete="new-password"
+                    disabled={!!personalBusy}
+                    onChange={(event) => setApiKey(event.target.value)}
+                  />
+                  <small>{copy.keySafety}</small>
+                </label>
+              )}
+              {personalProvider.auth === "none" && <div className="provider-note local">{copy.noKey}</div>}
+              {personalProvider.auth === "oauth" && <div className="provider-note">{copy.oauth}</div>}
+
+              {models.length > 0 && (
+                <div className="provider-models">
+                  <span>{copy.discovered}</span>
+                  <div>
+                    {models.slice(0, 24).map((model) => (
+                      <button
+                        type="button"
+                        className={personalDraft.model === model ? "on" : ""}
+                        key={model}
+                        aria-pressed={personalDraft.model === model}
+                        disabled={!!personalBusy}
+                        onClick={() => setPersonalDraft((current) => ({ ...current, model }))}
+                      >
+                        {model}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <details className="organization-advanced">
+                <summary>{copy.advanced}</summary>
+                <label>
+                  <span>{copy.connectionId}</span>
+                  <input
+                    value={personalDraft.id}
+                    maxLength={64}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    disabled={!!personalBusy}
+                    onChange={(event) => {
+                      setPersonalIdEdited(true);
+                      setPersonalDraft((current) => ({ ...current, id: event.target.value }));
+                    }}
+                  />
+                  <small>{copy.connectionIdHint}</small>
+                </label>
+              </details>
+
+              <div className="provider-enrollment-safety personal">
+                <span aria-hidden="true">◇</span>
+                {copy.keySafety}
+              </div>
+              <div className="provider-actions personal-create-actions">
+                <button type="button" className="ghost" disabled={!!personalBusy} onClick={cancelPersonalConnection}>{copy.cancel}</button>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!personalConnectionValid || !!personalBusy}
+                  onClick={() => void testNewPersonalConnection()}
+                >
+                  {personalBusy === "test-new" ? copy.testing : copy.test}
+                </button>
+                {!personalSwitchLocked && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={!personalConnectionValid || !!personalBusy}
+                    onClick={() => void createPersonalConnection(true)}
+                  >
+                    {personalBusy === "create" ? copy.saving : copy.addAndUsePersonal}
+                  </button>
+                )}
+                <button type="submit" disabled={!personalConnectionValid || !!personalBusy}>
+                  {personalBusy === "create" ? copy.saving : copy.saveConnectionOnly}
+                </button>
+              </div>
+            </form>
+          )}
+
           {view.kind === "organization" && selectedOrganization && (() => {
             const access = statusFor(selectedOrganization, locale);
             const checked = checks[selectedOrganization.id];
@@ -1097,7 +1719,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
             </form>
           )}
 
-          {!selected && !selectedOrganization && view.kind !== "enroll" && (
+          {!selected && !selectedConnection && !selectedOrganization && view.kind !== "enroll" && view.kind !== "add-personal" && (
             <div className="provider-detail-empty">
               <strong>{copy.organizationEmpty}</strong>
               <span>{copy.organizationEmptyHint}</span>
@@ -1105,9 +1727,19 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
             </div>
           )}
 
-          {(phase === "testing" || phase === "saving" || organizationBusy === "unpin-project") && (
+          {(phase === "testing" || phase === "saving" || !!personalBusy || organizationBusy === "unpin-project") && (
             <div className="provider-result pending" role="status" aria-live="polite">
-              {organizationBusy === "unpin-project" ? copy.unpinningProject : phase === "testing" ? copy.testing : copy.saving}
+              {organizationBusy === "unpin-project"
+                ? copy.unpinningProject
+                : personalBusy.startsWith("test:")
+                  ? copy.testingSaved
+                  : personalBusy === "test-new" || phase === "testing"
+                    ? copy.testing
+                    : personalBusy.startsWith("use:")
+                      ? copy.usingPersonal
+                      : personalBusy.startsWith("remove:")
+                        ? copy.removingPersonal
+                        : copy.saving}
             </div>
           )}
           {message && <div className="provider-result ok" role="status" aria-live="polite">{message}</div>}
