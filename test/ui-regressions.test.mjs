@@ -295,6 +295,7 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const settings = readFileSync(`${root}/src/SettingsUI.tsx`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const nativeHost = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
 
   assert.match(settings, /export function SettingsPage/);
   assert.match(settings, /export function SettingsCard/);
@@ -326,6 +327,13 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.match(app, /desktopUpdateIsSnoozed\(u\.version\)[\s\S]*setUpdateNoticeVisible\(true\)/, "launch checks surface a visible in-app update guide");
   assert.match(app, /UPDATE_SNOOZE_MS = 24 \* 60 \* 60 \* 1_000/, "later snoozes one version instead of permanently hiding updates");
   assert.match(app, /event\.event === "Progress"[\s\S]*event\.data\.chunkLength/, "background downloads expose real progress");
+  assert.match(app, /invoke<DesktopUpdateStorageStatus>\("inspect_desktop_update_storage"\)/, "launch inspects Windows updater leftovers");
+  assert.match(app, /invoke<DesktopUpdateStorageStatus>\("clean_desktop_update_storage"\)/, "settings expose bounded cleanup of Hara updater leftovers");
+  assert.match(app, /updateStorage\.managedEntries[\s\S]*formatStorageBytes\(updateStorage\.managedBytes, locale\)/, "settings show verified Hara-only staging usage before cleanup");
+  assert.match(app, /updateStoragePathHint/, "the UI distinguishes Windows temporary storage from the install drive");
+  assert.match(nativeHost, /WINDOWS_UPDATE_STAGING_AUTOCLEAN_AGE/, "startup cleanup keeps an age floor around active installers");
+  assert.match(nativeHost, /metadata_is_reparse_point/, "cleanup rejects links and Windows reparse points");
+  assert.match(nativeHost, /WINDOWS_UPDATE_STAGING_FILE_LIMIT/, "cleanup remains shallow and bounded");
   assert.match(app, /setSetSec\("engine"\)[\s\S]*setZone\("settings"\)/, "update details route to the existing update settings");
   assert.match(app, /updateNoticeReadyBody/, "the ready state explains that Desktop and its managed CLI update together");
   assert.match(css, /\.desktop-update-notice/);

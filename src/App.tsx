@@ -294,6 +294,17 @@ type DesktopUpdateProgress = {
   downloaded: number;
   total?: number;
 };
+type DesktopUpdateStorageStatus = {
+  supported: boolean;
+  directory: string;
+  managedEntries: number;
+  managedBytes: number;
+  protectedEntries: number;
+  removedEntries: number;
+  reclaimedBytes: number;
+  failedEntries: number;
+  scanComplete: boolean;
+};
 type CommandLineHaraStatus = {
   path: string;
   bundledVersion: string;
@@ -372,6 +383,22 @@ const STEERING_HISTORY_PREFIX = "[Sent while you were working on the above — T
 const UPDATE_SNOOZE_KEY = "hara.desktopUpdateSnooze";
 const UPDATE_SNOOZE_MS = 24 * 60 * 60 * 1_000;
 const ATTACHMENT_FEATURE = "composer.attachments.v1";
+
+const formatStorageBytes = (bytes: number, locale: Locale): string => {
+  const safeBytes = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
+  if (safeBytes < 1_024) return `${Math.round(safeBytes)} B`;
+  const units = ["KB", "MB", "GB", "TB"] as const;
+  let value = safeBytes / 1_024;
+  let unit: (typeof units)[number] = units[0];
+  for (const next of units.slice(1)) {
+    if (value < 1_024) break;
+    value /= 1_024;
+    unit = next;
+  }
+  return `${new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
+    maximumFractionDigits: value >= 100 ? 0 : 1,
+  }).format(value)} ${unit}`;
+};
 
 const desktopUpdateIsSnoozed = (version: string): boolean => {
   try {
@@ -950,6 +977,12 @@ export default function App() {
   const [updateReady, setUpdateReady] = useState(false);
   const [updateNoticeVisible, setUpdateNoticeVisible] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<DesktopUpdateProgress | null>(null);
+  const [updateStorage, setUpdateStorage] = useState<DesktopUpdateStorageStatus | null>(null);
+  const [updateStorageBusy, setUpdateStorageBusy] = useState(false);
+  const [updateStorageNotice, setUpdateStorageNotice] = useState<{
+    tone: "success" | "warning" | "error";
+    title: string;
+  } | null>(null);
   const [desktopVersion, setDesktopVersion] = useState("");
   const [commandLineHara, setCommandLineHara] = useState<CommandLineHaraStatus | null>(null);
   const [commandLineBusy, setCommandLineBusy] = useState(false);
@@ -1950,6 +1983,9 @@ export default function App() {
   // choosing "Later" snoozes that exact version for 24 hours while the settings badge stays available.
   useEffect(() => {
     void getVersion().then(setDesktopVersion).catch(() => {});
+    void invoke<DesktopUpdateStorageStatus>("inspect_desktop_update_storage")
+      .then(setUpdateStorage)
+      .catch(() => {});
     void invoke<CommandLineHaraStatus>("synchronize_command_line_hara")
       .then(setCommandLineHara)
       .catch((error: any) => {
@@ -3334,6 +3370,28 @@ export default function App() {
       setUpdateTone("error");
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const cleanDesktopUpdateStorage = async () => {
+    if (updateStorageBusy) return;
+    setUpdateStorageBusy(true);
+    setUpdateStorageNotice(null);
+    try {
+      const status = await invoke<DesktopUpdateStorageStatus>("clean_desktop_update_storage");
+      setUpdateStorage(status);
+      if (!status.scanComplete || status.failedEntries > 0) {
+        setUpdateStorageNotice({ tone: "warning", title: t("updateStorageCleanIncomplete") });
+      } else {
+        setUpdateStorageNotice({
+          tone: "success",
+          title: `${t("updateStorageCleaned")} · ${formatStorageBytes(status.reclaimedBytes, locale)}`,
+        });
+      }
+    } catch {
+      setUpdateStorageNotice({ tone: "error", title: t("updateStorageCleanFailed") });
+    } finally {
+      setUpdateStorageBusy(false);
     }
   };
 
@@ -4968,6 +5026,43 @@ export default function App() {
                       {updating ? t("workingUpdate") : t("checkUpdate")}
                     </button>
                   </SettingsItem>
+                  {updateStorage?.supported && (
+                    <>
+                      <SettingsItem title={t("updateStorageTitle")} description={t("updateStorageHint")}>
+                        <div className="settings-update-storage-control">
+                          <SettingsBadge tone={updateStorage.managedEntries > 0 ? "warning" : "success"}>
+                            {updateStorage.managedEntries > 0
+                              ? `${updateStorage.managedEntries} · ${formatStorageBytes(updateStorage.managedBytes, locale)}`
+                              : t("updateStorageEmpty")}
+                          </SettingsBadge>
+                          <button
+                            type="button"
+                            className="ghost"
+                            disabled={updateStorageBusy || updateStorage.managedEntries === 0}
+                            onClick={() => void cleanDesktopUpdateStorage()}
+                          >
+                            {updateStorageBusy ? t("updateStorageCleaning") : t("updateStorageClean")}
+                          </button>
+                        </div>
+                      </SettingsItem>
+                      <SettingsItem title={t("updateStoragePath")} description={t("updateStoragePathHint")}>
+                        <span
+                          className="settings-mono settings-update-storage-path"
+                          title={updateStorage.directory}
+                        >
+                          {updateStorage.directory}
+                        </span>
+                      </SettingsItem>
+                      {updateStorageNotice && (
+                        <SettingsNotice tone={updateStorageNotice.tone} title={updateStorageNotice.title} />
+                      )}
+                      {(!updateStorage.scanComplete || updateStorage.protectedEntries > 0) && (
+                        <SettingsNotice tone="warning" title={t("updateStorageProtectedTitle")}>
+                          {t("updateStorageProtectedHint")}
+                        </SettingsNotice>
+                      )}
+                    </>
+                  )}
                   {updateReady ? (
                     <SettingsNotice
                       tone={updateTone}

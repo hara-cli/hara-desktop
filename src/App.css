@@ -3417,6 +3417,13 @@ select {
   justify-content: flex-end;
   gap: 8px;
 }
+.settings-update-storage-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
 .settings-mono {
   overflow: hidden;
   color: #c6c3bd;
@@ -3424,6 +3431,13 @@ select {
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.settings-update-storage-path {
+  max-width: min(460px, 55vw);
+  text-align: right;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .gateway-settings-block {
@@ -3910,8 +3924,13 @@ button:focus-visible,
     gap: 9px;
   }
   .settings-item-control,
-  .settings-choice {
+  .settings-choice,
+  .settings-update-storage-control {
     justify-content: flex-start;
+  }
+  .settings-update-storage-path {
+    max-width: 100%;
+    text-align: left;
   }
   .settings-item-control select {
     width: 100%;

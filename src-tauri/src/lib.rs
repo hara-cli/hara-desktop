@@ -30,6 +30,254 @@ const MIN_MAIN_WINDOW_HEIGHT: u32 = 480;
 const MIN_PANEL_NODE_MAJOR: u32 = 18;
 const PREFERRED_PANEL_NODE_MAJOR: u32 = 22;
 const PANEL_NODE_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+#[cfg(any(windows, test))]
+const WINDOWS_UPDATE_STAGING_PREFIX: &str = "Hara-";
+#[cfg(any(windows, test))]
+const WINDOWS_UPDATE_STAGING_MARKER: &str = "-updater-";
+#[cfg(any(windows, test))]
+const WINDOWS_UPDATE_STAGING_RANDOM_MIN: usize = 6;
+#[cfg(any(windows, test))]
+const WINDOWS_UPDATE_STAGING_RANDOM_MAX: usize = 32;
+#[cfg(any(windows, test))]
+const WINDOWS_UPDATE_STAGING_ROOT_SCAN_LIMIT: usize = 16_384;
+#[cfg(any(windows, test))]
+const WINDOWS_UPDATE_STAGING_FILE_LIMIT: usize = 8;
+#[cfg(windows)]
+const WINDOWS_UPDATE_STAGING_AUTOCLEAN_AGE: std::time::Duration =
+    std::time::Duration::from_secs(60 * 60);
+
+#[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct DesktopUpdateStorageStatus {
+    supported: bool,
+    directory: String,
+    managed_entries: usize,
+    managed_bytes: u64,
+    protected_entries: usize,
+    removed_entries: usize,
+    reclaimed_bytes: u64,
+    failed_entries: usize,
+    scan_complete: bool,
+}
+
+impl DesktopUpdateStorageStatus {
+    fn unsupported() -> Self {
+        Self {
+            supported: false,
+            directory: String::new(),
+            managed_entries: 0,
+            managed_bytes: 0,
+            protected_entries: 0,
+            removed_entries: 0,
+            reclaimed_bytes: 0,
+            failed_entries: 0,
+            scan_complete: true,
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ManagedUpdateStagingEntry {
+    path: PathBuf,
+    bytes: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+#[cfg(any(windows, test))]
+fn windows_update_staging_version(name: &str) -> Option<&str> {
+    let remainder = name.strip_prefix(WINDOWS_UPDATE_STAGING_PREFIX)?;
+    let (version, random) = remainder.rsplit_once(WINDOWS_UPDATE_STAGING_MARKER)?;
+    if version.is_empty()
+        || !version.as_bytes().first().is_some_and(u8::is_ascii_digit)
+        || !version
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'+' | b'-'))
+        || !(WINDOWS_UPDATE_STAGING_RANDOM_MIN..=WINDOWS_UPDATE_STAGING_RANDOM_MAX)
+            .contains(&random.len())
+        || !random.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    {
+        return None;
+    }
+    Some(version)
+}
+
+#[cfg(windows)]
+fn metadata_is_reparse_point(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    metadata.file_attributes()
+        & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT
+        != 0
+}
+
+#[cfg(all(not(windows), test))]
+fn metadata_is_reparse_point(_metadata: &fs::Metadata) -> bool {
+    false
+}
+
+#[cfg(any(windows, test))]
+fn managed_update_staging_entry(path: &Path, version: &str) -> Option<ManagedUpdateStagingEntry> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if !metadata.is_dir()
+        || metadata.file_type().is_symlink()
+        || metadata_is_reparse_point(&metadata)
+    {
+        return None;
+    }
+
+    let mut bytes = 0_u64;
+    let mut files = 0_usize;
+    for child in fs::read_dir(path).ok()? {
+        let child = child.ok()?;
+        files += 1;
+        if files > WINDOWS_UPDATE_STAGING_FILE_LIMIT {
+            return None;
+        }
+        let child_path = child.path();
+        let child_metadata = fs::symlink_metadata(&child_path).ok()?;
+        if !child_metadata.is_file()
+            || child_metadata.file_type().is_symlink()
+            || metadata_is_reparse_point(&child_metadata)
+        {
+            return None;
+        }
+        let filename = child.file_name();
+        let filename = filename.to_str()?;
+        let extension = child_path.extension()?.to_str()?.to_ascii_lowercase();
+        if !filename.starts_with("Hara")
+            || !filename.contains(version)
+            || !matches!(extension.as_str(), "exe" | "msi" | "zip")
+        {
+            return None;
+        }
+        bytes = bytes.saturating_add(child_metadata.len());
+    }
+
+    Some(ManagedUpdateStagingEntry {
+        path: path.to_path_buf(),
+        bytes,
+        modified: metadata.modified().ok(),
+    })
+}
+
+#[cfg(any(windows, test))]
+fn collect_windows_update_storage(
+    root: &Path,
+) -> (DesktopUpdateStorageStatus, Vec<ManagedUpdateStagingEntry>) {
+    let mut status = DesktopUpdateStorageStatus {
+        supported: true,
+        directory: root.to_string_lossy().into_owned(),
+        managed_entries: 0,
+        managed_bytes: 0,
+        protected_entries: 0,
+        removed_entries: 0,
+        reclaimed_bytes: 0,
+        failed_entries: 0,
+        scan_complete: true,
+    };
+    let mut managed = Vec::new();
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(_) => {
+            status.scan_complete = false;
+            return (status, managed);
+        }
+    };
+
+    for (index, entry) in entries.enumerate() {
+        if index >= WINDOWS_UPDATE_STAGING_ROOT_SCAN_LIMIT {
+            status.scan_complete = false;
+            break;
+        }
+        let Ok(entry) = entry else {
+            status.scan_complete = false;
+            continue;
+        };
+        let Some(name) = entry.file_name().to_str().map(ToOwned::to_owned) else {
+            continue;
+        };
+        let Some(version) = windows_update_staging_version(&name) else {
+            continue;
+        };
+        match managed_update_staging_entry(&entry.path(), version) {
+            Some(candidate) => {
+                status.managed_entries += 1;
+                status.managed_bytes = status.managed_bytes.saturating_add(candidate.bytes);
+                managed.push(candidate);
+            }
+            None => status.protected_entries += 1,
+        }
+    }
+    (status, managed)
+}
+
+#[cfg(any(windows, test))]
+fn clean_windows_update_storage_at(
+    root: &Path,
+    minimum_age: std::time::Duration,
+) -> DesktopUpdateStorageStatus {
+    let (_, candidates) = collect_windows_update_storage(root);
+    let now = std::time::SystemTime::now();
+    let mut removed_entries = 0_usize;
+    let mut reclaimed_bytes = 0_u64;
+    let mut failed_entries = 0_usize;
+
+    for candidate in candidates {
+        let old_enough = minimum_age.is_zero()
+            || candidate
+                .modified
+                .and_then(|modified| now.duration_since(modified).ok())
+                .is_some_and(|age| age >= minimum_age);
+        if !old_enough {
+            continue;
+        }
+
+        let removed = fs::read_dir(&candidate.path)
+            .and_then(|entries| {
+                for child in entries {
+                    fs::remove_file(child?.path())?;
+                }
+                fs::remove_dir(&candidate.path)
+            })
+            .is_ok();
+        if removed {
+            removed_entries += 1;
+            reclaimed_bytes = reclaimed_bytes.saturating_add(candidate.bytes);
+        } else {
+            failed_entries += 1;
+        }
+    }
+
+    let (mut status, _) = collect_windows_update_storage(root);
+    status.removed_entries = removed_entries;
+    status.reclaimed_bytes = reclaimed_bytes;
+    status.failed_entries = failed_entries;
+    status
+}
+
+#[tauri::command]
+fn inspect_desktop_update_storage() -> DesktopUpdateStorageStatus {
+    #[cfg(windows)]
+    {
+        collect_windows_update_storage(&std::env::temp_dir()).0
+    }
+    #[cfg(not(windows))]
+    {
+        DesktopUpdateStorageStatus::unsupported()
+    }
+}
+
+#[tauri::command]
+fn clean_desktop_update_storage() -> DesktopUpdateStorageStatus {
+    #[cfg(windows)]
+    {
+        clean_windows_update_storage_at(&std::env::temp_dir(), std::time::Duration::ZERO)
+    }
+    #[cfg(not(windows))]
+    {
+        DesktopUpdateStorageStatus::unsupported()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct WindowRect {
@@ -2225,6 +2473,24 @@ pub fn run() {
         return;
     }
 
+    // Tauri's Windows updater intentionally persists its installer directory before exiting to let
+    // NSIS/MSI finish. The new app owns bounded cleanup on a later launch: only exact Hara updater
+    // directories with simple installer files are eligible, and a one-hour floor avoids racing a
+    // still-running installer from another Hara window.
+    #[cfg(windows)]
+    {
+        let cleanup = clean_windows_update_storage_at(
+            &std::env::temp_dir(),
+            WINDOWS_UPDATE_STAGING_AUTOCLEAN_AGE,
+        );
+        if cleanup.failed_entries > 0 || !cleanup.scan_complete {
+            eprintln!(
+                "Hara update temporary-file cleanup was incomplete (failed: {}, scan complete: {})",
+                cleanup.failed_entries, cleanup.scan_complete
+            );
+        }
+    }
+
     tauri::Builder::default()
         .manage(OwnedPanels(std::sync::Mutex::new(Vec::new())))
         .plugin(tauri_plugin_opener::init())
@@ -2245,6 +2511,8 @@ pub fn run() {
             set_badge,
             take_update_restart_marker,
             restart_after_update,
+            inspect_desktop_update_storage,
+            clean_desktop_update_storage,
             classify_attachment_paths,
             write_temp_image,
             list_pets,
@@ -2304,6 +2572,118 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod update_storage_tests {
+    use super::*;
+
+    fn test_root() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "hara-desktop-update-storage-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn updater_staging_name_requires_exact_hara_grammar() {
+        assert_eq!(
+            windows_update_staging_version("Hara-0.1.56-updater-AbC123"),
+            Some("0.1.56")
+        );
+        assert_eq!(
+            windows_update_staging_version("Hara-0.2.0-beta.1-updater-Z9x8W7"),
+            Some("0.2.0-beta.1")
+        );
+        assert_eq!(
+            windows_update_staging_version("Other-0.1.56-updater-AbC123"),
+            None
+        );
+        assert_eq!(
+            windows_update_staging_version("Hara-main-updater-AbC123"),
+            None
+        );
+        assert_eq!(
+            windows_update_staging_version("Hara-0.1.56-updater-.."),
+            None
+        );
+    }
+
+    #[test]
+    fn update_storage_cleanup_removes_only_verified_hara_installer_directories() {
+        let root = test_root();
+        fs::create_dir_all(&root).unwrap();
+
+        let managed = root.join("Hara-0.1.56-updater-AbC123");
+        fs::create_dir(&managed).unwrap();
+        fs::write(managed.join("Hara-0.1.56-installer.exe"), vec![7_u8; 4_096]).unwrap();
+
+        let protected = root.join("Hara-0.1.55-updater-ZyX987");
+        fs::create_dir(&protected).unwrap();
+        fs::create_dir(protected.join("unexpected-directory")).unwrap();
+
+        let unrelated = root.join("AnotherApp-0.1.56-updater-AbC123");
+        fs::create_dir(&unrelated).unwrap();
+        fs::write(unrelated.join("keep.txt"), b"keep").unwrap();
+
+        let (before, _) = collect_windows_update_storage(&root);
+        assert_eq!(before.managed_entries, 1);
+        assert_eq!(before.managed_bytes, 4_096);
+        assert_eq!(before.protected_entries, 1);
+        assert!(before.scan_complete);
+
+        let startup_pass =
+            clean_windows_update_storage_at(&root, std::time::Duration::from_secs(24 * 60 * 60));
+        assert_eq!(startup_pass.removed_entries, 0);
+        assert_eq!(startup_pass.managed_entries, 1);
+        assert!(
+            managed.exists(),
+            "a recent installer is never raced at startup"
+        );
+
+        let after = clean_windows_update_storage_at(&root, std::time::Duration::ZERO);
+        assert_eq!(after.removed_entries, 1);
+        assert_eq!(after.reclaimed_bytes, 4_096);
+        assert_eq!(after.managed_entries, 0);
+        assert_eq!(after.protected_entries, 1);
+        assert!(!managed.exists());
+        assert!(protected.exists());
+        assert!(unrelated.exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn update_storage_cleanup_never_follows_a_link_shaped_like_hara_staging() {
+        use std::os::unix::fs::symlink;
+
+        let root = test_root();
+        let outside = root.with_extension("outside");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        let outside_installer = outside.join("Hara-0.1.56-installer.exe");
+        fs::write(&outside_installer, b"keep").unwrap();
+        let linked = root.join("Hara-0.1.56-updater-AbC123");
+        symlink(&outside, &linked).unwrap();
+
+        let before = collect_windows_update_storage(&root).0;
+        assert_eq!(before.managed_entries, 0);
+        assert_eq!(before.protected_entries, 1);
+
+        let after = clean_windows_update_storage_at(&root, std::time::Duration::ZERO);
+        assert_eq!(after.removed_entries, 0);
+        assert!(linked.exists());
+        assert_eq!(fs::read(&outside_installer).unwrap(), b"keep");
+
+        fs::remove_file(linked).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(outside).unwrap();
+    }
 }
 
 #[cfg(test)]
