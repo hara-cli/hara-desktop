@@ -3980,7 +3980,7 @@ export default function App() {
           <ConversationTimeline
             items={items}
             busy={!!busy[active]}
-            temperament={temperament}
+            taskState={taskStates[active]}
             bottomRef={bottomRef}
             t={t}
             onRewind={(index) => void rewindHere(index)}

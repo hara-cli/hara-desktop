@@ -39,7 +39,7 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   const rail = readFileSync(`${root}/src/AppRail.tsx`, "utf8");
   const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
-  const diff = css.match(/\.diff \{([\s\S]*?)\n\}/)?.[1] ?? "";
+  const diff = css.match(/^\.diff \{([\s\S]*?)\n\}/m)?.[1] ?? "";
 
   assert.match(app, /type AppPlace,[\s\S]*type AppRailItem,[\s\S]*from "\.\/AppRail"/);
   assert.match(app, /<ConversationTimeline/);
@@ -48,6 +48,11 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(rail, /items\.map\(\(item\) =>/);
   assert.match(timeline, /case "approval"/, "approvals stay in the session timeline");
   assert.match(timeline, /const lastUser = items\.map/, "busy progress remains scoped to the current turn");
+  assert.match(timeline, /groupConversationItems\(items\)/, "technical events are projected into a separate execution log");
+  assert.match(timeline, /className="execution-log"/, "execution evidence remains available on demand");
+  assert.doesNotMatch(timeline, /open=\{temperament === "ide"\}/, "reasoning never opens merely because a project is active");
+  assert.match(timeline, /className=\{`task-progress \$\{visibleTask\.state\}`\}/, "typed task checkpoints drive a concise status surface");
+  assert.match(app, /taskState=\{taskStates\[active\]\}/, "the current session owns the displayed task checkpoint");
   assert.match(timeline, /<pre key=\{index\} className="diff">/);
   assert.match(diff, /flex:\s*0 0 auto\s*;/, "diff cards cannot be flex-shrunk until their body disappears");
   assert.match(diff, /min-height:\s*3\.5rem\s*;/);
