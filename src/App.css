@@ -1250,7 +1250,6 @@ button.deny {
 .execution-log-body > :first-child {
   margin-top: 9px;
 }
-.execution-log .reasoning,
 .execution-log .diff {
   max-width: 100%;
 }
@@ -1270,17 +1269,6 @@ button.deny {
   align-self: flex-start;
   background: var(--bg2);
   border: 1px solid var(--border);
-}
-.reasoning {
-  align-self: flex-start;
-  color: var(--dim);
-  font-size: 12px;
-  max-width: 82%;
-  white-space: pre-wrap;
-}
-.reasoning summary {
-  cursor: pointer;
-  user-select: none;
 }
 .tool {
   font-size: 12px;

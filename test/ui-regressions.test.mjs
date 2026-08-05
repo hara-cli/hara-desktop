@@ -50,7 +50,10 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(timeline, /const lastUser = items\.map/, "busy progress remains scoped to the current turn");
   assert.match(timeline, /groupConversationItems\(items\)/, "technical events are projected into a separate execution log");
   assert.match(timeline, /className="execution-log"/, "execution evidence remains available on demand");
-  assert.doesNotMatch(timeline, /open=\{temperament === "ide"\}/, "reasoning never opens merely because a project is active");
+  assert.doesNotMatch(timeline, /kind === "reasoning"|className="reasoning"/, "private reasoning has no reveal surface");
+  const reasoningEvent = app.match(/case "event\.reasoning":([\s\S]*?)break;/)?.[1] ?? "";
+  assert.match(reasoningEvent, /never enter renderer transcript state/);
+  assert.doesNotMatch(reasoningEvent, /push\(/, "legacy reasoning events are discarded at the renderer boundary");
   assert.match(timeline, /className=\{`task-progress \$\{visibleTask\.state\}`\}/, "typed task checkpoints drive a concise status surface");
   assert.match(timeline, /checkpoint\.blockReason/, "the persisted blocker is rendered instead of inferred from chat prose");
   assert.match(timeline, /checkpoint\.nextStep/, "paused and blocked work exposes its resumable next action");

@@ -12,17 +12,17 @@ export type ConversationSegment =
 export type ExecutionDetailCounts = {
   tools: number;
   changes: number;
-  reasoning: number;
 };
 
 export function isExecutionDetail(item: ConversationItem): boolean {
-  return item.kind === "reasoning" || item.kind === "tool" || item.kind === "diff";
+  return item.kind === "tool" || item.kind === "diff";
 }
 
 /**
  * Keep the conversational transcript readable while retaining complete local execution evidence.
- * Consecutive reasoning/tool/diff events become one disclosure row; user messages, assistant results,
- * notices, approvals, and usage markers retain their original ordering and rewind indexes.
+ * Consecutive tool/diff events become one disclosure row; provider reasoning is never retained in the
+ * renderer. User messages, assistant results, notices, approvals, and usage markers retain their original
+ * ordering and rewind indexes.
  */
 export function groupConversationItems(items: ConversationItem[]): ConversationSegment[] {
   const segments: ConversationSegment[] = [];
@@ -51,9 +51,8 @@ export function countExecutionDetails(items: IndexedConversationItem[]): Executi
     (counts, entry) => {
       if (entry.item.kind === "tool") counts.tools += 1;
       else if (entry.item.kind === "diff") counts.changes += 1;
-      else if (entry.item.kind === "reasoning") counts.reasoning += 1;
       return counts;
     },
-    { tools: 0, changes: 0, reasoning: 0 },
+    { tools: 0, changes: 0 },
   );
 }

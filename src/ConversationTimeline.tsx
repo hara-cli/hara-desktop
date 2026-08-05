@@ -20,7 +20,6 @@ export type ConversationItem =
       pendingId?: string;
     }
   | { kind: "text"; text: string }
-  | { kind: "reasoning"; text: string }
   | { kind: "tool"; name: string; preview: string }
   | { kind: "notice"; text: string }
   | { kind: "diff"; text: string }
@@ -115,7 +114,6 @@ export function ConversationTimeline({
             const summary = [
               counts.tools > 0 ? `${counts.tools} ${t("executionTools")}` : "",
               counts.changes > 0 ? `${counts.changes} ${t("executionChanges")}` : "",
-              counts.reasoning > 0 ? t("executionThinking") : "",
             ].filter(Boolean).join(" · ");
             return (
               <details className="execution-log" key={`execution-${segment.items[0]?.index ?? 0}`}>
@@ -125,14 +123,6 @@ export function ConversationTimeline({
                 </summary>
                 <div className="execution-log-body">
                   {segment.items.map(({ item, index }) => {
-                    if (item.kind === "reasoning") {
-                      return (
-                        <details key={index} className="reasoning">
-                          <summary>{t("thinking")}</summary>
-                          {item.text}
-                        </details>
-                      );
-                    }
                     if (item.kind === "tool") {
                       return (
                         <div key={index} className="tool">
@@ -187,7 +177,6 @@ export function ConversationTimeline({
                   <Md text={item.text} />
                 </div>
               );
-            case "reasoning":
             case "tool":
             case "diff":
               return null;

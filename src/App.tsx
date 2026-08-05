@@ -1724,12 +1724,9 @@ export default function App() {
           });
           break;
         case "event.reasoning":
+          // Older Serve versions may still emit provider reasoning. Treat it only as liveness; private
+          // reasoning must never enter renderer transcript state or a user-expandable execution log.
           if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
-          push(e.sessionId, (items) => {
-            const last = items[items.length - 1];
-            if (last?.kind === "reasoning") return [...items.slice(0, -1), { kind: "reasoning", text: last.text + e.delta }];
-            return [...items, { kind: "reasoning", text: e.delta }];
-          });
           break;
         case "event.tool":
           if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
