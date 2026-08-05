@@ -354,6 +354,16 @@ export interface GatewayLoginSnapshot {
 
 export type OrganizationAccessState = "valid" | "permanent" | "expiring" | "expired" | "legacy" | "invalid";
 
+export interface OrganizationServiceSummary {
+  service: "MODEL_CONTROL" | "DESK_TASKS" | "COLLAB" | "EXTENSION_CATALOG";
+  mode: "HARA_HOSTED" | "CUSTOMER_HOSTED";
+  accountRegion: "CN" | "GLOBAL";
+  host: string;
+  status: "ACTIVE";
+  capabilitiesVersion: number;
+  configVersion: number;
+}
+
 export interface OrganizationConnection {
   id: string;
   label: string;
@@ -368,6 +378,8 @@ export interface OrganizationConnection {
   /** Explicit no-date-expiry policy; the credential remains revocable and budgeted. */
   tokenNeverExpires?: boolean;
   accessState: OrganizationAccessState;
+  /** Redacted active organization services. No endpoint credential enters the renderer. */
+  services?: OrganizationServiceSummary[];
 }
 
 export interface OrganizationConnectionsState {

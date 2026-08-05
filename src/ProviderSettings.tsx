@@ -144,6 +144,11 @@ const words = {
     controlAddress: "Hara Control",
     organizationModel: "Managed model",
     authorizedModels: "Available in chat",
+    organizationServices: "Organization services",
+    organizationServiceMODEL_CONTROL: "Model control",
+    organizationServiceDESK_TASKS: "Desk tasks",
+    organizationServiceCOLLAB: "Groups",
+    organizationServiceEXTENSION_CATALOG: "Extensions",
     managedData: "Your administrator controls the model, quota, policy, and any organization Desk made available during enrollment. Their credentials remain isolated in Hara's protected local engine and never enter this window.",
     useOrganization: "Switch organization",
     usingOrganization: "Switching…",
@@ -280,6 +285,11 @@ const words = {
     controlAddress: "Hara Control",
     organizationModel: "托管模型",
     authorizedModels: "聊天可用模型",
+    organizationServices: "组织服务",
+    organizationServiceMODEL_CONTROL: "模型控制",
+    organizationServiceDESK_TASKS: "Desk 任务",
+    organizationServiceCOLLAB: "群组",
+    organizationServiceEXTENSION_CATALOG: "扩展目录",
     managedData: "模型、额度、策略以及注册时可用的组织 Desk 都由企业管理员管理；各自凭据隔离保存在 Hara 本机引擎中，不会进入这个窗口。",
     useOrganization: "切换组织",
     usingOrganization: "正在切换…",
@@ -1578,6 +1588,20 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                     <span>{copy.authorizedModels}</span>
                     <div>
                       {selectedOrganization.availableModels.map((model) => <strong key={model}>{model}</strong>)}
+                    </div>
+                  </div>
+                )}
+
+                {selectedOrganization.services && selectedOrganization.services.length > 0 && (
+                  <div className="organization-service-catalog">
+                    <span>{copy.organizationServices}</span>
+                    <div>
+                      {selectedOrganization.services.map((service) => (
+                        <strong key={service.service} title={`${service.host} · v${service.configVersion}`}>
+                          {copy[`organizationService${service.service}`]}
+                          <small>{service.host}</small>
+                        </strong>
+                      ))}
                     </div>
                   </div>
                 )}

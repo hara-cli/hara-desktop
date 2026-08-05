@@ -2099,6 +2099,45 @@ select {
   font-size: 10px;
   font-weight: 600;
 }
+.organization-service-catalog {
+  margin: 0 0 16px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--provider-enterprise, #7f91b7) 22%, var(--border));
+  background: color-mix(in srgb, var(--provider-enterprise, #7f91b7) 5%, transparent);
+}
+.organization-service-catalog > span {
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.organization-service-catalog > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
+}
+.organization-service-catalog strong {
+  min-width: 0;
+  padding: 7px 8px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid color-mix(in srgb, var(--provider-enterprise, #7f91b7) 28%, var(--border));
+  color: color-mix(in srgb, var(--fg) 82%, var(--provider-enterprise, #7f91b7));
+  font-size: 10px;
+  font-weight: 600;
+}
+.organization-service-catalog small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .message-attachments {
   margin-top: 7px;
   display: flex;

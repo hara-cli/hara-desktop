@@ -601,6 +601,11 @@ test("the model switchboard uses user-added enterprise connections instead of a 
   assert.match(providers, /仅保存，不切换当前连接|Save without switching/, "the safe action explains that the current route stays active");
   assert.match(providers, /window\.confirm\(copy\.removeConfirm\)/, "local removal explains that server-side revocation is separate");
   assert.match(providers, /client\.checkOrganizationConnection/, "connection health is checked explicitly rather than by model polling");
+  assert.match(client, /interface OrganizationServiceSummary[\s\S]*status: "ACTIVE"/);
+  assert.match(providers, /selectedOrganization\.services\.map/, "active organization services are visible on the selected connection");
+  assert.match(providers, /organizationServiceDESK_TASKS/);
+  assert.match(providers, /service\.host/, "the renderer shows only a redacted service host");
+  assert.match(readFileSync(`${root}\/src\/App.css`, "utf8"), /\.organization-service-catalog/);
   assert.doesNotMatch(providers, /deviceToken|authorization/i, "renderer never accepts the organization device credential");
   assert.match(
     app,

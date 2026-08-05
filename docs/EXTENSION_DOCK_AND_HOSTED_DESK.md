@@ -79,10 +79,14 @@ customer-hosted deployment. Ordinary employees continue to join with the current
 connection name, Hara Control origin, and one-time enrollment code. They do not choose hosting mode
 or paste another Desk key.
 
-The current implementation does not yet have tenant service-binding or signed surface-manifest
-fields. One-time enrollment can install the model route plus an optional native Desk binding returned
-by Control; it does not currently provision hosted Desk/Collab or install reviewed organization
-surfaces. The following is the P1 target contract, not a shipped client contract.
+The current implementation has the first tenant service-binding slice: Control stores one typed
+binding per organization/service, keeps any Desk provisioning credential in its encrypted secret
+store, verifies health (and Collab JWKS metadata), and advertises only `ACTIVE`, credential-free
+descriptors during enrollment. CLI persists those descriptors with the organization profile and
+Desktop shows their redacted hosts on the connection detail. One-time enrollment can also install
+the model route plus a separately scoped native Desk bearer. Collab/extension descriptors are
+discovery metadata only at this stage; they do not install a reviewed surface, and the enrollment
+payload is not yet a signed short-lived bootstrap manifest.
 
 Both modes must implement the same public client contract. The difference is a tenant-owned service
 binding, not a Desktop branch:
@@ -91,18 +95,20 @@ binding, not a Desktop branch:
 type TenantServiceBinding = {
   tenantId: string;
   service: "MODEL_CONTROL" | "DESK_TASKS" | "COLLAB" | "EXTENSION_CATALOG";
-  mode: "HARA_HOSTED" | "CUSTOMER_HOSTED" | "DISABLED";
-  accountRegion: "cn" | "global";
+  mode: "HARA_HOSTED" | "CUSTOMER_HOSTED";
+  accountRegion: "CN" | "GLOBAL";
   apiOrigin: string;
   issuer?: string;
   jwksUri?: string;
   audience?: string;
-  credentialRef?: string; // server-side KMS/Vault reference only
   status: "PENDING_VERIFICATION" | "ACTIVE" | "DEGRADED" | "DISABLED";
   capabilitiesVersion: number;
   configVersion: number;
 };
 ```
+
+`credentialRef` exists only in Control persistence and never belongs to an enrollment or renderer
+contract.
 
 In P1, enrollment should return a signed, short-lived organization bootstrap manifest describing the tenant,
 model route, active service bindings, and allowed native/reviewed surfaces. Sidecar verifies region,
@@ -119,7 +125,7 @@ Hara-hosted Desk is not production-ready merely because the current Control can 
 The following are required first:
 
 - person-bound tenant membership instead of device-name or wildcard enrollment identity;
-- tenant service-binding records, verified domains, region, plan, and status;
+- service ownership/domain proof and plan policy beyond the current endpoint/JWKS health checks;
 - idempotent provision/revoke saga with a remote revoke handle;
 - Account login, issuer/JWKS rotation, and realm-context tokens;
 - distinct `organization.desk.tasks.v1` and full collaboration capability names;
