@@ -609,7 +609,7 @@ export type ServerEvent =
   | { method: "event.diff"; sessionId: string; text: string }
   | { method: "event.notice"; sessionId: string; text: string }
   | { method: "event.turn_end"; sessionId: string; reply: string; error?: string; status?: string; taskId?: string; turnId?: string; usage: { input: number; output: number }; ctx?: CtxInfo }
-  | { method: "approval.request"; sessionId: string; approvalId: string; question: string };
+  | { method: "approval.request"; sessionId: string; approvalId: string; question: string; allowAlways?: boolean };
 
 interface Pending {
   resolve: (v: any) => void;

@@ -166,6 +166,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const lifecycle = readFileSync(`${root}/src/task-lifecycle.ts`, "utf8");
+  const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
 
   assert.match(client, /capabilities\?: \{ methods\?: string\[\]; events\?: string\[\]; features\?: string\[\] \}/);
   assert.match(client, /this\.events = new Set\(result\.capabilities\?\.events \?\? \[\]\)/);
@@ -174,6 +175,11 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(client, /supportsFeature\(feature: string\)/);
   assert.match(client, /"session\.steer"/);
   assert.match(app, /case "event\.task_state"/);
+  assert.match(i18n, /always: "always for this project"/);
+  assert.match(i18n, /always: "此项目内始终允许"/);
+  assert.match(app, /allowAlways: e\.allowAlways === true/);
+  const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
+  assert.match(timeline, /item\.allowAlways !== false/);
   assert.match(app, /clientRef\.current\?\.supportsEvent\("event\.task_state"\)/);
   assert.match(app, /await c\.steer\(sessionId, text, turnId\)/);
   assert.match(app, /const live = taskStateIsLive\(e\.state\)/);

@@ -1816,7 +1816,12 @@ export default function App() {
         }
         case "approval.request":
           if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "waiting");
-          push(e.sessionId, (items) => [...items, { kind: "approval", approvalId: e.approvalId, question: plain(e.question) }]);
+          push(e.sessionId, (items) => [...items, {
+            kind: "approval",
+            approvalId: e.approvalId,
+            question: plain(e.question),
+            allowAlways: e.allowAlways === true,
+          }]);
           if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
       }

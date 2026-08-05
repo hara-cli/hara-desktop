@@ -28,6 +28,7 @@ export type ConversationItem =
       kind: "approval";
       approvalId: string;
       question: string;
+      allowAlways?: boolean;
       answered?: ApprovalResolution;
     };
 
@@ -204,12 +205,14 @@ export function ConversationTimeline({
                       <button onClick={() => onApproval(item.approvalId, "allow")}>
                         {t("allow")}
                       </button>
-                      <button
-                        className="ghost"
-                        onClick={() => onApproval(item.approvalId, "always")}
-                      >
-                        {t("always")}
-                      </button>
+                      {item.allowAlways !== false ? (
+                        <button
+                          className="ghost"
+                          onClick={() => onApproval(item.approvalId, "always")}
+                        >
+                          {t("always")}
+                        </button>
+                      ) : null}
                       <button
                         className="deny"
                         onClick={() => onApproval(item.approvalId, "deny")}
