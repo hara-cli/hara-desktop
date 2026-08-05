@@ -56,3 +56,20 @@ export function countExecutionDetails(items: IndexedConversationItem[]): Executi
     { tools: 0, changes: 0 },
   );
 }
+
+export function executionToolNames(
+  items: IndexedConversationItem[],
+  limit = 3,
+): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const boundedLimit = Number.isFinite(limit) ? Math.max(0, Math.min(10, Math.floor(limit))) : 3;
+  if (boundedLimit === 0) return names;
+  for (const entry of items) {
+    if (entry.item.kind !== "tool" || seen.has(entry.item.name)) continue;
+    seen.add(entry.item.name);
+    names.push(entry.item.name);
+    if (names.length >= boundedLimit) break;
+  }
+  return names;
+}

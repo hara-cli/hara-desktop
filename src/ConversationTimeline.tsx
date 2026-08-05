@@ -1,6 +1,16 @@
 import { useMemo, type RefObject } from "react";
 import type { TaskLifecycleEvent } from "./client";
-import { countExecutionDetails, groupConversationItems } from "./execution-presentation";
+import {
+  countExecutionDetails,
+  executionToolNames,
+  groupConversationItems,
+} from "./execution-presentation";
+import {
+  executionViewExpandsLog,
+  executionViewShowsLog,
+  executionViewShowsUsage,
+  type ExecutionViewMode,
+} from "./execution-view";
 import type { Key } from "./i18n";
 import { Md } from "./markdown";
 
@@ -36,6 +46,7 @@ interface ConversationTimelineProps {
   items: ConversationItem[];
   busy: boolean;
   taskState?: TaskLifecycleEvent;
+  displayMode: ExecutionViewMode;
   bottomRef: RefObject<HTMLDivElement | null>;
   t: (key: Key) => string;
   onRewind: (itemIndex: number) => void;
@@ -47,6 +58,7 @@ export function ConversationTimeline({
   items,
   busy,
   taskState,
+  displayMode,
   bottomRef,
   t,
   onRewind,
@@ -111,13 +123,20 @@ export function ConversationTimeline({
       <div className="scroll">
         {segments.map((segment) => {
           if (segment.kind === "execution") {
+            if (!executionViewShowsLog(displayMode)) return null;
             const counts = countExecutionDetails(segment.items);
+            const tools = executionToolNames(segment.items);
             const summary = [
               counts.tools > 0 ? `${counts.tools} ${t("executionTools")}` : "",
               counts.changes > 0 ? `${counts.changes} ${t("executionChanges")}` : "",
+              tools.length > 0 ? tools.join(" · ") : "",
             ].filter(Boolean).join(" · ");
             return (
-              <details className="execution-log" key={`execution-${segment.items[0]?.index ?? 0}`}>
+              <details
+                className="execution-log"
+                open={executionViewExpandsLog(displayMode) ? true : undefined}
+                key={`execution-${displayMode}-${segment.items[0]?.index ?? 0}`}
+              >
                 <summary>
                   <strong>{t("executionDetails")}</strong>
                   {summary && <span>{summary}</span>}
@@ -188,11 +207,11 @@ export function ConversationTimeline({
                 </div>
               );
             case "end":
-              return (
+              return executionViewShowsUsage(displayMode) ? (
                 <div key={index} className="usage dim">
                   · {item.usage.input}→{item.usage.output} {t("tokens")} ·
                 </div>
-              );
+              ) : null;
             case "approval":
               return (
                 <div key={index} className={`appr ${item.answered ? "done" : ""}`}>
@@ -234,8 +253,8 @@ export function ConversationTimeline({
             return (
               <div className="busy">
                 {t("working")}
-                {toolCount > 0 && ` · ⚙${toolCount}`}
-                {diffCount > 0 && ` · ±${diffCount}`}
+                {displayMode !== "concise" && toolCount > 0 && ` · ⚙${toolCount}`}
+                {displayMode !== "concise" && diffCount > 0 && ` · ±${diffCount}`}
               </div>
             );
           })()}

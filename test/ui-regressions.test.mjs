@@ -50,6 +50,11 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(timeline, /const lastUser = items\.map/, "busy progress remains scoped to the current turn");
   assert.match(timeline, /groupConversationItems\(items\)/, "technical events are projected into a separate execution log");
   assert.match(timeline, /className="execution-log"/, "execution evidence remains available on demand");
+  assert.match(timeline, /executionViewShowsLog\(displayMode\)/);
+  assert.match(timeline, /open=\{executionViewExpandsLog\(displayMode\) \? true : undefined\}/);
+  assert.match(timeline, /executionViewShowsUsage\(displayMode\)/);
+  assert.match(app, /displayMode=\{executionViewMode\}/);
+  assert.match(app, /EXECUTION_VIEW_PREFERENCE_KEY/);
   assert.doesNotMatch(timeline, /kind === "reasoning"|className="reasoning"/, "private reasoning has no reveal surface");
   const reasoningEvent = app.match(/case "event\.reasoning":([\s\S]*?)break;/)?.[1] ?? "";
   assert.match(reasoningEvent, /never enter renderer transcript state/);

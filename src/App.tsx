@@ -107,6 +107,12 @@ import {
   type ConversationItem,
 } from "./ConversationTimeline";
 import {
+  EXECUTION_VIEW_MODES,
+  EXECUTION_VIEW_PREFERENCE_KEY,
+  parseExecutionViewMode,
+  type ExecutionViewMode,
+} from "./execution-view";
+import {
   persistedUserTurnsFrom,
   resolveOptimisticUser,
   restoreAuthoritativeConversation,
@@ -689,6 +695,8 @@ export default function App() {
     return info;
   }, []);
   const [defaultApproval, setDefaultApproval] = useState<string>(() => localStorage.getItem("hara.approval") || "");
+  const [executionViewMode, setExecutionViewMode] = useState<ExecutionViewMode>(() =>
+    parseExecutionViewMode(localStorage.getItem(EXECUTION_VIEW_PREFERENCE_KEY)));
   const [err, setErr] = useState("");
   const [navigationPreferences, setNavigationPreferences] =
     useState<NavigationPreferences>(() =>
@@ -1090,6 +1098,11 @@ export default function App() {
       }
       return next;
     });
+  }, []);
+
+  const saveExecutionViewMode = useCallback((mode: ExecutionViewMode) => {
+    setExecutionViewMode(mode);
+    localStorage.setItem(EXECUTION_VIEW_PREFERENCE_KEY, mode);
   }, []);
 
   const refreshGroupsDirectory = useCallback(async (): Promise<void> => {
@@ -4043,6 +4056,7 @@ export default function App() {
             items={items}
             busy={!!busy[active]}
             taskState={taskStates[active]}
+            displayMode={executionViewMode}
             bottomRef={bottomRef}
             t={t}
             onRewind={(index) => void rewindHere(index)}
@@ -5385,6 +5399,47 @@ export default function App() {
                     title={defaultApproval === "full-auto" ? t("fullAutoWarning") : t("boundaryTitle")}
                   >
                     {defaultApproval === "full-auto" ? t("fullAutoWarningHint") : t("boundaryHint")}
+                  </SettingsNotice>
+                </SettingsCard>
+                <SettingsCard
+                  title={t("executionDisplayTitle")}
+                  description={t("executionDisplayDescription")}
+                >
+                  <SettingsItem
+                    title={t("executionDisplayTitle")}
+                    description={
+                      executionViewMode === "debug"
+                        ? t("executionModeDebugHint")
+                        : executionViewMode === "standard"
+                          ? t("executionModeStandardHint")
+                          : t("executionModeConciseHint")
+                    }
+                  >
+                    <div
+                      className="settings-choice"
+                      role="radiogroup"
+                      aria-label={t("executionDisplayTitle")}
+                    >
+                      {EXECUTION_VIEW_MODES.map((mode) => (
+                        <button
+                          type="button"
+                          role="radio"
+                          key={mode}
+                          className={executionViewMode === mode ? "" : "ghost"}
+                          aria-checked={executionViewMode === mode}
+                          onClick={() => saveExecutionViewMode(mode)}
+                        >
+                          {mode === "debug"
+                            ? t("executionModeDebug")
+                            : mode === "standard"
+                              ? t("executionModeStandard")
+                              : t("executionModeConcise")}
+                        </button>
+                      ))}
+                    </div>
+                  </SettingsItem>
+                  <SettingsNotice tone="neutral" title={t("executionPrivacyTitle")}>
+                    {t("executionPrivacyHint")}
                   </SettingsNotice>
                 </SettingsCard>
               </SettingsPage>

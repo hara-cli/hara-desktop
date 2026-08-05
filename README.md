@@ -18,7 +18,7 @@ WebSocket JSON-RPC (protocol v1).
 ┌───────────────────────┐        ws://127.0.0.1:8790 (JSON-RPC v1)
 │   hara desktop (this) │ ◄────────────────────────────────────────►  hara serve
 │   sessions · chat     │   session.create/resume/send/interrupt      (hara-cli, agent core
-│   approvals · diffs   │   event.text/reasoning/tool/diff/notice     in-process: plugins,
+│   approvals · diffs   │   event.text/tool/diff/notice/task_state    in-process: plugins,
 └───────────────────────┘   approval.request ⇄ approval.reply         skills, memory)
 ```
 
@@ -86,6 +86,10 @@ places still preserve separate session ownership and density. Invariants:
   ambient-grade (an automation ran and left a trace) → count chip, NEVER a dock badge.
 - Automated sessions never mix into manual session lists, and never open as live conversations —
   replay is read-only; `session.fork` is the only continuation path.
+- Conversation presentation defaults to **Concise**: task progress, blockers, approvals, notices, and
+  results stay visible while tool/diff evidence and token counts stay out of the chat stream. Standard
+  adds collapsed execution logs; Debug expands those local logs and token usage. Provider reasoning is
+  discarded at the protocol/renderer boundary and never reappears in Debug.
 - A plugin panel is a WORK stage, not a settings artifact: an enabled panel may be explicitly pinned
   as a default-hidden dock shortcut, but opening it still moves to Projects, asks Serve to re-check
   applicability, and binds the Extension Dock to one concrete project session. It receives no
