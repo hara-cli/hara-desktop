@@ -45,6 +45,7 @@ import {
   type DeskConnection,
   type DeskTaskState,
   type OrganizationConnection,
+  type OrganizationConnectionsState,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
 import { classifyEngineVersion } from "./engine-version.js";
@@ -574,6 +575,17 @@ export default function App() {
     attachmentCapabilities?: EffectiveAttachmentCapabilities;
   } | null>(null);
   const [modelInfoScope, setModelInfoScope] = useState<string | null>(null);
+  const [organizationRoutes, setOrganizationRoutes] = useState<OrganizationConnectionsState | null>(null);
+  const organizationRoutesRequestRef = useRef(0);
+  const refreshOrganizationRoutes = useCallback(async (cwd?: string) => {
+    const client = clientRef.current;
+    if (!client) return null;
+    const requestId = ++organizationRoutesRequestRef.current;
+    const next = await client.listOrganizationConnections(cwd);
+    if (requestId !== organizationRoutesRequestRef.current || clientRef.current !== client) return next;
+    setOrganizationRoutes(next);
+    return next;
+  }, []);
   const [sessEffort, setSessEffort] = useState<Record<string, string>>({});
   const [stagedModelChanges, setStagedModelChanges] = useState<Record<string, StagedModelChange>>({});
   const stagedModelChangesRef = useRef<Record<string, StagedModelChange>>({});
@@ -1011,6 +1023,7 @@ export default function App() {
         client.listDeskConnections(),
       ]);
       if (requestId !== groupsDirectoryRequestRef.current || clientRef.current !== client) return;
+      setOrganizationRoutes(organizations);
       if (!organizations || !desk || !client.supportsFeature("collaboration.remote.v1")) {
         setGroupsDirectory({ phase: "unsupported" });
         return;
@@ -1066,6 +1079,7 @@ export default function App() {
         phase: "ready",
         organizations: next,
       }));
+      setOrganizationRoutes(next);
       dispatchGroups({
         type: "directorySynced",
         profiles: groupsDirectoryProfiles(
@@ -1777,6 +1791,8 @@ export default function App() {
     clearStagedModelChanges();
     previous?.close();
     artifactOpenRequestRef.current += 1;
+    organizationRoutesRequestRef.current += 1;
+    setOrganizationRoutes(null);
     groupsDirectoryRequestRef.current += 1;
     groupsRequestGenerationRef.current += 1;
     groupsActivationRequestRef.current += 1;
@@ -1818,6 +1834,8 @@ export default function App() {
         pendingSendDispatchesRef.current = {};
         clearStagedModelChanges();
         taskStatesRef.current = {};
+        organizationRoutesRequestRef.current += 1;
+        setOrganizationRoutes(null);
         groupsDirectoryRequestRef.current += 1;
         groupsRequestGenerationRef.current += 1;
         groupsActivationRequestRef.current += 1;
@@ -1866,6 +1884,7 @@ export default function App() {
       void refreshAuto();
       void c.listArtifacts().then((a) => setArtifacts(a ?? "old-server")).catch(() => {});
       void refreshModelInfo().catch(() => {});
+      void refreshOrganizationRoutes().catch(() => {});
       setPhase("ready");
     } catch (e: any) {
       c?.close();
@@ -1874,13 +1893,18 @@ export default function App() {
       setPhase("no-server");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearStagedModelChanges, handleEvent, refreshAuto, refreshModelInfo]);
+  }, [clearStagedModelChanges, handleEvent, refreshAuto, refreshModelInfo, refreshOrganizationRoutes]);
 
   useEffect(() => {
     if (phase !== "ready" || !active) return;
     void refreshModelInfo({ sessionId: active }).catch(() => {});
-    return () => { modelInfoRequestRef.current += 1; };
-  }, [active, phase, refreshModelInfo]);
+    const current = sessionsRef.current.find((session) => session.id === active);
+    void refreshOrganizationRoutes(current?.cwd).catch(() => {});
+    return () => {
+      modelInfoRequestRef.current += 1;
+      organizationRoutesRequestRef.current += 1;
+    };
+  }, [active, phase, refreshModelInfo, refreshOrganizationRoutes]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -2055,6 +2079,91 @@ export default function App() {
     setTranscripts((tr) => ({ ...tr, [r.sessionId]: [] }));
     await refreshSessions();
     return r.sessionId;
+  };
+
+  const startOrganizationSession = async (
+    connection: OrganizationConnection,
+    model: string,
+  ): Promise<void> => {
+    const client = clientRef.current;
+    const sourceSessionId = active;
+    const sourceSession = sourceSessionId
+      ? sessionsRef.current.find((candidate) => candidate.id === sourceSessionId)
+      : undefined;
+    if (!client || !sourceSessionId || !sourceSession) return;
+    if (busyRef.current[sourceSessionId]) {
+      push(sourceSessionId, (items) => [...items, {
+        kind: "notice",
+        text: locale === "zh"
+          ? "当前任务仍在运行；请等待结束后再从其他连接新建对话。"
+          : "The current task is still running. Wait for it to finish before starting on another connection.",
+      }]);
+      return;
+    }
+    const allowedModels = connection.availableModels?.length
+      ? connection.availableModels
+      : connection.model ? [connection.model] : [];
+    if (!allowedModels.includes(model)) {
+      setErr(locale === "zh"
+        ? `企业连接“${connection.label}”没有授权模型 ${model}。请刷新连接后重试。`
+        : `Organization connection “${connection.label}” does not authorize ${model}. Refresh the connection and try again.`);
+      return;
+    }
+    const sourceDraft = composerDrafts[sourceSessionId] ?? emptyComposerDraft();
+    const hasDraft = !!sourceDraft.text.trim() || sourceDraft.attachments.length > 0;
+    const confirmed = window.confirm(locale === "zh"
+      ? [
+          `要使用“${connection.label} · ${model}”新建一条对话吗？`,
+          "当前会话和历史仍留在原连接，不会静默迁移。",
+          hasDraft
+            ? "当前未发送的文字和附件会移动到新对话；只有你再次点击发送后才会交给企业模型。"
+            : "新对话会绑定该企业连接。",
+        ].join("\n\n")
+      : [
+          `Start a new conversation with “${connection.label} · ${model}”?`,
+          "This conversation and its history stay on the original connection and are never migrated silently.",
+          hasDraft
+            ? "Your unsent text and attachments move to the new conversation and are sent only after you press Send again."
+            : "The new conversation will be pinned to that organization connection.",
+        ].join("\n\n"));
+    if (!confirmed) return;
+
+    setModelPickerOpen(false);
+    setModelSearch("");
+    setErr("");
+    try {
+      const nextRoutes = await client.useOrganizationConnection(connection.id, sourceSession.cwd);
+      setOrganizationRoutes(nextRoutes);
+      const route = await client.listProviderSettings(sourceSession.cwd);
+      if (route) {
+        setSetupRequired(!route.current.authenticated);
+        setServer((current) => current
+          ? { ...current, provider: route.current.provider, model: route.current.model }
+          : current);
+      }
+      const nextSessionId = await newSession(sourceSession.cwd);
+      if (!nextSessionId) throw new Error("Hara did not create the organization conversation");
+      const created = sessionsRef.current.find((candidate) => candidate.id === nextSessionId);
+      if (created?.model !== model) {
+        await client.setSessionModel(nextSessionId, model);
+        await refreshSessions();
+      }
+      setComposerDrafts((current) => {
+        const draftToMove = current[sourceSessionId] ?? sourceDraft;
+        const next = { ...current, [nextSessionId]: draftToMove };
+        delete next[sourceSessionId];
+        return next;
+      });
+      setActive(nextSessionId);
+      await refreshModelInfo({ sessionId: nextSessionId });
+      void refreshOrganizationRoutes(sourceSession.cwd).catch(() => {});
+      void refreshGroupsDirectory();
+    } catch (error) {
+      const detail = String(error instanceof Error ? error.message : error);
+      setErr(locale === "zh"
+        ? `无法从企业连接新建对话：${detail}`
+        : `Could not start the organization conversation: ${detail}`);
+    }
   };
 
   const openSession = async (id: string) => {
@@ -3421,6 +3530,28 @@ export default function App() {
     !modelSearch.trim()
     || `${entry.id} ${entry.providerId}`.toLowerCase().includes(modelSearch.trim().toLowerCase()),
   );
+  const currentSessionProfileId = activeModelInfo?.profileId ?? activeSession?.profileId;
+  const newSessionOrganizationRoute = organizationRoutes?.connections.find(
+    (connection) => connection.active && connection.id !== currentSessionProfileId,
+  );
+  const modelRouteQuery = modelSearch.trim().toLowerCase();
+  const visibleOrganizationModelRoutes = (organizationRoutes?.connections ?? [])
+    .filter((connection) => connection.id !== currentSessionProfileId)
+    .filter((connection) => ["valid", "permanent", "expiring", "legacy"].includes(connection.accessState))
+    .map((connection) => {
+      const allModels = [...new Set(
+        connection.availableModels?.length
+          ? connection.availableModels
+          : connection.model ? [connection.model] : [],
+      )];
+      const connectionMatches = !modelRouteQuery
+        || `${connection.label} ${connection.id} ${connection.gatewayHost}`.toLowerCase().includes(modelRouteQuery);
+      const models = connectionMatches
+        ? allModels
+        : allModels.filter((model) => model.toLowerCase().includes(modelRouteQuery));
+      return { connection, models };
+    })
+    .filter((route) => route.models.length > 0);
 
   const sortPinned = (l: SessionInfo[]): SessionInfo[] => [...l].sort((a, b) => Number(pins.includes(b.id)) - Number(pins.includes(a.id)));
   const commitRename = async () => {
@@ -3897,6 +4028,13 @@ export default function App() {
                                     : `Applying ${displayedModel}; Hara will confirm it again before sending.`)}
                             </p>
                           )}
+                          {newSessionOrganizationRoute && (
+                            <p className="model-menu-route-notice" role="status">
+                              {locale === "zh"
+                                ? `当前会话仍绑定 ${currentSessionProfileId === "personal" ? "个人连接" : currentSessionProfileId ?? "原连接"}；新会话默认使用“${newSessionOrganizationRoute.label}”。选择下方企业模型会安全新建对话。`
+                                : `This conversation stays on ${currentSessionProfileId === "personal" ? "Personal" : currentSessionProfileId ?? "its original connection"}; new conversations default to “${newSessionOrganizationRoute.label}”. Choose a managed model below to start one safely.`}
+                            </p>
+                          )}
                           <input
                             autoFocus
                             value={modelSearch}
@@ -3933,7 +4071,43 @@ export default function App() {
                               </span>
                             </button>
                           ))}
-                          {visibleModelEntries.length === 0 && (
+                          {visibleOrganizationModelRoutes.map(({ connection, models }) => (
+                            <section
+                              className="model-route-group"
+                              data-profile-id={connection.id}
+                              key={connection.id}
+                            >
+                              <div className="model-route-heading">
+                                <span>
+                                  {locale === "zh" ? "企业连接" : "Organization"} · {connection.label}
+                                </span>
+                                <small>
+                                  {connection.active
+                                    ? (locale === "zh" ? "新会话默认" : "New-chat default")
+                                    : connection.gatewayHost}
+                                </small>
+                              </div>
+                              {models.map((model) => (
+                                <button
+                                  type="button"
+                                  className="model-route-option"
+                                  key={`${connection.id}:${model}`}
+                                  onClick={() => void startOrganizationSession(connection, model)}
+                                >
+                                  <span className="model-row-copy">
+                                    <strong>{model}</strong>
+                                    <small>
+                                      {connection.label} · {locale === "zh" ? "企业托管" : "Managed"}
+                                    </small>
+                                  </span>
+                                  <span className="model-row-state">
+                                    <strong>{locale === "zh" ? "新对话" : "New chat"}</strong>
+                                  </span>
+                                </button>
+                              ))}
+                            </section>
+                          ))}
+                          {visibleModelEntries.length === 0 && visibleOrganizationModelRoutes.length === 0 && (
                             <div className="model-empty">
                               {locale === "zh" ? "没有匹配的模型" : "No matching models"}
                             </div>
@@ -4620,6 +4794,7 @@ export default function App() {
                         ? { ...current, provider: next.current.provider, model: next.current.model }
                         : current);
                       void refreshGroupsDirectory();
+                      void refreshOrganizationRoutes(activeSession?.cwd ?? server?.cwd).catch(() => {});
                       void refreshModelInfo(active
                         ? { sessionId: active }
                         : { cwd: server?.cwd }).catch(() => {});

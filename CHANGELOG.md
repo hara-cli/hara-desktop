@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.56 — 2026-08-05 — safe enterprise model switching
+
+- Show every model authorized by an enrolled Hara Control connection directly in the chat model
+  picker, even when the open conversation remains pinned to a personal provider or another
+  organization. Search matches both organization names and managed model IDs.
+- Selecting a model from another connection now asks for confirmation and creates a separate,
+  profile-pinned conversation. Existing history stays on its original provider; unsent text and
+  attachments move to the new draft but are not sent until the user explicitly submits them.
+- Distinguish permanent, revocable organization access from legacy servers that did not report an
+  expiry, and show the connection's authorized model catalog in Settings. Quota, model scope, and
+  revocation remain controlled by the organization's Hara Control administrator.
+- Bundle the exact verified Hara CLI `0.139.1` commit
+  `7ae456f542c4a2e9474e926a0b755073b03f03db`. Existing conversations, projects, organization
+  connections, schedules, Artifacts, and local files require no migration. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.55 — 2026-08-05 — honest Office validation and safe delivery
 
 - Replace the Office workbench's pre-labelled success state with an explicit “Not checked” state.

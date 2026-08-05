@@ -324,7 +324,7 @@ export interface GatewayLoginSnapshot {
   errorCode?: "network" | "invalid-response" | "qr-expired" | "local-state";
 }
 
-export type OrganizationAccessState = "valid" | "expiring" | "expired" | "legacy" | "invalid";
+export type OrganizationAccessState = "valid" | "permanent" | "expiring" | "expired" | "legacy" | "invalid";
 
 export interface OrganizationConnection {
   id: string;
@@ -333,8 +333,12 @@ export interface OrganizationConnection {
   gatewayUrl: string;
   gatewayHost: string;
   model: string;
+  /** Server-authorized models for this scoped organization credential. */
+  availableModels?: string[];
   enrolledAt?: string;
   expiresAt?: string;
+  /** Explicit no-date-expiry policy; the credential remains revocable and budgeted. */
+  tokenNeverExpires?: boolean;
   accessState: OrganizationAccessState;
 }
 

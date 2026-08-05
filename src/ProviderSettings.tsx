@@ -96,6 +96,7 @@ const words = {
     active: "In use",
     available: "Available",
     valid: "Access valid",
+    permanent: "No fixed expiry",
     expiring: "Expires soon",
     expired: "Expired",
     legacy: "Expiry not reported",
@@ -104,6 +105,7 @@ const words = {
     never: "Not reported",
     controlAddress: "Hara Control",
     organizationModel: "Managed model",
+    authorizedModels: "Available in chat",
     managedData: "Your administrator controls the model, quota, policy, and any organization Desk made available during enrollment. Their credentials remain isolated in Hara's protected local engine and never enter this window.",
     useOrganization: "Switch organization",
     usingOrganization: "Switching…",
@@ -201,6 +203,7 @@ const words = {
     active: "使用中",
     available: "可切换",
     valid: "授权有效",
+    permanent: "无固定到期",
     expiring: "即将到期",
     expired: "已过期",
     legacy: "未提供有效期",
@@ -209,6 +212,7 @@ const words = {
     never: "未提供",
     controlAddress: "Hara Control",
     organizationModel: "托管模型",
+    authorizedModels: "聊天可用模型",
     managedData: "模型、额度、策略以及注册时可用的组织 Desk 都由企业管理员管理；各自凭据隔离保存在 Hara 本机引擎中，不会进入这个窗口。",
     useOrganization: "切换组织",
     usingOrganization: "正在切换…",
@@ -303,6 +307,7 @@ const statusFor = (connection: OrganizationConnection, locale: Locale) => {
   const copy = words[locale];
   switch (connection.accessState) {
     case "valid": return { text: copy.valid, tone: "valid" };
+    case "permanent": return { text: copy.permanent, tone: "valid" };
     case "legacy": return { text: copy.legacy, tone: "legacy" };
     case "expiring": return { text: copy.expiring, tone: "expiring" };
     case "expired": return { text: copy.expired, tone: "expired" };
@@ -929,7 +934,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
             const checked = checks[selectedOrganization.id];
             const expiry = selectedOrganization.expiresAt && Number.isFinite(Date.parse(selectedOrganization.expiresAt))
               ? new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en", { dateStyle: "medium", timeStyle: "short" }).format(Date.parse(selectedOrganization.expiresAt))
-              : copy.never;
+              : selectedOrganization.tokenNeverExpires ? copy.permanent : copy.never;
             return (
               <div className="provider-organization-detail">
                 <header className="provider-detail-heading enterprise">
@@ -945,6 +950,15 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                   <div><span>{copy.controlAddress}</span><strong>{selectedOrganization.gatewayHost}</strong></div>
                   <div><span>{copy.expires}</span><strong>{expiry}</strong></div>
                 </div>
+
+                {selectedOrganization.availableModels && selectedOrganization.availableModels.length > 0 && (
+                  <div className="organization-model-catalog">
+                    <span>{copy.authorizedModels}</span>
+                    <div>
+                      {selectedOrganization.availableModels.map((model) => <strong key={model}>{model}</strong>)}
+                    </div>
+                  </div>
+                )}
 
                 <div className="provider-managed-note">{copy.managedData}</div>
                 {organizations?.switchLocked && !projectPinned && <div className="provider-warning inline">{copy.pinned}</div>}

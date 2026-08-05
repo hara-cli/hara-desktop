@@ -1863,6 +1863,15 @@ select {
   font-size: 10px;
   line-height: 1.4;
 }
+.model-menu-route-notice {
+  margin: -2px 0 9px;
+  padding: 7px 8px;
+  border-left: 2px solid var(--provider-enterprise, #7f91b7);
+  background: color-mix(in srgb, var(--provider-enterprise, #7f91b7) 10%, transparent);
+  color: color-mix(in srgb, var(--fg) 72%, var(--dim));
+  font-size: 10px;
+  line-height: 1.45;
+}
 .model-menu-head input {
   width: 100%;
   box-sizing: border-box;
@@ -1883,6 +1892,35 @@ select {
 .inputbar .model-menu-list > button {
   min-height: 54px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 52%, transparent);
+}
+.model-route-group {
+  border-top: 1px solid color-mix(in srgb, var(--provider-enterprise, #7f91b7) 35%, var(--border));
+  background: color-mix(in srgb, var(--provider-enterprise, #7f91b7) 4%, transparent);
+}
+.model-route-heading {
+  min-height: 30px;
+  padding: 7px 11px 5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: color-mix(in srgb, var(--fg) 78%, var(--provider-enterprise, #7f91b7));
+  font-size: 10px;
+  font-weight: 650;
+}
+.model-route-heading small {
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inputbar .model-route-group .model-route-option {
+  min-height: 54px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+.inputbar .model-route-group .model-route-option:hover {
+  background: color-mix(in srgb, var(--provider-enterprise, #7f91b7) 12%, transparent);
 }
 .model-row-state {
   flex: 0 0 auto;
@@ -1911,6 +1949,32 @@ select {
   border-top: 1px solid var(--border);
   color: var(--accent);
   font-size: 11px;
+}
+.organization-model-catalog {
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--provider-enterprise, #7f91b7) 22%, var(--border));
+  background: color-mix(in srgb, var(--provider-enterprise, #7f91b7) 7%, transparent);
+}
+.organization-model-catalog > span {
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.organization-model-catalog > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.organization-model-catalog strong {
+  padding: 5px 7px;
+  border: 1px solid color-mix(in srgb, var(--provider-enterprise, #7f91b7) 28%, var(--border));
+  color: color-mix(in srgb, var(--fg) 82%, var(--provider-enterprise, #7f91b7));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
 }
 .message-attachments {
   margin-top: 7px;

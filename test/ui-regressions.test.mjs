@@ -601,6 +601,32 @@ test("a resumed conversation exposes its persisted profile inside the searchable
   assert.match(css, /\.model-route/);
 });
 
+test("the chat model picker can start a profile-pinned organization conversation without migrating history", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const providers = readFileSync(`${root}/src/ProviderSettings.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+
+  assert.match(client, /interface OrganizationConnection[\s\S]*availableModels\?: string\[\]/);
+  assert.match(client, /OrganizationAccessState[\s\S]*"permanent"/);
+  assert.match(app, /refreshOrganizationRoutes/);
+  assert.match(app, /connection\.availableModels\?\.length/);
+  assert.match(app, /startOrganizationSession\(connection, model\)/);
+  assert.match(
+    app,
+    /await client\.useOrganizationConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*await newSession\(sourceSession\.cwd\)/,
+    "cross-profile selection explicitly changes the future-session route before creating a separate conversation",
+  );
+  assert.match(app, /window\.confirm\(locale === "zh"/);
+  assert.match(app, /当前会话和历史仍留在原连接，不会静默迁移/);
+  assert.match(app, /delete next\[sourceSessionId\]/, "an unsent draft is moved, not duplicated across trust boundaries");
+  assert.match(app, /新会话默认使用/);
+  assert.match(providers, /selectedOrganization\.tokenNeverExpires \? copy\.permanent/);
+  assert.match(providers, /selectedOrganization\.availableModels\.map/);
+  assert.match(css, /\.model-route-group/);
+  assert.match(css, /\.model-menu-route-notice/);
+});
+
 test("the composer has per-session attachments, bounded folders, and capability-aware model selection", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
