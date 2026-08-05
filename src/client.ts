@@ -569,7 +569,21 @@ export interface TaskLifecycleEvent {
   updatedAt: string;
   lastOutcome?: "completed" | "error" | "empty" | "halted" | "interrupted";
   brief?: { intent: "answer" | "investigate" | "change"; goal: string };
-  checkpoint: { done: number; total: number; current?: string; owner?: string };
+  checkpoint: {
+    done: number;
+    total: number;
+    current?: string;
+    owner?: string;
+    blockedStep?: string;
+    blockReason?: string;
+    nextStep?: string;
+    artifacts?: string[];
+    facts?: Record<string, string | number | boolean>;
+    capabilities?: Record<string, {
+      state: "available" | "unavailable" | "blocked" | "unknown";
+      detail?: string;
+    }>;
+  };
   detail?: string;
   approval?: { id: string; question: string };
 }

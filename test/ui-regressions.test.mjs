@@ -52,6 +52,8 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(timeline, /className="execution-log"/, "execution evidence remains available on demand");
   assert.doesNotMatch(timeline, /open=\{temperament === "ide"\}/, "reasoning never opens merely because a project is active");
   assert.match(timeline, /className=\{`task-progress \$\{visibleTask\.state\}`\}/, "typed task checkpoints drive a concise status surface");
+  assert.match(timeline, /checkpoint\.blockReason/, "the persisted blocker is rendered instead of inferred from chat prose");
+  assert.match(timeline, /checkpoint\.nextStep/, "paused and blocked work exposes its resumable next action");
   assert.match(app, /taskState=\{taskStates\[active\]\}/, "the current session owns the displayed task checkpoint");
   assert.match(timeline, /<pre key=\{index\} className="diff">/);
   assert.match(diff, /flex:\s*0 0 auto\s*;/, "diff cards cannot be flex-shrunk until their body disappears");

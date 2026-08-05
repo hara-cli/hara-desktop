@@ -1168,7 +1168,8 @@ button.deny {
   font-variant-numeric: tabular-nums;
 }
 .task-progress-current,
-.task-progress-detail {
+.task-progress-detail,
+.task-progress-next {
   margin-top: 5px;
   color: var(--dim);
   font-size: 12px;
@@ -1183,6 +1184,28 @@ button.deny {
 }
 .task-progress-detail {
   color: #e6a397;
+}
+.task-progress-detail span,
+.task-progress-next span {
+  display: inline-block;
+  margin-right: 7px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.task-progress-detail strong {
+  display: inline;
+  margin-right: 7px;
+  color: #efb5ac;
+  font-weight: 650;
+}
+.task-progress-detail > div {
+  margin-top: 2px;
+}
+.task-progress-next {
+  color: var(--fg);
 }
 .task-progress progress {
   display: block;

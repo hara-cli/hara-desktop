@@ -64,6 +64,11 @@ export function ConversationTimeline({
               : "taskRunning",
       )
     : "";
+  const blocker = visibleTask?.checkpoint.blockReason || (
+    visibleTask?.state === "blocked" || visibleTask?.state === "paused"
+      ? visibleTask.detail
+      : undefined
+  );
   const segments = useMemo(() => groupConversationItems(items), [items]);
 
   return (
@@ -88,8 +93,18 @@ export function ConversationTimeline({
               value={Math.min(visibleTask.checkpoint.done, visibleTask.checkpoint.total)}
             />
           )}
-          {(visibleTask.state === "blocked" || visibleTask.state === "paused") && visibleTask.detail && (
-            <div className="task-progress-detail">{visibleTask.detail}</div>
+          {blocker && (
+            <div className="task-progress-detail">
+              <span>{t("taskBlockReason")}</span>
+              {visibleTask.checkpoint.blockedStep && <strong>{visibleTask.checkpoint.blockedStep}</strong>}
+              <div>{blocker}</div>
+            </div>
+          )}
+          {(visibleTask.state === "blocked" || visibleTask.state === "paused") && visibleTask.checkpoint.nextStep && (
+            <div className="task-progress-next">
+              <span>{t("taskNextStep")}</span>
+              {visibleTask.checkpoint.nextStep}
+            </div>
           )}
         </section>
       )}
