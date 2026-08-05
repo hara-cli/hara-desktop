@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.57 — 2026-08-05 — flexible personal and organization model routes
+
+- Add multiple named personal model connections in Settings. Each user-owned connection keeps its
+  own provider, model, endpoint, and private credential, can be tested independently, and is saved
+  without replacing the current route unless the user explicitly chooses “add and use”. Desktop
+  receives only redacted connection metadata and never persists API keys in renderer storage.
+- Make the chat model picker bidirectional: an organization-bound conversation can now start a new
+  Personal conversation, and a Personal conversation can start a new organization-bound one. The
+  original conversation and history remain pinned to their original identity; an unsent draft moves
+  only after confirmation and is never submitted automatically across that trust boundary.
+- Clean only Hara-owned stale Windows updater staging directories after startup and expose the real
+  updater cache location plus a manual cleanup action in Settings. The installed application remains
+  in the user's chosen directory; no unsupported custom-download-path control is presented.
+- Bundle the exact verified Hara CLI `0.140.0` commit
+  `06ef619461ab841a30832c3757219c3fff29d981`. Existing conversations, projects, organization
+  connections, schedules, Artifacts, and local files require no migration. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.56 — 2026-08-05 — safe enterprise model switching
 
 - Show every model authorized by an enrolled Hara Control connection directly in the chat model
