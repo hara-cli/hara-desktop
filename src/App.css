@@ -5224,6 +5224,19 @@ button.provider-preset.enterprise.on {
   min-width: 138px;
 }
 
+.office-home-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.office-home-head-actions button.is-secondary {
+  border-color: #403d42;
+  background: #19181b;
+  color: #b9b3ac;
+}
+
 .office-home-meta {
   display: flex;
   gap: 10px;

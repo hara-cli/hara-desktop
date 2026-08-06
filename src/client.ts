@@ -144,6 +144,37 @@ export interface ArtifactDetails {
   content: ArtifactContentInfo;
 }
 
+export interface PresentationBlock {
+  id: string;
+  type: string;
+  literal?: unknown;
+  [key: string]: unknown;
+}
+
+export interface PresentationSlide {
+  id: string;
+  claim: string;
+  takeawayTitle: string;
+  notes?: string;
+  blocks: PresentationBlock[];
+}
+
+export interface PresentationProject {
+  schemaVersion: "hara.presentation/1";
+  title: string;
+  widthEmu: number;
+  heightEmu: number;
+  brief: Record<string, unknown>;
+  slides: PresentationSlide[];
+}
+
+export interface PresentationArtifactDetails extends ArtifactDetails {
+  project: PresentationProject;
+  warnings?: Array<{ code: string; message: string; slideId?: string }>;
+}
+
+export type PresentationExportFormat = "json" | "html" | "pptx";
+
 export interface ArtifactSummary {
   artifactId: string;
   kind: ArtifactKind;
@@ -970,6 +1001,36 @@ export class HaraClient {
     destinationPath: string;
   }) {
     return this.call<{ receipt: ArtifactExportReceipt }>("artifact.export", input);
+  }
+  createPresentation(input: { title?: string; project?: PresentationProject } = {}) {
+    return this.call<PresentationArtifactDetails>("presentation.create", input);
+  }
+  importPresentation(sourcePath: string, opts?: { title?: string }) {
+    return this.call<PresentationArtifactDetails>("presentation.import", { sourcePath, ...(opts ?? {}) });
+  }
+  getPresentation(artifactId: string, revisionId?: string) {
+    return this.call<PresentationArtifactDetails>("presentation.get", {
+      artifactId,
+      ...(revisionId ? { revisionId } : {}),
+    });
+  }
+  validatePresentation(artifactId: string, revisionId: string) {
+    return this.call<{ report: ArtifactValidationReport }>("presentation.validate", { artifactId, revisionId });
+  }
+  exportPresentation(input: {
+    artifactId: string;
+    revisionId: string;
+    validationReportId: string;
+    destinationPath: string;
+    format: PresentationExportFormat;
+  }) {
+    return this.call<{ receipt: ArtifactExportReceipt }>("presentation.export", input);
+  }
+  getPresentationPreview(artifactId: string, revisionId: string) {
+    return this.call<{ html: string; revisionId: string }>("presentation.preview", { artifactId, revisionId });
+  }
+  createPresentationPreviewFile(artifactId: string, revisionId: string) {
+    return this.call<{ path: string; revisionId: string }>("presentation.preview-file", { artifactId, revisionId });
   }
   resumeSession(sessionId: string) {
     return this.call<{

@@ -50,6 +50,13 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "artifact.list",
                 "artifact.validate",
                 "artifact.export",
+                "presentation.create",
+                "presentation.import",
+                "presentation.get",
+                "presentation.validate",
+                "presentation.preview",
+                "presentation.preview-file",
+                "presentation.export",
                 "settings.gateways.login.start",
                 "settings.gateways.login.status",
                 "settings.gateways.login.cancel",
@@ -139,6 +146,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supports("artifact.import"), true);
   assert.equal(client.supports("artifact.validate"), true);
   assert.equal(client.supports("artifact.export"), true);
+  assert.equal(client.supports("presentation.preview"), true);
+  assert.equal(client.supports("presentation.export"), true);
   assert.equal(client.supportsEvent("event.task_state"), true);
   assert.equal(client.supportsFeature("composer.attachments.v1"), true);
   assert.equal(client.supportsFeature("collaboration.remote.v1"), true);
@@ -261,6 +270,47 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
       revisionId: "rev_456",
       validationReportId: "val_789",
       destinationPath: "/workspace/brief-copy.docx",
+    },
+  });
+
+  await client.createPresentation({ title: "Release review" });
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 13,
+    method: "presentation.create",
+    params: { title: "Release review" },
+  });
+  await client.getPresentationPreview("art_presentation", "rev_presentation");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 14,
+    method: "presentation.preview",
+    params: { artifactId: "art_presentation", revisionId: "rev_presentation" },
+  });
+  await client.createPresentationPreviewFile("art_presentation", "rev_presentation");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 15,
+    method: "presentation.preview-file",
+    params: { artifactId: "art_presentation", revisionId: "rev_presentation" },
+  });
+  await client.exportPresentation({
+    artifactId: "art_presentation",
+    revisionId: "rev_presentation",
+    validationReportId: "val_presentation",
+    destinationPath: "/workspace/release-review.pptx",
+    format: "pptx",
+  });
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 16,
+    method: "presentation.export",
+    params: {
+      artifactId: "art_presentation",
+      revisionId: "rev_presentation",
+      validationReportId: "val_presentation",
+      destinationPath: "/workspace/release-review.pptx",
+      format: "pptx",
     },
   });
 

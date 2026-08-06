@@ -392,6 +392,7 @@ test("secondary work surfaces are split from startup and preload on navigation i
     "AutomationsPage",
     "ExtensionDock",
     "ArtifactWorkbench",
+    "PresentationWorkbench",
     "CapabilityDirectory",
     "ProviderSettings",
     "GatewaySettings",
@@ -401,7 +402,7 @@ test("secondary work surfaces are split from startup and preload on navigation i
   }
   assert.match(app, /const GroupsStage = lazy\(loadGroups\)/);
   assert.match(app, /warmModule\(loadAutomations\(\)\)/);
-  assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\), loadExtensionDock\(\)\]\)\)/);
+  assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\), loadPresentationWorkbench\(\), loadExtensionDock\(\)\]\)\)/);
   assert.match(app, /warmModule\(Promise\.all\(\[loadProviderSettings\(\), loadGatewaySettings\(\)\]\)\)/);
   assert.match(app, /onMouseEnter=\{\(\) => preloadSettingsSection\(k\)\}/);
   assert.match(app, /onFocus=\{\(\) => preloadSettingsSection\(k\)\}/);
@@ -808,10 +809,11 @@ test("the assistant empty state is a plain-language workbench backed by real ses
   assert.match(css, /@media \(max-width: 760px\)/, "the workbench must remain usable in a narrow window");
 });
 
-test("the deliverables workbench stays serve-backed, local-first, and honest about the phase-one boundary", () => {
+test("the deliverables workbench stays serve-backed and native presentations use one exact presenter", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const workbench = readFileSync(`${root}/src/ArtifactWorkbench.tsx`, "utf8");
+  const presenter = readFileSync(`${root}/src/PresentationWorkbench.tsx`, "utf8");
   const office = readFileSync(`${root}/src/OfficeHome.tsx`, "utf8");
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
@@ -823,15 +825,24 @@ test("the deliverables workbench stays serve-backed, local-first, and honest abo
     "artifact.revisions",
     "artifact.validate",
     "artifact.export",
+    "presentation.create",
+    "presentation.import",
+    "presentation.get",
+    "presentation.validate",
+    "presentation.preview",
+    "presentation.preview-file",
+    "presentation.export",
   ]) {
     assert.match(client, new RegExp(method.replace(".", "\\.")));
   }
-  assert.match(app, /presentation: \["pptx", "ppt", "odp"\]/);
+  assert.match(app, /presentation: \["hpres", "json", "md", "markdown", "pptx", "ppt", "odp"\]/);
   assert.match(app, /spreadsheet: \["xlsx", "xls", "csv", "ods"\]/);
   assert.match(app, /document: \["docx", "doc", "odt", "rtf", "md", "txt"\]/);
   assert.match(app, /await client\.importArtifact\(selected, kind \? \{ kind \} : undefined\)/);
+  assert.match(app, /await client\.importPresentation\(selected\)/, "controlled Hara JSON and Slidev Markdown enter the native runtime");
   assert.match(app, /client\.getArtifact\(imported\.artifact\.artifactId\)/, "a new import is integrity-checked before display");
   assert.match(app, /<ArtifactWorkbench/);
+  assert.match(app, /<PresentationWorkbench/);
   assert.match(app, /zone === "office"/, "Office owns the deliverables shelf and workbench");
   assert.match(app, /<OfficeHome/);
   assert.match(office, /copy\.included/);
@@ -842,6 +853,11 @@ test("the deliverables workbench stays serve-backed, local-first, and honest abo
   assert.match(workbench, /artifact-export-action/, "same-format export is a separate keyboard-accessible action");
   assert.match(app, /client\.validateArtifact\(artifactId, revisionId\)/, "verification creates a Serve-backed report for the exact revision");
   assert.match(app, /client\.exportArtifact\(\{/, "export authority remains in Hara Serve");
+  assert.match(app, /client\.exportPresentation\(\{/, "editable PPTX and exact HTML export remain Serve-owned");
+  assert.match(app, /openPath\(preview\.path\)/, "the browser opens only the private preview returned by Serve");
+  assert.match(presenter, /srcDoc=\{previewHtml\}/, "Desktop embeds the exact same HTML returned for browser/export");
+  assert.match(presenter, /sandbox="allow-scripts allow-modals"/, "the exact presenter remains sandboxed inside Desktop");
+  assert.match(presenter, /onExport\("pptx"\)/, "editable PPTX is a first-class export action");
   assert.doesNotMatch(workbench, /`\$\{copy\.verify\} · \$\{copy\.verified\}`/, "an unchecked revision is never labeled verified");
   assert.match(workbench, /artifact-preview-disclaimer/, "the decorative placeholder is explicitly labeled as not being a real layout preview");
   assert.match(copy, /原文件没有被修改/);

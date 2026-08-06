@@ -1,0 +1,239 @@
+.presentation-workbench {
+  --presentation-tone: #ef5b3f;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: #0e1214;
+  color: #e9e6df;
+}
+
+.presentation-workbench-bar {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #282b2d;
+  background: #121719;
+}
+
+.presentation-workbench-title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.presentation-workbench-title > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #817f79;
+  font: 700 8px/1.2 "SF Mono", ui-monospace, monospace;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.presentation-workbench-title > span i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--presentation-tone);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--presentation-tone) 52%, transparent);
+}
+
+.presentation-workbench-title strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presentation-workbench-meta {
+  display: flex;
+  gap: 5px;
+}
+
+.presentation-workbench-meta span {
+  padding: 3px 7px;
+  border: 1px solid #303436;
+  border-radius: 999px;
+  color: #817f79;
+  font: 8px/1.2 "SF Mono", ui-monospace, monospace;
+}
+
+.presentation-workbench-actions,
+.presentation-export-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.presentation-workbench-actions button,
+.presentation-export-actions button,
+.presentation-proof button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #363a3c;
+  border-radius: 5px;
+  background: #191e20;
+  color: #aaa7a0;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.presentation-workbench-actions button:hover:not(:disabled),
+.presentation-export-actions button:hover:not(:disabled),
+.presentation-proof button:hover:not(:disabled) {
+  border-color: #555b5e;
+  color: #f0ece4;
+}
+
+.presentation-workbench-actions .presentation-browser {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: #764438;
+  color: #e3a28e;
+}
+
+.presentation-workbench-actions button:disabled,
+.presentation-export-actions button:disabled,
+.presentation-proof button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+.presentation-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(239, 91, 63, .08), transparent 34%),
+    #0d1113;
+}
+
+.presentation-presenter-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #111719;
+}
+
+.presentation-preview-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  color: #777a78;
+  font: 9px/1.2 "SF Mono", ui-monospace, monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.presentation-preview-loading i {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #3a3e40;
+  border-top-color: var(--presentation-tone);
+  border-radius: 50%;
+  animation: presentation-spin .9s linear infinite;
+}
+
+.presentation-export-bar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  border-top: 1px solid #282b2d;
+  background: #121719;
+}
+
+.presentation-proof {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 10px;
+}
+
+.presentation-proof button {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.presentation-proof button.is-verified {
+  border-color: #3f5a49;
+  background: #17231c;
+  color: #9fc3a9;
+}
+
+.presentation-proof p,
+.presentation-proof small {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #696b68;
+  font-size: 8px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presentation-proof small {
+  color: #8d928d;
+  font-family: "SF Mono", ui-monospace, monospace;
+}
+
+.presentation-export-actions .is-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 116px;
+  justify-content: center;
+  border-color: #a74432;
+  background: #df4b31;
+  color: #fff5ef;
+  font-weight: 700;
+}
+
+@keyframes presentation-spin {
+  to { transform: rotate(360deg); }
+}
+
+@container extension-work (max-width: 760px) {
+  .presentation-workbench-bar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .presentation-workbench-meta {
+    display: none;
+  }
+  .presentation-quiet {
+    display: none;
+  }
+  .presentation-export-bar {
+    grid-template-columns: 1fr;
+  }
+  .presentation-export-actions {
+    justify-content: stretch;
+  }
+  .presentation-export-actions button {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presentation-preview-loading i {
+    animation: none;
+  }
+}

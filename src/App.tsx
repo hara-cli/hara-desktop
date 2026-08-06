@@ -18,6 +18,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { check as checkForUpdate, type Update } from "@tauri-apps/plugin-updater";
 import {
   HaraClient,
@@ -40,6 +41,8 @@ import {
   type ArtifactRevision,
   type ArtifactSummary,
   type ArtifactValidationReport,
+  type PresentationArtifactDetails,
+  type PresentationExportFormat,
   type ClientHistoryMessage,
   type EffectiveAttachmentCapabilities,
   type ModelCatalogEntry,
@@ -177,6 +180,7 @@ const loadOfficeHome = () => import("./OfficeHome").then((module) => ({
 const loadArtifactWorkbench = () => import("./ArtifactWorkbench").then((module) => ({
   default: module.ArtifactWorkbench,
 }));
+const loadPresentationWorkbench = () => import("./PresentationWorkbench");
 const loadCapabilityDirectory = () => import("./CapabilityDirectory").then((module) => ({
   default: module.CapabilityDirectory,
 }));
@@ -207,6 +211,7 @@ const AutomationsPage = lazy(() =>
 const ExtensionDock = lazy(loadExtensionDock);
 const OfficeHome = lazy(loadOfficeHome);
 const ArtifactWorkbench = lazy(loadArtifactWorkbench);
+const PresentationWorkbench = lazy(loadPresentationWorkbench);
 const CapabilityDirectory = lazy(loadCapabilityDirectory);
 const ProviderSettings = lazy(loadProviderSettings);
 const GatewaySettings = lazy(loadGatewaySettings);
@@ -235,7 +240,7 @@ const preloadPlace = (place: AppPlace): void => {
   } else if (place === "groups") {
     warmModule(loadGroups());
   } else if (place === "office") {
-    warmModule(Promise.all([loadOfficeHome(), loadArtifactWorkbench(), loadExtensionDock()]));
+    warmModule(Promise.all([loadOfficeHome(), loadArtifactWorkbench(), loadPresentationWorkbench(), loadExtensionDock()]));
   }
 };
 
@@ -362,6 +367,14 @@ const isJunkCwd = (cwd: string): boolean =>
   /^\/(private\/)?(tmp|var\/folders)\//.test(cwd) || /[/\\]tmp\.[A-Za-z0-9]+([/\\]|$)/.test(cwd) || /[/\\]hara-(test|dbg|serve)-[^/\\]*([/\\]|$)/.test(cwd);
 
 const basename = (p: string): string => p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || p;
+const fileExtension = (value: string): string => {
+  const name = basename(value);
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot).toLowerCase() : "";
+};
+const NATIVE_PRESENTATION_IMPORT_EXTENSIONS = new Set([".hpres", ".json", ".md", ".markdown"]);
+const isNativePresentation = (details: ArtifactDetails): boolean =>
+  details.artifact.kind === "presentation" && details.content.extension === ".hpres";
 /** Compact "MM-DD HH:mm" (year only when it differs) — locale toLocaleString is too chatty for a sidebar. */
 const fmtTime = (iso: string): string => {
   const d = new Date(iso);
@@ -781,10 +794,13 @@ export default function App() {
   }, []);
   const [artifacts, setArtifacts] = useState<{ artifacts: ArtifactSummary[]; invalid: number; truncated: boolean } | null | "old-server">(null);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactDetails | null>(null);
+  const [activePresentation, setActivePresentation] = useState<PresentationArtifactDetails | null>(null);
+  const [presentationPreviewHtml, setPresentationPreviewHtml] = useState<string | null>(null);
+  const [presentationBrowserOpening, setPresentationBrowserOpening] = useState(false);
   const [artifactRevisions, setArtifactRevisions] = useState<ArtifactRevision[]>([]);
   const [artifactValidationReport, setArtifactValidationReport] = useState<ArtifactValidationReport | null>(null);
   const [artifactExportReceipt, setArtifactExportReceipt] = useState<ArtifactExportReceipt | null>(null);
-  const [artifactBusy, setArtifactBusy] = useState<"" | "import" | "open" | "verify" | "export">("");
+  const [artifactBusy, setArtifactBusy] = useState<"" | "create" | "import" | "open" | "verify" | "export">("");
   const artifactOpenRequestRef = useRef(0);
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     const client = clientRef.current;
@@ -1845,6 +1861,9 @@ export default function App() {
             { kind: "end", usage: e.usage },
           ]);
           setSessionBusy(e.sessionId, false);
+          // A completed agent turn may have created a Presentation through the built-in tool.
+          // Refresh the local Office index so the deck appears without reconnecting.
+          void refreshArtifacts();
           void flushStagedModelChange(e.sessionId);
           if (e.ctx) setCtxMap((m) => ({ ...m, [e.sessionId]: e.ctx! }));
           const interrupted = interruptedSessionsRef.current.has(e.sessionId);
@@ -1916,7 +1935,7 @@ export default function App() {
           break;
       }
     },
-    [enqueueInput, flushStagedModelChange, notePet, push, removePet, resolvePendingUser, sendText, setSessionBusy],
+    [enqueueInput, flushStagedModelChange, notePet, push, refreshArtifacts, removePet, resolvePendingUser, sendText, setSessionBusy],
   );
 
   const connect = useCallback(async (expectedPid: number | null = null) => {
@@ -1944,6 +1963,8 @@ export default function App() {
     setGroupsDirectory({ phase: "idle" });
     setGroupsSwitchingProfileId("");
     setActiveArtifact(null);
+    setActivePresentation(null);
+    setPresentationPreviewHtml(null);
     setArtifactRevisions([]);
     setArtifactValidationReport(null);
     setArtifactExportReceipt(null);
@@ -2229,6 +2250,8 @@ export default function App() {
     artifactOpenRequestRef.current += 1;
     setArtifactBusy("");
     setActiveArtifact(null);
+    setActivePresentation(null);
+    setPresentationPreviewHtml(null);
     setArtifactRevisions([]);
     setArtifactValidationReport(null);
     setArtifactExportReceipt(null);
@@ -2470,6 +2493,8 @@ export default function App() {
     artifactOpenRequestRef.current += 1;
     setArtifactBusy("");
     setActiveArtifact(null);
+    setActivePresentation(null);
+    setPresentationPreviewHtml(null);
     setArtifactRevisions([]);
     setArtifactValidationReport(null);
     setArtifactExportReceipt(null);
@@ -2632,6 +2657,8 @@ export default function App() {
     const dir = await openDialog({ directory: true, title: t("openProject") });
     if (typeof dir !== "string" || !dir) return;
     setActiveArtifact(null);
+    setActivePresentation(null);
+    setPresentationPreviewHtml(null);
     setArtifactRevisions([]);
     setArtifactValidationReport(null);
     setArtifactExportReceipt(null);
@@ -2643,13 +2670,13 @@ export default function App() {
   const importArtifactFile = async (kind?: ArtifactKind) => {
     const client = clientRef.current;
     if (!client) return;
-    if (!client.supports("artifact.import")) {
+    if (!client.supports("artifact.import") && !client.supports("presentation.import")) {
       setArtifacts("old-server");
       setErr(t("artifactNeedsUpdate"));
       return;
     }
     const extensions: Record<ArtifactKind, string[]> = {
-      presentation: ["pptx", "ppt", "odp"],
+      presentation: ["hpres", "json", "md", "markdown", "pptx", "ppt", "odp"],
       spreadsheet: ["xlsx", "xls", "csv", "ods"],
       document: ["docx", "doc", "odt", "rtf", "md", "txt"],
     };
@@ -2672,15 +2699,36 @@ export default function App() {
     setArtifactBusy("import");
     setErr("");
     try {
-      const imported = await client.importArtifact(selected, kind ? { kind } : undefined);
-      const [verified, revisionResult, list] = await Promise.all([
-        client.getArtifact(imported.artifact.artifactId),
+      const extension = fileExtension(selected);
+      const nativePresentationImport = (
+        kind === "presentation" && NATIVE_PRESENTATION_IMPORT_EXTENSIONS.has(extension)
+      ) || (
+        kind === undefined
+        && extension !== ".md"
+        && NATIVE_PRESENTATION_IMPORT_EXTENSIONS.has(extension)
+      );
+      if (nativePresentationImport && !client.supports("presentation.import")) {
+        throw new Error(t("artifactNeedsUpdate"));
+      }
+      const imported = nativePresentationImport
+        ? await client.importPresentation(selected)
+        : await client.importArtifact(selected, kind ? { kind } : undefined);
+      const [revisionResult, list, presentation, preview] = await Promise.all([
         client.listArtifactRevisions(imported.artifact.artifactId),
         client.listArtifacts(),
+        nativePresentationImport
+          ? client.getPresentation(imported.artifact.artifactId)
+          : Promise.resolve(null),
+        nativePresentationImport
+          ? client.getPresentationPreview(imported.artifact.artifactId, imported.currentRevision.revisionId)
+          : Promise.resolve(null),
       ]);
+      const verified = presentation ?? await client.getArtifact(imported.artifact.artifactId);
       if (requestId !== artifactOpenRequestRef.current) return;
       setArtifacts(list ?? "old-server");
       setActiveArtifact(verified);
+      setActivePresentation(presentation);
+      setPresentationPreviewHtml(preview?.html ?? null);
       setArtifactRevisions(revisionResult.revisions);
       setArtifactValidationReport(null);
       setArtifactExportReceipt(null);
@@ -2688,6 +2736,43 @@ export default function App() {
       setAutoReplay(null);
       setZone("office");
       setExtensionDock(artifactExtensionFor(verified));
+    } catch (error: any) {
+      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+    } finally {
+      if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+    }
+  };
+
+  const createNativePresentation = async () => {
+    const client = clientRef.current;
+    if (!client) return;
+    if (!client.supports("presentation.create") || !client.supports("presentation.preview")) {
+      setArtifacts("old-server");
+      setErr(t("artifactNeedsUpdate"));
+      return;
+    }
+    const requestId = ++artifactOpenRequestRef.current;
+    setArtifactBusy("create");
+    setErr("");
+    try {
+      const created = await client.createPresentation({ title: t("presentationUntitled") });
+      const [revisionResult, list, preview] = await Promise.all([
+        client.listArtifactRevisions(created.artifact.artifactId),
+        client.listArtifacts(),
+        client.getPresentationPreview(created.artifact.artifactId, created.currentRevision.revisionId),
+      ]);
+      if (requestId !== artifactOpenRequestRef.current) return;
+      setArtifacts(list ?? "old-server");
+      setActiveArtifact(created);
+      setActivePresentation(created);
+      setPresentationPreviewHtml(preview.html);
+      setArtifactRevisions(revisionResult.revisions);
+      setArtifactValidationReport(null);
+      setArtifactExportReceipt(null);
+      setActive(null);
+      setAutoReplay(null);
+      setZone("office");
+      setExtensionDock(artifactExtensionFor(created));
     } catch (error: any) {
       if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
     } finally {
@@ -2707,7 +2792,23 @@ export default function App() {
         client.listArtifactRevisions(artifactId),
       ]);
       if (requestId !== artifactOpenRequestRef.current) return;
-      setActiveArtifact(details);
+      let presentation: PresentationArtifactDetails | null = null;
+      let previewHtml: string | null = null;
+      if (isNativePresentation(details)) {
+        if (!client.supports("presentation.get") || !client.supports("presentation.preview")) {
+          throw new Error(t("artifactNeedsUpdate"));
+        }
+        const [resolved, preview] = await Promise.all([
+          client.getPresentation(artifactId, details.currentRevision.revisionId),
+          client.getPresentationPreview(artifactId, details.currentRevision.revisionId),
+        ]);
+        if (requestId !== artifactOpenRequestRef.current) return;
+        presentation = resolved;
+        previewHtml = preview.html;
+      }
+      setActiveArtifact(presentation ?? details);
+      setActivePresentation(presentation);
+      setPresentationPreviewHtml(previewHtml);
       setArtifactRevisions(revisionResult.revisions);
       setArtifactValidationReport(null);
       setArtifactExportReceipt(null);
@@ -2725,7 +2826,11 @@ export default function App() {
     const client = clientRef.current;
     const details = activeArtifact;
     if (!client || !details) return;
-    if (!client.supports("artifact.validate")) {
+    const nativePresentation = activePresentation?.artifact.artifactId === details.artifact.artifactId
+      ? activePresentation
+      : null;
+    const validationMethod = nativePresentation ? "presentation.validate" : "artifact.validate";
+    if (!client.supports(validationMethod)) {
       setErr(t("artifactNeedsUpdate"));
       return;
     }
@@ -2735,7 +2840,9 @@ export default function App() {
     setArtifactBusy("verify");
     setErr("");
     try {
-      const { report } = await client.validateArtifact(artifactId, revisionId);
+      const { report } = nativePresentation
+        ? await client.validatePresentation(artifactId, revisionId)
+        : await client.validateArtifact(artifactId, revisionId);
       if (requestId === artifactOpenRequestRef.current) {
         setArtifactValidationReport(report);
       }
@@ -2746,11 +2853,16 @@ export default function App() {
     }
   };
 
-  const exportActiveArtifact = async () => {
+  const exportActiveArtifact = async (presentationFormat?: PresentationExportFormat) => {
     const client = clientRef.current;
     const details = activeArtifact;
     if (!client || !details) return;
-    if (!client.supports("artifact.validate") || !client.supports("artifact.export")) {
+    const nativePresentation = activePresentation?.artifact.artifactId === details.artifact.artifactId
+      ? activePresentation
+      : null;
+    const validationMethod = nativePresentation ? "presentation.validate" : "artifact.validate";
+    const exportMethod = nativePresentation ? "presentation.export" : "artifact.export";
+    if (!client.supports(validationMethod) || !client.supports(exportMethod)) {
       setErr(t("artifactNeedsUpdate"));
       return;
     }
@@ -2762,7 +2874,9 @@ export default function App() {
     try {
       let report = artifactValidationReport;
       if (report?.revisionId !== revisionId || report.snapshotDigest !== details.content.sha256 || report.status !== "pass") {
-        const result = await client.validateArtifact(artifactId, revisionId);
+        const result = nativePresentation
+          ? await client.validatePresentation(artifactId, revisionId)
+          : await client.validateArtifact(artifactId, revisionId);
         report = result.report;
         if (requestId !== artifactOpenRequestRef.current) return;
         setArtifactValidationReport(report);
@@ -2772,26 +2886,70 @@ export default function App() {
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 160) || "Hara export";
+      const format = nativePresentation ? presentationFormat ?? "pptx" : null;
+      const extension = format ?? details.content.extension.slice(1);
+      const formatLabels: Record<PresentationExportFormat, string> = {
+        json: t("presentationExportJson"),
+        html: t("presentationExportHtml"),
+        pptx: t("presentationExportPptx"),
+      };
       const destinationPath = await saveDialog({
-        title: t("artifactExport"),
-        defaultPath: `${safeTitle}${details.content.extension}`,
+        title: nativePresentation ? formatLabels[format!] : t("artifactExport"),
+        defaultPath: `${safeTitle}.${extension}`,
         filters: [{
-          name: `${details.content.extension.slice(1).toUpperCase()} · ${t("artifactRoundtrip")}`,
-          extensions: [details.content.extension.slice(1)],
+          name: nativePresentation
+            ? formatLabels[format!]
+            : `${extension.toUpperCase()} · ${t("artifactRoundtrip")}`,
+          extensions: [extension],
         }],
       });
       if (!destinationPath || requestId !== artifactOpenRequestRef.current) return;
-      const { receipt } = await client.exportArtifact({
-        artifactId,
-        revisionId,
-        validationReportId: report.reportId,
-        destinationPath,
-      });
+      const { receipt } = nativePresentation
+        ? await client.exportPresentation({
+            artifactId,
+            revisionId,
+            validationReportId: report.reportId,
+            destinationPath,
+            format: format!,
+          })
+        : await client.exportArtifact({
+            artifactId,
+            revisionId,
+            validationReportId: report.reportId,
+            destinationPath,
+          });
       if (requestId === artifactOpenRequestRef.current) setArtifactExportReceipt(receipt);
     } catch (error: any) {
       if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
     } finally {
       if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+    }
+  };
+
+  const openPresentationInBrowser = async () => {
+    const client = clientRef.current;
+    const details = activePresentation;
+    if (!client || !details) return;
+    if (!client.supports("presentation.preview-file")) {
+      setErr(t("artifactNeedsUpdate"));
+      return;
+    }
+    const artifactId = details.artifact.artifactId;
+    const revisionId = details.currentRevision.revisionId;
+    const requestId = ++artifactOpenRequestRef.current;
+    setPresentationBrowserOpening(true);
+    setErr("");
+    try {
+      const preview = await client.createPresentationPreviewFile(artifactId, revisionId);
+      if (requestId !== artifactOpenRequestRef.current) return;
+      if (preview.revisionId !== revisionId) {
+        throw new Error("Presentation preview revision changed before it could be opened");
+      }
+      await openPath(preview.path);
+    } catch (error: any) {
+      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+    } finally {
+      if (requestId === artifactOpenRequestRef.current) setPresentationBrowserOpening(false);
     }
   };
 
@@ -4866,7 +5024,9 @@ export default function App() {
     >
       <OfficeHome
         importing={artifactBusy === "import"}
+        creating={artifactBusy === "create"}
         onImport={(kind) => void importArtifactFile(kind)}
+        onCreatePresentation={() => void createNativePresentation()}
         copy={{
           eyebrow: t("officeEyebrow"),
           title: t("officeTitle"),
@@ -4874,6 +5034,8 @@ export default function App() {
           included: t("officeIncluded"),
           localFirst: t("officeLocalFirst"),
           importFile: t("importFile"),
+          newPresentation: t("presentationNew"),
+          creatingPresentation: t("presentationCreating"),
           importType: t("officeImportType"),
           importing: t("artifactImporting"),
           presentation: t("artifactTypePresentation"),
@@ -4891,7 +5053,49 @@ export default function App() {
       />
     </Suspense>
   );
-  const artifactWorkbenchSurface = activeArtifact ? (
+  const artifactWorkbenchSurface = activePresentation ? (
+    <Suspense
+      fallback={(
+        <main className="presentation-workbench" aria-busy="true">
+          <p className="dim" role="status">{t("loading")}</p>
+        </main>
+      )}
+    >
+      <PresentationWorkbench
+        details={activePresentation}
+        previewHtml={presentationPreviewHtml}
+        loading={artifactBusy === "open" || presentationPreviewHtml === null}
+        verifying={artifactBusy === "verify"}
+        exporting={artifactBusy === "export"}
+        openingBrowser={presentationBrowserOpening}
+        validationReport={artifactValidationReport}
+        exportReceipt={artifactExportReceipt}
+        onVerify={() => void verifyActiveArtifact()}
+        onExport={(format) => void exportActiveArtifact(format)}
+        onOpenBrowser={() => void openPresentationInBrowser()}
+        onImportAnother={() => void importArtifactFile("presentation")}
+        copy={{
+          presenter: t("presentationPresenter"),
+          exactPreview: t("presentationExactPreview"),
+          loading: t("presentationPreviewLoading"),
+          openBrowser: t("presentationOpenBrowser"),
+          verify: t("artifactVerify"),
+          verifying: t("artifactVerifying"),
+          verified: t("artifactVerified"),
+          exportPptx: t("presentationExportPptx"),
+          exportHtml: t("presentationExportHtml"),
+          exportJson: t("presentationExportJson"),
+          exporting: t("artifactExporting"),
+          importAnother: t("artifactImportAnother"),
+          slides: t("presentationSlides"),
+          local: t("artifactLocal"),
+          browserPrint: t("presentationBrowserPrint"),
+          noOverwrite: t("artifactNoOverwrite"),
+          receipt: t("artifactExportReceipt"),
+        }}
+      />
+    </Suspense>
+  ) : activeArtifact ? (
     <Suspense
       fallback={(
         <main className={`artifact-workbench${artifactExtension?.mode === "docked" ? " is-embedded" : ""}`} aria-busy="true">
@@ -6013,14 +6217,18 @@ export default function App() {
                 context={artifactExtension.owner.revisionId.slice(-8).toUpperCase()}
                 detail={activeArtifact?.artifact.dataResidency ?? "local"}
                 mode={artifactExtension.mode}
-                loading={artifactBusy === "open"}
+                loading={artifactBusy === "open" || Boolean(activePresentation && !presentationPreviewHtml)}
                 copy={extensionCopy}
                 onModeChange={(mode) => setExtensionMode(artifactExtension.id, mode)}
+                onPopOut={activePresentation ? () => void openPresentationInBrowser() : undefined}
                 onClose={() => {
                   artifactOpenRequestRef.current += 1;
                   setArtifactBusy("");
                   setExtensionDock(null);
                   setActiveArtifact(null);
+                  setActivePresentation(null);
+                  setPresentationPreviewHtml(null);
+                  setPresentationBrowserOpening(false);
                   setArtifactRevisions([]);
                   setArtifactValidationReport(null);
                   setArtifactExportReceipt(null);

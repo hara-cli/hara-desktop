@@ -12,6 +12,8 @@ interface OfficeHomeCopy {
   included: string;
   localFirst: string;
   importFile: string;
+  newPresentation: string;
+  creatingPresentation: string;
   importType: string;
   importing: string;
   presentation: string;
@@ -30,7 +32,9 @@ interface OfficeHomeCopy {
 interface OfficeHomeProps {
   copy: OfficeHomeCopy;
   importing: boolean;
+  creating: boolean;
   onImport: (kind?: ArtifactKind) => void;
+  onCreatePresentation: () => void;
 }
 
 const officeKinds = (
@@ -79,7 +83,9 @@ function OfficeKindIcon({
 export function OfficeHome({
   copy,
   importing,
+  creating,
   onImport,
+  onCreatePresentation,
 }: OfficeHomeProps) {
   return (
     <main className="office-home" aria-labelledby="office-home-title">
@@ -91,9 +97,14 @@ export function OfficeHome({
             <h1 id="office-home-title">{copy.title}</h1>
             <p>{copy.description}</p>
           </div>
-          <button type="button" disabled={importing} onClick={() => onImport()}>
-            {importing ? copy.importing : copy.importFile}
-          </button>
+          <div className="office-home-head-actions">
+            <button className="is-secondary" type="button" disabled={importing || creating} onClick={() => onImport()}>
+              {importing ? copy.importing : copy.importFile}
+            </button>
+            <button type="button" disabled={importing || creating} onClick={onCreatePresentation}>
+              {creating ? copy.creatingPresentation : copy.newPresentation}
+            </button>
+          </div>
         </header>
 
         <div className="office-home-meta">
