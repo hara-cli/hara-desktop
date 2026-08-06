@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.58 — 2026-08-06 — recoverable conversations and clearer execution
+
+- Keep old conversations readable when their pinned organization connection or model is no longer
+  authorized. Desktop falls back to provider-independent local history, visibly marks the conversation
+  read-only, disables every send path, and offers a focused recovery action instead of a blank error page.
+- Let users explicitly copy the current conversation into any authorized personal or organization
+  connection, including a newly authorized model on the same connection. The confirmation explains
+  exactly what is copied; the original stays unchanged and no context reaches the target until the user
+  sends the next message.
+- Separate the assistant's answer from local execution evidence, add concise, standard, and debug display
+  modes, and surface durable task blockers, facts, capability checks, next steps, and artifacts so paused
+  work can resume without pretending it finished.
+- Show redacted organization service bindings, explain narrowly scoped project approvals, and let enabled
+  plugin panels be pinned into the configurable module dock without weakening the fixed Settings recovery
+  entry or workspace ownership boundaries.
+- Bundle the exact verified Hara CLI `0.141.0` commit
+  `dbfa379df565666da9cc6722d0647ca99da86e2f`. Existing conversations, projects, organization
+  connections, schedules, Artifacts, and local files require no migration. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.57 — 2026-08-05 — flexible personal and organization model routes
 
 - Add multiple named personal model connections in Settings. Each user-owned connection keeps its
