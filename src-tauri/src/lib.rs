@@ -1911,8 +1911,9 @@ fn classify_attachment_paths(paths: Vec<String>) -> Result<Vec<ClassifiedAttachm
     classify_attachment_paths_inner(paths)
 }
 
-/// Persist a pasted clipboard image (base64 png bytes from the webview) to ~/.hara/tmp so the serve
-/// side can inline it into the turn. Returns the absolute path.
+/// Persist a pasted clipboard image to the explicit Desktop media input surface. `hara serve` protects
+/// runtime/control-plane state under ~/.hara by default, but permits the narrowly named
+/// ~/.hara/<client>/media surface because those bytes are intentional model inputs.
 fn temp_image_size_error() -> String {
     format!(
         "image exceeds Hara's 3.6 MB ({MAX_COMPOSER_IMAGE_BYTES} byte) attachment limit; it was not sent to the model or to an OCR fallback. Compress or crop it, then attach it again"
@@ -1926,6 +1927,88 @@ fn validate_temp_image_size(byte_count: usize) -> Result<(), String> {
     Ok(())
 }
 
+fn ensure_desktop_media_directory(data_directory: &Path) -> Result<PathBuf, String> {
+    let desktop = data_directory.join("desktop");
+    let media = desktop.join("media");
+    for (directory, label) in [
+        (data_directory, "Hara data directory"),
+        (desktop.as_path(), "Hara Desktop data directory"),
+        (media.as_path(), "Hara Desktop media directory"),
+    ] {
+        match fs::symlink_metadata(directory) {
+            Ok(metadata) => {
+                #[cfg(windows)]
+                let linked =
+                    metadata.file_type().is_symlink() || metadata_is_reparse_point(&metadata);
+                #[cfg(not(windows))]
+                let linked = metadata.file_type().is_symlink();
+                if linked || !metadata.is_dir() {
+                    return Err(format!("{label} must be a real directory, not a link"));
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::MetadataExt;
+                    if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o022 != 0
+                    {
+                        return Err(format!(
+                            "{label} must be owned by this user and not writable by other users"
+                        ));
+                    }
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::DirBuilderExt;
+                    fs::DirBuilder::new()
+                        .mode(0o700)
+                        .create(directory)
+                        .map_err(|error| format!("create {label}: {error}"))?;
+                }
+                #[cfg(not(unix))]
+                fs::create_dir(directory).map_err(|error| format!("create {label}: {error}"))?;
+            }
+            Err(error) => return Err(format!("inspect {label}: {error}")),
+        }
+    }
+    Ok(media)
+}
+
+fn persist_pasted_image_at(data_directory: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
+    validate_temp_image_size(bytes.len())?;
+    let directory = ensure_desktop_media_directory(data_directory)?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    for attempt in 0..32_u8 {
+        let path = directory.join(format!(
+            "paste-{}-{nonce}-{attempt}.png",
+            std::process::id()
+        ));
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        }
+        match options.open(&path) {
+            Ok(mut file) => {
+                if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
+                    drop(file);
+                    let _ = fs::remove_file(&path);
+                    return Err(format!("persist pasted image: {error}"));
+                }
+                return Ok(path);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("create pasted image: {error}")),
+        }
+    }
+    Err("could not reserve a pasted image path".into())
+}
+
 #[tauri::command]
 fn write_temp_image(data_base64: String) -> Result<String, String> {
     use base64::Engine;
@@ -1935,18 +2018,7 @@ fn write_temp_image(data_base64: String) -> Result<String, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_base64.as_bytes())
         .map_err(|e| format!("bad base64: {e}"))?;
-    validate_temp_image_size(bytes.len())?;
-    let dir = hara_data_dir()?.join("tmp");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let name = format!(
-        "paste-{}.png",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0)
-    );
-    let path = dir.join(name);
-    fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    let path = persist_pasted_image_at(&hara_data_dir()?, &bytes)?;
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -2758,6 +2830,51 @@ mod attachment_path_tests {
         assert!(error.contains("not sent to the model"));
         assert!(error.contains("OCR fallback"));
         assert!(error.contains("Compress or crop"));
+    }
+
+    #[test]
+    fn pasted_images_persist_in_the_authorized_desktop_media_surface() {
+        let root = test_root();
+        let bytes = b"\x89PNG\r\n\x1a\nfixture";
+        let path = persist_pasted_image_at(&root, bytes).unwrap();
+        let media = root.join("desktop").join("media");
+
+        assert!(path.starts_with(&media));
+        assert!(!path.starts_with(root.join("tmp")));
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        let metadata = fs::symlink_metadata(&path).unwrap();
+        assert!(metadata.is_file());
+        assert!(!metadata.file_type().is_symlink());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(metadata.permissions().mode() & 0o077, 0);
+        }
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pasted_image_directory_links_fail_closed() {
+        use std::os::unix::fs::symlink;
+
+        let root = test_root();
+        let outside = root.with_file_name(format!(
+            "{}-outside",
+            root.file_name().unwrap().to_string_lossy()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, root.join("desktop")).unwrap();
+
+        let error = persist_pasted_image_at(&root, b"\x89PNG\r\n\x1a\nfixture").unwrap_err();
+        assert!(error.contains("real directory, not a link"));
+        assert!(!outside.join("media").exists());
+
+        fs::remove_file(root.join("desktop")).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(outside).unwrap();
     }
 
     #[cfg(unix)]

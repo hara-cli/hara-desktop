@@ -727,6 +727,13 @@ test("the composer has per-session attachments, bounded folders, and capability-
   assert.match(app, /attachPickedFiles\("image"\)/);
   assert.match(app, /attachPickedFiles\("file"\)/);
   assert.match(app, /attachPickedDirectory\(\)/);
+  assert.match(app, /getCurrentWebview\(\)[\s\S]*onDragDropEvent/,
+    "the formal conversation composer listens to Tauri's cross-application file drop channel");
+  assert.match(app, /activeRef\.current !== targetSessionId[\s\S]*readOnlySessionsRef\.current\[targetSessionId\]/,
+    "a delayed native drop cannot cross sessions or enter replay-only history");
+  assert.match(app, /addComposerAttachments\(targetSessionId, additions\)/);
+  assert.match(app, /composer-shell \$\{composerDragActive \? "drop-active" : ""\}/);
+  assert.match(app, /松开后加入本轮上下文/);
   assert.match(app, /只建立有界清单，不整目录注入模型/);
   assert.match(app, /打开为新项目/, "persistent workspace and one-turn folder context are distinguished");
   assert.match(app, /disabled=\{!activeDraftCanSend\}/, "an attachment-only compatible turn can be sent");
@@ -741,6 +748,8 @@ test("the composer has per-session attachments, bounded folders, and capability-
   assert.match(composer, /engine-update-required/);
   assert.match(timeline, /message-attachments/);
   assert.match(css, /\.composer-shell/);
+  assert.match(css, /\.composer-shell\.drop-active/);
+  assert.match(css, /\.composer-drop-note/);
   assert.match(css, /\.composer-menu/);
 });
 

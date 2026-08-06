@@ -14,6 +14,7 @@ import {
 } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
@@ -2842,6 +2843,11 @@ export default function App() {
 
   const attachmentSequenceRef = useRef(0);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [composerDragActive, setComposerDragActive] = useState(false);
+  const composerDropBusyRef = useRef(false);
+  const classifyDroppedComposerAttachmentsRef = useRef<
+    (paths: string[]) => Promise<ComposerAttachment[]>
+  >(async () => []);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
   const nextAttachmentId = () =>
@@ -2877,7 +2883,7 @@ export default function App() {
     setErr(attachmentIssueText(locale, "engine-update-required"));
     return false;
   };
-  const addComposerAttachments = (
+  const addComposerAttachments = useCallback((
     sessionId: string,
     additions: ComposerAttachment[],
   ) => {
@@ -2885,7 +2891,7 @@ export default function App() {
       ...draft,
       attachments: appendComposerAttachments(draft.attachments, additions),
     }));
-  };
+  }, [updateComposerDraft]);
   const pickComposerFiles = async (
     kind: "image" | "file",
   ): Promise<ComposerAttachment[]> => {
@@ -2997,6 +3003,64 @@ export default function App() {
       return [];
     }
   };
+  classifyDroppedComposerAttachmentsRef.current = classifyDroppedComposerAttachments;
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const sessionId = activeRef.current;
+        const canAttach = !!sessionId && !readOnlySessionsRef.current[sessionId];
+        if (event.payload.type === "enter" || event.payload.type === "over") {
+          setComposerDragActive(canAttach);
+          return;
+        }
+
+        setComposerDragActive(false);
+        if (
+          event.payload.type !== "drop"
+          || !event.payload.paths.length
+          || !sessionId
+          || !canAttach
+          || composerDropBusyRef.current
+        ) return;
+
+        const targetSessionId = sessionId;
+        const paths = event.payload.paths;
+        composerDropBusyRef.current = true;
+        void classifyDroppedComposerAttachmentsRef.current(paths)
+          .then((additions) => {
+            // Classification crosses the native boundary. Never let a late result land in a different
+            // conversation or bypass a session that became replay-only while the drop was in flight.
+            if (
+              !additions.length
+              || activeRef.current !== targetSessionId
+              || readOnlySessionsRef.current[targetSessionId]
+            ) return;
+            addComposerAttachments(targetSessionId, additions);
+          })
+          .finally(() => {
+            composerDropBusyRef.current = false;
+          });
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch(() => {
+        // Browser preview does not expose native filesystem drops. Picker and paste remain available.
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [addComposerAttachments]);
+
+  useEffect(() => {
+    if (!active || activeReadOnlySession) setComposerDragActive(false);
+  }, [active, activeReadOnlySession]);
+
   const attachPickedFiles = async (kind: "image" | "file") => {
     const sessionId = activeRef.current;
     if (!sessionId) return;
@@ -4211,7 +4275,17 @@ export default function App() {
                 ))}
               </div>
             )}
-            <div className="composer-shell">
+            <div className={`composer-shell ${composerDragActive ? "drop-active" : ""}`}>
+              {composerDragActive ? (
+                <div className="workstarter-drop-note composer-drop-note" role="status">
+                  <span aria-hidden="true">▱</span>
+                  <strong>
+                    {locale === "zh"
+                      ? "松开后加入本轮上下文"
+                      : "Drop to add these files to this turn"}
+                  </strong>
+                </div>
+              ) : null}
               <div className="composer-context-row">
                 {activeSession && (
                   <span
