@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.59 — 2026-08-06 — reliable attachments and execution progress
+
+- Persist pasted clipboard images in Desktop's explicit model-input media surface instead of protected
+  private runtime state. New directories and files are owner-only, link-shaped paths fail closed, and
+  the persisted media remains available when a later turn resumes the same image-backed conversation.
+- Accept native cross-application file and folder drops in the formal conversation composer, not only
+  on the empty workbench. Classification remains bounded in the native shell, late results cannot cross
+  into another session, and replay-only history continues to reject new attachments.
+- Bundle Hara CLI `0.141.1`, which filters leaked reasoning tags from streamed and persisted text, keeps
+  user-visible language consistent, shows an explicit model-waiting state after `task_intake`, and keeps
+  local preview servers and public tunnels alive as managed background jobs.
+- Bundle the exact verified Hara CLI commit
+  `7fc73d5cb2e8fad78d8981e43b12f54db6c9ab42`. Existing conversations, projects, organization
+  connections, schedules, Artifacts, and local files require no migration. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.58 — 2026-08-06 — recoverable conversations and clearer execution
 
 - Keep old conversations readable when their pinned organization connection or model is no longer
