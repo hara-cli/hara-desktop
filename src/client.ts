@@ -533,6 +533,23 @@ export interface ClientHistoryMessage {
   attachments?: UserAttachmentView[];
 }
 
+export interface ReadOnlySessionResult {
+  sessionId: string;
+  title: string;
+  cwd: string;
+  model: string;
+  profileId?: string;
+  history: ClientHistoryMessage[];
+  readOnly: true;
+}
+
+export interface SessionForkTarget {
+  targetProfileId: string;
+  targetModel: string;
+  /** Literal true makes cross-connection history transfer impossible to trigger accidentally. */
+  transferHistory: true;
+}
+
 export interface InitializeResult {
   name: string;
   version: string;
@@ -963,6 +980,9 @@ export class HaraClient {
       task?: { id: string; objective: string; status: Exclude<TaskLifecycleState, "waiting">; turnId: string; updatedAt: string };
     }>("session.resume", { sessionId });
   }
+  readSession(sessionId: string) {
+    return this.call<ReadOnlySessionResult>("session.history", { sessionId });
+  }
   send(sessionId: string, text: string, attachments?: SessionAttachmentIntent[]) {
     return this.call<{ reply: string; usage: { input: number; output: number }; ctx?: CtxInfo; taskId: string; turnId: string }>(
       "session.send",
@@ -997,8 +1017,14 @@ export class HaraClient {
   deleteSession(sessionId: string) {
     return this.call<{ sessionId: string; deleted: boolean }>("session.delete", { sessionId });
   }
-  forkSession(sessionId: string) {
-    return this.call<{ sessionId: string; title: string; model: string; history: ClientHistoryMessage[] }>("session.fork", { sessionId });
+  forkSession(sessionId: string, target?: SessionForkTarget) {
+    return this.call<{
+      sessionId: string;
+      title: string;
+      model: string;
+      profileId?: string;
+      history: ClientHistoryMessage[];
+    }>("session.fork", { sessionId, ...(target ?? {}) });
   }
   /** Panels applicable to a project cwd (serve ≥0.119). Null on older serves. */
   async projectPanels(opts: { sessionId?: string; cwd?: string }): Promise<{ cwd: string; panels: ProjectPanel[] } | null> {

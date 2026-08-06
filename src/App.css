@@ -1741,6 +1741,37 @@ select {
   font-size: 11px;
   line-height: 1.45;
 }
+.composer-readonly-warning {
+  margin: 8px 11px 0;
+  border: 1px solid color-mix(in srgb, #d6a257 42%, var(--border));
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: color-mix(in srgb, #8a642d 10%, var(--bg2));
+  color: color-mix(in srgb, #e8c58d 78%, var(--fg));
+}
+.composer-readonly-warning > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  flex: 1;
+}
+.composer-readonly-warning strong {
+  color: var(--fg);
+  font-size: 12px;
+}
+.composer-readonly-warning small {
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.composer-readonly-warning .linky {
+  flex: 0 0 auto;
+  padding: 4px 0;
+  font-size: 11px;
+}
 .composer-capability-warning {
   border: 1px solid color-mix(in srgb, #dd8b4d 48%, var(--border));
   background: color-mix(in srgb, #b8642d 10%, var(--bg2));
@@ -1776,6 +1807,10 @@ select {
 }
 .inputbar .composer-input-row textarea:focus {
   border: 0;
+}
+.inputbar .composer-input-row textarea:disabled {
+  color: var(--dim);
+  cursor: not-allowed;
 }
 .inputbar .composer-send {
   height: 38px;

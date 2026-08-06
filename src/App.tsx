@@ -411,6 +411,8 @@ const STEERING_HISTORY_PREFIX = "[Sent while you were working on the above — T
 const UPDATE_SNOOZE_KEY = "hara.desktopUpdateSnooze";
 const UPDATE_SNOOZE_MS = 24 * 60 * 60 * 1_000;
 const ATTACHMENT_FEATURE = "composer.attachments.v1";
+const READONLY_HISTORY_FEATURE = "sessions.readonly-history.v1";
+const CROSS_PROFILE_FORK_FEATURE = "sessions.cross-profile-fork.v1";
 
 const formatStorageBytes = (bytes: number, locale: Locale): string => {
   const safeBytes = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
@@ -521,6 +523,17 @@ const displayHistoryText = (text: string): string => {
   return boundary >= 0 ? text.slice(boundary + 3) : text;
 };
 
+const conversationItemsFromHistory = (
+  history: ClientHistoryMessage[],
+): ConversationItem[] => history.map((message): ConversationItem =>
+  message.role === "user"
+    ? {
+        kind: "user",
+        text: displayHistoryText(message.text),
+        ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+      }
+    : { kind: "text", text: message.text });
+
 const conversationHistory = (
   history: ClientHistoryMessage[],
 ): ConversationItem[] =>
@@ -576,9 +589,11 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<Record<string, ConversationItem[]>>({});
+  const [readOnlySessions, setReadOnlySessions] = useState<Record<string, { reason: string }>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [taskStates, setTaskStates] = useState<Record<string, TaskLifecycleEvent>>({});
   const transcriptsRef = useRef(transcripts);
+  const readOnlySessionsRef = useRef(readOnlySessions);
   const busyRef = useRef(busy);
   const taskStatesRef = useRef(taskStates);
   const activeTurnsRef = useRef<Record<string, string>>({});
@@ -589,12 +604,22 @@ export default function App() {
   }>>({});
   const attachedSessionsRef = useRef(new Set<string>());
   transcriptsRef.current = transcripts;
+  readOnlySessionsRef.current = readOnlySessions;
   busyRef.current = busy;
   taskStatesRef.current = taskStates;
   const setSessionBusy = useCallback((sessionId: string, value: boolean) => {
     const next = { ...busyRef.current, [sessionId]: value };
     busyRef.current = next;
     setBusy(next);
+  }, []);
+  const setSessionReadOnly = useCallback((
+    sessionId: string,
+    state: { reason: string } | null,
+  ) => {
+    const { [sessionId]: _previous, ...rest } = readOnlySessionsRef.current;
+    const next = state ? { ...rest, [sessionId]: state } : rest;
+    readOnlySessionsRef.current = next;
+    setReadOnlySessions(next);
   }, []);
   const [composerDrafts, setComposerDrafts] = useState<Record<string, ComposerDraft>>({});
   const activeDraft = active
@@ -1484,6 +1509,13 @@ export default function App() {
     ) => {
       const c = clientRef.current;
       if (!c?.connected) throw new Error("Hara engine is not connected");
+      if (readOnlySessionsRef.current[sessionId]) {
+        throw new Error(
+          locale === "zh"
+            ? "当前仅查看本地历史。请选择另一条可用连接并携带上下文继续。"
+            : "This is a local read-only replay. Choose another available connection and continue with copied context.",
+        );
+      }
       if (attachments?.length && !c.supportsFeature("composer.attachments.v1")) {
         throw new Error(
           locale === "zh"
@@ -2222,6 +2254,12 @@ export default function App() {
       ? sessionsRef.current.find((candidate) => candidate.id === sourceSessionId)
       : undefined;
     if (!client || !sourceSessionId || !sourceSession) return;
+    if (!client.supportsFeature(CROSS_PROFILE_FORK_FEATURE)) {
+      setErr(locale === "zh"
+        ? "当前 Hara 引擎不支持携带上下文切换连接，请先更新 Hara Desktop。"
+        : "Update Hara Desktop before continuing a conversation on another connection.");
+      return;
+    }
     if (busyRef.current[sourceSessionId]) {
       push(sourceSessionId, (items) => [...items, {
         kind: "notice",
@@ -2244,18 +2282,22 @@ export default function App() {
     const hasDraft = !!sourceDraft.text.trim() || sourceDraft.attachments.length > 0;
     const confirmed = window.confirm(locale === "zh"
       ? [
-          `要使用“${connection.label} · ${model}”新建一条对话吗？`,
-          "当前会话和历史仍留在原连接，不会静默迁移。",
+          `要使用“${connection.label} · ${model}”复制当前对话并继续吗？`,
+          "当前对话内容、任务状态和附件引用会复制到新对话。",
+          "只有你下一次发送时才会作为上下文交给该企业连接。",
+          "原对话仍留在原连接且不会被修改。",
           hasDraft
-            ? "当前未发送的文字和附件会移动到新对话；只有你再次点击发送后才会交给企业模型。"
-            : "新对话会绑定该企业连接。",
+            ? "当前未发送的文字和附件也会移动到新对话，但不会自动发送。"
+            : "新对话会绑定该企业连接，但不会自动发送任何内容。",
         ].join("\n\n")
       : [
-          `Start a new conversation with “${connection.label} · ${model}”?`,
-          "This conversation and its history stay on the original connection and are never migrated silently.",
+          `Copy this conversation and continue with “${connection.label} · ${model}”?`,
+          "Conversation content, task state, and attachment references will be copied into a new conversation.",
+          "The copied context reaches that organization connection only after your next Send.",
+          "The original conversation stays on its original connection and is not changed.",
           hasDraft
-            ? "Your unsent text and attachments move to the new conversation and are sent only after you press Send again."
-            : "The new conversation will be pinned to that organization connection.",
+            ? "Your unsent text and attachments also move to the new draft, but are not sent automatically."
+            : "The new conversation is pinned to that organization connection and sends nothing automatically.",
         ].join("\n\n"));
     if (!confirmed) return;
 
@@ -2273,19 +2315,30 @@ export default function App() {
           ? { ...current, provider: route.current.provider, model: route.current.model }
           : current);
       }
-      const nextSessionId = await newSession(sourceSession.cwd);
-      if (!nextSessionId) throw new Error("Hara did not create the organization conversation");
-      const created = sessionsRef.current.find((candidate) => candidate.id === nextSessionId);
-      if (created?.model !== model) {
-        await client.setSessionModel(nextSessionId, model);
-        await refreshSessions();
-      }
+      const forked = await client.forkSession(sourceSessionId, {
+        targetProfileId: connection.id,
+        targetModel: model,
+        transferHistory: true,
+      });
+      const nextSessionId = forked.sessionId;
+      attachedSessionsRef.current.add(nextSessionId);
+      setSessionReadOnly(nextSessionId, null);
+      setTranscripts((current) => {
+        const next = {
+          ...current,
+          [nextSessionId]: conversationItemsFromHistory(forked.history),
+        };
+        transcriptsRef.current = next;
+        return next;
+      });
+      rememberSession(nextSessionId, { cwd: sourceSession.cwd, source: "interactive" });
       setComposerDrafts((current) => {
         const draftToMove = current[sourceSessionId] ?? sourceDraft;
         const next = { ...current, [nextSessionId]: draftToMove };
         delete next[sourceSessionId];
         return next;
       });
+      await refreshSessions();
       setActive(nextSessionId);
       await refreshModelInfo({ sessionId: nextSessionId });
       void refreshOrganizationRoutes(sourceSession.cwd).catch(() => {});
@@ -2294,8 +2347,8 @@ export default function App() {
     } catch (error) {
       const detail = String(error instanceof Error ? error.message : error);
       setErr(locale === "zh"
-        ? `无法从企业连接新建对话：${detail}`
-        : `Could not start the organization conversation: ${detail}`);
+        ? `无法复制当前对话到企业连接：${detail}`
+        : `Could not copy this conversation to the organization connection: ${detail}`);
     }
   };
 
@@ -2306,6 +2359,12 @@ export default function App() {
       ? sessionsRef.current.find((candidate) => candidate.id === sourceSessionId)
       : undefined;
     if (!client || !sourceSessionId || !sourceSession) return;
+    if (!client.supportsFeature(CROSS_PROFILE_FORK_FEATURE)) {
+      setErr(locale === "zh"
+        ? "当前 Hara 引擎不支持携带上下文切换连接，请先更新 Hara Desktop。"
+        : "Update Hara Desktop before continuing a conversation on another connection.");
+      return;
+    }
     if (busyRef.current[sourceSessionId]) {
       push(sourceSessionId, (items) => [...items, {
         kind: "notice",
@@ -2331,18 +2390,22 @@ export default function App() {
     const hasDraft = !!sourceDraft.text.trim() || sourceDraft.attachments.length > 0;
     const confirmed = window.confirm(locale === "zh"
       ? [
-          `要使用“${connection.label} · ${connection.model}”新建一条个人对话吗？`,
-          "当前企业/个人会话及历史仍留在原连接，不会静默迁移。",
+          `要使用“${connection.label} · ${connection.model}”复制当前对话并继续吗？`,
+          "当前对话内容、任务状态和附件引用会复制到新的个人对话。",
+          "只有你下一次发送时才会作为上下文交给这条个人连接。",
+          "原对话仍留在原连接且不会被修改。",
           hasDraft
-            ? "当前未发送的文字和附件会移动到新对话；只有你再次点击发送后才会交给个人模型。"
-            : "新对话会绑定这条个人连接。",
+            ? "当前未发送的文字和附件也会移动到新对话，但不会自动发送。"
+            : "新对话会绑定这条个人连接，但不会自动发送任何内容。",
         ].join("\n\n")
       : [
-          `Start a new personal conversation with “${connection.label} · ${connection.model}”?`,
-          "This organization/personal conversation and its history stay on the original connection and are never migrated silently.",
+          `Copy this conversation and continue with “${connection.label} · ${connection.model}”?`,
+          "Conversation content, task state, and attachment references will be copied into a new personal conversation.",
+          "The copied context reaches that personal connection only after your next Send.",
+          "The original conversation stays on its original connection and is not changed.",
           hasDraft
-            ? "Your unsent text and attachments move to the new conversation and are sent only after you press Send again."
-            : "The new conversation will be pinned to this personal connection.",
+            ? "Your unsent text and attachments also move to the new draft, but are not sent automatically."
+            : "The new conversation is pinned to that personal connection and sends nothing automatically.",
         ].join("\n\n"));
     if (!confirmed) return;
 
@@ -2363,19 +2426,30 @@ export default function App() {
             connections: current.connections.map((candidate) => ({ ...candidate, active: false })),
           }
         : current);
-      const nextSessionId = await newSession(sourceSession.cwd);
-      if (!nextSessionId) throw new Error("Hara did not create the personal conversation");
-      const created = sessionsRef.current.find((candidate) => candidate.id === nextSessionId);
-      if (created?.model !== connection.model) {
-        await client.setSessionModel(nextSessionId, connection.model);
-        await refreshSessions();
-      }
+      const forked = await client.forkSession(sourceSessionId, {
+        targetProfileId: connection.id,
+        targetModel: connection.model,
+        transferHistory: true,
+      });
+      const nextSessionId = forked.sessionId;
+      attachedSessionsRef.current.add(nextSessionId);
+      setSessionReadOnly(nextSessionId, null);
+      setTranscripts((current) => {
+        const next = {
+          ...current,
+          [nextSessionId]: conversationItemsFromHistory(forked.history),
+        };
+        transcriptsRef.current = next;
+        return next;
+      });
+      rememberSession(nextSessionId, { cwd: sourceSession.cwd, source: "interactive" });
       setComposerDrafts((current) => {
         const draftToMove = current[sourceSessionId] ?? sourceDraft;
         const next = { ...current, [nextSessionId]: draftToMove };
         delete next[sourceSessionId];
         return next;
       });
+      await refreshSessions();
       setActive(nextSessionId);
       await refreshModelInfo({ sessionId: nextSessionId });
       void refreshProviderRoutes(sourceSession.cwd).catch(() => {});
@@ -2384,8 +2458,8 @@ export default function App() {
     } catch (error) {
       const detail = String(error instanceof Error ? error.message : error);
       setErr(locale === "zh"
-        ? `无法从个人连接新建对话：${detail}`
-        : `Could not start the personal conversation: ${detail}`);
+        ? `无法复制当前对话到个人连接：${detail}`
+        : `Could not copy this conversation to the personal connection: ${detail}`);
     }
   };
 
@@ -2415,21 +2489,44 @@ export default function App() {
     try {
       const r = await c.resumeSession(id);
       attachedSessionsRef.current.add(id);
+      setSessionReadOnly(id, null);
+      setErr("");
       hydrateLegacyTaskState(c, id, r.task);
-      setTranscripts((tr) => ({
-        ...tr,
-        [id]: r.history.map((m): ConversationItem =>
-          m.role === "user"
-            ? { kind: "user", text: displayHistoryText(m.text) }
-            : { kind: "text", text: m.text },
-        ),
-      }));
+      setTranscripts((tr) => {
+        const next = { ...tr, [id]: conversationItemsFromHistory(r.history) };
+        transcriptsRef.current = next;
+        return next;
+      });
       if (mayActivate()) {
         activateSession(id, expected);
         acknowledgePet(id);
       }
-    } catch (e: any) {
-      setErr(String(e?.message ?? e));
+    } catch (resumeError: any) {
+      const reason = String(resumeError?.message ?? resumeError);
+      if (
+        !c.supports("session.history")
+        && !c.supportsFeature(READONLY_HISTORY_FEATURE)
+      ) {
+        setErr(reason);
+        return;
+      }
+      try {
+        const replay = await c.readSession(id);
+        attachedSessionsRef.current.delete(id);
+        setSessionReadOnly(id, { reason });
+        setErr("");
+        setTranscripts((tr) => {
+          const next = { ...tr, [id]: conversationItemsFromHistory(replay.history) };
+          transcriptsRef.current = next;
+          return next;
+        });
+        if (mayActivate()) {
+          activateSession(id, expected);
+          acknowledgePet(id);
+        }
+      } catch (historyError: any) {
+        setErr(`${reason}\n${String(historyError?.message ?? historyError)}`);
+      }
     }
   };
 
@@ -2750,6 +2847,7 @@ export default function App() {
   const nextAttachmentId = () =>
     `attachment-${Date.now()}-${++attachmentSequenceRef.current}`;
   const attachmentFeatureReady = clientRef.current?.supportsFeature(ATTACHMENT_FEATURE) ?? false;
+  const activeReadOnlySession = active ? readOnlySessions[active] : undefined;
   const activeModelInfo = active && modelInfoScope === active ? modelInfo : null;
   const activeStagedModelChange = active ? stagedModelChanges[active] : undefined;
   const activeStagedModelEntry = activeStagedModelChange
@@ -2772,7 +2870,8 @@ export default function App() {
     activeComposerAttachmentCapabilities,
     attachmentFeatureReady,
   );
-  const activeDraftCanSend = composerCanSend(activeDraft, activeAttachmentIssue);
+  const activeDraftCanSend = !activeReadOnlySession
+    && composerCanSend(activeDraft, activeAttachmentIssue);
   const requireAttachmentFeature = (): boolean => {
     if (clientRef.current?.supportsFeature(ATTACHMENT_FEATURE)) return true;
     setErr(attachmentIssueText(locale, "engine-update-required"));
@@ -3771,10 +3870,12 @@ export default function App() {
   });
   const displayedModel = activeStagedModelChange?.model ?? activeSession?.model ?? "";
   const displayedEffort = activeStagedModelChange?.effort ?? (active ? sessEffort[active] ?? "" : "");
-  const visibleModelEntries = modelEntries.filter((entry) =>
-    !modelSearch.trim()
-    || `${entry.id} ${entry.providerId}`.toLowerCase().includes(modelSearch.trim().toLowerCase()),
-  );
+  const visibleModelEntries = activeReadOnlySession
+    ? []
+    : modelEntries.filter((entry) =>
+        !modelSearch.trim()
+        || `${entry.id} ${entry.providerId}`.toLowerCase().includes(modelSearch.trim().toLowerCase()),
+      );
   const currentSessionProfileId = activeModelInfo?.profileId ?? activeSession?.profileId;
   const currentPersonalConnection = providerRoutes?.connections?.find(
     (connection) => connection.id === currentSessionProfileId,
@@ -3801,14 +3902,16 @@ export default function App() {
       : null;
   const modelRouteQuery = modelSearch.trim().toLowerCase();
   const visiblePersonalConnectionRoutes = (providerRoutes?.connections ?? [])
-    .filter((connection) => connection.id !== currentSessionProfileId && connection.authenticated)
+    .filter((connection) => (
+      activeReadOnlySession || connection.id !== currentSessionProfileId
+    ) && connection.authenticated)
     .filter((connection) => !modelRouteQuery
       || [connection.label, connection.id, connection.provider, connection.model, connection.baseURL ?? ""]
         .join(" ")
         .toLowerCase()
         .includes(modelRouteQuery));
   const visibleOrganizationModelRoutes = (organizationRoutes?.connections ?? [])
-    .filter((connection) => connection.id !== currentSessionProfileId)
+    .filter((connection) => activeReadOnlySession || connection.id !== currentSessionProfileId)
     .filter((connection) => ["valid", "permanent", "expiring", "legacy"].includes(connection.accessState))
     .map((connection) => {
       const allModels = [...new Set(
@@ -3859,6 +3962,7 @@ export default function App() {
       removePet(id);
       delete activeTurnsRef.current[id];
       clearStagedModelChange(id);
+      setSessionReadOnly(id, null);
       setTaskStates((states) => {
         const { [id]: _goneTask, ...rest } = states;
         taskStatesRef.current = rest;
@@ -4144,6 +4248,27 @@ export default function App() {
                   </span>
                 ))}
               </div>
+              {activeReadOnlySession && (
+                <div className="composer-readonly-warning" role="status">
+                  <span>
+                    <strong>{locale === "zh" ? "当前仅查看本地历史" : "Viewing local history only"}</strong>
+                    <small>
+                      {locale === "zh"
+                        ? "原连接或模型当前不可用；历史仍保留在本机，尚未发送给其他连接。"
+                        : "The original connection or model is unavailable. History remains local and has not been sent elsewhere."}
+                    </small>
+                  </span>
+                  <button
+                    className="linky"
+                    onClick={() => {
+                      setAttachmentMenuOpen(false);
+                      setModelPickerOpen(true);
+                    }}
+                  >
+                    {locale === "zh" ? "选择连接并携带上下文继续" : "Choose a connection and continue with context"}
+                  </button>
+                </div>
+              )}
               {activeAttachmentIssue && (
                 <div className="composer-capability-warning" role="status">
                   <span>{attachmentIssueText(locale, activeAttachmentIssue)}</span>
@@ -4172,9 +4297,14 @@ export default function App() {
                 <textarea
                   ref={inputRef}
                   value={input}
-                  placeholder={locale === "zh"
-                    ? "描述要做什么；可粘贴图片，或用 + / @ 添加上下文…"
-                    : "Describe the task; paste an image, or use + / @ to add context…"}
+                  disabled={!!activeReadOnlySession}
+                  placeholder={activeReadOnlySession
+                    ? (locale === "zh"
+                        ? "这是只读历史；请选择连接并复制上下文后继续"
+                        : "Read-only history; choose a connection and copy context to continue")
+                    : locale === "zh"
+                      ? "描述要做什么；可粘贴图片，或用 + / @ 添加上下文…"
+                      : "Describe the task; paste an image, or use + / @ to add context…"}
                   onPaste={(e) => void pasteImages(e)}
                   onChange={(e) => {
                     setInput(e.target.value);
@@ -4214,6 +4344,7 @@ export default function App() {
                 <div className="composer-popover-anchor">
                   <button
                     className="composer-tool-button"
+                    disabled={!!activeReadOnlySession}
                     aria-expanded={attachmentMenuOpen}
                     onClick={() => {
                       setModelPickerOpen(false);
@@ -4302,8 +4433,8 @@ export default function App() {
                           {newSessionDefaultRoute && (
                             <p className="model-menu-route-notice" role="status">
                               {locale === "zh"
-                                ? `当前会话仍绑定“${currentRouteLabel}”；新会话默认使用“${newSessionDefaultRoute.label}”。选择下方${newSessionDefaultRoute.kind === "organization" ? "企业" : "个人"}连接会安全新建对话。`
-                                : `This conversation stays on “${currentRouteLabel}”; new conversations default to “${newSessionDefaultRoute.label}”. Choose a ${newSessionDefaultRoute.kind === "organization" ? "managed" : "personal"} connection below to start one safely.`}
+                                ? `当前会话仍绑定“${currentRouteLabel}”；新会话默认使用“${newSessionDefaultRoute.label}”。选择下方${newSessionDefaultRoute.kind === "organization" ? "企业" : "个人"}连接后，Hara 会先确认，再复制当前上下文继续。`
+                                : `This conversation stays on “${currentRouteLabel}”; new conversations default to “${newSessionDefaultRoute.label}”. Choose a ${newSessionDefaultRoute.kind === "organization" ? "managed" : "personal"} connection below; Hara confirms before copying context to continue.`}
                             </p>
                           )}
                           <input
@@ -4370,7 +4501,7 @@ export default function App() {
                                   </small>
                                 </span>
                                 <span className="model-row-state">
-                                  <strong>{locale === "zh" ? "新对话" : "New chat"}</strong>
+                                  <strong>{locale === "zh" ? "复制并继续" : "Copy & continue"}</strong>
                                 </span>
                               </button>
                             </section>
@@ -4405,7 +4536,7 @@ export default function App() {
                                     </small>
                                   </span>
                                   <span className="model-row-state">
-                                    <strong>{locale === "zh" ? "新对话" : "New chat"}</strong>
+                                    <strong>{locale === "zh" ? "复制并继续" : "Copy & continue"}</strong>
                                   </span>
                                 </button>
                               ))}

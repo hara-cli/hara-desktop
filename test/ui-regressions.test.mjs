@@ -643,7 +643,7 @@ test("a resumed conversation exposes its persisted profile inside the searchable
   assert.match(css, /\.model-route/);
 });
 
-test("the chat model picker can start a profile-pinned organization conversation without migrating history", () => {
+test("the chat model picker explicitly copies context into a profile-pinned organization conversation", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const providers = readFileSync(`${root}/src/ProviderSettings.tsx`, "utf8");
@@ -656,11 +656,13 @@ test("the chat model picker can start a profile-pinned organization conversation
   assert.match(app, /startOrganizationSession\(connection, model\)/);
   assert.match(
     app,
-    /await client\.useOrganizationConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*await newSession\(sourceSession\.cwd\)/,
-    "cross-profile selection explicitly changes the future-session route before creating a separate conversation",
+    /await client\.useOrganizationConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*await client\.forkSession\(sourceSessionId,[\s\S]*targetProfileId: connection\.id,[\s\S]*targetModel: model,[\s\S]*transferHistory: true/,
+    "cross-profile selection changes the future default and explicitly forks durable context to the chosen route",
   );
   assert.match(app, /window\.confirm\(locale === "zh"/);
-  assert.match(app, /当前会话和历史仍留在原连接，不会静默迁移/);
+  assert.match(app, /当前对话内容、任务状态和附件引用会复制到新对话/);
+  assert.match(app, /下一次发送时才会作为上下文交给该企业连接/);
+  assert.match(app, /原对话仍留在原连接且不会被修改/);
   assert.match(app, /delete next\[sourceSessionId\]/, "an unsent draft is moved, not duplicated across trust boundaries");
   assert.match(app, /新会话默认使用/);
   assert.match(providers, /selectedOrganization\.tokenNeverExpires \? copy\.permanent/);
@@ -669,7 +671,7 @@ test("the chat model picker can start a profile-pinned organization conversation
   assert.match(css, /\.model-menu-route-notice/);
 });
 
-test("the chat model picker can safely return from an organization route to a named personal connection", () => {
+test("the chat model picker explicitly copies context back to a named personal connection", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
@@ -679,15 +681,37 @@ test("the chat model picker can safely return from an organization route to a na
   assert.match(app, /startPersonalConnectionSession\(connection\)/);
   assert.match(
     app,
-    /await client\.useProviderConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*await newSession\(sourceSession\.cwd\)/,
-    "personal selection changes only the future-session route before creating a separate conversation",
+    /await client\.useProviderConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*await client\.forkSession\(sourceSessionId,[\s\S]*targetProfileId: connection\.id,[\s\S]*targetModel: connection\.model,[\s\S]*transferHistory: true/,
+    "personal selection explicitly forks durable context to the chosen personal route",
   );
-  assert.match(app, /当前企业\/个人会话及历史仍留在原连接，不会静默迁移/);
-  assert.match(app, /当前未发送的文字和附件会移动到新对话/);
+  assert.match(app, /当前对话内容、任务状态和附件引用会复制到新的个人对话/);
+  assert.match(app, /下一次发送时才会作为上下文交给这条个人连接/);
   assert.match(app, /className="model-route-group personal"/);
   assert.match(app, /个人直连/);
   assert.match(app, /setProviderRoutes\(next\)/, "settings changes refresh the in-composer route catalog immediately");
   assert.match(css, /\.model-route-group\.personal/);
+});
+
+test("an unavailable pinned conversation falls back to local read-only history and offers an explicit route transfer", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+
+  assert.match(client, /readSession\(sessionId: string\)[\s\S]*"session\.history"/);
+  assert.match(client, /targetProfileId: string;[\s\S]*targetModel: string;[\s\S]*transferHistory: true/);
+  assert.match(app, /await c\.resumeSession\(id\)[\s\S]*await c\.readSession\(id\)/);
+  assert.match(app, /setSessionReadOnly\(id, \{ reason \}\)/);
+  assert.match(app, /当前仅查看本地历史/);
+  assert.match(app, /选择连接并携带上下文继续/);
+  assert.match(app, /readOnlySessionsRef\.current\[sessionId\]/, "all send entry points fail closed for a replay-only session");
+  assert.match(app, /disabled=\{!!activeReadOnlySession\}/, "the read-only composer cannot accept new text");
+  assert.match(app, /const visibleModelEntries = activeReadOnlySession[\s\S]*\? \[\]/, "the revoked pinned model is not offered as an in-place switch");
+  assert.match(
+    app,
+    /visibleOrganizationModelRoutes[\s\S]*activeReadOnlySession \|\| connection\.id !== currentSessionProfileId/,
+    "recovery can choose a newly authorized model on the same organization connection",
+  );
+  assert.match(css, /\.composer-readonly-warning/);
 });
 
 test("the composer has per-session attachments, bounded folders, and capability-aware model selection", () => {
