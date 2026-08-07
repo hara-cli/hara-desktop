@@ -52,11 +52,13 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "artifact.export",
                 "presentation.create",
                 "presentation.import",
+                "presentation.update",
                 "presentation.get",
                 "presentation.validate",
                 "presentation.preview",
                 "presentation.preview-file",
                 "presentation.export",
+                "presentation.render",
                 "settings.gateways.login.start",
                 "settings.gateways.login.status",
                 "settings.gateways.login.cancel",
@@ -64,7 +66,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "desk.snapshot",
                 "desk.task.get",
               ],
-              events: ["event.task_state"],
+              events: ["event.task_state", "event.surface"],
               features: ["composer.attachments.v1", "models.capabilities.v1", "collaboration.remote.v1"],
             },
           } : request.method.startsWith("settings.gateways.login.")
@@ -147,8 +149,11 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supports("artifact.validate"), true);
   assert.equal(client.supports("artifact.export"), true);
   assert.equal(client.supports("presentation.preview"), true);
+  assert.equal(client.supports("presentation.update"), true);
+  assert.equal(client.supports("presentation.render"), true);
   assert.equal(client.supports("presentation.export"), true);
   assert.equal(client.supportsEvent("event.task_state"), true);
+  assert.equal(client.supportsEvent("event.surface"), true);
   assert.equal(client.supportsFeature("composer.attachments.v1"), true);
   assert.equal(client.supportsFeature("collaboration.remote.v1"), true);
 
@@ -280,17 +285,52 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     method: "presentation.create",
     params: { title: "Release review" },
   });
-  await client.getPresentationPreview("art_presentation", "rev_presentation");
+  const project = {
+    schemaVersion: "hara.presentation/1",
+    title: "Release review",
+    widthEmu: 12192000,
+    heightEmu: 6858000,
+    brief: {},
+    slides: [{
+      id: "slide-1",
+      claim: "Evidence is complete.",
+      takeawayTitle: "Ready to ship",
+      blocks: [{ id: "heading-1", type: "heading", literal: "Ready to ship" }],
+    }],
+  };
+  await client.updatePresentation({
+    artifactId: "art_presentation",
+    baseRevisionId: "rev_presentation",
+    project,
+  });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
     id: 14,
+    method: "presentation.update",
+    params: {
+      artifactId: "art_presentation",
+      baseRevisionId: "rev_presentation",
+      project,
+    },
+  });
+  await client.renderPresentation(project);
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 15,
+    method: "presentation.render",
+    params: { project },
+  });
+  await client.getPresentationPreview("art_presentation", "rev_presentation");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 16,
     method: "presentation.preview",
     params: { artifactId: "art_presentation", revisionId: "rev_presentation" },
   });
   await client.createPresentationPreviewFile("art_presentation", "rev_presentation");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 15,
+    id: 17,
     method: "presentation.preview-file",
     params: { artifactId: "art_presentation", revisionId: "rev_presentation" },
   });
@@ -303,7 +343,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 16,
+    id: 18,
     method: "presentation.export",
     params: {
       artifactId: "art_presentation",
@@ -345,6 +385,26 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(received.sequence, 12);
   assert.equal(received.state, "waiting");
   assert.equal(received.approval.id, "approval-1");
+
+  socket.onmessage({
+    data: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "event.surface",
+      params: {
+        sessionId: "session-1",
+        kind: "browser",
+        title: "Local preview",
+        resource: { type: "url", url: "http://127.0.0.1:5173/" },
+      },
+    }),
+  });
+  assert.deepEqual(received, {
+    method: "event.surface",
+    sessionId: "session-1",
+    kind: "browser",
+    title: "Local preview",
+    resource: { type: "url", url: "http://127.0.0.1:5173/" },
+  });
 });
 
 test("Desk client methods feature-detect an older Serve without probing remote collaboration", async (t) => {

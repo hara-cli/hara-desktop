@@ -11,6 +11,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type SetStateAction,
 } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
@@ -43,6 +44,7 @@ import {
   type ArtifactValidationReport,
   type PresentationArtifactDetails,
   type PresentationExportFormat,
+  type PresentationProject,
   type ClientHistoryMessage,
   type EffectiveAttachmentCapabilities,
   type ModelCatalogEntry,
@@ -62,7 +64,11 @@ import {
   type SessionPlace,
   type SessionPlaceInput,
 } from "./session-place";
-import { WorkStarter, type WorkStarterSubmission } from "./WorkStarter";
+import {
+  WorkStarter,
+  type WorkbenchApp,
+  type WorkStarterSubmission,
+} from "./WorkStarter";
 import type {
   AutomationDraft,
   AutomationRun,
@@ -132,14 +138,28 @@ import {
   type ComposerDraft,
 } from "./composer-state";
 import {
+  activateExtensionTab,
+  activeExtensionTab,
+  activeExtensionTabForContext,
+  artifactExtensionTabId,
   classifyPanelSurface,
-  extensionMatchesContext,
+  closeExtensionTab,
+  emptyExtensionDockState,
+  extensionTabsForContext,
+  localWebPreviewUrl,
   publicPanelOrigin,
+  updateExtensionTab,
+  upsertExtensionTab,
+  webPreviewTabId,
   type ArtifactExtension,
+  type ExtensionContext,
   type ExtensionDockItem,
   type ExtensionDockMode,
+  type ExtensionDockState,
   type ExtensionSurfaceKind,
   type LegacyPanelExtension,
+  type SessionExtensionOwner,
+  type WebPreviewExtension,
 } from "./extension-dock-state";
 import { useDesktopCompanion } from "./companion/useDesktopCompanion";
 import { IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
@@ -244,19 +264,69 @@ const preloadPlace = (place: AppPlace): void => {
   }
 };
 
-const artifactExtensionFor = (details: ArtifactDetails): ArtifactExtension => ({
-  type: "artifact",
-  id: `artifact:${details.artifact.artifactId}:${details.currentRevision.revisionId}`,
-  title: details.artifact.title,
-  surfaceKind: details.artifact.kind,
-  owner: {
-    place: "office",
-    artifactId: details.artifact.artifactId,
-    revisionId: details.currentRevision.revisionId,
-  },
-  // Preserve the existing full workbench on first open. Users can restore the Office library beside it.
-  mode: "maximized",
-});
+const artifactExtensionFor = (
+  details: ArtifactDetails,
+  sessionOwner?: SessionExtensionOwner,
+): ArtifactExtension => {
+  const owner: ArtifactExtension["owner"] = sessionOwner
+    ? {
+        ...sessionOwner,
+        artifactId: details.artifact.artifactId,
+        revisionId: details.currentRevision.revisionId,
+      }
+    : {
+        place: "office",
+        artifactId: details.artifact.artifactId,
+        revisionId: details.currentRevision.revisionId,
+      };
+  return {
+    type: "artifact",
+    id: artifactExtensionTabId(details.artifact.artifactId, owner),
+    title: details.artifact.title,
+    surfaceKind: details.artifact.kind,
+    owner,
+    // Preserve the existing full workbench on first open. Users can restore the Office library beside it.
+    mode: sessionOwner ? "docked" : "maximized",
+  };
+};
+
+const safeSurfaceTitle = (value: unknown, fallback: string): string => {
+  if (typeof value !== "string") return fallback;
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200) || fallback;
+};
+
+const safeSurfaceOpaqueId = (value: unknown): value is string =>
+  typeof value === "string"
+  && value.length >= 4
+  && value.length <= 256
+  && !/[\u0000-\u001f\u007f]/.test(value);
+
+const isArtifactSurfaceKind = (
+  value: unknown,
+): value is ArtifactExtension["surfaceKind"] =>
+  value === "presentation" || value === "spreadsheet" || value === "document";
+
+const webPreviewExtensionFor = (
+  rawUrl: string,
+  title: string,
+  owner: SessionExtensionOwner,
+): WebPreviewExtension | null => {
+  const url = localWebPreviewUrl(rawUrl);
+  if (!url) return null;
+  return {
+    type: "web-preview",
+    id: webPreviewTabId(owner.sessionId, url.toString()),
+    title: safeSurfaceTitle(title, "Web preview"),
+    url: url.toString(),
+    surfaceKind: "browser",
+    owner,
+    mode: "docked",
+  };
+};
 
 const panelExtensionFor = (
   panel: PanelSpec & { plugin: string },
@@ -284,6 +354,20 @@ const panelNavigationIcon = (
   }
   if (kind === "browser") return "projects" as const;
   return "tasks" as const;
+};
+
+const workbenchAppIconForPanel = (
+  contribution: Pick<PluginNavigationContribution, "plugin" | "panelId" | "title">,
+): WorkbenchApp["icon"] => {
+  const kind = classifyPanelSurface(
+    contribution.plugin,
+    contribution.panelId,
+    contribution.title,
+  );
+  if (kind === "browser") return "browser";
+  if (kind === "design") return "design";
+  if (kind === "presentation" || kind === "spreadsheet" || kind === "document") return "office";
+  return "capability";
 };
 
 const panelOperationKey = (plugin: string, panelId: string): string =>
@@ -775,7 +859,25 @@ export default function App() {
   const [setSec, setSetSec] = useState<SettingsSection>("providers");
   // Context-owned extension screen. A panel/file never changes owner when the user changes place.
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
-  const [extensionDock, setExtensionDock] = useState<ExtensionDockItem | null>(null);
+  const [extensionDockState, setExtensionDockState] = useState<ExtensionDockState>(emptyExtensionDockState);
+  const extensionDockStateRef = useRef(extensionDockState);
+  extensionDockStateRef.current = extensionDockState;
+  const setExtensionDock = useCallback((action: SetStateAction<ExtensionDockItem | null>) => {
+    setExtensionDockState((state) => {
+      const current = activeExtensionTab(state);
+      const next = typeof action === "function" ? action(current) : action;
+      if (!next) return current ? closeExtensionTab(state, current.id) : state;
+      return upsertExtensionTab(state, next);
+    });
+  }, []);
+  const offerExtensionTab = useCallback((tab: ExtensionDockItem, activate = true) => {
+    setExtensionDockState((state) => {
+      const previousActiveId = state.activeId;
+      const next = upsertExtensionTab(state, tab);
+      return activate ? next : { ...next, activeId: previousActiveId };
+    });
+  }, []);
+  const clearExtensionDock = useCallback(() => setExtensionDockState(emptyExtensionDockState()), []);
   const [extensionLoading, setExtensionLoading] = useState(false);
   const [home, setHome] = useState("");
   const [unread, setUnread] = useState<Record<string, boolean>>({});
@@ -800,7 +902,7 @@ export default function App() {
   const [artifactRevisions, setArtifactRevisions] = useState<ArtifactRevision[]>([]);
   const [artifactValidationReport, setArtifactValidationReport] = useState<ArtifactValidationReport | null>(null);
   const [artifactExportReceipt, setArtifactExportReceipt] = useState<ArtifactExportReceipt | null>(null);
-  const [artifactBusy, setArtifactBusy] = useState<"" | "create" | "import" | "open" | "verify" | "export">("");
+  const [artifactBusy, setArtifactBusy] = useState<"" | "create" | "import" | "open" | "save" | "verify" | "export">("");
   const artifactOpenRequestRef = useRef(0);
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     const client = clientRef.current;
@@ -1341,12 +1443,53 @@ export default function App() {
     void refreshGroupsDirectory();
   }, [phase, zone, refreshGroupsDirectory]);
 
-  const setZone = (z: Zone) => {
+  const currentExtensionContext = (): ExtensionContext | null => {
+    const currentZone = zoneRef.current;
+    if (currentZone === "office") return { place: "office" };
+    if (currentZone === "chat" || currentZone === "projects") {
+      return { place: currentZone, sessionId: activeRef.current };
+    }
+    return null;
+  };
+  const discardCurrentExtensionDraft = (): boolean => {
+    const context = currentExtensionContext();
+    const current = context
+      ? activeExtensionTabForContext(extensionDockStateRef.current, context)
+      : null;
+    if (!current?.dirty) return true;
+    if (!window.confirm(locale === "zh"
+      ? "当前演示文稿有未保存的更改。要放弃这些更改并离开吗？"
+      : "The current presentation has unsaved changes. Discard them and leave?")) return false;
+    const next = updateExtensionTab(
+      extensionDockStateRef.current,
+      current.id,
+      (tab) => ({ ...tab, dirty: false }),
+    );
+    extensionDockStateRef.current = next;
+    setExtensionDockState(next);
+    return true;
+  };
+  const hasDirtyExtensionDraft = extensionDockState.tabs.some((tab) => tab.dirty === true);
+  useEffect(() => {
+    if (!hasDirtyExtensionDraft) return;
+    const preventAccidentalClose = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventAccidentalClose);
+    return () => window.removeEventListener("beforeunload", preventAccidentalClose);
+  }, [hasDirtyExtensionDraft]);
+
+  const setZone = (z: Zone): boolean => {
+    const previousZone = zoneRef.current;
+    if (z !== previousZone && !discardCurrentExtensionDraft()) return false;
     preloadPlace(z);
     if (z === "settings") preloadSettingsSection(setSec);
-    if ((zone === "chat" || zone === "projects") && active) {
-      const current = sessionsRef.current.find((candidate) => candidate.id === active);
-      if (current && sessionPlace(current) === zone) activeByZoneRef.current[zone] = active;
+    if ((previousZone === "chat" || previousZone === "projects") && activeRef.current) {
+      const current = sessionsRef.current.find((candidate) => candidate.id === activeRef.current);
+      if (current && sessionPlace(current) === previousZone) {
+        activeByZoneRef.current[previousZone] = activeRef.current;
+      }
     }
     zoneRef.current = z;
     sessionOpenRequestRef.current += 1;
@@ -1376,6 +1519,7 @@ export default function App() {
       void refreshAuto();
       markAutoSeen();
     }
+    return true;
   };
 
   const push = useCallback(
@@ -1845,6 +1989,135 @@ export default function App() {
           if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => [...items, { kind: "diff", text: plain(e.text) }]);
           break;
+        case "event.surface": {
+          const session = sessionsRef.current.find((candidate) => candidate.id === e.sessionId);
+          const place = session ? sessionPlace(session) : null;
+          if (!session || (place !== "chat" && place !== "projects")) break;
+          const owner: SessionExtensionOwner = {
+            place,
+            sessionId: session.id,
+            cwd: session.cwd,
+          };
+          const ownerContext: ExtensionContext = { place, sessionId: session.id };
+          const visibleExtension = activeExtensionTabForContext(extensionDockStateRef.current, ownerContext);
+          const sessionForeground = activeRef.current === session.id && zoneRef.current === place;
+          const foreground = sessionForeground && visibleExtension?.dirty !== true;
+          if (e.resource?.type === "url") {
+            if (e.kind !== "browser") break;
+            const tab = webPreviewExtensionFor(e.resource.url, e.title, owner);
+            if (!tab) {
+              push(e.sessionId, (items) => [...items, {
+                kind: "notice",
+                text: locale === "zh"
+                  ? "已拒绝不安全的网页预览地址；只允许带明确端口的 localhost HTTP 服务。"
+                  : "Unsafe web preview rejected. Only localhost HTTP services with an explicit port are allowed.",
+              }]);
+              break;
+            }
+            warmModule(loadExtensionDock());
+            offerExtensionTab(tab, foreground);
+            if (foreground) setExtensionLoading(true);
+            else if (sessionForeground) {
+              push(e.sessionId, (items) => [...items, {
+                kind: "notice",
+                text: locale === "zh"
+                  ? "新的网页预览已在右侧后台标签中就绪；请先保存或放弃当前演示文稿的更改。"
+                  : "A new web preview is ready in a background tab. Save or discard the current presentation changes first.",
+              }]);
+            } else setUnread((current) => ({ ...current, [session.id]: true }));
+            break;
+          }
+          if (
+            e.resource?.type !== "artifact"
+            || !isArtifactSurfaceKind(e.kind)
+            || !safeSurfaceOpaqueId(e.resource.artifactId)
+            || !safeSurfaceOpaqueId(e.resource.revisionId)
+          ) break;
+          const artifactResource = e.resource;
+          const artifactOwner: ArtifactExtension["owner"] = {
+            ...owner,
+            artifactId: artifactResource.artifactId,
+            revisionId: artifactResource.revisionId,
+          };
+          const offered: ArtifactExtension = {
+            type: "artifact",
+            id: artifactExtensionTabId(artifactResource.artifactId, artifactOwner),
+            title: safeSurfaceTitle(e.title, locale === "zh" ? "交付物" : "Artifact"),
+            surfaceKind: e.kind,
+            owner: artifactOwner,
+            mode: "docked",
+          };
+          if (visibleExtension?.dirty && visibleExtension.id === offered.id) {
+            push(e.sessionId, (items) => [...items, {
+              kind: "notice",
+              text: locale === "zh"
+                ? "这份演示文稿已有新的版本，但当前标签还有未保存更改。Hara 保留了你的草稿；保存时若版本冲突，请重新打开最新版后再应用更改。"
+                : "A newer revision exists, but this tab has unsaved changes. Hara kept your draft; if save conflicts, reopen the latest revision and reapply the change.",
+            }]);
+            void refreshArtifacts();
+            break;
+          }
+          warmModule(Promise.all([loadArtifactWorkbench(), loadPresentationWorkbench(), loadExtensionDock()]));
+          offerExtensionTab(offered, foreground);
+          void refreshArtifacts();
+          if (!foreground) {
+            if (sessionForeground) {
+              push(e.sessionId, (items) => [...items, {
+                kind: "notice",
+                text: locale === "zh"
+                  ? "新的可视结果已在右侧后台标签中就绪；请先保存或放弃当前演示文稿的更改。"
+                  : "A new visual result is ready in a background tab. Save or discard the current presentation changes first.",
+              }]);
+            } else setUnread((current) => ({ ...current, [session.id]: true }));
+            break;
+          }
+          const client = clientRef.current;
+          if (!client) break;
+          const requestId = ++artifactOpenRequestRef.current;
+          setArtifactBusy("open");
+          setErr("");
+          void (async () => {
+            try {
+              const [revisionResult, list, presentation, generic] = await Promise.all([
+                client.listArtifactRevisions(artifactResource.artifactId),
+                client.listArtifacts(),
+                e.kind === "presentation"
+                  ? client.getPresentation(artifactResource.artifactId, artifactResource.revisionId)
+                  : Promise.resolve(null),
+                e.kind === "presentation"
+                  ? Promise.resolve(null)
+                  : client.getArtifact(artifactResource.artifactId),
+              ]);
+              const resolved = presentation ?? generic;
+              if (!resolved) throw new Error("Visual surface Artifact could not be opened");
+              const preview = presentation
+                ? await client.getPresentationPreview(
+                    presentation.artifact.artifactId,
+                    presentation.currentRevision.revisionId,
+                  )
+                : null;
+              if (
+                requestId !== artifactOpenRequestRef.current
+                || clientRef.current !== client
+                || activeRef.current !== session.id
+                || zoneRef.current !== place
+              ) return;
+              setArtifacts(list ?? "old-server");
+              setActiveArtifact(resolved);
+              setActivePresentation(presentation);
+              setPresentationPreviewHtml(preview?.html ?? null);
+              setArtifactRevisions(revisionResult.revisions);
+              setArtifactValidationReport(null);
+              setArtifactExportReceipt(null);
+              offerExtensionTab(artifactExtensionFor(resolved, owner), true);
+            } catch (error: any) {
+              if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+            } finally {
+              if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+            }
+          })();
+          break;
+        }
         case "event.turn_end": {
           const dispatch = pendingSendDispatchesRef.current[e.sessionId];
           if (dispatch?.turnId && e.turnId === dispatch.turnId) {
@@ -1935,7 +2208,7 @@ export default function App() {
           break;
       }
     },
-    [enqueueInput, flushStagedModelChange, notePet, push, refreshArtifacts, removePet, resolvePendingUser, sendText, setSessionBusy],
+    [enqueueInput, flushStagedModelChange, locale, notePet, offerExtensionTab, push, refreshArtifacts, removePet, resolvePendingUser, sendText, setSessionBusy],
   );
 
   const connect = useCallback(async (expectedPid: number | null = null) => {
@@ -1946,7 +2219,7 @@ export default function App() {
     pluginsRef.current = null;
     setPlugins(null);
     setProjPanels({});
-    setExtensionDock(null);
+    clearExtensionDock();
     attachedSessionsRef.current.clear();
     pendingSendDispatchesRef.current = {};
     clearStagedModelChanges();
@@ -1994,7 +2267,7 @@ export default function App() {
         pluginsRef.current = null;
         setPlugins(null);
         setProjPanels({});
-        setExtensionDock(null);
+        clearExtensionDock();
         for (const [sessionId, running] of Object.entries(busyRef.current)) {
           if (running) notePet(sessionId, "blocked", "Hara engine disconnected");
         }
@@ -2073,7 +2346,7 @@ export default function App() {
       setPhase("no-server");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearStagedModelChanges, handleEvent, refreshAuto, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
+  }, [clearExtensionDock, clearStagedModelChanges, handleEvent, refreshAuto, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
 
   useEffect(() => {
     if (phase !== "ready" || !active) return;
@@ -2247,6 +2520,7 @@ export default function App() {
   const newSession = async (cwd?: string): Promise<string | null> => {
     const c = clientRef.current;
     if (!c) return null;
+    if (!discardCurrentExtensionDraft()) return null;
     artifactOpenRequestRef.current += 1;
     setArtifactBusy("");
     setActiveArtifact(null);
@@ -2324,6 +2598,7 @@ export default function App() {
             : "The new conversation is pinned to that organization connection and sends nothing automatically.",
         ].join("\n\n"));
     if (!confirmed) return;
+    if (!discardCurrentExtensionDraft()) return;
 
     setModelPickerOpen(false);
     setModelSearch("");
@@ -2432,6 +2707,7 @@ export default function App() {
             : "The new conversation is pinned to that personal connection and sends nothing automatically.",
         ].join("\n\n"));
     if (!confirmed) return;
+    if (!discardCurrentExtensionDraft()) return;
 
     setModelPickerOpen(false);
     setModelSearch("");
@@ -2490,6 +2766,7 @@ export default function App() {
   const openSession = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
+    if (id !== activeRef.current && !discardCurrentExtensionDraft()) return;
     artifactOpenRequestRef.current += 1;
     setArtifactBusy("");
     setActiveArtifact(null);
@@ -2635,12 +2912,12 @@ export default function App() {
     if (session) {
       const place = sessionPlace(session);
       if (place === "auto") {
+        if (!setZone("auto")) return;
         acknowledgePet(sessionId);
-        setZone("auto");
         await openReplay(session);
         return;
       }
-      setZone(place);
+      if (!setZone(place)) return;
     }
     await openSession(sessionId);
   };
@@ -2656,15 +2933,9 @@ export default function App() {
   const openProject = async () => {
     const dir = await openDialog({ directory: true, title: t("openProject") });
     if (typeof dir !== "string" || !dir) return;
-    setActiveArtifact(null);
-    setActivePresentation(null);
-    setPresentationPreviewHtml(null);
-    setArtifactRevisions([]);
-    setArtifactValidationReport(null);
-    setArtifactExportReceipt(null);
-    rememberProject(dir);
-    setZone("projects");
-    await newSession(dir);
+    if (!setZone("projects")) return;
+    const sessionId = await newSession(dir);
+    if (sessionId) rememberProject(dir);
   };
 
   const importArtifactFile = async (kind?: ArtifactKind) => {
@@ -2953,9 +3224,69 @@ export default function App() {
     }
   };
 
+  const renderActivePresentationDraft = async (project: PresentationProject): Promise<string> => {
+    const client = clientRef.current;
+    if (!client || !client.supports("presentation.render")) {
+      throw new Error(t("artifactNeedsUpdate"));
+    }
+    const rendered = await client.renderPresentation(project);
+    return rendered.html;
+  };
+
+  const saveActivePresentation = async (project: PresentationProject): Promise<boolean> => {
+    const client = clientRef.current;
+    const details = activePresentation;
+    if (!client || !details) return false;
+    if (!client.supports("presentation.update") || !client.supports("presentation.preview")) {
+      setErr(t("artifactNeedsUpdate"));
+      return false;
+    }
+    const artifactId = details.artifact.artifactId;
+    const baseRevisionId = details.currentRevision.revisionId;
+    const savingTabId = contextExtensionDock?.type === "artifact"
+      && contextExtensionDock.owner.artifactId === artifactId
+      ? contextExtensionDock.id
+      : null;
+    const requestId = ++artifactOpenRequestRef.current;
+    setArtifactBusy("save");
+    setErr("");
+    try {
+      const updated = await client.updatePresentation({ artifactId, baseRevisionId, project });
+      const [revisionResult, list, preview] = await Promise.all([
+        client.listArtifactRevisions(artifactId),
+        client.listArtifacts(),
+        client.getPresentationPreview(artifactId, updated.currentRevision.revisionId),
+      ]);
+      if (requestId !== artifactOpenRequestRef.current || clientRef.current !== client) return false;
+      setArtifacts(list ?? "old-server");
+      setActiveArtifact(updated);
+      setActivePresentation(updated);
+      setPresentationPreviewHtml(preview.html);
+      setArtifactRevisions(revisionResult.revisions);
+      setArtifactValidationReport(null);
+      setArtifactExportReceipt(null);
+      setExtensionDockState((state) => savingTabId ? updateExtensionTab(state, savingTabId, (current) => {
+        const owner = current.type === "artifact" && current.owner.place !== "office"
+          ? { place: current.owner.place, sessionId: current.owner.sessionId, cwd: current.owner.cwd }
+          : undefined;
+        return {
+          ...artifactExtensionFor(updated, owner),
+          mode: current.mode,
+          dirty: false,
+        };
+      }) : state);
+      return true;
+    } catch (error: any) {
+      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+      return false;
+    } finally {
+      if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+    }
+  };
+
   const assistantCreationRef = useRef(false);
   const startNewAssistantConversation = async (): Promise<string | null> => {
-    setZone("chat");
+    if (!setZone("chat")) return null;
     if (!home || assistantCreationRef.current) return null;
     assistantCreationRef.current = true;
     setAssistantCreating(true);
@@ -2982,7 +3313,7 @@ export default function App() {
 
   /** Resume the current assistant conversation; create one only when none exists yet. */
   const openAssistant = async (): Promise<string | null> => {
-    setZone("chat");
+    if (!setZone("chat")) return null;
     const cur = assistantZone(sessionsRef.current).current;
     if (cur) {
       await openSession(cur.id);
@@ -3584,6 +3915,7 @@ export default function App() {
       setZone("projects");
       return;
     }
+    if (!discardCurrentExtensionDraft()) return;
     const projectClient = clientRef.current;
     if (!projectClient) {
       setErr(locale === "zh" ? "Hara 引擎尚未连接。" : "The Hara engine is not connected.");
@@ -3659,13 +3991,13 @@ export default function App() {
   const toggleExtensionPanel = async (spec: ProjectPanel, cwd: string) => {
     if (!active) return;
     const ownerSessionId = active;
-    if (
-      extensionDock?.type === "legacy-panel"
-      && extensionDock.plugin === spec.plugin
-      && extensionDock.owner.sessionId === ownerSessionId
-      && extensionDock.id === `panel:${ownerSessionId}:${spec.plugin}:${spec.id}`
-    ) {
-      setExtensionDock(null);
+    const openTab = extensionDockState.tabs.find((tab) =>
+      tab.type === "legacy-panel"
+      && tab.plugin === spec.plugin
+      && tab.owner.sessionId === ownerSessionId
+      && tab.id === `panel:${ownerSessionId}:${spec.plugin}:${spec.id}`);
+    if (openTab) {
+      setExtensionDockState((state) => closeExtensionTab(state, openTab.id));
       return;
     }
     const plugin = pluginsRef.current?.find((candidate) => candidate.name === spec.plugin);
@@ -3673,6 +4005,7 @@ export default function App() {
       setErr(locale === "zh" ? "该能力已停用，不能启动它的工作面板。" : "This capability is disabled, so its work panel cannot be started.");
       return;
     }
+    if (!discardCurrentExtensionDraft()) return;
     const launchGeneration = sessionOpenRequestRef.current;
     const assertDirectPanelLaunchContext = () => {
       const currentProjectId = activeByZoneRef.current.projects;
@@ -3715,17 +4048,6 @@ export default function App() {
     }
   };
 
-  /** Legacy local panels may still pop out; native Office/Desk surfaces stay inside their owner. */
-  const popOutExtension = () => {
-    if (extensionDock?.type !== "legacy-panel") return;
-    try {
-      new WebviewWindow(`panel-${extensionDock.id}-${Date.now() % 100000}`, { url: extensionDock.url, title: `Hara — ${extensionDock.title}`, width: 1100, height: 780 });
-      setExtensionDock(null);
-    } catch (e: any) {
-      setErr(String(e?.message ?? e));
-    }
-  };
-
   const togglePlugin = async (name: string, enabled: boolean) => {
     const c = clientRef.current;
     if (!c) return;
@@ -3735,8 +4057,10 @@ export default function App() {
     ) ?? null;
     pluginsRef.current = optimistic;
     setPlugins(optimistic);
-    if (!enabled && extensionDock?.type === "legacy-panel" && extensionDock.plugin === name) {
-      setExtensionDock(null);
+    if (!enabled) {
+      setExtensionDockState((state) => state.tabs
+        .filter((tab) => tab.type === "legacy-panel" && tab.plugin === name)
+        .reduce((next, tab) => closeExtensionTab(next, tab.id), state));
     }
     if (!enabled) {
       setProjPanels((current) =>
@@ -4226,6 +4550,7 @@ export default function App() {
   const forkIt = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
+    if (!discardCurrentExtensionDraft()) return;
     const source = sessionsRef.current.find((session) => session.id === id);
     const sessionHint = { cwd: source?.cwd ?? server?.cwd ?? "", source: "interactive" };
     const requestId = ++sessionOpenRequestRef.current;
@@ -4345,8 +4670,9 @@ export default function App() {
               <button
                 key={sp.id}
                 className={`paneltab ${
-                  extensionDock?.type === "legacy-panel"
-                  && extensionDock.id === `panel:${activeSession.id}:${sp.plugin}:${sp.id}`
+                  extensionDockState.tabs.some((tab) =>
+                    tab.type === "legacy-panel"
+                    && tab.id === `panel:${activeSession.id}:${sp.plugin}:${sp.id}`)
                     ? "on"
                     : ""
                 }`}
@@ -4365,6 +4691,48 @@ export default function App() {
             <WorkStarter
               locale={locale}
               busy={starterBusy}
+              apps={([
+                {
+                  id: "core.office",
+                  title: t("zoneOffice"),
+                  description: t("moduleOfficeDescription"),
+                  icon: "office",
+                  source: "Hara",
+                },
+                {
+                  id: "core.projects",
+                  title: t("zoneProjects"),
+                  description: t("moduleProjectsDescription"),
+                  icon: "project",
+                  source: "Hara",
+                },
+                ...pluginNavigation.slice(0, 6).map((contribution): WorkbenchApp => ({
+                  id: contribution.id,
+                  title: contribution.title,
+                  description: contribution.description || contribution.plugin,
+                  icon: workbenchAppIconForPanel(contribution),
+                  source: contribution.plugin,
+                  disabled: !sessions.some((session) => sessionPlace(session) === "projects"),
+                })),
+              ] satisfies WorkbenchApp[])}
+              onOpenApp={(appId) => {
+                if (appId === "core.office") {
+                  setZone("office");
+                  return;
+                }
+                if (appId === "core.projects") {
+                  void openProject();
+                  return;
+                }
+                const contribution = pluginNavigationById.get(appId);
+                const plugin = contribution
+                  ? pluginsRef.current?.find((candidate) => candidate.name === contribution.plugin)
+                  : undefined;
+                const panel = contribution
+                  ? plugin?.panels?.find((candidate) => candidate.id === contribution.panelId)
+                  : undefined;
+                if (contribution && panel) void openPanel(contribution.plugin, panel);
+              }}
               onStart={startFromWorkbench}
               onPickFiles={pickComposerFiles}
               onPickDirectory={pickComposerDirectory}
@@ -4904,10 +5272,11 @@ export default function App() {
         : undefined,
       active: pluginContribution
         ? zone === "projects"
-          && extensionDock?.type === "legacy-panel"
-          && extensionDock.plugin === pluginContribution.plugin
-          && extensionDock.panelId === pluginContribution.panelId
-          && extensionDock.owner.sessionId === active
+          && extensionDockState.tabs.some((tab) =>
+            tab.type === "legacy-panel"
+            && tab.plugin === pluginContribution.plugin
+            && tab.panelId === pluginContribution.panelId
+            && tab.owner.sessionId === active)
         : zone === contribution.target,
       badge,
     };
@@ -4938,13 +5307,15 @@ export default function App() {
           (candidate) => candidate.id === pluginContribution?.panelId,
         );
         if (plugin && panel) {
-          if (
-            extensionDock?.type === "legacy-panel"
-            && extensionDock.plugin === plugin.name
-            && extensionDock.panelId === panel.id
-            && extensionDock.owner.sessionId === activeByZoneRef.current.projects
-          ) {
-            setZone("projects");
+          const existing = extensionDockState.tabs.find((tab) =>
+            tab.type === "legacy-panel"
+            && tab.plugin === plugin.name
+            && tab.panelId === panel.id
+            && tab.owner.sessionId === activeByZoneRef.current.projects);
+          if (existing) {
+            if (!discardCurrentExtensionDraft()) return;
+            setExtensionDockState((state) => activateExtensionTab(state, existing.id));
+            if (!setZone("projects")) return;
           } else {
             void openPanel(plugin.name, panel);
           }
@@ -4979,22 +5350,155 @@ export default function App() {
       </span>
     </div>
   );
-  const panelExtension = extensionDock?.type === "legacy-panel"
-    && extensionMatchesContext(extensionDock, {
-      place: "projects",
-      sessionId: zone === "projects" ? active : null,
-    })
-      ? extensionDock
+  const clearArtifactSurface = () => {
+    artifactOpenRequestRef.current += 1;
+    setArtifactBusy("");
+    setActiveArtifact(null);
+    setActivePresentation(null);
+    setPresentationPreviewHtml(null);
+    setPresentationBrowserOpening(false);
+    setArtifactRevisions([]);
+    setArtifactValidationReport(null);
+    setArtifactExportReceipt(null);
+  };
+  const loadArtifactExtension = async (tab: ArtifactExtension) => {
+    const client = clientRef.current;
+    if (!client) return;
+    const requestId = ++artifactOpenRequestRef.current;
+    const owner = tab.owner;
+    const ownerStillVisible = () => owner.place === "office"
+      ? zoneRef.current === "office"
+      : zoneRef.current === owner.place && activeRef.current === owner.sessionId;
+    setArtifactBusy("open");
+    setErr("");
+    try {
+      const base = await client.getArtifact(owner.artifactId);
+      const nativePresentation = isNativePresentation(base);
+      const [revisionResult, list, presentation, preview] = await Promise.all([
+        client.listArtifactRevisions(owner.artifactId),
+        client.listArtifacts(),
+        nativePresentation
+          ? client.getPresentation(owner.artifactId, base.currentRevision.revisionId)
+          : Promise.resolve(null),
+        nativePresentation
+          ? client.getPresentationPreview(owner.artifactId, base.currentRevision.revisionId)
+          : Promise.resolve(null),
+      ]);
+      if (
+        requestId !== artifactOpenRequestRef.current
+        || clientRef.current !== client
+        || !ownerStillVisible()
+      ) return;
+      const resolved = presentation ?? base;
+      setArtifacts(list ?? "old-server");
+      setActiveArtifact(resolved);
+      setActivePresentation(presentation);
+      setPresentationPreviewHtml(preview?.html ?? null);
+      setArtifactRevisions(revisionResult.revisions);
+      setArtifactValidationReport(null);
+      setArtifactExportReceipt(null);
+      setExtensionDockState((state) => updateExtensionTab(state, tab.id, (current) => {
+        const sessionOwner = owner.place === "office"
+          ? undefined
+          : { place: owner.place, sessionId: owner.sessionId, cwd: owner.cwd };
+        return {
+          ...artifactExtensionFor(resolved, sessionOwner),
+          mode: current.mode,
+          ...(current.dirty ? { dirty: true } : {}),
+        };
+      }));
+    } catch (error: any) {
+      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+    } finally {
+      if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+    }
+  };
+  const selectExtensionTab = (tabId: string) => {
+    const tab = extensionDockState.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+    if (
+      contextExtensionDock
+      && contextExtensionDock.id !== tabId
+      && contextExtensionDock.dirty
+      && !window.confirm(locale === "zh"
+        ? "当前标签有未保存的更改。要放弃这些更改并切换标签吗？"
+        : "The current tab has unsaved changes. Discard them and switch tabs?")
+    ) return;
+    setExtensionDockState((state) => {
+      const clean = contextExtensionDock?.dirty
+        ? updateExtensionTab(state, contextExtensionDock.id, (current) => ({ ...current, dirty: false }))
+        : state;
+      return activateExtensionTab(clean, tabId);
+    });
+    if (tab.type === "artifact") {
+      void loadArtifactExtension(tab);
+      return;
+    }
+    clearArtifactSurface();
+    setExtensionLoading(true);
+  };
+  const closeDockTab = (tabId: string) => {
+    const tab = extensionDockState.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+    if (tab.dirty && !window.confirm(locale === "zh" ? "此标签有未保存的更改，仍要关闭吗？" : "This tab has unsaved changes. Close it anyway?")) {
+      return;
+    }
+    let next = closeExtensionTab(extensionDockState, tabId);
+    let nextVisible: ExtensionDockItem | null = null;
+    if (contextExtensionDock?.id === tabId && extensionContext) {
+      const remaining = extensionTabsForContext(next, extensionContext);
+      nextVisible = remaining[remaining.length - 1] ?? null;
+      next = { ...next, activeId: nextVisible?.id ?? null };
+    }
+    setExtensionDockState(next);
+    if (nextVisible?.type === "artifact") void loadArtifactExtension(nextVisible);
+    else if (tab.type === "artifact" && contextExtensionDock?.id === tabId) clearArtifactSurface();
+  };
+  const popOutVisualExtension = (item: LegacyPanelExtension | WebPreviewExtension) => {
+    try {
+      new WebviewWindow(`panel-${item.id}-${Date.now() % 100000}`, {
+        url: item.url,
+        title: `Hara — ${item.title}`,
+        width: 1100,
+        height: 780,
+      });
+      closeDockTab(item.id);
+    } catch (error: any) {
+      setErr(String(error?.message ?? error));
+    }
+  };
+  const extensionContext: ExtensionContext | null = zone === "office"
+    ? { place: "office" }
+    : (zone === "chat" || zone === "projects")
+      ? { place: zone, sessionId: active }
       : null;
-  const artifactExtension = extensionDock?.type === "artifact"
-    && activeArtifact
-    && extensionMatchesContext(extensionDock, {
-      place: "office",
-      artifactId: activeArtifact.artifact.artifactId,
-      revisionId: activeArtifact.currentRevision.revisionId,
-    })
-      ? extensionDock
+  const contextExtensionTabs = extensionContext
+    ? extensionTabsForContext(extensionDockState, extensionContext)
+    : [];
+  const contextExtensionDock = extensionContext
+    ? activeExtensionTabForContext(extensionDockState, extensionContext)
+    : null;
+  const panelExtension = contextExtensionDock?.type === "legacy-panel"
+    ? contextExtensionDock
+    : null;
+  const webPreviewExtension = contextExtensionDock?.type === "web-preview"
+    ? contextExtensionDock
+    : null;
+  const artifactExtension = contextExtensionDock?.type === "artifact"
+    && contextExtensionDock.owner.place === "office"
+    && activeArtifact?.artifact.artifactId === contextExtensionDock.owner.artifactId
+      ? contextExtensionDock
       : null;
+  const sessionArtifactExtension = contextExtensionDock?.type === "artifact"
+    && contextExtensionDock.owner.place !== "office"
+      ? contextExtensionDock
+      : null;
+  const dockTabs = contextExtensionTabs.map((tab) => ({
+    id: tab.id,
+    title: tab.title,
+    kind: tab.surfaceKind,
+    dirty: tab.dirty,
+  }));
   const extensionKindLabel = (kind: ExtensionSurfaceKind): string => {
     if (kind === "presentation") return t("artifactTypePresentation");
     if (kind === "spreadsheet") return t("artifactTypeSpreadsheet");
@@ -5012,7 +5516,11 @@ export default function App() {
     close: t("extensionClose"),
   };
   const setExtensionMode = (itemId: string, mode: ExtensionDockMode) => {
-    setExtensionDock((current) => current?.id === itemId ? { ...current, mode } : current);
+    setExtensionDockState((state) => updateExtensionTab(
+      state,
+      itemId,
+      (current) => ({ ...current, mode }),
+    ));
   };
   const officeHomeSurface = (
     <Suspense
@@ -5053,6 +5561,11 @@ export default function App() {
       />
     </Suspense>
   );
+  const presentationEditorTabId = activePresentation
+    && contextExtensionDock?.type === "artifact"
+    && contextExtensionDock.owner.artifactId === activePresentation.artifact.artifactId
+      ? contextExtensionDock.id
+      : null;
   const artifactWorkbenchSurface = activePresentation ? (
     <Suspense
       fallback={(
@@ -5065,11 +5578,22 @@ export default function App() {
         details={activePresentation}
         previewHtml={presentationPreviewHtml}
         loading={artifactBusy === "open" || presentationPreviewHtml === null}
+        saving={artifactBusy === "save"}
         verifying={artifactBusy === "verify"}
         exporting={artifactBusy === "export"}
         openingBrowser={presentationBrowserOpening}
         validationReport={artifactValidationReport}
         exportReceipt={artifactExportReceipt}
+        onRenderDraft={renderActivePresentationDraft}
+        onSave={saveActivePresentation}
+        onDirtyChange={(dirty) => {
+          if (!presentationEditorTabId) return;
+          setExtensionDockState((state) => updateExtensionTab(
+            state,
+            presentationEditorTabId,
+            (current) => current.dirty === dirty ? current : { ...current, dirty },
+          ));
+        }}
         onVerify={() => void verifyActiveArtifact()}
         onExport={(format) => void exportActiveArtifact(format)}
         onOpenBrowser={() => void openPresentationInBrowser()}
@@ -5092,6 +5616,30 @@ export default function App() {
           browserPrint: t("presentationBrowserPrint"),
           noOverwrite: t("artifactNoOverwrite"),
           receipt: t("artifactExportReceipt"),
+          edit: t("presentationEdit"),
+          present: t("presentationPresent"),
+          save: t("presentationSave"),
+          saving: t("presentationSaving"),
+          saved: t("presentationSaved"),
+          unsaved: t("presentationUnsaved"),
+          addSlide: t("presentationAddSlide"),
+          duplicateSlide: t("presentationDuplicateSlide"),
+          deleteSlide: t("presentationDeleteSlide"),
+          moveUp: t("presentationMoveUp"),
+          moveDown: t("presentationMoveDown"),
+          deckTitle: t("presentationDeckTitle"),
+          takeaway: t("presentationTakeaway"),
+          claim: t("presentationClaim"),
+          notes: t("presentationNotes"),
+          inspector: t("presentationInspector"),
+          blocks: t("presentationBlocks"),
+          addBlock: t("presentationAddBlock"),
+          deleteBlock: t("presentationDeleteBlock"),
+          blockType: t("presentationBlockType"),
+          content: t("presentationContent"),
+          applyJson: t("presentationApplyJson"),
+          invalidJson: t("presentationInvalidJson"),
+          previewError: t("presentationPreviewError"),
         }}
       />
     </Suspense>
@@ -6218,51 +6766,71 @@ export default function App() {
                 detail={activeArtifact?.artifact.dataResidency ?? "local"}
                 mode={artifactExtension.mode}
                 loading={artifactBusy === "open" || Boolean(activePresentation && !presentationPreviewHtml)}
+                tabs={dockTabs}
+                activeTabId={artifactExtension.id}
                 copy={extensionCopy}
+                onTabSelect={selectExtensionTab}
+                onTabClose={closeDockTab}
                 onModeChange={(mode) => setExtensionMode(artifactExtension.id, mode)}
                 onPopOut={activePresentation ? () => void openPresentationInBrowser() : undefined}
-                onClose={() => {
-                  artifactOpenRequestRef.current += 1;
-                  setArtifactBusy("");
-                  setExtensionDock(null);
-                  setActiveArtifact(null);
-                  setActivePresentation(null);
-                  setPresentationPreviewHtml(null);
-                  setPresentationBrowserOpening(false);
-                  setArtifactRevisions([]);
-                  setArtifactValidationReport(null);
-                  setArtifactExportReceipt(null);
-                }}
+                onClose={() => closeDockTab(artifactExtension.id)}
               >
                 {artifactWorkbenchSurface}
               </ExtensionDock>
             </Suspense>
           )}
         </div>
-      ) : panelExtension && zone === "projects" ? (
-        <div className={`extension-work${panelExtension.mode === "maximized" ? " is-extension-maximized" : ""}`}>
-          <div className="extension-primary">{conversation("ide")}</div>
+      ) : (zone === "chat" || zone === "projects") && contextExtensionDock ? (
+        <div className={`extension-work${contextExtensionDock.mode === "maximized" ? " is-extension-maximized" : ""}`}>
+          <div className="extension-primary">{conversation(zone === "chat" ? "im" : "ide")}</div>
           <Suspense fallback={<aside className="extension-dock is-docked" aria-busy="true" />}>
             <ExtensionDock
-              kind={panelExtension.surfaceKind}
-              kindLabel={extensionKindLabel(panelExtension.surfaceKind)}
-              title={panelExtension.title}
-              source={panelExtension.plugin}
-              context={basename(panelExtension.owner.cwd)}
-              detail={publicPanelOrigin(panelExtension.url) ?? t("extensionLocalCapability")}
-              mode={panelExtension.mode}
-              loading={extensionLoading}
+              kind={contextExtensionDock.surfaceKind}
+              kindLabel={extensionKindLabel(contextExtensionDock.surfaceKind)}
+              title={contextExtensionDock.title}
+              source={panelExtension?.plugin ?? (webPreviewExtension ? "Node · localhost" : t("extensionLocalCapability"))}
+              context={contextExtensionDock.owner.place === "office" ? "Office" : basename(contextExtensionDock.owner.cwd)}
+              detail={panelExtension || webPreviewExtension
+                ? publicPanelOrigin((panelExtension ?? webPreviewExtension)!.url) ?? t("extensionLocalCapability")
+                : sessionArtifactExtension?.owner.revisionId.slice(-8).toUpperCase()}
+              mode={contextExtensionDock.mode}
+              loading={contextExtensionDock.type === "artifact"
+                ? artifactBusy === "open" || activeArtifact?.artifact.artifactId !== contextExtensionDock.owner.artifactId
+                : extensionLoading}
+              tabs={dockTabs}
+              activeTabId={contextExtensionDock.id}
               copy={extensionCopy}
-              onModeChange={(mode) => setExtensionMode(panelExtension.id, mode)}
-              onPopOut={popOutExtension}
-              onClose={() => setExtensionDock(null)}
+              onTabSelect={selectExtensionTab}
+              onTabClose={closeDockTab}
+              onModeChange={(mode) => setExtensionMode(contextExtensionDock.id, mode)}
+              onPopOut={panelExtension || webPreviewExtension
+                ? () => popOutVisualExtension((panelExtension ?? webPreviewExtension)!)
+                : activePresentation
+                  ? () => void openPresentationInBrowser()
+                  : undefined}
+              onClose={() => closeDockTab(contextExtensionDock.id)}
             >
-              <iframe
-                src={panelExtension.url}
-                title={panelExtension.title}
-                referrerPolicy="no-referrer"
-                onLoad={() => setExtensionLoading(false)}
-              />
+              {panelExtension && (
+                <iframe
+                  src={panelExtension.url}
+                  title={panelExtension.title}
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setExtensionLoading(false)}
+                />
+              )}
+              {webPreviewExtension && (
+                <iframe
+                  src={webPreviewExtension.url}
+                  title={webPreviewExtension.title}
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"
+                  allow="clipboard-read; clipboard-write; fullscreen"
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setExtensionLoading(false)}
+                />
+              )}
+              {sessionArtifactExtension
+                && activeArtifact?.artifact.artifactId === sessionArtifactExtension.owner.artifactId
+                && artifactWorkbenchSurface}
             </ExtensionDock>
           </Suspense>
         </div>

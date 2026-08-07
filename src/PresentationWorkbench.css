@@ -1,24 +1,20 @@
 .presentation-workbench {
   --presentation-tone: #ef5b3f;
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  overflow: hidden;
-  background: #0e1214;
-  color: #e9e6df;
+  --presentation-line: #2b3032;
+  --presentation-panel: #111719;
 }
+
+.presentation-workbench.is-presenting .office-editor-workspace { grid-template-columns: 1fr; }
+.presentation-workbench.is-presenting .office-editor-rail,
+.presentation-workbench.is-presenting .office-editor-inspector { display: none; }
 
 .presentation-workbench-bar {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(180px, 1fr) auto auto;
+  grid-template-columns: minmax(160px, 1fr) auto auto;
   align-items: center;
-  gap: 16px;
-  padding: 10px 14px;
-  border-bottom: 1px solid #282b2d;
-  background: #121719;
+  gap: 12px;
+  padding: 8px 10px 8px 12px;
 }
 
 .presentation-workbench-title {
@@ -48,68 +44,198 @@
 
 .presentation-workbench-title strong {
   overflow: hidden;
+  color: #ebe7df;
   font-size: 12px;
   font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.presentation-workbench-meta {
+.presentation-workbench-meta,
+.presentation-workbench-actions,
+.presentation-export-actions,
+.presentation-mode-switch {
   display: flex;
+  align-items: center;
   gap: 5px;
 }
 
 .presentation-workbench-meta span {
   padding: 3px 7px;
-  border: 1px solid #303436;
+  border: 1px solid #303638;
   border-radius: 999px;
   color: #817f79;
   font: 8px/1.2 "SF Mono", ui-monospace, monospace;
 }
 
-.presentation-workbench-actions,
-.presentation-export-actions {
-  display: flex;
-  gap: 6px;
+.presentation-workbench-meta span.is-dirty {
+  border-color: #70483e;
+  color: #e19985;
+}
+
+.presentation-workbench button,
+.presentation-workbench input,
+.presentation-workbench textarea,
+.presentation-workbench select {
+  font: inherit;
 }
 
 .presentation-workbench-actions button,
 .presentation-export-actions button,
-.presentation-proof button {
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid #363a3c;
+.presentation-proof button,
+.presentation-slide-actions button,
+.presentation-pane-heading button,
+.presentation-block-heading button,
+.presentation-block-actions button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid #363c3e;
   border-radius: 5px;
-  background: #191e20;
+  background: #191f21;
   color: #aaa7a0;
   font-size: 9px;
   cursor: pointer;
 }
 
-.presentation-workbench-actions button:hover:not(:disabled),
-.presentation-export-actions button:hover:not(:disabled),
-.presentation-proof button:hover:not(:disabled) {
-  border-color: #555b5e;
+.presentation-workbench button:hover:not(:disabled),
+.presentation-workbench button:focus-visible:not(:disabled) {
+  border-color: #596164;
   color: #f0ece4;
+}
+
+.presentation-workbench button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+.presentation-mode-switch {
+  padding: 2px;
+  border: 1px solid #303638;
+  border-radius: 6px;
+  background: #0f1416;
+}
+
+.presentation-mode-switch button {
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+}
+
+.presentation-mode-switch button.is-active {
+  background: #292f31;
+  color: #eee9e1;
+  box-shadow: inset 0 -1px var(--presentation-tone);
+}
+
+.presentation-workbench-actions .presentation-save {
+  border-color: #984635;
+  background: #c84731;
+  color: #fff4ed;
+  font-weight: 700;
 }
 
 .presentation-workbench-actions .presentation-browser {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  border-color: #764438;
-  color: #e3a28e;
+  gap: 5px;
+  border-color: #65423a;
+  color: #dda18f;
 }
 
-.presentation-workbench-actions button:disabled,
-.presentation-export-actions button:disabled,
-.presentation-proof button:disabled {
-  cursor: wait;
-  opacity: .55;
+.presentation-pane-heading,
+.presentation-block-heading {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  color: #8b8983;
+  font: 700 8px/1.2 "SF Mono", ui-monospace, monospace;
+  letter-spacing: .1em;
+  text-transform: uppercase;
 }
+
+.presentation-pane-heading button {
+  width: 23px;
+  min-height: 23px;
+  padding: 0;
+  border-color: #464c4e;
+  color: #d9d4cc;
+  font-size: 15px;
+}
+
+.presentation-slide-rail {
+  display: grid;
+  min-height: 100%;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.presentation-slide-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 7px 10px;
+}
+
+.presentation-slide-list > button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 2px 5px;
+  margin: 0 0 5px;
+  padding: 7px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: #151b1d;
+  color: #878983;
+  cursor: pointer;
+}
+
+.presentation-slide-list > button:hover { border-color: #3b4244; }
+
+.presentation-slide-list > button.is-selected {
+  border-color: #72463c;
+  background: linear-gradient(135deg, rgba(239, 91, 63, .12), transparent), #1a2022;
+  box-shadow: inset 2px 0 var(--presentation-tone);
+}
+
+.presentation-slide-list > button > span {
+  grid-row: 1 / span 2;
+  color: #676d6d;
+  font: 8px/1.2 "SF Mono", ui-monospace, monospace;
+}
+
+.presentation-slide-list strong,
+.presentation-slide-list small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presentation-slide-list strong {
+  color: #d0cdc6;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.presentation-slide-list small { color: #626765; font-size: 8px; }
+
+.presentation-slide-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 7px;
+  border-top: 1px solid var(--presentation-line);
+}
+
+.presentation-slide-actions button { min-width: 0; padding: 0; }
 
 .presentation-stage {
-  position: relative;
+  position: absolute;
+  inset: 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -125,36 +251,160 @@
   background: #111719;
 }
 
-.presentation-preview-loading {
+.presentation-preview-loading,
+.presentation-render-state {
   position: absolute;
+  z-index: 2;
   inset: 0;
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 14px;
+  gap: 12px;
   color: #777a78;
   font: 9px/1.2 "SF Mono", ui-monospace, monospace;
   letter-spacing: .08em;
   text-transform: uppercase;
 }
 
-.presentation-preview-loading i {
-  width: 28px;
-  height: 28px;
+.presentation-render-state {
+  inset: 10px 10px auto auto;
+  display: flex;
+  padding: 6px 8px;
+  border: 1px solid #3c4142;
+  border-radius: 5px;
+  background: rgba(13, 17, 19, .88);
+  pointer-events: none;
+}
+
+.presentation-preview-loading i,
+.presentation-render-state i {
+  width: 22px;
+  height: 22px;
   border: 1px solid #3a3e40;
   border-top-color: var(--presentation-tone);
   border-radius: 50%;
   animation: presentation-spin .9s linear infinite;
 }
 
+.presentation-render-state i { width: 10px; height: 10px; }
+
+.presentation-preview-error {
+  position: absolute;
+  z-index: 3;
+  right: 12px;
+  bottom: 12px;
+  max-width: 320px;
+  padding: 8px 10px;
+  border: 1px solid #743e35;
+  border-radius: 5px;
+  background: #281816;
+  color: #e9a491;
+  font-size: 9px;
+}
+
+.presentation-inspector { min-height: 100%; padding-bottom: 14px; }
+
+.presentation-inspector > label,
+.presentation-block-editor label {
+  display: grid;
+  gap: 5px;
+  padding: 0 9px 9px;
+}
+
+.presentation-inspector label > span,
+.presentation-block-editor label > span,
+.presentation-block-heading > span {
+  color: #777b78;
+  font: 700 8px/1.2 "SF Mono", ui-monospace, monospace;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.presentation-inspector input,
+.presentation-inspector textarea,
+.presentation-inspector select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid #343b3d;
+  border-radius: 5px;
+  outline: 0;
+  background: #0d1214;
+  color: #d8d5ce;
+  font-size: 9px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.presentation-inspector textarea { min-height: 52px; }
+.presentation-inspector textarea.is-code { min-height: 110px; font-family: "SF Mono", ui-monospace, monospace; }
+
+.presentation-inspector input:focus,
+.presentation-inspector textarea:focus,
+.presentation-inspector select:focus {
+  border-color: #745047;
+  box-shadow: 0 0 0 2px rgba(239, 91, 63, .08);
+}
+
+.presentation-block-heading {
+  margin-top: 3px;
+  border-top: 1px solid var(--presentation-line);
+}
+
+.presentation-block-heading button { min-height: 23px; padding: 0 7px; }
+
+.presentation-block-list {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 0 9px 9px;
+}
+
+.presentation-block-list button {
+  display: flex;
+  min-width: 68px;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border: 1px solid #31383a;
+  border-radius: 4px;
+  background: #151b1d;
+  color: #7b807d;
+  cursor: pointer;
+}
+
+.presentation-block-list button.is-selected {
+  border-color: #75483e;
+  color: #d9d4cc;
+}
+
+.presentation-block-list span { font: 8px/1 "SF Mono", ui-monospace, monospace; }
+.presentation-block-list strong { font-size: 8px; font-weight: 650; }
+
+.presentation-block-editor {
+  padding-top: 9px;
+  border-top: 1px solid var(--presentation-line);
+}
+
+.presentation-block-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  padding: 0 9px;
+}
+
+.presentation-literal-error {
+  margin: -3px 9px 8px;
+  color: #df806c;
+  font-size: 8px;
+}
+
 .presentation-export-bar {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(150px, 1fr) auto;
   align-items: center;
-  gap: 16px;
-  padding: 10px 14px;
-  border-top: 1px solid #282b2d;
-  background: #121719;
+  gap: 12px;
+  padding: 8px 10px;
 }
 
 .presentation-proof {
@@ -162,14 +412,14 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 2px 10px;
+  gap: 2px 9px;
 }
 
 .presentation-proof button {
   grid-row: 1 / span 2;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .presentation-proof button.is-verified {
@@ -190,50 +440,32 @@
   white-space: nowrap;
 }
 
-.presentation-proof small {
-  color: #8d928d;
-  font-family: "SF Mono", ui-monospace, monospace;
-}
+.presentation-proof small { color: #8d928d; font-family: "SF Mono", ui-monospace, monospace; }
 
 .presentation-export-actions .is-primary {
   display: inline-flex;
+  min-width: 106px;
   align-items: center;
-  gap: 6px;
-  min-width: 116px;
   justify-content: center;
+  gap: 5px;
   border-color: #a74432;
   background: #df4b31;
   color: #fff5ef;
   font-weight: 700;
 }
 
-@keyframes presentation-spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes presentation-spin { to { transform: rotate(360deg); } }
 
 @container extension-work (max-width: 760px) {
-  .presentation-workbench-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .presentation-workbench-meta {
-    display: none;
-  }
-  .presentation-quiet {
-    display: none;
-  }
-  .presentation-export-bar {
-    grid-template-columns: 1fr;
-  }
-  .presentation-export-actions {
-    justify-content: stretch;
-  }
-  .presentation-export-actions button {
-    flex: 1;
-  }
+  .presentation-workbench-bar { grid-template-columns: minmax(0, 1fr) auto; }
+  .presentation-workbench-meta { display: none; }
+  .presentation-mode-switch { display: none; }
+  .presentation-export-bar { grid-template-columns: 1fr; }
+  .presentation-export-actions { justify-content: stretch; }
+  .presentation-export-actions button { flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .presentation-preview-loading i {
-    animation: none;
-  }
+  .presentation-preview-loading i,
+  .presentation-render-state i { animation: none; }
 }

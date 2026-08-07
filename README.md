@@ -61,11 +61,14 @@ builds · a unified model switchboard with preset personal providers plus any nu
 directly switchable Hara Control connections · redacted WeChat/Feishu connection health · safe automatic installation/update of Desktop's exact bundled CLI at `~/.hara/bin/hara` · 4-platform CI with
 package-smoke gate. See `WORKFLOW.md` for the two-repo release train.
 
-The Deliverables foundation does not yet render, edit, or export imported Office files; the format
-card in 0.1.30 is explicitly decorative until a reviewed capability supplies a real preview.
+The current development branch adds the first real Office slice: native Hara presentations can be
+created or imported, edited in the Desktop workbench, rendered with the canonical HTML renderer,
+saved as optimistic-concurrency revisions, verified, opened as a presentation page, and exported as
+HTML, JSON, or bounded editable PPTX. Spreadsheet and document imports remain honest generic Artifact
+views until their native editor slices land.
 
-Next: Windows Authenticode signing · richer cron policy UI · attachments · real Presentation,
-Spreadsheet, and Document render/edit/export slices · signed capability center. See
+Next: Windows Authenticode signing · richer cron policy UI · attachments · richer Presentation
+templates plus native Spreadsheet and Document render/edit/export slices · signed capability center. See
 [`docs/NOVICE_WORKBENCH_ARCHITECTURE.md`](./docs/NOVICE_WORKBENCH_ARCHITECTURE.md),
 [`docs/OFFICE_OPEN_CORE_EXECUTION_PLAN.md`](./docs/OFFICE_OPEN_CORE_EXECUTION_PLAN.md), and
 [`docs/OFFICE_TEMPLATE_COMPONENT_SYSTEM.md`](./docs/OFFICE_TEMPLATE_COMPONENT_SYSTEM.md).
@@ -95,8 +98,10 @@ places still preserve separate session ownership and density. Invariants:
   applicability, and binds the Extension Dock to one concrete project session. It receives no
   independent state, credential channel, auto-start, or badge semantics. A true primary plugin module
   still waits for the isolated Panel v2 contract.
-- Office Artifacts use that same owner-bound Extension Dock. Browser pages stay in the system browser
-  until a reviewed Browser surface can isolate origin, storage, navigation, and short-lived tokens.
+- Office Artifacts use that same owner-bound, multi-tab Extension Dock. A project agent may also show
+  an already-running Node/Vite/Next preview there, but only through a typed surface event and only for
+  credential-free `http://localhost`, `127.0.0.1`, or `[::1]` URLs with an explicit port. Arbitrary or
+  authenticated web pages stay in the system browser until the isolated Panel v2 contract exists.
 - One active desktop assistant conversation plus folded, switchable history; one thread per external
   origin (WeChat etc.), separated by the "external channels" divider.
 

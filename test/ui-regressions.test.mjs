@@ -827,11 +827,13 @@ test("the deliverables workbench stays serve-backed and native presentations use
     "artifact.export",
     "presentation.create",
     "presentation.import",
+    "presentation.update",
     "presentation.get",
     "presentation.validate",
     "presentation.preview",
     "presentation.preview-file",
     "presentation.export",
+    "presentation.render",
   ]) {
     assert.match(client, new RegExp(method.replace(".", "\\.")));
   }
@@ -855,8 +857,15 @@ test("the deliverables workbench stays serve-backed and native presentations use
   assert.match(app, /client\.exportArtifact\(\{/, "export authority remains in Hara Serve");
   assert.match(app, /client\.exportPresentation\(\{/, "editable PPTX and exact HTML export remain Serve-owned");
   assert.match(app, /openPath\(preview\.path\)/, "the browser opens only the private preview returned by Serve");
-  assert.match(presenter, /srcDoc=\{previewHtml\}/, "Desktop embeds the exact same HTML returned for browser/export");
-  assert.match(presenter, /sandbox="allow-scripts allow-modals"/, "the exact presenter remains sandboxed inside Desktop");
+  assert.match(presenter, /srcDoc=\{livePreview\}/, "Desktop embeds only HTML returned by the canonical saved or draft presenter");
+  assert.match(presenter, /sandbox="allow-scripts allow-modals allow-same-origin"/, "the exact presenter remains sandboxed inside Desktop");
+  assert.match(presenter, /<OfficeEditorShell/, "Presentation uses the reusable native Office editor shell");
+  assert.match(app, /client\.updatePresentation\(\{ artifactId, baseRevisionId, project \}\)/);
+  assert.match(app, /client\.renderPresentation\(project\)/);
+  assert.match(presenter, /onSave\(draft\)/, "saving the native editor creates a Serve-owned revision");
+  assert.match(app, /const presentationEditorTabId = activePresentation[\s\S]*contextExtensionDock\.id/);
+  assert.match(app, /updateExtensionTab\([\s\S]*state,[\s\S]*presentationEditorTabId,/, "dirty state follows the owner-scoped tab id");
+  assert.doesNotMatch(app, /`artifact:\$\{artifactId\}`/, "no legacy global Artifact tab id can migrate or orphan editor state");
   assert.match(presenter, /onExport\("pptx"\)/, "editable PPTX is a first-class export action");
   assert.doesNotMatch(workbench, /`\$\{copy\.verify\} · \$\{copy\.verified\}`/, "an unchecked revision is never labeled verified");
   assert.match(workbench, /artifact-preview-disclaimer/, "the decorative placeholder is explicitly labeled as not being a real layout preview");
@@ -925,7 +934,7 @@ test("disabled plugins cannot launch a panel from settings", () => {
 
   assert.match(directory, /plugin\.enabled && \(plugin\.panels \?\? \[\]\)\.map/);
   assert.match(app, /pluginsRef\.current\?\.find\(\(plugin\) => plugin\.name === pluginName\)\?\.enabled !== true/);
-  assert.match(app, /!enabled && extensionDock\?\.type === "legacy-panel" && extensionDock\.plugin === name/);
+  assert.match(app, /state\.tabs\s*\.filter\(\(tab\) => tab\.type === "legacy-panel" && tab\.plugin === name\)/);
   assert.match(app, /panels\.filter\(\(panel\) => panel\.plugin !== name\)/, "disabling a plugin evicts cached project panels");
   assert.match(app, /const plugin = pluginsRef\.current\?\.find/, "cached project panels are gated again before launch");
   assert.match(app, /className="ready-error" role="alert"/, "ready-state failures stay visible and dismissible");
@@ -943,8 +952,8 @@ test("plugin dock shortcuts stay default-hidden and reuse the project-authorized
   assert.match(app, /pluginNavigationContributions/);
   assert.match(app, /navigationContributions/);
   assert.match(app, /void openPanel\(plugin\.name, panel\)/);
-  assert.match(app, /extensionDock\.panelId === pluginContribution\.panelId/);
-  assert.match(app, /extensionDock\.owner\.sessionId === active/);
+  assert.match(app, /tab\.panelId === pluginContribution\.panelId/);
+  assert.match(app, /tab\.owner\.sessionId === active/);
   assert.match(app, /projectClient\.projectPanels\(\{ sessionId: projectSession\.id \}\)/);
   assert.match(modules, /item\.source === "core" \? copy\.core : copy\.plugin/);
   assert.match(directory, /panelInDock\(plugin\.name, panel\.id\)/);
@@ -957,7 +966,7 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   const css = readFileSync(`${root}/src/ExtensionDock.css`, "utf8");
   const host = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
 
-  assert.match(app, /extensionMatchesContext\(extensionDock/);
+  assert.match(app, /activeExtensionTabForContext\(extensionDockState, extensionContext\)/);
   assert.match(app, /sessionsRef\.current\.find\(\(session\) => session\.id === projectSessionId\)/);
   assert.match(app, /if \(!projectSession \|\| sessionPlace\(projectSession\) !== "projects"\)/);
   assert.match(app, /projectClient\.projectPanels\(\{ sessionId: projectSession\.id \}\)/);
@@ -970,9 +979,18 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   assert.match(app, /sessionOpenRequestRef\.current !== launchGeneration/);
   assert.match(app, /assertDirectPanelLaunchContext\(\);/);
   assert.match(app, /cwd: projectSession\.cwd/, "settings-launched panels inherit a real project owner");
-  assert.match(app, /detail=\{publicPanelOrigin\(panelExtension\.url\)/);
+  assert.match(app, /publicPanelOrigin\(\(panelExtension \?\? webPreviewExtension\)!\.url\)/);
   assert.doesNotMatch(app, />\{panelExtension\.url\}</, "paths, queries, and URL tokens never become visible chrome");
   assert.match(app, /referrerPolicy="no-referrer"/);
+  assert.match(app, /localWebPreviewUrl\(rawUrl\)/, "generic previews independently revalidate loopback URLs in Desktop");
+  assert.match(app, /sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"/);
+  assert.match(app, /tabs=\{dockTabs\}/, "owner-bound surfaces share one multi-tab Visual Dock");
+  assert.match(app, /activeExtensionTabForContext\(extensionDockStateRef\.current, ownerContext\)/);
+  assert.match(app, /sessionForeground && visibleExtension\?\.dirty !== true/, "agent results stay in a background tab while an editor is dirty");
+  assert.match(app, /window\.addEventListener\("beforeunload", preventAccidentalClose\)/, "closing Desktop cannot silently discard a dirty presentation");
+  assert.match(app, /const discardCurrentExtensionDraft = \(\): boolean =>/);
+  assert.match(dock, /role="tablist"/);
+  assert.match(dock, /aria-selected=\{tab\.id === activeTabId\}/);
   assert.match(app, /setArtifactRevisions\(revisionResult\.revisions\)/);
   assert.match(
     app,

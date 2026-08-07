@@ -753,6 +753,105 @@ button.deny {
   font-size: 14px;
   line-height: 1.75;
 }
+.workstarter-apps {
+  margin: 0 0 18px;
+  border: 1px solid #303036;
+  border-radius: 11px;
+  background: rgba(18, 18, 21, .94);
+  overflow: hidden;
+}
+.workstarter-section-head {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 13px;
+  border-bottom: 1px solid #2d2d32;
+  background: #151518;
+}
+.workstarter-section-head > div {
+  display: grid;
+  gap: 3px;
+}
+.workstarter-section-head span {
+  color: #d8d4cd;
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.workstarter-section-head small {
+  color: #74716c;
+  font-size: 10px;
+}
+.workstarter-section-head b {
+  color: #be6b58;
+  font: 650 9px/1 "SF Mono", ui-monospace, monospace;
+}
+.workstarter-app-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.workstarter-app-grid > button {
+  min-width: 0;
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-rows: 1fr auto;
+  align-items: start;
+  gap: 8px;
+  padding: 13px 12px 10px;
+  border: 0;
+  border-right: 1px solid #2c2c31;
+  border-radius: 0;
+  background: #121215;
+  color: #d6d2cb;
+  text-align: left;
+}
+.workstarter-app-grid > button:nth-child(4n) { border-right: 0; }
+.workstarter-app-grid > button:nth-child(n + 5) { border-top: 1px solid #2c2c31; }
+.workstarter-app-grid > button:hover:not(:disabled) {
+  filter: none;
+  background: #1a1a1e;
+  box-shadow: inset 0 -2px #d7543c;
+}
+.workstarter-app-grid > button:disabled { opacity: .42; }
+.workstarter-app-mark {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  grid-row: 1 / span 2;
+  place-items: center;
+  border: 1px solid #3a393f;
+  border-radius: 7px;
+  background: #1d1d21;
+  color: #be7665;
+}
+.workstarter-app-mark.is-browser { color: #72a3c9; }
+.workstarter-app-mark.is-design { color: #d468a1; }
+.workstarter-app-mark.is-project { color: #b59a67; }
+.workstarter-app-grid > button > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.workstarter-app-grid strong,
+.workstarter-app-grid small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workstarter-app-grid strong { font-size: 11px; font-weight: 650; }
+.workstarter-app-grid small { color: #77746f; font-size: 9px; }
+.workstarter-app-grid em {
+  grid-column: 2;
+  color: #65635f;
+  font: normal 8px/1.2 "SF Mono", ui-monospace, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .workstarter-compose {
   position: relative;
   background: #161619;
@@ -1065,6 +1164,11 @@ button.deny {
   .workstarter-grid {
     grid-template-columns: 1fr;
   }
+  .workstarter-app-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workstarter-app-grid > button:nth-child(2n) { border-right: 0; }
+  .workstarter-app-grid > button:nth-child(n + 3) { border-top: 1px solid #2c2c31; }
   .workstarter h1 {
     font-size: 32px;
   }

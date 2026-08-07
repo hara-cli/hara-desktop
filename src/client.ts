@@ -165,6 +165,7 @@ export interface PresentationProject {
   widthEmu: number;
   heightEmu: number;
   brief: Record<string, unknown>;
+  theme?: Record<string, unknown>;
   slides: PresentationSlide[];
 }
 
@@ -656,6 +657,15 @@ export type ServerEvent =
   | { method: "event.tool"; sessionId: string; name: string; preview: string }
   | { method: "event.diff"; sessionId: string; text: string }
   | { method: "event.notice"; sessionId: string; text: string }
+  | {
+      method: "event.surface";
+      sessionId: string;
+      kind: "presentation" | "spreadsheet" | "document" | "design" | "browser" | "capability";
+      title: string;
+      resource:
+        | { type: "artifact"; artifactId: string; revisionId: string }
+        | { type: "url"; url: string };
+    }
   | { method: "event.turn_end"; sessionId: string; reply: string; error?: string; status?: string; taskId?: string; turnId?: string; usage: { input: number; output: number }; ctx?: CtxInfo }
   | { method: "approval.request"; sessionId: string; approvalId: string; question: string; allowAlways?: boolean };
 
@@ -1008,6 +1018,13 @@ export class HaraClient {
   importPresentation(sourcePath: string, opts?: { title?: string }) {
     return this.call<PresentationArtifactDetails>("presentation.import", { sourcePath, ...(opts ?? {}) });
   }
+  updatePresentation(input: {
+    artifactId: string;
+    baseRevisionId: string;
+    project: PresentationProject;
+  }) {
+    return this.call<PresentationArtifactDetails>("presentation.update", input);
+  }
   getPresentation(artifactId: string, revisionId?: string) {
     return this.call<PresentationArtifactDetails>("presentation.get", {
       artifactId,
@@ -1025,6 +1042,9 @@ export class HaraClient {
     format: PresentationExportFormat;
   }) {
     return this.call<{ receipt: ArtifactExportReceipt }>("presentation.export", input);
+  }
+  renderPresentation(project: PresentationProject) {
+    return this.call<{ html: string }>("presentation.render", { project });
   }
   getPresentationPreview(artifactId: string, revisionId: string) {
     return this.call<{ html: string; revisionId: string }>("presentation.preview", { artifactId, revisionId });

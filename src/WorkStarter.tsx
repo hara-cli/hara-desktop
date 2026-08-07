@@ -21,6 +21,15 @@ export interface WorkStarterSubmission {
   attachments: ComposerAttachment[];
 }
 
+export interface WorkbenchApp {
+  id: string;
+  title: string;
+  description: string;
+  icon: "office" | "project" | "design" | "browser" | "capability";
+  source: string;
+  disabled?: boolean;
+}
+
 interface WorkStarterProps {
   locale: Locale;
   busy: boolean;
@@ -30,6 +39,8 @@ interface WorkStarterProps {
   onPasteImages: (event: React.ClipboardEvent<HTMLTextAreaElement>) => Promise<ComposerAttachment[]>;
   onDropPaths: (paths: string[]) => Promise<ComposerAttachment[]>;
   onOpenProject: () => void;
+  apps?: WorkbenchApp[];
+  onOpenApp?: (appId: string) => void;
 }
 
 interface WorkTemplate {
@@ -38,6 +49,14 @@ interface WorkTemplate {
   description: string;
   output: string;
   Icon: typeof IconPresentation;
+}
+
+function WorkbenchAppIcon({ icon }: { icon: WorkbenchApp["icon"] }) {
+  if (icon === "office") return <IconPresentation size={19} />;
+  if (icon === "project") return <IconFolder size={19} />;
+  if (icon === "design") return <IconImage size={19} />;
+  if (icon === "browser") return <IconSummary size={19} />;
+  return <IconDocument size={19} />;
 }
 
 const COPY = {
@@ -60,6 +79,9 @@ const COPY = {
     resetKind: "Use a general task instead",
     shortcut: "⌘ / Ctrl + Enter",
     choose: "Or start with a common job",
+    apps: "Apps & extensions",
+    appsHint: "Open a native work surface or a project-owned visual tool without leaving the workbench.",
+    unavailable: "Open a project first",
     files: "Work from existing files",
     filesHint: "Open a folder when the job depends on documents, sheets, images, or company material.",
     presentation: "Create a presentation",
@@ -95,6 +117,9 @@ const COPY = {
     resetKind: "切回通用任务",
     shortcut: "⌘ / Ctrl + Enter",
     choose: "也可以从常用工作开始",
+    apps: "应用与扩展",
+    appsHint: "从总工作台直接打开原生办公区或当前项目的可视化工具。",
+    unavailable: "请先打开项目",
     files: "从现有文件开始",
     filesHint: "需要处理文档、表格、图片或公司资料时，先打开它们所在的文件夹。",
     presentation: "做演示文稿",
@@ -122,6 +147,8 @@ export function WorkStarter({
   onPasteImages,
   onDropPaths,
   onOpenProject,
+  apps = [],
+  onOpenApp = () => {},
 }: WorkStarterProps) {
   const copy = COPY[locale];
   const [kind, setKind] = useState<WorkKind>("general");
@@ -235,6 +262,36 @@ export function WorkStarter({
         <h1 id="workstarter-title">{copy.title}</h1>
         <p>{copy.hint}</p>
       </div>
+
+      {apps.length > 0 && (
+        <section className="workstarter-apps" aria-labelledby="workstarter-apps-title">
+          <div className="workstarter-section-head">
+            <div>
+              <span id="workstarter-apps-title">{copy.apps}</span>
+              <small>{copy.appsHint}</small>
+            </div>
+            <b>{String(apps.length).padStart(2, "0")}</b>
+          </div>
+          <div className="workstarter-app-grid">
+            {apps.map((app) => (
+              <button
+                type="button"
+                key={app.id}
+                disabled={app.disabled}
+                title={app.disabled ? copy.unavailable : app.description}
+                onClick={() => onOpenApp(app.id)}
+              >
+                <span className={`workstarter-app-mark is-${app.icon}`}><WorkbenchAppIcon icon={app.icon} /></span>
+                <span>
+                  <strong>{app.title}</strong>
+                  <small>{app.description}</small>
+                </span>
+                <em>{app.disabled ? copy.unavailable : app.source}</em>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className={`workstarter-compose ${dragActive ? "drop-active" : ""}`}>
         {dragActive ? (

@@ -32,7 +32,16 @@ interface ExtensionDockProps {
   detail?: string | null;
   mode: ExtensionDockMode;
   loading?: boolean;
+  tabs?: Array<{
+    id: string;
+    title: string;
+    kind: ExtensionSurfaceKind;
+    dirty?: boolean;
+  }>;
+  activeTabId?: string | null;
   copy: ExtensionDockCopy;
+  onTabSelect?: (tabId: string) => void;
+  onTabClose?: (tabId: string) => void;
   onModeChange: (mode: ExtensionDockMode) => void;
   onPopOut?: () => void;
   onClose: () => void;
@@ -70,7 +79,11 @@ export default function ExtensionDock({
   detail,
   mode,
   loading = false,
+  tabs = [],
+  activeTabId = null,
   copy,
+  onTabSelect,
+  onTabClose,
   onModeChange,
   onPopOut,
   onClose,
@@ -117,7 +130,7 @@ export default function ExtensionDock({
   return (
     <aside
       ref={asideRef}
-      className={`extension-dock is-${mode}${resizing ? " is-resizing" : ""}`}
+      className={`extension-dock is-${mode}${resizing ? " is-resizing" : ""}${tabs.length > 0 ? " has-tabs" : ""}`}
       data-kind={kind}
       aria-label={`${copy.extension}: ${title}`}
       aria-busy={loading}
@@ -155,6 +168,40 @@ export default function ExtensionDock({
           }}
         >
           <span />
+        </div>
+      )}
+
+      {tabs.length > 0 && (
+        <div className="extension-dock-tabs" role="tablist" aria-label={copy.extension}>
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`extension-dock-tab${tab.id === activeTabId ? " is-active" : ""}`}
+              data-kind={tab.kind}
+            >
+              <button
+                type="button"
+                className="extension-dock-tab-select"
+                role="tab"
+                aria-selected={tab.id === activeTabId}
+                title={tab.title}
+                onClick={() => onTabSelect?.(tab.id)}
+              >
+                <i aria-hidden />
+                <span>{tab.title}</span>
+                {tab.dirty && <b aria-label="Unsaved changes">•</b>}
+              </button>
+              <button
+                type="button"
+                className="extension-dock-tab-close"
+                aria-label={`${copy.close}: ${tab.title}`}
+                title={copy.close}
+                onClick={() => onTabClose?.(tab.id)}
+              >
+                <DockIcon name="close" />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

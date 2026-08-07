@@ -28,6 +28,37 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
             <WorkStarter
               locale={params.get("locale") === "en" ? "en" : "zh"}
               busy={false}
+              apps={[
+                {
+                  id: "office",
+                  title: params.get("locale") === "en" ? "Office" : "办公",
+                  description: params.get("locale") === "en" ? "Presentations, sheets, and documents" : "演示文稿、表格与文档",
+                  icon: "office",
+                  source: "Hara",
+                },
+                {
+                  id: "project",
+                  title: params.get("locale") === "en" ? "Projects" : "项目",
+                  description: params.get("locale") === "en" ? "Code, files, and live preview" : "代码、文件与实时预览",
+                  icon: "project",
+                  source: "Hara",
+                },
+                {
+                  id: "browser",
+                  title: params.get("locale") === "en" ? "Web preview" : "网页预览",
+                  description: "localhost · HMR",
+                  icon: "browser",
+                  source: "browser",
+                },
+                {
+                  id: "design",
+                  title: params.get("locale") === "en" ? "Design" : "设计",
+                  description: params.get("locale") === "en" ? "Visual results and assets" : "视觉结果与素材",
+                  icon: "design",
+                  source: "design",
+                },
+              ]}
+              onOpenApp={() => {}}
               onStart={async () => {}}
               onPickFiles={async () => []}
               onPickDirectory={async () => []}

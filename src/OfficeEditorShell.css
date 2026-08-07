@@ -1,0 +1,71 @@
+.office-editor-shell {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: #0e1214;
+  color: #e9e6df;
+}
+
+.office-editor-toolbar,
+.office-editor-footer {
+  min-width: 0;
+  border-color: #282b2d;
+  background: #121719;
+}
+
+.office-editor-toolbar { border-bottom: 1px solid #282b2d; }
+.office-editor-footer { border-top: 1px solid #282b2d; }
+
+.office-editor-workspace {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: 154px minmax(260px, 1fr) 236px;
+  overflow: hidden;
+}
+
+.office-editor-rail,
+.office-editor-inspector {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: #111618;
+  scrollbar-width: thin;
+}
+
+.office-editor-rail { border-right: 1px solid #282d2f; }
+.office-editor-inspector { border-left: 1px solid #282d2f; }
+
+.office-editor-canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #0d1113;
+}
+
+@container extension-work (max-width: 960px) {
+  .office-editor-workspace {
+    grid-template-columns: 132px minmax(250px, 1fr);
+  }
+
+  .office-editor-inspector {
+    position: absolute;
+    z-index: 3;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(260px, 48%);
+    box-shadow: -16px 0 34px rgba(0, 0, 0, .28);
+  }
+}
+
+@container extension-work (max-width: 620px) {
+  .office-editor-workspace { grid-template-columns: 1fr; }
+  .office-editor-rail { display: none; }
+  .office-editor-inspector { display: none; }
+}

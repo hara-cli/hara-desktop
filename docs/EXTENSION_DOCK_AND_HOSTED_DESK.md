@@ -8,8 +8,9 @@ work surfaces, not six more primary destinations.
 
 ```text
 module dock → context sidebar → primary work ⇄ Extension Dock
+                                      Chat/Projects: Node preview / generated result
                                       Projects: Design / reviewed panels
-                                      Office: PPT / Excel / document Artifact
+                                      Office: native PPT / Excel / document Artifact
                                       Groups: organization Desk detail
                                       Chat: future browser/file result surfaces
 ```
@@ -32,32 +33,53 @@ at private UI internals:
 
 ```ts
 type ExtensionOwner =
-  | { place: "projects"; sessionId: string; cwd: string }
+  | { place: "chat" | "projects"; sessionId: string; cwd: string }
   | { place: "office"; artifactId: string; revisionId: string };
 ```
 
 A Project panel is visible only beside its exact session. An Office surface is visible only for its
 exact Artifact revision. Changing module, project, or organization cannot silently rebind the view.
-The dock supports a user-resizable wide layout, a focused layout, keyboard resize controls, and a
-full-width narrow-window fallback. Its width preference contains no content or identity.
+The dock supports bounded multi-tab state, adjacent close selection, dirty-tab protection, a
+user-resizable wide layout, a focused layout, keyboard resize controls, and a full-width
+narrow-window fallback. Tabs are scoped by owner, so opening one Artifact in Office and in two
+project sessions creates three independent views. Its width preference contains no content or identity.
 
 The first implementation intentionally supports only boundaries already present in the product:
 
-- **PPT / Excel / document**: the existing honest Artifact workbench is hosted by the dock. It still
-  says when high-fidelity preview/edit/export is unavailable and does not modify the imported source.
+- **PPT / Excel / document**: the Artifact workbench is hosted by the dock. Native Hara presentations
+  now use the reusable Office editor shell, exact canonical HTML preview, optimistic-concurrency save,
+  revision proof, and HTML/JSON/PPTX export. Spreadsheet and document Artifacts still say when native
+  preview/edit/export is unavailable and never pretend to have modified an imported source.
 - **Design and other local panels**: the existing verified local plugin launch path is hosted by the
   dock and bound to a real project session. Starting a panel from Settings without a project, or when
   Serve says its detection markers do not match that project, is rejected before the command runs.
   An enabled panel can also be explicitly shown as a default-hidden module-dock shortcut; that shortcut
   uses the same checked launch path and does not turn the legacy panel into an independent module.
-- **Browser**: existing links continue to open in the system browser, and the agent's browser tools
-  remain a separate approved capability. Hara does not iframe arbitrary authenticated sites.
+- **Browser**: an agent may offer an already-running project development server as a Web Preview tab.
+  CLI and Desktop independently require credential-free loopback HTTP with an explicit port. Existing
+  remote or authenticated links continue to open in the system browser; Hara does not iframe them.
 - **Organization Desk**: the existing native, profile-pinned read surface remains authoritative.
   Moving its task dossier into this dock is a later native refactor, not a web embed.
 
 Only a panel origin is shown in UI chrome. Paths, fragments, query parameters, URL credentials, raw
 commands, and Hara/organization tokens are never used as a title or persisted view preference.
 Invalid panel output is not echoed into renderer-visible errors.
+
+## Local Node preview flow
+
+The preview surface deliberately does not accept or execute a command. Command approval and process
+ownership remain in Hara's existing shell/job plane:
+
+1. Run the repository-approved Node/Vite/Next command with the `bash` tool and `background: true`,
+   binding it to `127.0.0.1` (or another exact loopback host) on an explicit port.
+2. Poll the returned Hara job until its readiness output is visible and verify the loopback URL.
+3. Call `visual_preview` with that URL and a short title. Serve emits owner-bound `event.surface`;
+   Desktop validates the URL again and opens or activates the matching Web Preview tab.
+4. Hot-module reload continues inside the WebView while the job runs. Closing a tab only closes the
+   view; stop the process explicitly through the Hara `job` tool so process lifecycle remains auditable.
+
+This path is for the user's local project output, not general browsing. URLs with HTTPS, a remote host,
+userinfo credentials, no explicit port, `file:`, or `javascript:` are rejected before navigation.
 
 ## Panel v2 boundary
 

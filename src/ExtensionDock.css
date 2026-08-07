@@ -72,6 +72,119 @@
   background: rgba(17, 17, 20, 0.94);
 }
 
+.extension-dock-tabs {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  min-width: 0;
+  height: 34px;
+  gap: 2px;
+  align-items: end;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 8px 0;
+  border-bottom: 1px solid #29272d;
+  background: #0d0d10;
+  scrollbar-width: thin;
+}
+
+.extension-dock-tab {
+  --tab-tone: #8d7aae;
+  display: flex;
+  min-width: 112px;
+  max-width: 220px;
+  height: 29px;
+  align-items: center;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  color: #77746f;
+}
+
+.extension-dock-tab[data-kind="presentation"] { --tab-tone: #db644d; }
+.extension-dock-tab[data-kind="spreadsheet"] { --tab-tone: #5f9c78; }
+.extension-dock-tab[data-kind="document"] { --tab-tone: #b8a074; }
+.extension-dock-tab[data-kind="design"] { --tab-tone: #dc5b45; }
+.extension-dock-tab[data-kind="browser"] { --tab-tone: #5c91bd; }
+
+.extension-dock-tab:hover {
+  background: #17161a;
+  color: #b9b5ae;
+}
+
+.extension-dock-tab.is-active {
+  border-color: #343139;
+  background: #19181c;
+  color: #ece8e1;
+  box-shadow: inset 0 2px var(--tab-tone);
+}
+
+.extension-dock-tab-select {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  padding: 0 5px 0 9px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.extension-dock-tab-select i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: var(--tab-tone);
+}
+
+.extension-dock-tab-select span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extension-dock-tab-select b {
+  color: var(--tab-tone);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.extension-dock-tab-close {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  flex: 0 0 auto;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #77746f;
+  cursor: pointer;
+}
+
+.extension-dock-tab-close:hover,
+.extension-dock-tab-close:focus-visible {
+  background: #29272d;
+  color: #e9e5de;
+}
+
+.extension-dock-tab-close svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
 .extension-dock-identity {
   display: flex;
   min-width: 0;
@@ -179,6 +292,10 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.extension-dock.has-tabs .extension-dock-body {
+  inset-block-start: 88px;
 }
 
 .extension-dock-body > iframe {
