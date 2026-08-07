@@ -25,6 +25,7 @@ import {
 import { canUseRosettaSmoke } from "../scripts/sidecar-smoke.mjs";
 import { isTransientCodesignTimestampFailure } from "../scripts/codesign-timestamp-retry.mjs";
 import { isTransientGitHubReleaseTransferFailure } from "../scripts/github-release-transfer-retry.mjs";
+import { reconcileReleaseDownloadCache } from "../scripts/release-download-cache.mjs";
 import {
   buildMirrorManifest,
   validateMirrorManifest,
@@ -477,10 +478,22 @@ test("signed Tauri bundling retries only bounded Apple signing-service transport
     ),
     true,
   );
+  assert.equal(
+    isTransientCodesignTimestampFailure(
+      'failed codesign application: failed to notarize app: Error: HTTPError(statusCode: nil, error: Error Domain=NSURLErrorDomain Code=-1001 "The request timed out." UserInfo={NSErrorFailingURLStringKey=https://appstoreconnect.apple.com/notary/v2/submissions?})',
+    ),
+    true,
+  );
   assert.equal(isTransientCodesignTimestampFailure("codesign: errSecInternalComponent"), false);
   assert.equal(isTransientCodesignTimestampFailure("Developer ID signing identity was not found"), false);
   assert.equal(
     isTransientCodesignTimestampFailure("failed to notarize app: Invalid bundle signature"),
+    false,
+  );
+  assert.equal(
+    isTransientCodesignTimestampFailure(
+      "NSURLErrorDomain Code=-1001 request timed out\nfailed to notarize app: Invalid bundle signature",
+    ),
     false,
   );
 
@@ -492,7 +505,7 @@ test("signed Tauri bundling retries only bounded Apple signing-service transport
   assert.doesNotMatch(script, /--timestamp(?:=none|\s+none)|APPLE_SIGNING_IDENTITY=""/);
 });
 
-test("release asset transfers retry only bounded GitHub transport failures from clean staging", () => {
+test("release asset transfers retry only bounded GitHub transport failures with a verified cache", () => {
   assert.equal(
     isTransientGitHubReleaseTransferFailure(
       "read tcp 198.18.15.206:57233->185.199.110.133:443: read: connection reset by peer",
@@ -532,6 +545,10 @@ test("release asset transfers retry only bounded GitHub transport failures from 
   assert.match(script, /mktemp -d "\$WORK\/release-download\.XXXXXX"/);
   assert.match(script, /chmod 600 "\$log"/);
   assert.match(script, /github-release-transfer-retry\.mjs "\$log"/);
+  assert.match(script, /release view "\$TAG" -R "\$REPO" --json assets/);
+  assert.match(script, /release-download-cache\.mjs "\$metadata" "\$stage"/);
+  assert.match(script, /--skip-existing/);
+  assert.match(script, /--complete/);
   assert.match(script, /release_download_all "\$ASSET_DIR" "hidden draft download"/);
   assert.match(script, /release_download_all "\$REMOTE_DIR" "signed draft verification download"/);
   assert.match(script, /release_download_all "\$PUBLIC_DIR" "public immutable release download"/);
@@ -547,7 +564,42 @@ test("release asset transfers retry only bounded GitHub transport failures from 
     /retrying the complete clobber set/,
     "a partial upload must never replay all signed assets",
   );
-  assert.match(script, /retrying from a fresh private staging directory/);
+  assert.match(script, /retrying with only digest-verified completed assets/);
+  assert.doesNotMatch(script, /retrying from a fresh private staging directory/);
+});
+
+test("release download cache retains only exact GitHub-declared bytes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "hara-release-download-cache-"));
+  try {
+    const alpha = Buffer.from("complete alpha asset\n");
+    const beta = Buffer.from("complete beta asset\n");
+    const metadata = {
+      assets: [
+        { name: "alpha.bin", size: alpha.length, digest: `sha256:${sha256(alpha)}` },
+        { name: "beta.bin", size: beta.length, digest: `sha256:${sha256(beta)}` },
+      ],
+    };
+    writeFileSync(join(directory, "alpha.bin"), alpha);
+    writeFileSync(join(directory, "beta.bin"), "partial");
+    writeFileSync(join(directory, "unexpected.tmp"), "partial response");
+
+    assert.deepEqual(reconcileReleaseDownloadCache(directory, metadata), { expected: 2, retained: 1 });
+    assert.equal(existsSync(join(directory, "alpha.bin")), true);
+    assert.equal(existsSync(join(directory, "beta.bin")), false);
+    assert.equal(existsSync(join(directory, "unexpected.tmp")), false);
+    assert.throws(
+      () => reconcileReleaseDownloadCache(directory, metadata, { complete: true }),
+      /cache is incomplete: beta\.bin/,
+    );
+
+    writeFileSync(join(directory, "beta.bin"), beta);
+    assert.deepEqual(
+      reconcileReleaseDownloadCache(directory, metadata, { complete: true }),
+      { expected: 2, retained: 2 },
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("Apple staple validation retries only bounded transient service failures", () => {

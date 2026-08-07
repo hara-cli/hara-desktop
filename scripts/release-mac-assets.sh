@@ -81,20 +81,32 @@ readonly RELEASE_TRANSFER_ATTEMPTS=3
 release_download_all() {
   local target="$1"
   local label="$2"
-  local attempt stage log
+  local attempt stage log metadata metadata_next
+  stage="$(mktemp -d "$WORK/release-download.XXXXXX")"
+  metadata="$(mktemp "$WORK/release-assets.XXXXXX")"
+  metadata_next="$(mktemp "$WORK/release-assets-next.XXXXXX")"
+  chmod 600 "$metadata" "$metadata_next"
   for ((attempt = 1; attempt <= RELEASE_TRANSFER_ATTEMPTS; attempt++)); do
-    stage="$(mktemp -d "$WORK/release-download.XXXXXX")"
     log="$(mktemp "$WORK/release-download-log.XXXXXX")"
     chmod 600 "$log"
-    if release_gh release download "$TAG" -R "$REPO" --dir "$stage" >"$log" 2>&1; then
+    if release_gh release view "$TAG" -R "$REPO" --json assets >"$metadata_next" 2>"$log" &&
+      chmod 600 "$metadata_next" &&
+      mv "$metadata_next" "$metadata" &&
+      metadata_next="$(mktemp "$WORK/release-assets-next.XXXXXX")" &&
+      chmod 600 "$metadata_next" &&
+      node scripts/release-download-cache.mjs "$metadata" "$stage" >>"$log" 2>&1 &&
+      release_gh release download "$TAG" -R "$REPO" --dir "$stage" --skip-existing >>"$log" 2>&1 &&
+      node scripts/release-download-cache.mjs "$metadata" "$stage" --complete >>"$log" 2>&1; then
       cat "$log"
       rm -rf "$target"
       mv "$stage" "$target"
-      rm -f "$log"
+      rm -f "$log" "$metadata" "$metadata_next"
       return 0
     fi
+    if [ -s "$metadata" ]; then
+      node scripts/release-download-cache.mjs "$metadata" "$stage" >>"$log" 2>&1 || true
+    fi
     cat "$log" >&2
-    rm -rf "$stage"
     if ! node scripts/github-release-transfer-retry.mjs "$log"; then
       rm -f "$log"
       echo "error: $label failed without a retryable GitHub transport error" >&2
@@ -106,7 +118,7 @@ release_download_all() {
       return 1
     fi
     rm -f "$log"
-    echo "warning: $label hit a transient GitHub transport failure ($attempt/$RELEASE_TRANSFER_ATTEMPTS); retrying from a fresh private staging directory" >&2
+    echo "warning: $label hit a transient GitHub transport failure ($attempt/$RELEASE_TRANSFER_ATTEMPTS); retrying with only digest-verified completed assets" >&2
     sleep $((attempt * 5))
   done
 }

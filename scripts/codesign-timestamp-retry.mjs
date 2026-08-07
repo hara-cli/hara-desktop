@@ -10,16 +10,22 @@ const MAX_LOG_BYTES = 8 * 1024 * 1024;
 const EXPLICIT_TIMESTAMP_TRANSIENT =
   /A timestamp was expected but was not found|timestamp(?:ing)? (?:service|server).{0,120}(?:not available|unavailable|temporarily unavailable|timed out|timeout|could not connect|connection (?:failed|reset|lost))/is;
 const NETWORK_TRANSIENT =
-  /NSURLErrorDomain|kCFErrorDomainCFNetwork|network connection was lost|Internet connection appears to be offline|TLS handshake|request timed out|could not connect to (?:the )?server/i;
+  /HTTPClientError\.(?:connectTimeout|readTimeout)|NSURLErrorDomain|kCFErrorDomainCFNetwork|network connection was lost|Internet connection appears to be offline|TLS handshake|request timed out|could not connect to (?:the )?server/i;
 // Tauri submits the signed app to Apple's notary service inside the same bundle command. Retry only
-// the narrow pre-submission transport timeout observed before Apple returns a submission id; an Apple
-// rejection, invalid ticket, authentication error, or any other notarization failure remains terminal.
-const NOTARY_CONNECT_TRANSIENT =
-  /failed to notarize (?:app|application): Error: HTTPClientError\.connectTimeout/i;
+// a transport failure reported inside that notarization error; an Apple rejection, invalid ticket,
+// authentication error, or any other notarization failure remains terminal.
+const NOTARY_FAILURE = /failed to notarize (?:app|application)/i;
+const NOTARY_CONTEXT_BYTES = 8 * 1024;
 
 export function isTransientCodesignTimestampFailure(value) {
   const text = String(value ?? "");
-  if (NOTARY_CONNECT_TRANSIENT.test(text)) return true;
+  const notaryFailureIndex = text.search(NOTARY_FAILURE);
+  if (
+    notaryFailureIndex >= 0 &&
+    NETWORK_TRANSIENT.test(text.slice(notaryFailureIndex, notaryFailureIndex + NOTARY_CONTEXT_BYTES))
+  ) {
+    return true;
+  }
   if (EXPLICIT_TIMESTAMP_TRANSIENT.test(text)) return true;
   if (!/timestamp/i.test(text)) return false;
   return NETWORK_TRANSIENT.test(text);
