@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.64 — 2026-08-07 — reliable actions and data-first debugging
+
+- Open explicit local-folder requests directly in Finder or the platform file manager through Hara's
+  dedicated, path-safe `open_directory` capability. The action no longer falls into task intake or the
+  repeated-failure breaker, while generic shell commands keep their existing safety gates.
+- Guide debugging turns to validate real inputs and observable state before editing the reported
+  function, then trace missing values through callers and data construction. One ineffective symptom
+  edit now triggers upstream data-flow inspection instead of repeated rewrites of the same function.
+- Harden the protected release lane against transient Apple notarization URL timeouts and interrupted
+  GitHub asset downloads. Retries remain bounded, rebuild signed bundles cleanly, and retain downloaded
+  files only after GitHub-declared size and SHA-256 validation; no unsigned or unchecked fallback exists.
+- Bundle Hara CLI `0.142.2` at exact verified commit
+  `4281e7c360d69f2c9313b5c2e56c172cd277f513`. This release supersedes the unpublished 0.1.63
+  candidate. Existing conversations, projects, organization connections, schedules, Artifacts,
+  presentations, and local files require no migration. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.63 — 2026-08-07 — reliable directory opening
 
 - Open local folders through Hara's dedicated `open_directory` capability, so requests such as
