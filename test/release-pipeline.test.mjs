@@ -542,6 +542,10 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   const script = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
   assert.match(script, /readonly RELEASE_TRANSFER_ATTEMPTS=3/);
   assert.match(script, /attempt <= RELEASE_TRANSFER_ATTEMPTS/g);
+  assert.match(script, /release_view_with_retry\(\)/);
+  assert.match(script, /release state read hit a transient GitHub transport failure/);
+  assert.match(script, /RELEASE_STATE="\$\(release_view_with_retry --json isDraft,isPrerelease/);
+  assert.match(script, /release_view_with_retry --json isDraft --jq \.isDraft/g);
   assert.match(script, /mktemp -d "\$WORK\/release-download\.XXXXXX"/);
   assert.match(script, /chmod 600 "\$log"/);
   assert.match(script, /github-release-transfer-retry\.mjs "\$log"/);

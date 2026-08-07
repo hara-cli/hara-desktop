@@ -43,6 +43,33 @@ esac
 release_gh() {
   GH_TOKEN="$RELEASE_GH_TOKEN" command gh "$@"
 }
+release_view_with_retry() {
+  local attempt output log
+  for ((attempt = 1; attempt <= RELEASE_TRANSFER_ATTEMPTS; attempt++)); do
+    log="$(mktemp "$WORK/release-view-log.XXXXXX")"
+    chmod 600 "$log"
+    if output="$(release_gh release view "$TAG" -R "$REPO" "$@" 2>"$log")"; then
+      [ ! -s "$log" ] || cat "$log" >&2
+      rm -f "$log"
+      printf '%s\n' "$output"
+      return 0
+    fi
+    cat "$log" >&2
+    if ! node scripts/github-release-transfer-retry.mjs "$log"; then
+      rm -f "$log"
+      echo "error: release state read failed without a retryable GitHub transport error" >&2
+      return 1
+    fi
+    if [ "$attempt" -eq "$RELEASE_TRANSFER_ATTEMPTS" ]; then
+      rm -f "$log"
+      echo "error: release state read exhausted $RELEASE_TRANSFER_ATTEMPTS transient GitHub transport attempts" >&2
+      return 1
+    fi
+    rm -f "$log"
+    echo "warning: release state read hit a transient GitHub transport failure ($attempt/$RELEASE_TRANSFER_ATTEMPTS); retrying" >&2
+    sleep $((attempt * 5))
+  done
+}
 require_immutable_releases() {
   [ -n "$RELEASE_POLICY_TOKEN" ] || {
     echo "error: protected HARA_RELEASE_POLICY_TOKEN is required to verify immutable releases" >&2
@@ -257,7 +284,7 @@ REMOTE_CLI_COMMIT="$(node scripts/resolve-remote-tag.mjs ../hara-cli origin "$CL
 # If the original promotion crossed the public/immutable boundary and only a later CDN check failed,
 # rerunning the failed signing job must verify the already-public release instead of trying to mutate
 # it or reporting a false failure. Source/tag/policy checks above still run before this branch.
-RELEASE_STATE="$(release_gh release view "$TAG" -R "$REPO" --json isDraft,isPrerelease --jq '[.isDraft, .isPrerelease] | @tsv')" || {
+RELEASE_STATE="$(release_view_with_retry --json isDraft,isPrerelease --jq '[.isDraft, .isPrerelease] | @tsv')" || {
   echo "error: release $TAG is missing" >&2
   exit 1
 }
@@ -350,7 +377,7 @@ done
   exit 1
 }
 
-[ "$(release_gh release view "$TAG" -R "$REPO" --json isDraft --jq .isDraft)" = "true" ] || {
+[ "$(release_view_with_retry --json isDraft --jq .isDraft)" = "true" ] || {
   echo "error: $TAG is not a hidden draft; refusing to overwrite a public release" >&2
   exit 1
 }
@@ -396,7 +423,7 @@ for arch in aarch64 x64; do
   HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-dmg-smoke.mjs \
     "$remote_dmg" "$remote_target" --require-signatures
 done
-[ "$(release_gh release view "$TAG" -R "$REPO" --json isDraft --jq .isDraft)" = "true" ] || {
+[ "$(release_view_with_retry --json isDraft --jq .isDraft)" = "true" ] || {
   echo "error: draft state changed during signed-asset verification" >&2
   exit 1
 }
