@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Do not inherit a hosted runner's machine-level npm mirror.
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+
 concurrency:
   group: hara-desktop-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

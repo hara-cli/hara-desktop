@@ -1011,6 +1011,11 @@ test("release workflows pin every external action and the exact Rust toolchain",
     const checkoutCount = (workflow.match(/uses: actions\/checkout@/g) || []).length;
     const nonPersistentCheckoutCount = (workflow.match(/persist-credentials: false/g) || []).length;
     assert.equal(nonPersistentCheckoutCount, checkoutCount, "every checkout must remove its Git credential");
+    assert.match(
+      workflow,
+      /NPM_CONFIG_REGISTRY:\s*https:\/\/registry\.npmjs\.org\//,
+      "workflow must ignore machine-level npm mirrors",
+    );
   }
   assert.match(
     releaseWorkflow,

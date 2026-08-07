@@ -12,6 +12,9 @@ permissions:
 
 env:
   RELEASE_TAG: ${{ github.ref_name }}
+  # Hosted runners can carry a machine-level npm mirror. Release inputs must come from the same
+  # official registry used by the audit and local preflight, independent of runner image defaults.
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
   # GitHub's numeric user ID is immutable across username changes. Keep this in source so an
   # ordinary repository writer cannot broaden the stable-tag bypass set at release time.
   HARA_RELEASE_ADMIN_ID: "23243740"
