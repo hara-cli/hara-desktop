@@ -1016,7 +1016,14 @@ test("release workflows pin every external action and the exact Rust toolchain",
       /NPM_CONFIG_REGISTRY:\s*https:\/\/registry\.npmjs\.org\//,
       "workflow must ignore machine-level npm mirrors",
     );
+    assert.match(
+      workflow,
+      /NPM_CONFIG_REPLACE_REGISTRY_HOST:\s*always/,
+      "workflow must replace registry hosts embedded in lockfiles",
+    );
   }
+  const lock = readFileSync(join(root, "package-lock.json"), "utf8");
+  assert.doesNotMatch(lock, /registry\.npmmirror\.com|npmmirror/);
   assert.match(
     releaseWorkflow,
     new RegExp(`toolchain: ["']?${rustVersion.replaceAll(".", "\\.")}["']?`),
