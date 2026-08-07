@@ -1167,6 +1167,14 @@ test("every x64 sidecar uses a baseline CPU target and executes the hostile-cwd 
   }
 });
 
+test("sidecar smoke bounds retries for transient Windows cleanup locks", () => {
+  const smoke = readFileSync(join(root, "scripts/sidecar-smoke.mjs"), "utf8");
+  assert.match(
+    smoke,
+    /rmSync\(smokeHome,\s*\{[\s\S]*?recursive:\s*true,[\s\S]*?force:\s*true,[\s\S]*?maxRetries:\s*10,[\s\S]*?retryDelay:\s*200,[\s\S]*?\}\)/,
+  );
+});
+
 test("sidecar refresh accepts both normal repositories and linked Git worktrees", () => {
   const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
   assert.match(refresh, /git -C "\$CLI" rev-parse --is-inside-work-tree/);

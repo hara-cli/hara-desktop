@@ -402,7 +402,15 @@ export function smokeSidecar({ binary, expectedVersion, expectedTarget = nativeT
       }
     }
   } finally {
-    rmSync(smokeHome, { recursive: true, force: true });
+    // Windows can retain a just-exited sidecar's directory handle for a short time (for example
+    // while Defender finishes inspecting the executable). Node's recursive removal can retry the
+    // documented transient EBUSY/ENOTEMPTY/EPERM cases without hiding a persistent cleanup failure.
+    rmSync(smokeHome, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 200,
+    });
   }
 
   const execution = translated ? "translated via Rosetta on Apple Silicon" : "natively";

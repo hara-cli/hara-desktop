@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.61 — 2026-08-07 — reliable directory opening
+## 0.1.62 — 2026-08-07 — reliable directory opening
 
 - Open local folders through Hara's dedicated `open_directory` capability, so requests such as
   “把文件目录打开” reach Finder or the platform file manager directly instead of being misclassified as
