@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.61 — 2026-08-07 — reliable directory opening
+
+- Open local folders through Hara's dedicated `open_directory` capability, so requests such as
+  “把文件目录打开” reach Finder or the platform file manager directly instead of being misclassified as
+  an opaque Bash command that requires task intake or trips the repeated-failure breaker.
+- Bundle Hara CLI `0.142.1` at exact verified commit
+  `a872aa3d6e3677427f92cd796521fffaf8ea318b`. Existing conversations, projects, organization
+  connections, schedules, Artifacts, presentations, and local files require no migration. Windows
+  packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.60 — 2026-08-07 — native presentation workbench
 
 - Add Presentation as a preinstalled Hara capability with a dedicated right-side workbench. Generated
