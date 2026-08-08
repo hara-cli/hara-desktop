@@ -22,6 +22,7 @@ const BLOCK_TYPES = [
 
 const STRING_BLOCKS = new Set(["heading", "text", "quote", "callout"]);
 const THEME_PRESETS = ["editorial", "midnight", "signal", "calm"] as const;
+const TEMPLATE_PRESETS = ["pitch", "report", "technical", "visual"] as const;
 const CHART_TYPES = ["bar", "line", "area", "pie", "doughnut"] as const;
 let editorIdSequence = 0;
 
@@ -61,10 +62,17 @@ export interface PresentationWorkbenchCopy {
   themeMidnight: string;
   themeSignal: string;
   themeCalm: string;
+  template: string;
+  templatePitch: string;
+  templateReport: string;
+  templateTechnical: string;
+  templateVisual: string;
   takeaway: string;
   claim: string;
   notes: string;
   inspector: string;
+  inspectorShow: string;
+  inspectorHide: string;
   blocks: string;
   addBlock: string;
   deleteBlock: string;
@@ -82,6 +90,7 @@ export interface PresentationWorkbenchCopy {
   applyJson: string;
   invalidJson: string;
   previewError: string;
+  layoutError: string;
 }
 
 interface PresentationWorkbenchProps {
@@ -208,15 +217,22 @@ export default function PresentationWorkbench({
   const [selectedBlockId, setSelectedBlockId] = useState(details.project.slides[0]?.blocks[0]?.id ?? "");
   const [dirty, setDirty] = useState(false);
   const [mode, setMode] = useState<"edit" | "present">("edit");
+  const [inspectorOpen, setInspectorOpen] = useState(true);
   const [livePreview, setLivePreview] = useState<string | null>(previewHtml);
   const [rendering, setRendering] = useState(false);
+  const [layoutChecked, setLayoutChecked] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [layoutError, setLayoutError] = useState("");
   const [literalText, setLiteralText] = useState("");
   const [literalError, setLiteralError] = useState("");
   const renderSequenceRef = useRef(0);
   const renderDraftRef = useRef(onRenderDraft);
   const dirtyChangeRef = useRef(onDirtyChange);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const layoutListenerRef = useRef<{
+    window: Window;
+    listener: EventListener;
+  } | null>(null);
 
   const selectedSlideIndex = Math.max(0, draft.slides.findIndex((slide) => slide.id === selectedSlideId));
   const selectedSlide = draft.slides[selectedSlideIndex] ?? draft.slides[0];
@@ -224,11 +240,17 @@ export default function PresentationWorkbench({
     ?? selectedSlide?.blocks[0];
   const validated = validationReport?.revisionId === revisionId
     && validationReport.snapshotDigest === details.content.sha256
-    && validationReport.status === "pass";
+    && validationReport.status === "pass"
+    && layoutChecked
+    && !layoutError;
   const themePreset = typeof draft.theme?.preset === "string"
     && THEME_PRESETS.includes(draft.theme.preset as typeof THEME_PRESETS[number])
     ? draft.theme.preset
     : "editorial";
+  const templatePreset = typeof draft.template?.preset === "string"
+    && TEMPLATE_PRESETS.includes(draft.template.preset as typeof TEMPLATE_PRESETS[number])
+    ? draft.template.preset
+    : "pitch";
   const selectedChart = selectedBlock?.type === "chart"
     ? editableChart(selectedBlock.literal)
     : null;
@@ -252,6 +274,8 @@ export default function PresentationWorkbench({
     setDirty(false);
     setLivePreview(previewHtml);
     setPreviewError("");
+    setLayoutError("");
+    setLayoutChecked(false);
     setLiteralError("");
   }, [details.artifact.artifactId, revisionId]);
 
@@ -312,6 +336,52 @@ export default function PresentationWorkbench({
     }
   };
 
+  const syncPreviewLayoutStatus = () => {
+    try {
+      const slides = [...(frameRef.current?.contentDocument?.querySelectorAll<HTMLElement>(
+        ".slide[data-layout-status]",
+      ) ?? [])];
+      if (slides.length === 0 || slides.some((slide) => slide.dataset.layoutStatus === "pending")) {
+        setLayoutChecked(false);
+        return;
+      }
+      const failedSlides = slides.filter((slide) => slide.dataset.layoutStatus === "fail");
+      setLayoutChecked(true);
+      if (failedSlides.length === 0) {
+        setLayoutError("");
+        return;
+      }
+      const evidence = failedSlides.map((slide) => {
+        const number = slide.dataset.slide ?? "?";
+        const findings = slide.dataset.layoutFindings || "LAYOUT_CHECK_FAILED";
+        return `#${number} · ${findings}`;
+      }).join("; ");
+      setLayoutError(`${copy.layoutError} ${evidence}`);
+    } catch {
+      setLayoutChecked(true);
+      setLayoutError(copy.layoutError);
+    }
+  };
+
+  const handlePreviewLoad = () => {
+    setLayoutChecked(false);
+    showSelectedPreviewSlide();
+    const frameWindow = frameRef.current?.contentWindow;
+    const previous = layoutListenerRef.current;
+    if (previous) previous.window.removeEventListener("hara:presentation-layout", previous.listener);
+    if (frameWindow) {
+      const listener: EventListener = () => syncPreviewLayoutStatus();
+      frameWindow.addEventListener("hara:presentation-layout", listener);
+      layoutListenerRef.current = { window: frameWindow, listener };
+    }
+    window.setTimeout(syncPreviewLayoutStatus, 80);
+  };
+
+  useEffect(() => () => {
+    const previous = layoutListenerRef.current;
+    if (previous) previous.window.removeEventListener("hara:presentation-layout", previous.listener);
+  }, []);
+
   useEffect(showSelectedPreviewSlide, [livePreview, selectedSlideIndex]);
 
   const updateDraft = (next: PresentationProject) => {
@@ -319,6 +389,8 @@ export default function PresentationWorkbench({
     setDraft(next);
     setDirty(true);
     setPreviewError("");
+    setLayoutError("");
+    setLayoutChecked(false);
   };
 
   const updateSlide = (patch: Partial<PresentationSlide>) => {
@@ -388,7 +460,7 @@ export default function PresentationWorkbench({
   };
 
   const addBlock = () => {
-    if (!selectedSlide) return;
+    if (!selectedSlide || selectedSlide.blocks.length >= 7) return;
     const block: PresentationBlock = { id: nextId("text"), type: "text", literal: "New content" };
     updateSlide({ blocks: [...selectedSlide.blocks, block] });
     setSelectedBlockId(block.id);
@@ -459,8 +531,10 @@ export default function PresentationWorkbench({
 
   const presenter = (
     <div className="presentation-stage">
-      {(rendering || loading) && <div className="presentation-render-state"><i />{copy.loading}</div>}
-      {previewError && <div className="presentation-preview-error" role="alert">{previewError}</div>}
+      {(rendering || loading || !layoutChecked) && <div className="presentation-render-state"><i />{copy.loading}</div>}
+      {(previewError || layoutError) && (
+        <div className="presentation-preview-error" role="alert">{previewError || layoutError}</div>
+      )}
       {livePreview ? (
         <iframe
           ref={frameRef}
@@ -472,7 +546,7 @@ export default function PresentationWorkbench({
           allow="fullscreen"
           allowFullScreen
           referrerPolicy="no-referrer"
-          onLoad={showSelectedPreviewSlide}
+          onLoad={handlePreviewLoad}
         />
       ) : (
         <div className="presentation-preview-loading" role="status"><i /><span>{copy.loading}</span></div>
@@ -486,6 +560,21 @@ export default function PresentationWorkbench({
       <label>
         <span>{copy.deckTitle}</span>
         <input value={draft.title} maxLength={500} onChange={(event) => updateDraft({ ...draft, title: event.target.value })} />
+      </label>
+      <label>
+        <span>{copy.template}</span>
+        <select
+          value={templatePreset}
+          onChange={(event) => updateDraft({
+            ...draft,
+            template: { ...(draft.template ?? {}), preset: event.target.value },
+          })}
+        >
+          <option value="pitch">{copy.templatePitch}</option>
+          <option value="report">{copy.templateReport}</option>
+          <option value="technical">{copy.templateTechnical}</option>
+          <option value="visual">{copy.templateVisual}</option>
+        </select>
       </label>
       <label>
         <span>{copy.theme}</span>
@@ -518,7 +607,7 @@ export default function PresentationWorkbench({
           </label>
           <div className="presentation-block-heading">
             <span>{copy.blocks}</span>
-            <button type="button" onClick={addBlock}>{copy.addBlock}</button>
+            <button type="button" disabled={selectedSlide.blocks.length >= 7} onClick={addBlock}>{copy.addBlock}</button>
           </div>
           <div className="presentation-block-list">
             {selectedSlide.blocks.map((block, index) => (
@@ -583,7 +672,7 @@ export default function PresentationWorkbench({
                   onChange={(event) => updateChart({
                     ...selectedChart,
                     categories: event.target.value.split("\n")
-                      .map((item) => item.trim()).filter(Boolean).slice(0, 32),
+                      .map((item) => item.trim()).filter(Boolean).slice(0, 12),
                   })}
                 />
               </label>
@@ -591,7 +680,7 @@ export default function PresentationWorkbench({
                 <span>{copy.chartSeries}</span>
                 <button
                   type="button"
-                  disabled={selectedChart.series.length >= 8}
+                  disabled={selectedChart.series.length >= 6}
                   onClick={() => updateChart({
                     ...selectedChart,
                     series: [...selectedChart.series, {
@@ -629,7 +718,7 @@ export default function PresentationWorkbench({
                               values: event.target.value.split(/[\n,]/u)
                                 .map((itemValue) => Number(itemValue.trim()))
                                 .filter(Number.isFinite)
-                                .slice(0, 32),
+                                .slice(0, 12),
                             }
                           : item),
                       })}
@@ -716,6 +805,17 @@ export default function PresentationWorkbench({
         <span className={dirty ? "is-dirty" : ""}>{dirty ? copy.unsaved : copy.saved}</span>
       </div>
       <div className="presentation-workbench-actions">
+        {mode === "edit" && (
+          <button
+            type="button"
+            className="presentation-inspector-toggle"
+            aria-pressed={inspectorOpen}
+            title={inspectorOpen ? copy.inspectorHide : copy.inspectorShow}
+            onClick={() => setInspectorOpen((value) => !value)}
+          >
+            <span aria-hidden>▥</span>{inspectorOpen ? copy.inspectorHide : copy.inspectorShow}
+          </button>
+        )}
         <div className="presentation-mode-switch" role="group" aria-label={copy.presenter}>
           <button type="button" className={mode === "edit" ? "is-active" : ""} onClick={() => setMode("edit")}>{copy.edit}</button>
           <button type="button" className={mode === "present" ? "is-active" : ""} onClick={() => setMode("present")}>{copy.present}</button>
@@ -723,12 +823,17 @@ export default function PresentationWorkbench({
         <button
           type="button"
           className="presentation-save"
-          disabled={!dirty || saving || rendering || Boolean(literalError) || Boolean(previewError)}
+          disabled={!dirty || saving || rendering || !layoutChecked || Boolean(literalError) || Boolean(previewError) || Boolean(layoutError)}
           onClick={() => void onSave(draft).then((saved) => saved && setDirty(false))}
         >
           {saving ? copy.saving : copy.save}
         </button>
-        <button type="button" className="presentation-browser" disabled={loading || dirty} onClick={onOpenBrowser}>
+        <button
+          type="button"
+          className="presentation-browser"
+          disabled={loading || dirty || !layoutChecked || Boolean(layoutError)}
+          onClick={onOpenBrowser}
+        >
           <span aria-hidden>▣</span>{copy.openBrowser}
         </button>
       </div>
@@ -741,7 +846,7 @@ export default function PresentationWorkbench({
         <button
           type="button"
           className={validated ? "is-verified" : ""}
-          disabled={verifying || exporting || loading || dirty}
+          disabled={verifying || exporting || loading || dirty || !layoutChecked || Boolean(layoutError)}
           onClick={onVerify}
         >
           <span aria-hidden>{verifying ? "◌" : validated ? "✓" : "○"}</span>
@@ -757,13 +862,13 @@ export default function PresentationWorkbench({
         <button type="button" disabled={exporting || loading || dirty} onClick={() => onExport("json")}>{copy.exportJson}</button>
         <button
           type="button"
-          disabled={exporting || loading || dirty || !livePreview}
+          disabled={exporting || loading || dirty || !livePreview || !layoutChecked || Boolean(layoutError)}
           onClick={() => frameRef.current?.contentWindow?.print()}
         >
           {copy.exportPdf}
         </button>
-        <button type="button" disabled={exporting || loading || dirty} onClick={() => onExport("html")}>{copy.exportHtml}</button>
-        <button type="button" className="is-primary" disabled={exporting || loading || dirty} onClick={() => onExport("pptx")}>
+        <button type="button" disabled={exporting || loading || dirty || !layoutChecked || Boolean(layoutError)} onClick={() => onExport("html")}>{copy.exportHtml}</button>
+        <button type="button" className="is-primary" disabled={exporting || loading || dirty || !layoutChecked || Boolean(layoutError)} onClick={() => onExport("pptx")}>
           <span aria-hidden>{exporting ? "◌" : "⇩"}</span>
           {exporting ? copy.exporting : copy.exportPptx}
         </button>
@@ -774,7 +879,7 @@ export default function PresentationWorkbench({
   return (
     <OfficeEditorShell
       ariaLabel={copy.presenter}
-      className={`presentation-workbench${mode === "present" ? " is-presenting" : ""}`}
+      className={`presentation-workbench${mode === "present" ? " is-presenting" : ""}${inspectorOpen ? " is-inspector-open" : " is-inspector-closed"}`}
       toolbar={toolbar}
       rail={slideRail}
       canvas={presenter}

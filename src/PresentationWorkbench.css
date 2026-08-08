@@ -8,6 +8,12 @@
 .presentation-workbench.is-presenting .office-editor-rail,
 .presentation-workbench.is-presenting .office-editor-inspector { display: none; }
 
+.presentation-workbench.is-inspector-closed .office-editor-workspace {
+  grid-template-columns: 154px minmax(260px, 1fr);
+}
+
+.presentation-workbench.is-inspector-closed .office-editor-inspector { display: none; }
+
 .presentation-workbench-bar {
   display: grid;
   min-width: 0;
@@ -523,6 +529,24 @@
   .presentation-export-bar { grid-template-columns: 1fr; }
   .presentation-export-actions { justify-content: stretch; }
   .presentation-export-actions button { flex: 1; }
+}
+
+@container extension-dock (max-width: 960px) {
+  .presentation-workbench.is-inspector-closed .office-editor-workspace {
+    grid-template-columns: 116px minmax(220px, 1fr);
+  }
+}
+
+@container extension-dock (max-width: 620px) {
+  .presentation-workbench.is-inspector-open .office-editor-canvas { display: none; }
+  .presentation-workbench.is-inspector-open .office-editor-inspector {
+    position: static;
+    display: block;
+    width: auto;
+    border-left: 0;
+    box-shadow: none;
+  }
+  .presentation-workbench.is-inspector-closed .office-editor-canvas { display: block; }
 }
 
 @media (prefers-reduced-motion: reduce) {

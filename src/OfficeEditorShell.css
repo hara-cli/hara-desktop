@@ -50,17 +50,7 @@
 
 @container extension-dock (max-width: 960px) {
   .office-editor-workspace {
-    grid-template-columns: 132px minmax(250px, 1fr);
-  }
-
-  .office-editor-inspector {
-    position: absolute;
-    z-index: 3;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: min(260px, 48%);
-    box-shadow: -16px 0 34px rgba(0, 0, 0, .28);
+    grid-template-columns: 116px minmax(220px, 1fr) 220px;
   }
 }
 

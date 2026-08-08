@@ -9,11 +9,14 @@ export interface Discovery {
   version: string;
 }
 
+export type ApprovalMode = "suggest" | "auto-edit" | "full-auto";
+
 export interface SessionInfo {
   id: string;
   title: string;
   cwd: string;
   model: string;
+  approval?: ApprovalMode;
   /** Identity route persisted by Hara serve. Missing only for older engine/session files. */
   profileId?: string;
   updatedAt: string;
@@ -166,6 +169,7 @@ export interface PresentationProject {
   heightEmu: number;
   brief: Record<string, unknown>;
   theme?: Record<string, unknown>;
+  template?: Record<string, unknown>;
   slides: PresentationSlide[];
 }
 
@@ -571,6 +575,7 @@ export interface ReadOnlySessionResult {
   cwd: string;
   model: string;
   profileId?: string;
+  approval?: ApprovalMode;
   history: ClientHistoryMessage[];
   readOnly: true;
 }
@@ -777,8 +782,8 @@ export class HaraClient {
   listSessions(cwd?: string) {
     return this.call<{ sessions: SessionInfo[] }>("session.list", cwd ? { cwd } : {});
   }
-  createSession(opts?: { cwd?: string; approval?: string }) {
-    return this.call<{ sessionId: string; model: string; profileId?: string }>("session.create", opts ?? {});
+  createSession(opts?: { cwd?: string; approval?: ApprovalMode }) {
+    return this.call<{ sessionId: string; model: string; profileId?: string; approval?: ApprovalMode }>("session.create", opts ?? {});
   }
   listPlugins() {
     return this.call<{ plugins: PluginInfo[] }>("plugins.list", {});
@@ -1052,14 +1057,21 @@ export class HaraClient {
   createPresentationPreviewFile(artifactId: string, revisionId: string) {
     return this.call<{ path: string; revisionId: string }>("presentation.preview-file", { artifactId, revisionId });
   }
-  resumeSession(sessionId: string) {
+  resumeSession(sessionId: string, legacyApproval?: ApprovalMode) {
     return this.call<{
       sessionId: string;
       model: string;
       profileId?: string;
+      approval?: ApprovalMode;
       history: ClientHistoryMessage[];
       task?: { id: string; objective: string; status: Exclude<TaskLifecycleState, "waiting">; turnId: string; updatedAt: string };
-    }>("session.resume", { sessionId });
+    }>("session.resume", { sessionId, ...(legacyApproval ? { approval: legacyApproval } : {}) });
+  }
+  setSessionApproval(sessionId: string, approval: ApprovalMode) {
+    return this.call<{ sessionId: string; approval: ApprovalMode }>("session.set-approval", {
+      sessionId,
+      approval,
+    });
   }
   readSession(sessionId: string) {
     return this.call<ReadOnlySessionResult>("session.history", { sessionId });

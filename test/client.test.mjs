@@ -46,6 +46,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
               methods: [
                 "session.send",
                 "session.steer",
+                "session.set-approval",
                 "artifact.import",
                 "artifact.list",
                 "artifact.validate",
@@ -145,6 +146,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   await client.connect("127.0.0.1", 4242);
   await client.initialize("redacted-token");
   assert.equal(client.supports("session.steer"), true);
+  assert.equal(client.supports("session.set-approval"), true);
   assert.equal(client.supports("artifact.import"), true);
   assert.equal(client.supports("artifact.validate"), true);
   assert.equal(client.supports("artifact.export"), true);
@@ -353,6 +355,14 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
       destinationPath: "/workspace/release-review.pptx",
       format: "pptx",
     },
+  });
+
+  await client.setSessionApproval("session-1", "full-auto");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 19,
+    method: "session.set-approval",
+    params: { sessionId: "session-1", approval: "full-auto" },
   });
 
   let received;

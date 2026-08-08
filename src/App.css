@@ -2057,7 +2057,8 @@ select {
   font-size: 9px;
   font-weight: 700;
 }
-.effort-select {
+.effort-select,
+.approval-select {
   height: 30px;
   max-width: 150px;
   border-color: transparent;
@@ -2065,9 +2066,15 @@ select {
   color: var(--dim);
 }
 .effort-select:hover,
-.effort-select:focus {
+.effort-select:focus,
+.approval-select:hover,
+.approval-select:focus {
   border-color: var(--border);
   color: var(--fg);
+}
+.approval-select.is-full-auto {
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--accent);
 }
 .model-change-status {
   max-width: 245px;

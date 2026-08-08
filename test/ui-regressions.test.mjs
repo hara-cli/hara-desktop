@@ -241,7 +241,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(app, /answered: "expired"/, "turn end retires legacy approvals");
   assert.match(app, /requeueFrontOnBusy: true/, "a drained message retains FIFO order if the engine is still busy");
   assert.match(app, /position === "front" \? \[input, \.\.\.current\]/);
-  assert.match(app, /!attachedSessionsRef\.current\.has\(sessionId\)[\s\S]*const resumed = await c\.resumeSession\(sessionId\)/, "cold companion sends attach persisted sessions first");
+  assert.match(app, /!attachedSessionsRef\.current\.has\(sessionId\)[\s\S]*const resumed = await c\.resumeSession\(sessionId, defaultApproval \|\| undefined\)/, "cold companion sends attach persisted sessions first with the legacy approval migration hint");
   assert.match(app, /resolveOptimisticUser\(items, removed\.id, false\)/, "canceling a queue item removes its never-persisted optimistic transcript entry");
   assert.match(app, /persistedUserTurnsFrom\(items, i\)/, "rewind counts only server-persisted user turns");
   assert.match(app, /const pendingSendDispatchesRef = useRef/, "accepted sends are tracked until their matching turn settles");
@@ -269,7 +269,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   const retryEnd = app.indexOf("/** Submit against the authoritative execution plane", retryStart);
   const retryFlow = app.slice(retryStart, retryEnd);
   assert.ok(
-    retryFlow.indexOf("await c.resumeSession(sessionId)") <
+    retryFlow.indexOf("await c.resumeSession(sessionId, defaultApproval || undefined)") <
       retryFlow.indexOf("latest.filter"),
     "a reconnect retry attaches the persisted session before removing its queue item",
   );
@@ -386,6 +386,11 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.match(app, /role="group"\s+aria-labelledby=/, "settings navigation groups have accessible names");
   assert.match(app, /htmlFor="hara-default-approval"/);
   assert.match(app, /id="hara-default-approval"/);
+  assert.match(app, /clientRef\.current\?\.supports\("session\.set-approval"\)/, "the composer feature-detects per-conversation permission switching");
+  assert.match(app, /className=\{`approval-select/, "the active conversation exposes its current permission mode beside model controls");
+  assert.match(app, /resumeSession\(id, defaultApproval \|\| undefined\)/, "legacy conversations migrate the user's explicit Desktop approval default once");
+  assert.match(app, /rememberSessionApproval\(sessionId, resumed\.approval\)/, "reconnects render the approval mode restored by Serve");
+  assert.match(css, /\.approval-select\.is-full-auto/, "full-auto remains visually distinguishable without a blocking modal");
   assert.match(css, /\.settings-page-head/);
   assert.match(css, /\.settings-card/);
   assert.match(css, /\.setnav-label/);
@@ -725,7 +730,7 @@ test("an unavailable pinned conversation falls back to local read-only history a
 
   assert.match(client, /readSession\(sessionId: string\)[\s\S]*"session\.history"/);
   assert.match(client, /targetProfileId: string;[\s\S]*targetModel: string;[\s\S]*transferHistory: true/);
-  assert.match(app, /await c\.resumeSession\(id\)[\s\S]*await c\.readSession\(id\)/);
+  assert.match(app, /await c\.resumeSession\(id, defaultApproval \|\| undefined\)[\s\S]*await c\.readSession\(id\)/);
   assert.match(app, /setSessionReadOnly\(id, \{ reason \}\)/);
   assert.match(app, /当前仅查看本地历史/);
   assert.match(app, /选择连接并携带上下文继续/);
@@ -840,6 +845,8 @@ test("the deliverables workbench stays serve-backed and native presentations use
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const workbench = readFileSync(`${root}/src/ArtifactWorkbench.tsx`, "utf8");
   const presenter = readFileSync(`${root}/src/PresentationWorkbench.tsx`, "utf8");
+  const presenterCss = readFileSync(`${root}/src/PresentationWorkbench.css`, "utf8");
+  const officeEditorCss = readFileSync(`${root}/src/OfficeEditorShell.css`, "utf8");
   const embeddedBrowser = readFileSync(`${root}/src/EmbeddedBrowserSurface.tsx`, "utf8");
   const office = readFileSync(`${root}/src/OfficeHome.tsx`, "utf8");
   const extensionState = readFileSync(`${root}/src/extension-dock-state.ts`, "utf8");
@@ -922,7 +929,16 @@ test("the deliverables workbench stays serve-backed and native presentations use
   assert.doesNotMatch(app, /`artifact:\$\{artifactId\}`/, "no legacy global Artifact tab id can migrate or orphan editor state");
   assert.match(presenter, /onExport\("pptx"\)/, "editable PPTX is a first-class export action");
   assert.match(presenter, /CHART_TYPES/, "native chart variants are edited as structured data");
+  assert.match(presenter, /TEMPLATE_PRESETS/, "layout templates are edited independently from color themes");
+  assert.match(presenter, /template:\s*\{\s*\.\.\.\(draft\.template \?\? \{\}\),\s*preset: event\.target\.value/u, "template selection remains structured source data");
   assert.match(presenter, /presentation-chart-series/, "chart series have a dedicated editor instead of raw JSON only");
+  assert.match(presenter, /\.slide\[data-layout-status\]/, "Desktop reads the final geometry result from the canonical presenter");
+  assert.match(presenter, /slide\.dataset\.layoutStatus === "fail"/, "failed geometry is separated from pending and passing states");
+  assert.match(presenter, /Boolean\(layoutError\)/, "a failed final layout check blocks saving");
+  assert.match(presenter, /hara:presentation-layout/, "Desktop observes late font and resize layout audits");
+  assert.doesNotMatch(officeEditorCss, /@container extension-dock \(max-width: 960px\)[\s\S]*?position:\s*absolute/, "the inspector never covers the preview at ordinary dock widths");
+  assert.match(presenterCss, /is-inspector-closed/, "the properties pane can be explicitly hidden");
+  assert.match(presenterCss, /is-inspector-open \.office-editor-canvas \{ display: none; \}/, "very narrow docks switch surfaces instead of overlaying them");
   assert.match(presenter, /contentWindow\?\.print\(\)/, "PDF export uses the exact embedded presenter print surface");
   assert.match(app, /invoke<string>\("read_presentation_image"/, "image imports cross a bounded native command");
   assert.match(nativeHost, /MAX_PRESENTATION_IMAGE_BYTES/, "native image reads are size bounded");

@@ -23,6 +23,7 @@ import {
   HaraClient,
   supportsNativePresentationWorkspace,
   type Discovery,
+  type ApprovalMode,
   type SessionInfo,
   type ServerEvent,
   type PluginInfo,
@@ -465,6 +466,10 @@ type StagedModelChange = {
 };
 type ModelChangeFlushResult = "none" | "applied" | "deferred" | "failed";
 
+const APPROVAL_MODES: readonly ApprovalMode[] = ["suggest", "auto-edit", "full-auto"];
+const parseApprovalMode = (value: string | null): ApprovalMode | "" =>
+  APPROVAL_MODES.includes(value as ApprovalMode) ? value as ApprovalMode : "";
+
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
 /** Junk cwd guard: sessions left behind by tests/one-offs in OS temp dirs are NOT projects. */
 const isJunkCwd = (cwd: string): boolean =>
@@ -843,7 +848,8 @@ export default function App() {
     }
     return info;
   }, []);
-  const [defaultApproval, setDefaultApproval] = useState<string>(() => localStorage.getItem("hara.approval") || "");
+  const [defaultApproval, setDefaultApproval] = useState<ApprovalMode | "">(() =>
+    parseApprovalMode(localStorage.getItem("hara.approval")));
   const [executionViewMode, setExecutionViewMode] = useState<ExecutionViewMode>(() =>
     parseExecutionViewMode(localStorage.getItem(EXECUTION_VIEW_PREFERENCE_KEY)));
   const [err, setErr] = useState("");
@@ -1134,6 +1140,13 @@ export default function App() {
     const place = sessionPlace(session);
     if (place === "chat" || place === "projects") activeByZoneRef.current[place] = id;
   };
+  const rememberSessionApproval = useCallback((sessionId: string, approval?: ApprovalMode) => {
+    if (!approval) return;
+    const next = sessionsRef.current.map((session) =>
+      session.id === sessionId ? { ...session, approval } : session);
+    sessionsRef.current = next;
+    setSessions(next);
+  }, []);
   const activateSession = (id: string, hint?: SessionPlaceInput) => {
     const session = hint ?? sessionsRef.current.find((candidate) => candidate.id === id);
     if (session) rememberSession(id, session);
@@ -1944,9 +1957,10 @@ export default function App() {
       if (!attachedSessionsRef.current.has(sessionId)) {
         // A reconnect invalidates every live serve attachment. Keep the queue item until resume has
         // succeeded so NO_SESSION can never turn a visible retry into dropped work.
-        const resumed = await c.resumeSession(sessionId);
+        const resumed = await c.resumeSession(sessionId, defaultApproval || undefined);
         if (clientRef.current !== c) throw new Error("Hara engine reconnected; retry the message again");
         attachedSessionsRef.current.add(sessionId);
+        rememberSessionApproval(sessionId, resumed.approval);
         const currentTranscripts = transcriptsRef.current;
         const nextTranscripts = {
           ...currentTranscripts,
@@ -1987,7 +2001,7 @@ export default function App() {
     } finally {
       retryingQueuedInputsRef.current.delete(retryKey);
     }
-  }, [hydrateLegacyTaskState, notePet, push, sendText]);
+  }, [defaultApproval, hydrateLegacyTaskState, notePet, push, rememberSessionApproval, sendText]);
 
   /** Submit against the authoritative execution plane. A live turn receives real `session.steer`;
    * only the end-of-turn race falls back to the visible queue, so user input is never rejected or lost. */
@@ -3046,8 +3060,9 @@ export default function App() {
       return;
     }
     try {
-      const r = await c.resumeSession(id);
+      const r = await c.resumeSession(id, defaultApproval || undefined);
       attachedSessionsRef.current.add(id);
+      rememberSessionApproval(id, r.approval);
       setSessionReadOnly(id, null);
       setErr("");
       hydrateLegacyTaskState(c, id, r.task);
@@ -4112,8 +4127,9 @@ export default function App() {
     if (!live && !attachedSessionsRef.current.has(sessionId)) {
       // session.list contains persisted metadata, not a live serve attachment. Resume before the
       // companion dispatches so a cold Desktop start cannot acknowledge a doomed NO_SESSION send.
-      const resumed = await c.resumeSession(sessionId);
+      const resumed = await c.resumeSession(sessionId, defaultApproval || undefined);
       attachedSessionsRef.current.add(sessionId);
+      rememberSessionApproval(sessionId, resumed.approval);
       hydrateLegacyTaskState(c, sessionId, resumed.task);
       loadHistory(sessionId, resumed.history);
     }
@@ -4188,6 +4204,33 @@ export default function App() {
             : `Unexpected model switch error: ${error?.message ?? error}`,
         }]);
       }
+    }
+  };
+
+  const changeApproval = async (approval: ApprovalMode) => {
+    const client = clientRef.current;
+    const sessionId = activeRef.current;
+    if (!client || !sessionId) return;
+    if (!client.supports("session.set-approval")) {
+      setErr(locale === "zh"
+        ? "当前 Hara 引擎不支持会话权限切换，请先更新 Desktop。"
+        : "This Hara engine does not support per-conversation permission switching. Update Desktop first.");
+      return;
+    }
+    if (busyRef.current[sessionId]) {
+      setErr(locale === "zh"
+        ? "当前任务仍在执行，请在本轮结束后切换权限模式。"
+        : "The current task is still running. Change permission mode after this turn finishes.");
+      return;
+    }
+    try {
+      const result = await client.setSessionApproval(sessionId, approval);
+      rememberSessionApproval(sessionId, result.approval);
+      setErr("");
+    } catch (error: any) {
+      setErr(locale === "zh"
+        ? `权限模式切换失败：${error?.message ?? error}`
+        : `Permission mode switch failed: ${error?.message ?? error}`);
     }
   };
 
@@ -4713,6 +4756,7 @@ export default function App() {
     <input id="haraSearch" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} spellCheck={false} />
   );
   const activeSession = sessions.find((s) => s.id === active);
+  const activeApproval: ApprovalMode = (activeSession?.approval ?? defaultApproval) || "auto-edit";
   const activeComposerWorkObject = active ? visibleSessionWorkObject(active) : null;
   const items = active ? (transcripts[active] ?? []) : [];
   const modelEntries = [...new Set([
@@ -5524,6 +5568,24 @@ export default function App() {
                     )}
                   </div>
                 )}
+                {activeSession
+                  && !isAutomated(activeSession)
+                  && clientRef.current?.supports("session.set-approval") && (
+                  <select
+                    className={`approval-select${activeApproval === "full-auto" ? " is-full-auto" : ""}`}
+                    aria-label={locale === "zh" ? "当前会话权限模式" : "Current conversation permission mode"}
+                    title={locale === "zh"
+                      ? "只影响当前会话；完全自动仍保留受保护路径、屏幕控制和外部扩展的安全授权。"
+                      : "Affects this conversation only. Full auto keeps protected-path, screen-control, and external-extension security grants."}
+                    value={activeApproval}
+                    disabled={!!activeReadOnlySession || !!busy[activeSession.id]}
+                    onChange={(event) => void changeApproval(event.target.value as ApprovalMode)}
+                  >
+                    <option value="suggest">{locale === "zh" ? "权限 · 逐次确认" : "Permissions · Ask"}</option>
+                    <option value="auto-edit">{locale === "zh" ? "权限 · 自动编辑" : "Permissions · Auto edit"}</option>
+                    <option value="full-auto">{locale === "zh" ? "权限 · 完全自动" : "Permissions · Full auto"}</option>
+                  </select>
+                )}
                 {active && activeModelInfo && activeComposerEffortLevels.length > 0 && (
                   <select
                     className={`effort-select ${activeStagedModelChange ? "staged" : ""}`}
@@ -6148,10 +6210,17 @@ export default function App() {
           themeMidnight: t("presentationThemeMidnight"),
           themeSignal: t("presentationThemeSignal"),
           themeCalm: t("presentationThemeCalm"),
+          template: t("presentationTemplate"),
+          templatePitch: t("presentationTemplatePitch"),
+          templateReport: t("presentationTemplateReport"),
+          templateTechnical: t("presentationTemplateTechnical"),
+          templateVisual: t("presentationTemplateVisual"),
           takeaway: t("presentationTakeaway"),
           claim: t("presentationClaim"),
           notes: t("presentationNotes"),
           inspector: t("presentationInspector"),
+          inspectorShow: t("presentationInspectorShow"),
+          inspectorHide: t("presentationInspectorHide"),
           blocks: t("presentationBlocks"),
           addBlock: t("presentationAddBlock"),
           deleteBlock: t("presentationDeleteBlock"),
@@ -6169,6 +6238,7 @@ export default function App() {
           applyJson: t("presentationApplyJson"),
           invalidJson: t("presentationInvalidJson"),
           previewError: t("presentationPreviewError"),
+          layoutError: t("presentationLayoutError"),
         }}
       />
     </Suspense>
@@ -6897,8 +6967,9 @@ export default function App() {
                     id="hara-default-approval"
                     value={defaultApproval}
                     onChange={(e) => {
-                      setDefaultApproval(e.target.value);
-                      localStorage.setItem("hara.approval", e.target.value);
+                      const approval = parseApprovalMode(e.target.value);
+                      setDefaultApproval(approval);
+                      localStorage.setItem("hara.approval", approval);
                     }}
                   >
                     <option value="">{t("approvalDefault")}</option>

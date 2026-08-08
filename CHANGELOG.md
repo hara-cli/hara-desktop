@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.66 — 2026-08-09 — layout-safe presentations and durable permissions
+
+- Measure the final presentation DOM after fonts and wrapping settle. Title/content collisions,
+  block overlap, clipping, overflow, and safe-area violations now produce localized slide findings;
+  saving a version, verification, browser/PDF output, HTML, and PPTX export remain blocked until the
+  exact draft passes. JSON stays available as the recoverable canonical source.
+- Make pitch, report, technical, and visual true layout templates independent from color themes.
+  Keep the native bar, line, area, pie, and doughnut chart editor bounded to readable category and
+  series limits, and surface the same density rules before a draft can become a valid revision.
+- Keep the presentation inspector as a real third workbench column at ordinary widths. It can be
+  shown or hidden explicitly; on very narrow windows it replaces the canvas stage instead of
+  overlaying controls or squeezing the slide into a misleading miniature.
+- Add a conversation-scoped permission selector beside the composer for ask-each-time, automatic
+  editing, and full-auto. The selected mode is persisted by the engine and survives Desktop
+  reconnects and engine restarts; protected paths, screen-control grants, external extensions, and
+  explicit deny rules still retain mandatory approval boundaries.
+- Bundle Hara CLI `0.144.1` at exact verified commit
+  `2c0c9fba736dfd30792040bfadea5f6ea5d8cc08`, including Presentation kernel
+  `0.1.0-alpha.7`. Existing conversations, projects, organization connections, schedules,
+  Artifacts, presentations, and local files require no migration. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.65 — 2026-08-08 — editable presentations and a visual workbench
 
 - Make native Hara presentations a complete editable Desktop surface: create or import a structured
