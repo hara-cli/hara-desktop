@@ -15,10 +15,60 @@ import {
   extensionMatchesContext,
   extensionTabsForContext,
   localWebPreviewUrl,
+  messageWithActiveWorkObject,
+  nativePresentationRevisionFromTurn,
+  presentationBrowserTabId,
   publicPanelOrigin,
+  reviewTabId,
   upsertExtensionTab,
   webPreviewTabId,
+  workbenchToolTabId,
 } from "../src/extension-dock-state.ts";
+import { userVisibleTaskText, userVisibleText } from "../src/user-visible-text.ts";
+
+test("renderer routing envelopes never enter visible conversation or progress text", () => {
+  const wrapped = [
+    "[HARA_DESKTOP_ACTIVE_WORK_OBJECT",
+    "kind=presentation",
+    "intent=apply_user_request_to_active_visible_object",
+    "artifact_id=art_0123456789abcdef",
+    "revision_id=rev_0123456789abcdef",
+    "]",
+    "",
+    "把第三页标题改短",
+  ].join("\n");
+
+  assert.equal(userVisibleText(wrapped), "把第三页标题改短");
+  assert.equal(userVisibleTaskText(wrapped, "正在执行"), "把第三页标题改短");
+  assert.equal(
+    userVisibleTaskText("[HARA_DESKTOP_ACTIVE_WORK_OBJECT\nkind=presentation", "正在执行"),
+    "正在执行",
+  );
+  assert.doesNotMatch(userVisibleTaskText(wrapped, "正在执行"), /HARA_DESKTOP|revision_id/);
+});
+
+test("surface recovery accepts only the current native revision authored by this session", () => {
+  const startedAt = Date.parse("2026-08-08T10:00:00.000Z");
+  const artifact = {
+    kind: "presentation",
+    extension: ".hpres",
+    mediaType: "application/vnd.nanhara.presentation+json",
+    currentRevisionId: "rev-current",
+    updatedAt: "2026-08-08T10:00:02.000Z",
+  };
+  const revisions = [{
+    revisionId: "rev-current",
+    taskRunId: "session-current",
+    createdAt: "2026-08-08T10:00:01.000Z",
+  }];
+  assert.equal(
+    nativePresentationRevisionFromTurn(artifact, revisions, "session-current", startedAt),
+    revisions[0],
+  );
+  assert.equal(nativePresentationRevisionFromTurn(artifact, revisions, "other-session", startedAt), null);
+  assert.equal(nativePresentationRevisionFromTurn({ ...artifact, extension: ".pptx" }, revisions, "session-current", startedAt), null);
+  assert.equal(nativePresentationRevisionFromTurn({ ...artifact, currentRevisionId: "rev-other" }, revisions, "session-current", startedAt), null);
+});
 
 test("extension surfaces classify presentation, spreadsheet, document, design, and browser panels", () => {
   assert.equal(classifyPanelSurface("design", "design-preview", "Design"), "design");
@@ -98,6 +148,10 @@ test("the same Artifact keeps independent Office and session-owned tab identitie
       place: "projects", sessionId: "session-a", cwd: "/project/a", artifactId, revisionId: "rev_other",
     }),
   );
+  assert.notEqual(
+    presentationBrowserTabId(artifactId, revisionId, { place: "office", artifactId, revisionId }),
+    office,
+  );
 });
 
 test("localhost WebView previews require HTTP, loopback, credentials-free, explicit ports", () => {
@@ -117,6 +171,73 @@ test("localhost WebView previews require HTTP, loopback, credentials-free, expli
   assert.equal(
     webPreviewTabId("session-a", "http://localhost:5173/a"),
     webPreviewTabId("session-a", "http://localhost:5173/a"),
+  );
+});
+
+test("Workbench tool and Review tabs stay scoped to one session", () => {
+  assert.equal(workbenchToolTabId("session-a", "terminal"), "tool:session-a:terminal");
+  assert.equal(workbenchToolTabId("session-a", "browser"), "tool:session-a:browser");
+  assert.equal(workbenchToolTabId("session-a", "files"), "tool:session-a:files");
+  assert.notEqual(workbenchToolTabId("session-a", "files"), workbenchToolTabId("session-b", "files"));
+  assert.equal(reviewTabId("session-a"), "review:session-a:changes");
+});
+
+test("chat targets the selected work object with bounded private metadata", () => {
+  const presentation = {
+    type: "artifact",
+    id: "artifact:project:session-a:art_safe",
+    title: "Private board title",
+    surfaceKind: "presentation",
+    owner: {
+      place: "projects",
+      sessionId: "session-a",
+      cwd: "/private/customer-project",
+      artifactId: "art_0123456789abcdef",
+      revisionId: "rev_0123456789abcdef",
+    },
+    mode: "docked",
+  };
+  const message = messageWithActiveWorkObject(presentation, "把第二页标题改短");
+  assert.match(message, /^\[HARA_DESKTOP_ACTIVE_WORK_OBJECT\nkind=presentation\n/);
+  assert.match(message, /artifact_id=art_0123456789abcdef/);
+  assert.match(message, /revision_id=rev_0123456789abcdef/);
+  assert.match(message, /\]\n\n把第二页标题改短$/);
+  assert.doesNotMatch(message, /Private board title|customer-project/);
+
+  const browserTab = {
+    type: "presentation-browser",
+    id: presentationBrowserTabId(
+      presentation.owner.artifactId,
+      presentation.owner.revisionId,
+      presentation.owner,
+    ),
+    title: "Private board title · Browser",
+    surfaceKind: "browser",
+    owner: presentation.owner,
+    mode: "docked",
+  };
+  assert.equal(extensionMatchesContext(browserTab, { place: "projects", sessionId: "session-a" }), true);
+  assert.match(messageWithActiveWorkObject(browserTab, "全屏播放"), /kind=browser[\s\S]*artifact_id=art_/);
+
+  const browser = {
+    type: "web-preview",
+    id: "preview:session-a:safe",
+    title: "Local app",
+    surfaceKind: "browser",
+    url: "http://localhost:5173/private/path?token=redacted#state",
+    owner: { place: "projects", sessionId: "session-a", cwd: "/project/a" },
+    mode: "docked",
+  };
+  const browserMessage = messageWithActiveWorkObject(browser, "让按钮更明显");
+  assert.match(browserMessage, /origin=http:\/\/localhost:5173/);
+  assert.doesNotMatch(browserMessage, /private\/path|token=|#state/);
+
+  assert.equal(
+    messageWithActiveWorkObject({
+      ...presentation,
+      owner: { ...presentation.owner, artifactId: "bad\nid" },
+    }, "keep exact text"),
+    "keep exact text",
   );
 });
 

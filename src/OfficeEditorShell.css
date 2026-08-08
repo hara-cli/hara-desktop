@@ -48,7 +48,7 @@
   background: #0d1113;
 }
 
-@container extension-work (max-width: 960px) {
+@container extension-dock (max-width: 960px) {
   .office-editor-workspace {
     grid-template-columns: 132px minmax(250px, 1fr);
   }
@@ -64,7 +64,7 @@
   }
 }
 
-@container extension-work (max-width: 620px) {
+@container extension-dock (max-width: 620px) {
   .office-editor-workspace { grid-template-columns: 1fr; }
   .office-editor-rail { display: none; }
   .office-editor-inspector { display: none; }

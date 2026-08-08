@@ -60,6 +60,7 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(reasoningEvent, /never enter renderer transcript state/);
   assert.doesNotMatch(reasoningEvent, /push\(/, "legacy reasoning events are discarded at the renderer boundary");
   assert.match(timeline, /className=\{`task-progress \$\{visibleTask\.state\}`\}/, "typed task checkpoints drive a concise status surface");
+  assert.match(timeline, /userVisibleTaskText\(/, "renderer routing envelopes never leak into task progress");
   assert.match(timeline, /checkpoint\.blockReason/, "the persisted blocker is rendered instead of inferred from chat prose");
   assert.match(timeline, /checkpoint\.nextStep/, "paused and blocked work exposes its resumable next action");
   assert.match(app, /taskState=\{taskStates\[active\]\}/, "the current session owns the displayed task checkpoint");
@@ -69,6 +70,29 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(diff, /max-height:\s*min\(48vh,\s*420px\)\s*;/);
   assert.match(diff, /overflow:\s*auto\s*;/, "long or wide diffs remain scrollable inside the card");
   assert.match(diff, /white-space:\s*pre\s*;/, "unified diff alignment is preserved");
+});
+
+test("presentation preview races recover latest state and expose only localized copy", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const surface = readFileSync(`${root}/src/presentation-surface.ts`, "utf8");
+  const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
+
+  assert.match(surface, /HARA_CONFLICT_ERROR_CODE = -32005/);
+  assert.match(surface, /revisionId = undefined/);
+  assert.match(surface, /presentationErrorKey/);
+  assert.match(app, /loadPresentationSurface\(/);
+  assert.match(app, /makeT\(locale\)\(presentationErrorKey\(error\)\)/);
+  assert.match(app, /presentationErrorKey\(error, "presentationVerifyFailed"\)/);
+  assert.match(app, /presentationErrorKey\(error, "presentationExportFailed"\)/);
+  assert.match(app, /presentationErrorKey\(error, "presentationSaveFailed"\)/);
+  assert.doesNotMatch(app, /Presentation revision changed before this tab could load/);
+  assert.doesNotMatch(app, /Presentation preview does not match this tab's revision/);
+  assert.doesNotMatch(app, /setErr\([^\n]*the Artifact changed before the Desktop preview/);
+  assert.match(i18n, /presentationReloadedLatest: "预览生成期间演示文稿出现了新版本/);
+  assert.match(i18n, /presentationRevisionChanged: "Desktop 准备预览时演示文稿又更新了/);
+  assert.match(i18n, /presentationVerifyFailed: "Desktop 暂时无法校验这份演示文稿/);
+  assert.match(i18n, /presentationExportFailed: "Desktop 暂时无法导出这份演示文稿/);
+  assert.match(i18n, /presentationSaveFailed: "Desktop 暂时无法保存这个演示版本/);
 });
 
 test("external and not-yet-classified sessions never duplicate channel system notifications", () => {
@@ -186,7 +210,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
   assert.match(timeline, /item\.allowAlways !== false/);
   assert.match(app, /clientRef\.current\?\.supportsEvent\("event\.task_state"\)/);
-  assert.match(app, /await c\.steer\(sessionId, text, turnId\)/);
+  assert.match(app, /await c\.steer\(sessionId, wireText, turnId\)/);
   assert.match(app, /const live = taskStateIsLive\(e\.state\)/);
   assert.match(app, /interface QueuedInput[\s\S]*attachments\?: ComposerAttachment\[\]/);
   assert.match(app, /next\.attachments,[\s\S]*recordUser: next\.recorded !== true/);
@@ -196,7 +220,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(app, /if \(!live\) \{\s*setSessionBusy\(sessionId, false\)/);
   assert.match(app, /const retryQueuedInput = useCallback/);
   assert.match(app, /const currentTurnId = activeTurnsRef\.current\[sessionId\]/);
-  assert.match(app, /if \(!live\) \{\s+await sendText\(sessionId, text\);\s+return "sent";/, "a late stale-steer rejection starts a fresh turn");
+  assert.match(app, /if \(!live\) \{\s+await sendText\(sessionId, text, undefined, \{ wireText \}\);\s+return "sent";/, "a late stale-steer rejection starts a fresh turn with the submitted work-object target");
   assert.match(app, /const pendingApproval = target && busyRef\.current\[target\][\s\S]*item\.kind === "approval" && !item\.answered/);
   assert.match(app, /legacyState[\s\S]*phase: pendingApproval \? "approval"/, "older engines still project approval state into companion chat");
   assert.match(
@@ -393,6 +417,7 @@ test("secondary work surfaces are split from startup and preload on navigation i
     "ExtensionDock",
     "ArtifactWorkbench",
     "PresentationWorkbench",
+    "EmbeddedBrowserSurface",
     "CapabilityDirectory",
     "ProviderSettings",
     "GatewaySettings",
@@ -402,7 +427,7 @@ test("secondary work surfaces are split from startup and preload on navigation i
   }
   assert.match(app, /const GroupsStage = lazy\(loadGroups\)/);
   assert.match(app, /warmModule\(loadAutomations\(\)\)/);
-  assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\), loadPresentationWorkbench\(\), loadExtensionDock\(\)\]\)\)/);
+  assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\), loadPresentationWorkbench\(\), loadEmbeddedBrowserSurface\(\), loadExtensionDock\(\)\]\)\)/);
   assert.match(app, /warmModule\(Promise\.all\(\[loadProviderSettings\(\), loadGatewaySettings\(\)\]\)\)/);
   assert.match(app, /onMouseEnter=\{\(\) => preloadSettingsSection\(k\)\}/);
   assert.match(app, /onFocus=\{\(\) => preloadSettingsSection\(k\)\}/);
@@ -815,9 +840,13 @@ test("the deliverables workbench stays serve-backed and native presentations use
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const workbench = readFileSync(`${root}/src/ArtifactWorkbench.tsx`, "utf8");
   const presenter = readFileSync(`${root}/src/PresentationWorkbench.tsx`, "utf8");
+  const embeddedBrowser = readFileSync(`${root}/src/EmbeddedBrowserSurface.tsx`, "utf8");
   const office = readFileSync(`${root}/src/OfficeHome.tsx`, "utf8");
+  const extensionState = readFileSync(`${root}/src/extension-dock-state.ts`, "utf8");
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const capabilities = readFileSync(`${root}/src-tauri/capabilities/default.json`, "utf8");
+  const nativeHost = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
 
   for (const method of [
     "artifact.import",
@@ -851,13 +880,20 @@ test("the deliverables workbench stays serve-backed and native presentations use
   assert.match(office, /copy\.included/);
   assert.match(office, /copy\.localFirst/);
   assert.match(office, /onClick=\{\(\) => onImport\(item\.id\)\}/, "each Office type card starts a matching filtered import");
+  assert.match(css, /\.office-kind-card[\s\S]*display:\s*flex[\s\S]*padding:\s*30px 30px 76px/, "Office cards reserve a separate footer row for formats and the import action");
   assert.doesNotMatch(app, /invoke\([^)]*"artifact\./, "the renderer never bypasses hara serve for Artifact authority");
   assert.match(workbench, /<button[\s\S]*artifact-verify-action/, "integrity verification is keyboard accessible");
   assert.match(workbench, /artifact-export-action/, "same-format export is a separate keyboard-accessible action");
   assert.match(app, /client\.validateArtifact\(artifactId, revisionId\)/, "verification creates a Serve-backed report for the exact revision");
   assert.match(app, /client\.exportArtifact\(\{/, "export authority remains in Hara Serve");
   assert.match(app, /client\.exportPresentation\(\{/, "editable PPTX and exact HTML export remain Serve-owned");
-  assert.match(app, /openPath\(preview\.path\)/, "the browser opens only the private preview returned by Serve");
+  assert.doesNotMatch(app, /openPath\(/, "presentation preview stays inside Hara instead of jumping to the system browser");
+  assert.doesNotMatch(capabilities, /opener:allow-open-path/, "the embedded Browser needs no filesystem-open privilege");
+  assert.match(app, /presentationBrowserTabId\(/, "Open in Browser creates an owner-bound Dock tab");
+  assert.match(app, /type: "presentation-browser"/);
+  assert.match(embeddedBrowser, /srcDoc=\{html\}/, "the Browser tab renders the exact Serve-produced HTML in-app");
+  assert.match(embeddedBrowser, /sandbox="allow-scripts allow-modals allow-downloads"/, "the browser preview has an opaque, sandboxed origin");
+  assert.doesNotMatch(embeddedBrowser, /allow-same-origin/, "the full-deck Browser tab cannot reach Desktop state");
   assert.match(presenter, /srcDoc=\{livePreview\}/, "Desktop embeds only HTML returned by the canonical saved or draft presenter");
   assert.match(presenter, /sandbox="allow-scripts allow-modals allow-same-origin"/, "the exact presenter remains sandboxed inside Desktop");
   assert.match(presenter, /<OfficeEditorShell/, "Presentation uses the reusable native Office editor shell");
@@ -865,9 +901,36 @@ test("the deliverables workbench stays serve-backed and native presentations use
   assert.match(app, /client\.renderPresentation\(project\)/);
   assert.match(presenter, /onSave\(draft\)/, "saving the native editor creates a Serve-owned revision");
   assert.match(app, /const presentationEditorTabId = activePresentation[\s\S]*contextExtensionDock\.id/);
+  assert.match(app, /mode: "docked"/, "Office presentations open beside the library instead of replacing the whole workspace");
+  assert.match(app, /const startPresentationWorkbench = async/);
+  assert.match(app, /supportsNativePresentationWorkspace\(clientRef\.current\)/, "PPT creation cannot run against an engine without typed surfaces and exact-revision editing");
+  assert.match(app, /await ensurePresentationWorkspaceRef\.current\(\)/, "the Office entry safely switches an idle old engine to the bundled engine before creating a PPT");
+  assert.match(
+    app,
+    /text: templateInstruction[\s\S]*t\("presentationWorkbenchPrompt"\)/,
+    "Office creation enters the same conversational Workbench with an editable template-aware prompt",
+  );
+  assert.match(app, /nativePresentationRevisionFromTurn\(/, "turn-end recovery uses native Artifact metadata instead of assistant prose or a PPTX path");
+  assert.match(app, /!baselineRevisionIds\.has\(artifact\.currentRevisionId\)/, "a later ordinary turn cannot reopen a pre-existing presentation from the same session");
+  assert.match(extensionState, /revision\.taskRunId === sessionId/, "surface recovery is bound to the exact originating session");
+  assert.match(app, /loadPresentationSurface\([\s\S]*artifactResource\.revisionId/, "Desktop verifies a coherent preview revision before reporting the surface open");
+  assert.match(app, /Desktop 已加载精确版本，演示文稿现在已在右侧打开。/, "only Desktop emits the visible-success statement after loading the exact revision");
+  assert.match(copy, /不要把“界面打开”列为可自行完成的待办/, "the specialist prompt does not authorize model-written UI success");
+  assert.doesNotMatch(app, /const createNativePresentation = async/, "Office no longer creates a detached blank editor");
+  assert.match(office, /office-extension-toggle/, "Office can hide and restore its editor dock");
   assert.match(app, /updateExtensionTab\([\s\S]*state,[\s\S]*presentationEditorTabId,/, "dirty state follows the owner-scoped tab id");
   assert.doesNotMatch(app, /`artifact:\$\{artifactId\}`/, "no legacy global Artifact tab id can migrate or orphan editor state");
   assert.match(presenter, /onExport\("pptx"\)/, "editable PPTX is a first-class export action");
+  assert.match(presenter, /CHART_TYPES/, "native chart variants are edited as structured data");
+  assert.match(presenter, /presentation-chart-series/, "chart series have a dedicated editor instead of raw JSON only");
+  assert.match(presenter, /contentWindow\?\.print\(\)/, "PDF export uses the exact embedded presenter print surface");
+  assert.match(app, /invoke<string>\("read_presentation_image"/, "image imports cross a bounded native command");
+  assert.match(nativeHost, /MAX_PRESENTATION_IMAGE_BYTES/, "native image reads are size bounded");
+  assert.match(nativeHost, /presentation_image_links_fail_closed/, "image reads fail closed on symlinks");
+  assert.match(office, /office-template-grid/, "new presentations offer a deliberate template choice");
+  for (const template of ["pitch", "report", "technical", "visual"]) {
+    assert.match(office, new RegExp(`id: "${template}"`));
+  }
   assert.doesNotMatch(workbench, /`\$\{copy\.verify\} · \$\{copy\.verified\}`/, "an unchecked revision is never labeled verified");
   assert.match(workbench, /artifact-preview-disclaimer/, "the decorative placeholder is explicitly labeled as not being a real layout preview");
   assert.match(copy, /原文件没有被修改/);
@@ -986,15 +1049,23 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   assert.match(app, /localWebPreviewUrl\(rawUrl\)/, "generic previews independently revalidate loopback URLs in Desktop");
   assert.match(app, /sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"/);
   assert.match(app, /tabs=\{dockTabs\}/, "owner-bound surfaces share one multi-tab Visual Dock");
-  assert.match(app, /disabled=\{contextExtensionTabs\.length === 0\}/, "Workbench keeps an explicit extension-screen affordance before a result exists");
+  assert.match(app, /disabled=\{!activeSession\}/, "Workbench keeps an explicit extension-screen affordance before a result exists");
+  assert.match(app, /openWorkbenchTool\("files"\)/, "opening an empty extension screen creates a useful first Files tab");
+  assert.match(app, /invoke\("ensure_extension_window_width"\)/, "opening the dock asks the native shell to grow right when the monitor has room");
   assert.match(app, /setCurrentExtensionScreenVisible\(false\)/, "the dock header hides the screen without destroying its tabs");
   assert.match(app, /activeExtensionTabForContext\(extensionDockStateRef\.current, ownerContext\)/);
-  assert.match(app, /sessionForeground && visibleExtension\?\.dirty !== true/, "agent results stay in a background tab while an editor is dirty");
+  assert.match(app, /sessionForeground && !dockHidden && visibleExtension\?\.dirty !== true/, "agent results stay in a background tab while an editor is dirty or the user collapsed the Dock");
   assert.match(app, /window\.addEventListener\("beforeunload", preventAccidentalClose\)/, "closing Desktop cannot silently discard a dirty presentation");
   assert.match(app, /const discardCurrentExtensionDraft = \(\): boolean =>/);
   assert.match(dock, /role="tablist"/);
   assert.match(dock, /aria-selected=\{tab\.id === activeTabId\}/);
   assert.match(dock, /aria-label=\{copy\.hide\}/);
+  assert.match(dock, /DockIcon name="collapse"/, "dock hiding uses a panel-collapse affordance rather than a tab-close icon");
+  assert.match(dock, /placement\?: "split" \| "stage"/);
+  assert.match(app, /placement="stage"/, "Office promotes an opened document into its full main stage");
+  assert.match(app, /!contextExtensionScreenVisible && \([\s\S]*officeHomeSurface/, "the low-frequency Office start page leaves the main area while a document is open");
+  assert.match(dock, /role="menu"/, "the tab bar exposes an accessible add-tool menu");
+  assert.match(app, /\{ id: "terminal" as const[\s\S]*\{ id: "browser" as const[\s\S]*\{ id: "files" as const/, "the add menu contains Terminal, Browser, and Files in that order");
   assert.match(app, /setArtifactRevisions\(revisionResult\.revisions\)/);
   assert.match(
     app,
@@ -1007,6 +1078,32 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   assert.match(dock, /role="separator"/);
   assert.match(dock, /aria-valuemin=\{36\}/);
   assert.match(dock, /aria-valuemax=\{72\}/);
-  assert.match(css, /@container extension-work \(max-width: 1120px\)[\s\S]*\.extension-work > \.extension-primary[\s\S]*display:\s*none/);
+  const responsiveDock = css.match(/@container extension-work \(max-width: 1120px\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
+  assert.doesNotMatch(responsiveDock, /extension-primary[\s\S]*display:\s*none/, "medium windows keep the conversation visible behind the right drawer");
+  assert.match(responsiveDock, /position:\s*relative/, "medium windows keep a true side-by-side split");
+  assert.doesNotMatch(responsiveDock, /position:\s*absolute/, "the extension screen never overlays the workbench at medium widths");
+  assert.match(css, /\.extension-dock:focus-within/, "the selected tab and the actively edited content have separate visual states");
+  assert.match(css, /\.extension-dock\.is-stage:not\(\.is-collapsed\)[\s\S]*flex:\s*1 1 100%[\s\S]*width:\s*100%/, "Office document and Browser tabs use the full stage instead of sharing it with the start page");
+  assert.match(css, /container-name:\s*extension-dock/, "Office editor breakpoints measure the actual result surface");
+  assert.match(css, /\.extension-dock\.is-collapsed[\s\S]*visibility:\s*hidden/, "collapsing keeps the mounted editor state while removing it visually");
   assert.match(css, /\.extension-dock-mode-action[\s\S]*display:\s*none !important/);
+});
+
+test("visible right-side work is an explicit chat target without leaking routing wrappers", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+
+  assert.match(app, /const visibleSessionWorkObject = useCallback/);
+  assert.match(app, /activeRef\.current !== sessionId/);
+  assert.match(app, /hiddenExtensionContextsRef\.current\.has\(contextKey\)/, "a collapsed Dock returns chat to its normal unscoped behavior");
+  assert.match(app, /messageWithActiveWorkObject\(item, text\)/);
+  assert.match(app, /const wireText = options\?\.wireText \?\? textWithActiveWorkObject/);
+  assert.match(app, /c\.send\(sessionId, wireText, attachmentIntents\)/);
+  assert.match(app, /c\.steer\(sessionId, wireText, turnId\)/);
+  assert.match(app, /wireText: next\.wireText/, "queued work keeps the target selected at submit time");
+  assert.match(app, /userVisibleText\(/, "persisted routing envelopes are stripped at the renderer boundary");
+  assert.match(app, /className="composer-active-work-object"/);
+  assert.match(app, /作用于/);
+  assert.match(css, /\.composer-active-work-object/);
+  assert.match(css, /\.composer-active-work-object-name[\s\S]*text-overflow:\s*ellipsis/);
 });

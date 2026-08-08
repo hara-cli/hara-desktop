@@ -21,12 +21,16 @@ const MAX_MANAGED_CLI_RECEIPT_BYTES: u64 = 16 * 1024;
 const MAX_DROPPED_ATTACHMENT_PATHS: usize = 32;
 const MAX_COMPOSER_IMAGE_BYTES: usize = 3_600_000;
 const MAX_COMPOSER_IMAGE_BASE64_BYTES: usize = (MAX_COMPOSER_IMAGE_BYTES + 2) / 3 * 4;
+const MAX_PRESENTATION_IMAGE_BYTES: usize = 3_000_000;
+const MAX_PRESENTATION_IMAGE_DIMENSION: u32 = 8_192;
+const MAX_PRESENTATION_IMAGE_PIXELS: u64 = 32_000_000;
 const MANAGED_CLI_RECEIPT_SCHEMA: u8 = 1;
 const BUNDLED_CLI_VERSION: &str = include_str!("../binaries/SIDECAR_VERSION");
 const DEFAULT_MAIN_WINDOW_WIDTH: u32 = 1100;
 const DEFAULT_MAIN_WINDOW_HEIGHT: u32 = 760;
 const MIN_MAIN_WINDOW_WIDTH: u32 = 720;
 const MIN_MAIN_WINDOW_HEIGHT: u32 = 480;
+const EXTENSION_MAIN_WINDOW_WIDTH: u32 = 1480;
 const MIN_PANEL_NODE_MAJOR: u32 = 18;
 const PREFERRED_PANEL_NODE_MAJOR: u32 = 22;
 const PANEL_NODE_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
@@ -401,6 +405,80 @@ fn offscreen_window_recovery(
         width,
         height,
     })
+}
+
+/// Grow the main window for a side-by-side work object without covering the primary workbench.
+/// The result never leaves the monitor work area and never shrinks a user-sized window.
+fn extension_window_growth(
+    window: WindowRect,
+    work_area: DisplayWorkArea,
+) -> Option<WindowRect> {
+    if !window.has_area() || !work_area.rect.has_area() || !window.intersects(work_area.rect) {
+        return None;
+    }
+    let target_width = logical_to_physical_dimension(
+        EXTENSION_MAIN_WINDOW_WIDTH,
+        work_area.scale_factor,
+    )
+    .min(work_area.rect.width);
+    if target_width <= window.width {
+        return None;
+    }
+
+    let work_left = i64::from(work_area.rect.x);
+    let work_top = i64::from(work_area.rect.y);
+    let work_right = work_left + i64::from(work_area.rect.width);
+    let work_bottom = work_top + i64::from(work_area.rect.height);
+    let max_x = work_right - i64::from(target_width);
+    let height = window.height.min(work_area.rect.height);
+    let max_y = work_bottom - i64::from(height);
+    Some(WindowRect {
+        x: clamp_i64_to_i32(i64::from(window.x).clamp(work_left, max_x)),
+        y: clamp_i64_to_i32(i64::from(window.y).clamp(work_top, max_y)),
+        width: target_width,
+        height,
+    })
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+fn ensure_extension_window_width(window: tauri::WebviewWindow) -> Result<bool, String> {
+    let position = window
+        .outer_position()
+        .map_err(|error| format!("read main window position: {error}"))?;
+    let size = window
+        .outer_size()
+        .map_err(|error| format!("read main window size: {error}"))?;
+    let monitor = window
+        .current_monitor()
+        .map_err(|error| format!("read current monitor: {error}"))?
+        .ok_or_else(|| "main window is not on an available monitor".to_string())?;
+    let area = monitor.work_area();
+    let work_area = DisplayWorkArea {
+        rect: WindowRect {
+            x: area.position.x,
+            y: area.position.y,
+            width: area.size.width,
+            height: area.size.height,
+        },
+        scale_factor: monitor.scale_factor(),
+    };
+    let current = WindowRect {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    };
+    let Some(expanded) = extension_window_growth(current, work_area) else {
+        return Ok(false);
+    };
+    window
+        .set_size(tauri::PhysicalSize::new(expanded.width, expanded.height))
+        .map_err(|error| format!("expand main window: {error}"))?;
+    window
+        .set_position(tauri::PhysicalPosition::new(expanded.x, expanded.y))
+        .map_err(|error| format!("keep expanded main window on-screen: {error}"))?;
+    Ok(true)
 }
 
 #[cfg(desktop)]
@@ -2022,6 +2100,94 @@ fn write_temp_image(data_base64: String) -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+fn read_presentation_image_at(path: &Path) -> Result<String, String> {
+    use base64::Engine;
+
+    if !path.is_absolute() {
+        return Err("presentation image must use an absolute local path".into());
+    }
+    let before = fs::symlink_metadata(path)
+        .map_err(|_| "the selected presentation image is no longer available".to_string())?;
+    if !before.is_file() || before.file_type().is_symlink() {
+        return Err("presentation image must be a regular file, not a link".into());
+    }
+    #[cfg(windows)]
+    if metadata_is_reparse_point(&before) {
+        return Err("presentation image must be a regular file, not a link".into());
+    }
+    if before.len() == 0 || before.len() > MAX_PRESENTATION_IMAGE_BYTES as u64 {
+        return Err("presentation image must be non-empty and no larger than 3 MB".into());
+    }
+
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options
+        .open(path)
+        .map_err(|_| "the selected presentation image could not be opened safely".to_string())?;
+    let opened = file
+        .metadata()
+        .map_err(|_| "the selected presentation image could not be inspected safely".to_string())?;
+    if !opened.is_file() || opened.len() != before.len() {
+        return Err("the selected presentation image changed while it was being opened".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if opened.dev() != before.dev() || opened.ino() != before.ino() {
+            return Err("the selected presentation image changed while it was being opened".into());
+        }
+    }
+
+    let mut bytes = Vec::with_capacity(opened.len() as usize);
+    std::io::Read::by_ref(&mut file)
+        .take(MAX_PRESENTATION_IMAGE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "the selected presentation image could not be read safely".to_string())?;
+    if bytes.len() > MAX_PRESENTATION_IMAGE_BYTES {
+        return Err("presentation image must be no larger than 3 MB".into());
+    }
+    let format = image::guess_format(&bytes)
+        .map_err(|_| "presentation image format is not recognized".to_string())?;
+    let media_type = match format {
+        image::ImageFormat::Png => "image/png",
+        image::ImageFormat::Jpeg => "image/jpeg",
+        image::ImageFormat::WebP => "image/webp",
+        image::ImageFormat::Gif => "image/gif",
+        _ => return Err("presentation images support PNG, JPEG, WebP, or GIF".into()),
+    };
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(&bytes));
+    reader.set_format(format);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_PRESENTATION_IMAGE_DIMENSION);
+    limits.max_image_height = Some(MAX_PRESENTATION_IMAGE_DIMENSION);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    reader.limits(limits);
+    let (width, height) = reader
+        .into_dimensions()
+        .map_err(|_| "presentation image is invalid or exceeds safe dimensions".to_string())?;
+    if width == 0
+        || height == 0
+        || u64::from(width).saturating_mul(u64::from(height)) > MAX_PRESENTATION_IMAGE_PIXELS
+    {
+        return Err("presentation image is empty or exceeds safe dimensions".into());
+    }
+
+    Ok(format!(
+        "data:{media_type};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+#[tauri::command]
+fn read_presentation_image(path: String) -> Result<String, String> {
+    read_presentation_image_at(Path::new(&path))
+}
+
 /// Dock badge = manual unread count (macOS). None clears it.
 #[tauri::command]
 fn set_badge(app: tauri::AppHandle, count: Option<i64>) {
@@ -2581,12 +2747,14 @@ pub fn run() {
             get_home,
             read_serve_log,
             set_badge,
+            ensure_extension_window_width,
             take_update_restart_marker,
             restart_after_update,
             inspect_desktop_update_storage,
             clean_desktop_update_storage,
             classify_attachment_paths,
             write_temp_image,
+            read_presentation_image,
             list_pets,
             read_pet_asset
         ])
@@ -2784,15 +2952,19 @@ mod updater_tests {
 #[cfg(test)]
 mod attachment_path_tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEST_ROOT: AtomicU64 = AtomicU64::new(1);
 
     fn test_root() -> PathBuf {
         std::env::temp_dir().join(format!(
-            "hara-desktop-drop-test-{}-{}",
+            "hara-desktop-drop-test-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed),
         ))
     }
 
@@ -2851,6 +3023,42 @@ mod attachment_path_tests {
             assert_eq!(metadata.permissions().mode() & 0o077, 0);
         }
 
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn presentation_images_are_bounded_validated_and_returned_as_data_urls() {
+        use base64::Engine;
+
+        let root = test_root();
+        fs::create_dir_all(&root).unwrap();
+        let image_path = root.join("slide.png");
+        let png = base64::engine::general_purpose::STANDARD
+            .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+            .unwrap();
+        fs::write(&image_path, png).unwrap();
+
+        let data_url = read_presentation_image_at(&image_path).unwrap();
+        assert!(data_url.starts_with("data:image/png;base64,"));
+
+        let invalid = root.join("not-image.png");
+        fs::write(&invalid, b"not an image").unwrap();
+        assert!(read_presentation_image_at(&invalid).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn presentation_image_links_fail_closed() {
+        use std::os::unix::fs::symlink;
+
+        let root = test_root();
+        fs::create_dir_all(&root).unwrap();
+        let image_path = root.join("slide.png");
+        let link = root.join("linked.png");
+        fs::write(&image_path, b"not decoded because the link fails first").unwrap();
+        symlink(&image_path, &link).unwrap();
+        assert!(read_presentation_image_at(&link).is_err());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -3670,6 +3878,52 @@ mod pet_tests {
         assert_eq!(
             offscreen_window_recovery(window, &work_areas, Some(work_areas[1])),
             None
+        );
+    }
+
+    #[test]
+    fn extension_window_grows_right_when_space_exists_and_shifts_only_when_needed() {
+        let work_area = unscaled_work_area(WindowRect {
+            x: 0,
+            y: 24,
+            width: 1920,
+            height: 1056,
+        });
+        assert_eq!(
+            extension_window_growth(
+                WindowRect { x: 120, y: 80, width: 1100, height: 760 },
+                work_area,
+            ),
+            Some(WindowRect { x: 120, y: 80, width: 1480, height: 760 }),
+        );
+        assert_eq!(
+            extension_window_growth(
+                WindowRect { x: 700, y: 80, width: 1100, height: 760 },
+                work_area,
+            ),
+            Some(WindowRect { x: 440, y: 80, width: 1480, height: 760 }),
+        );
+    }
+
+    #[test]
+    fn extension_window_never_shrinks_or_exceeds_a_retina_work_area() {
+        let retina = DisplayWorkArea {
+            rect: WindowRect { x: 0, y: 48, width: 3024, height: 1916 },
+            scale_factor: 2.0,
+        };
+        assert_eq!(
+            extension_window_growth(
+                WindowRect { x: 20, y: 80, width: 2200, height: 1520 },
+                retina,
+            ),
+            Some(WindowRect { x: 20, y: 80, width: 2960, height: 1520 }),
+        );
+        assert_eq!(
+            extension_window_growth(
+                WindowRect { x: 0, y: 48, width: 3024, height: 1700 },
+                retina,
+            ),
+            None,
         );
     }
 

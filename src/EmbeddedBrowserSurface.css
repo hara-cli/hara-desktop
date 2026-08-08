@@ -1,0 +1,116 @@
+.embedded-browser {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: 42px minmax(0, 1fr);
+  background: #0e0f12;
+}
+
+.embedded-browser-chrome {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #302e34;
+  background: #18171b;
+}
+
+.embedded-browser-traffic {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.embedded-browser-traffic i {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: #59565d;
+}
+
+.embedded-browser-traffic i:first-child { background: #d65d4c; }
+.embedded-browser-traffic i:nth-child(2) { background: #b78c53; }
+.embedded-browser-traffic i:last-child { background: #5f9873; }
+
+.embedded-browser-navigation {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.embedded-browser-navigation button {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #b8b4ad;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.embedded-browser-navigation button:hover:not(:disabled),
+.embedded-browser-navigation button:focus-visible {
+  background: #29272d;
+  color: #f0ece5;
+}
+
+.embedded-browser-navigation button:disabled {
+  color: #56535a;
+  cursor: default;
+}
+
+.embedded-browser-address {
+  display: flex;
+  min-width: 0;
+  height: 28px;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid #343139;
+  border-radius: 7px;
+  background: #101014;
+  color: #8f9eaa;
+}
+
+.embedded-browser-address code {
+  min-width: 0;
+  overflow: hidden;
+  color: #aaa7a1;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embedded-browser-local {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid color-mix(in srgb, #5c91bd 38%, #343139);
+  border-radius: 99px;
+  color: #8db0cc;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.embedded-browser > iframe {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  .embedded-browser-traffic,
+  .embedded-browser-local {
+    display: none;
+  }
+}

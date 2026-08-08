@@ -1,3 +1,7 @@
+import { ACTIVE_WORK_OBJECT_HISTORY_PREFIX } from "./user-visible-text.ts";
+
+export { ACTIVE_WORK_OBJECT_HISTORY_PREFIX } from "./user-visible-text.ts";
+
 export const EXTENSION_DOCK_WIDTH_KEY = "hara.extensionDock.width.v1";
 export const EXTENSION_DOCK_TAB_LIMIT = 12;
 
@@ -9,7 +13,12 @@ export type ExtensionSurfaceKind =
   | "document"
   | "design"
   | "browser"
+  | "terminal"
+  | "files"
+  | "review"
   | "capability";
+
+export type WorkbenchToolKind = "terminal" | "browser" | "files";
 
 export type InteractiveExtensionPlace = "chat" | "projects";
 
@@ -66,11 +75,73 @@ export interface ArtifactExtension extends ExtensionTabBase {
   owner: ArtifactExtensionOwner;
 }
 
-export type ExtensionDockItem = LegacyPanelExtension | WebPreviewExtension | ArtifactExtension;
+export interface PresentationBrowserExtension extends ExtensionTabBase {
+  type: "presentation-browser";
+  surfaceKind: "browser";
+  owner: ArtifactExtensionOwner;
+}
+
+export interface WorkbenchToolExtension extends ExtensionTabBase {
+  type: "workbench-tool";
+  tool: WorkbenchToolKind;
+  surfaceKind: WorkbenchToolKind;
+  owner: SessionExtensionOwner;
+}
+
+export interface ReviewExtension extends ExtensionTabBase {
+  type: "review";
+  surfaceKind: "review";
+  diff: string;
+  owner: SessionExtensionOwner;
+}
+
+export type ExtensionDockItem =
+  | LegacyPanelExtension
+  | WebPreviewExtension
+  | ArtifactExtension
+  | PresentationBrowserExtension
+  | WorkbenchToolExtension
+  | ReviewExtension;
 
 export interface ExtensionDockState {
   tabs: ExtensionDockItem[];
   activeId: string | null;
+}
+
+export interface PresentationRecoveryArtifact {
+  kind: string;
+  extension: string;
+  mediaType: string;
+  currentRevisionId: string;
+  updatedAt: string;
+}
+
+export interface PresentationRecoveryRevision {
+  revisionId: string;
+  taskRunId?: string;
+  createdAt: string;
+}
+
+/** Select only the current native Presentation revision written by this session in the active turn
+ * window. Exported PPTX paths, assistant text, and older revisions can never satisfy this fallback. */
+export function nativePresentationRevisionFromTurn<T extends PresentationRecoveryRevision>(
+  artifact: PresentationRecoveryArtifact,
+  revisions: readonly T[],
+  sessionId: string,
+  startedAt: number,
+): T | null {
+  const threshold = startedAt - 5_000;
+  if (
+    artifact.kind !== "presentation"
+    || artifact.extension !== ".hpres"
+    || artifact.mediaType !== "application/vnd.nanhara.presentation+json"
+    || (Date.parse(artifact.updatedAt) || 0) < threshold
+  ) return null;
+  return revisions.find((revision) =>
+    revision.revisionId === artifact.currentRevisionId
+    && revision.taskRunId === sessionId
+    && (Date.parse(revision.createdAt) || 0) >= threshold,
+  ) ?? null;
 }
 
 export interface ExtensionContext {
@@ -118,7 +189,7 @@ export function extensionMatchesContext(
   if (item.owner.place === "chat" || item.owner.place === "projects") {
     return item.owner.sessionId === context.sessionId;
   }
-  if (item.type !== "artifact") return false;
+  if (item.type !== "artifact" && item.type !== "presentation-browser") return false;
   return (context.artifactId === undefined || context.artifactId === null || item.owner.artifactId === context.artifactId)
     && (context.revisionId === undefined || context.revisionId === null || item.owner.revisionId === context.revisionId);
 }
@@ -234,6 +305,14 @@ export function webPreviewTabId(sessionId: string, rawUrl: string): string {
   return `preview:${sessionId}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
+export function workbenchToolTabId(sessionId: string, tool: WorkbenchToolKind): string {
+  return `tool:${sessionId}:${tool}`;
+}
+
+export function reviewTabId(sessionId: string): string {
+  return `review:${sessionId}:changes`;
+}
+
 /** Artifact tabs are owner-scoped: opening the same revision from Office and two project sessions
  * creates three independent tabs instead of silently moving one tab between work contexts. */
 export function artifactExtensionTabId(
@@ -245,6 +324,14 @@ export function artifactExtensionTabId(
     : `artifact:${owner.place}:${owner.sessionId}:${artifactId}`;
 }
 
+export function presentationBrowserTabId(
+  artifactId: string,
+  revisionId: string,
+  owner: ArtifactExtensionOwner,
+): string {
+  return `${artifactExtensionTabId(artifactId, owner)}:browser:${revisionId}`;
+}
+
 /** Display only an origin. Panel paths, query strings, fragments, and URL credentials stay hidden. */
 export function publicPanelOrigin(rawUrl: string): string | null {
   try {
@@ -254,6 +341,42 @@ export function publicPanelOrigin(rawUrl: string): string | null {
   } catch {
     return null;
   }
+}
+
+const safeActiveWorkObjectOpaqueId = (value: unknown): value is string =>
+  typeof value === "string"
+  && value.length >= 4
+  && value.length <= 256
+  && !/[\u0000-\u001f\u007f]/.test(value);
+
+/** Add only renderer-authored, credential-free metadata for the object visibly selected in the Dock.
+ * The tab title, local path, query, fragment, and user-visible text are never copied into the envelope. */
+export function messageWithActiveWorkObject(item: ExtensionDockItem, text: string): string {
+  const context = [
+    ACTIVE_WORK_OBJECT_HISTORY_PREFIX,
+    `kind=${item.surfaceKind}`,
+    "intent=apply_user_request_to_active_visible_object",
+  ];
+  if (item.type === "artifact" || item.type === "presentation-browser") {
+    if (
+      !safeActiveWorkObjectOpaqueId(item.owner.artifactId)
+      || !safeActiveWorkObjectOpaqueId(item.owner.revisionId)
+    ) return text;
+    context.push(`artifact_id=${item.owner.artifactId}`);
+    context.push(`revision_id=${item.owner.revisionId}`);
+  } else if (item.type === "web-preview" || item.type === "legacy-panel") {
+    const origin = publicPanelOrigin(item.url);
+    if (origin) context.push(`origin=${origin}`);
+  } else if (item.type === "review") {
+    context.push("scope=current_task_changes");
+  } else if (item.tool === "files") {
+    context.push("scope=current_workspace_files");
+  } else if (item.tool === "terminal") {
+    context.push("scope=current_task_execution");
+  } else {
+    context.push("scope=current_local_preview");
+  }
+  return `${context.join("\n")}\n]\n\n${text}`;
 }
 
 export function extensionDockWidth(value: unknown, fallback = 48): number {

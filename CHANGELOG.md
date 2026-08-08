@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.1.65 — 2026-08-08 — editable presentations and a visual workbench
+
+- Make native Hara presentations a complete editable Desktop surface: create or import a structured
+  deck, edit its outline and slide content, preview the exact unsaved draft, save a concurrency-safe
+  Artifact revision, validate it, present it in fullscreen, open it in a browser, and export HTML,
+  JSON, or editable PPTX from the same canonical source. Existing third-party PPTX files remain
+  byte-preserved imports rather than being presented as losslessly converted decks.
+- Render every accepted nested content shape consistently in Desktop, HTML, and PPTX, including
+  columns, flows and architecture diagrams. Add bounded local images, editable native bar, line,
+  area, pie, and doughnut charts, four distinct themes, and pitch, report, technical, and visual-story
+  starting templates. The embedded Browser remains the print/save-as-PDF path.
+- Add an owner-bound, multi-tab Extension Dock beside the Workbench and Office library. It can be
+  hidden and restored without closing work, while individual tabs can be closed explicitly. Project
+  agents may also show an already-running Node/Vite/Next page there after CLI and Desktop both verify
+  a credential-free loopback HTTP URL with an explicit port; arbitrary or authenticated web pages
+  still open in the system browser.
+- Keep creation and revision conversation-native: Office's new-presentation action now enters the
+  same Workbench chat with a focused editable brief, generated results open in the right Dock, and
+  the composer visibly targets the selected result only while that Dock is open. “Open in browser”
+  creates a sandboxed in-app Browser tab for the exact saved presentation instead of jumping to a
+  system browser or requesting permission to open a private preview file.
+- Grow the native window to the right when monitor space is available and keep a true resizable split
+  at ordinary widths. The selected tab and the content currently receiving keyboard interaction have
+  distinct states; collapsing the Dock preserves editor state. In Office, the low-frequency start page
+  now yields to a full-width document or Browser stage while the deliverables list remains available;
+  the capability cards also reserve their format/action footer so labels no longer overlap.
+- Present personal conversations and local projects in one Workbench context index while retaining
+  their separate internal places, session authority, working directories, and persisted ownership.
+  Opening Office continues to show the durable deliverables library rather than a second chat shell.
+- Use one current model for the Presentation Specialist and its focused presentation prompt. Native
+  image input remains the normal multimodal path; the optional visual-recognition model is only a
+  compatibility fallback when a text-only route must inspect an image attachment, and is not part of
+  the default PPT generation or editing path. Spreadsheet and document editors remain explicitly
+  planned rather than being implied by the Office shell.
+- Update DOMPurify to `3.4.13` and the build-only Nano ID dependency to `3.3.18`, closing the current
+  official-registry XSS and denial-of-service advisories before packaging; the complete npm audit now
+  reports no remaining vulnerability.
+- Refuse to start PPT generation on a still-running engine that lacks native Presentation surfaces;
+  Desktop safely switches an idle legacy engine to the bundled one first. If a legacy turn already
+  created a deck but lost its surface notification, recover only the native `.hpres` revision written
+  by that exact session and turn. Generated HTML, exported PPTX paths, and assistant prose never count
+  as proof that a right-side tab opened. Desktop reports success only after loading and verifying the
+  exact Artifact revision and preview. If the Artifact advances while the preview is being prepared,
+  Desktop automatically loads one coherent latest revision; any remaining failure is shown in the
+  selected interface language without leaking the engine's internal exception text.
+- Bundle Hara CLI `0.144.0` at exact verified commit
+  `6bccfd0744863efb7d552f9f8387c7ce723d3698`. Existing conversations, projects, organization
+  connections, schedules, Artifacts, presentations, and local files require no migration. Windows
+  packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.64 — 2026-08-07 — reliable actions and data-first debugging
 
 - Open explicit local-folder requests directly in Finder or the platform file manager through Hara's

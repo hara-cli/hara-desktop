@@ -1817,6 +1817,7 @@ select {
   gap: 6px;
 }
 .composer-workspace,
+.composer-active-work-object,
 .composer-attachment-chip {
   min-width: 0;
   max-width: min(260px, 42vw);
@@ -1834,8 +1835,34 @@ select {
 .composer-workspace {
   color: color-mix(in srgb, var(--fg) 72%, var(--dim));
 }
+.composer-active-work-object {
+  --active-work-tone: #d75a41;
+  border-color: color-mix(in srgb, var(--active-work-tone) 46%, var(--border));
+  background: color-mix(in srgb, var(--active-work-tone) 9%, var(--bg2));
+  color: color-mix(in srgb, var(--active-work-tone) 68%, var(--fg));
+}
+.composer-active-work-object[data-kind="browser"] { --active-work-tone: #5c91bd; }
+.composer-active-work-object[data-kind="terminal"] { --active-work-tone: #b58a6b; }
+.composer-active-work-object[data-kind="files"] { --active-work-tone: #7c91a7; }
+.composer-active-work-object[data-kind="review"] { --active-work-tone: #78a484; }
+.composer-active-work-object[data-kind="spreadsheet"] { --active-work-tone: #5f9c78; }
+.composer-active-work-object[data-kind="document"] { --active-work-tone: #b8a074; }
+.composer-active-work-object-name {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--fg) 86%, var(--active-work-tone));
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .composer-workspace-label {
   color: var(--dim);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.composer-active-work-object-label {
+  color: color-mix(in srgb, var(--active-work-tone) 70%, var(--dim));
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -2402,6 +2429,8 @@ select {
 
 /* The lightweight host stays in the startup CSS; the actual ExtensionDock remains lazy. */
 .extension-work {
+  position: relative;
+  isolation: isolate;
   flex: 1;
   display: flex;
   min-width: 0;
@@ -5390,6 +5419,29 @@ button.provider-preset.enterprise.on {
   color: #b9b3ac;
 }
 
+.office-home-head-actions .office-extension-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.office-home-head-actions .office-extension-toggle.is-active {
+  border-color: color-mix(in srgb, var(--accent) 64%, #403d42);
+  color: #f1d0c8;
+}
+
+.office-extension-toggle b {
+  display: grid;
+  min-width: 17px;
+  height: 17px;
+  place-items: center;
+  border-radius: 999px;
+  background: #2b282d;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 650;
+}
+
 .office-home-meta {
   display: flex;
   gap: 10px;
@@ -5404,6 +5456,85 @@ button.provider-preset.enterprise.on {
   font-size: 11px;
 }
 
+.office-template-section {
+  margin: 6px 0 30px;
+}
+
+.office-template-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 13px;
+}
+
+.office-template-heading h2,
+.office-template-heading p {
+  margin: 0;
+}
+
+.office-template-heading h2 {
+  color: #e1ddd5;
+  font-size: 15px;
+  font-weight: 620;
+}
+
+.office-template-heading p {
+  max-width: 690px;
+  color: #77736f;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.office-template-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.office-template-grid button {
+  position: relative;
+  display: grid;
+  min-height: 116px;
+  align-content: start;
+  gap: 8px;
+  padding: 14px 34px 14px 15px;
+  border: 1px solid #343238;
+  border-radius: 0;
+  background: rgba(22, 22, 25, 0.76);
+  color: #dcd7ce;
+  text-align: left;
+}
+
+.office-template-grid button:hover:not(:disabled),
+.office-template-grid button:focus-visible {
+  border-color: #6d433b;
+  background: rgba(34, 27, 27, 0.92);
+  filter: none;
+}
+
+.office-template-grid button > span {
+  color: #6e6968;
+  font: 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.office-template-grid strong { font-size: 13px; }
+
+.office-template-grid small {
+  color: #8f8984;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.office-template-grid i {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  color: #c97966;
+  font-style: normal;
+}
+
 .office-kind-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5413,10 +5544,11 @@ button.provider-preset.enterprise.on {
 
 .office-kind-card {
   position: relative;
-  display: block;
+  display: flex;
   width: 100%;
   min-height: 300px;
-  padding: 30px;
+  flex-direction: column;
+  padding: 30px 30px 76px;
   border: 0;
   border-right: 1px solid #343238;
   border-bottom: 1px solid #343238;
@@ -5490,6 +5622,7 @@ button.provider-preset.enterprise.on {
 
 .office-kind-card small {
   display: block;
+  margin-top: auto;
   color: #c28d82;
   font: 500 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.055em;
@@ -5554,6 +5687,16 @@ button.provider-preset.enterprise.on {
   .office-kind-grid {
     grid-template-columns: 1fr;
   }
+
+  .office-template-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .office-template-heading p { text-align: left; }
+
+  .office-template-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .office-kind-card {
     min-height: 230px;

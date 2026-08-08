@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { HaraClient } from "../src/client.ts";
+import { HaraClient, supportsNativePresentationWorkspace } from "../src/client.ts";
 
 test("serve client negotiates lifecycle events and sends expected-turn steering", async (t) => {
   const originalWebSocket = globalThis.WebSocket;
@@ -154,6 +154,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supports("presentation.export"), true);
   assert.equal(client.supportsEvent("event.task_state"), true);
   assert.equal(client.supportsEvent("event.surface"), true);
+  assert.equal(supportsNativePresentationWorkspace(client), true);
   assert.equal(client.supportsFeature("composer.attachments.v1"), true);
   assert.equal(client.supportsFeature("collaboration.remote.v1"), true);
 
@@ -405,6 +406,18 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     title: "Local preview",
     resource: { type: "url", url: "http://127.0.0.1:5173/" },
   });
+});
+
+test("native Presentation Workbench requires typed surfaces and exact-revision editor methods", () => {
+  const capabilityClient = (methods, events) => ({
+    supports: (method) => methods.includes(method),
+    supportsEvent: (event) => events.includes(event),
+  });
+  const required = ["presentation.update", "presentation.render", "presentation.preview"];
+  assert.equal(supportsNativePresentationWorkspace(capabilityClient(required, ["event.surface"])), true);
+  assert.equal(supportsNativePresentationWorkspace(capabilityClient(required, [])), false);
+  assert.equal(supportsNativePresentationWorkspace(capabilityClient(required.slice(1), ["event.surface"])), false);
+  assert.equal(supportsNativePresentationWorkspace(null), false);
 });
 
 test("Desk client methods feature-detect an older Serve without probing remote collaboration", async (t) => {

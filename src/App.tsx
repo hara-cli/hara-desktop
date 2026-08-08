@@ -18,10 +18,10 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { check as checkForUpdate, type Update } from "@tauri-apps/plugin-updater";
 import {
   HaraClient,
+  supportsNativePresentationWorkspace,
   type Discovery,
   type SessionInfo,
   type ServerEvent,
@@ -53,7 +53,7 @@ import {
   type OrganizationConnection,
   type OrganizationConnectionsState,
 } from "./client";
-import { detectLocale, saveLocale, makeT, type Locale } from "./i18n";
+import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
 import { classifyEngineVersion } from "./engine-version.js";
 import { applyDesktopUpdateHandoff } from "./desktop-update.js";
 import {
@@ -68,6 +68,7 @@ import {
   type WorkbenchApp,
   type WorkStarterSubmission,
 } from "./WorkStarter";
+import type { PresentationTemplate } from "./OfficeHome";
 import type {
   AutomationDraft,
   AutomationRun,
@@ -148,10 +149,15 @@ import {
   extensionItemContextKey,
   extensionTabsForContext,
   localWebPreviewUrl,
+  messageWithActiveWorkObject,
+  nativePresentationRevisionFromTurn,
   publicPanelOrigin,
+  presentationBrowserTabId,
+  reviewTabId,
   updateExtensionTab,
   upsertExtensionTab,
   webPreviewTabId,
+  workbenchToolTabId,
   type ArtifactExtension,
   type ExtensionContext,
   type ExtensionDockItem,
@@ -159,9 +165,18 @@ import {
   type ExtensionDockState,
   type ExtensionSurfaceKind,
   type LegacyPanelExtension,
+  type PresentationBrowserExtension,
+  type ReviewExtension,
   type SessionExtensionOwner,
   type WebPreviewExtension,
+  type WorkbenchToolExtension,
+  type WorkbenchToolKind,
 } from "./extension-dock-state";
+import { userVisibleText } from "./user-visible-text";
+import {
+  loadPresentationSurface,
+  presentationErrorKey,
+} from "./presentation-surface";
 import { useDesktopCompanion } from "./companion/useDesktopCompanion";
 import { IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
 import { Md } from "./markdown";
@@ -195,6 +210,7 @@ type SettingsSection =
 const loadGroups = () => import("./Groups");
 const loadAutomations = () => import("./Automations");
 const loadExtensionDock = () => import("./ExtensionDock");
+const loadWorkbenchToolSurface = () => import("./WorkbenchToolSurface");
 const loadOfficeHome = () => import("./OfficeHome").then((module) => ({
   default: module.OfficeHome,
 }));
@@ -202,6 +218,7 @@ const loadArtifactWorkbench = () => import("./ArtifactWorkbench").then((module) 
   default: module.ArtifactWorkbench,
 }));
 const loadPresentationWorkbench = () => import("./PresentationWorkbench");
+const loadEmbeddedBrowserSurface = () => import("./EmbeddedBrowserSurface");
 const loadCapabilityDirectory = () => import("./CapabilityDirectory").then((module) => ({
   default: module.CapabilityDirectory,
 }));
@@ -230,9 +247,11 @@ const AutomationsPage = lazy(() =>
     default: module.AutomationsPage,
   })));
 const ExtensionDock = lazy(loadExtensionDock);
+const WorkbenchToolSurface = lazy(loadWorkbenchToolSurface);
 const OfficeHome = lazy(loadOfficeHome);
 const ArtifactWorkbench = lazy(loadArtifactWorkbench);
 const PresentationWorkbench = lazy(loadPresentationWorkbench);
+const EmbeddedBrowserSurface = lazy(loadEmbeddedBrowserSurface);
 const CapabilityDirectory = lazy(loadCapabilityDirectory);
 const ProviderSettings = lazy(loadProviderSettings);
 const GatewaySettings = lazy(loadGatewaySettings);
@@ -261,7 +280,7 @@ const preloadPlace = (place: AppPlace): void => {
   } else if (place === "groups") {
     warmModule(loadGroups());
   } else if (place === "office") {
-    warmModule(Promise.all([loadOfficeHome(), loadArtifactWorkbench(), loadPresentationWorkbench(), loadExtensionDock()]));
+    warmModule(Promise.all([loadOfficeHome(), loadArtifactWorkbench(), loadPresentationWorkbench(), loadEmbeddedBrowserSurface(), loadExtensionDock()]));
   }
 };
 
@@ -286,8 +305,8 @@ const artifactExtensionFor = (
     title: details.artifact.title,
     surfaceKind: details.artifact.kind,
     owner,
-    // Preserve the existing full workbench on first open. Users can restore the Office library beside it.
-    mode: sessionOwner ? "docked" : "maximized",
+    // Results open beside the current work context. Maximizing is always an explicit user action.
+    mode: "docked",
   };
 };
 
@@ -506,7 +525,6 @@ const BUNDLED_ENGINE_VERSION = bundledEngineVersionText.trim();
 const SERVER_BUSY = -32002;
 const BUSY_SEND_RETRIES = 4;
 const MODEL_CHANGE_BUSY_RETRY_DELAYS_MS = [50, 100, 180, 300, 480] as const;
-const STEERING_HISTORY_PREFIX = "[Sent while you were working on the above — TRIAGE before continuing:";
 const UPDATE_SNOOZE_KEY = "hara.desktopUpdateSnooze";
 const UPDATE_SNOOZE_MS = 24 * 60 * 60 * 1_000;
 const ATTACHMENT_FEATURE = "composer.attachments.v1";
@@ -600,6 +618,8 @@ const thinkingLabel = (locale: Locale, effort: string): string => {
 interface QueuedInput {
   id: string;
   text: string;
+  /** Immutable, renderer-authored context captured when the user submitted the visible text. */
+  wireText?: string;
   attachments?: ComposerAttachment[];
   /** The optimistic transcript entry already exists; a later retry must not duplicate it. */
   recorded?: boolean;
@@ -615,11 +635,9 @@ const recentPetMessages = (items: ConversationItem[]): PetChatState["messages"] 
     })
     .slice(-6);
 
-/** Serve persists steering with an internal triage wrapper for the model. Render only the user's text. */
+/** Serve persists internal routing wrappers for the model. Render only the user's original text. */
 const displayHistoryText = (text: string): string => {
-  if (!text.startsWith(STEERING_HISTORY_PREFIX)) return text;
-  const boundary = text.indexOf("]\n\n");
-  return boundary >= 0 ? text.slice(boundary + 3) : text;
+  return userVisibleText(text);
 };
 
 const conversationItemsFromHistory = (
@@ -680,6 +698,7 @@ function assistantZone(sessions: SessionInfo[]): { current: SessionInfo | null; 
 
 export default function App() {
   const clientRef = useRef<HaraClient | null>(null);
+  const ensurePresentationWorkspaceRef = useRef<() => Promise<boolean>>(async () => false);
   const connectGenerationRef = useRef(0);
   const bootstrapStartedRef = useRef(false);
   const plannedUpdateRestartRef = useRef(false);
@@ -696,6 +715,12 @@ export default function App() {
   const busyRef = useRef(busy);
   const taskStatesRef = useRef(taskStates);
   const activeTurnsRef = useRef<Record<string, string>>({});
+  const presentationSurfaceTurnsRef = useRef<Record<string, {
+    startedAt: number;
+    surfaceOffered: boolean;
+    baselineRevisionIds: ReadonlySet<string>;
+  }>>({});
+  const handleEventRef = useRef<(event: ServerEvent) => void>(() => {});
   const pendingSendDispatchesRef = useRef<Record<string, {
     pendingId: string;
     turnId?: string;
@@ -869,8 +894,32 @@ export default function App() {
   const [hiddenExtensionContexts, setHiddenExtensionContexts] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const hiddenExtensionContextsRef = useRef(hiddenExtensionContexts);
+  hiddenExtensionContextsRef.current = hiddenExtensionContexts;
+  const extensionWindowContextRef = useRef("");
   const extensionDockStateRef = useRef(extensionDockState);
   extensionDockStateRef.current = extensionDockState;
+  useEffect(() => {
+    if (phase !== "ready") return;
+    // Only the conversational Workbench needs extra horizontal room for a true left-chat/right-result split.
+    // Office promotes an opened document to its full main stage and therefore must not resize the native window.
+    const context: ExtensionContext | null = (zone === "chat" || zone === "projects") && active
+      ? { place: zone, sessionId: active }
+      : null;
+    const contextKey = context ? extensionContextKey(context) : null;
+    const tab = context ? activeExtensionTabForContext(extensionDockState, context) : null;
+    const visibleKey = contextKey && tab && !hiddenExtensionContexts.has(contextKey)
+      ? contextKey
+      : "";
+    if (!visibleKey || extensionWindowContextRef.current === visibleKey) {
+      if (!visibleKey) extensionWindowContextRef.current = "";
+      return;
+    }
+    extensionWindowContextRef.current = visibleKey;
+    void invoke("ensure_extension_window_width").catch(() => {
+      // Layout still remains a true in-window split when native expansion is unavailable.
+    });
+  }, [active, extensionDockState, hiddenExtensionContexts, phase, zone]);
   const revealExtensionItem = useCallback((item: ExtensionDockItem) => {
     const key = extensionItemContextKey(item);
     setHiddenExtensionContexts((current) => {
@@ -917,14 +966,15 @@ export default function App() {
     }
   }, []);
   const [artifacts, setArtifacts] = useState<{ artifacts: ArtifactSummary[]; invalid: number; truncated: boolean } | null | "old-server">(null);
+  const artifactsRef = useRef(artifacts);
+  artifactsRef.current = artifacts;
   const [activeArtifact, setActiveArtifact] = useState<ArtifactDetails | null>(null);
   const [activePresentation, setActivePresentation] = useState<PresentationArtifactDetails | null>(null);
   const [presentationPreviewHtml, setPresentationPreviewHtml] = useState<string | null>(null);
-  const [presentationBrowserOpening, setPresentationBrowserOpening] = useState(false);
   const [artifactRevisions, setArtifactRevisions] = useState<ArtifactRevision[]>([]);
   const [artifactValidationReport, setArtifactValidationReport] = useState<ArtifactValidationReport | null>(null);
   const [artifactExportReceipt, setArtifactExportReceipt] = useState<ArtifactExportReceipt | null>(null);
-  const [artifactBusy, setArtifactBusy] = useState<"" | "create" | "import" | "open" | "save" | "verify" | "export">("");
+  const [artifactBusy, setArtifactBusy] = useState<"" | "import" | "open" | "save" | "verify" | "export">("");
   const artifactOpenRequestRef = useRef(0);
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     const client = clientRef.current;
@@ -1473,6 +1523,20 @@ export default function App() {
     }
     return null;
   };
+  const visibleSessionWorkObject = useCallback((sessionId: string): ExtensionDockItem | null => {
+    if (activeRef.current !== sessionId) return null;
+    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+    const place = session ? sessionPlace(session) : null;
+    if ((place !== "chat" && place !== "projects") || zoneRef.current !== place) return null;
+    const context: ExtensionContext = { place, sessionId };
+    const contextKey = extensionContextKey(context);
+    if (!contextKey || hiddenExtensionContextsRef.current.has(contextKey)) return null;
+    return activeExtensionTabForContext(extensionDockStateRef.current, context);
+  }, []);
+  const textWithActiveWorkObject = useCallback((sessionId: string, text: string): string => {
+    const item = visibleSessionWorkObject(sessionId);
+    return item ? messageWithActiveWorkObject(item, text) : text;
+  }, [visibleSessionWorkObject]);
   const discardCurrentExtensionDraft = (): boolean => {
     const context = currentExtensionContext();
     const current = context
@@ -1692,6 +1756,7 @@ export default function App() {
         recordUser?: boolean;
         requeueFrontOnBusy?: boolean;
         pendingId?: string;
+        wireText?: string;
       },
     ) => {
       const c = clientRef.current;
@@ -1710,6 +1775,7 @@ export default function App() {
             : "This Hara engine cannot send safe attachments. Update Hara Desktop first.",
         );
       }
+      const wireText = options?.wireText ?? textWithActiveWorkObject(sessionId, text);
       // A queued or freshly submitted turn must never overtake the user's staged model choice.
       // Serve remains authoritative and revalidates the model, effort, organization, and history.
       const modelChange = await flushStagedModelChange(sessionId);
@@ -1743,6 +1809,15 @@ export default function App() {
           pendingId,
         }]);
       }
+      presentationSurfaceTurnsRef.current[sessionId] = {
+        startedAt: Date.now(),
+        surfaceOffered: false,
+        baselineRevisionIds: new Set(
+          artifactsRef.current && artifactsRef.current !== "old-server"
+            ? artifactsRef.current.artifacts.map((artifact) => artifact.currentRevisionId)
+            : [],
+        ),
+      };
       setSessionBusy(sessionId, true);
       notePet(sessionId, "running");
       let busyAttempt = 0;
@@ -1760,7 +1835,7 @@ export default function App() {
               clientId: id,
             }),
           );
-          await c.send(sessionId, text, attachmentIntents);
+          await c.send(sessionId, wireText, attachmentIntents);
           clearPendingDispatch();
           resolvePendingUser(sessionId, pendingId, true);
           if (interruptedSessionsRef.current.delete(sessionId)) removePet(sessionId);
@@ -1788,7 +1863,7 @@ export default function App() {
               // existing turn and must never acknowledge this optimistic message.
               clearPendingDispatch();
               try {
-                await c.steer(sessionId, text, turnId);
+                await c.steer(sessionId, wireText, turnId);
                 resolvePendingUser(sessionId, pendingId, true);
                 notePet(sessionId, "running");
                 return true;
@@ -1822,6 +1897,7 @@ export default function App() {
               {
                 id: pendingId,
                 text,
+                wireText,
                 ...(attachments?.length ? { attachments } : {}),
                 recorded: true,
               },
@@ -1851,7 +1927,7 @@ export default function App() {
         }
       }
     },
-    [enqueueInput, flushStagedModelChange, locale, nextPendingInputId, notePet, push, removePet, resolvePendingUser, setSessionBusy],
+    [enqueueInput, flushStagedModelChange, locale, nextPendingInputId, notePet, push, removePet, resolvePendingUser, setSessionBusy, textWithActiveWorkObject],
   );
 
   const retryQueuedInput = useCallback(async (sessionId: string, index: number) => {
@@ -1899,6 +1975,7 @@ export default function App() {
         {
           recordUser: retry.recorded !== true,
           pendingId: retry.id,
+          wireText: retry.wireText,
         },
       );
     } catch (error: any) {
@@ -1918,6 +1995,7 @@ export default function App() {
     async (sessionId: string, text: string): Promise<"sent" | "steered" | "queued"> => {
       const c = clientRef.current;
       if (!c) throw new Error("Hara engine is not connected");
+      const wireText = textWithActiveWorkObject(sessionId, text);
       const state = taskStatesRef.current[sessionId];
       const turnId = state?.taskStatus === "running"
         ? state.turnId
@@ -1927,7 +2005,7 @@ export default function App() {
       );
       if (live && turnId && c.supports("session.steer")) {
         try {
-          await c.steer(sessionId, text, turnId);
+          await c.steer(sessionId, wireText, turnId);
           push(sessionId, (items) => [...items, { kind: "user", text }]);
           notePet(sessionId, "running");
           return "steered";
@@ -1939,7 +2017,7 @@ export default function App() {
           const currentState = taskStatesRef.current[sessionId];
           live = !!currentTurnId || (currentState ? taskStateIsLive(currentState.state) : false);
           if (!live) {
-            await sendText(sessionId, text);
+            await sendText(sessionId, text, undefined, { wireText });
             return "sent";
           }
         }
@@ -1947,20 +2025,84 @@ export default function App() {
       if (live) {
         const pendingId = nextPendingInputId();
         push(sessionId, (items) => [...items, { kind: "user", text, pendingId }]);
-        enqueueInput(sessionId, { id: pendingId, text, recorded: true });
+        enqueueInput(sessionId, { id: pendingId, text, wireText, recorded: true });
         notePet(sessionId, "running");
         return "queued";
       }
-      await sendText(sessionId, text);
+      await sendText(sessionId, text, undefined, { wireText });
       return "sent";
     },
-    [enqueueInput, nextPendingInputId, notePet, push, sendText],
+    [enqueueInput, nextPendingInputId, notePet, push, sendText, textWithActiveWorkObject],
   );
+
+  /** Recover only a native revision authored by this exact session/turn window. This is a typed
+   * compatibility path for old engines or a lost notification; assistant prose and exported PPTX
+   * paths are deliberately ignored because neither proves an editable Hara Presentation exists. */
+  const recoverPresentationSurface = useCallback(async (
+    sessionId: string,
+    startedAt: number,
+    baselineRevisionIds: ReadonlySet<string>,
+  ): Promise<void> => {
+    let client = clientRef.current;
+    if (!client?.connected) return;
+    try {
+      if (!supportsNativePresentationWorkspace(client)) {
+        const upgraded = await ensurePresentationWorkspaceRef.current();
+        if (!upgraded) return;
+        client = clientRef.current;
+        if (!client?.connected || !supportsNativePresentationWorkspace(client)) return;
+      }
+      const recoveryClient = client;
+      const listed = await recoveryClient.listArtifacts();
+      if (!listed || clientRef.current !== recoveryClient) return;
+      const candidates = listed.artifacts.filter((artifact) =>
+        artifact.kind === "presentation"
+        && artifact.extension === ".hpres"
+        && artifact.mediaType === "application/vnd.nanhara.presentation+json"
+        && !baselineRevisionIds.has(artifact.currentRevisionId)
+      );
+      const matches = (await Promise.all(candidates.map(async (artifact) => {
+        try {
+          const revisions = await recoveryClient.listArtifactRevisions(artifact.artifactId);
+          const revision = nativePresentationRevisionFromTurn(
+            artifact,
+            revisions.revisions,
+            sessionId,
+            startedAt,
+          );
+          return revision ? { artifact, revision } : null;
+        } catch {
+          return null;
+        }
+      }))).filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
+        .sort((left, right) => left.revision.createdAt.localeCompare(right.revision.createdAt));
+      const latest = matches[matches.length - 1];
+      if (!latest || clientRef.current !== recoveryClient) return;
+      handleEventRef.current({
+        method: "event.surface",
+        sessionId,
+        kind: "presentation",
+        title: latest.artifact.title,
+        resource: {
+          type: "artifact",
+          artifactId: latest.artifact.artifactId,
+          revisionId: latest.revision.revisionId,
+        },
+      });
+    } catch {
+      // A later Office refresh remains available; never infer UI success after a failed recovery read.
+    }
+  }, []);
 
   const handleEvent = useCallback(
     (e: ServerEvent) => {
       switch (e.method) {
         case "event.turn_start":
+          presentationSurfaceTurnsRef.current[e.sessionId] = {
+            startedAt: presentationSurfaceTurnsRef.current[e.sessionId]?.startedAt ?? Date.now(),
+            surfaceOffered: false,
+            baselineRevisionIds: presentationSurfaceTurnsRef.current[e.sessionId]?.baselineRevisionIds ?? new Set(),
+          };
           if (e.turnId) {
             activeTurnsRef.current[e.sessionId] = e.turnId;
             const dispatch = pendingSendDispatchesRef.current[e.sessionId];
@@ -2014,8 +2156,39 @@ export default function App() {
         case "event.diff":
           if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => [...items, { kind: "diff", text: plain(e.text) }]);
+          {
+            const session = sessionsRef.current.find((candidate) => candidate.id === e.sessionId);
+            const place = session ? sessionPlace(session) : null;
+            if (session && (place === "chat" || place === "projects")) {
+              const owner: SessionExtensionOwner = {
+                place,
+                sessionId: session.id,
+                cwd: session.cwd,
+              };
+              const context: ExtensionContext = { place, sessionId: session.id };
+              const visibleExtension = activeExtensionTabForContext(extensionDockStateRef.current, context);
+              const foreground = activeRef.current === session.id
+                && zoneRef.current === place
+                && visibleExtension?.dirty !== true;
+              const review: ReviewExtension = {
+                type: "review",
+                id: reviewTabId(session.id),
+                title: locale === "zh" ? "代码检查" : "Review",
+                surfaceKind: "review",
+                owner,
+                mode: "docked",
+                diff: plain(e.text).slice(-300_000),
+              };
+              warmModule(Promise.all([loadExtensionDock(), loadWorkbenchToolSurface()]));
+              offerExtensionTab(review, foreground);
+            }
+          }
           break;
         case "event.surface": {
+          const surfaceTurn = presentationSurfaceTurnsRef.current[e.sessionId];
+          if (surfaceTurn && e.kind === "presentation" && e.resource?.type === "artifact") {
+            surfaceTurn.surfaceOffered = true;
+          }
           const session = sessionsRef.current.find((candidate) => candidate.id === e.sessionId);
           const place = session ? sessionPlace(session) : null;
           if (!session || (place !== "chat" && place !== "projects")) break;
@@ -2025,9 +2198,11 @@ export default function App() {
             cwd: session.cwd,
           };
           const ownerContext: ExtensionContext = { place, sessionId: session.id };
+          const ownerContextKey = extensionContextKey(ownerContext);
+          const dockHidden = !!ownerContextKey && hiddenExtensionContextsRef.current.has(ownerContextKey);
           const visibleExtension = activeExtensionTabForContext(extensionDockStateRef.current, ownerContext);
           const sessionForeground = activeRef.current === session.id && zoneRef.current === place;
-          const foreground = sessionForeground && visibleExtension?.dirty !== true;
+          const foreground = sessionForeground && !dockHidden && visibleExtension?.dirty !== true;
           if (e.resource?.type === "url") {
             if (e.kind !== "browser") break;
             const tab = webPreviewExtensionFor(e.resource.url, e.title, owner);
@@ -2047,8 +2222,12 @@ export default function App() {
               push(e.sessionId, (items) => [...items, {
                 kind: "notice",
                 text: locale === "zh"
-                  ? "新的网页预览已在右侧后台标签中就绪；请先保存或放弃当前演示文稿的更改。"
-                  : "A new web preview is ready in a background tab. Save or discard the current presentation changes first.",
+                  ? dockHidden
+                    ? "网页预览已生成并加入右侧标签；扩展屏保持收起，显示后再加载。"
+                    : "网页预览已加入右侧后台标签；请先保存或放弃当前演示文稿的更改，再打开加载。"
+                  : dockHidden
+                    ? "The web preview was added to a right-side tab. The Dock remains collapsed and will load it when shown."
+                    : "The web preview was added to a background tab. Save or discard the current presentation changes before loading it.",
               }]);
             } else setUnread((current) => ({ ...current, [session.id]: true }));
             break;
@@ -2091,8 +2270,12 @@ export default function App() {
               push(e.sessionId, (items) => [...items, {
                 kind: "notice",
                 text: locale === "zh"
-                  ? "新的可视结果已在右侧后台标签中就绪；请先保存或放弃当前演示文稿的更改。"
-                  : "A new visual result is ready in a background tab. Save or discard the current presentation changes first.",
+                  ? dockHidden
+                    ? "演示文稿已创建并加入右侧标签；扩展屏保持收起，显示后再加载精确版本。"
+                    : "演示文稿已创建并加入右侧后台标签；请先保存或放弃当前更改，再打开加载精确版本。"
+                  : dockHidden
+                    ? "The presentation was created and added to a right-side tab. The Dock remains collapsed and will load the exact revision when shown."
+                    : "The presentation was created and added to a background tab. Save or discard the current changes before loading the exact revision.",
               }]);
             } else setUnread((current) => ({ ...current, [session.id]: true }));
             break;
@@ -2102,26 +2285,34 @@ export default function App() {
           const requestId = ++artifactOpenRequestRef.current;
           setArtifactBusy("open");
           setErr("");
+          if (e.kind === "presentation") {
+            push(e.sessionId, (items) => [...items, {
+              kind: "notice",
+              text: locale === "zh"
+                ? "演示文稿已创建，Desktop 正在加载本轮生成的精确版本…"
+                : "Presentation created. Desktop is loading the exact revision from this turn…",
+            }]);
+          }
           void (async () => {
             try {
-              const [revisionResult, list, presentation, generic] = await Promise.all([
+              const [revisionResult, list, presentationSurface, generic] = await Promise.all([
                 client.listArtifactRevisions(artifactResource.artifactId),
                 client.listArtifacts(),
                 e.kind === "presentation"
-                  ? client.getPresentation(artifactResource.artifactId, artifactResource.revisionId)
+                  ? loadPresentationSurface(
+                      client,
+                      artifactResource.artifactId,
+                      artifactResource.revisionId,
+                    )
                   : Promise.resolve(null),
                 e.kind === "presentation"
                   ? Promise.resolve(null)
                   : client.getArtifact(artifactResource.artifactId),
               ]);
+              const presentation = presentationSurface?.details ?? null;
               const resolved = presentation ?? generic;
-              if (!resolved) throw new Error("Visual surface Artifact could not be opened");
-              const preview = presentation
-                ? await client.getPresentationPreview(
-                    presentation.artifact.artifactId,
-                    presentation.currentRevision.revisionId,
-                  )
-                : null;
+              if (!resolved) throw new Error("visual surface unavailable");
+              const preview = presentationSurface?.preview ?? null;
               if (
                 requestId !== artifactOpenRequestRef.current
                 || clientRef.current !== client
@@ -2136,8 +2327,31 @@ export default function App() {
               setArtifactValidationReport(null);
               setArtifactExportReceipt(null);
               offerExtensionTab(artifactExtensionFor(resolved, owner), true);
+              if (presentation) {
+                push(e.sessionId, (items) => [...items, {
+                  kind: "notice",
+                  text: presentationSurface?.recoveredLatest
+                    ? makeT(locale)("presentationReloadedLatest")
+                    : locale === "zh"
+                      ? "Desktop 已加载精确版本，演示文稿现在已在右侧打开。"
+                      : "Desktop loaded the exact revision. The presentation is now open on the right.",
+                }]);
+              }
             } catch (error: any) {
-              if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+              if (requestId === artifactOpenRequestRef.current) {
+                const message = makeT(locale)(presentationErrorKey(error));
+                setErr(message);
+                push(e.sessionId, (items) => [...items, {
+                  kind: "notice",
+                  text: e.kind === "presentation"
+                    ? locale === "zh"
+                      ? `演示文稿已创建，但右侧预览未能打开：${message}`
+                      : `The presentation was created, but its right-side preview could not open: ${message}`
+                    : locale === "zh"
+                      ? `可视结果已创建，但右侧内容未能打开：${message}`
+                      : `The visual result was created, but its right-side content could not open: ${message}`,
+                }]);
+              }
             } finally {
               if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
             }
@@ -2145,6 +2359,18 @@ export default function App() {
           break;
         }
         case "event.turn_end": {
+          const surfaceTurn = presentationSurfaceTurnsRef.current[e.sessionId];
+          delete presentationSurfaceTurnsRef.current[e.sessionId];
+          if (surfaceTurn && !surfaceTurn.surfaceOffered) {
+            window.setTimeout(
+              () => void recoverPresentationSurface(
+                e.sessionId,
+                surfaceTurn.startedAt,
+                surfaceTurn.baselineRevisionIds,
+              ),
+              0,
+            );
+          }
           const dispatch = pendingSendDispatchesRef.current[e.sessionId];
           if (dispatch?.turnId && e.turnId === dispatch.turnId) {
             dispatch.completed = true;
@@ -2194,6 +2420,7 @@ export default function App() {
                     recordUser: next.recorded !== true,
                     requeueFrontOnBusy: true,
                     pendingId: next.id,
+                    wireText: next.wireText,
                   },
                 )
                 .catch((error) => {
@@ -2234,8 +2461,9 @@ export default function App() {
           break;
       }
     },
-    [enqueueInput, flushStagedModelChange, locale, notePet, offerExtensionTab, push, refreshArtifacts, removePet, resolvePendingUser, sendText, setSessionBusy],
+    [enqueueInput, flushStagedModelChange, locale, notePet, offerExtensionTab, push, recoverPresentationSurface, refreshArtifacts, removePet, resolvePendingUser, sendText, setSessionBusy],
   );
+  handleEventRef.current = handleEvent;
 
   const connect = useCallback(async (expectedPid: number | null = null) => {
     const generation = ++connectGenerationRef.current;
@@ -2248,6 +2476,7 @@ export default function App() {
     clearExtensionDock();
     attachedSessionsRef.current.clear();
     pendingSendDispatchesRef.current = {};
+    presentationSurfaceTurnsRef.current = {};
     clearStagedModelChanges();
     previous?.close();
     artifactOpenRequestRef.current += 1;
@@ -2298,6 +2527,7 @@ export default function App() {
           if (running) notePet(sessionId, "blocked", "Hara engine disconnected");
         }
         activeTurnsRef.current = {};
+        presentationSurfaceTurnsRef.current = {};
         attachedSessionsRef.current.clear();
         pendingSendDispatchesRef.current = {};
         clearStagedModelChanges();
@@ -2993,11 +3223,12 @@ export default function App() {
     });
     if (typeof selected !== "string" || !selected) return;
     const requestId = ++artifactOpenRequestRef.current;
+    let nativePresentationImport = false;
     setArtifactBusy("import");
     setErr("");
     try {
       const extension = fileExtension(selected);
-      const nativePresentationImport = (
+      nativePresentationImport = (
         kind === "presentation" && NATIVE_PRESENTATION_IMPORT_EXTENSIONS.has(extension)
       ) || (
         kind === undefined
@@ -3010,16 +3241,19 @@ export default function App() {
       const imported = nativePresentationImport
         ? await client.importPresentation(selected)
         : await client.importArtifact(selected, kind ? { kind } : undefined);
-      const [revisionResult, list, presentation, preview] = await Promise.all([
+      const [revisionResult, list, presentationSurface] = await Promise.all([
         client.listArtifactRevisions(imported.artifact.artifactId),
         client.listArtifacts(),
         nativePresentationImport
-          ? client.getPresentation(imported.artifact.artifactId)
-          : Promise.resolve(null),
-        nativePresentationImport
-          ? client.getPresentationPreview(imported.artifact.artifactId, imported.currentRevision.revisionId)
+          ? loadPresentationSurface(
+              client,
+              imported.artifact.artifactId,
+              imported.currentRevision.revisionId,
+            )
           : Promise.resolve(null),
       ]);
+      const presentation = presentationSurface?.details ?? null;
+      const preview = presentationSurface?.preview ?? null;
       const verified = presentation ?? await client.getArtifact(imported.artifact.artifactId);
       if (requestId !== artifactOpenRequestRef.current) return;
       setArtifacts(list ?? "old-server");
@@ -3034,44 +3268,11 @@ export default function App() {
       setZone("office");
       setExtensionDock(artifactExtensionFor(verified));
     } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
-    } finally {
-      if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
-    }
-  };
-
-  const createNativePresentation = async () => {
-    const client = clientRef.current;
-    if (!client) return;
-    if (!client.supports("presentation.create") || !client.supports("presentation.preview")) {
-      setArtifacts("old-server");
-      setErr(t("artifactNeedsUpdate"));
-      return;
-    }
-    const requestId = ++artifactOpenRequestRef.current;
-    setArtifactBusy("create");
-    setErr("");
-    try {
-      const created = await client.createPresentation({ title: t("presentationUntitled") });
-      const [revisionResult, list, preview] = await Promise.all([
-        client.listArtifactRevisions(created.artifact.artifactId),
-        client.listArtifacts(),
-        client.getPresentationPreview(created.artifact.artifactId, created.currentRevision.revisionId),
-      ]);
-      if (requestId !== artifactOpenRequestRef.current) return;
-      setArtifacts(list ?? "old-server");
-      setActiveArtifact(created);
-      setActivePresentation(created);
-      setPresentationPreviewHtml(preview.html);
-      setArtifactRevisions(revisionResult.revisions);
-      setArtifactValidationReport(null);
-      setArtifactExportReceipt(null);
-      setActive(null);
-      setAutoReplay(null);
-      setZone("office");
-      setExtensionDock(artifactExtensionFor(created));
-    } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+      if (requestId === artifactOpenRequestRef.current) {
+        setErr(nativePresentationImport
+          ? makeT(locale)(presentationErrorKey(error))
+          : makeT(locale)("artifactImportFailed"));
+      }
     } finally {
       if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
     }
@@ -3081,6 +3282,7 @@ export default function App() {
     const client = clientRef.current;
     if (!client) return;
     const requestId = ++artifactOpenRequestRef.current;
+    let nativePresentationOpen = false;
     setArtifactBusy("open");
     setErr("");
     try {
@@ -3092,16 +3294,18 @@ export default function App() {
       let presentation: PresentationArtifactDetails | null = null;
       let previewHtml: string | null = null;
       if (isNativePresentation(details)) {
+        nativePresentationOpen = true;
         if (!client.supports("presentation.get") || !client.supports("presentation.preview")) {
           throw new Error(t("artifactNeedsUpdate"));
         }
-        const [resolved, preview] = await Promise.all([
-          client.getPresentation(artifactId, details.currentRevision.revisionId),
-          client.getPresentationPreview(artifactId, details.currentRevision.revisionId),
-        ]);
+        const loaded = await loadPresentationSurface(
+          client,
+          artifactId,
+          details.currentRevision.revisionId,
+        );
         if (requestId !== artifactOpenRequestRef.current) return;
-        presentation = resolved;
-        previewHtml = preview.html;
+        presentation = loaded.details;
+        previewHtml = loaded.preview.html;
       }
       setActiveArtifact(presentation ?? details);
       setActivePresentation(presentation);
@@ -3111,9 +3315,13 @@ export default function App() {
       setArtifactExportReceipt(null);
       setActive(null);
       setAutoReplay(null);
-      setExtensionDock(artifactExtensionFor(details));
+      setExtensionDock(artifactExtensionFor(presentation ?? details));
     } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+      if (requestId === artifactOpenRequestRef.current) {
+        setErr(makeT(locale)(nativePresentationOpen
+          ? presentationErrorKey(error)
+          : "artifactOpenFailed"));
+      }
     } finally {
       if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
     }
@@ -3144,7 +3352,11 @@ export default function App() {
         setArtifactValidationReport(report);
       }
     } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+      if (requestId === artifactOpenRequestRef.current) {
+        setErr(nativePresentation
+          ? makeT(locale)(presentationErrorKey(error, "presentationVerifyFailed"))
+          : t("artifactOpenFailed"));
+      }
     } finally {
       if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
     }
@@ -3217,37 +3429,43 @@ export default function App() {
           });
       if (requestId === artifactOpenRequestRef.current) setArtifactExportReceipt(receipt);
     } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+      if (requestId === artifactOpenRequestRef.current) {
+        setErr(nativePresentation
+          ? makeT(locale)(presentationErrorKey(error, "presentationExportFailed"))
+          : t("artifactOpenFailed"));
+      }
     } finally {
       if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
     }
   };
 
-  const openPresentationInBrowser = async () => {
-    const client = clientRef.current;
+  const openPresentationInBrowser = () => {
     const details = activePresentation;
-    if (!client || !details) return;
-    if (!client.supports("presentation.preview-file")) {
-      setErr(t("artifactNeedsUpdate"));
-      return;
-    }
+    if (!details || !presentationPreviewHtml) return;
     const artifactId = details.artifact.artifactId;
     const revisionId = details.currentRevision.revisionId;
-    const requestId = ++artifactOpenRequestRef.current;
-    setPresentationBrowserOpening(true);
-    setErr("");
-    try {
-      const preview = await client.createPresentationPreviewFile(artifactId, revisionId);
-      if (requestId !== artifactOpenRequestRef.current) return;
-      if (preview.revisionId !== revisionId) {
-        throw new Error("Presentation preview revision changed before it could be opened");
-      }
-      await openPath(preview.path);
-    } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
-    } finally {
-      if (requestId === artifactOpenRequestRef.current) setPresentationBrowserOpening(false);
-    }
+    const currentContext = currentExtensionContext();
+    const currentTab = currentContext
+      ? activeExtensionTabForContext(extensionDockStateRef.current, currentContext)
+      : null;
+    if (
+      !currentTab
+      || currentTab.type !== "artifact"
+      || currentTab.owner.artifactId !== artifactId
+    ) return;
+    const browser: PresentationBrowserExtension = {
+      type: "presentation-browser",
+      id: presentationBrowserTabId(artifactId, revisionId, currentTab.owner),
+      title: safeSurfaceTitle(
+        `${details.artifact.title} · ${t("extensionBrowser")}`,
+        t("extensionBrowser"),
+      ),
+      surfaceKind: "browser",
+      owner: currentTab.owner,
+      mode: "docked",
+    };
+    warmModule(Promise.all([loadEmbeddedBrowserSurface(), loadExtensionDock()]));
+    offerExtensionTab(browser);
   };
 
   const renderActivePresentationDraft = async (project: PresentationProject): Promise<string> => {
@@ -3257,6 +3475,25 @@ export default function App() {
     }
     const rendered = await client.renderPresentation(project);
     return rendered.html;
+  };
+
+  const choosePresentationImage = async (): Promise<string | null> => {
+    try {
+      const selected = await openDialog({
+        title: t("presentationChooseImage"),
+        multiple: false,
+        directory: false,
+        filters: [{
+          name: t("presentationChooseImage"),
+          extensions: ["png", "jpg", "jpeg", "webp", "gif"],
+        }],
+      });
+      if (typeof selected !== "string" || !selected) return null;
+      return await invoke<string>("read_presentation_image", { path: selected });
+    } catch {
+      setErr(t("presentationImageFailed"));
+      return null;
+    }
   };
 
   const saveActivePresentation = async (project: PresentationProject): Promise<boolean> => {
@@ -3278,16 +3515,17 @@ export default function App() {
     setErr("");
     try {
       const updated = await client.updatePresentation({ artifactId, baseRevisionId, project });
-      const [revisionResult, list, preview] = await Promise.all([
+      const [revisionResult, list, loaded] = await Promise.all([
         client.listArtifactRevisions(artifactId),
         client.listArtifacts(),
-        client.getPresentationPreview(artifactId, updated.currentRevision.revisionId),
+        loadPresentationSurface(client, artifactId, updated.currentRevision.revisionId),
       ]);
       if (requestId !== artifactOpenRequestRef.current || clientRef.current !== client) return false;
+      const resolved = loaded.details;
       setArtifacts(list ?? "old-server");
-      setActiveArtifact(updated);
-      setActivePresentation(updated);
-      setPresentationPreviewHtml(preview.html);
+      setActiveArtifact(resolved);
+      setActivePresentation(resolved);
+      setPresentationPreviewHtml(loaded.preview.html);
       setArtifactRevisions(revisionResult.revisions);
       setArtifactValidationReport(null);
       setArtifactExportReceipt(null);
@@ -3296,14 +3534,16 @@ export default function App() {
           ? { place: current.owner.place, sessionId: current.owner.sessionId, cwd: current.owner.cwd }
           : undefined;
         return {
-          ...artifactExtensionFor(updated, owner),
+          ...artifactExtensionFor(resolved, owner),
           mode: current.mode,
           dirty: false,
         };
       }) : state);
       return true;
     } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+      if (requestId === artifactOpenRequestRef.current) {
+        setErr(makeT(locale)(presentationErrorKey(error, "presentationSaveFailed")));
+      }
       return false;
     } finally {
       if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
@@ -3335,6 +3575,32 @@ export default function App() {
       ...draft,
       text: t("skillCreationPrompt"),
     }));
+  };
+
+  /** Office creates through the same conversational Workbench; the right Dock is the result surface. */
+  const startPresentationWorkbench = async (template?: PresentationTemplate) => {
+    if (!supportsNativePresentationWorkspace(clientRef.current)) {
+      const ready = await ensurePresentationWorkspaceRef.current();
+      if (!ready) return;
+    }
+    const sessionId = await startNewAssistantConversation();
+    if (!sessionId) return;
+    const templateInstructionKeys: Record<PresentationTemplate, Key> = {
+          pitch: "presentationTemplatePitchInstruction",
+          report: "presentationTemplateReportInstruction",
+          technical: "presentationTemplateTechnicalInstruction",
+          visual: "presentationTemplateVisualInstruction",
+        };
+    const templateInstruction = template
+      ? t(templateInstructionKeys[template])
+      : "";
+    updateComposerDraft(sessionId, (draft) => ({
+      ...draft,
+      text: templateInstruction
+        ? `${t("presentationWorkbenchPrompt")}\n\n${templateInstruction}`
+        : t("presentationWorkbenchPrompt"),
+    }));
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   /** Resume the current assistant conversation; create one only when none exists yet. */
@@ -3730,6 +3996,7 @@ export default function App() {
       enqueueInput(sessionId, {
         id: nextPendingInputId(),
         text,
+        wireText: textWithActiveWorkObject(sessionId, text),
         attachments,
       });
       return;
@@ -4169,6 +4436,29 @@ export default function App() {
     }
   };
 
+  ensurePresentationWorkspaceRef.current = async () => {
+    if (supportsNativePresentationWorkspace(clientRef.current)) return true;
+    if (Object.values(busyRef.current).some(Boolean)) {
+      setErr(locale === "zh"
+        ? "当前任务仍在运行，不能安全更换 Hara 引擎。任务结束后再次新建演示文稿，Desktop 会自动启用安装包内置的新引擎。"
+        : "A task is still running, so Hara cannot safely replace the engine. Try creating the presentation again after it finishes; Desktop will enable the bundled engine automatically.");
+      return false;
+    }
+    setErr(locale === "zh"
+      ? `正在把 Hara 引擎升级到安装包内置版本 ${BUNDLED_ENGINE_VERSION}，随后继续新建演示文稿…`
+      : `Switching to bundled Hara engine ${BUNDLED_ENGINE_VERSION}, then presentation creation will continue…`);
+    await restartBundledEngine();
+    const ready = supportsNativePresentationWorkspace(clientRef.current);
+    if (!ready) {
+      setErr(locale === "zh"
+        ? `演示工作台需要 Hara 引擎 ${BUNDLED_ENGINE_VERSION} 的原生右侧 Surface 与编辑能力。请在设置中重启内置引擎后重试。`
+        : `Presentation Workbench needs the native surface and editing capabilities in bundled engine ${BUNDLED_ENGINE_VERSION}. Restart the bundled engine in Settings and try again.`);
+    } else {
+      setErr("");
+    }
+    return ready;
+  };
+
   const downloadDesktopUpdate = async () => {
     if (updating || updateReady) return;
     setUpdating(true);
@@ -4423,6 +4713,7 @@ export default function App() {
     <input id="haraSearch" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} spellCheck={false} />
   );
   const activeSession = sessions.find((s) => s.id === active);
+  const activeComposerWorkObject = active ? visibleSessionWorkObject(active) : null;
   const items = active ? (transcripts[active] ?? []) : [];
   const modelEntries = [...new Set([
     ...(activeSession ? [activeSession.model] : []),
@@ -4727,7 +5018,7 @@ export default function App() {
             type="button"
             className={`paneltab extension-screen-toggle${contextExtensionScreenVisible ? " on" : ""}`}
             aria-pressed={contextExtensionScreenVisible}
-            disabled={contextExtensionTabs.length === 0}
+            disabled={!activeSession}
             title={contextExtensionTabs.length === 0
               ? t("extensionEmpty")
               : contextExtensionScreenVisible ? t("extensionHide") : t("extensionShow")}
@@ -4875,6 +5166,22 @@ export default function App() {
                     {basename(activeSession.cwd)}
                     <span className="composer-workspace-label">
                       {locale === "zh" ? "工作区" : "workspace"}
+                    </span>
+                  </span>
+                )}
+                {activeComposerWorkObject && (
+                  <span
+                    className="composer-active-work-object"
+                    data-kind={activeComposerWorkObject.surfaceKind}
+                    title={activeComposerWorkObject.title}
+                    aria-label={`${locale === "zh" ? "作用于" : "Targets"}: ${activeComposerWorkObject.title}`}
+                  >
+                    <span aria-hidden>↗</span>
+                    <span className="composer-active-work-object-label">
+                      {locale === "zh" ? "作用于" : "targets"}
+                    </span>
+                    <span className="composer-active-work-object-name">
+                      {activeComposerWorkObject.title}
                     </span>
                   </span>
                 )}
@@ -5417,12 +5724,11 @@ export default function App() {
     setActiveArtifact(null);
     setActivePresentation(null);
     setPresentationPreviewHtml(null);
-    setPresentationBrowserOpening(false);
     setArtifactRevisions([]);
     setArtifactValidationReport(null);
     setArtifactExportReceipt(null);
   };
-  const loadArtifactExtension = async (tab: ArtifactExtension) => {
+  const loadArtifactExtension = async (tab: ArtifactExtension | PresentationBrowserExtension) => {
     const client = clientRef.current;
     if (!client) return;
     const requestId = ++artifactOpenRequestRef.current;
@@ -5430,19 +5736,18 @@ export default function App() {
     const ownerStillVisible = () => owner.place === "office"
       ? zoneRef.current === "office"
       : zoneRef.current === owner.place && activeRef.current === owner.sessionId;
+    let nativePresentation = tab.type === "presentation-browser";
     setArtifactBusy("open");
     setErr("");
     try {
       const base = await client.getArtifact(owner.artifactId);
-      const nativePresentation = isNativePresentation(base);
-      const [revisionResult, list, presentation, preview] = await Promise.all([
+      nativePresentation = nativePresentation || isNativePresentation(base);
+      const presentationRevisionId = owner.revisionId;
+      const [revisionResult, list, presentationSurface] = await Promise.all([
         client.listArtifactRevisions(owner.artifactId),
         client.listArtifacts(),
         nativePresentation
-          ? client.getPresentation(owner.artifactId, base.currentRevision.revisionId)
-          : Promise.resolve(null),
-        nativePresentation
-          ? client.getPresentationPreview(owner.artifactId, base.currentRevision.revisionId)
+          ? loadPresentationSurface(client, owner.artifactId, presentationRevisionId)
           : Promise.resolve(null),
       ]);
       if (
@@ -5450,6 +5755,8 @@ export default function App() {
         || clientRef.current !== client
         || !ownerStillVisible()
       ) return;
+      const presentation = presentationSurface?.details ?? null;
+      const preview = presentationSurface?.preview ?? null;
       const resolved = presentation ?? base;
       setArtifacts(list ?? "old-server");
       setActiveArtifact(resolved);
@@ -5459,6 +5766,19 @@ export default function App() {
       setArtifactValidationReport(null);
       setArtifactExportReceipt(null);
       setExtensionDockState((state) => updateExtensionTab(state, tab.id, (current) => {
+        if (current.type === "presentation-browser") {
+          return {
+            ...current,
+            title: safeSurfaceTitle(
+              `${resolved.artifact.title} · ${makeT(locale)("extensionBrowser")}`,
+              makeT(locale)("extensionBrowser"),
+            ),
+            owner: {
+              ...current.owner,
+              revisionId: resolved.currentRevision.revisionId,
+            },
+          };
+        }
         const sessionOwner = owner.place === "office"
           ? undefined
           : { place: owner.place, sessionId: owner.sessionId, cwd: owner.cwd };
@@ -5468,8 +5788,22 @@ export default function App() {
           ...(current.dirty ? { dirty: true } : {}),
         };
       }));
+      if (presentation && owner.place !== "office") {
+        push(owner.sessionId, (items) => [...items, {
+          kind: "notice",
+          text: presentationSurface?.recoveredLatest
+            ? makeT(locale)("presentationReloadedLatest")
+            : locale === "zh"
+              ? "Desktop 已加载精确版本，演示文稿现在已在右侧打开。"
+              : "Desktop loaded the exact revision. The presentation is now open on the right.",
+        }]);
+      }
     } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) setErr(String(error?.message ?? error));
+      if (requestId === artifactOpenRequestRef.current) {
+        setErr(makeT(locale)(nativePresentation
+          ? presentationErrorKey(error)
+          : "artifactOpenFailed"));
+      }
     } finally {
       if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
     }
@@ -5492,12 +5826,12 @@ export default function App() {
       return activateExtensionTab(clean, tabId);
     });
     revealExtensionItem(tab);
-    if (tab.type === "artifact") {
+    if (tab.type === "artifact" || tab.type === "presentation-browser") {
       void loadArtifactExtension(tab);
       return;
     }
     clearArtifactSurface();
-    setExtensionLoading(true);
+    setExtensionLoading(tab.type === "legacy-panel" || tab.type === "web-preview");
   };
   const closeDockTab = (tabId: string) => {
     const tab = extensionDockState.tabs.find((candidate) => candidate.id === tabId);
@@ -5522,8 +5856,12 @@ export default function App() {
         return cleaned;
       });
     }
-    if (nextVisible?.type === "artifact") void loadArtifactExtension(nextVisible);
-    else if (tab.type === "artifact" && contextExtensionDock?.id === tabId) clearArtifactSurface();
+    if (nextVisible?.type === "artifact" || nextVisible?.type === "presentation-browser") {
+      void loadArtifactExtension(nextVisible);
+    } else if (
+      (tab.type === "artifact" || tab.type === "presentation-browser")
+      && contextExtensionDock?.id === tabId
+    ) clearArtifactSurface();
   };
   const popOutVisualExtension = (item: LegacyPanelExtension | WebPreviewExtension) => {
     try {
@@ -5537,6 +5875,28 @@ export default function App() {
     } catch (error: any) {
       setErr(String(error?.message ?? error));
     }
+  };
+  const openWorkbenchTool = (tool: WorkbenchToolKind) => {
+    const session = active ? sessions.find((candidate) => candidate.id === active) : null;
+    const place = session ? sessionPlace(session) : null;
+    if (!session || (place !== "chat" && place !== "projects") || zone !== place) return;
+    const labels: Record<WorkbenchToolKind, string> = {
+      terminal: t("extensionTerminal"),
+      browser: t("extensionBrowser"),
+      files: t("extensionFiles"),
+    };
+    const item: WorkbenchToolExtension = {
+      type: "workbench-tool",
+      tool,
+      id: workbenchToolTabId(session.id, tool),
+      title: labels[tool],
+      surfaceKind: tool,
+      owner: { place, sessionId: session.id, cwd: session.cwd },
+      mode: "docked",
+    };
+    warmModule(Promise.all([loadExtensionDock(), loadWorkbenchToolSurface()]));
+    setExtensionLoading(false);
+    offerExtensionTab(item);
   };
   const extensionContext: ExtensionContext | null = zone === "office"
     ? { place: "office" }
@@ -5569,6 +5929,10 @@ export default function App() {
     });
   };
   const toggleCurrentExtensionScreen = () => {
+    if (!contextExtensionDock && (zone === "chat" || zone === "projects") && active) {
+      openWorkbenchTool("files");
+      return;
+    }
     setCurrentExtensionScreenVisible(!contextExtensionScreenVisible);
   };
   const panelExtension = contextExtensionDock?.type === "legacy-panel"
@@ -5578,7 +5942,6 @@ export default function App() {
     ? contextExtensionDock
     : null;
   const artifactExtension = contextExtensionDock?.type === "artifact"
-    && contextExtensionDock.owner.place === "office"
     && activeArtifact?.artifact.artifactId === contextExtensionDock.owner.artifactId
       ? contextExtensionDock
       : null;
@@ -5586,6 +5949,15 @@ export default function App() {
     && contextExtensionDock.owner.place !== "office"
       ? contextExtensionDock
       : null;
+  const presentationBrowserExtension = contextExtensionDock?.type === "presentation-browser"
+    ? contextExtensionDock
+    : null;
+  const workbenchToolExtension = contextExtensionDock?.type === "workbench-tool"
+    ? contextExtensionDock
+    : null;
+  const reviewExtension = contextExtensionDock?.type === "review"
+    ? contextExtensionDock
+    : null;
   const dockTabs = contextExtensionTabs.map((tab) => ({
     id: tab.id,
     title: tab.title,
@@ -5598,6 +5970,9 @@ export default function App() {
     if (kind === "document") return t("artifactTypeDocument");
     if (kind === "design") return t("extensionDesign");
     if (kind === "browser") return t("extensionBrowser");
+    if (kind === "terminal") return t("extensionTerminal");
+    if (kind === "files") return t("extensionFiles");
+    if (kind === "review") return t("extensionReview");
     return t("extensionCapability");
   };
   const extensionCopy = {
@@ -5608,6 +5983,35 @@ export default function App() {
     popOut: t("openInWindow"),
     hide: t("extensionHide"),
     close: t("extensionTabClose"),
+    add: t("extensionAdd"),
+  };
+  const extensionAddItems = contextExtensionDock?.owner.place === "chat"
+    || contextExtensionDock?.owner.place === "projects"
+    ? [
+        { id: "terminal" as const, label: t("extensionTerminal") },
+        { id: "browser" as const, label: t("extensionBrowser") },
+        { id: "files" as const, label: t("extensionFiles") },
+      ]
+    : [];
+  const openBrowserFromTool = (item: WorkbenchToolExtension, address: string): string | null => {
+    const preview = webPreviewExtensionFor(address, t("extensionBrowser"), item.owner);
+    if (!preview) return t("extensionBrowserInvalid");
+    setExtensionDockState((state) => upsertExtensionTab(closeExtensionTab(state, item.id), preview));
+    revealExtensionItem(preview);
+    setExtensionLoading(true);
+    return null;
+  };
+  const composeFromExtension = (text: string) => {
+    if (!active) return;
+    setInput((current) => current.trim() ? `${current.trim()}\n${text}` : text);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+  const runCommandFromExtension = (command: string) => {
+    if (!active) return;
+    const prompt = locale === "zh"
+      ? `请在当前项目终端运行下面的命令，遵循现有审批规则，并返回实际输出：\n\n\`\`\`sh\n${command}\n\`\`\``
+      : `Run the following command in the current project terminal, following the existing approval policy, and return the actual output:\n\n\`\`\`sh\n${command}\n\`\`\``;
+    void sendText(active, prompt).catch((error) => setErr(String(error?.message ?? error)));
   };
   const setExtensionMode = (itemId: string, mode: ExtensionDockMode) => {
     setExtensionDockState((state) => updateExtensionTab(
@@ -5626,9 +6030,12 @@ export default function App() {
     >
       <OfficeHome
         importing={artifactBusy === "import"}
-        creating={artifactBusy === "create"}
+        creating={assistantCreating}
+        extensionCount={contextExtensionTabs.length}
+        extensionVisible={contextExtensionScreenVisible}
         onImport={(kind) => void importArtifactFile(kind)}
-        onCreatePresentation={() => void createNativePresentation()}
+        onCreatePresentation={(template) => void startPresentationWorkbench(template)}
+        onToggleExtension={toggleCurrentExtensionScreen}
         copy={{
           eyebrow: t("officeEyebrow"),
           title: t("officeTitle"),
@@ -5640,6 +6047,16 @@ export default function App() {
           creatingPresentation: t("presentationCreating"),
           importType: t("officeImportType"),
           importing: t("artifactImporting"),
+          templatesTitle: t("presentationTemplatesTitle"),
+          templatesHint: t("presentationTemplatesHint"),
+          templatePitch: t("presentationTemplatePitch"),
+          templatePitchHint: t("presentationTemplatePitchHint"),
+          templateReport: t("presentationTemplateReport"),
+          templateReportHint: t("presentationTemplateReportHint"),
+          templateTechnical: t("presentationTemplateTechnical"),
+          templateTechnicalHint: t("presentationTemplateTechnicalHint"),
+          templateVisual: t("presentationTemplateVisual"),
+          templateVisualHint: t("presentationTemplateVisualHint"),
           presentation: t("artifactTypePresentation"),
           presentationHint: t("officePresentationHint"),
           presentationFormats: t("officePresentationFormats"),
@@ -5651,6 +6068,9 @@ export default function App() {
           documentFormats: t("officeDocumentFormats"),
           safetyTitle: t("officeSafetyTitle"),
           safetyHint: t("officeSafetyHint"),
+          extensionScreen: t("extensionScreen"),
+          extensionShow: t("extensionShow"),
+          extensionHide: t("extensionHide"),
         }}
       />
     </Suspense>
@@ -5675,7 +6095,6 @@ export default function App() {
         saving={artifactBusy === "save"}
         verifying={artifactBusy === "verify"}
         exporting={artifactBusy === "export"}
-        openingBrowser={presentationBrowserOpening}
         validationReport={artifactValidationReport}
         exportReceipt={artifactExportReceipt}
         onRenderDraft={renderActivePresentationDraft}
@@ -5692,6 +6111,7 @@ export default function App() {
         onExport={(format) => void exportActiveArtifact(format)}
         onOpenBrowser={() => void openPresentationInBrowser()}
         onImportAnother={() => void importArtifactFile("presentation")}
+        onChooseImage={choosePresentationImage}
         copy={{
           presenter: t("presentationPresenter"),
           exactPreview: t("presentationExactPreview"),
@@ -5703,6 +6123,7 @@ export default function App() {
           exportPptx: t("presentationExportPptx"),
           exportHtml: t("presentationExportHtml"),
           exportJson: t("presentationExportJson"),
+          exportPdf: t("presentationExportPdf"),
           exporting: t("artifactExporting"),
           importAnother: t("artifactImportAnother"),
           slides: t("presentationSlides"),
@@ -5722,6 +6143,11 @@ export default function App() {
           moveUp: t("presentationMoveUp"),
           moveDown: t("presentationMoveDown"),
           deckTitle: t("presentationDeckTitle"),
+          theme: t("presentationTheme"),
+          themeEditorial: t("presentationThemeEditorial"),
+          themeMidnight: t("presentationThemeMidnight"),
+          themeSignal: t("presentationThemeSignal"),
+          themeCalm: t("presentationThemeCalm"),
           takeaway: t("presentationTakeaway"),
           claim: t("presentationClaim"),
           notes: t("presentationNotes"),
@@ -5731,6 +6157,15 @@ export default function App() {
           deleteBlock: t("presentationDeleteBlock"),
           blockType: t("presentationBlockType"),
           content: t("presentationContent"),
+          chooseImage: t("presentationChooseImage"),
+          imageAlt: t("presentationImageAlt"),
+          chartType: t("presentationChartType"),
+          chartTitle: t("presentationChartTitle"),
+          chartCategories: t("presentationChartCategories"),
+          chartSeries: t("presentationChartSeries"),
+          chartValues: t("presentationChartValues"),
+          addSeries: t("presentationChartAddSeries"),
+          removeSeries: t("presentationChartRemoveSeries"),
           applyJson: t("presentationApplyJson"),
           invalidJson: t("presentationInvalidJson"),
           previewError: t("presentationPreviewError"),
@@ -5788,6 +6223,34 @@ export default function App() {
       />
     </Suspense>
   ) : null;
+  const presentationBrowserSurface = presentationBrowserExtension
+    && activePresentation?.artifact.artifactId === presentationBrowserExtension.owner.artifactId
+    && activePresentation.currentRevision.revisionId === presentationBrowserExtension.owner.revisionId
+    && presentationPreviewHtml
+      ? (
+        <Suspense fallback={<div className="center dim" role="status">{t("loading")}</div>}>
+          <EmbeddedBrowserSurface
+            title={activePresentation.artifact.title}
+            artifactId={presentationBrowserExtension.owner.artifactId}
+            revisionId={presentationBrowserExtension.owner.revisionId}
+            html={presentationPreviewHtml}
+            copy={{
+              browser: t("extensionBrowser"),
+              local: t("artifactLocal"),
+              reload: t("extensionBrowserReload"),
+            }}
+          />
+        </Suspense>
+      )
+      : null;
+  const officeExtension = contextExtensionDock?.owner.place === "office"
+    ? contextExtensionDock
+    : null;
+  const officeExtensionSurface = officeExtension?.type === "artifact"
+    ? artifactWorkbenchSurface
+    : officeExtension?.type === "presentation-browser"
+      ? presentationBrowserSurface
+      : null;
   const updateNoticeVersion = pendingDesktopUpdateRef.current?.version || updAvail;
   const updatePercent = updateProgress?.total
     ? Math.min(100, Math.round((updateProgress.downloaded / updateProgress.total) * 100))
@@ -6841,35 +7304,42 @@ export default function App() {
           )}
         </main>
       ) : zone === "office" ? (
-        <div className={`extension-work office-extension-work${artifactExtension?.mode === "maximized" ? " is-extension-maximized" : ""}`}>
-          <div className="extension-primary">{officeHomeSurface}</div>
-          {artifactExtension && artifactWorkbenchSurface && contextExtensionScreenVisible && (
-            <Suspense fallback={<aside className="extension-dock is-maximized" aria-busy="true" />}>
+        <div className={`extension-work office-extension-work${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && contextExtensionDock?.mode === "maximized" ? " is-extension-maximized" : ""}`}>
+          {!contextExtensionScreenVisible && (
+            <div className="extension-primary">{officeHomeSurface}</div>
+          )}
+          {officeExtension && (
+            <Suspense fallback={<aside className="extension-dock is-stage" aria-busy="true" />}>
               <ExtensionDock
-                kind={artifactExtension.surfaceKind}
-                kindLabel={extensionKindLabel(artifactExtension.surfaceKind)}
-                title={artifactExtension.title}
+                kind={officeExtension.surfaceKind}
+                kindLabel={extensionKindLabel(officeExtension.surfaceKind)}
+                title={officeExtension.title}
                 source={t("extensionLocalCapability")}
-                context={artifactExtension.owner.revisionId.slice(-8).toUpperCase()}
+                context={(officeExtension.type === "artifact" || officeExtension.type === "presentation-browser")
+                  ? officeExtension.owner.revisionId.slice(-8).toUpperCase()
+                  : "Office"}
                 detail={activeArtifact?.artifact.dataResidency ?? "local"}
-                mode={artifactExtension.mode}
-                loading={artifactBusy === "open" || Boolean(activePresentation && !presentationPreviewHtml)}
+                mode={officeExtension.mode}
+                placement="stage"
+                loading={artifactBusy === "open" || (officeExtension.type === "presentation-browser"
+                  ? !presentationBrowserSurface
+                  : Boolean(activePresentation && !presentationPreviewHtml))}
                 tabs={dockTabs}
-                activeTabId={artifactExtension.id}
+                activeTabId={officeExtension.id}
+                collapsed={!contextExtensionScreenVisible}
                 copy={extensionCopy}
                 onTabSelect={selectExtensionTab}
                 onTabClose={closeDockTab}
-                onModeChange={(mode) => setExtensionMode(artifactExtension.id, mode)}
-                onPopOut={activePresentation ? () => void openPresentationInBrowser() : undefined}
+                onModeChange={(mode) => setExtensionMode(officeExtension.id, mode)}
                 onClose={() => setCurrentExtensionScreenVisible(false)}
               >
-                {artifactWorkbenchSurface}
+                {officeExtensionSurface}
               </ExtensionDock>
             </Suspense>
           )}
         </div>
-      ) : (zone === "chat" || zone === "projects") && contextExtensionDock && contextExtensionScreenVisible ? (
-        <div className={`extension-work${contextExtensionDock.mode === "maximized" ? " is-extension-maximized" : ""}`}>
+      ) : (zone === "chat" || zone === "projects") && contextExtensionDock ? (
+        <div className={`extension-work${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && contextExtensionDock.mode === "maximized" ? " is-extension-maximized" : ""}`}>
           <div className="extension-primary">{conversation(zone === "chat" ? "im" : "ide")}</div>
           <Suspense fallback={<aside className="extension-dock is-docked" aria-busy="true" />}>
             <ExtensionDock
@@ -6880,22 +7350,26 @@ export default function App() {
               context={contextExtensionDock.owner.place === "office" ? "Office" : basename(contextExtensionDock.owner.cwd)}
               detail={panelExtension || webPreviewExtension
                 ? publicPanelOrigin((panelExtension ?? webPreviewExtension)!.url) ?? t("extensionLocalCapability")
-                : sessionArtifactExtension?.owner.revisionId.slice(-8).toUpperCase()}
+                : (sessionArtifactExtension ?? presentationBrowserExtension)?.owner.revisionId.slice(-8).toUpperCase()}
               mode={contextExtensionDock.mode}
-              loading={contextExtensionDock.type === "artifact"
+              loading={contextExtensionDock.type === "artifact" || contextExtensionDock.type === "presentation-browser"
                 ? artifactBusy === "open" || activeArtifact?.artifact.artifactId !== contextExtensionDock.owner.artifactId
-                : extensionLoading}
+                  || (contextExtensionDock.type === "presentation-browser" && !presentationBrowserSurface)
+                : contextExtensionDock.type === "legacy-panel" || contextExtensionDock.type === "web-preview"
+                  ? extensionLoading
+                  : false}
               tabs={dockTabs}
               activeTabId={contextExtensionDock.id}
+              collapsed={!contextExtensionScreenVisible}
+              addItems={extensionAddItems}
               copy={extensionCopy}
               onTabSelect={selectExtensionTab}
               onTabClose={closeDockTab}
+              onAddItem={openWorkbenchTool}
               onModeChange={(mode) => setExtensionMode(contextExtensionDock.id, mode)}
               onPopOut={panelExtension || webPreviewExtension
                 ? () => popOutVisualExtension((panelExtension ?? webPreviewExtension)!)
-                : activePresentation
-                  ? () => void openPresentationInBrowser()
-                  : undefined}
+                : undefined}
               onClose={() => setCurrentExtensionScreenVisible(false)}
             >
               {panelExtension && (
@@ -6919,6 +7393,40 @@ export default function App() {
               {sessionArtifactExtension
                 && activeArtifact?.artifact.artifactId === sessionArtifactExtension.owner.artifactId
                 && artifactWorkbenchSurface}
+              {presentationBrowserExtension && presentationBrowserSurface}
+              {(workbenchToolExtension || reviewExtension) && (
+                <WorkbenchToolSurface
+                  item={(workbenchToolExtension ?? reviewExtension)!}
+                  client={clientRef.current}
+                  items={transcripts[(workbenchToolExtension ?? reviewExtension)!.owner.sessionId] ?? []}
+                  taskState={taskStates[(workbenchToolExtension ?? reviewExtension)!.owner.sessionId]}
+                  onOpenBrowser={openBrowserFromTool}
+                  onCompose={composeFromExtension}
+                  onRunCommand={runCommandFromExtension}
+                  copy={{
+                    terminal: t("extensionTerminal"),
+                    terminalHint: t("extensionTerminalHint"),
+                    terminalEmpty: t("extensionTerminalEmpty"),
+                    terminalCommand: t("extensionTerminalCommand"),
+                    terminalSend: t("extensionTerminalSend"),
+                    browser: t("extensionBrowser"),
+                    browserHint: t("extensionBrowserHint"),
+                    browserAddress: t("extensionBrowserAddress"),
+                    browserOpen: t("extensionBrowserOpen"),
+                    browserInvalid: t("extensionBrowserInvalid"),
+                    files: t("extensionFiles"),
+                    filesHint: t("extensionFilesHint"),
+                    filesSearch: t("extensionFilesSearch"),
+                    filesEmpty: t("extensionFilesEmpty"),
+                    filesUse: t("extensionFilesUse"),
+                    review: t("extensionReview"),
+                    reviewHint: t("extensionReviewHint"),
+                    reviewEmpty: t("extensionReviewEmpty"),
+                    running: t("extensionRunning"),
+                    ready: t("extensionReady"),
+                  }}
+                />
+              )}
             </ExtensionDock>
           </Suspense>
         </div>

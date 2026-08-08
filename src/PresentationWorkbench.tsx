@@ -21,6 +21,8 @@ const BLOCK_TYPES = [
 ] as const;
 
 const STRING_BLOCKS = new Set(["heading", "text", "quote", "callout"]);
+const THEME_PRESETS = ["editorial", "midnight", "signal", "calm"] as const;
+const CHART_TYPES = ["bar", "line", "area", "pie", "doughnut"] as const;
 let editorIdSequence = 0;
 
 export interface PresentationWorkbenchCopy {
@@ -34,6 +36,7 @@ export interface PresentationWorkbenchCopy {
   exportPptx: string;
   exportHtml: string;
   exportJson: string;
+  exportPdf: string;
   exporting: string;
   importAnother: string;
   slides: string;
@@ -53,6 +56,11 @@ export interface PresentationWorkbenchCopy {
   moveUp: string;
   moveDown: string;
   deckTitle: string;
+  theme: string;
+  themeEditorial: string;
+  themeMidnight: string;
+  themeSignal: string;
+  themeCalm: string;
   takeaway: string;
   claim: string;
   notes: string;
@@ -62,6 +70,15 @@ export interface PresentationWorkbenchCopy {
   deleteBlock: string;
   blockType: string;
   content: string;
+  chooseImage: string;
+  imageAlt: string;
+  chartType: string;
+  chartTitle: string;
+  chartCategories: string;
+  chartSeries: string;
+  chartValues: string;
+  addSeries: string;
+  removeSeries: string;
   applyJson: string;
   invalidJson: string;
   previewError: string;
@@ -75,7 +92,6 @@ interface PresentationWorkbenchProps {
   saving: boolean;
   verifying: boolean;
   exporting: boolean;
-  openingBrowser: boolean;
   validationReport: ArtifactValidationReport | null;
   exportReceipt: ArtifactExportReceipt | null;
   onRenderDraft: (project: PresentationProject) => Promise<string>;
@@ -85,6 +101,7 @@ interface PresentationWorkbenchProps {
   onExport: (format: PresentationExportFormat) => void;
   onOpenBrowser: () => void;
   onImportAnother: () => void;
+  onChooseImage: () => Promise<string | null>;
 }
 
 function cloneProject(project: PresentationProject): PresentationProject {
@@ -101,7 +118,12 @@ function defaultLiteral(type: string): unknown {
   if (type === "list") return ["First point", "Second point"];
   if (type === "metric") return { label: "Metric", value: 0 };
   if (type === "table") return { headers: ["Column"], rows: [["Value"]] };
-  if (type === "chart") return { values: [1, 2, 3] };
+  if (type === "chart") return {
+    chartType: "bar",
+    title: "Chart title",
+    categories: ["A", "B", "C"],
+    series: [{ name: "Series 1", values: [1, 2, 3] }],
+  };
   if (type === "compare") return { left: "Before", right: "After" };
   if (type === "timeline" || type === "flow") return { items: ["First", "Next"] };
   if (type === "image") return { alt: "Image placeholder" };
@@ -112,6 +134,55 @@ function shortRevision(value: string): string {
   return value.slice(-8).toUpperCase();
 }
 
+type EditableChart = {
+  chartType: typeof CHART_TYPES[number];
+  title: string;
+  categories: string[];
+  series: Array<{ name: string; values: number[] }>;
+};
+
+function objectLiteral(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function editableChart(value: unknown): EditableChart {
+  const literal = objectLiteral(value);
+  const rawType = String(literal.chartType ?? literal.type ?? "bar");
+  const chartType = CHART_TYPES.includes(rawType as EditableChart["chartType"])
+    ? rawType as EditableChart["chartType"]
+    : "bar";
+  const legacyValues = Array.isArray(literal.values)
+    ? literal.values.map(Number).filter(Number.isFinite)
+    : [];
+  const rawSeries = Array.isArray(literal.series) && literal.series.length > 0
+    ? literal.series
+    : [{ name: literal.name ?? "Series 1", values: legacyValues }];
+  const series = rawSeries.slice(0, 8).map((entry, index) => {
+    const item = objectLiteral(entry);
+    return {
+      name: String(item.name ?? item.title ?? `Series ${index + 1}`),
+      values: Array.isArray(item.values)
+        ? item.values.map(Number).filter(Number.isFinite).slice(0, 32)
+        : [],
+    };
+  });
+  const rawCategories = Array.isArray(literal.categories)
+    ? literal.categories
+    : Array.isArray(literal.labels)
+      ? literal.labels
+      : [];
+  const categories = rawCategories.map(String).slice(0, 32);
+  const valueCount = Math.max(0, ...series.map((entry) => entry.values.length));
+  return {
+    chartType,
+    title: String(literal.title ?? ""),
+    categories: Array.from({ length: valueCount }, (_, index) => categories[index] ?? String(index + 1)),
+    series: series.length > 0 ? series : [{ name: "Series 1", values: [1, 2, 3] }],
+  };
+}
+
 export default function PresentationWorkbench({
   details,
   previewHtml,
@@ -120,7 +191,6 @@ export default function PresentationWorkbench({
   saving,
   verifying,
   exporting,
-  openingBrowser,
   validationReport,
   exportReceipt,
   onRenderDraft,
@@ -130,6 +200,7 @@ export default function PresentationWorkbench({
   onExport,
   onOpenBrowser,
   onImportAnother,
+  onChooseImage,
 }: PresentationWorkbenchProps) {
   const revisionId = details.currentRevision.revisionId;
   const [draft, setDraft] = useState<PresentationProject>(() => cloneProject(details.project));
@@ -154,6 +225,16 @@ export default function PresentationWorkbench({
   const validated = validationReport?.revisionId === revisionId
     && validationReport.snapshotDigest === details.content.sha256
     && validationReport.status === "pass";
+  const themePreset = typeof draft.theme?.preset === "string"
+    && THEME_PRESETS.includes(draft.theme.preset as typeof THEME_PRESETS[number])
+    ? draft.theme.preset
+    : "editorial";
+  const selectedChart = selectedBlock?.type === "chart"
+    ? editableChart(selectedBlock.literal)
+    : null;
+  const selectedImage = selectedBlock?.type === "image"
+    ? objectLiteral(selectedBlock.literal)
+    : null;
 
   useEffect(() => {
     renderDraftRef.current = onRenderDraft;
@@ -331,6 +412,17 @@ export default function PresentationWorkbench({
     }
   };
 
+  const updateChart = (next: EditableChart) => {
+    updateBlock({
+      literal: {
+        chartType: next.chartType,
+        title: next.title,
+        categories: next.categories,
+        series: next.series,
+      },
+    });
+  };
+
   const slideRail = (
     <div className="presentation-slide-rail">
       <div className="presentation-pane-heading">
@@ -395,6 +487,21 @@ export default function PresentationWorkbench({
         <span>{copy.deckTitle}</span>
         <input value={draft.title} maxLength={500} onChange={(event) => updateDraft({ ...draft, title: event.target.value })} />
       </label>
+      <label>
+        <span>{copy.theme}</span>
+        <select
+          value={themePreset}
+          onChange={(event) => updateDraft({
+            ...draft,
+            theme: { ...(draft.theme ?? {}), preset: event.target.value },
+          })}
+        >
+          <option value="editorial">{copy.themeEditorial}</option>
+          <option value="midnight">{copy.themeMidnight}</option>
+          <option value="signal">{copy.themeSignal}</option>
+          <option value="calm">{copy.themeCalm}</option>
+        </select>
+      </label>
       {selectedSlide && (
         <>
           <label>
@@ -446,25 +553,146 @@ export default function PresentationWorkbench({
               {BLOCK_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
             </select>
           </label>
-          <label>
-            <span>{copy.content}</span>
-            <textarea
-              className={STRING_BLOCKS.has(selectedBlock.type) ? "" : "is-code"}
-              value={literalText}
-              onChange={(event) => {
-                const value = event.target.value;
-                setLiteralText(value);
-                if (STRING_BLOCKS.has(selectedBlock.type)) updateBlock({ literal: value });
-                else if (selectedBlock.type === "list") updateBlock({
-                  literal: value.split("\n").map((item) => item.trim()).filter(Boolean),
-                });
-              }}
-              onBlur={applyLiteral}
-            />
-          </label>
+          {selectedChart ? (
+            <div className="presentation-chart-editor">
+              <div className="presentation-editor-pair">
+                <label>
+                  <span>{copy.chartType}</span>
+                  <select
+                    value={selectedChart.chartType}
+                    onChange={(event) => updateChart({
+                      ...selectedChart,
+                      chartType: event.target.value as EditableChart["chartType"],
+                    })}
+                  >
+                    {CHART_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>{copy.chartTitle}</span>
+                  <input
+                    value={selectedChart.title}
+                    onChange={(event) => updateChart({ ...selectedChart, title: event.target.value })}
+                  />
+                </label>
+              </div>
+              <label>
+                <span>{copy.chartCategories}</span>
+                <textarea
+                  value={selectedChart.categories.join("\n")}
+                  onChange={(event) => updateChart({
+                    ...selectedChart,
+                    categories: event.target.value.split("\n")
+                      .map((item) => item.trim()).filter(Boolean).slice(0, 32),
+                  })}
+                />
+              </label>
+              <div className="presentation-chart-series-head">
+                <span>{copy.chartSeries}</span>
+                <button
+                  type="button"
+                  disabled={selectedChart.series.length >= 8}
+                  onClick={() => updateChart({
+                    ...selectedChart,
+                    series: [...selectedChart.series, {
+                      name: `Series ${selectedChart.series.length + 1}`,
+                      values: selectedChart.categories.map(() => 0),
+                    }],
+                  })}
+                >
+                  {copy.addSeries}
+                </button>
+              </div>
+              {selectedChart.series.map((series, index) => (
+                <div className="presentation-chart-series" key={`series-${index}`}>
+                  <label>
+                    <span>{copy.chartSeries} {index + 1}</span>
+                    <input
+                      value={series.name}
+                      onChange={(event) => updateChart({
+                        ...selectedChart,
+                        series: selectedChart.series.map((item, seriesIndex) => seriesIndex === index
+                          ? { ...item, name: event.target.value }
+                          : item),
+                      })}
+                    />
+                  </label>
+                  <label>
+                    <span>{copy.chartValues}</span>
+                    <textarea
+                      value={series.values.join("\n")}
+                      onChange={(event) => updateChart({
+                        ...selectedChart,
+                        series: selectedChart.series.map((item, seriesIndex) => seriesIndex === index
+                          ? {
+                              ...item,
+                              values: event.target.value.split(/[\n,]/u)
+                                .map((itemValue) => Number(itemValue.trim()))
+                                .filter(Number.isFinite)
+                                .slice(0, 32),
+                            }
+                          : item),
+                      })}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={selectedChart.series.length <= 1}
+                    onClick={() => updateChart({
+                      ...selectedChart,
+                      series: selectedChart.series.filter((_, seriesIndex) => seriesIndex !== index),
+                    })}
+                  >
+                    {copy.removeSeries}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : selectedImage ? (
+            <div className="presentation-image-editor">
+              <label>
+                <span>{copy.imageAlt}</span>
+                <input
+                  value={typeof selectedImage.alt === "string" ? selectedImage.alt : ""}
+                  onChange={(event) => updateBlock({ literal: { ...selectedImage, alt: event.target.value } })}
+                />
+              </label>
+              {typeof selectedImage.src === "string" && selectedImage.src.startsWith("data:image/") && (
+                <img src={selectedImage.src} alt="" />
+              )}
+              <button
+                type="button"
+                onClick={() => void onChooseImage().then((src) => {
+                  if (src) updateBlock({ literal: { ...selectedImage, src } });
+                })}
+              >
+                {copy.chooseImage}
+              </button>
+            </div>
+          ) : (
+            <label>
+              <span>{copy.content}</span>
+              <textarea
+                className={STRING_BLOCKS.has(selectedBlock.type) ? "" : "is-code"}
+                value={literalText}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setLiteralText(value);
+                  if (STRING_BLOCKS.has(selectedBlock.type)) updateBlock({ literal: value });
+                  else if (selectedBlock.type === "list") updateBlock({
+                    literal: value.split("\n").map((item) => item.trim()).filter(Boolean),
+                  });
+                }}
+                onBlur={applyLiteral}
+              />
+            </label>
+          )}
           {literalError && <p className="presentation-literal-error" role="alert">{literalError}</p>}
           <div className="presentation-block-actions">
-            {!STRING_BLOCKS.has(selectedBlock.type) && selectedBlock.type !== "list" && (
+            {!STRING_BLOCKS.has(selectedBlock.type)
+              && selectedBlock.type !== "list"
+              && selectedBlock.type !== "chart"
+              && selectedBlock.type !== "image" && (
               <button type="button" onClick={applyLiteral}>{copy.applyJson}</button>
             )}
             <button type="button" disabled={(selectedSlide?.blocks.length ?? 0) <= 1} onClick={deleteBlock}>
@@ -500,8 +728,8 @@ export default function PresentationWorkbench({
         >
           {saving ? copy.saving : copy.save}
         </button>
-        <button type="button" className="presentation-browser" disabled={openingBrowser || loading || dirty} onClick={onOpenBrowser}>
-          <span aria-hidden>↗</span>{openingBrowser ? copy.loading : copy.openBrowser}
+        <button type="button" className="presentation-browser" disabled={loading || dirty} onClick={onOpenBrowser}>
+          <span aria-hidden>▣</span>{copy.openBrowser}
         </button>
       </div>
     </div>
@@ -527,6 +755,13 @@ export default function PresentationWorkbench({
       <div className="presentation-export-actions" aria-busy={exporting}>
         <button type="button" disabled={exporting || loading || dirty} onClick={onImportAnother}>{copy.importAnother}</button>
         <button type="button" disabled={exporting || loading || dirty} onClick={() => onExport("json")}>{copy.exportJson}</button>
+        <button
+          type="button"
+          disabled={exporting || loading || dirty || !livePreview}
+          onClick={() => frameRef.current?.contentWindow?.print()}
+        >
+          {copy.exportPdf}
+        </button>
         <button type="button" disabled={exporting || loading || dirty} onClick={() => onExport("html")}>{copy.exportHtml}</button>
         <button type="button" className="is-primary" disabled={exporting || loading || dirty} onClick={() => onExport("pptx")}>
           <span aria-hidden>{exporting ? "◌" : "⇩"}</span>

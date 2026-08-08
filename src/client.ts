@@ -1129,3 +1129,15 @@ export class HaraClient {
     return !!this.ws;
   }
 }
+
+/** A native Presentation result is useful in the conversational Workbench only when the connected
+ * engine can both offer the owner-bound surface and support the editor's exact-revision draft/save flow. */
+export function supportsNativePresentationWorkspace(
+  client: Pick<HaraClient, "supports" | "supportsEvent"> | null | undefined,
+): boolean {
+  return !!client
+    && client.supportsEvent("event.surface")
+    && client.supports("presentation.update")
+    && client.supports("presentation.render")
+    && client.supports("presentation.preview");
+}

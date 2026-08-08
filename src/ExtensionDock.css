@@ -5,6 +5,8 @@
   width: var(--extension-dock-width, 48%);
   min-width: 360px;
   min-height: 0;
+  container-name: extension-dock;
+  container-type: inline-size;
   overflow: hidden;
   border-left: 1px solid #343239;
   background:
@@ -13,11 +15,24 @@
   box-shadow: -18px 0 46px rgba(0, 0, 0, 0.18);
 }
 
+.extension-dock.is-collapsed {
+  flex-basis: 0;
+  width: 0;
+  min-width: 0;
+  border-left: 0;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .extension-dock[data-kind="presentation"] { --extension-tone: #db644d; }
 .extension-dock[data-kind="spreadsheet"] { --extension-tone: #5f9c78; }
 .extension-dock[data-kind="document"] { --extension-tone: #b8a074; }
 .extension-dock[data-kind="design"] { --extension-tone: #dc5b45; }
 .extension-dock[data-kind="browser"] { --extension-tone: #5c91bd; }
+.extension-dock[data-kind="terminal"] { --extension-tone: #b58a6b; }
+.extension-dock[data-kind="files"] { --extension-tone: #7c91a7; }
+.extension-dock[data-kind="review"] { --extension-tone: #78a484; }
 .extension-dock[data-kind="capability"] { --extension-tone: #8d7aae; }
 
 .extension-dock.is-maximized {
@@ -25,6 +40,23 @@
   width: 100%;
   min-width: 0;
   border-left: 0;
+}
+
+.extension-dock:focus-within:not(.is-collapsed) {
+  border-left-color: color-mix(in srgb, var(--extension-tone) 62%, #343239);
+  box-shadow:
+    -2px 0 0 color-mix(in srgb, var(--extension-tone) 38%, transparent),
+    -20px 0 52px rgba(0, 0, 0, 0.24);
+}
+
+.extension-dock:focus-within .extension-dock-header {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--extension-tone) 7%, transparent), transparent 46%),
+    rgba(17, 17, 20, 0.97);
+}
+
+.extension-dock:focus-within .extension-dock-signal {
+  box-shadow: 0 0 18px color-mix(in srgb, var(--extension-tone) 70%, transparent);
 }
 
 .extension-work.is-extension-maximized > .extension-primary {
@@ -72,20 +104,121 @@
   background: rgba(17, 17, 20, 0.94);
 }
 
-.extension-dock-tabs {
+.extension-dock-tabbar {
   position: relative;
   z-index: 3;
   display: flex;
   min-width: 0;
   height: 34px;
+  align-items: end;
+  border-bottom: 1px solid #29272d;
+  background: #0d0d10;
+}
+
+.extension-dock-tabs {
+  display: flex;
+  min-width: 0;
+  height: 33px;
+  flex: 1;
   gap: 2px;
   align-items: end;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 4px 8px 0;
-  border-bottom: 1px solid #29272d;
-  background: #0d0d10;
+  padding: 4px 4px 0 8px;
   scrollbar-width: thin;
+}
+
+.extension-dock-add {
+  position: relative;
+  display: flex;
+  height: 33px;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+}
+
+.extension-dock-add-button {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #aaa6a0;
+  font-size: 21px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.extension-dock-add-button:hover,
+.extension-dock-add-button:focus-visible,
+.extension-dock-add-button[aria-expanded="true"] {
+  border-color: #37343b;
+  background: #1d1c20;
+  color: #eeeae4;
+}
+
+.extension-dock-add-menu {
+  position: absolute;
+  z-index: 20;
+  top: 31px;
+  right: 7px;
+  width: 210px;
+  padding: 7px;
+  border: 1px solid #423f45;
+  border-radius: 10px;
+  background: rgba(28, 27, 30, 0.98);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(18px);
+}
+
+.extension-dock-add-menu > button {
+  display: grid;
+  width: 100%;
+  min-height: 39px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #e5e1db;
+  text-align: left;
+  cursor: pointer;
+}
+
+.extension-dock-add-menu > button:hover,
+.extension-dock-add-menu > button:focus-visible {
+  background: #2a282d;
+}
+
+.extension-dock-add-menu > button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.extension-dock-add-menu svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: #bbb6af;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.extension-dock-add-menu span {
+  font-size: 12px;
+}
+
+.extension-dock-add-menu kbd {
+  color: #7d7981;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 9px;
 }
 
 .extension-dock-tab {
@@ -106,6 +239,9 @@
 .extension-dock-tab[data-kind="document"] { --tab-tone: #b8a074; }
 .extension-dock-tab[data-kind="design"] { --tab-tone: #dc5b45; }
 .extension-dock-tab[data-kind="browser"] { --tab-tone: #5c91bd; }
+.extension-dock-tab[data-kind="terminal"] { --tab-tone: #b58a6b; }
+.extension-dock-tab[data-kind="files"] { --tab-tone: #7c91a7; }
+.extension-dock-tab[data-kind="review"] { --tab-tone: #78a484; }
 
 .extension-dock-tab:hover {
   background: #17161a;
@@ -323,11 +459,27 @@
 }
 
 @container extension-work (max-width: 1120px) {
-  .extension-work > .extension-primary {
+  .extension-dock.is-docked:not(.is-collapsed) {
+    position: relative;
+    inset: auto;
+    flex-basis: 54%;
+    width: 54%;
+    min-width: 360px;
+    border-left: 1px solid #343239;
+    box-shadow: -18px 0 46px rgba(0, 0, 0, 0.2);
+  }
+  .extension-dock-mode-action {
+    display: none !important;
+  }
+}
+
+@container extension-work (max-width: 760px) {
+  .extension-work.has-visible-extension > .extension-primary {
     display: none;
   }
-  .extension-dock,
-  .extension-dock.is-docked {
+  .extension-dock.is-docked:not(.is-collapsed) {
+    position: relative;
+    inset: auto;
     flex-basis: 100%;
     width: 100%;
     min-width: 0;
@@ -336,9 +488,27 @@
   .extension-dock-resizer {
     display: none;
   }
-  .extension-dock-mode-action {
-    display: none !important;
-  }
+}
+
+/* Office is a document manager, not a second chat canvas. Its landing page is only the empty/start
+ * state; once a document is open, the selected editor or Browser tab owns the full stage beside the
+ * persistent deliverables list. Collapsing the tab restores the landing page without unmounting it. */
+.office-extension-work.has-visible-extension > .extension-primary {
+  display: none;
+}
+
+.extension-dock.is-stage:not(.is-collapsed) {
+  flex: 1 1 100%;
+  flex-basis: 100%;
+  width: 100%;
+  min-width: 0;
+  border-left: 0;
+  box-shadow: none;
+}
+
+.extension-dock.is-stage .extension-dock-resizer,
+.extension-dock.is-stage .extension-dock-mode-action {
+  display: none !important;
 }
 
 @media (max-width: 720px) {

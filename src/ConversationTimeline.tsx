@@ -13,6 +13,7 @@ import {
 } from "./execution-view";
 import type { Key } from "./i18n";
 import { Md } from "./markdown";
+import { userVisibleTaskText } from "./user-visible-text";
 
 export type ApprovalVerdict = "allow" | "always" | "deny";
 export type ApprovalResolution = ApprovalVerdict | "expired";
@@ -76,11 +77,24 @@ export function ConversationTimeline({
               : "taskRunning",
       )
     : "";
-  const blocker = visibleTask?.checkpoint.blockReason || (
+  const blockerSource = visibleTask?.checkpoint.blockReason || (
     visibleTask?.state === "blocked" || visibleTask?.state === "paused"
       ? visibleTask.detail
       : undefined
   );
+  const blocker = blockerSource ? userVisibleTaskText(blockerSource, "") : "";
+  const blockedStep = visibleTask?.checkpoint.blockedStep
+    ? userVisibleTaskText(visibleTask.checkpoint.blockedStep, "")
+    : "";
+  const nextStep = visibleTask?.checkpoint.nextStep
+    ? userVisibleTaskText(visibleTask.checkpoint.nextStep, "")
+    : "";
+  const taskCurrent = visibleTask
+    ? userVisibleTaskText(
+        visibleTask.checkpoint.current || visibleTask.brief?.goal || visibleTask.objective,
+        taskLabel,
+      )
+    : "";
   const segments = useMemo(() => groupConversationItems(items), [items]);
 
   return (
@@ -96,7 +110,7 @@ export function ConversationTimeline({
             )}
           </div>
           <div className="task-progress-current">
-            {visibleTask.checkpoint.current || visibleTask.brief?.goal || visibleTask.objective}
+            {taskCurrent}
           </div>
           {visibleTask.checkpoint.total > 0 && (
             <progress
@@ -108,14 +122,14 @@ export function ConversationTimeline({
           {blocker && (
             <div className="task-progress-detail">
               <span>{t("taskBlockReason")}</span>
-              {visibleTask.checkpoint.blockedStep && <strong>{visibleTask.checkpoint.blockedStep}</strong>}
+              {blockedStep && <strong>{blockedStep}</strong>}
               <div>{blocker}</div>
             </div>
           )}
-          {(visibleTask.state === "blocked" || visibleTask.state === "paused") && visibleTask.checkpoint.nextStep && (
+          {(visibleTask.state === "blocked" || visibleTask.state === "paused") && nextStep && (
             <div className="task-progress-next">
               <span>{t("taskNextStep")}</span>
-              {visibleTask.checkpoint.nextStep}
+              {nextStep}
             </div>
           )}
         </section>

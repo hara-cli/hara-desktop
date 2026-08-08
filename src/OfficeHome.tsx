@@ -5,6 +5,8 @@ import {
 } from "./icons";
 import type { ArtifactKind } from "./client";
 
+export type PresentationTemplate = "pitch" | "report" | "technical" | "visual";
+
 interface OfficeHomeCopy {
   eyebrow: string;
   title: string;
@@ -16,6 +18,16 @@ interface OfficeHomeCopy {
   creatingPresentation: string;
   importType: string;
   importing: string;
+  templatesTitle: string;
+  templatesHint: string;
+  templatePitch: string;
+  templatePitchHint: string;
+  templateReport: string;
+  templateReportHint: string;
+  templateTechnical: string;
+  templateTechnicalHint: string;
+  templateVisual: string;
+  templateVisualHint: string;
   presentation: string;
   presentationHint: string;
   presentationFormats: string;
@@ -27,14 +39,20 @@ interface OfficeHomeCopy {
   documentFormats: string;
   safetyTitle: string;
   safetyHint: string;
+  extensionScreen: string;
+  extensionShow: string;
+  extensionHide: string;
 }
 
 interface OfficeHomeProps {
   copy: OfficeHomeCopy;
   importing: boolean;
   creating: boolean;
+  extensionCount: number;
+  extensionVisible: boolean;
   onImport: (kind?: ArtifactKind) => void;
-  onCreatePresentation: () => void;
+  onCreatePresentation: (template?: PresentationTemplate) => void;
+  onToggleExtension: () => void;
 }
 
 const officeKinds = (
@@ -65,6 +83,17 @@ const officeKinds = (
   },
 ];
 
+const presentationTemplates = (copy: OfficeHomeCopy): Array<{
+  id: PresentationTemplate;
+  title: string;
+  description: string;
+}> => [
+  { id: "pitch", title: copy.templatePitch, description: copy.templatePitchHint },
+  { id: "report", title: copy.templateReport, description: copy.templateReportHint },
+  { id: "technical", title: copy.templateTechnical, description: copy.templateTechnicalHint },
+  { id: "visual", title: copy.templateVisual, description: copy.templateVisualHint },
+];
+
 function OfficeKindIcon({
   kind,
 }: {
@@ -84,8 +113,11 @@ export function OfficeHome({
   copy,
   importing,
   creating,
+  extensionCount,
+  extensionVisible,
   onImport,
   onCreatePresentation,
+  onToggleExtension,
 }: OfficeHomeProps) {
   return (
     <main className="office-home" aria-labelledby="office-home-title">
@@ -98,10 +130,22 @@ export function OfficeHome({
             <p>{copy.description}</p>
           </div>
           <div className="office-home-head-actions">
+            <button
+              className={`is-secondary office-extension-toggle${extensionVisible ? " is-active" : ""}`}
+              type="button"
+              disabled={extensionCount === 0}
+              aria-pressed={extensionVisible}
+              title={extensionVisible ? copy.extensionHide : copy.extensionShow}
+              onClick={onToggleExtension}
+            >
+              <span aria-hidden>◫</span>
+              {copy.extensionScreen}
+              <b>{extensionCount}</b>
+            </button>
             <button className="is-secondary" type="button" disabled={importing || creating} onClick={() => onImport()}>
               {importing ? copy.importing : copy.importFile}
             </button>
-            <button type="button" disabled={importing || creating} onClick={onCreatePresentation}>
+            <button type="button" disabled={importing || creating} onClick={() => onCreatePresentation()}>
               {creating ? copy.creatingPresentation : copy.newPresentation}
             </button>
           </div>
@@ -111,6 +155,28 @@ export function OfficeHome({
           <span>{copy.included}</span>
           <span>{copy.localFirst}</span>
         </div>
+
+        <section className="office-template-section" aria-labelledby="office-template-title">
+          <div className="office-template-heading">
+            <h2 id="office-template-title">{copy.templatesTitle}</h2>
+            <p>{copy.templatesHint}</p>
+          </div>
+          <div className="office-template-grid">
+            {presentationTemplates(copy).map((template, index) => (
+              <button
+                type="button"
+                key={template.id}
+                disabled={importing || creating}
+                onClick={() => onCreatePresentation(template.id)}
+              >
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <strong>{template.title}</strong>
+                <small>{template.description}</small>
+                <i aria-hidden>↗</i>
+              </button>
+            ))}
+          </div>
+        </section>
 
         <section className="office-kind-grid" aria-label={copy.title}>
           {officeKinds(copy).map((item, index) => (
