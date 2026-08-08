@@ -11,14 +11,16 @@ test("the free-form workbench stays generic until a specialist card is selected"
   assert.doesNotMatch(prompt, /PPT|演示文稿|表格|文档/);
 });
 
-test("the presentation card adds narrative and export-fidelity gates", () => {
+test("the presentation card enters a specialist flow without requiring a second vision model", () => {
   const prompt = buildWorkPrompt("presentation", "季度经营复盘", "zh");
 
   assert.match(prompt, /受众/);
-  assert.match(prompt, /叙事结构和页纲/);
+  assert.match(prompt, /PPT 专业模式/);
+  assert.match(prompt, /右侧工作区/);
   assert.match(prompt, /可编辑 PPTX/);
-  assert.match(prompt, /视觉保真 PPTX\/PDF/);
-  assert.match(prompt, /确认后再制作页面/);
+  assert.match(prompt, /同一个 Artifact/);
+  assert.match(prompt, /不得另行配置或调用视觉辅助模型/);
+  assert.match(prompt, /结构化版本和同源渲染结果/);
 });
 
 test("an attachment-only starter turn gets a useful plain-language goal", () => {

@@ -801,9 +801,10 @@ test("the assistant empty state is a plain-language workbench backed by real ses
   assert.match(native, /byte_size: Option<u64>/);
   assert.match(app, /appendComposerAttachments\(attachments, draft\.attachments\)/, "a failed first turn restores the exact selected material");
   assert.doesNotMatch(starter, /\b(?:Agent|Skill|MCP|cwd)\b/, "novice-facing copy must not expose runtime jargon");
-  assert.match(prompt, /可编辑 PPTX/);
-  assert.match(prompt, /视觉保真 PPTX\/PDF/, "presentation prompts must state the export-fidelity boundary");
-  assert.match(prompt, /能力已经安装/, "artifact cards must verify capability availability before promising an export");
+  assert.match(prompt, /语义可编辑 PPTX/);
+  assert.match(prompt, /视觉保真浏览器 HTML\/PDF/, "presentation prompts must state the export-fidelity boundary");
+  assert.match(prompt, /能力没有返回已验证回执前不能声称导出成功/, "artifact cards must require a verified capability receipt before promising an export");
+  assert.match(prompt, /不得另行配置或调用视觉辅助模型/, "ordinary presentation work must not pull a second model into the default path");
   assert.match(starter, /aria-label=\{copy\.describe\}/);
   assert.match(css, /\.workstarter-grid/);
   assert.match(css, /@media \(max-width: 760px\)/, "the workbench must remain usable in a narrow window");
@@ -985,12 +986,15 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   assert.match(app, /localWebPreviewUrl\(rawUrl\)/, "generic previews independently revalidate loopback URLs in Desktop");
   assert.match(app, /sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"/);
   assert.match(app, /tabs=\{dockTabs\}/, "owner-bound surfaces share one multi-tab Visual Dock");
+  assert.match(app, /disabled=\{contextExtensionTabs\.length === 0\}/, "Workbench keeps an explicit extension-screen affordance before a result exists");
+  assert.match(app, /setCurrentExtensionScreenVisible\(false\)/, "the dock header hides the screen without destroying its tabs");
   assert.match(app, /activeExtensionTabForContext\(extensionDockStateRef\.current, ownerContext\)/);
   assert.match(app, /sessionForeground && visibleExtension\?\.dirty !== true/, "agent results stay in a background tab while an editor is dirty");
   assert.match(app, /window\.addEventListener\("beforeunload", preventAccidentalClose\)/, "closing Desktop cannot silently discard a dirty presentation");
   assert.match(app, /const discardCurrentExtensionDraft = \(\): boolean =>/);
   assert.match(dock, /role="tablist"/);
   assert.match(dock, /aria-selected=\{tab\.id === activeTabId\}/);
+  assert.match(dock, /aria-label=\{copy\.hide\}/);
   assert.match(app, /setArtifactRevisions\(revisionResult\.revisions\)/);
   assert.match(
     app,

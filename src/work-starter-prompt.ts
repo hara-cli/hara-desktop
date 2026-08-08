@@ -10,9 +10,9 @@ export function buildWorkPrompt(kind: WorkKind, brief: string, locale: "en" | "z
     : "Review the attached material, tell me what you found, and recommend the most useful deliverable");
   if (locale === "en") {
     if (kind === "presentation") {
-      return `Help me create a presentation: ${goal}
+      return `Enter Hara Presentation Specialist mode for this request: ${goal}
 
-First confirm the audience, setting, central takeaway, source material, and required outputs. Then give me a short task brief, narrative arc, and slide outline before producing slides. Keep one claim per slide and add a visual-quality review before export. Clearly distinguish an editable PPTX from a visual-fidelity PPTX or PDF. Before producing files, verify that the required presentation capability is installed; if it is unavailable, explain what is missing instead of claiming an export succeeded.`;
+Infer the audience, setting, decision, central takeaway, source material, and required outputs from the request and attachments. Ask only when a missing fact would materially change the deck; otherwise do not pause for another confirmation. Use Hara's native presentation capability to create an editable draft early so it opens in the right work surface, then revise that same Artifact instead of creating parallel copies. Keep one evidence-backed claim and takeaway per slide, keep slides readable, never invent evidence, and record external sources in notes. Before export, validate the exact structured revision and rendered preview. Do not configure or invoke a separate vision helper for ordinary PPT work; image-based review is optional only when explicitly requested and the selected main model natively accepts images. Clearly distinguish semantic-editable PPTX from visual-fidelity browser HTML/PDF, and never claim an export succeeded until the capability returns a verified receipt.`;
     }
     if (kind === "spreadsheet") {
       return `Help me complete this spreadsheet job: ${goal}
@@ -35,9 +35,9 @@ First restate the intended outcome in plain language and identify only the missi
   }
 
   if (kind === "presentation") {
-    return `请帮我制作一份演示文稿：${goal}
+    return `请进入 Hara PPT 专业模式完成这个任务：${goal}
 
-先确认受众、使用场景、核心结论、资料来源和交付格式，再给我一张简短任务简报、叙事结构和页纲，确认后再制作页面。每页只讲一个结论，导出前做一次视觉质量审查，并明确区分“可编辑 PPTX”和“视觉保真 PPTX/PDF”。制作文件前先确认演示文稿能力已经安装；如果不可用，要说明缺少什么，不能假装导出成功。`;
+从请求和附件中整理受众、使用场景、要支持的决策、核心结论、资料来源和交付格式；只有缺失信息会实质改变结果时才提问，资料足够就不要再等一次确认。使用 Hara 原生演示能力尽早生成可编辑草稿并打开右侧工作区，后续持续修改同一个 Artifact，不要制造多个平行副本。每页只讲一个有依据的结论并给出清晰标题，控制信息密度，不得编造证据，外部来源写入备注。导出前必须校验当前结构化版本和同源渲染结果。普通 PPT 制作不得另行配置或调用视觉辅助模型；只有用户明确要求且当前主模型原生支持图片时，才增加图像复核。明确区分“语义可编辑 PPTX”与“视觉保真浏览器 HTML/PDF”，能力没有返回已验证回执前不能声称导出成功。`;
   }
   if (kind === "spreadsheet") {
     return `请帮我完成这项表格工作：${goal}

@@ -80,6 +80,18 @@ export interface ExtensionContext {
   revisionId?: string | null;
 }
 
+/** Stable UI-only key for hiding one owner-bound extension screen without closing its tabs. */
+export function extensionContextKey(context: ExtensionContext): string | null {
+  if (context.place === "office") return "office";
+  return context.sessionId ? `${context.place}:${context.sessionId}` : null;
+}
+
+export function extensionItemContextKey(item: ExtensionDockItem): string {
+  return item.owner.place === "office"
+    ? "office"
+    : `${item.owner.place}:${item.owner.sessionId}`;
+}
+
 const PANEL_KIND_PATTERNS: readonly [ExtensionSurfaceKind, RegExp][] = [
   ["browser", /(?:^|[\s._-])(browser|chrome|web)(?:$|[\s._-])/i],
   ["presentation", /(?:^|[\s._-])(pptx?|slides?|presentation)(?:$|[\s._-])/i],

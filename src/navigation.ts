@@ -46,6 +46,7 @@ export interface NavigationPreferences {
 }
 
 export const NAVIGATION_PREFERENCES_KEY = "hara.navigation.v1";
+const LEGACY_PROJECTS_NAVIGATION_ID = "core.projects";
 
 export const CORE_NAVIGATION_CONTRIBUTIONS = [
   {
@@ -59,21 +60,11 @@ export const CORE_NAVIGATION_CONTRIBUTIONS = [
     shortcut: "⌘1",
   },
   {
-    id: "core.projects",
-    target: "projects",
-    source: "core",
-    icon: "projects",
-    defaultOrder: 20,
-    defaultVisible: true,
-    canHide: true,
-    shortcut: "⌘2",
-  },
-  {
     id: "core.tasks",
     target: "auto",
     source: "core",
     icon: "tasks",
-    defaultOrder: 30,
+    defaultOrder: 20,
     defaultVisible: true,
     canHide: true,
     shortcut: "⌘3",
@@ -83,7 +74,7 @@ export const CORE_NAVIGATION_CONTRIBUTIONS = [
     target: "groups",
     source: "core",
     icon: "groups",
-    defaultOrder: 40,
+    defaultOrder: 30,
     defaultVisible: true,
     canHide: true,
     shortcut: "⌘4",
@@ -93,7 +84,7 @@ export const CORE_NAVIGATION_CONTRIBUTIONS = [
     target: "office",
     source: "core",
     icon: "office",
-    defaultOrder: 50,
+    defaultOrder: 40,
     defaultVisible: true,
     canHide: true,
     shortcut: "⌘5",
@@ -195,11 +186,29 @@ export function parseNavigationPreferences(raw: string | null): NavigationPrefer
       shown?: unknown;
     };
     if (parsed.version !== 1) return emptyPreferences();
+    let order = stringIds(parsed.order);
+    let hidden = stringIds(parsed.hidden);
+    let shown = stringIds(parsed.shown);
+    const hasLegacyProjectsPreference = order.includes(LEGACY_PROJECTS_NAVIGATION_ID)
+      || hidden.includes(LEGACY_PROJECTS_NAVIGATION_ID)
+      || shown.includes(LEGACY_PROJECTS_NAVIGATION_ID);
+    if (hasLegacyProjectsPreference) {
+      const assistantWasHidden = hidden.includes("core.chat");
+      const projectsWereHidden = hidden.includes(LEGACY_PROJECTS_NAVIGATION_ID);
+      order = order.filter((id) => id !== LEGACY_PROJECTS_NAVIGATION_ID);
+      hidden = hidden.filter((id) => id !== LEGACY_PROJECTS_NAVIGATION_ID);
+      shown = shown.filter((id) => id !== LEGACY_PROJECTS_NAVIGATION_ID);
+      // The merged Workbench remains visible if either former entry was visible. Only people who
+      // explicitly hid both Chat and Projects keep the combined entry hidden after migration.
+      if (assistantWasHidden && !projectsWereHidden) {
+        hidden = hidden.filter((id) => id !== "core.chat");
+      }
+    }
     return {
       version: 1,
-      order: stringIds(parsed.order),
-      hidden: stringIds(parsed.hidden),
-      shown: stringIds(parsed.shown),
+      order,
+      hidden,
+      shown,
     };
   } catch {
     return emptyPreferences();
@@ -320,6 +329,12 @@ export function initialAppPlace(
   preferences: NavigationPreferences,
 ): AppPlace {
   if (saved === "settings") return "settings";
+  // Chat and Projects are two isolated execution contexts inside the same visible Workbench.
+  // Keep the last internal context on restart whenever the Workbench contribution is available.
+  if (saved === "projects") {
+    const workbench = CORE_NAVIGATION_CONTRIBUTIONS.find((item) => item.id === "core.chat");
+    if (workbench && navigationIsVisible(workbench, preferences)) return "projects";
+  }
   if (saved && isAppPlace(saved)) {
     const savedContribution = CORE_NAVIGATION_CONTRIBUTIONS.find(
       (item) => item.target === saved,

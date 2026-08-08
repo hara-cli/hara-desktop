@@ -31,8 +31,29 @@ test("module dock preferences tolerate corruption and stale plugin IDs", () => {
 
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
-    ["core.tasks", "core.chat", "core.projects", "core.groups", "core.office"],
+    ["core.tasks", "core.chat", "core.groups", "core.office"],
   );
+});
+
+test("legacy Chat and Projects visibility merges without making a formerly visible module disappear", () => {
+  const projectsVisible = parseNavigationPreferences(JSON.stringify({
+    version: 1,
+    order: ["core.chat", "core.projects", "core.tasks"],
+    hidden: ["core.chat"],
+    shown: [],
+  }));
+  assert.deepEqual(projectsVisible.order, ["core.chat", "core.tasks"]);
+  assert.deepEqual(projectsVisible.hidden, []);
+  assert.equal(initialAppPlace("projects", projectsVisible), "projects");
+
+  const bothHidden = parseNavigationPreferences(JSON.stringify({
+    version: 1,
+    order: ["core.chat", "core.projects", "core.tasks"],
+    hidden: ["core.chat", "core.projects"],
+    shown: [],
+  }));
+  assert.deepEqual(bothHidden.hidden, ["core.chat"]);
+  assert.equal(initialAppPlace("projects", bothHidden), "auto");
 });
 
 test("enabled plugin panels contribute collision-safe, default-hidden dock entries", () => {
@@ -92,19 +113,19 @@ test("enabled plugin panels contribute collision-safe, default-hidden dock entri
   );
 });
 
-test("core modules can be hidden, restored, and reordered without hiding Settings", () => {
+test("the Workbench can be hidden, restored, and reordered without exposing a second Projects rail item", () => {
   let preferences = parseNavigationPreferences(null);
   preferences = withNavigationVisibility(
     CORE_NAVIGATION_CONTRIBUTIONS,
     preferences,
-    "core.projects",
+    "core.chat",
     false,
   );
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
-    ["core.chat", "core.tasks", "core.groups", "core.office"],
+    ["core.tasks", "core.groups", "core.office"],
   );
-  assert.equal(initialAppPlace("projects", preferences), "chat");
+  assert.equal(initialAppPlace("projects", preferences), "auto");
   assert.equal(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences)
       .some((item) => item.id === "core.groups"),
@@ -114,19 +135,20 @@ test("core modules can be hidden, restored, and reordered without hiding Setting
   preferences = withNavigationVisibility(
     CORE_NAVIGATION_CONTRIBUTIONS,
     preferences,
-    "core.projects",
+    "core.chat",
     true,
   );
   preferences = moveNavigation(
     CORE_NAVIGATION_CONTRIBUTIONS,
     preferences,
-    "core.projects",
-    -1,
+    "core.chat",
+    1,
   );
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
-    ["core.projects", "core.chat", "core.tasks", "core.groups", "core.office"],
+    ["core.tasks", "core.chat", "core.groups", "core.office"],
   );
+  assert.equal(initialAppPlace("projects", preferences), "projects");
 
   for (const item of CORE_NAVIGATION_CONTRIBUTIONS) {
     preferences = withNavigationVisibility(
@@ -152,6 +174,14 @@ test("Groups and Office are default-visible but remain local navigation preferen
     hidden: [],
   }));
   assert.deepEqual(preferences.shown, []);
+  assert.equal(preferences.order.includes("core.projects"), false);
+  assert.equal(
+    visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences)
+      .some((item) => item.id === "core.projects"),
+    false,
+    "stale Projects preferences migrate into the visible Workbench instead of reviving a rail item",
+  );
+  assert.equal(initialAppPlace("projects", preferences), "projects");
   assert.equal(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences)
       .some((item) => item.id === "core.groups"),

@@ -20,6 +20,7 @@ interface ExtensionDockCopy {
   maximize: string;
   restore: string;
   popOut: string;
+  hide: string;
   close: string;
 }
 
@@ -234,7 +235,7 @@ export default function ExtensionDock({
               <DockIcon name="popout" />
             </button>
           )}
-          <button type="button" aria-label={copy.close} title={copy.close} onClick={onClose}>
+          <button type="button" aria-label={copy.hide} title={copy.hide} onClick={onClose}>
             <DockIcon name="close" />
           </button>
         </div>

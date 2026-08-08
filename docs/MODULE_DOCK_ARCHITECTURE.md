@@ -5,9 +5,13 @@
 The far-left rail is a configurable **module dock**, not a fixed list of pages and not a list of
 every skill inside every plugin.
 
-- Chat, Projects, Tasks, Groups, and Office are open-core modules and are visible by default.
-- Office owns presentations, spreadsheets, documents, and local Artifact history. Projects owns
-  local-folder conversations; the two no longer compete inside one sidebar.
+- Workbench, Tasks, Groups, and Office are open-core modules and are visible by default.
+- Workbench gives personal conversations and local projects one context index. They remain separate
+  internal places with separate active-session authority; selecting a row switches ownership before
+  it opens. This is a navigation merge, not a permission or data merge.
+- Office owns presentations, spreadsheets, documents, and local Artifact history. A presentation
+  created from a conversation may open as an owner-bound Workbench extension tab, but Office remains
+  the durable deliverables library.
 - Settings, update recovery, and future safe-mode recovery stay fixed at the lower left.
 - Enabled legacy plugin panels may be explicitly pinned as default-hidden shortcuts. They remain
   project-owned Extension Dock views, not independent modules.
@@ -45,7 +49,7 @@ Preferences use `hara.navigation.v1` in local storage:
 ```json
 {
   "version": 1,
-  "order": ["core.chat", "core.projects", "core.tasks", "core.groups", "core.office"],
+  "order": ["core.chat", "core.tasks", "core.groups", "core.office"],
   "hidden": [],
   "shown": []
 }
@@ -55,6 +59,12 @@ IDs are stable and owner-scoped. Removed or unknown plugin IDs are ignored, and 
 contributions are appended in default order. If every work module is hidden, startup falls back to
 Settings. `shown` is deliberately separate from `order`: reordering an existing module must never
 make a newly installed default-hidden module appear.
+
+`core.chat` keeps its stable ID but is presented as **Workbench**. The former `core.projects` dock
+preference is removed during parsing. Workbench remains visible if either former entry was visible and
+stays hidden only if both were explicitly hidden. A saved internal `projects` place still reopens that
+project context whenever Workbench is visible, so this migration neither loses context nor revives a
+duplicate rail icon.
 
 Groups and Office contribute:
 

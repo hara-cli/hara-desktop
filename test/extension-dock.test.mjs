@@ -9,7 +9,9 @@ import {
   classifyPanelSurface,
   closeExtensionTab,
   emptyExtensionDockState,
+  extensionContextKey,
   extensionDockWidth,
+  extensionItemContextKey,
   extensionMatchesContext,
   extensionTabsForContext,
   localWebPreviewUrl,
@@ -72,6 +74,11 @@ test("an extension never migrates to a different project session or Artifact rev
   assert.equal(extensionMatchesContext(artifact, { place: "office", artifactId: "a1", revisionId: "r2" }), true);
   assert.equal(extensionMatchesContext(artifact, { place: "office", artifactId: "a1", revisionId: "r3" }), false);
   assert.equal(extensionMatchesContext(artifact, { place: "projects", sessionId: "s1" }), false);
+  assert.equal(extensionContextKey({ place: "projects", sessionId: "s1" }), "projects:s1");
+  assert.equal(extensionContextKey({ place: "chat", sessionId: null }), null);
+  assert.equal(extensionContextKey({ place: "office" }), "office");
+  assert.equal(extensionItemContextKey(panel), "projects:s1");
+  assert.equal(extensionItemContextKey(artifact), "office");
 });
 
 test("the same Artifact keeps independent Office and session-owned tab identities", () => {

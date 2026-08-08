@@ -1467,6 +1467,23 @@ button.deny {
   justify-content: center;
   gap: 7px;
 }
+.workbench-sidebar-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+.workbench-sidebar-actions .new {
+  min-width: 0;
+  padding-inline: 8px;
+  font-size: 12px;
+}
+.workbench-context-head {
+  margin-top: 7px;
+  cursor: default;
+}
+.workbench-context-head .count {
+  margin-left: auto;
+}
 .new-conversation-plus {
   margin-left: -2px;
   font: 600 17px/1 "SF Mono", ui-monospace, monospace;
@@ -2426,6 +2443,38 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.anchor > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.anchor-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.anchor-actions .paneltab {
+  margin-left: 0;
+}
+.extension-screen-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.extension-screen-count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--bg3);
+  color: var(--dim);
+  font: 600 10px/16px "SF Mono", ui-monospace, monospace;
+  text-align: center;
+}
+.extension-screen-toggle.on .extension-screen-count {
+  color: var(--accent);
 }
 
 /* ── the configurable icon rail ── */

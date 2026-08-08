@@ -11,7 +11,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type SetStateAction,
 } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
@@ -145,6 +144,8 @@ import {
   classifyPanelSurface,
   closeExtensionTab,
   emptyExtensionDockState,
+  extensionContextKey,
+  extensionItemContextKey,
   extensionTabsForContext,
   localWebPreviewUrl,
   publicPanelOrigin,
@@ -555,15 +556,15 @@ const attachmentIssueText = (
     if (issue === "engine-update-required") return "当前 Hara 引擎太旧，请先更新 Desktop 后再添加附件。";
     if (issue === "image-too-large") return "图片超过 Hara 3.6 MB 附件上限，尚未发送给模型，也不会静默转用 OCR。请压缩或裁剪后重新添加。";
     if (issue === "model-capabilities-loading") return "正在读取当前模型的图片能力，请稍后再发送。";
-    if (issue === "image-unsupported") return "当前模型不能读取图片；请选择支持图片的模型，或配置视觉辅助模型。";
-    if (issue === "image-unknown") return "当前模型的图片能力尚未验证；请选择已验证模型，或在模型设置中明确配置。";
+    if (issue === "image-unsupported") return "当前模型不能读取图片；请选择原生支持图片的模型。";
+    if (issue === "image-unknown") return "当前模型的图片能力尚未验证；请选择已验证支持图片的模型。";
     return "";
   }
   if (issue === "engine-update-required") return "Update Hara Desktop before adding attachments.";
   if (issue === "image-too-large") return "This image exceeds Hara's 3.6 MB attachment limit. It was not sent to the model or silently routed to OCR. Compress or crop it, then attach it again.";
   if (issue === "model-capabilities-loading") return "Loading the selected model's image capability.";
-  if (issue === "image-unsupported") return "This model cannot read images. Choose an image-capable model or configure a vision helper.";
-  if (issue === "image-unknown") return "This model's image capability is unverified. Choose a verified model or configure it explicitly.";
+  if (issue === "image-unsupported") return "This model cannot read images. Choose a model with native image input.";
+  if (issue === "image-unknown") return "This model's image capability is unverified. Choose a verified image-capable model.";
   return "";
 };
 
@@ -574,12 +575,12 @@ const imageCapabilityText = (
   const mode = capabilities?.image.mode;
   if (locale === "zh") {
     if (mode === "native") return "原生读取图片";
-    if (mode === "vision-sidecar") return `视觉辅助${capabilities?.image.viaModel ? ` · ${capabilities.image.viaModel}` : ""}`;
+    if (mode === "vision-sidecar") return "图片兼容模式";
     if (mode === "unsupported") return "不支持图片";
     return "图片能力未验证";
   }
   if (mode === "native") return "Native image input";
-  if (mode === "vision-sidecar") return `Vision helper${capabilities?.image.viaModel ? ` · ${capabilities.image.viaModel}` : ""}`;
+  if (mode === "vision-sidecar") return "Image compatibility mode";
   if (mode === "unsupported") return "No image input";
   return "Image capability unverified";
 };
@@ -827,6 +828,11 @@ export default function App() {
   const [zone, setZoneRaw] = useState<Zone>(() =>
     initialAppPlace(localStorage.getItem("hara.zone"), navigationPreferences));
   const zoneRef = useRef<Zone>(zone);
+  const workbenchPlaceRef = useRef<"chat" | "projects">(
+    localStorage.getItem("hara.workbench.place") === "projects" || zone === "projects"
+      ? "projects"
+      : "chat",
+  );
   const sessionOpenRequestRef = useRef(0);
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
   const pluginsRef = useRef<PluginInfo[] | null>(null);
@@ -860,24 +866,40 @@ export default function App() {
   // Context-owned extension screen. A panel/file never changes owner when the user changes place.
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [extensionDockState, setExtensionDockState] = useState<ExtensionDockState>(emptyExtensionDockState);
+  const [hiddenExtensionContexts, setHiddenExtensionContexts] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const extensionDockStateRef = useRef(extensionDockState);
   extensionDockStateRef.current = extensionDockState;
-  const setExtensionDock = useCallback((action: SetStateAction<ExtensionDockItem | null>) => {
+  const revealExtensionItem = useCallback((item: ExtensionDockItem) => {
+    const key = extensionItemContextKey(item);
+    setHiddenExtensionContexts((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+  const setExtensionDock = useCallback((next: ExtensionDockItem | null) => {
+    if (next) revealExtensionItem(next);
     setExtensionDockState((state) => {
       const current = activeExtensionTab(state);
-      const next = typeof action === "function" ? action(current) : action;
       if (!next) return current ? closeExtensionTab(state, current.id) : state;
       return upsertExtensionTab(state, next);
     });
-  }, []);
+  }, [revealExtensionItem]);
   const offerExtensionTab = useCallback((tab: ExtensionDockItem, activate = true) => {
+    if (activate) revealExtensionItem(tab);
     setExtensionDockState((state) => {
       const previousActiveId = state.activeId;
       const next = upsertExtensionTab(state, tab);
       return activate ? next : { ...next, activeId: previousActiveId };
     });
+  }, [revealExtensionItem]);
+  const clearExtensionDock = useCallback(() => {
+    setExtensionDockState(emptyExtensionDockState());
+    setHiddenExtensionContexts(new Set());
   }, []);
-  const clearExtensionDock = useCallback(() => setExtensionDockState(emptyExtensionDockState()), []);
   const [extensionLoading, setExtensionLoading] = useState(false);
   const [home, setHome] = useState("");
   const [unread, setUnread] = useState<Record<string, boolean>>({});
@@ -1492,6 +1514,10 @@ export default function App() {
       }
     }
     zoneRef.current = z;
+    if (z === "chat" || z === "projects") {
+      workbenchPlaceRef.current = z;
+      localStorage.setItem("hara.workbench.place", z);
+    }
     sessionOpenRequestRef.current += 1;
     setZoneRaw(z);
     setAutoReplay(null);
@@ -4550,8 +4576,14 @@ export default function App() {
   const forkIt = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
-    if (!discardCurrentExtensionDraft()) return;
     const source = sessionsRef.current.find((session) => session.id === id);
+    const sourcePlace = source ? sessionPlace(source) : null;
+    if (sourcePlace === "chat" || sourcePlace === "projects") {
+      const switchingContext = sourcePlace !== zoneRef.current;
+      if (switchingContext) {
+        if (!setZone(sourcePlace)) return;
+      } else if (!discardCurrentExtensionDraft()) return;
+    } else if (!discardCurrentExtensionDraft()) return;
     const sessionHint = { cwd: source?.cwd ?? server?.cwd ?? "", source: "interactive" };
     const requestId = ++sessionOpenRequestRef.current;
     try {
@@ -4574,8 +4606,14 @@ export default function App() {
       setErr(String(e?.message ?? e));
     }
   };
+  const openWorkbenchSession = async (session: SessionInfo) => {
+    const place = sessionPlace(session);
+    if (place !== "chat" && place !== "projects") return;
+    if (zoneRef.current !== place && !setZone(place)) return;
+    await openSession(session.id);
+  };
   const sessRow = (s: SessionInfo) => (
-    <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
+    <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openWorkbenchSession(s)}>
       <div className="title">
         {busy[s.id] && <span className="live">●</span>}
         {unread[s.id] && <span className="dot" />}
@@ -4662,28 +4700,43 @@ export default function App() {
             <b>{activeSession ? basename(activeSession.cwd) : "—"}</b> <span className="dim">{activeSession?.cwd}</span>
           </span>
         )}
-        {temperament === "ide" &&
-          activeSession &&
-          (projPanels[activeSession.cwd] ?? [])
-            .filter((sp) => plugins?.find((plugin) => plugin.name === sp.plugin)?.enabled !== false)
-            .map((sp) => (
-              <button
-                key={sp.id}
-                className={`paneltab ${
-                  extensionDockState.tabs.some((tab) =>
-                    tab.type === "legacy-panel"
-                    && tab.id === `panel:${activeSession.id}:${sp.plugin}:${sp.id}`)
-                    ? "on"
-                    : ""
-                }`}
-                disabled={panelBusy === panelOperationKey(sp.plugin, sp.id)}
-                onMouseEnter={() => warmModule(loadExtensionDock())}
-                onFocus={() => warmModule(loadExtensionDock())}
-                onClick={() => void toggleExtensionPanel(sp, activeSession.cwd)}
-              >
-                {panelBusy === panelOperationKey(sp.plugin, sp.id) ? "…" : `◧ ${sp.title}`}
-              </button>
-            ))}
+        <div className="anchor-actions">
+          {temperament === "ide" &&
+            activeSession &&
+            (projPanels[activeSession.cwd] ?? [])
+              .filter((sp) => plugins?.find((plugin) => plugin.name === sp.plugin)?.enabled !== false)
+              .map((sp) => (
+                <button
+                  key={sp.id}
+                  className={`paneltab ${
+                    extensionDockState.tabs.some((tab) =>
+                      tab.type === "legacy-panel"
+                      && tab.id === `panel:${activeSession.id}:${sp.plugin}:${sp.id}`)
+                      ? "on"
+                      : ""
+                  }`}
+                  disabled={panelBusy === panelOperationKey(sp.plugin, sp.id)}
+                  onMouseEnter={() => warmModule(loadExtensionDock())}
+                  onFocus={() => warmModule(loadExtensionDock())}
+                  onClick={() => void toggleExtensionPanel(sp, activeSession.cwd)}
+                >
+                  {panelBusy === panelOperationKey(sp.plugin, sp.id) ? "…" : `◧ ${sp.title}`}
+                </button>
+              ))}
+          <button
+            type="button"
+            className={`paneltab extension-screen-toggle${contextExtensionScreenVisible ? " on" : ""}`}
+            aria-pressed={contextExtensionScreenVisible}
+            disabled={contextExtensionTabs.length === 0}
+            title={contextExtensionTabs.length === 0
+              ? t("extensionEmpty")
+              : contextExtensionScreenVisible ? t("extensionHide") : t("extensionShow")}
+            onClick={toggleCurrentExtensionScreen}
+          >
+            ◫ {t("extensionScreen")}
+            <span className="extension-screen-count">{contextExtensionTabs.length}</span>
+          </button>
+        </div>
       </div>
       {!active ? (
         temperament === "im" ? (
@@ -4889,8 +4942,8 @@ export default function App() {
                 && activeModelInfo?.attachmentCapabilities?.image.mode === "vision-sidecar" && (
                   <div className="composer-capability-note">
                     {locale === "zh"
-                      ? `图片将先由 ${activeModelInfo.attachmentCapabilities.image.viaModel ?? "视觉辅助模型"} 读取，再交给 ${activeSession?.model ?? "当前模型"}。`
-                      : `Images will be read by ${activeModelInfo.attachmentCapabilities.image.viaModel ?? "a vision helper"} before ${activeSession?.model ?? "the selected model"} continues.`}
+                      ? "当前模型不直接读取图片；Hara 会先生成文字说明后继续。若要最高保真，请改用原生支持图片的模型。"
+                      : "The selected model does not read images directly. Hara will create a text description first; choose a model with native image input for maximum fidelity."}
                   </div>
                 )}
               <div className="composer-input-row">
@@ -5228,8 +5281,7 @@ export default function App() {
   // IDs; panel clicks still pass through project detection and the isolated local launcher. Notification
   // invariant: interruption (needs a human) → red dot; ambient (ran, left a trace) → count chip.
   const railLabelsById: Record<string, string> = {
-    "core.chat": t("zoneChat"),
-    "core.projects": t("zoneProjects"),
+    "core.chat": t("zoneWorkbench"),
     "core.tasks": t("zoneAuto"),
     "core.groups": t("zoneGroups"),
     "core.office": t("zoneOffice"),
@@ -5256,9 +5308,10 @@ export default function App() {
   ).map((contribution) => {
     const pluginContribution = pluginNavigationById.get(contribution.id);
     let badge: AppRailItem["badge"];
-    if (contribution.target === "chat" && manualUnreadIn(azAll)) {
-      badge = { kind: "dot" };
-    } else if (contribution.target === "projects" && manualUnreadIn(projectSessions)) {
+    if (
+      contribution.id === "core.chat"
+      && (manualUnreadIn(azAll) || manualUnreadIn(projectSessions))
+    ) {
       badge = { kind: "dot" };
     } else if (contribution.target === "auto" && autoUnread > 0) {
       badge = { kind: "count", count: autoUnread };
@@ -5277,7 +5330,9 @@ export default function App() {
             && tab.plugin === pluginContribution.plugin
             && tab.panelId === pluginContribution.panelId
             && tab.owner.sessionId === active)
-        : zone === contribution.target,
+        : contribution.id === "core.chat"
+          ? zone === "chat" || zone === "projects"
+          : zone === contribution.target,
       badge,
     };
   });
@@ -5296,7 +5351,11 @@ export default function App() {
           (item) => item.id === id,
         );
         if (contribution) {
-          setZone(contribution.target);
+          setZone(contribution.id === "core.chat"
+            ? (zoneRef.current === "chat" || zoneRef.current === "projects"
+                ? zoneRef.current
+                : workbenchPlaceRef.current)
+            : contribution.target);
           return;
         }
         const pluginContribution = pluginNavigationById.get(id);
@@ -5325,7 +5384,9 @@ export default function App() {
         const contribution = CORE_NAVIGATION_CONTRIBUTIONS.find(
           (item) => item.id === id,
         );
-        if (contribution) preloadPlace(contribution.target);
+        if (contribution) preloadPlace(contribution.id === "core.chat"
+          ? workbenchPlaceRef.current
+          : contribution.target);
         else if (pluginNavigationById.has(id)) warmModule(loadExtensionDock());
       }}
       onSelectSettings={() => setZone("settings")}
@@ -5430,6 +5491,7 @@ export default function App() {
         : state;
       return activateExtensionTab(clean, tabId);
     });
+    revealExtensionItem(tab);
     if (tab.type === "artifact") {
       void loadArtifactExtension(tab);
       return;
@@ -5451,6 +5513,15 @@ export default function App() {
       next = { ...next, activeId: nextVisible?.id ?? null };
     }
     setExtensionDockState(next);
+    const closedContextKey = extensionItemContextKey(tab);
+    if (!next.tabs.some((candidate) => extensionItemContextKey(candidate) === closedContextKey)) {
+      setHiddenExtensionContexts((current) => {
+        if (!current.has(closedContextKey)) return current;
+        const cleaned = new Set(current);
+        cleaned.delete(closedContextKey);
+        return cleaned;
+      });
+    }
     if (nextVisible?.type === "artifact") void loadArtifactExtension(nextVisible);
     else if (tab.type === "artifact" && contextExtensionDock?.id === tabId) clearArtifactSurface();
   };
@@ -5478,6 +5549,28 @@ export default function App() {
   const contextExtensionDock = extensionContext
     ? activeExtensionTabForContext(extensionDockState, extensionContext)
     : null;
+  const activeExtensionContextKey = extensionContext
+    ? extensionContextKey(extensionContext)
+    : null;
+  const contextExtensionScreenVisible = Boolean(
+    contextExtensionDock
+    && activeExtensionContextKey
+    && !hiddenExtensionContexts.has(activeExtensionContextKey),
+  );
+  const setCurrentExtensionScreenVisible = (visible: boolean) => {
+    if (!activeExtensionContextKey) return;
+    setHiddenExtensionContexts((current) => {
+      const hidden = current.has(activeExtensionContextKey);
+      if (hidden === !visible) return current;
+      const next = new Set(current);
+      if (visible) next.delete(activeExtensionContextKey);
+      else next.add(activeExtensionContextKey);
+      return next;
+    });
+  };
+  const toggleCurrentExtensionScreen = () => {
+    setCurrentExtensionScreenVisible(!contextExtensionScreenVisible);
+  };
   const panelExtension = contextExtensionDock?.type === "legacy-panel"
     ? contextExtensionDock
     : null;
@@ -5513,7 +5606,8 @@ export default function App() {
     maximize: t("extensionMaximize"),
     restore: t("extensionRestore"),
     popOut: t("openInWindow"),
-    close: t("extensionClose"),
+    hide: t("extensionHide"),
+    close: t("extensionTabClose"),
   };
   const setExtensionMode = (itemId: string, mode: ExtensionDockMode) => {
     setExtensionDockState((state) => updateExtensionTab(
@@ -5793,28 +5887,34 @@ export default function App() {
       )}
 
       {/* ── context list (switches with the rail) ── */}
-      {zone === "chat" && (
-        <aside className="sidebar">
+      {(zone === "chat" || zone === "projects") && (
+        <aside className="sidebar workbench-sidebar">
           {brandBar}
-          <button
-            className="new withicon"
-            disabled={assistantCreating}
-            onClick={() => void startNewAssistantConversation()}
-          >
-            <span className="new-conversation-plus" aria-hidden>＋</span>
-            {assistantCreating ? t("startingConversation") : t("newConversation")}
-          </button>
+          <div className="workbench-sidebar-actions">
+            <button
+              className="new withicon"
+              disabled={assistantCreating}
+              onClick={() => void startNewAssistantConversation()}
+            >
+              <span className="new-conversation-plus" aria-hidden>＋</span>
+              {assistantCreating ? t("startingConversation") : t("newConversation")}
+            </button>
+            <button className="new ghost" onClick={() => void openProject()}>
+              {t("openProject")}
+            </button>
+          </div>
           {searchBox}
-          <div className="sessions" key={zone}>
-            {/* The latest desktop conversation is the active assistant lane. Starting another
-                conversation moves this one into the folded history list below. */}
+          <div className="sessions" key="workbench">
+            <div className="group-h artifact-shelf-head workbench-context-head">
+              {t("workbenchPersonal")}
+              <span className="count">{azAll.length}</span>
+            </div>
+            {/* Personal and project sessions share one index, but selecting a row first enters the
+                row's isolated execution context. They never share active-session authority. */}
             {az.current && sessRow({ ...az.current, title: t("assistant") })}
-            {/* one thread per external origin (WeChat bot etc.) — the origin is the dispatch key.
-                The divider keeps identities straight: above = YOUR desktop assistant, below = its
-                external-channel avatars (顾雅 P2). */}
             {azBots.length > 0 && <div className="chandiv">{t("extChannels")}</div>}
             {azBots.map((s) => (
-              <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openSession(s.id)}>
+              <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openWorkbenchSession(s)}>
                 <div className="title">
                   {busy[s.id] && <span className="live">●</span>}
                   {unread[s.id] && <span className="dot" />}
@@ -5823,7 +5923,6 @@ export default function App() {
                 <div className="meta">{s.updatedAt ? fmtTime(s.updatedAt) : t("newLabel")}</div>
               </div>
             ))}
-            {/* older desktop-assistant sessions, folded away — duplicates never clutter the zone */}
             {az.history.length > 0 && (
               <>
                 <div className="group-h" onClick={() => toggleGroup("__history")}>
@@ -5833,23 +5932,11 @@ export default function App() {
                 {collapsed["__history"] === false && az.history.filter((s) => hit(s.title)).map(sessRow)}
               </>
             )}
-            {/* automations keep their own module — nothing scheduled is mixed into chat history */}
-          </div>
-          {footBar}
-        </aside>
-      )}
 
-      {zone === "projects" && (
-        <aside className="sidebar">
-          {brandBar}
-          <div className="artifact-sidebar-actions">
-            <button className="new" onClick={() => void openProject()}>
-              {t("openProject")}
-            </button>
-          </div>
-          {searchBox}
-          <div className="sessions" key={zone}>
-            <div className="group-h artifact-shelf-head">{t("zoneProjects")}</div>
+            <div className="group-h artifact-shelf-head workbench-context-head">
+              {t("zoneProjects")}
+              <span className="count">{groups.length}</span>
+            </div>
             {groups.map(([cwd, list]) => (
               <div key={cwd}>
                 <div className="group-h" title={cwd} onClick={() => toggleGroup(cwd)}>
@@ -5872,7 +5959,13 @@ export default function App() {
                 {!collapsed[cwd] && (
                   <>
                     {sortPinned(list).map(sessRow)}
-                    <div className="newhere" onClick={() => void newSession(cwd)}>
+                    <div
+                      className="newhere"
+                      onClick={() => {
+                        if (!setZone("projects")) return;
+                        void newSession(cwd);
+                      }}
+                    >
                       {t("newHere")}
                     </div>
                   </>
@@ -6428,12 +6521,8 @@ export default function App() {
                 preferences={navigationPreferences}
                 labels={{
                   "core.chat": {
-                    title: t("zoneChat"),
+                    title: t("zoneWorkbench"),
                     description: t("moduleChatDescription"),
-                  },
-                  "core.projects": {
-                    title: t("zoneProjects"),
-                    description: t("moduleProjectsDescription"),
                   },
                   "core.tasks": {
                     title: t("zoneAuto"),
@@ -6527,8 +6616,7 @@ export default function App() {
                   isPanelBusy={(pluginName, panelId) =>
                     panelBusy === panelOperationKey(pluginName, panelId)}
                   core={[
-                    { id: "core.chat", title: t("zoneChat"), description: t("moduleChatDescription") },
-                    { id: "core.projects", title: t("zoneProjects"), description: t("moduleProjectsDescription") },
+                    { id: "core.chat", title: t("zoneWorkbench"), description: t("moduleChatDescription") },
                     { id: "core.tasks", title: t("zoneAuto"), description: t("moduleTasksDescription") },
                     { id: "core.groups", title: t("zoneGroups"), description: t("moduleGroupsDescription") },
                     { id: "core.office", title: t("zoneOffice"), description: t("moduleOfficeDescription") },
@@ -6755,7 +6843,7 @@ export default function App() {
       ) : zone === "office" ? (
         <div className={`extension-work office-extension-work${artifactExtension?.mode === "maximized" ? " is-extension-maximized" : ""}`}>
           <div className="extension-primary">{officeHomeSurface}</div>
-          {artifactExtension && artifactWorkbenchSurface && (
+          {artifactExtension && artifactWorkbenchSurface && contextExtensionScreenVisible && (
             <Suspense fallback={<aside className="extension-dock is-maximized" aria-busy="true" />}>
               <ExtensionDock
                 kind={artifactExtension.surfaceKind}
@@ -6773,14 +6861,14 @@ export default function App() {
                 onTabClose={closeDockTab}
                 onModeChange={(mode) => setExtensionMode(artifactExtension.id, mode)}
                 onPopOut={activePresentation ? () => void openPresentationInBrowser() : undefined}
-                onClose={() => closeDockTab(artifactExtension.id)}
+                onClose={() => setCurrentExtensionScreenVisible(false)}
               >
                 {artifactWorkbenchSurface}
               </ExtensionDock>
             </Suspense>
           )}
         </div>
-      ) : (zone === "chat" || zone === "projects") && contextExtensionDock ? (
+      ) : (zone === "chat" || zone === "projects") && contextExtensionDock && contextExtensionScreenVisible ? (
         <div className={`extension-work${contextExtensionDock.mode === "maximized" ? " is-extension-maximized" : ""}`}>
           <div className="extension-primary">{conversation(zone === "chat" ? "im" : "ide")}</div>
           <Suspense fallback={<aside className="extension-dock is-docked" aria-busy="true" />}>
@@ -6808,7 +6896,7 @@ export default function App() {
                 : activePresentation
                   ? () => void openPresentationInBrowser()
                   : undefined}
-              onClose={() => closeDockTab(contextExtensionDock.id)}
+              onClose={() => setCurrentExtensionScreenVisible(false)}
             >
               {panelExtension && (
                 <iframe
