@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.67 — 2026-08-10 — reliable input, updates, and browser verification
+
+- Keep Chinese and other IME composition inside the composer. Enter, keypad Enter, and legacy
+  `keyCode` 229 events no longer submit while text is being composed; the completed text can still be
+  sent normally after `compositionend` across the main Workbench, pet chat, and start screen.
+- Make macOS updates fail closed on architecture mismatches. Desktop now supplies the native updater
+  target explicitly and independently validates the selected manifest archive before installation, so
+  Intel Macs cannot silently receive an Apple Silicon package (or vice versa). The error is localized
+  and preserves the installed app when the update feed is inconsistent.
+- Bundle Hara CLI `0.145.0` at exact verified commit
+  `6b13003319b5322bd9583917713372381b50d2f4`. Website UI and SPA checks can move from bounded text
+  extraction to the real system browser with explicit approval; project grants are reused by operation
+  family; mid-turn forks use protocol-complete snapshots; and repeated failures plus 50/100-round task
+  budgets stop unproductive loops recoverably. Existing conversations, projects, organization
+  connections, schedules, Artifacts, presentations, and local files require no migration. Windows
+  packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.66 — 2026-08-09 — layout-safe presentations and durable permissions
 
 - Measure the final presentation DOM after fonts and wrapping settle. Title/content collisions,

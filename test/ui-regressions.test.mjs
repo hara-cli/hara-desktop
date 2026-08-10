@@ -3,8 +3,22 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { classifyEngineVersion } from "../src/engine-version.js";
+import { isImeCompositionKey } from "../src/ime.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+
+test("all Desktop composers keep IME commit Enter out of submit shortcuts", () => {
+  assert.equal(isImeCompositionKey({ isComposing: true, keyCode: 13 }), true);
+  assert.equal(isImeCompositionKey({ isComposing: false, keyCode: 229 }), true);
+  assert.equal(isImeCompositionKey({ isComposing: false, keyCode: 13 }), false);
+
+  for (const file of ["App.tsx", "PetChat.tsx", "WorkStarter.tsx"]) {
+    const source = readFileSync(`${root}/src/${file}`, "utf8");
+    assert.match(source, /onCompositionStart=/, `${file} tracks an active composition`);
+    assert.match(source, /onCompositionEnd=/, `${file} retires an active composition`);
+    assert.match(source, /isImeCompositionKey\([^)]*nativeEvent\)/, `${file} covers WebKit keyCode 229`);
+  }
+});
 
 test("the static Desktop cat mark keeps both traced eye apertures visible", () => {
   const mark = readFileSync(`${root}/src/mark.tsx`, "utf8");

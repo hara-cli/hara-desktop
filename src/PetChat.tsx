@@ -6,6 +6,7 @@ import type {
   PetChatState,
   PetChatSubmit,
 } from "./pets";
+import { isImeCompositionKey } from "./ime";
 import "./PetChat.css";
 
 const EMPTY_STATE: PetChatState = {
@@ -45,6 +46,7 @@ export default function PetChat() {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
   const textarea = useRef<HTMLTextAreaElement | null>(null);
+  const composing = useRef(false);
   const bottom = useRef<HTMLDivElement | null>(null);
   const locale = useRef(state.locale);
   const pendingDraft = useRef("");
@@ -261,8 +263,15 @@ export default function PetChat() {
                   : (zh ? "自动任务为只读，请在主窗口继续" : "Automated runs are read-only; continue in the main window")
               : (zh ? "等待主窗口连接…" : "Waiting for the main window…")}
             onChange={(event) => setDraft(event.target.value)}
+            onCompositionStart={() => {
+              composing.current = true;
+            }}
+            onCompositionEnd={() => {
+              composing.current = false;
+            }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              if (composing.current || isImeCompositionKey(event.nativeEvent)) return;
+              if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 submit();
               }

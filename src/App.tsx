@@ -18,7 +18,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
-import { check as checkForUpdate, type Update } from "@tauri-apps/plugin-updater";
+import type { Update } from "@tauri-apps/plugin-updater";
 import {
   HaraClient,
   supportsNativePresentationWorkspace,
@@ -55,8 +55,10 @@ import {
   type OrganizationConnectionsState,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
+import { isImeCompositionKey } from "./ime";
 import { classifyEngineVersion } from "./engine-version.js";
 import { applyDesktopUpdateHandoff } from "./desktop-update.js";
+import { checkDesktopUpdate, desktopUpdaterErrorText } from "./desktop-updater";
 import {
   isAssistantWorkspace as isAssistantCwd,
   sessionActivationAllowed,
@@ -1308,6 +1310,7 @@ export default function App() {
   const [ac, setAc] = useState<{ open: boolean; items: { v: string; hint?: string }[]; sel: number; mode: "file" | "skill" }>({ open: false, items: [], sel: 0, mode: "file" });
   const acTimer = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputCompositionRef = useRef(false);
   const skillsRef = useRef<SkillInfo[] | null>(null); // lazy-loaded on the first "/" keystroke
   const togglePin = (id: string) => {
     setPins((p) => {
@@ -2687,7 +2690,7 @@ export default function App() {
           .then(setCommandLineHara)
           .catch(() => {});
       });
-    void checkForUpdate()
+    void checkDesktopUpdate()
       .then((u) => {
         if (!u) return;
         setUpdAvail(u.version);
@@ -4511,7 +4514,7 @@ export default function App() {
     setUpdateTone("neutral");
     let candidate: Update | null = null;
     try {
-      candidate = await checkForUpdate();
+      candidate = await checkDesktopUpdate();
       if (!candidate) {
         setUpdAvail("");
         setUpdateNoticeVisible(false);
@@ -4557,7 +4560,7 @@ export default function App() {
       if (candidate) void candidate.close().catch(() => {});
       setUpdateNoticeVisible(true);
       setUpdateProgress(null);
-      setUpd(String(error?.message ?? error).slice(0, 160));
+      setUpd(desktopUpdaterErrorText(locale, error));
       setUpdateTone("error");
     } finally {
       setUpdating(false);
@@ -5310,6 +5313,12 @@ export default function App() {
                       ? "描述要做什么；可粘贴图片，或用 + / @ 添加上下文…"
                       : "Describe the task; paste an image, or use + / @ to add context…"}
                   onPaste={(e) => void pasteImages(e)}
+                  onCompositionStart={() => {
+                    inputCompositionRef.current = true;
+                  }}
+                  onCompositionEnd={() => {
+                    inputCompositionRef.current = false;
+                  }}
                   onChange={(e) => {
                     setInput(e.target.value);
                     trackComposer(e.target.value, e.target.selectionStart ?? e.target.value.length);
@@ -5317,7 +5326,7 @@ export default function App() {
                   onKeyDown={(e) => {
                     // Enter commits an active CJK IME composition. Treating that key as a composer
                     // command either sends an unfinished message or selects an autocomplete result.
-                    if (e.nativeEvent.isComposing) return;
+                    if (inputCompositionRef.current || isImeCompositionKey(e.nativeEvent)) return;
                     if (ac.open && ac.items.length > 0) {
                       if (e.key === "ArrowDown") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel + 1) % a.items.length })));
                       if (e.key === "ArrowUp") return (e.preventDefault(), setAc((a) => ({ ...a, sel: (a.sel - 1 + a.items.length) % a.items.length })));

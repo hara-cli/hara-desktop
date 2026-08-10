@@ -9,6 +9,7 @@ import {
   IconSummary,
 } from "./icons";
 import type { Locale } from "./i18n";
+import { isImeCompositionKey } from "./ime";
 import {
   appendComposerAttachments,
   type ComposerAttachment,
@@ -157,6 +158,7 @@ export function WorkStarter({
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composingRef = useRef(false);
   const blockedRef = useRef(false);
   const busyRef = useRef(busy);
   const onDropPathsRef = useRef(onDropPaths);
@@ -308,8 +310,14 @@ export function WorkStarter({
           disabled={busy}
           onChange={(event) => setBrief(event.target.value)}
           onPaste={(event) => void ingest(() => onPasteImages(event))}
+          onCompositionStart={() => {
+            composingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            composingRef.current = false;
+          }}
           onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
+            if (composingRef.current || isImeCompositionKey(event.nativeEvent)) return;
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
               event.preventDefault();
               void submit();

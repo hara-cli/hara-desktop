@@ -50,6 +50,19 @@ const WINDOWS_UPDATE_STAGING_FILE_LIMIT: usize = 8;
 const WINDOWS_UPDATE_STAGING_AUTOCLEAN_AGE: std::time::Duration =
     std::time::Duration::from_secs(60 * 60);
 
+fn macos_updater_target(os: &str, arch: &str) -> Option<&'static str> {
+    match (os, arch) {
+        ("macos", "x86_64") => Some("darwin-x86_64"),
+        ("macos", "aarch64") => Some("darwin-aarch64"),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+fn desktop_updater_target() -> Option<&'static str> {
+    macos_updater_target(std::env::consts::OS, std::env::consts::ARCH)
+}
+
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct DesktopUpdateStorageStatus {
@@ -2752,6 +2765,7 @@ pub fn run() {
             restart_after_update,
             inspect_desktop_update_storage,
             clean_desktop_update_storage,
+            desktop_updater_target,
             classify_attachment_paths,
             write_temp_image,
             read_presentation_image,
@@ -2946,6 +2960,14 @@ mod updater_tests {
             vec![FIRST_PARTY_UPDATER_ENDPOINT, GITHUB_UPDATER_ENDPOINT]
         );
         assert_eq!(config.plugins.0["updater"]["pubkey"], "fixture");
+    }
+
+    #[test]
+    fn macos_updater_target_is_explicit_and_architecture_specific() {
+        assert_eq!(macos_updater_target("macos", "x86_64"), Some("darwin-x86_64"));
+        assert_eq!(macos_updater_target("macos", "aarch64"), Some("darwin-aarch64"));
+        assert_eq!(macos_updater_target("windows", "x86_64"), None);
+        assert_eq!(macos_updater_target("macos", "arm"), None);
     }
 }
 
