@@ -4,7 +4,7 @@ import {
   DesktopUpdaterArchitectureError,
   assertMacUpdaterManifestTarget,
   desktopUpdaterErrorText,
-} from "../src/desktop-updater.ts";
+} from "../src/desktop-updater-policy.ts";
 
 const manifest = {
   platforms: {

@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.1.67 — 2026-08-10 — reliable input, updates, and browser verification
+## 0.1.68 — 2026-08-11 — dependency-safe release preflight
+
+- Ship the IME composition guard, fail-closed macOS updater architecture check, and exact Hara CLI
+  `0.145.0` sidecar described in the 0.1.67 candidate below.
+- Keep updater architecture policy and its localized failure copy in a dependency-free module, so the
+  protected release preflight can verify it before installing Tauri runtime packages. This release
+  supersedes the unpublished 0.1.67 candidate; no 0.1.67 installer or updater manifest was exposed.
+
+## 0.1.67 — 2026-08-10 — reliable input, updates, and browser verification (unpublished candidate)
 
 - Keep Chinese and other IME composition inside the composer. Enter, keypad Enter, and legacy
   `keyCode` 229 events no longer submit while text is being composed; the completed text can still be
