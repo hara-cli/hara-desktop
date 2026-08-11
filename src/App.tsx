@@ -6247,7 +6247,19 @@ export default function App() {
           applyJson: t("presentationApplyJson"),
           invalidJson: t("presentationInvalidJson"),
           previewError: t("presentationPreviewError"),
-          layoutError: t("presentationLayoutError"),
+          previewFrameLabel: t("presentationPreviewFrameLabel"),
+          layoutIssueCount: t("presentationLayoutIssueCount"),
+          layoutIssueImpact: t("presentationLayoutIssueImpact"),
+          layoutIssuePage: t("presentationLayoutIssuePage"),
+          layoutIssueLocate: t("presentationLayoutIssueLocate"),
+          layoutIssueTechnicalDetails: t("presentationLayoutIssueTechnicalDetails"),
+          layoutIssueUnknown: t("presentationLayoutIssueUnknown"),
+          layoutIssueContentOverflow: t("presentationLayoutIssueContentOverflow"),
+          layoutIssueTitleOverlap: t("presentationLayoutIssueTitleOverlap"),
+          layoutIssueFooterOverlap: t("presentationLayoutIssueFooterOverlap"),
+          layoutIssueSafeArea: t("presentationLayoutIssueSafeArea"),
+          layoutIssueBlockOverlap: t("presentationLayoutIssueBlockOverlap"),
+          layoutIssueStructureMissing: t("presentationLayoutIssueStructureMissing"),
         }}
       />
     </Suspense>

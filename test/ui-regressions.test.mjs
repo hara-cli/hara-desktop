@@ -865,6 +865,7 @@ test("the deliverables workbench stays serve-backed and native presentations use
   const office = readFileSync(`${root}/src/OfficeHome.tsx`, "utf8");
   const extensionState = readFileSync(`${root}/src/extension-dock-state.ts`, "utf8");
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
+  const prompt = readFileSync(`${root}/src/work-starter-prompt.ts`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
   const capabilities = readFileSync(`${root}/src-tauri/capabilities/default.json`, "utf8");
   const nativeHost = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
@@ -948,8 +949,18 @@ test("the deliverables workbench stays serve-backed and native presentations use
   assert.match(presenter, /presentation-chart-series/, "chart series have a dedicated editor instead of raw JSON only");
   assert.match(presenter, /\.slide\[data-layout-status\]/, "Desktop reads the final geometry result from the canonical presenter");
   assert.match(presenter, /slide\.dataset\.layoutStatus === "fail"/, "failed geometry is separated from pending and passing states");
-  assert.match(presenter, /Boolean\(layoutError\)/, "a failed final layout check blocks saving");
+  assert.match(presenter, /layoutFailed/, "a failed final layout check blocks saving");
   assert.match(presenter, /hara:presentation-layout/, "Desktop observes late font and resize layout audits");
+  assert.match(presenter, /readLayoutFindings/, "Desktop consumes structured block-level geometry diagnostics");
+  assert.match(presenter, /presentation-layout-panel/, "layout guidance reserves its own region instead of covering the slide");
+  assert.match(presenter, /presentation-slide-issue/, "problem slides are marked in the thumbnail rail");
+  assert.match(presenter, /aria-label=\{copy\.previewFrameLabel\}/, "the iframe keeps an accessible name without a verbose native tooltip");
+  assert.doesNotMatch(presenter, /title=\{`\$\{draft\.title\} · \$\{copy\.exactPreview\}`\}/, "the preview never paints the full deck title as a hover tooltip");
+  assert.match(presenter, /const MAX_PRESENTATION_BLOCKS = 6/, "the native editor shares the renderer block limit");
+  assert.doesNotMatch(presenterCss, /\.presentation-preview-error\s*\{[\s\S]*?position:\s*absolute/, "layout feedback does not overlay the preview canvas");
+  assert.match(copy, /presentationLayoutIssueContentOverflow: "内容被裁切"/, "raw layout codes have localized user-facing explanations");
+  assert.match(copy, /默认每页 2–3 个可见内容块/, "the Office starter teaches a low-density slide contract");
+  assert.match(prompt, /标题、观点、证据和行动必须各司其职/, "the conversational PPT specialist prevents semantic repetition");
   assert.doesNotMatch(officeEditorCss, /@container extension-dock \(max-width: 960px\)[\s\S]*?position:\s*absolute/, "the inspector never covers the preview at ordinary dock widths");
   assert.match(presenterCss, /is-inspector-closed/, "the properties pane can be explicitly hidden");
   assert.match(presenterCss, /is-inspector-open \.office-editor-canvas \{ display: none; \}/, "very narrow docks switch surfaces instead of overlaying them");

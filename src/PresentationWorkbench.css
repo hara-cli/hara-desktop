@@ -79,6 +79,17 @@
   color: #e19985;
 }
 
+.presentation-workbench-meta span.is-preview {
+  border-color: #34484a;
+  color: #91aaa8;
+}
+
+.presentation-workbench-meta span.has-layout-issues {
+  border-color: #704239;
+  background: #261916;
+  color: #e49a87;
+}
+
 .presentation-workbench button,
 .presentation-workbench input,
 .presentation-workbench textarea,
@@ -184,6 +195,7 @@
 }
 
 .presentation-slide-list > button {
+  position: relative;
   display: grid;
   width: 100%;
   min-width: 0;
@@ -207,10 +219,25 @@
   box-shadow: inset 2px 0 var(--presentation-tone);
 }
 
-.presentation-slide-list > button > span {
+.presentation-slide-number {
   grid-row: 1 / span 2;
   color: #676d6d;
   font: 8px/1.2 "SF Mono", ui-monospace, monospace;
+}
+
+.presentation-slide-issue {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1px solid #8b493c;
+  border-radius: 50%;
+  background: #351c18;
+  color: #f0a08e;
+  font: 700 7px/1 "SF Mono", ui-monospace, monospace;
 }
 
 .presentation-slide-list strong,
@@ -222,6 +249,7 @@
 }
 
 .presentation-slide-list strong {
+  padding-right: 17px;
   color: #d0cdc6;
   font-size: 9px;
   font-weight: 600;
@@ -242,6 +270,8 @@
 .presentation-stage {
   position: absolute;
   inset: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -250,7 +280,17 @@
     #0d1113;
 }
 
+.presentation-stage.has-feedback { grid-template-rows: minmax(0, 1fr) auto; }
+
+.presentation-preview-viewport {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .presentation-presenter-frame {
+  display: block;
   width: 100%;
   height: 100%;
   border: 0;
@@ -294,18 +334,94 @@
 
 .presentation-render-state i { width: 10px; height: 10px; }
 
-.presentation-preview-error {
-  position: absolute;
-  z-index: 3;
-  right: 12px;
-  bottom: 12px;
-  max-width: 320px;
-  padding: 8px 10px;
-  border: 1px solid #743e35;
-  border-radius: 5px;
-  background: #281816;
+.presentation-preview-feedback,
+.presentation-layout-panel {
+  border-top: 1px solid #56362f;
+  background:
+    linear-gradient(90deg, rgba(239, 91, 63, .08), transparent 42%),
+    #16191a;
+}
+
+.presentation-preview-feedback {
+  padding: 10px 12px;
   color: #e9a491;
   font-size: 9px;
+  line-height: 1.45;
+}
+
+.presentation-layout-panel {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(180px, auto) auto;
+  align-items: center;
+  gap: 10px;
+  max-height: 132px;
+  padding: 9px 12px;
+  overflow: auto;
+}
+
+.presentation-layout-summary {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.presentation-layout-summary > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid #8b493c;
+  border-radius: 50%;
+  color: #f0a08e;
+  font: 800 11px/1 "SF Mono", ui-monospace, monospace;
+}
+
+.presentation-layout-summary strong,
+.presentation-layout-summary p { margin: 0; }
+.presentation-layout-summary strong { color: #e7d9d2; font-size: 9px; }
+.presentation-layout-summary p { margin-top: 2px; color: #8f827e; font-size: 8px; line-height: 1.35; }
+
+.presentation-layout-pages {
+  display: flex;
+  min-width: 0;
+  gap: 5px;
+  overflow-x: auto;
+}
+
+.presentation-layout-pages button {
+  display: grid;
+  min-width: 116px;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid #543832;
+  border-radius: 5px;
+  background: #211816;
+  color: #c6aaa1;
+  text-align: left;
+  cursor: pointer;
+}
+
+.presentation-layout-pages button:hover,
+.presentation-layout-pages button:focus-visible {
+  border-color: #9a5143;
+  color: #f2dfd8;
+}
+
+.presentation-layout-pages span { color: #a36558; font: 700 7px/1.2 "SF Mono", ui-monospace, monospace; }
+.presentation-layout-pages strong { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+
+.presentation-layout-details { max-width: 220px; color: #8f827e; font-size: 8px; }
+.presentation-layout-details summary { cursor: pointer; white-space: nowrap; }
+.presentation-layout-details code {
+  display: block;
+  max-height: 72px;
+  margin-top: 5px;
+  overflow: auto;
+  color: #bd8f84;
+  font: 7px/1.45 "SF Mono", ui-monospace, monospace;
+  white-space: pre;
 }
 
 .presentation-inspector { min-height: 100%; padding-bottom: 14px; }
@@ -529,6 +645,8 @@
   .presentation-export-bar { grid-template-columns: 1fr; }
   .presentation-export-actions { justify-content: stretch; }
   .presentation-export-actions button { flex: 1; }
+  .presentation-layout-panel { grid-template-columns: 1fr; max-height: 180px; }
+  .presentation-layout-details { max-width: none; }
 }
 
 @container extension-dock (max-width: 960px) {

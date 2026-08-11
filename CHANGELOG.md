@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.69 — 2026-08-12 — clearer presentation editing and diagnostics
+
+- Keep presentation diagnostics outside the slide canvas. Validation findings now appear in a
+  dedicated panel below the preview, carry localized and actionable copy, and can locate the exact
+  slide or content block; the slide rail also marks affected pages without covering authored output.
+- Remove the native iframe title tooltip from presentation previews and reserve the canvas for the
+  deck itself. The presentation inspector remains a real workbench column, while narrower windows can
+  collapse it without creating a second floating workbench or squeezing controls over the slide.
+- Improve starter instructions and the native Presentation specialist so generated decks assign one
+  narrative job to each page, keep title/claim/evidence/action roles distinct, avoid internal Artifact
+  and revision terminology, and move background detail to speaker notes. The shared Presentation
+  runtime now chooses opening layouts from content, improves Chinese title wrapping, applies tighter
+  density limits, and keeps HTML/PPTX visible blocks aligned.
+- Bundle Hara CLI `0.145.1` at exact verified commit
+  `fe2edac18a7f0a9234bf38a626e6baed4d769bc2`, including Presentation kernel
+  `0.1.0-alpha.8`. Existing conversations, projects, organization connections, schedules,
+  Artifacts, presentations, and local files require no migration. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.68 — 2026-08-11 — dependency-safe release preflight
 
 - Ship the IME composition guard, fail-closed macOS updater architecture check, and exact Hara CLI

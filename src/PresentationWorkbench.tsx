@@ -24,7 +24,60 @@ const STRING_BLOCKS = new Set(["heading", "text", "quote", "callout"]);
 const THEME_PRESETS = ["editorial", "midnight", "signal", "calm"] as const;
 const TEMPLATE_PRESETS = ["pitch", "report", "technical", "visual"] as const;
 const CHART_TYPES = ["bar", "line", "area", "pie", "doughnut"] as const;
+const MAX_PRESENTATION_BLOCKS = 6;
 let editorIdSequence = 0;
+
+interface PreviewLayoutFinding {
+  code: string;
+  blockId?: string;
+  relatedBlockId?: string;
+  overflowPx?: number;
+  axis?: string;
+}
+
+interface PreviewLayoutIssue {
+  slideNumber: number | null;
+  slideId: string;
+  findings: PreviewLayoutFinding[];
+}
+
+function formatMessage(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{([a-z]+)\}/giu, (match, key: string) => (
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match
+  ));
+}
+
+function readLayoutFindings(slide: HTMLElement): PreviewLayoutFinding[] {
+  const fallback = (slide.dataset.layoutFindings || "LAYOUT_CHECK_FAILED")
+    .split(",")
+    .map((code) => code.trim())
+    .filter(Boolean)
+    .map((code) => ({ code }));
+  if (!slide.dataset.layoutDetails) return fallback;
+  try {
+    const parsed = JSON.parse(slide.dataset.layoutDetails) as unknown;
+    if (!Array.isArray(parsed)) return fallback;
+    const findings = parsed.flatMap((item): PreviewLayoutFinding[] => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+      const source = item as Record<string, unknown>;
+      if (typeof source.code !== "string" || !source.code.trim()) return [];
+      return [{
+        code: source.code,
+        ...(typeof source.blockId === "string" && source.blockId ? { blockId: source.blockId } : {}),
+        ...(typeof source.relatedBlockId === "string" && source.relatedBlockId
+          ? { relatedBlockId: source.relatedBlockId }
+          : {}),
+        ...(typeof source.overflowPx === "number" && Number.isFinite(source.overflowPx)
+          ? { overflowPx: Math.max(0, Math.round(source.overflowPx)) }
+          : {}),
+        ...(source.axis === "x" || source.axis === "y" ? { axis: source.axis } : {}),
+      }];
+    });
+    return findings.length ? findings : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export interface PresentationWorkbenchCopy {
   presenter: string;
@@ -90,7 +143,31 @@ export interface PresentationWorkbenchCopy {
   applyJson: string;
   invalidJson: string;
   previewError: string;
-  layoutError: string;
+  previewFrameLabel: string;
+  layoutIssueCount: string;
+  layoutIssueImpact: string;
+  layoutIssuePage: string;
+  layoutIssueLocate: string;
+  layoutIssueTechnicalDetails: string;
+  layoutIssueUnknown: string;
+  layoutIssueContentOverflow: string;
+  layoutIssueTitleOverlap: string;
+  layoutIssueFooterOverlap: string;
+  layoutIssueSafeArea: string;
+  layoutIssueBlockOverlap: string;
+  layoutIssueStructureMissing: string;
+}
+
+function layoutFindingLabel(copy: PresentationWorkbenchCopy, code: string): string {
+  switch (code) {
+    case "LAYOUT_CONTENT_OVERFLOW": return copy.layoutIssueContentOverflow;
+    case "LAYOUT_TITLE_OVERLAP": return copy.layoutIssueTitleOverlap;
+    case "LAYOUT_FOOTER_OVERLAP": return copy.layoutIssueFooterOverlap;
+    case "LAYOUT_SAFE_AREA": return copy.layoutIssueSafeArea;
+    case "LAYOUT_BLOCK_OVERLAP": return copy.layoutIssueBlockOverlap;
+    case "LAYOUT_STRUCTURE_MISSING": return copy.layoutIssueStructureMissing;
+    default: return copy.layoutIssueUnknown;
+  }
 }
 
 interface PresentationWorkbenchProps {
@@ -222,7 +299,7 @@ export default function PresentationWorkbench({
   const [rendering, setRendering] = useState(false);
   const [layoutChecked, setLayoutChecked] = useState(false);
   const [previewError, setPreviewError] = useState("");
-  const [layoutError, setLayoutError] = useState("");
+  const [layoutIssues, setLayoutIssues] = useState<PreviewLayoutIssue[]>([]);
   const [literalText, setLiteralText] = useState("");
   const [literalError, setLiteralError] = useState("");
   const renderSequenceRef = useRef(0);
@@ -238,11 +315,12 @@ export default function PresentationWorkbench({
   const selectedSlide = draft.slides[selectedSlideIndex] ?? draft.slides[0];
   const selectedBlock = selectedSlide?.blocks.find((block) => block.id === selectedBlockId)
     ?? selectedSlide?.blocks[0];
+  const layoutFailed = layoutIssues.length > 0;
   const validated = validationReport?.revisionId === revisionId
     && validationReport.snapshotDigest === details.content.sha256
     && validationReport.status === "pass"
     && layoutChecked
-    && !layoutError;
+    && !layoutFailed;
   const themePreset = typeof draft.theme?.preset === "string"
     && THEME_PRESETS.includes(draft.theme.preset as typeof THEME_PRESETS[number])
     ? draft.theme.preset
@@ -274,7 +352,7 @@ export default function PresentationWorkbench({
     setDirty(false);
     setLivePreview(previewHtml);
     setPreviewError("");
-    setLayoutError("");
+    setLayoutIssues([]);
     setLayoutChecked(false);
     setLiteralError("");
   }, [details.artifact.artifactId, revisionId]);
@@ -342,24 +420,27 @@ export default function PresentationWorkbench({
         ".slide[data-layout-status]",
       ) ?? [])];
       if (slides.length === 0 || slides.some((slide) => slide.dataset.layoutStatus === "pending")) {
+        setLayoutIssues([]);
         setLayoutChecked(false);
         return;
       }
       const failedSlides = slides.filter((slide) => slide.dataset.layoutStatus === "fail");
       setLayoutChecked(true);
       if (failedSlides.length === 0) {
-        setLayoutError("");
+        setLayoutIssues([]);
         return;
       }
-      const evidence = failedSlides.map((slide) => {
-        const number = slide.dataset.slide ?? "?";
-        const findings = slide.dataset.layoutFindings || "LAYOUT_CHECK_FAILED";
-        return `#${number} · ${findings}`;
-      }).join("; ");
-      setLayoutError(`${copy.layoutError} ${evidence}`);
+      setLayoutIssues(failedSlides.map((slide) => {
+        const number = Number(slide.dataset.slide);
+        return {
+          slideNumber: Number.isSafeInteger(number) && number > 0 ? number : null,
+          slideId: slide.dataset.slideId || "",
+          findings: readLayoutFindings(slide),
+        };
+      }));
     } catch {
       setLayoutChecked(true);
-      setLayoutError(copy.layoutError);
+      setLayoutIssues([{ slideNumber: null, slideId: "", findings: [{ code: "LAYOUT_CHECK_FAILED" }] }]);
     }
   };
 
@@ -389,7 +470,7 @@ export default function PresentationWorkbench({
     setDraft(next);
     setDirty(true);
     setPreviewError("");
-    setLayoutError("");
+    setLayoutIssues([]);
     setLayoutChecked(false);
   };
 
@@ -460,7 +541,7 @@ export default function PresentationWorkbench({
   };
 
   const addBlock = () => {
-    if (!selectedSlide || selectedSlide.blocks.length >= 7) return;
+    if (!selectedSlide || selectedSlide.blocks.length >= MAX_PRESENTATION_BLOCKS) return;
     const block: PresentationBlock = { id: nextId("text"), type: "text", literal: "New content" };
     updateSlide({ blocks: [...selectedSlide.blocks, block] });
     setSelectedBlockId(block.id);
@@ -495,6 +576,26 @@ export default function PresentationWorkbench({
     });
   };
 
+  const layoutIssuesBySlide = new Map(layoutIssues.flatMap((issue) => (
+    issue.slideNumber ? [[issue.slideNumber, issue] as const] : []
+  )));
+
+  const locateLayoutIssue = (issue: PreviewLayoutIssue) => {
+    const slideIdIndex = issue.slideId
+      ? draft.slides.findIndex((slide) => slide.id === issue.slideId)
+      : -1;
+    const index = slideIdIndex >= 0 ? slideIdIndex : (issue.slideNumber ?? 1) - 1;
+    const slide = draft.slides[Math.max(0, index)] ?? draft.slides[0];
+    if (!slide) return;
+    const blockId = issue.findings.find((finding) => (
+      finding.blockId && slide.blocks.some((block) => block.id === finding.blockId)
+    ))?.blockId;
+    setSelectedSlideId(slide.id);
+    setSelectedBlockId(blockId ?? slide.blocks[0]?.id ?? "");
+    setMode("edit");
+    setInspectorOpen(true);
+  };
+
   const slideRail = (
     <div className="presentation-slide-rail">
       <div className="presentation-pane-heading">
@@ -502,23 +603,33 @@ export default function PresentationWorkbench({
         <button type="button" title={copy.addSlide} aria-label={copy.addSlide} onClick={addSlide}>＋</button>
       </div>
       <div className="presentation-slide-list" role="listbox" aria-label={copy.slides}>
-        {draft.slides.map((slide, index) => (
-          <button
-            key={slide.id}
-            type="button"
-            role="option"
-            aria-selected={slide.id === selectedSlide?.id}
-            className={slide.id === selectedSlide?.id ? "is-selected" : ""}
-            onClick={() => {
-              setSelectedSlideId(slide.id);
-              setSelectedBlockId(slide.blocks[0]?.id ?? "");
-            }}
-          >
-            <span>{String(index + 1).padStart(2, "0")}</span>
-            <strong>{slide.takeawayTitle}</strong>
-            <small>{slide.blocks.length} {copy.blocks}</small>
-          </button>
-        ))}
+        {draft.slides.map((slide, index) => {
+          const layoutIssue = layoutIssuesBySlide.get(index + 1);
+          return (
+            <button
+              key={slide.id}
+              type="button"
+              role="option"
+              aria-selected={slide.id === selectedSlide?.id}
+              className={slide.id === selectedSlide?.id ? "is-selected" : ""}
+              onClick={() => {
+                setSelectedSlideId(slide.id);
+                setSelectedBlockId(slide.blocks[0]?.id ?? "");
+              }}
+            >
+              <span className="presentation-slide-number">{String(index + 1).padStart(2, "0")}</span>
+              <strong>{slide.takeawayTitle}</strong>
+              <small>{slide.blocks.length} {copy.blocks}</small>
+              {layoutIssue && (
+                <span
+                  className="presentation-slide-issue"
+                  title={layoutFindingLabel(copy, layoutIssue.findings[0]?.code ?? "")}
+                  aria-label={layoutFindingLabel(copy, layoutIssue.findings[0]?.code ?? "")}
+                >{layoutIssue.findings.length}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
       <div className="presentation-slide-actions">
         <button type="button" title={copy.moveUp} aria-label={copy.moveUp} disabled={selectedSlideIndex <= 0} onClick={() => moveSlide(-1)}>↑</button>
@@ -530,27 +641,65 @@ export default function PresentationWorkbench({
   );
 
   const presenter = (
-    <div className="presentation-stage">
-      {(rendering || loading || !layoutChecked) && <div className="presentation-render-state"><i />{copy.loading}</div>}
-      {(previewError || layoutError) && (
-        <div className="presentation-preview-error" role="alert">{previewError || layoutError}</div>
-      )}
-      {livePreview ? (
-        <iframe
-          ref={frameRef}
-          key={`${revisionId}:${livePreview.length}`}
-          className="presentation-presenter-frame"
-          srcDoc={livePreview}
-          title={`${draft.title} · ${copy.exactPreview}`}
-          sandbox="allow-scripts allow-modals allow-same-origin"
-          allow="fullscreen"
-          allowFullScreen
-          referrerPolicy="no-referrer"
-          onLoad={handlePreviewLoad}
-        />
-      ) : (
-        <div className="presentation-preview-loading" role="status"><i /><span>{copy.loading}</span></div>
-      )}
+    <div className={`presentation-stage${previewError || layoutFailed ? " has-feedback" : ""}`}>
+      <div className="presentation-preview-viewport">
+        {(rendering || loading || !layoutChecked) && <div className="presentation-render-state"><i />{copy.loading}</div>}
+        {livePreview ? (
+          <iframe
+            ref={frameRef}
+            key={`${revisionId}:${livePreview.length}`}
+            className="presentation-presenter-frame"
+            srcDoc={livePreview}
+            aria-label={copy.previewFrameLabel}
+            sandbox="allow-scripts allow-modals allow-same-origin"
+            allow="fullscreen"
+            allowFullScreen
+            referrerPolicy="no-referrer"
+            onLoad={handlePreviewLoad}
+          />
+        ) : (
+          <div className="presentation-preview-loading" role="status"><i /><span>{copy.loading}</span></div>
+        )}
+      </div>
+      {previewError ? (
+        <div className="presentation-preview-feedback is-error" role="alert">{previewError}</div>
+      ) : layoutFailed ? (
+        <section className="presentation-layout-panel" role="status" aria-live="polite">
+          <div className="presentation-layout-summary">
+            <span aria-hidden>!</span>
+            <div>
+              <strong>{formatMessage(copy.layoutIssueCount, { count: layoutIssues.length })}</strong>
+              <p>{copy.layoutIssueImpact}</p>
+            </div>
+          </div>
+          <div className="presentation-layout-pages" aria-label={formatMessage(copy.layoutIssueCount, { count: layoutIssues.length })}>
+            {layoutIssues.map((issue, index) => {
+              const page = issue.slideNumber ?? index + 1;
+              const label = layoutFindingLabel(copy, issue.findings[0]?.code ?? "");
+              return (
+                <button
+                  key={`${issue.slideId || page}:${index}`}
+                  type="button"
+                  title={copy.layoutIssueLocate}
+                  onClick={() => locateLayoutIssue(issue)}
+                >
+                  <span>{formatMessage(copy.layoutIssuePage, { page })}</span>
+                  <strong>{label}</strong>
+                </button>
+              );
+            })}
+          </div>
+          <details className="presentation-layout-details">
+            <summary>{copy.layoutIssueTechnicalDetails}</summary>
+            <code>{layoutIssues.flatMap((issue, issueIndex) => issue.findings.map((finding) => {
+              const page = issue.slideNumber ?? issueIndex + 1;
+              const block = finding.blockId ? ` · ${finding.blockId}` : "";
+              const overflow = finding.overflowPx ? ` · ${finding.overflowPx}px ${finding.axis ?? ""}` : "";
+              return `#${page} · ${finding.code}${block}${overflow}`;
+            })).join("\n")}</code>
+          </details>
+        </section>
+      ) : null}
     </div>
   );
 
@@ -607,7 +756,7 @@ export default function PresentationWorkbench({
           </label>
           <div className="presentation-block-heading">
             <span>{copy.blocks}</span>
-            <button type="button" disabled={selectedSlide.blocks.length >= 7} onClick={addBlock}>{copy.addBlock}</button>
+            <button type="button" disabled={selectedSlide.blocks.length >= MAX_PRESENTATION_BLOCKS} onClick={addBlock}>{copy.addBlock}</button>
           </div>
           <div className="presentation-block-list">
             {selectedSlide.blocks.map((block, index) => (
@@ -796,13 +945,17 @@ export default function PresentationWorkbench({
   const toolbar = (
     <div className="presentation-workbench-bar">
       <div className="presentation-workbench-title">
-        <span><i />{copy.presenter} / {copy.exactPreview}</span>
+        <span><i />{copy.presenter}</span>
         <strong title={draft.title}>{draft.title}</strong>
       </div>
       <div className="presentation-workbench-meta" aria-label={copy.slides}>
         <span>{draft.slides.length} {copy.slides}</span>
         <span>{shortRevision(revisionId)}</span>
+        <span className="is-preview">{copy.exactPreview}</span>
         <span className={dirty ? "is-dirty" : ""}>{dirty ? copy.unsaved : copy.saved}</span>
+        {layoutFailed && (
+          <span className="has-layout-issues">{formatMessage(copy.layoutIssueCount, { count: layoutIssues.length })}</span>
+        )}
       </div>
       <div className="presentation-workbench-actions">
         {mode === "edit" && (
@@ -823,7 +976,7 @@ export default function PresentationWorkbench({
         <button
           type="button"
           className="presentation-save"
-          disabled={!dirty || saving || rendering || !layoutChecked || Boolean(literalError) || Boolean(previewError) || Boolean(layoutError)}
+          disabled={!dirty || saving || rendering || !layoutChecked || Boolean(literalError) || Boolean(previewError) || layoutFailed}
           onClick={() => void onSave(draft).then((saved) => saved && setDirty(false))}
         >
           {saving ? copy.saving : copy.save}
@@ -831,7 +984,7 @@ export default function PresentationWorkbench({
         <button
           type="button"
           className="presentation-browser"
-          disabled={loading || dirty || !layoutChecked || Boolean(layoutError)}
+          disabled={loading || dirty || !layoutChecked || layoutFailed}
           onClick={onOpenBrowser}
         >
           <span aria-hidden>▣</span>{copy.openBrowser}
@@ -846,7 +999,7 @@ export default function PresentationWorkbench({
         <button
           type="button"
           className={validated ? "is-verified" : ""}
-          disabled={verifying || exporting || loading || dirty || !layoutChecked || Boolean(layoutError)}
+          disabled={verifying || exporting || loading || dirty || !layoutChecked || layoutFailed}
           onClick={onVerify}
         >
           <span aria-hidden>{verifying ? "◌" : validated ? "✓" : "○"}</span>
@@ -862,13 +1015,13 @@ export default function PresentationWorkbench({
         <button type="button" disabled={exporting || loading || dirty} onClick={() => onExport("json")}>{copy.exportJson}</button>
         <button
           type="button"
-          disabled={exporting || loading || dirty || !livePreview || !layoutChecked || Boolean(layoutError)}
+          disabled={exporting || loading || dirty || !livePreview || !layoutChecked || layoutFailed}
           onClick={() => frameRef.current?.contentWindow?.print()}
         >
           {copy.exportPdf}
         </button>
-        <button type="button" disabled={exporting || loading || dirty || !layoutChecked || Boolean(layoutError)} onClick={() => onExport("html")}>{copy.exportHtml}</button>
-        <button type="button" className="is-primary" disabled={exporting || loading || dirty || !layoutChecked || Boolean(layoutError)} onClick={() => onExport("pptx")}>
+        <button type="button" disabled={exporting || loading || dirty || !layoutChecked || layoutFailed} onClick={() => onExport("html")}>{copy.exportHtml}</button>
+        <button type="button" className="is-primary" disabled={exporting || loading || dirty || !layoutChecked || layoutFailed} onClick={() => onExport("pptx")}>
           <span aria-hidden>{exporting ? "◌" : "⇩"}</span>
           {exporting ? copy.exporting : copy.exportPptx}
         </button>
