@@ -335,12 +335,47 @@
 .presentation-render-state i { width: 10px; height: 10px; }
 
 .presentation-preview-feedback,
-.presentation-layout-panel {
+.presentation-layout-panel,
+.presentation-quality-panel {
   border-top: 1px solid #56362f;
   background:
     linear-gradient(90deg, rgba(239, 91, 63, .08), transparent 42%),
     #16191a;
 }
+
+.presentation-quality-panel {
+  display: grid;
+  grid-template-columns: minmax(210px, .8fr) minmax(300px, 1.8fr);
+  align-items: center;
+  gap: 12px;
+  max-height: 152px;
+  padding: 9px 12px;
+  overflow: auto;
+}
+
+.presentation-quality-findings {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.presentation-quality-findings button {
+  display: block;
+  min-width: 180px;
+  max-width: 260px;
+  padding: 7px 9px;
+  border: 1px solid #543832;
+  border-radius: 5px;
+  background: #211816;
+  text-align: left;
+}
+
+.presentation-quality-findings button:not(:disabled):hover,
+.presentation-quality-findings button:not(:disabled):focus-visible { border-color: #a75b4b; background: #291c19; }
+.presentation-quality-findings button:disabled { opacity: 1; cursor: default; }
+.presentation-quality-findings strong { display: block; color: #e6b0a2; font-size: 8px; }
+.presentation-quality-findings p { margin: 3px 0 0; color: #9e8a84; font-size: 8px; line-height: 1.35; }
 
 .presentation-preview-feedback {
   padding: 10px 12px;
@@ -645,7 +680,8 @@
   .presentation-export-bar { grid-template-columns: 1fr; }
   .presentation-export-actions { justify-content: stretch; }
   .presentation-export-actions button { flex: 1; }
-  .presentation-layout-panel { grid-template-columns: 1fr; max-height: 180px; }
+  .presentation-layout-panel,
+  .presentation-quality-panel { grid-template-columns: 1fr; max-height: 180px; }
   .presentation-layout-details { max-width: none; }
 }
 

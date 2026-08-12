@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.70 — 2026-08-12 — verified presentation delivery and recovery
+
+- Export PDF as a first-class, receipt-backed file from the exact self-contained presenter instead of
+  opening the operating-system print dialog. PDF, HTML, and editable PPTX stay blocked until the exact
+  saved revision passes structural, narrative, and rendered-layout validation; advisory findings still
+  allow a clearly marked JSON source copy so unfinished work remains recoverable.
+- Keep narrative-quality guidance in a bounded panel below the presentation canvas. Localized findings
+  identify repeated titles, claims, generic headings, duplicated body copy, repetitive composition, and
+  visual monotony; selecting a page-scoped finding opens that slide in the existing inspector without
+  covering the preview or exposing raw engine prose.
+- Bundle Hara CLI `0.146.1` at exact verified commit
+  `4290c3010ad5d66dd03e64c0c2236e047a34dbc9`. It adds native DeepSeek V4 Flash Responses, verified
+  local PDF rendering, Agent-deck narrative checks, Windows Chinese-path reads and healthy Bash
+  fallback, and lazy MCP capability descriptions. Existing conversations, projects, organization
+  connections, schedules, Artifacts, presentations, and local files require no migration. Windows
+  packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.69 — 2026-08-12 — clearer presentation editing and diagnostics
 
 - Keep presentation diagnostics outside the slide canvas. Validation findings now appear in a

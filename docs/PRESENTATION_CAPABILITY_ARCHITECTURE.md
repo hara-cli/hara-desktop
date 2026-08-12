@@ -1,10 +1,10 @@
 # Hara Presentation 能力包与普通用户桌面工作流
 
 > 决策日期：2026-07-18
-> 状态：架构确定，Desktop 第一阶段入口已开始实施；公开
+> 状态：原生 Desktop 工作台、同源 HTML/PDF、可编辑 PPTX、图表/结构化内容、版本与
+> 质量门禁已在稳定版实现；公开
 > [`hara-office`](https://github.com/hara-cli/hara-office) 仓库及
-> `@nanhara/hara-presentation@0.1.0-alpha.0` 契约包已经创建并推送，但尚未 npm
-> 发布，也尚未交付 renderer、Panel、worker 或 Desktop/Serve 集成。
+> `@nanhara/hara-presentation@0.1.0-alpha.8` 已固定发布并由 Hara CLI/Serve 集成。
 > 本地参考：`/Users/zhujianbo/work/projects/slidev`（只读审计，保留其现有未提交改动）。
 > 补充审计：[`PPT_MASTER_INTEGRATION_AUDIT.md`](./PPT_MASTER_INTEGRATION_AUDIT.md)
 > 记录多格式资料导入、原生 PPTX exporter 候选和模板许可边界。
@@ -17,21 +17,19 @@
 正确分工：
 
 - `PresentationProject` 是普通模式的唯一真源；
-- Slidev 是 HTML、演讲、PDF 和视觉保真 PPTX 的渲染器；
+- 审计后的 Hara Presentation runtime 是 HTML、演讲和同源 Chromium PDF 的确定性渲染器；
 - 可编辑 PPTX 从同一语义化页面模型独立生成；
 - Hara CLI/Serve 管任务、文件边界、版本、校验、worker 和导出；
 - Desktop 管普通用户入口、任务简报、页纲确认、预览、局部修改和导出；
 - Skill 和主 Agent 负责理解、叙事与选择；确定性 worker 负责转换与校验；
-- 两个只读 reviewer 只给出 `PASS` 或 `REVISE`，不直接修改或导出。
+- 确定性结构、叙事与 DOM 几何检查给出 `PASS`、`REVISE` 或 `BLOCKED`，不直接修改内容。
 
-规划中的 Presentation 能力包第一版只承诺（当前 Desktop 卡片只是任务入口，不等于这些
-exporter 已可用）：
+稳定版当前承诺：
 
 | 交付 | 实现 | 承诺 |
 |---|---|---|
-| 演示网页 | Slidev | 可播放、可分享受控静态稿 |
-| PDF | Slidev/Chromium | 视觉一致、适合发送和打印 |
-| 视觉保真 PPTX | Slidev 图片页 | 页面外观一致，文字和图形不可编辑 |
+| 演示网页 | Hara runtime | 自包含、可播放、可在 Desktop 内嵌浏览器打开 |
+| PDF | 同源 HTML + 本机 Chromium | 导出前校验 PDF 签名、EOF 与精确页数 |
 | 可编辑 PPTX | 语义模型 → 独立 exporter | 受控模板内可编辑，不承诺任意 PPTX 往返 |
 
 文件扩展名不能代替产品承诺。任何导出界面都必须显示
@@ -145,33 +143,31 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    U[普通用户] --> D[Hara Desktop<br/>任务简报 / 预览 / 修改 / 导出]
+    U[普通用户] --> D[Hara Desktop<br/>左侧聊天 / 右侧多标签工作面]
     D -->|本机鉴权 RPC| S[hara serve]
 
     S --> T[TaskRun<br/>目标 / 步骤 / steering / deadline]
     S --> A[Artifact Runtime<br/>Revision / Validation / ExportReceipt]
-    S --> C[Capability Runtime<br/>签名 / 权限 / worker 生命周期]
-
-    C --> SK[Presentation Skill<br/>理解与叙事工作流]
-    C --> DR[Director<br/>只读]
-    C --> QR[Quality Reviewer<br/>只读]
-    C --> W[Presentation Worker<br/>无模型 / 默认断网]
-    C --> P[Panel v2<br/>Artifact bridge]
+    S --> SK[Presentation Specialist<br/>受众 / 叙事 / 模板选择]
 
     A --> J[PresentationProject JSON<br/>唯一真源]
-    J --> SL[Slidev compiler<br/>HTML / PDF / pptx-visual]
-    J --> PX[PPTX exporter<br/>pptx-editable]
-    SL --> V[快照与 contact sheet]
-    PX --> V
-    V --> R[ValidationReport / ExportReceipt]
+    J --> H[自包含 HTML presenter]
+    J --> PX[可编辑 PPTX exporter]
+    H --> B[Desktop 内嵌 Browser / 放映]
+    H --> PDF[本机 Chromium PDF]
+    J --> V[结构 / 叙事 / DOM 几何门禁]
+    PX --> R[ExportReceipt]
+    PDF --> R
+    V --> R
 ```
 
-Desktop 不直接启动 worker，不持有模型密钥，不从自然语言猜任务状态。Panel 不直接读全盘、
-调用任意 Tauri command 或访问任意网络。
+Desktop 不持有模型密钥，不从自然语言猜任务状态；右侧工作面只接收 Serve 提交的精确
+`artifactId + revisionId`。任意 localhost 浏览器页仍须通过显式端口、无凭据 URL、所属会话
+和项目边界检查。签名 worker 与第三方 Panel v2 是后续扩展，不是当前内置 PPT 的运行依赖。
 
 ## 5. PresentationProject v1
 
-建议目录：
+当前逻辑模型（磁盘由 Artifact Runtime 以私有不可变 revision 管理，用户不直接编辑目录）：
 
 ```text
 <deck>/
@@ -179,12 +175,9 @@ Desktop 不直接启动 worker，不持有模型密钥，不从自然语言猜�
   source/
   assets/
   notes/
-  build/slidev/slides.md
   .hara/qa/
   exports/
 ```
-
-`build/slidev/slides.md` 是派生文件，小白模式不直接编辑。
 
 核心模型：
 
@@ -356,14 +349,11 @@ Panel v2：
 
 ```text
 Brief
-→ Director PASS
-→ schema / 内容 / 引用校验
-→ Slidev 与 PPTX 编译
-→ 资源 / 字体 / 运行时 / 布局 / 对比度校验
-→ 每页 PNG + contact sheet
-→ Quality Reviewer PASS
-→ 导出
-→ 重开并重新渲染导出文件
+→ Presentation Specialist 生成或修改同一 Artifact
+→ schema / 内容密度 / Agent 叙事校验
+→ Desktop 同源 HTML 渲染与逐页 DOM 几何校验
+→ PDF / HTML / 可编辑 PPTX 导出
+→ PDF 签名、EOF 和精确页数校验；其他格式做对应结构校验
 → ExportReceipt
 ```
 
@@ -372,16 +362,13 @@ Brief
 1. G0 安全：schema、路径 containment、外部资源、敏感级别、资产 license；
 2. G1 内容：受众、目标、核心结论、一页一结论、来源和备注；
 3. G2 资源：图片、字体、摘要、禁止未缓存 CDN；
-4. G3 渲染：全部页和 build state、console、overflow、clipping、overlap、contrast；
-5. G4 人工审阅：全尺寸逐页与 contact sheet，返工轮数有界；
-6. G5 导出：重开、页数、画布、字体、缩略图差异和文件摘要。
+4. G3 渲染：全部页的 overflow、clipping、title/footer/block overlap 与 safe area；
+5. G4 内容：重复标题/观点/正文、空泛标题、连续同构版式和长稿视觉单调；
+6. G5 导出：精确 revision、校验报告、文件摘要、PDF 页数与不可覆盖写入。
 
-两个 reviewer 均只读：
-
-- `presentation-director`：审查 brief、叙事、页纲和设计契约；
-- `presentation-quality-reviewer`：在确定性校验和快照完成后审查。
-
-主 Agent 负责修改与最终综合，避免“所有角色都直接改同一份稿”。
+主 Agent 负责修改；确定性检查只报告问题，不直接改稿。当前不再为一次 PPT 生成默认启动
+两个额外模型 reviewer，避免增加成本、延迟和状态复杂度。需要品牌审阅或高风险发布时，才可
+在同一 Artifact 上显式增加只读审阅步骤。
 
 ## 9. Revision 与导出回执
 
@@ -447,36 +434,37 @@ Desktop 已在设置入口、缓存项目入口和启动前增加 disabled UI �
 仍需在 Panel v2 以能力 ID 重新鉴权。完成该边界和恶意 fixture 回归前，市场只允许 Hara 官方签名、
 审核的能力包。
 
-## 11. Desktop 重设计分期
+## 11. Desktop 重设计进度与后续
 
-### 本轮第一切片
+### 已完成（稳定版）
 
 - 正常服务就绪后提供“今天想完成什么”首页；
 - 通过普通语言选择演示、表格、文档或资料整理；
 - 入口创建真实 Serve session 并发送结构化任务，不复制 Agent runtime；
-- PPT 请求明确要求先确认 brief、叙事和页纲；
+- PPT 请求从资料充分度判断是否需要确认 brief，信息足够时直接生成并尽早打开草稿；
 - 明确区分可编辑 PPTX 与视觉保真输出；
 - 每个场所独立记忆 active session，防止助手与项目串线；
 - disabled Plugin 不再从设置页或缓存项目入口显示、启动 Panel（host 安全门禁仍属 Panel v2）；
-- 中英文文案、纯路由逻辑和窄窗口 CSS 已进入源码/构建回归；真实窗口视觉 QA 仍需可用的 UI 后端。
+- 中英文文案、同源预览、右侧多标签、可折叠属性栏、窄窗口切面和导出门禁已进入源码与构建回归；
+- 原生图表、图片、流程、时间线、对比、分栏和组合内容已在统一模型、HTML 与 PPTX 中实现；
+- PDF 已成为直接、可校验的本地导出，不再依赖用户操作系统打印对话框。
 
-### P0
+### 下一阶段 P0
 
 - 专门的 PresentationBrief 表单与“先看大纲和视觉方向”确认；
 - `session.steer` 的“现在调整 / 完成后再做 / 新建任务 / 只看状态”；
 - timeout、等待确认、暂停、失败与恢复状态；
 - 通用文件附件；
-- Artifact/Revision/Validation/ExportReceipt；
-- Panel v2 与官方签名能力安装计划。
+- 质量问题的一键安全修复建议与修复前后差异；
+- 真实品牌模板导入、字体替换提示和跨平台快照基线；
+- 继续补充 Windows/macOS 安装包中的真实窗口自动化验收。
 
-### P1
+### 后续 P1
 
 - `hara-office` 内可独立安装和发布的 Presentation 实验能力包；
-- `PresentationProject v1` 与受限 block DSL；
-- 青灰朱印主题抽取、许可和跨平台字体；
-- HTML、PDF、`pptx-visual`；
-- 大纲、视觉方向、逐页 QA；
-- 受控 `pptx-editable` exporter。
+- 签名能力包、独立 worker 与第三方 Panel v2 安全边界；
+- 多格式资料归一化、母版/品牌锁和更强的既有 PPTX 迁移；
+- 模板预览、许可、版本固定和企业私有模板目录。
 
 ### P2
 

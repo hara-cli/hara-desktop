@@ -3408,6 +3408,9 @@ export default function App() {
         if (requestId !== artifactOpenRequestRef.current) return;
         setArtifactValidationReport(report);
       }
+      // Advisory authoring findings still permit a receipt-backed JSON source copy. Delivery formats
+      // remain fail-closed so an unfinished deck cannot be mistaken for an accepted PDF/HTML/PPTX.
+      if (report.status !== "pass" && (!nativePresentation || presentationFormat !== "json" || report.status !== "revise")) return;
       const safeTitle = details.artifact.title
         .replace(/[\\/:*?"<>|]/g, "-")
         .replace(/\s+/g, " ")
@@ -3418,6 +3421,7 @@ export default function App() {
       const formatLabels: Record<PresentationExportFormat, string> = {
         json: t("presentationExportJson"),
         html: t("presentationExportHtml"),
+        pdf: t("presentationExportPdf"),
         pptx: t("presentationExportPptx"),
       };
       const destinationPath = await saveDialog({
@@ -6260,6 +6264,22 @@ export default function App() {
           layoutIssueSafeArea: t("presentationLayoutIssueSafeArea"),
           layoutIssueBlockOverlap: t("presentationLayoutIssueBlockOverlap"),
           layoutIssueStructureMissing: t("presentationLayoutIssueStructureMissing"),
+          qualityIssueCount: t("presentationQualityIssueCount"),
+          qualityIssueImpact: t("presentationQualityIssueImpact"),
+          qualityIssueDuplicateMessage: t("presentationQualityIssueDuplicateMessage"),
+          qualityIssueRepeatedTitle: t("presentationQualityIssueRepeatedTitle"),
+          qualityIssueGenericHeading: t("presentationQualityIssueGenericHeading"),
+          qualityIssueRedundantHeading: t("presentationQualityIssueRedundantHeading"),
+          qualityIssueDuplicateBody: t("presentationQualityIssueDuplicateBody"),
+          qualityIssueRepetitiveComposition: t("presentationQualityIssueRepetitiveComposition"),
+          qualityIssueVisualMonotony: t("presentationQualityIssueVisualMonotony"),
+          qualityFixDuplicateMessage: t("presentationQualityFixDuplicateMessage"),
+          qualityFixRepeatedTitle: t("presentationQualityFixRepeatedTitle"),
+          qualityFixGenericHeading: t("presentationQualityFixGenericHeading"),
+          qualityFixRedundantHeading: t("presentationQualityFixRedundantHeading"),
+          qualityFixDuplicateBody: t("presentationQualityFixDuplicateBody"),
+          qualityFixRepetitiveComposition: t("presentationQualityFixRepetitiveComposition"),
+          qualityFixVisualMonotony: t("presentationQualityFixVisualMonotony"),
         }}
       />
     </Suspense>

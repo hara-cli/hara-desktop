@@ -356,11 +356,30 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
       format: "pptx",
     },
   });
+  await client.exportPresentation({
+    artifactId: "art_presentation",
+    revisionId: "rev_presentation",
+    validationReportId: "val_presentation",
+    destinationPath: "/workspace/release-review.pdf",
+    format: "pdf",
+  });
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 19,
+    method: "presentation.export",
+    params: {
+      artifactId: "art_presentation",
+      revisionId: "rev_presentation",
+      validationReportId: "val_presentation",
+      destinationPath: "/workspace/release-review.pdf",
+      format: "pdf",
+    },
+  });
 
   await client.setSessionApproval("session-1", "full-auto");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 19,
+    id: 20,
     method: "session.set-approval",
     params: { sessionId: "session-1", approval: "full-auto" },
   });

@@ -178,7 +178,7 @@ export interface PresentationArtifactDetails extends ArtifactDetails {
   warnings?: Array<{ code: string; message: string; slideId?: string }>;
 }
 
-export type PresentationExportFormat = "json" | "html" | "pptx";
+export type PresentationExportFormat = "json" | "html" | "pdf" | "pptx";
 
 export interface ArtifactSummary {
   artifactId: string;

@@ -156,6 +156,22 @@ export interface PresentationWorkbenchCopy {
   layoutIssueSafeArea: string;
   layoutIssueBlockOverlap: string;
   layoutIssueStructureMissing: string;
+  qualityIssueCount: string;
+  qualityIssueImpact: string;
+  qualityIssueDuplicateMessage: string;
+  qualityIssueRepeatedTitle: string;
+  qualityIssueGenericHeading: string;
+  qualityIssueRedundantHeading: string;
+  qualityIssueDuplicateBody: string;
+  qualityIssueRepetitiveComposition: string;
+  qualityIssueVisualMonotony: string;
+  qualityFixDuplicateMessage: string;
+  qualityFixRepeatedTitle: string;
+  qualityFixGenericHeading: string;
+  qualityFixRedundantHeading: string;
+  qualityFixDuplicateBody: string;
+  qualityFixRepetitiveComposition: string;
+  qualityFixVisualMonotony: string;
 }
 
 function layoutFindingLabel(copy: PresentationWorkbenchCopy, code: string): string {
@@ -167,6 +183,32 @@ function layoutFindingLabel(copy: PresentationWorkbenchCopy, code: string): stri
     case "LAYOUT_BLOCK_OVERLAP": return copy.layoutIssueBlockOverlap;
     case "LAYOUT_STRUCTURE_MISSING": return copy.layoutIssueStructureMissing;
     default: return copy.layoutIssueUnknown;
+  }
+}
+
+function qualityFindingLabel(copy: PresentationWorkbenchCopy, code: string): string {
+  switch (code) {
+    case "PRESENTATION_NARRATIVE_DUPLICATE_MESSAGE": return copy.qualityIssueDuplicateMessage;
+    case "PRESENTATION_NARRATIVE_REPEATED_TITLE": return copy.qualityIssueRepeatedTitle;
+    case "PRESENTATION_NARRATIVE_GENERIC_HEADING": return copy.qualityIssueGenericHeading;
+    case "PRESENTATION_NARRATIVE_REDUNDANT_HEADING": return copy.qualityIssueRedundantHeading;
+    case "PRESENTATION_NARRATIVE_DUPLICATE_BODY": return copy.qualityIssueDuplicateBody;
+    case "PRESENTATION_NARRATIVE_REPETITIVE_COMPOSITION": return copy.qualityIssueRepetitiveComposition;
+    case "PRESENTATION_NARRATIVE_VISUAL_MONOTONY": return copy.qualityIssueVisualMonotony;
+    default: return copy.layoutIssueUnknown;
+  }
+}
+
+function qualityFindingGuidance(copy: PresentationWorkbenchCopy, code: string): string {
+  switch (code) {
+    case "PRESENTATION_NARRATIVE_DUPLICATE_MESSAGE": return copy.qualityFixDuplicateMessage;
+    case "PRESENTATION_NARRATIVE_REPEATED_TITLE": return copy.qualityFixRepeatedTitle;
+    case "PRESENTATION_NARRATIVE_GENERIC_HEADING": return copy.qualityFixGenericHeading;
+    case "PRESENTATION_NARRATIVE_REDUNDANT_HEADING": return copy.qualityFixRedundantHeading;
+    case "PRESENTATION_NARRATIVE_DUPLICATE_BODY": return copy.qualityFixDuplicateBody;
+    case "PRESENTATION_NARRATIVE_REPETITIVE_COMPOSITION": return copy.qualityFixRepetitiveComposition;
+    case "PRESENTATION_NARRATIVE_VISUAL_MONOTONY": return copy.qualityFixVisualMonotony;
+    default: return copy.qualityIssueImpact;
   }
 }
 
@@ -316,11 +358,19 @@ export default function PresentationWorkbench({
   const selectedBlock = selectedSlide?.blocks.find((block) => block.id === selectedBlockId)
     ?? selectedSlide?.blocks[0];
   const layoutFailed = layoutIssues.length > 0;
-  const validated = validationReport?.revisionId === revisionId
+  const currentValidationReport = validationReport?.revisionId === revisionId
     && validationReport.snapshotDigest === details.content.sha256
-    && validationReport.status === "pass"
+    ? validationReport
+    : null;
+  const qualityFindings = currentValidationReport?.findings.filter((finding) => (
+    finding.severity !== "info" && finding.code.startsWith("PRESENTATION_NARRATIVE_")
+  )) ?? [];
+  const validated = currentValidationReport
+    && currentValidationReport.status === "pass"
     && layoutChecked
     && !layoutFailed;
+  const exportBlocked = currentValidationReport !== null && currentValidationReport.status !== "pass";
+  const sourceExportBlocked = currentValidationReport?.status === "blocked";
   const themePreset = typeof draft.theme?.preset === "string"
     && THEME_PRESETS.includes(draft.theme.preset as typeof THEME_PRESETS[number])
     ? draft.theme.preset
@@ -596,6 +646,16 @@ export default function PresentationWorkbench({
     setInspectorOpen(true);
   };
 
+  const locateQualityFinding = (path?: string) => {
+    const slideId = path?.startsWith("slides/") ? path.slice("slides/".length) : "";
+    const slide = draft.slides.find((candidate) => candidate.id === slideId);
+    if (!slide) return;
+    setSelectedSlideId(slide.id);
+    setSelectedBlockId(slide.blocks[0]?.id ?? "");
+    setMode("edit");
+    setInspectorOpen(true);
+  };
+
   const slideRail = (
     <div className="presentation-slide-rail">
       <div className="presentation-pane-heading">
@@ -641,7 +701,7 @@ export default function PresentationWorkbench({
   );
 
   const presenter = (
-    <div className={`presentation-stage${previewError || layoutFailed ? " has-feedback" : ""}`}>
+    <div className={`presentation-stage${previewError || layoutFailed || qualityFindings.length ? " has-feedback" : ""}`}>
       <div className="presentation-preview-viewport">
         {(rendering || loading || !layoutChecked) && <div className="presentation-render-state"><i />{copy.loading}</div>}
         {livePreview ? (
@@ -698,6 +758,30 @@ export default function PresentationWorkbench({
               return `#${page} · ${finding.code}${block}${overflow}`;
             })).join("\n")}</code>
           </details>
+        </section>
+      ) : qualityFindings.length ? (
+        <section className="presentation-quality-panel" role="status" aria-live="polite">
+          <div className="presentation-layout-summary">
+            <span aria-hidden>!</span>
+            <div>
+              <strong>{formatMessage(copy.qualityIssueCount, { count: qualityFindings.length })}</strong>
+              <p>{copy.qualityIssueImpact}</p>
+            </div>
+          </div>
+          <div className="presentation-quality-findings">
+            {qualityFindings.map((finding, index) => (
+              <button
+                key={`${finding.code}:${finding.path ?? index}`}
+                type="button"
+                disabled={!finding.path?.startsWith("slides/")}
+                title={finding.path ? copy.layoutIssueLocate : undefined}
+                onClick={() => locateQualityFinding(finding.path)}
+              >
+                <strong>{qualityFindingLabel(copy, finding.code)}</strong>
+                <p>{qualityFindingGuidance(copy, finding.code)}</p>
+              </button>
+            ))}
+          </div>
         </section>
       ) : null}
     </div>
@@ -1012,16 +1096,16 @@ export default function PresentationWorkbench({
       </div>
       <div className="presentation-export-actions" aria-busy={exporting}>
         <button type="button" disabled={exporting || loading || dirty} onClick={onImportAnother}>{copy.importAnother}</button>
-        <button type="button" disabled={exporting || loading || dirty} onClick={() => onExport("json")}>{copy.exportJson}</button>
+        <button type="button" disabled={exporting || loading || dirty || sourceExportBlocked} onClick={() => onExport("json")}>{copy.exportJson}</button>
         <button
           type="button"
-          disabled={exporting || loading || dirty || !livePreview || !layoutChecked || layoutFailed}
-          onClick={() => frameRef.current?.contentWindow?.print()}
+          disabled={exporting || loading || dirty || exportBlocked || !livePreview || !layoutChecked || layoutFailed}
+          onClick={() => onExport("pdf")}
         >
           {copy.exportPdf}
         </button>
-        <button type="button" disabled={exporting || loading || dirty || !layoutChecked || layoutFailed} onClick={() => onExport("html")}>{copy.exportHtml}</button>
-        <button type="button" className="is-primary" disabled={exporting || loading || dirty || !layoutChecked || layoutFailed} onClick={() => onExport("pptx")}>
+        <button type="button" disabled={exporting || loading || dirty || exportBlocked || !layoutChecked || layoutFailed} onClick={() => onExport("html")}>{copy.exportHtml}</button>
+        <button type="button" className="is-primary" disabled={exporting || loading || dirty || exportBlocked || !layoutChecked || layoutFailed} onClick={() => onExport("pptx")}>
           <span aria-hidden>{exporting ? "◌" : "⇩"}</span>
           {exporting ? copy.exporting : copy.exportPptx}
         </button>

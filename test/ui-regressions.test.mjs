@@ -953,6 +953,16 @@ test("the deliverables workbench stays serve-backed and native presentations use
   assert.match(presenter, /hara:presentation-layout/, "Desktop observes late font and resize layout audits");
   assert.match(presenter, /readLayoutFindings/, "Desktop consumes structured block-level geometry diagnostics");
   assert.match(presenter, /presentation-layout-panel/, "layout guidance reserves its own region instead of covering the slide");
+  assert.match(presenter, /presentation-quality-panel/, "narrative-quality guidance is visible below the preview instead of hidden in a report id");
+  assert.match(presenter, /PRESENTATION_NARRATIVE_DUPLICATE_MESSAGE/, "quality findings use stable typed codes with localized labels");
+  assert.match(presenter, /exportBlocked/, "a revise report disables export actions in-place instead of opening a doomed save dialog");
+  assert.match(app, /presentationFormat !== "json"/, "the export coordinator preserves JSON recovery while stopping delivery formats before the save dialog");
+  assert.match(presenter, /onExport\("json"\)/, "JSON remains a recoverable source-copy action when narrative quality needs revision");
+  assert.match(presenter, /sourceExportBlocked/, "structurally blocked content cannot use the advisory JSON recovery path");
+  assert.doesNotMatch(presenter, /finding\.suggestion/, "engine-authored English suggestions never leak into a localized quality panel");
+  assert.match(copy, /标题和观点在重复同一句话/, "narrative-quality feedback is localized and actionable");
+  assert.match(copy, /标题只保留结论/, "quality guidance explains the repair in the active locale");
+  assert.match(presenter, /locateQualityFinding/, "quality findings locate the affected slide instead of acting as a dead warning strip");
   assert.match(presenter, /presentation-slide-issue/, "problem slides are marked in the thumbnail rail");
   assert.match(presenter, /aria-label=\{copy\.previewFrameLabel\}/, "the iframe keeps an accessible name without a verbose native tooltip");
   assert.doesNotMatch(presenter, /title=\{`\$\{draft\.title\} · \$\{copy\.exactPreview\}`\}/, "the preview never paints the full deck title as a hover tooltip");
@@ -964,7 +974,8 @@ test("the deliverables workbench stays serve-backed and native presentations use
   assert.doesNotMatch(officeEditorCss, /@container extension-dock \(max-width: 960px\)[\s\S]*?position:\s*absolute/, "the inspector never covers the preview at ordinary dock widths");
   assert.match(presenterCss, /is-inspector-closed/, "the properties pane can be explicitly hidden");
   assert.match(presenterCss, /is-inspector-open \.office-editor-canvas \{ display: none; \}/, "very narrow docks switch surfaces instead of overlaying them");
-  assert.match(presenter, /contentWindow\?\.print\(\)/, "PDF export uses the exact embedded presenter print surface");
+  assert.match(presenter, /onExport\("pdf"\)/, "PDF is a first-class, receipt-backed export from the exact presenter");
+  assert.doesNotMatch(presenter, /contentWindow\?\.print\(\)/, "Desktop no longer mistakes an OS print dialog for an exported file");
   assert.match(app, /invoke<string>\("read_presentation_image"/, "image imports cross a bounded native command");
   assert.match(nativeHost, /MAX_PRESENTATION_IMAGE_BYTES/, "native image reads are size bounded");
   assert.match(nativeHost, /presentation_image_links_fail_closed/, "image reads fail closed on symlinks");
