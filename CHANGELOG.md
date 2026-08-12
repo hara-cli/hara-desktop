@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.71 — 2026-08-13 — DeepSeek V4 Pro Responses parity
+
+- Bundle Hara CLI `0.146.2` at exact verified commit
+  `09de91e3ac5b029f2287ba9ad7d849d71450f368`. Official direct `deepseek-v4-flash` and
+  `deepseek-v4-pro` connections now use the native stateless Responses API; explicit non-thinking mode
+  continues through Chat because DeepSeek Responses does not document an `off` reasoning value.
+- Keep Hara Control organization connections on their current Chat-compatible route until the managed
+  gateway itself exposes `/v1/responses`; official provider support alone never changes a proxy's wire
+  contract. Exact hostname/path matching prevents lookalike or custom endpoints from inheriting official
+  DeepSeek transport behavior.
+- Reject ambiguous Responses streams whose sequence numbers regress or whose output continues after a
+  terminal event. Provider exceptions are bounded and credential-redacted before entering Desktop errors
+  or durable history. Existing conversations, projects, organization connections, schedules, Artifacts,
+  presentations, and local files require no migration. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.70 — 2026-08-12 — verified presentation delivery and recovery
 
 - Export PDF as a first-class, receipt-backed file from the exact self-contained presenter instead of
