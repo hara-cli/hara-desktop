@@ -44,6 +44,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
             model: "glm-5",
             capabilities: {
               methods: [
+                "session.submit",
                 "session.send",
                 "session.steer",
                 "session.set-approval",
@@ -146,6 +147,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   await client.connect("127.0.0.1", 4242);
   await client.initialize("redacted-token");
   assert.equal(client.supports("session.steer"), true);
+  assert.equal(client.supports("session.submit"), true);
   assert.equal(client.supports("session.set-approval"), true);
   assert.equal(client.supports("artifact.import"), true);
   assert.equal(client.supports("artifact.validate"), true);
@@ -160,14 +162,32 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supportsFeature("composer.attachments.v1"), true);
   assert.equal(client.supportsFeature("collaboration.remote.v1"), true);
 
-  await client.steer("session-1", "Use the new title", "turn-1");
+  await client.submit("session-1", "Use the new title", undefined, {
+    mode: "start_if_idle",
+    expectedModel: "deepseek-v4-flash",
+    expectedEffort: "high",
+  });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
     id: 2,
-    method: "session.steer",
+    method: "session.submit",
     params: {
       sessionId: "session-1",
       text: "Use the new title",
+      mode: "start_if_idle",
+      expectedModel: "deepseek-v4-flash",
+      expectedEffort: "high",
+    },
+  });
+
+  await client.steer("session-1", "Use the strict title", "turn-1");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 3,
+    method: "session.steer",
+    params: {
+      sessionId: "session-1",
+      text: "Use the strict title",
       expectedTurnId: "turn-1",
     },
   });
@@ -175,7 +195,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   await client.importArtifact("/workspace/brief.docx", { title: "Client brief", kind: "document" });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 3,
+    id: 4,
     method: "artifact.import",
     params: {
       sourcePath: "/workspace/brief.docx",
@@ -188,14 +208,14 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(startedLogin.qrPayload, "weixin://local-qr");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 4,
+    id: 5,
     method: "settings.gateways.login.start",
     params: { platform: "weixin" },
   });
   await client.gatewayLoginStatus("weixin", "weixin-login-1");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 5,
+    id: 6,
     method: "settings.gateways.login.status",
     params: { platform: "weixin", id: "weixin-login-1" },
   });
@@ -203,7 +223,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(cancelledLogin.phase, "cancelled");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 6,
+    id: 7,
     method: "settings.gateways.login.cancel",
     params: { platform: "weixin", id: "weixin-login-1" },
   });
@@ -215,7 +235,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   }]);
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 7,
+    id: 8,
     method: "session.send",
     params: {
       sessionId: "session-1",
@@ -233,7 +253,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(deskConnections.connections[0].bindingRevision, "binding-revision-a");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 8,
+    id: 9,
     method: "desk.connections.list",
     params: {},
   });
@@ -242,7 +262,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(deskSnapshot.profileId, "org-a");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 9,
+    id: 10,
     method: "desk.snapshot",
     params: { profileId: "org-a", state: "open" },
   });
@@ -251,7 +271,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(deskTask.task.id, "t_abcd");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 10,
+    id: 11,
     method: "desk.task.get",
     params: { profileId: "org-a", taskId: "t_abcd" },
   });
@@ -259,7 +279,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   await client.validateArtifact("art_123", "rev_456");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 11,
+    id: 12,
     method: "artifact.validate",
     params: { artifactId: "art_123", revisionId: "rev_456" },
   });
@@ -271,7 +291,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 12,
+    id: 13,
     method: "artifact.export",
     params: {
       artifactId: "art_123",
@@ -284,7 +304,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   await client.createPresentation({ title: "Release review" });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 13,
+    id: 14,
     method: "presentation.create",
     params: { title: "Release review" },
   });
@@ -308,7 +328,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 14,
+    id: 15,
     method: "presentation.update",
     params: {
       artifactId: "art_presentation",
@@ -319,21 +339,21 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   await client.renderPresentation(project);
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 15,
+    id: 16,
     method: "presentation.render",
     params: { project },
   });
   await client.getPresentationPreview("art_presentation", "rev_presentation");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 16,
+    id: 17,
     method: "presentation.preview",
     params: { artifactId: "art_presentation", revisionId: "rev_presentation" },
   });
   await client.createPresentationPreviewFile("art_presentation", "rev_presentation");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 17,
+    id: 18,
     method: "presentation.preview-file",
     params: { artifactId: "art_presentation", revisionId: "rev_presentation" },
   });
@@ -346,7 +366,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 18,
+    id: 19,
     method: "presentation.export",
     params: {
       artifactId: "art_presentation",
@@ -365,7 +385,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 19,
+    id: 20,
     method: "presentation.export",
     params: {
       artifactId: "art_presentation",
@@ -379,7 +399,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   await client.setSessionApproval("session-1", "full-auto");
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
-    id: 20,
+    id: 21,
     method: "session.set-approval",
     params: { sessionId: "session-1", approval: "full-auto" },
   });

@@ -551,6 +551,38 @@ export interface SessionAttachmentIntent {
   mediaType?: string;
 }
 
+export type SessionSubmitMode = "start_or_steer" | "start_if_idle" | "steer";
+
+export type SessionNotSubmittedReason =
+  | "not_idle"
+  | "no_active_turn"
+  | "expected_turn_mismatch"
+  | "configuration_mismatch"
+  | "active_turn_not_steerable"
+  | "attachments_not_steerable"
+  | "empty_input";
+
+export interface SessionTurnResult {
+  reply: string;
+  usage: { input: number; output: number };
+  ctx?: CtxInfo;
+  taskId: string;
+  turnId: string;
+  status?: "paused";
+  stopReason?: "deadline" | "task_round_budget";
+}
+
+export type SessionSubmitResult =
+  | ({ submission: "started" } & SessionTurnResult)
+  | { submission: "steered"; taskId: string; turnId: string }
+  | {
+      submission: "not_submitted";
+      reason: SessionNotSubmittedReason;
+      activeTurnId?: string;
+      expectedTurnId?: string;
+      detail?: string;
+    };
+
 export interface UserAttachmentView {
   kind: "image" | "file" | "directory";
   name: string;
@@ -1076,8 +1108,35 @@ export class HaraClient {
   readSession(sessionId: string) {
     return this.call<ReadOnlySessionResult>("session.history", { sessionId });
   }
+  /** One Core-owned routing decision: start if idle, otherwise steer the authoritative live turn.
+   * Feature-detect before calling so mixed-version Desktop/CLI installations keep their legacy path. */
+  submit(
+    sessionId: string,
+    text: string,
+    attachments?: SessionAttachmentIntent[],
+    options?: {
+      mode?: SessionSubmitMode;
+      expectedTurnId?: string;
+      expectedModel?: string;
+      expectedEffort?: string;
+      newTask?: boolean;
+    },
+  ) {
+    const mode = options?.mode ?? "start_or_steer";
+    return this.call<SessionSubmitResult>("session.submit", {
+      sessionId,
+      text,
+      ...(attachments?.length ? { attachments } : {}),
+      ...(mode !== "start_or_steer" ? { mode } : {}),
+      ...(options?.expectedTurnId ? { expectedTurnId: options.expectedTurnId } : {}),
+      ...(options?.expectedModel
+        ? { expectedModel: options.expectedModel, expectedEffort: options.expectedEffort ?? "" }
+        : {}),
+      ...(options?.newTask ? { newTask: true } : {}),
+    });
+  }
   send(sessionId: string, text: string, attachments?: SessionAttachmentIntent[]) {
-    return this.call<{ reply: string; usage: { input: number; output: number }; ctx?: CtxInfo; taskId: string; turnId: string }>(
+    return this.call<SessionTurnResult>(
       "session.send",
       { sessionId, text, ...(attachments?.length ? { attachments } : {}) },
     );

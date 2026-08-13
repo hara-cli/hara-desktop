@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.72 — 2026-08-13 — authoritative turn input routing
+
+- Bundle Hara CLI `0.146.3` at exact verified commit
+  `5095315abd44686b5a467b2a7294db3880c6e691`. Desktop now submits composer input through one
+  feature-detected Core admission point, so delayed renderer state cannot misroute a new message between
+  starting, steering, or queueing.
+- Keep attachment text and files together for the next turn, prevent `newTask` input from entering a live
+  task, and preserve ordered type-ahead steering. Late turn-end events can no longer acknowledge the wrong
+  optimistic message or leave a false busy state; a visible queued message remains retryable.
+- Bind staged model and thinking changes to the next fresh turn. Core verifies the expected provider
+  configuration at the exact admission boundary, so a turn ending between configuration and send cannot
+  start the message on the previous model. Older engines retain the guarded legacy path. Existing
+  conversations, projects, schedules, Artifacts, presentations, and local files require no migration.
+  Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.71 — 2026-08-13 — DeepSeek V4 Pro Responses parity
 
 - Bundle Hara CLI `0.146.2` at exact verified commit

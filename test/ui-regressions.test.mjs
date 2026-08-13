@@ -216,7 +216,22 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(client, /this\.features = new Set\(result\.capabilities\?\.features \?\? \[\]\)/);
   assert.match(client, /supportsEvent\(event: string\)/);
   assert.match(client, /supportsFeature\(feature: string\)/);
+  assert.match(client, /submit\([\s\S]*"session\.submit"/, "the client exposes atomic start-or-steer input routing");
   assert.match(client, /"session\.steer"/);
+  assert.match(app, /const atomicSubmit = c\.supports\("session\.submit"\)/);
+  assert.match(app, /let pendingModelRoute = modelChange === "deferred"[\s\S]*stagedModelChangesRef\.current\[sessionId\]/);
+  assert.match(app, /c\.submit\(sessionId, wireText, attachmentIntents, \{[\s\S]*mode: atomicSubmitMode,[\s\S]*expectedModel: pendingModelRoute\.model,[\s\S]*expectedEffort: pendingModelRoute\.effort/);
+  assert.match(app, /submission\.reason === "configuration_mismatch"[\s\S]*await flushStagedModelChange\(sessionId\)/);
+  assert.match(
+    app,
+    /const reportedTurnStillLive = Boolean\([\s\S]*localTurnId === submission\.activeTurnId[\s\S]*taskStateIsLive\(localTaskState\.state\)/,
+    "a late Core rejection waits only for the exact turn Desktop still observes",
+  );
+  assert.match(
+    app,
+    /busy\[sessionId\][\s\S]*attachments\.length > 0[\s\S]*!clientRef\.current\?\.supports\("session\.submit"\)/,
+    "new engines submit busy attachment input to Core so only a genuinely active turn queues it",
+  );
   assert.match(app, /case "event\.task_state"/);
   assert.match(i18n, /always: "always for this project"/);
   assert.match(i18n, /always: "此项目内始终允许"/);
@@ -244,7 +259,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   );
   assert.match(
     app,
-    /const accepted = await sendText\(sessionId, text, attachments\);[\s\S]*if \(!accepted\)[\s\S]*appendComposerAttachments\(attachments, draft\.attachments\)/,
+    /const submission = await sendText\(sessionId, text, attachments\);[\s\S]*if \(submission === "failed"\)[\s\S]*appendComposerAttachments\(attachments, draft\.attachments\)/,
     "authoritative Serve validation failures also restore attachment drafts",
   );
   assert.match(
@@ -334,7 +349,7 @@ test("the model picker stages busy selections and confirms them before the next 
   const sendEnd = app.indexOf("const retryQueuedInput = useCallback", sendStart);
   const sendFlow = app.slice(sendStart, sendEnd);
   assert.ok(
-    sendFlow.indexOf("await flushStagedModelChange(sessionId)") < sendFlow.indexOf("await c.send(sessionId"),
+    sendFlow.indexOf("await flushStagedModelChange(sessionId)") < sendFlow.indexOf("await c.submit(sessionId"),
     "a fresh or queued send cannot overtake the staged model change",
   );
   const modelToolbarStart = app.indexOf('className={`model-pill');

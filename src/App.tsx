@@ -49,6 +49,7 @@ import {
   type EffectiveAttachmentCapabilities,
   type ModelCatalogEntry,
   type SessionAttachmentIntent,
+  type SessionSubmitMode,
   type DeskConnection,
   type DeskTaskState,
   type OrganizationConnection,
@@ -1287,8 +1288,8 @@ export default function App() {
   const pendingRef = useRef<"assistant" | "project" | null>(null);
   const [setupRequired, setSetupRequired] = useState(false);
   const apiRef = useRef<{ setZone: (z: Zone) => void; openAssistant: () => void; openProject: () => void }>({ setZone: () => {}, openAssistant: () => {}, openProject: () => {} });
-  // steer queue (codex composer pattern): inputs typed while a turn runs are queued and auto-sent.
-  // Attachments stay with their text as one fresh turn because session.steer is deliberately text-only.
+  // Follow-up queue: current engines atomically start-or-steer text through session.submit. Attachments
+  // stay with their text as one fresh turn because an active model round cannot absorb new file context.
   const [queue, setQueue] = useState<Record<string, QueuedInput[]>>({});
   const queueRef = useRef(queue);
   const pendingInputSequenceRef = useRef(0);
@@ -1774,7 +1775,7 @@ export default function App() {
         pendingId?: string;
         wireText?: string;
       },
-    ) => {
+    ): Promise<"started" | "steered" | "queued" | "failed"> => {
       const c = clientRef.current;
       if (!c?.connected) throw new Error("Hara engine is not connected");
       if (readOnlySessionsRef.current[sessionId]) {
@@ -1792,10 +1793,11 @@ export default function App() {
         );
       }
       const wireText = options?.wireText ?? textWithActiveWorkObject(sessionId, text);
+      const atomicSubmit = c.supports("session.submit");
       // A queued or freshly submitted turn must never overtake the user's staged model choice.
       // Serve remains authoritative and revalidates the model, effort, organization, and history.
       const modelChange = await flushStagedModelChange(sessionId);
-      if (modelChange === "deferred") {
+      if (modelChange === "deferred" && !atomicSubmit) {
         throw new Error(
           locale === "zh"
             ? "所选模型或思考模式尚未应用；Hara 引擎仍在结束上一轮，请稍后重试。"
@@ -1809,6 +1811,12 @@ export default function App() {
             : "The selected model or thinking mode could not be applied. Review the conversation notice and choose again.",
         );
       }
+      // A staged route belongs to the next fresh turn. Core checks both strict idle admission and the
+      // expected provider configuration, closing the boundary where the old turn ends between RPCs.
+      let pendingModelRoute = modelChange === "deferred"
+        ? stagedModelChangesRef.current[sessionId]
+        : undefined;
+      let atomicSubmitMode: SessionSubmitMode = pendingModelRoute ? "start_if_idle" : "start_or_steer";
       const pendingId = options?.pendingId ?? nextPendingInputId();
       if (options?.recordUser !== false) {
         push(sessionId, (items) => [...items, {
@@ -1851,13 +1859,87 @@ export default function App() {
               clientId: id,
             }),
           );
-          await c.send(sessionId, wireText, attachmentIntents);
+          const submission = atomicSubmit
+            ? await c.submit(sessionId, wireText, attachmentIntents, {
+                mode: atomicSubmitMode,
+                ...(pendingModelRoute
+                  ? {
+                      expectedModel: pendingModelRoute.model,
+                      expectedEffort: pendingModelRoute.effort,
+                    }
+                  : {}),
+              })
+            : await c.send(sessionId, wireText, attachmentIntents);
+          if ("submission" in submission && submission.submission === "not_submitted") {
+            if (submission.reason === "empty_input") {
+              throw new Error(
+                locale === "zh"
+                  ? "请输入消息或添加至少一个附件。"
+                : "Enter a message or add at least one attachment.",
+              );
+            }
+            const localTurnId = activeTurnsRef.current[sessionId];
+            const localTaskState = taskStatesRef.current[sessionId];
+            const reportedTurnStillLive = Boolean(
+              submission.activeTurnId
+              && (
+                localTurnId === submission.activeTurnId
+                || (
+                  localTaskState?.turnId === submission.activeTurnId
+                  && taskStateIsLive(localTaskState.state)
+                )
+              ),
+            );
+            if (submission.reason === "configuration_mismatch" && !submission.activeTurnId) {
+              const refreshedModel = await flushStagedModelChange(sessionId);
+              if (refreshedModel === "failed") {
+                throw new Error(
+                  locale === "zh"
+                    ? "所选模型或思考模式无法应用。请查看会话提示后重新选择。"
+                    : "The selected model or thinking mode could not be applied. Review the conversation notice and choose again.",
+                );
+              }
+              pendingModelRoute = refreshedModel === "deferred"
+                ? stagedModelChangesRef.current[sessionId]
+                : undefined;
+              atomicSubmitMode = pendingModelRoute ? "start_if_idle" : "start_or_steer";
+            }
+            if ((!submission.activeTurnId || !reportedTurnStillLive) && busyAttempt < BUSY_SEND_RETRIES) {
+              busyAttempt += 1;
+              await new Promise<void>((resolve) => window.setTimeout(resolve, busyAttempt * 120));
+              continue;
+            }
+            clearPendingDispatch();
+            enqueueInput(
+              sessionId,
+              {
+                id: pendingId,
+                text,
+                wireText,
+                ...(attachments?.length ? { attachments } : {}),
+                recorded: true,
+              },
+              options?.requeueFrontOnBusy ? "front" : "back",
+            );
+            // A turn_end can overtake the rejection response on the socket. Only wait for another
+            // turn_end when Desktop still observes that exact turn; otherwise leave an explicit Retry.
+            const live = reportedTurnStillLive;
+            if (!live) {
+              setSessionBusy(sessionId, false);
+              notePet(sessionId, "paused", "Message queued — engine is still preparing");
+            }
+            return "queued";
+          }
           clearPendingDispatch();
           resolvePendingUser(sessionId, pendingId, true);
+          if ("submission" in submission && submission.submission === "steered") {
+            notePet(sessionId, "running");
+            return "steered";
+          }
           if (interruptedSessionsRef.current.delete(sessionId)) removePet(sessionId);
           // the first turn sets the server-side derived title — refresh so the sidebar shows it now
           void c.listSessions().then((l) => setSessions(l.sessions)).catch(() => {});
-          return true;
+          return "started";
         } catch (e: any) {
           const interrupted = interruptedSessionsRef.current.delete(sessionId);
           if (e?.code === SERVER_BUSY && !interrupted) {
@@ -1882,7 +1964,7 @@ export default function App() {
                 await c.steer(sessionId, wireText, turnId);
                 resolvePendingUser(sessionId, pendingId, true);
                 notePet(sessionId, "running");
-                return true;
+                return "steered";
               } catch (steerError: any) {
                 if (steerError?.code !== SERVER_BUSY) {
                   resolvePendingUser(sessionId, pendingId, false);
@@ -1892,7 +1974,7 @@ export default function App() {
                   }]);
                   setSessionBusy(sessionId, false);
                   notePet(sessionId, "blocked");
-                  return false;
+                  return "failed";
                 }
                 const currentTurnId = activeTurnsRef.current[sessionId];
                 const currentState = taskStatesRef.current[sessionId];
@@ -1923,7 +2005,7 @@ export default function App() {
               setSessionBusy(sessionId, false);
               notePet(sessionId, "paused", "Message queued — engine is still preparing");
             }
-            return true;
+            return "queued";
           }
           const dispatch = pendingSendDispatchesRef.current[sessionId];
           const persisted = dispatch?.pendingId === pendingId && dispatch.completed === true;
@@ -1939,7 +2021,7 @@ export default function App() {
             }
           } else if (!interrupted) notePet(sessionId, "blocked");
           else removePet(sessionId);
-          return persisted;
+          return persisted ? "started" : "failed";
         }
       }
     },
@@ -2006,13 +2088,19 @@ export default function App() {
     }
   }, [defaultApproval, hydrateLegacyTaskState, notePet, push, rememberSessionApproval, sendText]);
 
-  /** Submit against the authoritative execution plane. A live turn receives real `session.steer`;
-   * only the end-of-turn race falls back to the visible queue, so user input is never rejected or lost. */
+  /** Submit against the authoritative execution plane. New engines own start-or-steer routing in one
+   * ordered call; this renderer-side branch remains only for compatibility with older bundled engines. */
   const submitSessionText = useCallback(
     async (sessionId: string, text: string): Promise<"sent" | "steered" | "queued"> => {
       const c = clientRef.current;
       if (!c) throw new Error("Hara engine is not connected");
       const wireText = textWithActiveWorkObject(sessionId, text);
+      if (c.supports("session.submit")) {
+        const submission = await sendText(sessionId, text, undefined, { wireText });
+        if (submission === "steered") return "steered";
+        if (submission === "queued" || submission === "failed") return "queued";
+        return "sent";
+      }
       const state = taskStatesRef.current[sessionId];
       const turnId = state?.taskStatus === "running"
         ? state.turnId
@@ -4014,7 +4102,11 @@ export default function App() {
     setAc((a) => ({ ...a, open: false }));
     setAttachmentMenuOpen(false);
     setModelPickerOpen(false);
-    if (busy[sessionId] && attachments.length > 0) {
+    if (
+      busy[sessionId]
+      && attachments.length > 0
+      && !clientRef.current?.supports("session.submit")
+    ) {
       enqueueInput(sessionId, {
         id: nextPendingInputId(),
         text,
@@ -4025,8 +4117,8 @@ export default function App() {
     }
     try {
       if (attachments.length) {
-        const accepted = await sendText(sessionId, text, attachments);
-        if (!accepted) {
+        const submission = await sendText(sessionId, text, attachments);
+        if (submission === "failed") {
           updateComposerDraft(sessionId, (draft) => ({
             text: text
               ? (draft.text ? `${text}\n${draft.text}` : text)
@@ -4081,8 +4173,8 @@ export default function App() {
         );
         if (issue) throw new Error(attachmentIssueText(locale, issue));
       }
-      const accepted = await sendText(sessionId, prompt, attachments);
-      if (!accepted) restoreDraft();
+      const submission = await sendText(sessionId, prompt, attachments);
+      if (submission === "failed") restoreDraft();
     } catch (error: any) {
       restoreDraft();
       setErr(String(error?.message ?? error));
