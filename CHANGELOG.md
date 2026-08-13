@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.73 — 2026-08-14 — durable DeepSeek reasoning and scoped image capability
+
+- Bundle Hara CLI `0.147.0` at exact verified commit
+  `6b0094b1f747e30ede6f286e77f54f611092fc53`. Direct DeepSeek V4 Flash and Pro connections now expose
+  `off` / `low` / `high` / `max` thinking through native stateless Responses and preserve completed
+  reasoning across tool rounds; organization connections expose the same choices through their
+  server-authorized catalog.
+- Improve Chinese task understanding so concise follow-ups such as “开始”, “继续”, and “修复” resolve
+  against the active request and checkpoint instead of being treated as casual chat. Bounded read-only
+  sub-agents now share a root concurrency budget, isolate child state, support cancellation, and report
+  delegated usage without distorting the parent conversation gauge.
+- Stop advertising a globally configured image fallback inside an organization session unless that
+  company connection explicitly authorizes the model. This removes the false “image compatible” state
+  reported in Desktop while retaining the optional fallback for compatible personal connections.
+- Compact private Hara directory rules before macOS sandbox compilation so large session stores no longer
+  exceed the Seatbelt profile-size limit. Existing conversations, projects, schedules, Artifacts,
+  presentations, and local files require no migration. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.72 — 2026-08-13 — authoritative turn input routing
 
 - Bundle Hara CLI `0.146.3` at exact verified commit
