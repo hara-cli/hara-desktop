@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.76 — 2026-08-14 — complete companion frames and bounded placement
+
+- Render local v1/v2 companion atlases through an exact source-pixel Canvas crop instead of moving the
+  complete sheet with percentage offsets. Full heads, feet, wide poses, and every animated row now stay
+  inside the transparent companion window under Retina scaling and WebKit layout.
+- Give the companion and its chat action separate space, enlarge the fixed transparent viewport, and clamp
+  legacy saved positions to the correct positive- or negative-origin display. An upgraded companion can no
+  longer reopen partly outside the visible screen simply because its viewport became larger.
+- Validate all three installed Codex v2 pets against the 8×11 atlas contract and record the staged Hara
+  mascot, custom-asset service, replay, and optional 3D workforce architecture. Bundle unchanged Hara CLI
+  `0.147.2` at exact verified commit `7f3ca032c06b58b189ce63f583cb5ec1016c2d63`; conversations, projects,
+  schedules, Artifacts, presentations, and pet packages require no migration. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.75 — 2026-08-14 — live project-instruction refresh
 
 - Bundle Hara CLI `0.147.2` at exact verified commit

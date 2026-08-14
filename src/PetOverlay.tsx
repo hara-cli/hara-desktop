@@ -41,19 +41,45 @@ function useFrame(status: PetStatus, movement: MoveDirection, reduced: boolean):
 
 function AtlasPet({ asset, status, movement, reduced }: { asset: PetAsset; status: PetStatus; movement: MoveDirection; reduced: boolean }) {
   const frame = useFrame(status, movement, reduced);
+  const canvas = useRef<HTMLCanvasElement | null>(null);
+  const [source, setSource] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    const image = new Image();
+    const context = canvas.current?.getContext("2d");
+    context?.clearRect(0, 0, asset.frameWidth, asset.frameHeight);
+    setSource(null);
+    image.onload = () => {
+      if (current) setSource(image);
+    };
+    image.src = asset.dataUrl;
+    return () => {
+      current = false;
+    };
+  }, [asset.dataUrl, asset.frameHeight, asset.frameWidth]);
+
+  useEffect(() => {
+    const context = canvas.current?.getContext("2d");
+    if (!context || !source) return;
+    context.clearRect(0, 0, asset.frameWidth, asset.frameHeight);
+    context.imageSmoothingEnabled = true;
+    context.drawImage(
+      source,
+      frame.column * asset.frameWidth,
+      frame.row * asset.frameHeight,
+      asset.frameWidth,
+      asset.frameHeight,
+      0,
+      0,
+      asset.frameWidth,
+      asset.frameHeight,
+    );
+  }, [asset.frameHeight, asset.frameWidth, frame.column, frame.row, source]);
+
   return (
     <div className="atlas-frame" aria-hidden="true">
-      <img
-        src={asset.dataUrl}
-        alt=""
-        draggable={false}
-        style={{
-          width: `${asset.columns * 100}%`,
-          height: `${asset.rows * 100}%`,
-          left: `${-frame.column * 100}%`,
-          top: `${-frame.row * 100}%`,
-        }}
-      />
+      <canvas ref={canvas} width={asset.frameWidth} height={asset.frameHeight} />
     </div>
   );
 }

@@ -26,10 +26,10 @@ html.pet-mode #root {
 
 .pet-stage {
   position: absolute;
-  right: 19px;
+  left: 8px;
   bottom: 4px;
-  width: 176px;
-  height: 184px;
+  width: 184px;
+  height: 192px;
   padding: 0;
   border: 0;
   outline: 0;
@@ -152,7 +152,7 @@ html.pet-mode #root {
 .pet-chat-launch {
   position: absolute;
   z-index: 5;
-  right: 15px;
+  right: 10px;
   bottom: 24px;
   width: 38px;
   height: 36px;
@@ -203,19 +203,19 @@ html.pet-mode #root {
 
 .atlas-frame {
   position: absolute;
-  left: 10px;
+  left: 4px;
   bottom: 1px;
-  width: 156px;
-  height: 169px;
+  width: 176px;
+  height: 191px;
   overflow: hidden;
   filter: drop-shadow(0 12px 8px rgba(0, 0, 0, 0.22));
   pointer-events: none;
 }
 
-.atlas-frame img {
-  position: absolute;
-  max-width: none;
-  object-fit: fill;
+.atlas-frame canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
   image-rendering: auto;
   pointer-events: none;
 }

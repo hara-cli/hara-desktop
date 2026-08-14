@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   acknowledgePetActivity,
   BUILTIN_HARA_PET,
+  clampPetWindowPosition,
   selectPetSnapshot,
   setPetActivity,
 } from "../src/pets.ts";
@@ -21,6 +22,17 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 test("built-in pet provenance is independent from local and future market providers", () => {
   assert.equal(BUILTIN_HARA_PET.source, "builtin");
   assert.equal(BUILTIN_HARA_PET.selector, "builtin:hara");
+});
+
+test("companion window positions are clamped inside positive and negative-origin displays", () => {
+  assert.deepEqual(
+    clampPetWindowPosition(1681, 550, { left: 0, top: 0, width: 1728, height: 1117 }, 260, 240),
+    { x: 1456, y: 550 },
+  );
+  assert.deepEqual(
+    clampPetWindowPosition(-2000, -900, { left: -1920, top: -1080, width: 1920, height: 1080 }, 260, 240),
+    { x: -1908, y: -900 },
+  );
 });
 
 test("pet activity priority matches needs-input, blocked, paused, ready, running", () => {
@@ -165,6 +177,8 @@ test("desktop companion owns its window bridge and registers listeners before wi
   const viteConfig = readFileSync(`${root}/vite.config.ts`, "utf8");
   const petChatCss = readFileSync(`${root}/src/PetChat.css`, "utf8");
   const petRuntime = readFileSync(`${root}/src/pet-runtime.ts`, "utf8");
+  const petOverlay = readFileSync(`${root}/src/PetOverlay.tsx`, "utf8");
+  const petOverlayCss = readFileSync(`${root}/src/PetOverlay.css`, "utf8");
   const petChatCapability = JSON.parse(
     readFileSync(`${root}/src-tauri/capabilities/pet-chat.json`, "utf8"),
   );
@@ -237,6 +251,11 @@ test("desktop companion owns its window bridge and registers listeners before wi
   assert.ok(!petChatCapability.permissions.includes("core:window:default"));
   assert.ok(petChatCapability.permissions.includes("core:window:allow-start-dragging"));
   assert.match(petRuntime, /monitorFromPoint\([\s\S]*petPosition\.x[\s\S]*petPosition\.y/);
+  assert.match(petRuntime, /availableMonitors\(\)/, "saved positions are resolved against every display");
+  assert.match(petRuntime, /clampPetWindowPosition\(/, "a larger renderer cannot reopen beyond the screen edge");
+  assert.match(petOverlay, /context\.drawImage\([\s\S]*frame\.column \* asset\.frameWidth[\s\S]*frame\.row \* asset\.frameHeight/);
+  assert.doesNotMatch(petOverlay, /left:\s*`\$\{-frame\.column \* 100\}%`/, "atlas rows are cropped by source pixels, not whole-image percentages");
+  assert.match(petOverlayCss, /\.atlas-frame canvas[\s\S]*width:\s*100%[\s\S]*height:\s*100%/);
   assert.ok(
     petChatCapability.permissions.every(
       (permission) =>

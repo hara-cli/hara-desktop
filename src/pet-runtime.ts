@@ -1,15 +1,15 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { emitTo } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { currentMonitor, monitorFromPoint } from "@tauri-apps/api/window";
-import type { PetChatState, PetConfig, PetSnapshot } from "./pets";
+import { availableMonitors, currentMonitor, monitorFromPoint } from "@tauri-apps/api/window";
+import { clampPetWindowPosition, type PetChatState, type PetConfig, type PetSnapshot } from "./pets";
 
 export const PET_AWAKE_KEY = "hara.pet.awake";
 export const PET_SELECTOR_KEY = "hara.pet.selector";
 export const DEFAULT_PET_SELECTOR = "builtin:hara";
 
-const PET_WIDTH = 224;
-const PET_HEIGHT = 230;
+const PET_WIDTH = 260;
+const PET_HEIGHT = 240;
 const PET_CHAT_WIDTH = 380;
 const PET_CHAT_HEIGHT = 360;
 let windowSync: Promise<void> = Promise.resolve();
@@ -25,18 +25,32 @@ function readNumber(key: string): number | undefined {
 async function initialPosition(): Promise<{ x?: number; y?: number }> {
   const savedX = readNumber("hara.pet.x");
   const savedY = readNumber("hara.pet.y");
-  if (savedX !== undefined && savedY !== undefined) return { x: savedX, y: savedY };
-  const monitor = await currentMonitor().catch(() => null);
+  const monitors = savedX !== undefined && savedY !== undefined
+    ? await availableMonitors().catch(() => [])
+    : [];
+  const monitor = monitors.find((candidate) => {
+    const scale = candidate.scaleFactor || 1;
+    const left = candidate.position.x / scale;
+    const top = candidate.position.y / scale;
+    const right = left + candidate.size.width / scale;
+    const bottom = top + candidate.size.height / scale;
+    const centerX = savedX! + PET_WIDTH / 2;
+    const centerY = savedY! + PET_HEIGHT / 2;
+    return centerX >= left && centerX < right && centerY >= top && centerY < bottom;
+  }) ?? await currentMonitor().catch(() => null);
   if (!monitor) return {};
   const scale = monitor.scaleFactor || 1;
   const left = monitor.position.x / scale;
   const top = monitor.position.y / scale;
   const width = monitor.size.width / scale;
   const height = monitor.size.height / scale;
-  return {
-    x: Math.round(left + width - PET_WIDTH - 28),
-    y: Math.round(top + height - PET_HEIGHT - 52),
-  };
+  return clampPetWindowPosition(
+    savedX ?? left + width - PET_WIDTH - 28,
+    savedY ?? top + height - PET_HEIGHT - 52,
+    { left, top, width, height },
+    PET_WIDTH,
+    PET_HEIGHT,
+  );
 }
 
 async function petChatPosition(): Promise<{ x?: number; y?: number }> {

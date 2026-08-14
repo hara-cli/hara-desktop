@@ -88,6 +88,32 @@ export interface PetChatResult {
   error?: string;
 }
 
+export interface LogicalScreenBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** Keep a fixed-size transparent companion window wholly inside the selected display. */
+export function clampPetWindowPosition(
+  x: number,
+  y: number,
+  screen: LogicalScreenBounds,
+  windowWidth: number,
+  windowHeight: number,
+  margin = 12,
+): { x: number; y: number } {
+  const minX = screen.left + margin;
+  const minY = screen.top + margin;
+  const maxX = Math.max(minX, screen.left + screen.width - windowWidth - margin);
+  const maxY = Math.max(minY, screen.top + screen.height - windowHeight - margin);
+  return {
+    x: Math.round(Math.max(minX, Math.min(x, maxX))),
+    y: Math.round(Math.max(minY, Math.min(y, maxY))),
+  };
+}
+
 export const BUILTIN_HARA_PET: PetCatalogEntry = {
   selector: "builtin:hara",
   id: "hara",
