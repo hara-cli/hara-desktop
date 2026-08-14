@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.75 — 2026-08-14 — live project-instruction refresh
+
+- Bundle Hara CLI `0.147.2` at exact verified commit
+  `7f3ca032c06b58b189ce63f583cb5ec1016c2d63`. Existing Desktop conversations now reload the bounded,
+  protected `AGENTS.md` project instructions immediately before each new idle turn, so project-rule edits
+  take effect without restarting Hara, reopening the project, or losing conversation history.
+- Keep every active turn's system context stable. Steering accepted while work is running does not change
+  instructions underneath that execution; the next idle turn receives the refresh. Approval modes, gateway
+  sender restrictions, protected-file rules, and the existing 32 KiB instruction cap remain unchanged.
+- Existing conversations, projects, schedules, Artifacts, presentations, local files, and pet state require
+  no migration. Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still
+  show a reputation warning.
+
 ## 0.1.74 — 2026-08-14 — truthful completion and native local-image inspection
 
 - Bundle Hara CLI `0.147.1` at exact verified commit
