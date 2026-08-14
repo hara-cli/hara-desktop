@@ -256,11 +256,16 @@ test("desktop companion owns its window bridge and registers listeners before wi
   assert.match(petRuntime, /monitor\.workArea\.position/, "placement uses the usable display work area");
   assert.match(petRuntime, /monitor\.workArea\.size/, "the Dock and taskbar cannot shrink the companion");
   assert.match(petRuntime, /clampPetWindowPosition\(/, "a larger renderer cannot reopen beyond the screen edge");
+  assert.match(petRuntime, /const PET_WIDTH = 220;/, "the native pet surface stays compact around standard atlas frames");
   assert.match(nativeShell, /with_filter\(should_track_window_state\)/);
   assert.match(nativeShell, /label == "main"/, "fixed companion windows must ignore legacy native sizes");
   assert.match(petOverlay, /context\.drawImage\([\s\S]*frame\.column \* asset\.frameWidth[\s\S]*frame\.row \* asset\.frameHeight/);
   assert.doesNotMatch(petOverlay, /left:\s*`\$\{-frame\.column \* 100\}%`/, "atlas rows are cropped by source pixels, not whole-image percentages");
+  assert.match(petOverlay, /movement \? "pet-moving" : ""/, "wide walking frames temporarily clear the adjacent chat control");
   assert.match(petOverlayCss, /\.atlas-frame canvas[\s\S]*width:\s*100%[\s\S]*height:\s*100%/);
+  assert.match(petOverlayCss, /\.pet-stage[\s\S]*left:\s*0;/, "the atlas stage uses the compact surface's left edge");
+  assert.match(petOverlayCss, /\.pet-chat-launch[\s\S]*right:\s*28px;/, "the chat control stays visually attached to the character");
+  assert.match(petOverlayCss, /\.pet-moving \.pet-chat-launch[\s\S]*pointer-events:\s*none;/);
   assert.ok(
     petChatCapability.permissions.every(
       (permission) =>

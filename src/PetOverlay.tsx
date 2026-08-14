@@ -195,7 +195,7 @@ export default function PetOverlay() {
   const title = snapshot.activity?.title || visibleError;
 
   return (
-    <main className={`pet-overlay pet-status-${snapshot.status}`}>
+    <main className={`pet-overlay pet-status-${snapshot.status} ${movement ? "pet-moving" : ""}`}>
       {(snapshot.status !== "idle" || visibleError) && (
         <button className="pet-activity" title={title} onClick={() => void openActivity()}>
           <span className="pet-status-dot" />

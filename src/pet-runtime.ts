@@ -8,7 +8,10 @@ export const PET_AWAKE_KEY = "hara.pet.awake";
 export const PET_SELECTOR_KEY = "hara.pet.selector";
 export const DEFAULT_PET_SELECTOR = "builtin:hara";
 
-const PET_WIDTH = 260;
+// The atlas cell itself includes generous transparent side padding. Keep the native surface wide
+// enough for every 192 px frame, but no wider: otherwise the separately clickable chat affordance
+// looks detached from narrow idle poses even though both controls share one transparent window.
+const PET_WIDTH = 220;
 const PET_HEIGHT = 240;
 const PET_CHAT_WIDTH = 380;
 const PET_CHAT_HEIGHT = 360;

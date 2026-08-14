@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.78 — 2026-08-14 — keep the companion action visually attached
+
+- Reduce the transparent companion surface from `260×240` to the compact `220×240` safe envelope and
+  place the chat action beside the visible character rather than at the edge of unused atlas padding.
+  Mila and the other bundled v2 companions now read as one interaction cluster without reintroducing the
+  Retina crop fixed in `0.1.77`.
+- Temporarily hide the chat action while the companion is being dragged, so the widest walking frames can
+  extend naturally without covering the button. The action returns as soon as movement settles. Bundle
+  unchanged Hara CLI `0.147.2`; conversations, projects, schedules, Artifacts, presentations, and pet
+  packages require no migration. Windows packages remain updater-signed but not Authenticode-signed, so
+  SmartScreen may still show a reputation warning.
+
 ## 0.1.77 — 2026-08-14 — migrate companion geometry safely
 
 - Stop the native window-state plugin from restoring sizes for the fixed pet and pet-chat windows. A
