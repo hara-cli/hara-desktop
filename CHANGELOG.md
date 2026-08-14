@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.74 — 2026-08-14 — truthful completion and native local-image inspection
+
+- Bundle Hara CLI `0.147.1` at exact verified commit
+  `064c3532bd1de85c653ad10e18e476129eb1ac7d`. Images downloaded or discovered during a task now use
+  the conversation's authorized image-capable route through a verified private snapshot. Qwen 3.7 Plus
+  no longer detours through project scripts, protected `.env` files, or a second API key to inspect them.
+- Keep an accepted task paused until Core receives a fresh final receipt with observable acceptance
+  evidence. Asking the user for missing data becomes an explicit resumable `awaiting_user` state instead
+  of a false `completed`, and later work invalidates an earlier success receipt automatically.
+- Stop interleaved repeated failures from evading the bounded circuit breaker, prefer a matching configured
+  MCP service over browsing its implementation, and record the exact Hara engine version in each new or
+  resumed session for actionable feedback reports.
+- Prefer Git Bash on Windows and reject mixed WSL/drive-letter paths before they resolve to malformed
+  locations. Existing conversations, projects, schedules, Artifacts, presentations, and local files require
+  no migration. Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still
+  show a reputation warning.
+
 ## 0.1.73 — 2026-08-14 — durable DeepSeek reasoning and scoped image capability
 
 - Bundle Hara CLI `0.147.0` at exact verified commit
