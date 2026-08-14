@@ -30,20 +30,20 @@ async function initialPosition(): Promise<{ x?: number; y?: number }> {
     : [];
   const monitor = monitors.find((candidate) => {
     const scale = candidate.scaleFactor || 1;
-    const left = candidate.position.x / scale;
-    const top = candidate.position.y / scale;
-    const right = left + candidate.size.width / scale;
-    const bottom = top + candidate.size.height / scale;
+    const left = candidate.workArea.position.x / scale;
+    const top = candidate.workArea.position.y / scale;
+    const right = left + candidate.workArea.size.width / scale;
+    const bottom = top + candidate.workArea.size.height / scale;
     const centerX = savedX! + PET_WIDTH / 2;
     const centerY = savedY! + PET_HEIGHT / 2;
     return centerX >= left && centerX < right && centerY >= top && centerY < bottom;
   }) ?? await currentMonitor().catch(() => null);
   if (!monitor) return {};
   const scale = monitor.scaleFactor || 1;
-  const left = monitor.position.x / scale;
-  const top = monitor.position.y / scale;
-  const width = monitor.size.width / scale;
-  const height = monitor.size.height / scale;
+  const left = monitor.workArea.position.x / scale;
+  const top = monitor.workArea.position.y / scale;
+  const width = monitor.workArea.size.width / scale;
+  const height = monitor.workArea.size.height / scale;
   return clampPetWindowPosition(
     savedX ?? left + width - PET_WIDTH - 28,
     savedY ?? top + height - PET_HEIGHT - 52,
@@ -66,10 +66,10 @@ async function petChatPosition(): Promise<{ x?: number; y?: number }> {
   const monitor = petMonitor ?? await currentMonitor().catch(() => null);
   if (!monitor) return {};
   const scale = monitor.scaleFactor || 1;
-  const left = monitor.position.x / scale;
-  const top = monitor.position.y / scale;
-  const width = monitor.size.width / scale;
-  const height = monitor.size.height / scale;
+  const left = monitor.workArea.position.x / scale;
+  const top = monitor.workArea.position.y / scale;
+  const width = monitor.workArea.size.width / scale;
+  const height = monitor.workArea.size.height / scale;
   const petX = petPosition ? petPosition.x / scale : left + width - PET_WIDTH - 28;
   const petY = petPosition ? petPosition.y / scale : top + height - PET_HEIGHT - 52;
   let x = petX - PET_CHAT_WIDTH - 12;

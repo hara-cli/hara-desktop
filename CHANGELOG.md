@@ -1,13 +1,26 @@
 # Changelog
 
+## 0.1.77 — 2026-08-14 — migrate companion geometry safely
+
+- Stop the native window-state plugin from restoring sizes for the fixed pet and pet-chat windows. A
+  `0.1.75` Retina installation could otherwise restore the former `224x230` physical pet viewport as
+  `112x115` logical pixels and override `0.1.76`'s larger renderer, leaving only Mila's torso visible.
+- Resolve saved companion positions against each monitor's usable work area, then clamp the complete
+  `260x240` logical viewport before creation. Legacy edge positions remain useful without allowing the
+  Dock, taskbar, a removed display, or stale native geometry to crop the character or chat action.
+- Keep the exact source-pixel atlas renderer introduced in `0.1.76` and add regression coverage for the
+  native persistence boundary. Bundle unchanged Hara CLI `0.147.2`; conversations, projects, schedules,
+  Artifacts, presentations, and pet packages require no migration. Windows packages remain updater-signed
+  but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.76 — 2026-08-14 — complete companion frames and bounded placement
 
 - Render local v1/v2 companion atlases through an exact source-pixel Canvas crop instead of moving the
-  complete sheet with percentage offsets. Full heads, feet, wide poses, and every animated row now stay
-  inside the transparent companion window under Retina scaling and WebKit layout.
-- Give the companion and its chat action separate space, enlarge the fixed transparent viewport, and clamp
-  legacy saved positions to the correct positive- or negative-origin display. An upgraded companion can no
-  longer reopen partly outside the visible screen simply because its viewport became larger.
+  complete sheet with percentage offsets, preventing neighboring cells from bleeding into a correctly
+  sized transparent companion window under Retina scaling and WebKit layout.
+- Give the companion and its chat action separate space, enlarge the intended fixed transparent viewport,
+  and add positive- and negative-origin display clamping. Migration of native sizes saved by older Desktop
+  builds is completed in `0.1.77`.
 - Validate all three installed Codex v2 pets against the 8×11 atlas contract and record the staged Hara
   mascot, custom-asset service, replay, and optional 3D workforce architecture. Bundle unchanged Hara CLI
   `0.147.2` at exact verified commit `7f3ca032c06b58b189ce63f583cb5ec1016c2d63`; conversations, projects,

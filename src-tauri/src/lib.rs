@@ -552,6 +552,13 @@ fn recover_main_window_if_offscreen<R: tauri::Runtime>(
     Ok(true)
 }
 
+fn should_track_window_state(label: &str) -> bool {
+    // Companion windows have fixed runtime geometry and their positions live in the main renderer's
+    // bounded preference state. Restoring an older native size here can override new min/max values
+    // before the transparent webview is shown (notably 224x230 physical -> 112x115 on Retina).
+    label == "main"
+}
+
 #[cfg(target_os = "macos")]
 fn reopen_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
     use tauri::Manager;
@@ -2748,7 +2755,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_filter(should_track_window_state)
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             read_discovery,
             start_serve,
@@ -3872,6 +3883,13 @@ mod pet_tests {
         assert_eq!(sprite_geometry(1536, 2288, Some(2)).unwrap(), (2, 11));
         assert!(sprite_geometry(1536, 2288, Some(1)).is_err());
         assert!(sprite_geometry(1536, 2000, None).is_err());
+    }
+
+    #[test]
+    fn only_the_main_window_uses_persistent_native_geometry() {
+        assert!(should_track_window_state("main"));
+        assert!(!should_track_window_state("pet"));
+        assert!(!should_track_window_state("pet-chat"));
     }
 
     #[test]
