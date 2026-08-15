@@ -208,8 +208,7 @@ type SettingsSection =
   | "lang"
   | "modules"
   | "pets"
-  | "plugins"
-  | "skills";
+  | "capabilities";
 
 const loadGroups = () => import("./Groups");
 const loadAutomations = () => import("./Automations");
@@ -273,7 +272,7 @@ const preloadSettingsSection = (section: SettingsSection): void => {
     warmModule(Promise.all([loadProviderSettings(), loadGatewaySettings()]));
   } else if (section === "pets") {
     warmModule(loadDesktopCompanionSettings());
-  } else if (section === "plugins") {
+  } else if (section === "capabilities") {
     warmModule(loadCapabilityDirectory());
   }
 };
@@ -891,6 +890,8 @@ export default function App() {
     [pluginNavigation],
   );
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
+  const capabilitySkillsCwdRef = useRef<string | undefined>(undefined);
+  const capabilityCatalogRequestRef = useRef(0);
   const [panelBusy, setPanelBusy] = useState("");
   const [starterBusy, setStarterBusy] = useState(false);
   const [assistantCreating, setAssistantCreating] = useState(false);
@@ -1585,6 +1586,9 @@ export default function App() {
 
   const setZone = (z: Zone): boolean => {
     const previousZone = zoneRef.current;
+    const capabilitySkillCwd = z === "settings"
+      ? sessionsRef.current.find((session) => session.id === activeRef.current)?.cwd
+      : undefined;
     if (z !== previousZone && !discardCurrentExtensionDraft()) return false;
     preloadPlace(z);
     if (z === "settings") preloadSettingsSection(setSec);
@@ -1613,14 +1617,19 @@ export default function App() {
     if (z === "office") void refreshArtifacts();
     const settingsClient = z === "settings" ? clientRef.current : null;
     if (settingsClient) {
-      void Promise.all([settingsClient.listPlugins(), settingsClient.listSkills()]).then(([pl, sk]) => {
-        if (clientRef.current !== settingsClient) return;
+      const requestId = ++capabilityCatalogRequestRef.current;
+      capabilitySkillsCwdRef.current = capabilitySkillCwd;
+      setSkills(null);
+      void Promise.all([settingsClient.listPlugins(), settingsClient.listSkills(capabilitySkillCwd)]).then(([pl, sk]) => {
+        if (clientRef.current !== settingsClient || capabilityCatalogRequestRef.current !== requestId) return;
         pluginsRef.current = pl.plugins;
         setPlugins(pl.plugins);
         setSkills(sk.skills);
       }).catch(() => {});
       void refreshGroupsDirectory();
       void refreshPets();
+    } else {
+      capabilityCatalogRequestRef.current += 1;
     }
     if (z === "auto" && clientRef.current) {
       void refreshAuto();
@@ -2576,7 +2585,11 @@ export default function App() {
     const previous = clientRef.current;
     clientRef.current = null;
     pluginsRef.current = null;
+    skillsRef.current = null;
+    capabilityCatalogRequestRef.current += 1;
+    capabilitySkillsCwdRef.current = undefined;
     setPlugins(null);
+    setSkills(null);
     setProjPanels({});
     clearExtensionDock();
     attachedSessionsRef.current.clear();
@@ -2625,7 +2638,11 @@ export default function App() {
         clientRef.current = null;
         if (plannedUpdateRestartRef.current) return;
         pluginsRef.current = null;
+        skillsRef.current = null;
+        capabilityCatalogRequestRef.current += 1;
+        capabilitySkillsCwdRef.current = undefined;
         setPlugins(null);
+        setSkills(null);
         setProjPanels({});
         clearExtensionDock();
         for (const [sessionId, running] of Object.entries(busyRef.current)) {
@@ -4512,9 +4529,14 @@ export default function App() {
     }
     try {
       await c.setPlugin(name, enabled);
-      const pl = await c.listPlugins();
+      const [pl, sk] = await Promise.all([
+        c.listPlugins(),
+        c.listSkills(capabilitySkillsCwdRef.current).catch(() => null),
+      ]);
       pluginsRef.current = pl.plugins;
       setPlugins(pl.plugins);
+      skillsRef.current = null;
+      if (sk) setSkills(sk.skills);
       if (!enabled) {
         setProjPanels((current) =>
           Object.fromEntries(
@@ -6783,8 +6805,7 @@ export default function App() {
                   items: [
                     ["modules", t("setModules")],
                     ["pets", t("setPets")],
-                    ["plugins", t("setPlugins")],
-                    ["skills", t("setSkills")],
+                    ["capabilities", t("setCapabilities")],
                   ],
                 },
               ] as const
@@ -7270,7 +7291,7 @@ export default function App() {
                 />
               </Suspense>
             )}
-            {setSec === "plugins" && (
+            {setSec === "capabilities" && (
               <Suspense
                 fallback={(
                   <div className="settings-empty" role="status">
@@ -7280,6 +7301,8 @@ export default function App() {
               >
                 <CapabilityDirectory
                   plugins={plugins}
+                  skills={skills}
+                  isSkillCreating={assistantCreating}
                   isPanelBusy={(pluginName, panelId) =>
                     panelBusy === panelOperationKey(pluginName, panelId)}
                   core={[
@@ -7296,13 +7319,14 @@ export default function App() {
                   } : undefined}
                   copy={{
                     eyebrow: t("settingsCapabilities"),
-                    title: t("setPlugins"),
+                    title: t("setCapabilities"),
                     description: t("capabilitiesDescription"),
                     search: t("capabilityDirectorySearch"),
                     hara: t("capabilitySourceHara"),
                     organization: t("capabilitySourceOrganization"),
                     market: t("capabilitySourceMarket"),
                     installed: t("capabilitySourceInstalled"),
+                    mySkills: t("capabilitySourceSkills"),
                     included: t("capabilityIncluded"),
                     openCore: t("capabilityOpenCore"),
                     currentOrganization: t("capabilityCurrentOrganization"),
@@ -7332,7 +7356,20 @@ export default function App() {
                     showPanelInSidebar: t("showPanelInSidebar"),
                     hidePanelFromSidebar: t("hidePanelFromSidebar"),
                     noResults: t("capabilityNoResults"),
+                    createSkill: t("createSkill"),
+                    skillConversationStarting: t("skillConversationStarting"),
+                    skillBuilderTitle: t("skillBuilderTitle"),
+                    skillBuilderDescription: t("skillBuilderDescription"),
+                    skillBuilderSafetyTitle: t("skillBuilderSafetyTitle"),
+                    skillBuilderSafetyDescription: t("skillBuilderSafetyDescription"),
+                    availableSkills: t("availableSkills"),
+                    availableSkillsHint: t("availableSkillsHint"),
+                    noSkills: t("noSkills"),
+                    skillSourceProject: t("skillSourceProject"),
+                    skillSourcePersonal: t("skillSourcePersonal"),
+                    skillSourceCapability: t("skillSourceCapability"),
                   }}
+                  onCreateSkill={() => void startSkillCreation()}
                   onTogglePlugin={(name, enabled) => void togglePlugin(name, enabled)}
                   onOpenPanel={(pluginName, panel) => void openPanel(pluginName, panel)}
                   panelInDock={(pluginName, panelId) => {
@@ -7348,57 +7385,6 @@ export default function App() {
                   }}
                 />
               </Suspense>
-            )}
-            {setSec === "skills" && (
-              <SettingsPage
-                id="settings-skills-title"
-                eyebrow={t("settingsCapabilities")}
-                title={t("setSkills")}
-                description={t("skillsDescription")}
-                actions={(
-                  <button
-                    type="button"
-                    disabled={assistantCreating}
-                    onClick={() => void startSkillCreation()}
-                  >
-                    {assistantCreating ? t("skillConversationStarting") : t("createSkill")}
-                  </button>
-                )}
-              >
-                <SettingsCard
-                  title={t("skillBuilderTitle")}
-                  description={t("skillBuilderDescription")}
-                >
-                  <SettingsNotice title={t("skillBuilderSafetyTitle")}>
-                    {t("skillBuilderSafetyDescription")}
-                  </SettingsNotice>
-                </SettingsCard>
-                <SettingsCard title={t("availableSkills")} description={t("availableSkillsHint")}>
-                  {(skills ?? []).length === 0 ? (
-                    <div className="settings-empty">{t("noSkills")}</div>
-                  ) : (
-                    <div className="settings-skill-list">
-                      {(skills ?? []).map((s) => (
-                        <div key={s.id} className="skill">
-                          <span>
-                            <strong className="skill-id">{s.id}</strong>
-                            <small>{s.description}</small>
-                          </span>
-                          <SettingsBadge>
-                            {s.source === "project"
-                              ? t("skillSourceProject")
-                              : s.source === "global"
-                                ? t("skillSourcePersonal")
-                                : s.source === "plugin"
-                                  ? t("skillSourceCapability")
-                                  : s.source}
-                          </SettingsBadge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </SettingsCard>
-              </SettingsPage>
             )}
           </div>
         </div>

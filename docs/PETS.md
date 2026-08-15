@@ -77,6 +77,15 @@ long-term registry and never a write target. A future installer must copy an exp
 license-compatible package through Hara's validator into its own root. Hara must not upload, mutate,
 or silently claim ownership of a Codex package.
 
+Hara Desktop also ships eleven code-owned official companions derived from the Hara mark. They are
+read-only application assets rather than local packages, so selecting one never invokes the native
+package reader and never writes to either package root. The canonical `builtin:hara` selector remains
+stable for existing users; ten additional provider-qualified selectors add development, design,
+research, data, documents, presentations, automation, review, connections, and ambient companion
+roles. The first release uses transparent character renders with Desktop-owned semantic status
+motion. Those assets are not advertised as v2 atlases; the v2 geometry below remains the later
+full-animation target.
+
 The client should introduce a source-neutral `PetProvider` boundary before adding a remote catalog:
 
 - `builtin`: the code-native Hara companion;
@@ -161,8 +170,9 @@ does not silently delete locally installed public packages.
 
 ## Delivery phases
 
-1. **Local foundation (current):** built-in Hara pet, validated Hara/Codex v1/v2 discovery, typed task
-   states, and a least-privilege companion chat for messages, steering, and one-time approvals.
+1. **Local foundation (current):** eleven built-in Hara companions, validated Hara/Codex v1/v2
+   discovery, typed task states, and a least-privilege companion chat for messages, steering, and
+   one-time approvals.
 2. **Independent creation:** publish the Hara v2 generation/validation skill and explicit local import;
    add install receipts (`source`, version, hashes, license) without adding an account.
 3. **Open market:** signed public catalog, CDN downloads, atomic install/update/rollback, no login.

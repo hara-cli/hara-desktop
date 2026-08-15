@@ -4,7 +4,14 @@ import { emitTo, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DEFAULT_PET_SELECTOR, PET_SELECTOR_KEY } from "./pet-runtime";
-import type { PetAsset, PetConfig, PetSnapshot, PetStatus } from "./pets";
+import {
+  officialPetForSelector,
+  type OfficialPet,
+  type PetAsset,
+  type PetConfig,
+  type PetSnapshot,
+  type PetStatus,
+} from "./pets";
 import "./PetOverlay.css";
 
 type MoveDirection = "left" | "right" | null;
@@ -101,6 +108,32 @@ function HaraPet({ status, reduced }: { status: PetStatus; reduced: boolean }) {
   );
 }
 
+function OfficialImagePet({
+  pet,
+  status,
+  movement,
+  reduced,
+}: {
+  pet: OfficialPet;
+  status: PetStatus;
+  movement: MoveDirection;
+  reduced: boolean;
+}) {
+  return (
+    <div
+      className={`hara-pet official-image-pet hara-pet-${movement ? "running" : status} ${reduced ? "reduced" : ""}`}
+      aria-hidden="true"
+    >
+      <img
+        src={pet.imageUrl}
+        alt=""
+        draggable={false}
+        className={movement ? `official-image-pet-${movement}` : undefined}
+      />
+    </div>
+  );
+}
+
 function statusText(status: PetStatus, zh: boolean): string {
   const copy = zh
     ? { idle: "待命", running: "处理中", waiting: "需要你确认", paused: "已暂停，可继续", ready: "任务完成", blocked: "遇到问题" }
@@ -119,9 +152,10 @@ export default function PetOverlay() {
   const lastX = useRef<number | null>(null);
   const movedDuringPointer = useRef(false);
   const zh = useMemo(() => (localStorage.getItem("hara.locale") || navigator.language).toLowerCase().startsWith("zh"), []);
+  const officialPet = useMemo(() => officialPetForSelector(selector), [selector]);
 
   useEffect(() => {
-    if (selector === "builtin:hara") {
+    if (officialPet) {
       setAsset(null);
       setAssetError("");
       return;
@@ -135,7 +169,7 @@ export default function PetOverlay() {
     return () => {
       current = false;
     };
-  }, [selector]);
+  }, [officialPet, selector]);
 
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
@@ -224,7 +258,18 @@ export default function PetOverlay() {
         </svg>
       </button>
       <button className="pet-stage" aria-label={zh ? "打开 Hara" : "Open Hara"} onPointerDown={beginDrag} onClick={() => void openActivity()}>
-        {asset && !assetError ? <AtlasPet asset={asset} status={snapshot.status} movement={movement} reduced={reduced} /> : <HaraPet status={snapshot.status} reduced={reduced} />}
+        {officialPet ? (
+          <OfficialImagePet
+            pet={officialPet}
+            status={snapshot.status}
+            movement={movement}
+            reduced={reduced}
+          />
+        ) : asset && !assetError ? (
+          <AtlasPet asset={asset} status={snapshot.status} movement={movement} reduced={reduced} />
+        ) : (
+          <HaraPet status={snapshot.status} reduced={reduced} />
+        )}
       </button>
     </main>
   );

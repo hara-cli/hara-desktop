@@ -1,5 +1,11 @@
+import type { CSSProperties } from "react";
 import type { Key } from "../i18n";
-import { BUILTIN_HARA_PET, type PetCatalogEntry } from "../pets";
+import {
+  OFFICIAL_HARA_PETS,
+  officialPetCopy,
+  type OfficialPet,
+  type PetCatalogEntry,
+} from "../pets";
 import {
   SettingsBadge,
   SettingsCard,
@@ -16,6 +22,51 @@ interface DesktopCompanionSettingsProps {
   onToggleAwake: () => void;
   onRefresh: () => void;
   onSelect: (selector: string) => void;
+}
+
+interface PetCardProps {
+  pet: PetCatalogEntry;
+  selected: boolean;
+  source: string;
+  role?: string;
+  imageUrl?: string;
+  accent?: string;
+  onSelect: (selector: string) => void;
+}
+
+function PetCard({
+  pet,
+  selected,
+  source,
+  role,
+  imageUrl,
+  accent,
+  onSelect,
+}: PetCardProps) {
+  return (
+    <button
+      type="button"
+      className={`pet-card ${selected ? "on" : ""} ${pet.compatible ? "" : "invalid"}`}
+      disabled={!pet.compatible}
+      title={pet.error || pet.description}
+      aria-pressed={selected}
+      onClick={() => onSelect(pet.selector)}
+      style={accent ? { "--pet-card-accent": accent } as CSSProperties : undefined}
+    >
+      <span className={`pet-card-mark ${imageUrl ? "has-image" : ""}`}>
+        {imageUrl ? (
+          <img src={imageUrl} alt="" loading="lazy" decoding="async" aria-hidden="true" />
+        ) : (
+          pet.displayName.slice(0, 1).toUpperCase()
+        )}
+      </span>
+      <span className="pet-card-copy">
+        <strong>{pet.displayName}</strong>
+        <small>{role ? `${source} · ${role}` : `${source}${pet.spriteVersionNumber ? ` · v${pet.spriteVersionNumber}` : ""}`}</small>
+      </span>
+      {selected ? <span className="pet-selected">✓</span> : null}
+    </button>
+  );
 }
 
 function sourceLabel(pet: PetCatalogEntry, t: DesktopCompanionSettingsProps["t"]): string {
@@ -42,7 +93,9 @@ export function DesktopCompanionSettings({
   onRefresh,
   onSelect,
 }: DesktopCompanionSettingsProps) {
-  const entries = [BUILTIN_HARA_PET, ...catalog];
+  const locale = (localStorage.getItem("hara.locale") || navigator.language)
+    .toLowerCase()
+    .startsWith("zh") ? "zh" : "en";
   return (
     <SettingsPage
       id="settings-pet-title"
@@ -72,36 +125,57 @@ export function DesktopCompanionSettings({
       </SettingsCard>
 
       <SettingsCard title={t("petChoose")} description={t("petChooseHint")}>
-        <div className="pet-grid">
-          {entries.map((pet) => (
-            <button
-              type="button"
-              key={pet.selector}
-              className={`pet-card ${selector === pet.selector ? "on" : ""} ${
-                pet.compatible ? "" : "invalid"
-              }`}
-              disabled={!pet.compatible}
-              title={pet.error || pet.description}
-              aria-pressed={selector === pet.selector}
-              onClick={() => onSelect(pet.selector)}
-            >
-              <span className="pet-card-mark">
-                {pet.selector === BUILTIN_HARA_PET.selector
-                  ? "ハ"
-                  : pet.displayName.slice(0, 1).toUpperCase()}
-              </span>
-              <span className="pet-card-copy">
-                <strong>{pet.displayName}</strong>
-                <small>
-                  {sourceLabel(pet, t)}
-                  {pet.spriteVersionNumber ? ` · v${pet.spriteVersionNumber}` : ""}
-                </small>
-              </span>
-              {selector === pet.selector && <span className="pet-selected">✓</span>}
-            </button>
-          ))}
-        </div>
-        {catalog.length === 0 && !error && <div className="settings-empty">{t("petNone")}</div>}
+        <section className="pet-collection" aria-labelledby="pet-official-title">
+          <header className="pet-collection-header">
+            <div>
+              <strong id="pet-official-title">{t("petOfficialCollection")}</strong>
+              <small>{t("petOfficialCollectionHint")}</small>
+            </div>
+            <span>11</span>
+          </header>
+          <div className="pet-grid pet-grid-official">
+            {OFFICIAL_HARA_PETS.map((pet: OfficialPet) => {
+              const copy = officialPetCopy(pet, locale);
+              return (
+                <PetCard
+                  key={pet.selector}
+                  pet={{ ...pet, displayName: copy.displayName, description: copy.description }}
+                  selected={selector === pet.selector}
+                  source={t("petBuiltin")}
+                  role={copy.role}
+                  imageUrl={pet.imageUrl}
+                  accent={pet.accent}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="pet-collection" aria-labelledby="pet-local-title">
+          <header className="pet-collection-header">
+            <div>
+              <strong id="pet-local-title">{t("petLocalCollection")}</strong>
+              <small>{t("petLocalCollectionHint")}</small>
+            </div>
+            <span>{catalog.length}</span>
+          </header>
+          {catalog.length > 0 ? (
+            <div className="pet-grid">
+              {catalog.map((pet) => (
+                <PetCard
+                  key={pet.selector}
+                  pet={pet}
+                  selected={selector === pet.selector}
+                  source={sourceLabel(pet, t)}
+                  onSelect={onSelect}
+                />
+              ))}
+            </div>
+          ) : !error ? (
+            <div className="settings-empty">{t("petNone")}</div>
+          ) : null}
+        </section>
         {error && <div className="settings-inline-error">{error}</div>}
       </SettingsCard>
     </SettingsPage>

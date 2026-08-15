@@ -4039,14 +4039,20 @@ button:focus-visible,
 .capability-directory-tabs {
   display: flex;
   min-width: 0;
+  overflow-x: auto;
   gap: 3px;
   padding: 3px;
   border: 1px solid #2f2f34;
   border-radius: 10px;
   background: #151518;
+  scrollbar-width: none;
+}
+.capability-directory-tabs::-webkit-scrollbar {
+  display: none;
 }
 .capability-directory-tabs button {
   display: flex;
+  flex: 0 0 auto;
   min-height: 32px;
   align-items: center;
   gap: 7px;
@@ -4166,6 +4172,11 @@ button:focus-visible,
 }
 .capability-installed-list .plug {
   min-height: 82px;
+}
+.capability-skills-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 .module-dock-list {
   display: flex;
@@ -4296,6 +4307,10 @@ button:focus-visible,
   gap: 20px;
   padding: 12px 18px;
   border-bottom: 1px solid #242429;
+  transition: background 120ms ease;
+}
+.settings-skill-list .skill:hover {
+  background: #18181b;
 }
 .settings-skill-list .skill:last-child {
   border-bottom: 0;
@@ -4371,6 +4386,9 @@ button:focus-visible,
   .settings-capability-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+  .capability-skills-panel .settings-card-head {
+    flex-direction: column;
   }
   .settings-notice {
     grid-template-columns: 8px minmax(0, 1fr);
@@ -5268,14 +5286,63 @@ button.provider-preset.enterprise.on {
 
 .pet-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 10px;
-  max-width: 640px;
+  width: 100%;
+}
+
+.pet-collection {
+  display: grid;
+  gap: 12px;
+  padding: 4px 0 18px;
+}
+
+.pet-collection + .pet-collection {
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.pet-collection-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.pet-collection-header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.pet-collection-header strong {
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.pet-collection-header small {
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.pet-collection-header > span {
+  min-width: 24px;
+  color: var(--dim);
+  font: 600 10px/22px ui-monospace, "SFMono-Regular", Menlo, monospace;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.pet-grid-official {
+  content-visibility: auto;
+  contain-intrinsic-size: 430px;
 }
 
 .pet-card {
   min-width: 0;
-  min-height: 64px;
+  min-height: 78px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -5292,8 +5359,8 @@ button.provider-preset.enterprise.on {
 }
 
 .pet-card.on {
-  border-color: rgba(217, 68, 44, 0.75);
-  box-shadow: inset 0 0 0 1px rgba(217, 68, 44, 0.2);
+  border-color: var(--pet-card-accent, rgba(217, 68, 44, 0.75));
+  box-shadow: inset 3px 0 0 var(--pet-card-accent, #d9442c);
 }
 
 .pet-card.invalid {
@@ -5301,15 +5368,29 @@ button.provider-preset.enterprise.on {
 }
 
 .pet-card-mark {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
+  width: 50px;
+  height: 54px;
+  flex: 0 0 50px;
   color: #f6eee6;
-  font: 700 17px/38px ui-serif, "Songti SC", serif;
+  font: 700 17px/54px ui-serif, "Songti SC", serif;
   text-align: center;
   border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 13px;
-  background: radial-gradient(circle at 34% 28%, #4a4647, #222124 68%);
+  border-radius: 8px;
+  background: #222124;
+  overflow: hidden;
+}
+
+.pet-card-mark.has-image {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--pet-card-accent, #d9442c) 16%, #242326), #19191b 68%);
+}
+
+.pet-card-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
 }
 
 .pet-card-copy {
@@ -5334,6 +5415,12 @@ button.provider-preset.enterprise.on {
 .pet-card-copy small {
   color: var(--dim);
   font-size: 10px;
+}
+
+@media (max-width: 860px) {
+  .pet-grid {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
 }
 
 .pet-selected {

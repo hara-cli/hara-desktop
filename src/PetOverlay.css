@@ -236,6 +236,33 @@ html.pet-mode #root {
   pointer-events: none;
 }
 
+.official-image-pet {
+  inset: auto auto 1px 4px;
+  width: 176px;
+  height: 191px;
+  filter: drop-shadow(0 12px 8px rgba(0, 0, 0, 0.22));
+}
+
+.official-image-pet img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  transform-origin: 50% 82%;
+  transition: transform 120ms ease;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.official-image-pet-left {
+  transform: scaleX(-1);
+}
+
+.official-image-pet-right {
+  transform: scaleX(1);
+}
+
 .hara-aura {
   position: absolute;
   left: 27px;

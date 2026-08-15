@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from "react";
 import type {
   PanelSpec,
   PluginInfo,
+  SkillInfo,
 } from "./client";
 import {
   SettingsBadge,
@@ -11,12 +12,13 @@ import {
   SettingsPage,
 } from "./SettingsUI";
 
-type DirectorySource = "hara" | "organization" | "market" | "installed";
-const DIRECTORY_SOURCES: DirectorySource[] = [
+type DirectoryView = "hara" | "organization" | "market" | "installed" | "skills";
+const DIRECTORY_VIEWS: DirectoryView[] = [
   "hara",
   "organization",
   "market",
   "installed",
+  "skills",
 ];
 
 interface CoreCapability {
@@ -41,6 +43,7 @@ interface CapabilityDirectoryCopy {
   organization: string;
   market: string;
   installed: string;
+  mySkills: string;
   included: string;
   openCore: string;
   currentOrganization: string;
@@ -70,14 +73,29 @@ interface CapabilityDirectoryCopy {
   showPanelInSidebar: string;
   hidePanelFromSidebar: string;
   noResults: string;
+  createSkill: string;
+  skillConversationStarting: string;
+  skillBuilderTitle: string;
+  skillBuilderDescription: string;
+  skillBuilderSafetyTitle: string;
+  skillBuilderSafetyDescription: string;
+  availableSkills: string;
+  availableSkillsHint: string;
+  noSkills: string;
+  skillSourceProject: string;
+  skillSourcePersonal: string;
+  skillSourceCapability: string;
 }
 
 interface CapabilityDirectoryProps {
   copy: CapabilityDirectoryCopy;
   core: CoreCapability[];
   plugins: PluginInfo[] | null;
+  skills: SkillInfo[] | null;
   organization?: OrganizationCapabilityContext;
+  isSkillCreating: boolean;
   isPanelBusy: (pluginName: string, panelId: string) => boolean;
+  onCreateSkill: () => void;
   onTogglePlugin: (name: string, enabled: boolean) => void;
   onOpenPanel: (pluginName: string, panel: PanelSpec) => void;
   panelInDock: (pluginName: string, panelId: string) => boolean;
@@ -90,20 +108,24 @@ export function CapabilityDirectory({
   copy,
   core,
   plugins,
+  skills,
   organization,
+  isSkillCreating,
   isPanelBusy,
+  onCreateSkill,
   onTogglePlugin,
   onOpenPanel,
   panelInDock,
   onTogglePanelInDock,
 }: CapabilityDirectoryProps) {
-  const [source, setSource] = useState<DirectorySource>("hara");
+  const [view, setView] = useState<DirectoryView>("hara");
   const [query, setQuery] = useState("");
-  const tabRefs = useRef<Record<DirectorySource, HTMLButtonElement | null>>({
+  const tabRefs = useRef<Record<DirectoryView, HTMLButtonElement | null>>({
     hara: null,
     organization: null,
     market: null,
     installed: null,
+    skills: null,
   });
   const needle = normalized(query);
   const visibleCore = useMemo(
@@ -116,24 +138,29 @@ export function CapabilityDirectory({
       !needle || normalized(`${item.name} ${item.description}`).includes(needle)),
     [plugins, needle],
   );
-  const selectSource = (next: DirectorySource, focus = false) => {
-    setSource(next);
+  const visibleSkills = useMemo(
+    () => (skills ?? []).filter((item) =>
+      !needle || normalized(`${item.id} ${item.description}`).includes(needle)),
+    [skills, needle],
+  );
+  const selectView = (next: DirectoryView, focus = false) => {
+    setView(next);
     setQuery("");
     if (focus) queueMicrotask(() => tabRefs.current[next]?.focus());
   };
   const moveTabFocus = (
     event: React.KeyboardEvent<HTMLButtonElement>,
-    current: DirectorySource,
+    current: DirectoryView,
   ) => {
     let nextIndex: number | undefined;
-    const currentIndex = DIRECTORY_SOURCES.indexOf(current);
-    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % DIRECTORY_SOURCES.length;
-    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + DIRECTORY_SOURCES.length) % DIRECTORY_SOURCES.length;
+    const currentIndex = DIRECTORY_VIEWS.indexOf(current);
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % DIRECTORY_VIEWS.length;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + DIRECTORY_VIEWS.length) % DIRECTORY_VIEWS.length;
     if (event.key === "Home") nextIndex = 0;
-    if (event.key === "End") nextIndex = DIRECTORY_SOURCES.length - 1;
+    if (event.key === "End") nextIndex = DIRECTORY_VIEWS.length - 1;
     if (nextIndex === undefined) return;
     event.preventDefault();
-    selectSource(DIRECTORY_SOURCES[nextIndex], true);
+    selectView(DIRECTORY_VIEWS[nextIndex], true);
   };
 
   return (
@@ -143,35 +170,37 @@ export function CapabilityDirectory({
       title={copy.title}
       description={copy.description}
     >
-      <div className={`capability-directory-toolbar is-${source}`}>
+      <div className={`capability-directory-toolbar is-${view}`}>
         <div className="capability-directory-tabs" role="tablist" aria-label={copy.title}>
           {([
             ["hara", copy.hara],
             ["organization", copy.organization],
             ["market", copy.market],
             ["installed", copy.installed],
+            ["skills", copy.mySkills],
           ] as const).map(([id, label]) => (
             <button
               type="button"
               role="tab"
               id={`capability-tab-${id}`}
               aria-controls={`capability-panel-${id}`}
-              aria-selected={source === id}
-              tabIndex={source === id ? 0 : -1}
-              className={source === id ? "is-active" : ""}
+              aria-selected={view === id}
+              tabIndex={view === id ? 0 : -1}
+              className={view === id ? "is-active" : ""}
               key={id}
               ref={(element) => {
                 tabRefs.current[id] = element;
               }}
-              onClick={() => selectSource(id)}
+              onClick={() => selectView(id)}
               onKeyDown={(event) => moveTabFocus(event, id)}
             >
               {label}
               {id === "installed" && plugins ? <span>{plugins.length}</span> : null}
+              {id === "skills" && skills ? <span>{skills.length}</span> : null}
             </button>
           ))}
         </div>
-        {source === "hara" || source === "installed" ? (
+        {view === "hara" || view === "installed" || view === "skills" ? (
           <input
             type="search"
             value={query}
@@ -182,7 +211,7 @@ export function CapabilityDirectory({
         ) : null}
       </div>
 
-      {source === "hara" ? (
+      {view === "hara" ? (
         <section
           role="tabpanel"
           id="capability-panel-hara"
@@ -211,7 +240,7 @@ export function CapabilityDirectory({
         </section>
       ) : null}
 
-      {source === "organization" ? (
+      {view === "organization" ? (
         <section
           role="tabpanel"
           id="capability-panel-organization"
@@ -246,7 +275,7 @@ export function CapabilityDirectory({
         </section>
       ) : null}
 
-      {source === "market" ? (
+      {view === "market" ? (
         <section
           role="tabpanel"
           id="capability-panel-market"
@@ -260,7 +289,7 @@ export function CapabilityDirectory({
         </section>
       ) : null}
 
-      {source === "installed" ? (
+      {view === "installed" ? (
         <section
           role="tabpanel"
           id="capability-panel-installed"
@@ -323,6 +352,58 @@ export function CapabilityDirectory({
                         {plugin.enabled ? copy.enabled : copy.disabled}
                       </button>
                     </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SettingsCard>
+        </section>
+      ) : null}
+
+      {view === "skills" ? (
+        <section
+          className="capability-skills-panel"
+          role="tabpanel"
+          id="capability-panel-skills"
+          aria-labelledby="capability-tab-skills"
+        >
+          <SettingsCard
+            title={copy.skillBuilderTitle}
+            description={copy.skillBuilderDescription}
+            aside={(
+              <button type="button" disabled={isSkillCreating} onClick={onCreateSkill}>
+                {isSkillCreating ? copy.skillConversationStarting : copy.createSkill}
+              </button>
+            )}
+          >
+            <SettingsNotice title={copy.skillBuilderSafetyTitle}>
+              {copy.skillBuilderSafetyDescription}
+            </SettingsNotice>
+          </SettingsCard>
+          <SettingsCard title={copy.availableSkills} description={copy.availableSkillsHint}>
+            {skills === null ? (
+              <div className="settings-empty">{copy.loading}</div>
+            ) : visibleSkills.length === 0 ? (
+              <div className="settings-empty">
+                <strong>{needle ? copy.noResults : copy.noSkills}</strong>
+              </div>
+            ) : (
+              <div className="settings-skill-list">
+                {visibleSkills.map((skill) => (
+                  <div key={skill.id} className="skill">
+                    <span>
+                      <strong className="skill-id">{skill.id}</strong>
+                      <small title={skill.description}>{skill.description}</small>
+                    </span>
+                    <SettingsBadge>
+                      {skill.source === "project"
+                        ? copy.skillSourceProject
+                        : skill.source === "global"
+                          ? copy.skillSourcePersonal
+                          : skill.source === "plugin"
+                            ? copy.skillSourceCapability
+                            : skill.source}
+                    </SettingsBadge>
                   </div>
                 ))}
               </div>

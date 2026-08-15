@@ -6,6 +6,9 @@ import {
   acknowledgePetActivity,
   BUILTIN_HARA_PET,
   clampPetWindowPosition,
+  OFFICIAL_HARA_PETS,
+  officialPetCopy,
+  officialPetForSelector,
   selectPetSnapshot,
   setPetActivity,
 } from "../src/pets.ts";
@@ -22,6 +25,27 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 test("built-in pet provenance is independent from local and future market providers", () => {
   assert.equal(BUILTIN_HARA_PET.source, "builtin");
   assert.equal(BUILTIN_HARA_PET.selector, "builtin:hara");
+});
+
+test("the public Hara companion family contains eleven unique code-owned characters", () => {
+  assert.equal(OFFICIAL_HARA_PETS.length, 11);
+  assert.equal(new Set(OFFICIAL_HARA_PETS.map((pet) => pet.selector)).size, 11);
+  assert.equal(new Set(OFFICIAL_HARA_PETS.map((pet) => pet.id)).size, 11);
+  for (const pet of OFFICIAL_HARA_PETS) {
+    assert.equal(pet.source, "builtin");
+    assert.equal(pet.compatible, true);
+    assert.match(pet.selector, /^builtin:hara(?:-[a-z]+)?$/);
+    assert.equal(officialPetForSelector(pet.selector), pet);
+    assert.match(pet.imageUrl, /^\/pets\/hara-official\/hara-[a-z]+\.png$/);
+    assert.ok(pet.accent.startsWith("#"));
+    assert.ok(officialPetCopy(pet, "en").displayName.length > 0);
+    assert.ok(officialPetCopy(pet, "zh").displayName.length > 0);
+
+    const bytes = readFileSync(`${root}/public${pet.imageUrl}`);
+    assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    assert.ok(bytes.readUInt32BE(16) <= 416, `${pet.id} preview width remains bounded`);
+    assert.ok(bytes.readUInt32BE(20) <= 416, `${pet.id} preview height remains bounded`);
+  }
 });
 
 test("companion window positions are clamped inside positive and negative-origin displays", () => {
@@ -275,5 +299,9 @@ test("desktop companion owns its window bridge and registers listeners before wi
   );
   assert.match(settings, /case "codex-local":/);
   assert.match(settings, /case "hara-market":/);
+  assert.match(settings, /OFFICIAL_HARA_PETS\.map/);
+  assert.match(settings, /loading="lazy"/);
   assert.match(settings, /disabled=\{!pet\.compatible\}/);
+  assert.match(petOverlay, /officialPetForSelector\(selector\)/);
+  assert.match(petOverlay, /<OfficialImagePet/);
 });

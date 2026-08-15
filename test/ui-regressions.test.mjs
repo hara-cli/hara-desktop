@@ -471,19 +471,28 @@ test("secondary work surfaces are split from startup and preload on navigation i
   assert.match(rail, /onFocus=\{onIntentSettings\}/);
 });
 
-test("skills settings can start a safe conversational skill builder", () => {
+test("the capability center owns skills without duplicating the settings navigation", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const directory = readFileSync(`${root}/src/CapabilityDirectory.tsx`, "utf8");
   const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
 
   assert.match(
     app,
     /const startSkillCreation = async \(\) => \{[\s\S]*await startNewAssistantConversation\(\)[\s\S]*updateComposerDraft\(sessionId,[\s\S]*t\("skillCreationPrompt"\)/,
     "the builder starts in a fresh assistant conversation and prefills a guided request",
   );
-  assert.match(app, /onClick=\{\(\) => void startSkillCreation\(\)\}/);
-  assert.match(app, /s\.source === "project"[\s\S]*skillSourceProject/);
-  assert.match(app, /s\.source === "global"[\s\S]*skillSourcePersonal/);
-  assert.match(app, /s\.source === "plugin"[\s\S]*skillSourceCapability/);
+  assert.match(app, /\["capabilities", t\("setCapabilities"\)\]/);
+  assert.doesNotMatch(app, /\["skills", t\(/, "skills are a capability contribution, not a peer settings destination");
+  assert.doesNotMatch(app, /setSec === "skills"/);
+  assert.match(app, /onCreateSkill=\{\(\) => void startSkillCreation\(\)\}/);
+  assert.match(directory, /onClick=\{onCreateSkill\}/);
+  assert.match(directory, /skill\.source === "project"[\s\S]*skillSourceProject/);
+  assert.match(directory, /skill\.source === "global"[\s\S]*skillSourcePersonal/);
+  assert.match(directory, /skill\.source === "plugin"[\s\S]*skillSourceCapability/);
+  assert.match(app, /capabilityCatalogRequestRef\.current !== requestId/, "a late project skill inventory cannot replace the current capability context");
+  assert.match(css, /\.capability-directory-tabs[\s\S]*overflow-x:\s*auto/);
+  assert.match(css, /\.capability-skills-panel[\s\S]*gap:\s*14px/);
   assert.match(i18n, /Only after I explicitly confirm may you use skill_create/);
   assert.match(i18n, /只有我明确确认后，才可以调用 skill_create/);
   assert.match(i18n, /remove API keys, tokens, passwords/);
@@ -1013,21 +1022,23 @@ test("the deliverables workbench stays serve-backed and native presentations use
   assert.match(css, /@media \(prefers-reduced-motion: no-preference\)/);
 });
 
-test("the capability directory keeps Hara, organization, market, and installed sources distinct", () => {
+test("the capability directory keeps package sources and reusable skills distinct", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const directory = readFileSync(`${root}/src/CapabilityDirectory.tsx`, "utf8");
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
 
-  assert.match(directory, /type DirectorySource = "hara" \| "organization" \| "market" \| "installed"/);
+  assert.match(directory, /type DirectoryView = "hara" \| "organization" \| "market" \| "installed" \| "skills"/);
   assert.match(directory, /\["hara", copy\.hara\]/);
   assert.match(directory, /\["organization", copy\.organization\]/);
   assert.match(directory, /\["market", copy\.market\]/);
   assert.match(directory, /\["installed", copy\.installed\]/);
+  assert.match(directory, /\["skills", copy\.mySkills\]/);
   assert.match(directory, /aria-controls=\{`capability-panel-\$\{id\}`\}/);
   assert.match(directory, /event\.key === "ArrowRight"/, "directory tabs support keyboard navigation");
   assert.match(directory, /organization\.model/);
   assert.match(directory, /organization\.deskConnected/);
   assert.match(directory, /plugin\.enabled && \(plugin\.panels \?\? \[\]\)\.map/);
+  assert.match(directory, /skills === null[\s\S]*visibleSkills\.map/);
   assert.doesNotMatch(
     directory,
     /deviceToken|authorization|enrollKey/,
