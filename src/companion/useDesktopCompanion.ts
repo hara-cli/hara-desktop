@@ -4,6 +4,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   acknowledgePetActivity,
+  canonicalPetSelector,
   clearPetActivity,
   selectPetSnapshot,
   setPetActivity,
@@ -49,12 +50,15 @@ export function useDesktopCompanion({
   onChatApproval,
 }: DesktopCompanionOptions) {
   const [awake, setAwake] = useState(() => localStorage.getItem(PET_AWAKE_KEY) === "1");
-  const [selector, setSelector] = useState(
-    () => localStorage.getItem(PET_SELECTOR_KEY) || DEFAULT_PET_SELECTOR,
+  const [selector, setStoredSelector] = useState(
+    () => canonicalPetSelector(localStorage.getItem(PET_SELECTOR_KEY) || DEFAULT_PET_SELECTOR),
   );
   const [activities, setActivities] = useState<PetActivities>({});
   const [catalog, setCatalog] = useState<PetCatalogEntry[]>([]);
   const [catalogError, setCatalogError] = useState("");
+  const setSelector = useCallback((nextSelector: string) => {
+    setStoredSelector(canonicalPetSelector(nextSelector));
+  }, []);
 
   const selectorRef = useRef(selector);
   const activitiesRef = useRef(activities);

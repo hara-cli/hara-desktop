@@ -686,9 +686,63 @@ export interface TaskLifecycleEvent {
   approval?: { id: string; question: string };
 }
 
+export type WorkforceCapability =
+  | "orchestration"
+  | "files"
+  | "code"
+  | "browser"
+  | "research"
+  | "design"
+  | "office"
+  | "communication"
+  | "other";
+export type WorkforceActorState =
+  | "queued"
+  | "working"
+  | "waiting"
+  | "paused"
+  | "blocked"
+  | "completed"
+  | "failed"
+  | "cancelled";
+export type WorkforceActivity =
+  | "planning"
+  | "reading"
+  | "writing"
+  | "running"
+  | "reviewing"
+  | "awaiting_approval"
+  | "delivering"
+  | "idle";
+
+export interface WorkforceActor {
+  actorId: string;
+  parentActorId?: string;
+  kind: "root" | "subagent" | "external";
+  role?: string;
+  capability: WorkforceCapability;
+  state: WorkforceActorState;
+  activity: WorkforceActivity;
+  startedAt: string;
+  updatedAt: string;
+  endedAt?: string;
+}
+
+export interface WorkforceStateEvent {
+  version: 1;
+  streamId: string;
+  sequence: number;
+  sessionId: string;
+  taskId: string;
+  turnId: string;
+  mode: "snapshot";
+  actors: WorkforceActor[];
+}
+
 export type ServerEvent =
   | { method: "event.turn_start"; sessionId: string; taskId?: string; turnId?: string }
   | ({ method: "event.task_state" } & TaskLifecycleEvent)
+  | ({ method: "event.workforce_state" } & WorkforceStateEvent)
   | { method: "event.text"; sessionId: string; delta: string }
   | { method: "event.reasoning"; sessionId: string; delta: string }
   | { method: "event.tool"; sessionId: string; name: string; preview: string }

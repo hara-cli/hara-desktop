@@ -10,6 +10,7 @@ import {
 import {
   EXTENSION_DOCK_WIDTH_KEY,
   extensionDockWidth,
+  type ExtensionDockAddKind,
   type ExtensionDockMode,
   type ExtensionSurfaceKind,
 } from "./extension-dock-state";
@@ -27,7 +28,7 @@ interface ExtensionDockCopy {
 }
 
 export interface ExtensionDockAddItem {
-  id: "terminal" | "browser" | "files";
+  id: ExtensionDockAddKind;
   label: string;
   shortcut?: string;
   disabled?: boolean;
@@ -80,6 +81,9 @@ function DockIcon({ name }: { name: "maximize" | "restore" | "popout" | "close" 
 }
 
 function DockToolIcon({ name }: { name: ExtensionDockAddItem["id"] }) {
+  if (name === "workforce") {
+    return <svg viewBox="0 0 20 20" aria-hidden><path d="M3 15v-4l3-2 4 2 4-2 3 2v4M6 9V5h8v4M8 5V3h4v2M5 15h10" /><circle cx="10" cy="8" r="1.2" /></svg>;
+  }
   if (name === "terminal") {
     return <svg viewBox="0 0 20 20" aria-hidden><rect x="3" y="4" width="14" height="12" rx="2" /><path d="m6 8 2 2-2 2M10 12h4" /></svg>;
   }

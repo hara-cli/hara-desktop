@@ -33,6 +33,7 @@
 .extension-dock[data-kind="terminal"] { --extension-tone: #b58a6b; }
 .extension-dock[data-kind="files"] { --extension-tone: #7c91a7; }
 .extension-dock[data-kind="review"] { --extension-tone: #78a484; }
+.extension-dock[data-kind="workforce"] { --extension-tone: #ff655c; }
 .extension-dock[data-kind="capability"] { --extension-tone: #8d7aae; }
 
 .extension-dock.is-maximized {
@@ -238,6 +239,7 @@
 .extension-dock-tab[data-kind="spreadsheet"] { --tab-tone: #5f9c78; }
 .extension-dock-tab[data-kind="document"] { --tab-tone: #b8a074; }
 .extension-dock-tab[data-kind="design"] { --tab-tone: #dc5b45; }
+.extension-dock-tab[data-kind="workforce"] { --tab-tone: #ff655c; }
 .extension-dock-tab[data-kind="browser"] { --tab-tone: #5c91bd; }
 .extension-dock-tab[data-kind="terminal"] { --tab-tone: #b58a6b; }
 .extension-dock-tab[data-kind="files"] { --tab-tone: #7c91a7; }

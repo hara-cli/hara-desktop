@@ -36,6 +36,7 @@ import {
   type ProviderSettingsState,
   type ProviderConnection,
   type TaskLifecycleEvent,
+  type WorkforceStateEvent,
   type ArtifactDetails,
   type ArtifactExportReceipt,
   type ArtifactKind,
@@ -158,6 +159,7 @@ import {
   publicPanelOrigin,
   presentationBrowserTabId,
   reviewTabId,
+  workforceTabId,
   updateExtensionTab,
   upsertExtensionTab,
   webPreviewTabId,
@@ -175,6 +177,8 @@ import {
   type WebPreviewExtension,
   type WorkbenchToolExtension,
   type WorkbenchToolKind,
+  type ExtensionDockAddKind,
+  type WorkforceExtension,
 } from "./extension-dock-state";
 import { userVisibleText } from "./user-visible-text";
 import {
@@ -198,6 +202,11 @@ import {
   taskStateTitle,
   type ResumedTaskSnapshot,
 } from "./task-lifecycle";
+import {
+  boundedWorkforceState,
+  workforceFromTask,
+  workforceStateIsNewer,
+} from "./workforce-state";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
@@ -214,6 +223,7 @@ const loadGroups = () => import("./Groups");
 const loadAutomations = () => import("./Automations");
 const loadExtensionDock = () => import("./ExtensionDock");
 const loadWorkbenchToolSurface = () => import("./WorkbenchToolSurface");
+const loadWorkforceSurface = () => import("./WorkforceSurface");
 const loadOfficeHome = () => import("./OfficeHome").then((module) => ({
   default: module.OfficeHome,
 }));
@@ -251,6 +261,7 @@ const AutomationsPage = lazy(() =>
   })));
 const ExtensionDock = lazy(loadExtensionDock);
 const WorkbenchToolSurface = lazy(loadWorkbenchToolSurface);
+const WorkforceSurface = lazy(loadWorkforceSurface);
 const OfficeHome = lazy(loadOfficeHome);
 const ArtifactWorkbench = lazy(loadArtifactWorkbench);
 const PresentationWorkbench = lazy(loadPresentationWorkbench);
@@ -717,10 +728,12 @@ export default function App() {
   const [readOnlySessions, setReadOnlySessions] = useState<Record<string, { reason: string }>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [taskStates, setTaskStates] = useState<Record<string, TaskLifecycleEvent>>({});
+  const [workforceStates, setWorkforceStates] = useState<Record<string, WorkforceStateEvent>>({});
   const transcriptsRef = useRef(transcripts);
   const readOnlySessionsRef = useRef(readOnlySessions);
   const busyRef = useRef(busy);
   const taskStatesRef = useRef(taskStates);
+  const workforceStatesRef = useRef(workforceStates);
   const activeTurnsRef = useRef<Record<string, string>>({});
   const presentationSurfaceTurnsRef = useRef<Record<string, {
     startedAt: number;
@@ -738,6 +751,7 @@ export default function App() {
   readOnlySessionsRef.current = readOnlySessions;
   busyRef.current = busy;
   taskStatesRef.current = taskStates;
+  workforceStatesRef.current = workforceStates;
   const setSessionBusy = useCallback((sessionId: string, value: boolean) => {
     const next = { ...busyRef.current, [sessionId]: value };
     busyRef.current = next;
@@ -2247,6 +2261,14 @@ export default function App() {
           }
           break;
         }
+        case "event.workforce_state": {
+          const bounded = boundedWorkforceState(e);
+          if (!bounded || !workforceStateIsNewer(workforceStatesRef.current[e.sessionId], bounded)) break;
+          const nextWorkforceStates = { ...workforceStatesRef.current, [e.sessionId]: bounded };
+          workforceStatesRef.current = nextWorkforceStates;
+          setWorkforceStates(nextWorkforceStates);
+          break;
+        }
         case "event.text":
           if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => {
@@ -2654,6 +2676,7 @@ export default function App() {
         pendingSendDispatchesRef.current = {};
         clearStagedModelChanges();
         taskStatesRef.current = {};
+        workforceStatesRef.current = {};
         organizationRoutesRequestRef.current += 1;
         setOrganizationRoutes(null);
         providerRoutesRequestRef.current += 1;
@@ -2665,6 +2688,7 @@ export default function App() {
         setGroupsDirectory({ phase: "idle" });
         setGroupsSwitchingProfileId("");
         setTaskStates({});
+        setWorkforceStates({});
         busyRef.current = {};
         setBusy({});
         setPhase("lost");
@@ -4978,6 +5002,11 @@ export default function App() {
       taskStatesRef.current = rest;
       return rest;
     });
+    setWorkforceStates((states) => {
+      const { [id]: _gone, ...rest } = states;
+      workforceStatesRef.current = rest;
+      return rest;
+    });
     await refreshSessions();
   };
   const deleteIt = async (id: string) => {
@@ -4994,6 +5023,11 @@ export default function App() {
       setTaskStates((states) => {
         const { [id]: _goneTask, ...rest } = states;
         taskStatesRef.current = rest;
+        return rest;
+      });
+      setWorkforceStates((states) => {
+        const { [id]: _goneWorkforce, ...rest } = states;
+        workforceStatesRef.current = rest;
         return rest;
       });
       setTranscripts(({ [id]: _gone, ...rest }) => rest);
@@ -6087,6 +6121,26 @@ export default function App() {
     setExtensionLoading(false);
     offerExtensionTab(item);
   };
+  const openWorkforce = () => {
+    const session = active ? sessions.find((candidate) => candidate.id === active) : null;
+    const place = session ? sessionPlace(session) : null;
+    if (!session || (place !== "chat" && place !== "projects") || zone !== place) return;
+    const item: WorkforceExtension = {
+      type: "workforce",
+      id: workforceTabId(session.id),
+      title: t("extensionWorkforce"),
+      surfaceKind: "workforce",
+      owner: { place, sessionId: session.id, cwd: session.cwd },
+      mode: "docked",
+    };
+    warmModule(Promise.all([loadExtensionDock(), loadWorkforceSurface()]));
+    setExtensionLoading(false);
+    offerExtensionTab(item);
+  };
+  const openExtensionItem = (item: ExtensionDockAddKind) => {
+    if (item === "workforce") openWorkforce();
+    else openWorkbenchTool(item);
+  };
   const extensionContext: ExtensionContext | null = zone === "office"
     ? { place: "office" }
     : (zone === "chat" || zone === "projects")
@@ -6147,6 +6201,9 @@ export default function App() {
   const reviewExtension = contextExtensionDock?.type === "review"
     ? contextExtensionDock
     : null;
+  const workforceExtension = contextExtensionDock?.type === "workforce"
+    ? contextExtensionDock
+    : null;
   const dockTabs = contextExtensionTabs.map((tab) => ({
     id: tab.id,
     title: tab.title,
@@ -6162,6 +6219,7 @@ export default function App() {
     if (kind === "terminal") return t("extensionTerminal");
     if (kind === "files") return t("extensionFiles");
     if (kind === "review") return t("extensionReview");
+    if (kind === "workforce") return t("extensionWorkforce");
     return t("extensionCapability");
   };
   const extensionCopy = {
@@ -6176,12 +6234,62 @@ export default function App() {
   };
   const extensionAddItems = contextExtensionDock?.owner.place === "chat"
     || contextExtensionDock?.owner.place === "projects"
-    ? [
+      ? [
+        { id: "workforce" as const, label: t("extensionWorkforce") },
         { id: "terminal" as const, label: t("extensionTerminal") },
         { id: "browser" as const, label: t("extensionBrowser") },
         { id: "files" as const, label: t("extensionFiles") },
       ]
     : [];
+  const workforceTaskState = workforceExtension
+    ? taskStates[workforceExtension.owner.sessionId]
+    : undefined;
+  const exactWorkforceState = workforceExtension
+    ? workforceStates[workforceExtension.owner.sessionId]
+    : undefined;
+  const workforceSnapshot = workforceExtension
+    ? (exactWorkforceState && (!workforceTaskState || exactWorkforceState.turnId === workforceTaskState.turnId)
+      ? exactWorkforceState
+      : workforceFromTask(workforceExtension.owner.sessionId, workforceTaskState))
+    : undefined;
+  const workforceCopy = {
+    title: t("workforceTitle"),
+    subtitle: t("workforceSubtitle"),
+    live: t("workforceLive"),
+    compatibility: t("workforceCompatibility"),
+    scene: t("workforceScene"),
+    list: t("workforceList"),
+    noTask: t("workforceNoTask"),
+    noTaskHint: t("workforceNoTaskHint"),
+    returnToChat: t("workforceReturnToChat"),
+    root: t("workforceRoot"),
+    specialist: t("workforceSpecialist"),
+    status: t("workforceStatus"),
+    capability: t("workforceCapability"),
+    updated: t("workforceUpdated"),
+    privacy: t("workforcePrivacy"),
+    states: {
+      queued: t("workforceStateQueued"),
+      working: t("workforceStateWorking"),
+      waiting: t("workforceStateWaiting"),
+      paused: t("workforceStatePaused"),
+      blocked: t("workforceStateBlocked"),
+      completed: t("workforceStateCompleted"),
+      failed: t("workforceStateFailed"),
+      cancelled: t("workforceStateCancelled"),
+    },
+    capabilities: {
+      orchestration: t("workforceCapabilityOrchestration"),
+      files: t("workforceCapabilityFiles"),
+      code: t("workforceCapabilityCode"),
+      browser: t("workforceCapabilityBrowser"),
+      research: t("workforceCapabilityResearch"),
+      design: t("workforceCapabilityDesign"),
+      office: t("workforceCapabilityOffice"),
+      communication: t("workforceCapabilityCommunication"),
+      other: t("workforceCapabilityOther"),
+    },
+  };
   const openBrowserFromTool = (item: WorkbenchToolExtension, address: string): string | null => {
     const preview = webPreviewExtensionFor(address, t("extensionBrowser"), item.owner);
     if (!preview) return t("extensionBrowserInvalid");
@@ -7555,7 +7663,7 @@ export default function App() {
               copy={extensionCopy}
               onTabSelect={selectExtensionTab}
               onTabClose={closeDockTab}
-              onAddItem={openWorkbenchTool}
+              onAddItem={openExtensionItem}
               onModeChange={(mode) => setExtensionMode(contextExtensionDock.id, mode)}
               onPopOut={panelExtension || webPreviewExtension
                 ? () => popOutVisualExtension((panelExtension ?? webPreviewExtension)!)
@@ -7584,6 +7692,15 @@ export default function App() {
                 && activeArtifact?.artifact.artifactId === sessionArtifactExtension.owner.artifactId
                 && artifactWorkbenchSurface}
               {presentationBrowserExtension && presentationBrowserSurface}
+              {workforceExtension && (
+                <WorkforceSurface
+                  snapshot={workforceSnapshot}
+                  locale={locale}
+                  live={Boolean(clientRef.current?.supportsEvent("event.workforce_state"))}
+                  copy={workforceCopy}
+                  onReturnToChat={() => setCurrentExtensionScreenVisible(false)}
+                />
+              )}
               {(workbenchToolExtension || reviewExtension) && (
                 <WorkbenchToolSurface
                   item={(workbenchToolExtension ?? reviewExtension)!}

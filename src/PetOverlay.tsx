@@ -5,6 +5,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DEFAULT_PET_SELECTOR, PET_SELECTOR_KEY } from "./pet-runtime";
 import {
+  canonicalPetSelector,
   officialPetForSelector,
   type OfficialPet,
   type PetAsset,
@@ -121,15 +122,21 @@ function OfficialImagePet({
 }) {
   return (
     <div
-      className={`hara-pet official-image-pet hara-pet-${movement ? "running" : status} ${reduced ? "reduced" : ""}`}
+      className={`hara-pet official-image-pet is-status-${status}${movement ? ` is-moving is-moving-${movement}` : ""} hara-pet-${movement ? "running" : status} ${reduced ? "reduced" : ""}`}
       aria-hidden="true"
     >
+      <span className="official-pet-prop official-pet-treadmill"><i /></span>
       <img
         src={pet.imageUrl}
         alt=""
         draggable={false}
         className={movement ? `official-image-pet-${movement}` : undefined}
       />
+      <span className="official-pet-prop official-pet-hammer"><i /></span>
+      <span className="official-pet-prop official-pet-card"><i /></span>
+      <span className="official-pet-prop official-pet-cup"><i /></span>
+      <span className="official-pet-prop official-pet-flag"><i /></span>
+      <span className="official-pet-prop official-pet-repair"><i /></span>
     </div>
   );
 }
@@ -142,7 +149,7 @@ function statusText(status: PetStatus, zh: boolean): string {
 }
 
 export default function PetOverlay() {
-  const [selector, setSelector] = useState(() => localStorage.getItem(PET_SELECTOR_KEY) || DEFAULT_PET_SELECTOR);
+  const [selector, setSelector] = useState(() => canonicalPetSelector(localStorage.getItem(PET_SELECTOR_KEY) || DEFAULT_PET_SELECTOR));
   const [snapshot, setSnapshot] = useState<PetSnapshot>(EMPTY_SNAPSHOT);
   const [asset, setAsset] = useState<PetAsset | null>(null);
   const [assetError, setAssetError] = useState("");
@@ -175,7 +182,7 @@ export default function PetOverlay() {
     const unlisteners: Array<() => void> = [];
     let disposed = false;
     void listen<PetConfig>("hara-pet-config", ({ payload }) => {
-      setSelector(payload.selector || DEFAULT_PET_SELECTOR);
+      setSelector(canonicalPetSelector(payload.selector || DEFAULT_PET_SELECTOR));
     }).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)));
     void listen<PetSnapshot>("hara-pet-state", ({ payload }) => setSnapshot(payload)).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)));
     void emitTo("main", "hara-pet-ready", null);

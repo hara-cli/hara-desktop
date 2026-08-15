@@ -23,6 +23,7 @@ import {
   upsertExtensionTab,
   webPreviewTabId,
   workbenchToolTabId,
+  workforceTabId,
 } from "../src/extension-dock-state.ts";
 import { userVisibleTaskText, userVisibleText } from "../src/user-visible-text.ts";
 
@@ -174,12 +175,29 @@ test("localhost WebView previews require HTTP, loopback, credentials-free, expli
   );
 });
 
-test("Workbench tool and Review tabs stay scoped to one session", () => {
+test("Workbench tool, Review, and Agent Office tabs stay scoped to one session", () => {
   assert.equal(workbenchToolTabId("session-a", "terminal"), "tool:session-a:terminal");
   assert.equal(workbenchToolTabId("session-a", "browser"), "tool:session-a:browser");
   assert.equal(workbenchToolTabId("session-a", "files"), "tool:session-a:files");
   assert.notEqual(workbenchToolTabId("session-a", "files"), workbenchToolTabId("session-b", "files"));
   assert.equal(reviewTabId("session-a"), "review:session-a:changes");
+  assert.equal(workforceTabId("session-a"), "workforce:session-a:office");
+  assert.notEqual(workforceTabId("session-a"), workforceTabId("session-b"));
+});
+
+test("Agent Office chat context carries scope only, never actor metadata", () => {
+  const item = {
+    type: "workforce",
+    id: workforceTabId("session-a"),
+    title: "Private agent office",
+    surfaceKind: "workforce",
+    owner: { place: "projects", sessionId: "session-a", cwd: "/private/customer" },
+    mode: "docked",
+  };
+  const wrapped = messageWithActiveWorkObject(item, "show the current status");
+  assert.match(wrapped, /kind=workforce/);
+  assert.match(wrapped, /scope=current_task_workforce/);
+  assert.doesNotMatch(wrapped, /Private agent office|private\/customer|actor/);
 });
 
 test("chat targets the selected work object with bounded private metadata", () => {

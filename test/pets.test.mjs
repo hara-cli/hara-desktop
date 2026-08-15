@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   acknowledgePetActivity,
   BUILTIN_HARA_PET,
+  canonicalPetSelector,
   clampPetWindowPosition,
   OFFICIAL_HARA_PETS,
   officialPetCopy,
@@ -27,10 +28,10 @@ test("built-in pet provenance is independent from local and future market provid
   assert.equal(BUILTIN_HARA_PET.selector, "builtin:hara");
 });
 
-test("the public Hara companion family contains eleven unique code-owned characters", () => {
-  assert.equal(OFFICIAL_HARA_PETS.length, 11);
-  assert.equal(new Set(OFFICIAL_HARA_PETS.map((pet) => pet.selector)).size, 11);
-  assert.equal(new Set(OFFICIAL_HARA_PETS.map((pet) => pet.id)).size, 11);
+test("the public Hara companion stays one deliberate code-owned identity", () => {
+  assert.equal(OFFICIAL_HARA_PETS.length, 1);
+  assert.equal(new Set(OFFICIAL_HARA_PETS.map((pet) => pet.selector)).size, 1);
+  assert.equal(new Set(OFFICIAL_HARA_PETS.map((pet) => pet.id)).size, 1);
   for (const pet of OFFICIAL_HARA_PETS) {
     assert.equal(pet.source, "builtin");
     assert.equal(pet.compatible, true);
@@ -46,6 +47,25 @@ test("the public Hara companion family contains eleven unique code-owned charact
     assert.ok(bytes.readUInt32BE(16) <= 416, `${pet.id} preview width remains bounded`);
     assert.ok(bytes.readUInt32BE(20) <= 416, `${pet.id} preview height remains bounded`);
   }
+});
+
+test("retired 0.1.79 official selectors migrate to the canonical companion", () => {
+  for (const selector of [
+    "builtin:hara-forge",
+    "builtin:hara-muse",
+    "builtin:hara-scout",
+    "builtin:hara-ledger",
+    "builtin:hara-story",
+    "builtin:hara-stage",
+    "builtin:hara-flow",
+    "builtin:hara-shield",
+    "builtin:hara-link",
+    "builtin:hara-cozy",
+  ]) {
+    assert.equal(canonicalPetSelector(selector), BUILTIN_HARA_PET.selector);
+    assert.equal(officialPetForSelector(selector), BUILTIN_HARA_PET);
+  }
+  assert.equal(canonicalPetSelector("codex-local:mila"), "codex-local:mila");
 });
 
 test("companion window positions are clamped inside positive and negative-origin displays", () => {
@@ -300,8 +320,12 @@ test("desktop companion owns its window bridge and registers listeners before wi
   assert.match(settings, /case "codex-local":/);
   assert.match(settings, /case "hara-market":/);
   assert.match(settings, /OFFICIAL_HARA_PETS\.map/);
+  assert.match(settings, /OFFICIAL_HARA_PETS\.length/);
+  assert.doesNotMatch(settings, /<span>11<\/span>/);
   assert.match(settings, /loading="lazy"/);
   assert.match(settings, /disabled=\{!pet\.compatible\}/);
   assert.match(petOverlay, /officialPetForSelector\(selector\)/);
   assert.match(petOverlay, /<OfficialImagePet/);
+  assert.match(petOverlay, /official-pet-hammer/);
+  assert.match(petOverlay, /official-pet-card/);
 });

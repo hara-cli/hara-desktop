@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { Key } from "../i18n";
 import {
+  canonicalPetSelector,
   OFFICIAL_HARA_PETS,
   officialPetCopy,
   type OfficialPet,
@@ -131,7 +132,7 @@ export function DesktopCompanionSettings({
               <strong id="pet-official-title">{t("petOfficialCollection")}</strong>
               <small>{t("petOfficialCollectionHint")}</small>
             </div>
-            <span>11</span>
+            <span>{OFFICIAL_HARA_PETS.length}</span>
           </header>
           <div className="pet-grid pet-grid-official">
             {OFFICIAL_HARA_PETS.map((pet: OfficialPet) => {
@@ -140,7 +141,7 @@ export function DesktopCompanionSettings({
                 <PetCard
                   key={pet.selector}
                   pet={{ ...pet, displayName: copy.displayName, description: copy.description }}
-                  selected={selector === pet.selector}
+                  selected={canonicalPetSelector(selector) === pet.selector}
                   source={t("petBuiltin")}
                   role={copy.role}
                   imageUrl={pet.imageUrl}
