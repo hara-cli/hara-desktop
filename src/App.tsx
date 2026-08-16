@@ -200,10 +200,12 @@ import {
   taskStateIsLive,
   taskStatePetStatus,
   taskStateTitle,
+  terminalTaskLifecycleFallback,
   type ResumedTaskSnapshot,
 } from "./task-lifecycle";
 import {
   boundedWorkforceState,
+  workforceHasLiveActors,
   workforceFromTask,
   workforceStateIsNewer,
 } from "./workforce-state";
@@ -2529,12 +2531,29 @@ export default function App() {
           if (e.ctx) setCtxMap((m) => ({ ...m, [e.sessionId]: e.ctx! }));
           const interrupted = interruptedSessionsRef.current.has(e.sessionId);
           const failed = !!e.error || (!!e.status && e.status !== "completed");
-          if (clientRef.current?.supportsEvent("event.task_state")) {
-            interruptedSessionsRef.current.delete(e.sessionId);
-          } else if (interrupted) removePet(e.sessionId);
-          else if (failed) notePet(e.sessionId, "blocked");
-          else if (e.sessionId === activeRef.current && document.hasFocus()) removePet(e.sessionId);
-          else notePet(e.sessionId, "ready");
+          const typedTask = taskStatesRef.current[e.sessionId];
+          const hasTerminalTaskState = Boolean(
+            typedTask
+            && e.turnId
+            && typedTask.turnId === e.turnId
+            && !taskStateIsLive(typedTask.state),
+          );
+          const taskFallback = terminalTaskLifecycleFallback(
+            typedTask,
+            e.turnId,
+            interrupted ? "paused" : failed ? "blocked" : "completed",
+            new Date().toISOString(),
+          );
+          if (taskFallback) {
+            const nextTaskStates = { ...taskStatesRef.current, [e.sessionId]: taskFallback };
+            taskStatesRef.current = nextTaskStates;
+            setTaskStates(nextTaskStates);
+          }
+          if (interrupted) removePet(e.sessionId);
+          else if (!hasTerminalTaskState && failed) notePet(e.sessionId, "blocked");
+          else if (!hasTerminalTaskState && e.sessionId === activeRef.current && document.hasFocus()) removePet(e.sessionId);
+          else if (!hasTerminalTaskState) notePet(e.sessionId, "ready");
+          interruptedSessionsRef.current.delete(e.sessionId);
           // steer queue: auto-dispatch the next queued message for this session
           const pending = queueRef.current[e.sessionId];
           if (pending && pending.length > 0) {
@@ -6248,7 +6267,9 @@ export default function App() {
     ? workforceStates[workforceExtension.owner.sessionId]
     : undefined;
   const workforceSnapshot = workforceExtension
-    ? (exactWorkforceState && (!workforceTaskState || exactWorkforceState.turnId === workforceTaskState.turnId)
+    ? (exactWorkforceState
+      && (!workforceTaskState || exactWorkforceState.turnId === workforceTaskState.turnId)
+      && !(workforceTaskState && !taskStateIsLive(workforceTaskState.state) && workforceHasLiveActors(exactWorkforceState))
       ? exactWorkforceState
       : workforceFromTask(workforceExtension.owner.sessionId, workforceTaskState))
     : undefined;
@@ -6259,6 +6280,8 @@ export default function App() {
     compatibility: t("workforceCompatibility"),
     scene: t("workforceScene"),
     list: t("workforceList"),
+    overview: t("workforceOverview"),
+    focus: t("workforceFocus"),
     noTask: t("workforceNoTask"),
     noTaskHint: t("workforceNoTaskHint"),
     returnToChat: t("workforceReturnToChat"),

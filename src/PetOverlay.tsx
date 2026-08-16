@@ -3,11 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { DEFAULT_PET_SELECTOR, PET_SELECTOR_KEY } from "./pet-runtime";
+import { DEFAULT_PET_SELECTOR, PET_AWAKE_KEY, PET_SELECTOR_KEY } from "./pet-runtime";
+import { AtlasCanvasPet, useReducedMotion } from "./PetAtlasSprite";
+import type { PetMoveDirection } from "./pet-animation";
 import {
+  BUILTIN_HARA_ASSET,
   canonicalPetSelector,
   officialPetForSelector,
-  type OfficialPet,
   type PetAsset,
   type PetConfig,
   type PetSnapshot,
@@ -15,82 +17,7 @@ import {
 } from "./pets";
 import "./PetOverlay.css";
 
-type MoveDirection = "left" | "right" | null;
-
 const EMPTY_SNAPSHOT: PetSnapshot = { status: "idle", activityCount: 0 };
-const FRAME_COUNTS: Record<PetStatus, number> = { idle: 6, running: 6, waiting: 6, paused: 6, ready: 6, blocked: 8 };
-const FRAME_MS: Record<PetStatus, number> = { idle: 840, running: 120, waiting: 150, paused: 260, ready: 150, blocked: 140 };
-const STATUS_ROWS: Record<PetStatus, number> = { idle: 0, blocked: 5, waiting: 6, paused: 6, running: 7, ready: 8 };
-
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
-  useEffect(() => {
-    const query = matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(query.matches);
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return reduced;
-}
-
-function useFrame(status: PetStatus, movement: MoveDirection, reduced: boolean): { row: number; column: number } {
-  const [frame, setFrame] = useState(0);
-  const row = movement === "right" ? 1 : movement === "left" ? 2 : STATUS_ROWS[status];
-  const count = movement ? 8 : FRAME_COUNTS[status];
-  const duration = movement ? 120 : FRAME_MS[status];
-  useEffect(() => {
-    setFrame(0);
-    if (reduced) return;
-    const timer = window.setInterval(() => setFrame((value) => (value + 1) % count), duration);
-    return () => clearInterval(timer);
-  }, [count, duration, reduced, row]);
-  return { row, column: reduced ? 0 : frame % count };
-}
-
-function AtlasPet({ asset, status, movement, reduced }: { asset: PetAsset; status: PetStatus; movement: MoveDirection; reduced: boolean }) {
-  const frame = useFrame(status, movement, reduced);
-  const canvas = useRef<HTMLCanvasElement | null>(null);
-  const [source, setSource] = useState<HTMLImageElement | null>(null);
-
-  useEffect(() => {
-    let current = true;
-    const image = new Image();
-    const context = canvas.current?.getContext("2d");
-    context?.clearRect(0, 0, asset.frameWidth, asset.frameHeight);
-    setSource(null);
-    image.onload = () => {
-      if (current) setSource(image);
-    };
-    image.src = asset.dataUrl;
-    return () => {
-      current = false;
-    };
-  }, [asset.dataUrl, asset.frameHeight, asset.frameWidth]);
-
-  useEffect(() => {
-    const context = canvas.current?.getContext("2d");
-    if (!context || !source) return;
-    context.clearRect(0, 0, asset.frameWidth, asset.frameHeight);
-    context.imageSmoothingEnabled = true;
-    context.drawImage(
-      source,
-      frame.column * asset.frameWidth,
-      frame.row * asset.frameHeight,
-      asset.frameWidth,
-      asset.frameHeight,
-      0,
-      0,
-      asset.frameWidth,
-      asset.frameHeight,
-    );
-  }, [asset.frameHeight, asset.frameWidth, frame.column, frame.row, source]);
-
-  return (
-    <div className="atlas-frame" aria-hidden="true">
-      <canvas ref={canvas} width={asset.frameWidth} height={asset.frameHeight} />
-    </div>
-  );
-}
 
 function HaraPet({ status, reduced }: { status: PetStatus; reduced: boolean }) {
   return (
@@ -109,38 +36,6 @@ function HaraPet({ status, reduced }: { status: PetStatus; reduced: boolean }) {
   );
 }
 
-function OfficialImagePet({
-  pet,
-  status,
-  movement,
-  reduced,
-}: {
-  pet: OfficialPet;
-  status: PetStatus;
-  movement: MoveDirection;
-  reduced: boolean;
-}) {
-  return (
-    <div
-      className={`hara-pet official-image-pet is-status-${status}${movement ? ` is-moving is-moving-${movement}` : ""} hara-pet-${movement ? "running" : status} ${reduced ? "reduced" : ""}`}
-      aria-hidden="true"
-    >
-      <span className="official-pet-prop official-pet-treadmill"><i /></span>
-      <img
-        src={pet.imageUrl}
-        alt=""
-        draggable={false}
-        className={movement ? `official-image-pet-${movement}` : undefined}
-      />
-      <span className="official-pet-prop official-pet-hammer"><i /></span>
-      <span className="official-pet-prop official-pet-card"><i /></span>
-      <span className="official-pet-prop official-pet-cup"><i /></span>
-      <span className="official-pet-prop official-pet-flag"><i /></span>
-      <span className="official-pet-prop official-pet-repair"><i /></span>
-    </div>
-  );
-}
-
 function statusText(status: PetStatus, zh: boolean): string {
   const copy = zh
     ? { idle: "待命", running: "处理中", waiting: "需要你确认", paused: "已暂停，可继续", ready: "任务完成", blocked: "遇到问题" }
@@ -153,13 +48,14 @@ export default function PetOverlay() {
   const [snapshot, setSnapshot] = useState<PetSnapshot>(EMPTY_SNAPSHOT);
   const [asset, setAsset] = useState<PetAsset | null>(null);
   const [assetError, setAssetError] = useState("");
-  const [movement, setMovement] = useState<MoveDirection>(null);
+  const [movement, setMovement] = useState<PetMoveDirection>(null);
   const reduced = useReducedMotion();
   const moveTimer = useRef<number | null>(null);
   const lastX = useRef<number | null>(null);
   const movedDuringPointer = useRef(false);
   const zh = useMemo(() => (localStorage.getItem("hara.locale") || navigator.language).toLowerCase().startsWith("zh"), []);
   const officialPet = useMemo(() => officialPetForSelector(selector), [selector]);
+  const visibleAsset = officialPet ? BUILTIN_HARA_ASSET : asset;
 
   useEffect(() => {
     if (officialPet) {
@@ -232,6 +128,14 @@ export default function PetOverlay() {
     void getCurrentWindow().startDragging().catch(() => {});
   };
 
+  const tuckAway = async () => {
+    // Hide this native surface directly so the control never depends on a round-trip through the
+    // main window for visible feedback. The event remains the source of truth for settings/state.
+    localStorage.setItem(PET_AWAKE_KEY, "0");
+    await getCurrentWindow().hide().catch(() => {});
+    await emitTo("main", "hara-pet-tuck", null).catch(() => {});
+  };
+
   const visibleError = assetError ? (zh ? "宠物包无效，已回退到 Hara" : "Invalid pet package; using Hara") : "";
   const title = snapshot.activity?.title || visibleError;
 
@@ -247,7 +151,20 @@ export default function PetOverlay() {
           {snapshot.activityCount > 1 && <span className="pet-count">{snapshot.activityCount}</span>}
         </button>
       )}
-      <button className="pet-tuck" title={zh ? "收起桌宠" : "Tuck away"} onClick={() => void emitTo("main", "hara-pet-tuck", null)}>
+      <button
+        className="pet-tuck"
+        aria-label={zh ? "收起桌宠" : "Tuck away"}
+        title={zh ? "收起桌宠" : "Tuck away"}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void tuckAway();
+        }}
+      >
         ×
       </button>
       <button
@@ -265,15 +182,8 @@ export default function PetOverlay() {
         </svg>
       </button>
       <button className="pet-stage" aria-label={zh ? "打开 Hara" : "Open Hara"} onPointerDown={beginDrag} onClick={() => void openActivity()}>
-        {officialPet ? (
-          <OfficialImagePet
-            pet={officialPet}
-            status={snapshot.status}
-            movement={movement}
-            reduced={reduced}
-          />
-        ) : asset && !assetError ? (
-          <AtlasPet asset={asset} status={snapshot.status} movement={movement} reduced={reduced} />
+        {visibleAsset && !assetError ? (
+          <AtlasCanvasPet asset={visibleAsset} status={snapshot.status} movement={movement} reduced={reduced} />
         ) : (
           <HaraPet status={snapshot.status} reduced={reduced} />
         )}

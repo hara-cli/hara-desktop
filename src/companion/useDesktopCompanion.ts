@@ -6,6 +6,8 @@ import {
   acknowledgePetActivity,
   canonicalPetSelector,
   clearPetActivity,
+  nextPetActivityExpiry,
+  pruneExpiredPetActivities,
   selectPetSnapshot,
   setPetActivity,
   type ActivePetStatus,
@@ -262,6 +264,15 @@ export function useDesktopCompanion({
       refreshChat();
     }
   }, [activities, awake, refreshChat]);
+
+  useEffect(() => {
+    const expiresAt = nextPetActivityExpiry(activities);
+    if (expiresAt === undefined) return;
+    const timer = window.setTimeout(() => {
+      setActivities((current) => pruneExpiredPetActivities(current));
+    }, Math.max(0, expiresAt - Date.now()) + 16);
+    return () => window.clearTimeout(timer);
+  }, [activities]);
 
   return {
     awake,

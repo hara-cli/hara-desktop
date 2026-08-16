@@ -6,6 +6,7 @@ export interface PetActivity {
   status: ActivePetStatus;
   title: string;
   updatedAt: number;
+  expiresAt?: number;
 }
 
 export type PetActivities = Record<string, PetActivity>;
@@ -39,6 +40,9 @@ export interface OfficialPet extends PetCatalogEntry {
   roleZh: string;
   accent: string;
   imageUrl: string;
+  spritesheetUrl: string;
+  spriteVersionNumber: 2;
+  rows: 11;
 }
 
 export interface PetAsset {
@@ -135,15 +139,31 @@ export const BUILTIN_HARA_PET: OfficialPet = {
   roleZh: "通用",
   accent: "#ff655c",
   imageUrl: "/pets/hara-official/hara-core.png",
+  spritesheetUrl: "/pets/hara-official/hara-v2.webp",
+  spriteVersionNumber: 2,
+  rows: 11,
   source: "builtin",
   compatible: true,
+};
+
+export const BUILTIN_HARA_ASSET: PetAsset = {
+  dataUrl: BUILTIN_HARA_PET.spritesheetUrl,
+  spriteVersionNumber: 2,
+  columns: 8,
+  rows: 11,
+  frameWidth: 192,
+  frameHeight: 208,
 };
 
 /** One deliberate public identity. Capability and task differences belong in motion and props. */
 export const OFFICIAL_HARA_PETS: readonly OfficialPet[] = [BUILTIN_HARA_PET] as const;
 
-/** 0.1.79 persisted these selectors. Keep them as migration aliases instead of breaking upgrades. */
+/** Older builds persisted these selectors. Keep them as migration aliases instead of breaking upgrades.
+ *  `codex:hara` was the locally installed staging package used while the official v2 atlas was being
+ *  reviewed; released Desktop builds must now converge that one known identity onto the embedded asset.
+ */
 const LEGACY_OFFICIAL_PET_SELECTORS = new Set([
+  "codex:hara",
   "builtin:hara-forge",
   "builtin:hara-muse",
   "builtin:hara-scout",
@@ -178,6 +198,7 @@ export function officialPetCopy(
 }
 
 const MAX_TRACKED_ACTIVITIES = 64;
+export const READY_ACTIVITY_TTL_MS = 8_000;
 const STATUS_PRIORITY: Record<ActivePetStatus, number> = {
   waiting: 0,
   blocked: 1,
@@ -194,10 +215,14 @@ export function setPetActivity(
   title: string,
   updatedAt = Date.now(),
 ): PetActivities {
-  const next: PetActivities = {
-    ...current,
-    [sessionId]: { sessionId, status, title: title.trim() || "Hara task", updatedAt },
+  const activity: PetActivity = {
+    sessionId,
+    status,
+    title: title.trim() || "Hara task",
+    updatedAt,
+    ...(status === "ready" ? { expiresAt: updatedAt + READY_ACTIVITY_TTL_MS } : {}),
   };
+  const next: PetActivities = { ...current, [sessionId]: activity };
   const entries = Object.values(next);
   if (entries.length <= MAX_TRACKED_ACTIVITIES) return next;
   entries
@@ -222,9 +247,31 @@ export function clearPetActivity(current: PetActivities, sessionId: string): Pet
   return next;
 }
 
+export function pruneExpiredPetActivities(
+  current: PetActivities,
+  now = Date.now(),
+): PetActivities {
+  const expired = Object.values(current).filter(
+    (activity) => activity.expiresAt !== undefined && activity.expiresAt <= now,
+  );
+  if (expired.length === 0) return current;
+  const next = { ...current };
+  expired.forEach((activity) => delete next[activity.sessionId]);
+  return next;
+}
+
+export function nextPetActivityExpiry(current: PetActivities): number | undefined {
+  const expiries = Object.values(current)
+    .map((activity) => activity.expiresAt)
+    .filter((expiresAt): expiresAt is number => expiresAt !== undefined);
+  return expiries.length > 0 ? Math.min(...expiries) : undefined;
+}
+
 /** Actionable states lead: needs input, blocked, paused, ready, then running; newest wins ties. */
-export function selectPetSnapshot(activities: PetActivities): PetSnapshot {
-  const ranked = Object.values(activities).sort((a, b) => {
+export function selectPetSnapshot(activities: PetActivities, now = Date.now()): PetSnapshot {
+  const ranked = Object.values(activities).filter(
+    (activity) => activity.expiresAt === undefined || activity.expiresAt > now,
+  ).sort((a, b) => {
     const byStatus = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
     return byStatus || b.updatedAt - a.updatedAt;
   });

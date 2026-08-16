@@ -7,6 +7,12 @@ import type {
 
 export const WORKFORCE_ACTOR_LIMIT = 24;
 
+export function workforceHasLiveActors(snapshot: WorkforceStateEvent | undefined): boolean {
+  return Boolean(snapshot?.actors.some(
+    (actor) => actor.state === "queued" || actor.state === "working" || actor.state === "waiting",
+  ));
+}
+
 const WORKFORCE_ACTOR_KINDS = new Set(["root", "subagent", "external"]);
 const WORKFORCE_CAPABILITIES = new Set([
   "orchestration",

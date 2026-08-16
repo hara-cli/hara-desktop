@@ -1,24 +1,31 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   acknowledgePetActivity,
+  BUILTIN_HARA_ASSET,
   BUILTIN_HARA_PET,
   canonicalPetSelector,
   clampPetWindowPosition,
   OFFICIAL_HARA_PETS,
   officialPetCopy,
   officialPetForSelector,
+  nextPetActivityExpiry,
+  pruneExpiredPetActivities,
+  READY_ACTIVITY_TTL_MS,
   selectPetSnapshot,
   setPetActivity,
 } from "../src/pets.ts";
+import { petAnimationFor } from "../src/pet-animation.ts";
 import {
   restoredTaskLifecycle,
   taskLifecycleIsNewer,
   taskStateIsLive,
   taskStatePetStatus,
   taskStateTitle,
+  terminalTaskLifecycleFallback,
 } from "../src/task-lifecycle.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -35,9 +42,12 @@ test("the public Hara companion stays one deliberate code-owned identity", () =>
   for (const pet of OFFICIAL_HARA_PETS) {
     assert.equal(pet.source, "builtin");
     assert.equal(pet.compatible, true);
+    assert.equal(pet.spriteVersionNumber, 2);
+    assert.equal(pet.rows, 11);
     assert.match(pet.selector, /^builtin:hara(?:-[a-z]+)?$/);
     assert.equal(officialPetForSelector(pet.selector), pet);
     assert.match(pet.imageUrl, /^\/pets\/hara-official\/hara-[a-z]+\.png$/);
+    assert.equal(pet.spritesheetUrl, "/pets/hara-official/hara-v2.webp");
     assert.ok(pet.accent.startsWith("#"));
     assert.ok(officialPetCopy(pet, "en").displayName.length > 0);
     assert.ok(officialPetCopy(pet, "zh").displayName.length > 0);
@@ -46,11 +56,29 @@ test("the public Hara companion stays one deliberate code-owned identity", () =>
     assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
     assert.ok(bytes.readUInt32BE(16) <= 416, `${pet.id} preview width remains bounded`);
     assert.ok(bytes.readUInt32BE(20) <= 416, `${pet.id} preview height remains bounded`);
+
+    const atlas = readFileSync(`${root}/public${pet.spritesheetUrl}`);
+    assert.equal(atlas.subarray(0, 4).toString("ascii"), "RIFF");
+    assert.equal(atlas.subarray(8, 16).toString("ascii"), "WEBPVP8L");
+    const dimensions = atlas.readUInt32LE(21);
+    assert.equal((dimensions & 0x3fff) + 1, 1536);
+    assert.equal(((dimensions >>> 14) & 0x3fff) + 1, 2288);
+    assert.equal(
+      createHash("sha256").update(atlas).digest("hex"),
+      "139a468f26cc34b13a4521f5bf169174e1145bed8275d7c70b4a1c495a14d746",
+      "the embedded official atlas remains the visually approved v2 asset",
+    );
   }
+  assert.equal(BUILTIN_HARA_ASSET.dataUrl, BUILTIN_HARA_PET.spritesheetUrl);
+  assert.deepEqual(
+    [BUILTIN_HARA_ASSET.columns, BUILTIN_HARA_ASSET.rows, BUILTIN_HARA_ASSET.frameWidth, BUILTIN_HARA_ASSET.frameHeight],
+    [8, 11, 192, 208],
+  );
 });
 
 test("retired 0.1.79 official selectors migrate to the canonical companion", () => {
   for (const selector of [
+    "codex:hara",
     "builtin:hara-forge",
     "builtin:hara-muse",
     "builtin:hara-scout",
@@ -87,7 +115,7 @@ test("pet activity priority matches needs-input, blocked, paused, ready, running
   activities = setPetActivity(activities, "blocked", "blocked", "release", 20);
   activities = setPetActivity(activities, "waiting", "waiting", "approval", 10);
 
-  const snapshot = selectPetSnapshot(activities);
+  const snapshot = selectPetSnapshot(activities, 50);
   assert.equal(snapshot.status, "waiting");
   assert.equal(snapshot.activity.sessionId, "waiting");
   assert.equal(snapshot.activityCount, 5);
@@ -114,6 +142,30 @@ test("opening a task acknowledges ready without hiding actionable states", () =>
   assert.equal(selectPetSnapshot(paused).status, "paused");
 });
 
+test("completion is visible briefly and then expires without affecting actionable states", () => {
+  let activities = setPetActivity({}, "done", "ready", "done", 1_000);
+  activities = setPetActivity(activities, "approval", "waiting", "approve", 1_100);
+  assert.equal(activities.done.expiresAt, 1_000 + READY_ACTIVITY_TTL_MS);
+  assert.equal(nextPetActivityExpiry(activities), 1_000 + READY_ACTIVITY_TTL_MS);
+  assert.equal(selectPetSnapshot(activities, 1_000 + READY_ACTIVITY_TTL_MS - 1).activityCount, 2);
+  const pruned = pruneExpiredPetActivities(activities, 1_000 + READY_ACTIVITY_TTL_MS);
+  assert.equal(pruned.done, undefined);
+  assert.equal(selectPetSnapshot(pruned, 1_000 + READY_ACTIVITY_TTL_MS).status, "waiting");
+});
+
+test("pet animation separates continuous work from bounded state gestures", () => {
+  assert.equal(petAnimationFor("running", null).mode, "loop");
+  assert.equal(petAnimationFor("running", null).row, 7);
+  assert.equal(petAnimationFor("idle", null).mode, "once");
+  assert.ok(petAnimationFor("idle", null).frames[0].durationMs >= 5_000);
+  assert.equal(petAnimationFor("idle", null).frames.at(-1).column, 0);
+  for (const state of ["waiting", "paused", "ready", "blocked"]) {
+    assert.equal(petAnimationFor(state, null).mode, "once", `${state} must settle after one gesture`);
+  }
+  assert.equal(petAnimationFor("ready", "right").row, 1);
+  assert.equal(petAnimationFor("blocked", "left").row, 2);
+});
+
 test("typed task lifecycle has one deterministic pet projection", () => {
   assert.equal(taskStateIsLive("running"), true);
   assert.equal(taskStateIsLive("waiting"), true);
@@ -138,6 +190,27 @@ test("typed task lifecycle has one deterministic pet projection", () => {
   assert.equal(ambientTitle, "Working on the task");
   assert.doesNotMatch(ambientTitle, /customer|private|secret|token/i);
   assert.equal(taskStateTitle({ ...sensitiveEvent, state: "completed", phase: "finished" }), "Task complete");
+});
+
+test("turn end repairs a missing typed terminal state without overriding a received terminal event", () => {
+  const running = restoredTaskLifecycle("session-1", {
+    id: "task-1",
+    objective: "finish",
+    status: "running",
+    turnId: "turn-1",
+    updatedAt: "2026-08-16T00:00:00.000Z",
+  });
+  const repaired = terminalTaskLifecycleFallback(
+    running,
+    "turn-1",
+    "completed",
+    "2026-08-16T00:01:00.000Z",
+  );
+  assert.equal(repaired.state, "completed");
+  assert.equal(repaired.phase, "finished");
+  assert.equal(repaired.lastOutcome, "completed");
+  assert.equal(terminalTaskLifecycleFallback(repaired, "turn-1", "blocked", repaired.updatedAt), undefined);
+  assert.equal(terminalTaskLifecycleFallback(running, "another-turn", "completed", running.updatedAt), undefined);
 });
 
 test("legacy resume snapshots become deterministic restored lifecycle events", () => {
@@ -222,6 +295,7 @@ test("desktop companion owns its window bridge and registers listeners before wi
   const petChatCss = readFileSync(`${root}/src/PetChat.css`, "utf8");
   const petRuntime = readFileSync(`${root}/src/pet-runtime.ts`, "utf8");
   const petOverlay = readFileSync(`${root}/src/PetOverlay.tsx`, "utf8");
+  const petAtlas = readFileSync(`${root}/src/PetAtlasSprite.tsx`, "utf8");
   const petOverlayCss = readFileSync(`${root}/src/PetOverlay.css`, "utf8");
   const nativeShell = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
   const petChatCapability = JSON.parse(
@@ -303,7 +377,9 @@ test("desktop companion owns its window bridge and registers listeners before wi
   assert.match(petRuntime, /const PET_WIDTH = 220;/, "the native pet surface stays compact around standard atlas frames");
   assert.match(nativeShell, /with_filter\(should_track_window_state\)/);
   assert.match(nativeShell, /label == "main"/, "fixed companion windows must ignore legacy native sizes");
-  assert.match(petOverlay, /context\.drawImage\([\s\S]*frame\.column \* asset\.frameWidth[\s\S]*frame\.row \* asset\.frameHeight/);
+  assert.match(petAtlas, /context\.drawImage\([\s\S]*frame\.column \* asset\.frameWidth[\s\S]*frame\.row \* asset\.frameHeight/);
+  assert.doesNotMatch(petAtlas, /setInterval/, "the player uses bounded per-frame scheduling rather than an unconditional loop interval");
+  assert.match(petAtlas, /animation\.mode === "loop"/);
   assert.doesNotMatch(petOverlay, /left:\s*`\$\{-frame\.column \* 100\}%`/, "atlas rows are cropped by source pixels, not whole-image percentages");
   assert.match(petOverlay, /movement \? "pet-moving" : ""/, "wide walking frames temporarily clear the adjacent chat control");
   assert.match(petOverlayCss, /\.atlas-frame canvas[\s\S]*width:\s*100%[\s\S]*height:\s*100%/);
@@ -325,7 +401,14 @@ test("desktop companion owns its window bridge and registers listeners before wi
   assert.match(settings, /loading="lazy"/);
   assert.match(settings, /disabled=\{!pet\.compatible\}/);
   assert.match(petOverlay, /officialPetForSelector\(selector\)/);
-  assert.match(petOverlay, /<OfficialImagePet/);
-  assert.match(petOverlay, /official-pet-hammer/);
-  assert.match(petOverlay, /official-pet-card/);
+  assert.match(petOverlay, /BUILTIN_HARA_ASSET/);
+  assert.match(petOverlay, /<AtlasCanvasPet/);
+  assert.match(petOverlay, /getCurrentWindow\(\)\.hide\(\)/, "tuck gives immediate native-window feedback");
+  assert.match(petOverlay, /emitTo\("main", "hara-pet-tuck"/, "tuck also persists through main state");
+  assert.doesNotMatch(petOverlayCss, /hara-blink[^;]*infinite/, "idle fallback motion must settle");
+  assert.doesNotMatch(petOverlay, /OfficialImagePet|official-pet-hammer|official-pet-card/);
+  assert.match(companion, /nextPetActivityExpiry\(activities\)/);
+  assert.match(companion, /pruneExpiredPetActivities\(current\)/);
+  assert.match(app, /const hasTerminalTaskState = Boolean\(/);
+  assert.match(app, /else if \(!hasTerminalTaskState\) notePet\(e\.sessionId, "ready"\)/);
 });

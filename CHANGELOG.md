@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.81 — 2026-08-16 — official animated Hara and bounded companion motion
+
+- Embed the visually approved Hara v2 `8×11` atlas as Desktop's single official companion, with
+  genuine working, waiting, completion, failure, walking, and look-direction poses. The official
+  companion no longer depends on a user-local Codex pet package; old 0.1.79 selectors and the reviewed
+  `codex:hara` staging package migrate to the same embedded Hara identity.
+- Separate task meaning from animation playback. Only dragging and real running work loop; idle holds
+  a calm pose after one bounded greeting, while waiting, paused, completed, and blocked gestures also
+  play once and settle. Completion notices expire after eight seconds, and `turn_end` now repairs a
+  missing or reordered terminal task-state event so the companion cannot remain falsely busy. Enlarge
+  the tuck-away hit target and hide the native companion surface immediately before synchronizing the
+  settings state, so its close control cannot disappear into the transparent window.
+- Reuse the same atlas and state mapping in Agent Office, remove perpetual waiting/blocked motion, and
+  add full-scene and selected-station camera modes to the existing owner-scoped 2.5D workspace. Bundle
+  unchanged Hara CLI `0.148.0` at exact verified commit
+  `675b96fe1904decc73741ed256b720fe71ede087`; existing conversations, projects, Artifacts, and custom
+  pets require no migration. Windows packages remain updater-signed but not Authenticode-signed, so
+  SmartScreen may still show a reputation warning.
+
 ## 0.1.78 — 2026-08-14 — keep the companion action visually attached
 
 - Reduce the transparent companion surface from `260×240` to the compact `220×240` safe envelope and

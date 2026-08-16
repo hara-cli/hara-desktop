@@ -54,6 +54,27 @@ export function taskStateIsLive(state: TaskLifecycleEvent["state"]): boolean {
   return state === "running" || state === "waiting";
 }
 
+export function terminalTaskLifecycleFallback(
+  current: TaskLifecycleEvent | undefined,
+  turnId: string | undefined,
+  state: "paused" | "completed" | "blocked",
+  updatedAt: string,
+): TaskLifecycleEvent | undefined {
+  if (!current || !turnId || current.turnId !== turnId || !taskStateIsLive(current.state)) {
+    return undefined;
+  }
+  const { approval: _approval, ...rest } = current;
+  return {
+    ...rest,
+    state,
+    taskStatus: state,
+    phase: "finished",
+    at: updatedAt,
+    updatedAt,
+    lastOutcome: state === "completed" ? "completed" : state === "paused" ? "interrupted" : "error",
+  };
+}
+
 export function taskStatePetStatus(
   state: TaskLifecycleEvent["state"],
 ): ActivePetStatus {

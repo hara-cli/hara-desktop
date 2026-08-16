@@ -132,21 +132,22 @@ html.pet-mode #root {
 
 .pet-tuck {
   position: absolute;
-  z-index: 4;
-  top: 5px;
-  right: 3px;
-  width: 22px;
-  height: 22px;
+  z-index: 10;
+  top: 3px;
+  right: 2px;
+  width: 30px;
+  height: 30px;
   padding: 0;
-  color: rgba(255, 255, 255, 0.52);
-  font-size: 18px;
-  line-height: 20px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 19px;
+  line-height: 28px;
   border: 0;
   border-radius: 50%;
-  background: rgba(20, 20, 22, 0.55);
-  opacity: 0;
+  background: rgba(20, 20, 22, 0.68);
+  opacity: 0.42;
   cursor: pointer;
-  transition: opacity 120ms ease;
+  pointer-events: auto;
+  transition: opacity 120ms ease, transform 120ms ease, background 120ms ease;
 }
 
 .pet-chat-launch {
@@ -209,6 +210,14 @@ html.pet-mode #root {
   opacity: 1;
 }
 
+.pet-tuck:hover {
+  background: rgba(48, 45, 47, 0.94);
+}
+
+.pet-tuck:active {
+  transform: scale(0.92);
+}
+
 .atlas-frame {
   position: absolute;
   left: 4px;
@@ -232,274 +241,7 @@ html.pet-mode #root {
   position: absolute;
   inset: 0;
   transform-origin: 50% 88%;
-  animation: hara-breathe 3.6s ease-in-out infinite;
   pointer-events: none;
-}
-
-.official-image-pet {
-  inset: auto auto 1px 4px;
-  width: 176px;
-  height: 191px;
-  overflow: visible;
-  filter: drop-shadow(0 12px 8px rgba(0, 0, 0, 0.22));
-}
-
-.official-image-pet img {
-  position: relative;
-  z-index: 2;
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: center bottom;
-  transform-origin: 50% 82%;
-  transition: transform 120ms ease;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
-.official-image-pet-left {
-  transform: scaleX(-1);
-}
-
-.official-image-pet-right {
-  transform: scaleX(1);
-}
-
-/* The official companion is one stable identity. These small, body-anchored rigs provide the
-   task vocabulary: build, ask, pause, deliver, and repair. They intentionally stay inside the
-   compact native window and never become detached ambient decoration. */
-.official-pet-prop {
-  position: absolute;
-  z-index: 4;
-  display: none;
-  pointer-events: none;
-}
-
-.official-image-pet.is-status-running:not(.is-moving) .official-pet-treadmill,
-.official-image-pet.is-status-running:not(.is-moving) .official-pet-hammer,
-.official-image-pet.is-status-waiting:not(.is-moving) .official-pet-card,
-.official-image-pet.is-status-paused:not(.is-moving) .official-pet-cup,
-.official-image-pet.is-status-ready:not(.is-moving) .official-pet-flag,
-.official-image-pet.is-status-blocked:not(.is-moving) .official-pet-repair {
-  display: block;
-}
-
-.official-pet-treadmill {
-  z-index: 0;
-  left: 23px;
-  bottom: 4px;
-  width: 128px;
-  height: 16px;
-  border: 2px solid rgba(218, 226, 224, 0.76);
-  border-radius: 50%;
-  background: #24282a;
-  box-shadow: 0 5px 0 rgba(9, 11, 12, 0.75), inset 0 0 0 3px #111416;
-  transform: rotate(-1deg);
-}
-
-.official-pet-treadmill::before,
-.official-pet-treadmill::after {
-  position: absolute;
-  bottom: -7px;
-  width: 5px;
-  height: 8px;
-  border-radius: 0 0 3px 3px;
-  background: #373c3e;
-  content: "";
-}
-
-.official-pet-treadmill::before { left: 17px; }
-.official-pet-treadmill::after { right: 17px; }
-
-.official-pet-treadmill i {
-  position: absolute;
-  inset: 4px 12px;
-  border-radius: 50%;
-  background: repeating-linear-gradient(90deg, #ff655c 0 7px, #33383a 7px 17px);
-  background-size: 34px 100%;
-  animation: official-pet-belt 0.55s linear infinite;
-}
-
-.official-pet-hammer {
-  top: 83px;
-  left: 129px;
-  width: 5px;
-  height: 45px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #9a623d, #e0a36a 48%, #75452c);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.38);
-  transform: rotate(-31deg);
-  transform-origin: 50% 88%;
-  animation: official-pet-hammer 0.72s cubic-bezier(0.52, 0.08, 0.32, 1) infinite;
-}
-
-.official-pet-hammer i {
-  position: absolute;
-  top: -8px;
-  left: -11px;
-  width: 27px;
-  height: 12px;
-  border: 1px solid #747b7d;
-  border-radius: 4px 6px 4px 4px;
-  background: linear-gradient(180deg, #d9dedc, #747b7d 56%, #353a3c);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.55), 0 3px 5px rgba(0, 0, 0, 0.28);
-}
-
-.official-pet-card {
-  top: 88px;
-  left: 125px;
-  width: 32px;
-  height: 27px;
-  border: 2px solid #f1c66f;
-  border-radius: 5px;
-  background: linear-gradient(145deg, #423620, #1b1d1d);
-  box-shadow: 0 5px 9px rgba(0, 0, 0, 0.32);
-  transform: rotate(4deg);
-  transform-origin: -7px 24px;
-  animation: official-pet-raise 1.45s ease-in-out infinite;
-}
-
-.official-pet-card::before {
-  position: absolute;
-  inset: 0;
-  color: #ffd880;
-  content: "?";
-  font: 800 16px/25px ui-monospace, monospace;
-  text-align: center;
-}
-
-.official-pet-card::after {
-  position: absolute;
-  bottom: -9px;
-  left: -8px;
-  width: 13px;
-  height: 4px;
-  border-radius: 3px;
-  background: #c84e43;
-  content: "";
-  transform: rotate(-37deg);
-}
-
-.official-pet-cup {
-  top: 107px;
-  left: 124px;
-  width: 25px;
-  height: 20px;
-  border: 2px solid #d6d8d4;
-  border-radius: 3px 3px 8px 8px;
-  background: linear-gradient(135deg, #efece3, #9aa09e);
-  box-shadow: 0 4px 7px rgba(0, 0, 0, 0.3);
-  transform: rotate(4deg);
-}
-
-.official-pet-cup::before {
-  position: absolute;
-  top: 3px;
-  right: -9px;
-  width: 9px;
-  height: 10px;
-  border: 2px solid #bfc3bf;
-  border-left: 0;
-  border-radius: 0 8px 8px 0;
-  content: "";
-}
-
-.official-pet-cup::after,
-.official-pet-cup i::after {
-  position: absolute;
-  top: -15px;
-  width: 5px;
-  height: 12px;
-  border-left: 2px solid rgba(237, 237, 226, 0.68);
-  border-radius: 50%;
-  content: "";
-  animation: official-pet-steam 1.8s ease-in-out infinite;
-}
-
-.official-pet-cup::after { left: 8px; }
-.official-pet-cup i::after { left: 15px; animation-delay: -0.7s; }
-
-.official-pet-flag {
-  top: 55px;
-  left: 130px;
-  width: 4px;
-  height: 73px;
-  border-radius: 3px;
-  background: #d9ddd9;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  transform: rotate(8deg);
-  transform-origin: 50% 88%;
-  animation: official-pet-raise 1.15s ease-in-out infinite;
-}
-
-.official-pet-flag i {
-  position: absolute;
-  top: 2px;
-  left: 3px;
-  width: 35px;
-  height: 24px;
-  border-radius: 2px 5px 5px 2px;
-  background: linear-gradient(135deg, #66c38b, #2d7951);
-  box-shadow: inset 0 0 0 1px rgba(235, 255, 243, 0.35), 0 4px 8px rgba(0, 0, 0, 0.25);
-}
-
-.official-pet-flag i::after {
-  position: absolute;
-  inset: 0;
-  color: #f4fff7;
-  content: "✓";
-  font: 800 15px/24px ui-monospace, monospace;
-  text-align: center;
-}
-
-.official-pet-repair {
-  top: 91px;
-  left: 128px;
-  width: 6px;
-  height: 43px;
-  border-radius: 4px;
-  background: linear-gradient(90deg, #b7bdbb, #edf0ea 48%, #666d6d);
-  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.32);
-  transform: rotate(-35deg);
-  transform-origin: 50% 86%;
-  animation: official-pet-repair 0.9s ease-in-out infinite;
-}
-
-.official-pet-repair i {
-  position: absolute;
-  top: -10px;
-  left: -6px;
-  width: 16px;
-  height: 16px;
-  border: 5px solid #c7ccca;
-  border-top-color: transparent;
-  border-radius: 50%;
-  transform: rotate(18deg);
-}
-
-@keyframes official-pet-belt {
-  to { background-position-x: 34px; }
-}
-
-@keyframes official-pet-hammer {
-  0%, 100% { transform: rotate(-35deg); }
-  48% { transform: rotate(19deg); }
-}
-
-@keyframes official-pet-raise {
-  0%, 100% { translate: 0 1px; }
-  50% { translate: 0 -4px; }
-}
-
-@keyframes official-pet-steam {
-  0%, 100% { opacity: 0; transform: translateY(4px) scaleY(0.72); }
-  45% { opacity: 0.8; transform: translateY(-2px) scaleY(1); }
-}
-
-@keyframes official-pet-repair {
-  0%, 100% { transform: rotate(-39deg); }
-  50% { transform: rotate(-12deg); }
 }
 
 .hara-aura {
@@ -555,7 +297,7 @@ html.pet-mode #root {
   border-radius: 50%;
   background: #f5eee5;
   box-shadow: 0 0 8px rgba(255, 244, 230, 0.35);
-  animation: hara-blink 4.8s infinite;
+  animation: hara-blink 4.8s 1;
 }
 
 .hara-eye-left {
@@ -603,19 +345,19 @@ html.pet-mode #root {
 }
 
 .hara-pet-waiting:not(.reduced) {
-  animation: hara-wait 1.1s ease-in-out infinite;
+  animation: hara-wait 1.1s ease-in-out 1 forwards;
 }
 
 .hara-pet-paused:not(.reduced) {
-  animation: hara-wait 2.2s ease-in-out infinite;
+  animation: hara-wait 1.6s ease-in-out 1 forwards;
 }
 
 .hara-pet-ready:not(.reduced) {
-  animation: hara-ready 0.78s ease-out infinite;
+  animation: hara-ready 0.78s ease-out 1 forwards;
 }
 
 .hara-pet-blocked:not(.reduced) {
-  animation: hara-blocked 1.8s ease-in-out infinite;
+  animation: hara-blocked 1.2s ease-in-out 1 forwards;
 }
 
 .hara-pet-blocked .hara-seal {
@@ -629,12 +371,6 @@ html.pet-mode #root {
 .hara-pet.reduced,
 .hara-pet.reduced * {
   animation: none !important;
-}
-
-@keyframes hara-breathe {
-  0%,
-  100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-3px) scale(1.012); }
 }
 
 @keyframes hara-work {

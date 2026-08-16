@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   WORKFORCE_ACTOR_LIMIT,
   boundedWorkforceState,
+  workforceHasLiveActors,
   workforceFromTask,
   workforceStateIsNewer,
 } from "../src/workforce-state.ts";
@@ -91,14 +92,44 @@ test("renderer drops actors with invalid wire enums or timestamps", () => {
   assert.equal("untrusted" in snapshot, false);
 });
 
+test("terminal task fallback can reject a stale live workforce projection", () => {
+  assert.equal(workforceHasLiveActors(event(1, {
+    actors: [{
+      actorId: "root",
+      kind: "root",
+      capability: "orchestration",
+      state: "working",
+      activity: "running",
+      startedAt: "2026-08-16T00:00:00.000Z",
+      updatedAt: "2026-08-16T00:00:01.000Z",
+    }],
+  })), true);
+  assert.equal(workforceHasLiveActors(event(2, {
+    actors: [{
+      actorId: "root",
+      kind: "root",
+      capability: "orchestration",
+      state: "completed",
+      activity: "delivering",
+      startedAt: "2026-08-16T00:00:00.000Z",
+      updatedAt: "2026-08-16T00:00:02.000Z",
+    }],
+  })), false);
+});
+
 test("Agent Office uses one Hara identity with capability tools and zoned workstations", () => {
   const surface = readFileSync(`${root}/src/WorkforceSurface.tsx`, "utf8");
   const css = readFileSync(`${root}/src/WorkforceSurface.css`, "utf8");
-  assert.match(surface, /BUILTIN_HARA_PET\.imageUrl/);
+  assert.match(surface, /BUILTIN_HARA_ASSET/);
+  assert.match(surface, /<AtlasCssPet/);
+  assert.match(surface, /petStatusForActor/);
   assert.doesNotMatch(surface, /OFFICIAL_HARA_PETS|petForActor/);
   assert.match(surface, /CAPABILITY_VISUALS/);
   assert.match(surface, /seat\.zone === desiredZone/);
   assert.match(surface, /workforce-role-tool/);
+  assert.match(surface, /workforce-stage-camera is-\$\{camera\}/);
+  assert.match(css, /\.workforce-stage-camera\.is-focus/);
+  assert.doesNotMatch(css, /is-waiting \.workforce-character \{ animation:/);
   for (const capability of ["code", "browser", "research", "design", "files", "office", "communication"]) {
     assert.match(css, new RegExp(`is-capability-${capability} \\.workforce-role-tool`));
   }
