@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.82 — 2026-08-17 — discoverable Agent Office and explicit multi-agent boundary
+
+- Replace the ambiguous zero-tab `Extension screen 0` action with a labeled `Add view` launcher. Agent
+  Office is now the first choice, followed by Terminal, Browser, and Files; Hara no longer silently opens
+  Files when the user is trying to discover the visual workspace. Once a view exists, the same compact
+  anchor returns to its show/hide role.
+- Reuse one accessible launcher in both the conversation anchor and Visual Dock. The menu receives keyboard
+  focus, closes with Escape or an outside click, returns focus to its trigger, and is allowed to render above
+  the conversation header instead of being clipped by it.
+- Record the exact current boundary against DeepSeek Harness: DeepSeek Responses thinking, bounded native
+  read-only subagents, and privacy-safe workforce projection are implemented; provider-pluggable continuable
+  children and a true WebGL 3D renderer remain explicit later phases. Bundle unchanged Hara CLI `0.148.0`
+  at exact verified commit `675b96fe1904decc73741ed256b720fe71ede087`; existing sessions, projects,
+  Artifacts, presentations, and companion state require no migration. Windows packages remain updater-signed
+  but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.81 — 2026-08-16 — official animated Hara and bounded companion motion
 
 - Embed the visually approved Hara v2 `8×11` atlas as Desktop's single official companion, with

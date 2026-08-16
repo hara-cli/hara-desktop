@@ -138,6 +138,11 @@
   justify-content: center;
 }
 
+.extension-view-launcher.is-anchor {
+  height: auto;
+  flex: 0 0 auto;
+}
+
 .extension-dock-add-button {
   display: grid;
   width: 27px;
@@ -160,6 +165,40 @@
   border-color: #37343b;
   background: #1d1c20;
   color: #eeeae4;
+}
+
+.extension-view-launcher.is-anchor .extension-dock-add-button {
+  display: inline-flex;
+  width: auto;
+  height: 28px;
+  gap: 6px;
+  padding: 0 9px;
+  border-color: #37343b;
+  background: #1a191d;
+  color: #c9c5be;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.extension-view-launcher.is-anchor .extension-dock-add-button > span:first-child {
+  color: #f05a43;
+  font: 500 17px/1 "SF Mono", ui-monospace, monospace;
+}
+
+.extension-view-launcher-label {
+  letter-spacing: 0.01em;
+}
+
+.extension-view-launcher-chevron {
+  color: #77737b;
+  font-size: 12px;
+  transform: translateY(-1px);
+}
+
+.extension-view-launcher.is-anchor .extension-dock-add-menu {
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
 }
 
 .extension-dock-add-menu {

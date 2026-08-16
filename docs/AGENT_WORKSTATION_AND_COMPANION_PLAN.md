@@ -1,8 +1,8 @@
 # Hara 协作工位与桌宠统一状态方案
 
-> 状态：Desktop 0.1.81 已交付 P0/P1：单一官方 v2 动画桌宠、统一状态播放器、脱敏
-> workforce 协议，以及带全景/聚焦镜头的可收起 2.5D Agent 办公室；真实 WebGL 3D 主题、
-> 历史回放和全局调度仍在后续阶段。
+> 状态：Desktop 0.1.82 已交付 P0/P1：单一官方 v2 动画桌宠、统一状态播放器、脱敏
+> workforce 协议、可发现的首次视图启动器，以及带全景/聚焦镜头的可收起 2.5D Agent
+> 办公室；真实 WebGL 3D 主题、历史回放和全局调度仍在后续阶段。
 > 决策日期：2026-08-14。
 > 适用范围：Hara CLI / Serve、Hara Desktop 右侧扩展屏、Desktop 桌宠。
 
@@ -251,3 +251,65 @@ Desktop 上传参考图 / 品牌约束
 4. 点击等待角色进入精确审批；点击完成角色进入精确会话或结果。
 5. 桌宠与工位对同一活动给出一致状态，且不会泄露任务内容或凭据。
 6. 隐藏标签不持续高频绘制；减弱动画、键盘和屏幕阅读器路径可用。
+
+## 10. DeepSeek Harness 对照审计与插件化边界（2026-08-17）
+
+当前能力不能笼统描述为“已经引入 DeepSeek Harness”，准确状态如下：
+
+| 能力 | Hara 当前状态 | 下一步 |
+|---|---|---|
+| DeepSeek Responses API 与思考档位 | CLI 0.148.0 已支持 Flash / Pro 的 Responses 路由，以及 `off / low / high / max` 的安全映射；无状态历史、语义 SSE、工具调用和 reasoning continuation 已覆盖 | 保持 provider contract 与回归，不在 Desktop 暴露私有思维链 |
+| 本机子 Agent | 已有 provider-neutral `SubagentRuntime`、FIFO 有界队列、并发限制、取消、结算和生命周期事件；当前真实 provider 为 `native-readonly` | 把 provider 注册、能力声明和错误类型收敛成稳定 seam |
+| Agent 办公室状态 | Serve 已投影有序、脱敏的 `event.workforce_state`；Desktop 2.5D 场景消费真实根 Agent 与子 Agent 状态 | 增加稳定多级谱系、可继续 child epoch 和历史回放事件 |
+| Harness 多提供方机制 | 尚未引入 | 依次增加 Hara in-process、Codex app-server、Claude/ACP 等可选 adapter；不把外部实现硬编码进主循环 |
+| 可继续子会话 | 尚未引入 | 设计稳定 child session id、直接父级鉴权、follow-up FIFO、interrupt、child-first settlement 与冷恢复 |
+| 真 3D 办公室 | 尚未引入；当前是低功耗 2.5D DOM/SVG 场景 | 在同一 `workforce` surface 内增加可卸载 WebGL renderer，并保留 2D/静态降级 |
+
+### 10.1 学习 Harness，但不照搬整个 Cordis 运行时
+
+Hara 应学习 Harness 的三项结构，而不是把另一个完整产品运行时塞进 CLI：
+
+1. **完整能力缝隙**：每项能力同时定义 Service Definition、一个或多个 Provider 和 Consumer；
+   缺少任一角色都不称为插件能力。
+2. **会话是真源**：任何会进入下一轮模型上下文的 child 消息、上报和结算都必须可从持久化
+   会话事件恢复；办公室只消费投影，永远不能反向成为执行状态真源。
+3. **可继续 child 的所有权**：稳定 child id、直接父级权限、唯一 FIFO inbox、冷恢复和
+   child-first settlement 属于 runtime；UI、桌宠和 3D renderer 不参与这些判定。
+
+保持 Hara 默认路径简单：没有开启多 Agent 时仍是一个 root Agent、一个会话和一条任务状态
+链；只有模型真实调用 subagent 工具后才加载 provider、创建 child 并在办公室出现角色。
+
+### 10.2 “万物皆插件”在办公室中的落地
+
+Agent 办公室应作为**预安装的一方可视化插件**演进，但插件化的是边界，不是把页面改成
+iframe：
+
+```text
+CLI orchestration capability
+  = Subagent Service Definition + named Providers + model-tool Consumer
+        -> Serve workforce projection plugin（有序、脱敏、可恢复）
+             -> Desktop Agent Office surface plugin
+                  -> 2.5D renderer（当前默认）
+                  -> WebGL 3D renderer（后续按需加载）
+                  -> accessible list renderer（永久保留）
+```
+
+- Desktop surface 通过受控 contribution 注册标签、图标、命令和 renderer，不直接 import
+  provider，也不能读取提示词、思维链、工具参数、文件路径或输出。
+- 3D 只是同一份 `workforce` 快照的 renderer 插件；切换主题不能创建第二套 Agent 后端或
+  第二套状态机。
+- `reasoningEffort` 最多显示为有限的“思考强度”配置或 `planning` 状态；绝不展示
+  reasoning 文本，也不把动画强度伪装成模型正在做的具体推理。
+- 插件不可用、GPU 受限或用户启用减弱动态效果时，自动回退到 2.5D / 列表视图；任务执行
+  本身不受影响。
+
+### 10.3 下一阶段最小纵切
+
+1. 定义 `SubagentProviderV1`：命名注册、能力声明、one-shot start、取消和 typed settlement；
+   以现有 `native-readonly` 作为第一个 provider，不先引入完整 Cordis。
+2. 为真实 child 增加稳定 `parentActorId / depth / providerKind / epoch` 的脱敏 v2 投影，保留
+   v1 降级，并对乱序、重连、取消和 child-first 结算做端到端测试。
+3. 将 `WorkforceSurface` 注册路径改为预安装 surface contribution；UI 与当前 owner、审批和
+   会话权限保持不变。
+4. 再实现按可见性暂停的 React Three Fiber / Three.js renderer，以 24 个角色、30fps 上限、
+   低功耗 12–15fps 和静态降级作为发布门禁。

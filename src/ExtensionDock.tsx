@@ -35,6 +35,13 @@ export interface ExtensionDockAddItem {
   disabledReason?: string;
 }
 
+interface ExtensionViewLauncherProps {
+  items: ExtensionDockAddItem[];
+  label: string;
+  variant?: "dock" | "anchor";
+  onSelect?: (itemId: ExtensionDockAddItem["id"]) => void;
+}
+
 interface ExtensionDockProps {
   kind: ExtensionSurfaceKind;
   kindLabel: string;
@@ -93,6 +100,83 @@ function DockToolIcon({ name }: { name: ExtensionDockAddItem["id"] }) {
   return <svg viewBox="0 0 20 20" aria-hidden><path d="M3 6h5l1.5 2H17v7H3zM3 6V4h6l1.5 2" /></svg>;
 }
 
+export function ExtensionViewLauncher({
+  items,
+  label,
+  variant = "dock",
+  onSelect,
+}: ExtensionViewLauncherProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const focusFrame = window.requestAnimationFrame(() => {
+      rootRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+        ?.focus();
+    });
+    const closeFromOutside = (event: globalThis.PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeFromEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    };
+    document.addEventListener("pointerdown", closeFromOutside);
+    document.addEventListener("keydown", closeFromEscape);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("pointerdown", closeFromOutside);
+      document.removeEventListener("keydown", closeFromEscape);
+    };
+  }, [open]);
+
+  return (
+    <div className={`extension-view-launcher extension-dock-add is-${variant}`} ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="extension-dock-add-button"
+        aria-label={label}
+        title={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span aria-hidden>+</span>
+        {variant === "anchor" && <span className="extension-view-launcher-label">{label}</span>}
+        {variant === "anchor" && <span className="extension-view-launcher-chevron" aria-hidden>⌄</span>}
+      </button>
+      {open && (
+        <div className="extension-dock-add-menu" role="menu" aria-label={label}>
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled}
+              title={item.disabled ? item.disabledReason : undefined}
+              onClick={() => {
+                if (item.disabled) return;
+                setOpen(false);
+                onSelect?.(item.id);
+              }}
+            >
+              <DockToolIcon name={item.id} />
+              <span>{item.label}</span>
+              {item.shortcut && <kbd>{item.shortcut}</kbd>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function initialWidth(): number {
   if (typeof window === "undefined") return 48;
   try {
@@ -128,18 +212,7 @@ export default function ExtensionDock({
   const [width, setWidth] = useState(initialWidth);
   const widthRef = useRef(width);
   const [resizing, setResizing] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
   const asideRef = useRef<HTMLElement | null>(null);
-  const addMenuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!addOpen) return;
-    const closeFromOutside = (event: globalThis.PointerEvent) => {
-      if (!addMenuRef.current?.contains(event.target as Node)) setAddOpen(false);
-    };
-    document.addEventListener("pointerdown", closeFromOutside);
-    return () => document.removeEventListener("pointerdown", closeFromOutside);
-  }, [addOpen]);
 
   const saveWidth = (next: number, persist = true) => {
     const bounded = extensionDockWidth(next);
@@ -253,44 +326,11 @@ export default function ExtensionDock({
             ))}
           </div>
           {addItems.length > 0 && (
-            <div className="extension-dock-add" ref={addMenuRef}>
-              <button
-                type="button"
-                className="extension-dock-add-button"
-                aria-label={copy.add}
-                title={copy.add}
-                aria-haspopup="menu"
-                aria-expanded={addOpen}
-                onClick={() => setAddOpen((open) => !open)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setAddOpen(false);
-                }}
-              >
-                <span aria-hidden>+</span>
-              </button>
-              {addOpen && (
-                <div className="extension-dock-add-menu" role="menu" aria-label={copy.add}>
-                  {addItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      role="menuitem"
-                      disabled={item.disabled}
-                      title={item.disabled ? item.disabledReason : undefined}
-                      onClick={() => {
-                        if (item.disabled) return;
-                        setAddOpen(false);
-                        onAddItem?.(item.id);
-                      }}
-                    >
-                      <DockToolIcon name={item.id} />
-                      <span>{item.label}</span>
-                      {item.shortcut && <kbd>{item.shortcut}</kbd>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ExtensionViewLauncher
+              items={addItems}
+              label={copy.add}
+              onSelect={onAddItem}
+            />
           )}
         </div>
       )}

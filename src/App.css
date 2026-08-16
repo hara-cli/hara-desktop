@@ -515,8 +515,9 @@ button.deny {
   border-bottom: 1px solid var(--border);
   background: var(--bg2);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  position: relative;
+  z-index: 8;
 }
 .anchor b {
   color: var(--fg);
@@ -2499,6 +2500,9 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.extension-view-launcher-fallback {
+  min-width: 88px;
 }
 .extension-screen-count {
   min-width: 16px;

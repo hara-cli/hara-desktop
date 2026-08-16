@@ -86,6 +86,23 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(diff, /white-space:\s*pre\s*;/, "unified diff alignment is preserved");
 });
 
+test("an empty extension screen exposes an explicit Agent Office-first view launcher", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const dock = readFileSync(`${root}/src/ExtensionDock.tsx`, "utf8");
+
+  assert.match(app, /activeSession && contextExtensionTabs\.length === 0[\s\S]*<ExtensionViewLauncher/);
+  assert.match(app, /const extensionAddItems = activeSession[\s\S]*id: "workforce" as const/);
+  assert.doesNotMatch(
+    app.match(/const toggleCurrentExtensionScreen = \(\) => \{([\s\S]*?)\n  \};/)?.[1] ?? "",
+    /openWorkbenchTool\("files"\)/,
+    "the first extension-screen action must not silently choose Files",
+  );
+  assert.match(dock, /export function ExtensionViewLauncher/);
+  assert.match(dock, /role="menu"/);
+  assert.match(dock, /event\.key !== "Escape"/);
+  assert.match(dock, /triggerRef\.current\?\.focus\(\)/);
+});
+
 test("presentation preview races recover latest state and expose only localized copy", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const surface = readFileSync(`${root}/src/presentation-surface.ts`, "utf8");
@@ -1128,7 +1145,8 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   assert.match(app, /sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"/);
   assert.match(app, /tabs=\{dockTabs\}/, "owner-bound surfaces share one multi-tab Visual Dock");
   assert.match(app, /disabled=\{!activeSession\}/, "Workbench keeps an explicit extension-screen affordance before a result exists");
-  assert.match(app, /openWorkbenchTool\("files"\)/, "opening an empty extension screen creates a useful first Files tab");
+  assert.match(app, /contextExtensionTabs\.length === 0[\s\S]*<ExtensionViewLauncher/, "an empty extension screen asks the user which view to open");
+  assert.match(app, /\{ id: "workforce" as const[\s\S]*\{ id: "terminal" as const/, "Agent Office is the first discoverable view");
   assert.match(app, /invoke\("ensure_extension_window_width"\)/, "opening the dock asks the native shell to grow right when the monitor has room");
   assert.match(app, /setCurrentExtensionScreenVisible\(false\)/, "the dock header hides the screen without destroying its tabs");
   assert.match(app, /activeExtensionTabForContext\(extensionDockStateRef\.current, ownerContext\)/);

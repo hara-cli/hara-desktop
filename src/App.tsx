@@ -262,6 +262,10 @@ const AutomationsPage = lazy(() =>
     default: module.AutomationsPage,
   })));
 const ExtensionDock = lazy(loadExtensionDock);
+const ExtensionViewLauncher = lazy(() =>
+  loadExtensionDock().then((module) => ({
+    default: module.ExtensionViewLauncher,
+  })));
 const WorkbenchToolSurface = lazy(loadWorkbenchToolSurface);
 const WorkforceSurface = lazy(loadWorkforceSurface);
 const OfficeHome = lazy(loadOfficeHome);
@@ -5232,19 +5236,36 @@ export default function App() {
                   {panelBusy === panelOperationKey(sp.plugin, sp.id) ? "…" : `◧ ${sp.title}`}
                 </button>
               ))}
-          <button
-            type="button"
-            className={`paneltab extension-screen-toggle${contextExtensionScreenVisible ? " on" : ""}`}
-            aria-pressed={contextExtensionScreenVisible}
-            disabled={!activeSession}
-            title={contextExtensionTabs.length === 0
-              ? t("extensionEmpty")
-              : contextExtensionScreenVisible ? t("extensionHide") : t("extensionShow")}
-            onClick={toggleCurrentExtensionScreen}
-          >
-            ◫ {t("extensionScreen")}
-            <span className="extension-screen-count">{contextExtensionTabs.length}</span>
-          </button>
+          {activeSession && contextExtensionTabs.length === 0 ? (
+            <Suspense
+              fallback={(
+                <button type="button" className="paneltab extension-view-launcher-fallback" disabled>
+                  + {t("extensionAdd")}
+                </button>
+              )}
+            >
+              <ExtensionViewLauncher
+                items={extensionAddItems}
+                label={t("extensionAdd")}
+                variant="anchor"
+                onSelect={openExtensionItem}
+              />
+            </Suspense>
+          ) : (
+            <button
+              type="button"
+              className={`paneltab extension-screen-toggle${contextExtensionScreenVisible ? " on" : ""}`}
+              aria-pressed={contextExtensionScreenVisible}
+              disabled={!activeSession}
+              title={contextExtensionTabs.length === 0
+                ? t("extensionEmpty")
+                : contextExtensionScreenVisible ? t("extensionHide") : t("extensionShow")}
+              onClick={toggleCurrentExtensionScreen}
+            >
+              ◫ {t("extensionScreen")}
+              <span className="extension-screen-count">{contextExtensionTabs.length}</span>
+            </button>
+          )}
         </div>
       </div>
       {!active ? (
@@ -6191,10 +6212,7 @@ export default function App() {
     });
   };
   const toggleCurrentExtensionScreen = () => {
-    if (!contextExtensionDock && (zone === "chat" || zone === "projects") && active) {
-      openWorkbenchTool("files");
-      return;
-    }
+    if (!contextExtensionDock) return;
     setCurrentExtensionScreenVisible(!contextExtensionScreenVisible);
   };
   const panelExtension = contextExtensionDock?.type === "legacy-panel"
@@ -6251,8 +6269,9 @@ export default function App() {
     close: t("extensionTabClose"),
     add: t("extensionAdd"),
   };
-  const extensionAddItems = contextExtensionDock?.owner.place === "chat"
-    || contextExtensionDock?.owner.place === "projects"
+  const extensionAddItems = activeSession
+    && (zone === "chat" || zone === "projects")
+    && sessionPlace(activeSession) === zone
       ? [
         { id: "workforce" as const, label: t("extensionWorkforce") },
         { id: "terminal" as const, label: t("extensionTerminal") },
