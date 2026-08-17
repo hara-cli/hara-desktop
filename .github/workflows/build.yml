@@ -737,12 +737,15 @@ jobs:
         shell: bash
         run: ./scripts/build-mac-signed.sh
 
-      - name: Build signed and notarized Intel assets under Rosetta
+      - name: Build signed and notarized Intel assets with foreign-architecture inspection
         working-directory: hara-desktop
         shell: bash
         env:
           HARA_MAC_TARGET: x86_64-apple-darwin
-          HARA_ALLOW_ROSETTA_SMOKE: "1"
+          # The x64 matrix job already execute-smoked every package on macos-15-intel. The protected
+          # ARM signing host verifies architecture, signatures, notarization, and staples without
+          # depending on the host-wide health of Rosetta.
+          HARA_FOREIGN_MAC_STATIC_VALIDATION: "1"
           HARA_PROTECTED_SIGNING_JOB: ${{ github.run_id }}
         run: ./scripts/build-mac-signed.sh
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.85 — 2026-08-17 — publishable Agent Office and deterministic task intake
+
+- Bundle Hara CLI `0.148.1` at exact verified commit
+  `ec8494fd599c1f53569527ce2b647de331f7a38b`. Chinese positional “之前” no longer triggers unrelated
+  historical recall, repeated recall is deduplicated, gateway sessions identify their real execution host,
+  and finite connectivity checks can remain inside an investigation brief without granting mutation authority.
+- Remove the protected Apple Silicon signing lane's runtime dependency on Rosetta for Intel artifacts. Every
+  x64 package is still execute-smoked on the native `macos-15-intel` matrix runner; the protected signing host
+  then checks structure, x86_64 architecture, Developer ID signatures, notarization, staples, updater
+  signatures, and exact tagged provenance without executing foreign code.
+- Carry forward the directly launchable preinstalled `core.agent-office` capability, default WebGL renderer,
+  2.5D and accessible-list fallbacks, macOS cold-start window repair, and privacy-safe workforce state. Existing
+  sessions, projects, Artifacts, presentations, companion state, and capability packages require no migration.
+  Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a warning.
+
 ## 0.1.84 — 2026-08-17 — visible macOS launch and direct Agent Office entry
 
 - Repair a macOS cold-start failure where Hara could keep a healthy process and desktop companion but

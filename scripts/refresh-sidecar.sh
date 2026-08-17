@@ -149,7 +149,12 @@ fi
 
 mkdir -p src-tauri/binaries
 cp "$OUT$EXT" "src-tauri/binaries/hara-$TRIPLE$EXT"
-node scripts/sidecar-smoke.mjs "src-tauri/binaries/hara-$TRIPLE$EXT" "$EXPECTED" "$TRIPLE"
+if [ "${HARA_FOREIGN_MAC_STATIC_VALIDATION:-0}" = "1" ]; then
+  node scripts/foreign-mac-validation.mjs \
+    "src-tauri/binaries/hara-$TRIPLE$EXT" "$TRIPLE" "freshly compiled Intel sidecar"
+else
+  node scripts/sidecar-smoke.mjs "src-tauri/binaries/hara-$TRIPLE$EXT" "$EXPECTED" "$TRIPLE"
+fi
 printf '%s\n' "$EXPECTED" > "$VERSION_STAMP_FILE"
 printf '%s\n' "$SOURCE_COMMIT" > "$COMMIT_STAMP_FILE"
 echo "✓ sidecar refreshed: hara $EXPECTED@$SOURCE_COMMIT → src-tauri/binaries/hara-$TRIPLE$EXT"

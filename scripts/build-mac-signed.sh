@@ -95,15 +95,7 @@ case "$TARGET" in
     MACHO_ARCH="arm64"
     ;;
   x86_64-apple-darwin)
-    [ "${HARA_ALLOW_ROSETTA_SMOKE:-}" = "1" ] || {
-      echo "error: x86_64 signing on Apple Silicon requires HARA_ALLOW_ROSETTA_SMOKE=1" >&2
-      echo "       CI release smoke remains native on macos-15-intel." >&2
-      exit 1
-    }
-    /usr/bin/arch -x86_64 /usr/bin/true >/dev/null 2>&1 || {
-      echo "error: Rosetta 2 is required to execute the x86_64 release sidecar on Apple Silicon" >&2
-      exit 1
-    }
+    node scripts/foreign-mac-validation.mjs --preflight "$TARGET"
     RELEASE_BASE="src-tauri/target/$TARGET/release"
     DMG_ARCH="x64"
     MACHO_ARCH="x86_64"
@@ -226,9 +218,10 @@ CLI_COMMIT="$(git -C ../hara-cli rev-parse "refs/tags/v$EXPECTED_SIDECAR_VERSION
 SIDECAR="src-tauri/binaries/hara-$TARGET"
 [ -f "$SIDECAR" ] || { echo "missing sidecar $SIDECAR"; exit 1; }
 
-# refresh-sidecar already executed the compiler output while Bun's valid linker-generated ad-hoc
-# signature was still attached. Apple Silicon refuses to execute an entirely unsigned arm64 Mach-O,
-# so never run the source sidecar in the gap between signature removal and Tauri packaging.
+# refresh-sidecar already executed the native compiler output, or statically inspected Intel output
+# after the native Intel matrix gate passed, while Bun's linker-generated ad-hoc signature remained.
+# Apple Silicon refuses to execute an entirely unsigned arm64 Mach-O, so never run the source
+# sidecar in the gap between signature removal and Tauri packaging.
 echo "▸ removing Bun ad-hoc signature before Tauri's single nested-binary signing pass"
 codesign --remove-signature "$SIDECAR"
 if codesign --verify "$SIDECAR" >/dev/null 2>&1; then

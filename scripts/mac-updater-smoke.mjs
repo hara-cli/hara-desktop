@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Verify the application users actually receive through Tauri's macOS updater archive. CI executes
-// each architecture natively; the controlled Apple Silicon release flow may explicitly use Rosetta
-// for the already-native-CI-verified Intel archive.
+// each architecture natively; the controlled Apple Silicon release flow statically verifies the
+// already-native-CI-executed Intel archive while also checking signatures and notarization.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { smokeSidecar } from "./sidecar-smoke.mjs";
 import { validateStapledArtifact } from "./stapler-validate.mjs";
 import { smokeUpdaterEndpoints } from "./updater-endpoint-smoke.mjs";
+import { inspectForeignMacExecutable, useForeignMacStaticValidation } from "./foreign-mac-validation.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sidecarVersion = readFileSync(join(root, "src-tauri", "binaries", "SIDECAR_VERSION"), "utf8").trim();
@@ -48,6 +49,7 @@ export function smokeMacUpdaterArchive({ archive, expectedTarget, requireSignatu
   const expectedArch =
     expectedTarget === "aarch64-apple-darwin" ? "arm64" : expectedTarget === "x86_64-apple-darwin" ? "x86_64" : "";
   if (!expectedArch) throw new Error(`unsupported macOS updater target: ${expectedTarget}`);
+  const staticOnly = useForeignMacStaticValidation({ expectedTarget });
 
   const extractionRoot = mkdtempSync(join(tmpdir(), "hara-mac-updater-smoke-"));
   try {
@@ -63,13 +65,18 @@ export function smokeMacUpdaterArchive({ archive, expectedTarget, requireSignatu
     if (!shellArchs.includes(expectedArch)) {
       throw new Error(`updater archive shell architecture mismatch: expected ${expectedArch}, got ${shellArchs.join(", ")}`);
     }
-    smokeUpdaterEndpoints({ binary: shell, label: "updater archive desktop shell" });
-    smokeSidecar({
-      binary: sidecar,
-      expectedVersion: sidecarVersion,
-      expectedTarget,
-      label: "updater archive sidecar",
-    });
+    if (staticOnly) {
+      inspectForeignMacExecutable(shell, expectedTarget, "updater archive desktop shell");
+      inspectForeignMacExecutable(sidecar, expectedTarget, "updater archive sidecar");
+    } else {
+      smokeUpdaterEndpoints({ binary: shell, label: "updater archive desktop shell" });
+      smokeSidecar({
+        binary: sidecar,
+        expectedVersion: sidecarVersion,
+        expectedTarget,
+        label: "updater archive sidecar",
+      });
+    }
 
     if (requireSignatures) {
       run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", app], "updater archive codesign");
@@ -77,7 +84,7 @@ export function smokeMacUpdaterArchive({ archive, expectedTarget, requireSignatu
       validateStapledArtifact(app, "updater archive notarization staple");
     }
     console.log(
-      `  ✓ macOS updater archive extracted and executed (${expectedTarget}${requireSignatures ? "; signed + notarized" : ""})`,
+      `  ✓ macOS updater archive extracted and ${staticOnly ? "statically inspected" : "executed"} (${expectedTarget}${requireSignatures ? "; signed + notarized" : ""})`,
     );
   } finally {
     rmSync(extractionRoot, { recursive: true, force: true });

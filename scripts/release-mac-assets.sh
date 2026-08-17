@@ -299,7 +299,7 @@ if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
   node scripts/verify-release-updaters.mjs "$PUBLIC_DIR"
   node scripts/mac-updater-smoke.mjs \
     "$PUBLIC_DIR/Hara_aarch64.app.tar.gz" aarch64-apple-darwin --require-signatures
-  HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-updater-smoke.mjs \
+  HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-updater-smoke.mjs \
     "$PUBLIC_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
   for arch in aarch64 x64; do
     public_dmg="$PUBLIC_DIR/Hara_${VER}_${arch}.dmg"
@@ -310,7 +310,7 @@ if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
     fi
     node scripts/stapler-validate.mjs "$public_dmg" "public $public_target DMG notarization staple"
     /usr/sbin/spctl -a -t open --context context:primary-signature -v "$public_dmg"
-    HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-dmg-smoke.mjs \
+    HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-dmg-smoke.mjs \
       "$public_dmg" "$public_target" --require-signatures
   done
   curl --fail --location --retry 5 --retry-all-errors \
@@ -409,7 +409,7 @@ node scripts/release-source-provenance.mjs validate \
 node scripts/verify-release-updaters.mjs "$REMOTE_DIR"
 node scripts/mac-updater-smoke.mjs \
   "$REMOTE_DIR/Hara_aarch64.app.tar.gz" aarch64-apple-darwin --require-signatures
-HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-updater-smoke.mjs \
+HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-updater-smoke.mjs \
   "$REMOTE_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
 for arch in aarch64 x64; do
   remote_dmg="$REMOTE_DIR/Hara_${VER}_${arch}.dmg"
@@ -420,7 +420,7 @@ for arch in aarch64 x64; do
   fi
   node scripts/stapler-validate.mjs "$remote_dmg" "remote $remote_target DMG notarization staple"
   /usr/sbin/spctl -a -t open --context context:primary-signature -v "$remote_dmg"
-  HARA_ALLOW_ROSETTA_SMOKE=1 node scripts/mac-dmg-smoke.mjs \
+  HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-dmg-smoke.mjs \
     "$remote_dmg" "$remote_target" --require-signatures
 done
 [ "$(release_view_with_retry --json isDraft --jq .isDraft)" = "true" ] || {

@@ -1,6 +1,6 @@
 # Hara 协作工位与桌宠统一状态方案
 
-> 状态：Desktop 0.1.84 已交付单一官方 v2 动画桌宠、统一状态播放器、脱敏 workforce
+> 状态：Desktop 0.1.85 已交付单一官方 v2 动画桌宠、统一状态播放器、脱敏 workforce
 > 协议、可发现的首次视图启动器，以及同一扩展屏内可切换的真实 WebGL 3D、低功耗 2.5D
 > 与状态列表；历史回放、自定义 3D 资产和全局调度仍在后续阶段。
 > 决策日期：2026-08-14。
@@ -264,7 +264,7 @@ Desktop 上传参考图 / 品牌约束
 | Agent 办公室状态 | Serve 已投影有序、脱敏的 `event.workforce_state`；Desktop 2.5D 场景消费真实根 Agent 与子 Agent 状态 | 增加稳定多级谱系、可继续 child epoch 和历史回放事件 |
 | Harness 多提供方机制 | 尚未引入 | 依次增加 Hara in-process、Codex app-server、Claude/ACP 等可选 adapter；不把外部实现硬编码进主循环 |
 | 可继续子会话 | 尚未引入 | 设计稳定 child session id、直接父级鉴权、follow-up FIFO、interrupt、child-first settlement 与冷恢复 |
-| 真 3D 办公室 | 尚未引入；当前是低功耗 2.5D DOM/SVG 场景 | 在同一 `workforce` surface 内增加可卸载 WebGL renderer，并保留 2D/静态降级 |
+| 真 3D 办公室 | Desktop 0.1.83 已预装懒加载 WebGL renderer，0.1.84 增加 Workbench 与能力目录直达入口；WebGL 不可用时保留 2.5D/列表降级 | 在真实使用数据基础上继续优化程序化角色、空间与性能，不另建 Agent 后端 |
 
 ### 10.1 学习 Harness，但不照搬整个 Cordis 运行时
 
@@ -290,8 +290,8 @@ CLI orchestration capability
   = Subagent Service Definition + named Providers + model-tool Consumer
         -> Serve workforce projection plugin（有序、脱敏、可恢复）
              -> Desktop Agent Office surface plugin
-                  -> 2.5D renderer（当前默认）
-                  -> WebGL 3D renderer（后续按需加载）
+                  -> WebGL 3D renderer（当前默认、按需加载）
+                  -> 2.5D renderer（低功耗降级）
                   -> accessible list renderer（永久保留）
 ```
 
@@ -312,5 +312,5 @@ CLI orchestration capability
    v1 降级，并对乱序、重连、取消和 child-first 结算做端到端测试。
 3. 将 `WorkforceSurface` 注册路径改为预安装 surface contribution；UI 与当前 owner、审批和
    会话权限保持不变。
-4. 再实现按可见性暂停的 React Three Fiber / Three.js renderer，以 24 个角色、30fps 上限、
-   低功耗 12–15fps 和静态降级作为发布门禁。
+4. 继续验收现有按可见性暂停的 Three.js renderer，以 24 个角色、30fps 上限、低功耗模式和
+   静态降级作为持续发布门禁；只有第二个真实消费者出现后才抽成独立 npm 包。

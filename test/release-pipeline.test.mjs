@@ -23,6 +23,7 @@ import {
   expectedReleaseSource,
 } from "../scripts/release-source-provenance.mjs";
 import { canUseRosettaSmoke } from "../scripts/sidecar-smoke.mjs";
+import { useForeignMacStaticValidation } from "../scripts/foreign-mac-validation.mjs";
 import { isTransientCodesignTimestampFailure } from "../scripts/codesign-timestamp-retry.mjs";
 import { isTransientGitHubReleaseTransferFailure } from "../scripts/github-release-transfer-retry.mjs";
 import { reconcileReleaseDownloadCache } from "../scripts/release-download-cache.mjs";
@@ -845,6 +846,63 @@ test("CI Rosetta smoke is limited to the protected tag signing job", () => {
     }),
     true,
   );
+});
+
+test("foreign Intel static validation is limited to the exact protected tag signing job", () => {
+  const sha = "b".repeat(40);
+  const runId = "654321";
+  const protectedSigningEnv = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "hara-cli/hara-desktop",
+    GITHUB_EVENT_NAME: "push",
+    GITHUB_REF_TYPE: "tag",
+    GITHUB_REF_PROTECTED: "true",
+    GITHUB_REF_NAME: `v${version}`,
+    GITHUB_SHA: sha,
+    GITHUB_WORKFLOW_SHA: sha,
+    GITHUB_WORKFLOW_REF: `hara-cli/hara-desktop/.github/workflows/build.yml@refs/tags/v${version}`,
+    GITHUB_RUN_ID: runId,
+    HARA_FOREIGN_MAC_STATIC_VALIDATION: "1",
+    HARA_PROTECTED_SIGNING_JOB: runId,
+  };
+  const request = {
+    env: protectedSigningEnv,
+    platform: "darwin",
+    arch: "arm64",
+    expectedTarget: "x86_64-apple-darwin",
+  };
+
+  assert.equal(useForeignMacStaticValidation(request), true);
+  assert.equal(
+    useForeignMacStaticValidation({ ...request, env: {} }),
+    false,
+    "static validation stays disabled unless explicitly selected",
+  );
+  for (const key of [
+    "GITHUB_REF_PROTECTED",
+    "GITHUB_WORKFLOW_REF",
+    "GITHUB_WORKFLOW_SHA",
+    "HARA_PROTECTED_SIGNING_JOB",
+  ]) {
+    const env = { ...protectedSigningEnv };
+    delete env[key];
+    assert.throws(
+      () => useForeignMacStaticValidation({ ...request, env }),
+      /protected tag signing job/,
+      `foreign validation allowed without ${key}`,
+    );
+  }
+  assert.throws(
+    () => useForeignMacStaticValidation({ ...request, expectedTarget: "aarch64-apple-darwin" }),
+    /allowed only for x86_64-apple-darwin/,
+  );
+
+  const signedBuild = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
+  const promotion = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
+  assert.match(signedBuild, /foreign-mac-validation\.mjs --preflight "\$TARGET"/);
+  assert.match(promotion, /HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts\/mac-updater-smoke\.mjs/);
+  assert.match(promotion, /HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts\/mac-dmg-smoke\.mjs/);
+  assert.doesNotMatch(promotion, /HARA_ALLOW_ROSETTA_SMOKE/);
 });
 
 test("Linux and Windows smoke inspect desktop shells and execute sidecars from real installers", () => {

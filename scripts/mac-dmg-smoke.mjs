@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Mount the DMG users actually download, then inspect and execute the app/sidecar from that mounted
-// container. Checking only bundle/macos/Hara.app can miss a stale or malformed DMG assembled beside it.
+// Mount the DMG users actually download, then inspect and normally execute the app/sidecar from that
+// container. Protected foreign-architecture signing statically inspects bytes already executed by the
+// native Intel runner. Checking only bundle/macos/Hara.app can miss a stale or malformed DMG beside it.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { smokeSidecar } from "./sidecar-smoke.mjs";
 import { validateStapledArtifact } from "./stapler-validate.mjs";
 import { smokeUpdaterEndpoints } from "./updater-endpoint-smoke.mjs";
+import { inspectForeignMacExecutable, useForeignMacStaticValidation } from "./foreign-mac-validation.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sidecarVersion = readFileSync(join(root, "src-tauri", "binaries", "SIDECAR_VERSION"), "utf8").trim();
@@ -47,6 +49,7 @@ export function smokeMacDmg({ dmg, expectedTarget, requireSignatures = false }) 
   const expectedArch =
     expectedTarget === "aarch64-apple-darwin" ? "arm64" : expectedTarget === "x86_64-apple-darwin" ? "x86_64" : "";
   if (!expectedArch) throw new Error(`unsupported macOS DMG target: ${expectedTarget}`);
+  const staticOnly = useForeignMacStaticValidation({ expectedTarget });
 
   const mountRoot = mkdtempSync(join(tmpdir(), "hara-dmg-smoke-"));
   const mountPoint = join(mountRoot, "mounted");
@@ -71,8 +74,13 @@ export function smokeMacDmg({ dmg, expectedTarget, requireSignatures = false }) 
     if (!shellArchs.includes(expectedArch)) {
       throw new Error(`DMG shell architecture mismatch: expected ${expectedArch}, got ${shellArchs.join(", ")}`);
     }
-    smokeUpdaterEndpoints({ binary: shell, label: "DMG desktop shell" });
-    smokeSidecar({ binary: sidecar, expectedVersion: sidecarVersion, expectedTarget, label: "DMG sidecar" });
+    if (staticOnly) {
+      inspectForeignMacExecutable(shell, expectedTarget, "DMG desktop shell");
+      inspectForeignMacExecutable(sidecar, expectedTarget, "DMG sidecar");
+    } else {
+      smokeUpdaterEndpoints({ binary: shell, label: "DMG desktop shell" });
+      smokeSidecar({ binary: sidecar, expectedVersion: sidecarVersion, expectedTarget, label: "DMG sidecar" });
+    }
 
     if (requireSignatures) {
       run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", app], "DMG app codesign");
@@ -80,7 +88,7 @@ export function smokeMacDmg({ dmg, expectedTarget, requireSignatures = false }) 
       validateStapledArtifact(app, "DMG app notarization staple");
     }
     console.log(
-      `  ✓ DMG mounted and bundled sidecar executed (${expectedTarget}${requireSignatures ? "; signed + notarized app" : ""})`,
+      `  ✓ DMG mounted and bundled executables ${staticOnly ? "statically inspected" : "executed"} (${expectedTarget}${requireSignatures ? "; signed + notarized app" : ""})`,
     );
   } finally {
     if (attached) run("/usr/bin/hdiutil", ["detach", mountPoint, "-force"], "DMG detach");

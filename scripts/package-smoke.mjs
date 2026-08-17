@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Verify the actual packaged app, updater artifacts, target architecture, and bundled sidecar.
-// Every release target runs this on a native runner before a draft release may become stable.
+// Every release target runs this on a native runner before a draft release may become stable. The protected
+// Apple Silicon signing lane may later repeat structural/signature checks statically for the Intel bytes.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,6 +12,7 @@ import { smokeMacDmg } from "./mac-dmg-smoke.mjs";
 import { smokeMacUpdaterArchive } from "./mac-updater-smoke.mjs";
 import { smokeUpdaterEndpoints } from "./updater-endpoint-smoke.mjs";
 import { verifyUpdaterArtifactSignature } from "./updater-signature.mjs";
+import { inspectForeignMacExecutable, useForeignMacStaticValidation } from "./foreign-mac-validation.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const triple = process.env.TAURI_TARGET || "";
@@ -22,6 +24,7 @@ const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const stampPath = join(root, "src-tauri", "binaries", "SIDECAR_VERSION");
 const sidecarVersion = existsSync(stampPath) ? readFileSync(stampPath, "utf8").trim() : "";
 const platform = process.platform;
+const staticForeignMacValidation = useForeignMacStaticValidation({ expectedTarget });
 let failures = 0;
 const EXTRACTION_BUFFER_BYTES = 512 * 1024 * 1024;
 const EXTRACTION_TIMEOUT_MS = 5 * 60_000;
@@ -86,7 +89,8 @@ function sidecar(path, label = "packaged sidecar") {
   if (!executable(path, label)) return;
   if (!sidecarVersion) return fail("SIDECAR_VERSION missing/empty");
   try {
-    smokeSidecar({ binary: path, expectedVersion: sidecarVersion, expectedTarget, label });
+    if (staticForeignMacValidation) inspectForeignMacExecutable(path, expectedTarget, label);
+    else smokeSidecar({ binary: path, expectedVersion: sidecarVersion, expectedTarget, label });
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
   }
@@ -94,7 +98,8 @@ function sidecar(path, label = "packaged sidecar") {
 
 function updaterEndpoints(path, label = "packaged desktop shell") {
   try {
-    smokeUpdaterEndpoints({ binary: path, label });
+    if (staticForeignMacValidation) inspectForeignMacExecutable(path, expectedTarget, label);
+    else smokeUpdaterEndpoints({ binary: path, label });
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
   }
