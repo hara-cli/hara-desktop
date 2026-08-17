@@ -242,8 +242,11 @@ jobs:
       contents: write
     runs-on: ubuntu-22.04
     timeout-minutes: 10
+    outputs:
+      release_id: ${{ steps.hidden_draft.outputs.release_id }}
     steps:
       - name: Create or reuse hidden draft release
+        id: hidden_draft
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -267,6 +270,12 @@ jobs:
               --generate-notes \
               --title "Hara Desktop $RELEASE_TAG"
           fi
+          RELEASE_ID="$(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId)"
+          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]] || {
+            echo "release $RELEASE_TAG returned an invalid draft database ID" >&2
+            exit 1
+          }
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
   build:
     needs: [prepare_release, promotion_preflight, create_draft]
@@ -457,7 +466,7 @@ jobs:
 
   assemble_draft:
     name: Assemble verified hidden draft (do not publish unsigned macOS assets)
-    needs: [prepare_release, build]
+    needs: [prepare_release, build, create_draft]
     permissions:
       actions: read
       contents: write
@@ -513,17 +522,20 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.create_draft.outputs.release_id }}
         run: |
           set -euo pipefail
-          IS_DRAFT="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)"
-          [ "$IS_DRAFT" = "true" ] || {
-            echo "release $RELEASE_TAG is no longer a draft; refusing to replace published assets" >&2
+          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]] || {
+            echo "create_draft did not provide a valid release database ID" >&2
             exit 1
           }
-
-          RELEASE_ID="$(gh release view "$RELEASE_TAG" --json databaseId --jq .databaseId)"
-          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]] || {
-            echo "release $RELEASE_TAG returned an invalid draft database ID" >&2
+          RELEASE_STATE="$(
+            gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+              --jq '[.tag_name, .draft] | @tsv'
+          )"
+          [ "$RELEASE_STATE" = "$RELEASE_TAG"$'\t'true ] || {
+            echo "release ID $RELEASE_ID is not the expected hidden draft for $RELEASE_TAG" >&2
             exit 1
           }
           mapfile -t EXISTING_ASSET_IDS < <(
@@ -533,16 +545,17 @@ jobs:
             gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
           done
 
-          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP"/release-assets/*
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" "$RUNNER_TEMP"/release-assets/*
       - name: Download the exact remote draft
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           VERIFY_DIR="$RUNNER_TEMP/remote-release-assets"
           mkdir -p "$VERIFY_DIR"
-          gh release download "$RELEASE_TAG" --dir "$VERIFY_DIR"
+          gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --dir "$VERIFY_DIR"
       - name: Revalidate downloaded draft without a release token
         shell: bash
         run: |
@@ -558,9 +571,10 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = "true" ]
+          [ "$(gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true" ]
           echo "Draft $RELEASE_TAG is complete but intentionally hidden."
           echo "The protected signing job will now promote $RELEASE_TAG automatically."
 

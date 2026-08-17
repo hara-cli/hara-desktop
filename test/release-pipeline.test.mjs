@@ -1040,6 +1040,10 @@ test("tag workflow automatically enters the protected promotion job under one co
     buildWorkflow,
     /sign_and_promote:\n[\s\S]*?needs: \[prepare_release, assemble_draft, promotion_preflight\]/,
   );
+  assert.match(
+    buildWorkflow,
+    /assemble_draft:\n[\s\S]*?needs: \[prepare_release, build, create_draft\]/,
+  );
   assert.match(buildWorkflow, /environment:\s+name: hara-desktop-production/);
   assert.match(buildWorkflow, /runs-on: \[self-hosted, macOS, ARM64, hara-desktop-release\]/);
   assert.match(buildWorkflow, /custom_branch_policies/);
@@ -1198,12 +1202,20 @@ test("draft validation executes repository code without a release token", () => 
 
 test("draft asset replacement resolves a hidden release through its database ID", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const createDraftStart = workflow.indexOf("  create_draft:");
+  const buildStart = workflow.indexOf("  build:", createDraftStart);
+  const createDraft = workflow.slice(createDraftStart, buildStart);
   const replaceStart = workflow.indexOf("Replace hidden draft assets after every native gate");
   const downloadStart = workflow.indexOf("Download the exact remote draft", replaceStart);
   const replacement = workflow.slice(replaceStart, downloadStart);
 
-  assert.match(replacement, /gh release view "\$RELEASE_TAG" --json databaseId --jq \.databaseId/);
+  assert.match(createDraft, /release_id: \$\{\{ steps\.hidden_draft\.outputs\.release_id \}\}/);
+  assert.match(createDraft, /echo "release_id=\$RELEASE_ID" >> "\$GITHUB_OUTPUT"/);
+  assert.match(replacement, /RELEASE_ID: \$\{\{ needs\.create_draft\.outputs\.release_id \}\}/);
   assert.match(replacement, /\[\[ "\$RELEASE_ID" =~ \^\[0-9\]\+\$ \]\]/);
+  assert.match(replacement, /repos\/\$GITHUB_REPOSITORY\/releases\/\$RELEASE_ID/);
+  assert.match(replacement, /gh release upload "\$RELEASE_TAG" -R "\$GITHUB_REPOSITORY"/);
+  assert.doesNotMatch(replacement, /gh release view/);
   assert.doesNotMatch(replacement, /releases\/tags\/\$RELEASE_TAG/);
 });
 
