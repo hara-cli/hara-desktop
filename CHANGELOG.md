@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.84 — 2026-08-17 — visible macOS launch and direct Agent Office entry
+
+- Repair a macOS cold-start failure where Hara could keep a healthy process and desktop companion but
+  strand the main window on an unreachable Space. Main-window creation now waits for AppKit's ready
+  event, persisted state no longer controls cold-start visibility, and the window stays reachable across
+  Spaces only until the user focuses it, then returns to normal single-Space behavior.
+- Make the preinstalled `core.agent-office` capability directly launchable from both the empty Workbench
+  and Hara's Capability Directory. If no conversation exists, Desktop creates one real local context and
+  opens the empty WebGL office; the scene still displays only real Agent lifecycle actors and never fake
+  staff. All first-party capability cards now expose an explicit keyboard-accessible Open action.
+- Keep the 0.1.83 Three.js renderer, 2.5D/status-list fallbacks, privacy boundary, and bundled Hara CLI
+  `0.148.0` unchanged. Existing sessions, projects, Artifacts, presentations, companion state, and
+  capability packages require no migration. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.83 — 2026-08-17 — preinstalled WebGL Agent Office
 
 - Replace the misleading “3D office” label on the CSS 2.5D scene with a real, first-party WebGL office

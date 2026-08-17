@@ -92,6 +92,12 @@ test("an empty extension screen exposes an explicit Agent Office-first view laun
 
   assert.match(app, /activeSession && contextExtensionTabs\.length === 0[\s\S]*<ExtensionViewLauncher/);
   assert.match(app, /const extensionAddItems = activeSession[\s\S]*id: "workforce" as const/);
+  assert.match(app, /id: AGENT_OFFICE_CAPABILITY\.id,[\s\S]*title: t\("capabilityAgentOfficeTitle"\)/);
+  assert.match(
+    app,
+    /const openAgentOffice = async \(\) => \{[\s\S]*await openAssistant\(\)[\s\S]*offerWorkforceForSession\(session\)/,
+    "the preinstalled launcher must create a real conversation context before opening an empty office",
+  );
   assert.doesNotMatch(
     app.match(/const toggleCurrentExtensionScreen = \(\) => \{([\s\S]*?)\n  \};/)?.[1] ?? "",
     /openWorkbenchTool\("files"\)/,
@@ -577,9 +583,20 @@ test("macOS Dock reopen restores or recreates the main window", () => {
   assert.match(nativeHost, /fn reopen_main_window<R: tauri::Runtime>/);
   assert.match(nativeHost, /app\.get_webview_window\("main"\)/);
   assert.match(nativeHost, /WebviewWindowBuilder::from_config\(app, &config\)/);
+  assert.match(
+    nativeHost,
+    /#\[cfg\(not\(target_os = "macos"\)\)\][\s\S]*get_or_create_main_window\(app\)[\s\S]*window\.show\(\)/,
+    "deferred main-window creation must also create and show the entry window on Windows and Linux",
+  );
   assert.match(nativeHost, /window\s*\.unminimize\(\)/);
+  assert.match(nativeHost, /window\s*\.set_visible_on_all_workspaces\(true\)/);
   assert.match(nativeHost, /window\s*\.show\(\)/);
   assert.match(nativeHost, /window\s*\.set_focus\(\)/);
+  assert.match(
+    nativeHost,
+    /tauri::WindowEvent::Focused\(true\)[\s\S]*label == "main"[\s\S]*set_visible_on_all_workspaces\(false\)/,
+    "a genuinely focused main window must return to the standard single-Space policy",
+  );
   assert.match(nativeHost, /const MIN_MAIN_WINDOW_WIDTH: u32 = 720/);
   assert.match(nativeHost, /const MIN_MAIN_WINDOW_HEIGHT: u32 = 480/);
   assert.match(nativeHost, /scale_factor: monitor\.scale_factor\(\)/);
@@ -597,6 +614,21 @@ test("macOS Dock reopen restores or recreates the main window", () => {
     nativeHost,
     /tauri::RunEvent::Ready => \{[\s\S]*#\[cfg\(target_os = "macos"\)\][\s\S]*reopen_main_window\(app\)/,
     "a fresh macOS launch must recover when state restoration suppresses the configured main window",
+  );
+  const tauriConfig = JSON.parse(
+    readFileSync(`${root}/src-tauri/tauri.conf.json`, "utf8"),
+  );
+  const mainWindow = tauriConfig.app.windows.find((window) => window.label === "main");
+  assert.equal(
+    mainWindow?.create,
+    false,
+    "macOS must defer main-window creation until NSApplicationDidFinishLaunching",
+  );
+  assert.match(nativeHost, /StateFlags::SIZE[\s\S]*StateFlags::FULLSCREEN/);
+  assert.doesNotMatch(
+    nativeHost,
+    /with_state_flags\([\s\S]{0,500}StateFlags::VISIBLE/,
+    "persisted visibility must never suppress the cold-start entry window",
   );
   assert.match(
     nativeHost,
@@ -1043,6 +1075,7 @@ test("the capability directory keeps package sources and reusable skills distinc
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const directory = readFileSync(`${root}/src/CapabilityDirectory.tsx`, "utf8");
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
 
   assert.match(directory, /type DirectoryView = "hara" \| "organization" \| "market" \| "installed" \| "skills"/);
   assert.match(directory, /\["hara", copy\.hara\]/);
@@ -1052,6 +1085,9 @@ test("the capability directory keeps package sources and reusable skills distinc
   assert.match(directory, /\["skills", copy\.mySkills\]/);
   assert.match(directory, /aria-controls=\{`capability-panel-\$\{id\}`\}/);
   assert.match(directory, /event\.key === "ArrowRight"/, "directory tabs support keyboard navigation");
+  assert.match(directory, /onClick=\{\(\) => onOpenCore\(item\.id\)\}/);
+  assert.match(app, /onOpenCore=\{\(id\) => \{[\s\S]*AGENT_OFFICE_CAPABILITY\.id[\s\S]*openAgentOffice\(\)/);
+  assert.match(css, /\.capability-directory-card:focus-visible/);
   assert.match(directory, /organization\.model/);
   assert.match(directory, /organization\.deskConnected/);
   assert.match(directory, /plugin\.enabled && \(plugin\.panels \?\? \[\]\)\.map/);

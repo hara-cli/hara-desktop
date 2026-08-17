@@ -4096,11 +4096,29 @@ button:focus-visible,
 }
 .capability-directory-card {
   position: relative;
+  display: block;
+  width: 100%;
   min-height: 150px;
   padding: 22px 20px 19px;
+  border-top: 0;
+  border-left: 0;
   border-right: 1px solid #29292e;
   border-bottom: 1px solid #29292e;
+  border-radius: 0;
   background: linear-gradient(150deg, rgba(255, 255, 255, 0.018), transparent 62%);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms ease, box-shadow 140ms ease;
+}
+.capability-directory-card:hover {
+  background: linear-gradient(150deg, rgba(255, 101, 92, 0.075), rgba(255, 255, 255, 0.018) 68%);
+}
+.capability-directory-card:focus-visible {
+  z-index: 1;
+  outline: 0;
+  box-shadow: inset 0 0 0 2px rgba(255, 101, 92, 0.82);
 }
 .capability-directory-card:nth-child(2n) {
   border-right: 0;
@@ -4139,6 +4157,17 @@ button:focus-visible,
 .capability-directory-state {
   color: #8db699;
   font: 500 10px/1.4 "SF Mono", ui-monospace, monospace;
+}
+.capability-directory-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.capability-directory-open {
+  color: #f07465;
+  font: 600 10px/1.4 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.04em;
 }
 .capability-organization-bundle {
   display: grid;

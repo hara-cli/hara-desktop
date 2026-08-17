@@ -559,30 +559,43 @@ fn should_track_window_state(label: &str) -> bool {
     label == "main"
 }
 
-#[cfg(target_os = "macos")]
-fn reopen_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
+#[cfg(desktop)]
+fn get_or_create_main_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<tauri::WebviewWindow<R>, String> {
     use tauri::Manager;
 
-    let window = if let Some(window) = app.get_webview_window("main") {
-        window
-    } else {
-        let config = app
-            .config()
-            .app
-            .windows
-            .iter()
-            .find(|config| config.label == "main")
-            .cloned()
-            .ok_or_else(|| "main window configuration is missing".to_string())?;
-        tauri::WebviewWindowBuilder::from_config(app, &config)
-            .map_err(|error| format!("prepare main window: {error}"))?
-            .build()
-            .map_err(|error| format!("recreate main window: {error}"))?
-    };
+    if let Some(window) = app.get_webview_window("main") {
+        return Ok(window);
+    }
+
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == "main")
+        .cloned()
+        .ok_or_else(|| "main window configuration is missing".to_string())?;
+    tauri::WebviewWindowBuilder::from_config(app, &config)
+        .map_err(|error| format!("prepare main window: {error}"))?
+        .build()
+        .map_err(|error| format!("create main window: {error}"))
+}
+
+#[cfg(target_os = "macos")]
+fn reopen_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
+    let window = get_or_create_main_window(app)?;
 
     window
         .unminimize()
         .map_err(|error| format!("restore main window: {error}"))?;
+    // A stale Space assignment can leave a valid window off the current desktop. Keep it
+    // reachable until the user genuinely focuses it; the Focused event below then restores the
+    // standard single-Space policy on the Space the user chose.
+    window
+        .set_visible_on_all_workspaces(true)
+        .map_err(|error| format!("make main window reachable: {error}"))?;
     window
         .show()
         .map_err(|error| format!("show main window: {error}"))?;
@@ -2758,6 +2771,16 @@ pub fn run() {
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_filter(should_track_window_state)
+                // A cold launch always owns a visible main entry window. Persisting visibility can
+                // leave AppKit with a live Tauri handle but an ordered-out native window; geometry
+                // and presentation mode remain safe and useful to restore.
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED
+                        | tauri_plugin_window_state::StateFlags::DECORATIONS
+                        | tauri_plugin_window_state::StateFlags::FULLSCREEN,
+                )
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
@@ -2794,10 +2817,16 @@ pub fn run() {
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
-                    use tauri::Manager;
-                    if let Some(window) = app.get_webview_window("main") {
-                        if let Err(error) = recover_main_window_if_offscreen(&window) {
-                            eprintln!("main window visibility recovery failed: {error}");
+                    match get_or_create_main_window(app) {
+                        Ok(window) => {
+                            if let Err(error) = window.show() {
+                                eprintln!("main window startup visibility failed: {error}");
+                            } else if let Err(error) = recover_main_window_if_offscreen(&window) {
+                                eprintln!("main window visibility recovery failed: {error}");
+                            }
+                        }
+                        Err(error) => {
+                            eprintln!("main window startup creation failed: {error}");
                         }
                     }
                 }
@@ -2806,6 +2835,19 @@ pub fn run() {
             tauri::RunEvent::Reopen { .. } => {
                 if let Err(error) = reopen_main_window(app) {
                     eprintln!("main window reopen failed: {error}");
+                }
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Focused(true),
+                ..
+            } if label == "main" => {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = window.set_visible_on_all_workspaces(false) {
+                        eprintln!("main window workspace recovery failed: {error}");
+                    }
                 }
             }
             #[cfg(target_os = "macos")]

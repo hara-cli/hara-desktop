@@ -46,6 +46,7 @@ interface CapabilityDirectoryCopy {
   mySkills: string;
   included: string;
   openCore: string;
+  open: string;
   currentOrganization: string;
   noOrganization: string;
   noOrganizationHint: string;
@@ -96,6 +97,7 @@ interface CapabilityDirectoryProps {
   isSkillCreating: boolean;
   isPanelBusy: (pluginName: string, panelId: string) => boolean;
   onCreateSkill: () => void;
+  onOpenCore: (id: string) => void;
   onTogglePlugin: (name: string, enabled: boolean) => void;
   onOpenPanel: (pluginName: string, panel: PanelSpec) => void;
   panelInDock: (pluginName: string, panelId: string) => boolean;
@@ -113,6 +115,7 @@ export function CapabilityDirectory({
   isSkillCreating,
   isPanelBusy,
   onCreateSkill,
+  onOpenCore,
   onTogglePlugin,
   onOpenPanel,
   panelInDock,
@@ -220,7 +223,13 @@ export function CapabilityDirectory({
           <SettingsCard title={copy.hara} description={copy.included}>
             <div className="capability-directory-grid">
               {visibleCore.map((item, index) => (
-                <article className="capability-directory-card is-core" key={item.id}>
+                <button
+                  type="button"
+                  className="capability-directory-card is-core"
+                  key={item.id}
+                  aria-label={`${copy.open}: ${item.title}`}
+                  onClick={() => onOpenCore(item.id)}
+                >
                   <span className="capability-directory-index">
                     {String(index + 1).padStart(2, "0")}
                   </span>
@@ -229,8 +238,11 @@ export function CapabilityDirectory({
                     <SettingsBadge>{copy.openCore}</SettingsBadge>
                   </div>
                   <p>{item.description}</p>
-                  <span className="capability-directory-state">{copy.included}</span>
-                </article>
+                  <span className="capability-directory-card-footer">
+                    <span className="capability-directory-state">{copy.included}</span>
+                    <span className="capability-directory-open">{copy.open} →</span>
+                  </span>
+                </button>
               ))}
             </div>
             {visibleCore.length === 0 ? (

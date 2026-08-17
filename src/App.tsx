@@ -5284,6 +5284,13 @@ export default function App() {
                   source: "Hara",
                 },
                 {
+                  id: AGENT_OFFICE_CAPABILITY.id,
+                  title: t("capabilityAgentOfficeTitle"),
+                  description: t("capabilityAgentOfficeDescription"),
+                  icon: "office",
+                  source: "Hara",
+                },
+                {
                   id: "core.projects",
                   title: t("zoneProjects"),
                   description: t("moduleProjectsDescription"),
@@ -5300,6 +5307,10 @@ export default function App() {
                 })),
               ] satisfies WorkbenchApp[])}
               onOpenApp={(appId) => {
+                if (appId === AGENT_OFFICE_CAPABILITY.id) {
+                  void openAgentOffice();
+                  return;
+                }
                 if (appId === "core.office") {
                   setZone("office");
                   return;
@@ -6162,10 +6173,9 @@ export default function App() {
     setExtensionLoading(false);
     offerExtensionTab(item);
   };
-  const openWorkforce = () => {
-    const session = active ? sessions.find((candidate) => candidate.id === active) : null;
-    const place = session ? sessionPlace(session) : null;
-    if (!session || (place !== "chat" && place !== "projects") || zone !== place) return;
+  const offerWorkforceForSession = (session: SessionInfo) => {
+    const place = sessionPlace(session);
+    if (place !== "chat" && place !== "projects") return;
     const item: WorkforceExtension = {
       type: "workforce",
       id: workforceTabId(session.id),
@@ -6177,6 +6187,28 @@ export default function App() {
     warmModule(Promise.all([loadExtensionDock(), loadWorkforceSurface()]));
     setExtensionLoading(false);
     offerExtensionTab(item);
+  };
+  const openWorkforce = () => {
+    const session = active ? sessions.find((candidate) => candidate.id === active) : null;
+    const place = session ? sessionPlace(session) : null;
+    if (!session || (place !== "chat" && place !== "projects") || zone !== place) return;
+    offerWorkforceForSession(session);
+  };
+  const openAgentOffice = async () => {
+    let session = activeRef.current
+      ? sessionsRef.current.find((candidate) => candidate.id === activeRef.current)
+      : undefined;
+    const currentPlace = session ? sessionPlace(session) : null;
+    if (session && (currentPlace === "chat" || currentPlace === "projects")) {
+      if (!setZone(currentPlace)) return;
+      await openSession(session.id);
+    } else {
+      const sessionId = await openAssistant();
+      session = sessionId
+        ? sessionsRef.current.find((candidate) => candidate.id === sessionId)
+        : undefined;
+    }
+    if (session) offerWorkforceForSession(session);
   };
   const openExtensionItem = (item: ExtensionDockAddKind) => {
     if (item === "workforce") openWorkforce();
@@ -7489,6 +7521,7 @@ export default function App() {
                     mySkills: t("capabilitySourceSkills"),
                     included: t("capabilityIncluded"),
                     openCore: t("capabilityOpenCore"),
+                    open: t("capabilityOpen"),
                     currentOrganization: t("capabilityCurrentOrganization"),
                     noOrganization: t("capabilityNoOrganization"),
                     noOrganizationHint: t("capabilityNoOrganizationHint"),
@@ -7530,6 +7563,19 @@ export default function App() {
                     skillSourceCapability: t("skillSourceCapability"),
                   }}
                   onCreateSkill={() => void startSkillCreation()}
+                  onOpenCore={(id) => {
+                    if (id === AGENT_OFFICE_CAPABILITY.id) {
+                      void openAgentOffice();
+                    } else if (id === "core.chat") {
+                      void openAssistant();
+                    } else if (id === "core.tasks") {
+                      setZone("auto");
+                    } else if (id === "core.groups") {
+                      setZone("groups");
+                    } else if (id === "core.office") {
+                      setZone("office");
+                    }
+                  }}
                   onTogglePlugin={(name, enabled) => void togglePlugin(name, enabled)}
                   onOpenPanel={(pluginName, panel) => void openPanel(pluginName, panel)}
                   panelInDock={(pluginName, panelId) => {
