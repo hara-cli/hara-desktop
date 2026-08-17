@@ -1,0 +1,83 @@
+.workforce-three {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 101, 92, 0.08), transparent 40%),
+    #090c0e;
+}
+
+.workforce-three-canvas,
+.workforce-three-canvas canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.workforce-three-canvas canvas {
+  display: block;
+  outline: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.workforce-three-canvas canvas:active { cursor: grabbing; }
+.workforce-three-canvas canvas:focus-visible { box-shadow: inset 0 0 0 2px rgba(255, 101, 92, 0.8); }
+
+.workforce-three-runtime {
+  position: absolute;
+  z-index: 4;
+  bottom: 13px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+  color: #737b7b;
+  font: 8px/1.2 "SF Mono", "Roboto Mono", ui-monospace, monospace;
+  letter-spacing: 0.06em;
+}
+
+.workforce-three-runtime span {
+  display: inline-flex;
+  height: 23px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid rgba(84, 94, 96, 0.72);
+  border-radius: 6px;
+  background: rgba(10, 13, 15, 0.82);
+  color: #b7bfbe;
+  backdrop-filter: blur(10px);
+}
+
+.workforce-three-runtime i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #79c999;
+  box-shadow: 0 0 8px rgba(121, 201, 153, 0.7);
+}
+
+.workforce-three-runtime b { font-weight: 500; }
+
+.workforce-three-failed {
+  display: grid;
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  place-items: center;
+  padding: 28px;
+  color: #d49a94;
+  background: #0c1012;
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@container extension-dock (max-width: 600px) {
+  .workforce-three-runtime b { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workforce-three-canvas canvas { scroll-behavior: auto; }
+}

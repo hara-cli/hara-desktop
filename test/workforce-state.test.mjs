@@ -134,3 +134,41 @@ test("Agent Office uses one Hara identity with capability tools and zoned workst
     assert.match(css, new RegExp(`is-capability-${capability} \\.workforce-role-tool`));
   }
 });
+
+test("Agent Office ships a lazy local WebGL renderer with explicit fallbacks", () => {
+  const surface = readFileSync(`${root}/src/WorkforceSurface.tsx`, "utf8");
+  const renderer = readFileSync(`${root}/src/WorkforceThreeScene.tsx`, "utf8");
+  const descriptor = readFileSync(`${root}/src/preinstalled-capabilities.ts`, "utf8");
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
+  const packageJson = JSON.parse(readFileSync(`${root}/package.json`, "utf8"));
+
+  assert.equal(typeof packageJson.dependencies.three, "string");
+  assert.match(surface, /lazy\(\(\) => import\("\.\/WorkforceThreeScene"\)\)/);
+  assert.match(surface, /AGENT_OFFICE_CAPABILITY\.defaultRenderer/);
+  assert.match(surface, /view === "webgl"/);
+  assert.match(surface, /view === "spatial"/);
+  assert.match(surface, /view === "list"/);
+  assert.match(surface, /onUnavailable=\{\(\) =>/);
+  assert.match(renderer, /new WebGLRenderer/);
+  assert.match(renderer, /new OrbitControls/);
+  assert.match(renderer, /new IntersectionObserver/);
+  assert.match(renderer, /powerPreference: "low-power"/);
+  assert.match(renderer, /webglcontextlost/);
+  assert.match(renderer, /stableActorHash/);
+  assert.match(renderer, /runtime\.hasWorkingActors && !runtime\.reduced/);
+  assert.match(renderer, /const FRAME_INTERVAL = 1000 \/ 30/);
+  assert.match(renderer, /renderer\.dispose\(\)/);
+  assert.match(renderer, /renderer\.forceContextLoss\(\)/);
+  assert.match(renderer, /data-renderer="webgl"/);
+  assert.doesNotMatch(renderer, /Math\.random/);
+  assert.doesNotMatch(renderer, /fetch\(|TextureLoader|GLTFLoader/);
+  assert.match(descriptor, /id: "core\.agent-office"/);
+  assert.match(descriptor, /install: "preinstalled"/);
+  assert.match(descriptor, /networkAccess: false/);
+  assert.match(descriptor, /renderers: \["webgl", "spatial", "list"\]/);
+  assert.match(app, /id: AGENT_OFFICE_CAPABILITY\.id/);
+  assert.match(i18n, /workforceThree: "3D"/);
+  assert.match(i18n, /workforceScene: "2\.5D"/);
+  assert.doesNotMatch(i18n, /workforceScene: "3D (?:office|办公室)"/);
+});

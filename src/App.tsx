@@ -209,6 +209,7 @@ import {
   workforceFromTask,
   workforceStateIsNewer,
 } from "./workforce-state";
+import { AGENT_OFFICE_CAPABILITY } from "./preinstalled-capabilities";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
@@ -6297,6 +6298,9 @@ export default function App() {
     subtitle: t("workforceSubtitle"),
     live: t("workforceLive"),
     compatibility: t("workforceCompatibility"),
+    three: t("workforceThree"),
+    threeHint: t("workforceThreeHint"),
+    threeUnavailable: t("workforceThreeUnavailable"),
     scene: t("workforceScene"),
     list: t("workforceList"),
     overview: t("workforceOverview"),
@@ -6310,6 +6314,7 @@ export default function App() {
     capability: t("workforceCapability"),
     updated: t("workforceUpdated"),
     privacy: t("workforcePrivacy"),
+    loading: t("loading"),
     states: {
       queued: t("workforceStateQueued"),
       working: t("workforceStateWorking"),
@@ -7460,6 +7465,11 @@ export default function App() {
                     { id: "core.tasks", title: t("zoneAuto"), description: t("moduleTasksDescription") },
                     { id: "core.groups", title: t("zoneGroups"), description: t("moduleGroupsDescription") },
                     { id: "core.office", title: t("zoneOffice"), description: t("moduleOfficeDescription") },
+                    {
+                      id: AGENT_OFFICE_CAPABILITY.id,
+                      title: t("capabilityAgentOfficeTitle"),
+                      description: t("capabilityAgentOfficeDescription"),
+                    },
                   ]}
                   organization={activeOrganizationConnection ? {
                     label: activeOrganizationConnection.label,

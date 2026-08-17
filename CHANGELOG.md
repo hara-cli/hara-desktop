@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.83 — 2026-08-17 — preinstalled WebGL Agent Office
+
+- Replace the misleading “3D office” label on the CSS 2.5D scene with a real, first-party WebGL office
+  inside the same owner-scoped Visual Dock tab. The local Three.js renderer is preinstalled as
+  `core.agent-office`, loads only when the 3D view is selected, uses programmatic Hara-owned geometry and
+  no network assets, and keeps 2.5D plus the accessible status list as explicit fallbacks.
+- Keep the office visible before a task starts, then place only real actors from the redacted
+  `event.workforce_state` snapshot into deterministic capability zones. Orbit, zoom, overview, focus,
+  ray-cast selection, status rings, capability tools, and the existing precise inspector all use the same
+  Agent lifecycle truth; idle capability icons are never promoted into fictional staff.
+- Cap active rendering at 30fps, request no continuous frames under reduced motion, pause when hidden or
+  offscreen, prefer the low-power GPU, and dispose every renderer resource and WebGL context on close.
+  Runtime context loss falls back to 2.5D instead of leaving a black panel. Bundle unchanged Hara CLI
+  `0.148.0` at exact verified commit `675b96fe1904decc73741ed256b720fe71ede087`; existing sessions,
+  projects, Artifacts, presentations, companion state, and capability packages require no migration.
+  Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.82 — 2026-08-17 — discoverable Agent Office and explicit multi-agent boundary
 
 - Replace the ambiguous zero-tab `Extension screen 0` action with a labeled `Add view` launcher. Agent

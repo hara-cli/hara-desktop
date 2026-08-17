@@ -103,6 +103,12 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
 }
 
+.workforce-view-switch button:disabled,
+.workforce-camera-controls button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 .workforce-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -140,6 +146,72 @@
     linear-gradient(180deg, rgba(20, 25, 27, 0.7), rgba(3, 6, 8, 0.72)),
     radial-gradient(ellipse at 50% 58%, rgba(255, 101, 92, 0.13), transparent 52%);
 }
+
+.workforce-stage.is-webgl {
+  perspective: none;
+  background: #090c0e;
+}
+
+.workforce-stage.is-webgl::after { display: none; }
+
+.workforce-three-loading {
+  display: grid;
+  position: absolute;
+  inset: 0;
+  place-items: center;
+  color: #77807f;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(255, 101, 92, 0.1), transparent 36%),
+    #090c0e;
+  font: 9px/1.4 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+}
+
+.workforce-three-unavailable {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid rgba(239, 113, 106, 0.26);
+  color: #d49a94;
+  background: rgba(117, 47, 43, 0.14);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.workforce-three-empty {
+  display: grid;
+  position: absolute;
+  z-index: 6;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(81, 91, 93, 0.78);
+  border-radius: 10px;
+  background: rgba(12, 16, 18, 0.88);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+}
+
+.workforce-three-empty > span {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid #65423e;
+  border-radius: 8px;
+  color: #ff655c;
+  background: #271c1b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.workforce-three-empty h3 { margin: 0 0 2px; font-size: 11px; }
+.workforce-three-empty p { margin: 0; color: #858c8b; font-size: 8px; line-height: 1.45; }
+.workforce-three-empty button { height: 28px; padding: 0 10px; border: 1px solid #65423e; border-radius: 7px; color: #f2c1ba; background: #392622; font-size: 9px; cursor: pointer; }
 
 .workforce-stage-camera {
   position: absolute;
@@ -823,6 +895,8 @@
   .workforce-inspector { grid-template-columns: 30px minmax(0, 1fr) auto; }
   .workforce-inspector dl { display: none; }
   .workforce-actor { transform: translate(-50%, -50%) scale(0.86); }
+  .workforce-three-empty { grid-template-columns: 30px minmax(0, 1fr); }
+  .workforce-three-empty button { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

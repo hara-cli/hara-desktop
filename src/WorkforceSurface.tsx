@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useMemo, useState, type CSSProperties } from "react";
 import type {
   WorkforceActor,
   WorkforceActorState,
@@ -7,13 +7,22 @@ import type {
 } from "./client";
 import { AtlasCssPet, useReducedMotion } from "./PetAtlasSprite";
 import { BUILTIN_HARA_ASSET, type PetStatus } from "./pets";
+import {
+  AGENT_OFFICE_CAPABILITY,
+  type WorkforceRendererId,
+} from "./preinstalled-capabilities";
 import "./WorkforceSurface.css";
+
+const WorkforceThreeScene = lazy(() => import("./WorkforceThreeScene"));
 
 export interface WorkforceCopy {
   title: string;
   subtitle: string;
   live: string;
   compatibility: string;
+  three: string;
+  threeHint: string;
+  threeUnavailable: string;
   scene: string;
   list: string;
   overview: string;
@@ -27,6 +36,7 @@ export interface WorkforceCopy {
   capability: string;
   updated: string;
   privacy: string;
+  loading: string;
   states: Record<WorkforceActorState, string>;
   capabilities: Record<WorkforceCapability, string>;
 }
@@ -122,9 +132,10 @@ function WorkforcePet({ actor, reduced, compact = false }: {
 
 export default function WorkforceSurface({ snapshot, locale, live, copy, onReturnToChat }: WorkforceSurfaceProps) {
   const actors = snapshot?.actors ?? [];
-  const [view, setView] = useState<"scene" | "list">("scene");
+  const [view, setView] = useState<WorkforceRendererId>(AGENT_OFFICE_CAPABILITY.defaultRenderer);
   const [camera, setCamera] = useState<"overview" | "focus">("overview");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [threeUnavailable, setThreeUnavailable] = useState(false);
   const reduced = useReducedMotion();
   const selected = actors.find((actor) => actor.actorId === selectedId) ?? actors[0];
   const counts = useMemo(() => ({
@@ -158,7 +169,14 @@ export default function WorkforceSurface({ snapshot, locale, live, copy, onRetur
             <i aria-hidden />{live ? copy.live : copy.compatibility}
           </span>
           <div className="workforce-view-switch" role="group" aria-label={copy.title}>
-            <button type="button" className={view === "scene" ? "is-active" : ""} onClick={() => setView("scene")}>{copy.scene}</button>
+            <button
+              type="button"
+              className={view === "webgl" ? "is-active" : ""}
+              disabled={threeUnavailable}
+              title={threeUnavailable ? copy.threeUnavailable : undefined}
+              onClick={() => setView("webgl")}
+            >{copy.three}</button>
+            <button type="button" className={view === "spatial" ? "is-active" : ""} onClick={() => setView("spatial")}>{copy.scene}</button>
             <button type="button" className={view === "list" ? "is-active" : ""} onClick={() => setView("list")}>{copy.list}</button>
           </div>
         </div>
@@ -171,14 +189,49 @@ export default function WorkforceSurface({ snapshot, locale, live, copy, onRetur
         <span className="is-complete"><b>{counts.completed}</b>{copy.states.completed}</span>
       </div>
 
-      {actors.length === 0 ? (
+      {threeUnavailable ? <p className="workforce-three-unavailable" role="status">{copy.threeUnavailable}</p> : null}
+
+      {view === "webgl" ? (
+        <div className="workforce-stage is-webgl" role="region" aria-label={copy.three}>
+          <div className="workforce-camera-controls" role="group" aria-label={copy.three}>
+            <button type="button" className={camera === "overview" ? "is-active" : ""} onClick={() => setCamera("overview")}>{copy.overview}</button>
+            <button type="button" disabled={!selected} className={camera === "focus" && selected ? "is-active" : ""} onClick={() => setCamera("focus")}>{copy.focus}</button>
+          </div>
+          <Suspense fallback={<div className="workforce-three-loading" role="status">{copy.loading}</div>}>
+            <WorkforceThreeScene
+              actors={actors}
+              selectedId={selected?.actorId ?? null}
+              cameraMode={camera}
+              reduced={reduced}
+              label={copy.title}
+              hint={copy.threeHint}
+              unavailable={copy.threeUnavailable}
+              onSelectActor={setSelectedId}
+              onUnavailable={() => {
+                setThreeUnavailable(true);
+                setView("spatial");
+              }}
+            />
+          </Suspense>
+          {actors.length === 0 ? (
+            <div className="workforce-three-empty">
+              <span aria-hidden>H</span>
+              <div>
+                <h3>{copy.noTask}</h3>
+                <p>{copy.noTaskHint}</p>
+              </div>
+              <button type="button" onClick={onReturnToChat}>{copy.returnToChat}</button>
+            </div>
+          ) : null}
+        </div>
+      ) : actors.length === 0 ? (
         <div className="workforce-empty">
           <span aria-hidden>H</span>
           <h3>{copy.noTask}</h3>
           <p>{copy.noTaskHint}</p>
           <button type="button" onClick={onReturnToChat}>{copy.returnToChat}</button>
         </div>
-      ) : view === "scene" ? (
+      ) : view === "spatial" ? (
         <div className="workforce-stage" role="region" aria-label={copy.scene}>
           <div className="workforce-camera-controls" role="group" aria-label={copy.scene}>
             <button type="button" className={camera === "overview" ? "is-active" : ""} onClick={() => setCamera("overview")}>{copy.overview}</button>
