@@ -200,10 +200,26 @@ esac
 # Sign an ephemeral executable before spending time on either build; dry-run against a sealed system
 # binary can itself fail inside Apple's signing subsystem and is therefore not a reliable probe.
 CODESIGN_PROBE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hara-codesign-probe.XXXXXX")"
-cp /usr/bin/true "$CODESIGN_PROBE_DIR/probe"
-codesign --force --options runtime --timestamp --keychain "$CODESIGN_KEYCHAIN" \
-  --sign "$IDENTITY" "$CODESIGN_PROBE_DIR/probe" >/dev/null
-codesign --verify --strict "$CODESIGN_PROBE_DIR/probe"
+CODESIGN_PROBE_LOG="$CODESIGN_PROBE_DIR/codesign.log"
+CODESIGN_PROBE_ATTEMPT=1
+CODESIGN_PROBE_MAX_ATTEMPTS=3
+while :; do
+  cp /usr/bin/true "$CODESIGN_PROBE_DIR/probe"
+  : > "$CODESIGN_PROBE_LOG"
+  if codesign --force --options runtime --timestamp --keychain "$CODESIGN_KEYCHAIN" \
+      --sign "$IDENTITY" "$CODESIGN_PROBE_DIR/probe" >"$CODESIGN_PROBE_LOG" 2>&1 && \
+    codesign --verify --strict "$CODESIGN_PROBE_DIR/probe" >>"$CODESIGN_PROBE_LOG" 2>&1; then
+    break
+  fi
+  if [ "$CODESIGN_PROBE_ATTEMPT" -ge "$CODESIGN_PROBE_MAX_ATTEMPTS" ] || \
+    ! node scripts/codesign-timestamp-retry.mjs "$CODESIGN_PROBE_LOG"; then
+    cat "$CODESIGN_PROBE_LOG" >&2
+    exit 1
+  fi
+  echo "warning: Apple timestamp probe failed transiently ($CODESIGN_PROBE_ATTEMPT/$CODESIGN_PROBE_MAX_ATTEMPTS); retrying after a bounded delay" >&2
+  sleep $((CODESIGN_PROBE_ATTEMPT * 5))
+  CODESIGN_PROBE_ATTEMPT=$((CODESIGN_PROBE_ATTEMPT + 1))
+done
 rm -rf "$CODESIGN_PROBE_DIR"
 CODESIGN_PROBE_DIR=""
 

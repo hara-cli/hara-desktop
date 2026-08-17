@@ -784,6 +784,9 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
       && actualSign > keyProbe,
   );
   assert.match(script, /codesign --verify --strict "\$CODESIGN_PROBE_DIR\/probe"/);
+  assert.match(script, /CODESIGN_PROBE_MAX_ATTEMPTS=3/);
+  assert.match(script, /node scripts\/codesign-timestamp-retry\.mjs "\$CODESIGN_PROBE_LOG"/);
+  assert.match(script, /sleep \$\(\(CODESIGN_PROBE_ATTEMPT \* 5\)\)/);
   assert.match(script, /security lock-keychain "\$CODESIGN_KEYCHAIN"/);
   assert.match(script, /security list-keychains -d user -s "\$\{ORIGINAL_KEYCHAINS\[@\]\}"/);
   assert.match(script, /hara-codesign-keychain\.password/);
