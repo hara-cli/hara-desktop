@@ -795,6 +795,17 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(script, /stat -f '%Lp'.*CODESIGN_PASSWORD_FILE/);
   assert.doesNotMatch(script, /security show-keychain-info/);
   assert.doesNotMatch(workflow, /HARA_CODESIGN_KEYCHAIN_PASSWORD/);
+
+  const signJob = workflow.slice(workflow.indexOf("\n  sign_and_promote:"));
+  assert.doesNotMatch(signJob, /^\s+- uses:/mu);
+  assert.match(signJob, /Materialize exact release sources without downloading external Actions/);
+  assert.match(signJob, /source-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
+  assert.match(signJob, /fetch --no-tags --depth=1 origin "\$tag_ref:\$tag_ref"/);
+  assert.match(signJob, /http\.lowSpeedLimit=1024/);
+  assert.match(signJob, /actual_sha.*tag_ref\^\{commit\}/s);
+  assert.match(signJob, /printf '%s\\n' "\$NODE_BIN" "\$BUN_BIN" "\$CARGO_BIN" >> "\$GITHUB_PATH"/);
+  assert.match(signJob, /expected_root="\$GITHUB_WORKSPACE\/source-\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT"/);
+  assert.match(signJob, /\[ "\$HARA_RELEASE_SOURCE_ROOT" = "\$expected_root" \]/);
 });
 
 test("CI Rosetta smoke is limited to the protected tag signing job", () => {

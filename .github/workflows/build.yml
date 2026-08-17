@@ -616,38 +616,73 @@ jobs:
       url: https://github.com/hara-cli/hara-desktop/releases/tag/${{ env.RELEASE_TAG }}
     runs-on: [self-hosted, macOS, ARM64, hara-desktop-release]
     timeout-minutes: 180
+    env:
+      HARA_RELEASE_SOURCE_ROOT: ${{ github.workspace }}/source-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
-        with:
-          ref: ${{ needs.prepare_release.outputs.desktop_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-          path: hara-desktop
+      - name: Materialize exact release sources without downloading external Actions
+        shell: bash
+        env:
+          PINNED_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
+          PINNED_CLI_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
+          PINNED_CLI_VERSION: ${{ needs.prepare_release.outputs.cli_version }}
+        run: |
+          set -euo pipefail
+          checkout_exact_tag() {
+            local remote_url="$1" target_dir="$2" tag_ref="$3" expected_sha="$4" attempt actual_sha
+            mkdir -p "$target_dir"
+            /usr/bin/git init -q "$target_dir"
+            /usr/bin/git -C "$target_dir" remote add origin "$remote_url"
+            for attempt in 1 2 3; do
+              if /usr/bin/git \
+                -c protocol.version=2 \
+                -c http.lowSpeedLimit=1024 \
+                -c http.lowSpeedTime=30 \
+                -C "$target_dir" fetch --no-tags --depth=1 origin "$tag_ref:$tag_ref"; then
+                break
+              fi
+              [ "$attempt" -lt 3 ] || {
+                echo "could not fetch protected release source $tag_ref after bounded retries" >&2
+                return 1
+              }
+              echo "release source fetch failed ($attempt/3); retrying after a bounded delay" >&2
+              sleep $((attempt * 3))
+            done
+            actual_sha="$(/usr/bin/git -C "$target_dir" rev-parse "$tag_ref^{commit}")"
+            [ "$actual_sha" = "$expected_sha" ] || {
+              echo "protected release source mismatch for $tag_ref" >&2
+              return 1
+            }
+            /usr/bin/git -C "$target_dir" checkout --detach "$expected_sha"
+            [ -z "$(/usr/bin/git -C "$target_dir" status --porcelain)" ]
+          }
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        with:
-          node-version-file: "hara-desktop/.node-version"
+          [ ! -e "$HARA_RELEASE_SOURCE_ROOT" ] || {
+            echo "release source root already exists for this run attempt" >&2
+            exit 1
+          }
+          checkout_exact_tag \
+            "https://github.com/hara-cli/hara-desktop.git" \
+            "$HARA_RELEASE_SOURCE_ROOT/hara-desktop" \
+            "refs/tags/$RELEASE_TAG" \
+            "$PINNED_DESKTOP_SHA"
+          checkout_exact_tag \
+            "https://github.com/hara-cli/hara.git" \
+            "$HARA_RELEASE_SOURCE_ROOT/hara-cli" \
+            "refs/tags/v$PINNED_CLI_VERSION" \
+            "$PINNED_CLI_SHA"
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.0.2
-        with:
-          bun-version-file: hara-desktop/.bun-version
-
-      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
-        with:
-          toolchain: "1.97.0"
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-
-      - name: Check out the exact pinned CLI source
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
-        with:
-          repository: hara-cli/hara
-          ref: ${{ needs.prepare_release.outputs.cli_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-          path: hara-cli
+          NODE_VERSION="$(tr -d '[:space:]' < "$HARA_RELEASE_SOURCE_ROOT/hara-desktop/.node-version")"
+          NODE_BIN="$HOME/.nvm/versions/node/v$NODE_VERSION/bin"
+          BUN_BIN="$HOME/.bun/bin"
+          CARGO_BIN="$HOME/.cargo/bin"
+          [ -x "$NODE_BIN/node" ] && [ -x "$BUN_BIN/bun" ] && [ -x "$CARGO_BIN/rustup" ] || {
+            echo "the controlled signing host is missing a pinned release toolchain" >&2
+            exit 1
+          }
+          printf '%s\n' "$NODE_BIN" "$BUN_BIN" "$CARGO_BIN" >> "$GITHUB_PATH"
 
       - name: Validate pinned release sources and metadata
-        working-directory: hara-desktop
+        working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
         shell: bash
         env:
           GITHUB_REF_TYPE: tag
@@ -665,7 +700,7 @@ jobs:
           [ "$(node -p 'require(process.argv[1]).version' ../hara-cli/package.json)" = "$PINNED_CLI_VERSION" ]
 
       - name: Require immutable releases and the restricted stable-tag ruleset before signing
-        working-directory: hara-desktop
+        working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.HARA_RELEASE_POLICY_TOKEN }}
@@ -725,20 +760,20 @@ jobs:
           }
 
       - name: Install locked Desktop dependencies
-        working-directory: hara-desktop
+        working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
         run: npm ci
 
       - name: Re-run release-pipeline regression tests on the signing host
-        working-directory: hara-desktop
+        working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
         run: npm test
 
       - name: Build signed and notarized arm64 assets
-        working-directory: hara-desktop
+        working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
         shell: bash
         run: ./scripts/build-mac-signed.sh
 
       - name: Build signed and notarized Intel assets with foreign-architecture inspection
-        working-directory: hara-desktop
+        working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
         shell: bash
         env:
           HARA_MAC_TARGET: x86_64-apple-darwin
@@ -750,7 +785,7 @@ jobs:
         run: ./scripts/build-mac-signed.sh
 
       - name: Merge signed assets and atomically expose the verified release
-        working-directory: hara-desktop
+        working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -760,3 +795,17 @@ jobs:
           HARA_DRAFT_ASSEMBLED_RUN_ID: ${{ github.run_id }}
           HARA_PROTECTED_SIGNING_JOB: ${{ github.run_id }}
         run: ./scripts/release-mac-assets.sh "$RELEASE_TAG"
+
+      - name: Remove the run-scoped release source checkout
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_root="$GITHUB_WORKSPACE/source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          [ "$HARA_RELEASE_SOURCE_ROOT" = "$expected_root" ] || {
+            echo "refusing to remove an unexpected release source root" >&2
+            exit 1
+          }
+          if [ -d "$HARA_RELEASE_SOURCE_ROOT" ]; then
+            rm -rf -- "$HARA_RELEASE_SOURCE_ROOT"
+          fi

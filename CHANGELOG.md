@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.86 — 2026-08-17 — self-contained protected signing bootstrap
+
+- Keep the Desktop 0.1.85 runtime payload unchanged: bundled Hara CLI `0.148.1`, directly launchable
+  preinstalled Agent Office, default lazy WebGL renderer, 2.5D/list fallbacks, and the macOS cold-start
+  window repair all carry forward without migration.
+- Remove the protected self-hosted signing job's dependency on downloading GitHub Action archives from
+  `codeload.github.com`. The job now fetches only the exact protected Desktop and CLI tags with bounded
+  low-speed retries, verifies both pinned commits before execution, and selects the already-pinned Node,
+  Bun, and Rust toolchains from the controlled host.
+- Retry only narrowly classified transient Apple timestamp failures in the non-interactive signing-key
+  probe. Certificate, authorization, signature, notarization, or provenance failures remain terminal.
+
 ## 0.1.85 — 2026-08-17 — publishable Agent Office and deterministic task intake
 
 - Bundle Hara CLI `0.148.1` at exact verified commit
