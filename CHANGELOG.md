@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.88 — 2026-08-18 — resumable protected source handoff
+
+- Keep the Desktop 0.1.87 runtime unchanged, including bundled Hara CLI `0.148.1`, the preinstalled
+  Agent Office with lazy WebGL/2.5D/list modes, and the macOS cold-start window repair.
+- Have the already-verified cloud preparation job export compact object packs for the exact protected
+  Desktop and CLI commits. The actionless signing job downloads that run-scoped artifact with range resume,
+  verifies both the GitHub artifact digest and its internal SHA-256 manifest, reconstructs shallow checkouts
+  with the original commit/tree identities, and only then executes release code.
+- Remove the signer's direct Git smart-HTTP source transfer. Repeated peer resets can now resume the same
+  authenticated artifact instead of discarding a nearly complete pack and restarting from byte zero.
+
 ## 0.1.87 — 2026-08-17 — slow-link tolerant protected bootstrap
 
 - Keep the Desktop 0.1.86 runtime and protected-signing design unchanged, including bundled Hara CLI

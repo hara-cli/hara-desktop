@@ -798,12 +798,21 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
 
   const signJob = workflow.slice(workflow.indexOf("\n  sign_and_promote:"));
   assert.doesNotMatch(signJob, /^\s+- uses:/mu);
-  assert.match(signJob, /Materialize exact release sources without downloading external Actions/);
+  assert.match(workflow, /Build compact packs for the exact Desktop and CLI source snapshots/);
+  assert.match(workflow, /rev-list --objects --no-object-names "\$commit_sha\^\{tree\}"/);
+  assert.match(workflow, /id: source_pack_upload/);
+  assert.match(workflow, /name: release-source-packs/);
+  assert.match(workflow, /compression-level: 0/);
+  assert.match(signJob, /Materialize exact release sources from a resumable run artifact/);
   assert.match(signJob, /source-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
-  assert.match(signJob, /fetch --no-tags --depth=1 origin "\$tag_ref:\$tag_ref"/);
-  assert.match(signJob, /http\.lowSpeedLimit=1/);
-  assert.match(signJob, /http\.lowSpeedTime=180/);
-  assert.match(signJob, /actual_sha.*tag_ref\^\{commit\}/s);
+  assert.doesNotMatch(signJob, /\bgit\b.*\bfetch\b/);
+  assert.match(signJob, /SOURCE_ARTIFACT_ID: \$\{\{ needs\.prepare_release\.outputs\.source_artifact_id \}\}/);
+  assert.match(signJob, /SOURCE_ARTIFACT_DIGEST: \$\{\{ needs\.prepare_release\.outputs\.source_artifact_digest \}\}/);
+  assert.match(signJob, /--continue-at - --output "\$ARTIFACT_ZIP"/);
+  assert.match(signJob, /shasum -a 256 -c source-packs\.sha256/);
+  assert.match(signJob, /index-pack --stdin < "\$pack_file"/);
+  assert.match(signJob, /printf '%s\\n' "\$commit_sha" > "\$target_dir\/\.git\/shallow"/);
+  assert.match(signJob, /rev-parse "\$commit_sha\^\{tree\}"/);
   assert.match(signJob, /printf '%s\\n' "\$NODE_BIN" "\$BUN_BIN" "\$CARGO_BIN" >> "\$GITHUB_PATH"/);
   assert.match(signJob, /expected_root="\$GITHUB_WORKSPACE\/source-\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT"/);
   assert.match(signJob, /\[ "\$HARA_RELEASE_SOURCE_ROOT" = "\$expected_root" \]/);

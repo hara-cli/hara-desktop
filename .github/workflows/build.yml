@@ -36,6 +36,8 @@ jobs:
       desktop_sha: ${{ steps.release_source.outputs.desktop_sha }}
       cli_sha: ${{ steps.release_source.outputs.cli_sha }}
       cli_version: ${{ steps.release_source.outputs.cli_version }}
+      source_artifact_id: ${{ steps.source_pack_upload.outputs.artifact-id }}
+      source_artifact_digest: ${{ steps.source_pack_upload.outputs.artifact-digest }}
     steps:
       - name: Require an exact stable tag invocation before checkout
         shell: bash
@@ -178,6 +180,61 @@ jobs:
             echo "cli_version=$CLI_VERSION"
           } >>"$GITHUB_OUTPUT"
           echo "Pinned desktop $DESKTOP_SHA and hara-cli $CLI_SHA"
+      - name: Build compact packs for the exact Desktop and CLI source snapshots
+        shell: bash
+        env:
+          PINNED_DESKTOP_SHA: ${{ steps.release_source.outputs.desktop_sha }}
+          PINNED_CLI_SHA: ${{ steps.release_source.outputs.cli_sha }}
+          PINNED_CLI_VERSION: ${{ steps.release_source.outputs.cli_version }}
+        run: |
+          set -euo pipefail
+          pack_snapshot() {
+            local source_repo="$1" commit_sha="$2" output_pack="$3"
+            {
+              printf '%s\n' "$commit_sha"
+              git -C "$source_repo" rev-list --objects --no-object-names "$commit_sha^{tree}"
+            } | LC_ALL=C sort -u | git -C "$source_repo" pack-objects --stdout > "$output_pack"
+          }
+
+          PACK_DIR="$RUNNER_TEMP/release-source-packs"
+          CLI_DIR="$RUNNER_TEMP/hara-cli-source"
+          mkdir -p "$PACK_DIR"
+          [ "$(git rev-parse HEAD)" = "$PINNED_DESKTOP_SHA" ]
+          [ "$(git -C "$CLI_DIR" rev-parse HEAD)" = "$PINNED_CLI_SHA" ]
+          [ -z "$(git status --porcelain)" ]
+          [ -z "$(git -C "$CLI_DIR" status --porcelain)" ]
+
+          pack_snapshot "$GITHUB_WORKSPACE" "$PINNED_DESKTOP_SHA" "$PACK_DIR/desktop.pack"
+          pack_snapshot "$CLI_DIR" "$PINNED_CLI_SHA" "$PACK_DIR/cli.pack"
+          jq -n \
+            --arg release_tag "$RELEASE_TAG" \
+            --arg desktop_sha "$PINNED_DESKTOP_SHA" \
+            --arg desktop_tree "$(git rev-parse "$PINNED_DESKTOP_SHA^{tree}")" \
+            --arg cli_version "$PINNED_CLI_VERSION" \
+            --arg cli_sha "$PINNED_CLI_SHA" \
+            --arg cli_tree "$(git -C "$CLI_DIR" rev-parse "$PINNED_CLI_SHA^{tree}")" \
+            '{
+              format: 1,
+              release_tag: $release_tag,
+              desktop_sha: $desktop_sha,
+              desktop_tree: $desktop_tree,
+              cli_version: $cli_version,
+              cli_sha: $cli_sha,
+              cli_tree: $cli_tree
+            }' > "$PACK_DIR/source-packs.json"
+          (
+            cd "$PACK_DIR"
+            sha256sum desktop.pack cli.pack source-packs.json > source-packs.sha256
+          )
+      - name: Upload exact release source packs for the protected signer
+        id: source_pack_upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-source-packs
+          path: ${{ runner.temp }}/release-source-packs/*
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
   create_draft:
     name: Create the hidden draft without executing repository code
     needs: [prepare_release, promotion_preflight]
@@ -619,57 +676,125 @@ jobs:
     env:
       HARA_RELEASE_SOURCE_ROOT: ${{ github.workspace }}/source-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - name: Materialize exact release sources without downloading external Actions
+      - name: Materialize exact release sources from a resumable run artifact
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           PINNED_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
           PINNED_CLI_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
           PINNED_CLI_VERSION: ${{ needs.prepare_release.outputs.cli_version }}
+          SOURCE_ARTIFACT_ID: ${{ needs.prepare_release.outputs.source_artifact_id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
         run: |
           set -euo pipefail
-          checkout_exact_tag() {
-            local remote_url="$1" target_dir="$2" tag_ref="$3" expected_sha="$4" attempt actual_sha
-            mkdir -p "$target_dir"
-            /usr/bin/git init -q "$target_dir"
-            /usr/bin/git -C "$target_dir" remote add origin "$remote_url"
-            for attempt in 1 2 3; do
-              if /usr/bin/git \
-                -c protocol.version=2 \
-                -c http.lowSpeedLimit=1 \
-                -c http.lowSpeedTime=180 \
-                -C "$target_dir" fetch --no-tags --depth=1 origin "$tag_ref:$tag_ref"; then
-                break
-              fi
-              [ "$attempt" -lt 3 ] || {
-                echo "could not fetch protected release source $tag_ref after bounded retries" >&2
-                return 1
-              }
-              echo "release source fetch failed ($attempt/3); retrying after a bounded delay" >&2
-              sleep $((attempt * 3))
-            done
-            actual_sha="$(/usr/bin/git -C "$target_dir" rev-parse "$tag_ref^{commit}")"
-            [ "$actual_sha" = "$expected_sha" ] || {
-              echo "protected release source mismatch for $tag_ref" >&2
-              return 1
-            }
-            /usr/bin/git -C "$target_dir" checkout --detach "$expected_sha"
-            [ -z "$(/usr/bin/git -C "$target_dir" status --porcelain)" ]
-          }
-
           [ ! -e "$HARA_RELEASE_SOURCE_ROOT" ] || {
             echo "release source root already exists for this run attempt" >&2
             exit 1
           }
-          checkout_exact_tag \
-            "https://github.com/hara-cli/hara-desktop.git" \
+          [[ "$SOURCE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || {
+            echo "the source artifact ID is missing or invalid" >&2
+            exit 1
+          }
+          EXPECTED_ARTIFACT_SHA="${SOURCE_ARTIFACT_DIGEST#sha256:}"
+          [[ "$EXPECTED_ARTIFACT_SHA" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "the source artifact digest is missing or invalid" >&2
+            exit 1
+          }
+
+          mkdir -p "$HARA_RELEASE_SOURCE_ROOT"
+          ARTIFACT_ZIP="$HARA_RELEASE_SOURCE_ROOT/source-packs.zip"
+          RESPONSE_HEADERS="$HARA_RELEASE_SOURCE_ROOT/source-packs.headers"
+          API_URL="https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip"
+          DOWNLOAD_COMPLETE=0
+          for download_attempt in 1 2 3 4 5 6 7 8; do
+            : > "$RESPONSE_HEADERS"
+            HTTP_CODE="$(
+              {
+                printf 'header = "Accept: application/vnd.github+json"\n'
+                printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN"
+                printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
+                printf 'url = "%s"\n' "$API_URL"
+              } | /usr/bin/curl --config - --silent --show-error --output /dev/null \
+                --dump-header "$RESPONSE_HEADERS" --max-redirs 0 --connect-timeout 20 --max-time 60 \
+                --write-out '%{http_code}'
+            )" || true
+            ARTIFACT_URL="$(awk '
+              tolower($1) == "location:" {
+                $1 = ""
+                sub(/^[[:space:]]*/, "")
+                sub(/\r$/, "")
+                location = $0
+              }
+              END { print location }
+            ' "$RESPONSE_HEADERS")"
+            if [[ "$HTTP_CODE" =~ ^30[27]$ ]] && [[ "$ARTIFACT_URL" == https://* ]]; then
+              printf 'url = "%s"\n' "$ARTIFACT_URL" | \
+                /usr/bin/curl --config - --fail --location --show-error \
+                  --connect-timeout 20 --max-time 300 --continue-at - --output "$ARTIFACT_ZIP" || true
+            fi
+            if [ -f "$ARTIFACT_ZIP" ]; then
+              ACTUAL_ARTIFACT_SHA="$(shasum -a 256 "$ARTIFACT_ZIP" | awk '{print $1}')"
+              if [ "$ACTUAL_ARTIFACT_SHA" = "$EXPECTED_ARTIFACT_SHA" ]; then
+                DOWNLOAD_COMPLETE=1
+                break
+              fi
+            fi
+            [ "$download_attempt" -lt 8 ] || break
+            echo "source artifact transfer incomplete ($download_attempt/8); resuming after a bounded delay" >&2
+            sleep $((download_attempt * 3))
+          done
+          [ "$DOWNLOAD_COMPLETE" = "1" ] || {
+            echo "could not download the exact source artifact after bounded resumable attempts" >&2
+            exit 1
+          }
+
+          PACK_DIR="$HARA_RELEASE_SOURCE_ROOT/packs"
+          mkdir -p "$PACK_DIR"
+          /usr/bin/ditto -x -k "$ARTIFACT_ZIP" "$PACK_DIR"
+          (
+            cd "$PACK_DIR"
+            shasum -a 256 -c source-packs.sha256
+          )
+          jq -e \
+            --arg release_tag "$RELEASE_TAG" \
+            --arg desktop_sha "$PINNED_DESKTOP_SHA" \
+            --arg cli_version "$PINNED_CLI_VERSION" \
+            --arg cli_sha "$PINNED_CLI_SHA" '
+              .format == 1 and
+              .release_tag == $release_tag and
+              .desktop_sha == $desktop_sha and
+              .cli_version == $cli_version and
+              .cli_sha == $cli_sha and
+              (.desktop_tree | test("^[0-9a-f]{40}$")) and
+              (.cli_tree | test("^[0-9a-f]{40}$"))
+            ' "$PACK_DIR/source-packs.json" >/dev/null
+
+          materialize_snapshot() {
+            local pack_file="$1" target_dir="$2" commit_sha="$3" tree_sha="$4" tag="$5" remote_url="$6"
+            mkdir -p "$target_dir"
+            /usr/bin/git init -q "$target_dir"
+            /usr/bin/git -C "$target_dir" config core.autocrlf false
+            /usr/bin/git -C "$target_dir" index-pack --stdin < "$pack_file" >/dev/null
+            printf '%s\n' "$commit_sha" > "$target_dir/.git/shallow"
+            /usr/bin/git -C "$target_dir" update-ref "refs/tags/$tag" "$commit_sha"
+            /usr/bin/git -C "$target_dir" remote add origin "$remote_url"
+            /usr/bin/git -C "$target_dir" checkout --quiet --detach "$commit_sha"
+            [ "$(/usr/bin/git -C "$target_dir" rev-parse HEAD)" = "$commit_sha" ]
+            [ "$(/usr/bin/git -C "$target_dir" rev-parse "$commit_sha^{tree}")" = "$tree_sha" ]
+            [ -z "$(/usr/bin/git -C "$target_dir" status --porcelain)" ]
+          }
+          DESKTOP_TREE="$(jq -r .desktop_tree "$PACK_DIR/source-packs.json")"
+          CLI_TREE="$(jq -r .cli_tree "$PACK_DIR/source-packs.json")"
+          materialize_snapshot \
+            "$PACK_DIR/desktop.pack" \
             "$HARA_RELEASE_SOURCE_ROOT/hara-desktop" \
-            "refs/tags/$RELEASE_TAG" \
-            "$PINNED_DESKTOP_SHA"
-          checkout_exact_tag \
-            "https://github.com/hara-cli/hara.git" \
+            "$PINNED_DESKTOP_SHA" "$DESKTOP_TREE" "$RELEASE_TAG" \
+            "https://github.com/hara-cli/hara-desktop.git"
+          materialize_snapshot \
+            "$PACK_DIR/cli.pack" \
             "$HARA_RELEASE_SOURCE_ROOT/hara-cli" \
-            "refs/tags/v$PINNED_CLI_VERSION" \
-            "$PINNED_CLI_SHA"
+            "$PINNED_CLI_SHA" "$CLI_TREE" "v$PINNED_CLI_VERSION" \
+            "https://github.com/hara-cli/hara.git"
 
           NODE_VERSION="$(tr -d '[:space:]' < "$HARA_RELEASE_SOURCE_ROOT/hara-desktop/.node-version")"
           NODE_BIN="$HOME/.nvm/versions/node/v$NODE_VERSION/bin"
