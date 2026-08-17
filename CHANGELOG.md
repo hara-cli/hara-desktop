@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.87 — 2026-08-17 — slow-link tolerant protected bootstrap
+
+- Keep the Desktop 0.1.86 runtime and protected-signing design unchanged, including bundled Hara CLI
+  `0.148.1`, the preinstalled Agent Office, and the macOS cold-start repair.
+- Treat the signing host's current sub-kilobyte GitHub connection as slow rather than failed. Exact protected
+  tag fetches now abort only after a near-zero transfer rate persists for three minutes, while retaining three
+  bounded attempts, exact commit verification, and the run-scoped cleanup boundary.
+
 ## 0.1.86 — 2026-08-17 — self-contained protected signing bootstrap
 
 - Keep the Desktop 0.1.85 runtime payload unchanged: bundled Hara CLI `0.148.1`, directly launchable

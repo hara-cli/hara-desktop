@@ -801,7 +801,8 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(signJob, /Materialize exact release sources without downloading external Actions/);
   assert.match(signJob, /source-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.match(signJob, /fetch --no-tags --depth=1 origin "\$tag_ref:\$tag_ref"/);
-  assert.match(signJob, /http\.lowSpeedLimit=1024/);
+  assert.match(signJob, /http\.lowSpeedLimit=1/);
+  assert.match(signJob, /http\.lowSpeedTime=180/);
   assert.match(signJob, /actual_sha.*tag_ref\^\{commit\}/s);
   assert.match(signJob, /printf '%s\\n' "\$NODE_BIN" "\$BUN_BIN" "\$CARGO_BIN" >> "\$GITHUB_PATH"/);
   assert.match(signJob, /expected_root="\$GITHUB_WORKSPACE\/source-\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT"/);
