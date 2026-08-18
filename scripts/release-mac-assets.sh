@@ -150,6 +150,20 @@ release_download_all() {
   done
 }
 
+verify_signed_dmg() {
+  local scope="$1"
+  local dmg_path="$2"
+  local expected_target="$3"
+  node scripts/stapler-validate.mjs "$dmg_path" "$scope $expected_target DMG notarization staple"
+  /usr/sbin/spctl -a -t open --context context:primary-signature -v "$dmg_path"
+  if [ "$expected_target" = "x86_64-apple-darwin" ]; then
+    HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-dmg-smoke.mjs \
+      "$dmg_path" "$expected_target" --require-signatures
+  else
+    node scripts/mac-dmg-smoke.mjs "$dmg_path" "$expected_target" --require-signatures
+  fi
+}
+
 release_remote_asset_matches() {
   local source="$1"
   local asset_name stage probe_log
@@ -301,18 +315,8 @@ if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
     "$PUBLIC_DIR/Hara_aarch64.app.tar.gz" aarch64-apple-darwin --require-signatures
   HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-updater-smoke.mjs \
     "$PUBLIC_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
-  for arch in aarch64 x64; do
-    public_dmg="$PUBLIC_DIR/Hara_${VER}_${arch}.dmg"
-    if [ "$arch" = "aarch64" ]; then
-      public_target="aarch64-apple-darwin"
-    else
-      public_target="x86_64-apple-darwin"
-    fi
-    node scripts/stapler-validate.mjs "$public_dmg" "public $public_target DMG notarization staple"
-    /usr/sbin/spctl -a -t open --context context:primary-signature -v "$public_dmg"
-    HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-dmg-smoke.mjs \
-      "$public_dmg" "$public_target" --require-signatures
-  done
+  verify_signed_dmg public "$PUBLIC_DIR/Hara_${VER}_aarch64.dmg" aarch64-apple-darwin
+  verify_signed_dmg public "$PUBLIC_DIR/Hara_${VER}_x64.dmg" x86_64-apple-darwin
   curl --fail --location --retry 5 --retry-all-errors \
     --output "$WORK/latest-public.json" \
     "https://github.com/$REPO/releases/latest/download/latest.json"
@@ -411,18 +415,8 @@ node scripts/mac-updater-smoke.mjs \
   "$REMOTE_DIR/Hara_aarch64.app.tar.gz" aarch64-apple-darwin --require-signatures
 HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-updater-smoke.mjs \
   "$REMOTE_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
-for arch in aarch64 x64; do
-  remote_dmg="$REMOTE_DIR/Hara_${VER}_${arch}.dmg"
-  if [ "$arch" = "aarch64" ]; then
-    remote_target="aarch64-apple-darwin"
-  else
-    remote_target="x86_64-apple-darwin"
-  fi
-  node scripts/stapler-validate.mjs "$remote_dmg" "remote $remote_target DMG notarization staple"
-  /usr/sbin/spctl -a -t open --context context:primary-signature -v "$remote_dmg"
-  HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-dmg-smoke.mjs \
-    "$remote_dmg" "$remote_target" --require-signatures
-done
+verify_signed_dmg remote "$REMOTE_DIR/Hara_${VER}_aarch64.dmg" aarch64-apple-darwin
+verify_signed_dmg remote "$REMOTE_DIR/Hara_${VER}_x64.dmg" x86_64-apple-darwin
 [ "$(release_view_with_retry --json isDraft --jq .isDraft)" = "true" ] || {
   echo "error: draft state changed during signed-asset verification" >&2
   exit 1

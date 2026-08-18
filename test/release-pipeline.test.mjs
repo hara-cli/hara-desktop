@@ -623,7 +623,11 @@ test("Apple staple validation retries only bounded transient service failures", 
   assert.match(helper, /attempt === STAPLER_ATTEMPTS/);
   assert.match(dmgSmoke, /validateStapledArtifact\(app, "DMG app notarization staple"\)/);
   assert.match(updaterSmoke, /validateStapledArtifact\(app, "updater archive notarization staple"\)/);
-  assert.equal((promotion.match(/node scripts\/stapler-validate\.mjs/g) || []).length, 3);
+  assert.equal(
+    (promotion.match(/node scripts\/stapler-validate\.mjs/g) || []).length,
+    2,
+    "promotion must validate local DMGs and reuse the architecture-aware verifier for remote/public DMGs",
+  );
   assert.doesNotMatch(promotion, /xcrun stapler validate/);
 });
 
@@ -926,6 +930,19 @@ test("foreign Intel static validation is limited to the exact protected tag sign
   assert.match(signedBuild, /foreign-mac-validation\.mjs --preflight "\$TARGET"/);
   assert.match(promotion, /HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts\/mac-updater-smoke\.mjs/);
   assert.match(promotion, /HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts\/mac-dmg-smoke\.mjs/);
+  assert.equal(
+    (promotion.match(/HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts\/mac-dmg-smoke\.mjs/g) || []).length,
+    1,
+    "the reusable DMG verifier must select foreign validation only in its Intel branch",
+  );
+  assert.match(
+    promotion,
+    /if \[ "\$expected_target" = "x86_64-apple-darwin" \]; then[\s\S]*HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts\/mac-dmg-smoke\.mjs[\s\S]*else[\s\S]*node scripts\/mac-dmg-smoke\.mjs "\$dmg_path" "\$expected_target"/,
+  );
+  assert.match(promotion, /verify_signed_dmg public .*aarch64-apple-darwin/);
+  assert.match(promotion, /verify_signed_dmg public .*x86_64-apple-darwin/);
+  assert.match(promotion, /verify_signed_dmg remote .*aarch64-apple-darwin/);
+  assert.match(promotion, /verify_signed_dmg remote .*x86_64-apple-darwin/);
   assert.doesNotMatch(promotion, /HARA_ALLOW_ROSETTA_SMOKE/);
 });
 
@@ -1349,7 +1366,8 @@ test("a post-publication rerun switches to immutable verification without rewrit
   assert.match(branch, /release_gh release verify/);
   assert.match(branch, /release_download_all/);
   assert.match(branch, /updater-manifest\.mjs validate/);
-  assert.match(branch, /mac-dmg-smoke\.mjs/);
+  assert.match(branch, /verify_signed_dmg public .*aarch64-apple-darwin/);
+  assert.match(branch, /verify_signed_dmg public .*x86_64-apple-darwin/);
   assert.match(branch, /exit 0/);
 });
 

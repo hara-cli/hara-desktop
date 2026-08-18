@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.93 — 2026-08-19 — architecture-correct signed DMG verification
+
+- Route signed ARM DMGs through the native executable smoke and select protected foreign-architecture
+  static validation only for Intel DMGs. The 0.1.92 candidate completed both Developer ID builds,
+  notarization, remote asset verification, and updater-signature checks, but remained hidden when the
+  final verifier correctly rejected an Intel-only flag that had been applied to the ARM package.
+- Cover both public-release and remote-draft ARM/Intel verification calls in the release regression, and
+  keep the architecture choice in one fail-closed helper rather than a loop-wide environment override.
+- Carry forward the exact Hara CLI `0.148.2` lock and all 0.1.92 runtime and release fixes. Windows packages
+  remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.92 — 2026-08-19 — cross-platform release helper execution
 
 - Require the npm install and production audit retry helpers to run under Bash on every build matrix
