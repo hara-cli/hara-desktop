@@ -1225,9 +1225,9 @@ test("release installs and audits use finite official-registry retry helpers", (
   const auditHelper = readFileSync(join(root, "scripts/npm-audit-retry.sh"), "utf8");
   const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
 
-  assert.match(workflow, /Install locked Desktop dependencies with bounded registry retries[\s\S]*?\.\/scripts\/npm-ci-retry\.sh/);
-  assert.match(workflow, /Audit production dependencies with transient-only retries[\s\S]*?\.\/scripts\/npm-audit-retry\.sh/);
-  assert.match(workflow, /Install locked Desktop dependencies[\s\S]*?\.\/scripts\/npm-ci-retry\.sh/);
+  assert.match(workflow, /Install locked Desktop dependencies with bounded registry retries[\s\S]*?shell:\s+bash[\s\S]*?\.\/scripts\/npm-ci-retry\.sh/);
+  assert.match(workflow, /Audit production dependencies with transient-only retries[\s\S]*?shell:\s+bash[\s\S]*?\.\/scripts\/npm-audit-retry\.sh/);
+  assert.match(workflow, /Install locked Desktop dependencies\n[\s\S]*?shell:\s+bash[\s\S]*?\.\/scripts\/npm-ci-retry\.sh/);
   assert.match(refresh, /DESKTOP_ROOT\/scripts\/npm-ci-retry\.sh/);
   assert.match(retryHelper, /MAX_ATTEMPTS="\$\{HARA_NPM_CI_ATTEMPTS:-4\}"/);
   assert.match(retryHelper, /MAX_ATTEMPTS" -le 6/);

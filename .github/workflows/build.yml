@@ -342,8 +342,10 @@ jobs:
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 \
             libarchive-tools
       - name: Install locked Desktop dependencies with bounded registry retries
+        shell: bash
         run: ./scripts/npm-ci-retry.sh
       - name: Audit production dependencies with transient-only retries
+        shell: bash
         run: ./scripts/npm-audit-retry.sh
       - name: Require updater signing key
         shell: bash
@@ -902,6 +904,7 @@ jobs:
 
       - name: Install locked Desktop dependencies
         working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
+        shell: bash
         run: ./scripts/npm-ci-retry.sh
 
       - name: Re-run release-pipeline regression tests on the signing host

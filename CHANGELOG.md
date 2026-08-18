@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.92 — 2026-08-19 — cross-platform release helper execution
+
+- Require the npm install and production audit retry helpers to run under Bash on every build matrix
+  runner and on the protected signing host. Windows can no longer let PowerShell treat a `.sh` helper as
+  a successful no-op and then reach Tauri packaging without `node_modules/.bin/tauri`.
+- Extend the release regression to require the explicit shell boundary as well as the helper path, official
+  npm registry, finite retries, and fail-closed advisory behavior. The failed 0.1.91 candidate remained a
+  hidden draft and was never advertised or promoted.
+- Carry forward the exact Hara CLI `0.148.2` lock and all 0.1.91 runtime fixes. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.91 — 2026-08-19 — Windows execution fidelity and resilient protected audit
 
 - Bundle Hara CLI `0.148.2` at exact verified commit
