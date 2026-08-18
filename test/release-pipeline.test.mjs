@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -1219,11 +1219,14 @@ test("draft asset replacement resolves a hidden release through its database ID"
   assert.doesNotMatch(replacement, /releases\/tags\/\$RELEASE_TAG/);
 });
 
-test("the protected signer retries exact npm installs with finite registry timeouts", () => {
+test("release installs and audits use finite official-registry retry helpers", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const retryHelper = readFileSync(join(root, "scripts/npm-ci-retry.sh"), "utf8");
+  const auditHelper = readFileSync(join(root, "scripts/npm-audit-retry.sh"), "utf8");
   const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
 
+  assert.match(workflow, /Install locked Desktop dependencies with bounded registry retries[\s\S]*?\.\/scripts\/npm-ci-retry\.sh/);
+  assert.match(workflow, /Audit production dependencies with transient-only retries[\s\S]*?\.\/scripts\/npm-audit-retry\.sh/);
   assert.match(workflow, /Install locked Desktop dependencies[\s\S]*?\.\/scripts\/npm-ci-retry\.sh/);
   assert.match(refresh, /DESKTOP_ROOT\/scripts\/npm-ci-retry\.sh/);
   assert.match(retryHelper, /MAX_ATTEMPTS="\$\{HARA_NPM_CI_ATTEMPTS:-4\}"/);
@@ -1231,6 +1234,66 @@ test("the protected signer retries exact npm installs with finite registry timeo
   assert.match(retryHelper, /--fetch-retries=5/);
   assert.match(retryHelper, /--fetch-timeout=300000/);
   assert.doesNotMatch(retryHelper, /while true|registry\.npmmirror\.com|npmmirror/);
+  assert.match(auditHelper, /MAX_ATTEMPTS="\$\{HARA_NPM_AUDIT_ATTEMPTS:-4\}"/);
+  assert.match(auditHelper, /metadata\?\.vulnerabilities/);
+  assert.match(auditHelper, /audit endpoint returned an error/);
+  assert.match(auditHelper, /--registry https:\/\/registry\.npmjs\.org\//);
+  assert.match(auditHelper, /--fetch-timeout=180000/);
+  assert.doesNotMatch(auditHelper, /while true|registry\.npmmirror\.com|npmmirror/);
+});
+
+test("npm audit helper retries a transient endpoint failure but never retries a real advisory", () => {
+  const directory = mkdtempSync(join(tmpdir(), "hara-npm-audit-retry-"));
+  try {
+    const fakeNpm = join(directory, "npm");
+    const counter = join(directory, "count");
+    writeFileSync(fakeNpm, `#!/usr/bin/env bash
+set -euo pipefail
+count=0
+[ ! -f "$HARA_TEST_AUDIT_COUNTER" ] || count="$(<"$HARA_TEST_AUDIT_COUNTER")"
+echo $((count + 1)) >"$HARA_TEST_AUDIT_COUNTER"
+if [ "$HARA_TEST_AUDIT_SCENARIO" = "transient" ] && [ "$count" -eq 0 ]; then
+  echo "npm error audit endpoint returned an error" >&2
+  exit 1
+fi
+if [ "$HARA_TEST_AUDIT_SCENARIO" = "vulnerability" ]; then
+  echo '{"metadata":{"vulnerabilities":{"high":1,"total":1}}}'
+  exit 1
+fi
+echo '{"metadata":{"vulnerabilities":{"total":0}}}'
+`);
+    chmodSync(fakeNpm, 0o755);
+
+    const transient = run("bash", [join(root, "scripts/npm-audit-retry.sh")], {
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH}`,
+        HARA_TEST_AUDIT_COUNTER: counter,
+        HARA_TEST_AUDIT_SCENARIO: "transient",
+        HARA_NPM_AUDIT_ATTEMPTS: "2",
+        HARA_NPM_AUDIT_RETRY_DELAY_SECONDS: "0",
+      },
+    });
+    assert.equal(transient.status, 0, transient.stderr);
+    assert.equal(readFileSync(counter, "utf8").trim(), "2");
+
+    writeFileSync(counter, "0\n");
+    const vulnerability = run("bash", [join(root, "scripts/npm-audit-retry.sh")], {
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH}`,
+        HARA_TEST_AUDIT_COUNTER: counter,
+        HARA_TEST_AUDIT_SCENARIO: "vulnerability",
+        HARA_NPM_AUDIT_ATTEMPTS: "4",
+        HARA_NPM_AUDIT_RETRY_DELAY_SECONDS: "0",
+      },
+    });
+    assert.equal(vulnerability.status, 1);
+    assert.match(vulnerability.stderr, /found production dependency vulnerabilities/);
+    assert.equal(readFileSync(counter, "utf8").trim(), "1", "a real advisory must fail on the first attempt");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("promotion rechecks both remote tags at the publication boundary and verifies immutability", () => {

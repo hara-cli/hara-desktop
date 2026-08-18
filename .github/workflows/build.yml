@@ -341,8 +341,10 @@ jobs:
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 \
             libarchive-tools
-      - run: npm ci
-      - run: npm audit --omit=dev --registry https://registry.npmjs.org/
+      - name: Install locked Desktop dependencies with bounded registry retries
+        run: ./scripts/npm-ci-retry.sh
+      - name: Audit production dependencies with transient-only retries
+        run: ./scripts/npm-audit-retry.sh
       - name: Require updater signing key
         shell: bash
         env:

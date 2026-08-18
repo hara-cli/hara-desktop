@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.91 — 2026-08-19 — Windows execution fidelity and resilient protected audit
+
+- Bundle Hara CLI `0.148.2` at exact verified commit
+  `991a2a6969c0a736178a55321f7b22440f3eabdf`. Windows shell execution now restores trusted system
+  paths and resolves inbox executables independently of a trimmed inherited `PATH`; `computerUse`
+  settings validate their mode and explain when `HARA_COMPUTER_USE` is the current effective source.
+- Add Alibaba Cloud Model Studio Token Plan Responses support for the Qwen 3.8/3.7 families, including
+  model-aware reasoning levels and context metadata. Office generation also requires a final visual
+  review of representative dense pages, cramped tables, overlapping titles, and stray template language.
+- Keep production dependency auditing fail closed while retrying only bounded npm registry/network
+  failures. A confirmed vulnerability still fails immediately, and a persistent audit outage still leaves
+  the release hidden; no unsigned or incomplete package may be promoted.
+- Carry forward the preinstalled Agent Office, macOS cold-start repair, companion state controls, and
+  owner-scoped Visual Dock. Windows packages remain updater-signed but not Authenticode-signed, so
+  SmartScreen may still show a reputation warning.
+
 ## 0.1.88 — 2026-08-18 — resumable protected source handoff
 
 - Keep the Desktop 0.1.87 runtime unchanged, including bundled Hara CLI `0.148.1`, the preinstalled
