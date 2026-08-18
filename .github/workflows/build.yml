@@ -900,7 +900,7 @@ jobs:
 
       - name: Install locked Desktop dependencies
         working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
-        run: npm ci
+        run: ./scripts/npm-ci-retry.sh
 
       - name: Re-run release-pipeline regression tests on the signing host
         working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop

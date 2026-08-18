@@ -4,6 +4,7 @@
 # + origin-matching v<SIDECAR_VERSION> tag, so unrelated developer files can never enter a release.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+DESKTOP_ROOT="$PWD"
 CLI="../hara-cli"
 [ "$(git -C "$CLI" rev-parse --is-inside-work-tree 2>/dev/null || true)" = "true" ] || {
   echo "hara-cli repository not found at $CLI" >&2
@@ -122,7 +123,7 @@ build_sidecar_binary() {
 
 echo "▸ building hara $EXPECTED standalone sidecar ($TRIPLE, Bun $(bun --version))…"
 if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
-  (cd "$BUILD_CLI" && npm ci >/dev/null && npm run build >/dev/null)
+  (cd "$BUILD_CLI" && "$DESKTOP_ROOT/scripts/npm-ci-retry.sh" >/dev/null && npm run build >/dev/null)
 else
   (cd "$BUILD_CLI" && npm run build >/dev/null)
 fi

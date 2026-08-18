@@ -1219,6 +1219,20 @@ test("draft asset replacement resolves a hidden release through its database ID"
   assert.doesNotMatch(replacement, /releases\/tags\/\$RELEASE_TAG/);
 });
 
+test("the protected signer retries exact npm installs with finite registry timeouts", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const retryHelper = readFileSync(join(root, "scripts/npm-ci-retry.sh"), "utf8");
+  const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
+
+  assert.match(workflow, /Install locked Desktop dependencies[\s\S]*?\.\/scripts\/npm-ci-retry\.sh/);
+  assert.match(refresh, /DESKTOP_ROOT\/scripts\/npm-ci-retry\.sh/);
+  assert.match(retryHelper, /MAX_ATTEMPTS="\$\{HARA_NPM_CI_ATTEMPTS:-4\}"/);
+  assert.match(retryHelper, /MAX_ATTEMPTS" -le 6/);
+  assert.match(retryHelper, /--fetch-retries=5/);
+  assert.match(retryHelper, /--fetch-timeout=300000/);
+  assert.doesNotMatch(retryHelper, /while true|registry\.npmmirror\.com|npmmirror/);
+});
+
 test("promotion rechecks both remote tags at the publication boundary and verifies immutability", () => {
   const releaseScript = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
   const immutablePolicyCheck = releaseScript.indexOf(
