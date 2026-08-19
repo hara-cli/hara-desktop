@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.94 — 2026-08-19 — Token Plan profile fidelity and local BYOK safety
+
+- Bundle Hara CLI `0.148.3` at exact verified commit
+  `f5e6619a207a88234e1f1eaf9fe11c20c6f86306`. `hara profile add` now persists the requested model even
+  when the command-level and global `--model` options overlap, so a DeepSeek or GLM Token Plan profile
+  can no longer silently fall back to `gpt-4o-mini`.
+- Add the explicit `openai-compatible` provider alias with a required base URL, masked interactive Key
+  entry, and an environment-only automation path. Alibaba Token Plan stays a local interactive BYOK
+  connection; its subscription Key is never treated as a Hara Control or shared application-gateway
+  credential.
+- Route supported Qwen families through Responses and conservative non-Qwen models through Chat on the
+  official Token Plan endpoint, while treating its live model list as authoritative and hiding media-only
+  models from the coding-agent picker. Carry forward the signed-DMG release checks from 0.1.93. Windows
+  packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation
+  warning.
+
 ## 0.1.93 — 2026-08-19 — architecture-correct signed DMG verification
 
 - Route signed ARM DMGs through the native executable smoke and select protected foreign-architecture
