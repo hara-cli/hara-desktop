@@ -166,22 +166,38 @@ verify_signed_dmg() {
 
 release_remote_asset_matches() {
   local source="$1"
-  local asset_name stage probe_log
+  local asset_name attempt_idx stage probe_log metadata
   asset_name="$(basename "$source")"
-  stage="$(mktemp -d "$WORK/release-reconcile.XXXXXX")"
-  probe_log="$(mktemp "$WORK/release-reconcile-log.XXXXXX")"
-  chmod 600 "$probe_log"
-  if release_gh release download "$TAG" -R "$REPO" \
-    --pattern "$asset_name" --dir "$stage" >"$probe_log" 2>&1 &&
-    [ -f "$stage/$asset_name" ] &&
-    cmp -s "$source" "$stage/$asset_name"; then
-    cat "$probe_log"
+  for ((attempt_idx = 1; attempt_idx <= RELEASE_TRANSFER_ATTEMPTS; attempt_idx++)); do
+    stage="$(mktemp -d "$WORK/release-reconcile.XXXXXX")"
+    probe_log="$(mktemp "$WORK/release-reconcile-log.XXXXXX")"
+    metadata="$(mktemp "$WORK/release-reconcile-assets.XXXXXX")"
+    chmod 600 "$probe_log" "$metadata"
+
+    if release_gh release view "$TAG" -R "$REPO" --json assets >"$metadata" 2>"$probe_log" &&
+      node scripts/release-asset-digest-match.mjs "$metadata" "$source" >>"$probe_log" 2>&1; then
+      cat "$probe_log"
+      rm -rf "$stage"
+      rm -f "$probe_log" "$metadata"
+      return 0
+    fi
+    if release_gh release download "$TAG" -R "$REPO" \
+      --pattern "$asset_name" --dir "$stage" >>"$probe_log" 2>&1 &&
+      [ -f "$stage/$asset_name" ] &&
+      cmp -s "$source" "$stage/$asset_name"; then
+      cat "$probe_log"
+      rm -rf "$stage"
+      rm -f "$probe_log" "$metadata"
+      return 0
+    fi
+
+    [ "$attempt_idx" -lt "$RELEASE_TRANSFER_ATTEMPTS" ] || cat "$probe_log" >&2
     rm -rf "$stage"
-    rm -f "$probe_log"
-    return 0
-  fi
-  rm -rf "$stage"
-  rm -f "$probe_log"
+    rm -f "$probe_log" "$metadata"
+    [ "$attempt_idx" -lt "$RELEASE_TRANSFER_ATTEMPTS" ] || break
+    echo "warning: $asset_name is not yet reconciled in the hidden draft ($attempt_idx/$RELEASE_TRANSFER_ATTEMPTS); retrying metadata and download evidence" >&2
+    sleep $((attempt_idx * 2))
+  done
   return 1
 }
 
@@ -207,6 +223,17 @@ release_upload_signed_asset() {
       rm -f "$upload_log"
       echo "warning: $asset_name upload response failed, but the remote draft already has identical bytes" >&2
       return 0
+    fi
+    if grep -Fq "ReleaseAsset.name already exists" "$upload_log"; then
+      if [ "$attempt_idx" -eq "$RELEASE_TRANSFER_ATTEMPTS" ]; then
+        rm -f "$upload_log"
+        echo "error: signed draft upload for $asset_name kept returning a name conflict without matching remote bytes" >&2
+        return 1
+      fi
+      rm -f "$upload_log"
+      echo "warning: signed draft upload for $asset_name reached an eventually consistent name conflict ($attempt_idx/$RELEASE_TRANSFER_ATTEMPTS); retrying only this --clobber asset" >&2
+      sleep $((attempt_idx * 5))
+      continue
     fi
     if ! node scripts/github-release-transfer-retry.mjs "$upload_log"; then
       rm -f "$upload_log"

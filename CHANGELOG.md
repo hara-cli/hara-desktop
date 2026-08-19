@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.95 — 2026-08-19 — exact signed-asset upload reconciliation
+
+- Reconcile an uncertain GitHub release upload response against the exact remote asset size and SHA-256
+  before retrying. A signed updater archive that GitHub has already committed can no longer be mistaken
+  for a failed upload merely because a later client attempt receives `ReleaseAsset.name already exists`.
+- Retry metadata visibility and a fresh exact-name download within strict bounds, and retry only the one
+  conflicting `--clobber` asset while the release is still a hidden draft. Missing, duplicate, malformed,
+  or mismatched digest evidence remains fail closed; the complete draft is still downloaded and verified
+  again before publication.
+- Carry forward the exact Hara CLI `0.148.3` lock and every 0.1.94 runtime change. The 0.1.94 candidate
+  completed four-platform package smoke, both Developer ID builds, and notarization, but remained hidden
+  after its upload response could not be reconciled. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.94 — 2026-08-19 — Token Plan profile fidelity and local BYOK safety
 
 - Bundle Hara CLI `0.148.3` at exact verified commit

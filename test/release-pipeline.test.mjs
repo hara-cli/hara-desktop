@@ -27,6 +27,7 @@ import { useForeignMacStaticValidation } from "../scripts/foreign-mac-validation
 import { isTransientCodesignTimestampFailure } from "../scripts/codesign-timestamp-retry.mjs";
 import { isTransientGitHubReleaseTransferFailure } from "../scripts/github-release-transfer-retry.mjs";
 import { reconcileReleaseDownloadCache } from "../scripts/release-download-cache.mjs";
+import { releaseAssetMatches } from "../scripts/release-asset-digest-match.mjs";
 import {
   buildMirrorManifest,
   validateMirrorManifest,
@@ -560,8 +561,11 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   assert.match(script, /release_upload_signed_assets/);
   assert.match(script, /release_upload_signed_asset "\$asset_path"/);
   assert.match(script, /release_remote_asset_matches "\$asset_path"/);
+  assert.match(script, /release-asset-digest-match\.mjs "\$metadata" "\$source"/);
   assert.match(script, /--pattern "\$asset_name" --dir "\$stage"/);
   assert.match(script, /cmp -s "\$source" "\$stage\/\$asset_name"/);
+  assert.match(script, /ReleaseAsset\.name already exists/);
+  assert.match(script, /retrying only this --clobber asset/);
   assert.match(script, /for asset_path in "\$\{assets\[@\]\}"/);
   assert.match(script, /retrying only this asset/);
   assert.doesNotMatch(
@@ -571,6 +575,44 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   );
   assert.match(script, /retrying with only digest-verified completed assets/);
   assert.doesNotMatch(script, /retrying from a fresh private staging directory/);
+});
+
+test("uncertain release uploads reconcile only against one exact GitHub SHA-256 asset", () => {
+  const directory = mkdtempSync(join(tmpdir(), "hara-release-asset-digest-"));
+  try {
+    const assetPath = join(directory, "Hara_x64.app.tar.gz");
+    const contents = Buffer.from("signed and notarized updater bytes\n");
+    writeFileSync(assetPath, contents);
+    const matching = {
+      assets: [
+        {
+          name: "Hara_x64.app.tar.gz",
+          size: contents.length,
+          digest: `sha256:${sha256(contents)}`,
+        },
+      ],
+    };
+
+    assert.equal(releaseAssetMatches(assetPath, matching), true);
+    assert.equal(
+      releaseAssetMatches(assetPath, {
+        assets: [{ ...matching.assets[0], digest: `sha256:${"0".repeat(64)}` }],
+      }),
+      false,
+    );
+    assert.equal(
+      releaseAssetMatches(assetPath, {
+        assets: [{ ...matching.assets[0], size: contents.length + 1 }],
+      }),
+      false,
+    );
+    assert.throws(
+      () => releaseAssetMatches(assetPath, { assets: [...matching.assets, ...matching.assets] }),
+      /exactly one remote release asset/,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("release download cache retains only exact GitHub-declared bytes", () => {
