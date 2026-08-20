@@ -801,6 +801,8 @@ export default function App() {
     models: string[];
     entries?: ModelCatalogEntry[];
     current: string;
+    currentAvailable?: boolean;
+    recommendedModel?: string;
     profileId?: string;
     effort: string | null;
     effortLevels: string[];
@@ -2124,6 +2126,15 @@ export default function App() {
     async (sessionId: string, text: string): Promise<"sent" | "steered" | "queued"> => {
       const c = clientRef.current;
       if (!c) throw new Error("Hara engine is not connected");
+      if (
+        modelInfoScope === sessionId
+        && modelInfo?.currentAvailable === false
+        && !stagedModelChangesRef.current[sessionId]
+      ) {
+        throw new Error(locale === "zh"
+          ? `当前会话模型 ${modelInfo.current} 已不在此连接的授权目录中，请先切换模型。`
+          : `The current model ${modelInfo.current} is no longer authorized for this connection. Choose another model before sending.`);
+      }
       const wireText = textWithActiveWorkObject(sessionId, text);
       if (c.supports("session.submit")) {
         const submission = await sendText(sessionId, text, undefined, { wireText });
@@ -2167,7 +2178,7 @@ export default function App() {
       await sendText(sessionId, text, undefined, { wireText });
       return "sent";
     },
-    [enqueueInput, nextPendingInputId, notePet, push, sendText, textWithActiveWorkObject],
+    [enqueueInput, locale, modelInfo, modelInfoScope, nextPendingInputId, notePet, push, sendText, textWithActiveWorkObject],
   );
 
   /** Recover only a native revision authored by this exact session/turn window. This is a typed
@@ -3812,6 +3823,8 @@ export default function App() {
   const activeReadOnlySession = active ? readOnlySessions[active] : undefined;
   const activeModelInfo = active && modelInfoScope === active ? modelInfo : null;
   const activeStagedModelChange = active ? stagedModelChanges[active] : undefined;
+  const activeModelUnavailable = activeModelInfo?.currentAvailable === false
+    && !activeStagedModelChange;
   const activeStagedModelEntry = activeStagedModelChange
     ? activeModelInfo?.entries?.find((entry) => entry.id === activeStagedModelChange.model)
     : undefined;
@@ -3833,6 +3846,7 @@ export default function App() {
     attachmentFeatureReady,
   );
   const activeDraftCanSend = !activeReadOnlySession
+    && !activeModelUnavailable
     && composerCanSend(activeDraft, activeAttachmentIssue);
   const requireAttachmentFeature = (): boolean => {
     if (clientRef.current?.supportsFeature(ATTACHMENT_FEATURE)) return true;
@@ -4929,7 +4943,7 @@ export default function App() {
   const activeComposerWorkObject = active ? visibleSessionWorkObject(active) : null;
   const items = active ? (transcripts[active] ?? []) : [];
   const modelEntries = [...new Set([
-    ...(activeSession ? [activeSession.model] : []),
+    ...(activeSession && activeModelInfo?.currentAvailable !== false ? [activeSession.model] : []),
     ...(activeStagedModelChange ? [activeStagedModelChange.model] : []),
     ...(activeModelInfo?.models ?? []),
   ])].map((modelId): ModelCatalogEntry => {
@@ -5496,6 +5510,32 @@ export default function App() {
                   )}
                 </div>
               )}
+              {activeModelUnavailable && activeModelInfo && (
+                <div className="composer-capability-warning composer-model-warning" role="alert">
+                  <span>
+                    {locale === "zh"
+                      ? `模型 ${activeModelInfo.current} 已不在当前连接的授权目录中，发送已暂停。`
+                      : `Model ${activeModelInfo.current} is no longer in this connection's authorized catalog. Sending is paused.`}
+                  </span>
+                  <button
+                    className="linky"
+                    onClick={() => {
+                      if (activeModelInfo.recommendedModel) {
+                        void changeModel(activeModelInfo.recommendedModel, undefined);
+                      } else {
+                        setAttachmentMenuOpen(false);
+                        setModelPickerOpen(true);
+                      }
+                    }}
+                  >
+                    {activeModelInfo.recommendedModel
+                      ? (locale === "zh"
+                          ? `切换到 ${activeModelInfo.recommendedModel}`
+                          : `Switch to ${activeModelInfo.recommendedModel}`)
+                      : (locale === "zh" ? "选择可用模型" : "Choose an available model")}
+                  </button>
+                </div>
+              )}
               {pendingAttachments.some((attachment) => attachment.kind === "image")
                 && activeModelInfo?.attachmentCapabilities?.image.mode === "vision-sidecar" && (
                   <div className="composer-capability-note">
@@ -5610,7 +5650,7 @@ export default function App() {
                 {activeSession && (
                   <div className="composer-popover-anchor model-anchor">
                     <button
-                      className={`model-pill ${activeStagedModelChange ? "staged" : ""}`}
+                      className={`model-pill ${activeStagedModelChange ? "staged" : ""} ${activeModelUnavailable ? "unavailable" : ""}`}
                       aria-expanded={modelPickerOpen}
                       aria-label={locale === "zh" ? "选择模型" : "Choose a model"}
                       title={busy[active]

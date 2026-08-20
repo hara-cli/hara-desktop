@@ -2031,6 +2031,11 @@ select {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--fg);
 }
+.inputbar .model-pill.unavailable {
+  border-color: color-mix(in srgb, #dd6b57 48%, var(--border));
+  background: color-mix(in srgb, #b84332 10%, transparent);
+  color: color-mix(in srgb, #efaa9d 82%, var(--fg));
+}
 .model-pill-main {
   max-width: 165px;
   overflow: hidden;

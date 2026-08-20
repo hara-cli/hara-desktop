@@ -94,7 +94,7 @@ const words = {
     keyKeep: "Configured — leave blank to keep it",
     keyNeed: "Enter a provider API key",
     noKey: "No API key is required. Hara only connects to this loopback endpoint.",
-    oauth: "This connection uses browser sign-in. Run `hara login qwen` once, then test again.",
+    oauth: "Legacy Qwen Code browser sign-in. It is not Alibaba Token Plan; new Alibaba connections use a Token Plan API key.",
     test: "Test connection",
     save: "Save for new sessions",
     switchSave: "Save & switch to Personal",
@@ -102,6 +102,9 @@ const words = {
     saving: "Saving…",
     connected: "Connection and model responded successfully.",
     discovered: "Models found",
+    knownModels: "Known models (verify this key before saving)",
+    liveModels: "Authorized for this API key",
+    tokenPlanAuth: "Token Plan uses the Beijing subscription Base URL and an API key. There is no Token Plan browser login.",
     unavailable: "This Desktop build includes an engine that is too old for provider settings. Update Hara Desktop and restart it.",
     environment: "HARA_* environment variables currently override these fields. Remove them before editing here.",
     pinned: "A command flag or environment variable currently locks the active connection. Remove that launch override before switching.",
@@ -235,7 +238,7 @@ const words = {
     keyKeep: "已经配置；留空继续使用",
     keyNeed: "输入该供应商的 API 密钥",
     noKey: "不需要 API 密钥，Hara 只连接这个本机回环地址。",
-    oauth: "此连接使用浏览器登录。先运行一次 `hara login qwen`，再回来测试。",
+    oauth: "这是旧版 Qwen Code 浏览器登录，不是阿里云 Token Plan；新建阿里连接请使用 Token Plan API Key。",
     test: "测试连接",
     save: "保存，供新会话使用",
     switchSave: "保存并切换到个人连接",
@@ -243,6 +246,9 @@ const words = {
     saving: "正在保存…",
     connected: "连接与模型响应正常。",
     discovered: "发现的模型",
+    knownModels: "已知模型（保存前请用当前 Key 验证）",
+    liveModels: "当前 API Key 已授权",
+    tokenPlanAuth: "Token Plan 使用华北 2（北京）订阅地址和 API Key，不提供 Token Plan 浏览器登录。",
     unavailable: "当前 Desktop 内置引擎还不支持供应商设置；请升级 Hara Desktop 后重新启动。",
     environment: "当前有 HARA_* 环境变量覆盖这些字段，请先移除环境覆盖再在这里修改。",
     pinned: "启动参数或环境变量正在锁定当前连接；移除启动覆盖后才能切换。",
@@ -478,7 +484,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       setUnsupported(false);
       setState(next);
       setDraft(draftFromState(next));
-      const firstPersonalProvider = next.providers.find((provider) => provider.location !== "managed");
+      const firstPersonalProvider = next.providers.find((provider) => provider.location !== "managed" && !provider.legacy);
       if (firstPersonalProvider) setPersonalDraft(personalDraftForProvider(firstPersonalProvider));
       setModels([]);
 
@@ -515,8 +521,15 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   }, [load]);
 
   const personalProviders = useMemo(
-    () => state?.providers.filter((provider) => provider.location !== "managed") ?? [],
-    [state?.providers],
+    () => state?.providers.filter((provider) => (
+      provider.location !== "managed"
+      && (!provider.legacy || provider.id === state.current.provider)
+    )) ?? [],
+    [state?.current.provider, state?.providers],
+  );
+  const newPersonalProviders = useMemo(
+    () => personalProviders.filter((provider) => !provider.legacy),
+    [personalProviders],
   );
   const selected = useMemo(
     () => view.kind === "provider" ? personalProviders.find((provider) => provider.id === view.id) : undefined,
@@ -553,15 +566,21 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   const keyMissing = selected?.auth === "api-key" && !apiKey.trim() && !canReuseKey;
   const lockedProfile = !!state && ["flag", "env", "pin"].includes(state.current.profileSource);
   const blocked = !!state?.current.environmentOverride || lockedProfile;
-  const valid = view.kind === "provider" && !!selected && !!draft.model.trim() && !keyMissing && !blocked;
+  const selectedCatalog = models.length > 0 ? models : [...(selected?.knownModels ?? [])];
+  const selectedModelAllowed = selectedCatalog.length === 0 || selectedCatalog.includes(draft.model);
+  const valid = view.kind === "provider" && !!selected && !!draft.model.trim()
+    && selectedModelAllowed && !keyMissing && !blocked;
   const personalProvider = personalProviders.find((provider) => provider.id === personalDraft.provider);
   const personalKeyMissing = personalProvider?.auth === "api-key" && !apiKey.trim();
+  const personalCatalog = models.length > 0 ? models : [...(personalProvider?.knownModels ?? [])];
+  const personalModelAllowed = personalCatalog.length === 0 || personalCatalog.includes(personalDraft.model);
   const personalConnectionValid = view.kind === "add-personal"
     && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(personalDraft.id.trim())
     && personalDraft.id.trim() !== "personal"
     && !!personalDraft.label.trim()
     && !!personalProvider
     && !!personalDraft.model.trim()
+    && personalModelAllowed
     && !personalKeyMissing;
   const personalConnectionsSupported = Array.isArray(state?.connections);
   const personalSwitchLocked = !!state?.switchLocked || !!state?.current.environmentOverride;
@@ -606,8 +625,8 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   };
 
   const beginPersonalConnection = () => {
-    const provider = personalProviders.find((candidate) => candidate.id === state?.current.provider)
-      ?? personalProviders[0];
+    const provider = newPersonalProviders.find((candidate) => candidate.id === state?.current.provider)
+      ?? newPersonalProviders[0];
     if (!provider) return;
     const next = personalDraftForProvider(provider);
     setPersonalDraft({
@@ -681,6 +700,18 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       const result = await client.testProviderSettings(providerInput(), cwd);
       setModels(result.models);
       if (
+        result.models.length > 0
+        && selected?.id === "token-plan"
+        && !result.models.includes(draft.model)
+      ) {
+        const replacement = draft.model === "glm-5" && result.models.includes("glm-5.2")
+          ? "glm-5.2"
+          : draft.model === "deepseek-v4-flash" && result.models.includes("deepseek-v4-flash-0731")
+            ? "deepseek-v4-flash-0731"
+            : result.models[0];
+        setDraft((current) => ({ ...current, model: replacement }));
+      }
+      if (
         result.models.length > 0 &&
         selected?.location === "local" &&
         !result.models.includes(draft.model) &&
@@ -741,6 +772,18 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       const input = personalConnectionInput(false);
       const result = await client.testProviderSettings(input, cwd);
       setModels(result.models);
+      if (
+        result.models.length > 0
+        && personalProvider?.id === "token-plan"
+        && !result.models.includes(personalDraft.model)
+      ) {
+        const replacement = personalDraft.model === "glm-5" && result.models.includes("glm-5.2")
+          ? "glm-5.2"
+          : personalDraft.model === "deepseek-v4-flash" && result.models.includes("deepseek-v4-flash-0731")
+            ? "deepseek-v4-flash-0731"
+            : result.models[0];
+        setPersonalDraft((current) => ({ ...current, model: replacement }));
+      }
       if (result.ok) setMessage(copy.connected);
       else setError(result.error || "Connection failed");
     } catch (reason) {
@@ -1010,6 +1053,8 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     : `${activePersonalConnection?.label || copy.personal} · ${routeSource}`;
   const projectPinned = state.current.profileSource === "pin";
   const providerGroups: ProviderCatalogEntry["location"][] = ["cloud", "local"];
+  const selectedModelOptions = selectedCatalog;
+  const personalModelOptions = personalCatalog;
 
   return (
     <section
@@ -1219,17 +1264,29 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
               </header>
               <label>
                 <span>{copy.model}</span>
-                <input
-                  value={draft.model}
-                  list="hara-provider-models"
-                  onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
-                  spellCheck={false}
-                  autoComplete="off"
-                  disabled={phase !== "idle"}
-                />
-                <datalist id="hara-provider-models">
-                  {models.map((model) => <option key={model} value={model} />)}
-                </datalist>
+                {selectedModelOptions.length > 0 ? (
+                  <select
+                    value={draft.model}
+                    onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
+                    disabled={phase !== "idle"}
+                  >
+                    {!selectedModelOptions.includes(draft.model) && draft.model && (
+                      <option value={draft.model} disabled>{draft.model}</option>
+                    )}
+                    {selectedModelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    value={draft.model}
+                    onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
+                    spellCheck={false}
+                    autoComplete="off"
+                    disabled={phase !== "idle"}
+                  />
+                )}
+                {selected?.knownModels?.length ? (
+                  <small>{models.length ? copy.liveModels : copy.knownModels}</small>
+                ) : null}
               </label>
 
               {selected.customBaseURL && (
@@ -1265,6 +1322,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
 
               {selected.auth === "none" && <div className="provider-note local">{copy.noKey}</div>}
               {selected.auth === "oauth" && <div className="provider-note">{copy.oauth}</div>}
+              {selected.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}</div>}
               <div className={`provider-data-path ${selected.location}`}>
                 {selected.location === "local" ? copy.dataLocal : copy.dataCloud}
               </div>
@@ -1416,7 +1474,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                   value={personalDraft.provider}
                   disabled={!!personalBusy}
                   onChange={(event) => {
-                    const provider = personalProviders.find((candidate) => candidate.id === event.target.value);
+                    const provider = newPersonalProviders.find((candidate) => candidate.id === event.target.value);
                     if (!provider) return;
                     setPersonalDraft((current) => ({
                       ...current,
@@ -1438,23 +1496,35 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                     clearFeedback();
                   }}
                 >
-                  {personalProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.label}</option>)}
+                  {newPersonalProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.label}</option>)}
                 </select>
               </label>
 
               <label>
                 <span>{copy.model}</span>
-                <input
-                  value={personalDraft.model}
-                  list="hara-new-connection-models"
-                  spellCheck={false}
-                  autoComplete="off"
-                  disabled={!!personalBusy}
-                  onChange={(event) => setPersonalDraft((current) => ({ ...current, model: event.target.value }))}
-                />
-                <datalist id="hara-new-connection-models">
-                  {models.map((model) => <option value={model} key={model} />)}
-                </datalist>
+                {personalModelOptions.length > 0 ? (
+                  <select
+                    value={personalDraft.model}
+                    disabled={!!personalBusy}
+                    onChange={(event) => setPersonalDraft((current) => ({ ...current, model: event.target.value }))}
+                  >
+                    {!personalModelOptions.includes(personalDraft.model) && personalDraft.model && (
+                      <option value={personalDraft.model} disabled>{personalDraft.model}</option>
+                    )}
+                    {personalModelOptions.map((model) => <option value={model} key={model}>{model}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    value={personalDraft.model}
+                    spellCheck={false}
+                    autoComplete="off"
+                    disabled={!!personalBusy}
+                    onChange={(event) => setPersonalDraft((current) => ({ ...current, model: event.target.value }))}
+                  />
+                )}
+                {personalProvider?.knownModels?.length ? (
+                  <small>{models.length ? copy.liveModels : copy.knownModels}</small>
+                ) : null}
               </label>
 
               {personalProvider.customBaseURL && (
@@ -1489,6 +1559,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
               )}
               {personalProvider.auth === "none" && <div className="provider-note local">{copy.noKey}</div>}
               {personalProvider.auth === "oauth" && <div className="provider-note">{copy.oauth}</div>}
+              {personalProvider.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}</div>}
 
               {models.length > 0 && (
                 <div className="provider-models">

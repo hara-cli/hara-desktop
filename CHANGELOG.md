@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.96 — 2026-08-20 — first-class Token Plan setup and stale-model recovery
+
+- Bundle Hara CLI `0.148.4` at exact verified commit
+  `729f9d1576416f193ae6f3670d93609f7e3e686b`. Alibaba Cloud Model Studio Token Plan is now the
+  single current Alibaba setup entry, pinned to its Beijing subscription endpoint and local API-key
+  storage; legacy DashScope and Qwen Code OAuth connections remain readable but are no longer offered
+  when adding a connection, and Token Plan is never described as browser login.
+- Replace free-form Token Plan model entry with a real selector. Before verification Desktop labels the
+  documented text catalog as unverified; after connection testing it uses only the current Key's live
+  authorized `/models` result and keeps image, audio, and video generators on their dedicated capability
+  surfaces. An out-of-catalog model cannot be tested or saved.
+- Pause sending when a resumed conversation is pinned to a model that the current connection no longer
+  authorizes, and offer a one-click live-authorized migration such as `glm-5` → `glm-5.2`. Carry forward
+  the exact signed-asset upload reconciliation from 0.1.95. Windows packages remain updater-signed but
+  not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.95 — 2026-08-19 — exact signed-asset upload reconciliation
 
 - Reconcile an uncertain GitHub release upload response against the exact remote asset size and SHA-256

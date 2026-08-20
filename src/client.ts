@@ -278,6 +278,8 @@ export interface ProviderCatalogEntry {
   defaultModel: string;
   defaultBaseURL?: string;
   customBaseURL: boolean;
+  knownModels?: readonly string[];
+  legacy?: boolean;
 }
 
 export interface ProviderSettingsState {
@@ -540,6 +542,7 @@ export interface EffectiveAttachmentCapabilities {
 export interface ModelCatalogEntry {
   id: string;
   providerId: string;
+  available?: boolean;
   effortLevels: string[];
   attachmentCapabilities?: EffectiveAttachmentCapabilities;
 }
@@ -885,6 +888,8 @@ export class HaraClient {
     models: string[];
     entries?: ModelCatalogEntry[];
     current: string;
+    currentAvailable?: boolean;
+    recommendedModel?: string;
     profileId?: string;
     effort: string | null;
     effortLevels: string[];

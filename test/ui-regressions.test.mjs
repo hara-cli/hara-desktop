@@ -386,6 +386,12 @@ test("the model picker stages busy selections and confirms them before the next 
   assert.match(modelToolbar, /model-next-turn/);
   assert.match(modelToolbar, /本轮继续使用/);
   assert.match(modelToolbar, /onChange=\{\(e\) => void changeModel\(undefined, e\.target\.value\)\}/);
+  assert.match(client, /currentAvailable\?: boolean/);
+  assert.match(client, /recommendedModel\?: string/);
+  assert.match(app, /activeModelInfo\?\.currentAvailable === false/);
+  assert.match(app, /!activeModelUnavailable[\s\S]*composerCanSend/, "a stale session model cannot dispatch from the composer");
+  assert.match(app, /切换到 \$\{activeModelInfo\.recommendedModel\}/, "the live-authorized replacement is a one-click action");
+  assert.match(app, /activeSession && activeModelInfo\?\.currentAvailable !== false/, "a removed model is not presented as a normal picker option");
 });
 
 test("settings use shared page templates and keep Desktop, engine, and update state distinct", () => {
@@ -671,6 +677,13 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /state\.current\.profileSource === "pin"/);
   assert.match(providerSettings, /client\.unpinProjectProfile\(cwd\)/, "project route recovery is an explicit authenticated Serve action");
   assert.match(providerSettings, /Existing sessions keep the identity they started with|已有会话仍保留创建时的身份/);
+  assert.match(client, /knownModels\?: readonly string\[\]/);
+  assert.match(client, /legacy\?: boolean/);
+  assert.match(providerSettings, /provider\.location !== "managed"[\s\S]{0,80}!provider\.legacy/);
+  assert.match(providerSettings, /newPersonalProviders\.map/, "legacy Qwen routes stay readable but cannot be newly created");
+  assert.match(providerSettings, /selectedModelOptions\.length > 0[\s\S]*<select/, "known or live Token Plan models use a real selector");
+  assert.match(providerSettings, /selectedModelAllowed[\s\S]*personalModelAllowed/, "a stale catalog model cannot be tested or saved as a Token Plan selection");
+  assert.match(providerSettings, /Token Plan[\s\S]*no Token Plan browser login|Token Plan[\s\S]*不提供 Token Plan 浏览器登录/);
   assert.match(app, /cwd=\{activeSession\?\.cwd \?\? server\?\.cwd\}/, "Settings resolves the same workspace cwd used by new sessions");
   assert.match(app, /scope=\{activeSession \? "workspace" : "global"\}/);
 });
