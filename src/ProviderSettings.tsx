@@ -12,6 +12,7 @@ import {
   type ProviderSettingsState,
 } from "./client";
 import type { Locale } from "./i18n";
+import { ModelCombobox } from "./ModelCombobox";
 
 interface Draft {
   provider: string;
@@ -44,6 +45,9 @@ interface ProviderSettingsProps {
   onSaved: (state: ProviderSettingsState) => void;
   embedded?: boolean;
   scope?: "global" | "workspace";
+  engineNeedsRestart?: boolean;
+  engineRestarting?: boolean;
+  onRestartEngine?: () => void;
 }
 
 const words = {
@@ -89,6 +93,13 @@ const words = {
     removePersonalConfirm: "Remove this saved connection from this device? Sessions created with it keep their identity but cannot reconnect after the connection is removed. Add and test a replacement first.",
     personalRemoved: "Saved connection removed from this device.",
     model: "Model",
+    modelSearch: "Search or enter a model ID",
+    customModel: "Use custom model ID",
+    customModelBadge: "CUSTOM",
+    noModelMatches: "No catalog match — keep typing to use a custom model ID.",
+    customModelNeedsTest: "Custom model ID — test this exact model before saving.",
+    customModelVerified: "Custom model ID verified by this connection.",
+    modelNotAuthorized: "This model is not in the current API key's authorized catalog. Choose an authorized model or verify a different ID.",
     endpoint: "Endpoint",
     key: "API key",
     keyKeep: "Configured — leave blank to keep it",
@@ -105,6 +116,13 @@ const words = {
     knownModels: "Known models (verify this key before saving)",
     liveModels: "Authorized for this API key",
     tokenPlanAuth: "Token Plan uses the Beijing subscription Base URL and an API key. There is no Token Plan browser login.",
+    legacyAlibaba: "Legacy Alibaba connection",
+    legacyAlibabaHint: "This route remains readable, but its old DashScope/Qwen identity is no longer offered for new connections. Move it to the dedicated Token Plan connection.",
+    migrateAlibaba: "Move to Token Plan",
+    engineRestartTitle: "The running Hara engine is older than this Desktop",
+    engineRestartHint: "Restart the bundled engine to load the current Alibaba Token Plan catalog and remove legacy Qwen setup entries.",
+    engineRestart: "Restart engine",
+    engineRestarting: "Restarting…",
     unavailable: "This Desktop build includes an engine that is too old for provider settings. Update Hara Desktop and restart it.",
     environment: "HARA_* environment variables currently override these fields. Remove them before editing here.",
     pinned: "A command flag or environment variable currently locks the active connection. Remove that launch override before switching.",
@@ -233,6 +251,13 @@ const words = {
     removePersonalConfirm: "从本机移除这个连接吗？已用它创建的会话会保留原身份，但移除后将无法重新连接。请先新增并验证替代连接。",
     personalRemoved: "已从本机移除该连接。",
     model: "模型",
+    modelSearch: "搜索或输入模型 ID",
+    customModel: "使用自定义模型 ID",
+    customModelBadge: "自定义",
+    noModelMatches: "目录中没有匹配项，可继续输入自定义模型 ID。",
+    customModelNeedsTest: "这是自定义模型 ID，保存前需测试这个精确模型。",
+    customModelVerified: "这个自定义模型 ID 已通过当前连接验证。",
+    modelNotAuthorized: "此模型不在当前 API Key 的授权目录中，请选择已授权模型，或验证另一个模型 ID。",
     endpoint: "接口地址",
     key: "API 密钥",
     keyKeep: "已经配置；留空继续使用",
@@ -249,6 +274,13 @@ const words = {
     knownModels: "已知模型（保存前请用当前 Key 验证）",
     liveModels: "当前 API Key 已授权",
     tokenPlanAuth: "Token Plan 使用华北 2（北京）订阅地址和 API Key，不提供 Token Plan 浏览器登录。",
+    legacyAlibaba: "旧版阿里云连接",
+    legacyAlibabaHint: "此连接仍可读取，但旧 DashScope/Qwen 身份不再用于新建连接；请迁移到独立的 Token Plan 连接。",
+    migrateAlibaba: "迁移到 Token Plan",
+    engineRestartTitle: "当前运行的 Hara 引擎早于此 Desktop",
+    engineRestartHint: "请重启内置引擎，以加载最新百炼 Token Plan 目录并移除旧千问配置入口。",
+    engineRestart: "重启引擎",
+    engineRestarting: "正在重启…",
     unavailable: "当前 Desktop 内置引擎还不支持供应商设置；请升级 Hara Desktop 后重新启动。",
     environment: "当前有 HARA_* 环境变量覆盖这些字段，请先移除环境覆盖再在这里修改。",
     pinned: "启动参数或环境变量正在锁定当前连接；移除启动覆盖后才能切换。",
@@ -355,6 +387,27 @@ const endpointIdentity = (value: string | undefined): string => {
   }
 };
 
+const LEGACY_PERSONAL_PROVIDER_IDS = new Set(["qwen", "qwen-oauth"]);
+
+const isLegacyProvider = (provider: Pick<ProviderCatalogEntry, "id" | "legacy">): boolean =>
+  provider.legacy === true || LEGACY_PERSONAL_PROVIDER_IDS.has(provider.id);
+
+const isLegacyProviderId = (providerId: string): boolean =>
+  LEGACY_PERSONAL_PROVIDER_IDS.has(providerId);
+
+const viewForPersonalConnection = (
+  connection: ProviderConnection | undefined,
+  fallbackProvider: string,
+): ConnectionView => {
+  if (!connection) return { kind: "provider", id: fallbackProvider };
+  return connection.legacyPersonal && !isLegacyProviderId(connection.provider)
+    ? { kind: "provider", id: connection.provider }
+    : { kind: "connection", id: connection.id };
+};
+
+const modelCandidateKey = (draft: Draft): string =>
+  [draft.provider, endpointIdentity(draft.baseURL), draft.model.trim()].join("\u0000");
+
 const idFromLabel = (label: string): string => label
   .trim()
   .toLowerCase()
@@ -438,7 +491,17 @@ const managedExpiryWarning = (
   return words[locale].expiring;
 };
 
-export function ProviderSettings({ client, cwd, locale, onSaved, embedded = false, scope = "global" }: ProviderSettingsProps) {
+export function ProviderSettings({
+  client,
+  cwd,
+  locale,
+  onSaved,
+  embedded = false,
+  scope = "global",
+  engineNeedsRestart = false,
+  engineRestarting = false,
+  onRestartEngine,
+}: ProviderSettingsProps) {
   const copy = words[locale];
   const [state, setState] = useState<ProviderSettingsState | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationConnectionsState | null>(null);
@@ -449,6 +512,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   const [personalBusy, setPersonalBusy] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
+  const [verifiedCustomModels, setVerifiedCustomModels] = useState<string[]>([]);
   const [view, setView] = useState<ConnectionView>({ kind: "provider", id: "" });
   const [organizationDraft, setOrganizationDraft] = useState<OrganizationDraft>({ id: "", label: "", gatewayUrl: "" });
   const [registrationCode, setRegistrationCode] = useState("");
@@ -484,9 +548,13 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       setUnsupported(false);
       setState(next);
       setDraft(draftFromState(next));
-      const firstPersonalProvider = next.providers.find((provider) => provider.location !== "managed" && !provider.legacy);
+      const firstPersonalProvider = next.providers.find((provider) => provider.location !== "managed" && !isLegacyProvider(provider));
       if (firstPersonalProvider) setPersonalDraft(personalDraftForProvider(firstPersonalProvider));
       setModels([]);
+      setVerifiedCustomModels([]);
+      const fallbackProvider = isLegacyProviderId(next.current.provider)
+        ? firstPersonalProvider?.id ?? ""
+        : next.current.provider;
 
       if (organizationResult.status === "fulfilled") {
         setOrganizationsUnsupported(organizationResult.value === null);
@@ -499,13 +567,14 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
         );
         setView(activeOrganization
           ? { kind: "organization", id: activeOrganization.id }
-          : activePersonal && !activePersonal.legacyPersonal
-            ? { kind: "connection", id: activePersonal.id }
-            : { kind: "provider", id: next.current.provider });
+          : viewForPersonalConnection(activePersonal, fallbackProvider));
       } else {
         setOrganizations(null);
         setOrganizationsUnsupported(false);
-        setView({ kind: "provider", id: next.current.provider });
+        const activePersonal = next.connections?.find(
+          (connection) => connection.active || connection.id === next.current.profileId,
+        );
+        setView(viewForPersonalConnection(activePersonal, fallbackProvider));
         setError(String(organizationResult.reason instanceof Error ? organizationResult.reason.message : organizationResult.reason));
       }
     } catch (reason) {
@@ -523,9 +592,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   const personalProviders = useMemo(
     () => state?.providers.filter((provider) => (
       provider.location !== "managed"
-      && (!provider.legacy || provider.id === state.current.provider)
+      && !isLegacyProvider(provider)
     )) ?? [],
-    [state?.current.provider, state?.providers],
+    [state?.providers],
   );
   const newPersonalProviders = useMemo(
     () => personalProviders.filter((provider) => !provider.legacy),
@@ -567,21 +636,30 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   const lockedProfile = !!state && ["flag", "env", "pin"].includes(state.current.profileSource);
   const blocked = !!state?.current.environmentOverride || lockedProfile;
   const selectedCatalog = models.length > 0 ? models : [...(selected?.knownModels ?? [])];
-  const selectedModelAllowed = selectedCatalog.length === 0 || selectedCatalog.includes(draft.model);
-  const valid = view.kind === "provider" && !!selected && !!draft.model.trim()
-    && selectedModelAllowed && !keyMissing && !blocked;
+  const selectedCandidateKey = modelCandidateKey(draft);
+  const selectedModelVerified = verifiedCustomModels.includes(selectedCandidateKey);
+  const selectedModelAllowed = selectedCatalog.length === 0
+    || selectedCatalog.includes(draft.model.trim())
+    || (selectedModelVerified && (selected?.id !== "token-plan" || models.length === 0));
+  const testValid = view.kind === "provider" && !!selected && !!draft.model.trim()
+    && !keyMissing && !blocked;
+  const valid = testValid && selectedModelAllowed;
   const personalProvider = personalProviders.find((provider) => provider.id === personalDraft.provider);
   const personalKeyMissing = personalProvider?.auth === "api-key" && !apiKey.trim();
   const personalCatalog = models.length > 0 ? models : [...(personalProvider?.knownModels ?? [])];
-  const personalModelAllowed = personalCatalog.length === 0 || personalCatalog.includes(personalDraft.model);
-  const personalConnectionValid = view.kind === "add-personal"
+  const personalCandidateKey = modelCandidateKey(personalDraft);
+  const personalModelVerified = verifiedCustomModels.includes(personalCandidateKey);
+  const personalModelAllowed = personalCatalog.length === 0
+    || personalCatalog.includes(personalDraft.model.trim())
+    || (personalModelVerified && (personalProvider?.id !== "token-plan" || models.length === 0));
+  const personalConnectionTestValid = view.kind === "add-personal"
     && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(personalDraft.id.trim())
     && personalDraft.id.trim() !== "personal"
     && !!personalDraft.label.trim()
     && !!personalProvider
     && !!personalDraft.model.trim()
-    && personalModelAllowed
     && !personalKeyMissing;
+  const personalConnectionValid = personalConnectionTestValid && personalModelAllowed;
   const personalConnectionsSupported = Array.isArray(state?.connections);
   const personalSwitchLocked = !!state?.switchLocked || !!state?.current.environmentOverride;
   const organizationValid = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(organizationDraft.id.trim())
@@ -608,11 +686,12 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     setApiKey("");
     setRegistrationCode("");
     setModels([]);
+    setVerifiedCustomModels([]);
     clearFeedback();
   };
 
   const choosePersonalConnection = (connection: ProviderConnection) => {
-    if (connection.legacyPersonal) {
+    if (connection.legacyPersonal && !isLegacyProviderId(connection.provider)) {
       const provider = personalProviders.find((candidate) => candidate.id === connection.provider);
       if (provider) chooseProvider(provider);
       return;
@@ -621,11 +700,13 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     setApiKey("");
     setRegistrationCode("");
     setModels([]);
+    setVerifiedCustomModels([]);
     clearFeedback();
   };
 
-  const beginPersonalConnection = () => {
-    const provider = newPersonalProviders.find((candidate) => candidate.id === state?.current.provider)
+  const beginPersonalConnection = (preferredProvider?: ProviderCatalogEntry) => {
+    const provider = preferredProvider
+      ?? newPersonalProviders.find((candidate) => candidate.id === state?.current.provider)
       ?? newPersonalProviders[0];
     if (!provider) return;
     const next = personalDraftForProvider(provider);
@@ -642,6 +723,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     setApiKey("");
     setRegistrationCode("");
     setModels([]);
+    setVerifiedCustomModels([]);
     clearFeedback();
   };
 
@@ -649,9 +731,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     setApiKey("");
     setPersonalDraft({ id: "", label: "", provider: "", model: "", baseURL: "" });
     if (activeOrganization) setView({ kind: "organization", id: activeOrganization.id });
-    else if (activePersonalConnection && !activePersonalConnection.legacyPersonal) {
-      setView({ kind: "connection", id: activePersonalConnection.id });
-    } else if (state) setView({ kind: "provider", id: state.current.provider });
+    else if (state) setView(viewForPersonalConnection(activePersonalConnection, state.current.provider));
+    setModels([]);
+    setVerifiedCustomModels([]);
     clearFeedback();
   };
 
@@ -677,10 +759,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     setRegistrationCode("");
     setOrganizationDraft({ id: "", label: "", gatewayUrl: "" });
     if (activeOrganization) setView({ kind: "organization", id: activeOrganization.id });
-    else if (activePersonalConnection && !activePersonalConnection.legacyPersonal) {
-      setView({ kind: "connection", id: activePersonalConnection.id });
-    }
-    else if (state) setView({ kind: "provider", id: state.current.provider });
+    else if (state) setView(viewForPersonalConnection(activePersonalConnection, state.current.provider));
     clearFeedback();
   };
 
@@ -693,7 +772,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   });
 
   const testConnection = async () => {
-    if (!client || !valid) return;
+    if (!client || !testValid) return;
     setPhase("testing");
     clearFeedback();
     try {
@@ -702,14 +781,10 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       if (
         result.models.length > 0
         && selected?.id === "token-plan"
-        && !result.models.includes(draft.model)
+        && !result.models.includes(draft.model.trim())
       ) {
-        const replacement = draft.model === "glm-5" && result.models.includes("glm-5.2")
-          ? "glm-5.2"
-          : draft.model === "deepseek-v4-flash" && result.models.includes("deepseek-v4-flash-0731")
-            ? "deepseek-v4-flash-0731"
-            : result.models[0];
-        setDraft((current) => ({ ...current, model: replacement }));
+        setError(copy.modelNotAuthorized);
+        return;
       }
       if (
         result.models.length > 0 &&
@@ -719,8 +794,12 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       ) {
         setDraft((current) => ({ ...current, model: result.models[0] }));
       }
-      if (result.ok) setMessage(copy.connected);
-      else setError(result.error || "Connection failed");
+      if (result.ok) {
+        setVerifiedCustomModels((current) => current.includes(selectedCandidateKey)
+          ? current
+          : [...current, selectedCandidateKey]);
+        setMessage(copy.connected);
+      } else setError(result.error || "Connection failed");
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
     } finally {
@@ -737,6 +816,8 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       setState(next);
       setDraft(draftFromState(next));
       setApiKey("");
+      setModels([]);
+      setVerifiedCustomModels([]);
       setView({ kind: "provider", id: next.current.provider });
       setMessage(copy.nextSession);
       onSaved(next);
@@ -765,7 +846,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   });
 
   const testNewPersonalConnection = async () => {
-    if (!client || !personalConnectionValid || personalBusy) return;
+    if (!client || !personalConnectionTestValid || personalBusy) return;
     setPersonalBusy("test-new");
     clearFeedback();
     try {
@@ -775,17 +856,17 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       if (
         result.models.length > 0
         && personalProvider?.id === "token-plan"
-        && !result.models.includes(personalDraft.model)
+        && !result.models.includes(personalDraft.model.trim())
       ) {
-        const replacement = personalDraft.model === "glm-5" && result.models.includes("glm-5.2")
-          ? "glm-5.2"
-          : personalDraft.model === "deepseek-v4-flash" && result.models.includes("deepseek-v4-flash-0731")
-            ? "deepseek-v4-flash-0731"
-            : result.models[0];
-        setPersonalDraft((current) => ({ ...current, model: replacement }));
+        setError(copy.modelNotAuthorized);
+        return;
       }
-      if (result.ok) setMessage(copy.connected);
-      else setError(result.error || "Connection failed");
+      if (result.ok) {
+        setVerifiedCustomModels((current) => current.includes(personalCandidateKey)
+          ? current
+          : [...current, personalCandidateKey]);
+        setMessage(copy.connected);
+      } else setError(result.error || "Connection failed");
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
     } finally {
@@ -806,6 +887,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       setView({ kind: "connection", id: input.id });
       setPersonalDraft({ id: "", label: "", provider: "", model: "", baseURL: "" });
       setModels([]);
+      setVerifiedCustomModels([]);
       onSaved(next);
       if (input.activate && organizations) {
         setOrganizations({
@@ -846,9 +928,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     try {
       const next = await client.useProviderConnection(connection.id, cwd);
       setState(next);
-      setView(connection.legacyPersonal
-        ? { kind: "provider", id: next.current.provider }
-        : { kind: "connection", id: connection.id });
+      setView(viewForPersonalConnection(connection, next.current.provider));
       if (organizations) {
         setOrganizations({
           ...organizations,
@@ -875,10 +955,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
       const nextActive = next.connections?.find(
         (candidate) => candidate.active || candidate.id === next.current.profileId,
       );
-      setView(nextActive && !nextActive.legacyPersonal
-        ? { kind: "connection", id: nextActive.id }
-        : { kind: "provider", id: next.current.provider });
+      setView(viewForPersonalConnection(nextActive, next.current.provider));
       setModels([]);
+      setVerifiedCustomModels([]);
       onSaved(next);
       setMessage(copy.personalRemoved);
     } catch (reason) {
@@ -909,13 +988,12 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
     setOrganizations(result.organizations);
     setDraft(draftFromState(next));
     setModels([]);
+    setVerifiedCustomModels([]);
     setApiKey("");
     setRegistrationCode("");
     setView(nextOrganization
       ? { kind: "organization", id: nextOrganization.id }
-      : nextPersonal && !nextPersonal.legacyPersonal
-        ? { kind: "connection", id: nextPersonal.id }
-        : { kind: "provider", id: next.current.provider });
+      : viewForPersonalConnection(nextPersonal, next.current.provider));
     onSaved(next);
   };
 
@@ -988,9 +1066,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
         const nextPersonal = nextProvider.connections?.find(
           (connection) => connection.active || connection.id === nextProvider.current.profileId,
         );
-        setView(nextPersonal && !nextPersonal.legacyPersonal
-          ? { kind: "connection", id: nextPersonal.id }
-          : { kind: "provider", id: nextProvider.current.provider });
+        setView(viewForPersonalConnection(nextPersonal, nextProvider.current.provider));
       }
       setMessage(copy.removed);
     } catch (reason) {
@@ -1041,7 +1117,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
 
   const currentLabel = activeOrganization?.label
     || activePersonalConnection?.label
-    || currentProvider?.label
+    || (isLegacyProviderId(state.current.provider) ? copy.legacyAlibaba : currentProvider?.label)
     || state.current.provider;
   const routeSource = state.current.profileSource === "pin"
     ? copy.projectOverride
@@ -1055,6 +1131,16 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
   const providerGroups: ProviderCatalogEntry["location"][] = ["cloud", "local"];
   const selectedModelOptions = selectedCatalog;
   const personalModelOptions = personalCatalog;
+  const selectedCustomModel = selectedModelOptions.length > 0
+    && !selectedModelOptions.includes(draft.model.trim());
+  const personalCustomModel = personalModelOptions.length > 0
+    && !personalModelOptions.includes(personalDraft.model.trim());
+  const tokenPlanProvider = newPersonalProviders.find((provider) => provider.id === "token-plan");
+  const selectedConnectionIsLegacyAlibaba = !!selectedConnection
+    && isLegacyProviderId(selectedConnection.provider);
+  const staleAlibabaCatalog = !tokenPlanProvider
+    && state.providers.some((provider) => LEGACY_PERSONAL_PROVIDER_IDS.has(provider.id));
+  const showEngineRestart = engineNeedsRestart || staleAlibabaCatalog;
 
   return (
     <section
@@ -1090,6 +1176,25 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
         <div className="provider-route-meta">{currentMeta}</div>
       </div>
 
+      {showEngineRestart && (
+        <div className="provider-pin-recovery provider-engine-restart" role="alert">
+          <div>
+            <strong>{copy.engineRestartTitle}</strong>
+            <span>{copy.engineRestartHint}</span>
+          </div>
+          {onRestartEngine && (
+            <button
+              type="button"
+              className="ghost compact"
+              disabled={engineRestarting || phase !== "idle" || !!personalBusy || !!organizationBusy}
+              onClick={onRestartEngine}
+            >
+              {engineRestarting ? copy.engineRestarting : copy.engineRestart}
+            </button>
+          )}
+        </div>
+      )}
+
       {state.current.environmentOverride && <div className="provider-warning">{copy.environment}</div>}
       {projectPinned ? (
         <div className="provider-pin-recovery" role="alert">
@@ -1121,7 +1226,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                 aria-label={copy.addPersonal}
                 title={copy.addPersonal}
                 disabled={!personalConnectionsSupported || phase !== "idle" || !!personalBusy || !!organizationBusy}
-                onClick={beginPersonalConnection}
+                onClick={() => beginPersonalConnection()}
               >
                 +
               </button>
@@ -1150,13 +1255,13 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                 <span className={`provider-mini-dot ${connection.location}`} />
                 <span>
                   <strong>{connection.label}</strong>
-                  <small>{connection.provider} · {connection.model}</small>
+                  <small>{isLegacyProviderId(connection.provider) ? copy.legacyAlibaba : connection.provider} · {connection.model}</small>
                 </span>
                 {connection.active && <em>{copy.active}</em>}
               </button>
             ))}
             {personalConnectionsSupported && state.connections?.length === 0 && (
-              <button type="button" className="provider-enterprise-empty personal" onClick={beginPersonalConnection}>
+              <button type="button" className="provider-enterprise-empty personal" onClick={() => beginPersonalConnection()}>
                 <span>+</span>
                 <strong>{copy.addPersonal}</strong>
                 <small>{copy.addFirstPersonal}</small>
@@ -1178,6 +1283,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                   <button
                     type="button"
                     key={provider.id}
+                    data-provider-id={provider.id}
                     className={`provider-preset ${view.kind === "provider" && view.id === provider.id ? "on" : ""}`}
                     aria-pressed={view.kind === "provider" && view.id === provider.id}
                     disabled={phase !== "idle" || !!organizationBusy}
@@ -1262,39 +1368,43 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                 </div>
                 <span className={`provider-kind-badge ${selected.location}`}>{copy.personal}</span>
               </header>
-              <label>
+              <div className="provider-field">
                 <span>{copy.model}</span>
-                {selectedModelOptions.length > 0 ? (
-                  <select
-                    value={draft.model}
-                    onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
-                    disabled={phase !== "idle"}
-                  >
-                    {!selectedModelOptions.includes(draft.model) && draft.model && (
-                      <option value={draft.model} disabled>{draft.model}</option>
-                    )}
-                    {selectedModelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
-                  </select>
-                ) : (
-                  <input
-                    value={draft.model}
-                    onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
-                    spellCheck={false}
-                    autoComplete="off"
-                    disabled={phase !== "idle"}
-                  />
-                )}
-                {selected?.knownModels?.length ? (
+                <ModelCombobox
+                  value={draft.model}
+                  options={selectedModelOptions}
+                  disabled={phase !== "idle"}
+                  ariaLabel={copy.model}
+                  searchPlaceholder={copy.modelSearch}
+                  customOptionLabel={copy.customModel}
+                  customBadge={copy.customModelBadge}
+                  emptyLabel={copy.noModelMatches}
+                  onChange={(model) => {
+                    setDraft((current) => ({ ...current, model }));
+                    clearFeedback();
+                  }}
+                />
+                {selectedModelOptions.length > 0 && (
                   <small>{models.length ? copy.liveModels : copy.knownModels}</small>
-                ) : null}
-              </label>
+                )}
+                {selectedCustomModel && (
+                  <small className={selectedModelVerified ? "model-verification verified" : "model-verification"}>
+                    {selectedModelVerified ? copy.customModelVerified : copy.customModelNeedsTest}
+                  </small>
+                )}
+              </div>
 
               {selected.customBaseURL && (
                 <label>
                   <span>{copy.endpoint}</span>
                   <input
                     value={draft.baseURL}
-                    onChange={(event) => setDraft((current) => ({ ...current, baseURL: event.target.value }))}
+                    onChange={(event) => {
+                      setDraft((current) => ({ ...current, baseURL: event.target.value }));
+                      setModels([]);
+                      setVerifiedCustomModels([]);
+                      clearFeedback();
+                    }}
                     spellCheck={false}
                     autoCapitalize="none"
                     autoComplete="off"
@@ -1310,7 +1420,12 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                     type="password"
                     value={apiKey}
                     placeholder={canReuseKey ? copy.keyKeep : copy.keyNeed}
-                    onChange={(event) => setApiKey(event.target.value)}
+                    onChange={(event) => {
+                      setApiKey(event.target.value);
+                      setModels([]);
+                      setVerifiedCustomModels([]);
+                      clearFeedback();
+                    }}
                     spellCheck={false}
                     autoCapitalize="none"
                     autoComplete="new-password"
@@ -1327,28 +1442,8 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                 {selected.location === "local" ? copy.dataLocal : copy.dataCloud}
               </div>
 
-              {models.length > 0 && (
-                <div className="provider-models">
-                  <span>{copy.discovered}</span>
-                  <div>
-                    {models.slice(0, 24).map((model) => (
-                      <button
-                        type="button"
-                        className={draft.model === model ? "on" : ""}
-                        key={model}
-                        aria-pressed={draft.model === model}
-                        disabled={phase !== "idle"}
-                        onClick={() => setDraft((current) => ({ ...current, model }))}
-                      >
-                        {model}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <div className="provider-actions">
-                <button type="button" className="ghost" disabled={!valid || phase !== "idle"} onClick={() => void testConnection()}>
+                <button type="button" className="ghost" disabled={!testValid || phase !== "idle"} onClick={() => void testConnection()}>
                   {phase === "testing" ? copy.testing : copy.test}
                 </button>
                 <button type="button" disabled={!valid || phase !== "idle"} onClick={() => void saveProvider()}>
@@ -1371,7 +1466,10 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
               </header>
 
               <div className="organization-facts personal">
-                <div><span>{copy.profile}</span><strong>{selectedConnection.provider}</strong></div>
+                <div>
+                  <span>{copy.profile}</span>
+                  <strong>{selectedConnectionIsLegacyAlibaba ? copy.legacyAlibaba : selectedConnection.provider}</strong>
+                </div>
                 <div><span>{copy.model}</span><strong>{selectedConnection.model}</strong></div>
                 <div>
                   <span>{copy.keyHintLabel}</span>
@@ -1387,7 +1485,9 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
               <div className={`provider-data-path ${selectedConnection.location}`}>
                 {selectedConnection.location === "local" ? copy.dataLocal : copy.dataCloud}
               </div>
-              <div className="provider-managed-note personal">{copy.immutableConnection}</div>
+              <div className="provider-managed-note personal">
+                {selectedConnectionIsLegacyAlibaba ? copy.legacyAlibabaHint : copy.immutableConnection}
+              </div>
 
               {models.length > 0 && (
                 <div className="provider-models">
@@ -1397,6 +1497,18 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
               )}
 
               <div className="organization-management-actions">
+                {selectedConnectionIsLegacyAlibaba && tokenPlanProvider && (
+                  <button
+                    type="button"
+                    disabled={!!personalBusy || !!organizationBusy}
+                    onClick={() => {
+                      if (selectedConnection.legacyPersonal) chooseProvider(tokenPlanProvider);
+                      else beginPersonalConnection(tokenPlanProvider);
+                    }}
+                  >
+                    {copy.migrateAlibaba}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="ghost"
@@ -1493,6 +1605,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                     }));
                     setApiKey("");
                     setModels([]);
+                    setVerifiedCustomModels([]);
                     clearFeedback();
                   }}
                 >
@@ -1500,32 +1613,31 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                 </select>
               </label>
 
-              <label>
+              <div className="provider-field">
                 <span>{copy.model}</span>
-                {personalModelOptions.length > 0 ? (
-                  <select
-                    value={personalDraft.model}
-                    disabled={!!personalBusy}
-                    onChange={(event) => setPersonalDraft((current) => ({ ...current, model: event.target.value }))}
-                  >
-                    {!personalModelOptions.includes(personalDraft.model) && personalDraft.model && (
-                      <option value={personalDraft.model} disabled>{personalDraft.model}</option>
-                    )}
-                    {personalModelOptions.map((model) => <option value={model} key={model}>{model}</option>)}
-                  </select>
-                ) : (
-                  <input
-                    value={personalDraft.model}
-                    spellCheck={false}
-                    autoComplete="off"
-                    disabled={!!personalBusy}
-                    onChange={(event) => setPersonalDraft((current) => ({ ...current, model: event.target.value }))}
-                  />
-                )}
-                {personalProvider?.knownModels?.length ? (
+                <ModelCombobox
+                  value={personalDraft.model}
+                  options={personalModelOptions}
+                  disabled={!!personalBusy}
+                  ariaLabel={copy.model}
+                  searchPlaceholder={copy.modelSearch}
+                  customOptionLabel={copy.customModel}
+                  customBadge={copy.customModelBadge}
+                  emptyLabel={copy.noModelMatches}
+                  onChange={(model) => {
+                    setPersonalDraft((current) => ({ ...current, model }));
+                    clearFeedback();
+                  }}
+                />
+                {personalModelOptions.length > 0 && (
                   <small>{models.length ? copy.liveModels : copy.knownModels}</small>
-                ) : null}
-              </label>
+                )}
+                {personalCustomModel && (
+                  <small className={personalModelVerified ? "model-verification verified" : "model-verification"}>
+                    {personalModelVerified ? copy.customModelVerified : copy.customModelNeedsTest}
+                  </small>
+                )}
+              </div>
 
               {personalProvider.customBaseURL && (
                 <label>
@@ -1536,7 +1648,12 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                     autoCapitalize="none"
                     autoComplete="off"
                     disabled={!!personalBusy}
-                    onChange={(event) => setPersonalDraft((current) => ({ ...current, baseURL: event.target.value }))}
+                    onChange={(event) => {
+                      setPersonalDraft((current) => ({ ...current, baseURL: event.target.value }));
+                      setModels([]);
+                      setVerifiedCustomModels([]);
+                      clearFeedback();
+                    }}
                   />
                 </label>
               )}
@@ -1552,7 +1669,12 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                     autoCapitalize="none"
                     autoComplete="new-password"
                     disabled={!!personalBusy}
-                    onChange={(event) => setApiKey(event.target.value)}
+                    onChange={(event) => {
+                      setApiKey(event.target.value);
+                      setModels([]);
+                      setVerifiedCustomModels([]);
+                      clearFeedback();
+                    }}
                   />
                   <small>{copy.keySafety}</small>
                 </label>
@@ -1560,26 +1682,6 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
               {personalProvider.auth === "none" && <div className="provider-note local">{copy.noKey}</div>}
               {personalProvider.auth === "oauth" && <div className="provider-note">{copy.oauth}</div>}
               {personalProvider.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}</div>}
-
-              {models.length > 0 && (
-                <div className="provider-models">
-                  <span>{copy.discovered}</span>
-                  <div>
-                    {models.slice(0, 24).map((model) => (
-                      <button
-                        type="button"
-                        className={personalDraft.model === model ? "on" : ""}
-                        key={model}
-                        aria-pressed={personalDraft.model === model}
-                        disabled={!!personalBusy}
-                        onClick={() => setPersonalDraft((current) => ({ ...current, model }))}
-                      >
-                        {model}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <details className="organization-advanced">
                 <summary>{copy.advanced}</summary>
@@ -1610,7 +1712,7 @@ export function ProviderSettings({ client, cwd, locale, onSaved, embedded = fals
                 <button
                   type="button"
                   className="ghost"
-                  disabled={!personalConnectionValid || !!personalBusy}
+                  disabled={!personalConnectionTestValid || !!personalBusy}
                   onClick={() => void testNewPersonalConnection()}
                 >
                   {personalBusy === "test-new" ? copy.testing : copy.test}

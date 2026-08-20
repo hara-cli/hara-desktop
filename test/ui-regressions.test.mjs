@@ -645,6 +645,7 @@ test("macOS Dock reopen restores or recreates the main window", () => {
 
 test("provider settings keep credentials transient and support local no-key presets", () => {
   const providerSettings = readFileSync(`${root}/src/ProviderSettings.tsx`, "utf8");
+  const modelCombobox = readFileSync(`${root}/src/ModelCombobox.tsx`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
 
@@ -657,7 +658,11 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /managedExpiryWarning/, "managed provider settings surface token lifecycle warnings");
   assert.match(providerSettings, /role="alert"/, "an expired managed token is announced accessibly");
   assert.match(providerSettings, /disabled=\{phase !== "idle"\}/, "draft fields are locked while an async connection test is in flight");
-  assert.match(providerSettings, /aria-pressed=\{draft\.model === model\}/, "discovered models expose selection state");
+  assert.match(modelCombobox, /role="combobox"/);
+  assert.match(modelCombobox, /role="listbox"/);
+  assert.match(modelCombobox, /role="option"/);
+  assert.match(modelCombobox, /ArrowDown[\s\S]*ArrowUp[\s\S]*Enter[\s\S]*Escape/, "the searchable model catalog is fully keyboard operable");
+  assert.match(modelCombobox, /candidate\.custom/, "a typed model ID remains an explicit custom catalog choice");
   assert.match(providerSettings, /className="provider-result pending" role="status" aria-live="polite"/);
   assert.match(providerSettings, /className="provider-result ok" role="status" aria-live="polite"/);
   assert.match(providerSettings, /className="provider-result error" role="alert" aria-live="assertive"/);
@@ -679,11 +684,16 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /Existing sessions keep the identity they started with|已有会话仍保留创建时的身份/);
   assert.match(client, /knownModels\?: readonly string\[\]/);
   assert.match(client, /legacy\?: boolean/);
-  assert.match(providerSettings, /provider\.location !== "managed"[\s\S]{0,80}!provider\.legacy/);
+  assert.match(providerSettings, /provider\.location !== "managed"[\s\S]{0,100}!isLegacyProvider\(provider\)/);
+  assert.match(providerSettings, /new Set\(\["qwen", "qwen-oauth"\]\)/, "old engines cannot re-advertise either legacy Qwen setup entry");
   assert.match(providerSettings, /newPersonalProviders\.map/, "legacy Qwen routes stay readable but cannot be newly created");
-  assert.match(providerSettings, /selectedModelOptions\.length > 0[\s\S]*<select/, "known or live Token Plan models use a real selector");
-  assert.match(providerSettings, /selectedModelAllowed[\s\S]*personalModelAllowed/, "a stale catalog model cannot be tested or saved as a Token Plan selection");
+  assert.match(providerSettings, /<ModelCombobox[\s\S]*options=\{selectedModelOptions\}/, "known and live models use one searchable selector");
+  assert.match(providerSettings, /customModelNeedsTest[\s\S]*customModelVerified/, "catalog-external IDs expose their verification state");
+  assert.match(providerSettings, /const testValid[\s\S]*const valid = testValid && selectedModelAllowed/, "a custom model can be tested before it is allowed to save");
+  assert.match(providerSettings, /personalConnectionTestValid[\s\S]*personalConnectionValid = personalConnectionTestValid && personalModelAllowed/);
+  assert.match(providerSettings, /selected\?\.id !== "token-plan" \|\| models\.length === 0/, "a live Token Plan catalog remains authoritative even after a custom probe");
   assert.match(providerSettings, /Token Plan[\s\S]*no Token Plan browser login|Token Plan[\s\S]*不提供 Token Plan 浏览器登录/);
+  assert.match(app, /engineNeedsRestart=\{engineVersionNeedsAttention\}/, "the provider page should receive the running-engine upgrade state");
   assert.match(app, /cwd=\{activeSession\?\.cwd \?\? server\?\.cwd\}/, "Settings resolves the same workspace cwd used by new sessions");
   assert.match(app, /scope=\{activeSession \? "workspace" : "global"\}/);
 });

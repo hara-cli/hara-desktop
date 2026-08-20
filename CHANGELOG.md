@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.97 — 2026-08-21 — searchable model catalog and legacy Alibaba cleanup
+
+- Replace the Token Plan-only native select and the no-catalog text field with one accessible,
+  searchable model combobox. Built-in suggestions remain visibly unverified until testing, live
+  `/models` results remain authoritative for Token Plan, and an exact custom model ID can still be
+  typed and tested before save instead of being locked out by the catalog.
+- Hide both legacy `qwen` and `qwen-oauth` setup entries even when Desktop reconnects to an older Serve
+  that does not advertise the `legacy` catalog flag. Existing routes remain readable, receive a focused
+  Token Plan migration action, and the provider page now offers the existing safe bundled-engine restart
+  when an older engine is the reason the obsolete entries are still present.
+- Keep Hara CLI `0.148.4` at its exact verified commit
+  `729f9d1576416f193ae6f3670d93609f7e3e686b`; provider transport, key storage, Token Plan media-model
+  filtering, and session-pinned model recovery are unchanged. Windows packages remain updater-signed
+  but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.96 — 2026-08-20 — first-class Token Plan setup and stale-model recovery
 
 - Bundle Hara CLI `0.148.4` at exact verified commit

@@ -27,6 +27,18 @@ const initialProviders = (): ProviderSettingsState => ({
   },
   providers: [
     { id: "anthropic", label: "Anthropic", location: "cloud", auth: "api-key", defaultModel: "claude-opus-4-8", customBaseURL: false },
+    {
+      id: "token-plan",
+      label: "Alibaba Cloud Model Studio Token Plan",
+      location: "cloud",
+      auth: "api-key",
+      defaultModel: "qwen3.8-max",
+      defaultBaseURL: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      customBaseURL: false,
+      knownModels: ["qwen3.8-max", "qwen3.7-plus", "deepseek-v4-pro", "glm-5.2"],
+    },
+    { id: "qwen", label: "Qwen (legacy DashScope)", location: "cloud", auth: "api-key", defaultModel: "qwen-plus", customBaseURL: true, legacy: true },
+    { id: "qwen-oauth", label: "Qwen Code OAuth (legacy, not Token Plan)", location: "cloud", auth: "oauth", defaultModel: "coder-model", customBaseURL: false, legacy: true },
     { id: "deepseek", label: "DeepSeek", location: "cloud", auth: "api-key", defaultModel: "deepseek-chat", defaultBaseURL: "https://api.deepseek.com", customBaseURL: false },
     { id: "openrouter", label: "OpenRouter", location: "cloud", auth: "api-key", defaultModel: "openai/gpt-4o-mini", customBaseURL: true },
     { id: "ollama", label: "Ollama", location: "local", auth: "none", defaultModel: "qwen3", defaultBaseURL: "http://127.0.0.1:11434/v1", customBaseURL: true },
@@ -361,9 +373,11 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
     const timer = window.setTimeout(() => {
       const selector = scenario === "add"
         ? "[data-preview-action='add-organization']"
-        : scenario === "alternate" || scenario === "switch"
-          ? "[data-connection-id='acme-client']"
-          : "";
+        : scenario === "token-plan"
+          ? "[data-provider-id='token-plan']"
+          : scenario === "alternate" || scenario === "switch"
+            ? "[data-connection-id='acme-client']"
+            : "";
       if (selector) document.querySelector<HTMLButtonElement>(selector)?.click();
     }, 120);
     return () => {

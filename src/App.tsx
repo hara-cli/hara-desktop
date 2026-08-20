@@ -7091,6 +7091,9 @@ export default function App() {
                     cwd={activeSession?.cwd ?? server?.cwd}
                     scope={activeSession ? "workspace" : "global"}
                     locale={locale}
+                    engineNeedsRestart={engineVersionNeedsAttention}
+                    engineRestarting={engineRestarting}
+                    onRestartEngine={() => void restartBundledEngine()}
                     onSaved={(next: ProviderSettingsState) => {
                       setProviderRoutes(next);
                       setSetupRequired(!next.current.authenticated);
