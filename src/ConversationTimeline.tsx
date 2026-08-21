@@ -15,6 +15,19 @@ import type { Key } from "./i18n";
 import { Md } from "./markdown";
 import { userVisibleTaskText } from "./user-visible-text";
 
+type TaskDependencyKind = NonNullable<
+  NonNullable<TaskLifecycleEvent["checkpoint"]["completion"]>["dependency"]
+>["kind"];
+
+const TASK_DEPENDENCY_LABELS: Record<TaskDependencyKind, Key> = {
+  missing_secret: "taskDependencyMissingSecret",
+  missing_authority: "taskDependencyMissingAuthority",
+  physical_action: "taskDependencyPhysicalAction",
+  material_choice: "taskDependencyMaterialChoice",
+  external_state: "taskDependencyExternalState",
+  destructive_confirmation: "taskDependencyDestructiveConfirmation",
+};
+
 export type ApprovalVerdict = "allow" | "always" | "deny";
 export type ApprovalResolution = ApprovalVerdict | "expired";
 
@@ -77,7 +90,16 @@ export function ConversationTimeline({
               : "taskRunning",
       )
     : "";
-  const blockerSource = visibleTask?.checkpoint.blockReason || (
+  const dependency = visibleTask?.checkpoint.completion?.state === "awaiting_user"
+    ? visibleTask.checkpoint.completion.dependency
+    : undefined;
+  const dependencyLabel = dependency
+    ? t(TASK_DEPENDENCY_LABELS[dependency.kind])
+    : "";
+  const dependencyEvidence = dependency?.evidence[0]
+    ? userVisibleTaskText(dependency.evidence[0], "")
+    : "";
+  const blockerSource = dependency?.detail || visibleTask?.checkpoint.blockReason || (
     visibleTask?.state === "blocked" || visibleTask?.state === "paused"
       ? visibleTask.detail
       : undefined
@@ -121,9 +143,10 @@ export function ConversationTimeline({
           )}
           {blocker && (
             <div className="task-progress-detail">
-              <span>{t("taskBlockReason")}</span>
-              {blockedStep && <strong>{blockedStep}</strong>}
+              <span>{dependency ? t("taskUserDependency") : t("taskBlockReason")}</span>
+              {(dependencyLabel || blockedStep) && <strong>{dependencyLabel || blockedStep}</strong>}
               <div>{blocker}</div>
+              {dependencyEvidence ? <small>{dependencyEvidence}</small> : null}
             </div>
           )}
           {(visibleTask.state === "blocked" || visibleTask.state === "paused") && nextStep && (

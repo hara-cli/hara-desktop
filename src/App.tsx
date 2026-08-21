@@ -224,6 +224,7 @@ import "./App.css";
 
 type SettingsSection =
   | "providers"
+  | "learning"
   | "engine"
   | "security"
   | "lang"
@@ -252,6 +253,9 @@ const loadProviderSettings = () => import("./ProviderSettings").then((module) =>
 }));
 const loadGatewaySettings = () => import("./GatewaySettings").then((module) => ({
   default: module.GatewaySettings,
+}));
+const loadLearningCenter = () => import("./LearningCenter").then((module) => ({
+  default: module.LearningCenter,
 }));
 const loadDesktopCompanionSettings = () =>
   import("./companion/DesktopCompanionSettings").then((module) => ({
@@ -285,6 +289,7 @@ const EmbeddedBrowserSurface = lazy(loadEmbeddedBrowserSurface);
 const CapabilityDirectory = lazy(loadCapabilityDirectory);
 const ProviderSettings = lazy(loadProviderSettings);
 const GatewaySettings = lazy(loadGatewaySettings);
+const LearningCenter = lazy(loadLearningCenter);
 const DesktopCompanionSettings = lazy(loadDesktopCompanionSettings);
 
 const warmModule = (promise: Promise<unknown>): void => {
@@ -297,6 +302,8 @@ const warmModule = (promise: Promise<unknown>): void => {
 const preloadSettingsSection = (section: SettingsSection): void => {
   if (section === "providers") {
     warmModule(Promise.all([loadProviderSettings(), loadGatewaySettings()]));
+  } else if (section === "learning") {
+    warmModule(loadLearningCenter());
   } else if (section === "pets") {
     warmModule(loadDesktopCompanionSettings());
   } else if (section === "capabilities") {
@@ -7032,6 +7039,7 @@ export default function App() {
                   label: t("settingsGroupGeneral"),
                   items: [
                     ["providers", t("setProviders")],
+                    ["learning", t("setLearning")],
                     ["engine", t("setServer")],
                     ["security", t("setSecurity")],
                     ["lang", t("setLang")],
@@ -7120,6 +7128,21 @@ export default function App() {
                   <GatewaySettings client={clientRef.current} locale={locale} />
                 </Suspense>
               </SettingsPage>
+            )}
+            {setSec === "learning" && (
+              <Suspense
+                fallback={(
+                  <div className="settings-empty" role="status">
+                    {t("loading")}
+                  </div>
+                )}
+              >
+                <LearningCenter
+                  client={clientRef.current}
+                  cwd={activeSession?.cwd ?? server?.cwd}
+                  locale={locale}
+                />
+              </Suspense>
             )}
             {setSec === "engine" && (
               <SettingsPage

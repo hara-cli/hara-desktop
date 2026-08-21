@@ -1,0 +1,275 @@
+.learning-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.learning-scoreboard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #313137;
+  border-radius: 12px;
+  background:
+    linear-gradient(110deg, rgba(217, 68, 44, 0.08), transparent 42%),
+    #141416;
+}
+
+.learning-scoreboard > div {
+  position: relative;
+  min-height: 94px;
+  padding: 17px 18px;
+  border-right: 1px solid #29292e;
+}
+
+.learning-scoreboard > div:last-child { border-right: 0; }
+
+.learning-scoreboard strong {
+  display: block;
+  color: #f0ede8;
+  font: 500 31px/1.05 "Iowan Old Style", "Songti SC", Georgia, serif;
+  letter-spacing: -0.04em;
+}
+
+.learning-scoreboard span {
+  display: block;
+  margin-top: 9px;
+  color: #8f8b85;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.learning-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid #303036;
+}
+
+.learning-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px 12px 9px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #7f7b75;
+  text-align: left;
+}
+
+.learning-tabs button:hover {
+  filter: none;
+  color: #d7d3cd;
+}
+
+.learning-tabs button.is-active {
+  border-bottom-color: #dc563e;
+  color: #f0ede8;
+}
+
+.learning-tabs b {
+  min-width: 21px;
+  padding: 1px 6px;
+  border: 1px solid #35353b;
+  border-radius: 999px;
+  color: #9d9993;
+  font: 600 9px/1.5 "SF Mono", ui-monospace, monospace;
+  text-align: center;
+}
+
+.learning-ledger {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #2d2d32;
+  border-radius: 13px;
+  background: #131315;
+}
+
+.learning-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  border-bottom: 1px solid #29292e;
+  content-visibility: auto;
+  contain-intrinsic-size: 300px;
+}
+
+.learning-row:last-child { border-bottom: 0; }
+
+.learning-row-index {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 9px;
+  padding: 20px 8px 0;
+  border-right: 1px solid #29292e;
+  color: #77736d;
+  font: 600 9px/1 "SF Mono", ui-monospace, monospace;
+}
+
+.learning-row-index i {
+  width: 1px;
+  flex: 1;
+  min-height: 34px;
+  background: linear-gradient(#4d4542, transparent);
+}
+
+.learning-row-main {
+  min-width: 0;
+  padding: 18px 20px 17px;
+}
+
+.learning-row-head,
+.learning-row-tags,
+.learning-signal,
+.learning-row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.learning-row-head { justify-content: space-between; gap: 14px; }
+
+.learning-row-head time {
+  color: #77736d;
+  font: 500 9px/1.4 "SF Mono", ui-monospace, monospace;
+}
+
+.learning-row-tags > span {
+  color: #9c9891;
+  font: 650 9px/1.45 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.learning-row-tags > span + span::before {
+  margin-right: 7px;
+  color: #4e4b47;
+  content: "/";
+}
+
+.learning-status.is-approved { color: #84bd94; }
+.learning-status.is-pending { color: #e0a15f; }
+.learning-status.is-submitted { color: #d2856e; }
+.learning-status.is-rejected,
+.learning-status.is-revoked { color: #9a7770; }
+
+.learning-row-main > code {
+  display: block;
+  margin-top: 14px;
+  color: #d86550;
+  font: 550 10px/1.4 "SF Mono", ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
+
+.learning-row h3 {
+  max-width: 720px;
+  margin: 7px 0 0;
+  color: #e8e5df;
+  font: 500 17px/1.42 "Iowan Old Style", "Songti SC", Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+.learning-rationale {
+  max-width: 720px;
+  margin: 8px 0 0;
+  color: #99958f;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.learning-rationale b {
+  margin-right: 8px;
+  color: #c4c0b9;
+  font-weight: 650;
+}
+
+.learning-signal { margin-top: 13px; }
+
+.learning-signal span {
+  padding: 3px 7px;
+  border: 1px solid #34343a;
+  border-radius: 3px;
+  color: #85817b;
+  font: 550 9px/1.35 "SF Mono", ui-monospace, monospace;
+}
+
+.learning-signal span:first-child { border-color: #53413a; color: #bf8879; }
+.learning-signal span.is-stable { border-color: #345641; color: #80b891; }
+
+.learning-evidence {
+  margin-top: 14px;
+  border-top: 1px dashed #303036;
+}
+
+.learning-evidence summary {
+  padding: 10px 0 2px;
+  color: #8d8982;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.learning-evidence > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.learning-evidence blockquote {
+  min-width: 0;
+  margin: 0;
+  padding: 9px 10px;
+  border-left: 2px solid #4b403d;
+  background: #18181b;
+}
+
+.learning-evidence p {
+  margin: 0;
+  color: #b8b4ad;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.learning-evidence footer {
+  margin-top: 7px;
+  color: #74716c;
+  font: 500 8px/1.4 "SF Mono", ui-monospace, monospace;
+}
+
+.learning-row-actions {
+  justify-content: flex-end;
+  min-height: 34px;
+  margin-top: 14px;
+}
+
+.learning-row-actions button { padding: 6px 11px; font-size: 11px; }
+
+.learning-empty {
+  padding: 48px 24px;
+  color: #7c7872;
+  font: 500 12px/1.6 "SF Mono", ui-monospace, monospace;
+  text-align: center;
+}
+
+@media (max-width: 820px) {
+  .learning-scoreboard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .learning-scoreboard > div:nth-child(2) { border-right: 0; }
+  .learning-scoreboard > div:nth-child(-n + 2) { border-bottom: 1px solid #29292e; }
+  .learning-evidence > div { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .learning-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .learning-row { grid-template-columns: 42px minmax(0, 1fr); }
+  .learning-row-main { padding-inline: 14px; }
+  .learning-row-head { align-items: flex-start; flex-direction: column; }
+}

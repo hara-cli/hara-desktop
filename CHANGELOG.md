@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.100 — 2026-08-22 — agent-owned execution and reviewed business learning
+
+- Bundle Hara CLI `0.150.0` at exact verified commit
+  `191f36f71460bdaa67ccea7e82a63fa3d1f66ecc`. Once a change task is accepted, the runtime now rejects a
+  prose-only handoff, continues with an available authorized tool, and requires a verified completion receipt.
+  A user handoff is valid only as a typed, evidenced dependency such as a missing credential, authority,
+  physical action, material choice, external state, or destructive confirmation.
+- Add a privacy-bounded Learning Center for personal, project, and organization business learning. Runtime
+  observations stay pending until reviewed, recurring evidence is deduplicated and redacted, only approved
+  rules enter future task context, and organization candidates require explicit Control review before a
+  versioned bundle can sync back to enrolled devices.
+- Show the exact typed dependency and evidence when human input is genuinely unavoidable, while retaining the
+  Alibaba Token Plan endpoint/model workflow and native DeepSeek vision support from 0.1.99. Windows packages
+  remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.99 — 2026-08-22 — native DeepSeek vision and explicit provider endpoints
 
 - Bundle Hara CLI `0.149.0` at exact verified commit

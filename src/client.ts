@@ -441,6 +441,62 @@ export interface OrganizationConnectionCheck {
   checkedAt: number;
 }
 
+export type LearningScope = "personal" | "project" | "organization";
+export type LearningKind =
+  | "business_rule"
+  | "user_preference"
+  | "workflow"
+  | "correction"
+  | "failure_pattern"
+  | "action_ownership";
+export type LearningStatus = "pending" | "approved" | "rejected" | "revoked" | "submitted";
+
+export interface LearningEvidence {
+  id: string;
+  taskHash: string;
+  fingerprint: string;
+  summary: string;
+  source: string;
+  sourceVersion: string;
+  observedAt: string;
+}
+
+export interface LearningCandidate {
+  version: 1;
+  id: string;
+  clientId: string;
+  remoteId?: string;
+  patternKey: string;
+  kind: LearningKind;
+  scope: LearningScope;
+  summary: string;
+  rationale?: string;
+  status: LearningStatus;
+  stability: "tentative" | "stable";
+  occurrenceCount: number;
+  distinctTaskCount: number;
+  evidence: LearningEvidence[];
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: "user" | "organization";
+  reviewNote?: string;
+  submittedAt?: string;
+  sourceVersion: string;
+}
+
+export interface LearningListResult {
+  learnings: LearningCandidate[];
+  summary: { total: number; pending: number; approved: number; stable: number };
+  organization: {
+    active: boolean;
+    profileId?: string;
+    submitAvailable: boolean;
+    syncAvailable: boolean;
+  };
+}
+
 export type DeskTaskState = "open" | "claimed" | "done" | "cancelled";
 export type DeskTaskKind = "feedback" | "dispatch";
 export type DeskRisk = "low" | "high";
@@ -684,6 +740,17 @@ export interface TaskLifecycleEvent {
       state: "available" | "unavailable" | "blocked" | "unknown";
       detail?: string;
     }>;
+    completion?: {
+      state: "verified" | "awaiting_user";
+      evidence: string[];
+      waitingFor?: string;
+      dependency?: {
+        kind: "missing_secret" | "missing_authority" | "physical_action" | "material_choice" | "external_state" | "destructive_confirmation";
+        detail: string;
+        evidence: string[];
+        capability?: string;
+      };
+    };
   };
   detail?: string;
   approval?: { id: string; question: string };
@@ -991,6 +1058,44 @@ export class HaraClient {
   }
   checkOrganizationConnection(id: string, cwd?: string) {
     return this.call<OrganizationConnectionCheck>("settings.organizations.check", { id, ...(cwd ? { cwd } : {}) });
+  }
+  /** Reviewable execution-time learning. Candidate content is already redacted by Core; raw transcripts
+   * and credentials never cross this API. */
+  async listLearnings(cwd?: string): Promise<LearningListResult | null> {
+    if (this.methods.size > 0 && !this.supports("learning.list")) return null;
+    try {
+      return await this.call("learning.list", { ...(cwd ? { cwd } : {}), limit: 1_000 });
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  reviewLearning(
+    id: string,
+    decision: "approve" | "reject" | "revoke",
+    expectedRevision: number,
+    cwd?: string,
+  ) {
+    return this.call<{ learning: LearningCandidate }>("learning.review", {
+      id,
+      decision,
+      expectedRevision,
+      ...(cwd ? { cwd } : {}),
+    });
+  }
+  submitOrganizationLearning(id: string, cwd?: string) {
+    return this.call<{
+      remoteId: string;
+      status: string;
+      revision: number;
+      candidate: LearningCandidate;
+    }>("learning.submit", { id, ...(cwd ? { cwd } : {}) });
+  }
+  syncOrganizationLearnings(cwd?: string) {
+    return this.call<{ version: number; learnings: LearningCandidate[] }>(
+      "learning.sync",
+      cwd ? { cwd } : {},
+    );
   }
   /** Local, redacted Desk binding inventory. Null means the bundled engine predates native Groups. */
   async listDeskConnections(): Promise<DeskConnectionsState | null> {
