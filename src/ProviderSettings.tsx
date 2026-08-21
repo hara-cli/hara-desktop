@@ -115,7 +115,7 @@ const words = {
     discovered: "Models found",
     knownModels: "Known models (verify this key before saving)",
     liveModels: "Authorized for this API key",
-    tokenPlanAuth: "Token Plan uses the Beijing subscription Base URL and an API key. There is no Token Plan browser login.",
+    tokenPlanAuth: "Token Plan uses the official fixed Beijing subscription Base URL shown above and an API key. There is no Token Plan browser login.",
     legacyAlibaba: "Legacy Alibaba connection",
     legacyAlibabaHint: "This route remains readable, but its old DashScope/Qwen identity is no longer offered for new connections. Move it to the dedicated Token Plan connection.",
     migrateAlibaba: "Move to Token Plan",
@@ -273,7 +273,7 @@ const words = {
     discovered: "发现的模型",
     knownModels: "已知模型（保存前请用当前 Key 验证）",
     liveModels: "当前 API Key 已授权",
-    tokenPlanAuth: "Token Plan 使用华北 2（北京）订阅地址和 API Key，不提供 Token Plan 浏览器登录。",
+    tokenPlanAuth: "Token Plan 使用上方显示的华北 2（北京）官方固定 Base URL 和 API Key，不提供 Token Plan 浏览器登录。",
     legacyAlibaba: "旧版阿里云连接",
     legacyAlibabaHint: "此连接仍可读取，但旧 DashScope/Qwen 身份不再用于新建连接；请迁移到独立的 Token Plan 连接。",
     migrateAlibaba: "迁移到 Token Plan",
@@ -1394,11 +1394,13 @@ export function ProviderSettings({
                 )}
               </div>
 
-              {selected.customBaseURL && (
+              {(selected.customBaseURL || !!selected.defaultBaseURL) && (
                 <label>
                   <span>{copy.endpoint}</span>
                   <input
                     value={draft.baseURL}
+                    readOnly={!selected.customBaseURL}
+                    aria-readonly={!selected.customBaseURL}
                     onChange={(event) => {
                       setDraft((current) => ({ ...current, baseURL: event.target.value }));
                       setModels([]);
@@ -1639,11 +1641,13 @@ export function ProviderSettings({
                 )}
               </div>
 
-              {personalProvider.customBaseURL && (
+              {(personalProvider.customBaseURL || !!personalProvider.defaultBaseURL) && (
                 <label>
                   <span>{copy.endpoint}</span>
                   <input
                     value={personalDraft.baseURL}
+                    readOnly={!personalProvider.customBaseURL}
+                    aria-readonly={!personalProvider.customBaseURL}
                     spellCheck={false}
                     autoCapitalize="none"
                     autoComplete="off"

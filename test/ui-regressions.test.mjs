@@ -693,6 +693,16 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /personalConnectionTestValid[\s\S]*personalConnectionValid = personalConnectionTestValid && personalModelAllowed/);
   assert.match(providerSettings, /selected\?\.id !== "token-plan" \|\| models\.length === 0/, "a live Token Plan catalog remains authoritative even after a custom probe");
   assert.match(providerSettings, /Token Plan[\s\S]*no Token Plan browser login|Token Plan[\s\S]*不提供 Token Plan 浏览器登录/);
+  assert.match(
+    providerSettings,
+    /selected\.customBaseURL \|\| !!selected\.defaultBaseURL[\s\S]*readOnly=\{!selected\.customBaseURL\}/,
+    "fixed provider endpoints remain visible, selectable and copyable",
+  );
+  assert.match(
+    providerSettings,
+    /personalProvider\.customBaseURL \|\| !!personalProvider\.defaultBaseURL[\s\S]*readOnly=\{!personalProvider\.customBaseURL\}/,
+    "named Token Plan connections show the same fixed endpoint",
+  );
   assert.match(app, /engineNeedsRestart=\{engineVersionNeedsAttention\}/, "the provider page should receive the running-engine upgrade state");
   assert.match(app, /cwd=\{activeSession\?\.cwd \?\? server\?\.cwd\}/, "Settings resolves the same workspace cwd used by new sessions");
   assert.match(app, /scope=\{activeSession \? "workspace" : "global"\}/);

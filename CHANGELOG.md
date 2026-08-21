@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.99 — 2026-08-22 — native DeepSeek vision and explicit provider endpoints
+
+- Bundle Hara CLI `0.149.0` at exact verified commit
+  `e4cfeb94808a87d6cc33eb3c8a1a323b6634c86d`. Personal DeepSeek setup now offers the official Flash,
+  Pro, and Vision-Exp catalog in the searchable model selector while retaining a test-before-save custom
+  model path; Vision-Exp receives uploaded images as native DeepSeek Responses `input_image` blocks.
+- Let organization connections advertise `deepseek-v4-flash-vision-exp` as a text-and-image model alongside
+  Flash and Pro. The same Control credential can switch among all three routes, and attachment compatibility
+  follows the selected session model instead of silently OCR-converting a native Vision-Exp upload.
+- Keep every provider's effective endpoint visible. Fixed endpoints such as Alibaba Token Plan are read-only
+  but selectable and copyable, so users can verify the official URL without being allowed to corrupt it.
+  Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.98 — 2026-08-21 — safe project-list removal
 
 - Give every project header a visible, keyboard-focusable remove action, including projects that still
