@@ -69,6 +69,15 @@ import {
   type SessionPlaceInput,
 } from "./session-place";
 import {
+  HIDDEN_PROJECTS_STORAGE_KEY,
+  OPENED_PROJECTS_STORAGE_KEY,
+  isJunkProjectDirectory,
+  projectGroups,
+  projectListStateFromStorage,
+  setProjectVisible,
+  type ProjectListState,
+} from "./project-list";
+import {
   WorkStarter,
   type WorkbenchApp,
   type WorkStarterSubmission,
@@ -491,10 +500,6 @@ const parseApprovalMode = (value: string | null): ApprovalMode | "" =>
   APPROVAL_MODES.includes(value as ApprovalMode) ? value as ApprovalMode : "";
 
 const plain = (s: string): string => s.replace(/\[[0-9;]*m/g, "");
-/** Junk cwd guard: sessions left behind by tests/one-offs in OS temp dirs are NOT projects. */
-const isJunkCwd = (cwd: string): boolean =>
-  /^\/(private\/)?(tmp|var\/folders)\//.test(cwd) || /[/\\]tmp\.[A-Za-z0-9]+([/\\]|$)/.test(cwd) || /[/\\]hara-(test|dbg|serve)-[^/\\]*([/\\]|$)/.test(cwd);
-
 const basename = (p: string): string => p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || p;
 const fileExtension = (value: string): string => {
   const name = basename(value);
@@ -688,19 +693,6 @@ const conversationHistory = (
         }
       : { kind: "text", text: message.text },
   );
-
-/** Project groups (manual sessions only): opened-but-empty projects first, then by latest activity. */
-function projectGroups(sessions: SessionInfo[], opened: string[]): [string, SessionInfo[]][] {
-  const map = new Map<string, SessionInfo[]>();
-  for (const s of sessions) {
-    if (isAssistantCwd(s.cwd) || isAutomated(s) || isJunkCwd(s.cwd)) continue;
-    map.set(s.cwd, [...(map.get(s.cwd) ?? []), s]);
-  }
-  const latest = (list: SessionInfo[]): string => list.reduce((m, s) => (s.updatedAt > m ? s.updatedAt : m), "");
-  const withSessions = [...map.entries()].sort((a, b) => latest(b[1]).localeCompare(latest(a[1])));
-  const empty: [string, SessionInfo[]][] = [...opened].reverse().filter((w) => !map.has(w) && !isAssistantCwd(w)).map((w) => [w, []]);
-  return [...empty, ...withSessions];
-}
 
 /** The assistant zone: one active desktop conversation + one thread per external origin.
  *  Starting a fresh conversation promotes the previous active one into folded history:
@@ -1028,13 +1020,12 @@ export default function App() {
       return {};
     }
   });
-  const [openedProjects, setOpenedProjects] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("hara.workspaces") ?? "[]");
-    } catch {
-      return [];
-    }
-  });
+  const [projectListState, setProjectListState] = useState<ProjectListState>(() =>
+    projectListStateFromStorage(
+      localStorage.getItem(OPENED_PROJECTS_STORAGE_KEY),
+      localStorage.getItem(HIDDEN_PROJECTS_STORAGE_KEY),
+    ));
+  const openedProjects = projectListState.opened;
   const [locale, setLocale] = useState<Locale>(detectLocale());
   const t = makeT(locale);
   const groupsCopy = useMemo<GroupsCopy>(() => {
@@ -3361,11 +3352,30 @@ export default function App() {
   };
 
   const rememberProject = (dir: string, remove = false) => {
-    setOpenedProjects((list) => {
-      const next = remove ? list.filter((w) => w !== dir) : [...list.filter((w) => w !== dir), dir];
-      localStorage.setItem("hara.workspaces", JSON.stringify(next));
+    setProjectListState((current) => {
+      const next = setProjectVisible(current, dir, !remove);
+      localStorage.setItem(OPENED_PROJECTS_STORAGE_KEY, JSON.stringify(next.opened));
+      localStorage.setItem(HIDDEN_PROJECTS_STORAGE_KEY, JSON.stringify(next.hidden));
       return next;
     });
+  };
+
+  const removeProjectFromList = (dir: string) => {
+    if (!window.confirm([
+      `${t("removeProjectConfirm")} “${basename(dir)}”?`,
+      "",
+      t("removeProjectKeepsData"),
+      t("removeProjectRestore"),
+    ].join("\n"))) return;
+
+    const current = sessionsRef.current.find((session) => session.id === activeRef.current);
+    if (zoneRef.current === "projects" && current?.cwd === dir && !setZone("chat")) return;
+
+    const rememberedProjectId = activeByZoneRef.current.projects;
+    if (rememberedProjectId && sessionsRef.current.find((session) => (
+      session.id === rememberedProjectId && session.cwd === dir
+    ))) activeByZoneRef.current.projects = null;
+    rememberProject(dir, true);
   };
 
   const openProject = async () => {
@@ -4932,7 +4942,7 @@ export default function App() {
   const engineVersionState = classifyEngineVersion(server?.version ?? "", BUNDLED_ENGINE_VERSION);
   const engineVersionNeedsAttention =
     engineVersionState === "older" || engineVersionState === "incompatible";
-  const groups = projectGroups(sessions, openedProjects)
+  const groups = projectGroups(sessions, projectListState)
     .map(([cwd, list]): [string, SessionInfo[]] => [cwd, hit(basename(cwd)) ? list : list.filter((s) => hit(s.title))])
     .filter(([cwd, list]) => hit(basename(cwd)) || list.length > 0);
   const searchBox = (
@@ -5912,7 +5922,7 @@ export default function App() {
     (session) =>
       !isAssistantCwd(session.cwd)
       && !isAutomated(session)
-      && !isJunkCwd(session.cwd),
+      && !isJunkProjectDirectory(session.cwd),
   );
   const activeOrganizationConnection =
     groupsDirectory.organizations?.connections.find((connection) => connection.active);
@@ -6858,18 +6868,18 @@ export default function App() {
                   <span className="caret">{collapsed[cwd] ? "▸" : "▾"}</span> {basename(cwd)}
                   <span className="count">{list.length}</span>
                   {collapsed[cwd] && manualUnreadIn(list) && <span className="dot" />}
-                  {list.length === 0 && (
-                    <span
-                      className="rm"
-                      title={t("removeProject")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        rememberProject(cwd, true);
-                      }}
-                    >
-                      ✕
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    className="project-remove"
+                    title={t("removeProject")}
+                    aria-label={`${t("removeProject")}：${basename(cwd)}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      removeProjectFromList(cwd);
+                    }}
+                  >
+                    <span aria-hidden>×</span>
+                  </button>
                 </div>
                 {!collapsed[cwd] && (
                   <>

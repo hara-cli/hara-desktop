@@ -201,7 +201,10 @@ const dict = {
     officeDocumentFormats: "DOCX · DOC · ODT · RTF · MD · TXT",
     officeSafetyTitle: "The safe foundation is free",
     officeSafetyHint: "Import validation, protected local storage, integrity checks, and recoverable revisions are open-core. Pro capabilities may add higher-fidelity editing, but never weaken these boundaries.",
-    removeProject: "remove from list (sessions are kept)",
+    removeProject: "Remove project from list (sessions and files are kept)",
+    removeProjectConfirm: "Remove from the project list",
+    removeProjectKeepsData: "Hara keeps every session and all local files. Nothing on disk is deleted.",
+    removeProjectRestore: "Open this folder again to restore it to the list.",
     // rail / zones
     zoneWorkbench: "Workbench",
     zoneChat: "Assistant",
@@ -815,7 +818,10 @@ const dict = {
     officeDocumentFormats: "DOCX · DOC · ODT · RTF · MD · TXT",
     officeSafetyTitle: "安全底座永久免费",
     officeSafetyHint: "导入校验、受保护的本机存储、完整性检查与可恢复版本属于开源核心。Pro 可以增加更高保真编辑，但不会削弱这些边界。",
-    removeProject: "从列表移除(会话保留)",
+    removeProject: "从项目列表移除（保留会话和文件）",
+    removeProjectConfirm: "从项目列表移除",
+    removeProjectKeepsData: "Hara 会保留全部会话和本地文件，不会删除磁盘上的任何内容。",
+    removeProjectRestore: "再次打开这个文件夹即可恢复到列表。",
     // rail / zones
     zoneWorkbench: "工作台",
     zoneChat: "助手",

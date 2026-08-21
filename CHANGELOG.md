@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.98 — 2026-08-21 — safe project-list removal
+
+- Give every project header a visible, keyboard-focusable remove action, including projects that still
+  contain sessions. The previous control existed only for an empty project and stayed hidden until hover,
+  which made the common populated-project case impossible to complete from the sidebar.
+- Treat removal as a local navigation preference, never filesystem deletion: the confirmation explicitly
+  states that all Hara sessions and local files are kept, removing an active project returns safely to the
+  assistant, and opening the same directory again restores the project and its existing conversations.
+- Keep Hara CLI `0.148.4` at its exact verified commit
+  `729f9d1576416f193ae6f3670d93609f7e3e686b`; provider routing and project contents are unchanged.
+  Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.97 — 2026-08-21 — searchable model catalog and legacy Alibaba cleanup
 
 - Replace the Token Plan-only native select and the no-catalog text field with one accessible,
