@@ -55,6 +55,9 @@ import {
   type DeskTaskState,
   type OrganizationConnection,
   type OrganizationConnectionsState,
+  type AgentCatalog,
+  type AgentInfo,
+  type AgentOfficeInfo,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
 import { isImeCompositionKey } from "./ime";
@@ -219,6 +222,8 @@ import {
   workforceStateIsNewer,
 } from "./workforce-state";
 import { AGENT_OFFICE_CAPABILITY } from "./preinstalled-capabilities";
+import AgentPicker from "./AgentPicker";
+import { latestAgentSession, mainAgentRef, officeActors } from "./agent-office";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
@@ -808,6 +813,23 @@ export default function App() {
     attachmentCapabilities?: EffectiveAttachmentCapabilities;
   } | null>(null);
   const [modelInfoScope, setModelInfoScope] = useState<string | null>(null);
+  const [agentCatalog, setAgentCatalog] = useState<AgentCatalog | null>(null);
+  const [selectedOfficeId, setSelectedOfficeId] = useState<string>("");
+  const agentCatalogRequestRef = useRef(0);
+  const refreshAgentCatalog = useCallback(async (opts?: { sessionId?: string; cwd?: string }) => {
+    const client = clientRef.current;
+    if (!client) return null;
+    const requestId = ++agentCatalogRequestRef.current;
+    const next = await client.listAgents(opts);
+    if (requestId !== agentCatalogRequestRef.current || clientRef.current !== client) return next;
+    setAgentCatalog(next);
+    setSelectedOfficeId((current) => (
+      next?.offices.some((office) => office.id === current)
+        ? current
+        : next?.currentOfficeId ?? ""
+    ));
+    return next;
+  }, []);
   const [organizationRoutes, setOrganizationRoutes] = useState<OrganizationConnectionsState | null>(null);
   const organizationRoutesRequestRef = useRef(0);
   const refreshOrganizationRoutes = useCallback(async (cwd?: string) => {
@@ -2771,6 +2793,7 @@ export default function App() {
       void refreshAuto();
       void c.listArtifacts().then((a) => setArtifacts(a ?? "old-server")).catch(() => {});
       void refreshModelInfo().catch(() => {});
+      void refreshAgentCatalog({ cwd: info.cwd }).catch(() => {});
       void refreshOrganizationRoutes().catch(() => {});
       void refreshProviderRoutes().catch(() => {});
       setPhase("ready");
@@ -2781,20 +2804,22 @@ export default function App() {
       setPhase("no-server");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearExtensionDock, clearStagedModelChanges, handleEvent, refreshAuto, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
+  }, [clearExtensionDock, clearStagedModelChanges, handleEvent, refreshAgentCatalog, refreshAuto, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
 
   useEffect(() => {
     if (phase !== "ready" || !active) return;
     void refreshModelInfo({ sessionId: active }).catch(() => {});
+    void refreshAgentCatalog({ sessionId: active }).catch(() => {});
     const current = sessionsRef.current.find((session) => session.id === active);
     void refreshOrganizationRoutes(current?.cwd).catch(() => {});
     void refreshProviderRoutes(current?.cwd).catch(() => {});
     return () => {
       modelInfoRequestRef.current += 1;
+      agentCatalogRequestRef.current += 1;
       organizationRoutesRequestRef.current += 1;
       providerRoutesRequestRef.current += 1;
     };
-  }, [active, phase, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
+  }, [active, phase, refreshAgentCatalog, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -2952,7 +2977,7 @@ export default function App() {
     setSessions(list.sessions);
   };
 
-  const newSession = async (cwd?: string): Promise<string | null> => {
+  const newSession = async (cwd?: string, agentRef?: string): Promise<string | null> => {
     const c = clientRef.current;
     if (!c) return null;
     if (!discardCurrentExtensionDraft()) return null;
@@ -2964,9 +2989,17 @@ export default function App() {
     setArtifactRevisions([]);
     setArtifactValidationReport(null);
     setArtifactExportReceipt(null);
-    const sessionHint = { cwd: cwd ?? server?.cwd ?? "", source: "interactive" };
+    const sessionHint = {
+      cwd: cwd ?? server?.cwd ?? "",
+      source: "interactive",
+      ...(agentRef && agentRef !== "main" ? { agentRef } : {}),
+    };
     const requestId = ++sessionOpenRequestRef.current;
-    const r = await c.createSession({ ...(cwd ? { cwd } : {}), ...(defaultApproval ? { approval: defaultApproval } : {}) });
+    const r = await c.createSession({
+      ...(cwd ? { cwd } : {}),
+      ...(defaultApproval ? { approval: defaultApproval } : {}),
+      ...(agentRef && agentRef !== "main" ? { agentRef } : {}),
+    });
     attachedSessionsRef.current.add(r.sessionId);
     rememberSession(r.sessionId, sessionHint);
     if (sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, sessionHint)) {
@@ -4956,6 +4989,28 @@ export default function App() {
     <input id="haraSearch" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} spellCheck={false} />
   );
   const activeSession = sessions.find((s) => s.id === active);
+  const fallbackMainAgent: AgentInfo = {
+    ref: "main",
+    name: "Hara",
+    description: locale === "zh" ? "Hara 主 Agent" : "Main Hara Agent",
+    identity: {
+      version: 1,
+      displayName: "Hara",
+      title: locale === "zh" ? "主理 Agent" : "Main Agent",
+      bio: locale === "zh"
+        ? "统筹团队、接住对话，并把需求推进为可验证的工作结果。"
+        : "Coordinates the team, owns the conversation, and turns requests into verified work.",
+      traits: locale === "zh" ? ["直接", "主动", "重证据"] : ["direct", "resourceful", "evidence-led"],
+      emoji: "✦",
+      theme: "warm editorial studio",
+      accent: "#ff695f",
+      character: "orchestrator",
+      source: "hara",
+    },
+    home: activeSession?.cwd ?? server?.cwd ?? "",
+    scope: "main",
+  };
+  const availableAgents = agentCatalog?.agents.length ? agentCatalog.agents : [fallbackMainAgent];
   const activeApproval: ApprovalMode = (activeSession?.approval ?? defaultApproval) || "auto-edit";
   const activeComposerWorkObject = active ? visibleSessionWorkObject(active) : null;
   const items = active ? (transcripts[active] ?? []) : [];
@@ -5129,10 +5184,14 @@ export default function App() {
         if (!setZone(sourcePlace)) return;
       } else if (!discardCurrentExtensionDraft()) return;
     } else if (!discardCurrentExtensionDraft()) return;
-    const sessionHint = { cwd: source?.cwd ?? server?.cwd ?? "", source: "interactive" };
     const requestId = ++sessionOpenRequestRef.current;
     try {
       const r = await c.forkSession(id);
+      const sessionHint = {
+        cwd: source?.cwd ?? server?.cwd ?? "",
+        source: "interactive",
+        ...(r.agentRef ? { agentRef: r.agentRef } : {}),
+      };
       attachedSessionsRef.current.add(r.sessionId);
       setTranscripts((tr) => ({
         ...tr,
@@ -5228,7 +5287,8 @@ export default function App() {
         </span>
       </div>
       <div className="meta">
-        {s.model} · {s.updatedAt ? fmtTime(s.updatedAt) : t("newLabel")}
+        {(availableAgents.find((agent) => agent.ref === mainAgentRef(s.agentRef))?.name ?? (s.agentRef || "Hara"))}
+        {" · "}{s.model} · {s.updatedAt ? fmtTime(s.updatedAt) : t("newLabel")}
       </div>
     </div>
   );
@@ -5246,6 +5306,19 @@ export default function App() {
           </span>
         )}
         <div className="anchor-actions">
+          <AgentPicker
+            agents={availableAgents}
+            currentAgentRef={activeSession?.agentRef}
+            locale={locale}
+            onOpenOffice={() => void openAgentOffice()}
+            onSelect={(agentRef) => {
+              const agent = availableAgents.find((candidate) => candidate.ref === agentRef);
+              // Imported OpenClaw Agents are global addresses with their own execution workspaces. Prefer
+              // every explicit Agent home; native portable globals advertise an empty home and stay local.
+              const targetCwd = agent?.home || activeSession?.cwd || server?.cwd || "";
+              if (targetCwd) void openAgentConversation(agentRef, targetCwd);
+            }}
+          />
           {temperament === "ide" &&
             activeSession &&
             (projPanels[activeSession.cwd] ?? [])
@@ -6267,6 +6340,27 @@ export default function App() {
     }
     if (session) offerWorkforceForSession(session);
   };
+  const openAgentConversation = async (
+    agentRef: string,
+    cwd: string,
+    keepOfficeOpen = false,
+  ): Promise<void> => {
+    const target = latestAgentSession(sessionsRef.current, cwd, agentRef);
+    const targetPlace = sessionPlace(target ?? { cwd, source: "interactive" });
+    if ((targetPlace !== "chat" && targetPlace !== "projects") || !setZone(targetPlace)) return;
+    let session = target;
+    if (session) {
+      await openSession(session.id);
+    } else {
+      const sessionId = await newSession(cwd, agentRef);
+      session = sessionId
+        ? sessionsRef.current.find((candidate) => candidate.id === sessionId)
+        : undefined;
+    }
+    if (!session) return;
+    await refreshAgentCatalog({ sessionId: session.id }).catch(() => {});
+    if (keepOfficeOpen) offerWorkforceForSession(session);
+  };
   const openExtensionItem = (item: ExtensionDockAddKind) => {
     if (item === "workforce") openWorkforce();
     else openWorkbenchTool(item);
@@ -6382,6 +6476,27 @@ export default function App() {
       ? exactWorkforceState
       : workforceFromTask(workforceExtension.owner.sessionId, workforceTaskState))
     : undefined;
+  const workforceSession = workforceExtension
+    ? sessions.find((session) => session.id === workforceExtension.owner.sessionId)
+    : undefined;
+  const fallbackOffice: AgentOfficeInfo = {
+    id: "workspace",
+    name: workforceSession ? basename(workforceSession.cwd) : t("workforceTitle"),
+    cwd: workforceSession?.cwd ?? server?.cwd ?? "",
+    kind: "workspace",
+    agentRefs: ["main"],
+  };
+  const workforceOffices = agentCatalog?.offices.length ? agentCatalog.offices : [fallbackOffice];
+  const workforceOffice = workforceOffices.find((office) => office.id === selectedOfficeId)
+    ?? workforceOffices.find((office) => office.id === agentCatalog?.currentOfficeId)
+    ?? workforceOffices[0];
+  const workforceActors = officeActors({
+    office: workforceOffice,
+    agents: availableAgents,
+    snapshot: workforceSnapshot,
+    sessionCwd: workforceSession?.cwd,
+    sessionAgentRef: workforceSession?.agentRef,
+  });
   const workforceCopy = {
     title: t("workforceTitle"),
     subtitle: t("workforceSubtitle"),
@@ -6397,6 +6512,9 @@ export default function App() {
     noTask: t("workforceNoTask"),
     noTaskHint: t("workforceNoTaskHint"),
     returnToChat: t("workforceReturnToChat"),
+    chatWithAgent: t("workforceChatWithAgent"),
+    office: t("workforceOffice"),
+    switchOffice: t("workforceSwitchOffice"),
     root: t("workforceRoot"),
     specialist: t("workforceSpecialist"),
     status: t("workforceStatus"),
@@ -6405,6 +6523,7 @@ export default function App() {
     privacy: t("workforcePrivacy"),
     loading: t("loading"),
     states: {
+      idle: t("workforceStateIdle"),
       queued: t("workforceStateQueued"),
       working: t("workforceStateWorking"),
       waiting: t("workforceStateWaiting"),
@@ -7868,11 +7987,18 @@ export default function App() {
               {presentationBrowserExtension && presentationBrowserSurface}
               {workforceExtension && (
                 <WorkforceSurface
-                  snapshot={workforceSnapshot}
+                  actors={workforceActors}
+                  offices={workforceOffices}
+                  activeOfficeId={workforceOffice.id}
                   locale={locale}
                   live={Boolean(clientRef.current?.supportsEvent("event.workforce_state"))}
                   copy={workforceCopy}
                   onReturnToChat={() => setCurrentExtensionScreenVisible(false)}
+                  onOfficeChange={setSelectedOfficeId}
+                  onChatWithAgent={(agentRef) => {
+                    const targetAgent = availableAgents.find((candidate) => candidate.ref === agentRef);
+                    void openAgentConversation(agentRef, targetAgent?.home || workforceOffice.cwd, true);
+                  }}
                 />
               )}
               {(workbenchToolExtension || reviewExtension) && (

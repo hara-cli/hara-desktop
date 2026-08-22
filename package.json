@@ -1,16 +1,18 @@
 {
   "name": "hara-desktop",
   "private": true,
-  "version": "0.1.100",
+  "version": "0.1.101",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
+    "audit:release-channel": "node scripts/release-channel-audit.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "check:release": "node scripts/check-release-metadata.mjs",
+    "verify:windows-authenticode": "node scripts/windows-authenticode-receipt.mjs",
     "test": "node --test test/*.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri"

@@ -98,12 +98,16 @@ non-successful first-party responses. After the protected release is public:
 2. Upload the identical updater payloads and matching `.sig` files under
    `hara/desktop/vX.Y.Z/`. Treat that versioned prefix as immutable.
 3. Download every uploaded object through the public CDN and compare its size and SHA-256 with the
-   release asset. Verify byte-range delivery before making the channel discoverable.
+   release asset. Verify byte-range delivery before making the channel discoverable. Run
+   `npm run audit:release-channel -- versioned vX.Y.Z`; it streams all 15 immutable objects against
+   GitHub's digest-bearing metadata and probes Range delivery for every updater payload.
 4. Build the mirror manifest with
    `node scripts/updater-mirror-manifest.mjs build <canonical-latest.json> <tag> <mirror-latest.json>`.
    This fails closed on unexpected platforms, assets, URLs, versions, or signatures.
 5. Upload the mirror manifest to `hara/desktop/stable/latest.json` **last**, with a short cache lifetime,
-   then download it publicly and run `updater-mirror-manifest.mjs validate`.
+   then refresh both exact stable URLs, download them publicly, and run
+   `npm run audit:release-channel -- stable vX.Y.Z`. This also requires the website download manifest
+   to advertise the same ready version and proves every embedded updater signature still matches GitHub.
 
 The bucket remains private behind the existing CDN. Never use public-read ACLs, overwrite a versioned
 release object, or publish the stable manifest before all referenced bytes have passed public-CDN
@@ -127,6 +131,9 @@ verification.
 Windows MSI/NSIS updater files are minisign-verified by the current pipeline but are not yet
 Authenticode-signed. Integrating a Windows signing service is a separate release-hardening item;
 until then, documentation and release notices must disclose possible SmartScreen warnings.
+The provider-neutral six-role verifier and tag/source-bound receipt validator are implemented and
+covered offline; the production signer identity, protected Windows job, RFC 3161 provider evidence,
+and clean-machine exercise remain external blockers.
 The fail-closed trust model, current evidence and required release choreography are recorded in
 [`docs/WINDOWS_AUTHENTICODE_RELEASE_GATE.md`](docs/WINDOWS_AUTHENTICODE_RELEASE_GATE.md).
 

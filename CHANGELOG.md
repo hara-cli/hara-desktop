@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.101 — 2026-08-23 — social Agent campus and independent conversations
+
+- Bundle Hara CLI `0.151.0` at exact verified commit
+  `f90655a9ce3c16fa71034eef2724efaf7615fbf9`. Every registered Agent now owns an independent conversation
+  and execution home; Desktop can discover project and global Agents, reuse the exact matching session, and
+  import installed OpenClaw/Hermes identities without exposing private persona text or configuration.
+- Make the 2D/2.5D comic Agent Campus the default chat-integrated office. The chat header adds a searchable
+  Agent picker and direct office launcher; offices can switch among the current workspace, global lobby, and
+  registered projects; clicking a resident opens that exact Agent while keeping the live office attached.
+  Public profiles support names, roles, bios, traits, emoji, safe avatars, themed original characters, and
+  honest idle/working/waiting states driven only by Serve lifecycle events.
+- Keep the WebGL god view as an explicitly experimental, lazy-loaded Lab rather than the primary experience,
+  and add fail-closed public release-channel auditing plus a provider-neutral six-role Windows Authenticode
+  receipt verifier. Production Windows signer integration is still pending, so current Windows packages may
+  still show a SmartScreen reputation warning.
+
 ## 0.1.100 — 2026-08-22 — agent-owned execution and reviewed business learning
 
 - Bundle Hara CLI `0.150.0` at exact verified commit

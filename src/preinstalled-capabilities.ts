@@ -11,8 +11,8 @@ export const AGENT_OFFICE_CAPABILITY = Object.freeze({
   install: "preinstalled" as const,
   surfaceKind: "workforce" as const,
   stateProtocol: "event.workforce_state" as const,
-  defaultRenderer: "webgl" as WorkforceRendererId,
-  renderers: ["webgl", "spatial", "list"] as const satisfies readonly WorkforceRendererId[],
+  defaultRenderer: "spatial" as WorkforceRendererId,
+  renderers: ["spatial", "list", "webgl"] as const satisfies readonly WorkforceRendererId[],
   lazy: true,
   networkAccess: false,
 });

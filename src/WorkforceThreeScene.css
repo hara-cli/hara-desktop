@@ -7,6 +7,31 @@
     #090c0e;
 }
 
+.workforce-three::before,
+.workforce-three::after {
+  position: absolute;
+  z-index: 3;
+  width: 54px;
+  height: 54px;
+  border-color: rgba(255, 101, 92, 0.34);
+  pointer-events: none;
+  content: "";
+}
+
+.workforce-three::before {
+  top: 10px;
+  left: 10px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+
+.workforce-three::after {
+  right: 10px;
+  bottom: 10px;
+  border-right: 1px solid;
+  border-bottom: 1px solid;
+}
+
 .workforce-three-canvas,
 .workforce-three-canvas canvas {
   width: 100%;
@@ -23,6 +48,36 @@
 .workforce-three-canvas canvas:active { cursor: grabbing; }
 .workforce-three-canvas canvas:focus-visible { box-shadow: inset 0 0 0 2px rgba(255, 101, 92, 0.8); }
 
+.workforce-three-compass {
+  display: grid;
+  position: absolute;
+  z-index: 5;
+  right: 15px;
+  bottom: 13px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(94, 103, 105, 0.72);
+  border-radius: 50%;
+  color: #817b76;
+  background: rgba(10, 13, 15, 0.82);
+  box-shadow: inset 0 0 0 5px rgba(255, 255, 255, 0.015), 0 8px 20px rgba(0, 0, 0, 0.3);
+  font: 700 7px/1 "SF Mono", ui-monospace, monospace;
+  pointer-events: none;
+}
+
+.workforce-three-compass::before,
+.workforce-three-compass::after {
+  position: absolute;
+  background: rgba(120, 127, 127, 0.34);
+  content: "";
+}
+
+.workforce-three-compass::before { width: 1px; height: 28px; }
+.workforce-three-compass::after { width: 28px; height: 1px; }
+.workforce-three-compass i { position: absolute; top: 3px; z-index: 1; color: #ff776d; font-style: normal; }
+.workforce-three-compass span { z-index: 1; color: #ded9d2; font-weight: 850; }
+
 .workforce-three-runtime {
   position: absolute;
   z-index: 4;
@@ -35,6 +90,11 @@
   color: #737b7b;
   font: 8px/1.2 "SF Mono", "Roboto Mono", ui-monospace, monospace;
   letter-spacing: 0.06em;
+}
+
+.workforce-three[data-camera="focus"] .workforce-three-runtime span {
+  border-color: rgba(255, 101, 92, 0.4);
+  color: #f0c2ba;
 }
 
 .workforce-three-runtime span {

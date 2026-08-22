@@ -33,15 +33,12 @@ import {
   type Object3D,
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type {
-  WorkforceActor,
-  WorkforceActorState,
-  WorkforceCapability,
-} from "./client";
+import type { WorkforceCapability } from "./client";
+import type { OfficeActor, OfficeActorState } from "./agent-office";
 import "./WorkforceThreeScene.css";
 
 interface WorkforceThreeSceneProps {
-  actors: WorkforceActor[];
+  actors: OfficeActor[];
   selectedId: string | null;
   cameraMode: "overview" | "focus";
   reduced: boolean;
@@ -97,7 +94,8 @@ const CAPABILITY_VISUALS: Record<WorkforceCapability, { color: number; zone: Sea
   other: { color: 0xa3aaa8, zone: "delivery" },
 };
 
-const STATE_COLORS: Record<WorkforceActorState, number> = {
+const STATE_COLORS: Record<OfficeActorState, number> = {
+  idle: 0x65716f,
   queued: 0xf3a83b,
   working: 0xff655c,
   waiting: 0xefb85c,
@@ -108,20 +106,24 @@ const STATE_COLORS: Record<WorkforceActorState, number> = {
   cancelled: 0x777d7c,
 };
 
-const OVERVIEW_POSITION = new Vector3(11.6, 10.2, 15.4);
-const OVERVIEW_TARGET = new Vector3(0, 0.7, 0.2);
+const OVERVIEW_POSITION = new Vector3(9.8, 20.8, 13.2);
+const OVERVIEW_TARGET = new Vector3(0, 0.45, 0.2);
 const FRAME_INTERVAL = 1000 / 30;
 
 interface ActorRig {
   actorId: string;
   capability: WorkforceCapability;
   group: Group;
+  desk: Group;
   character: Group;
+  tool: Group;
+  caption: Sprite;
+  stateRing: Mesh;
   rightArm: Group;
   screenMaterial: MeshStandardMaterial;
   stateMaterial: MeshStandardMaterial;
   selectionMaterial: MeshStandardMaterial;
-  state: WorkforceActorState;
+  state: OfficeActorState;
   phase: number;
 }
 
@@ -137,6 +139,9 @@ interface OfficeRuntime {
   cameraGoal: Vector3;
   targetGoal: Vector3;
   cameraAnimating: boolean;
+  selectedActorId: string | null;
+  hoveredActorId: string | null;
+  zoomBand: "detail" | "map";
   reduced: boolean;
   visible: boolean;
   hasWorkingActors: boolean;
@@ -356,7 +361,7 @@ function createTool(capability: WorkforceCapability, accent: number): Group {
   return tool;
 }
 
-function createActorRig(actor: WorkforceActor): ActorRig {
+function createActorRig(actor: OfficeActor): ActorRig {
   const accent = CAPABILITY_VISUALS[actor.capability].color;
   const group = new Group();
   group.userData.actorId = actor.actorId;
@@ -392,7 +397,8 @@ function createActorRig(actor: WorkforceActor): ActorRig {
 
   const character = new Group();
   character.position.set(0, 1.08, -0.56);
-  const body = new Mesh(new SphereGeometry(0.31, 20, 14), material(0x171a1c));
+  const uniformColor = new Color(accent).lerp(new Color(0x171a1c), 0.68).getHex();
+  const body = new Mesh(new SphereGeometry(0.31, 20, 14), material(uniformColor));
   body.scale.set(0.86, 1.18, 0.72);
   body.position.y = 0.48;
   character.add(body);
@@ -431,8 +437,14 @@ function createActorRig(actor: WorkforceActor): ActorRig {
   rightArm.add(rightArmMesh);
   rightArm.position.set(0.35, 0.58, 0);
   character.add(rightArm);
+  for (const x of [-0.14, 0.14]) {
+    const leg = new Mesh(new CylinderGeometry(0.07, 0.075, 0.3, 8), material(0x252a2c));
+    leg.position.set(x, 0.03, 0);
+    character.add(leg);
+  }
   group.add(character);
-  group.add(createTool(actor.capability, accent));
+  const tool = createTool(actor.capability, accent);
+  group.add(tool);
 
   const stateMaterial = new MeshStandardMaterial({
     color: STATE_COLORS[actor.state],
@@ -460,7 +472,7 @@ function createActorRig(actor: WorkforceActor): ActorRig {
   group.add(selectionRing);
 
   const caption = labelSprite(
-    actor.kind === "root" ? "HARA LEAD" : actor.capability.toUpperCase(),
+    actor.kind === "root" ? "HARA LEAD" : (actor.role ?? actor.capability).toUpperCase(),
     `#${accent.toString(16).padStart(6, "0")}`,
     0.72,
   );
@@ -473,7 +485,11 @@ function createActorRig(actor: WorkforceActor): ActorRig {
     actorId: actor.actorId,
     capability: actor.capability,
     group,
+    desk,
     character,
+    tool,
+    caption,
+    stateRing,
     rightArm,
     screenMaterial,
     stateMaterial,
@@ -508,7 +524,7 @@ function disposeObject(root: Object3D): void {
   });
 }
 
-function positionActors(runtime: OfficeRuntime, actors: WorkforceActor[]): void {
+function positionActors(runtime: OfficeRuntime, actors: OfficeActor[]): void {
   const remaining = [...SEATS_3D];
   const positioned = actors
     .slice(0, SEATS_3D.length)
@@ -553,6 +569,8 @@ function positionActors(runtime: OfficeRuntime, actors: WorkforceActor[]): void 
   });
 
   const liveIds = new Set(positioned.map((actor) => actor.actorId));
+  if (runtime.hoveredActorId && !liveIds.has(runtime.hoveredActorId)) runtime.hoveredActorId = null;
+  if (runtime.selectedActorId && !liveIds.has(runtime.selectedActorId)) runtime.selectedActorId = null;
   for (const [actorId, rig] of runtime.rigs) {
     if (liveIds.has(actorId)) continue;
     runtime.office.remove(rig.group);
@@ -562,10 +580,49 @@ function positionActors(runtime: OfficeRuntime, actors: WorkforceActor[]): void 
   runtime.hasWorkingActors = actors.some((actor) => actor.state === "working");
 }
 
-function selectActor(runtime: OfficeRuntime, actorId: string | null): void {
+function applyActorEmphasis(runtime: OfficeRuntime): void {
   for (const rig of runtime.rigs.values()) {
-    rig.selectionMaterial.opacity = rig.actorId === actorId ? 0.94 : 0;
+    const selected = rig.actorId === runtime.selectedActorId;
+    const hovered = rig.actorId === runtime.hoveredActorId;
+    rig.selectionMaterial.opacity = selected
+      ? 0.94
+      : hovered
+        ? 0.38
+        : 0;
+    const baseScale = runtime.zoomBand === "map" ? 0.9 : 1;
+    rig.character.scale.setScalar(baseScale * (hovered ? 1.08 : 1));
+    rig.caption.visible = runtime.zoomBand === "detail" || selected || hovered;
   }
+}
+
+function selectActor(runtime: OfficeRuntime, actorId: string | null): void {
+  runtime.selectedActorId = actorId;
+  applyActorEmphasis(runtime);
+}
+
+function hoverActor(runtime: OfficeRuntime, actorId: string | null): void {
+  if (runtime.hoveredActorId === actorId) return;
+  runtime.hoveredActorId = actorId;
+  runtime.renderer.domElement.style.cursor = actorId ? "pointer" : "grab";
+  applyActorEmphasis(runtime);
+  runtime.requestRender();
+}
+
+function applySemanticZoom(runtime: OfficeRuntime, force = false): void {
+  const distance = runtime.camera.position.distanceTo(runtime.controls.target);
+  const nextBand = distance > 28.5 ? "map" : "detail";
+  if (!force && nextBand === runtime.zoomBand) return;
+  runtime.zoomBand = nextBand;
+  const map = nextBand === "map";
+  for (const rig of runtime.rigs.values()) {
+    rig.desk.visible = !map;
+    rig.tool.visible = !map;
+    rig.caption.visible = !map;
+    rig.character.scale.setScalar(map ? 0.9 : 1);
+    rig.stateRing.scale.setScalar(map ? 1.24 : 1);
+    rig.stateMaterial.opacity = map ? 0.96 : rig.state === "cancelled" ? 0.28 : 0.74;
+  }
+  applyActorEmphasis(runtime);
 }
 
 function moveCamera(
@@ -615,8 +672,8 @@ function createRuntime(host: HTMLDivElement, label: string, selectRef: { current
 
   const scene = new Scene();
   scene.background = new Color(0x090c0e);
-  scene.fog = new Fog(0x090c0e, 15, 30);
-  const camera = new PerspectiveCamera(42, width / height, 0.1, 80);
+  scene.fog = new Fog(0x090c0e, 20, 46);
+  const camera = new PerspectiveCamera(38, width / height, 0.1, 80);
   camera.position.copy(OVERVIEW_POSITION);
   camera.lookAt(OVERVIEW_TARGET);
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -624,9 +681,9 @@ function createRuntime(host: HTMLDivElement, label: string, selectRef: { current
   controls.enableDamping = true;
   controls.dampingFactor = 0.075;
   controls.minDistance = 4.5;
-  controls.maxDistance = 25;
-  controls.minPolarAngle = Math.PI * 0.16;
-  controls.maxPolarAngle = Math.PI * 0.49;
+  controls.maxDistance = 34;
+  controls.minPolarAngle = Math.PI * 0.1;
+  controls.maxPolarAngle = Math.PI * 0.47;
   controls.enablePan = true;
   controls.screenSpacePanning = false;
 
@@ -661,6 +718,9 @@ function createRuntime(host: HTMLDivElement, label: string, selectRef: { current
     cameraGoal: OVERVIEW_POSITION.clone(),
     targetGoal: OVERVIEW_TARGET.clone(),
     cameraAnimating: false,
+    selectedActorId: null,
+    hoveredActorId: null,
+    zoomBand: "detail",
     reduced: false,
     visible: true,
     hasWorkingActors: false,
@@ -751,21 +811,18 @@ function createRuntime(host: HTMLDivElement, label: string, selectRef: { current
       }, { threshold: 0.01 });
   intersectionObserver?.observe(host);
 
-  controls.addEventListener("start", () => {
+  const onControlsStart = () => {
     runtime.cameraAnimating = false;
-  });
-  controls.addEventListener("change", runtime.requestRender);
+  };
+  const onControlsChange = () => {
+    applySemanticZoom(runtime);
+    runtime.requestRender();
+  };
+  controls.addEventListener("start", onControlsStart);
+  controls.addEventListener("change", onControlsChange);
 
   let pointerDown: { x: number; y: number } | null = null;
-  const onPointerDown = (event: PointerEvent) => {
-    pointerDown = { x: event.clientX, y: event.clientY };
-  };
-  const onPointerUp = (event: PointerEvent) => {
-    if (!pointerDown || Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 5) {
-      pointerDown = null;
-      return;
-    }
-    pointerDown = null;
+  const actorAtPointer = (event: PointerEvent): string | null => {
     const rect = renderer.domElement.getBoundingClientRect();
     runtime.pointer.set(
       ((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -775,9 +832,37 @@ function createRuntime(host: HTMLDivElement, label: string, selectRef: { current
     const [hit] = runtime.raycaster.intersectObjects([...runtime.rigs.values()].map((rig) => rig.group), true);
     let object: Object3D | null = hit?.object ?? null;
     while (object && typeof object.userData.actorId !== "string") object = object.parent;
-    if (object && typeof object.userData.actorId === "string") selectRef.current(object.userData.actorId);
+    return object && typeof object.userData.actorId === "string" ? object.userData.actorId : null;
+  };
+  const onPointerDown = (event: PointerEvent) => {
+    pointerDown = { x: event.clientX, y: event.clientY };
+  };
+  const onPointerMove = (event: PointerEvent) => {
+    if (pointerDown && Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 5) {
+      hoverActor(runtime, null);
+      renderer.domElement.style.cursor = "grabbing";
+      return;
+    }
+    hoverActor(runtime, actorAtPointer(event));
+  };
+  const onPointerLeave = () => {
+    pointerDown = null;
+    hoverActor(runtime, null);
+  };
+  const onPointerUp = (event: PointerEvent) => {
+    if (!pointerDown || Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 5) {
+      pointerDown = null;
+      hoverActor(runtime, actorAtPointer(event));
+      return;
+    }
+    pointerDown = null;
+    const actorId = actorAtPointer(event);
+    hoverActor(runtime, actorId);
+    if (actorId) selectRef.current(actorId);
   };
   renderer.domElement.addEventListener("pointerdown", onPointerDown);
+  renderer.domElement.addEventListener("pointermove", onPointerMove);
+  renderer.domElement.addEventListener("pointerleave", onPointerLeave);
   renderer.domElement.addEventListener("pointerup", onPointerUp);
 
   runtime.dispose = () => {
@@ -787,7 +872,11 @@ function createRuntime(host: HTMLDivElement, label: string, selectRef: { current
     intersectionObserver?.disconnect();
     document.removeEventListener("visibilitychange", visibilityChanged);
     renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+    renderer.domElement.removeEventListener("pointermove", onPointerMove);
+    renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
     renderer.domElement.removeEventListener("pointerup", onPointerUp);
+    controls.removeEventListener("start", onControlsStart);
+    controls.removeEventListener("change", onControlsChange);
     controls.dispose();
     disposeObject(scene);
     renderer.renderLists.dispose();
@@ -845,6 +934,7 @@ export default function WorkforceThreeScene({
     const runtime = runtimeRef.current;
     if (!runtime) return;
     positionActors(runtime, actors);
+    applySemanticZoom(runtime, true);
     selectActor(runtime, selectedId);
     moveCamera(runtime, cameraMode, selectedId, reduced);
     runtime.requestRender();
@@ -855,10 +945,11 @@ export default function WorkforceThreeScene({
   }
 
   return (
-    <div className="workforce-three" data-renderer="webgl">
+    <div className="workforce-three" data-renderer="webgl" data-camera={cameraMode}>
       <div ref={hostRef} className="workforce-three-canvas" />
+      <div className="workforce-three-compass" aria-hidden><i>N</i><span>H</span></div>
       <div className="workforce-three-runtime" aria-hidden>
-        <span><i />WEBGL / LOCAL</span>
+        <span><i />GOD / WEBGL / LOCAL</span>
         <b>{hint}</b>
       </div>
     </div>

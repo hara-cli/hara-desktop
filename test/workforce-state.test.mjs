@@ -117,18 +117,33 @@ test("terminal task fallback can reject a stale live workforce projection", () =
   })), false);
 });
 
-test("Agent Office uses one Hara identity with capability tools and zoned workstations", () => {
+test("Agent Office combines public social identities, direct chat, and comic workstations", () => {
   const surface = readFileSync(`${root}/src/WorkforceSurface.tsx`, "utf8");
   const css = readFileSync(`${root}/src/WorkforceSurface.css`, "utf8");
-  assert.match(surface, /BUILTIN_HARA_ASSET/);
-  assert.match(surface, /<AtlasCssPet/);
-  assert.match(surface, /petStatusForActor/);
-  assert.doesNotMatch(surface, /OFFICIAL_HARA_PETS|petForActor/);
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const picker = readFileSync(`${root}/src/AgentPicker.tsx`, "utf8");
+  assert.match(surface, /<AgentPortrait/);
+  assert.match(surface, /<AgentCharacter/);
+  assert.doesNotMatch(surface, /BUILTIN_HARA_ASSET|AtlasCssPet|petStatusForActor/);
   assert.match(surface, /CAPABILITY_VISUALS/);
   assert.match(surface, /seat\.zone === desiredZone/);
   assert.match(surface, /workforce-role-tool/);
   assert.match(surface, /workforce-stage-camera is-\$\{camera\}/);
+  assert.match(surface, /changeOffice\(event\.target\.value\)/);
+  assert.match(surface, /workforce-team-deck/);
+  assert.match(surface, /EXPERIMENTAL 3D/);
+  assert.match(surface, /COMIC OFFICE/);
+  assert.match(surface, /selected\.identity\?\.traits/);
+  assert.match(surface, /if \(actor\?\.agentRef\) onChatWithAgent\(actor\.agentRef\)/);
+  assert.match(app, /latestAgentSession\(sessionsRef\.current, cwd, agentRef\)/);
+  assert.match(app, /const targetCwd = agent\?\.home \|\| activeSession\?\.cwd/);
+  assert.match(app, /openAgentConversation\(agentRef, targetAgent\?\.home \|\| workforceOffice\.cwd, true\)/);
+  assert.match(picker, /Every Agent keeps separate history/);
+  assert.match(picker, /agentDisplayName/);
+  assert.match(picker, /<AgentPortrait/);
+  assert.match(css, /Hara Comic Campus/);
   assert.match(css, /\.workforce-stage-camera\.is-focus/);
+  assert.match(css, /\.workforce-actor\.is-idle/);
   assert.doesNotMatch(css, /is-waiting \.workforce-character \{ animation:/);
   for (const capability of ["code", "browser", "research", "design", "files", "office", "communication"]) {
     assert.match(css, new RegExp(`is-capability-${capability} \\.workforce-role-tool`));
@@ -152,6 +167,8 @@ test("Agent Office ships a lazy local WebGL renderer with explicit fallbacks", (
   assert.match(surface, /onUnavailable=\{\(\) =>/);
   assert.match(renderer, /new WebGLRenderer/);
   assert.match(renderer, /new OrbitControls/);
+  assert.match(renderer, /applySemanticZoom/);
+  assert.match(renderer, /hoverActor/);
   assert.match(renderer, /new IntersectionObserver/);
   assert.match(renderer, /powerPreference: "low-power"/);
   assert.match(renderer, /webglcontextlost/);
@@ -166,9 +183,12 @@ test("Agent Office ships a lazy local WebGL renderer with explicit fallbacks", (
   assert.match(descriptor, /id: "core\.agent-office"/);
   assert.match(descriptor, /install: "preinstalled"/);
   assert.match(descriptor, /networkAccess: false/);
-  assert.match(descriptor, /renderers: \["webgl", "spatial", "list"\]/);
+  assert.match(descriptor, /defaultRenderer: "spatial"/);
+  assert.match(descriptor, /renderers: \["spatial", "list", "webgl"\]/);
   assert.match(app, /id: AGENT_OFFICE_CAPABILITY\.id/);
-  assert.match(i18n, /workforceThree: "3D"/);
-  assert.match(i18n, /workforceScene: "2\.5D"/);
+  assert.match(i18n, /workforceThree: "Experimental 3D"/);
+  assert.match(i18n, /workforceThree: "实验 3D"/);
+  assert.match(i18n, /workforceScene: "Comic office"/);
+  assert.match(i18n, /workforceScene: "漫画办公室"/);
   assert.doesNotMatch(i18n, /workforceScene: "3D (?:office|办公室)"/);
 });

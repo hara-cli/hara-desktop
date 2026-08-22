@@ -25,6 +25,50 @@ export interface SessionInfo {
   /** Stable automation identity for cron runs. Older engines only expose sourceName. */
   jobId?: string;
   archived?: boolean;
+  /** Explicit conversational identity. Missing means the built-in main Hara agent. */
+  agentRef?: string;
+}
+
+export interface AgentInfo {
+  ref: string;
+  name: string;
+  description: string;
+  /** Public presentation profile only; never contains the private role/system prompt. */
+  identity?: AgentPublicIdentity;
+  home: string;
+  scope: "main" | "global" | "project";
+  project?: string;
+  model?: string;
+  readOnly?: boolean;
+}
+
+export interface AgentPublicIdentity {
+  version: 1;
+  displayName: string;
+  title?: string;
+  bio?: string;
+  traits?: string[];
+  emoji?: string;
+  avatar?: string;
+  theme?: string;
+  accent?: string;
+  character?: string;
+  source: "hara" | "openclaw" | "hermes" | "claude" | "organization" | "plugin" | "derived";
+}
+
+export interface AgentOfficeInfo {
+  id: string;
+  name: string;
+  cwd: string;
+  kind: "workspace" | "project" | "lobby";
+  project?: string;
+  agentRefs: string[];
+}
+
+export interface AgentCatalog {
+  agents: AgentInfo[];
+  offices: AgentOfficeInfo[];
+  currentOfficeId: string;
 }
 
 export type CronJobStatus = "ok" | "error" | "running" | "timed_out";
@@ -667,6 +711,7 @@ export interface ReadOnlySessionResult {
   model: string;
   profileId?: string;
   approval?: ApprovalMode;
+  agentRef?: string;
   history: ClientHistoryMessage[];
   readOnly: true;
 }
@@ -938,8 +983,18 @@ export class HaraClient {
   listSessions(cwd?: string) {
     return this.call<{ sessions: SessionInfo[] }>("session.list", cwd ? { cwd } : {});
   }
-  createSession(opts?: { cwd?: string; approval?: ApprovalMode }) {
-    return this.call<{ sessionId: string; model: string; profileId?: string; approval?: ApprovalMode }>("session.create", opts ?? {});
+  createSession(opts?: { cwd?: string; approval?: ApprovalMode; agentRef?: string }) {
+    return this.call<{ sessionId: string; model: string; profileId?: string; approval?: ApprovalMode; agentRef?: string }>("session.create", opts ?? {});
+  }
+  /** Persistent Agent identities and their project/team offices (feature-detected for compatibility). */
+  async listAgents(opts?: { sessionId?: string; cwd?: string }): Promise<AgentCatalog | null> {
+    if (this.methods.size > 0 && !this.supports("agents.list")) return null;
+    try {
+      return await this.call("agents.list", opts ?? {});
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
   }
   listPlugins() {
     return this.call<{ plugins: PluginInfo[] }>("plugins.list", {});
@@ -1259,6 +1314,7 @@ export class HaraClient {
       model: string;
       profileId?: string;
       approval?: ApprovalMode;
+      agentRef?: string;
       history: ClientHistoryMessage[];
       task?: { id: string; objective: string; status: Exclude<TaskLifecycleState, "waiting">; turnId: string; updatedAt: string };
     }>("session.resume", { sessionId, ...(legacyApproval ? { approval: legacyApproval } : {}) });
@@ -1339,6 +1395,7 @@ export class HaraClient {
       title: string;
       model: string;
       profileId?: string;
+      agentRef?: string;
       history: ClientHistoryMessage[];
     }>("session.fork", { sessionId, ...(target ?? {}) });
   }

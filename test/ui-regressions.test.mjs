@@ -92,6 +92,7 @@ test("an empty extension screen exposes an explicit Agent Office-first view laun
 
   assert.match(app, /activeSession && contextExtensionTabs\.length === 0[\s\S]*<ExtensionViewLauncher/);
   assert.match(app, /const extensionAddItems = activeSession[\s\S]*id: "workforce" as const/);
+  assert.match(app, /<AgentPicker[\s\S]*currentAgentRef=\{activeSession\?\.agentRef\}/, "the Agent roster remains visible before a session exists");
   assert.match(app, /id: AGENT_OFFICE_CAPABILITY\.id,[\s\S]*title: t\("capabilityAgentOfficeTitle"\)/);
   assert.match(
     app,
