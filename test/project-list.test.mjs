@@ -64,11 +64,18 @@ test("every project header exposes an accessible, explicitly non-destructive rem
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const css = readFileSync(new URL("../src/App.css", import.meta.url), "utf8");
   const i18n = readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8");
-  const projectHeader = app.slice(app.indexOf("{groups.map"), app.indexOf("{zone === \"office\""));
+  const projectHeader = app.slice(
+    app.indexOf("visibleProjectGroups.length ? visibleProjectGroups.map"),
+    app.indexOf("{zone === \"office\""),
+  );
 
-  assert.match(projectHeader, /<button[\s\S]*className="project-remove"[\s\S]*aria-label=/);
-  assert.doesNotMatch(projectHeader, /list\.length === 0[\s\S]*project-remove/);
-  assert.match(projectHeader, /event\.stopPropagation\(\)[\s\S]*removeProjectFromList\(cwd\)/);
+  assert.match(projectHeader, /<button[\s\S]*className="project-remove inbox-project-remove"[\s\S]*aria-label=/);
+  assert.match(projectHeader, /onClick=\{\(\) => removeProjectFromList\(cwd\)\}/);
+  assert.doesNotMatch(
+    projectHeader,
+    /className="inbox-contact is-project"[\s\S]*className="project-remove inbox-project-remove"[\s\S]*<\/button>\s*<\/button>/,
+    "the removal action stays a sibling rather than nesting one button inside another",
+  );
   assert.match(app, /removeProjectKeepsData[\s\S]*removeProjectRestore/);
   assert.match(i18n, /不会删除磁盘上的任何内容/);
   assert.match(i18n, /Open this folder again to restore it to the list/);

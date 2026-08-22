@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.102 — 2026-08-23 — Agent and project message center
+
+- Replace the mixed personal/history/project tree with one two-level message center. The root switches
+  between Agent contacts and project workspaces; each row shows its latest real conversation, time,
+  activity, and unread/session count. Selecting an Agent or project opens only that facet's durable
+  conversation history, with an explicit back action instead of another nested accordion.
+- Keep every catalog Agent visible before its first conversation, create genuinely fresh Agent-owned
+  conversations from the detail view, and preserve exact project/Agent isolation when switching rows.
+  Archived, automation, fixture, and junk work stay out of the inbox; project removal remains a
+  non-destructive sibling action, and meaningless imported Markdown-only titles fall back to useful
+  public profile text.
+- Continue bundling Hara CLI `0.151.0` at exact verified commit
+  `f90655a9ce3c16fa71034eef2724efaf7615fbf9`. The repository also records an original Agent Campus
+  product concept for department rooms and a reviewed hire/import flow; those concepts are design
+  direction rather than 0.1.102 runtime claims. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.101 — 2026-08-23 — social Agent campus and independent conversations
 
 - Bundle Hara CLI `0.151.0` at exact verified commit

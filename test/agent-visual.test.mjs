@@ -39,6 +39,11 @@ test("Agent labels prefer public identity while stable refs remain independent",
   assert.equal(agentInitials("乔尼"), "乔尼");
 });
 
+test("Agent public titles discard Markdown separators and fall back to meaningful copy", () => {
+  assert.equal(agentPublicTitle({ description: "Customer support", identity: { title: " | " } }), "Customer support");
+  assert.equal(agentPublicTitle({ description: "---", identity: { title: " | " } }), "");
+});
+
 test("Agent portraits never turn arbitrary role URLs or local paths into image requests", () => {
   assert.equal(renderableAgentAvatar({ version: 1, displayName: "A", avatar: "https://tracker.example/a.png", source: "plugin" }), undefined);
   assert.equal(renderableAgentAvatar({ version: 1, displayName: "A", avatar: "/Users/name/private.png", source: "hara" }), undefined);

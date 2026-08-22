@@ -37,7 +37,9 @@ export function agentDisplayName(agent: Pick<AgentInfo, "name" | "identity">): s
 }
 
 export function agentPublicTitle(agent: Pick<AgentInfo, "description" | "identity">): string {
-  return agent.identity?.title?.trim() || agent.description;
+  return [agent.identity?.title, agent.description]
+    .map((value) => value?.trim() ?? "")
+    .find((value) => /[\p{L}\p{N}]/u.test(value)) ?? "";
 }
 
 export function agentInitials(value: string): string {

@@ -74,7 +74,6 @@ import {
 import {
   HIDDEN_PROJECTS_STORAGE_KEY,
   OPENED_PROJECTS_STORAGE_KEY,
-  isJunkProjectDirectory,
   projectGroups,
   projectListStateFromStorage,
   setProjectVisible,
@@ -198,7 +197,16 @@ import {
   presentationErrorKey,
 } from "./presentation-surface";
 import { useDesktopCompanion } from "./companion/useDesktopCompanion";
-import { IconEdit, IconArchive, IconStar, IconTrash, IconFork } from "./icons";
+import {
+  IconArchive,
+  IconBack,
+  IconEdit,
+  IconFolder,
+  IconFork,
+  IconStar,
+  IconTrash,
+  IconUsers,
+} from "./icons";
 import { Md } from "./markdown";
 import HaraLogo from "./mark";
 import type {
@@ -223,7 +231,18 @@ import {
 } from "./workforce-state";
 import { AGENT_OFFICE_CAPABILITY } from "./preinstalled-capabilities";
 import AgentPicker from "./AgentPicker";
+import { AgentPortrait } from "./AgentPortrait";
+import { agentDisplayName, agentPublicTitle } from "./agent-visual";
 import { latestAgentSession, mainAgentRef, officeActors } from "./agent-office";
+import {
+  agentInboxEntries,
+  filterInboxSessions,
+  inboxSessionsForAgent,
+  isWorkbenchConversation,
+  sortInboxSessions,
+  type WorkbenchInboxMode,
+  type WorkbenchInboxTarget,
+} from "./workbench-inbox";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
@@ -528,11 +547,6 @@ const fmtTime = (iso: string): string => {
   const pad = (n: number): string => String(n).padStart(2, "0");
   const yr = d.getFullYear() === new Date().getFullYear() ? "" : `${d.getFullYear()}-`;
   return `${yr}${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
-/** Automated titles are "sourceName · time" — next to the origin chip that prefix is noise. */
-const botTitle = (s: SessionInfo): string => {
-  const t = s.title || "";
-  return s.sourceName && t.startsWith(`${s.sourceName} · `) ? t.slice(s.sourceName.length + 3) : t;
 };
 const isAutomated = (s: SessionInfo): boolean => s.source === "cron" || s.source === "gateway";
 const automationDraftInput = (
@@ -1042,13 +1056,6 @@ export default function App() {
   }, []);
   // 🤖 place: read-only replay of an automated run (never a live conversation — fork to continue)
   const [autoReplay, setAutoReplay] = useState<{ id: string; title: string; sourceName?: string; cwd: string; items: { role: string; text: string }[] } | null>(null);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("hara.collapsed") ?? "{}");
-    } catch {
-      return {};
-    }
-  });
   const [projectListState, setProjectListState] = useState<ProjectListState>(() =>
     projectListStateFromStorage(
       localStorage.getItem(OPENED_PROJECTS_STORAGE_KEY),
@@ -1308,6 +1315,10 @@ export default function App() {
     refreshPetChat();
   }, [active, locale, phase, refreshPetChat, sessions, taskStates, transcripts]);
   const [q, setQ] = useState("");
+  const [workbenchInboxMode, setWorkbenchInboxMode] = useState<WorkbenchInboxMode>(() => (
+    zone === "projects" ? "projects" : "agents"
+  ));
+  const [workbenchInboxTarget, setWorkbenchInboxTarget] = useState<WorkbenchInboxTarget | null>(null);
   const [upd, setUpd] = useState("");
   const [updateTone, setUpdateTone] = useState<"neutral" | "success" | "warning" | "error">("neutral");
   const [updating, setUpdating] = useState(false);
@@ -3850,14 +3861,6 @@ export default function App() {
     return startNewAssistantConversation();
   };
 
-  const toggleGroup = (cwd: string) => {
-    setCollapsed((c) => {
-      const next = { ...c, [cwd]: !c[cwd] };
-      localStorage.setItem("hara.collapsed", JSON.stringify(next));
-      return next;
-    });
-  };
-
   const attachmentSequenceRef = useRef(0);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [composerDragActive, setComposerDragActive] = useState(false);
@@ -4974,17 +4977,15 @@ export default function App() {
     );
   }
 
-  const manualUnreadIn = (list: SessionInfo[]): boolean => list.some((s) => unread[s.id]);
   const hit = (text: string): boolean => !q || text.toLowerCase().includes(q.toLowerCase());
-  const az = assistantZone(sessions);
-  const azBots = az.bots.filter((s) => hit(s.title) || hit(s.sourceName ?? ""));
-  const azAll = [...(az.current ? [az.current] : []), ...az.bots, ...az.history];
   const engineVersionState = classifyEngineVersion(server?.version ?? "", BUNDLED_ENGINE_VERSION);
   const engineVersionNeedsAttention =
     engineVersionState === "older" || engineVersionState === "incompatible";
-  const groups = projectGroups(sessions, projectListState)
-    .map(([cwd, list]): [string, SessionInfo[]] => [cwd, hit(basename(cwd)) ? list : list.filter((s) => hit(s.title))])
-    .filter(([cwd, list]) => hit(basename(cwd)) || list.length > 0);
+  const allProjectGroups = projectGroups(sessions, projectListState)
+    .map(([cwd, list]): [string, SessionInfo[]] => [cwd, list.filter(isWorkbenchConversation)]);
+  const visibleProjectGroups = allProjectGroups
+    .map(([cwd, list]): [string, SessionInfo[]] => [cwd, hit(cwd) ? list : list.filter((s) => hit(s.title))])
+    .filter(([cwd, list]) => hit(cwd) || list.length > 0);
   const searchBox = (
     <input id="haraSearch" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} spellCheck={false} />
   );
@@ -5011,6 +5012,22 @@ export default function App() {
     scope: "main",
   };
   const availableAgents = agentCatalog?.agents.length ? agentCatalog.agents : [fallbackMainAgent];
+  const visibleAgentInboxEntries = agentInboxEntries(availableAgents, sessions, q);
+  const selectedInboxAgent = workbenchInboxTarget?.kind === "agent"
+    ? availableAgents.find((agent) => agent.ref === workbenchInboxTarget.id)
+    : undefined;
+  const selectedInboxProject = workbenchInboxTarget?.kind === "project"
+    ? allProjectGroups.find(([cwd]) => cwd === workbenchInboxTarget.id)
+    : undefined;
+  const selectedInboxSessions = sortInboxSessions(filterInboxSessions(
+    selectedInboxAgent
+      ? inboxSessionsForAgent(sessions, selectedInboxAgent.ref)
+      : selectedInboxProject?.[1] ?? [],
+    q,
+  ), pins);
+  const selectedInboxSessionTotal = selectedInboxAgent
+    ? inboxSessionsForAgent(sessions, selectedInboxAgent.ref).length
+    : selectedInboxProject?.[1].length ?? 0;
   const activeApproval: ApprovalMode = (activeSession?.approval ?? defaultApproval) || "auto-edit";
   const activeComposerWorkObject = active ? visibleSessionWorkObject(active) : null;
   const items = active ? (transcripts[active] ?? []) : [];
@@ -5090,7 +5107,6 @@ export default function App() {
     })
     .filter((route) => route.models.length > 0);
 
-  const sortPinned = (l: SessionInfo[]): SessionInfo[] => [...l].sort((a, b) => Number(pins.includes(b.id)) - Number(pins.includes(a.id)));
   const commitRename = async () => {
     const c = clientRef.current;
     if (editingId && c && editTitle.trim()) {
@@ -5216,8 +5232,13 @@ export default function App() {
     if (zoneRef.current !== place && !setZone(place)) return;
     await openSession(session.id);
   };
-  const sessRow = (s: SessionInfo) => (
-    <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openWorkbenchSession(s)}>
+  const sessRow = (s: SessionInfo, facet?: WorkbenchInboxTarget["kind"]) => {
+    const agentName = availableAgents.find((agent) => agent.ref === mainAgentRef(s.agentRef))?.name
+      ?? (s.agentRef || "Hara");
+    const workspaceName = s.sourceName
+      || (isAssistantCwd(s.cwd) ? t("workbenchPersonal") : basename(s.cwd));
+    return (
+    <div key={s.id} className={`sess inbox-session ${s.id === active ? "on" : ""}`} onClick={() => void openWorkbenchSession(s)}>
       <div className="title">
         {busy[s.id] && <span className="live">●</span>}
         {unread[s.id] && <span className="dot" />}
@@ -5287,11 +5308,12 @@ export default function App() {
         </span>
       </div>
       <div className="meta">
-        {(availableAgents.find((agent) => agent.ref === mainAgentRef(s.agentRef))?.name ?? (s.agentRef || "Hara"))}
+        {facet === "agent" ? workspaceName : agentName}
         {" · "}{s.model} · {s.updatedAt ? fmtTime(s.updatedAt) : t("newLabel")}
       </div>
     </div>
-  );
+    );
+  };
 
   const conversation = (temperament: "im" | "ide") => (
     <main className={`chat ${temperament}`}>
@@ -5998,12 +6020,6 @@ export default function App() {
     "core.groups": t("zoneGroups"),
     "core.office": t("zoneOffice"),
   };
-  const projectSessions = sessions.filter(
-    (session) =>
-      !isAssistantCwd(session.cwd)
-      && !isAutomated(session)
-      && !isJunkProjectDirectory(session.cwd),
-  );
   const activeOrganizationConnection =
     groupsDirectory.organizations?.connections.find((connection) => connection.active);
   const activeOrganizationDesk = activeOrganizationConnection
@@ -6022,7 +6038,7 @@ export default function App() {
     let badge: AppRailItem["badge"];
     if (
       contribution.id === "core.chat"
-      && (manualUnreadIn(azAll) || manualUnreadIn(projectSessions))
+      && sessions.some((session) => isWorkbenchConversation(session) && unread[session.id])
     ) {
       badge = { kind: "dot" };
     } else if (contribution.target === "auto" && autoUnread > 0) {
@@ -6941,88 +6957,223 @@ export default function App() {
       {(zone === "chat" || zone === "projects") && (
         <aside className="sidebar workbench-sidebar">
           {brandBar}
-          <div className="workbench-sidebar-actions">
-            <button
-              className="new withicon"
-              disabled={assistantCreating}
-              onClick={() => void startNewAssistantConversation()}
-            >
-              <span className="new-conversation-plus" aria-hidden>＋</span>
-              {assistantCreating ? t("startingConversation") : t("newConversation")}
-            </button>
-            <button className="new ghost" onClick={() => void openProject()}>
-              {t("openProject")}
-            </button>
+          {selectedInboxAgent || selectedInboxProject ? (
+            <header className="inbox-detail-header">
+              <button
+                type="button"
+                className="inbox-back"
+                title={t("inboxBack")}
+                aria-label={t("inboxBack")}
+                onClick={() => {
+                  setWorkbenchInboxTarget(null);
+                  setQ("");
+                }}
+              >
+                <IconBack size={18} />
+              </button>
+              {selectedInboxAgent ? (
+                <AgentPortrait
+                  agentRef={selectedInboxAgent.ref}
+                  name={selectedInboxAgent.name}
+                  identity={selectedInboxAgent.identity}
+                  size="medium"
+                  state={inboxSessionsForAgent(sessions, selectedInboxAgent.ref).some((session) => busy[session.id])
+                    ? "working"
+                    : "idle"}
+                />
+              ) : (
+                <span className="inbox-project-avatar" aria-hidden><IconFolder size={21} /></span>
+              )}
+              <span className="inbox-detail-copy">
+                <strong>{selectedInboxAgent
+                  ? agentDisplayName(selectedInboxAgent)
+                  : basename(selectedInboxProject?.[0] ?? "")}</strong>
+                <small>
+                  {selectedInboxAgent ? agentPublicTitle(selectedInboxAgent) : selectedInboxProject?.[0]}
+                  {" · "}{selectedInboxSessionTotal} {t("inboxConversations")}
+                </small>
+              </span>
+            </header>
+          ) : (
+            <div className="workbench-inbox-tabs" role="tablist" aria-label={t("zoneWorkbench")}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={workbenchInboxMode === "agents"}
+                className={workbenchInboxMode === "agents" ? "on" : ""}
+                onClick={() => {
+                  setWorkbenchInboxMode("agents");
+                  setQ("");
+                }}
+              >
+                <IconUsers size={16} /> {t("inboxAgents")}
+                <span>{availableAgents.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={workbenchInboxMode === "projects"}
+                className={workbenchInboxMode === "projects" ? "on" : ""}
+                onClick={() => {
+                  setWorkbenchInboxMode("projects");
+                  setQ("");
+                }}
+              >
+                <IconFolder size={16} /> {t("inboxProjects")}
+                <span>{allProjectGroups.length}</span>
+              </button>
+            </div>
+          )}
+          <div className={`workbench-sidebar-actions ${workbenchInboxMode === "projects" && !selectedInboxAgent ? "is-single" : ""}`}>
+            {selectedInboxAgent ? (
+              <>
+                <button
+                  className="new withicon"
+                  onClick={() => {
+                    const targetCwd = selectedInboxAgent.home
+                      || (home ? `${home}/.hara/workspace` : "")
+                      || server?.cwd
+                      || "";
+                    const targetPlace = sessionPlace({ cwd: targetCwd, source: "interactive" });
+                    if (
+                      targetCwd
+                      && (targetPlace === "chat" || targetPlace === "projects")
+                      && setZone(targetPlace)
+                    ) void newSession(targetCwd, selectedInboxAgent.ref);
+                  }}
+                >
+                  <span className="new-conversation-plus" aria-hidden>＋</span>
+                  {t("newConversation")}
+                </button>
+                <button className="new ghost" onClick={() => void openAgentOffice()}>
+                  {t("inboxOpenOffice")}
+                </button>
+              </>
+            ) : selectedInboxProject ? (
+              <button
+                className="new withicon"
+                onClick={() => {
+                  if (!setZone("projects")) return;
+                  void newSession(selectedInboxProject[0]);
+                }}
+              >
+                <span className="new-conversation-plus" aria-hidden>＋</span>
+                {t("newHere")}
+              </button>
+            ) : workbenchInboxMode === "agents" ? (
+              <>
+                <button
+                  className="new withicon"
+                  disabled={assistantCreating}
+                  onClick={() => void startNewAssistantConversation()}
+                >
+                  <span className="new-conversation-plus" aria-hidden>＋</span>
+                  {assistantCreating ? t("startingConversation") : t("newConversation")}
+                </button>
+                <button className="new ghost" onClick={() => void openAgentOffice()}>
+                  {t("inboxOpenOffice")}
+                </button>
+              </>
+            ) : (
+              <button className="new withicon" onClick={() => void openProject()}>
+                <span className="new-conversation-plus" aria-hidden>＋</span>
+                {t("openProject")}
+              </button>
+            )}
           </div>
           {searchBox}
-          <div className="sessions" key="workbench">
-            <div className="group-h artifact-shelf-head workbench-context-head">
-              {t("workbenchPersonal")}
-              <span className="count">{azAll.length}</span>
-            </div>
-            {/* Personal and project sessions share one index, but selecting a row first enters the
-                row's isolated execution context. They never share active-session authority. */}
-            {az.current && sessRow({ ...az.current, title: t("assistant") })}
-            {azBots.length > 0 && <div className="chandiv">{t("extChannels")}</div>}
-            {azBots.map((s) => (
-              <div key={s.id} className={`sess ${s.id === active ? "on" : ""}`} onClick={() => void openWorkbenchSession(s)}>
-                <div className="title">
-                  {busy[s.id] && <span className="live">●</span>}
-                  {unread[s.id] && <span className="dot" />}
-                  <span className="botlab">{s.sourceName || "bot"}</span> {botTitle(s) || t("untitled")}
+          <div
+            className="sessions workbench-inbox"
+            key={`${workbenchInboxMode}:${workbenchInboxTarget?.kind ?? "root"}:${workbenchInboxTarget?.id ?? ""}`}
+            aria-label={workbenchInboxMode === "agents" ? t("inboxAgentDirectory") : t("inboxProjectDirectory")}
+          >
+            {selectedInboxAgent || selectedInboxProject ? (
+              selectedInboxSessions.length ? selectedInboxSessions.map((session) => (
+                sessRow(session, selectedInboxAgent ? "agent" : "project")
+              )) : (
+                <div className="inbox-empty">
+                  <span aria-hidden>✦</span>
+                  <strong>{t("inboxNoConversation")}</strong>
+                  <small>{q ? t("inboxNoSearchResults") : t("inboxStartHint")}</small>
                 </div>
-                <div className="meta">{s.updatedAt ? fmtTime(s.updatedAt) : t("newLabel")}</div>
-              </div>
-            ))}
-            {az.history.length > 0 && (
-              <>
-                <div className="group-h" onClick={() => toggleGroup("__history")}>
-                  <span className="caret">{collapsed["__history"] === false ? "▾" : "▸"}</span> {t("history")}
-                  <span className="count">{az.history.length}</span>
-                </div>
-                {collapsed["__history"] === false && az.history.filter((s) => hit(s.title)).map(sessRow)}
-              </>
-            )}
-
-            <div className="group-h artifact-shelf-head workbench-context-head">
-              {t("zoneProjects")}
-              <span className="count">{groups.length}</span>
-            </div>
-            {groups.map(([cwd, list]) => (
-              <div key={cwd}>
-                <div className="group-h" title={cwd} onClick={() => toggleGroup(cwd)}>
-                  <span className="caret">{collapsed[cwd] ? "▸" : "▾"}</span> {basename(cwd)}
-                  <span className="count">{list.length}</span>
-                  {collapsed[cwd] && manualUnreadIn(list) && <span className="dot" />}
+              )
+            ) : workbenchInboxMode === "agents" ? (
+              visibleAgentInboxEntries.length ? visibleAgentInboxEntries.map(({ agent, sessions: agentSessions, latest }) => {
+                const unreadCount = agentSessions.filter((session) => unread[session.id]).length;
+                const isWorking = agentSessions.some((session) => busy[session.id]);
+                return (
                   <button
                     type="button"
-                    className="project-remove"
+                    className={`inbox-contact ${agentSessions.some((session) => session.id === active) ? "is-active" : ""}`}
+                    key={agent.ref}
+                    onClick={() => {
+                      setWorkbenchInboxTarget({ kind: "agent", id: agent.ref });
+                      setQ("");
+                    }}
+                  >
+                    <AgentPortrait
+                      agentRef={agent.ref}
+                      name={agent.name}
+                      identity={agent.identity}
+                      size="medium"
+                      state={isWorking ? "working" : "idle"}
+                    />
+                    <span className="inbox-contact-copy">
+                      <span className="inbox-contact-line">
+                        <strong>{agentDisplayName(agent)}</strong>
+                        <time>{latest?.updatedAt ? fmtTime(latest.updatedAt) : ""}</time>
+                      </span>
+                      <span className="inbox-contact-line preview">
+                        <span>{latest?.title || agentPublicTitle(agent)}</span>
+                        {unreadCount > 0
+                          ? <b className="inbox-unread">{unreadCount}</b>
+                          : agentSessions.length > 0 ? <b>{agentSessions.length}</b> : null}
+                      </span>
+                    </span>
+                  </button>
+                );
+              }) : <div className="inbox-empty"><small>{t("inboxAgentEmptyHint")}</small></div>
+            ) : visibleProjectGroups.length ? visibleProjectGroups.map(([cwd, list]) => {
+              const sorted = sortInboxSessions(list, pins);
+              const latest = sorted[0];
+              const unreadCount = list.filter((session) => unread[session.id]).length;
+              return (
+                <div className="inbox-contact-shell" key={cwd}>
+                  <button
+                    type="button"
+                    className={`inbox-contact is-project ${list.some((session) => session.id === active) ? "is-active" : ""}`}
+                    title={cwd}
+                    onClick={() => {
+                      setWorkbenchInboxTarget({ kind: "project", id: cwd });
+                      setQ("");
+                    }}
+                  >
+                    <span className="inbox-project-avatar" aria-hidden><IconFolder size={21} /></span>
+                    <span className="inbox-contact-copy">
+                      <span className="inbox-contact-line">
+                        <strong>{basename(cwd)}</strong>
+                        <time>{latest?.updatedAt ? fmtTime(latest.updatedAt) : ""}</time>
+                      </span>
+                      <span className="inbox-contact-line preview">
+                        <span>{latest?.title || cwd}</span>
+                        {unreadCount > 0
+                          ? <b className="inbox-unread">{unreadCount}</b>
+                          : <b>{list.length}</b>}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="project-remove inbox-project-remove"
                     title={t("removeProject")}
                     aria-label={`${t("removeProject")}：${basename(cwd)}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      removeProjectFromList(cwd);
-                    }}
+                    onClick={() => removeProjectFromList(cwd)}
                   >
                     <span aria-hidden>×</span>
                   </button>
                 </div>
-                {!collapsed[cwd] && (
-                  <>
-                    {sortPinned(list).map(sessRow)}
-                    <div
-                      className="newhere"
-                      onClick={() => {
-                        if (!setZone("projects")) return;
-                        void newSession(cwd);
-                      }}
-                    >
-                      {t("newHere")}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
+              );
+            }) : <div className="inbox-empty"><small>{t("inboxProjectEmptyHint")}</small></div>}
           </div>
           {footBar}
         </aside>

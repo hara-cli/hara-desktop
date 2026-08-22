@@ -259,8 +259,9 @@ test("Groups is a native, explicit-read work surface with no renderer-owned tran
   );
 });
 
-test("chat exposes a real fresh-conversation action while preserving folded history", () => {
+test("Workbench exposes a real fresh-conversation action through a two-level Agent and project inbox", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const inbox = readFileSync(`${root}/src/workbench-inbox.ts`, "utf8");
 
   assert.match(
     app,
@@ -270,6 +271,13 @@ test("chat exposes a real fresh-conversation action while preserving folded hist
     app,
     /onClick=\{\(\) => void startNewAssistantConversation\(\)\}/,
   );
-  assert.match(app, /az\.history\.length > 0/);
-  assert.match(app, /collapsed\["__history"\] === false/);
+  assert.match(app, /workbenchInboxMode === "agents"/);
+  assert.match(app, /workbenchInboxMode === "projects"/);
+  assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "agent", id: agent\.ref \}\)/);
+  assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "project", id: cwd \}\)/);
+  assert.match(app, /className="inbox-back"/);
+  assert.match(app, /setWorkbenchInboxTarget\(null\)/);
+  assert.match(app, /selectedInboxSessions\.map/);
+  assert.match(inbox, /mainAgentRef\(session\.agentRef\) === agentRef/);
+  assert.doesNotMatch(app, /collapsed\["__history"\]/, "history is no longer a nested third level");
 });
