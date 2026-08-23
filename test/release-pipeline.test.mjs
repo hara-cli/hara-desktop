@@ -26,6 +26,11 @@ import { canUseRosettaSmoke } from "../scripts/sidecar-smoke.mjs";
 import { useForeignMacStaticValidation } from "../scripts/foreign-mac-validation.mjs";
 import { isTransientCodesignTimestampFailure } from "../scripts/codesign-timestamp-retry.mjs";
 import { isTransientGitHubReleaseTransferFailure } from "../scripts/github-release-transfer-retry.mjs";
+import {
+  RELEASE_DOWNLOAD_TIMEOUT_MS,
+  releaseDownloadArguments,
+  runBoundedReleaseDownload,
+} from "../scripts/github-release-download.mjs";
 import { reconcileReleaseDownloadCache } from "../scripts/release-download-cache.mjs";
 import { releaseAssetMatches } from "../scripts/release-asset-digest-match.mjs";
 import {
@@ -562,7 +567,10 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   assert.match(script, /release_upload_signed_asset "\$asset_path"/);
   assert.match(script, /release_remote_asset_matches "\$asset_path"/);
   assert.match(script, /release-asset-digest-match\.mjs "\$metadata" "\$source"/);
-  assert.match(script, /--pattern "\$asset_name" --dir "\$stage"/);
+  assert.match(
+    script,
+    /release_gh_download "\$TAG" "\$REPO" "\$stage"[\s\S]*?--pattern "\$asset_name"/,
+  );
   assert.match(script, /cmp -s "\$source" "\$stage\/\$asset_name"/);
   assert.match(script, /ReleaseAsset\.name already exists/);
   assert.match(script, /retrying only this --clobber asset/);
@@ -643,6 +651,65 @@ test("release download cache retains only exact GitHub-declared bytes", () => {
     assert.deepEqual(
       reconcileReleaseDownloadCache(directory, metadata, { complete: true }),
       { expected: 2, retained: 2 },
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("release downloads enforce a hard process deadline without accepting option injection", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "hara-bounded-release-download-"));
+  let observedCommand;
+  let observedArguments;
+  let observedSignal;
+  try {
+    const result = await runBoundedReleaseDownload(
+      {
+        tag: "v1.2.3",
+        repository: "hara-cli/hara-desktop",
+        directory,
+        extraArguments: ["--skip-existing"],
+      },
+      {
+        timeoutMs: 5,
+        execute(command, arguments_) {
+          observedCommand = command;
+          observedArguments = arguments_;
+          const listeners = new Map();
+          return {
+            once(event, listener) {
+              listeners.set(event, listener);
+            },
+            kill(signal) {
+              observedSignal = signal;
+              queueMicrotask(() => listeners.get("close")?.(null, signal));
+              return true;
+            },
+          };
+        },
+      },
+    );
+    assert.equal(result.timedOut, true);
+    assert.equal(observedCommand, "gh");
+    assert.equal(observedSignal, "SIGKILL");
+    assert.deepEqual(observedArguments, [
+      "release",
+      "download",
+      "v1.2.3",
+      "-R",
+      "hara-cli/hara-desktop",
+      "--dir",
+      directory,
+      "--skip-existing",
+    ]);
+    assert.equal(RELEASE_DOWNLOAD_TIMEOUT_MS, 600_000);
+    assert.throws(
+      () =>
+        releaseDownloadArguments("v1.2.3", "hara-cli/hara-desktop", directory, [
+          "--pattern",
+          "--delete-release",
+        ]),
+      /unsupported options/,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

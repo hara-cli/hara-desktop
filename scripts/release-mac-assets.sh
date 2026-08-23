@@ -43,6 +43,9 @@ esac
 release_gh() {
   GH_TOKEN="$RELEASE_GH_TOKEN" command gh "$@"
 }
+release_gh_download() {
+  GH_TOKEN="$RELEASE_GH_TOKEN" node scripts/github-release-download.mjs "$@"
+}
 release_view_with_retry() {
   local attempt output log
   for ((attempt = 1; attempt <= RELEASE_TRANSFER_ATTEMPTS; attempt++)); do
@@ -139,7 +142,7 @@ release_download_all() {
       metadata_next="$(mktemp "$WORK/release-assets-next.XXXXXX")" &&
       chmod 600 "$metadata_next" &&
       node scripts/release-download-cache.mjs "$metadata" "$stage" >>"$log" 2>&1 &&
-      release_gh release download "$TAG" -R "$REPO" --dir "$stage" --skip-existing >>"$log" 2>&1 &&
+      release_gh_download "$TAG" "$REPO" "$stage" --skip-existing >>"$log" 2>&1 &&
       node scripts/release-download-cache.mjs "$metadata" "$stage" --complete >>"$log" 2>&1; then
       cat "$log"
       rm -rf "$target"
@@ -198,8 +201,8 @@ release_remote_asset_matches() {
       rm -f "$probe_log" "$metadata"
       return 0
     fi
-    if release_gh release download "$TAG" -R "$REPO" \
-      --pattern "$asset_name" --dir "$stage" >>"$probe_log" 2>&1 &&
+    if release_gh_download "$TAG" "$REPO" "$stage" \
+      --pattern "$asset_name" >>"$probe_log" 2>&1 &&
       [ -f "$stage/$asset_name" ] &&
       cmp -s "$source" "$stage/$asset_name"; then
       cat "$probe_log"

@@ -559,7 +559,8 @@ jobs:
           set -euo pipefail
           VERIFY_DIR="$RUNNER_TEMP/remote-release-assets"
           mkdir -p "$VERIFY_DIR"
-          gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --dir "$VERIFY_DIR"
+          node scripts/github-release-download.mjs \
+            "$RELEASE_TAG" "$GITHUB_REPOSITORY" "$VERIFY_DIR"
       - name: Revalidate downloaded draft without a release token
         shell: bash
         run: |
