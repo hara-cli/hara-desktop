@@ -1,0 +1,135 @@
+.space-switcher {
+  position: relative;
+  min-width: 0;
+}
+
+.space-switcher-trigger {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg2) 88%, var(--accent) 3%);
+  color: var(--fg);
+  text-align: left;
+}
+
+.space-switcher-trigger:hover,
+.space-switcher-trigger[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  background: color-mix(in srgb, var(--bg3) 90%, var(--accent) 5%);
+}
+
+.space-mark {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 9px 9px 7px 10px;
+  font: 800 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--line) 65%, transparent);
+}
+
+.space-mark.is-personal {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 11%, var(--bg));
+}
+
+.space-mark.is-organization {
+  color: #2f8b83;
+  background: color-mix(in srgb, #4ea99f 13%, var(--bg));
+}
+
+.space-switcher-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.space-switcher-copy small,
+.space-switcher-menu small {
+  color: var(--dim);
+  font-size: 10px;
+}
+
+.space-switcher-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-switcher-chevron {
+  color: var(--dim);
+  text-align: center;
+}
+
+.space-switcher-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 7px);
+  left: 0;
+  width: min(322px, calc(100vw - 88px));
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg2) 96%, transparent);
+  box-shadow: 0 18px 55px rgb(0 0 0 / 24%);
+  backdrop-filter: blur(18px);
+}
+
+.space-switcher-menu header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 7px 8px;
+}
+
+.space-switcher-menu > button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+}
+
+.space-switcher-menu > button:hover,
+.space-switcher-menu > button.is-active {
+  background: var(--bg3);
+}
+
+.space-switcher-menu > button > span:nth-child(2) {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.space-switcher-menu > button > span:nth-child(2) strong,
+.space-switcher-menu > button > span:nth-child(2) small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-switcher-menu > button > b {
+  color: var(--accent);
+}
+
+.space-switcher-menu > p {
+  margin: 7px 6px 3px;
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.45;
+}

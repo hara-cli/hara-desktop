@@ -53,6 +53,7 @@ interface WorkforceSurfaceProps {
   onReturnToChat: () => void;
   onOfficeChange: (officeId: string) => void;
   onChatWithAgent: (agentRef: string) => void;
+  onEditAgent?: (agentRef: string) => void;
 }
 
 const SEATS = [
@@ -136,6 +137,7 @@ export default function WorkforceSurface({
   onReturnToChat,
   onOfficeChange,
   onChatWithAgent,
+  onEditAgent,
 }: WorkforceSurfaceProps) {
   const [view, setView] = useState<WorkforceRendererId>(AGENT_OFFICE_CAPABILITY.defaultRenderer);
   const [camera, setCamera] = useState<"overview" | "focus">("overview");
@@ -433,9 +435,16 @@ export default function WorkforceSurface({
             <div><dt>{copy.capability}</dt><dd>{copy.capabilities[selected.capability]}</dd></div>
             <div><dt>{copy.updated}</dt><dd>{timeLabel(selected.updatedAt, locale)}</dd></div>
           </dl>
-          <button type="button" onClick={() => selected.agentRef ? onChatWithAgent(selected.agentRef) : onReturnToChat()}>
-            {selected.agentRef ? copy.chatWithAgent : copy.returnToChat}
-          </button>
+          <div className="workforce-inspector-actions">
+            {selected.agentRef && onEditAgent ? (
+              <button type="button" className="is-profile" onClick={() => onEditAgent(selected.agentRef!)}>
+                {locale === "zh" ? "名片" : "Profile"}
+              </button>
+            ) : null}
+            <button type="button" onClick={() => selected.agentRef ? onChatWithAgent(selected.agentRef) : onReturnToChat()}>
+              {selected.agentRef ? copy.chatWithAgent : copy.returnToChat}
+            </button>
+          </div>
         </footer>
       )}
       <p className="workforce-privacy"><span aria-hidden>◇</span>{copy.privacy}</p>

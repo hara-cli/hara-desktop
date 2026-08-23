@@ -1,0 +1,194 @@
+.agent-profile-overlay {
+  position: fixed;
+  z-index: 140;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgb(12 10 9 / 62%);
+  backdrop-filter: blur(10px);
+}
+
+.agent-profile-editor {
+  width: min(680px, calc(100vw - 42px));
+  max-height: calc(100vh - 56px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 18px 18px 15px 20px;
+  background: var(--bg2);
+  color: var(--fg);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 42%), 5px 6px 0 color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+.agent-profile-editor > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, var(--bg2)), var(--bg2) 58%);
+}
+
+.agent-profile-preview {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.agent-profile-preview > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-profile-preview small,
+.agent-profile-avatar-field small {
+  color: var(--dim);
+  font-size: 10px;
+}
+
+.agent-profile-preview strong {
+  font-size: 18px;
+}
+
+.agent-profile-preview em {
+  max-width: 420px;
+  overflow: hidden;
+  color: var(--dim);
+  font: normal 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-profile-close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font-size: 24px;
+}
+
+.agent-profile-governed {
+  display: flex;
+  gap: 11px;
+  margin: 16px 22px 0;
+  padding: 12px 13px;
+  border: 1px solid color-mix(in srgb, #4ea99f 40%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, #4ea99f 9%, var(--bg));
+}
+
+.agent-profile-governed > b {
+  color: #4ea99f;
+  font-size: 20px;
+}
+
+.agent-profile-governed > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.agent-profile-governed small {
+  color: var(--dim);
+  line-height: 1.45;
+}
+
+.agent-profile-form {
+  padding: 18px 22px 8px;
+}
+
+.agent-profile-form[aria-disabled="true"] {
+  opacity: .64;
+}
+
+.agent-profile-avatar-field {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 17px;
+}
+
+.agent-profile-avatar-field > span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.agent-profile-avatar-field small {
+  flex-basis: 100%;
+}
+
+.agent-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.agent-profile-grid label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.agent-profile-grid label.is-wide {
+  grid-column: 1 / -1;
+}
+
+.agent-profile-grid input,
+.agent-profile-grid textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.agent-profile-grid input:focus,
+.agent-profile-grid textarea:focus {
+  border-color: var(--accent);
+}
+
+.agent-profile-color {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.agent-profile-color input[type="color"] {
+  height: 36px;
+  padding: 4px;
+}
+
+.agent-profile-error {
+  margin: 4px 22px 0;
+  color: #dc6258;
+  font-size: 11px;
+}
+
+.agent-profile-editor > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 15px 22px 20px;
+}
+.agent-profile-footer-spacer { flex: 1; }
+.agent-profile-editor > footer .agent-profile-dismiss { border-color: color-mix(in srgb, #d2574d 52%, var(--line)); background: transparent; color: #d96a61; }
+
+@media (max-width: 680px) {
+  .agent-profile-overlay { padding: 12px; }
+  .agent-profile-editor { width: calc(100vw - 24px); max-height: calc(100vh - 24px); }
+  .agent-profile-grid { grid-template-columns: 1fr; }
+  .agent-profile-grid label.is-wide { grid-column: auto; }
+}

@@ -42,7 +42,8 @@ interface ProviderSettingsProps {
   client: HaraClient | null;
   cwd?: string;
   locale: Locale;
-  onSaved: (state: ProviderSettingsState) => void;
+  onSaved: (state: ProviderSettingsState) => void | Promise<void>;
+  runRouteMutation?: <T>(mutation: () => Promise<T>) => Promise<T>;
   embedded?: boolean;
   scope?: "global" | "workspace";
   engineNeedsRestart?: boolean;
@@ -496,6 +497,7 @@ export function ProviderSettings({
   cwd,
   locale,
   onSaved,
+  runRouteMutation,
   embedded = false,
   scope = "global",
   engineNeedsRestart = false,
@@ -503,6 +505,8 @@ export function ProviderSettings({
   onRestartEngine,
 }: ProviderSettingsProps) {
   const copy = words[locale];
+  const mutateRoute = <T,>(mutation: () => Promise<T>): Promise<T> =>
+    runRouteMutation ? runRouteMutation(mutation) : mutation();
   const [state, setState] = useState<ProviderSettingsState | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationConnectionsState | null>(null);
   const [organizationsUnsupported, setOrganizationsUnsupported] = useState(false);
@@ -812,7 +816,7 @@ export function ProviderSettings({
     setPhase("saving");
     clearFeedback();
     try {
-      const next = await client.saveProviderSettings(providerInput(), cwd);
+      const next = await mutateRoute(() => client.saveProviderSettings(providerInput(), cwd));
       setState(next);
       setDraft(draftFromState(next));
       setApiKey("");
@@ -820,7 +824,7 @@ export function ProviderSettings({
       setVerifiedCustomModels([]);
       setView({ kind: "provider", id: next.current.provider });
       setMessage(copy.nextSession);
-      onSaved(next);
+      await onSaved(next);
       if (organizations) {
         setOrganizations({
           ...organizations,
@@ -882,13 +886,13 @@ export function ProviderSettings({
     setPersonalBusy("create");
     clearFeedback();
     try {
-      const next = await client.createProviderConnection(input, cwd);
+      const next = await mutateRoute(() => client.createProviderConnection(input, cwd));
       setState(next);
       setView({ kind: "connection", id: input.id });
       setPersonalDraft({ id: "", label: "", provider: "", model: "", baseURL: "" });
       setModels([]);
       setVerifiedCustomModels([]);
-      onSaved(next);
+      await onSaved(next);
       if (input.activate && organizations) {
         setOrganizations({
           ...organizations,
@@ -926,7 +930,7 @@ export function ProviderSettings({
     setPersonalBusy(`use:${connection.id}`);
     clearFeedback();
     try {
-      const next = await client.useProviderConnection(connection.id, cwd);
+      const next = await mutateRoute(() => client.useProviderConnection(connection.id, cwd));
       setState(next);
       setView(viewForPersonalConnection(connection, next.current.provider));
       if (organizations) {
@@ -936,7 +940,7 @@ export function ProviderSettings({
           connections: organizations.connections.map((candidate) => ({ ...candidate, active: false })),
         });
       }
-      onSaved(next);
+      await onSaved(next);
       setMessage(copy.personalSwitched);
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
@@ -950,7 +954,7 @@ export function ProviderSettings({
     setPersonalBusy(`remove:${connection.id}`);
     clearFeedback();
     try {
-      const next = await client.removeProviderConnection(connection.id, cwd);
+      const next = await mutateRoute(() => client.removeProviderConnection(connection.id, cwd));
       setState(next);
       const nextActive = next.connections?.find(
         (candidate) => candidate.active || candidate.id === next.current.profileId,
@@ -958,7 +962,7 @@ export function ProviderSettings({
       setView(viewForPersonalConnection(nextActive, next.current.provider));
       setModels([]);
       setVerifiedCustomModels([]);
-      onSaved(next);
+      await onSaved(next);
       setMessage(copy.personalRemoved);
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
@@ -972,11 +976,11 @@ export function ProviderSettings({
     const next = await client.listProviderSettings(cwd);
     if (!next) return null;
     setState(next);
-    onSaved(next);
+    await onSaved(next);
     return next;
   };
 
-  const applyProjectUnpin = (result: ProjectProfileUnpinResult) => {
+  const applyProjectUnpin = async (result: ProjectProfileUnpinResult) => {
     const next = result.providers;
     const nextOrganization = result.organizations.connections.find(
       (connection) => connection.active || connection.id === next.current.profileId,
@@ -994,7 +998,7 @@ export function ProviderSettings({
     setView(nextOrganization
       ? { kind: "organization", id: nextOrganization.id }
       : viewForPersonalConnection(nextPersonal, next.current.provider));
-    onSaved(next);
+    await onSaved(next);
   };
 
   const unpinProject = async () => {
@@ -1002,12 +1006,12 @@ export function ProviderSettings({
     setOrganizationBusy("unpin-project");
     clearFeedback();
     try {
-      const result = await client.unpinProjectProfile(cwd);
+      const result = await mutateRoute(() => client.unpinProjectProfile(cwd));
       if (!result) throw new Error(copy.unpinUnavailable);
       if (!result.removed && result.providers.current.profileSource === "pin") {
         throw new Error(copy.projectUnpinFailed);
       }
-      applyProjectUnpin(result);
+      await applyProjectUnpin(result);
       setMessage(result.providers.current.profileSource === "pin" ? copy.projectStillPinned : copy.projectUnpinned);
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
@@ -1021,7 +1025,7 @@ export function ProviderSettings({
     setOrganizationBusy(`use:${connection.id}`);
     clearFeedback();
     try {
-      const nextOrganizations = await client.useOrganizationConnection(connection.id, cwd);
+      const nextOrganizations = await mutateRoute(() => client.useOrganizationConnection(connection.id, cwd));
       setOrganizations(nextOrganizations);
       await refreshProviderRoute();
       setView({ kind: "organization", id: connection.id });
@@ -1052,7 +1056,7 @@ export function ProviderSettings({
     setOrganizationBusy(`remove:${connection.id}`);
     clearFeedback();
     try {
-      const nextOrganizations = await client.removeOrganizationConnection(connection.id, cwd);
+      const nextOrganizations = await mutateRoute(() => client.removeOrganizationConnection(connection.id, cwd));
       setOrganizations(nextOrganizations);
       setChecks((current) => {
         const { [connection.id]: _removed, ...rest } = current;
@@ -1087,13 +1091,13 @@ export function ProviderSettings({
       const existing = organizations?.connections.find((connection) => connection.id === id);
       const activate = !organizations?.switchLocked
         && (editingOrganization ? existing?.active === true : activateRequested);
-      const nextOrganizations = await client.enrollOrganizationConnection({
-        id,
-        label: organizationDraft.label.trim(),
-        gatewayUrl: organizationDraft.gatewayUrl.trim(),
-        code: transientCode,
-        activate,
-      }, cwd);
+      const nextOrganizations = await mutateRoute(() => client.enrollOrganizationConnection({
+          id,
+          label: organizationDraft.label.trim(),
+          gatewayUrl: organizationDraft.gatewayUrl.trim(),
+          code: transientCode,
+          activate,
+        }, cwd));
       setOrganizations(nextOrganizations);
       await refreshProviderRoute();
       setOrganizationDraft({ id: "", label: "", gatewayUrl: "" });

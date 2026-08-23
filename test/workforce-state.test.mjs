@@ -135,7 +135,7 @@ test("Agent Office combines public social identities, direct chat, and comic wor
   assert.match(surface, /COMIC OFFICE/);
   assert.match(surface, /selected\.identity\?\.traits/);
   assert.match(surface, /if \(actor\?\.agentRef\) onChatWithAgent\(actor\.agentRef\)/);
-  assert.match(app, /latestAgentSession\(sessionsRef\.current, cwd, agentRef\)/);
+  assert.match(app, /sessionsRef\.current\.filter\(\(session\) => sessionSpaceId\(session, directory\) === activeSpace\)[\s\S]*?cwd,[\s\S]*?agentRef/);
   assert.match(app, /const targetCwd = agent\?\.home \|\| activeSession\?\.cwd/);
   assert.match(app, /openAgentConversation\(agentRef, targetAgent\?\.home \|\| workforceOffice\.cwd, true\)/);
   assert.match(picker, /Every Agent keeps separate history/);

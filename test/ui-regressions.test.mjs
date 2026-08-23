@@ -144,7 +144,13 @@ test("external and not-yet-classified sessions never duplicate channel system no
     /!s \|\| !isAutomated\(s\)/,
     "an unknown gateway session must fail closed instead of being mistaken for a local manual task",
   );
-  assert.match(notificationBranch, /sendNotification\(\{ title: s\.title \|\| "hara"/);
+  assert.match(notificationBranch, /sendNotification\(crossSpace[\s\S]*title: `Hara · \$\{spaceName\}`/);
+  assert.match(notificationBranch, /另一个空间中的任务已完成。切换到该空间后查看结果。/);
+  assert.match(
+    notificationBranch,
+    /crossSpace[\s\S]*\? \{[\s\S]*切换到该空间后查看结果[\s\S]*: \{ title: s\.title \|\| "Hara", body: \(e\.reply/,
+    "only the active Space may put reply text in a system notification",
+  );
 });
 
 test("automation is one guided control console with local-only status refresh", () => {
@@ -674,8 +680,26 @@ test("provider settings keep credentials transient and support local no-key pres
   for (const method of ["create", "test", "use", "remove"]) {
     assert.match(client, new RegExp(`settings\\.providers\\.connections\\.${method}`));
   }
-  assert.match(providerSettings, /const transientKey = input\.apiKey \?\? "";[\s\S]*setApiKey\(""\);[\s\S]*await client\.createProviderConnection/,
+  assert.match(providerSettings, /const transientKey = input\.apiKey \?\? "";[\s\S]*setApiKey\(""\);[\s\S]*await mutateRoute\(\(\) => client\.createProviderConnection/,
     "a newly saved connection removes its credential from renderer state before the RPC");
+  assert.match(providerSettings, /runRouteMutation\?: <T>/,
+    "route-changing provider actions are owned by the App-level Space transaction");
+  for (const routeMutation of [
+    "saveProviderSettings",
+    "createProviderConnection",
+    "useProviderConnection",
+    "removeProviderConnection",
+    "unpinProjectProfile",
+    "useOrganizationConnection",
+    "removeOrganizationConnection",
+    "enrollOrganizationConnection",
+  ]) {
+    assert.match(
+      providerSettings,
+      new RegExp(`mutateRoute\\(\\(\\) => client\\.${routeMutation}`),
+      `${routeMutation} must run under the App-owned Space transaction`,
+    );
+  }
   assert.match(providerSettings, /selectedConnection\.keyHint/, "saved connections expose only the engine's redacted key hint");
   assert.match(providerSettings, /client\.testProviderConnection/, "each named connection can be checked independently");
   assert.match(providerSettings, /client\.useProviderConnection/, "named personal routes can become the new-session default");
@@ -707,6 +731,75 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(app, /engineNeedsRestart=\{engineVersionNeedsAttention\}/, "the provider page should receive the running-engine upgrade state");
   assert.match(app, /cwd=\{activeSession\?\.cwd \?\? server\?\.cwd\}/, "Settings resolves the same workspace cwd used by new sessions");
   assert.match(app, /scope=\{activeSession \? "workspace" : "global"\}/);
+});
+
+test("Space changes and reconnects clear tenant-bound surfaces before authoritative reload", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const clearStart = app.indexOf("const clearEngineBoundSurfaces");
+  const connectStart = app.indexOf("const connect = useCallback");
+  const switchStart = app.indexOf("const switchSpace = async");
+  const providerMutationStart = app.indexOf("const runProviderRouteMutation");
+  assert.ok(clearStart >= 0 && connectStart > clearStart && switchStart > connectStart && providerMutationStart > switchStart);
+
+  const clearSource = app.slice(clearStart, connectStart);
+  for (const sensitiveReset of [
+    "activeRef.current = null",
+    "sessionsRef.current = []",
+    "transcriptsRef.current = {}",
+    "setTranscripts({})",
+    "setAgentCatalog(null)",
+    "setAuto(null)",
+    "setArtifacts(null)",
+  ]) assert.ok(clearSource.includes(sensitiveReset), `missing reconnect reset: ${sensitiveReset}`);
+
+  const connectSource = app.slice(connectStart, switchStart);
+  assert.match(connectSource, /clearEngineBoundSurfaces\(\);[\s\S]*previous\?\.close\(\)/);
+  assert.match(connectSource, /c\.onClose = \(\) => \{[\s\S]*clearEngineBoundSurfaces\(\)/);
+  assert.match(app, /if \(session && sessionSpaceId\(session, spaceDirectory\) === spaceDirectory\.activeId\) return;[\s\S]*activeRef\.current = null;[\s\S]*setActive\(null\)/);
+
+  const providerMutationSource = app.slice(providerMutationStart, app.indexOf("/** Open an automated run", providerMutationStart));
+  assert.match(providerMutationSource, /clearEngineBoundSurfaces\(\);[\s\S]*value = await mutation\(\)/,
+    "provider activation clears the old tenant surface before the engine route changes");
+  assert.match(providerMutationSource, /client\.listSpaces\(cwd\)[\s\S]*switchSpaceRef\.current\(directory\.activeId, \{[\s\S]*activeDirectory: directory/,
+    "provider activation commits only an authoritative Space snapshot");
+  assert.match(app, /spaceDirectoryRef\.current\?\.activeId !== "personal"[\s\S]*setAuto\(null\)/);
+  assert.match(app, /spaceDirectoryRef\.current\?\.activeId !== "personal"[\s\S]*setArtifacts\(null\)/);
+  assert.match(app, /activeSpaceId !== "personal"[\s\S]*localResourceIsolationNotice/,
+    "machine-global automations and deliverables stay hidden in company Spaces");
+});
+
+test("company conversations cannot read or open machine-global Artifact surfaces", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+
+  assert.match(
+    app,
+    /const personalLocalSurfaceSession[\s\S]*directory\.activeId !== "personal"[\s\S]*sessionSpaceId\(session, directory\) === "personal"/,
+    "local Artifact access requires both an active Personal Space and a Personal-owned session",
+  );
+  assert.match(
+    app,
+    /if \(personalLocalSurfaceSession\(sessionId\)\) \{[\s\S]*presentationSurfaceTurnsRef\.current\[sessionId\]/,
+    "a company send never registers local Presentation recovery",
+  );
+  assert.match(
+    app,
+    /const artifactScope = e\.resource\?\.type === "artifact"[\s\S]*capturePersonalLocalSurfaceScope\(e\.sessionId\)[\s\S]*if \(e\.resource\?\.type === "artifact" && !artifactScope\)/,
+    "company Artifact surface events fail closed before any global Artifact RPC",
+  );
+  assert.ok(
+    app.match(/personalLocalSurfaceScopeIsCurrent\(artifactScope\)/g)?.length >= 3,
+    "late Artifact success, error, and cleanup paths all recheck their Personal session scope",
+  );
+  assert.match(
+    app,
+    /const recoverPresentationSurface[\s\S]*capturePersonalLocalSurfaceScope\(sessionId\)[\s\S]*listArtifacts\(\)[\s\S]*personalLocalSurfaceScopeIsCurrent\(recoveryScope\)/,
+    "compatibility recovery is tenant-checked before and after its asynchronous global read",
+  );
+  assert.match(
+    app,
+    /const next = await client\.listArtifacts\(\);\s+if \(clientRef\.current !== client \|\| spaceDirectoryRef\.current\?\.activeId !== "personal"\) return;/,
+    "a late Office refresh cannot repopulate company UI after a Space switch",
+  );
 });
 
 test("bot settings show redacted live gateway health without model polling", () => {
@@ -753,7 +846,7 @@ test("the model switchboard uses user-added enterprise connections instead of a 
   assert.doesNotMatch(providers, /localStorage\.(setItem|getItem)/);
   assert.match(
     providers,
-    /const transientCode = registrationCode\.trim\(\);[\s\S]*setRegistrationCode\(""\);[\s\S]*await client\.enrollOrganizationConnection/,
+    /const transientCode = registrationCode\.trim\(\);[\s\S]*setRegistrationCode\(""\);[\s\S]*await mutateRoute\(\(\) => client\.enrollOrganizationConnection/,
     "the one-time registration code leaves renderer state before the network request",
   );
   assert.match(providers, /No enterprise is preconfigured|没有预置任何企业/);
@@ -842,6 +935,42 @@ test("the chat model picker explicitly copies context back to a named personal c
   assert.match(app, /个人直连/);
   assert.match(app, /setProviderRoutes\(next\)/, "settings changes refresh the in-composer route catalog immediately");
   assert.match(css, /\.model-route-group\.personal/);
+});
+
+test("the model picker never offers or submits a conversation transfer across Spaces", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+
+  assert.match(
+    app,
+    /const sourceSpaceId = sessionSpaceId\(sourceSession, spaceDirectoryRef\.current\);[\s\S]*const targetSpaceId = organizationConnectionSpaceId\(connection\);[\s\S]*sourceSpaceId !== targetSpaceId/,
+    "organization transfers require the source and target connection to resolve to the same company Space",
+  );
+  assert.match(
+    app,
+    /sessionSpaceId\(sourceSession, spaceDirectoryRef\.current\) !== "personal"[\s\S]*公司会话不能复制到个人空间/,
+    "a company transcript cannot be copied into Personal even after user confirmation",
+  );
+  assert.match(
+    app,
+    /visiblePersonalConnectionRoutes = \(activeSpaceId === "personal"/,
+    "personal connections disappear from a company model picker",
+  );
+  assert.match(
+    app,
+    /visibleOrganizationModelRoutes[\s\S]*organizationConnectionSpaceId\(connection\) === activeSpaceId/,
+    "only connections belonging to the active company Space are offered",
+  );
+  assert.match(
+    app,
+    /sessionSpaceId\(session, spaceDirectory\) === spaceDirectory\.activeId[\s\S]*setActive\(null\)/,
+    "a Space transition clears any still-open transcript owned by another Space",
+  );
+  assert.match(
+    app,
+    /const wrongSpace = \(binding:[\s\S]*sessionSpaceId\(binding, directory\) !== activeSpaceId[\s\S]*该对话属于另一个空间[\s\S]*if \(session && wrongSpace\(session\)\)/,
+    "direct notification/session opens fail closed until their owning Space is active",
+  );
+  assert.match(app, /preflightReplay = await c\.readSession\(id\)[\s\S]*wrongSpace\(preflightReplay\)/);
 });
 
 test("an unavailable pinned conversation falls back to local read-only history and offers an explicit route transfer", () => {
@@ -1150,7 +1279,7 @@ test("switching places cannot reuse a conversation from the wrong place", () => 
   assert.match(app, /sessionPlace\(candidate\) === z/);
   assert.match(
     app,
-    /setActive\(candidate && sessionPlace\(candidate\) === z \? candidate\.id : null\)/,
+    /const allowed = candidate[\s\S]*sessionPlace\(candidate\) === z[\s\S]*sessionSpaceId\(candidate, spaceDirectoryRef\.current\) === activeSpaceId[\s\S]*setActive\(allowed \? candidate\.id : null\)/,
     "each conversation place restores only a session that belongs to that place",
   );
   assert.match(app, /sessionsRef\.current = list\.sessions;\s+setSessions\(list\.sessions\)/, "fork routing sees a refreshed session before changing place");

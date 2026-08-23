@@ -5,6 +5,8 @@ export const OPENED_PROJECTS_STORAGE_KEY = "hara.workspaces";
 export const HIDDEN_PROJECTS_STORAGE_KEY = "hara.hiddenWorkspaces";
 
 export type ProjectListState = {
+  /** Navigation preferences are audience-scoped because paths can reveal company/project identity. */
+  spaceId?: string;
   opened: string[];
   hidden: string[];
 };
@@ -26,10 +28,39 @@ export const parseProjectPaths = (serialized: string | null): string[] => {
 export const projectListStateFromStorage = (
   opened: string | null,
   hidden: string | null,
+  spaceId?: string,
 ): ProjectListState => ({
+  ...(spaceId ? { spaceId } : {}),
   opened: parseProjectPaths(opened),
   hidden: parseProjectPaths(hidden),
 });
+
+export const projectListStorageKey = (base: string, spaceId: string): string =>
+  `${base}.space.${encodeURIComponent(spaceId)}`;
+
+/** Read only the selected Space. Legacy global preferences are migrated as Personal and are never
+ * shown in a company Space. */
+export const projectListStateForSpace = (
+  spaceId: string,
+  read: (key: string) => string | null,
+): ProjectListState => {
+  const opened = read(projectListStorageKey(OPENED_PROJECTS_STORAGE_KEY, spaceId));
+  const hidden = read(projectListStorageKey(HIDDEN_PROJECTS_STORAGE_KEY, spaceId));
+  return projectListStateFromStorage(
+    opened ?? (spaceId === "personal" ? read(OPENED_PROJECTS_STORAGE_KEY) : null),
+    hidden ?? (spaceId === "personal" ? read(HIDDEN_PROJECTS_STORAGE_KEY) : null),
+    spaceId,
+  );
+};
+
+export const persistProjectListState = (
+  state: ProjectListState,
+  spaceId: string,
+  write: (key: string, value: string) => void,
+): void => {
+  write(projectListStorageKey(OPENED_PROJECTS_STORAGE_KEY, spaceId), JSON.stringify(state.opened));
+  write(projectListStorageKey(HIDDEN_PROJECTS_STORAGE_KEY, spaceId), JSON.stringify(state.hidden));
+};
 
 /**
  * Hiding a project only changes Desktop navigation. Its sessions and filesystem directory remain
@@ -43,10 +74,12 @@ export const setProjectVisible = (
   const withoutDirectory = (paths: string[]): string[] => paths.filter((path) => path !== directory);
   return visible
     ? {
+        ...(current.spaceId ? { spaceId: current.spaceId } : {}),
         opened: [...withoutDirectory(current.opened), directory],
         hidden: withoutDirectory(current.hidden),
       }
     : {
+        ...(current.spaceId ? { spaceId: current.spaceId } : {}),
         opened: withoutDirectory(current.opened),
         hidden: [...withoutDirectory(current.hidden), directory],
       };

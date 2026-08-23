@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.103 — 2026-08-23 — Personal/company Spaces and managed Agent profiles
+
+- Add a first-class Space switcher for Personal and multiple companies. A switch now clears and reloads
+  conversations, Agents, projects, provider routes, and other tenant-sensitive surfaces as one transaction;
+  Groups and provider settings can no longer activate another company behind the visible Space header.
+- Add Personal Agent profile editing and a guided hire flow for unique usernames, display names, roles,
+  biographies, traits, emoji or safe avatars, and private work briefs. Personal Agents can be archived through
+  a recoverable dismissal flow, while company-managed identities stay read-only for non-administrators.
+- Keep the message center, Agent picker, and comic Office scoped to the active Space, and bundle Hara CLI
+  `0.152.0` at exact verified commit `7e4f42df200839fd161b08e007345b700133ab7e`. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.102 — 2026-08-23 — Agent and project message center
 
 - Replace the mixed personal/history/project tree with one two-level message center. The root switches

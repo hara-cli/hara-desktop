@@ -249,8 +249,11 @@ test("Groups is a native, explicit-read work surface with no renderer-owned tran
   const selectSource = app.slice(selectStart, readStart);
   assert.match(selectSource, /dispatchGroups\(\{ type: "selectProfile", profileId \}\)/);
   assert.match(selectSource, /groupsSwitchingProfileRef\.current/, "organization switches are serialized");
-  assert.match(selectSource, /await client\.useOrganizationConnection\(profileId, targetCwd\)/);
-  assert.match(selectSource, /await client\.listProviderSettings\(targetCwd\)/);
+  assert.match(selectSource, /organizationConnectionSpaceId\(selected\)/);
+  assert.match(selectSource, /await switchSpaceRef\.current\(targetSpaceId\)/,
+    "Groups delegates every cross-company activation to the global Space transaction");
+  assert.doesNotMatch(selectSource, /useOrganizationConnection/,
+    "Groups cannot bypass the global Space transaction by activating a raw route");
   assert.match(groups, /disabled=\{Boolean\(switchingProfileId\)\}/);
   assert.match(app, /if \(phase !== "ready" \|\| zone !== "groups"\) return;/);
   assert.match(

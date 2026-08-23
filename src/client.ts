@@ -19,6 +19,8 @@ export interface SessionInfo {
   approval?: ApprovalMode;
   /** Identity route persisted by Hara serve. Missing only for older engine/session files. */
   profileId?: string;
+  /** Durable Personal/company audience. Missing only on legacy session files. */
+  spaceId?: string;
   updatedAt: string;
   source?: "interactive" | "gateway" | "cron";
   sourceName?: string;
@@ -40,6 +42,10 @@ export interface AgentInfo {
   project?: string;
   model?: string;
   readOnly?: boolean;
+  spaceId?: string;
+  owner: "personal" | "organization" | "external";
+  allowedActions: Array<"chat" | "edit_profile" | "archive">;
+  revision?: string;
 }
 
 export interface AgentPublicIdentity {
@@ -69,6 +75,27 @@ export interface AgentCatalog {
   agents: AgentInfo[];
   offices: AgentOfficeInfo[];
   currentOfficeId: string;
+}
+
+export interface SpaceInfo {
+  id: string;
+  name: string;
+  kind: "personal" | "organization";
+  profileId: string;
+  /** All known routes in this Space. Older engines omit this migration hint. */
+  profileIds?: string[];
+  active: boolean;
+  tenantId?: string;
+  authoritative: boolean;
+  agentProfilePermission: "edit" | "view";
+}
+
+export interface SpaceDirectory {
+  activeId: string;
+  activeProfileId: string;
+  activeSource: "flag" | "env" | "pin" | "default" | "fallback";
+  switchLocked: boolean;
+  spaces: SpaceInfo[];
 }
 
 export type CronJobStatus = "ok" | "error" | "running" | "timed_out";
@@ -448,7 +475,11 @@ export interface OrganizationServiceSummary {
 
 export interface OrganizationConnection {
   id: string;
+  /** Immutable audience returned by Hara CLI; unlike id, this changes on legacy re-enrollment. */
+  spaceId?: string;
   label: string;
+  tenantId?: string;
+  tenantName?: string;
   active: boolean;
   gatewayUrl: string;
   gatewayHost: string;
@@ -710,6 +741,7 @@ export interface ReadOnlySessionResult {
   cwd: string;
   model: string;
   profileId?: string;
+  spaceId?: string;
   approval?: ApprovalMode;
   agentRef?: string;
   history: ClientHistoryMessage[];
@@ -984,7 +1016,7 @@ export class HaraClient {
     return this.call<{ sessions: SessionInfo[] }>("session.list", cwd ? { cwd } : {});
   }
   createSession(opts?: { cwd?: string; approval?: ApprovalMode; agentRef?: string }) {
-    return this.call<{ sessionId: string; model: string; profileId?: string; approval?: ApprovalMode; agentRef?: string }>("session.create", opts ?? {});
+    return this.call<{ sessionId: string; model: string; profileId?: string; spaceId?: string; approval?: ApprovalMode; agentRef?: string }>("session.create", opts ?? {});
   }
   /** Persistent Agent identities and their project/team offices (feature-detected for compatibility). */
   async listAgents(opts?: { sessionId?: string; cwd?: string }): Promise<AgentCatalog | null> {
@@ -995,6 +1027,39 @@ export class HaraClient {
       if (e?.code === -32601) return null;
       throw e;
     }
+  }
+  async updateAgentProfile(input: {
+    ref: string;
+    expectedRevision: string;
+    profile: Omit<AgentPublicIdentity, "version" | "source">;
+    sessionId?: string;
+    cwd?: string;
+  }): Promise<{ agent?: AgentInfo; catalog: AgentCatalog }> {
+    return this.call("agents.update-profile", input);
+  }
+  createAgent(input: {
+    id: string;
+    description?: string;
+    instructions?: string;
+    profile: Omit<AgentPublicIdentity, "version" | "source">;
+    cwd?: string;
+  }) {
+    return this.call<{ agent?: AgentInfo; catalog: AgentCatalog }>("agents.create", input);
+  }
+  archiveAgent(input: { ref: string; expectedRevision: string; sessionId?: string; cwd?: string }) {
+    return this.call<{ ref: string; archived: true; catalog: AgentCatalog }>("agents.archive", input);
+  }
+  async listSpaces(cwd?: string): Promise<SpaceDirectory | null> {
+    if (this.methods.size > 0 && !this.supports("spaces.list")) return null;
+    try {
+      return await this.call("spaces.list", cwd ? { cwd } : {});
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  useSpace(spaceId: string, cwd?: string) {
+    return this.call<SpaceDirectory>("spaces.use", { spaceId, ...(cwd ? { cwd } : {}) });
   }
   listPlugins() {
     return this.call<{ plugins: PluginInfo[] }>("plugins.list", {});
@@ -1313,6 +1378,7 @@ export class HaraClient {
       sessionId: string;
       model: string;
       profileId?: string;
+      spaceId?: string;
       approval?: ApprovalMode;
       agentRef?: string;
       history: ClientHistoryMessage[];

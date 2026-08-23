@@ -23,6 +23,17 @@ const PALETTES = [
   { accent: "#7f9a45", accentAlt: "#b2c875", skin: "#c98d68", hair: "#34291f", hairAlt: "#6f5942", outfit: "#4d5f2e", paper: "#e8efd6" },
 ] as const;
 
+export const MAX_AGENT_AVATAR_BYTES = 128 * 1024;
+
+function inlineAvatarByteLength(value: string): number | null {
+  const comma = value.indexOf(",");
+  if (comma < 0) return null;
+  const encoded = value.slice(comma + 1);
+  if (!encoded || encoded.length % 4 !== 0) return null;
+  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+  return (encoded.length / 4) * 3 - padding;
+}
+
 export function stableAgentHash(value: string): number {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index++) {
@@ -64,6 +75,9 @@ export function renderableAgentAvatar(identity?: AgentPublicIdentity): string | 
   const avatar = identity?.avatar;
   if (!avatar) return undefined;
   if (/^\/(?:avatars|pets)\/[a-z0-9_./-]+$/i.test(avatar)) return avatar;
-  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(avatar) && avatar.length <= 128 * 1024) return avatar;
+  if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(avatar)) {
+    const bytes = inlineAvatarByteLength(avatar);
+    if (bytes !== null && bytes <= MAX_AGENT_AVATAR_BYTES) return avatar;
+  }
   return undefined;
 }

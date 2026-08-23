@@ -58,6 +58,7 @@ import {
   type AgentCatalog,
   type AgentInfo,
   type AgentOfficeInfo,
+  type SpaceDirectory,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
 import { isImeCompositionKey } from "./ime";
@@ -72,10 +73,9 @@ import {
   type SessionPlaceInput,
 } from "./session-place";
 import {
-  HIDDEN_PROJECTS_STORAGE_KEY,
-  OPENED_PROJECTS_STORAGE_KEY,
+  persistProjectListState,
   projectGroups,
-  projectListStateFromStorage,
+  projectListStateForSpace,
   setProjectVisible,
   type ProjectListState,
 } from "./project-list";
@@ -232,6 +232,10 @@ import {
 import { AGENT_OFFICE_CAPABILITY } from "./preinstalled-capabilities";
 import AgentPicker from "./AgentPicker";
 import { AgentPortrait } from "./AgentPortrait";
+import AgentProfileEditor from "./AgentProfileEditor";
+import HireAgentDialog, { type HireAgentInput } from "./HireAgentDialog";
+import SpaceSwitcher from "./SpaceSwitcher";
+import { organizationConnectionSpaceId, sessionSpaceId } from "./space-directory";
 import { agentDisplayName, agentPublicTitle } from "./agent-visual";
 import { latestAgentSession, mainAgentRef, officeActors } from "./agent-office";
 import {
@@ -829,6 +833,12 @@ export default function App() {
   const [modelInfoScope, setModelInfoScope] = useState<string | null>(null);
   const [agentCatalog, setAgentCatalog] = useState<AgentCatalog | null>(null);
   const [selectedOfficeId, setSelectedOfficeId] = useState<string>("");
+  const [profileAgentRef, setProfileAgentRef] = useState<string | null>(null);
+  const [profileAgentSaving, setProfileAgentSaving] = useState(false);
+  const [profileAgentError, setProfileAgentError] = useState("");
+  const [hireAgentOpen, setHireAgentOpen] = useState(false);
+  const [hireAgentSaving, setHireAgentSaving] = useState(false);
+  const [hireAgentError, setHireAgentError] = useState("");
   const agentCatalogRequestRef = useRef(0);
   const refreshAgentCatalog = useCallback(async (opts?: { sessionId?: string; cwd?: string }) => {
     const client = clientRef.current;
@@ -842,6 +852,30 @@ export default function App() {
         ? current
         : next?.currentOfficeId ?? ""
     ));
+    return next;
+  }, []);
+  const openAgentProfile = useCallback((agentRef: string) => {
+    setProfileAgentError("");
+    setProfileAgentRef(agentRef);
+  }, []);
+  const [spaceDirectory, setSpaceDirectory] = useState<SpaceDirectory | null>(null);
+  const spaceDirectoryRef = useRef<SpaceDirectory | null>(null);
+  const spaceDirectoryRequestRef = useRef(0);
+  const spaceSwitchRequestRef = useRef(0);
+  const spaceSwitchInFlightRef = useRef(false);
+  const switchSpaceRef = useRef<(
+    spaceId: string,
+    options?: { force?: boolean; activeDirectory?: SpaceDirectory },
+  ) => Promise<boolean>>(async () => false);
+  const [spaceSwitching, setSpaceSwitching] = useState(false);
+  const refreshSpaceDirectory = useCallback(async (cwd?: string) => {
+    const client = clientRef.current;
+    if (!client) return null;
+    const requestId = ++spaceDirectoryRequestRef.current;
+    const next = await client.listSpaces(cwd);
+    if (requestId !== spaceDirectoryRequestRef.current || clientRef.current !== client) return next;
+    spaceDirectoryRef.current = next;
+    setSpaceDirectory(next);
     return next;
   }, []);
   const [organizationRoutes, setOrganizationRoutes] = useState<OrganizationConnectionsState | null>(null);
@@ -1026,8 +1060,13 @@ export default function App() {
   const refreshAuto = useCallback(async (): Promise<void> => {
     const client = clientRef.current;
     if (!client) return;
+    if (spaceDirectoryRef.current?.activeId !== "personal") {
+      setAuto(null);
+      return;
+    }
     try {
       const next = await client.listAutomation();
+      if (clientRef.current !== client || spaceDirectoryRef.current?.activeId !== "personal") return;
       setAuto(next ?? "old-server");
     } catch {
       // The connection banner owns transport failures. Focus/interval refresh will retry.
@@ -1047,8 +1086,13 @@ export default function App() {
   const refreshArtifacts = useCallback(async (): Promise<void> => {
     const client = clientRef.current;
     if (!client) return;
+    if (spaceDirectoryRef.current?.activeId !== "personal") {
+      setArtifacts(null);
+      return;
+    }
     try {
       const next = await client.listArtifacts();
+      if (clientRef.current !== client || spaceDirectoryRef.current?.activeId !== "personal") return;
       setArtifacts(next ?? "old-server");
     } catch {
       // The main connection banner owns transport failures; a later zone entry retries this read.
@@ -1056,11 +1100,20 @@ export default function App() {
   }, []);
   // 🤖 place: read-only replay of an automated run (never a live conversation — fork to continue)
   const [autoReplay, setAutoReplay] = useState<{ id: string; title: string; sourceName?: string; cwd: string; items: { role: string; text: string }[] } | null>(null);
-  const [projectListState, setProjectListState] = useState<ProjectListState>(() =>
-    projectListStateFromStorage(
-      localStorage.getItem(OPENED_PROJECTS_STORAGE_KEY),
-      localStorage.getItem(HIDDEN_PROJECTS_STORAGE_KEY),
-    ));
+  // Start empty until the authoritative Space directory arrives. This prevents a company launch from
+  // briefly rendering legacy Personal project paths before the active tenant is known.
+  const [projectListState, setProjectListState] = useState<ProjectListState>({
+    spaceId: "",
+    opened: [],
+    hidden: [],
+  });
+  useEffect(() => {
+    const spaceId = spaceDirectory?.activeId;
+    if (!spaceId) return;
+    setProjectListState((current) => current.spaceId === spaceId
+      ? current
+      : projectListStateForSpace(spaceId, (key) => localStorage.getItem(key)));
+  }, [spaceDirectory?.activeId]);
   const openedProjects = projectListState.opened;
   const [locale, setLocale] = useState<Locale>(detectLocale());
   const t = makeT(locale);
@@ -1180,10 +1233,52 @@ export default function App() {
     void invoke("set_badge", { count: n > 0 ? n : null }).catch(() => {});
   }, [unread]);
   const sessionsRef = useRef<SessionInfo[]>([]);
-  const activeByZoneRef = useRef<Record<Extract<SessionPlace, "chat" | "projects">, string | null>>({
-    chat: null,
-    projects: null,
-  });
+  type PersonalLocalSurfaceScope = {
+    client: HaraClient;
+    sessionId: string;
+    cwd: string;
+    profileId: string;
+    persistedSpaceId: string;
+    switchGeneration: number;
+  };
+  const personalLocalSurfaceSession = useCallback((sessionId: string): SessionInfo | null => {
+    const directory = spaceDirectoryRef.current;
+    if (!directory || directory.activeId !== "personal") return null;
+    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+    return session && sessionSpaceId(session, directory) === "personal" ? session : null;
+  }, []);
+  const capturePersonalLocalSurfaceScope = useCallback((sessionId: string): PersonalLocalSurfaceScope | null => {
+    const client = clientRef.current;
+    const session = personalLocalSurfaceSession(sessionId);
+    if (!client?.connected || !session) return null;
+    return {
+      client,
+      sessionId,
+      cwd: session.cwd,
+      profileId: session.profileId ?? "",
+      persistedSpaceId: session.spaceId ?? "",
+      switchGeneration: spaceSwitchRequestRef.current,
+    };
+  }, [personalLocalSurfaceSession]);
+  const personalLocalSurfaceScopeIsCurrent = useCallback((scope: PersonalLocalSurfaceScope): boolean => {
+    const session = personalLocalSurfaceSession(scope.sessionId);
+    return clientRef.current === scope.client
+      && scope.client.connected
+      && spaceSwitchRequestRef.current === scope.switchGeneration
+      && !!session
+      && session.cwd === scope.cwd
+      && (session.profileId ?? "") === scope.profileId
+      && (session.spaceId ?? "") === scope.persistedSpaceId;
+  }, [personalLocalSurfaceSession]);
+  type RememberedSessions = Record<Extract<SessionPlace, "chat" | "projects">, string | null>;
+  const activeByZoneRef = useRef<Record<string, RememberedSessions>>({});
+  const rememberedSessionsForSpace = (spaceId = spaceDirectoryRef.current?.activeId ?? "personal"): RememberedSessions => {
+    const current = activeByZoneRef.current[spaceId];
+    if (current) return current;
+    const created: RememberedSessions = { chat: null, projects: null };
+    activeByZoneRef.current[spaceId] = created;
+    return created;
+  };
   useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
@@ -1192,7 +1287,13 @@ export default function App() {
   }, [plugins]);
   const rememberSession = (id: string, session: SessionPlaceInput) => {
     const place = sessionPlace(session);
-    if (place === "chat" || place === "projects") activeByZoneRef.current[place] = id;
+    if (place === "chat" || place === "projects") {
+      const known = sessionsRef.current.find((candidate) => candidate.id === id);
+      const spaceId = known
+        ? sessionSpaceId(known, spaceDirectoryRef.current)
+        : spaceDirectoryRef.current?.activeId ?? "personal";
+      rememberedSessionsForSpace(spaceId)[place] = id;
+    }
   };
   const rememberSessionApproval = useCallback((sessionId: string, approval?: ApprovalMode) => {
     if (!approval) return;
@@ -1204,12 +1305,18 @@ export default function App() {
   const activateSession = (id: string, hint?: SessionPlaceInput) => {
     const session = hint ?? sessionsRef.current.find((candidate) => candidate.id === id);
     if (session) rememberSession(id, session);
+    activeRef.current = id;
     setActive(id);
   };
   const clearActiveSession = (id: string) => {
-    if (activeByZoneRef.current.chat === id) activeByZoneRef.current.chat = null;
-    if (activeByZoneRef.current.projects === id) activeByZoneRef.current.projects = null;
-    if (active === id) setActive(null);
+    for (const remembered of Object.values(activeByZoneRef.current)) {
+      if (remembered.chat === id) remembered.chat = null;
+      if (remembered.projects === id) remembered.projects = null;
+    }
+    if (activeRef.current === id) {
+      activeRef.current = null;
+      setActive(null);
+    }
   };
   const interruptedSessionsRef = useRef(new Set<string>());
   const openPetSessionRef = useRef<(sessionId: string) => Promise<void>>(async () => {});
@@ -1233,7 +1340,9 @@ export default function App() {
     onOpenActivity: (sessionId) => openPetSessionRef.current(sessionId),
     resolveChatSession: (requestedSessionId) => {
       if (requestedSessionId !== undefined) return requestedSessionId;
-      return assistantZone(sessionsRef.current).current?.id;
+      const directory = spaceDirectoryRef.current;
+      const activeSpace = directory?.activeId ?? "personal";
+      return assistantZone(sessionsRef.current.filter((session) => sessionSpaceId(session, directory) === activeSpace)).current?.id;
     },
     getChatState: (sessionId, petStatus): PetChatState => {
       const target = sessionId;
@@ -1439,7 +1548,8 @@ export default function App() {
     const organizations = groupsDirectory.organizations;
     const selected = organizations?.connections.find((connection) => connection.id === profileId);
     if (!client || !organizations || !selected || groupsSwitchingProfileRef.current) return;
-    if (selected.active) {
+    const targetSpaceId = organizationConnectionSpaceId(selected);
+    if (targetSpaceId === spaceDirectoryRef.current?.activeId) {
       dispatchGroups({ type: "selectProfile", profileId });
       return;
     }
@@ -1451,73 +1561,29 @@ export default function App() {
       );
       return;
     }
-    const requestId = ++groupsActivationRequestRef.current;
     groupsSwitchingProfileRef.current = profileId;
     setGroupsSwitchingProfileId(profileId);
     try {
-      const targetCwd = home ? `${home}/.hara/workspace` : server?.cwd;
-      const next = await client.useOrganizationConnection(profileId, targetCwd);
-      if (
-        requestId !== groupsActivationRequestRef.current
-        || clientRef.current !== client
-      ) return;
-      setGroupsDirectory((current) => ({
-        ...current,
-        phase: "ready",
-        organizations: next,
-      }));
-      setOrganizationRoutes(next);
-      dispatchGroups({
-        type: "directorySynced",
-        profiles: groupsDirectoryProfiles(
-          next.connections,
-          groupsDirectory.desk?.connections ?? [],
-        ),
-        preferredProfileId: profileId,
-      });
-      const providerRoute = await client.listProviderSettings(targetCwd);
-      if (
-        requestId !== groupsActivationRequestRef.current
-        || clientRef.current !== client
-      ) return;
-      if (providerRoute) {
-        setProviderRoutes(providerRoute);
-        setSetupRequired(!providerRoute.current.authenticated);
-        setServer((current) => current
-          ? {
-              ...current,
-              provider: providerRoute.current.provider,
-              model: providerRoute.current.model,
-            }
-          : current);
-        await refreshModelInfo(active
-          ? { sessionId: active }
-          : { cwd: targetCwd });
-      }
+      const switched = await switchSpaceRef.current(targetSpaceId);
+      if (clientRef.current !== client) return;
+      if (!switched) return;
+      await refreshGroupsDirectory();
+      if (clientRef.current !== client) return;
+      dispatchGroups({ type: "selectProfile", profileId });
     } catch (error) {
-      if (
-        requestId === groupsActivationRequestRef.current
-        && clientRef.current === client
-      ) {
+      if (clientRef.current === client) {
         setErr(String(error instanceof Error ? error.message : error).slice(0, 240));
       }
     } finally {
       if (groupsSwitchingProfileRef.current === profileId) {
         groupsSwitchingProfileRef.current = "";
       }
-      if (
-        requestId === groupsActivationRequestRef.current
-        && clientRef.current === client
-      ) setGroupsSwitchingProfileId("");
+      if (clientRef.current === client) setGroupsSwitchingProfileId("");
     }
   }, [
-    active,
-    groupsDirectory.desk?.connections,
     groupsDirectory.organizations,
-    home,
     locale,
-    refreshModelInfo,
-    server?.cwd,
+    refreshGroupsDirectory,
   ]);
 
   const readGroupsBoard = useCallback(async (
@@ -1649,7 +1715,7 @@ export default function App() {
     if ((previousZone === "chat" || previousZone === "projects") && activeRef.current) {
       const current = sessionsRef.current.find((candidate) => candidate.id === activeRef.current);
       if (current && sessionPlace(current) === previousZone) {
-        activeByZoneRef.current[previousZone] = activeRef.current;
+        rememberedSessionsForSpace(sessionSpaceId(current, spaceDirectoryRef.current))[previousZone] = activeRef.current;
       }
     }
     zoneRef.current = z;
@@ -1662,10 +1728,16 @@ export default function App() {
     setAutoReplay(null);
     localStorage.setItem("hara.zone", z);
     if (z === "chat" || z === "projects") {
-      const candidateId = activeByZoneRef.current[z];
+      const activeSpaceId = spaceDirectoryRef.current?.activeId ?? "personal";
+      const candidateId = rememberedSessionsForSpace(activeSpaceId)[z];
       const candidate = candidateId ? sessionsRef.current.find((session) => session.id === candidateId) : undefined;
-      setActive(candidate && sessionPlace(candidate) === z ? candidate.id : null);
+      const allowed = candidate
+        && sessionPlace(candidate) === z
+        && sessionSpaceId(candidate, spaceDirectoryRef.current) === activeSpaceId;
+      activeRef.current = allowed ? candidate.id : null;
+      setActive(allowed ? candidate.id : null);
     } else {
+      activeRef.current = null;
       setActive(null);
     }
     if (z === "office") void refreshArtifacts();
@@ -1896,15 +1968,19 @@ export default function App() {
           pendingId,
         }]);
       }
-      presentationSurfaceTurnsRef.current[sessionId] = {
-        startedAt: Date.now(),
-        surfaceOffered: false,
-        baselineRevisionIds: new Set(
-          artifactsRef.current && artifactsRef.current !== "old-server"
-            ? artifactsRef.current.artifacts.map((artifact) => artifact.currentRevisionId)
-            : [],
-        ),
-      };
+      if (personalLocalSurfaceSession(sessionId)) {
+        presentationSurfaceTurnsRef.current[sessionId] = {
+          startedAt: Date.now(),
+          surfaceOffered: false,
+          baselineRevisionIds: new Set(
+            artifactsRef.current && artifactsRef.current !== "old-server"
+              ? artifactsRef.current.artifacts.map((artifact) => artifact.currentRevisionId)
+              : [],
+          ),
+        };
+      } else {
+        delete presentationSurfaceTurnsRef.current[sessionId];
+      }
       setSessionBusy(sessionId, true);
       notePet(sessionId, "running");
       let busyAttempt = 0;
@@ -2088,7 +2164,7 @@ export default function App() {
         }
       }
     },
-    [enqueueInput, flushStagedModelChange, locale, nextPendingInputId, notePet, push, removePet, resolvePendingUser, setSessionBusy, textWithActiveWorkObject],
+    [enqueueInput, flushStagedModelChange, locale, nextPendingInputId, notePet, personalLocalSurfaceSession, push, removePet, resolvePendingUser, setSessionBusy, textWithActiveWorkObject],
   );
 
   const retryQueuedInput = useCallback(async (sessionId: string, index: number) => {
@@ -2220,18 +2296,21 @@ export default function App() {
     startedAt: number,
     baselineRevisionIds: ReadonlySet<string>,
   ): Promise<void> => {
-    let client = clientRef.current;
-    if (!client?.connected) return;
+    let scope = capturePersonalLocalSurfaceScope(sessionId);
+    if (!scope) return;
+    let client = scope.client;
     try {
       if (!supportsNativePresentationWorkspace(client)) {
         const upgraded = await ensurePresentationWorkspaceRef.current();
         if (!upgraded) return;
-        client = clientRef.current;
-        if (!client?.connected || !supportsNativePresentationWorkspace(client)) return;
+        scope = capturePersonalLocalSurfaceScope(sessionId);
+        if (!scope || !supportsNativePresentationWorkspace(scope.client)) return;
+        client = scope.client;
       }
       const recoveryClient = client;
+      const recoveryScope = scope;
       const listed = await recoveryClient.listArtifacts();
-      if (!listed || clientRef.current !== recoveryClient) return;
+      if (!listed || !personalLocalSurfaceScopeIsCurrent(recoveryScope)) return;
       const candidates = listed.artifacts.filter((artifact) =>
         artifact.kind === "presentation"
         && artifact.extension === ".hpres"
@@ -2240,7 +2319,9 @@ export default function App() {
       );
       const matches = (await Promise.all(candidates.map(async (artifact) => {
         try {
+          if (!personalLocalSurfaceScopeIsCurrent(recoveryScope)) return null;
           const revisions = await recoveryClient.listArtifactRevisions(artifact.artifactId);
+          if (!personalLocalSurfaceScopeIsCurrent(recoveryScope)) return null;
           const revision = nativePresentationRevisionFromTurn(
             artifact,
             revisions.revisions,
@@ -2254,7 +2335,7 @@ export default function App() {
       }))).filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
         .sort((left, right) => left.revision.createdAt.localeCompare(right.revision.createdAt));
       const latest = matches[matches.length - 1];
-      if (!latest || clientRef.current !== recoveryClient) return;
+      if (!latest || !personalLocalSurfaceScopeIsCurrent(recoveryScope)) return;
       handleEventRef.current({
         method: "event.surface",
         sessionId,
@@ -2269,17 +2350,21 @@ export default function App() {
     } catch {
       // A later Office refresh remains available; never infer UI success after a failed recovery read.
     }
-  }, []);
+  }, [capturePersonalLocalSurfaceScope, personalLocalSurfaceScopeIsCurrent]);
 
   const handleEvent = useCallback(
     (e: ServerEvent) => {
       switch (e.method) {
         case "event.turn_start":
-          presentationSurfaceTurnsRef.current[e.sessionId] = {
-            startedAt: presentationSurfaceTurnsRef.current[e.sessionId]?.startedAt ?? Date.now(),
-            surfaceOffered: false,
-            baselineRevisionIds: presentationSurfaceTurnsRef.current[e.sessionId]?.baselineRevisionIds ?? new Set(),
-          };
+          if (personalLocalSurfaceSession(e.sessionId)) {
+            presentationSurfaceTurnsRef.current[e.sessionId] = {
+              startedAt: presentationSurfaceTurnsRef.current[e.sessionId]?.startedAt ?? Date.now(),
+              surfaceOffered: false,
+              baselineRevisionIds: presentationSurfaceTurnsRef.current[e.sessionId]?.baselineRevisionIds ?? new Set(),
+            };
+          } else {
+            delete presentationSurfaceTurnsRef.current[e.sessionId];
+          }
           if (e.turnId) {
             activeTurnsRef.current[e.sessionId] = e.turnId;
             const dispatch = pendingSendDispatchesRef.current[e.sessionId];
@@ -2370,13 +2455,20 @@ export default function App() {
           }
           break;
         case "event.surface": {
+          const session = sessionsRef.current.find((candidate) => candidate.id === e.sessionId);
+          const place = session ? sessionPlace(session) : null;
+          if (!session || (place !== "chat" && place !== "projects")) break;
+          const artifactScope = e.resource?.type === "artifact"
+            ? capturePersonalLocalSurfaceScope(e.sessionId)
+            : null;
+          if (e.resource?.type === "artifact" && !artifactScope) {
+            delete presentationSurfaceTurnsRef.current[e.sessionId];
+            break;
+          }
           const surfaceTurn = presentationSurfaceTurnsRef.current[e.sessionId];
           if (surfaceTurn && e.kind === "presentation" && e.resource?.type === "artifact") {
             surfaceTurn.surfaceOffered = true;
           }
-          const session = sessionsRef.current.find((candidate) => candidate.id === e.sessionId);
-          const place = session ? sessionPlace(session) : null;
-          if (!session || (place !== "chat" && place !== "projects")) break;
           const owner: SessionExtensionOwner = {
             place,
             sessionId: session.id,
@@ -2419,6 +2511,7 @@ export default function App() {
           }
           if (
             e.resource?.type !== "artifact"
+            || !artifactScope
             || !isArtifactSurfaceKind(e.kind)
             || !safeSurfaceOpaqueId(e.resource.artifactId)
             || !safeSurfaceOpaqueId(e.resource.revisionId)
@@ -2500,7 +2593,7 @@ export default function App() {
               const preview = presentationSurface?.preview ?? null;
               if (
                 requestId !== artifactOpenRequestRef.current
-                || clientRef.current !== client
+                || !personalLocalSurfaceScopeIsCurrent(artifactScope)
                 || activeRef.current !== session.id
                 || zoneRef.current !== place
               ) return;
@@ -2523,7 +2616,10 @@ export default function App() {
                 }]);
               }
             } catch (error: any) {
-              if (requestId === artifactOpenRequestRef.current) {
+              if (
+                requestId === artifactOpenRequestRef.current
+                && personalLocalSurfaceScopeIsCurrent(artifactScope)
+              ) {
                 const message = makeT(locale)(presentationErrorKey(error));
                 setErr(message);
                 push(e.sessionId, (items) => [...items, {
@@ -2538,7 +2634,10 @@ export default function App() {
                 }]);
               }
             } finally {
-              if (requestId === artifactOpenRequestRef.current) setArtifactBusy("");
+              if (
+                requestId === artifactOpenRequestRef.current
+                && personalLocalSurfaceScopeIsCurrent(artifactScope)
+              ) setArtifactBusy("");
             }
           })();
           break;
@@ -2546,7 +2645,7 @@ export default function App() {
         case "event.turn_end": {
           const surfaceTurn = presentationSurfaceTurnsRef.current[e.sessionId];
           delete presentationSurfaceTurnsRef.current[e.sessionId];
-          if (surfaceTurn && !surfaceTurn.surfaceOffered) {
+          if (surfaceTurn && !surfaceTurn.surfaceOffered && personalLocalSurfaceSession(e.sessionId)) {
             window.setTimeout(
               () => void recoverPresentationSurface(
                 e.sessionId,
@@ -2644,8 +2743,21 @@ export default function App() {
               // Only a positively identified local/manual session gets a Desktop notification. A newly
               // arrived Feishu/WeChat/cron session may finish before session.list refreshes; treating that
               // unknown id as manual duplicates the channel app's own operating-system notification.
+              const directory = spaceDirectoryRef.current;
+              const sessionSpace = sessionSpaceId(s, directory);
+              const currentSpace = directory?.activeId ?? "personal";
+              const crossSpace = sessionSpace !== currentSpace;
+              const spaceName = directory?.spaces.find((space) => space.id === sessionSpace)?.name
+                ?? (sessionSpace === "personal" ? (locale === "zh" ? "个人" : "Personal") : (locale === "zh" ? "其他公司" : "Another company"));
               void isPermissionGranted()
-                .then((ok) => ok && sendNotification({ title: s.title || "hara", body: (e.reply || "").slice(0, 120) }))
+                .then((ok) => ok && sendNotification(crossSpace
+                  ? {
+                      title: `Hara · ${spaceName}`,
+                      body: locale === "zh"
+                        ? "另一个空间中的任务已完成。切换到该空间后查看结果。"
+                        : "A task finished in another Space. Switch there to view the result.",
+                    }
+                  : { title: s.title || "Hara", body: (e.reply || "").slice(0, 120) }))
                 .catch(() => {});
             }
           }
@@ -2663,9 +2775,53 @@ export default function App() {
           break;
       }
     },
-    [enqueueInput, flushStagedModelChange, locale, notePet, offerExtensionTab, push, recoverPresentationSurface, refreshArtifacts, removePet, resolvePendingUser, sendText, setSessionBusy],
+    [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, locale, notePet, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, recoverPresentationSurface, refreshArtifacts, removePet, resolvePendingUser, sendText, setSessionBusy],
   );
   handleEventRef.current = handleEvent;
+
+  const clearEngineBoundSurfaces = useCallback(() => {
+    sessionOpenRequestRef.current += 1;
+    artifactOpenRequestRef.current += 1;
+    activeRef.current = null;
+    sessionsRef.current = [];
+    transcriptsRef.current = {};
+    readOnlySessionsRef.current = {};
+    busyRef.current = {};
+    taskStatesRef.current = {};
+    workforceStatesRef.current = {};
+    queueRef.current = {};
+    setActive(null);
+    setSessions([]);
+    setTranscripts({});
+    setReadOnlySessions({});
+    setBusy({});
+    setTaskStates({});
+    setWorkforceStates({});
+    setComposerDrafts({});
+    setQueue({});
+    setUnread({});
+    setCtxMap({});
+    setAgentCatalog(null);
+    setSelectedOfficeId("");
+    setModelInfo(null);
+    setModelInfoScope(null);
+    setProfileAgentRef(null);
+    setProfileAgentError("");
+    setHireAgentOpen(false);
+    setHireAgentError("");
+    setWorkbenchInboxTarget(null);
+    setAuto(null);
+    setAutoReplay(null);
+    setArtifacts(null);
+    setActiveArtifact(null);
+    setActivePresentation(null);
+    setPresentationPreviewHtml(null);
+    setArtifactRevisions([]);
+    setArtifactValidationReport(null);
+    setArtifactExportReceipt(null);
+    setArtifactBusy("");
+    setProjectListState({ spaceId: "", opened: [], hidden: [] });
+  }, []);
 
   const connect = useCallback(async (expectedPid: number | null = null) => {
     const generation = ++connectGenerationRef.current;
@@ -2684,10 +2840,13 @@ export default function App() {
     pendingSendDispatchesRef.current = {};
     presentationSurfaceTurnsRef.current = {};
     clearStagedModelChanges();
+    clearEngineBoundSurfaces();
     previous?.close();
-    artifactOpenRequestRef.current += 1;
     organizationRoutesRequestRef.current += 1;
     setOrganizationRoutes(null);
+    spaceDirectoryRequestRef.current += 1;
+    spaceDirectoryRef.current = null;
+    setSpaceDirectory(null);
     providerRoutesRequestRef.current += 1;
     setProviderRoutes(null);
     groupsDirectoryRequestRef.current += 1;
@@ -2724,6 +2883,7 @@ export default function App() {
       c.onClose = () => {
         if (clientRef.current !== c) return;
         clientRef.current = null;
+        clearEngineBoundSurfaces();
         if (plannedUpdateRestartRef.current) return;
         pluginsRef.current = null;
         skillsRef.current = null;
@@ -2745,6 +2905,9 @@ export default function App() {
         workforceStatesRef.current = {};
         organizationRoutesRequestRef.current += 1;
         setOrganizationRoutes(null);
+        spaceDirectoryRequestRef.current += 1;
+        spaceDirectoryRef.current = null;
+        setSpaceDirectory(null);
         providerRoutesRequestRef.current += 1;
         setProviderRoutes(null);
         groupsDirectoryRequestRef.current += 1;
@@ -2801,12 +2964,17 @@ export default function App() {
         sessionOpenRequestRef.current += 1;
         setZoneRaw(preferredPlace);
       }
-      void refreshAuto();
-      void c.listArtifacts().then((a) => setArtifacts(a ?? "old-server")).catch(() => {});
       void refreshModelInfo().catch(() => {});
       void refreshAgentCatalog({ cwd: info.cwd }).catch(() => {});
       void refreshOrganizationRoutes().catch(() => {});
       void refreshProviderRoutes().catch(() => {});
+      void refreshSpaceDirectory()
+        .then((directory) => {
+          if (directory?.activeId !== "personal") return;
+          void refreshAuto();
+          void refreshArtifacts();
+        })
+        .catch(() => {});
       setPhase("ready");
     } catch (e: any) {
       c?.close();
@@ -2815,7 +2983,7 @@ export default function App() {
       setPhase("no-server");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearExtensionDock, clearStagedModelChanges, handleEvent, refreshAgentCatalog, refreshAuto, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
+  }, [clearEngineBoundSurfaces, clearExtensionDock, clearStagedModelChanges, handleEvent, refreshAgentCatalog, refreshArtifacts, refreshAuto, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes, refreshSpaceDirectory]);
 
   useEffect(() => {
     if (phase !== "ready" || !active) return;
@@ -2824,13 +2992,26 @@ export default function App() {
     const current = sessionsRef.current.find((session) => session.id === active);
     void refreshOrganizationRoutes(current?.cwd).catch(() => {});
     void refreshProviderRoutes(current?.cwd).catch(() => {});
+    void refreshSpaceDirectory(current?.cwd).catch(() => {});
     return () => {
       modelInfoRequestRef.current += 1;
       agentCatalogRequestRef.current += 1;
       organizationRoutesRequestRef.current += 1;
       providerRoutesRequestRef.current += 1;
+      spaceDirectoryRequestRef.current += 1;
     };
-  }, [active, phase, refreshAgentCatalog, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes]);
+  }, [active, phase, refreshAgentCatalog, refreshModelInfo, refreshOrganizationRoutes, refreshProviderRoutes, refreshSpaceDirectory]);
+
+  useEffect(() => {
+    if (!active || !spaceDirectory) return;
+    const session = sessionsRef.current.find((candidate) => candidate.id === active);
+    if (session && sessionSpaceId(session, spaceDirectory) === spaceDirectory.activeId) return;
+    // A Space change may finish before the next session is selected. Never leave another company's
+    // transcript visible under the new Personal/company header during that transition.
+    sessionOpenRequestRef.current += 1;
+    activeRef.current = null;
+    setActive(null);
+  }, [active, spaceDirectory]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -2988,6 +3169,89 @@ export default function App() {
     setSessions(list.sessions);
   };
 
+  const saveAgentProfile = async (
+    profile: Parameters<HaraClient["updateAgentProfile"]>[0]["profile"],
+  ): Promise<void> => {
+    const client = clientRef.current;
+    const agent = agentCatalog?.agents.find((candidate) => candidate.ref === profileAgentRef);
+    if (!client || !agent?.revision || profileAgentSaving) return;
+    setProfileAgentSaving(true);
+    setProfileAgentError("");
+    try {
+      const result = await client.updateAgentProfile({
+        ref: agent.ref,
+        expectedRevision: agent.revision,
+        profile,
+        ...(active ? { sessionId: active } : { cwd: agent.home || server?.cwd }),
+      });
+      setAgentCatalog(result.catalog);
+      setProfileAgentRef(null);
+    } catch (error: any) {
+      setProfileAgentError(String(error?.message ?? error).slice(0, 240));
+      if (error?.code === -32005) {
+        void refreshAgentCatalog(active ? { sessionId: active } : { cwd: agent.home || server?.cwd }).catch(() => {});
+      }
+    } finally {
+      setProfileAgentSaving(false);
+    }
+  };
+
+  const hireAgent = async (input: HireAgentInput): Promise<void> => {
+    const client = clientRef.current;
+    if (!client || hireAgentSaving) return;
+    if (!client.supports("agents.create")) {
+      setHireAgentError(locale === "zh" ? "当前 Hara 引擎版本还不支持雇佣 Agent。" : "This Hara engine does not support hiring Agents yet.");
+      return;
+    }
+    setHireAgentSaving(true);
+    setHireAgentError("");
+    try {
+      const cwd = activeRef.current
+        ? sessionsRef.current.find((session) => session.id === activeRef.current)?.cwd
+        : server?.cwd;
+      const result = await client.createAgent({ ...input, ...(cwd ? { cwd } : {}) });
+      setAgentCatalog(result.catalog);
+      setHireAgentOpen(false);
+      const agent = result.agent;
+      if (agent) {
+        setWorkbenchInboxMode("agents");
+        setWorkbenchInboxTarget({ kind: "agent", id: agent.ref });
+      }
+    } catch (error: any) {
+      setHireAgentError(String(error?.message ?? error).slice(0, 240));
+    } finally {
+      setHireAgentSaving(false);
+    }
+  };
+
+  const archiveProfileAgent = async (): Promise<void> => {
+    const client = clientRef.current;
+    const agent = agentCatalog?.agents.find((candidate) => candidate.ref === profileAgentRef);
+    if (!client || !agent?.revision || profileAgentSaving || !agent.allowedActions?.includes("archive")) return;
+    const confirmed = window.confirm(locale === "zh"
+      ? `解除雇佣“${agentDisplayName(agent)}”吗？\n\nAgent 会从团队目录隐藏，但提示词文件会以可恢复的归档状态保留；历史对话不会删除。`
+      : `Dismiss “${agentDisplayName(agent)}”?\n\nThe Agent will leave the team directory, but its prompt file remains recoverably archived. Conversation history is not deleted.`);
+    if (!confirmed) return;
+    setProfileAgentSaving(true);
+    setProfileAgentError("");
+    try {
+      const result = await client.archiveAgent({
+        ref: agent.ref,
+        expectedRevision: agent.revision,
+        ...(active ? { sessionId: active } : { cwd: agent.home || server?.cwd }),
+      });
+      setAgentCatalog(result.catalog);
+      setProfileAgentRef(null);
+      if (workbenchInboxTarget?.kind === "agent" && workbenchInboxTarget.id === agent.ref) {
+        setWorkbenchInboxTarget(null);
+      }
+    } catch (error: any) {
+      setProfileAgentError(String(error?.message ?? error).slice(0, 240));
+    } finally {
+      setProfileAgentSaving(false);
+    }
+  };
+
   const newSession = async (cwd?: string, agentRef?: string): Promise<string | null> => {
     const c = clientRef.current;
     if (!c) return null;
@@ -3013,11 +3277,15 @@ export default function App() {
     });
     attachedSessionsRef.current.add(r.sessionId);
     rememberSession(r.sessionId, sessionHint);
-    if (sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, sessionHint)) {
-      setActive(r.sessionId);
-    }
     setTranscripts((tr) => ({ ...tr, [r.sessionId]: [] }));
     await refreshSessions();
+    const created = sessionsRef.current.find((session) => session.id === r.sessionId);
+    if (
+      created
+      && sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, created)
+    ) {
+      activateSession(r.sessionId, created);
+    }
     return r.sessionId;
   };
 
@@ -3031,6 +3299,14 @@ export default function App() {
       ? sessionsRef.current.find((candidate) => candidate.id === sourceSessionId)
       : undefined;
     if (!client || !sourceSessionId || !sourceSession) return;
+    const sourceSpaceId = sessionSpaceId(sourceSession, spaceDirectoryRef.current);
+    const targetSpaceId = organizationConnectionSpaceId(connection);
+    if (sourceSpaceId !== targetSpaceId) {
+      setErr(locale === "zh"
+        ? "公司会话不能复制到其他空间。请先切换到目标公司，再新建一段空白对话。"
+        : "Company conversations cannot be copied across Spaces. Switch to the target company, then start a blank conversation.");
+      return;
+    }
     if (!client.supportsFeature(CROSS_PROFILE_FORK_FEATURE)) {
       setErr(locale === "zh"
         ? "当前 Hara 引擎不支持携带上下文切换连接，请先更新 Hara Desktop。"
@@ -3137,6 +3413,12 @@ export default function App() {
       ? sessionsRef.current.find((candidate) => candidate.id === sourceSessionId)
       : undefined;
     if (!client || !sourceSessionId || !sourceSession) return;
+    if (sessionSpaceId(sourceSession, spaceDirectoryRef.current) !== "personal") {
+      setErr(locale === "zh"
+        ? "公司会话不能复制到个人空间。请切换到个人空间后新建一段空白对话。"
+        : "Company conversations cannot be copied into Personal. Switch to Personal, then start a blank conversation.");
+      return;
+    }
     if (!client.supportsFeature(CROSS_PROFILE_FORK_FEATURE)) {
       setErr(locale === "zh"
         ? "当前 Hara 引擎不支持携带上下文切换连接，请先更新 Hara Desktop。"
@@ -3245,6 +3527,24 @@ export default function App() {
   const openSession = async (id: string) => {
     const c = clientRef.current;
     if (!c) return;
+    const session = sessionsRef.current.find((candidate) => candidate.id === id);
+    const directory = spaceDirectoryRef.current;
+    const activeSpaceId = directory?.activeId ?? "personal";
+    const wrongSpace = (binding: { profileId?: string; spaceId?: string }): boolean =>
+      sessionSpaceId(binding, directory) !== activeSpaceId;
+    const reportWrongSpace = (): void => setErr(locale === "zh"
+      ? "该对话属于另一个空间。请先从左上角切换到对应的个人或公司空间。"
+      : "This conversation belongs to another Space. Switch to its Personal or company Space first.");
+    if (session && wrongSpace(session)) {
+      reportWrongSpace();
+      return;
+    }
+    if (!session && !c.supports("session.history") && !c.supportsFeature(READONLY_HISTORY_FEATURE)) {
+      setErr(locale === "zh"
+        ? "这条对话不在当前会话目录中；请刷新列表后再打开。"
+        : "This conversation is not in the current session directory. Refresh the list before opening it.");
+      return;
+    }
     if (id !== activeRef.current && !discardCurrentExtensionDraft()) return;
     artifactOpenRequestRef.current += 1;
     setArtifactBusy("");
@@ -3254,12 +3554,27 @@ export default function App() {
     setArtifactRevisions([]);
     setArtifactValidationReport(null);
     setArtifactExportReceipt(null);
-    const session = sessionsRef.current.find((candidate) => candidate.id === id);
-    const expected = session ?? {
+    const requestId = ++sessionOpenRequestRef.current;
+    let preflightReplay: Awaited<ReturnType<HaraClient["readSession"]>> | undefined;
+    let expected: SessionPlaceInput = session ?? {
       cwd: zoneRef.current === "chat" && home ? `${home}/.hara/workspace` : server?.cwd ?? "",
       source: "interactive",
     };
-    const requestId = ++sessionOpenRequestRef.current;
+    if (!session) {
+      try {
+        preflightReplay = await c.readSession(id);
+      } catch (error: any) {
+        setErr(String(error?.message ?? error));
+        return;
+      }
+      // An out-of-directory id is untrusted input (for example a stale notification). Authorize its
+      // persisted audience before attaching a provider or hydrating any transcript into this Space.
+      if ((!preflightReplay.spaceId && !preflightReplay.profileId) || wrongSpace(preflightReplay)) {
+        reportWrongSpace();
+        return;
+      }
+      expected = { cwd: preflightReplay.cwd, source: "interactive" };
+    }
     const mayActivate = () =>
       sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, expected);
     setUnread((u) => ({ ...u, [id]: false }));
@@ -3270,6 +3585,10 @@ export default function App() {
     }
     try {
       const r = await c.resumeSession(id, defaultApproval || undefined);
+      if (wrongSpace(r)) {
+        reportWrongSpace();
+        return;
+      }
       attachedSessionsRef.current.add(id);
       rememberSessionApproval(id, r.approval);
       setSessionReadOnly(id, null);
@@ -3294,7 +3613,11 @@ export default function App() {
         return;
       }
       try {
-        const replay = await c.readSession(id);
+        const replay = preflightReplay ?? await c.readSession(id);
+        if ((!session && !replay.spaceId && !replay.profileId) || wrongSpace(replay)) {
+          reportWrongSpace();
+          return;
+        }
         attachedSessionsRef.current.delete(id);
         setSessionReadOnly(id, { reason });
         setErr("");
@@ -3311,6 +3634,208 @@ export default function App() {
         setErr(`${reason}\n${String(historyError?.message ?? historyError)}`);
       }
     }
+  };
+
+  const switchSpace = async (
+    spaceId: string,
+    options: { force?: boolean; activeDirectory?: SpaceDirectory } = {},
+  ): Promise<boolean> => {
+    const client = clientRef.current;
+    const current = spaceDirectoryRef.current;
+    if (!client || spaceSwitchInFlightRef.current) return false;
+    if (current?.activeId === spaceId && !options.force) return true;
+    if (!discardCurrentExtensionDraft()) return false;
+    spaceSwitchInFlightRef.current = true;
+    const requestId = ++spaceSwitchRequestRef.current;
+    const stale = () => (
+      clientRef.current !== client
+      || spaceSwitchRequestRef.current !== requestId
+    );
+    const currentSession = activeRef.current
+      ? sessionsRef.current.find((session) => session.id === activeRef.current)
+      : undefined;
+    if (currentSession) rememberSession(currentSession.id, currentSession);
+    const cwd = currentSession?.cwd ?? server?.cwd;
+    const loadSnapshot = async (directory: SpaceDirectory, expectedSpaceId: string) => {
+      const [listed, providers, organizations, catalog, models] = await Promise.all([
+        client.listSessions(),
+        client.listProviderSettings(cwd),
+        client.listOrganizationConnections(cwd),
+        client.listAgents({ cwd }),
+        client.listModels({ cwd }),
+      ]);
+      if (directory.activeId !== expectedSpaceId) {
+        throw new Error("the engine returned a different active Space");
+      }
+      if (!catalog) {
+        throw new Error("the engine did not return an Agent catalog for the active Space");
+      }
+      if (catalog.agents.some((agent) => agent.spaceId !== directory.activeId)) {
+        throw new Error("the Agent catalog does not match the active Space");
+      }
+      return { listed, providers, organizations, catalog, models };
+    };
+    const commitSnapshot = (
+      directory: SpaceDirectory,
+      snapshot: Awaited<ReturnType<typeof loadSnapshot>>,
+    ): void => {
+      spaceDirectoryRef.current = directory;
+      sessionsRef.current = snapshot.listed.sessions;
+      setSpaceDirectory(directory);
+      setSessions(snapshot.listed.sessions);
+      setProviderRoutes(snapshot.providers);
+      setOrganizationRoutes(snapshot.organizations);
+      setAgentCatalog(snapshot.catalog);
+      setSelectedOfficeId(snapshot.catalog.currentOfficeId);
+      setModelInfo(snapshot.models);
+      setModelInfoScope(null);
+      setProjectListState(projectListStateForSpace(
+        directory.activeId,
+        (key) => localStorage.getItem(key),
+      ));
+      if (snapshot.providers) {
+        setSetupRequired(!snapshot.providers.current.authenticated);
+        setServer((state) => state
+          ? { ...state, provider: snapshot.providers!.current.provider, model: snapshot.providers!.current.model }
+          : state);
+      }
+    };
+    setSpaceSwitching(true);
+    setErr("");
+    sessionOpenRequestRef.current += 1;
+    agentCatalogRequestRef.current += 1;
+    modelInfoRequestRef.current += 1;
+    providerRoutesRequestRef.current += 1;
+    organizationRoutesRequestRef.current += 1;
+    groupsDirectoryRequestRef.current += 1;
+    groupsRequestGenerationRef.current += 1;
+    groupsActivationRequestRef.current += 1;
+    clearEngineBoundSurfaces();
+    setProviderRoutes(null);
+    setOrganizationRoutes(null);
+    clearExtensionDock();
+    dispatchGroups({ type: "reset" });
+    setGroupsDirectory({ phase: "idle" });
+    setQ("");
+    try {
+      const next = options.activeDirectory ?? await client.useSpace(spaceId, cwd);
+      if (next.activeId !== spaceId) {
+        throw new Error("the engine returned a different active Space");
+      }
+      const snapshot = await loadSnapshot(next, spaceId);
+      if (stale()) return false;
+      commitSnapshot(next, snapshot);
+      const candidates = snapshot.listed.sessions
+        .filter((session) => isWorkbenchConversation(session) && sessionSpaceId(session, next) === next.activeId)
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      const place = zoneRef.current === "projects" ? "projects" : "chat";
+      const rememberedId = rememberedSessionsForSpace(next.activeId)[place];
+      const preferred = candidates.find((session) => (
+        session.id === rememberedId && sessionPlace(session) === place
+      )) ?? candidates.find((session) => sessionPlace(session) === place) ?? candidates[0];
+      if (preferred) await openSession(preferred.id);
+      else {
+        sessionOpenRequestRef.current += 1;
+        activeRef.current = null;
+        setActive(null);
+      }
+      void refreshGroupsDirectory();
+      if (next.activeId === "personal") {
+        void refreshAuto();
+        void refreshArtifacts();
+      }
+      return true;
+    } catch (error: any) {
+      if (!stale()) {
+        const detail = String(error?.message ?? error).slice(0, 260);
+        try {
+          if (!current) throw error;
+          const restored = await client.useSpace(current.activeId, cwd);
+          const snapshot = await loadSnapshot(restored, current.activeId);
+          if (!stale()) {
+            commitSnapshot(restored, snapshot);
+            if (restored.activeId === "personal") {
+              void refreshAuto();
+              void refreshArtifacts();
+            }
+          }
+        } catch {
+          if (!stale()) {
+            spaceDirectoryRef.current = null;
+            setSpaceDirectory(null);
+            sessionsRef.current = [];
+            setSessions([]);
+            setAgentCatalog(null);
+          }
+        }
+        if (!stale()) setErr(detail);
+      }
+      return false;
+    } finally {
+      if (spaceSwitchRequestRef.current === requestId) {
+        spaceSwitchInFlightRef.current = false;
+        setSpaceSwitching(false);
+      }
+    }
+  };
+  switchSpaceRef.current = switchSpace;
+
+  const runProviderRouteMutation = async <T,>(mutation: () => Promise<T>): Promise<T> => {
+    const client = clientRef.current;
+    if (!client || spaceSwitchInFlightRef.current) {
+      throw new Error(locale === "zh" ? "另一个空间切换仍在进行。" : "Another Space switch is still in progress.");
+    }
+    if (!discardCurrentExtensionDraft()) {
+      throw new Error(locale === "zh" ? "已取消连接切换。" : "Connection switch cancelled.");
+    }
+    const currentSession = activeRef.current
+      ? sessionsRef.current.find((session) => session.id === activeRef.current)
+      : undefined;
+    if (currentSession) rememberSession(currentSession.id, currentSession);
+    const cwd = currentSession?.cwd ?? server?.cwd;
+    spaceSwitchInFlightRef.current = true;
+    setSpaceSwitching(true);
+    setErr("");
+    groupsDirectoryRequestRef.current += 1;
+    groupsRequestGenerationRef.current += 1;
+    groupsActivationRequestRef.current += 1;
+    providerRoutesRequestRef.current += 1;
+    organizationRoutesRequestRef.current += 1;
+    clearEngineBoundSurfaces();
+    setProviderRoutes(null);
+    setOrganizationRoutes(null);
+    dispatchGroups({ type: "reset" });
+    setGroupsDirectory({ phase: "idle" });
+
+    let value: T | undefined;
+    let mutationError: unknown;
+    try {
+      value = await mutation();
+    } catch (error) {
+      mutationError = error;
+    } finally {
+      // Hand the existing transition shield to the authoritative snapshot transaction below.
+      spaceSwitchInFlightRef.current = false;
+    }
+
+    let reconciliationError: unknown;
+    try {
+      if (clientRef.current !== client) throw new Error("the Hara engine changed during the route update");
+      const directory = await client.listSpaces(cwd);
+      if (!directory) throw new Error("the Hara engine does not support authoritative Spaces");
+      const reconciled = await switchSpaceRef.current(directory.activeId, {
+        force: true,
+        activeDirectory: directory,
+      });
+      if (!reconciled) throw new Error("the active Space could not be reloaded");
+    } catch (error) {
+      reconciliationError = error;
+      spaceSwitchInFlightRef.current = false;
+      setSpaceSwitching(false);
+    }
+    if (mutationError) throw mutationError;
+    if (reconciliationError) throw reconciliationError;
+    return value as T;
   };
 
   /** Open an automated run as a READ-ONLY replay in the automation place. */
@@ -3404,9 +3929,12 @@ export default function App() {
 
   const rememberProject = (dir: string, remove = false) => {
     setProjectListState((current) => {
-      const next = setProjectVisible(current, dir, !remove);
-      localStorage.setItem(OPENED_PROJECTS_STORAGE_KEY, JSON.stringify(next.opened));
-      localStorage.setItem(HIDDEN_PROJECTS_STORAGE_KEY, JSON.stringify(next.hidden));
+      const spaceId = spaceDirectoryRef.current?.activeId ?? "personal";
+      const scoped = current.spaceId === spaceId
+        ? current
+        : projectListStateForSpace(spaceId, (key) => localStorage.getItem(key));
+      const next = setProjectVisible(scoped, dir, !remove);
+      persistProjectListState(next, spaceId, (key, value) => localStorage.setItem(key, value));
       return next;
     });
   };
@@ -3422,10 +3950,11 @@ export default function App() {
     const current = sessionsRef.current.find((session) => session.id === activeRef.current);
     if (zoneRef.current === "projects" && current?.cwd === dir && !setZone("chat")) return;
 
-    const rememberedProjectId = activeByZoneRef.current.projects;
+    const remembered = rememberedSessionsForSpace();
+    const rememberedProjectId = remembered.projects;
     if (rememberedProjectId && sessionsRef.current.find((session) => (
       session.id === rememberedProjectId && session.cwd === dir
-    ))) activeByZoneRef.current.projects = null;
+    ))) remembered.projects = null;
     rememberProject(dir, true);
   };
 
@@ -3853,7 +4382,11 @@ export default function App() {
   /** Resume the current assistant conversation; create one only when none exists yet. */
   const openAssistant = async (): Promise<string | null> => {
     if (!setZone("chat")) return null;
-    const cur = assistantZone(sessionsRef.current).current;
+    const directory = spaceDirectoryRef.current;
+    const activeSpace = directory?.activeId ?? "personal";
+    const cur = assistantZone(
+      sessionsRef.current.filter((session) => sessionSpaceId(session, directory) === activeSpace),
+    ).current;
     if (cur) {
       await openSession(cur.id);
       return cur.id;
@@ -4471,7 +5004,7 @@ export default function App() {
       setErr(locale === "zh" ? "该能力已停用，不能启动它的工作面板。" : "This capability is disabled, so its work panel cannot be started.");
       return;
     }
-    const projectSessionId = activeByZoneRef.current.projects;
+    const projectSessionId = rememberedSessionsForSpace().projects;
     const projectSession = projectSessionId
       ? sessionsRef.current.find((session) => session.id === projectSessionId)
       : undefined;
@@ -4490,7 +5023,7 @@ export default function App() {
     }
     const launchZone = zoneRef.current;
     const assertPanelLaunchContext = () => {
-      const currentProjectId = activeByZoneRef.current.projects;
+      const currentProjectId = rememberedSessionsForSpace().projects;
       const currentProject = currentProjectId
         ? sessionsRef.current.find((session) => session.id === currentProjectId)
         : undefined;
@@ -4575,7 +5108,7 @@ export default function App() {
     if (!discardCurrentExtensionDraft()) return;
     const launchGeneration = sessionOpenRequestRef.current;
     const assertDirectPanelLaunchContext = () => {
-      const currentProjectId = activeByZoneRef.current.projects;
+      const currentProjectId = rememberedSessionsForSpace().projects;
       const currentProject = currentProjectId
         ? sessionsRef.current.find((session) => session.id === currentProjectId)
         : undefined;
@@ -4981,7 +5514,14 @@ export default function App() {
   const engineVersionState = classifyEngineVersion(server?.version ?? "", BUNDLED_ENGINE_VERSION);
   const engineVersionNeedsAttention =
     engineVersionState === "older" || engineVersionState === "incompatible";
-  const allProjectGroups = projectGroups(sessions, projectListState)
+  const activeSession = sessions.find((s) => s.id === active);
+  const activeSpaceId = spaceDirectory?.activeId
+    ?? (activeSession ? sessionSpaceId(activeSession, null) : "personal");
+  const spaceSessions = sessions.filter((session) => sessionSpaceId(session, spaceDirectory) === activeSpaceId);
+  const scopedProjectListState = projectListState.spaceId === activeSpaceId
+    ? projectListState
+    : { spaceId: activeSpaceId, opened: [], hidden: [] };
+  const allProjectGroups = projectGroups(spaceSessions, scopedProjectListState)
     .map(([cwd, list]): [string, SessionInfo[]] => [cwd, list.filter(isWorkbenchConversation)]);
   const visibleProjectGroups = allProjectGroups
     .map(([cwd, list]): [string, SessionInfo[]] => [cwd, hit(cwd) ? list : list.filter((s) => hit(s.title))])
@@ -4989,7 +5529,6 @@ export default function App() {
   const searchBox = (
     <input id="haraSearch" className="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")} spellCheck={false} />
   );
-  const activeSession = sessions.find((s) => s.id === active);
   const fallbackMainAgent: AgentInfo = {
     ref: "main",
     name: "Hara",
@@ -5010,9 +5549,16 @@ export default function App() {
     },
     home: activeSession?.cwd ?? server?.cwd ?? "",
     scope: "main",
+    spaceId: activeSpaceId,
+    owner: activeSpaceId === "personal" ? "personal" : "organization",
+    allowedActions: [],
   };
-  const availableAgents = agentCatalog?.agents.length ? agentCatalog.agents : [fallbackMainAgent];
-  const visibleAgentInboxEntries = agentInboxEntries(availableAgents, sessions, q);
+  const scopedCatalogAgents = agentCatalog?.agents.filter((agent) => agent.spaceId === activeSpaceId) ?? [];
+  const availableAgents = scopedCatalogAgents.length ? scopedCatalogAgents : [fallbackMainAgent];
+  const profileAgent = profileAgentRef
+    ? availableAgents.find((agent) => agent.ref === profileAgentRef)
+    : undefined;
+  const visibleAgentInboxEntries = agentInboxEntries(availableAgents, spaceSessions, q);
   const selectedInboxAgent = workbenchInboxTarget?.kind === "agent"
     ? availableAgents.find((agent) => agent.ref === workbenchInboxTarget.id)
     : undefined;
@@ -5021,12 +5567,12 @@ export default function App() {
     : undefined;
   const selectedInboxSessions = sortInboxSessions(filterInboxSessions(
     selectedInboxAgent
-      ? inboxSessionsForAgent(sessions, selectedInboxAgent.ref)
+      ? inboxSessionsForAgent(spaceSessions, selectedInboxAgent.ref)
       : selectedInboxProject?.[1] ?? [],
     q,
   ), pins);
   const selectedInboxSessionTotal = selectedInboxAgent
-    ? inboxSessionsForAgent(sessions, selectedInboxAgent.ref).length
+    ? inboxSessionsForAgent(spaceSessions, selectedInboxAgent.ref).length
     : selectedInboxProject?.[1].length ?? 0;
   const activeApproval: ApprovalMode = (activeSession?.approval ?? defaultApproval) || "auto-edit";
   const activeComposerWorkObject = active ? visibleSessionWorkObject(active) : null;
@@ -5069,10 +5615,14 @@ export default function App() {
       ? (locale === "zh" ? "个人" : "Personal")
       : currentSessionProfileId ?? (locale === "zh" ? "当前连接" : "Current route"));
   const newSessionOrganizationRoute = organizationRoutes?.connections.find(
-    (connection) => connection.active && connection.id !== currentSessionProfileId,
+    (connection) => connection.active
+      && connection.id !== currentSessionProfileId
+      && organizationConnectionSpaceId(connection) === activeSpaceId,
   );
   const newSessionPersonalRoute = providerRoutes?.connections?.find(
-    (connection) => connection.active && connection.id !== currentSessionProfileId,
+    (connection) => activeSpaceId === "personal"
+      && connection.active
+      && connection.id !== currentSessionProfileId,
   );
   const newSessionDefaultRoute = newSessionOrganizationRoute
     ? { kind: "organization" as const, label: newSessionOrganizationRoute.label }
@@ -5080,7 +5630,7 @@ export default function App() {
       ? { kind: "personal" as const, label: newSessionPersonalRoute.label }
       : null;
   const modelRouteQuery = modelSearch.trim().toLowerCase();
-  const visiblePersonalConnectionRoutes = (providerRoutes?.connections ?? [])
+  const visiblePersonalConnectionRoutes = (activeSpaceId === "personal" ? providerRoutes?.connections ?? [] : [])
     .filter((connection) => (
       activeReadOnlySession || connection.id !== currentSessionProfileId
     ) && connection.authenticated)
@@ -5090,6 +5640,7 @@ export default function App() {
         .toLowerCase()
         .includes(modelRouteQuery));
   const visibleOrganizationModelRoutes = (organizationRoutes?.connections ?? [])
+    .filter((connection) => organizationConnectionSpaceId(connection) === activeSpaceId)
     .filter((connection) => activeReadOnlySession || connection.id !== currentSessionProfileId)
     .filter((connection) => ["valid", "permanent", "expiring", "legacy"].includes(connection.accessState))
     .map((connection) => {
@@ -5218,10 +5769,14 @@ export default function App() {
         ),
       }));
       rememberSession(r.sessionId, sessionHint);
-      if (sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, sessionHint)) {
-        setActive(r.sessionId);
-      }
       await refreshSessions();
+      const forked = sessionsRef.current.find((session) => session.id === r.sessionId);
+      if (
+        forked
+        && sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, forked)
+      ) {
+        activateSession(r.sessionId, forked);
+      }
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     }
@@ -6098,7 +6653,7 @@ export default function App() {
             tab.type === "legacy-panel"
             && tab.plugin === plugin.name
             && tab.panelId === panel.id
-            && tab.owner.sessionId === activeByZoneRef.current.projects);
+            && tab.owner.sessionId === rememberedSessionsForSpace().projects);
           if (existing) {
             if (!discardCurrentExtensionDraft()) return;
             setExtensionDockState((state) => activateExtensionTab(state, existing.id));
@@ -6132,11 +6687,19 @@ export default function App() {
     </div>
   );
   const brandBar = (
-    <div className="brand">
-      <HaraLogo size={20} /> <span className="wordmark">Hara</span>{" "}
-      <span className="ver" title={t("desktopVersion")}>
-        {desktopVersion || "…"}
-      </span>
+    <div className="brand-cluster">
+      <div className="brand">
+        <HaraLogo size={20} /> <span className="wordmark">Hara</span>{" "}
+        <span className="ver" title={t("desktopVersion")}>
+          {desktopVersion || "…"}
+        </span>
+      </div>
+      <SpaceSwitcher
+        directory={spaceDirectory}
+        locale={locale}
+        switching={spaceSwitching}
+        onSelect={(spaceId) => void switchSpace(spaceId)}
+      />
     </div>
   );
   const clearArtifactSurface = () => {
@@ -6361,7 +6924,13 @@ export default function App() {
     cwd: string,
     keepOfficeOpen = false,
   ): Promise<void> => {
-    const target = latestAgentSession(sessionsRef.current, cwd, agentRef);
+    const directory = spaceDirectoryRef.current;
+    const activeSpace = directory?.activeId ?? "personal";
+    const target = latestAgentSession(
+      sessionsRef.current.filter((session) => sessionSpaceId(session, directory) === activeSpace),
+      cwd,
+      agentRef,
+    );
     const targetPlace = sessionPlace(target ?? { cwd, source: "interactive" });
     if ((targetPlace !== "chat" && targetPlace !== "projects") || !setZone(targetPlace)) return;
     let session = target;
@@ -6502,7 +7071,13 @@ export default function App() {
     kind: "workspace",
     agentRefs: ["main"],
   };
-  const workforceOffices = agentCatalog?.offices.length ? agentCatalog.offices : [fallbackOffice];
+  const catalogMatchesActiveSpace = Boolean(
+    agentCatalog?.agents.length
+    && agentCatalog.agents.every((agent) => agent.spaceId === activeSpaceId),
+  );
+  const workforceOffices = catalogMatchesActiveSpace && agentCatalog?.offices.length
+    ? agentCatalog.offices
+    : [fallbackOffice];
   const workforceOffice = workforceOffices.find((office) => office.id === selectedOfficeId)
     ?? workforceOffices.find((office) => office.id === agentCatalog?.currentOfficeId)
     ?? workforceOffices[0];
@@ -6588,7 +7163,14 @@ export default function App() {
       (current) => ({ ...current, mode }),
     ));
   };
-  const officeHomeSurface = (
+  const localResourceIsolationNotice = locale === "zh"
+    ? "公司空间暂不显示本机全局的自动化与交付物；请切换到个人空间使用，避免跨公司混用。"
+    : "Company Spaces do not expose machine-global automations or deliverables yet. Switch to Personal to keep company data isolated.";
+  const officeHomeSurface = activeSpaceId !== "personal" ? (
+    <main className="office-home">
+      <div className="autohint dim" role="status">{localResourceIsolationNotice}</div>
+    </main>
+  ) : (
     <Suspense
       fallback={(
         <main className="office-home" aria-busy="true">
@@ -6867,6 +7449,13 @@ export default function App() {
   return (
     <div className="app">
       {rail}
+      {spaceSwitching ? (
+        <div className="space-switch-shield" role="status" aria-live="polite" aria-busy="true">
+          <HaraLogo size={24} />
+          <strong>{locale === "zh" ? "正在切换空间…" : "Switching Space…"}</strong>
+          <span>{locale === "zh" ? "正在加载对应公司的会话、Agent 与模型权限" : "Loading this company's conversations, Agents, and model permissions"}</span>
+        </div>
+      ) : null}
       {err && (
         <div className="ready-error" role="alert">
           <span>{err}</span>
@@ -6977,7 +7566,7 @@ export default function App() {
                   name={selectedInboxAgent.name}
                   identity={selectedInboxAgent.identity}
                   size="medium"
-                  state={inboxSessionsForAgent(sessions, selectedInboxAgent.ref).some((session) => busy[session.id])
+                  state={inboxSessionsForAgent(spaceSessions, selectedInboxAgent.ref).some((session) => busy[session.id])
                     ? "working"
                     : "idle"}
                 />
@@ -6993,6 +7582,19 @@ export default function App() {
                   {" · "}{selectedInboxSessionTotal} {t("inboxConversations")}
                 </small>
               </span>
+              {selectedInboxAgent ? (
+                <button
+                  type="button"
+                  className="inbox-agent-profile"
+                  title={selectedInboxAgent.allowedActions?.includes("edit_profile")
+                    ? (locale === "zh" ? "编辑 Agent 名片" : "Edit Agent profile")
+                    : (locale === "zh" ? "查看 Agent 名片与管理权限" : "View Agent profile and management policy")}
+                  aria-label={locale === "zh" ? "Agent 名片" : "Agent profile"}
+                  onClick={() => openAgentProfile(selectedInboxAgent.ref)}
+                >
+                  <IconEdit size={15} />
+                </button>
+              ) : null}
             </header>
           ) : (
             <div className="workbench-inbox-tabs" role="tablist" aria-label={t("zoneWorkbench")}>
@@ -7048,6 +7650,17 @@ export default function App() {
                 <button className="new ghost" onClick={() => void openAgentOffice()}>
                   {t("inboxOpenOffice")}
                 </button>
+                {activeSpaceId === "personal" && clientRef.current?.supports("agents.create") ? (
+                  <button
+                    className="new ghost hire-agent-button"
+                    onClick={() => {
+                      setHireAgentError("");
+                      setHireAgentOpen(true);
+                    }}
+                  >
+                    <span aria-hidden>＋</span>{locale === "zh" ? "雇佣 Agent" : "Hire Agent"}
+                  </button>
+                ) : null}
               </>
             ) : selectedInboxProject ? (
               <button
@@ -7073,6 +7686,17 @@ export default function App() {
                 <button className="new ghost" onClick={() => void openAgentOffice()}>
                   {t("inboxOpenOffice")}
                 </button>
+                {activeSpaceId === "personal" && clientRef.current?.supports("agents.create") ? (
+                  <button
+                    className="new ghost hire-agent-button"
+                    onClick={() => {
+                      setHireAgentError("");
+                      setHireAgentOpen(true);
+                    }}
+                  >
+                    <span aria-hidden>＋</span>{locale === "zh" ? "雇佣 Agent" : "Hire Agent"}
+                  </button>
+                ) : null}
               </>
             ) : (
               <button className="new withicon" onClick={() => void openProject()}>
@@ -7106,6 +7730,10 @@ export default function App() {
                     type="button"
                     className={`inbox-contact ${agentSessions.some((session) => session.id === active) ? "is-active" : ""}`}
                     key={agent.ref}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      openAgentProfile(agent.ref);
+                    }}
                     onClick={() => {
                       setWorkbenchInboxTarget({ kind: "agent", id: agent.ref });
                       setQ("");
@@ -7182,59 +7810,65 @@ export default function App() {
       {zone === "office" && (
         <aside className="sidebar office-sidebar">
           {brandBar}
-          <div className="artifact-sidebar-actions">
-            <button
-              className="new"
-              onClick={() => void importArtifactFile()}
-              disabled={Boolean(artifactBusy)}
-            >
-              {artifactBusy === "import" ? t("artifactImporting") : t("importFile")}
-            </button>
-          </div>
-          <div className="sessions" key={zone}>
-            <div className="group-h artifact-shelf-head">
-              {t("deliverables")}
-              <span className="count">
-                {artifacts && artifacts !== "old-server" ? artifacts.artifacts.length : 0}
-              </span>
-            </div>
-            {artifacts === "old-server" ? (
-              <div className="artifact-sidebar-empty">{t("artifactNeedsUpdate")}</div>
-            ) : artifacts?.artifacts.length ? (
-              artifacts.artifacts.map((artifact) => (
+          {activeSpaceId !== "personal" ? (
+            <div className="artifact-sidebar-empty">{localResourceIsolationNotice}</div>
+          ) : (
+            <>
+              <div className="artifact-sidebar-actions">
                 <button
-                  type="button"
-                  className={`artifact-sidebar-card ${activeArtifact?.artifact.artifactId === artifact.artifactId ? "on" : ""}`}
-                  key={artifact.artifactId}
-                  onClick={() => void openArtifact(artifact.artifactId)}
-                  title={artifact.title}
+                  className="new"
+                  onClick={() => void importArtifactFile()}
+                  disabled={Boolean(artifactBusy)}
                 >
-                  <span className={`artifact-sidebar-mark ${artifact.kind}`} />
-                  <span className="artifact-sidebar-copy">
-                    <strong>{artifact.title}</strong>
-                    <small>
-                      {artifact.kind === "presentation"
-                        ? t("artifactTypePresentation")
-                        : artifact.kind === "spreadsheet"
-                          ? t("artifactTypeSpreadsheet")
-                          : t("artifactTypeDocument")}
-                      {" · "}
-                      {artifact.extension.toUpperCase().slice(1)}
-                    </small>
-                  </span>
+                  {artifactBusy === "import" ? t("artifactImporting") : t("importFile")}
                 </button>
-              ))
-            ) : (
-              <div className="artifact-sidebar-empty">
-                {artifacts ? t("noDeliverables") : t("loading")}
               </div>
-            )}
-            {artifacts !== "old-server" && artifacts && artifacts.invalid > 0 && (
-              <div className="artifact-sidebar-empty" role="alert">
-                {t("artifactNeedsRepair")}
+              <div className="sessions" key={zone}>
+                <div className="group-h artifact-shelf-head">
+                  {t("deliverables")}
+                  <span className="count">
+                    {artifacts && artifacts !== "old-server" ? artifacts.artifacts.length : 0}
+                  </span>
+                </div>
+                {artifacts === "old-server" ? (
+                  <div className="artifact-sidebar-empty">{t("artifactNeedsUpdate")}</div>
+                ) : artifacts?.artifacts.length ? (
+                  artifacts.artifacts.map((artifact) => (
+                    <button
+                      type="button"
+                      className={`artifact-sidebar-card ${activeArtifact?.artifact.artifactId === artifact.artifactId ? "on" : ""}`}
+                      key={artifact.artifactId}
+                      onClick={() => void openArtifact(artifact.artifactId)}
+                      title={artifact.title}
+                    >
+                      <span className={`artifact-sidebar-mark ${artifact.kind}`} />
+                      <span className="artifact-sidebar-copy">
+                        <strong>{artifact.title}</strong>
+                        <small>
+                          {artifact.kind === "presentation"
+                            ? t("artifactTypePresentation")
+                            : artifact.kind === "spreadsheet"
+                              ? t("artifactTypeSpreadsheet")
+                              : t("artifactTypeDocument")}
+                          {" · "}
+                          {artifact.extension.toUpperCase().slice(1)}
+                        </small>
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="artifact-sidebar-empty">
+                    {artifacts ? t("noDeliverables") : t("loading")}
+                  </div>
+                )}
+                {artifacts !== "old-server" && artifacts && artifacts.invalid > 0 && (
+                  <div className="artifact-sidebar-empty" role="alert">
+                    {t("artifactNeedsRepair")}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
           {footBar}
         </aside>
       )}
@@ -7242,7 +7876,9 @@ export default function App() {
       {zone === "auto" && (
         <div className="sidebar automation-sidebar-shell">
           {brandBar}
-          {auto === "old-server" ? (
+          {activeSpaceId !== "personal" ? (
+            <div className="autohint dim">{localResourceIsolationNotice}</div>
+          ) : auto === "old-server" ? (
             <div className="autohint dim">{t("autoNeedsUpdate")}</div>
           ) : (
             <Suspense
@@ -7382,6 +8018,7 @@ export default function App() {
                     engineNeedsRestart={engineVersionNeedsAttention}
                     engineRestarting={engineRestarting}
                     onRestartEngine={() => void restartBundledEngine()}
+                    runRouteMutation={runProviderRouteMutation}
                     onSaved={(next: ProviderSettingsState) => {
                       setProviderRoutes(next);
                       setSetupRequired(!next.current.authenticated);
@@ -7989,7 +8626,11 @@ export default function App() {
         // a run opens as a READ-ONLY replay (fork is the only way to continue — automated
         // sessions never become live conversations here)
         <main className="chat board">
-          {autoReplay ? (
+          {activeSpaceId !== "personal" ? (
+            <div className="scroll boardpad">
+              <div className="autohint dim" role="status">{localResourceIsolationNotice}</div>
+            </div>
+          ) : autoReplay ? (
             <>
               <div className="anchor">
                 <button className="linky" onClick={() => setAutoReplay(null)}>
@@ -8150,6 +8791,7 @@ export default function App() {
                     const targetAgent = availableAgents.find((candidate) => candidate.ref === agentRef);
                     void openAgentConversation(agentRef, targetAgent?.home || workforceOffice.cwd, true);
                   }}
+                  onEditAgent={openAgentProfile}
                 />
               )}
               {(workbenchToolExtension || reviewExtension) && (
@@ -8191,6 +8833,35 @@ export default function App() {
       ) : (
         conversation(zone === "chat" ? "im" : "ide")
       )}
+
+      {profileAgent ? (
+        <AgentProfileEditor
+          agent={profileAgent}
+          locale={locale}
+          saving={profileAgentSaving}
+          error={profileAgentError}
+          onClose={() => {
+            if (profileAgentSaving) return;
+            setProfileAgentRef(null);
+            setProfileAgentError("");
+          }}
+          onSave={(profile) => void saveAgentProfile(profile)}
+          onArchive={() => void archiveProfileAgent()}
+        />
+      ) : null}
+      {hireAgentOpen ? (
+        <HireAgentDialog
+          locale={locale}
+          saving={hireAgentSaving}
+          error={hireAgentError}
+          onClose={() => {
+            if (hireAgentSaving) return;
+            setHireAgentOpen(false);
+            setHireAgentError("");
+          }}
+          onHire={(input) => void hireAgent(input)}
+        />
+      ) : null}
 
     </div>
   );

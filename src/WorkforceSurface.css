@@ -1609,6 +1609,9 @@
 .workforce-inspector-identity > p { max-width: 420px; overflow: hidden; margin: 3px 0 0; color: #8f8276; font-size: 8px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 .workforce-inspector-traits { display: flex; gap: 4px; margin-top: 5px; overflow: hidden; }
 .workforce-inspector-traits i { flex: 0 0 auto; padding: 2px 5px; border: 1px solid rgba(255,139,125,.22); border-radius: 99px; color: #c9a096; background: rgba(255,105,95,.06); font-size: 7px; font-style: normal; }
+.workforce-inspector-actions { display: flex; align-items: center; gap: 6px; }
+.workforce-inspector-actions button { min-height: 31px; padding: 0 12px; border: 1px solid rgba(255,139,125,.38); border-radius: 9px; background: #ff695f; color: #211513; font-size: 9px; font-weight: 800; }
+.workforce-inspector-actions button.is-profile { background: transparent; color: #c9a096; }
 
 .workforce-inspector dl div { border-left-color: rgba(244,229,204,.11); }
 .workforce-inspector dt { color: #766b61; }

@@ -1447,7 +1447,7 @@ dependencies = [
 
 [[package]]
 name = "hara-desktop"
-version = "0.1.102"
+version = "0.1.103"
 dependencies = [
  "base64 0.22.1",
  "image",

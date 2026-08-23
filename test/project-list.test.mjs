@@ -3,9 +3,14 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  HIDDEN_PROJECTS_STORAGE_KEY,
+  OPENED_PROJECTS_STORAGE_KEY,
   parseProjectPaths,
   projectGroups,
+  projectListStateForSpace,
   projectListStateFromStorage,
+  projectListStorageKey,
+  persistProjectListState,
   setProjectVisible,
 } from "../src/project-list.ts";
 
@@ -26,6 +31,36 @@ test("stored project paths tolerate corruption and discard invalid duplicates", 
     opened: ["/work/a"],
     hidden: ["/work/b"],
   });
+});
+
+test("project navigation is isolated per Space and legacy global paths migrate only to Personal", () => {
+  const values = new Map([
+    [OPENED_PROJECTS_STORAGE_KEY, '["/legacy/personal"]'],
+    [HIDDEN_PROJECTS_STORAGE_KEY, '["/legacy/hidden"]'],
+    [projectListStorageKey(OPENED_PROJECTS_STORAGE_KEY, "org:tenant-a"), '["/company/a"]'],
+    [projectListStorageKey(HIDDEN_PROJECTS_STORAGE_KEY, "org:tenant-a"), '["/company/hidden"]'],
+  ]);
+  const read = (key) => values.get(key) ?? null;
+  assert.deepEqual(projectListStateForSpace("personal", read), {
+    spaceId: "personal",
+    opened: ["/legacy/personal"],
+    hidden: ["/legacy/hidden"],
+  });
+  assert.deepEqual(projectListStateForSpace("org:tenant-a", read), {
+    spaceId: "org:tenant-a",
+    opened: ["/company/a"],
+    hidden: ["/company/hidden"],
+  });
+  assert.deepEqual(projectListStateForSpace("org:tenant-b", read), {
+    spaceId: "org:tenant-b",
+    opened: [],
+    hidden: [],
+  }, "a new company never inherits Personal or another company's paths");
+
+  const writes = new Map();
+  persistProjectListState({ spaceId: "org:tenant-b", opened: ["/company/b"], hidden: [] }, "org:tenant-b", (key, value) => writes.set(key, value));
+  assert.equal(writes.get(projectListStorageKey(OPENED_PROJECTS_STORAGE_KEY, "org:tenant-b")), '["/company/b"]');
+  assert.equal(writes.has(OPENED_PROJECTS_STORAGE_KEY), false);
 });
 
 test("a populated project can leave the list without deleting sessions and reopening restores it", () => {

@@ -5,6 +5,7 @@ import {
   agentInitials,
   agentPublicTitle,
   agentVisualTokens,
+  MAX_AGENT_AVATAR_BYTES,
   renderableAgentAvatar,
   stableAgentHash,
 } from "../src/agent-visual.ts";
@@ -49,4 +50,11 @@ test("Agent portraits never turn arbitrary role URLs or local paths into image r
   assert.equal(renderableAgentAvatar({ version: 1, displayName: "A", avatar: "/Users/name/private.png", source: "hara" }), undefined);
   assert.equal(renderableAgentAvatar({ version: 1, displayName: "A", avatar: "/avatars/a.webp", source: "hara" }), "/avatars/a.webp");
   assert.equal(renderableAgentAvatar({ version: 1, displayName: "A", avatar: "data:image/png;base64,YQ==", source: "hara" }), "data:image/png;base64,YQ==");
+});
+
+test("inline Agent portraits enforce decoded bytes rather than inflated base64 characters", () => {
+  const atLimit = `data:image/png;base64,${Buffer.alloc(MAX_AGENT_AVATAR_BYTES).toString("base64")}`;
+  const overLimit = `data:image/png;base64,${Buffer.alloc(MAX_AGENT_AVATAR_BYTES + 1).toString("base64")}`;
+  assert.equal(renderableAgentAvatar({ version: 1, displayName: "A", avatar: atLimit, source: "hara" }), atLimit);
+  assert.equal(renderableAgentAvatar({ version: 1, displayName: "A", avatar: overLimit, source: "hara" }), undefined);
 });

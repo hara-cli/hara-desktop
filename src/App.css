@@ -92,6 +92,31 @@ button.deny {
   display: flex;
   height: 100%;
 }
+
+.space-switch-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 32px;
+  color: var(--text);
+  text-align: center;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.space-switch-shield strong {
+  font-size: 15px;
+}
+
+.space-switch-shield span {
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .ready-error {
   position: absolute;
   z-index: 30;
@@ -1499,6 +1524,11 @@ button.deny {
   padding-inline: 8px;
   font-size: 12px;
 }
+.workbench-sidebar-actions .hire-agent-button {
+  grid-column: 1 / -1;
+  border-style: dashed;
+  color: var(--accent);
+}
 .workbench-sidebar {
   width: 286px;
   min-width: 286px;
@@ -1549,10 +1579,26 @@ button.deny {
 .inbox-detail-header {
   min-height: 54px;
   display: grid;
-  grid-template-columns: 30px 40px minmax(0, 1fr);
+  grid-template-columns: 30px 40px minmax(0, 1fr) 30px;
   align-items: center;
   gap: 9px;
   padding: 3px 2px 5px;
+}
+.inbox-agent-profile {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--dim);
+}
+.inbox-agent-profile:hover {
+  border-color: var(--border);
+  background: var(--bg3);
+  color: var(--accent);
 }
 .inbox-back {
   width: 30px;
@@ -2692,6 +2738,12 @@ select {
   display: flex;
   align-items: center;
   gap: 7px;
+}
+.brand-cluster {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 9px;
 }
 .wordmark {
   display: inline-block;
