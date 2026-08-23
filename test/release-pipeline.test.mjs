@@ -1398,6 +1398,27 @@ test("release trust reads use bounded retries and hard timeouts", () => {
   );
 });
 
+test("release CDN reads force HTTP/1.1 and stop zero-byte stalls within bounded time", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const promotion = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
+
+  assert.match(
+    workflow,
+    /Materialize exact release sources[\s\S]*?\/usr\/bin\/curl[\s\S]*?--http1\.1[\s\S]*?--connect-timeout 20 --max-time 300[\s\S]*?--speed-limit 1024 --speed-time 60/,
+  );
+  assert.match(promotion, /release_public_curl\(\)/);
+  assert.match(
+    promotion,
+    /curl --http1\.1 --fail --location --retry 5 --retry-all-errors[\s\S]*?--connect-timeout "\$RELEASE_PUBLIC_CONNECT_TIMEOUT_SECONDS"[\s\S]*?--max-time "\$RELEASE_PUBLIC_MAX_TIME_SECONDS"[\s\S]*?--speed-limit "\$RELEASE_PUBLIC_LOW_SPEED_BYTES"[\s\S]*?--speed-time "\$RELEASE_PUBLIC_LOW_SPEED_SECONDS"/,
+  );
+  assert.equal(
+    (promotion.match(/release_public_curl \\\n/g) || []).length,
+    3,
+    "verification-only latest, public DMGs, and final latest convergence must share the bounded edge reader",
+  );
+  assert.doesNotMatch(promotion, /curl --fail --location --retry/);
+});
+
 test("a post-publication rerun switches to immutable verification without rewriting assets", () => {
   const script = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
   const verificationOnly = script.indexOf("Published immutable release detected; entering verification-only rerun");

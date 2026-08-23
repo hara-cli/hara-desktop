@@ -104,6 +104,23 @@ REMOTE_DIR="$WORK/remote"
 PUBLIC_DIR="$WORK/public"
 trap 'rm -rf "$WORK"' EXIT
 readonly RELEASE_TRANSFER_ATTEMPTS=3
+readonly RELEASE_PUBLIC_CONNECT_TIMEOUT_SECONDS=20
+readonly RELEASE_PUBLIC_MAX_TIME_SECONDS=600
+readonly RELEASE_PUBLIC_LOW_SPEED_BYTES=1024
+readonly RELEASE_PUBLIC_LOW_SPEED_SECONDS=60
+
+# GitHub's release CDN occasionally leaves an HTTP/2 connection established without delivering any
+# bytes. Keep public-edge verification bounded and force the HTTP/1.1 path that release-assets serves
+# reliably on the protected signing host. A stalled edge must fail into the existing retry/re-run
+# recovery path instead of occupying the signing runner until the job-level timeout.
+release_public_curl() {
+  curl --http1.1 --fail --location --retry 5 --retry-all-errors \
+    --connect-timeout "$RELEASE_PUBLIC_CONNECT_TIMEOUT_SECONDS" \
+    --max-time "$RELEASE_PUBLIC_MAX_TIME_SECONDS" \
+    --speed-limit "$RELEASE_PUBLIC_LOW_SPEED_BYTES" \
+    --speed-time "$RELEASE_PUBLIC_LOW_SPEED_SECONDS" \
+    "$@"
+}
 
 release_download_all() {
   local target="$1"
@@ -344,7 +361,7 @@ if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
     "$PUBLIC_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
   verify_signed_dmg public "$PUBLIC_DIR/Hara_${VER}_aarch64.dmg" aarch64-apple-darwin
   verify_signed_dmg public "$PUBLIC_DIR/Hara_${VER}_x64.dmg" x86_64-apple-darwin
-  curl --fail --location --retry 5 --retry-all-errors \
+  release_public_curl \
     --output "$WORK/latest-public.json" \
     "https://github.com/$REPO/releases/latest/download/latest.json"
   cmp -s "$PUBLIC_DIR/latest.json" "$WORK/latest-public.json" || {
@@ -497,14 +514,14 @@ unset RELEASE_GH_TOKEN
 # retries absorb normal GitHub edge propagation delay.
 for arch in aarch64 x64; do
   public_dmg="$PUBLIC_DIR/Hara_${VER}_${arch}.dmg"
-  curl --fail --location --retry 5 --retry-all-errors \
+  release_public_curl \
     --output "$public_dmg" \
     "https://github.com/$REPO/releases/download/$TAG/Hara_${VER}_${arch}.dmg"
   /usr/sbin/spctl -a -t open --context context:primary-signature -v "$public_dmg"
 done
 LATEST_MATCHED=0
 for attempt in {1..12}; do
-  if curl --fail --location --retry 2 --retry-all-errors \
+  if release_public_curl \
     --output "$PUBLIC_DIR/latest.json" \
     "https://github.com/$REPO/releases/latest/download/latest.json" && \
     cmp -s "$REMOTE_DIR/latest.json" "$PUBLIC_DIR/latest.json"; then
