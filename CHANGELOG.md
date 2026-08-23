@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.104 — 2026-08-24 — bounded and recoverable release verification
+
+- Keep the Personal/company Space, managed Agent profile, message center, and comic Office behavior from
+  0.1.103 unchanged while moving every GitHub Release asset download behind a hard process deadline.
+- Recover from a stalled release edge by retrying within fixed limits and retaining only files whose size and
+  SHA-256 match GitHub's immutable asset metadata. Draft assembly, signed-asset reconciliation, promotion, and
+  post-publication verification now share the same bounded path; public CDN probes force HTTP/1.1 and reject
+  zero-byte stalls.
+- Continue bundling Hara CLI `0.152.0` at exact verified commit
+  `7e4f42df200839fd161b08e007345b700133ab7e`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.103 — 2026-08-23 — Personal/company Spaces and managed Agent profiles
 
 - Add a first-class Space switcher for Personal and multiple companies. A switch now clears and reloads
