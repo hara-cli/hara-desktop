@@ -921,6 +921,12 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.doesNotMatch(signJob, /\bgit\b.*\bfetch\b/);
   assert.match(signJob, /SOURCE_ARTIFACT_ID: \$\{\{ needs\.prepare_release\.outputs\.source_artifact_id \}\}/);
   assert.match(signJob, /SOURCE_ARTIFACT_DIGEST: \$\{\{ needs\.prepare_release\.outputs\.source_artifact_digest \}\}/);
+  assert.match(signJob, /run_with_deadline 330 \/usr\/bin\/env GH_HTTP_TIMEOUT=300/);
+  assert.match(signJob, /gh api "\$ARTIFACT_API_PATH" > "\$GH_API_ARTIFACT_ZIP"/);
+  assert.match(signJob, /shasum -a 256 "\$GH_API_ARTIFACT_ZIP"/);
+  assert.match(signJob, /mv "\$GH_API_ARTIFACT_ZIP" "\$ARTIFACT_ZIP"/);
+  assert.match(signJob, /for api_attempt in 1 2 3/);
+  assert.doesNotMatch(signJob, /gh run download/);
   assert.match(signJob, /--continue-at - --output "\$ARTIFACT_ZIP"/);
   assert.match(signJob, /shasum -a 256 -c source-packs\.sha256/);
   assert.match(signJob, /index-pack --stdin < "\$pack_file"/);

@@ -724,7 +724,54 @@ jobs:
           ARTIFACT_ZIP="$HARA_RELEASE_SOURCE_ROOT/source-packs.zip"
           RESPONSE_HEADERS="$HARA_RELEASE_SOURCE_ROOT/source-packs.headers"
           API_URL="https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip"
+          ARTIFACT_API_PATH="repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip"
           DOWNLOAD_COMPLETE=0
+
+          run_with_deadline() {
+            local deadline_seconds="$1"
+            shift
+            "$@" &
+            local command_pid=$!
+            (
+              sleep "$deadline_seconds"
+              kill -TERM "$command_pid" 2>/dev/null || exit 0
+              sleep 5
+              kill -KILL "$command_pid" 2>/dev/null || true
+            ) &
+            local watchdog_pid=$!
+            local command_exit_code=0
+            if wait "$command_pid"; then
+              command_exit_code=0
+            else
+              command_exit_code=$?
+            fi
+            kill "$watchdog_pid" 2>/dev/null || true
+            wait "$watchdog_pid" 2>/dev/null || true
+            return "$command_exit_code"
+          }
+
+          GH_API_ARTIFACT_ZIP="${ARTIFACT_ZIP}.gh-api"
+          for api_attempt in 1 2 3; do
+            rm -f "$GH_API_ARTIFACT_ZIP"
+            if run_with_deadline 330 /usr/bin/env GH_HTTP_TIMEOUT=300 \
+              gh api "$ARTIFACT_API_PATH" > "$GH_API_ARTIFACT_ZIP"; then
+              ACTUAL_ARTIFACT_SHA="$(shasum -a 256 "$GH_API_ARTIFACT_ZIP" | awk '{print $1}')"
+              if [ "$ACTUAL_ARTIFACT_SHA" = "$EXPECTED_ARTIFACT_SHA" ]; then
+                mv "$GH_API_ARTIFACT_ZIP" "$ARTIFACT_ZIP"
+                DOWNLOAD_COMPLETE=1
+                break
+              fi
+            fi
+            rm -f "$GH_API_ARTIFACT_ZIP"
+            [ "$api_attempt" -lt 3 ] || break
+            echo "GitHub CLI source artifact transfer incomplete ($api_attempt/3); retrying after a bounded delay" >&2
+            sleep $((api_attempt * 3))
+          done
+
+          # GitHub's Go client and the release/blob edge occasionally fail in different ways. Retain the
+          # byte-resumable HTTP/1.1 path as an independently bounded fallback, and accept neither route
+          # until the upload-artifact digest from the trusted prepare job matches exactly.
+          if [ "$DOWNLOAD_COMPLETE" != "1" ]; then
           for download_attempt in 1 2 3 4 5 6 7 8; do
             : > "$RESPONSE_HEADERS"
             HTTP_CODE="$(
@@ -765,6 +812,7 @@ jobs:
             echo "source artifact transfer incomplete ($download_attempt/8); resuming after a bounded delay" >&2
             sleep $((download_attempt * 3))
           done
+          fi
           [ "$DOWNLOAD_COMPLETE" = "1" ] || {
             echo "could not download the exact source artifact after bounded resumable attempts" >&2
             exit 1
