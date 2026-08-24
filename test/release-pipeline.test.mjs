@@ -1081,10 +1081,17 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(assembleJob, /rm -f "\$SOURCE_ARCHIVE"/);
   assert.match(signJob, /Materialize exact release sources from the digest-bound hidden Release archive/);
   assert.match(signJob, /source-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
+  assert.match(signJob, /needs: \[prepare_release, create_draft, assemble_draft, promotion_preflight\]/);
+  assert.match(signJob, /"\$@" <&0 &/);
   assert.doesNotMatch(signJob, /\bgit\b.*\bfetch\b/);
   assert.doesNotMatch(signJob, /SOURCE_ARTIFACT_ID:/);
+  assert.match(signJob, /RELEASE_ID: \$\{\{ needs\.create_draft\.outputs\.release_id \}\}/);
   assert.match(signJob, /SOURCE_ARTIFACT_DIGEST: \$\{\{ needs\.prepare_release\.outputs\.source_artifact_digest \}\}/);
-  assert.match(signJob, /releases\/tags\/\$RELEASE_TAG/);
+  assert.match(signJob, /releases\/\$RELEASE_ID/);
+  assert.doesNotMatch(signJob, /releases\/tags\/\$RELEASE_TAG/);
+  assert.match(signJob, /--argjson release_id "\$RELEASE_ID"/);
+  assert.match(signJob, /\.tag_name == \$tag/);
+  assert.match(signJob, /\.draft == true/);
   assert.match(signJob, /\.digest == \$digest/);
   assert.match(signJob, /releases\/assets\/\$SOURCE_ASSET_ID/);
   assert.match(signJob, /header = "Authorization: Bearer %s"/);
@@ -1093,6 +1100,8 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(signJob, /--proto '=https'/);
   assert.match(signJob, /--config -/);
   assert.doesNotMatch(signJob, /gh run download/);
+  assert.match(signJob, /run_with_deadline 120 \/usr\/bin\/env GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
+  assert.match(signJob, /--retry-max-time 90/);
   assert.match(signJob, /run_with_deadline 600 \/usr\/bin\/env GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
   assert.match(signJob, /--retry-max-time 540/);
   assert.match(signJob, /--continue-at -/);
@@ -1343,7 +1352,7 @@ test("tag workflow automatically enters the protected promotion job under one co
   assert.match(buildWorkflow, /build\.yml@refs\/tags\/\$RELEASE_TAG/);
   assert.match(
     buildWorkflow,
-    /sign_and_promote:\n[\s\S]*?needs: \[prepare_release, assemble_draft, promotion_preflight\]/,
+    /sign_and_promote:\n[\s\S]*?needs: \[prepare_release, create_draft, assemble_draft, promotion_preflight\]/,
   );
   assert.match(
     buildWorkflow,

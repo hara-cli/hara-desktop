@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.109 — 2026-08-25 — Exact hidden-draft identity
+
+- Carry forward the Agent recovery fixes and digest-bound source archive transport from 0.1.108 while
+  removing the signer's dependency on GitHub's tag lookup for a still-hidden draft. The protected signer
+  now consumes the exact Release database ID produced by the trusted draft-creation job.
+- Read that repository-bound Release record through system curl over HTTP/1.1 with an aggregate retry budget
+  and hard process deadline, then require the exact ID, tag, draft state, source asset name, byte size, and
+  original upload-artifact SHA-256 before downloading or executing any source. A 404, network stall, state
+  mismatch, or digest mismatch still fails before signing and publication.
+- Bundle Hara CLI `0.152.2` at exact verified commit
+  `0c27bbe535bd16769fc74a5b8b98c472e08e635c`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.108 — 2026-08-24 — Verified source archive transport
 
 - Carry forward the Agent recovery fixes prepared in 0.1.107: generated Python syntax failures now require

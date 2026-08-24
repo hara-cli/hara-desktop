@@ -57,9 +57,11 @@ Gates before ANY push (either repo):
    local stable promotion is rejected, so draft assembly can never race signed asset replacement.
    The GitHub-hosted assembler also copies the exact `upload-artifact` source-pack ZIP into the hidden
    draft as `Hara_<version>_source-packs.zip` after checking the original Actions artifact SHA-256.
-   The protected signer downloads that named archive through the independently bounded Release REST
-   path, verifies the same outer digest plus every inner source-pack checksum, and only then executes
-   the pinned source. The archive remains in the immutable public release as reproducibility evidence.
+   The protected signer consumes the exact Release database ID returned by the trusted draft-creation
+   job, reads that repository-bound record through independently bounded HTTP/1.1 REST, and requires the
+   exact tag and hidden-draft state before selecting the named archive. It then verifies the same outer
+   digest plus every inner source-pack checksum, and only then executes the pinned source. The archive
+   remains in the immutable public release as reproducibility evidence.
    The guarded job checks Node/Bun/Rust, exact clean
 CLI/Desktop tags, both architectures, the sidecar before and after Developer ID signing and inside
 `Hara.app`, then notarizes/staples both DMGs. Matrix receipts and the public source-provenance asset

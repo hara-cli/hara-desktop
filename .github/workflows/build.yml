@@ -743,7 +743,7 @@ jobs:
 
   sign_and_promote:
     name: Sign, notarize, verify, and promote automatically
-    needs: [prepare_release, assemble_draft, promotion_preflight]
+    needs: [prepare_release, create_draft, assemble_draft, promotion_preflight]
     permissions:
       actions: read
       contents: write
@@ -759,6 +759,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.create_draft.outputs.release_id }}
           PINNED_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
           PINNED_CLI_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
           PINNED_CLI_VERSION: ${{ needs.prepare_release.outputs.cli_version }}
@@ -770,6 +771,10 @@ jobs:
             exit 1
           }
           EXPECTED_ARTIFACT_SHA="${SOURCE_ARTIFACT_DIGEST#sha256:}"
+          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]] || {
+            echo "the hidden draft release ID is missing or invalid" >&2
+            exit 1
+          }
           [[ "$EXPECTED_ARTIFACT_SHA" =~ ^[0-9a-f]{64}$ ]] || {
             echo "the source artifact digest is missing or invalid" >&2
             exit 1
@@ -779,13 +784,15 @@ jobs:
           ARTIFACT_ZIP="$HARA_RELEASE_SOURCE_ROOT/source-packs.zip"
           ARTIFACT_PARTIAL="${ARTIFACT_ZIP}.partial"
           RELEASE_METADATA="$HARA_RELEASE_SOURCE_ROOT/release.json"
+          RELEASE_METADATA_PARTIAL="${RELEASE_METADATA}.partial"
           SOURCE_METADATA="$HARA_RELEASE_SOURCE_ROOT/source-release-asset.json"
           SOURCE_ASSET_NAME="Hara_${RELEASE_TAG#v}_source-packs.zip"
+          RELEASE_API_URL="https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
 
           run_with_deadline() {
             local deadline_seconds="$1"
             shift
-            "$@" &
+            "$@" <&0 &
             local command_pid=$!
             (
               sleep "$deadline_seconds"
@@ -805,11 +812,41 @@ jobs:
             return "$command_exit_code"
           }
 
+          umask 077
           METADATA_COMPLETE=0
           for metadata_attempt in 1 2 3; do
-            rm -f "$RELEASE_METADATA" "$SOURCE_METADATA"
-            if run_with_deadline 90 /usr/bin/env GH_HTTP_TIMEOUT=60 \
-              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RELEASE_METADATA" && \
+            rm -f "$RELEASE_METADATA" "$RELEASE_METADATA_PARTIAL" "$SOURCE_METADATA"
+            if {
+              printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN"
+              printf 'header = "Accept: application/vnd.github+json"\n'
+              printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
+            } | run_with_deadline 120 /usr/bin/env GH_TOKEN='' GITHUB_TOKEN='' /usr/bin/curl \
+              --disable \
+              --http1.1 \
+              --proto '=https' \
+              --fail \
+              --silent \
+              --show-error \
+              --retry 3 \
+              --retry-all-errors \
+              --retry-delay 2 \
+              --retry-max-time 90 \
+              --connect-timeout 20 \
+              --max-time 100 \
+              --speed-limit 128 \
+              --speed-time 30 \
+              --output "$RELEASE_METADATA_PARTIAL" \
+              --config - \
+              "$RELEASE_API_URL" && \
+              jq -e \
+                --argjson release_id "$RELEASE_ID" \
+                --arg tag "$RELEASE_TAG" '
+                  .id == $release_id and
+                  .tag_name == $tag and
+                  .draft == true and
+                  .prerelease == false
+                ' "$RELEASE_METADATA_PARTIAL" >/dev/null && \
+              mv "$RELEASE_METADATA_PARTIAL" "$RELEASE_METADATA" && \
               jq --arg name "$SOURCE_ASSET_NAME" '
                 [.assets[] | select(.name == $name)] |
                 if length == 1 then .[0] else error("expected exactly one source archive") end
@@ -846,7 +883,6 @@ jobs:
             exit 1
           }
 
-          umask 077
           : > "$ARTIFACT_PARTIAL"
           DOWNLOAD_COMPLETE=0
           for download_attempt in 1 2 3; do
