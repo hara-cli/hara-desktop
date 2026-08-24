@@ -1,6 +1,7 @@
 # Tag-driven desktop release pipeline. Native matrix jobs only build and smoke local packages.
 # A single aggregation job is the sole writer of the hidden GitHub draft and latest.json. The
-# draft remains hidden until controlled macOS signing/notarization replaces both Mac architectures.
+# draft remains hidden until controlled macOS signing/notarization replaces both Mac architectures;
+# a separate read-only hosted job verifies the exact bytes delivered by the public edge.
 name: build
 
 on:
@@ -755,7 +756,7 @@ jobs:
     env:
       HARA_RELEASE_SOURCE_ROOT: ${{ github.workspace }}/source-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - name: Materialize exact release sources from the digest-bound hidden Release archive
+      - name: Materialize exact release sources from the digest-bound Release archive
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -772,7 +773,7 @@ jobs:
           }
           EXPECTED_ARTIFACT_SHA="${SOURCE_ARTIFACT_DIGEST#sha256:}"
           [[ "$RELEASE_ID" =~ ^[0-9]+$ ]] || {
-            echo "the hidden draft release ID is missing or invalid" >&2
+            echo "the exact Release ID is missing or invalid" >&2
             exit 1
           }
           [[ "$EXPECTED_ARTIFACT_SHA" =~ ^[0-9a-f]{64}$ ]] || {
@@ -843,8 +844,15 @@ jobs:
                 --arg tag "$RELEASE_TAG" '
                   .id == $release_id and
                   .tag_name == $tag and
-                  .draft == true and
-                  .prerelease == false
+                  .prerelease == false and
+                  (
+                    .draft == true or
+                    (
+                      .draft == false and
+                      .immutable == true and
+                      (.published_at | type == "string" and length > 0)
+                    )
+                  )
                 ' "$RELEASE_METADATA_PARTIAL" >/dev/null && \
               mv "$RELEASE_METADATA_PARTIAL" "$RELEASE_METADATA" && \
               jq --arg name "$SOURCE_ASSET_NAME" '
@@ -871,6 +879,15 @@ jobs:
             echo "could not resolve the digest-bound source Release asset" >&2
             exit 1
           }
+
+          RELEASE_IS_DRAFT="$(jq -r .draft "$RELEASE_METADATA")"
+          if [ "$RELEASE_IS_DRAFT" = "false" ]; then
+            run_with_deadline 120 gh release verify "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null || {
+              echo "the public Release is not covered by a valid immutable attestation" >&2
+              exit 1
+            }
+            echo "Verified immutable public Release before materializing its exact source archive."
+          fi
 
           SOURCE_ASSET_ID="$(jq -r .id "$SOURCE_METADATA")"
           SOURCE_ASSET_SIZE="$(jq -r .size "$SOURCE_METADATA")"
@@ -1100,6 +1117,7 @@ jobs:
           HARA_DRAFT_ASSEMBLED_RUN_ID: ${{ github.run_id }}
           HARA_PROTECTED_SIGNING_JOB: ${{ github.run_id }}
           HARA_RELEASE_SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
+          HARA_DEFER_PUBLIC_EDGE_VERIFY: "1"
         run: ./scripts/release-mac-assets.sh "$RELEASE_TAG"
 
       - name: Remove the run-scoped release source checkout
@@ -1115,3 +1133,63 @@ jobs:
           if [ -d "$HARA_RELEASE_SOURCE_ROOT" ]; then
             rm -rf -- "$HARA_RELEASE_SOURCE_ROOT"
           fi
+
+  verify_public_release:
+    name: Verify immutable release through the public GitHub edge
+    needs: [prepare_release, sign_and_promote]
+    permissions:
+      contents: read
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Require the exact protected stable tag after promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "public verification requires a vX.Y.Z tag" >&2
+            exit 1
+          }
+          [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF_TYPE" = "tag" ] || {
+            echo "public verification is limited to the pushed stable tag run" >&2
+            exit 1
+          }
+          [ "$GITHUB_REF_PROTECTED" = "true" ] || {
+            echo "public verification tag is not protected" >&2
+            exit 1
+          }
+          [ "$GITHUB_WORKFLOW_REF" = \
+            "$GITHUB_REPOSITORY/.github/workflows/build.yml@refs/tags/$RELEASE_TAG" ] || {
+            echo "public verification workflow does not come from the exact stable tag" >&2
+            exit 1
+          }
+          [ "$GITHUB_SHA" = "${{ needs.prepare_release.outputs.desktop_sha }}" ] || {
+            echo "public verification commit does not match the pinned Desktop source" >&2
+            exit 1
+          }
+
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify checked-out public-verifier source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ] || {
+            echo "public verifier checkout does not match the tag event commit" >&2
+            exit 1
+          }
+          REMOTE_TAG_COMMIT="$(node scripts/resolve-remote-tag.mjs . origin "$RELEASE_TAG")"
+          [ "$REMOTE_TAG_COMMIT" = "$GITHUB_SHA" ] || {
+            echo "public verifier tag moved after publication" >&2
+            exit 1
+          }
+
+      - name: Verify attested public DMGs, Gatekeeper trust, and latest.json
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/verify-public-release-edge.sh "$RELEASE_TAG"

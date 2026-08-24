@@ -59,9 +59,10 @@ Gates before ANY push (either repo):
    draft as `Hara_<version>_source-packs.zip` after checking the original Actions artifact SHA-256.
    The protected signer consumes the exact Release database ID returned by the trusted draft-creation
    job, reads that repository-bound record through independently bounded HTTP/1.1 REST, and requires the
-   exact tag and hidden-draft state before selecting the named archive. It then verifies the same outer
-   digest plus every inner source-pack checksum, and only then executes the pinned source. The archive
-   remains in the immutable public release as reproducibility evidence.
+   exact tag and either the original hidden-draft state or an already-public immutable state before selecting
+   the named archive. A public retry must first pass GitHub's signed immutable-release attestation. It then
+   verifies the same outer digest plus every inner source-pack checksum, and only then executes the pinned
+   source. The archive remains in the immutable public release as reproducibility evidence.
    The guarded job checks Node/Bun/Rust, exact clean
 CLI/Desktop tags, both architectures, the sidecar before and after Developer ID signing and inside
 `Hara.app`, then notarizes/staples both DMGs. Matrix receipts and the public source-provenance asset
@@ -71,7 +72,11 @@ job also requires run-scoped, atomic provenance markers for both signed Mac arch
 live outside Tauri-owned bundle directories, are invalidated before each attempt, and can be written only
 after signing, notarization, and package smoke complete. The signing script uses an explicit completion
 sentinel because macOS Bash 3.2 can otherwise report some fatal `set -u` exits as status zero. The job
-re-downloads and validates the entire draft before it alone promotes stable. Afterward,
+re-downloads and validates the entire draft before it alone promotes stable. After immutable publication,
+an independent read-only GitHub-hosted macOS job downloads both public DMGs through GitHub's edge, verifies
+their exact immutable sizes and SHA-256 digests, runs Gatekeeper, and compares stable `latest.json` byte-for-byte
+with the attested release asset. A transient edge failure can rerun this job without reopening signing or
+mutating the Release. Afterward,
 send the required notice to Feishu `hara 反馈群` and reply to the original fixed bug reports.
 Repository settings must keep immutable releases enabled and `hara-desktop-production` restricted
 to exactly one custom deployment policy, the `v*` tag policy, with no manual reviewer rule. An

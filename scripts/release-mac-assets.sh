@@ -404,13 +404,17 @@ if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
     "$PUBLIC_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
   verify_signed_dmg public "$PUBLIC_DIR/Hara_${VER}_aarch64.dmg" aarch64-apple-darwin
   verify_signed_dmg public "$PUBLIC_DIR/Hara_${VER}_x64.dmg" x86_64-apple-darwin
-  release_public_curl \
-    --output "$WORK/latest-public.json" \
-    "https://github.com/$REPO/releases/latest/download/latest.json"
-  cmp -s "$PUBLIC_DIR/latest.json" "$WORK/latest-public.json" || {
-    echo "error: public latest.json does not match verified immutable $TAG" >&2
-    exit 1
-  }
+  if [ "${HARA_DEFER_PUBLIC_EDGE_VERIFY:-0}" = "1" ]; then
+    echo "Public edge verification is delegated to the read-only hosted macOS job."
+  else
+    release_public_curl \
+      --output "$WORK/latest-public.json" \
+      "https://github.com/$REPO/releases/latest/download/latest.json"
+    cmp -s "$PUBLIC_DIR/latest.json" "$WORK/latest-public.json" || {
+      echo "error: public latest.json does not match verified immutable $TAG" >&2
+      exit 1
+    }
+  fi
   unset RELEASE_POLICY_TOKEN RELEASE_GH_TOKEN
   echo "✓ $TAG public immutable release reverified without mutation"
   exit 0
@@ -555,31 +559,35 @@ done
 }
 unset RELEASE_GH_TOKEN
 
-# Last-mile CDN check after promotion. The same files already passed Gatekeeper before publication;
-# retries absorb normal GitHub edge propagation delay.
-for arch in aarch64 x64; do
-  public_dmg="$PUBLIC_DIR/Hara_${VER}_${arch}.dmg"
-  release_public_curl \
-    --output "$public_dmg" \
-    "https://github.com/$REPO/releases/download/$TAG/Hara_${VER}_${arch}.dmg"
-  /usr/sbin/spctl -a -t open --context context:primary-signature -v "$public_dmg"
-done
-LATEST_MATCHED=0
-for attempt in {1..12}; do
-  if release_public_curl \
-    --output "$PUBLIC_DIR/latest.json" \
-    "https://github.com/$REPO/releases/latest/download/latest.json" && \
-    cmp -s "$REMOTE_DIR/latest.json" "$PUBLIC_DIR/latest.json"; then
-    LATEST_MATCHED=1
-    break
-  fi
-  echo "public latest.json has not converged to $TAG yet (attempt $attempt/12)"
-  sleep 5
-done
-[ "$LATEST_MATCHED" = "1" ] || {
-  echo "error: public latest.json does not match the verified $TAG manifest" >&2
-  exit 1
-}
+if [ "${HARA_DEFER_PUBLIC_EDGE_VERIFY:-0}" = "1" ]; then
+  echo "Public DMG and latest.json edge verification is delegated to the read-only hosted macOS job."
+else
+  # Last-mile CDN check after promotion. The same files already passed Gatekeeper before publication;
+  # retries absorb normal GitHub edge propagation delay.
+  for arch in aarch64 x64; do
+    public_dmg="$PUBLIC_DIR/Hara_${VER}_${arch}.dmg"
+    release_public_curl \
+      --output "$public_dmg" \
+      "https://github.com/$REPO/releases/download/$TAG/Hara_${VER}_${arch}.dmg"
+    /usr/sbin/spctl -a -t open --context context:primary-signature -v "$public_dmg"
+  done
+  LATEST_MATCHED=0
+  for attempt in {1..12}; do
+    if release_public_curl \
+      --output "$PUBLIC_DIR/latest.json" \
+      "https://github.com/$REPO/releases/latest/download/latest.json" && \
+      cmp -s "$REMOTE_DIR/latest.json" "$PUBLIC_DIR/latest.json"; then
+      LATEST_MATCHED=1
+      break
+    fi
+    echo "public latest.json has not converged to $TAG yet (attempt $attempt/12)"
+    sleep 5
+  done
+  [ "$LATEST_MATCHED" = "1" ] || {
+    echo "error: public latest.json does not match the verified $TAG manifest" >&2
+    exit 1
+  }
+fi
 
 echo "✓ $TAG promoted stable after native CI, immutable-release attestation, exact updater validation, and signed/notarized arm64+x64 Mac verification"
 echo "! Send the required Feishu hara 反馈群 release notice and reply to each fixed bug report."

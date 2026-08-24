@@ -1059,7 +1059,11 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.doesNotMatch(script, /security show-keychain-info/);
   assert.doesNotMatch(workflow, /HARA_CODESIGN_KEYCHAIN_PASSWORD/);
 
-  const signJob = workflow.slice(workflow.indexOf("\n  sign_and_promote:"));
+  const signJob = workflow.slice(
+    workflow.indexOf("\n  sign_and_promote:"),
+    workflow.indexOf("\n  verify_public_release:"),
+  );
+  const publicJob = workflow.slice(workflow.indexOf("\n  verify_public_release:"));
   assert.doesNotMatch(signJob, /^\s+- uses:/mu);
   assert.match(workflow, /Build compact packs for the exact Desktop and CLI source snapshots/);
   assert.match(workflow, /rev-list --objects --no-object-names "\$commit_sha\^\{tree\}"/);
@@ -1079,7 +1083,7 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(assembleJob, /gh release upload[\s\S]*release-source-archive/);
   assert.match(assembleJob, /sha256sum -c source-packs\.sha256/);
   assert.match(assembleJob, /rm -f "\$SOURCE_ARCHIVE"/);
-  assert.match(signJob, /Materialize exact release sources from the digest-bound hidden Release archive/);
+  assert.match(signJob, /Materialize exact release sources from the digest-bound Release archive/);
   assert.match(signJob, /source-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.match(signJob, /needs: \[prepare_release, create_draft, assemble_draft, promotion_preflight\]/);
   assert.match(signJob, /"\$@" <&0 &/);
@@ -1091,7 +1095,10 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.doesNotMatch(signJob, /releases\/tags\/\$RELEASE_TAG/);
   assert.match(signJob, /--argjson release_id "\$RELEASE_ID"/);
   assert.match(signJob, /\.tag_name == \$tag/);
-  assert.match(signJob, /\.draft == true/);
+  assert.match(signJob, /\.draft == true or/);
+  assert.match(signJob, /\.draft == false and[\s\S]*?\.immutable == true/);
+  assert.match(signJob, /RELEASE_IS_DRAFT="\$\(jq -r \.draft/);
+  assert.match(signJob, /run_with_deadline 120 gh release verify "\$RELEASE_TAG"/);
   assert.match(signJob, /\.digest == \$digest/);
   assert.match(signJob, /releases\/assets\/\$SOURCE_ASSET_ID/);
   assert.match(signJob, /header = "Authorization: Bearer %s"/);
@@ -1117,6 +1124,17 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(promotion, /HARA_RELEASE_SOURCE_ARTIFACT_DIGEST/);
   assert.match(promotion, /remove_verified_source_archive/);
   assert.match(promotion, /trusted prepare-job digest/);
+  assert.match(signJob, /HARA_DEFER_PUBLIC_EDGE_VERIFY: "1"/);
+  assert.match(publicJob, /needs: \[prepare_release, sign_and_promote\]/);
+  assert.match(publicJob, /permissions:\n      contents: read/);
+  assert.match(publicJob, /runs-on: macos-15/);
+  assert.match(publicJob, /timeout-minutes: 45/);
+  assert.match(publicJob, /persist-credentials: false/);
+  assert.match(publicJob, /node scripts\/resolve-remote-tag\.mjs \. origin "\$RELEASE_TAG"/);
+  assert.match(publicJob, /bash scripts\/verify-public-release-edge\.sh "\$RELEASE_TAG"/);
+  assert.doesNotMatch(publicJob, /contents: write/);
+  assert.doesNotMatch(publicJob, /environment:/);
+  assert.doesNotMatch(publicJob, /secrets\./);
 });
 
 test("CI Rosetta smoke is limited to the protected tag signing job", () => {
@@ -1322,7 +1340,15 @@ test("every release job and installer extraction has a finite timeout", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
   const lines = workflow.split("\n");
-  for (const job of ["prepare_release", "create_draft", "build", "assemble_draft", "promotion_preflight", "sign_and_promote"]) {
+  for (const job of [
+    "prepare_release",
+    "create_draft",
+    "build",
+    "assemble_draft",
+    "promotion_preflight",
+    "sign_and_promote",
+    "verify_public_release",
+  ]) {
     const start = lines.indexOf(`  ${job}:`);
     assert.ok(start >= 0, `missing release job ${job}`);
     const nextOffset = lines.slice(start + 1).findIndex((line) => /^  [A-Za-z0-9_]+:$/.test(line));
@@ -1353,6 +1379,10 @@ test("tag workflow automatically enters the protected promotion job under one co
   assert.match(
     buildWorkflow,
     /sign_and_promote:\n[\s\S]*?needs: \[prepare_release, create_draft, assemble_draft, promotion_preflight\]/,
+  );
+  assert.match(
+    buildWorkflow,
+    /verify_public_release:\n[\s\S]*?needs: \[prepare_release, sign_and_promote\]/,
   );
   assert.match(
     buildWorkflow,
@@ -1656,6 +1686,7 @@ test("release trust reads use bounded retries and hard timeouts", () => {
 test("release CDN reads force HTTP/1.1 and stop zero-byte stalls within bounded time", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const promotion = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
+  const publicEdge = readFileSync(join(root, "scripts/verify-public-release-edge.sh"), "utf8");
 
   assert.match(
     workflow,
@@ -1672,9 +1703,21 @@ test("release CDN reads force HTTP/1.1 and stop zero-byte stalls within bounded 
     "verification-only latest, public DMGs, and final latest convergence must share the bounded edge reader",
   );
   assert.doesNotMatch(promotion, /curl --fail --location --retry/);
+  assert.match(publicEdge, /gh release view "\$TAG"[\s\S]*?isImmutable[\s\S]*?assets/);
+  assert.match(publicEdge, /\.isImmutable == true/);
+  assert.match(publicEdge, /gh release verify "\$TAG"/);
+  assert.match(
+    publicEdge,
+    /\/usr\/bin\/curl[\s\S]*?--http1\.1[\s\S]*?--retry-max-time 540[\s\S]*?--max-time 570[\s\S]*?--speed-limit 1024[\s\S]*?--speed-time 60/,
+  );
+  assert.match(publicEdge, /actual_size[\s\S]*?expected_size[\s\S]*?actual_sha[\s\S]*?expected_sha/);
+  assert.equal((publicEdge.match(/\/usr\/sbin\/spctl/g) || []).length, 2);
+  assert.match(publicEdge, /for attempt in \{1\.\.12\}; do/);
+  assert.match(publicEdge, /cmp -s "\$IMMUTABLE_LATEST" "\$STABLE_LATEST"/);
 });
 
 test("a post-publication rerun switches to immutable verification without rewriting assets", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const script = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
   const verificationOnly = script.indexOf("Published immutable release detected; entering verification-only rerun");
   const localSignedOutputGate = script.indexOf("node scripts/release-provenance.mjs verify");
@@ -1687,6 +1730,14 @@ test("a post-publication rerun switches to immutable verification without rewrit
   assert.match(branch, /verify_signed_dmg public .*aarch64-apple-darwin/);
   assert.match(branch, /verify_signed_dmg public .*x86_64-apple-darwin/);
   assert.match(branch, /exit 0/);
+  const sourceGate = workflow.slice(
+    workflow.indexOf("Materialize exact release sources from the digest-bound Release archive"),
+    workflow.indexOf("- name: Install protected signing toolchain"),
+  );
+  assert.match(sourceGate, /\.draft == false and[\s\S]*?\.immutable == true/);
+  const attestation = sourceGate.indexOf('gh release verify "$RELEASE_TAG"');
+  const sourceDownload = sourceGate.indexOf('releases/assets/$SOURCE_ASSET_ID');
+  assert.ok(attestation >= 0 && sourceDownload > attestation);
 });
 
 test("native sidecar builds attest CLI HEAD and cleanliness after compilation", () => {

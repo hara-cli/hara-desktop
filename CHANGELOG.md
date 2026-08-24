@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.110 — 2026-08-25 — Independent public-edge verification
+
+- Keep the complete Agent recovery, Personal/company Space, managed profile, message-center, and comic
+  Office behavior from 0.1.109 unchanged while separating public GitHub CDN verification from the protected
+  signing machine. The signer now finishes after publication, immutable-release attestation, and exact
+  signed/notarized asset validation; a read-only GitHub-hosted macOS job independently downloads both DMGs,
+  checks their immutable size and SHA-256, runs Gatekeeper, and verifies stable `latest.json` byte-for-byte.
+- Make a post-publication retry safe: the protected signer accepts its exact Release database ID only when
+  the record is either the original hidden draft or the already-public immutable Release, and in the public
+  case requires GitHub's signed release attestation before downloading or executing the digest-bound source
+  archive. A transient public CDN failure can therefore rerun only the read-only edge job instead of signing
+  or rewriting an immutable release.
+- Bundle Hara CLI `0.152.2` at exact verified commit
+  `0c27bbe535bd16769fc74a5b8b98c472e08e635c`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.109 — 2026-08-25 — Exact hidden-draft identity
 
 - Carry forward the Agent recovery fixes and digest-bound source archive transport from 0.1.108 while
