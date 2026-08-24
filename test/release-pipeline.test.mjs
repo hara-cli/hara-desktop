@@ -31,6 +31,13 @@ import {
   releaseDownloadArguments,
   runBoundedReleaseDownload,
 } from "../scripts/github-release-download.mjs";
+import {
+  RELEASE_API_ASSET_TIMEOUT_MS,
+  RELEASE_API_CURL_MAX_TIME_SECONDS,
+  downloadReleaseAssetsViaApi,
+  releaseApiAssets,
+  releaseApiDownloadArguments,
+} from "../scripts/github-release-api-download.mjs";
 import { reconcileReleaseDownloadCache } from "../scripts/release-download-cache.mjs";
 import { releaseAssetMatches } from "../scripts/release-asset-digest-match.mjs";
 import {
@@ -556,6 +563,9 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   assert.match(script, /mktemp -d "\$WORK\/release-download\.XXXXXX"/);
   assert.match(script, /chmod 600 "\$log"/);
   assert.match(script, /github-release-transfer-retry\.mjs "\$log"/);
+  assert.match(script, /release_download_with_api_fallback\(\)/);
+  assert.match(script, /github-release-api-download\.mjs/);
+  assert.match(script, /digest-verified per-asset API downloads/);
   assert.match(script, /release view "\$TAG" -R "\$REPO" --json assets/);
   assert.match(script, /release-download-cache\.mjs "\$metadata" "\$stage"/);
   assert.match(script, /--skip-existing/);
@@ -583,6 +593,145 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   );
   assert.match(script, /retrying with only digest-verified completed assets/);
   assert.doesNotMatch(script, /retrying from a fresh private staging directory/);
+});
+
+test("release API fallback accepts only repository-bound assets and exact downloaded bytes", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "hara-release-api-download-"));
+  try {
+    const alpha = Buffer.from("verified alpha release asset\n");
+    const beta = Buffer.from("verified beta release asset\n");
+    writeFileSync(join(directory, "alpha.bin"), alpha);
+    const metadata = {
+      assets: [
+        {
+          name: "alpha.bin",
+          size: alpha.length,
+          digest: `sha256:${sha256(alpha)}`,
+          state: "uploaded",
+          apiUrl: "https://api.github.com/repos/hara-cli/hara-desktop/releases/assets/101",
+        },
+        {
+          name: "beta.bin",
+          size: beta.length,
+          digest: `sha256:${sha256(beta)}`,
+          state: "uploaded",
+          apiUrl: "https://api.github.com/repos/hara-cli/hara-desktop/releases/assets/102",
+        },
+      ],
+    };
+    const calls = [];
+    const configs = [];
+    const environments = [];
+    let observedOutputPath;
+    const result = await downloadReleaseAssetsViaApi(
+      { metadata, repository: "hara-cli/hara-desktop", directory },
+      {
+        timeoutMs: 1_000,
+        token: "test-token",
+        execute(command, arguments_, options) {
+          calls.push({ command, arguments_ });
+          environments.push(options.env);
+          if (
+            arguments_.includes(
+              "https://api.github.com/repos/hara-cli/hara-desktop/releases/assets/102",
+            )
+          ) {
+            observedOutputPath = arguments_[arguments_.indexOf("--output") + 1];
+            writeFileSync(observedOutputPath, beta);
+          }
+          const listeners = new Map();
+          queueMicrotask(() => listeners.get("close")?.(0, null));
+          return {
+            stdin: {
+              on() {},
+              end(value) {
+                configs.push(value);
+              },
+            },
+            once(event, listener) {
+              listeners.set(event, listener);
+            },
+            kill() {
+              return true;
+            },
+          };
+        },
+      },
+    );
+
+    assert.deepEqual(result, { expected: 2, retained: 1, downloaded: 1 });
+    assert.equal(readFileSync(join(directory, "beta.bin"), "utf8"), beta.toString());
+    assert.deepEqual(calls, [
+      {
+        command: "/usr/bin/curl",
+        arguments_: [
+          "--disable",
+          "--http1.1",
+          "--proto",
+          "=https",
+          "--proto-redir",
+          "=https",
+          "--fail",
+          "--location",
+          "--silent",
+          "--show-error",
+          "--retry",
+          "5",
+          "--retry-all-errors",
+          "--retry-delay",
+          "2",
+          "--connect-timeout",
+          "20",
+          "--max-time",
+          "570",
+          "--speed-limit",
+          "1024",
+          "--speed-time",
+          "60",
+          "--continue-at",
+          "-",
+          "--output",
+          observedOutputPath,
+          "--config",
+          "-",
+          "https://api.github.com/repos/hara-cli/hara-desktop/releases/assets/102",
+        ],
+      },
+    ]);
+    assert.deepEqual(configs, [
+      'header = "Authorization: Bearer test-token"\nheader = "Accept: application/octet-stream"\n',
+    ]);
+    assert.equal(environments.length, 1);
+    assert.equal(environments[0].GH_TOKEN, undefined);
+    assert.equal(environments[0].GITHUB_TOKEN, undefined);
+    assert.equal(RELEASE_API_ASSET_TIMEOUT_MS, 600_000);
+    assert.equal(RELEASE_API_CURL_MAX_TIME_SECONDS, 570);
+    assert.throws(
+      () =>
+        releaseApiAssets(
+          {
+            assets: [
+              {
+                ...metadata.assets[0],
+                apiUrl: "https://api.github.com/repos/other/repository/releases/assets/101",
+              },
+            ],
+          },
+          "hara-cli/hara-desktop",
+        ),
+      /outside the expected repository/,
+    );
+    assert.throws(
+      () =>
+        releaseApiDownloadArguments(
+          "https://api.github.com/repos/hara-cli/hara-desktop/releases/assets/101 --request DELETE",
+          join(directory, "asset.part"),
+        ),
+      /endpoint is invalid/,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("uncertain release uploads reconcile only against one exact GitHub SHA-256 asset", () => {

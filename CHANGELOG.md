@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.106 — 2026-08-24 — Agent recovery hotfixes
+## 0.1.107 — 2026-08-24 — Agent recovery hotfixes
 
 - Recover safely when generated Python fails with `SyntaxError`, `IndentationError`, or `TabError`: Hara now
   identifies the exact current file and line, requires a fresh read before another edit, and guides the Agent
@@ -13,6 +13,10 @@
 - Keep protected signing fail-closed while making its exact Actions source-pack transfer resilient: the signer
   now tries a hard-deadline GitHub API download first, verifies the upload-artifact SHA-256, and retains the
   independently bounded HTTP/1.1 resumable path as fallback. No source bytes execute before the digest matches.
+- Make hidden-draft verification resilient to the separate GitHub Release CDN failure mode: after a bounded
+  bulk download fails, retrieve only missing assets through authenticated REST URLs over HTTP/1.1, keep the
+  token out of process arguments, resume interrupted bytes within hard limits, and accept a file only after its
+  GitHub-declared size and SHA-256 match. The fallback was exercised against a real hidden DMG and manifest.
 - Bundle Hara CLI `0.152.2` at exact verified commit
   `0c27bbe535bd16769fc74a5b8b98c472e08e635c`. Windows packages remain updater-signed but not
   Authenticode-signed, so SmartScreen may still show a reputation warning.

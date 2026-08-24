@@ -46,6 +46,22 @@ release_gh() {
 release_gh_download() {
   GH_TOKEN="$RELEASE_GH_TOKEN" node scripts/github-release-download.mjs "$@"
 }
+release_gh_api_download() {
+  GH_TOKEN="$RELEASE_GH_TOKEN" node scripts/github-release-api-download.mjs "$@"
+}
+release_download_with_api_fallback() {
+  local metadata="$1"
+  local stage="$2"
+  local log="$3"
+  if release_gh_download "$TAG" "$REPO" "$stage" --skip-existing >>"$log" 2>&1; then
+    return 0
+  fi
+  if ! node scripts/github-release-transfer-retry.mjs "$log"; then
+    return 1
+  fi
+  echo "warning: bulk release download hit a transient GitHub transport failure; trying digest-verified per-asset API downloads" >>"$log"
+  release_gh_api_download "$REPO" "$metadata" "$stage" >>"$log" 2>&1
+}
 release_view_with_retry() {
   local attempt output log
   for ((attempt = 1; attempt <= RELEASE_TRANSFER_ATTEMPTS; attempt++)); do
@@ -142,7 +158,7 @@ release_download_all() {
       metadata_next="$(mktemp "$WORK/release-assets-next.XXXXXX")" &&
       chmod 600 "$metadata_next" &&
       node scripts/release-download-cache.mjs "$metadata" "$stage" >>"$log" 2>&1 &&
-      release_gh_download "$TAG" "$REPO" "$stage" --skip-existing >>"$log" 2>&1 &&
+      release_download_with_api_fallback "$metadata" "$stage" "$log" &&
       node scripts/release-download-cache.mjs "$metadata" "$stage" --complete >>"$log" 2>&1; then
       cat "$log"
       rm -rf "$target"
