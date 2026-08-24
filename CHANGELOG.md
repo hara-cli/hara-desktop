@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.105 — 2026-08-24 — Agent recovery hotfixes
+
+- Recover safely when generated Python fails with `SyntaxError`, `IndentationError`, or `TabError`: Hara now
+  identifies the exact current file and line, requires a fresh read before another edit, and guides the Agent
+  toward ASCII delimiters plus syntax-only validation instead of repeating an unchanged broken patch.
+- Keep the existing repeated-tool circuit breaker as the final loop guard, and add a sanitized feedback eval for
+  the complete failure → current-source read → focused repair → validation transition.
+- Preserve successful edit, execution, or computer work when a model omits its formal completion receipt:
+  request the receipt once, then keep the real result as a resumable checkpoint instead of falsely reporting
+  that the Agent never acted. Read-only advice delegation remains blocked.
+- Bundle Hara CLI `0.152.2` at exact verified commit
+  `0c27bbe535bd16769fc74a5b8b98c472e08e635c`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.104 — 2026-08-24 — bounded and recoverable release verification
 
 - Keep the Personal/company Space, managed Agent profile, message center, and comic Office behavior from
