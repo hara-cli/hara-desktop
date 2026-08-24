@@ -55,6 +55,11 @@ Gates before ANY push (either repo):
    runner labelled `hara-desktop-release`; no second dispatch is required, and CI never promotes
    unsigned macOS artifacts. The entire workflow holds one tag-scoped concurrency lock, while direct
    local stable promotion is rejected, so draft assembly can never race signed asset replacement.
+   The GitHub-hosted assembler also copies the exact `upload-artifact` source-pack ZIP into the hidden
+   draft as `Hara_<version>_source-packs.zip` after checking the original Actions artifact SHA-256.
+   The protected signer downloads that named archive through the independently bounded Release REST
+   path, verifies the same outer digest plus every inner source-pack checksum, and only then executes
+   the pinned source. The archive remains in the immutable public release as reproducibility evidence.
    The guarded job checks Node/Bun/Rust, exact clean
 CLI/Desktop tags, both architectures, the sidecar before and after Developer ID signing and inside
 `Hara.app`, then notarizes/staples both DMGs. Matrix receipts and the public source-provenance asset
@@ -96,7 +101,8 @@ non-successful first-party responses. After the protected release is public:
 
 1. Download and run the normal release/updater validation against the complete GitHub asset set.
 2. Upload the identical updater payloads and matching `.sig` files under
-   `hara/desktop/vX.Y.Z/`. Treat that versioned prefix as immutable.
+   `hara/desktop/vX.Y.Z/`. Treat that versioned prefix as immutable. The GitHub-only source-pack ZIP
+   is reproducibility evidence, not an updater/installer payload, and is intentionally not mirrored.
 3. Download every uploaded object through the public CDN and compare its size and SHA-256 with the
    release asset. Verify byte-range delivery before making the channel discoverable. Run
    `npm run audit:release-channel -- versioned vX.Y.Z`; it streams all 15 immutable objects against

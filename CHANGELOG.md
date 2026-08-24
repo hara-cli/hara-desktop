@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.108 — 2026-08-24 — Verified source archive transport
+
+- Carry forward the Agent recovery fixes prepared in 0.1.107: generated Python syntax failures now require
+  a current-source read before a focused repair and syntax validation, while successful tool work survives a
+  missing formal completion receipt as a resumable checkpoint instead of being misreported as no action.
+- Move protected signing source transfer away from the unreliable Actions artifact edge on the signing Mac.
+  A GitHub-hosted assembler copies the exact source-artifact ZIP into the hidden draft only after matching the
+  original upload-artifact SHA-256; the signer retrieves that named archive through the independently bounded
+  Release REST/HTTP/1.1 route, verifies the same outer digest and every inner source-pack checksum, and executes
+  nothing before both checks pass.
+- Retain `Hara_0.1.108_source-packs.zip` in the immutable GitHub release as reproducibility evidence while
+  keeping it outside updater and installer mirrors. All signed-asset downloads still use hard deadlines,
+  repository-bound API URLs, atomic files, and GitHub-declared size/SHA-256 verification.
+- Bundle Hara CLI `0.152.2` at exact verified commit
+  `0c27bbe535bd16769fc74a5b8b98c472e08e635c`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.107 — 2026-08-24 — Agent recovery hotfixes
 
 - Recover safely when generated Python fails with `SyntaxError`, `IndentationError`, or `TabError`: Hara now

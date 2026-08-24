@@ -475,7 +475,7 @@ jobs:
       actions: read
       contents: write
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
@@ -506,6 +506,49 @@ jobs:
             "${{ needs.prepare_release.outputs.cli_sha }}"
           PUB_DATE="$(git show -s --format=%cI HEAD)"
           node scripts/updater-manifest.mjs build "$RUNNER_TEMP/release-assets" "$RELEASE_TAG" "$PUB_DATE"
+      - name: Copy the exact source artifact into the hidden Release transport
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_ARTIFACT_ID: ${{ needs.prepare_release.outputs.source_artifact_id }}
+          SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || {
+            echo "the source artifact ID is missing or invalid" >&2
+            exit 1
+          }
+          EXPECTED_ARTIFACT_SHA="${SOURCE_ARTIFACT_DIGEST#sha256:}"
+          [[ "$EXPECTED_ARTIFACT_SHA" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "the source artifact digest is missing or invalid" >&2
+            exit 1
+          }
+
+          SOURCE_ARCHIVE_DIR="$RUNNER_TEMP/release-source-archive"
+          SOURCE_ARCHIVE="$SOURCE_ARCHIVE_DIR/Hara_${RELEASE_TAG#v}_source-packs.zip"
+          SOURCE_ARCHIVE_PARTIAL="${SOURCE_ARCHIVE}.partial"
+          mkdir -p "$SOURCE_ARCHIVE_DIR"
+          for source_attempt in 1 2 3; do
+            rm -f "$SOURCE_ARCHIVE_PARTIAL"
+            if timeout --signal=KILL 330s gh api \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
+              > "$SOURCE_ARCHIVE_PARTIAL"; then
+              ACTUAL_ARTIFACT_SHA="$(sha256sum "$SOURCE_ARCHIVE_PARTIAL" | awk '{print $1}')"
+              if [ "$ACTUAL_ARTIFACT_SHA" = "$EXPECTED_ARTIFACT_SHA" ]; then
+                mv "$SOURCE_ARCHIVE_PARTIAL" "$SOURCE_ARCHIVE"
+                break
+              fi
+            fi
+            rm -f "$SOURCE_ARCHIVE_PARTIAL"
+            [ "$source_attempt" -lt 3 ] || {
+              echo "could not copy the digest-bound source artifact into Release transport" >&2
+              exit 1
+            }
+            echo "source artifact copy incomplete ($source_attempt/3); retrying after a bounded delay" >&2
+            sleep $((source_attempt * 3))
+          done
+          [ "$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')" = "$EXPECTED_ARTIFACT_SHA" ]
+          unzip -tq "$SOURCE_ARCHIVE" >/dev/null
       - name: Confirm release tags still match the pinned commits
         shell: bash
         run: |
@@ -549,7 +592,9 @@ jobs:
             gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
           done
 
-          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" "$RUNNER_TEMP"/release-assets/*
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" \
+            "$RUNNER_TEMP"/release-assets/* \
+            "$RUNNER_TEMP/release-source-archive/Hara_${RELEASE_TAG#v}_source-packs.zip"
       - name: Download the exact remote draft
         shell: bash
         env:
@@ -561,11 +606,26 @@ jobs:
           mkdir -p "$VERIFY_DIR"
           node scripts/github-release-download.mjs \
             "$RELEASE_TAG" "$GITHUB_REPOSITORY" "$VERIFY_DIR"
-      - name: Revalidate downloaded draft without a release token
+      - name: Revalidate downloaded draft and source archive without a release token
         shell: bash
+        env:
+          SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
         run: |
           set -euo pipefail
           VERIFY_DIR="$RUNNER_TEMP/remote-release-assets"
+          SOURCE_ARCHIVE="$VERIFY_DIR/Hara_${RELEASE_TAG#v}_source-packs.zip"
+          EXPECTED_ARTIFACT_SHA="${SOURCE_ARTIFACT_DIGEST#sha256:}"
+          [[ "$EXPECTED_ARTIFACT_SHA" =~ ^[0-9a-f]{64}$ ]]
+          [ -s "$SOURCE_ARCHIVE" ]
+          [ "$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')" = "$EXPECTED_ARTIFACT_SHA" ]
+          SOURCE_VERIFY_DIR="$RUNNER_TEMP/remote-release-source-packs"
+          mkdir -p "$SOURCE_VERIFY_DIR"
+          unzip -q "$SOURCE_ARCHIVE" -d "$SOURCE_VERIFY_DIR"
+          (
+            cd "$SOURCE_VERIFY_DIR"
+            sha256sum -c source-packs.sha256
+          )
+          rm -f "$SOURCE_ARCHIVE"
           node scripts/updater-manifest.mjs validate "$VERIFY_DIR" "$RELEASE_TAG"
           node scripts/release-source-provenance.mjs validate \
             "$VERIFY_DIR/release-source-provenance.json" \
@@ -695,23 +755,18 @@ jobs:
     env:
       HARA_RELEASE_SOURCE_ROOT: ${{ github.workspace }}/source-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - name: Materialize exact release sources from a resumable run artifact
+      - name: Materialize exact release sources from the digest-bound hidden Release archive
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           PINNED_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
           PINNED_CLI_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
           PINNED_CLI_VERSION: ${{ needs.prepare_release.outputs.cli_version }}
-          SOURCE_ARTIFACT_ID: ${{ needs.prepare_release.outputs.source_artifact_id }}
           SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
         run: |
           set -euo pipefail
           [ ! -e "$HARA_RELEASE_SOURCE_ROOT" ] || {
             echo "release source root already exists for this run attempt" >&2
-            exit 1
-          }
-          [[ "$SOURCE_ARTIFACT_ID" =~ ^[0-9]+$ ]] || {
-            echo "the source artifact ID is missing or invalid" >&2
             exit 1
           }
           EXPECTED_ARTIFACT_SHA="${SOURCE_ARTIFACT_DIGEST#sha256:}"
@@ -722,10 +777,10 @@ jobs:
 
           mkdir -p "$HARA_RELEASE_SOURCE_ROOT"
           ARTIFACT_ZIP="$HARA_RELEASE_SOURCE_ROOT/source-packs.zip"
-          RESPONSE_HEADERS="$HARA_RELEASE_SOURCE_ROOT/source-packs.headers"
-          API_URL="https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip"
-          ARTIFACT_API_PATH="repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip"
-          DOWNLOAD_COMPLETE=0
+          ARTIFACT_PARTIAL="${ARTIFACT_ZIP}.partial"
+          RELEASE_METADATA="$HARA_RELEASE_SOURCE_ROOT/release.json"
+          SOURCE_METADATA="$HARA_RELEASE_SOURCE_ROOT/source-release-asset.json"
+          SOURCE_ASSET_NAME="Hara_${RELEASE_TAG#v}_source-packs.zip"
 
           run_with_deadline() {
             local deadline_seconds="$1"
@@ -750,71 +805,89 @@ jobs:
             return "$command_exit_code"
           }
 
-          GH_API_ARTIFACT_ZIP="${ARTIFACT_ZIP}.gh-api"
-          for api_attempt in 1 2 3; do
-            rm -f "$GH_API_ARTIFACT_ZIP"
-            if run_with_deadline 330 /usr/bin/env GH_HTTP_TIMEOUT=300 \
-              gh api "$ARTIFACT_API_PATH" > "$GH_API_ARTIFACT_ZIP"; then
-              ACTUAL_ARTIFACT_SHA="$(shasum -a 256 "$GH_API_ARTIFACT_ZIP" | awk '{print $1}')"
-              if [ "$ACTUAL_ARTIFACT_SHA" = "$EXPECTED_ARTIFACT_SHA" ]; then
-                mv "$GH_API_ARTIFACT_ZIP" "$ARTIFACT_ZIP"
-                DOWNLOAD_COMPLETE=1
-                break
-              fi
+          METADATA_COMPLETE=0
+          for metadata_attempt in 1 2 3; do
+            rm -f "$RELEASE_METADATA" "$SOURCE_METADATA"
+            if run_with_deadline 90 /usr/bin/env GH_HTTP_TIMEOUT=60 \
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RELEASE_METADATA" && \
+              jq --arg name "$SOURCE_ASSET_NAME" '
+                [.assets[] | select(.name == $name)] |
+                if length == 1 then .[0] else error("expected exactly one source archive") end
+              ' "$RELEASE_METADATA" > "$SOURCE_METADATA" && \
+              jq -e \
+                --arg name "$SOURCE_ASSET_NAME" \
+                --arg digest "sha256:$EXPECTED_ARTIFACT_SHA" '
+                  .name == $name and
+                  .state == "uploaded" and
+                  .digest == $digest and
+                  (.size | type == "number" and . > 0) and
+                  (.id | type == "number" and . > 0)
+                ' "$SOURCE_METADATA" >/dev/null; then
+              METADATA_COMPLETE=1
+              break
             fi
-            rm -f "$GH_API_ARTIFACT_ZIP"
-            [ "$api_attempt" -lt 3 ] || break
-            echo "GitHub CLI source artifact transfer incomplete ($api_attempt/3); retrying after a bounded delay" >&2
-            sleep $((api_attempt * 3))
+            [ "$metadata_attempt" -lt 3 ] || break
+            echo "source Release asset metadata incomplete ($metadata_attempt/3); retrying after a bounded delay" >&2
+            sleep $((metadata_attempt * 3))
           done
+          [ "$METADATA_COMPLETE" = "1" ] || {
+            echo "could not resolve the digest-bound source Release asset" >&2
+            exit 1
+          }
 
-          # GitHub's Go client and the release/blob edge occasionally fail in different ways. Retain the
-          # byte-resumable HTTP/1.1 path as an independently bounded fallback, and accept neither route
-          # until the upload-artifact digest from the trusted prepare job matches exactly.
-          if [ "$DOWNLOAD_COMPLETE" != "1" ]; then
-          for download_attempt in 1 2 3 4 5 6 7 8; do
-            : > "$RESPONSE_HEADERS"
-            HTTP_CODE="$(
-              {
-                printf 'header = "Accept: application/vnd.github+json"\n'
-                printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN"
-                printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
-                printf 'url = "%s"\n' "$API_URL"
-              } | /usr/bin/curl --config - --silent --show-error --output /dev/null \
-                --http1.1 --dump-header "$RESPONSE_HEADERS" --max-redirs 0 \
-                --connect-timeout 20 --max-time 60 \
-                --write-out '%{http_code}'
-            )" || true
-            ARTIFACT_URL="$(awk '
-              tolower($1) == "location:" {
-                $1 = ""
-                sub(/^[[:space:]]*/, "")
-                sub(/\r$/, "")
-                location = $0
-              }
-              END { print location }
-            ' "$RESPONSE_HEADERS")"
-            if [[ "$HTTP_CODE" =~ ^30[27]$ ]] && [[ "$ARTIFACT_URL" == https://* ]]; then
-              printf 'url = "%s"\n' "$ARTIFACT_URL" | \
-                /usr/bin/curl --config - --fail --location --show-error \
-                  --http1.1 --connect-timeout 20 --max-time 300 \
-                  --speed-limit 1024 --speed-time 60 \
-                  --continue-at - --output "$ARTIFACT_ZIP" || true
+          SOURCE_ASSET_ID="$(jq -r .id "$SOURCE_METADATA")"
+          SOURCE_ASSET_SIZE="$(jq -r .size "$SOURCE_METADATA")"
+          SOURCE_ASSET_API_URL="$(jq -r .url "$SOURCE_METADATA")"
+          [[ "$SOURCE_ASSET_ID" =~ ^[0-9]+$ ]]
+          [[ "$SOURCE_ASSET_SIZE" =~ ^[1-9][0-9]*$ ]]
+          [ "$SOURCE_ASSET_API_URL" = \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$SOURCE_ASSET_ID" ] || {
+            echo "source Release asset API URL is outside the expected repository" >&2
+            exit 1
+          }
+
+          umask 077
+          : > "$ARTIFACT_PARTIAL"
+          DOWNLOAD_COMPLETE=0
+          for download_attempt in 1 2 3; do
+            {
+              printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN"
+              printf 'header = "Accept: application/octet-stream"\n'
+              printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
+            } | run_with_deadline 600 /usr/bin/env GH_TOKEN='' GITHUB_TOKEN='' /usr/bin/curl \
+              --disable \
+              --http1.1 \
+              --proto '=https' \
+              --proto-redir '=https' \
+              --fail \
+              --location \
+              --silent \
+              --show-error \
+              --retry 5 \
+              --retry-all-errors \
+              --retry-delay 2 \
+              --retry-max-time 540 \
+              --connect-timeout 20 \
+              --max-time 570 \
+              --speed-limit 1024 \
+              --speed-time 60 \
+              --continue-at - \
+              --output "$ARTIFACT_PARTIAL" \
+              --config - \
+              "$SOURCE_ASSET_API_URL" || true
+            if [ "$(stat -f %z "$ARTIFACT_PARTIAL")" = "$SOURCE_ASSET_SIZE" ] && \
+              [ "$(shasum -a 256 "$ARTIFACT_PARTIAL" | awk '{print $1}')" = "$EXPECTED_ARTIFACT_SHA" ]; then
+              mv "$ARTIFACT_PARTIAL" "$ARTIFACT_ZIP"
+              DOWNLOAD_COMPLETE=1
+              break
             fi
-            if [ -f "$ARTIFACT_ZIP" ]; then
-              ACTUAL_ARTIFACT_SHA="$(shasum -a 256 "$ARTIFACT_ZIP" | awk '{print $1}')"
-              if [ "$ACTUAL_ARTIFACT_SHA" = "$EXPECTED_ARTIFACT_SHA" ]; then
-                DOWNLOAD_COMPLETE=1
-                break
-              fi
-            fi
-            [ "$download_attempt" -lt 8 ] || break
-            echo "source artifact transfer incomplete ($download_attempt/8); resuming after a bounded delay" >&2
+            [ "$download_attempt" -lt 3 ] || break
+            echo "source Release archive transfer incomplete ($download_attempt/3); resuming after a bounded delay" >&2
             sleep $((download_attempt * 3))
           done
-          fi
           [ "$DOWNLOAD_COMPLETE" = "1" ] || {
-            echo "could not download the exact source artifact after bounded resumable attempts" >&2
+            rm -f "$ARTIFACT_PARTIAL"
+            echo "could not download the exact source Release archive after bounded resumable attempts" >&2
             exit 1
           }
 
@@ -990,6 +1063,7 @@ jobs:
           HARA_PROMOTION_TAG: ${{ env.RELEASE_TAG }}
           HARA_DRAFT_ASSEMBLED_RUN_ID: ${{ github.run_id }}
           HARA_PROTECTED_SIGNING_JOB: ${{ github.run_id }}
+          HARA_RELEASE_SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
         run: ./scripts/release-mac-assets.sh "$RELEASE_TAG"
 
       - name: Remove the run-scoped release source checkout

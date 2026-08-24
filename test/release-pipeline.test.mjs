@@ -1022,6 +1022,7 @@ test("protected Gatekeeper checks never depend on a login-shell PATH", () => {
 test("signed builds select pinned Rust and preflight a dedicated unlocked keychain", () => {
   const toolchain = readFileSync(join(root, "scripts/check-build-toolchain.sh"), "utf8");
   const script = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
+  const promotion = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
 
   assert.match(toolchain, /rustup which --toolchain "\$required" rustc/);
@@ -1065,18 +1066,38 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(workflow, /id: source_pack_upload/);
   assert.match(workflow, /name: release-source-packs/);
   assert.match(workflow, /compression-level: 0/);
-  assert.match(signJob, /Materialize exact release sources from a resumable run artifact/);
+  const assembleJob = workflow.slice(
+    workflow.indexOf("\n  assemble_draft:"),
+    workflow.indexOf("\n  promotion_preflight:"),
+  );
+  assert.match(assembleJob, /timeout-minutes: 60/);
+  assert.match(assembleJob, /Copy the exact source artifact into the hidden Release transport/);
+  assert.match(assembleJob, /actions\/artifacts\/\$SOURCE_ARTIFACT_ID\/zip/);
+  assert.match(assembleJob, /sha256sum "\$SOURCE_ARCHIVE_PARTIAL"/);
+  assert.match(assembleJob, /Hara_\$\{RELEASE_TAG#v\}_source-packs\.zip/);
+  assert.match(assembleJob, /unzip -tq "\$SOURCE_ARCHIVE"/);
+  assert.match(assembleJob, /gh release upload[\s\S]*release-source-archive/);
+  assert.match(assembleJob, /sha256sum -c source-packs\.sha256/);
+  assert.match(assembleJob, /rm -f "\$SOURCE_ARCHIVE"/);
+  assert.match(signJob, /Materialize exact release sources from the digest-bound hidden Release archive/);
   assert.match(signJob, /source-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.doesNotMatch(signJob, /\bgit\b.*\bfetch\b/);
-  assert.match(signJob, /SOURCE_ARTIFACT_ID: \$\{\{ needs\.prepare_release\.outputs\.source_artifact_id \}\}/);
+  assert.doesNotMatch(signJob, /SOURCE_ARTIFACT_ID:/);
   assert.match(signJob, /SOURCE_ARTIFACT_DIGEST: \$\{\{ needs\.prepare_release\.outputs\.source_artifact_digest \}\}/);
-  assert.match(signJob, /run_with_deadline 330 \/usr\/bin\/env GH_HTTP_TIMEOUT=300/);
-  assert.match(signJob, /gh api "\$ARTIFACT_API_PATH" > "\$GH_API_ARTIFACT_ZIP"/);
-  assert.match(signJob, /shasum -a 256 "\$GH_API_ARTIFACT_ZIP"/);
-  assert.match(signJob, /mv "\$GH_API_ARTIFACT_ZIP" "\$ARTIFACT_ZIP"/);
-  assert.match(signJob, /for api_attempt in 1 2 3/);
+  assert.match(signJob, /releases\/tags\/\$RELEASE_TAG/);
+  assert.match(signJob, /\.digest == \$digest/);
+  assert.match(signJob, /releases\/assets\/\$SOURCE_ASSET_ID/);
+  assert.match(signJob, /header = "Authorization: Bearer %s"/);
+  assert.match(signJob, /GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
+  assert.match(signJob, /--http1\.1/);
+  assert.match(signJob, /--proto '=https'/);
+  assert.match(signJob, /--config -/);
   assert.doesNotMatch(signJob, /gh run download/);
-  assert.match(signJob, /--continue-at - --output "\$ARTIFACT_ZIP"/);
+  assert.match(signJob, /run_with_deadline 600 \/usr\/bin\/env GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
+  assert.match(signJob, /--retry-max-time 540/);
+  assert.match(signJob, /--continue-at -/);
+  assert.match(signJob, /--output "\$ARTIFACT_PARTIAL"/);
+  assert.match(signJob, /shasum -a 256 "\$ARTIFACT_PARTIAL"/);
   assert.match(signJob, /shasum -a 256 -c source-packs\.sha256/);
   assert.match(signJob, /index-pack --stdin < "\$pack_file"/);
   assert.match(signJob, /printf '%s\\n' "\$commit_sha" > "\$target_dir\/\.git\/shallow"/);
@@ -1084,6 +1105,9 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(signJob, /printf '%s\\n' "\$NODE_BIN" "\$BUN_BIN" "\$CARGO_BIN" >> "\$GITHUB_PATH"/);
   assert.match(signJob, /expected_root="\$GITHUB_WORKSPACE\/source-\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT"/);
   assert.match(signJob, /\[ "\$HARA_RELEASE_SOURCE_ROOT" = "\$expected_root" \]/);
+  assert.match(promotion, /HARA_RELEASE_SOURCE_ARTIFACT_DIGEST/);
+  assert.match(promotion, /remove_verified_source_archive/);
+  assert.match(promotion, /trusted prepare-job digest/);
 });
 
 test("CI Rosetta smoke is limited to the protected tag signing job", () => {
@@ -1473,7 +1497,7 @@ test("main and pull requests run Desktop quality gates without release authority
 
 test("draft validation executes repository code without a release token", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
-  const validationStart = workflow.indexOf("Revalidate downloaded draft without a release token");
+  const validationStart = workflow.indexOf("Revalidate downloaded draft and source archive without a release token");
   const stateCheckStart = workflow.indexOf("Confirm the remote release remains a hidden draft", validationStart);
   const validation = workflow.slice(validationStart, stateCheckStart);
   assert.match(validation, /node scripts\/updater-manifest\.mjs validate/);
@@ -1626,7 +1650,7 @@ test("release CDN reads force HTTP/1.1 and stop zero-byte stalls within bounded 
 
   assert.match(
     workflow,
-    /Materialize exact release sources[\s\S]*?\/usr\/bin\/curl[\s\S]*?--http1\.1[\s\S]*?--connect-timeout 20 --max-time 300[\s\S]*?--speed-limit 1024 --speed-time 60/,
+    /Materialize exact release sources[\s\S]*?\/usr\/bin\/curl[\s\S]*?--http1\.1[\s\S]*?--connect-timeout 20[\s\S]*?--max-time 570[\s\S]*?--speed-limit 1024[\s\S]*?--speed-time 60/,
   );
   assert.match(promotion, /release_public_curl\(\)/);
   assert.match(

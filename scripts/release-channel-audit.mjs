@@ -72,6 +72,10 @@ export function expectedMirrorAssetNames(version = desktopVersion) {
   ]);
 }
 
+export function releaseSourceArchiveName(version = desktopVersion) {
+  return `Hara_${requireStableVersion(version)}_source-packs.zip`;
+}
+
 export function updaterPayloadNames(version = desktopVersion) {
   requireStableVersion(version);
   return new Set([
@@ -100,7 +104,7 @@ export function releaseAssetExpectations(release, version = desktopVersion) {
   const expectedNames = expectedMirrorAssetNames(version);
   assertExactNames(
     release.assets.map((asset) => asset?.name),
-    [...expectedNames, "latest.json"],
+    [...expectedNames, releaseSourceArchiveName(version), "latest.json"],
     "GitHub release asset set",
   );
 

@@ -9,6 +9,7 @@ import {
   auditVersionedMirror,
   expectedMirrorAssetNames,
   releaseAssetExpectations,
+  releaseSourceArchiveName,
   updaterPayloadNames,
 } from "../scripts/release-channel-audit.mjs";
 import { buildMirrorManifest, updaterPlatformAssets } from "../scripts/updater-mirror-manifest.mjs";
@@ -23,7 +24,7 @@ function sha256(value) {
 
 function releaseFixture() {
   const bytes = new Map(
-    [...expectedMirrorAssetNames(version), "latest.json"].map((name) => [
+    [...expectedMirrorAssetNames(version), releaseSourceArchiveName(version), "latest.json"].map((name) => [
       name,
       Buffer.from(`verified fixture bytes for ${name}\n`),
     ]),
@@ -103,6 +104,7 @@ test("versioned channel audit fails closed on a CDN digest mismatch", async () =
 test("release metadata must expose the exact digest-bearing asset set", () => {
   const { release } = releaseFixture();
   assert.equal(releaseAssetExpectations(release, version).length, 15);
+  assert.equal(release.assets.length, 17);
   const missing = structuredClone(release);
   missing.assets.pop();
   assert.throws(() => releaseAssetExpectations(missing, version), /asset set mismatch/);
