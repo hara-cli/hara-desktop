@@ -1,19 +1,32 @@
 # Changelog
 
-## 0.1.110 — 2026-08-25 — Independent public-edge verification
+## 0.1.110 — 2026-08-25 — Agent Talent Bureau and independent public-edge verification
 
-- Keep the complete Agent recovery, Personal/company Space, managed profile, message-center, and comic
-  Office behavior from 0.1.109 unchanged while separating public GitHub CDN verification from the protected
-  signing machine. The signer now finishes after publication, immutable-release attestation, and exact
-  signed/notarized asset validation; a read-only GitHub-hosted macOS job independently downloads both DMGs,
-  checks their immutable size and SHA-256, runs Gatekeeper, and verifies stable `latest.json` byte-for-byte.
+- Add a game-like Agent Talent Bureau with 270 versioned Agency Agents roles across 18 departments. Finance,
+  Sales, and People/HR are first-class filters with 11, 14, and 5 candidates respectively; 31 hand-adapted
+  Hara roles are distinguished from 239 metadata-only community imports instead of presenting every prompt
+  as equally reviewed. Search accepts business outcomes in Chinese or English, and candidates enter the Agent
+  directory and Office only after an explicit hire.
+- Give finance, sales, and recruiting heroes independent reviewed comic portraits and expand deterministic
+  fallback identities from eight coupled looks to as many as 64 stable palette/face combinations. Hiring
+  remains editable and never grants a tool, model, memory, or company permission automatically; finance,
+  sales, and people roles require human authority for payments/filings, external outreach/CRM or contract
+  commitments, and employment/compensation decisions respectively.
+- Persist the selected blueprint ID, version, publisher, credential-free source, exact source revision,
+  license, and server-computed prompt digest through Hara CLI `agent.blueprint-provenance.v1`. A locally
+  modified role loses verified provenance, while an older engine keeps free-form custom hiring but cannot
+  silently downgrade a Talent Bureau hire.
+- Separate public GitHub CDN verification from the protected signing machine. The signer now finishes after
+  publication, immutable-release attestation, and exact signed/notarized asset validation; a read-only
+  GitHub-hosted macOS job independently downloads both DMGs, checks their immutable size and SHA-256, runs
+  Gatekeeper, and verifies stable `latest.json` byte-for-byte.
 - Make a post-publication retry safe: the protected signer accepts its exact Release database ID only when
   the record is either the original hidden draft or the already-public immutable Release, and in the public
   case requires GitHub's signed release attestation before downloading or executing the digest-bound source
   archive. A transient public CDN failure can therefore rerun only the read-only edge job instead of signing
   or rewriting an immutable release.
-- Bundle Hara CLI `0.152.2` at exact verified commit
-  `0c27bbe535bd16769fc74a5b8b98c472e08e635c`. Windows packages remain updater-signed but not
+- Bundle Hara CLI `0.153.0` at exact verified commit
+  `54824d4334631ec73842b6f800a6a34af0b64b2b`. Windows packages remain updater-signed but not
   Authenticode-signed, so SmartScreen may still show a reputation warning.
 
 ## 0.1.109 — 2026-08-25 — Exact hidden-draft identity
