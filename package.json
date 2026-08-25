@@ -10,6 +10,7 @@
   "scripts": {
     "audit:release-channel": "node scripts/release-channel-audit.mjs",
     "dev": "vite",
+    "generate:talent-catalog": "node scripts/build-agency-talent-catalog.mjs",
     "build": "tsc && vite build",
     "check:release": "node scripts/check-release-metadata.mjs",
     "verify:windows-authenticode": "node scripts/windows-authenticode-receipt.mjs",

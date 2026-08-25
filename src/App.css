@@ -7,6 +7,7 @@
   --dim: #8a8782;
   --accent: #d9442c; /* 朱印 vermilion */
   --border: #2a2a30;
+  --line: var(--border);
   color-scheme: dark;
 }
 * {
@@ -1528,6 +1529,23 @@ button.deny {
   grid-column: 1 / -1;
   border-style: dashed;
   color: var(--accent);
+}
+.workbench-sidebar-actions .talent-market-button {
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  letter-spacing: .02em;
+}
+.talent-market-loading {
+  position: fixed;
+  z-index: 138;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(10 9 8 / 74%);
+  color: #fff8ed;
+  backdrop-filter: blur(12px);
+  font: 700 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .08em;
 }
 .workbench-sidebar {
   width: 286px;

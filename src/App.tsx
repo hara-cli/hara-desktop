@@ -234,6 +234,7 @@ import AgentPicker from "./AgentPicker";
 import { AgentPortrait } from "./AgentPortrait";
 import AgentProfileEditor from "./AgentProfileEditor";
 import HireAgentDialog, { type HireAgentInput } from "./HireAgentDialog";
+import type { AgentBlueprint } from "./talent-blueprint";
 import SpaceSwitcher from "./SpaceSwitcher";
 import { organizationConnectionSpaceId, sessionSpaceId } from "./space-directory";
 import { agentDisplayName, agentPublicTitle } from "./agent-visual";
@@ -265,6 +266,7 @@ const loadAutomations = () => import("./Automations");
 const loadExtensionDock = () => import("./ExtensionDock");
 const loadWorkbenchToolSurface = () => import("./WorkbenchToolSurface");
 const loadWorkforceSurface = () => import("./WorkforceSurface");
+const loadTalentMarket = () => import("./TalentMarket");
 const loadOfficeHome = () => import("./OfficeHome").then((module) => ({
   default: module.OfficeHome,
 }));
@@ -310,6 +312,7 @@ const ExtensionViewLauncher = lazy(() =>
   })));
 const WorkbenchToolSurface = lazy(loadWorkbenchToolSurface);
 const WorkforceSurface = lazy(loadWorkforceSurface);
+const TalentMarket = lazy(loadTalentMarket);
 const OfficeHome = lazy(loadOfficeHome);
 const ArtifactWorkbench = lazy(loadArtifactWorkbench);
 const PresentationWorkbench = lazy(loadPresentationWorkbench);
@@ -590,6 +593,7 @@ const UPDATE_SNOOZE_MS = 24 * 60 * 60 * 1_000;
 const ATTACHMENT_FEATURE = "composer.attachments.v1";
 const READONLY_HISTORY_FEATURE = "sessions.readonly-history.v1";
 const CROSS_PROFILE_FORK_FEATURE = "sessions.cross-profile-fork.v1";
+const AGENT_BLUEPRINT_FEATURE = "agent.blueprint-provenance.v1";
 
 const formatStorageBytes = (bytes: number, locale: Locale): string => {
   const safeBytes = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
@@ -839,6 +843,8 @@ export default function App() {
   const [hireAgentOpen, setHireAgentOpen] = useState(false);
   const [hireAgentSaving, setHireAgentSaving] = useState(false);
   const [hireAgentError, setHireAgentError] = useState("");
+  const [talentMarketOpen, setTalentMarketOpen] = useState(false);
+  const [hireAgentBlueprint, setHireAgentBlueprint] = useState<AgentBlueprint | null>(null);
   const agentCatalogRequestRef = useRef(0);
   const refreshAgentCatalog = useCallback(async (opts?: { sessionId?: string; cwd?: string }) => {
     const client = clientRef.current;
@@ -857,6 +863,17 @@ export default function App() {
   const openAgentProfile = useCallback((agentRef: string) => {
     setProfileAgentError("");
     setProfileAgentRef(agentRef);
+  }, []);
+  const openTalentMarket = useCallback(() => {
+    setHireAgentError("");
+    setHireAgentBlueprint(null);
+    setTalentMarketOpen(true);
+    warmModule(loadTalentMarket());
+  }, []);
+  const openCustomRecruitment = useCallback(() => {
+    setHireAgentError("");
+    setHireAgentBlueprint(null);
+    setHireAgentOpen(true);
   }, []);
   const [spaceDirectory, setSpaceDirectory] = useState<SpaceDirectory | null>(null);
   const spaceDirectoryRef = useRef<SpaceDirectory | null>(null);
@@ -3203,6 +3220,12 @@ export default function App() {
       setHireAgentError(locale === "zh" ? "当前 Hara 引擎版本还不支持雇佣 Agent。" : "This Hara engine does not support hiring Agents yet.");
       return;
     }
+    if (input.blueprint && !client.supportsFeature(AGENT_BLUEPRINT_FEATURE)) {
+      setHireAgentError(locale === "zh"
+        ? "当前 Hara 引擎版本无法验证岗位来源，请升级引擎后再从人才市场雇佣。"
+        : "This Hara engine cannot verify blueprint provenance. Upgrade it before hiring from the Talent Market.");
+      return;
+    }
     setHireAgentSaving(true);
     setHireAgentError("");
     try {
@@ -3212,6 +3235,8 @@ export default function App() {
       const result = await client.createAgent({ ...input, ...(cwd ? { cwd } : {}) });
       setAgentCatalog(result.catalog);
       setHireAgentOpen(false);
+      setTalentMarketOpen(false);
+      setHireAgentBlueprint(null);
       const agent = result.agent;
       if (agent) {
         setWorkbenchInboxMode("agents");
@@ -4406,6 +4431,8 @@ export default function App() {
   const nextAttachmentId = () =>
     `attachment-${Date.now()}-${++attachmentSequenceRef.current}`;
   const attachmentFeatureReady = clientRef.current?.supportsFeature(ATTACHMENT_FEATURE) ?? false;
+  const agentCreateReady = clientRef.current?.supports("agents.create") ?? false;
+  const agentBlueprintFeatureReady = clientRef.current?.supportsFeature(AGENT_BLUEPRINT_FEATURE) ?? false;
   const activeReadOnlySession = active ? readOnlySessions[active] : undefined;
   const activeModelInfo = active && modelInfoScope === active ? modelInfo : null;
   const activeStagedModelChange = active ? stagedModelChanges[active] : undefined;
@@ -5555,6 +5582,7 @@ export default function App() {
   };
   const scopedCatalogAgents = agentCatalog?.agents.filter((agent) => agent.spaceId === activeSpaceId) ?? [];
   const availableAgents = scopedCatalogAgents.length ? scopedCatalogAgents : [fallbackMainAgent];
+  const hiredBlueprintIds = availableAgents.flatMap((agent) => agent.blueprint?.id ? [agent.blueprint.id] : []);
   const profileAgent = profileAgentRef
     ? availableAgents.find((agent) => agent.ref === profileAgentRef)
     : undefined;
@@ -7650,16 +7678,21 @@ export default function App() {
                 <button className="new ghost" onClick={() => void openAgentOffice()}>
                   {t("inboxOpenOffice")}
                 </button>
-                {activeSpaceId === "personal" && clientRef.current?.supports("agents.create") ? (
-                  <button
-                    className="new ghost hire-agent-button"
-                    onClick={() => {
-                      setHireAgentError("");
-                      setHireAgentOpen(true);
-                    }}
-                  >
-                    <span aria-hidden>＋</span>{locale === "zh" ? "雇佣 Agent" : "Hire Agent"}
-                  </button>
+                {activeSpaceId === "personal" && agentCreateReady ? (
+                  agentBlueprintFeatureReady ? (
+                    <button
+                      className="new ghost hire-agent-button talent-market-button"
+                      onMouseEnter={() => warmModule(loadTalentMarket())}
+                      onFocus={() => warmModule(loadTalentMarket())}
+                      onClick={openTalentMarket}
+                    >
+                      <span aria-hidden>♜</span>{locale === "zh" ? "人才市场" : "Talent market"}
+                    </button>
+                  ) : (
+                    <button className="new ghost hire-agent-button" onClick={openCustomRecruitment}>
+                      <span aria-hidden>＋</span>{locale === "zh" ? "自定义雇佣" : "Custom hire"}
+                    </button>
+                  )
                 ) : null}
               </>
             ) : selectedInboxProject ? (
@@ -7686,16 +7719,21 @@ export default function App() {
                 <button className="new ghost" onClick={() => void openAgentOffice()}>
                   {t("inboxOpenOffice")}
                 </button>
-                {activeSpaceId === "personal" && clientRef.current?.supports("agents.create") ? (
-                  <button
-                    className="new ghost hire-agent-button"
-                    onClick={() => {
-                      setHireAgentError("");
-                      setHireAgentOpen(true);
-                    }}
-                  >
-                    <span aria-hidden>＋</span>{locale === "zh" ? "雇佣 Agent" : "Hire Agent"}
-                  </button>
+                {activeSpaceId === "personal" && agentCreateReady ? (
+                  agentBlueprintFeatureReady ? (
+                    <button
+                      className="new ghost hire-agent-button talent-market-button"
+                      onMouseEnter={() => warmModule(loadTalentMarket())}
+                      onFocus={() => warmModule(loadTalentMarket())}
+                      onClick={openTalentMarket}
+                    >
+                      <span aria-hidden>♜</span>{locale === "zh" ? "人才市场" : "Talent market"}
+                    </button>
+                  ) : (
+                    <button className="new ghost hire-agent-button" onClick={openCustomRecruitment}>
+                      <span aria-hidden>＋</span>{locale === "zh" ? "自定义雇佣" : "Custom hire"}
+                    </button>
+                  )
                 ) : null}
               </>
             ) : (
@@ -8834,6 +8872,25 @@ export default function App() {
         conversation(zone === "chat" ? "im" : "ide")
       )}
 
+      {talentMarketOpen && agentBlueprintFeatureReady ? (
+        <Suspense fallback={<div className="talent-market-loading" role="status">{locale === "zh" ? "正在打开人才中心…" : "Opening Talent Bureau…"}</div>}>
+          <TalentMarket
+            locale={locale}
+            hiredBlueprintIds={hiredBlueprintIds}
+            suspended={hireAgentOpen}
+            onClose={() => {
+              setTalentMarketOpen(false);
+              setHireAgentBlueprint(null);
+            }}
+            onCustomHire={openCustomRecruitment}
+            onHire={(blueprint) => {
+              setHireAgentError("");
+              setHireAgentBlueprint(blueprint);
+              setHireAgentOpen(true);
+            }}
+          />
+        </Suspense>
+      ) : null}
       {profileAgent ? (
         <AgentProfileEditor
           agent={profileAgent}
@@ -8851,13 +8908,16 @@ export default function App() {
       ) : null}
       {hireAgentOpen ? (
         <HireAgentDialog
+          key={hireAgentBlueprint?.id ?? "custom-agent"}
           locale={locale}
           saving={hireAgentSaving}
           error={hireAgentError}
+          blueprint={hireAgentBlueprint}
           onClose={() => {
             if (hireAgentSaving) return;
             setHireAgentOpen(false);
             setHireAgentError("");
+            setHireAgentBlueprint(null);
           }}
           onHire={(input) => void hireAgent(input)}
         />

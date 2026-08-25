@@ -1,0 +1,356 @@
+/* Hara Talent Bureau — a paper-and-ink recruitment arcade that works in both product themes. */
+.talent-market-overlay {
+  position: fixed;
+  z-index: 138;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 2.2vw, 30px);
+  background:
+    radial-gradient(circle at 16% 12%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 35%),
+    radial-gradient(circle at 88% 76%, color-mix(in srgb, #e8a454 13%, transparent), transparent 38%),
+    rgb(10 9 8 / 74%);
+  backdrop-filter: blur(15px) saturate(.82);
+  transition: opacity .16s ease, visibility .16s ease;
+}
+
+.talent-market-overlay.is-suspended { visibility: hidden; opacity: 0; pointer-events: none; }
+
+.talent-market-shell {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  width: min(1460px, calc(100vw - 24px));
+  height: min(900px, calc(100vh - 24px));
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, var(--fg));
+  border-radius: 22px 18px 25px 16px;
+  background: var(--bg2);
+  color: var(--fg);
+  box-shadow: 0 38px 120px rgb(0 0 0 / 56%), 7px 8px 0 color-mix(in srgb, var(--accent) 27%, var(--line));
+  font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  animation: talent-market-arrive .28s cubic-bezier(.2, .78, .18, 1) both;
+}
+
+.talent-market-shell::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  opacity: .22;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(116deg, transparent 0 15px, color-mix(in srgb, var(--fg) 6%, transparent) 16px 17px),
+    radial-gradient(circle at 2px 2px, color-mix(in srgb, var(--fg) 12%, transparent) 1px, transparent 1.5px);
+  background-size: auto, 11px 11px;
+  mix-blend-mode: multiply;
+}
+
+.talent-market-header {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 10px 14px 10px 18px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg2) 91%, var(--fg));
+}
+
+.talent-market-brand { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.talent-market-brand-mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  place-items: center;
+  transform: rotate(-2deg);
+  border: 2px solid color-mix(in srgb, var(--fg) 82%, transparent);
+  border-radius: 11px 8px 12px 9px;
+  background: var(--accent);
+  color: #fff8ed;
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--fg) 74%, transparent);
+  font: 900 23px/1 Georgia, serif;
+}
+.talent-market-brand > div { display: grid; gap: 1px; }
+.talent-market-brand small,
+.talent-market-hero small {
+  color: var(--dim);
+  font: 800 9px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .15em;
+}
+.talent-market-brand strong { font: 750 20px/1.1 "Avenir Next", "PingFang SC", sans-serif; letter-spacing: -.02em; }
+.talent-market-header-actions { display: flex; align-items: center; gap: 9px; }
+.talent-market-live { display: inline-flex; align-items: center; gap: 7px; color: var(--dim); font-size: 10px; }
+.talent-market-live i { width: 7px; height: 7px; border-radius: 50%; background: #53a56d; box-shadow: 0 0 0 4px color-mix(in srgb, #53a56d 14%, transparent); }
+.talent-market-custom,
+.talent-market-close {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+.talent-market-custom { display: inline-flex; align-items: center; gap: 6px; border-radius: 9px; padding: 9px 12px; font: 700 11px/1 inherit; }
+.talent-market-custom span { color: var(--accent); font-size: 15px; }
+.talent-market-close { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 50%; font: 400 23px/1 ui-monospace, monospace; }
+.talent-market-custom:hover,
+.talent-market-close:hover { border-color: color-mix(in srgb, var(--accent) 62%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+
+.talent-market-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 30px;
+  padding: 22px 26px 19px;
+  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(113deg, color-mix(in srgb, var(--accent) 10%, var(--bg2)), transparent 58%),
+    color-mix(in srgb, var(--bg) 35%, var(--bg2));
+}
+.talent-market-hero h2 { margin: 5px 0 4px; font: 800 clamp(25px, 3vw, 42px)/1.04 Georgia, "Songti SC", serif; letter-spacing: -.045em; }
+.talent-market-hero p { max-width: 720px; margin: 0; color: var(--dim); font-size: 11px; line-height: 1.6; }
+.talent-market-stats { display: flex; gap: 8px; }
+.talent-market-stats > span {
+  display: grid;
+  min-width: 84px;
+  gap: 1px;
+  padding: 10px 12px 9px;
+  transform: rotate(var(--tilt, -.5deg));
+  border: 1px solid var(--line);
+  border-radius: 7px 10px 8px 6px;
+  background: color-mix(in srgb, var(--bg2) 92%, var(--fg));
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--line) 75%, transparent);
+}
+.talent-market-stats > span:nth-child(2) { --tilt: .7deg; }
+.talent-market-stats b { font: 850 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.talent-market-stats small { color: var(--dim); font-size: 8px; white-space: nowrap; }
+
+.talent-market-search-row {
+  display: grid;
+  grid-template-columns: minmax(280px, .85fr) minmax(440px, 1.15fr);
+  align-items: center;
+  gap: 22px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg2) 94%, var(--fg));
+}
+.talent-market-search {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px 8px 11px 9px;
+  background: var(--bg);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.talent-market-search:focus-within { border-color: color-mix(in srgb, var(--accent) 68%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
+.talent-market-search > span { color: var(--accent); text-align: center; font: 700 19px/1 Georgia, serif; }
+.talent-market-search input { min-width: 0; border: 0; outline: 0; padding: 10px 4px; background: transparent; color: var(--fg); font: 600 11px/1.2 inherit; }
+.talent-market-search button { margin-right: 6px; border: 0; background: transparent; color: var(--dim); cursor: pointer; font-size: 16px; }
+.talent-market-journey { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 0; overflow: hidden; }
+.talent-market-journey span { position: relative; display: flex; min-width: 0; align-items: center; gap: 5px; color: var(--dim); font: 650 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+.talent-market-journey span:not(:last-child)::after { width: clamp(13px, 2.2vw, 38px); height: 1px; margin: 0 6px; content: ""; background: var(--line); }
+.talent-market-journey i { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid var(--line); border-radius: 50%; font: normal 800 8px/1 inherit; }
+.talent-market-journey .is-now { color: var(--fg); }
+.talent-market-journey .is-now i { border-color: var(--accent); background: var(--accent); color: #fff; }
+
+.talent-market-departments {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 9px 18px 10px;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+.talent-market-departments::-webkit-scrollbar { display: none; }
+.talent-market-departments button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  font: 650 10px/1 inherit;
+}
+.talent-market-departments button:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg); }
+.talent-market-departments button.is-active { border-color: color-mix(in srgb, var(--accent) 46%, var(--line)); background: color-mix(in srgb, var(--accent) 11%, var(--bg)); color: var(--fg); }
+.talent-market-departments i { color: var(--accent); font: normal 900 11px/1 Georgia, serif; }
+.talent-market-departments b { display: grid; min-width: 17px; height: 17px; place-items: center; border-radius: 999px; background: color-mix(in srgb, var(--fg) 7%, transparent); font: 750 8px/1 ui-monospace, monospace; }
+
+.talent-market-body { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) minmax(330px, 390px); }
+.talent-market-roster { min-width: 0; overflow: auto; padding: 15px 17px 30px; overscroll-behavior: contain; }
+.talent-market-roster-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 2px 12px; }
+.talent-market-roster-heading span { font: 800 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
+.talent-market-roster-heading small { color: var(--dim); font-size: 9px; }
+.talent-market-card-grid { display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 11px; }
+.talent-card {
+  --talent-accent: var(--accent);
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 190px;
+  grid-template-columns: 62px minmax(0, 1fr);
+  grid-template-rows: 1fr auto;
+  gap: 10px 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 11px 8px 14px 9px;
+  padding: 18px 13px 11px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--talent-accent) 8%, var(--bg2)), transparent 60%),
+    color-mix(in srgb, var(--bg2) 95%, var(--fg));
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--line) 70%, transparent);
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+  content-visibility: auto;
+  contain-intrinsic-size: 190px;
+}
+.talent-card::after { position: absolute; inset: 0 auto 0 0; width: 4px; content: ""; background: var(--talent-accent); opacity: .58; }
+.talent-card:hover { transform: translateY(-2px) rotate(-.15deg); border-color: color-mix(in srgb, var(--talent-accent) 58%, var(--line)); box-shadow: 3px 5px 0 color-mix(in srgb, var(--talent-accent) 14%, var(--line)); }
+.talent-card.is-selected { border-color: color-mix(in srgb, var(--talent-accent) 82%, var(--fg)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--talent-accent) 17%, transparent), 3px 4px 0 color-mix(in srgb, var(--talent-accent) 25%, var(--line)); }
+.talent-card.is-hired { opacity: .72; }
+.talent-card-number { position: absolute; top: 7px; right: 8px; color: color-mix(in srgb, var(--fg) 35%, transparent); font: 700 7px/1 ui-monospace, monospace; letter-spacing: .08em; }
+.talent-card-tier { position: absolute; z-index: 2; top: 7px; left: 10px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 5px; background: var(--bg2); color: var(--dim); font: 800 6px/1 ui-monospace, monospace; letter-spacing: .07em; }
+.talent-card-tier.is-curated { border-color: color-mix(in srgb, var(--talent-accent) 54%, var(--line)); color: var(--talent-accent); }
+.talent-card > .agent-portrait { align-self: start; }
+.talent-card-copy { display: flex; min-width: 0; flex-direction: column; }
+.talent-card-copy > small { overflow: hidden; margin: 1px 0 5px; color: var(--talent-accent); font: 800 8px/1 ui-monospace, monospace; letter-spacing: .07em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.talent-card-copy > strong { overflow: hidden; font-size: 15px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.talent-card-copy > em { overflow: hidden; margin-top: 2px; color: var(--dim); font: normal 650 9px/1.25 inherit; text-overflow: ellipsis; white-space: nowrap; }
+.talent-card-copy > span { display: -webkit-box; margin-top: 9px; overflow: hidden; color: var(--dim); font-size: 9px; line-height: 1.48; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.talent-card-footer { display: flex; grid-column: 1 / -1; align-items: flex-end; justify-content: space-between; gap: 8px; border-top: 1px dashed color-mix(in srgb, var(--line) 84%, transparent); padding-top: 8px; }
+.talent-card-footer > span { display: flex; min-width: 0; flex-wrap: wrap; gap: 4px; }
+.talent-card-footer i { max-width: 105px; overflow: hidden; border-radius: 999px; padding: 4px 6px; background: color-mix(in srgb, var(--talent-accent) 10%, var(--bg)); color: var(--dim); font: normal 650 7px/1 inherit; text-overflow: ellipsis; white-space: nowrap; }
+.talent-card-footer > b { display: grid; min-width: 24px; height: 24px; place-items: center; border: 1px solid color-mix(in srgb, var(--talent-accent) 48%, var(--line)); border-radius: 50%; color: var(--talent-accent); font: 800 11px/1 ui-monospace, monospace; white-space: nowrap; }
+.talent-card.is-hired .talent-card-footer > b { width: auto; border-radius: 999px; padding: 0 7px; font-size: 7px; }
+.talent-market-more { display: grid; min-height: 150px; place-items: center; align-content: center; gap: 5px; border: 1px dashed color-mix(in srgb, var(--accent) 46%, var(--line)); border-radius: 11px; background: color-mix(in srgb, var(--accent) 5%, var(--bg2)); color: var(--fg); cursor: pointer; }
+.talent-market-more:hover { background: color-mix(in srgb, var(--accent) 10%, var(--bg2)); }
+.talent-market-more span { font: 800 12px/1.2 inherit; }
+.talent-market-more b { color: var(--dim); font: 650 8px/1.2 ui-monospace, monospace; }
+
+.talent-market-empty { display: grid; min-height: 300px; place-items: center; align-content: center; gap: 7px; border: 1px dashed var(--line); border-radius: 14px; color: var(--dim); text-align: center; }
+.talent-market-empty > span { color: var(--accent); font: 700 34px/1 Georgia, serif; }
+.talent-market-empty strong { color: var(--fg); font-size: 14px; }
+.talent-market-empty p { margin: 0; font-size: 10px; }
+.talent-market-empty button { margin-top: 5px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; background: var(--bg); color: var(--fg); cursor: pointer; }
+
+.talent-dossier { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; border-left: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 58%, var(--bg2)); }
+.talent-dossier-top {
+  --talent-accent: var(--accent);
+  position: relative;
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+  overflow: hidden;
+  padding: 23px 20px 17px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(128deg, color-mix(in srgb, var(--talent-accent) 18%, var(--bg2)), transparent 72%);
+}
+.talent-dossier-top::after { position: absolute; top: -42px; right: -20px; width: 130px; height: 130px; border: 20px double color-mix(in srgb, var(--talent-accent) 15%, transparent); border-radius: 50%; content: ""; transform: rotate(-12deg); }
+.talent-dossier-top > * { position: relative; z-index: 1; }
+.talent-dossier-top small { color: var(--dim); font: 700 8px/1 ui-monospace, monospace; }
+.talent-dossier-top h3 { margin: 3px 0 1px; font: 800 24px/1.05 Georgia, "Songti SC", serif; letter-spacing: -.035em; }
+.talent-dossier-top p { margin: 0; color: var(--talent-accent); font-size: 10px; font-weight: 700; }
+.talent-dossier-stamp { position: absolute !important; z-index: 2 !important; top: 9px; right: 9px; transform: rotate(3deg); border: 1px solid var(--talent-accent); border-radius: 3px; padding: 4px 5px; color: var(--talent-accent); font: 900 7px/1 ui-monospace, monospace; letter-spacing: .08em; }
+.talent-dossier-scroll { overflow: auto; padding: 16px 18px 22px; overscroll-behavior: contain; }
+.talent-dossier-bio { margin: 0; color: var(--fg); font: 600 11px/1.62 inherit; }
+.talent-dossier-curation { display: grid; gap: 3px; margin: 10px 0 0; border-left: 3px solid var(--line); padding: 6px 8px; background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.talent-dossier-curation.is-curated { border-left-color: var(--accent); }
+.talent-dossier-curation b { font: 800 8px/1.2 ui-monospace, monospace; letter-spacing: .04em; }
+.talent-dossier-curation span { color: var(--dim); font-size: 8px; line-height: 1.4; }
+.talent-dossier-traits { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.talent-dossier-traits span { color: var(--dim); font: 650 8px/1.2 ui-monospace, monospace; }
+.talent-dossier section { margin-top: 18px; }
+.talent-dossier section > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.talent-dossier section > header b { font: 800 9px/1 ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.talent-dossier section > header small { color: color-mix(in srgb, var(--fg) 32%, transparent); font: 750 8px/1 ui-monospace, monospace; }
+.talent-dossier-capabilities { display: flex; flex-wrap: wrap; gap: 6px; }
+.talent-dossier-capabilities span { border: 1px solid var(--line); border-radius: 6px 8px 5px 9px; padding: 6px 8px; background: var(--bg2); color: var(--fg); font-size: 9px; }
+.talent-dossier ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.talent-dossier li { display: flex; gap: 7px; color: var(--dim); font-size: 9px; line-height: 1.4; }
+.talent-dossier li i { color: var(--accent); font-style: normal; }
+.talent-dossier-boundaries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.talent-dossier-boundaries > span { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg2); }
+.talent-dossier-boundaries small { color: var(--dim); font-size: 7px; }
+.talent-dossier-boundaries b { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.talent-dossier-note { margin: 7px 1px 0; color: var(--dim); font-size: 8px; line-height: 1.5; }
+.talent-dossier-source dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.talent-dossier-source dl > div { display: grid; gap: 2px; }
+.talent-dossier-source dt { color: var(--dim); font-size: 7px; }
+.talent-dossier-source dd { overflow: hidden; margin: 0; font: 700 8px/1.2 ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.talent-dossier-source code { display: block; margin-top: 8px; overflow: hidden; border-radius: 5px; padding: 6px 7px; background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--dim); font: 7px/1.3 ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.talent-dossier-source details { margin-top: 7px; color: var(--dim); font-size: 8px; }
+.talent-dossier-source summary { cursor: pointer; }
+.talent-dossier-source pre { max-height: 150px; overflow: auto; margin: 7px 0 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px; background: var(--bg2); color: var(--dim); font: 6.5px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+.talent-dossier-footer { display: grid; gap: 9px; border-top: 1px solid var(--line); padding: 12px 17px 15px; background: color-mix(in srgb, var(--bg2) 94%, var(--fg)); }
+.talent-dossier-footer p { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--dim); font-size: 8px; line-height: 1.35; }
+.talent-dossier-footer p i { color: #50a26c; font-size: 7px; }
+.talent-dossier-footer button { display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px solid color-mix(in srgb, var(--accent) 80%, var(--line)); border-radius: 9px 7px 11px 8px; padding: 11px 13px; background: var(--accent); color: #fff8f0; cursor: pointer; box-shadow: 3px 3px 0 color-mix(in srgb, var(--fg) 65%, transparent); font: 800 11px/1 inherit; }
+.talent-dossier-footer button:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 color-mix(in srgb, var(--fg) 70%, transparent); }
+.talent-dossier-footer button:disabled { border-color: var(--line); background: color-mix(in srgb, var(--fg) 9%, var(--bg2)); color: var(--dim); cursor: default; box-shadow: none; }
+.talent-dossier-footer button span { font-size: 16px; }
+.talent-dossier-empty { display: grid; min-height: 100%; place-items: center; color: var(--dim); font-size: 11px; }
+
+@keyframes talent-market-arrive {
+  from { transform: translateY(10px) scale(.985); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@media (max-width: 1180px) {
+  .talent-market-card-grid { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
+  .talent-market-body { grid-template-columns: minmax(0, 1fr) minmax(310px, 350px); }
+  .talent-market-journey span:not(:last-child)::after { width: 13px; }
+}
+
+@media (max-width: 900px) {
+  .talent-market-shell { width: calc(100vw - 18px); height: calc(100vh - 18px); }
+  .talent-market-live { display: none; }
+  .talent-market-hero { grid-template-columns: 1fr; gap: 12px; }
+  .talent-market-stats { justify-content: flex-start; }
+  .talent-market-search-row { grid-template-columns: 1fr; gap: 9px; }
+  .talent-market-journey { justify-content: flex-start; }
+  .talent-market-body { grid-template-columns: minmax(0, 1fr) minmax(290px, 42%); }
+  .talent-market-card-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .talent-market-overlay { padding: 0; }
+  .talent-market-shell { width: 100vw; height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
+  .talent-market-header { min-height: 58px; padding-inline: 10px; }
+  .talent-market-brand-mark { width: 36px; height: 36px; font-size: 19px; }
+  .talent-market-brand small { display: none; }
+  .talent-market-brand strong { font-size: 16px; }
+  .talent-market-custom { padding: 8px; font-size: 9px; }
+  .talent-market-hero { padding: 16px 15px 13px; }
+  .talent-market-hero h2 { font-size: 26px; }
+  .talent-market-stats > span { min-width: 0; padding: 8px; }
+  .talent-market-stats b { font-size: 16px; }
+  .talent-market-search-row { padding: 9px 12px; }
+  .talent-market-journey { display: none; }
+  .talent-market-departments { padding-inline: 11px; }
+  .talent-market-body { display: block; overflow: auto; }
+  .talent-market-roster { overflow: visible; padding: 13px 12px; }
+  .talent-market-card-grid { grid-template-columns: repeat(2, minmax(145px, 1fr)); }
+  .talent-card { min-height: 178px; grid-template-columns: 50px minmax(0, 1fr); padding-inline: 10px; }
+  .talent-dossier { min-height: 600px; border-top: 1px solid var(--line); border-left: 0; }
+  .talent-dossier-scroll { overflow: visible; }
+}
+
+@media (max-width: 430px) {
+  .talent-market-card-grid { grid-template-columns: 1fr; }
+  .talent-market-stats > span:nth-child(2) { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .talent-market-shell { animation: none; }
+  .talent-card,
+  .talent-dossier-footer button { transition: none; }
+}

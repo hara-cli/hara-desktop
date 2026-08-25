@@ -42,10 +42,25 @@ export interface AgentInfo {
   project?: string;
   model?: string;
   readOnly?: boolean;
+  /** Verified install provenance. The private blueprint prompt is never returned by the engine. */
+  blueprint?: AgentBlueprintProvenance;
   spaceId?: string;
   owner: "personal" | "organization" | "external";
   allowedActions: Array<"chat" | "edit_profile" | "archive">;
   revision?: string;
+}
+
+export interface AgentBlueprintInstallInput {
+  id: string;
+  version: string;
+  publisher: string;
+  source: string;
+  sourceRevision: string;
+  license: string;
+}
+
+export interface AgentBlueprintProvenance extends AgentBlueprintInstallInput {
+  digest: string;
 }
 
 export interface AgentPublicIdentity {
@@ -1041,6 +1056,7 @@ export class HaraClient {
     id: string;
     description?: string;
     instructions?: string;
+    blueprint?: AgentBlueprintInstallInput;
     profile: Omit<AgentPublicIdentity, "version" | "source">;
     cwd?: string;
   }) {

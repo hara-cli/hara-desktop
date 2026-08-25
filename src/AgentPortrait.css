@@ -156,6 +156,23 @@
   transform-origin: 50% 92%;
 }
 .agent-character-head { position: absolute; z-index: 5; top: 0; left: 9px; width: 30px; height: 33px; }
+.agent-character-head.has-avatar {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--agent-accent) 62%, #2d2420);
+  border-radius: 44% 48% 42% 46%;
+  background: var(--agent-paper);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--agent-accent) 24%, #2d2420);
+}
+.agent-character-head > img {
+  position: absolute;
+  top: -2px;
+  left: -5px;
+  width: 40px;
+  height: 40px;
+  max-width: none;
+  object-fit: cover;
+  pointer-events: none;
+}
 .agent-character-head .agent-art-face { top: 7px; left: 6px; width: 18px; height: 20px; border-width: 1px; }
 .agent-character-head .agent-art-hair { top: 3px; left: 3px; width: 24px; height: 17px; }
 .agent-character-head .agent-art-ear { top: 14px; width: 4px; height: 7px; }

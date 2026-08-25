@@ -1,12 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AgentPublicIdentity } from "./client";
+import type { AgentBlueprintInstallInput, AgentPublicIdentity } from "./client";
 import { AgentPortrait } from "./AgentPortrait";
+import {
+  talentBlueprintIdentity,
+  talentBlueprintInstallInput,
+  talentBlueprintInstructions,
+  talentText,
+  type AgentBlueprint,
+} from "./talent-blueprint";
 import "./HireAgentDialog.css";
 
 export interface HireAgentInput {
   id: string;
   description?: string;
   instructions?: string;
+  blueprint?: AgentBlueprintInstallInput;
   profile: Omit<AgentPublicIdentity, "version" | "source">;
 }
 
@@ -14,20 +22,22 @@ interface HireAgentDialogProps {
   locale: "en" | "zh";
   saving?: boolean;
   error?: string;
+  blueprint?: AgentBlueprint | null;
   onClose: () => void;
   onHire: (input: HireAgentInput) => void;
 }
 
-export default function HireAgentDialog({ locale, saving, error, onClose, onHire }: HireAgentDialogProps) {
-  const [id, setId] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [title, setTitle] = useState("");
-  const [bio, setBio] = useState("");
-  const [traits, setTraits] = useState("");
-  const [emoji, setEmoji] = useState("✦");
-  const [accent, setAccent] = useState("#4f9c8f");
-  const [character, setCharacter] = useState("specialist");
-  const [instructions, setInstructions] = useState("");
+export default function HireAgentDialog({ locale, saving, error, blueprint, onClose, onHire }: HireAgentDialogProps) {
+  const blueprintIdentity = blueprint ? talentBlueprintIdentity(blueprint, locale) : null;
+  const [id, setId] = useState(() => blueprint?.username ?? "");
+  const [displayName, setDisplayName] = useState(() => blueprintIdentity?.displayName ?? "");
+  const [title, setTitle] = useState(() => blueprintIdentity?.title ?? "");
+  const [bio, setBio] = useState(() => blueprintIdentity?.bio ?? "");
+  const [traits, setTraits] = useState(() => blueprintIdentity?.traits?.join(", ") ?? "");
+  const [emoji, setEmoji] = useState(() => blueprintIdentity?.emoji ?? "✦");
+  const [accent, setAccent] = useState(() => blueprintIdentity?.accent ?? "#4f9c8f");
+  const [character, setCharacter] = useState(() => blueprintIdentity?.character ?? "specialist");
+  const [instructions, setInstructions] = useState(() => blueprint ? talentBlueprintInstructions(blueprint) : "");
   const username = id.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
   const traitList = useMemo(() => traits.split(/[,，、]/).map((item) => item.trim()).filter(Boolean).slice(0, 6), [traits]);
   const profile: AgentPublicIdentity = {
@@ -57,13 +67,24 @@ export default function HireAgentDialog({ locale, saving, error, onClose, onHire
       <section className="hire-agent-dialog" role="dialog" aria-modal="true" aria-labelledby="hire-agent-title">
         <header>
           <div>
-            <small>{locale === "zh" ? "PERSONAL · TALENT DESK" : "PERSONAL · TALENT DESK"}</small>
-            <strong id="hire-agent-title">{locale === "zh" ? "雇佣一位新 Agent" : "Hire a new Agent"}</strong>
-            <p>{locale === "zh" ? "创建独立身份与私有工作提示词；以后可随时修改名片或解除雇佣。" : "Create an independent identity and private work brief. You can edit the profile or dismiss the Agent later."}</p>
+            <small>{blueprint ? "PERSONAL · BLUEPRINT ONBOARDING" : "PERSONAL · CUSTOM RECRUITMENT"}</small>
+            <strong id="hire-agent-title">{blueprint
+              ? (locale === "zh" ? `为${talentText(blueprint.name, locale)}办理入职` : `Onboard ${talentText(blueprint.name, locale)}`)
+              : (locale === "zh" ? "自定义招聘一位 Agent" : "Hire a custom Agent")}</strong>
+            <p>{blueprint
+              ? (locale === "zh" ? "蓝图只提供角色起点；用户名、公开名片与私有工作说明都可以在入职前调整。" : "The blueprint is a starting point. Adjust the username, public profile, and private brief before hiring.")
+              : (locale === "zh" ? "创建独立身份与私有工作提示词；以后可随时修改名片或解除雇佣。" : "Create an independent identity and private work brief. You can edit the profile or dismiss the Agent later.")}</p>
           </div>
           <AgentPortrait agentRef={`global:${username || "new-agent"}`} name={profile.displayName} identity={profile} size="large" />
         </header>
         <div className="hire-agent-form">
+          {blueprint ? (
+            <div className="hire-agent-blueprint-note">
+              <span aria-hidden>{blueprint.emoji}</span>
+              <div><b>{locale === "zh" ? "版本化人才蓝图" : "Versioned talent blueprint"}</b><small>{blueprint.id} · v{blueprint.version} · MIT</small></div>
+              <em>{locale === "zh" ? "不会自动获得工具权限" : "No automatic tool grants"}</em>
+            </div>
+          ) : null}
           <label>
             <span>{locale === "zh" ? "唯一用户名" : "Unique username"}<b>*</b></span>
             <div className="hire-agent-username"><i>@</i><input autoFocus maxLength={64} value={id} placeholder="product-designer" disabled={saving} onChange={(event) => setId(event.target.value)} /></div>
@@ -87,6 +108,7 @@ export default function HireAgentDialog({ locale, saving, error, onClose, onHire
             id: username,
             description: bio.trim() || title.trim(),
             instructions: instructions.trim(),
+            ...(blueprint ? { blueprint: talentBlueprintInstallInput(blueprint) } : {}),
             profile: {
               displayName: displayName.trim(),
               ...(title.trim() ? { title: title.trim() } : {}),

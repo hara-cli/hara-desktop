@@ -62,12 +62,17 @@ export function agentInitials(value: string): string {
 
 export function agentVisualTokens(agentRef: string, identity?: AgentPublicIdentity): AgentVisualTokens {
   const hash = stableAgentHash(`${agentRef}\0${identity?.character ?? ""}`);
-  const palette = PALETTES[hash % PALETTES.length];
+  const paletteIndex = hash % PALETTES.length;
+  // Do not reuse the same low bits for both choices: that collapsed every generated
+  // portrait into only eight palette/face pairs. Independent hash bytes yield up to
+  // 64 stable combinations without persisting or downloading an avatar.
+  const variant = (hash >>> 8) % 8;
+  const palette = PALETTES[paletteIndex];
   return {
     ...palette,
     accent: identity?.accent ?? palette.accent,
-    variant: hash % 8,
-    archetype: identity?.character ?? `studio-${hash % 8}`,
+    variant,
+    archetype: identity?.character ?? `studio-${paletteIndex}-${variant}`,
   };
 }
 

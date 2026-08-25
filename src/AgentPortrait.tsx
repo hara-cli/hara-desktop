@@ -87,6 +87,9 @@ export const AgentCharacter = memo(function AgentCharacter({
   className = "",
 }: AgentCharacterProps) {
   const visual = agentVisualTokens(agentRef, identity);
+  const avatar = renderableAgentAvatar(identity);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  useEffect(() => setAvatarFailed(false), [avatar]);
   return (
     <span
       className={`agent-character-art is-variant-${visual.variant} is-${state}${reduced ? " is-reduced" : ""}${className ? ` ${className}` : ""}`}
@@ -94,7 +97,13 @@ export const AgentCharacter = memo(function AgentCharacter({
       aria-hidden
       data-character={visual.archetype}
     >
-      <span className="agent-character-head"><Face variant={visual.variant} /></span>
+      <span className={`agent-character-head${avatar && !avatarFailed ? " has-avatar" : ""}`}>
+        {avatar && !avatarFailed ? (
+          <img src={avatar} alt="" draggable={false} loading="lazy" onError={() => setAvatarFailed(true)} />
+        ) : (
+          <Face variant={visual.variant} />
+        )}
+      </span>
       <span className="agent-character-body"><i /><b>{identity?.emoji || agentInitials(identity?.displayName || name).slice(0, 1)}</b></span>
       <span className="agent-character-arm is-left" />
       <span className="agent-character-arm is-right" />

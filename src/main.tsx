@@ -9,12 +9,24 @@ const params = new URLSearchParams(window.location.search);
 const petMode = params.get("pet") === "1";
 const workbenchPreview = import.meta.env.DEV && params.get("preview") === "workbench";
 const providersPreview = import.meta.env.DEV && params.get("preview") === "providers";
+const talentPreview = import.meta.env.DEV && params.get("preview") === "talent";
+const TalentMarketPreview = React.lazy(() => import("./TalentMarket"));
 document.documentElement.classList.toggle("pet-mode", petMode);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     {petMode ? (
       <PetOverlay />
+    ) : talentPreview ? (
+      <React.Suspense fallback={<div>Opening Talent Bureau…</div>}>
+        <TalentMarketPreview
+          locale={params.get("locale") === "en" ? "en" : "zh"}
+          hiredBlueprintIds={[]}
+          onClose={() => {}}
+          onCustomHire={() => {}}
+          onHire={() => {}}
+        />
+      </React.Suspense>
     ) : providersPreview ? (
       <ProviderSettingsPreview
         locale={params.get("locale") === "en" ? "en" : "zh"}
