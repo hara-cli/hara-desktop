@@ -61,6 +61,14 @@ import {
   type SpaceDirectory,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
+import {
+  THEME_PREFERENCES,
+  applyThemePreference,
+  bindThemePreference,
+  loadThemePreference,
+  saveThemePreference,
+  type ThemePreference,
+} from "./theme";
 import { isImeCompositionKey } from "./ime";
 import { classifyEngineVersion } from "./engine-version.js";
 import { applyDesktopUpdateHandoff } from "./desktop-update.js";
@@ -1133,6 +1141,18 @@ export default function App() {
   }, [spaceDirectory?.activeId]);
   const openedProjects = projectListState.opened;
   const [locale, setLocale] = useState<Locale>(detectLocale());
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(
+    () => loadThemePreference(),
+  );
+  useEffect(
+    () => bindThemePreference(themePreference),
+    [themePreference],
+  );
+  const chooseTheme = useCallback((preference: ThemePreference) => {
+    saveThemePreference(preference);
+    applyThemePreference(preference);
+    setThemePreferenceState(preference);
+  }, []);
   const t = makeT(locale);
   const groupsCopy = useMemo<GroupsCopy>(() => {
     const translate = makeT(locale);
@@ -8397,6 +8417,52 @@ export default function App() {
                 title={t("setLang")}
                 description={t("languageDescription")}
               >
+                <SettingsCard title={t("appearanceTheme")} description={t("appearanceThemeHint")}>
+                  <SettingsItem title={t("appearanceThemeChoice")}>
+                    <div
+                      className="theme-choice"
+                      role="radiogroup"
+                      aria-label={t("appearanceThemeChoice")}
+                    >
+                      {THEME_PREFERENCES.map((preference) => {
+                        const selected = themePreference === preference;
+                        const label = preference === "system"
+                          ? t("themeSystem")
+                          : preference === "light"
+                            ? t("themeLight")
+                            : t("themeDark");
+                        const hint = preference === "system"
+                          ? t("themeSystemHint")
+                          : preference === "light"
+                            ? t("themeLightHint")
+                            : t("themeDarkHint");
+                        return (
+                          <button
+                            type="button"
+                            role="radio"
+                            key={preference}
+                            className={`theme-option ${selected ? "is-selected" : ""}`}
+                            aria-checked={selected}
+                            onClick={() => chooseTheme(preference)}
+                          >
+                            <span className={`theme-preview ${preference}`} aria-hidden="true">
+                              <span className="theme-preview-rail" />
+                              <span className="theme-preview-stage">
+                                <span className="theme-preview-line" />
+                                <span className="theme-preview-card" />
+                              </span>
+                            </span>
+                            <span className="theme-option-copy">
+                              <strong>{label}</strong>
+                              <small>{hint}</small>
+                            </span>
+                            <span className="theme-option-check" aria-hidden="true">✓</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </SettingsItem>
+                </SettingsCard>
                 <SettingsCard title={t("displayLanguage")} description={t("displayLanguageHint")}>
                   <SettingsItem title={t("languageChoice")}>
                     <div className="settings-choice">

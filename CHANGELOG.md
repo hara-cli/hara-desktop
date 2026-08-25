@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.111 — 2026-08-25 — daylight appearance and bounded Agent loop recovery
+
+- Add one coherent appearance system with `Follow system`, `Daylight`, and `Night` choices. The saved preference
+  is applied before React mounts and follows OS appearance changes without a first-frame flash. Daylight uses
+  warm paper surfaces, ink text, vermilion actions, and Nanhara green state cues across the workbench, message
+  center, settings and providers, dialogs, organization groups, Talent Bureau, Office, 2D/3D Agent scenes,
+  built-in work surfaces, and the companion chat; Night remains the existing focused interface.
+- Expose the appearance choice as an accessible three-way radio group under Appearance & language, keep the
+  same information architecture in both themes, and retain deliberately dark code/terminal islands for
+  legibility rather than maintaining a separate light-mode application.
+- Stop successful-but-stagnant Agent tool cycles before the 64-round ceiling. Hara gives one bounded strategy
+  correction after unchanged evidence, then preserves a recoverable checkpoint and stops unnecessary model
+  spend; changing observations remain progress. Incomplete provider tool-call JSON receives one same-model
+  retry with a smaller complete call and can never execute the truncated payload.
+- Bundle Hara CLI `0.153.1` at exact verified commit
+  `71ebcd7c40effa6a5d5c0f7489b1331da78a939f`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.110 — 2026-08-25 — Agent Talent Bureau and independent public-edge verification
 
 - Add a game-like Agent Talent Bureau with 270 versioned Agency Agents roles across 18 departments. Finance,

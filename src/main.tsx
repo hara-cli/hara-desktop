@@ -4,7 +4,10 @@ import App from "./App";
 import PetOverlay from "./PetOverlay";
 import { ProviderSettingsPreview } from "./ProviderSettingsPreview";
 import { WorkStarter } from "./WorkStarter";
+import { initializeThemePreference } from "./theme";
+import "./theme-light.css";
 
+initializeThemePreference();
 const params = new URLSearchParams(window.location.search);
 const petMode = params.get("pet") === "1";
 const workbenchPreview = import.meta.env.DEV && params.get("preview") === "workbench";

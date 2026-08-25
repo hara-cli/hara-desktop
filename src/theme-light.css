@@ -1,0 +1,1139 @@
+/* Hara Daylight — warm paper, ink, vermilion, and Nanhara green.
+   This is a semantic skin over the existing product, not a second information architecture. */
+html[data-theme="light"] {
+  --bg: #f3f0e8;
+  --bg2: #f8f5ee;
+  --bg3: #e9e4da;
+  --fg: #28231f;
+  --dim: #6d675f;
+  --accent: #bd3826;
+  --border: #d4cdc1;
+  --line: var(--border);
+  --text: var(--fg);
+  --muted: var(--dim);
+  --surface-canvas: var(--bg);
+  --surface-sidebar: #f8f5ee;
+  --surface-panel: #fffdf8;
+  --surface-raised: #ece6dc;
+  --surface-hover: #e5ded2;
+  --surface-inset: #e8e2d7;
+  --ink-strong: var(--fg);
+  --ink-muted: var(--dim);
+  --accent-strong: #a92f20;
+  --accent-soft: #f4ddd5;
+  --success: #287552;
+  --success-soft: #e1efe7;
+  --warning: #8b5d16;
+  --warning-soft: #f4e8cf;
+  --danger: #a83b2e;
+  --danger-soft: #f6ded8;
+  --info: #316d8c;
+  --info-soft: #deebf1;
+  --focus-ring: rgba(189, 56, 38, 0.2);
+  --grid-line: rgba(70, 60, 49, 0.065);
+  --shadow-soft: 0 12px 34px rgba(66, 50, 31, 0.11);
+  --shadow-float: 0 24px 70px rgba(66, 50, 31, 0.17);
+  color-scheme: light;
+}
+
+html[data-theme="light"] body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+html[data-theme="light"] ::selection {
+  background: rgba(189, 56, 38, 0.18);
+  color: #211b17;
+}
+
+html[data-theme="light"] button.ghost {
+  border: 1px solid var(--border);
+  background: #eee9df;
+  color: var(--fg);
+}
+
+html[data-theme="light"] button.deny,
+html[data-theme="light"] .stop {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+html[data-theme="light"] .err,
+html[data-theme="light"] .task-progress-detail,
+html[data-theme="light"] .task-progress-detail strong {
+  color: var(--danger);
+}
+
+/* Core shell and messaging */
+html[data-theme="light"] .app,
+html[data-theme="light"] .chat,
+html[data-theme="light"] .board,
+html[data-theme="light"] .workstarter-scroll {
+  background-color: var(--surface-canvas);
+  color: var(--fg);
+}
+
+html[data-theme="light"] .workstarter-scroll {
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+}
+
+html[data-theme="light"] .rail {
+  border-right-color: #d0c8bb;
+  background: #e9e4da;
+  box-shadow: inset -1px 0 rgba(255, 255, 255, 0.72);
+}
+
+html[data-theme="light"] .rail button {
+  color: #5d574f;
+}
+
+html[data-theme="light"] .rail button:hover,
+html[data-theme="light"] .rail button.on {
+  background: #dcd5c9;
+  color: var(--accent);
+}
+
+html[data-theme="light"] .rail .chip {
+  background: #d8d0c3;
+  color: #38322d;
+}
+
+html[data-theme="light"] .sidebar {
+  border-right-color: var(--border);
+  background: var(--surface-sidebar);
+  box-shadow: inset -1px 0 rgba(255, 255, 255, 0.72);
+}
+
+html[data-theme="light"] .anchor,
+html[data-theme="light"] .inputbar {
+  background: rgba(248, 245, 238, 0.96);
+  box-shadow: 0 1px rgba(255, 255, 255, 0.7);
+}
+
+html[data-theme="light"] .scroll {
+  background:
+    radial-gradient(circle at 92% 6%, rgba(189, 56, 38, 0.035), transparent 28%),
+    var(--surface-canvas);
+}
+
+html[data-theme="light"] .sess:hover,
+html[data-theme="light"] .sess.on,
+html[data-theme="light"] .trow.click:hover,
+html[data-theme="light"] .foot .cog:hover,
+html[data-theme="light"] .foot .cog.on,
+html[data-theme="light"] .seg button.on {
+  background: #e8e2d7;
+}
+
+html[data-theme="light"] .seg {
+  background: #e7e1d6;
+}
+
+html[data-theme="light"] .msg.user {
+  border-color: #dfb7aa;
+  background: #f5e0d9;
+  color: #36241f;
+}
+
+html[data-theme="light"] .msg.assistant,
+html[data-theme="light"] .appr,
+html[data-theme="light"] .execution-log {
+  border-color: var(--border);
+  background: var(--surface-panel);
+  box-shadow: 0 1px 2px rgba(62, 48, 31, 0.035);
+}
+
+html[data-theme="light"] .chat.ide .msg.assistant {
+  border-left-color: #c6bcae;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-theme="light"] .tool,
+html[data-theme="light"] .skill-id,
+html[data-theme="light"] .botlab {
+  color: #855c22;
+}
+
+html[data-theme="light"] .diff {
+  border-color: var(--border);
+  background: #fbf8f2;
+  color: #302a25;
+}
+
+/* Code and terminal output are deliberate dark islands inside daylight chrome. */
+html[data-theme="light"] .md pre,
+html[data-theme="light"] .workbench-terminal-output,
+html[data-theme="light"] .workbench-review-diff {
+  border-color: #313035;
+  background: #151518;
+  color: #e8e4dd;
+}
+
+html[data-theme="light"] .md pre code,
+html[data-theme="light"] .workbench-terminal-output pre {
+  color: #d7d2ca;
+}
+
+html[data-theme="light"] .composer-shell,
+html[data-theme="light"] .composer-menu {
+  border-color: #cfc6b8;
+  background: rgba(255, 253, 248, 0.98);
+  box-shadow: var(--shadow-soft), inset 0 1px rgba(255, 255, 255, 0.9);
+}
+
+html[data-theme="light"] .composer-workspace,
+html[data-theme="light"] .composer-active-work-object,
+html[data-theme="light"] .composer-attachment-chip {
+  background: rgba(239, 234, 224, 0.88);
+}
+
+html[data-theme="light"] .composer-readonly-warning {
+  background: var(--warning-soft);
+  color: #775018;
+}
+
+html[data-theme="light"] .composer-capability-warning {
+  background: #f6e7d7;
+  color: #8a4e22;
+}
+
+html[data-theme="light"] .composer-capability-note {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+html[data-theme="light"] .overlay,
+html[data-theme="light"] .agent-profile-overlay,
+html[data-theme="light"] .hire-agent-overlay,
+html[data-theme="light"] .talent-market-overlay,
+html[data-theme="light"] .talent-market-loading {
+  background: rgba(54, 44, 34, 0.38);
+}
+
+html[data-theme="light"] .modal,
+html[data-theme="light"] .agent-profile-editor,
+html[data-theme="light"] .hire-agent-dialog {
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-float);
+}
+
+html[data-theme="light"] .ready-error {
+  border-color: #d59b8f;
+  background: #f7e3dd;
+  color: #84372c;
+  box-shadow: var(--shadow-soft);
+}
+
+/* Workbench home and message center */
+html[data-theme="light"] .workstarter-eyebrow,
+html[data-theme="light"] .workstarter-label {
+  color: #635d55;
+}
+
+html[data-theme="light"] .workstarter-apps,
+html[data-theme="light"] .workstarter-compose,
+html[data-theme="light"] .workstarter-files {
+  border-color: #cec5b7;
+  background: rgba(255, 253, 248, 0.96);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="light"] .workstarter-section-head,
+html[data-theme="light"] .workstarter-compose-foot {
+  border-color: var(--border);
+  background: #f1ece3;
+}
+
+html[data-theme="light"] .workstarter-section-head span,
+html[data-theme="light"] .workstarter-selected {
+  color: #39332d;
+}
+
+html[data-theme="light"] .workstarter-app-grid > button {
+  border-color: var(--border);
+  background: #fffdf8;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .workstarter-app-grid > button:hover:not(:disabled) {
+  background: #f2ede4;
+}
+
+html[data-theme="light"] .workstarter-app-mark,
+html[data-theme="light"] .workstarter-reference-actions button,
+html[data-theme="light"] .workstarter-attachment,
+html[data-theme="light"] .workstarter-compose-foot button.workstarter-kind-reset {
+  border-color: var(--border);
+  background: #eee8de;
+  color: #554e46;
+}
+
+html[data-theme="light"] .workstarter-card {
+  background: rgba(255, 253, 248, 0.92);
+}
+
+html[data-theme="light"] .workstarter-card:hover,
+html[data-theme="light"] .workstarter-card.on {
+  background: #eee8de;
+}
+
+html[data-theme="light"] .workbench-inbox-tabs {
+  background: #e9e3d8;
+}
+
+html[data-theme="light"] .workbench-inbox-tabs button.on {
+  box-shadow: 0 1px 2px rgba(62, 48, 31, 0.1), inset 0 0 0 1px #cbc1b2;
+}
+
+html[data-theme="light"] .workbench-inbox-tabs button > span,
+html[data-theme="light"] .inbox-contact-line.preview > b {
+  background: #ded7cb;
+  color: #5e574f;
+}
+
+html[data-theme="light"] .inbox-contact:hover,
+html[data-theme="light"] .inbox-contact:focus-visible {
+  border-color: #d2c9bb;
+  background: linear-gradient(105deg, #eee8de, #f7f3eb);
+}
+
+html[data-theme="light"] .inbox-contact.is-active,
+html[data-theme="light"] .workbench-inbox .inbox-session.on {
+  border-color: #dab1a5;
+  background: linear-gradient(105deg, rgba(189, 56, 38, 0.1), #f7f1e8 68%);
+}
+
+html[data-theme="light"] .inbox-contact-line strong,
+html[data-theme="light"] .inbox-empty strong {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .inbox-project-avatar {
+  border-color: #d3ad9f;
+  background: linear-gradient(145deg, rgba(189, 56, 38, 0.16), transparent 54%), #eee5db;
+  color: #9e3c2c;
+  box-shadow: 0 3px 0 #d6cbbd;
+}
+
+/* Settings and provider management */
+html[data-theme="light"] .setnav:hover,
+html[data-theme="light"] .setnav.on {
+  background: #e7e1d6;
+}
+
+html[data-theme="light"] .setnav.on,
+html[data-theme="light"] .settings-eyebrow {
+  color: var(--accent);
+}
+
+html[data-theme="light"] .settings-card {
+  border-color: var(--border);
+  background: var(--surface-panel);
+  box-shadow: 0 7px 24px rgba(72, 54, 34, 0.045);
+}
+
+html[data-theme="light"] .settings-card-head,
+html[data-theme="light"] .settings-notice {
+  border-color: var(--border);
+  background: #f4efe7;
+}
+
+html[data-theme="light"] .settings-item,
+html[data-theme="light"] .gateway-settings-block {
+  border-color: #e2dcd2;
+}
+
+html[data-theme="light"] .settings-badge {
+  border-color: #cdc4b7;
+  background: #ece6dc;
+  color: #554f48;
+}
+
+html[data-theme="light"] .settings-badge.success {
+  border-color: #9fc3ad;
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+html[data-theme="light"] .settings-badge.warning {
+  border-color: #d9bd82;
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+html[data-theme="light"] .settings-notice.error,
+html[data-theme="light"] .provider-result.error,
+html[data-theme="light"] .organization-check-result.error {
+  border-color: #d8a298;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+html[data-theme="light"] .theme-option {
+  border-color: #cec5b8;
+  background: #f5f0e7;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .theme-option:hover {
+  border-color: #a99e90;
+}
+
+html[data-theme="light"] .gateway-login-panel,
+html[data-theme="light"] .provider-workbench,
+html[data-theme="light"] .provider-presets,
+html[data-theme="light"] .provider-route,
+html[data-theme="light"] .provider-note,
+html[data-theme="light"] .provider-data-path,
+html[data-theme="light"] .provider-pin-recovery,
+html[data-theme="light"] .organization-advanced {
+  border-color: var(--border);
+  background-color: #f7f2ea;
+  box-shadow: none;
+}
+
+html[data-theme="light"] .provider-form input,
+html[data-theme="light"] .provider-enrollment-form input,
+html[data-theme="light"] .provider-enrollment-form select,
+html[data-theme="light"] .capability-directory-toolbar input,
+html[data-theme="light"] .model-combobox-toggle,
+html[data-theme="light"] .model-combobox-list,
+html[data-theme="light"] .agent-picker-menu > input {
+  border-color: #cfc6b8;
+  background: #fffdf8;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .model-combobox-list button.active,
+html[data-theme="light"] .model-combobox-list button:hover,
+html[data-theme="light"] .provider-models button:hover,
+html[data-theme="light"] .module-dock-item:hover,
+html[data-theme="light"] .settings-skill-list .skill:hover,
+html[data-theme="light"] .capability-directory-tabs button:hover,
+html[data-theme="light"] .capability-directory-tabs button.is-active {
+  background: #e9e3d8;
+}
+
+/* Agent and Space menus */
+html[data-theme="light"] .agent-picker-trigger {
+  border-color: #c9c0b3;
+  background: linear-gradient(135deg, #fffdf8, #eee8de);
+  color: var(--fg);
+  box-shadow: 0 7px 18px rgba(62, 48, 31, 0.1);
+}
+
+html[data-theme="light"] .agent-picker-trigger:hover,
+html[data-theme="light"] .agent-picker-trigger[aria-expanded="true"] {
+  border-color: #c98f82;
+  background: linear-gradient(135deg, #fff8f3, #eee5da);
+}
+
+html[data-theme="light"] .agent-picker-trigger-meta b,
+html[data-theme="light"] .agent-picker-menu > header strong,
+html[data-theme="light"] .agent-picker-list > button {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .agent-picker-office {
+  border-color: #d2a99d;
+  background: #f4e2dc;
+  color: #8f3b2d;
+}
+
+html[data-theme="light"] .agent-picker-menu,
+html[data-theme="light"] .space-switcher-menu {
+  border-color: #c9c0b3;
+  background: rgba(255, 253, 248, 0.98);
+  box-shadow: var(--shadow-float);
+}
+
+html[data-theme="light"] .agent-picker-menu > header {
+  border-color: var(--border);
+  background: linear-gradient(110deg, rgba(189, 56, 38, 0.09), transparent 50%), #f1ece3;
+}
+
+html[data-theme="light"] .agent-picker-list > button:hover {
+  border-color: var(--border);
+  background: #eee8de;
+}
+
+html[data-theme="light"] .agent-picker-list > button.is-active {
+  border-color: #d4a69b;
+  background: #f4e1da;
+}
+
+/* Organization Desk and groups */
+html[data-theme="light"] .groups-sidebar-heading,
+html[data-theme="light"] .groups-directory-empty {
+  border-color: var(--border);
+  background: #eee8de;
+}
+
+html[data-theme="light"] .groups-sidebar-heading strong,
+html[data-theme="light"] .groups-org-copy strong {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .groups-sidebar-mark {
+  border-color: #d4a69b;
+  background: #f4dfd8;
+  color: var(--accent);
+}
+
+html[data-theme="light"] .groups-stage {
+  background: #f3f0e8;
+}
+
+html[data-theme="light"] .groups-stage-grid {
+  opacity: 0.64;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+}
+
+html[data-theme="light"] .groups-stage-head h1,
+html[data-theme="light"] .groups-boundary-state strong,
+html[data-theme="light"] .groups-lane h2,
+html[data-theme="light"] .groups-error h2,
+html[data-theme="light"] .groups-empty-state h2,
+html[data-theme="light"] .groups-registration h2,
+html[data-theme="light"] .groups-ready-state h2,
+html[data-theme="light"] .groups-task-card > strong,
+html[data-theme="light"] .groups-metrics strong,
+html[data-theme="light"] .groups-timeline h2 {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .groups-stage-head p,
+html[data-theme="light"] .groups-boundary-state small,
+html[data-theme="light"] .groups-lane p,
+html[data-theme="light"] .groups-error p,
+html[data-theme="light"] .groups-empty-state p,
+html[data-theme="light"] .groups-registration p,
+html[data-theme="light"] .groups-ready-state p,
+html[data-theme="light"] .groups-task-card > p {
+  color: var(--dim);
+}
+
+html[data-theme="light"] .groups-local-seal,
+html[data-theme="light"] .groups-safety-note,
+html[data-theme="light"] .groups-legacy-note {
+  border-color: #d0c3b6;
+  background: #eee7dc;
+  color: #635b52;
+}
+
+html[data-theme="light"] .groups-boundary-panel,
+html[data-theme="light"] .groups-lanes,
+html[data-theme="light"] .groups-error,
+html[data-theme="light"] .groups-empty-state,
+html[data-theme="light"] .groups-registration,
+html[data-theme="light"] .groups-ready-state,
+html[data-theme="light"] .groups-dossier,
+html[data-theme="light"] .groups-timeline {
+  border-color: var(--border);
+  background: rgba(255, 253, 248, 0.94);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="light"] .groups-lane,
+html[data-theme="light"] .groups-task-card,
+html[data-theme="light"] .groups-state-picker button {
+  border-color: var(--border);
+  background: #fffdf8;
+}
+
+html[data-theme="light"] .groups-state-picker button.is-active,
+html[data-theme="light"] .groups-task-card:hover,
+html[data-theme="light"] .groups-organization-list > button.is-selected {
+  border-color: #d4a69b;
+  background: #f3e1da;
+}
+
+html[data-theme="light"] .groups-organization-list > button:hover {
+  border-color: var(--border);
+  background: #ece6dc;
+}
+
+html[data-theme="light"] .groups-org-avatar {
+  border-color: #cfc6b8;
+  background: #e9e3d8;
+  color: #544d45;
+}
+
+html[data-theme="light"] .groups-org-avatar i {
+  border-color: #f8f5ee;
+}
+
+html[data-theme="light"] .groups-registration code {
+  border-color: #cfc6b8;
+  background: #eee8de;
+  color: #4f4841;
+}
+
+/* Office home and local deliverables */
+html[data-theme="light"] .office-home {
+  background: radial-gradient(circle at 78% 12%, rgba(232, 67, 42, 0.07), transparent 28rem), #f3f0e8;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .office-home-grid {
+  opacity: 0.72;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+}
+
+html[data-theme="light"] .office-home-head,
+html[data-theme="light"] .office-kind-grid {
+  border-color: var(--border);
+}
+
+html[data-theme="light"] .office-home-head h1,
+html[data-theme="light"] .office-template-heading h2,
+html[data-theme="light"] .office-kind-card h2,
+html[data-theme="light"] .office-kind-action,
+html[data-theme="light"] .office-safety strong {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .office-home-head p,
+html[data-theme="light"] .office-template-heading p,
+html[data-theme="light"] .office-kind-card p,
+html[data-theme="light"] .office-safety p {
+  color: var(--dim);
+}
+
+html[data-theme="light"] .office-home-head-actions button.is-secondary,
+html[data-theme="light"] .office-home-meta span,
+html[data-theme="light"] .office-template-grid button,
+html[data-theme="light"] .office-kind-card,
+html[data-theme="light"] .office-safety {
+  border-color: var(--border);
+  background: rgba(255, 253, 248, 0.9);
+  color: var(--fg);
+}
+
+html[data-theme="light"] .office-template-grid button:hover:not(:disabled),
+html[data-theme="light"] .office-template-grid button:focus-visible,
+html[data-theme="light"] .office-kind-card:hover:not(:disabled) {
+  border-color: #d2a397;
+  background: #f1e5de;
+}
+
+html[data-theme="light"] .office-kind-icon {
+  border-color: #c9bfb2;
+}
+
+html[data-theme="light"] .office-extension-toggle b {
+  background: #ddd5c9;
+}
+
+html[data-theme="light"] .artifact-sidebar-card:hover {
+  border-color: var(--border);
+  background: #e9e3d8;
+}
+
+html[data-theme="light"] .artifact-sidebar-card.on {
+  border-color: #d5a297;
+  background: #f1dfd9;
+}
+
+html[data-theme="light"] .artifact-sidebar-mark,
+html[data-theme="light"] .pet-card-mark {
+  border-color: #c9c0b3;
+  background: #e6dfd4;
+  color: #4e4740;
+}
+
+html[data-theme="light"] .pet-card-mark.has-image {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--pet-card-accent, #bd3826) 13%, #f4eee5), #ded6ca 68%);
+}
+
+html[data-theme="light"] .artifact-workbench {
+  --artifact-ink: #302a25;
+  --artifact-muted: #6c665e;
+  --artifact-rule: #d1c9bd;
+  background:
+    radial-gradient(circle at 18% 4%, rgba(189, 56, 38, 0.065), transparent 31%),
+    linear-gradient(135deg, rgba(87, 68, 51, 0.022) 25%, transparent 25%) 0 0 / 10px 10px,
+    #f3f0e8;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .artifact-secondary-action,
+html[data-theme="light"] .artifact-verify-action {
+  border-color: #c9c0b3;
+  background: #eee8de;
+  color: #5f5850;
+}
+
+html[data-theme="light"] .artifact-preview-stage {
+  border-color: #cfc6b8;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), transparent 30%), #e7e1d7;
+}
+
+html[data-theme="light"] .artifact-paper {
+  box-shadow: 0 24px 54px rgba(65, 49, 31, 0.2), 0 2px 4px rgba(65, 49, 31, 0.12);
+}
+
+html[data-theme="light"] .artifact-safety-note,
+html[data-theme="light"] .artifact-version-card,
+html[data-theme="light"] .artifact-history-row,
+html[data-theme="light"] .artifact-facts > div {
+  border-color: var(--artifact-rule);
+}
+
+html[data-theme="light"] .artifact-safety-note strong,
+html[data-theme="light"] .artifact-version-card strong,
+html[data-theme="light"] .artifact-history-row strong,
+html[data-theme="light"] .artifact-facts dd {
+  color: #4d4740;
+}
+
+html[data-theme="light"] .artifact-next {
+  border-color: #bd8e82;
+  background: #ece4da;
+}
+
+/* Learning and automation */
+html[data-theme="light"] .learning-scoreboard,
+html[data-theme="light"] .learning-ledger {
+  border-color: var(--border);
+  background: #fffdf8;
+}
+
+html[data-theme="light"] .learning-scoreboard {
+  background: linear-gradient(110deg, rgba(189, 56, 38, 0.08), transparent 42%), #fffdf8;
+}
+
+html[data-theme="light"] .learning-scoreboard > div,
+html[data-theme="light"] .learning-row,
+html[data-theme="light"] .learning-row-index,
+html[data-theme="light"] .learning-tabs {
+  border-color: var(--border);
+}
+
+html[data-theme="light"] .learning-scoreboard strong,
+html[data-theme="light"] .learning-row h3,
+html[data-theme="light"] .learning-tabs button.is-active {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .learning-rationale,
+html[data-theme="light"] .learning-scoreboard span,
+html[data-theme="light"] .learning-tabs button {
+  color: var(--dim);
+}
+
+html[data-theme="light"] .learning-evidence blockquote {
+  border-color: #bd9d92;
+  background: #f0eae1;
+}
+
+html[data-theme="light"] .learning-evidence p,
+html[data-theme="light"] .learning-rationale b {
+  color: #514b44;
+}
+
+html[data-theme="light"] .hara-automation-view,
+html[data-theme="light"] .hara-automations-page {
+  --automation-success: var(--success);
+  --automation-warning: var(--warning);
+  --automation-danger: var(--danger);
+  --automation-info: var(--info);
+}
+
+html[data-theme="light"] .hara-automation-sidebar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 160px), var(--bg2);
+}
+
+html[data-theme="light"] .hara-automation-nav button:hover {
+  background: rgba(73, 61, 49, 0.055);
+}
+
+/* Talent Bureau inherits the core paper variables; tune only the modal atmosphere. */
+html[data-theme="light"] .talent-market-shell {
+  box-shadow: var(--shadow-float), 7px 8px 0 color-mix(in srgb, var(--accent) 18%, var(--line));
+}
+
+html[data-theme="light"] .talent-market-shell::before {
+  opacity: 0.12;
+}
+
+/* Extension dock and built-in work surfaces */
+html[data-theme="light"] .extension-dock {
+  border-left-color: var(--border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--extension-tone) 5%, transparent), transparent 88px), #f4f0e8;
+  box-shadow: -14px 0 36px rgba(62, 48, 31, 0.08);
+}
+
+html[data-theme="light"] .extension-dock-header,
+html[data-theme="light"] .extension-dock:focus-within .extension-dock-header {
+  border-color: var(--border);
+  background: rgba(248, 245, 238, 0.97);
+}
+
+html[data-theme="light"] .extension-dock-tabbar {
+  border-color: var(--border);
+  background: #e7e1d6;
+}
+
+html[data-theme="light"] .extension-dock-add-button,
+html[data-theme="light"] .extension-view-launcher.is-anchor .extension-dock-add-button,
+html[data-theme="light"] .extension-dock-tab,
+html[data-theme="light"] .extension-dock-actions button {
+  color: #5f5850;
+}
+
+html[data-theme="light"] .extension-dock-add-button:hover,
+html[data-theme="light"] .extension-dock-add-button:focus-visible,
+html[data-theme="light"] .extension-dock-add-button[aria-expanded="true"],
+html[data-theme="light"] .extension-view-launcher.is-anchor .extension-dock-add-button,
+html[data-theme="light"] .extension-dock-tab:hover,
+html[data-theme="light"] .extension-dock-tab.is-active,
+html[data-theme="light"] .extension-dock-actions button:hover {
+  border-color: #c9c0b3;
+  background: #f5f0e8;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .extension-dock-add-menu {
+  border-color: #c9c0b3;
+  background: rgba(255, 253, 248, 0.98);
+  box-shadow: var(--shadow-float);
+}
+
+html[data-theme="light"] .extension-dock-add-menu > button {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .extension-dock-add-menu > button:hover,
+html[data-theme="light"] .extension-dock-add-menu > button:focus-visible {
+  background: #ece6dc;
+}
+
+html[data-theme="light"] .workbench-tool-surface {
+  background: #f6f2ea;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .workbench-tool-intro,
+html[data-theme="light"] .workbench-tool-status,
+html[data-theme="light"] .workbench-tool-command {
+  border-color: var(--border);
+  background: #f1ece3;
+  color: var(--dim);
+}
+
+html[data-theme="light"] .workbench-tool-intro > span,
+html[data-theme="light"] .workbench-browser-blank form > div,
+html[data-theme="light"] .workbench-files-search {
+  border-color: var(--border);
+  background: #fffdf8;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .workbench-tool-intro p,
+html[data-theme="light"] .workbench-files-root {
+  color: var(--dim);
+}
+
+html[data-theme="light"] .workbench-tool-command input,
+html[data-theme="light"] .workbench-browser-blank input,
+html[data-theme="light"] .workbench-files-search input {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .workbench-tool-command button,
+html[data-theme="light"] .workbench-browser-blank button {
+  border-color: #d3a99d;
+  background: #f4e0da;
+  color: #913b2e;
+}
+
+html[data-theme="light"] .workbench-browser-blank {
+  background: radial-gradient(circle at 50% 42%, rgba(49, 109, 140, 0.09), transparent 32%), #f3f0e8;
+}
+
+html[data-theme="light"] .workbench-files-list > button {
+  color: #514b44;
+}
+
+html[data-theme="light"] .workbench-files-list > button:hover,
+html[data-theme="light"] .workbench-files-list > button:focus-visible {
+  background: #e9e3d8;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .embedded-browser {
+  background: #f0ebe2;
+}
+
+html[data-theme="light"] .embedded-browser-chrome {
+  border-color: var(--border);
+  background: #eee8de;
+}
+
+html[data-theme="light"] .embedded-browser-navigation button {
+  color: #625b53;
+}
+
+html[data-theme="light"] .embedded-browser-navigation button:hover:not(:disabled),
+html[data-theme="light"] .embedded-browser-navigation button:focus-visible {
+  background: #ded7cb;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .embedded-browser-address {
+  border-color: #c9c0b3;
+  background: #fffdf8;
+  color: var(--info);
+}
+
+html[data-theme="light"] .embedded-browser-address code {
+  color: #534d46;
+}
+
+html[data-theme="light"] .office-editor-shell {
+  background: #ede8df;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .office-editor-toolbar,
+html[data-theme="light"] .office-editor-footer,
+html[data-theme="light"] .office-editor-rail,
+html[data-theme="light"] .office-editor-inspector {
+  border-color: var(--border);
+  background: #f7f3eb;
+}
+
+html[data-theme="light"] .office-editor-canvas {
+  background: #e8e2d8;
+}
+
+/* Presentation editor chrome becomes daylight; the deck iframe keeps its own authored theme. */
+html[data-theme="light"] .presentation-workbench {
+  --presentation-line: #d0c8bc;
+  --presentation-panel: #f7f3eb;
+}
+
+html[data-theme="light"] .presentation-workbench-title strong,
+html[data-theme="light"] .presentation-slide-list strong {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .presentation-workbench-actions button,
+html[data-theme="light"] .presentation-export-actions button,
+html[data-theme="light"] .presentation-proof button,
+html[data-theme="light"] .presentation-slide-actions button,
+html[data-theme="light"] .presentation-pane-heading button,
+html[data-theme="light"] .presentation-block-heading button,
+html[data-theme="light"] .presentation-block-actions button,
+html[data-theme="light"] .presentation-mode-switch,
+html[data-theme="light"] .presentation-slide-list > button,
+html[data-theme="light"] .presentation-inspector input,
+html[data-theme="light"] .presentation-inspector textarea,
+html[data-theme="light"] .presentation-inspector select,
+html[data-theme="light"] .presentation-chart-series {
+  border-color: #cbc2b5;
+  background: #fffdf8;
+  color: #5d564e;
+}
+
+html[data-theme="light"] .presentation-mode-switch button.is-active,
+html[data-theme="light"] .presentation-slide-list > button.is-selected {
+  background: linear-gradient(135deg, rgba(239, 91, 63, 0.11), transparent), #eee8de;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .presentation-stage {
+  background: radial-gradient(circle at 50% 30%, rgba(239, 91, 63, 0.07), transparent 34%), #e6e0d6;
+}
+
+html[data-theme="light"] .presentation-preview-feedback,
+html[data-theme="light"] .presentation-layout-panel,
+html[data-theme="light"] .presentation-quality-panel {
+  background: linear-gradient(90deg, rgba(239, 91, 63, 0.08), transparent 42%), #f7f2ea;
+}
+
+/* Comic office: the same game scene moves from night shift to a bright department floor. */
+html[data-theme="light"] .workforce-surface {
+  --comic-deep: #5c4c3e;
+  --comic-line: rgba(56, 43, 33, 0.16);
+  color: #302822;
+  background:
+    radial-gradient(circle at 78% -10%, rgba(255, 105, 95, 0.12), transparent 34%),
+    radial-gradient(circle at 4% 92%, rgba(79, 156, 143, 0.1), transparent 27%),
+    repeating-linear-gradient(115deg, rgba(87, 68, 51, 0.025) 0 1px, transparent 1px 8px),
+    #efe4d2;
+}
+
+html[data-theme="light"] .workforce-overview {
+  border-color: #c9b9a6;
+  background: linear-gradient(90deg, rgba(255, 105, 95, 0.11), transparent 44%), rgba(250, 239, 221, 0.94);
+}
+
+html[data-theme="light"] .workforce-overview h2,
+html[data-theme="light"] .workforce-metrics b,
+html[data-theme="light"] .workforce-team-deck-track > button > strong {
+  color: #302721;
+}
+
+html[data-theme="light"] .workforce-overview p,
+html[data-theme="light"] .workforce-overview h2 small,
+html[data-theme="light"] .workforce-live,
+html[data-theme="light"] .workforce-metrics span,
+html[data-theme="light"] .workforce-team-deck-label {
+  color: #6f6256;
+}
+
+html[data-theme="light"] .workforce-live,
+html[data-theme="light"] .workforce-office-switch,
+html[data-theme="light"] .workforce-view-switch {
+  border-color: #c8b8a4;
+  background: #e4d7c5;
+  box-shadow: 0 3px 0 rgba(88, 65, 44, 0.12), inset 0 1px rgba(255, 255, 255, 0.5);
+}
+
+html[data-theme="light"] .workforce-office-switch select {
+  color: #40352d;
+}
+
+html[data-theme="light"] .workforce-metrics,
+html[data-theme="light"] .workforce-team-deck {
+  border-color: #cdbca8;
+  background: #e9decc;
+}
+
+html[data-theme="light"] .workforce-metrics span {
+  border-color: rgba(74, 56, 42, 0.12);
+  background: rgba(255, 252, 244, 0.32);
+}
+
+html[data-theme="light"] .workforce-team-deck-track > button {
+  border-color: #c9b7a2;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--actor-accent) 8%, #f5ead8), #e4d7c5 70%);
+  color: #3c3129;
+  box-shadow: 0 3px 0 rgba(79, 59, 41, 0.14);
+}
+
+html[data-theme="light"] .workforce-team-deck-track > button:hover,
+html[data-theme="light"] .workforce-team-deck-track > button.is-selected {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--actor-accent) 14%, #fff5e4), #e8dac6);
+  box-shadow: 0 4px 0 color-mix(in srgb, var(--actor-accent) 16%, #baa58e);
+}
+
+html[data-theme="light"] .workforce-stage:not(.is-webgl) {
+  background:
+    radial-gradient(ellipse at 50% 80%, rgba(255, 105, 95, 0.1), transparent 48%),
+    repeating-linear-gradient(115deg, rgba(71, 54, 40, 0.025) 0 1px, transparent 1px 7px),
+    #ded0bc;
+}
+
+/* WebGL content stays authored by the renderer; only its HUD and frame join daylight. */
+html[data-theme="light"] .workforce-stage.is-webgl,
+html[data-theme="light"] .workforce-three {
+  background: radial-gradient(circle at 50% 42%, rgba(255, 101, 92, 0.07), transparent 40%), #dfe5e3;
+}
+
+html[data-theme="light"] .workforce-three-compass,
+html[data-theme="light"] .workforce-three-runtime span {
+  border-color: rgba(77, 83, 79, 0.3);
+  background: rgba(250, 248, 241, 0.88);
+  color: #4e5551;
+  box-shadow: 0 7px 18px rgba(54, 48, 40, 0.12);
+}
+
+html[data-theme="light"] .workforce-three-failed {
+  background: #eee8de;
+  color: var(--danger);
+}
+
+/* Companion chat is a real floating paper card in daylight. */
+html[data-theme="light"].pet-chat-mode .pet-chat {
+  border-color: rgba(117, 99, 78, 0.25);
+  background: #f8f4ec;
+  color: var(--fg);
+  box-shadow: var(--shadow-float);
+}
+
+html[data-theme="light"] .pet-chat-header,
+html[data-theme="light"] .pet-chat-status,
+html[data-theme="light"] .pet-chat-input-shell,
+html[data-theme="light"] .pet-chat-deny {
+  border-color: var(--border);
+  background: #eee8de;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .pet-chat-brand strong,
+html[data-theme="light"] .pet-chat textarea {
+  color: var(--fg);
+}
+
+html[data-theme="light"] .pet-chat-brand small,
+html[data-theme="light"] .pet-chat-status small,
+html[data-theme="light"] .pet-chat-welcome,
+html[data-theme="light"] .pet-chat-message-notice {
+  color: var(--dim);
+}
+
+html[data-theme="light"] .pet-chat-actions button:hover,
+html[data-theme="light"] .pet-chat-actions button:focus-visible,
+html[data-theme="light"] .pet-chat-progress,
+html[data-theme="light"] .pet-chat-message-assistant {
+  background: #e6dfd4;
+  color: #413a33;
+}
+
+html[data-theme="light"] .pet-chat-message-user {
+  background: var(--accent);
+  color: #fff8f2;
+}
+
+html[data-theme="light"] .pet-chat-approval {
+  border-color: #d7bd89;
+  background: var(--warning-soft);
+}
+
+html[data-theme="light"] .pet-chat-approval p {
+  color: #60471f;
+}
+
+html[data-theme="light"] .pet-activity {
+  border-color: rgba(117, 99, 78, 0.24);
+  background: rgba(255, 252, 245, 0.9);
+  color: var(--fg);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="light"] .pet-activity-copy small {
+  color: rgba(55, 48, 42, 0.66);
+}
+
+@media (max-width: 620px) {
+  .theme-choice {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-option {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .theme-option-copy small {
+    min-height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-option,
+  .theme-option-check {
+    transition: none;
+  }
+}
