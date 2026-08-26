@@ -34,7 +34,7 @@ test("files and directories remain local context while incompatible images block
   assert.equal(composerAttachmentIssue([file], undefined, true), null);
   assert.equal(composerAttachmentIssue([image], capabilities("unsupported"), true), "image-unsupported");
   assert.equal(composerAttachmentIssue([image], capabilities("unknown"), true), "image-unknown");
-  assert.equal(composerAttachmentIssue([image], capabilities("vision-sidecar"), true), null);
+  assert.equal(composerAttachmentIssue([image], capabilities("vision-sidecar"), true), "image-unsupported");
   assert.equal(composerAttachmentIssue([image], capabilities("native"), true), null);
   assert.equal(composerAttachmentIssue([file], capabilities("native"), false), "engine-update-required");
 });

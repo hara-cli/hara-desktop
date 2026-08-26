@@ -601,6 +601,7 @@ const UPDATE_SNOOZE_MS = 24 * 60 * 60 * 1_000;
 const ATTACHMENT_FEATURE = "composer.attachments.v1";
 const READONLY_HISTORY_FEATURE = "sessions.readonly-history.v1";
 const CROSS_PROFILE_FORK_FEATURE = "sessions.cross-profile-fork.v1";
+const SPACE_ROUTE_FEATURE = "sessions.space-route.v1";
 const AGENT_BLUEPRINT_FEATURE = "agent.blueprint-provenance.v1";
 
 const formatStorageBytes = (bytes: number, locale: Locale): string => {
@@ -665,14 +666,12 @@ const imageCapabilityText = (
   const mode = capabilities?.image.mode;
   if (locale === "zh") {
     if (mode === "native") return "原生读取图片";
-    if (mode === "vision-sidecar") return "图片兼容模式";
-    if (mode === "unsupported") return "不支持图片";
-    return "图片能力未验证";
+    if (!mode || mode === "unknown") return "图片能力未验证";
+    return "不支持图片";
   }
   if (mode === "native") return "Native image input";
-  if (mode === "vision-sidecar") return "Image compatibility mode";
-  if (mode === "unsupported") return "No image input";
-  return "Image capability unverified";
+  if (!mode || mode === "unknown") return "Image capability unverified";
+  return "No image input";
 };
 
 const thinkingLabel = (locale: Locale, effort: string): string => {
@@ -3417,6 +3416,7 @@ export default function App() {
       const forked = await client.forkSession(sourceSessionId, {
         targetProfileId: connection.id,
         targetModel: model,
+        targetSpaceId,
         transferHistory: true,
       });
       const nextSessionId = forked.sessionId;
@@ -3458,16 +3458,25 @@ export default function App() {
       ? sessionsRef.current.find((candidate) => candidate.id === sourceSessionId)
       : undefined;
     if (!client || !sourceSessionId || !sourceSession) return;
-    if (sessionSpaceId(sourceSession, spaceDirectoryRef.current) !== "personal") {
+    const sourceSpaceId = sessionSpaceId(sourceSession, spaceDirectoryRef.current);
+    const sourceIsCompany = sourceSpaceId !== "personal";
+    const sourceSpace = spaceDirectoryRef.current?.spaces.find((space) => space.id === sourceSpaceId);
+    if (sourceIsCompany && sourceSpace?.personalModelConnections !== "allowed") {
       setErr(locale === "zh"
-        ? "公司会话不能复制到个人空间。请切换到个人空间后新建一段空白对话。"
-        : "Company conversations cannot be copied into Personal. Switch to Personal, then start a blank conversation.");
+        ? "该公司尚未允许在公司空间中使用成员个人 Key。请选择公司托管模型，或请管理员开启此策略。"
+        : "This company has not allowed member-owned API keys inside its Space. Choose a managed model or ask an administrator to enable the policy.");
       return;
     }
     if (!client.supportsFeature(CROSS_PROFILE_FORK_FEATURE)) {
       setErr(locale === "zh"
         ? "当前 Hara 引擎不支持携带上下文切换连接，请先更新 Hara Desktop。"
         : "Update Hara Desktop before continuing a conversation on another connection.");
+      return;
+    }
+    if (sourceIsCompany && !client.supportsFeature(SPACE_ROUTE_FEATURE)) {
+      setErr(locale === "zh"
+        ? "当前 Hara 引擎尚不能把公司空间与个人模型连接安全分开，请先更新 Hara Desktop。"
+        : "Update Hara Desktop before using a personal model connection inside a company Space.");
       return;
     }
     if (busyRef.current[sourceSessionId]) {
@@ -3479,7 +3488,7 @@ export default function App() {
       }]);
       return;
     }
-    if (providerRoutes?.switchLocked || providerRoutes?.current.environmentOverride) {
+    if ((!sourceIsCompany && providerRoutes?.switchLocked) || providerRoutes?.current.environmentOverride) {
       setErr(locale === "zh"
         ? "当前项目或启动配置固定了模型连接；请先在“模型与连接”中解除固定。"
         : "This project or launch configuration pins the model connection. Remove the pin in Models & connections first.");
@@ -3494,24 +3503,44 @@ export default function App() {
     const sourceDraft = composerDrafts[sourceSessionId] ?? emptyComposerDraft();
     const hasDraft = !!sourceDraft.text.trim() || sourceDraft.attachments.length > 0;
     const confirmed = window.confirm(locale === "zh"
-      ? [
-          `要使用“${connection.label} · ${connection.model}”复制当前对话并继续吗？`,
-          "当前对话内容、任务状态和附件引用会复制到新的个人对话。",
-          "只有你下一次发送时才会作为上下文交给这条个人连接。",
-          "原对话仍留在原连接且不会被修改。",
-          hasDraft
-            ? "当前未发送的文字和附件也会移动到新对话，但不会自动发送。"
-            : "新对话会绑定这条个人连接，但不会自动发送任何内容。",
-        ].join("\n\n")
-      : [
-          `Copy this conversation and continue with “${connection.label} · ${connection.model}”?`,
-          "Conversation content, task state, and attachment references will be copied into a new personal conversation.",
-          "The copied context reaches that personal connection only after your next Send.",
-          "The original conversation stays on its original connection and is not changed.",
-          hasDraft
-            ? "Your unsent text and attachments also move to the new draft, but are not sent automatically."
-            : "The new conversation is pinned to that personal connection and sends nothing automatically.",
-        ].join("\n\n"));
+      ? sourceIsCompany
+        ? [
+            `要在“${sourceSpace?.name ?? "当前公司"}”空间中改用个人连接“${connection.label} · ${connection.model}”吗？`,
+            "新对话仍属于公司：项目数据、Agent、历史记录和权限不会转入个人空间。",
+            "你下一次发送时，公司对话上下文和附件会交给该个人模型服务商处理，并计入你的个人 Key 账单。",
+            "公司的模型限制、工具限制和审批规则仍会逐轮执行；原对话不会被修改。",
+            hasDraft
+              ? "当前未发送的文字和附件会移动到新对话，但不会自动发送。"
+              : "新对话只会绑定这条个人连接，不会自动发送任何内容。",
+          ].join("\n\n")
+        : [
+            `要使用“${connection.label} · ${connection.model}”复制当前对话并继续吗？`,
+            "当前对话内容、任务状态和附件引用会复制到新的个人对话。",
+            "只有你下一次发送时才会作为上下文交给这条个人连接。",
+            "原对话仍留在原连接且不会被修改。",
+            hasDraft
+              ? "当前未发送的文字和附件也会移动到新对话，但不会自动发送。"
+              : "新对话会绑定这条个人连接，但不会自动发送任何内容。",
+          ].join("\n\n")
+      : sourceIsCompany
+        ? [
+            `Use personal connection “${connection.label} · ${connection.model}” inside “${sourceSpace?.name ?? "this company"}”?`,
+            "The new conversation remains company-owned: project data, Agents, history, and permissions do not move to Personal.",
+            "On your next Send, company context and attachments go to this personal model provider and are billed to your personal key.",
+            "Company model, tool, and approval rules remain enforced on every turn; the original conversation is unchanged.",
+            hasDraft
+              ? "Your unsent text and attachments move to the new draft, but are not sent automatically."
+              : "The new conversation only binds this personal connection and sends nothing automatically.",
+          ].join("\n\n")
+        : [
+            `Copy this conversation and continue with “${connection.label} · ${connection.model}”?`,
+            "Conversation content, task state, and attachment references will be copied into a new personal conversation.",
+            "The copied context reaches that personal connection only after your next Send.",
+            "The original conversation stays on its original connection and is not changed.",
+            hasDraft
+              ? "Your unsent text and attachments also move to the new draft, but are not sent automatically."
+              : "The new conversation is pinned to that personal connection and sends nothing automatically.",
+          ].join("\n\n"));
     if (!confirmed) return;
     if (!discardCurrentExtensionDraft()) return;
 
@@ -3519,22 +3548,25 @@ export default function App() {
     setModelSearch("");
     setErr("");
     try {
-      const nextRoute = await client.useProviderConnection(connection.id, sourceSession.cwd);
-      setProviderRoutes(nextRoute);
-      setSetupRequired(!nextRoute.current.authenticated);
-      setServer((current) => current
-        ? { ...current, provider: nextRoute.current.provider, model: nextRoute.current.model }
-        : current);
-      setOrganizationRoutes((current) => current
-        ? {
-            ...current,
-            activeId: connection.id,
-            connections: current.connections.map((candidate) => ({ ...candidate, active: false })),
-          }
-        : current);
+      if (!sourceIsCompany) {
+        const nextRoute = await client.useProviderConnection(connection.id, sourceSession.cwd);
+        setProviderRoutes(nextRoute);
+        setSetupRequired(!nextRoute.current.authenticated);
+        setServer((current) => current
+          ? { ...current, provider: nextRoute.current.provider, model: nextRoute.current.model }
+          : current);
+        setOrganizationRoutes((current) => current
+          ? {
+              ...current,
+              activeId: connection.id,
+              connections: current.connections.map((candidate) => ({ ...candidate, active: false })),
+            }
+          : current);
+      }
       const forked = await client.forkSession(sourceSessionId, {
         targetProfileId: connection.id,
         targetModel: connection.model,
+        targetSpaceId: sourceSpaceId,
         transferHistory: true,
       });
       const nextSessionId = forked.sessionId;
@@ -5564,6 +5596,11 @@ export default function App() {
   const activeSession = sessions.find((s) => s.id === active);
   const activeSpaceId = spaceDirectory?.activeId
     ?? (activeSession ? sessionSpaceId(activeSession, null) : "personal");
+  const activeSpace = spaceDirectory?.spaces.find((space) => space.id === activeSpaceId);
+  const companyPersonalConnectionsAllowed = activeSpaceId !== "personal"
+    && activeSpace?.personalModelConnections === "allowed";
+  const companyPersonalConnectionsBlocked = activeSpaceId !== "personal"
+    && !companyPersonalConnectionsAllowed;
   const spaceSessions = sessions.filter((session) => sessionSpaceId(session, spaceDirectory) === activeSpaceId);
   const scopedProjectListState = projectListState.spaceId === activeSpaceId
     ? projectListState
@@ -5662,6 +5699,9 @@ export default function App() {
     ?? (currentSessionProfileId === "personal"
       ? (locale === "zh" ? "个人" : "Personal")
       : currentSessionProfileId ?? (locale === "zh" ? "当前连接" : "Current route"));
+  const currentRouteBadgeLabel = activeSpaceId !== "personal" && currentRouteIsPersonal
+    ? (locale === "zh" ? "公司数据 · 个人计费" : "Company data · Personal billing")
+    : currentRouteLabel;
   const newSessionOrganizationRoute = organizationRoutes?.connections.find(
     (connection) => connection.active
       && connection.id !== currentSessionProfileId
@@ -5678,7 +5718,11 @@ export default function App() {
       ? { kind: "personal" as const, label: newSessionPersonalRoute.label }
       : null;
   const modelRouteQuery = modelSearch.trim().toLowerCase();
-  const visiblePersonalConnectionRoutes = (activeSpaceId === "personal" ? providerRoutes?.connections ?? [] : [])
+  const visiblePersonalConnectionRoutes = (
+    activeSpaceId === "personal" || companyPersonalConnectionsAllowed
+      ? providerRoutes?.connections ?? []
+      : []
+  )
     .filter((connection) => (
       activeReadOnlySession || connection.id !== currentSessionProfileId
     ) && connection.authenticated)
@@ -6083,6 +6127,14 @@ export default function App() {
                 setErr(String(error?.message ?? error)),
               )
             }
+            onContinueTask={() => {
+              const instruction = locale === "zh"
+                ? "/continue 我已完成重新登录。先检查受阻的认证能力；确认恢复后再从原检查点继续，仍未恢复则保持暂停。"
+                : "/continue I signed in again. Check the blocked authentication capability first; resume from the saved checkpoint only if it recovered, otherwise remain paused.";
+              void submitSessionText(active, instruction).catch((error) =>
+                setErr(String(error?.message ?? error)),
+              );
+            }}
           />
           {(queue[active!] ?? []).length > 0 && (
             <div className="steerq">
@@ -6251,14 +6303,6 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {pendingAttachments.some((attachment) => attachment.kind === "image")
-                && activeModelInfo?.attachmentCapabilities?.image.mode === "vision-sidecar" && (
-                  <div className="composer-capability-note">
-                    {locale === "zh"
-                      ? "当前模型不直接读取图片；Hara 会先生成文字说明后继续。若要最高保真，请改用原生支持图片的模型。"
-                      : "The selected model does not read images directly. Hara will create a text description first; choose a model with native image input for maximum fidelity."}
-                  </div>
-                )}
               <div className="composer-input-row">
                 <textarea
                   ref={inputRef}
@@ -6378,7 +6422,7 @@ export default function App() {
                     >
                       <span className="model-pill-main">{displayedModel}</span>
                       <span className={`model-route ${currentRouteIsPersonal ? "personal" : "managed"}`}>
-                        {currentRouteLabel}
+                        {currentRouteBadgeLabel}
                       </span>
                       {activeStagedModelChange && (
                         <span className="model-next-turn">
@@ -6407,6 +6451,13 @@ export default function App() {
                               {locale === "zh"
                                 ? `当前会话仍绑定“${currentRouteLabel}”；新会话默认使用“${newSessionDefaultRoute.label}”。选择下方${newSessionDefaultRoute.kind === "organization" ? "企业" : "个人"}连接后，Hara 会先确认，再复制当前上下文继续。`
                                 : `This conversation stays on “${currentRouteLabel}”; new conversations default to “${newSessionDefaultRoute.label}”. Choose a ${newSessionDefaultRoute.kind === "organization" ? "managed" : "personal"} connection below; Hara confirms before copying context to continue.`}
+                            </p>
+                          )}
+                          {companyPersonalConnectionsBlocked && (
+                            <p className="model-menu-route-notice" role="status">
+                              {locale === "zh"
+                                ? "该公司的管理员未允许使用成员个人 Key；这里只显示公司托管模型。"
+                                : "This company does not allow member-owned API keys. Only managed company models are shown."}
                             </p>
                           )}
                           <input
@@ -6453,7 +6504,9 @@ export default function App() {
                             >
                               <div className="model-route-heading">
                                 <span>
-                                  {locale === "zh" ? "个人连接" : "Personal"} · {connection.label}
+                                  {activeSpaceId === "personal"
+                                    ? (locale === "zh" ? "个人连接" : "Personal")
+                                    : (locale === "zh" ? "我的连接" : "My connection")} · {connection.label}
                                 </span>
                                 <small>
                                   {connection.active
@@ -6469,7 +6522,9 @@ export default function App() {
                                 <span className="model-row-copy">
                                   <strong>{connection.model}</strong>
                                   <small>
-                                    {connection.label} · {locale === "zh" ? "个人直连" : "Direct"}
+                                    {connection.label} · {activeSpaceId === "personal"
+                                      ? (locale === "zh" ? "个人直连" : "Direct")
+                                      : (locale === "zh" ? "公司数据 · 个人计费" : "Company data · Personal billing")}
                                   </small>
                                 </span>
                                 <span className="model-row-state">

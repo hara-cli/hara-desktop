@@ -96,7 +96,9 @@ export function composerAttachmentIssue(
     typeof attachment.byteSize === "number" && attachment.byteSize > maxBytes
   ))) return "image-too-large";
   if (!capabilities) return "model-capabilities-loading";
-  if (capabilities.image.mode === "unsupported") return "image-unsupported";
+  if (capabilities.image.mode === "unsupported" || capabilities.image.mode === "vision-sidecar") {
+    return "image-unsupported";
+  }
   if (capabilities.image.mode === "unknown") return "image-unknown";
   return null;
 }

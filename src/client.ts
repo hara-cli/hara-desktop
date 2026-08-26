@@ -103,6 +103,8 @@ export interface SpaceInfo {
   tenantId?: string;
   authoritative: boolean;
   agentProfilePermission: "edit" | "view";
+  /** Company-admin policy for member-owned model credentials; omitted means fail-closed. */
+  personalModelConnections?: "allowed" | "blocked";
 }
 
 export interface SpaceDirectory {
@@ -671,6 +673,7 @@ export interface DeskTaskDetails {
   events: DeskEvent[];
 }
 
+/** `vision-sidecar` is accepted only while connecting to an older engine and is treated as unsupported. */
 export type ImageInputMode = "native" | "vision-sidecar" | "unsupported" | "unknown";
 
 export interface EffectiveAttachmentCapabilities {
@@ -678,6 +681,7 @@ export interface EffectiveAttachmentCapabilities {
     mode: ImageInputMode;
     /** Missing only when an older Serve does not advertise its authoritative image bound. */
     maxBytes?: number;
+    /** @deprecated New engines never advertise a secondary image model. */
     viaModel?: string;
   };
   textFile: "inline-text";
@@ -718,7 +722,7 @@ export interface SessionTurnResult {
   taskId: string;
   turnId: string;
   status?: "paused";
-  stopReason?: "deadline" | "task_round_budget";
+  stopReason?: "deadline" | "task_round_budget" | "max_rounds" | "strategy_stall";
 }
 
 export type SessionSubmitResult =
@@ -766,6 +770,8 @@ export interface ReadOnlySessionResult {
 export interface SessionForkTarget {
   targetProfileId: string;
   targetModel: string;
+  /** Durable data/permission Space; independent from the model connection used for billing. */
+  targetSpaceId: string;
   /** Literal true makes cross-connection history transfer impossible to trigger accidentally. */
   transferHistory: true;
 }
@@ -1030,7 +1036,7 @@ export class HaraClient {
   listSessions(cwd?: string) {
     return this.call<{ sessions: SessionInfo[] }>("session.list", cwd ? { cwd } : {});
   }
-  createSession(opts?: { cwd?: string; approval?: ApprovalMode; agentRef?: string }) {
+  createSession(opts?: { cwd?: string; approval?: ApprovalMode; agentRef?: string; profileId?: string; spaceId?: string }) {
     return this.call<{ sessionId: string; model: string; profileId?: string; spaceId?: string; approval?: ApprovalMode; agentRef?: string }>("session.create", opts ?? {});
   }
   /** Persistent Agent identities and their project/team offices (feature-detected for compatibility). */
@@ -1477,6 +1483,7 @@ export class HaraClient {
       title: string;
       model: string;
       profileId?: string;
+      spaceId?: string;
       agentRef?: string;
       history: ClientHistoryMessage[];
     }>("session.fork", { sessionId, ...(target ?? {}) });

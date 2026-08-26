@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.112 — 2026-08-26 — model switchboard and retained Agent recovery
+
+- Replace the long provider preset rail with a guided **provider/plan → Key verification → model** setup.
+  Alibaba and MiniMax Token Plans are first-class choices with visible fixed endpoints, Key-authorized model
+  discovery, searchable dropdowns, and a verified custom-model escape hatch. MiniMax uses its documented
+  Responses route, `MiniMax-M3`, Adaptive Thinking, and native text/image input.
+- Remove the legacy secondary image-model behavior. Attachments and screenshot inspection now use only the
+  selected conversation model; older sidecar metadata is treated as unsupported, and text-only or unverified
+  models request an explicit switch rather than silently forwarding context to another provider.
+- Keep company data ownership independent from model billing. When a Control administrator explicitly allows
+  it, members can continue a company conversation through one of their personal model connections while the
+  same company Space, Agent identity, history, model/tool policy, approvals, and per-turn governance remain in
+  force. The model menu labels this route `Company data · Personal billing`; cross-Space export stays blocked.
+- Present authentication expiry as a retained `Sign in again` task pause with bounded technical details and a
+  preflight-before-resume action. Agent round and context-pressure pauses remain normal recoverable task states
+  instead of raw RPC errors or instructions for the user to rerun Hara's own commands.
+- Complete Daylight styling for the redesigned model setup and task recovery surfaces while retaining the same
+  information architecture in Night mode. Bundle Hara CLI `0.154.0` at exact verified commit
+  `a1fde6e8573cd8df0d536bac6b06281c0fef6cf0`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.111 — 2026-08-25 — daylight appearance and bounded Agent loop recovery
 
 - Add one coherent appearance system with `Follow system`, `Daylight`, and `Night` choices. The saved preference

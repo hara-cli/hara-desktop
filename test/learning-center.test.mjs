@@ -148,4 +148,8 @@ test("blocked task UI maps every permitted user dependency instead of giving vag
   assert.match(timeline, /checkpoint\.completion\?\.state === "awaiting_user"/);
   assert.match(timeline, /dependency\?\.detail/);
   assert.match(timeline, /dependency\.evidence\[0\]/);
+  assert.match(timeline, /authenticationPausePresentation/);
+  assert.match(timeline, /taskAuthenticationExpired/);
+  assert.match(timeline, /taskAuthenticationDetails/);
+  assert.match(timeline, /onContinueTask/);
 });

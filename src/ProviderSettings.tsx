@@ -54,7 +54,7 @@ interface ProviderSettingsProps {
 const words = {
   en: {
     title: "Models & connections",
-    subtitle: "Cloud models are ready-made options. Enterprise connections belong to you: add every Hara Control your teams provide and switch when your work changes.",
+    subtitle: "Add a key, choose an authorized model, and start a conversation. Hara keeps each personal or company connection separate.",
     current: "Current route",
     currentWorkspace: "New sessions in this workspace",
     configured: "ready",
@@ -69,14 +69,23 @@ const words = {
     addPersonal: "Add model connection",
     addFirstPersonal: "Save another provider or API key as its own named connection.",
     personalUnavailable: "Update the bundled Hara engine to save more than one personal connection.",
-    providerCatalog: "Personal default presets",
+    providerPlan: "Plan or provider",
+    subscriptionPlans: "Subscription plans",
+    apiProviders: "API providers",
+    localProviders: "Local models",
+    setupProgress: "Connection setup progress",
+    stepProvider: "Choose connection",
+    stepCredential: "Verify key",
+    stepModel: "Choose model",
+    verifyAndLoad: "Verify key & load models",
+    transportAuto: "Hara selects the official OpenAI Responses, Chat, or Anthropic-compatible transport automatically. Use OpenAI / compatible for a custom endpoint.",
     savedConnection: "Saved connection",
     connectionName: "Connection name",
     connectionNamePlaceholder: "Example: DeepSeek personal",
     connectionId: "Local connection ID",
     connectionIdHint: "Generated from the name. It identifies this route on this device and is never a credential.",
     addPersonalTitle: "Add a personal model connection",
-    addPersonalDescription: "Keep providers, endpoints, and API keys separate. Saving a new connection never overwrites an existing one.",
+    addPersonalDescription: "Choose a plan, enter its key, then pick a model. Saving never overwrites another connection.",
     saveConnectionOnly: "Save without switching",
     addAndUsePersonal: "Add & use for new sessions",
     connectionAdded: "Connection saved. The current default route did not change.",
@@ -117,6 +126,7 @@ const words = {
     knownModels: "Known models (verify this key before saving)",
     liveModels: "Authorized for this API key",
     tokenPlanAuth: "Token Plan uses the official fixed Beijing subscription Base URL shown above and an API key. There is no Token Plan browser login.",
+    miniMaxTokenPlanAuth: "MiniMax Token Plan uses the official Codex Responses Base URL shown above. MiniMax-M3 accepts text and image input.",
     legacyAlibaba: "Legacy Alibaba connection",
     legacyAlibabaHint: "This route remains readable, but its old DashScope/Qwen identity is no longer offered for new connections. Move it to the dedicated Token Plan connection.",
     migrateAlibaba: "Move to Token Plan",
@@ -207,12 +217,12 @@ const words = {
     reenrolled: "Enterprise access updated and the organization context is active.",
     reenrolledInactive: "Enterprise access updated. Your current model connection remains active.",
     cancel: "Cancel",
-    advanced: "Advanced identity",
+    advanced: "Connection details",
     loadFailed: "Could not load model connections",
   },
   zh: {
     title: "模型与连接",
-    subtitle: "云端模型是 Hara 预置选项；企业连接属于用户自己。可以把不同团队提供的 Hara Control 都加进来，并按工作需要随时切换。",
+    subtitle: "填写 Key、选择已授权模型，就可以开始聊天；个人连接与各公司的连接始终彼此隔离。",
     current: "当前路由",
     currentWorkspace: "此工作区的新会话",
     configured: "可用",
@@ -227,14 +237,23 @@ const words = {
     addPersonal: "新增模型连接",
     addFirstPersonal: "把另一家供应商或另一枚 API Key 保存为独立命名连接。",
     personalUnavailable: "请升级 Desktop 内置 Hara 引擎后，再保存多个个人连接。",
-    providerCatalog: "个人默认连接预置",
+    providerPlan: "套餐或供应商",
+    subscriptionPlans: "订阅套餐",
+    apiProviders: "API 供应商",
+    localProviders: "本机模型",
+    setupProgress: "连接配置进度",
+    stepProvider: "选择连接",
+    stepCredential: "验证 Key",
+    stepModel: "选择模型",
+    verifyAndLoad: "验证 Key 并加载模型",
+    transportAuto: "Hara 会自动选择官方 OpenAI Responses、Chat 或 Anthropic 兼容协议；自定义服务端点请使用 OpenAI / compatible。",
     savedConnection: "已保存连接",
     connectionName: "连接名称",
     connectionNamePlaceholder: "例如：DeepSeek 个人",
     connectionId: "本机连接标识",
     connectionIdHint: "根据名称生成，只用于在本机识别这条路由，不是凭据。",
     addPersonalTitle: "新增个人模型连接",
-    addPersonalDescription: "不同供应商、接口和 API Key 分开保存；新增连接不会覆盖任何现有连接。",
+    addPersonalDescription: "先选套餐，再填写 Key、选择模型；保存时不会覆盖其他连接。",
     saveConnectionOnly: "仅保存，不切换",
     addAndUsePersonal: "添加并用于新会话",
     connectionAdded: "连接已保存，当前默认路由保持不变。",
@@ -275,6 +294,7 @@ const words = {
     knownModels: "已知模型（保存前请用当前 Key 验证）",
     liveModels: "当前 API Key 已授权",
     tokenPlanAuth: "Token Plan 使用上方显示的华北 2（北京）官方固定 Base URL 和 API Key，不提供 Token Plan 浏览器登录。",
+    miniMaxTokenPlanAuth: "MiniMax Token Plan 使用上方显示的官方 Codex Responses Base URL；MiniMax-M3 原生支持文字与图片输入。",
     legacyAlibaba: "旧版阿里云连接",
     legacyAlibabaHint: "此连接仍可读取，但旧 DashScope/Qwen 身份不再用于新建连接；请迁移到独立的 Token Plan 连接。",
     migrateAlibaba: "迁移到 Token Plan",
@@ -365,7 +385,7 @@ const words = {
     reenrolled: "企业授权已更新，并已成为当前组织上下文。",
     reenrolledInactive: "企业授权已更新，当前模型连接保持不变。",
     cancel: "取消",
-    advanced: "高级标识",
+    advanced: "连接详情",
     loadFailed: "无法读取模型连接",
   },
 } as const;
@@ -389,6 +409,7 @@ const endpointIdentity = (value: string | undefined): string => {
 };
 
 const LEGACY_PERSONAL_PROVIDER_IDS = new Set(["qwen", "qwen-oauth"]);
+const TOKEN_PLAN_PROVIDER_IDS = new Set(["token-plan", "minimax-token-plan"]);
 
 const isLegacyProvider = (provider: Pick<ProviderCatalogEntry, "id" | "legacy">): boolean =>
   provider.legacy === true || LEGACY_PERSONAL_PROVIDER_IDS.has(provider.id);
@@ -462,7 +483,7 @@ const uniquePersonalConnectionId = (
 
 const personalDraftForProvider = (provider: ProviderCatalogEntry): PersonalConnectionDraft => ({
   id: "",
-  label: "",
+  label: provider.label,
   provider: provider.id,
   model: provider.defaultModel,
   baseURL: provider.defaultBaseURL ?? "",
@@ -644,7 +665,7 @@ export function ProviderSettings({
   const selectedModelVerified = verifiedCustomModels.includes(selectedCandidateKey);
   const selectedModelAllowed = selectedCatalog.length === 0
     || selectedCatalog.includes(draft.model.trim())
-    || (selectedModelVerified && (selected?.id !== "token-plan" || models.length === 0));
+    || (selectedModelVerified && (!TOKEN_PLAN_PROVIDER_IDS.has(selected?.id ?? "") || models.length === 0));
   const testValid = view.kind === "provider" && !!selected && !!draft.model.trim()
     && !keyMissing && !blocked;
   const valid = testValid && selectedModelAllowed;
@@ -655,7 +676,7 @@ export function ProviderSettings({
   const personalModelVerified = verifiedCustomModels.includes(personalCandidateKey);
   const personalModelAllowed = personalCatalog.length === 0
     || personalCatalog.includes(personalDraft.model.trim())
-    || (personalModelVerified && (personalProvider?.id !== "token-plan" || models.length === 0));
+    || (personalModelVerified && (!TOKEN_PLAN_PROVIDER_IDS.has(personalProvider?.id ?? "") || models.length === 0));
   const personalConnectionTestValid = view.kind === "add-personal"
     && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(personalDraft.id.trim())
     && personalDraft.id.trim() !== "personal"
@@ -784,7 +805,7 @@ export function ProviderSettings({
       setModels(result.models);
       if (
         result.models.length > 0
-        && selected?.id === "token-plan"
+        && TOKEN_PLAN_PROVIDER_IDS.has(selected?.id ?? "")
         && !result.models.includes(draft.model.trim())
       ) {
         setError(copy.modelNotAuthorized);
@@ -859,7 +880,7 @@ export function ProviderSettings({
       setModels(result.models);
       if (
         result.models.length > 0
-        && personalProvider?.id === "token-plan"
+        && TOKEN_PLAN_PROVIDER_IDS.has(personalProvider?.id ?? "")
         && !result.models.includes(personalDraft.model.trim())
       ) {
         setError(copy.modelNotAuthorized);
@@ -1132,7 +1153,6 @@ export function ProviderSettings({
     ? `${activeOrganization.gatewayHost} · ${routeSource}`
     : `${activePersonalConnection?.label || copy.personal} · ${routeSource}`;
   const projectPinned = state.current.profileSource === "pin";
-  const providerGroups: ProviderCatalogEntry["location"][] = ["cloud", "local"];
   const selectedModelOptions = selectedCatalog;
   const personalModelOptions = personalCatalog;
   const selectedCustomModel = selectedModelOptions.length > 0
@@ -1145,6 +1165,23 @@ export function ProviderSettings({
   const staleAlibabaCatalog = !tokenPlanProvider
     && state.providers.some((provider) => LEGACY_PERSONAL_PROVIDER_IDS.has(provider.id));
   const showEngineRestart = engineNeedsRestart || staleAlibabaCatalog;
+  const personalRouteTested = models.length > 0 || verifiedCustomModels.length > 0;
+  const providerOptionGroups = [
+    {
+      label: copy.subscriptionPlans,
+      entries: newPersonalProviders.filter((provider) => TOKEN_PLAN_PROVIDER_IDS.has(provider.id)),
+    },
+    {
+      label: copy.apiProviders,
+      entries: newPersonalProviders.filter((provider) => (
+        provider.location === "cloud" && !TOKEN_PLAN_PROVIDER_IDS.has(provider.id)
+      )),
+    },
+    {
+      label: copy.localProviders,
+      entries: newPersonalProviders.filter((provider) => provider.location === "local"),
+    },
+  ].filter((group) => group.entries.length > 0);
 
   return (
     <section
@@ -1272,37 +1309,6 @@ export function ProviderSettings({
               </button>
             )}
           </div>
-
-          <p className="provider-catalog-caption">{copy.providerCatalog}</p>
-          {providerGroups.map((location) => {
-            const entries = personalProviders.filter((provider) => provider.location === location);
-            if (entries.length === 0) return null;
-            return (
-              <div className="provider-group" key={location}>
-                <div className="provider-group-head">
-                  <span className="provider-group-label">{copy[location]}</span>
-                  <span className="provider-group-chip">{copy.preset}</span>
-                </div>
-                {entries.map((provider) => (
-                  <button
-                    type="button"
-                    key={provider.id}
-                    data-provider-id={provider.id}
-                    className={`provider-preset ${view.kind === "provider" && view.id === provider.id ? "on" : ""}`}
-                    aria-pressed={view.kind === "provider" && view.id === provider.id}
-                    disabled={phase !== "idle" || !!organizationBusy}
-                    onClick={() => chooseProvider(provider)}
-                  >
-                    <span className={`provider-mini-dot ${provider.location}`} />
-                    <span>
-                      <strong>{provider.label}</strong>
-                      <small>{provider.auth === "none" ? "no key" : provider.auth}</small>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            );
-          })}
 
           <div className="provider-group provider-enterprise-group">
             <div className="provider-group-head">
@@ -1444,6 +1450,7 @@ export function ProviderSettings({
               {selected.auth === "none" && <div className="provider-note local">{copy.noKey}</div>}
               {selected.auth === "oauth" && <div className="provider-note">{copy.oauth}</div>}
               {selected.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}</div>}
+              {selected.id === "minimax-token-plan" && <div className="provider-note">{copy.miniMaxTokenPlanAuth}</div>}
               <div className={`provider-data-path ${selected.location}`}>
                 {selected.location === "local" ? copy.dataLocal : copy.dataCloud}
               </div>
@@ -1559,67 +1566,110 @@ export function ProviderSettings({
                 </div>
               </header>
 
-              <label>
-                <span>{copy.connectionName}</span>
-                <input
-                  value={personalDraft.label}
-                  placeholder={copy.connectionNamePlaceholder}
-                  maxLength={80}
-                  autoComplete="off"
-                  disabled={!!personalBusy}
-                  onChange={(event) => {
-                    const label = event.target.value;
-                    setPersonalDraft((current) => ({
-                      ...current,
-                      label,
-                      ...(!personalIdEdited
-                        ? {
-                            id: uniquePersonalConnectionId(
-                              label || current.provider,
-                              state.connections ?? [],
-                              organizations?.connections ?? [],
-                            ),
-                          }
-                        : {}),
-                    }));
-                  }}
-                />
-              </label>
+              <ol className="provider-setup-steps" aria-label={copy.setupProgress}>
+                <li className="done"><span>1</span>{copy.stepProvider}</li>
+                <li className={personalRouteTested ? "done" : "current"}><span>2</span>{copy.stepCredential}</li>
+                <li className={personalRouteTested ? "current" : ""}><span>3</span>{copy.stepModel}</li>
+              </ol>
 
               <label>
-                <span>{copy.profile}</span>
+                <span>{copy.providerPlan}</span>
                 <select
                   value={personalDraft.provider}
                   disabled={!!personalBusy}
                   onChange={(event) => {
                     const provider = newPersonalProviders.find((candidate) => candidate.id === event.target.value);
                     if (!provider) return;
-                    setPersonalDraft((current) => ({
-                      ...current,
+                    setPersonalDraft({
                       provider: provider.id,
                       model: provider.defaultModel,
                       baseURL: provider.defaultBaseURL ?? "",
-                      ...(!personalIdEdited && !current.label.trim()
-                        ? {
-                            id: uniquePersonalConnectionId(
-                              provider.id,
-                              state.connections ?? [],
-                              organizations?.connections ?? [],
-                            ),
-                          }
-                        : {}),
-                    }));
+                      label: provider.label,
+                      id: uniquePersonalConnectionId(
+                        provider.id,
+                        state.connections ?? [],
+                        organizations?.connections ?? [],
+                      ),
+                    });
+                    setPersonalIdEdited(false);
                     setApiKey("");
                     setModels([]);
                     setVerifiedCustomModels([]);
                     clearFeedback();
                   }}
                 >
-                  {newPersonalProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.label}</option>)}
+                  {providerOptionGroups.map((group) => (
+                    <optgroup label={group.label} key={group.label}>
+                      {group.entries.map((provider) => (
+                        <option value={provider.id} key={provider.id}>{provider.label}</option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
+                <small>{copy.transportAuto}</small>
               </label>
 
-              <div className="provider-field">
+              {(personalProvider.customBaseURL || !!personalProvider.defaultBaseURL) && (
+                <label>
+                  <span>{copy.endpoint}</span>
+                  <input
+                    value={personalDraft.baseURL}
+                    readOnly={!personalProvider.customBaseURL}
+                    aria-readonly={!personalProvider.customBaseURL}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    disabled={!!personalBusy}
+                    onChange={(event) => {
+                      setPersonalDraft((current) => ({ ...current, baseURL: event.target.value }));
+                      setModels([]);
+                      setVerifiedCustomModels([]);
+                      clearFeedback();
+                    }}
+                  />
+                </label>
+              )}
+
+              {personalProvider.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}</div>}
+              {personalProvider.id === "minimax-token-plan" && <div className="provider-note">{copy.miniMaxTokenPlanAuth}</div>}
+
+              {personalProvider.auth === "api-key" && (
+                <label>
+                  <span>{copy.key}</span>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    placeholder={copy.keyNeed}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    autoComplete="new-password"
+                    disabled={!!personalBusy}
+                    onChange={(event) => {
+                      setApiKey(event.target.value);
+                      setModels([]);
+                      setVerifiedCustomModels([]);
+                      clearFeedback();
+                    }}
+                  />
+                  <small>{copy.keySafety}</small>
+                </label>
+              )}
+              {personalProvider.auth === "none" && <div className="provider-note local">{copy.noKey}</div>}
+              {personalProvider.auth === "oauth" && <div className="provider-note">{copy.oauth}</div>}
+
+              <div className="provider-key-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!personalConnectionTestValid || !!personalBusy}
+                  onClick={() => void testNewPersonalConnection()}
+                >
+                  {personalBusy === "test-new" ? copy.testing : copy.verifyAndLoad}
+                </button>
+                <small>{personalRouteTested ? copy.connected : copy.stepCredential}</small>
+              </div>
+
+              <div className="provider-field provider-model-step">
                 <span>{copy.model}</span>
                 <ModelCombobox
                   value={personalDraft.model}
@@ -1645,54 +1695,34 @@ export function ProviderSettings({
                 )}
               </div>
 
-              {(personalProvider.customBaseURL || !!personalProvider.defaultBaseURL) && (
+              <details className="organization-advanced">
+                <summary>{copy.advanced}</summary>
                 <label>
-                  <span>{copy.endpoint}</span>
+                  <span>{copy.connectionName}</span>
                   <input
-                    value={personalDraft.baseURL}
-                    readOnly={!personalProvider.customBaseURL}
-                    aria-readonly={!personalProvider.customBaseURL}
-                    spellCheck={false}
-                    autoCapitalize="none"
+                    value={personalDraft.label}
+                    placeholder={copy.connectionNamePlaceholder}
+                    maxLength={80}
                     autoComplete="off"
                     disabled={!!personalBusy}
                     onChange={(event) => {
-                      setPersonalDraft((current) => ({ ...current, baseURL: event.target.value }));
-                      setModels([]);
-                      setVerifiedCustomModels([]);
-                      clearFeedback();
+                      const label = event.target.value;
+                      setPersonalDraft((current) => ({
+                        ...current,
+                        label,
+                        ...(!personalIdEdited
+                          ? {
+                              id: uniquePersonalConnectionId(
+                                label || current.provider,
+                                state.connections ?? [],
+                                organizations?.connections ?? [],
+                              ),
+                            }
+                          : {}),
+                      }));
                     }}
                   />
                 </label>
-              )}
-
-              {personalProvider.auth === "api-key" && (
-                <label>
-                  <span>{copy.key}</span>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    placeholder={copy.keyNeed}
-                    spellCheck={false}
-                    autoCapitalize="none"
-                    autoComplete="new-password"
-                    disabled={!!personalBusy}
-                    onChange={(event) => {
-                      setApiKey(event.target.value);
-                      setModels([]);
-                      setVerifiedCustomModels([]);
-                      clearFeedback();
-                    }}
-                  />
-                  <small>{copy.keySafety}</small>
-                </label>
-              )}
-              {personalProvider.auth === "none" && <div className="provider-note local">{copy.noKey}</div>}
-              {personalProvider.auth === "oauth" && <div className="provider-note">{copy.oauth}</div>}
-              {personalProvider.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}</div>}
-
-              <details className="organization-advanced">
-                <summary>{copy.advanced}</summary>
                 <label>
                   <span>{copy.connectionId}</span>
                   <input
@@ -1717,14 +1747,6 @@ export function ProviderSettings({
               </div>
               <div className="provider-actions personal-create-actions">
                 <button type="button" className="ghost" disabled={!!personalBusy} onClick={cancelPersonalConnection}>{copy.cancel}</button>
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={!personalConnectionTestValid || !!personalBusy}
-                  onClick={() => void testNewPersonalConnection()}
-                >
-                  {personalBusy === "test-new" ? copy.testing : copy.test}
-                </button>
                 {!personalSwitchLocked && (
                   <button
                     type="button"

@@ -64,6 +64,16 @@ html[data-theme="light"] .task-progress-detail strong {
   color: var(--danger);
 }
 
+html[data-theme="light"] .task-auth-recovery {
+  border-color: #d8bc83;
+  background: #fff8e9;
+}
+
+html[data-theme="light"] .task-auth-recovery-copy > strong,
+html[data-theme="light"] .task-auth-recovery details summary {
+  color: var(--fg);
+}
+
 /* Core shell and messaging */
 html[data-theme="light"] .app,
 html[data-theme="light"] .chat,
@@ -391,8 +401,91 @@ html[data-theme="light"] .provider-data-path,
 html[data-theme="light"] .provider-pin-recovery,
 html[data-theme="light"] .organization-advanced {
   border-color: var(--border);
-  background-color: #f7f2ea;
+  background: #f7f2ea;
   box-shadow: none;
+}
+
+html[data-theme="light"] .provider-workbench {
+  background: #fffdf8;
+}
+
+html[data-theme="light"] .provider-presets {
+  background: #f7f2ea;
+}
+
+html[data-theme="light"] .provider-detail {
+  background: radial-gradient(circle at 100% 0, rgba(150, 104, 86, 0.07), transparent 42%), #fffdf8;
+}
+
+html[data-theme="light"] .provider-group-label,
+html[data-theme="light"] .provider-group-caption,
+html[data-theme="light"] .provider-group-chip,
+html[data-theme="light"] .provider-detail-heading > div > span,
+html[data-theme="light"] .provider-form label > span,
+html[data-theme="light"] .provider-form .provider-field > span,
+html[data-theme="light"] .provider-enrollment-form label > span,
+html[data-theme="light"] .provider-enrollment-form .provider-field > span {
+  color: #686158;
+}
+
+html[data-theme="light"] button.provider-preset {
+  color: #4f4942;
+}
+
+html[data-theme="light"] button.provider-preset:hover:not(:disabled) {
+  background: #eee8de;
+  color: #28231f;
+}
+
+html[data-theme="light"] button.provider-preset.on,
+html[data-theme="light"] button.provider-preset.personal.on {
+  border-color: #d5aaa0;
+  background: #f5e4de;
+  color: #2f2723;
+}
+
+html[data-theme="light"] button.provider-preset.enterprise.on {
+  border-color: #b9c3d6;
+  background: #e9edf4;
+  color: #343b4a;
+}
+
+html[data-theme="light"] .provider-preset small,
+html[data-theme="light"] .provider-enterprise-empty small,
+html[data-theme="light"] .provider-key-actions small {
+  color: #746d64;
+}
+
+html[data-theme="light"] .provider-enterprise-empty,
+html[data-theme="light"] .provider-enterprise-empty.personal,
+html[data-theme="light"] .provider-model-step,
+html[data-theme="light"] .provider-setup-steps li {
+  border-color: #d7cec1;
+  background: #f7f2ea;
+  color: #625b52;
+}
+
+html[data-theme="light"] .provider-setup-steps li.current {
+  border-color: #d3a79d;
+  background: #f5e4de;
+  color: #873c30;
+}
+
+html[data-theme="light"] .provider-setup-steps li.done {
+  color: #43684f;
+}
+
+html[data-theme="light"] .provider-setup-steps li.done > span {
+  border-color: #a9c8b2;
+  background: #e4f0e7;
+  color: #376147;
+}
+
+html[data-theme="light"] .provider-detail-heading h3,
+html[data-theme="light"] .organization-facts strong,
+html[data-theme="light"] .personal-connection-endpoint strong,
+html[data-theme="light"] .provider-model-readonly {
+  color: #302a25;
 }
 
 html[data-theme="light"] .provider-form input,
@@ -415,6 +508,43 @@ html[data-theme="light"] .settings-skill-list .skill:hover,
 html[data-theme="light"] .capability-directory-tabs button:hover,
 html[data-theme="light"] .capability-directory-tabs button.is-active {
   background: #e9e3d8;
+}
+
+html[data-theme="light"] .model-combobox-list {
+  background: linear-gradient(180deg, rgba(178, 113, 93, 0.08), transparent 54px), #fffdf8;
+  box-shadow: 0 16px 32px rgba(62, 48, 31, 0.16), 0 0 0 1px rgba(87, 69, 49, 0.06);
+}
+
+html[data-theme="light"] .model-combobox-toggle {
+  border-left-color: #d6cdbf;
+  background: linear-gradient(180deg, #f5f0e7, #eee8de);
+  color: #655e55;
+}
+
+html[data-theme="light"] .model-combobox-list button {
+  color: #3f3933;
+}
+
+html[data-theme="light"] .model-combobox-list button[aria-selected="true"] {
+  color: #923f32;
+}
+
+html[data-theme="light"] .model-combobox-list button small {
+  color: #746b62;
+}
+
+html[data-theme="light"] .model-menu-list > button,
+html[data-theme="light"] .model-menu-list > button strong {
+  color: #312b26;
+}
+
+html[data-theme="light"] .model-menu-list > button.selected {
+  background: #f2dfd8;
+}
+
+html[data-theme="light"] .model-menu-list > button.selected strong,
+html[data-theme="light"] .model-menu-list > button.selected .model-row-state {
+  color: #87382c;
 }
 
 /* Agent and Space menus */

@@ -14,6 +14,7 @@ import {
 import type { Key } from "./i18n";
 import { Md } from "./markdown";
 import { userVisibleTaskText } from "./user-visible-text";
+import { authenticationPausePresentation } from "./auth-recovery";
 
 type TaskDependencyKind = NonNullable<
   NonNullable<TaskLifecycleEvent["checkpoint"]["completion"]>["dependency"]
@@ -65,6 +66,7 @@ interface ConversationTimelineProps {
   t: (key: Key) => string;
   onRewind: (itemIndex: number) => void;
   onApproval: (approvalId: string, verdict: ApprovalVerdict) => void;
+  onContinueTask?: () => void;
 }
 
 /** Pure projection of one session transcript. Runtime state and routing stay outside this component. */
@@ -77,6 +79,7 @@ export function ConversationTimeline({
   t,
   onRewind,
   onApproval,
+  onContinueTask,
 }: ConversationTimelineProps) {
   const visibleTask = taskState && taskState.state !== "completed" ? taskState : undefined;
   const taskLabel = visibleTask
@@ -111,6 +114,14 @@ export function ConversationTimeline({
   const nextStep = visibleTask?.checkpoint.nextStep
     ? userVisibleTaskText(visibleTask.checkpoint.nextStep, "")
     : "";
+  const authenticationPause = authenticationPausePresentation({
+    dependencyKind: dependency?.kind,
+    capability: dependency?.capability,
+    detail: dependency?.detail,
+    evidence: dependency?.evidence,
+    blockReason: visibleTask?.checkpoint.blockReason || visibleTask?.detail,
+    nextStep: visibleTask?.checkpoint.nextStep,
+  });
   const taskCurrent = visibleTask
     ? userVisibleTaskText(
         visibleTask.checkpoint.current || visibleTask.brief?.goal || visibleTask.objective,
@@ -141,15 +152,43 @@ export function ConversationTimeline({
               value={Math.min(visibleTask.checkpoint.done, visibleTask.checkpoint.total)}
             />
           )}
-          {blocker && (
+          {authenticationPause ? (
+            <div className="task-auth-recovery" role="status">
+              <div className="task-auth-recovery-copy">
+                <span>{t("taskUserDependency")}</span>
+                <strong>{t("taskAuthenticationExpired")}</strong>
+                <p>{t("taskAuthenticationPaused")}</p>
+                {authenticationPause.capability ? (
+                  <small>
+                    {t("taskAuthenticationTarget").replace("{target}", authenticationPause.capability)}
+                  </small>
+                ) : null}
+              </div>
+              <div className="task-auth-recovery-actions">
+                {onContinueTask ? (
+                  <button type="button" disabled={busy} onClick={onContinueTask}>
+                    {t("taskAuthenticationContinue")}
+                  </button>
+                ) : null}
+                <details>
+                  <summary>{t("taskAuthenticationDetails")}</summary>
+                  <p>
+                    {t(authenticationPause.automaticRefreshFailed
+                      ? "taskAuthenticationRefreshFailed"
+                      : "taskAuthenticationRejected")}
+                  </p>
+                </details>
+              </div>
+            </div>
+          ) : blocker ? (
             <div className="task-progress-detail">
               <span>{dependency ? t("taskUserDependency") : t("taskBlockReason")}</span>
               {(dependencyLabel || blockedStep) && <strong>{dependencyLabel || blockedStep}</strong>}
               <div>{blocker}</div>
               {dependencyEvidence ? <small>{dependencyEvidence}</small> : null}
             </div>
-          )}
-          {(visibleTask.state === "blocked" || visibleTask.state === "paused") && nextStep && (
+          ) : null}
+          {!authenticationPause && (visibleTask.state === "blocked" || visibleTask.state === "paused") && nextStep && (
             <div className="task-progress-next">
               <span>{t("taskNextStep")}</span>
               {nextStep}

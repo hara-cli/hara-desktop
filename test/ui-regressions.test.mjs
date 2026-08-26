@@ -655,6 +655,8 @@ test("provider settings keep credentials transient and support local no-key pres
   const modelCombobox = readFileSync(`${root}/src/ModelCombobox.tsx`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const preview = readFileSync(`${root}/src/ProviderSettingsPreview.tsx`, "utf8");
+  const lightTheme = readFileSync(`${root}/src/theme-light.css`, "utf8");
 
   assert.match(providerSettings, /type="password"/);
   assert.doesNotMatch(providerSettings, /localStorage\.(setItem|getItem)/);
@@ -711,13 +713,19 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(client, /legacy\?: boolean/);
   assert.match(providerSettings, /provider\.location !== "managed"[\s\S]{0,100}!isLegacyProvider\(provider\)/);
   assert.match(providerSettings, /new Set\(\["qwen", "qwen-oauth"\]\)/, "old engines cannot re-advertise either legacy Qwen setup entry");
-  assert.match(providerSettings, /newPersonalProviders\.map/, "legacy Qwen routes stay readable but cannot be newly created");
+  assert.match(providerSettings, /providerOptionGroups[\s\S]*newPersonalProviders\.filter/, "legacy Qwen routes stay readable but cannot be newly created");
+  assert.match(providerSettings, /new Set\(\["token-plan", "minimax-token-plan"\]\)/,
+    "subscription plans share strict key-scoped model-catalog behavior");
   assert.match(providerSettings, /<ModelCombobox[\s\S]*options=\{selectedModelOptions\}/, "known and live models use one searchable selector");
   assert.match(providerSettings, /customModelNeedsTest[\s\S]*customModelVerified/, "catalog-external IDs expose their verification state");
   assert.match(providerSettings, /const testValid[\s\S]*const valid = testValid && selectedModelAllowed/, "a custom model can be tested before it is allowed to save");
   assert.match(providerSettings, /personalConnectionTestValid[\s\S]*personalConnectionValid = personalConnectionTestValid && personalModelAllowed/);
-  assert.match(providerSettings, /selected\?\.id !== "token-plan" \|\| models\.length === 0/, "a live Token Plan catalog remains authoritative even after a custom probe");
+  assert.match(providerSettings, /!TOKEN_PLAN_PROVIDER_IDS\.has\(selected\?\.id \?\? ""\) \|\| models\.length === 0/,
+    "a live subscription catalog remains authoritative even after a custom probe");
   assert.match(providerSettings, /Token Plan[\s\S]*no Token Plan browser login|Token Plan[\s\S]*不提供 Token Plan 浏览器登录/);
+  assert.match(providerSettings, /MiniMax Token Plan[\s\S]*MiniMax-M3[\s\S]*(?:text and image|文字与图片)/,
+    "MiniMax Token Plan explains its official Codex route and native multimodality");
+  assert.match(preview, /id: "minimax-token-plan"[\s\S]*defaultModel: "MiniMax-M3"[\s\S]*https:\/\/api\.minimaxi\.com\/v1/);
   assert.match(
     providerSettings,
     /selected\.customBaseURL \|\| !!selected\.defaultBaseURL[\s\S]*readOnly=\{!selected\.customBaseURL\}/,
@@ -728,6 +736,25 @@ test("provider settings keep credentials transient and support local no-key pres
     /personalProvider\.customBaseURL \|\| !!personalProvider\.defaultBaseURL[\s\S]*readOnly=\{!personalProvider\.customBaseURL\}/,
     "named Token Plan connections show the same fixed endpoint",
   );
+  const addFlow = providerSettings.slice(providerSettings.indexOf('{view.kind === "add-personal" && personalProvider'));
+  const planPosition = addFlow.indexOf("copy.providerPlan");
+  const endpointPosition = addFlow.indexOf("copy.endpoint");
+  const keyPosition = addFlow.indexOf("copy.key");
+  const verifyPosition = addFlow.indexOf("copy.verifyAndLoad");
+  const modelPosition = addFlow.indexOf("<ModelCombobox");
+  assert.ok(
+    planPosition >= 0 && endpointPosition > planPosition && keyPosition > endpointPosition
+      && verifyPosition > keyPosition && modelPosition > verifyPosition,
+    "new connections follow plan/provider → visible endpoint → key verification → model selection",
+  );
+  assert.doesNotMatch(providerSettings, /<p className="provider-catalog-caption">/,
+    "the connection rail lists saved connections and companies, not every provider preset");
+  assert.match(lightTheme, /data-theme="light"\] \.provider-presets \{[\s\S]*background: #f7f2ea/,
+    "light mode replaces the dark provider gradient instead of only setting background-color");
+  assert.match(lightTheme, /data-theme="light"\] \.model-combobox-list button \{[\s\S]*color: #3f3933/,
+    "light model choices have an explicit readable foreground");
+  assert.match(lightTheme, /data-theme="light"\] \.model-menu-list > button\.selected strong[\s\S]*color: #87382c/,
+    "the selected chat model remains legible in light mode");
   assert.match(app, /engineNeedsRestart=\{engineVersionNeedsAttention\}/, "the provider page should receive the running-engine upgrade state");
   assert.match(app, /cwd=\{activeSession\?\.cwd \?\? server\?\.cwd\}/, "Settings resolves the same workspace cwd used by new sessions");
   assert.match(app, /scope=\{activeSession \? "workspace" : "global"\}/);
@@ -937,7 +964,7 @@ test("the chat model picker explicitly copies context back to a named personal c
   assert.match(css, /\.model-route-group\.personal/);
 });
 
-test("the model picker never offers or submits a conversation transfer across Spaces", () => {
+test("the model picker keeps Space authority while policy-gating personal billing inside a company", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
 
   assert.match(
@@ -947,13 +974,33 @@ test("the model picker never offers or submits a conversation transfer across Sp
   );
   assert.match(
     app,
-    /sessionSpaceId\(sourceSession, spaceDirectoryRef\.current\) !== "personal"[\s\S]*公司会话不能复制到个人空间/,
-    "a company transcript cannot be copied into Personal even after user confirmation",
+    /const sourceIsCompany = sourceSpaceId !== "personal";[\s\S]*sourceIsCompany && sourceSpace\?\.personalModelConnections !== "allowed"[\s\S]*尚未允许在公司空间中使用成员个人 Key/,
+    "company BYOK is unavailable unless the exact active Space explicitly allows it",
   );
   assert.match(
     app,
-    /visiblePersonalConnectionRoutes = \(activeSpaceId === "personal"/,
-    "personal connections disappear from a company model picker",
+    /sourceIsCompany && !client\.supportsFeature\(SPACE_ROUTE_FEATURE\)/,
+    "older engines cannot collapse company Space ownership into a personal route",
+  );
+  assert.match(
+    app,
+    /if \(!sourceIsCompany\) \{[\s\S]*await client\.useProviderConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*targetSpaceId: sourceSpaceId/,
+    "company BYOK pins the model route without changing the global personal default and forks within the same Space",
+  );
+  assert.match(
+    app,
+    /activeSpaceId === "personal" \|\| companyPersonalConnectionsAllowed[\s\S]*providerRoutes\?\.connections/,
+    "personal connections are listed in a company picker only after policy consent",
+  );
+  assert.match(
+    app,
+    /companyPersonalConnectionsBlocked[\s\S]*管理员未允许使用成员个人 Key；这里只显示公司托管模型/,
+    "the fail-closed company state explains why personal routes are absent",
+  );
+  assert.match(
+    app,
+    /公司数据 · 个人计费/,
+    "mixed company-data and personal-billing routes stay explicit in the picker",
   );
   assert.match(
     app,
@@ -1019,7 +1066,9 @@ test("the composer has per-session attachments, bounded folders, and capability-
   assert.match(app, /打开为新项目/, "persistent workspace and one-turn folder context are distinguished");
   assert.match(app, /disabled=\{!activeDraftCanSend\}/, "an attachment-only compatible turn can be sent");
   assert.match(app, /activeAttachmentIssue/, "incompatible image routes block send without deleting the draft");
-  assert.match(app, /vision-sidecar/);
+  assert.doesNotMatch(app, /vision-sidecar/, "Desktop no longer advertises a secondary image-model route");
+  assert.match(composer, /mode === "unsupported" \|\| capabilities\.image\.mode === "vision-sidecar"/,
+    "an older engine's sidecar capability fails closed instead of silently routing an image");
   assert.match(app, /modelSearch/);
   assert.match(app, /visibleModelEntries/);
   assert.match(client, /features\?: string\[\]/);
