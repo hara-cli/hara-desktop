@@ -481,10 +481,7 @@ html[data-theme="light"] .provider-setup-steps li.done > span {
   color: #376147;
 }
 
-html[data-theme="light"] .provider-detail-heading h3,
-html[data-theme="light"] .organization-facts strong,
-html[data-theme="light"] .personal-connection-endpoint strong,
-html[data-theme="light"] .provider-model-readonly {
+html[data-theme="light"] .provider-detail-heading h3 {
   color: #302a25;
 }
 

@@ -5744,9 +5744,9 @@ button.provider-preset.enterprise.on {
 .organization-facts > div {
   min-width: 0;
   padding: 11px 12px;
-  border: 1px solid #2e3139;
+  border: 1px solid var(--border);
   border-radius: 5px;
-  background: #17181c;
+  background: var(--surface-raised);
 }
 .organization-facts span,
 .organization-facts strong {
@@ -5756,12 +5756,12 @@ button.provider-preset.enterprise.on {
   white-space: nowrap;
 }
 .organization-facts span {
-  color: #6f727a;
+  color: var(--ink-muted);
   font-size: 9px;
 }
 .organization-facts strong {
   margin-top: 5px;
-  color: #c2c5cd;
+  color: var(--ink-strong);
   font-family: "SF Mono", ui-monospace, monospace;
   font-size: 10px;
   font-weight: 500;
@@ -5791,22 +5791,22 @@ button.provider-preset.enterprise.on {
   min-width: 0;
   padding: 10px 12px;
   margin-bottom: 13px;
-  border: 1px solid #302f34;
+  border: 1px solid var(--border);
   border-radius: 5px;
-  background: #17171a;
+  background: var(--surface-raised);
 }
 .personal-connection-endpoint span,
 .personal-connection-endpoint strong {
   display: block;
 }
 .personal-connection-endpoint span {
-  color: #6f6c68;
+  color: var(--ink-muted);
   font-size: 9px;
 }
 .personal-connection-endpoint strong {
   overflow: hidden;
   margin-top: 4px;
-  color: #aaa6a0;
+  color: var(--ink-strong);
   font-family: "SF Mono", ui-monospace, monospace;
   font-size: 10px;
   font-weight: 500;
@@ -5815,10 +5815,10 @@ button.provider-preset.enterprise.on {
 }
 .provider-model-readonly {
   padding: 3px 7px;
-  border: 1px solid #34343a;
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: #1a1a1e;
-  color: #99958f;
+  background: var(--surface-raised);
+  color: var(--ink-strong);
   font-family: "SF Mono", ui-monospace, monospace;
   font-size: 9px;
   font-weight: 500;

@@ -656,6 +656,7 @@ test("provider settings keep credentials transient and support local no-key pres
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const preview = readFileSync(`${root}/src/ProviderSettingsPreview.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
   const lightTheme = readFileSync(`${root}/src/theme-light.css`, "utf8");
 
   assert.match(providerSettings, /type="password"/);
@@ -755,6 +756,20 @@ test("provider settings keep credentials transient and support local no-key pres
     "light model choices have an explicit readable foreground");
   assert.match(lightTheme, /data-theme="light"\] \.model-menu-list > button\.selected strong[\s\S]*color: #87382c/,
     "the selected chat model remains legible in light mode");
+  for (const selector of [
+    "organization-facts > div",
+    "personal-connection-endpoint",
+    "provider-model-readonly",
+  ]) {
+    const block = css.match(new RegExp(`\\.${selector.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
+    assert.match(block, /background:\s*var\(--surface-raised\)/, `${selector} follows the active theme surface`);
+    assert.match(block, /border:\s*1px solid var\(--border\)/, `${selector} follows the active theme border`);
+  }
+  assert.match(css, /\.organization-facts span \{[\s\S]*color:\s*var\(--ink-muted\)/);
+  assert.match(css, /\.organization-facts strong \{[\s\S]*color:\s*var\(--ink-strong\)/);
+  assert.match(css, /\.personal-connection-endpoint span \{[\s\S]*color:\s*var\(--ink-muted\)/);
+  assert.match(css, /\.personal-connection-endpoint strong \{[\s\S]*color:\s*var\(--ink-strong\)/);
+  assert.match(css, /\.provider-model-readonly \{[\s\S]*color:\s*var\(--ink-strong\)/);
   assert.match(app, /engineNeedsRestart=\{engineVersionNeedsAttention\}/, "the provider page should receive the running-engine upgrade state");
   assert.match(app, /cwd=\{activeSession\?\.cwd \?\? server\?\.cwd\}/, "Settings resolves the same workspace cwd used by new sessions");
   assert.match(app, /scope=\{activeSession \? "workspace" : "global"\}/);
@@ -771,6 +786,7 @@ test("Space changes and reconnects clear tenant-bound surfaces before authoritat
   const clearSource = app.slice(clearStart, connectStart);
   for (const sensitiveReset of [
     "activeRef.current = null",
+    "attachedSessionsRef.current.clear()",
     "sessionsRef.current = []",
     "transcriptsRef.current = {}",
     "setTranscripts({})",
@@ -778,6 +794,12 @@ test("Space changes and reconnects clear tenant-bound surfaces before authoritat
     "setAuto(null)",
     "setArtifacts(null)",
   ]) assert.ok(clearSource.includes(sensitiveReset), `missing reconnect reset: ${sensitiveReset}`);
+
+  assert.match(
+    app,
+    /if \(transcriptsRef\.current\[id\] && attachedSessionsRef\.current\.has\(id\)\)[\s\S]*activateSession\(id, expected\)[\s\S]*return;/,
+    "a transcript repopulated by late stream events is reused only while its Space attachment is still authoritative",
+  );
 
   const connectSource = app.slice(connectStart, switchStart);
   assert.match(connectSource, /clearEngineBoundSurfaces\(\);[\s\S]*previous\?\.close\(\)/);

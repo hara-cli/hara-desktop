@@ -17,6 +17,40 @@ import {
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+const cssVariables = (source, selector) => {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const block = source.match(new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
+  return Object.fromEntries(
+    [...block.matchAll(/--([a-z0-9-]+):\s*([^;]+);/gi)].map((match) => [match[1], match[2].trim()]),
+  );
+};
+
+const resolveThemeColor = (variables, name, seen = new Set()) => {
+  assert.ok(!seen.has(name), `theme variable cycle at --${name}`);
+  seen.add(name);
+  const value = variables[name];
+  assert.ok(value, `missing theme variable --${name}`);
+  const reference = /^var\(--([a-z0-9-]+)\)$/i.exec(value);
+  if (reference) return resolveThemeColor(variables, reference[1], seen);
+  const hex = /^#([0-9a-f]{6})$/i.exec(value);
+  assert.ok(hex, `--${name} must resolve to an opaque six-digit color, received ${value}`);
+  return hex[1];
+};
+
+const contrastRatio = (foreground, background) => {
+  const luminance = (hex) => {
+    const channels = hex.match(/../g).map((part) => Number.parseInt(part, 16) / 255);
+    const linear = channels.map((channel) => (
+      channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+    ));
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+  };
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+    / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+};
+
 test("theme preferences fail safely to the system appearance", () => {
   assert.deepEqual(THEME_PREFERENCES, ["system", "light", "dark"]);
   assert.equal(parseThemePreference(null), "system");
@@ -117,4 +151,21 @@ test("Desktop initializes theme before React and exposes an accessible three-way
   assert.match(daylight, /\.workforce-surface/);
   assert.match(daylight, /\.pet-chat/);
   assert.match(daylight, /\.talent-market-shell/);
+});
+
+test("saved provider details keep readable semantic ink in both themes", () => {
+  const night = readFileSync(`${root}/src/App.css`, "utf8");
+  const daylight = readFileSync(`${root}/src/theme-light.css`, "utf8");
+  const themes = [
+    ["dark", cssVariables(night, ":root")],
+    ["light", cssVariables(daylight, 'html[data-theme="light"]')],
+  ];
+
+  for (const [theme, variables] of themes) {
+    const surface = resolveThemeColor(variables, "surface-raised");
+    for (const ink of ["ink-strong", "ink-muted"]) {
+      const ratio = contrastRatio(resolveThemeColor(variables, ink), surface);
+      assert.ok(ratio >= 4.5, `${theme} ${ink} on surface-raised is only ${ratio.toFixed(2)}:1`);
+    }
+  }
 });

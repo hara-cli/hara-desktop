@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.113 — 2026-08-27 — authoritative Space resume and readable provider details
+
+- Invalidate renderer-side session attachments whenever a Space or provider route changes. A late stream can
+  no longer make Desktop trust an assistant-only partial cache when the user returns; opening that conversation
+  now resumes it from Hara Serve's complete authoritative history while background work remains supported.
+- Move saved provider facts, endpoint details, and read-only model labels onto shared semantic surface, border,
+  and ink tokens. Both Night and Daylight now meet at least 4.5:1 text contrast on these components, with an
+  automated two-theme contrast gate covering the previously unreadable Daylight state.
+- Bundle the unchanged Hara CLI `0.154.0` at exact verified commit
+  `a1fde6e8573cd8df0d536bac6b06281c0fef6cf0`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.112 — 2026-08-26 — model switchboard and retained Agent recovery
 
 - Replace the long provider preset rail with a guided **provider/plan → Key verification → model** setup.

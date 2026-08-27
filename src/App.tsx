@@ -2818,6 +2818,11 @@ export default function App() {
   const clearEngineBoundSurfaces = useCallback(() => {
     sessionOpenRequestRef.current += 1;
     artifactOpenRequestRef.current += 1;
+    // A Space or provider-route transition invalidates every renderer attachment even though the
+    // shared Serve transport stays open. Late stream events may repopulate a partial transcript for
+    // the old Space; keeping that session marked attached would make openSession trust the partial
+    // renderer cache and skip the authoritative history reload when the user returns.
+    attachedSessionsRef.current.clear();
     activeRef.current = null;
     sessionsRef.current = [];
     transcriptsRef.current = {};
