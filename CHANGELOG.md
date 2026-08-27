@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.114 — 2026-08-27 — authoritative final replies and safe engine recovery
+
+- Reconcile each completed turn with Hara Serve's persisted terminal reply. If one or more streamed text
+  frames are lost, the central conversation now restores the complete answer immediately without duplicating
+  an already-complete stream or removing earlier tool activity, commentary, and notices.
+- Bundle Hara CLI `0.154.1` at exact verified commit
+  `1e2d9fe5af520c492f8bc3a797e92c157da9ae40`. Serve now audits session locks at startup and reclaims only
+  complete locks whose owning PID is proven dead through the existing token-fenced O_EXCL takeover path;
+  live, malformed, and contended locks remain untouched regardless of age.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.113 — 2026-08-27 — authoritative Space resume and readable provider details
 
 - Invalidate renderer-side session attachments whenever a Space or provider route changes. A late stream can

@@ -148,6 +148,7 @@ import {
 } from "./execution-view";
 import {
   persistedUserTurnsFrom,
+  reconcileTerminalReply,
   resolveOptimisticUser,
   restoreAuthoritativeConversation,
 } from "./conversation-state";
@@ -2698,7 +2699,7 @@ export default function App() {
           }
           delete activeTurnsRef.current[e.sessionId];
           push(e.sessionId, (items) => [
-            ...items.map((item): ConversationItem =>
+            ...reconcileTerminalReply(items, e.reply).map((item): ConversationItem =>
               item.kind === "approval" && !item.answered
                 ? { ...item, answered: "expired" }
                 : item,
