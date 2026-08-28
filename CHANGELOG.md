@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.115 — 2026-08-29 — external session center and bilingual Talent Bureau
+
+- Add an on-device External Session Center for installed Codex and Claude Code runtimes. Users can list
+  recent sessions, inspect bounded redacted history, fork a session before Hara continues it, answer
+  permission requests, interrupt active work, and return to the originating tool without exposing its raw
+  session IDs or filesystem paths to the renderer. The mobile identity contract keeps a future phone client
+  on the same Hara product bundle identifier and signed-in account while assigning each device its own key,
+  credential, revocation record, and server-side company access check.
+- Expand the Talent Bureau to 308 deduplicated bilingual roles across 22 departments, combining the curated
+  Hara roster with reviewed international and domestic role catalogs. Department filtering, hiring review,
+  custom hiring, localized names and summaries, and responsive statistics now fit compact windows without
+  horizontal clipping. All 308 catalog entries ship with individually generated local portraits rather than
+  the old repeated pixel identities; the release gate rejects missing, unexpected, invalid, wrong-size,
+  oversized, or byte-duplicated portrait assets.
+- Make Alibaba Token Plan capabilities explicit: `qwen3.8-flash` is selectable as a native visual/reasoning
+  conversation model with a one-million-token context window, while image, audio, and video generators stay
+  in separate media-capability surfaces. The official Base URL remains visible, known models use a searchable
+  selector, and a validated custom model ID remains available.
+- Keep the automation editor action footer reachable while long task instructions scroll independently, add
+  a clearly labelled native folder picker beside the working-directory field, and present systems without a
+  background scheduler as `Manual run only` instead of the misleading `Scheduler offline`. An already-enabled
+  macOS/Linux scheduler also repairs its stale packaged executable path after a Desktop upgrade.
+- Turn unavoidable external steps into focused Agent recovery cards with copy-only action, verification,
+  resume text, and contextual hints instead of a generic “do it yourself” reply. Add bounded runtime detail,
+  preserve the central task timeline, and make expired or revoked company connections visibly re-enrollable
+  without weakening company data, Agent, project, or permission isolation.
+- Finish Daylight/Night contrast and responsive treatment across model details, message/work surfaces,
+  Talent Bureau, Agent profiles, company switching, automations, and the compact workbench. Bundle Hara CLI
+  `0.155.0` at exact verified commit `65463a8839fdef3c4c126c6e57970fe91620c7b5`.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.114 — 2026-08-27 — authoritative final replies and safe engine recovery
 
 - Reconcile each completed turn with Hara Serve's persisted terminal reply. If one or more streamed text

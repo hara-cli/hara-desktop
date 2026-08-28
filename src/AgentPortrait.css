@@ -42,73 +42,40 @@
   object-fit: cover;
 }
 
-.agent-portrait-art {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  overflow: hidden;
-  border-radius: inherit;
-}
-
-.agent-art-face {
-  position: absolute;
-  z-index: 3;
-  top: 25%;
-  left: 28%;
-  width: 44%;
-  height: 44%;
-  border: 1.5px solid color-mix(in srgb, var(--agent-hair) 75%, transparent);
-  border-radius: 44% 44% 48% 48%;
-  background: var(--agent-skin);
-  box-shadow: inset 3px 0 rgba(255, 255, 255, 0.14);
-}
-
-.agent-art-hair {
-  position: absolute;
-  z-index: 5;
-  top: 16%;
-  left: 23%;
-  width: 54%;
-  height: 34%;
-  border-radius: 55% 45% 30% 22%;
-  background: linear-gradient(145deg, var(--agent-hair-alt), var(--agent-hair) 66%);
-  clip-path: polygon(2% 25%, 22% 2%, 76% 4%, 100% 28%, 91% 83%, 71% 54%, 56% 78%, 38% 47%, 20% 73%);
-}
-
-.is-variant-1 .agent-art-hair { height: 45%; clip-path: polygon(6% 17%, 35% 0, 80% 10%, 100% 35%, 87% 100%, 74% 54%, 24% 48%, 12% 94%); }
-.is-variant-2 .agent-art-hair { top: 14%; border-radius: 48% 52% 20% 20%; clip-path: polygon(0 36%, 12% 8%, 42% 0, 82% 11%, 100% 42%, 90% 72%, 68% 49%, 42% 58%, 17% 48%); }
-.is-variant-3 .agent-art-hair { top: 12%; height: 43%; clip-path: polygon(4% 34%, 18% 10%, 45% 0, 76% 8%, 100% 28%, 92% 100%, 72% 57%, 24% 54%, 10% 90%); }
-.is-variant-4 .agent-art-hair { top: 18%; height: 27%; clip-path: polygon(4% 32%, 23% 4%, 74% 0, 97% 35%, 88% 78%, 62% 52%, 31% 65%); }
-.is-variant-5 .agent-art-hair { top: 10%; left: 18%; width: 64%; height: 49%; border-radius: 50%; clip-path: none; }
-.is-variant-6 .agent-art-hair { top: 19%; height: 31%; clip-path: polygon(0 30%, 20% 0, 42% 17%, 59% 0, 79% 17%, 100% 2%, 92% 83%, 11% 70%); }
-.is-variant-7 .agent-art-hair { top: 12%; height: 44%; clip-path: polygon(4% 36%, 20% 8%, 80% 0, 98% 26%, 92% 88%, 66% 55%, 42% 72%, 14% 58%); }
-
-.agent-art-ear { position: absolute; z-index: 2; top: 39%; width: 8%; height: 12%; border-radius: 50%; background: var(--agent-skin); }
-.agent-art-ear.is-left { left: 23%; }
-.agent-art-ear.is-right { right: 23%; }
-.agent-art-eye { position: absolute; top: 41%; width: 11%; height: 11%; border-radius: 50%; background: var(--agent-hair); }
-.agent-art-eye.is-left { left: 22%; }
-.agent-art-eye.is-right { right: 22%; }
-.agent-art-mouth { position: absolute; bottom: 18%; left: 38%; width: 24%; height: 9%; border-bottom: 1.5px solid var(--agent-hair); border-radius: 50%; }
-.agent-art-glasses { position: absolute; top: 31%; left: 10%; width: 80%; height: 29%; border-top: 1.5px solid var(--agent-hair); background: linear-gradient(90deg, transparent 40%, var(--agent-hair) 41% 58%, transparent 59%); }
-.agent-art-glasses::before,
-.agent-art-glasses::after { position: absolute; top: 0; width: 30%; height: 100%; border: 1.5px solid var(--agent-hair); border-radius: 45%; content: ""; }
-.agent-art-glasses::before { left: 0; }
-.agent-art-glasses::after { right: 0; }
-
-.agent-art-outfit {
+.agent-portrait-fallback {
   position: absolute;
   z-index: 2;
-  right: 15%;
-  bottom: -8%;
-  left: 15%;
-  height: 44%;
-  border: 1.5px solid color-mix(in srgb, var(--agent-outfit) 68%, #171515);
-  border-radius: 48% 48% 18% 18%;
-  background: linear-gradient(145deg, var(--agent-accent), var(--agent-outfit));
+  inset: 0;
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 34% 25%, rgba(255, 255, 255, 0.48), transparent 28%),
+    linear-gradient(145deg, var(--agent-paper), color-mix(in srgb, var(--agent-accent) 54%, #3c3130));
 }
 
-.agent-portrait-initials { display: none; }
+.agent-portrait-fallback::after {
+  position: absolute;
+  right: -22%;
+  bottom: -45%;
+  width: 88%;
+  height: 88%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  content: "";
+}
+
+.agent-portrait-fallback > b {
+  position: relative;
+  z-index: 1;
+  color: #fff8ee;
+  font-family: var(--font-display, ui-rounded, system-ui, sans-serif);
+  font-size: 0.68em;
+  font-weight: 850;
+  letter-spacing: -0.04em;
+  text-shadow: 0 1px 2px rgba(36, 28, 26, 0.44);
+}
 .agent-portrait-emoji {
   position: absolute;
   z-index: 8;
@@ -173,13 +140,24 @@
   object-fit: cover;
   pointer-events: none;
 }
-.agent-character-head .agent-art-face { top: 7px; left: 6px; width: 18px; height: 20px; border-width: 1px; }
-.agent-character-head .agent-art-hair { top: 3px; left: 3px; width: 24px; height: 17px; }
-.agent-character-head .agent-art-ear { top: 14px; width: 4px; height: 7px; }
-.agent-character-head .agent-art-ear.is-left { left: 3px; }
-.agent-character-head .agent-art-ear.is-right { right: 3px; }
-.agent-character-head .agent-art-mouth { border-width: 1px; }
-.agent-character-head .agent-art-glasses { border-width: 1px; }
+.agent-character-head.is-fallback {
+  display: grid;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--agent-accent) 62%, #2d2420);
+  border-radius: 44% 48% 42% 46%;
+  background:
+    radial-gradient(circle at 33% 24%, rgba(255, 255, 255, 0.48), transparent 30%),
+    linear-gradient(145deg, var(--agent-paper), color-mix(in srgb, var(--agent-accent) 58%, #3c3130));
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--agent-accent) 24%, #2d2420);
+}
+.agent-character-monogram {
+  color: #fff8ee;
+  font-family: var(--font-display, ui-rounded, system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 850;
+  text-shadow: 0 1px 2px rgba(36, 28, 26, 0.45);
+}
 .agent-character-body {
   position: absolute;
   z-index: 4;

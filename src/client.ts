@@ -31,6 +31,72 @@ export interface SessionInfo {
   agentRef?: string;
 }
 
+export type ExternalSessionSourceId = "codex" | "claude";
+export type ExternalSessionSourceState = "ready" | "adapter_required" | "not_installed" | "error";
+export type ExternalSessionState = "stored" | "idle" | "working" | "waiting" | "error" | "unknown";
+
+export interface ExternalSessionSourceInfo {
+  id: ExternalSessionSourceId;
+  label: string;
+  state: ExternalSessionSourceState;
+  version?: string;
+  reason?: "official_adapter_not_bundled" | "command_not_found" | "probe_failed";
+  capabilities: {
+    listMetadata: boolean;
+    read: boolean;
+    fork: boolean;
+    resume: boolean;
+    observeLive: boolean;
+    submit: boolean;
+    interrupt: boolean;
+  };
+}
+
+export interface ExternalSessionInfo {
+  /** Hara-owned opaque digest, never the provider-native thread/session ID. */
+  id: string;
+  sourceId: ExternalSessionSourceId;
+  title: string;
+  /** Basename only; Serve keeps the full local path private. */
+  workspaceName: string;
+  workspaceId: string;
+  state: ExternalSessionState;
+  createdAt: string;
+  updatedAt: string;
+  origin?: "cli" | "vscode" | "exec" | "appServer" | "subAgent" | "unknown";
+  ephemeral: boolean;
+}
+
+export interface ExternalSessionListResult {
+  sources: ExternalSessionSourceInfo[];
+  sessions: ExternalSessionInfo[];
+  page: { limit: number; hasMore: boolean; nextCursor?: string };
+}
+
+export interface ExternalSessionMessage {
+  id: string;
+  role: "user" | "assistant" | "notice";
+  text: string;
+}
+
+export interface ExternalSessionReadResult {
+  session: ExternalSessionInfo;
+  messages: ExternalSessionMessage[];
+  readOnly: boolean;
+}
+
+export interface ExternalSessionForkResult extends ExternalSessionReadResult {
+  sourceSessionId: string;
+}
+
+export interface ExternalTurnResult {
+  sessionId: string;
+  turnId: string;
+  status: "completed" | "interrupted" | "failed";
+  reply: string;
+  error?: string;
+}
+
 export interface AgentInfo {
   ref: string;
   name: string;
@@ -103,6 +169,8 @@ export interface SpaceInfo {
   tenantId?: string;
   authoritative: boolean;
   agentProfilePermission: "edit" | "view";
+  /** Organization credential health; expired/invalid Spaces stay visible but are not switchable. */
+  accessState?: OrganizationAccessState;
   /** Company-admin policy for member-owned model credentials; omitted means fail-closed. */
   personalModelConnections?: "allowed" | "blocked";
 }
@@ -847,6 +915,14 @@ export interface TaskLifecycleEvent {
         detail: string;
         evidence: string[];
         capability?: string;
+        manualAction?: {
+          /** Display/copy only. Desktop never executes this command. */
+          command?: string;
+          /** Display/copy-only check that confirms the external action took effect. */
+          verifyCommand?: string;
+          resumePhrase?: string;
+          hints?: Array<{ term: string; detail: string }>;
+        };
       };
     };
   };
@@ -926,7 +1002,27 @@ export type ServerEvent =
         | { type: "url"; url: string };
     }
   | { method: "event.turn_end"; sessionId: string; reply: string; error?: string; status?: string; taskId?: string; turnId?: string; usage: { input: number; output: number }; ctx?: CtxInfo }
-  | { method: "approval.request"; sessionId: string; approvalId: string; question: string; allowAlways?: boolean };
+  | { method: "approval.request"; sessionId: string; approvalId: string; question: string; allowAlways?: boolean }
+  | { method: "external.event.turn_start"; sessionId: string; turnId: string }
+  | { method: "external.event.text"; sessionId: string; turnId: string; delta: string }
+  | { method: "external.event.tool"; sessionId: string; turnId: string; name: string; preview: string }
+  | { method: "external.event.notice"; sessionId: string; turnId: string; text: string }
+  | {
+      method: "external.event.turn_end";
+      sessionId: string;
+      requestedSessionId: string;
+      turnId: string;
+      reply: string;
+      status: "completed" | "interrupted" | "failed";
+      error?: string;
+    }
+  | {
+      method: "external.approval.request";
+      sessionId: string;
+      approvalId: string;
+      question: string;
+      allowAlways?: boolean;
+    };
 
 interface Pending {
   resolve: (v: any) => void;
@@ -1035,6 +1131,42 @@ export class HaraClient {
   }
   listSessions(cwd?: string) {
     return this.call<{ sessions: SessionInfo[] }>("session.list", cwd ? { cwd } : {});
+  }
+  /** Local coding-agent session metadata. Personal Space only; native IDs, paths and transcripts stay in Serve. */
+  async listExternalSources(): Promise<{ sources: ExternalSessionSourceInfo[] } | null> {
+    if (this.methods.size > 0 && !this.supports("external.sources.list")) return null;
+    try {
+      return await this.call("external.sources.list", {});
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  async listExternalSessions(input: {
+    sourceId?: ExternalSessionSourceId;
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  } = {}): Promise<ExternalSessionListResult | null> {
+    if (this.methods.size > 0 && !this.supports("external.sessions.list")) return null;
+    try {
+      return await this.call("external.sessions.list", input);
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  readExternalSession(sessionId: string) {
+    return this.call<ExternalSessionReadResult>("external.sessions.read", { sessionId });
+  }
+  forkExternalSession(sessionId: string) {
+    return this.call<ExternalSessionForkResult>("external.sessions.fork", { sessionId });
+  }
+  submitExternalSession(sessionId: string, text: string) {
+    return this.call<ExternalTurnResult>("external.sessions.submit", { sessionId, text });
+  }
+  interruptExternalSession(sessionId: string) {
+    return this.call<Record<string, never>>("external.sessions.interrupt", { sessionId });
   }
   createSession(opts?: { cwd?: string; approval?: ApprovalMode; agentRef?: string; profileId?: string; spaceId?: string }) {
     return this.call<{ sessionId: string; model: string; profileId?: string; spaceId?: string; approval?: ApprovalMode; agentRef?: string }>("session.create", opts ?? {});

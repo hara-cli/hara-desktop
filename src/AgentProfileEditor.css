@@ -61,13 +61,14 @@
 }
 
 .agent-profile-close {
+  display: grid;
   width: 30px;
   height: 30px;
   padding: 0;
+  place-items: center;
   border: 0;
   background: transparent;
   color: var(--dim);
-  font-size: 24px;
 }
 
 .agent-profile-governed {

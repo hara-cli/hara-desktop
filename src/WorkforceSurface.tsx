@@ -6,6 +6,7 @@ import type {
 import type { OfficeActor, OfficeActorState } from "./agent-office";
 import { useReducedMotion } from "./PetAtlasSprite";
 import { AgentCharacter, AgentPortrait } from "./AgentPortrait";
+import { IconChevronLeft, IconChevronRight } from "./icons";
 import {
   AGENT_OFFICE_CAPABILITY,
   type WorkforceRendererId,
@@ -197,7 +198,7 @@ export default function WorkforceSurface({
             <i aria-hidden />{live ? copy.live : copy.compatibility}
           </span>
           <div className="workforce-office-switch">
-            <button type="button" disabled={offices.length < 2} aria-label={copy.switchOffice} onClick={() => moveOffice(-1)}>‹</button>
+            <button type="button" disabled={offices.length < 2} aria-label={copy.switchOffice} onClick={() => moveOffice(-1)}><IconChevronLeft size={15} /></button>
             <label>
               <span>{copy.office} · {activeOfficeIndex + 1}/{Math.max(offices.length, 1)}</span>
               <select
@@ -210,7 +211,7 @@ export default function WorkforceSurface({
                 ))}
               </select>
             </label>
-            <button type="button" disabled={offices.length < 2} aria-label={copy.switchOffice} onClick={() => moveOffice(1)}>›</button>
+            <button type="button" disabled={offices.length < 2} aria-label={copy.switchOffice} onClick={() => moveOffice(1)}><IconChevronRight size={15} /></button>
           </div>
           <div className="workforce-view-switch" role="group" aria-label={copy.title}>
             <button type="button" className={view === "spatial" ? "is-active" : ""} onClick={() => setView("spatial")}>{copy.scene}</button>

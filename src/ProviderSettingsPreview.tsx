@@ -35,7 +35,10 @@ const initialProviders = (): ProviderSettingsState => ({
       defaultModel: "qwen3.8-max",
       defaultBaseURL: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
       customBaseURL: false,
-      knownModels: ["qwen3.8-max", "qwen3.7-plus", "deepseek-v4-pro", "glm-5.2"],
+      knownModels: [
+        "qwen3.8-max", "qwen3.8-flash", "qwen3.7-plus", "qwen3.7-max", "qwen3.6-flash",
+        "deepseek-v4-pro-0813", "deepseek-v4-pro", "deepseek-v4-flash-0731", "glm-5.2",
+      ],
     },
     {
       id: "minimax-token-plan",
@@ -380,18 +383,28 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
 
   useEffect(() => {
     if (!scenario) return;
+    let followup: number | undefined;
     const timer = window.setTimeout(() => {
+      if (scenario === "token-plan") {
+        document.querySelector<HTMLButtonElement>("[data-preview-action='add-personal']")?.click();
+        followup = window.setTimeout(() => {
+          const providerSelect = document.querySelector<HTMLSelectElement>(".provider-personal-form select");
+          if (!providerSelect) return;
+          providerSelect.value = "token-plan";
+          providerSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }, 0);
+        return;
+      }
       const selector = scenario === "add"
         ? "[data-preview-action='add-organization']"
-        : scenario === "token-plan"
-          ? "[data-provider-id='token-plan']"
-          : scenario === "alternate" || scenario === "switch"
-            ? "[data-connection-id='acme-client']"
-            : "";
+        : scenario === "alternate" || scenario === "switch"
+          ? "[data-connection-id='acme-client']"
+          : "";
       if (selector) document.querySelector<HTMLButtonElement>(selector)?.click();
     }, 120);
     return () => {
       window.clearTimeout(timer);
+      if (followup !== undefined) window.clearTimeout(followup);
     };
   }, [scenario]);
 

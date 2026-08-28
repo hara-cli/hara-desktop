@@ -1,16 +1,21 @@
 import { useDeferredValue, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { AgentPortrait } from "./AgentPortrait";
 import type { AgentPublicIdentity } from "./client";
+import { IconArrowRight, IconClose, IconPlus, IconSearch } from "./icons";
 import {
   AGENT_BLUEPRINTS,
+  AGENCY_AGENT_CATALOG_STATS,
   AGENCY_AGENTS_LICENSE,
-  AGENCY_AGENTS_LICENSE_NOTICE,
-  AGENCY_AGENTS_SOURCE_REVISION,
   HARA_CURATED_BLUEPRINTS,
   TALENT_DEPARTMENTS,
   filterTalentBlueprints,
   talentBlueprintIdentity,
   talentBlueprintIsCurated,
+  talentBlueprintIsDomestic,
+  talentBlueprintLicenseNotice,
+  talentBlueprintLocalizationSource,
+  talentBlueprintSourceLabel,
+  talentBlueprintSourceRevision,
   talentText,
   type AgentBlueprint,
   type TalentDepartmentId,
@@ -27,7 +32,6 @@ interface TalentMarketProps {
   onHire: (blueprint: AgentBlueprint) => void;
 }
 
-const SOURCE_SHORT = AGENCY_AGENTS_SOURCE_REVISION.slice(0, 7);
 const INITIAL_VISIBLE_TALENT = 48;
 
 function blueprintIdentity(blueprint: AgentBlueprint, locale: TalentLocale): AgentPublicIdentity {
@@ -103,9 +107,9 @@ export default function TalentMarket({
           <div className="talent-market-header-actions">
             <span className="talent-market-live"><i />{locale === "zh" ? "本地策展目录" : "Local curated catalog"}</span>
             <button type="button" className="talent-market-custom" onClick={onCustomHire}>
-              <span aria-hidden>＋</span>{locale === "zh" ? "自定义招聘" : "Custom hire"}
+              <IconPlus size={15} />{locale === "zh" ? "自定义招聘" : "Custom hire"}
             </button>
-            <button type="button" className="talent-market-close" aria-label={locale === "zh" ? "关闭人才中心" : "Close Talent Bureau"} onClick={onClose}>×</button>
+            <button type="button" className="talent-market-close" aria-label={locale === "zh" ? "关闭人才中心" : "Close Talent Bureau"} onClick={onClose}><IconClose size={18} /></button>
           </div>
         </header>
 
@@ -119,15 +123,15 @@ export default function TalentMarket({
           </div>
           <div className="talent-market-stats" aria-label={locale === "zh" ? "人才市场统计" : "Talent market statistics"}>
             <span><b>{AGENT_BLUEPRINTS.length}</b><small>{locale === "zh" ? "完整人才库" : "full catalog"}</small></span>
+            <span><b>{AGENCY_AGENT_CATALOG_STATS.domesticAdditions}</b><small>{locale === "zh" ? "国内新增岗位" : "China-specific roles"}</small></span>
             <span><b>{HARA_CURATED_BLUEPRINTS.length}</b><small>{locale === "zh" ? "Hara 精选" : "Hara curated"}</small></span>
-            <span><b>{TALENT_DEPARTMENTS.length - 1}</b><small>{locale === "zh" ? "职能部门" : "departments"}</small></span>
             <span><b>0</b><small>{locale === "zh" ? "自动授权" : "automatic grants"}</small></span>
           </div>
         </div>
 
         <div className="talent-market-search-row">
           <label className="talent-market-search">
-            <span aria-hidden>⌕</span>
+            <span aria-hidden><IconSearch size={17} /></span>
             <input
               autoFocus
               value={query}
@@ -141,7 +145,7 @@ export default function TalentMarket({
             {query ? <button type="button" aria-label={locale === "zh" ? "清空搜索" : "Clear search"} onClick={() => {
               setQuery("");
               setVisibleLimit(INITIAL_VISIBLE_TALENT);
-            }}>×</button> : null}
+            }}><IconClose size={14} /></button> : null}
           </label>
           <div className="talent-market-journey" aria-label={locale === "zh" ? "招聘流程" : "Hiring journey"}>
             <span className="is-now"><i>1</i>{locale === "zh" ? "发现" : "Discover"}</span>
@@ -185,6 +189,7 @@ export default function TalentMarket({
                   const isSelected = selected?.id === blueprint.id;
                   const isHired = hired.has(blueprint.id);
                   const isCurated = talentBlueprintIsCurated(blueprint);
+                  const isDomestic = talentBlueprintIsDomestic(blueprint);
                   const identity = blueprintIdentity(blueprint, locale);
                   return (
                     <button
@@ -196,7 +201,9 @@ export default function TalentMarket({
                       style={{ "--talent-accent": blueprint.accent } as CSSProperties}
                     >
                       <span className="talent-card-number">NO.{String(index + 1).padStart(2, "0")}</span>
-                      <span className={`talent-card-tier is-${isCurated ? "curated" : "community"}`}>{isCurated ? "HARA" : (locale === "zh" ? "社区" : "COMMUNITY")}</span>
+                      <span className={`talent-card-tier is-${isCurated ? "curated" : isDomestic ? "domestic" : "community"}`}>
+                        {isCurated ? "HARA" : isDomestic ? (locale === "zh" ? "本土" : "LOCAL") : (locale === "zh" ? "社区" : "COMMUNITY")}
+                      </span>
                       <AgentPortrait agentRef={`talent:${blueprint.id}`} name={identity.displayName} identity={identity} size="medium" />
                       <span className="talent-card-copy">
                         <small>{talentText(TALENT_DEPARTMENTS.find((item) => item.id === blueprint.department)!.label, locale)}</small>
@@ -206,7 +213,7 @@ export default function TalentMarket({
                       </span>
                       <span className="talent-card-footer">
                         <span>{blueprint.capabilities[locale].slice(0, 2).map((capability) => <i key={capability}>{capability}</i>)}</span>
-                        <b>{isHired ? (locale === "zh" ? "已入职" : "HIRED") : "＋"}</b>
+                        <b>{isHired ? (locale === "zh" ? "已入职" : "HIRED") : <IconPlus size={15} />}</b>
                       </span>
                     </button>
                   );
@@ -220,7 +227,7 @@ export default function TalentMarket({
               </div>
             ) : (
               <div className="talent-market-empty">
-                <span aria-hidden>⌕</span>
+                <span aria-hidden><IconSearch size={24} /></span>
                 <strong>{locale === "zh" ? "暂时没有匹配的人才" : "No matching talent yet"}</strong>
                 <p>{locale === "zh" ? "换一个结果关键词，或直接创建专属岗位。" : "Try a different outcome, or create a custom role."}</p>
                 <button type="button" onClick={onCustomHire}>{locale === "zh" ? "自定义招聘" : "Custom hire"}</button>
@@ -233,6 +240,8 @@ export default function TalentMarket({
               const identity = blueprintIdentity(selected, locale);
               const isHired = hired.has(selected.id);
               const isCurated = talentBlueprintIsCurated(selected);
+              const isDomestic = talentBlueprintIsDomestic(selected);
+              const localizationSource = talentBlueprintLocalizationSource(selected);
               return (
                 <>
                   <div className="talent-dossier-top" style={{ "--talent-accent": selected.accent } as CSSProperties}>
@@ -247,11 +256,17 @@ export default function TalentMarket({
 
                   <div className="talent-dossier-scroll">
                     <p className="talent-dossier-bio">{talentText(selected.bio, locale)}</p>
-                    <p className={`talent-dossier-curation is-${isCurated ? "curated" : "community"}`}>
-                      <b>{isCurated ? (locale === "zh" ? "Hara 精选" : "Hara curated") : (locale === "zh" ? "社区导入" : "Community import")}</b>
+                    <p className={`talent-dossier-curation is-${isCurated ? "curated" : isDomestic ? "domestic" : "community"}`}>
+                      <b>{isCurated
+                        ? (locale === "zh" ? "Hara 精选" : "Hara curated")
+                        : isDomestic
+                          ? (locale === "zh" ? "国内原创岗位" : "China-specific role")
+                          : (locale === "zh" ? "社区导入" : "Community import")}</b>
                       <span>{isCurated
                         ? (locale === "zh" ? "已适配 Hara 的执行责任、权限边界与验证规则。" : "Adapted for Hara ownership, permission boundaries, and verification.")
-                        : (locale === "zh" ? "已完成基础安全适配，尚未经过该岗位的专项效果评测。" : "Baseline safety adapted; specialist outcome evaluation is still pending.")}</span>
+                        : isDomestic
+                          ? (locale === "zh" ? "来自中文社区目录；已完成语义去重与基础安全适配，专项效果评测仍在进行。" : "From the Chinese community catalog; semantically deduplicated and baseline safety adapted, with specialist evaluation pending.")
+                          : (locale === "zh" ? "已完成基础安全适配，尚未经过该岗位的专项效果评测。" : "Baseline safety adapted; specialist outcome evaluation is still pending.")}</span>
                     </p>
                     <div className="talent-dossier-traits">
                       {selected.traits[locale].map((trait) => <span key={trait}>#{trait}</span>)}
@@ -285,13 +300,14 @@ export default function TalentMarket({
                       <dl>
                         <div><dt>{locale === "zh" ? "策展" : "Curation"}</dt><dd>{isCurated ? "Hara curated" : "Community"}</dd></div>
                         <div><dt>{locale === "zh" ? "蓝图" : "Blueprint"}</dt><dd>v{selected.version}</dd></div>
-                        <div><dt>{locale === "zh" ? "上游" : "Upstream"}</dt><dd>Agency Agents · {SOURCE_SHORT}</dd></div>
+                        <div><dt>{locale === "zh" ? "上游" : "Upstream"}</dt><dd>{talentBlueprintSourceLabel(selected)} · {talentBlueprintSourceRevision(selected).slice(0, 7)}</dd></div>
                         <div><dt>{locale === "zh" ? "许可" : "License"}</dt><dd>{AGENCY_AGENTS_LICENSE}</dd></div>
+                        {localizationSource ? <div><dt>{locale === "zh" ? "中文本地化" : "Chinese localization"}</dt><dd>Agency Agents 中文版</dd></div> : null}
                       </dl>
                       <code title={selected.sourcePath}>{selected.sourcePath}</code>
                       <details>
                         <summary>{locale === "zh" ? "查看上游许可声明" : "View upstream license notice"}</summary>
-                        <pre>{AGENCY_AGENTS_LICENSE_NOTICE}</pre>
+                        <pre>{talentBlueprintLicenseNotice(selected)}</pre>
                       </details>
                     </section>
                   </div>
@@ -300,7 +316,7 @@ export default function TalentMarket({
                     <p><i aria-hidden>●</i>{locale === "zh" ? "入职后生成独立身份、私有提示词与工作历史" : "Hiring creates an independent identity, private prompt, and work history"}</p>
                     <button type="button" disabled={isHired} onClick={() => onHire(selected)}>
                       {isHired ? (locale === "zh" ? "已在你的团队" : "Already on your team") : (locale === "zh" ? "雇佣并配置" : "Hire & configure")}
-                      {!isHired ? <span aria-hidden>→</span> : null}
+                      {!isHired ? <span aria-hidden><IconArrowRight size={15} /></span> : null}
                     </button>
                   </footer>
                 </>

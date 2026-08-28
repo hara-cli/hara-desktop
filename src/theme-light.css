@@ -74,6 +74,18 @@ html[data-theme="light"] .task-auth-recovery details summary {
   color: var(--fg);
 }
 
+html[data-theme="light"] .task-manual-action {
+  border-color: #d8bc83;
+  background: #fffaf0;
+}
+
+html[data-theme="light"] .task-manual-command pre,
+html[data-theme="light"] .task-resume-phrase > code {
+  border-color: #d8d0c3;
+  background: #f3eee5;
+  color: #211b17;
+}
+
 /* Core shell and messaging */
 html[data-theme="light"] .app,
 html[data-theme="light"] .chat,

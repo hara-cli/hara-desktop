@@ -1,4 +1,4 @@
-import { useMemo, type RefObject } from "react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 import type { TaskLifecycleEvent } from "./client";
 import {
   countExecutionDetails,
@@ -15,6 +15,8 @@ import type { Key } from "./i18n";
 import { Md } from "./markdown";
 import { userVisibleTaskText } from "./user-visible-text";
 import { authenticationPausePresentation } from "./auth-recovery";
+import { IconCog } from "./icons";
+import { knownManualActionHintKeys } from "./task-manual-action";
 
 type TaskDependencyKind = NonNullable<
   NonNullable<TaskLifecycleEvent["checkpoint"]["completion"]>["dependency"]
@@ -66,7 +68,33 @@ interface ConversationTimelineProps {
   t: (key: Key) => string;
   onRewind: (itemIndex: number) => void;
   onApproval: (approvalId: string, verdict: ApprovalVerdict) => void;
-  onContinueTask?: () => void;
+  onContinueTask?: (instruction?: string) => void;
+}
+
+async function copyTaskText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the bounded, temporary selection path for older WebViews.
+  }
+  let input: HTMLTextAreaElement | undefined;
+  try {
+    input = document.createElement("textarea");
+    input.value = text;
+    input.readOnly = true;
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    input?.remove();
+  }
 }
 
 /** Pure projection of one session transcript. Runtime state and routing stay outside this component. */
@@ -81,6 +109,7 @@ export function ConversationTimeline({
   onApproval,
   onContinueTask,
 }: ConversationTimelineProps) {
+  const [copiedAction, setCopiedAction] = useState<"command" | "verify" | "resume" | null>(null);
   const visibleTask = taskState && taskState.state !== "completed" ? taskState : undefined;
   const taskLabel = visibleTask
     ? t(
@@ -99,6 +128,11 @@ export function ConversationTimeline({
   const dependencyLabel = dependency
     ? t(TASK_DEPENDENCY_LABELS[dependency.kind])
     : "";
+  const manualAction = dependency?.manualAction;
+  useEffect(
+    () => setCopiedAction(null),
+    [visibleTask?.taskId, manualAction?.command, manualAction?.verifyCommand, manualAction?.resumePhrase],
+  );
   const dependencyEvidence = dependency?.evidence[0]
     ? userVisibleTaskText(dependency.evidence[0], "")
     : "";
@@ -129,6 +163,80 @@ export function ConversationTimeline({
       )
     : "";
   const segments = useMemo(() => groupConversationItems(items), [items]);
+  const copyAction = (kind: "command" | "verify" | "resume", value: string): void => {
+    void copyTaskText(value).then((ok) => {
+      if (!ok) return;
+      setCopiedAction(kind);
+      window.setTimeout(() => setCopiedAction((current) => current === kind ? null : current), 1_600);
+    });
+  };
+  const manualCommand = manualAction?.command;
+  const verifyCommand = manualAction?.verifyCommand;
+  const resumePhrase = manualAction?.resumePhrase;
+  const manualHints = manualAction?.hints ?? [];
+  const knownHintKeys = knownManualActionHintKeys([
+    dependency?.detail,
+    ...(dependency?.evidence ?? []),
+  ]);
+  const manualActionCard = manualAction || knownHintKeys.length ? (
+    <div className="task-manual-action">
+      {manualCommand ? (
+        <div className="task-manual-command">
+          <div>
+            <strong>{t("taskManualCommand")}</strong>
+            <small>{t("taskManualCommandSafe")}</small>
+          </div>
+          <pre><code>{manualCommand}</code></pre>
+          <button type="button" onClick={() => copyAction("command", manualCommand)}>
+            {copiedAction === "command" ? t("taskCopied") : t("taskCopyCommand")}
+          </button>
+        </div>
+      ) : null}
+      {verifyCommand ? (
+        <div className="task-manual-command is-verification">
+          <div>
+            <strong>{t("taskVerifyCommand")}</strong>
+            <small>{t("taskVerifyCommandSafe")}</small>
+          </div>
+          <pre><code>{verifyCommand}</code></pre>
+          <button type="button" onClick={() => copyAction("verify", verifyCommand)}>
+            {copiedAction === "verify" ? t("taskCopied") : t("taskCopyVerifyCommand")}
+          </button>
+        </div>
+      ) : null}
+      {manualHints.length || knownHintKeys.length ? (
+        <div className="task-manual-hints">
+          <span>{t("taskFlagHints")}</span>
+          {manualHints.map((hint, index) => (
+            <div key={`${hint.term}-${index}`}>
+              <abbr title={hint.detail}><code>{hint.term}</code></abbr>
+              <small>{hint.detail}</small>
+            </div>
+          ))}
+          {knownHintKeys.map((key) => (
+            <div className="task-manual-known-hint" key={key}>
+              <span aria-hidden="true">!</span>
+              <small>{t(key)}</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {resumePhrase ? (
+        <div className="task-resume-phrase">
+          <span>{t("taskResumePhrase")}</span>
+          <code>{resumePhrase}</code>
+          <button type="button" onClick={() => copyAction("resume", resumePhrase)}>
+            {copiedAction === "resume" ? t("taskCopied") : t("taskCopyPhrase")}
+          </button>
+          {onContinueTask && !authenticationPause ? (
+            <button type="button" disabled={busy} onClick={() => onContinueTask(resumePhrase)}>
+              {t("taskContinueWithPhrase")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  ) : null;
 
   return (
     <>
@@ -166,7 +274,7 @@ export function ConversationTimeline({
               </div>
               <div className="task-auth-recovery-actions">
                 {onContinueTask ? (
-                  <button type="button" disabled={busy} onClick={onContinueTask}>
+                  <button type="button" disabled={busy} onClick={() => onContinueTask(resumePhrase)}>
                     {t("taskAuthenticationContinue")}
                   </button>
                 ) : null}
@@ -179,6 +287,7 @@ export function ConversationTimeline({
                   </p>
                 </details>
               </div>
+              {manualActionCard}
             </div>
           ) : blocker ? (
             <div className="task-progress-detail">
@@ -188,6 +297,7 @@ export function ConversationTimeline({
               {dependencyEvidence ? <small>{dependencyEvidence}</small> : null}
             </div>
           ) : null}
+          {!authenticationPause && manualActionCard}
           {!authenticationPause && (visibleTask.state === "blocked" || visibleTask.state === "paused") && nextStep && (
             <div className="task-progress-next">
               <span>{t("taskNextStep")}</span>
@@ -222,7 +332,7 @@ export function ConversationTimeline({
                     if (item.kind === "tool") {
                       return (
                         <div key={index} className="tool">
-                          ⚙ {item.name} <span className="dim">{item.preview}</span>
+                          <IconCog size={13} /> {item.name} <span className="dim">{item.preview}</span>
                         </div>
                       );
                     }
@@ -329,7 +439,7 @@ export function ConversationTimeline({
             return (
               <div className="busy">
                 {t("working")}
-                {displayMode !== "concise" && toolCount > 0 && ` · ⚙${toolCount}`}
+                {displayMode !== "concise" && toolCount > 0 && <span className="busy-tool-count"> · <IconCog size={12} />{toolCount}</span>}
                 {displayMode !== "concise" && diffCount > 0 && ` · ±${diffCount}`}
               </div>
             );

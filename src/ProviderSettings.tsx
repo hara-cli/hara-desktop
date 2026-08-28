@@ -13,6 +13,8 @@ import {
 } from "./client";
 import type { Locale } from "./i18n";
 import { ModelCombobox } from "./ModelCombobox";
+import { IconPlus } from "./icons";
+import { providerModelDescription } from "./provider-model-capabilities";
 
 interface Draft {
   provider: string;
@@ -126,6 +128,7 @@ const words = {
     knownModels: "Known models (verify this key before saving)",
     liveModels: "Authorized for this API key",
     tokenPlanAuth: "Token Plan uses the official fixed Beijing subscription Base URL shown above and an API key. There is no Token Plan browser login.",
+    tokenPlanMedia: "This chat list contains Agent conversation models only. Image, audio, realtime voice, and video generation use separate Hara capabilities.",
     miniMaxTokenPlanAuth: "MiniMax Token Plan uses the official Codex Responses Base URL shown above. MiniMax-M3 accepts text and image input.",
     legacyAlibaba: "Legacy Alibaba connection",
     legacyAlibabaHint: "This route remains readable, but its old DashScope/Qwen identity is no longer offered for new connections. Move it to the dedicated Token Plan connection.",
@@ -294,6 +297,7 @@ const words = {
     knownModels: "已知模型（保存前请用当前 Key 验证）",
     liveModels: "当前 API Key 已授权",
     tokenPlanAuth: "Token Plan 使用上方显示的华北 2（北京）官方固定 Base URL 和 API Key，不提供 Token Plan 浏览器登录。",
+    tokenPlanMedia: "此处只列可用于 Agent 对话的模型；图片、音频、实时语音和视频生成由 Hara 的独立能力入口提供。",
     miniMaxTokenPlanAuth: "MiniMax Token Plan 使用上方显示的官方 Codex Responses Base URL；MiniMax-M3 原生支持文字与图片输入。",
     legacyAlibaba: "旧版阿里云连接",
     legacyAlibabaHint: "此连接仍可读取，但旧 DashScope/Qwen 身份不再用于新建连接；请迁移到独立的 Token Plan 连接。",
@@ -1269,7 +1273,7 @@ export function ProviderSettings({
                 disabled={!personalConnectionsSupported || phase !== "idle" || !!personalBusy || !!organizationBusy}
                 onClick={() => beginPersonalConnection()}
               >
-                +
+                <IconPlus size={15} />
               </button>
             </div>
             <p className="provider-group-caption">
@@ -1303,7 +1307,7 @@ export function ProviderSettings({
             ))}
             {personalConnectionsSupported && state.connections?.length === 0 && (
               <button type="button" className="provider-enterprise-empty personal" onClick={() => beginPersonalConnection()}>
-                <span>+</span>
+                <span><IconPlus size={17} /></span>
                 <strong>{copy.addPersonal}</strong>
                 <small>{copy.addFirstPersonal}</small>
               </button>
@@ -1322,7 +1326,7 @@ export function ProviderSettings({
                 disabled={organizationsUnsupported || !!organizationBusy}
                 onClick={() => beginEnrollment()}
               >
-                +
+                <IconPlus size={15} />
               </button>
             </div>
             <p className="provider-group-caption">
@@ -1360,7 +1364,7 @@ export function ProviderSettings({
             })}
             {!organizationsUnsupported && organizations?.connections.length === 0 && (
               <button type="button" className="provider-enterprise-empty" onClick={() => beginEnrollment()}>
-                <span>+</span>
+                <span><IconPlus size={17} /></span>
                 <strong>{copy.addFirstOrganization}</strong>
                 <small>{copy.organizationEmptyHint}</small>
               </button>
@@ -1389,6 +1393,7 @@ export function ProviderSettings({
                   customOptionLabel={copy.customModel}
                   customBadge={copy.customModelBadge}
                   emptyLabel={copy.noModelMatches}
+                  describeOption={(model) => providerModelDescription(selected.id, model, locale)}
                   onChange={(model) => {
                     setDraft((current) => ({ ...current, model }));
                     clearFeedback();
@@ -1449,7 +1454,7 @@ export function ProviderSettings({
 
               {selected.auth === "none" && <div className="provider-note local">{copy.noKey}</div>}
               {selected.auth === "oauth" && <div className="provider-note">{copy.oauth}</div>}
-              {selected.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}</div>}
+              {selected.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               {selected.id === "minimax-token-plan" && <div className="provider-note">{copy.miniMaxTokenPlanAuth}</div>}
               <div className={`provider-data-path ${selected.location}`}>
                 {selected.location === "local" ? copy.dataLocal : copy.dataCloud}
@@ -1630,7 +1635,7 @@ export function ProviderSettings({
                 </label>
               )}
 
-              {personalProvider.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}</div>}
+              {personalProvider.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               {personalProvider.id === "minimax-token-plan" && <div className="provider-note">{copy.miniMaxTokenPlanAuth}</div>}
 
               {personalProvider.auth === "api-key" && (
@@ -1680,6 +1685,7 @@ export function ProviderSettings({
                   customOptionLabel={copy.customModel}
                   customBadge={copy.customModelBadge}
                   emptyLabel={copy.noModelMatches}
+                  describeOption={(model) => providerModelDescription(personalProvider.id, model, locale)}
                   onChange={(model) => {
                     setPersonalDraft((current) => ({ ...current, model }));
                     clearFeedback();

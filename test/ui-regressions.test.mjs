@@ -20,6 +20,15 @@ test("all Desktop composers keep IME commit Enter out of submit shortcuts", () =
   }
 });
 
+test("expired company Spaces stay visible for recovery but cannot be selected", () => {
+  const switcher = readFileSync(`${root}/src/SpaceSwitcher.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  assert.match(client, /accessState\?: OrganizationAccessState/);
+  assert.match(switcher, /space\.accessState === "expired" \|\| space\.accessState === "invalid"/);
+  assert.match(switcher, /spaceUnavailable && space\.id !== directory\.activeId/);
+  assert.match(switcher, /重新注册后可切换/);
+});
+
 test("the static Desktop cat mark keeps both traced eye apertures visible", () => {
   const mark = readFileSync(`${root}/src/mark.tsx`, "utf8");
 
@@ -77,6 +86,14 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(timeline, /userVisibleTaskText\(/, "renderer routing envelopes never leak into task progress");
   assert.match(timeline, /checkpoint\.blockReason/, "the persisted blocker is rendered instead of inferred from chat prose");
   assert.match(timeline, /checkpoint\.nextStep/, "paused and blocked work exposes its resumable next action");
+  assert.match(timeline, /className="task-manual-action"/, "external checkpoints render a structured action card");
+  assert.match(timeline, /copyTaskText\(/, "external commands can be copied without being executed");
+  assert.doesNotMatch(timeline, /(?:invoke|Command|exec|spawn)\([^\n]*manualCommand/, "the renderer never executes a supplied manual command");
+  assert.match(timeline, /manualAction\?\.verifyCommand/, "external checkpoints can expose a separate non-destructive verification command");
+  assert.match(timeline, /knownManualActionHintKeys/, "known external failure modes receive focused recovery hints");
+  assert.match(timeline, /<abbr title=\{hint\.detail\}>/, "command flags expose inline explanations");
+  assert.match(timeline, /onContinueTask\(resumePhrase\)/, "the explicit recovery phrase resumes the checkpoint");
+  assert.match(css, /\.task-manual-command pre/);
   assert.match(app, /taskState=\{taskStates\[active\]\}/, "the current session owns the displayed task checkpoint");
   assert.match(timeline, /<pre key=\{index\} className="diff">/);
   assert.match(diff, /flex:\s*0 0 auto\s*;/, "diff cards cannot be flex-shrunk until their body disappears");
@@ -156,6 +173,7 @@ test("external and not-yet-classified sessions never duplicate channel system no
 test("automation is one guided control console with local-only status refresh", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const automation = readFileSync(`${root}/src/Automations.tsx`, "utf8");
+  const automationCss = readFileSync(`${root}/src/Automations.css`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
 
   assert.match(app, /<AutomationSidebar/);
@@ -172,6 +190,23 @@ test("automation is one guided control console with local-only status refresh", 
   }
   assert.match(automation, /onContextMenu=\{\(event\) => onOpenMenu\(event, job, true\)\}/);
   assert.match(automation, /setEditor\(\{ kind: "duplicate", job \}\)/);
+  assert.match(app, /openDialog\(\{[\s\S]*directory: true,[\s\S]*multiple: false/);
+  assert.match(automation, /pickDirectory\(values\.cwd\.trim\(\) \|\| undefined\)/);
+  assert.match(automation, /className="hara-automation-directory-button"/);
+  assert.match(
+    automationCss,
+    /\.hara-automation-dialog \{[\s\S]*height:\s*min\(820px, calc\(100vh - 48px\)\)[\s\S]*grid-template-rows:\s*auto minmax\(0, 1fr\)/,
+    "the dialog owns a bounded viewport row so its action footer cannot leave the screen",
+  );
+  assert.match(
+    automationCss,
+    /\.hara-automation-editor \{[\s\S]*grid-template-rows:\s*minmax\(0, 1fr\) auto[\s\S]*min-height:\s*0[\s\S]*height:\s*100%/,
+    "long task instructions scroll in the editor panel while the footer stays reachable",
+  );
+  assert.match(automation, /body = copy\.schedulerUnsupportedBody/);
+  assert.match(automation, /scheduler\?\.supported === false\) return "manual"/);
+  assert.match(automation, /tone = "warning";[\s\S]*title = copy\.schedulerUnsupported/);
+  assert.match(automationCss, /\.hara-automation-status\.is-manual[\s\S]*var\(--automation-warning\)/);
   assert.match(automation, /<DeleteDialog/);
   assert.match(automation, /buildAutomationSchedule\(scheduleDraft\(values\)\)\.spec/);
   assert.match(
@@ -921,6 +956,14 @@ test("the model switchboard uses user-added enterprise connections instead of a 
     "a one-click organization switch refreshes the model route and Desk bundle together",
   );
   assert.doesNotMatch(app, /OrganizationSettings/, "the old detached enterprise card is not left below the model picker");
+});
+
+test("the provider visual QA preview can open the Token Plan creation flow", () => {
+  const preview = readFileSync(`${root}/src/ProviderSettingsPreview.tsx`, "utf8");
+
+  assert.match(preview, /scenario === "token-plan"[\s\S]*data-preview-action='add-personal'/);
+  assert.match(preview, /providerSelect\.value = "token-plan"/);
+  assert.doesNotMatch(preview, /data-provider-id='token-plan'/, "preview automation cannot target a provider tile that no longer exists");
 });
 
 test("a resumed conversation exposes its persisted profile inside the searchable model picker", () => {

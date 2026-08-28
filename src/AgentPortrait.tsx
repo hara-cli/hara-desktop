@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useState, type CSSProperties } from "react";
 import type { AgentPublicIdentity } from "./client";
 import { agentInitials, agentVisualTokens, renderableAgentAvatar } from "./agent-visual";
 import type { OfficeActorState } from "./agent-office";
@@ -30,22 +30,6 @@ function visualStyle(agentRef: string, identity?: AgentPublicIdentity): CSSPrope
   } as CSSProperties;
 }
 
-function Face({ variant }: { variant: number }): ReactNode {
-  return (
-    <>
-      <i className="agent-art-hair" />
-      <i className="agent-art-ear is-left" />
-      <i className="agent-art-ear is-right" />
-      <i className="agent-art-face">
-        <b className="agent-art-eye is-left" />
-        <b className="agent-art-eye is-right" />
-        <b className="agent-art-mouth" />
-        {variant === 2 || variant === 5 ? <b className="agent-art-glasses" /> : null}
-      </i>
-    </>
-  );
-}
-
 export const AgentPortrait = memo(function AgentPortrait({
   agentRef,
   name,
@@ -67,10 +51,9 @@ export const AgentPortrait = memo(function AgentPortrait({
       {avatar && !avatarFailed ? (
         <img src={avatar} alt="" draggable={false} loading="lazy" onError={() => setAvatarFailed(true)} />
       ) : (
-        <>
-          <span className="agent-portrait-art"><Face variant={visual.variant} /><i className="agent-art-outfit" /></span>
-          <span className="agent-portrait-initials">{agentInitials(identity?.displayName || name)}</span>
-        </>
+        <span className="agent-portrait-fallback">
+          <b>{agentInitials(identity?.displayName || name)}</b>
+        </span>
       )}
       {identity?.emoji ? <small className="agent-portrait-emoji">{identity.emoji}</small> : null}
       <i className="agent-portrait-presence" />
@@ -97,11 +80,11 @@ export const AgentCharacter = memo(function AgentCharacter({
       aria-hidden
       data-character={visual.archetype}
     >
-      <span className={`agent-character-head${avatar && !avatarFailed ? " has-avatar" : ""}`}>
+      <span className={`agent-character-head${avatar && !avatarFailed ? " has-avatar" : " is-fallback"}`}>
         {avatar && !avatarFailed ? (
           <img src={avatar} alt="" draggable={false} loading="lazy" onError={() => setAvatarFailed(true)} />
         ) : (
-          <Face variant={visual.variant} />
+          <b className="agent-character-monogram">{agentInitials(identity?.displayName || name).slice(0, 1)}</b>
         )}
       </span>
       <span className="agent-character-body"><i /><b>{identity?.emoji || agentInitials(identity?.displayName || name).slice(0, 1)}</b></span>

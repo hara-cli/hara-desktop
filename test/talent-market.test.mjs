@@ -4,59 +4,84 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   AGENT_BLUEPRINTS,
+  AGENCY_AGENT_CATALOG_STATS,
   AGENCY_AGENTS_LICENSE_NOTICE,
   AGENCY_AGENTS_SOURCE_REVISION,
+  AGENCY_AGENTS_ZH_LICENSE_NOTICE,
+  AGENCY_AGENTS_ZH_SOURCE_REVISION,
   COMMUNITY_AGENT_BLUEPRINTS,
   HARA_CURATED_BLUEPRINTS,
   TALENT_DEPARTMENTS,
   filterTalentBlueprints,
+  talentBlueprintAvatar,
   talentBlueprintInstallInput,
   talentBlueprintIdentity,
   talentBlueprintInstructions,
+  talentBlueprintIsCurated,
+  talentBlueprintIsDomestic,
+  talentBlueprintLicenseNotice,
+  talentBlueprintLocalizationSource,
 } from "../src/talent-blueprints.ts";
-import { agentVisualTokens } from "../src/agent-visual.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 test("talent catalog is curated, versioned, searchable, and provenance-bound", () => {
-  assert.equal(AGENT_BLUEPRINTS.length, 270);
+  assert.equal(AGENT_BLUEPRINTS.length, 308);
   assert.equal(HARA_CURATED_BLUEPRINTS.length, 31);
-  assert.equal(COMMUNITY_AGENT_BLUEPRINTS.length, 239);
+  assert.equal(COMMUNITY_AGENT_BLUEPRINTS.length, 277);
+  assert.equal(AGENCY_AGENT_CATALOG_STATS.chineseCatalog, 276);
+  assert.equal(AGENCY_AGENT_CATALOG_STATS.semanticDuplicatesRemoved, 10);
+  assert.equal(AGENCY_AGENT_CATALOG_STATS.domesticAdditions, 38);
+  assert.equal(AGENT_BLUEPRINTS.filter(talentBlueprintIsDomestic).length, 38);
   assert.equal(new Set(AGENT_BLUEPRINTS.map((item) => item.id)).size, AGENT_BLUEPRINTS.length);
   assert.equal(new Set(AGENT_BLUEPRINTS.map((item) => item.username)).size, AGENT_BLUEPRINTS.length);
-  assert.equal(TALENT_DEPARTMENTS.length, 19);
+  assert.equal(TALENT_DEPARTMENTS.length, 22);
   assert.match(AGENCY_AGENTS_LICENSE_NOTICE, /Copyright \(c\) 2025 AgentLand Contributors/);
+  assert.match(AGENCY_AGENTS_ZH_LICENSE_NOTICE, /Copyright \(c\) 2026 jnMetaCode/);
   assert.match(talentBlueprintInstallInput(HARA_CURATED_BLUEPRINTS[0]).publisher, /Hara · curated/);
   assert.match(talentBlueprintInstallInput(COMMUNITY_AGENT_BLUEPRINTS[0]).publisher, /community import/);
+  assert.match(
+    talentBlueprintInstallInput(AGENT_BLUEPRINTS.find((item) => talentBlueprintIsDomestic(item))).publisher,
+    /Agency Agents 中文版/,
+  );
 
-  const illustrated = HARA_CURATED_BLUEPRINTS.filter((item) => item.avatar);
-  assert.ok(illustrated.length >= 3, "finance, sales, and people heroes carry distinct reviewed portraits");
-  for (const blueprint of illustrated) {
-    assert.match(blueprint.avatar, /^\/avatars\/talent\/[a-z0-9._-]+\.webp$/);
-    const portraitPath = `${root}/public${blueprint.avatar}`;
-    assert.equal(existsSync(portraitPath), true);
-    assert.ok(statSync(portraitPath).size <= 128 * 1024, "packaged portraits stay lightweight");
-    assert.equal(talentBlueprintIdentity(blueprint, "zh").avatar, blueprint.avatar);
+  const portraitPaths = new Set();
+  for (const blueprint of AGENT_BLUEPRINTS) {
+    const avatar = talentBlueprintAvatar(blueprint);
+    assert.match(avatar, /^\/avatars\/talent\/(?:v2\/)?[a-z0-9._-]+\.webp$/);
+    assert.equal(portraitPaths.has(avatar), false, `portrait path must be unique: ${avatar}`);
+    portraitPaths.add(avatar);
+    const portraitPath = `${root}/public${avatar}`;
+    if (talentBlueprintIsCurated(blueprint)) {
+      assert.equal(existsSync(portraitPath), true, `curated portrait must exist: ${blueprint.username}`);
+    }
+    if (existsSync(portraitPath)) {
+      assert.ok(statSync(portraitPath).size <= 64 * 1024, `packaged portrait stays lightweight: ${blueprint.username}`);
+    }
+    assert.equal(talentBlueprintIdentity(blueprint, "zh").avatar, avatar);
   }
-
-  const generatedVisuals = new Set(AGENT_BLUEPRINTS.map((blueprint) => {
-    const visual = agentVisualTokens(`talent:${blueprint.id}`, talentBlueprintIdentity(blueprint, "zh"));
-    return `${visual.skin}:${visual.hair}:${visual.variant}`;
-  }));
-  assert.ok(generatedVisuals.size >= 40, "the fallback roster should not collapse into a handful of lookalikes");
+  assert.equal(portraitPaths.size, AGENT_BLUEPRINTS.length);
 
   for (const blueprint of AGENT_BLUEPRINTS) {
     assert.equal(blueprint.version, "1.0.0");
-    assert.match(blueprint.id, /^agency-agents\/[a-z0-9._/-]+$/);
+    assert.match(blueprint.id, /^agency-agents(?:-zh)?\/[a-z0-9._/-]+$/);
     assert.match(blueprint.username, /^[a-z0-9][a-z0-9._-]{0,63}$/);
     assert.ok(blueprint.sourcePath.endsWith(".md"));
     assert.ok(blueprint.tasks.en.length >= 3);
     assert.ok(blueprint.tasks.zh.length >= 3);
+    assert.ok(blueprint.name.en.trim());
+    assert.ok(blueprint.name.zh.trim());
+    assert.ok(blueprint.bio.en.trim());
+    assert.ok(blueprint.bio.zh.trim());
+    assert.match(blueprint.title.zh, /\p{Script=Han}/u);
     assert.ok(blueprint.qualityBar.length >= 3);
     const install = talentBlueprintInstallInput(blueprint);
-    assert.equal(install.sourceRevision, AGENCY_AGENTS_SOURCE_REVISION);
+    const expectedRevision = talentBlueprintIsDomestic(blueprint)
+      ? AGENCY_AGENTS_ZH_SOURCE_REVISION
+      : AGENCY_AGENTS_SOURCE_REVISION;
+    assert.equal(install.sourceRevision, expectedRevision);
     assert.equal(install.license, "MIT");
-    assert.ok(install.source.includes(`/${AGENCY_AGENTS_SOURCE_REVISION}/`));
+    assert.ok(install.source.includes(`/${expectedRevision}/`));
     assert.ok(install.source.endsWith(blueprint.sourcePath));
     const instructions = talentBlueprintInstructions(blueprint);
     assert.ok(instructions.length < 16_000);
@@ -64,7 +89,27 @@ test("talent catalog is curated, versioned, searchable, and provenance-bound", (
     assert.match(instructions, /never grants permissions/);
     assert.match(instructions, /current Personal or Company Space/);
     assert.match(instructions, /approved learning or memory mechanisms/);
+    assert.match(talentBlueprintLicenseNotice(blueprint), /MIT License/);
   }
+
+  const localizedCommunity = COMMUNITY_AGENT_BLUEPRINTS.find((item) => item.localizationSourcePath);
+  assert.ok(localizedCommunity);
+  assert.match(talentBlueprintLocalizationSource(localizedCommunity), /agency-agents-zh\/blob/);
+  assert.notEqual(localizedCommunity.title.en, localizedCommunity.title.zh);
+
+  const removedDuplicateIds = [
+    "agency-agents-zh/company/chief-financial-officer",
+    "agency-agents-zh/company/chief-of-staff",
+    "agency-agents-zh/engineering/security-engineer",
+    "agency-agents-zh/engineering/threat-detection-engineer",
+    "agency-agents-zh/marketing/ecommerce-operator",
+    "agency-agents-zh/marketing/wechat-operator",
+    "agency-agents-zh/marketing/xiaohongshu-operator",
+    "agency-agents-zh/specialized/prompt-engineer",
+    "agency-agents-zh/specialized/technical-translator-agent",
+    "agency-agents-zh/support/recruitment-specialist",
+  ];
+  assert.deepEqual(AGENT_BLUEPRINTS.filter((item) => removedDuplicateIds.includes(item.id)), []);
 });
 
 test("talent search accepts outcomes in Chinese or English without loading candidates into the Agent directory", () => {
@@ -80,6 +125,11 @@ test("talent search accepts outcomes in Chinese or English without loading candi
   assert.ok(filterTalentBlueprints(AGENT_BLUEPRINTS, "", "finance").length >= 8);
   assert.ok(filterTalentBlueprints(AGENT_BLUEPRINTS, "", "sales").length >= 12);
   assert.ok(filterTalentBlueprints(AGENT_BLUEPRINTS, "", "people").length >= 5);
+  assert.ok(filterTalentBlueprints(AGENT_BLUEPRINTS, "香港 合规", "finance").some((item) => item.username === "hk-stock-compliance-reviewer"));
+  assert.ok(filterTalentBlueprints(AGENT_BLUEPRINTS, "钉钉 集成", "engineering").some((item) => item.username === "dingtalk-integration-developer"));
+  assert.ok(filterTalentBlueprints(AGENT_BLUEPRINTS, "", "leadership").length >= 5);
+  assert.ok(filterTalentBlueprints(AGENT_BLUEPRINTS, "", "legal").length >= 2);
+  assert.ok(filterTalentBlueprints(AGENT_BLUEPRINTS, "", "supply-chain").length >= 4);
 });
 
 test("Desktop keeps discovery lazy and hiring explicit", () => {
@@ -88,6 +138,8 @@ test("Desktop keeps discovery lazy and hiring explicit", () => {
   const hire = readFileSync(`${root}/src/HireAgentDialog.tsx`, "utf8");
   const lightweightBlueprint = readFileSync(`${root}/src/talent-blueprint.ts`, "utf8");
   const portrait = readFileSync(`${root}/src/AgentPortrait.tsx`, "utf8");
+  const portraitCss = readFileSync(`${root}/src/AgentPortrait.css`, "utf8");
+  const portraitGate = readFileSync(`${root}/scripts/talent-avatar-queue.mjs`, "utf8");
   const css = readFileSync(`${root}/src/TalentMarket.css`, "utf8");
 
   assert.match(app, /const loadTalentMarket = \(\) => import\("\.\/TalentMarket"\)/);
@@ -110,7 +162,24 @@ test("Desktop keeps discovery lazy and hiring explicit", () => {
   assert.doesNotMatch(hire, /from "\.\/talent-blueprints(?:\.ts)?"/);
   assert.doesNotMatch(lightweightBlueprint, /generated\/agency-agent-records/);
   assert.match(portrait, /agent-character-head\$\{avatar && !avatarFailed/);
+  assert.match(portrait, /agent-character-monogram/);
+  assert.doesNotMatch(portrait, /function Face/);
+  assert.doesNotMatch(portraitCss, /agent-art-(?:face|hair|eye|mouth|glasses|outfit)/);
+  assert.match(portraitGate, /unexpected\.length/);
+  assert.match(portraitGate, /duplicate group\(s\)/);
+  assert.match(portraitGate, /PORTRAIT_EDGE = 256/);
   assert.match(css, /Hara Talent Bureau/);
   assert.match(css, /prefers-reduced-motion/);
+  assert.match(
+    css,
+    /\.talent-market-stats \{[\s\S]*?width:\s*min\(100%, 400px\);[\s\S]*?grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/,
+    "market statistics use bounded tracks instead of overflowing the hero",
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 560px\) \{[\s\S]*?\.talent-market-card-grid \{ grid-template-columns: 1fr; \}/,
+    "compact windows use readable single-column candidate cards",
+  );
+  assert.doesNotMatch(css, /talent-market-stats > span:nth-child\(2\)[^{]*\{[^}]*display:\s*none/, "compact layouts keep every catalog statistic available");
   assert.doesNotMatch(app, /AGENT_BLUEPRINTS/);
 });

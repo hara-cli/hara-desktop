@@ -2,8 +2,9 @@ import {
   IconBot,
   IconChat,
   IconCog,
-  IconDocument,
   IconFolder,
+  IconOffice,
+  IconTasks,
   IconUsers,
 } from "./icons";
 import type {
@@ -53,7 +54,8 @@ export function NavigationGlyph({
   if (name === "chat") return <IconChat size={size} />;
   if (name === "projects") return <IconFolder size={size} />;
   if (name === "groups") return <IconUsers size={size} />;
-  if (name === "office") return <IconDocument size={size} />;
+  if (name === "office") return <IconOffice size={size} />;
+  if (name === "tasks") return <IconTasks size={size} />;
   return <IconBot size={size} />;
 }
 

@@ -7,6 +7,7 @@ import type {
   PetChatSubmit,
 } from "./pets";
 import { isImeCompositionKey } from "./ime";
+import { IconArrowUpRight, IconClose } from "./icons";
 import "./PetChat.css";
 
 const EMPTY_STATE: PetChatState = {
@@ -183,14 +184,14 @@ export default function PetChat() {
             aria-label={zh ? "在主窗口打开" : "Open in main window"}
             onClick={() => void emitTo("main", "hara-pet-chat-open-main", { sessionId: state.sessionId })}
           >
-            ↗
+            <IconArrowUpRight size={15} />
           </button>
           <button
             title={zh ? "关闭" : "Close"}
             aria-label={zh ? "关闭" : "Close"}
             onClick={() => void emitTo("main", "hara-pet-chat-close", null)}
           >
-            ×
+            <IconClose size={15} />
           </button>
         </div>
       </header>

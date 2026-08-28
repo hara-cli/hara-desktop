@@ -1,7 +1,7 @@
 {
   "name": "hara-desktop",
   "private": true,
-  "version": "0.1.114",
+  "version": "0.1.115",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -11,7 +11,8 @@
     "audit:release-channel": "node scripts/release-channel-audit.mjs",
     "dev": "vite",
     "generate:talent-catalog": "node scripts/build-agency-talent-catalog.mjs",
-    "build": "tsc && vite build",
+    "check:talent-avatars": "node --experimental-strip-types scripts/talent-avatar-queue.mjs --validate",
+    "build": "npm run check:talent-avatars && tsc && vite build",
     "check:release": "node scripts/check-release-metadata.mjs",
     "verify:windows-authenticode": "node scripts/windows-authenticode-receipt.mjs",
     "test": "node --test test/*.test.mjs",

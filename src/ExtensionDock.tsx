@@ -14,6 +14,7 @@ import {
   type ExtensionDockMode,
   type ExtensionSurfaceKind,
 } from "./extension-dock-state";
+import { IconChevronDown, IconPlus } from "./icons";
 import "./ExtensionDock.css";
 
 interface ExtensionDockCopy {
@@ -147,9 +148,9 @@ export function ExtensionViewLauncher({
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        <span aria-hidden>+</span>
+        <span aria-hidden><IconPlus size={15} /></span>
         {variant === "anchor" && <span className="extension-view-launcher-label">{label}</span>}
-        {variant === "anchor" && <span className="extension-view-launcher-chevron" aria-hidden>⌄</span>}
+        {variant === "anchor" && <span className="extension-view-launcher-chevron" aria-hidden><IconChevronDown size={12} /></span>}
       </button>
       {open && (
         <div className="extension-dock-add-menu" role="menu" aria-label={label}>

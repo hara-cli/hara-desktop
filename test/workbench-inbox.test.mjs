@@ -6,6 +6,7 @@ import {
   filterInboxSessions,
   inboxSessionsForAgent,
   sortInboxSessions,
+  visibleExternalSessions,
 } from "../src/workbench-inbox.ts";
 
 const session = (id, updatedAt, options = {}) => ({
@@ -86,4 +87,36 @@ test("pinned conversations lead while the rest remain latest-first", () => {
     "new",
     "middle",
   ]);
+});
+
+test("external coding sessions remain a distinct, searchable, latest-first inbox facet", () => {
+  const sessions = [
+    {
+      id: "ext_codex_old",
+      sourceId: "codex",
+      title: "Architecture audit",
+      workspaceName: "hara",
+      workspaceId: "ws_hara",
+      state: "idle",
+      createdAt: "2026-08-20T10:00:00.000Z",
+      updatedAt: "2026-08-21T10:00:00.000Z",
+      origin: "cli",
+      ephemeral: false,
+    },
+    {
+      id: "ext_codex_new",
+      sourceId: "codex",
+      title: "Release verification",
+      workspaceName: "control",
+      workspaceId: "ws_control",
+      state: "waiting",
+      createdAt: "2026-08-22T10:00:00.000Z",
+      updatedAt: "2026-08-23T10:00:00.000Z",
+      origin: "vscode",
+      ephemeral: false,
+    },
+  ];
+  assert.deepEqual(visibleExternalSessions(sessions).map((item) => item.id), ["ext_codex_new", "ext_codex_old"]);
+  assert.deepEqual(visibleExternalSessions(sessions, "hara").map((item) => item.id), ["ext_codex_old"]);
+  assert.deepEqual(visibleExternalSessions(sessions, "waiting").map((item) => item.id), ["ext_codex_new"]);
 });

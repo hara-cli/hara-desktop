@@ -169,3 +169,33 @@ test("saved provider details keep readable semantic ink in both themes", () => {
     }
   }
 });
+
+test("external session center inherits semantic light and dark theme colors", () => {
+  const source = readFileSync(`${root}/src/ExternalSessionCenter.css`, "utf8");
+  assert.match(source, /--external-ink:\s*var\(--text,/);
+  assert.match(source, /--external-muted:\s*var\(--muted,/);
+  assert.match(source, /color:\s*var\(--external-ink\)/);
+  assert.match(source, /var\(--bg,/);
+  assert.match(source, /var\(--surface-panel,/);
+});
+
+test("shared interface icons inherit semantic color and replace font-dependent controls", () => {
+  const icons = readFileSync(`${root}/src/icons.tsx`, "utf8");
+  const rail = readFileSync(`${root}/src/AppRail.tsx`, "utf8");
+  const talent = readFileSync(`${root}/src/TalentMarket.tsx`, "utf8");
+  const profile = readFileSync(`${root}/src/AgentProfileEditor.tsx`, "utf8");
+  const providers = readFileSync(`${root}/src/ProviderSettings.tsx`, "utf8");
+  const external = readFileSync(`${root}/src/ExternalSessionCenter.tsx`, "utf8");
+
+  assert.match(icons, /stroke="currentColor"/);
+  assert.doesNotMatch(icons, /(?:stroke|fill)="#[0-9a-f]{3,8}"/i);
+  assert.match(rail, /name === "tasks"[\s\S]*<IconTasks/);
+  assert.match(rail, /name === "office"[\s\S]*<IconOffice/);
+  assert.match(talent, /<IconSearch/);
+  assert.match(talent, /<IconClose/);
+  assert.match(profile, /<IconClose/);
+  assert.match(providers, /<IconPlus/);
+  assert.match(external, /<IconRefresh/);
+  assert.match(external, /<IconCommandLine/);
+  assert.doesNotMatch(`${talent}\n${profile}\n${external}`, />\s*[×⌕↻]\s*</u);
+});

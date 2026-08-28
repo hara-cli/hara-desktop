@@ -422,18 +422,13 @@ fn offscreen_window_recovery(
 
 /// Grow the main window for a side-by-side work object without covering the primary workbench.
 /// The result never leaves the monitor work area and never shrinks a user-sized window.
-fn extension_window_growth(
-    window: WindowRect,
-    work_area: DisplayWorkArea,
-) -> Option<WindowRect> {
+fn extension_window_growth(window: WindowRect, work_area: DisplayWorkArea) -> Option<WindowRect> {
     if !window.has_area() || !work_area.rect.has_area() || !window.intersects(work_area.rect) {
         return None;
     }
-    let target_width = logical_to_physical_dimension(
-        EXTENSION_MAIN_WINDOW_WIDTH,
-        work_area.scale_factor,
-    )
-    .min(work_area.rect.width);
+    let target_width =
+        logical_to_physical_dimension(EXTENSION_MAIN_WINDOW_WIDTH, work_area.scale_factor)
+            .min(work_area.rect.width);
     if target_width <= window.width {
         return None;
     }
@@ -1854,6 +1849,9 @@ fn available_serve_port() -> Result<u16, String> {
 fn serve_command(executable: &Path, port: u16) -> std::process::Command {
     let mut command = std::process::Command::new(executable);
     command.args(["serve", "--port", &port.to_string()]);
+    // The sidecar uses this marker only for Desktop-owned migrations such as repairing an already
+    // installed Hara scheduler path after an app rename/move. It never auto-installs new OS services.
+    command.env("HARA_DESKTOP_SIDECAR", "1");
     command
 }
 
@@ -2429,15 +2427,11 @@ fn node_runtime_candidates(
     windows: bool,
 ) -> Vec<PathBuf> {
     let node_name = if windows { "node.exe" } else { "node" };
-    let mut candidates = path_environment
-        .into_iter()
-        .flat_map(std::env::split_paths)
-        .filter(|directory| directory.is_absolute())
-        .take(128)
-        .map(|directory| directory.join(node_name))
-        .collect::<Vec<_>>();
-
-    candidates.extend([
+    // Prefer bounded user runtime-manager installs. A Desktop process often inherits a stale system
+    // PATH (or a project-local shim); probing that first can both select the wrong Node and delay a known
+    // good NVM/FNM runtime under load. `supported_node_runtime` still scans later candidates when an early
+    // managed runtime is only Node 18 and a preferred Node 22+ exists elsewhere.
+    let mut candidates = vec![
         home.join(".volta").join("bin").join(node_name),
         home.join(".local")
             .join("share")
@@ -2445,7 +2439,7 @@ fn node_runtime_candidates(
             .join("shims")
             .join(node_name),
         home.join(".asdf").join("shims").join(node_name),
-    ]);
+    ];
     append_versioned_node_candidates(
         &mut candidates,
         &home.join(".nvm").join("versions").join("node"),
@@ -2455,6 +2449,15 @@ fn node_runtime_candidates(
         &mut candidates,
         &home.join(".fnm").join("node-versions"),
         &PathBuf::from("installation").join("bin").join(node_name),
+    );
+
+    candidates.extend(
+        path_environment
+            .into_iter()
+            .flat_map(std::env::split_paths)
+            .filter(|directory| directory.is_absolute())
+            .take(128)
+            .map(|directory| directory.join(node_name)),
     );
 
     if windows {
@@ -3017,8 +3020,14 @@ mod updater_tests {
 
     #[test]
     fn macos_updater_target_is_explicit_and_architecture_specific() {
-        assert_eq!(macos_updater_target("macos", "x86_64"), Some("darwin-x86_64"));
-        assert_eq!(macos_updater_target("macos", "aarch64"), Some("darwin-aarch64"));
+        assert_eq!(
+            macos_updater_target("macos", "x86_64"),
+            Some("darwin-x86_64")
+        );
+        assert_eq!(
+            macos_updater_target("macos", "aarch64"),
+            Some("darwin-aarch64")
+        );
         assert_eq!(macos_updater_target("windows", "x86_64"), None);
         assert_eq!(macos_updater_target("macos", "arm"), None);
     }
@@ -3567,6 +3576,9 @@ mod pet_tests {
                 OsStr::new("49152")
             ]
         );
+        assert!(command.get_envs().any(|(key, value)| {
+            key == OsStr::new("HARA_DESKTOP_SIDECAR") && value == Some(OsStr::new("1"))
+        }));
     }
 
     #[cfg(unix)]
@@ -3973,36 +3985,76 @@ mod pet_tests {
         });
         assert_eq!(
             extension_window_growth(
-                WindowRect { x: 120, y: 80, width: 1100, height: 760 },
+                WindowRect {
+                    x: 120,
+                    y: 80,
+                    width: 1100,
+                    height: 760
+                },
                 work_area,
             ),
-            Some(WindowRect { x: 120, y: 80, width: 1480, height: 760 }),
+            Some(WindowRect {
+                x: 120,
+                y: 80,
+                width: 1480,
+                height: 760
+            }),
         );
         assert_eq!(
             extension_window_growth(
-                WindowRect { x: 700, y: 80, width: 1100, height: 760 },
+                WindowRect {
+                    x: 700,
+                    y: 80,
+                    width: 1100,
+                    height: 760
+                },
                 work_area,
             ),
-            Some(WindowRect { x: 440, y: 80, width: 1480, height: 760 }),
+            Some(WindowRect {
+                x: 440,
+                y: 80,
+                width: 1480,
+                height: 760
+            }),
         );
     }
 
     #[test]
     fn extension_window_never_shrinks_or_exceeds_a_retina_work_area() {
         let retina = DisplayWorkArea {
-            rect: WindowRect { x: 0, y: 48, width: 3024, height: 1916 },
+            rect: WindowRect {
+                x: 0,
+                y: 48,
+                width: 3024,
+                height: 1916,
+            },
             scale_factor: 2.0,
         };
         assert_eq!(
             extension_window_growth(
-                WindowRect { x: 20, y: 80, width: 2200, height: 1520 },
+                WindowRect {
+                    x: 20,
+                    y: 80,
+                    width: 2200,
+                    height: 1520
+                },
                 retina,
             ),
-            Some(WindowRect { x: 20, y: 80, width: 2960, height: 1520 }),
+            Some(WindowRect {
+                x: 20,
+                y: 80,
+                width: 2960,
+                height: 1520
+            }),
         );
         assert_eq!(
             extension_window_growth(
-                WindowRect { x: 0, y: 48, width: 3024, height: 1700 },
+                WindowRect {
+                    x: 0,
+                    y: 48,
+                    width: 3024,
+                    height: 1700
+                },
                 retina,
             ),
             None,

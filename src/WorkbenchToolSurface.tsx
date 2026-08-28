@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { HaraClient, TaskLifecycleEvent } from "./client";
 import type { ConversationItem } from "./ConversationTimeline";
+import { IconDocument, IconFolder, IconSearch } from "./icons";
 import type {
   ReviewExtension,
   WorkbenchToolExtension,
@@ -191,7 +192,7 @@ function FilesSurface({
     <section className="workbench-tool-surface is-files">
       <SurfaceIntro title={copy.files} hint={copy.filesHint} />
       <div className="workbench-files-search">
-        <span aria-hidden>⌕</span>
+        <span aria-hidden><IconSearch size={16} /></span>
         <input
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
@@ -207,7 +208,7 @@ function FilesSurface({
         {!error && !loading && files.length === 0 ? <p className="workbench-tool-empty">{copy.filesEmpty}</p> : null}
         {files.map((file) => (
           <button key={file} type="button" title={`${copy.filesUse}: ${file}`} onClick={() => onCompose(`@${file} `)}>
-            <span aria-hidden>{file.includes("/") ? "⌞" : "◇"}</span>
+            <span aria-hidden>{file.includes("/") ? <IconFolder size={15} /> : <IconDocument size={15} />}</span>
             <strong>{file}</strong>
             <small>{copy.filesUse}</small>
           </button>

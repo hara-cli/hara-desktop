@@ -109,6 +109,15 @@
   background: var(--bg3);
 }
 
+.space-switcher-menu > button.is-unavailable {
+  opacity: 0.62;
+}
+
+.space-switcher-menu > button.is-unavailable .space-mark {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg));
+}
+
 .space-switcher-menu > button > span:nth-child(2) {
   min-width: 0;
   display: flex;

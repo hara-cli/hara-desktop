@@ -9,6 +9,7 @@ interface ModelComboboxProps {
   customOptionLabel: string;
   customBadge: string;
   emptyLabel: string;
+  describeOption?: (model: string) => string | undefined;
   onChange: (value: string) => void;
 }
 
@@ -29,6 +30,7 @@ export function ModelCombobox({
   customOptionLabel,
   customBadge,
   emptyLabel,
+  describeOption,
   onChange,
 }: ModelComboboxProps) {
   const listboxId = useId();
@@ -194,8 +196,11 @@ export function ModelCombobox({
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => commit(choice)}
             >
-              <span>{choice.custom ? `${customOptionLabel}: ${choice.value}` : choice.value}</span>
-              <small>{choice.custom ? customBadge : choice.value === value ? "✓" : ""}</small>
+              <span className="model-combobox-option-copy">
+                <strong>{choice.custom ? `${customOptionLabel}: ${choice.value}` : choice.value}</strong>
+                {!choice.custom && describeOption?.(choice.value) ? <small>{describeOption(choice.value)}</small> : null}
+              </span>
+              <small className="model-combobox-option-state">{choice.custom ? customBadge : choice.value === value ? "✓" : ""}</small>
             </button>
           )) : (
             <div className="model-combobox-empty">{emptyLabel}</div>

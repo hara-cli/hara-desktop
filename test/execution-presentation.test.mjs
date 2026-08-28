@@ -54,6 +54,22 @@ test("standard summaries list a bounded set of distinct tool names", () => {
   assert.deepEqual(executionToolNames(segment.items, 0), []);
 });
 
+test("tool-only assistant protocol turns never render as blank chat bubbles", () => {
+  const segments = groupConversationItems([
+    { kind: "user", text: "inspect it" },
+    { kind: "text", text: "" },
+    { kind: "tool", name: "read_file", preview: "src/App.tsx" },
+    { kind: "text", text: "   \n" },
+    { kind: "text", text: "Inspection complete." },
+  ]);
+
+  assert.deepEqual(
+    segments.map((segment) => segment.kind),
+    ["item", "execution", "item"],
+  );
+  assert.equal(segments[2].item.text, "Inspection complete.");
+});
+
 test("only user-visible tool activity and diffs are execution details", () => {
   for (const item of [
     { kind: "tool", name: "read_file", preview: "x" },

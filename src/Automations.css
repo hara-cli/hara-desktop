@@ -671,6 +671,10 @@
   color: var(--automation-muted);
 }
 
+.hara-automation-status.is-manual {
+  color: var(--automation-warning);
+}
+
 .hara-automation-status.is-attention,
 .hara-automation-status.is-offline {
   color: var(--automation-danger);
@@ -1299,7 +1303,10 @@
   --automation-line: var(--border, #2a2a30);
   --automation-danger: #e16e61;
   width: min(880px, calc(100vw - 48px));
+  height: min(820px, calc(100vh - 48px));
   max-height: min(820px, calc(100vh - 48px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--automation-line) 80%, white 5%);
   border-radius: 16px;
@@ -1315,6 +1322,7 @@
 
 .hara-automation-dialog.is-small {
   width: min(480px, calc(100vw - 48px));
+  height: auto;
 }
 
 .hara-automation-dialog-titlebar {
@@ -1357,12 +1365,13 @@
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
-  max-height: calc(100vh - 128px);
+  min-height: 0;
+  height: 100%;
 }
 
 .hara-automation-editor-steps {
   display: flex;
-  min-height: 480px;
+  min-height: 0;
   flex-direction: column;
   gap: 5px;
   margin: 0;
@@ -1370,6 +1379,7 @@
   border-right: 1px solid var(--automation-line);
   background: color-mix(in srgb, var(--automation-base) 40%, transparent);
   list-style: none;
+  overflow-y: auto;
 }
 
 .hara-automation-editor-steps li {
@@ -1414,9 +1424,11 @@
 }
 
 .hara-automation-editor-panel {
-  min-height: 480px;
+  min-height: 0;
   padding: 22px clamp(22px, 4vw, 38px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .hara-automation-form-section {
@@ -1538,6 +1550,25 @@
 
 .hara-automation-input-with-icon input {
   padding-left: 35px;
+  padding-right: 112px;
+}
+
+.hara-automation-directory-button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-height: 31px !important;
+  padding: 0 11px !important;
+  border-color: color-mix(in srgb, var(--automation-coral) 24%, var(--automation-line)) !important;
+  color: var(--automation-ink) !important;
+  background: color-mix(in srgb, var(--automation-coral) 8%, var(--automation-raised)) !important;
+  box-shadow: none !important;
+  font-size: 9px !important;
+}
+
+.hara-automation-directory-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--automation-coral) 55%, var(--automation-line)) !important;
+  background: color-mix(in srgb, var(--automation-coral) 14%, var(--automation-raised)) !important;
 }
 
 .hara-automation-choice-field,
@@ -1812,6 +1843,7 @@
   padding: 12px 18px;
   border-top: 1px solid var(--automation-line);
   background: color-mix(in srgb, var(--automation-base) 34%, transparent);
+  z-index: 1;
 }
 
 .hara-automation-dialog-footer > span {
@@ -2023,6 +2055,7 @@
 
   .hara-automation-editor {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
   .hara-automation-editor-steps {
@@ -2138,6 +2171,10 @@
     width: calc(100vw - 20px);
     max-height: calc(100vh - 20px);
     border-radius: 12px;
+  }
+
+  .hara-automation-dialog:not(.is-small) {
+    height: calc(100vh - 20px);
   }
 
   .hara-automation-choice-field {

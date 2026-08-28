@@ -67,13 +67,86 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "desk.connections.list",
                 "desk.snapshot",
                 "desk.task.get",
+                "external.sources.list",
+                "external.sessions.list",
+                "external.sessions.read",
+                "external.sessions.fork",
+                "external.sessions.submit",
+                "external.sessions.interrupt",
               ],
-              events: ["event.task_state", "event.surface"],
-              features: ["composer.attachments.v1", "models.capabilities.v1", "collaboration.remote.v1"],
+              events: ["event.task_state", "event.surface", "external.event.text", "external.approval.request"],
+              features: ["composer.attachments.v1", "models.capabilities.v1", "collaboration.remote.v1", "external.sessions.interaction.v1"],
             },
           } : request.method.startsWith("settings.gateways.login.")
             ? { login }
-            : request.method === "desk.connections.list"
+              : request.method === "external.sources.list"
+                ? {
+                    sources: [{
+                      id: "codex",
+                      label: "Codex",
+                      state: "ready",
+                      capabilities: { listMetadata: true, read: true, fork: true, resume: true, observeLive: false, submit: true, interrupt: true },
+                    }],
+                  }
+              : request.method === "external.sessions.list"
+                ? {
+                    sources: [{
+                      id: "codex",
+                      label: "Codex",
+                      state: "ready",
+                      capabilities: { listMetadata: true, read: true, fork: true, resume: true, observeLive: false, submit: true, interrupt: true },
+                    }],
+                    sessions: [{
+                      id: "ext_codex_safe",
+                      sourceId: "codex",
+                      title: "Release audit",
+                      workspaceName: "hara",
+                      workspaceId: "ws_safe",
+                      state: "stored",
+                      createdAt: "2026-08-28T00:00:00.000Z",
+                      updatedAt: "2026-08-28T00:00:01.000Z",
+                      ephemeral: false,
+                    }],
+                    page: { limit: request.params.limit, hasMore: false },
+                  }
+              : request.method === "external.sessions.read"
+                ? {
+                    session: {
+                      id: request.params.sessionId,
+                      sourceId: "codex",
+                      title: "Release audit",
+                      workspaceName: "hara",
+                      workspaceId: "ws_safe",
+                      state: "stored",
+                      createdAt: "2026-08-28T00:00:00.000Z",
+                      updatedAt: "2026-08-28T00:00:01.000Z",
+                      ephemeral: false,
+                    },
+                    messages: [{ id: "msg_safe", role: "assistant", text: "ready" }],
+                    readOnly: true,
+                  }
+              : request.method === "external.sessions.fork"
+                ? {
+                    sourceSessionId: request.params.sessionId,
+                    session: {
+                      id: "ext_codex_fork",
+                      sourceId: "codex",
+                      title: "Release audit · Hara fork",
+                      workspaceName: "hara",
+                      workspaceId: "ws_safe",
+                      state: "idle",
+                      createdAt: "2026-08-28T00:00:00.000Z",
+                      updatedAt: "2026-08-28T00:00:01.000Z",
+                      ephemeral: false,
+                    },
+                    messages: [{ id: "msg_safe", role: "assistant", text: "ready" }],
+                    readOnly: false,
+                  }
+              : request.method === "external.sessions.submit"
+                ? { sessionId: request.params.sessionId, turnId: "extturn_safe", status: "completed", reply: "done" }
+              : request.method === "external.sessions.interrupt"
+                ? {}
+              : request.method === "desk.connections.list"
               ? {
                   connections: [{
                     profileId: "org-a",
@@ -161,6 +234,10 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(supportsNativePresentationWorkspace(client), true);
   assert.equal(client.supportsFeature("composer.attachments.v1"), true);
   assert.equal(client.supportsFeature("collaboration.remote.v1"), true);
+  assert.equal(client.supports("external.sources.list"), true);
+  assert.equal(client.supports("external.sessions.list"), true);
+  assert.equal(client.supports("external.sessions.read"), true);
+  assert.equal(client.supportsFeature("external.sessions.interaction.v1"), true);
 
   await client.submit("session-1", "Use the new title", undefined, {
     mode: "start_if_idle",
@@ -404,6 +481,23 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     params: { sessionId: "session-1", approval: "full-auto" },
   });
 
+  const externalRead = await client.readExternalSession("ext_codex_safe");
+  assert.equal(externalRead.messages[0].text, "ready");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: 22,
+    method: "external.sessions.read",
+    params: { sessionId: "ext_codex_safe" },
+  });
+  const externalFork = await client.forkExternalSession("ext_codex_safe");
+  assert.equal(externalFork.readOnly, false);
+  assert.equal(requests.at(-1).method, "external.sessions.fork");
+  const externalTurn = await client.submitExternalSession("ext_codex_fork", "continue");
+  assert.equal(externalTurn.reply, "done");
+  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_codex_fork", text: "continue" });
+  await client.interruptExternalSession("ext_codex_fork");
+  assert.equal(requests.at(-1).method, "external.sessions.interrupt");
+
   let received;
   client.onEvent = (event) => {
     received = event;
@@ -454,6 +548,26 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     kind: "browser",
     title: "Local preview",
     resource: { type: "url", url: "http://127.0.0.1:5173/" },
+  });
+
+  socket.onmessage({
+    data: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "external.approval.request",
+      params: {
+        sessionId: "ext_codex_fork",
+        approvalId: "approval-external",
+        question: "Allow command?",
+        allowAlways: true,
+      },
+    }),
+  });
+  assert.deepEqual(received, {
+    method: "external.approval.request",
+    sessionId: "ext_codex_fork",
+    approvalId: "approval-external",
+    question: "Allow command?",
+    allowAlways: true,
   });
 });
 

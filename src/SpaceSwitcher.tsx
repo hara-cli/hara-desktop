@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { SpaceDirectory } from "./client";
+import { IconChevronDown, IconLock } from "./icons";
 import "./SpaceSwitcher.css";
 
 interface SpaceSwitcherProps {
@@ -32,6 +33,8 @@ export default function SpaceSwitcher({ directory, locale, switching, onSelect }
 
   if (!directory || !active) return null;
   const locked = directory.switchLocked;
+  const unavailable = (space: SpaceDirectory["spaces"][number]): boolean =>
+    space.kind === "organization" && (space.accessState === "expired" || space.accessState === "invalid");
   return (
     <div className="space-switcher" ref={rootRef}>
       <button
@@ -52,7 +55,7 @@ export default function SpaceSwitcher({ directory, locale, switching, onSelect }
           <small>{active.kind === "personal" ? (locale === "zh" ? "个人空间" : "Personal Space") : (locale === "zh" ? "公司空间" : "Company Space")}</small>
           <strong>{active.name}</strong>
         </span>
-        <span className="space-switcher-chevron" aria-hidden>{locked ? "⌕" : switching ? "…" : "⌄"}</span>
+        <span className="space-switcher-chevron" aria-hidden>{locked ? <IconLock size={13} /> : switching ? "…" : <IconChevronDown size={13} />}</span>
       </button>
       {open ? (
         <div className="space-switcher-menu" role="listbox" aria-label={locale === "zh" ? "选择空间" : "Choose a Space"}>
@@ -60,14 +63,19 @@ export default function SpaceSwitcher({ directory, locale, switching, onSelect }
             <strong>{locale === "zh" ? "你的空间" : "Your Spaces"}</strong>
             <small>{locale === "zh" ? "会话、Agent 与公司策略彼此隔离" : "Conversations, Agents, and company policy stay isolated"}</small>
           </header>
-          {directory.spaces.map((space) => (
+          {directory.spaces.map((space) => {
+            const spaceUnavailable = unavailable(space);
+            return (
             <button
               type="button"
               role="option"
               aria-selected={space.id === directory.activeId}
-              className={space.id === directory.activeId ? "is-active" : ""}
+              className={`${space.id === directory.activeId ? "is-active" : ""}${spaceUnavailable ? " is-unavailable" : ""}`}
               key={space.id}
-              disabled={locked && space.id !== directory.activeId}
+              disabled={(locked && space.id !== directory.activeId) || (spaceUnavailable && space.id !== directory.activeId)}
+              title={spaceUnavailable
+                ? (locale === "zh" ? "公司授权已失效，请在“AI 与模型”中重新注册" : "Company access is unavailable; re-enroll it in AI & Models")
+                : undefined}
               onClick={() => {
                 if (space.id === directory.activeId) return setOpen(false);
                 setOpen(false);
@@ -79,7 +87,9 @@ export default function SpaceSwitcher({ directory, locale, switching, onSelect }
               </span>
               <span>
                 <strong>{space.name}</strong>
-                <small>{space.kind === "personal"
+                <small>{spaceUnavailable
+                  ? (locale === "zh" ? "授权已失效 · 重新注册后可切换" : "Access unavailable · Re-enroll to switch")
+                  : space.kind === "personal"
                   ? (locale === "zh" ? "仅你可见 · 可编辑 Agent" : "Private to you · Agent profiles editable")
                   : space.authoritative
                     ? (locale === "zh" ? "公司管理 · 策略受控" : "Company managed · Policy governed")
@@ -87,7 +97,8 @@ export default function SpaceSwitcher({ directory, locale, switching, onSelect }
               </span>
               {space.id === directory.activeId ? <b aria-hidden>✓</b> : null}
             </button>
-          ))}
+            );
+          })}
           {locked ? <p>{locale === "zh" ? "当前目录通过 .hara-profile 或启动参数固定了空间。" : "The current directory pins its Space through .hara-profile or a launch override."}</p> : null}
         </div>
       ) : null}

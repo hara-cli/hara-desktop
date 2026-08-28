@@ -13,6 +13,7 @@ import type {
   PresentationSlide,
 } from "./client";
 import { OfficeEditorShell } from "./OfficeEditorShell";
+import { IconPlus } from "./icons";
 import "./PresentationWorkbench.css";
 
 const BLOCK_TYPES = [
@@ -660,7 +661,7 @@ export default function PresentationWorkbench({
     <div className="presentation-slide-rail">
       <div className="presentation-pane-heading">
         <span>{copy.slides}</span>
-        <button type="button" title={copy.addSlide} aria-label={copy.addSlide} onClick={addSlide}>＋</button>
+        <button type="button" title={copy.addSlide} aria-label={copy.addSlide} onClick={addSlide}><IconPlus size={15} /></button>
       </div>
       <div className="presentation-slide-list" role="listbox" aria-label={copy.slides}>
         {draft.slides.map((slide, index) => {

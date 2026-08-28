@@ -1,12 +1,13 @@
-import type { AgentInfo, SessionInfo } from "./client.ts";
+import type { AgentInfo, ExternalSessionInfo, SessionInfo } from "./client.ts";
 import { mainAgentRef } from "./agent-office.ts";
 import { isJunkProjectDirectory } from "./project-list.ts";
 
-export type WorkbenchInboxMode = "agents" | "projects";
+export type WorkbenchInboxMode = "agents" | "projects" | "external";
 
 export type WorkbenchInboxTarget =
   | { kind: "agent"; id: string }
-  | { kind: "project"; id: string };
+  | { kind: "project"; id: string }
+  | { kind: "external"; id: string };
 
 export interface AgentInboxEntry {
   agent: AgentInfo;
@@ -54,6 +55,25 @@ export const sortInboxSessions = (
     || right.updatedAt.localeCompare(left.updatedAt)
     || left.id.localeCompare(right.id)
   ));
+};
+
+export const visibleExternalSessions = (
+  sessions: readonly ExternalSessionInfo[],
+  query = "",
+): ExternalSessionInfo[] => {
+  const needle = query.trim().toLowerCase();
+  return [...sessions]
+    .filter((session) => !needle || [
+      session.title,
+      session.workspaceName,
+      session.sourceId,
+      session.origin,
+      session.state,
+    ].filter(Boolean).join(" ").toLowerCase().includes(needle))
+    .sort((left, right) => (
+      right.updatedAt.localeCompare(left.updatedAt)
+      || left.id.localeCompare(right.id)
+    ));
 };
 
 /**

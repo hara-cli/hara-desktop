@@ -59,6 +59,10 @@ import {
   type AgentInfo,
   type AgentOfficeInfo,
   type SpaceDirectory,
+  type ExternalSessionInfo,
+  type ExternalSessionReadResult,
+  type ExternalSessionSourceId,
+  type ExternalSessionSourceInfo,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
 import {
@@ -208,11 +212,21 @@ import {
 import { useDesktopCompanion } from "./companion/useDesktopCompanion";
 import {
   IconArchive,
+  IconArrowUpRight,
   IconBack,
+  IconChat,
+  IconChevronDown,
+  IconClose,
+  IconDocument,
   IconEdit,
   IconFolder,
   IconFork,
+  IconImage,
+  IconPlus,
+  IconRefresh,
+  IconSparkles,
   IconStar,
+  IconSummary,
   IconTrash,
   IconUsers,
 } from "./icons";
@@ -246,6 +260,11 @@ import HireAgentDialog, { type HireAgentInput } from "./HireAgentDialog";
 import type { AgentBlueprint } from "./talent-blueprint";
 import SpaceSwitcher from "./SpaceSwitcher";
 import { organizationConnectionSpaceId, sessionSpaceId } from "./space-directory";
+import {
+  companyAccessRecoveryMessage,
+  companySpaceNeedsReenrollment,
+  unavailableCompanySpaceMessage,
+} from "./organization-access";
 import { agentDisplayName, agentPublicTitle } from "./agent-visual";
 import { latestAgentSession, mainAgentRef, officeActors } from "./agent-office";
 import {
@@ -254,9 +273,14 @@ import {
   inboxSessionsForAgent,
   isWorkbenchConversation,
   sortInboxSessions,
+  visibleExternalSessions,
   type WorkbenchInboxMode,
   type WorkbenchInboxTarget,
 } from "./workbench-inbox";
+import ExternalSessionCenter, {
+  type ExternalSessionActivity,
+  type ExternalSessionApproval,
+} from "./ExternalSessionCenter";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 
@@ -1465,6 +1489,161 @@ export default function App() {
     zone === "projects" ? "projects" : "agents"
   ));
   const [workbenchInboxTarget, setWorkbenchInboxTarget] = useState<WorkbenchInboxTarget | null>(null);
+  const [externalSources, setExternalSources] = useState<ExternalSessionSourceInfo[] | null>(null);
+  const [externalSessions, setExternalSessions] = useState<ExternalSessionInfo[]>([]);
+  const [externalSessionSourceId, setExternalSessionSourceId] = useState<ExternalSessionSourceId>("codex");
+  const [externalSessionsNextCursor, setExternalSessionsNextCursor] = useState<string | null>(null);
+  const [externalSessionsLoading, setExternalSessionsLoading] = useState(false);
+  const [externalSessionsError, setExternalSessionsError] = useState("");
+  const [externalSessionsRefreshRevision, setExternalSessionsRefreshRevision] = useState(0);
+  const [externalTranscript, setExternalTranscript] = useState<ExternalSessionReadResult | null>(null);
+  const [externalTranscriptLoading, setExternalTranscriptLoading] = useState(false);
+  const [externalSessionActionError, setExternalSessionActionError] = useState("");
+  const [externalSessionAction, setExternalSessionAction] = useState<{
+    sessionId: string;
+    kind: "fork" | "turn" | "interrupt";
+  } | null>(null);
+  const [externalSessionActivity, setExternalSessionActivity] = useState<Record<string, ExternalSessionActivity[]>>({});
+  const [externalSessionApproval, setExternalSessionApproval] = useState<(ExternalSessionApproval & { sessionId: string }) | null>(null);
+  const externalSessionsRequestRef = useRef(0);
+  const externalTranscriptRequestRef = useRef(0);
+  const externalActivitySequenceRef = useRef(0);
+  const refreshExternalTranscriptRef = useRef<(sessionId: string) => void>(() => {});
+  const externalSessionTargetId = workbenchInboxTarget?.kind === "external" ? workbenchInboxTarget.id : null;
+  const refreshExternalSessions = useCallback(() => {
+    setExternalSessionsRefreshRevision((revision) => revision + 1);
+  }, []);
+  useEffect(() => {
+    if (phase !== "ready" || workbenchInboxMode !== "external") return;
+    if ((spaceDirectory?.activeId ?? "personal") !== "personal") {
+      externalSessionsRequestRef.current += 1;
+      setExternalSources(null);
+      setExternalSessions([]);
+      setExternalSessionsNextCursor(null);
+      setExternalSessionsError("");
+      setExternalSessionsLoading(false);
+      return;
+    }
+    const client = clientRef.current;
+    if (!client) return;
+    const requestId = ++externalSessionsRequestRef.current;
+    setExternalSessionsNextCursor(null);
+    setExternalSessionsLoading(true);
+    setExternalSessionsError("");
+    const timer = window.setTimeout(() => {
+      void client.listExternalSessions({ sourceId: externalSessionSourceId, limit: 100, ...(q.trim() ? { search: q.trim() } : {}) })
+        .then((result) => {
+          if (clientRef.current !== client || externalSessionsRequestRef.current !== requestId) return;
+          if (!result) {
+            setExternalSources(null);
+            setExternalSessions([]);
+            setExternalSessionsNextCursor(null);
+            setExternalSessionsError(makeT(locale)("externalSessionsOldEngine"));
+            return;
+          }
+          setExternalSources(result.sources);
+          setExternalSessions(result.sessions);
+          setExternalSessionsNextCursor(result.page.nextCursor ?? null);
+        })
+        .catch((error: any) => {
+          if (clientRef.current !== client || externalSessionsRequestRef.current !== requestId) return;
+          setExternalSessionsError(String(error?.message ?? error).slice(0, 240));
+        })
+        .finally(() => {
+          if (clientRef.current === client && externalSessionsRequestRef.current === requestId) {
+            setExternalSessionsLoading(false);
+          }
+        });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [externalSessionSourceId, externalSessionsRefreshRevision, locale, phase, q, spaceDirectory?.activeId, workbenchInboxMode]);
+  const loadMoreExternalSessions = useCallback(async () => {
+    const cursor = externalSessionsNextCursor;
+    const client = clientRef.current;
+    if (
+      !cursor
+      || !client
+      || externalSessionsLoading
+      || (spaceDirectory?.activeId ?? "personal") !== "personal"
+    ) return;
+    const requestId = ++externalSessionsRequestRef.current;
+    setExternalSessionsLoading(true);
+    setExternalSessionsError("");
+    try {
+      const result = await client.listExternalSessions({
+        sourceId: externalSessionSourceId,
+        cursor,
+        limit: 100,
+        ...(q.trim() ? { search: q.trim() } : {}),
+      });
+      if (clientRef.current !== client || externalSessionsRequestRef.current !== requestId) return;
+      if (!result) {
+        setExternalSessionsNextCursor(null);
+        setExternalSessionsError(makeT(locale)("externalSessionsOldEngine"));
+        return;
+      }
+      setExternalSources(result.sources);
+      setExternalSessions((current) => {
+        const seen = new Set(current.map((session) => session.id));
+        return [...current, ...result.sessions.filter((session) => !seen.has(session.id))];
+      });
+      setExternalSessionsNextCursor(result.page.nextCursor ?? null);
+    } catch (error: any) {
+      if (clientRef.current !== client || externalSessionsRequestRef.current !== requestId) return;
+      // Provider cursors are one-use and expire. A failed continuation must refresh rather than replay it.
+      setExternalSessionsNextCursor(null);
+      setExternalSessionsError(String(error?.message ?? error).slice(0, 240));
+    } finally {
+      if (clientRef.current === client && externalSessionsRequestRef.current === requestId) {
+        setExternalSessionsLoading(false);
+      }
+    }
+  }, [externalSessionSourceId, externalSessionsLoading, externalSessionsNextCursor, locale, q, spaceDirectory?.activeId]);
+
+  const refreshExternalTranscript = useCallback((sessionId: string) => {
+    const client = clientRef.current;
+    if (!client || !client.supports("external.sessions.read")) {
+      setExternalTranscript(null);
+      setExternalTranscriptLoading(false);
+      setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
+      return;
+    }
+    const requestId = ++externalTranscriptRequestRef.current;
+    setExternalTranscriptLoading(true);
+    setExternalSessionActionError("");
+    void client.readExternalSession(sessionId)
+      .then((result) => {
+        if (clientRef.current !== client || externalTranscriptRequestRef.current !== requestId) return;
+        setExternalTranscript(result);
+      })
+      .catch((error: any) => {
+        if (clientRef.current !== client || externalTranscriptRequestRef.current !== requestId) return;
+        setExternalTranscript(null);
+        setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+      })
+      .finally(() => {
+        if (clientRef.current === client && externalTranscriptRequestRef.current === requestId) {
+          setExternalTranscriptLoading(false);
+        }
+      });
+  }, [locale]);
+  refreshExternalTranscriptRef.current = refreshExternalTranscript;
+
+  useEffect(() => {
+    if (
+      phase !== "ready"
+      || workbenchInboxMode !== "external"
+      || (spaceDirectory?.activeId ?? "personal") !== "personal"
+      || !externalSessionTargetId
+    ) {
+      externalTranscriptRequestRef.current += 1;
+      setExternalTranscript(null);
+      setExternalTranscriptLoading(false);
+      setExternalSessionActionError("");
+      return;
+    }
+    refreshExternalTranscript(externalSessionTargetId);
+  }, [externalSessionTargetId, phase, refreshExternalTranscript, spaceDirectory?.activeId, workbenchInboxMode]);
   const [upd, setUpd] = useState("");
   const [updateTone, setUpdateTone] = useState<"neutral" | "success" | "warning" | "error">("neutral");
   const [updating, setUpdating] = useState(false);
@@ -2810,9 +2989,73 @@ export default function App() {
           }]);
           if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
+        case "external.event.turn_start":
+          setExternalSessionAction({ sessionId: e.sessionId, kind: "turn" });
+          setExternalSessionActivity((current) => {
+            const existing = current[e.sessionId] ?? [];
+            const last = existing[existing.length - 1];
+            const optimisticUser = last?.kind === "user" ? [last] : [];
+            return { ...current, [e.sessionId]: optimisticUser };
+          });
+          setExternalSessionActionError("");
+          break;
+        case "external.event.text":
+          setExternalSessionActivity((current) => {
+            const items = current[e.sessionId] ?? [];
+            const last = items[items.length - 1];
+            if (last?.kind === "text" && last.id === `external-text:${e.turnId}`) {
+              return {
+                ...current,
+                [e.sessionId]: [...items.slice(0, -1), { ...last, text: last.text + e.delta }],
+              };
+            }
+            return {
+              ...current,
+              [e.sessionId]: [...items, { id: `external-text:${e.turnId}`, kind: "text", text: e.delta }],
+            };
+          });
+          break;
+        case "external.event.tool":
+          setExternalSessionActivity((current) => ({
+            ...current,
+            [e.sessionId]: [
+              ...(current[e.sessionId] ?? []),
+              { id: `external-tool:${e.turnId}:${++externalActivitySequenceRef.current}`, kind: "tool", name: plain(e.name), text: plain(e.preview) },
+            ],
+          }));
+          break;
+        case "external.event.notice":
+          setExternalSessionActivity((current) => ({
+            ...current,
+            [e.sessionId]: [
+              ...(current[e.sessionId] ?? []),
+              { id: `external-notice:${e.turnId}:${++externalActivitySequenceRef.current}`, kind: "notice", text: plain(e.text) },
+            ],
+          }));
+          break;
+        case "external.approval.request":
+          setExternalSessionApproval({
+            sessionId: e.sessionId,
+            approvalId: e.approvalId,
+            question: plain(e.question),
+            allowAlways: e.allowAlways === true,
+          });
+          break;
+        case "external.event.turn_end":
+          setExternalSessionApproval((current) => current?.sessionId === e.requestedSessionId ? null : current);
+          setExternalSessionAction((current) => current?.sessionId === e.requestedSessionId ? null : current);
+          if (e.error) setExternalSessionActionError(plain(e.error));
+          if (e.sessionId === e.requestedSessionId) {
+            refreshExternalTranscriptRef.current(e.sessionId);
+          } else {
+            // A provider-level safety fork changed the opaque id. Refresh metadata before exposing it.
+            setWorkbenchInboxTarget({ kind: "external", id: e.sessionId });
+            refreshExternalSessions();
+          }
+          break;
       }
     },
-    [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, locale, notePet, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, recoverPresentationSurface, refreshArtifacts, removePet, resolvePendingUser, sendText, setSessionBusy],
+    [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, locale, notePet, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, recoverPresentationSurface, refreshArtifacts, refreshExternalSessions, removePet, resolvePendingUser, sendText, setSessionBusy],
   );
   handleEventRef.current = handleEvent;
 
@@ -2852,6 +3095,18 @@ export default function App() {
     setHireAgentOpen(false);
     setHireAgentError("");
     setWorkbenchInboxTarget(null);
+    externalSessionsRequestRef.current += 1;
+    setExternalSources(null);
+    setExternalSessions([]);
+    setExternalSessionsError("");
+    setExternalSessionsLoading(false);
+    externalTranscriptRequestRef.current += 1;
+    setExternalTranscript(null);
+    setExternalTranscriptLoading(false);
+    setExternalSessionActionError("");
+    setExternalSessionAction(null);
+    setExternalSessionActivity({});
+    setExternalSessionApproval(null);
     setAuto(null);
     setAutoReplay(null);
     setArtifacts(null);
@@ -3305,6 +3560,15 @@ export default function App() {
   const newSession = async (cwd?: string, agentRef?: string): Promise<string | null> => {
     const c = clientRef.current;
     if (!c) return null;
+    const directory = spaceDirectoryRef.current;
+    const activeSpace = directory?.spaces.find((space) => space.id === directory.activeId);
+    if (
+      activeSpace?.kind === "organization"
+      && companySpaceNeedsReenrollment(activeSpace.accessState)
+    ) {
+      setErr(unavailableCompanySpaceMessage(locale));
+      return null;
+    }
     if (!discardCurrentExtensionDraft()) return null;
     artifactOpenRequestRef.current += 1;
     setArtifactBusy("");
@@ -3320,11 +3584,23 @@ export default function App() {
       ...(agentRef && agentRef !== "main" ? { agentRef } : {}),
     };
     const requestId = ++sessionOpenRequestRef.current;
-    const r = await c.createSession({
-      ...(cwd ? { cwd } : {}),
-      ...(defaultApproval ? { approval: defaultApproval } : {}),
-      ...(agentRef && agentRef !== "main" ? { agentRef } : {}),
-    });
+    let r: Awaited<ReturnType<HaraClient["createSession"]>>;
+    try {
+      r = await c.createSession({
+        ...(cwd ? { cwd } : {}),
+        ...(defaultApproval ? { approval: defaultApproval } : {}),
+        ...(agentRef && agentRef !== "main" ? { agentRef } : {}),
+      });
+    } catch (error) {
+      const recovery = companyAccessRecoveryMessage(error, locale);
+      if (!recovery) throw error;
+      setErr(recovery);
+      void Promise.all([
+        refreshSpaceDirectory(sessionHint.cwd),
+        refreshOrganizationRoutes(sessionHint.cwd),
+      ]).catch(() => undefined);
+      return null;
+    }
     attachedSessionsRef.current.add(r.sessionId);
     rememberSession(r.sessionId, sessionHint);
     setTranscripts((tr) => ({ ...tr, [r.sessionId]: [] }));
@@ -3611,6 +3887,10 @@ export default function App() {
     const c = clientRef.current;
     if (!c) return;
     const session = sessionsRef.current.find((candidate) => candidate.id === id);
+    if (session && workbenchInboxMode === "external") {
+      setWorkbenchInboxMode(sessionPlace(session) === "projects" ? "projects" : "agents");
+      setWorkbenchInboxTarget(null);
+    }
     const directory = spaceDirectoryRef.current;
     const activeSpaceId = directory?.activeId ?? "personal";
     const wrongSpace = (binding: { profileId?: string; spaceId?: string }): boolean =>
@@ -3949,6 +4229,16 @@ export default function App() {
       setErr(String(error?.message ?? error));
     }
   }, []);
+  const pickAutomationDirectory = useCallback(async (current?: string): Promise<string | null> => {
+    const defaultPath = current?.trim() || (home ? `${home}/.hara/workspace` : undefined);
+    const selected = await openDialog({
+      directory: true,
+      multiple: false,
+      title: locale === "zh" ? "选择自动任务的工作目录" : "Choose the automation workspace",
+      ...(defaultPath ? { defaultPath } : {}),
+    });
+    return typeof selected === "string" ? selected : null;
+  }, [home, locale]);
   const addAutomationDraft = useCallback(async (draft: AutomationDraft): Promise<void> => {
     const client = clientRef.current;
     if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
@@ -5555,7 +5845,7 @@ export default function App() {
           <>
             <div className="cards">
               <div className="card">
-                <div className="card-t">{t("cardChatTitle")}</div>
+                <div className="card-t"><IconChat size={17} />{t("cardChatTitle")}</div>
                 <div className="card-b dim">{t("cardChatBody")}</div>
                 <button
                   onClick={() => {
@@ -5567,7 +5857,7 @@ export default function App() {
                 </button>
               </div>
               <div className="card">
-                <div className="card-t">{t("cardProjTitle")}</div>
+                <div className="card-t"><IconFolder size={17} />{t("cardProjTitle")}</div>
                 <div className="card-b dim">{t("cardProjBody")}</div>
                 <button
                   className="ghost"
@@ -5650,11 +5940,15 @@ export default function App() {
     ? availableAgents.find((agent) => agent.ref === profileAgentRef)
     : undefined;
   const visibleAgentInboxEntries = agentInboxEntries(availableAgents, spaceSessions, q);
+  const visibleExternalInboxSessions = visibleExternalSessions(externalSessions, q);
   const selectedInboxAgent = workbenchInboxTarget?.kind === "agent"
     ? availableAgents.find((agent) => agent.ref === workbenchInboxTarget.id)
     : undefined;
   const selectedInboxProject = workbenchInboxTarget?.kind === "project"
     ? allProjectGroups.find(([cwd]) => cwd === workbenchInboxTarget.id)
+    : undefined;
+  const selectedExternalSession = workbenchInboxTarget?.kind === "external"
+    ? externalSessions.find((session) => session.id === workbenchInboxTarget.id)
     : undefined;
   const selectedInboxSessions = sortInboxSessions(filterInboxSessions(
     selectedInboxAgent
@@ -5665,6 +5959,109 @@ export default function App() {
   const selectedInboxSessionTotal = selectedInboxAgent
     ? inboxSessionsForAgent(spaceSessions, selectedInboxAgent.ref).length
     : selectedInboxProject?.[1].length ?? 0;
+  const externalSourceStateLabel = (state: ExternalSessionSourceInfo["state"]): string => ({
+    ready: t("externalSourceReady"),
+    adapter_required: t("externalSourceAdapterRequired"),
+    not_installed: t("externalSourceNotInstalled"),
+    error: t("externalSourceError"),
+  })[state];
+  const externalSessionStateLabel = (state: ExternalSessionInfo["state"]): string => ({
+    stored: t("externalStateStored"),
+    idle: t("externalStateIdle"),
+    working: t("externalStateWorking"),
+    waiting: t("externalStateWaiting"),
+    error: t("externalStateError"),
+    unknown: t("externalStateUnknown"),
+  })[state];
+  const selectExternalSessionSource = useCallback((sourceId: ExternalSessionSourceId) => {
+    setExternalSessionSourceId(sourceId);
+    setWorkbenchInboxTarget(null);
+    setExternalTranscript(null);
+    setExternalSessionActionError("");
+  }, []);
+  const forkSelectedExternalSession = useCallback(async () => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (!client || !session || !client.supports("external.sessions.fork")) {
+      setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
+      return;
+    }
+    setExternalSessionAction({ sessionId: session.id, kind: "fork" });
+    setExternalSessionActionError("");
+    try {
+      const result = await client.forkExternalSession(session.id);
+      if (clientRef.current !== client) return;
+      setExternalSessions((current) => [
+        result.session,
+        ...current.filter((candidate) => candidate.id !== result.session.id),
+      ]);
+      setExternalSessionActivity((current) => ({ ...current, [result.session.id]: [] }));
+      setExternalTranscript(result);
+      setWorkbenchInboxTarget({ kind: "external", id: result.session.id });
+    } catch (error: any) {
+      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+    } finally {
+      if (clientRef.current === client) {
+        setExternalSessionAction((current) => current?.sessionId === session.id ? null : current);
+      }
+    }
+  }, [locale, selectedExternalSession]);
+  const submitSelectedExternalSession = useCallback(async (text: string) => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (!client || !session || !externalTranscript || externalTranscript.readOnly || !client.supports("external.sessions.submit")) {
+      const message = makeT(locale)("externalSessionsForkFirstBody");
+      setExternalSessionActionError(message);
+      throw new Error(message);
+    }
+    setExternalSessionAction({ sessionId: session.id, kind: "turn" });
+    setExternalSessionActionError("");
+    setExternalSessionActivity((current) => ({
+      ...current,
+      [session.id]: [{ id: `external-user:${Date.now()}`, kind: "user", text }],
+    }));
+    try {
+      const result = await client.submitExternalSession(session.id, text);
+      if (clientRef.current !== client) return;
+      if (result.error) setExternalSessionActionError(result.error);
+      refreshExternalTranscriptRef.current(result.sessionId);
+    } catch (error: any) {
+      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+      throw error;
+    } finally {
+      if (clientRef.current === client) {
+        setExternalSessionAction((current) => current?.sessionId === session.id ? null : current);
+      }
+    }
+  }, [externalTranscript, locale, selectedExternalSession]);
+  const interruptSelectedExternalSession = useCallback(async () => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (!client || !session || !client.supports("external.sessions.interrupt")) return;
+    setExternalSessionAction({ sessionId: session.id, kind: "interrupt" });
+    setExternalSessionActionError("");
+    try {
+      await client.interruptExternalSession(session.id);
+    } catch (error: any) {
+      if (clientRef.current === client) {
+        setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+        setExternalSessionAction({ sessionId: session.id, kind: "turn" });
+      }
+    }
+  }, [selectedExternalSession]);
+  const answerExternalSessionApproval = useCallback(async (verdict: "deny" | "allow" | "always") => {
+    const client = clientRef.current;
+    const approval = externalSessionApproval;
+    if (!client || !approval) return;
+    try {
+      await client.approvalReply(approval.approvalId, verdict !== "deny", verdict === "always");
+      if (clientRef.current === client) {
+        setExternalSessionApproval((current) => current?.approvalId === approval.approvalId ? null : current);
+      }
+    } catch (error: any) {
+      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+    }
+  }, [externalSessionApproval]);
   const activeApproval: ApprovalMode = (activeSession?.approval ?? defaultApproval) || "auto-edit";
   const activeComposerWorkObject = active ? visibleSessionWorkObject(active) : null;
   const items = active ? (transcripts[active] ?? []) : [];
@@ -6133,10 +6530,10 @@ export default function App() {
                 setErr(String(error?.message ?? error)),
               )
             }
-            onContinueTask={() => {
-              const instruction = locale === "zh"
+            onContinueTask={(requestedInstruction) => {
+              const instruction = requestedInstruction || (locale === "zh"
                 ? "/continue 我已完成重新登录。先检查受阻的认证能力；确认恢复后再从原检查点继续，仍未恢复则保持暂停。"
-                : "/continue I signed in again. Check the blocked authentication capability first; resume from the saved checkpoint only if it recovered, otherwise remain paused.";
+                : "/continue I signed in again. Check the blocked authentication capability first; resume from the saved checkpoint only if it recovered, otherwise remain paused.");
               void submitSessionText(active, instruction).catch((error) =>
                 setErr(String(error?.message ?? error)),
               );
@@ -6157,7 +6554,7 @@ export default function App() {
                       title={locale === "zh" ? "重试" : "Retry"}
                       onClick={() => retryQueuedInput(active!, i)}
                     >
-                      ↻
+                      <IconRefresh size={13} />
                     </button>
                   )}
                   <button
@@ -6166,7 +6563,7 @@ export default function App() {
                     title={locale === "zh" ? "取消排队" : "Cancel queued input"}
                     onClick={() => cancelQueuedInput(active!, i)}
                   >
-                    ✕
+                    <IconClose size={13} />
                   </button>
                 </div>
               ))}
@@ -6241,7 +6638,7 @@ export default function App() {
                         attachments: draft.attachments.filter((item) => item.id !== attachment.id),
                       }))}
                     >
-                      ×
+                      <IconClose size={12} />
                     </button>
                   </span>
                 ))}
@@ -6373,27 +6770,27 @@ export default function App() {
                       setAttachmentMenuOpen((open) => !open);
                     }}
                   >
-                    <span aria-hidden="true">＋</span>
+                    <span aria-hidden="true"><IconPlus size={15} /></span>
                     {locale === "zh" ? "添加上下文" : "Add context"}
                   </button>
                   {attachmentMenuOpen && (
                     <div className="composer-menu attachment-menu">
                       <button onClick={() => void attachPickedFiles("image")}>
-                        <span aria-hidden="true">▧</span>
+                        <span aria-hidden="true"><IconImage size={17} /></span>
                         <span>
                           <strong>{locale === "zh" ? "选择图片" : "Choose images"}</strong>
                           <small>{locale === "zh" ? "支持 PNG、JPEG、GIF、WebP" : "PNG, JPEG, GIF, or WebP"}</small>
                         </span>
                       </button>
                       <button onClick={() => void attachPickedFiles("file")}>
-                        <span aria-hidden="true">▤</span>
+                        <span aria-hidden="true"><IconDocument size={17} /></span>
                         <span>
                           <strong>{locale === "zh" ? "选择文件" : "Choose files"}</strong>
                           <small>{locale === "zh" ? "文本直接读取；其他格式交给本地工具" : "Text is read locally; other formats use tools"}</small>
                         </span>
                       </button>
                       <button onClick={() => void attachPickedDirectory()}>
-                        <span aria-hidden="true">▱</span>
+                        <span aria-hidden="true"><IconFolder size={17} /></span>
                         <span>
                           <strong>{locale === "zh" ? "添加目录到本轮" : "Add folder to this turn"}</strong>
                           <small>{locale === "zh" ? "只建立有界清单，不整目录注入模型" : "Bounded inventory; never injects the whole folder"}</small>
@@ -6403,7 +6800,7 @@ export default function App() {
                         setAttachmentMenuOpen(false);
                         void openProject();
                       }}>
-                        <span aria-hidden="true">↗</span>
+                        <span aria-hidden="true"><IconArrowUpRight size={17} /></span>
                         <span>
                           <strong>{locale === "zh" ? "打开为新项目" : "Open as a new project"}</strong>
                           <small>{locale === "zh" ? "切换持续工作区，而不是一次性附件" : "Switch the persistent workspace"}</small>
@@ -6435,7 +6832,7 @@ export default function App() {
                           {locale === "zh" ? "下一轮" : "Next turn"}
                         </span>
                       )}
-                      <span aria-hidden="true">⌄</span>
+                      <span aria-hidden="true"><IconChevronDown size={13} /></span>
                     </button>
                     {modelPickerOpen && (
                       <div className="composer-menu model-menu">
@@ -7554,6 +7951,96 @@ export default function App() {
     updateNoticeVisible &&
     (Boolean(updateNoticeVersion) || updating || updateReady || updateTone === "error") &&
     !(zone === "settings" && setSec === "engine");
+  const externalSessionCenterSurface = (
+    <ExternalSessionCenter
+      sources={externalSources}
+      sessions={externalSessions}
+      selected={selectedExternalSession}
+      selectedSourceId={externalSessionSourceId}
+      transcript={externalTranscript?.session.id === selectedExternalSession?.id ? externalTranscript : null}
+      activity={selectedExternalSession ? externalSessionActivity[selectedExternalSession.id] ?? [] : []}
+      approval={externalSessionApproval?.sessionId === selectedExternalSession?.id ? externalSessionApproval : null}
+      loading={externalSessionsLoading}
+      transcriptLoading={externalTranscriptLoading}
+      actionBusy={externalSessionAction !== null && externalSessionAction.sessionId === selectedExternalSession?.id
+        ? externalSessionAction.kind
+        : ""}
+      error={externalSessionsError}
+      actionError={externalSessionActionError}
+      personal={activeSpaceId === "personal"}
+      locale={locale}
+      onRefresh={refreshExternalSessions}
+      onBack={() => setWorkbenchInboxTarget(null)}
+      onSelectSource={selectExternalSessionSource}
+      onFork={forkSelectedExternalSession}
+      onSubmit={submitSelectedExternalSession}
+      onInterrupt={interruptSelectedExternalSession}
+      onApproval={answerExternalSessionApproval}
+      copy={{
+        eyebrow: t("externalSessionsEyebrow"),
+        title: t("externalSessionsTitle"),
+        description: t("externalSessionsDescription"),
+        refresh: t("externalSessionsRefresh"),
+        refreshing: t("externalSessionsRefreshing"),
+        unavailableTitle: t("externalSessionsUnavailableTitle"),
+        unavailableBody: t("externalSessionsUnavailableBody"),
+        sources: t("externalSessionsSources"),
+        sessions: t("externalSessionsCount"),
+        safeBridge: t("externalSessionsSafeBridge"),
+        metadataOnly: t("externalSessionsMetadataOnly"),
+        metadataOnlyBody: t("externalSessionsMetadataOnlyBody"),
+        personalOnly: t("externalSessionsPersonalOnly"),
+        personalOnlyBody: t("externalSessionsPersonalOnlyBody"),
+        forkFirst: t("externalSessionsForkFirst"),
+        forkFirstBody: t("externalSessionsForkFirstBody"),
+        selectedEyebrow: t("externalSessionsSelectedEyebrow"),
+        workspace: t("externalSessionsWorkspace"),
+        source: t("externalSessionsSource"),
+        origin: t("externalSessionsOrigin"),
+        updated: t("externalSessionsUpdated"),
+        state: t("externalSessionsState"),
+        protectionTitle: t("externalSessionsProtectionTitle"),
+        protectionBody: t("externalSessionsProtectionBody"),
+        nextStage: t("externalSessionsNextStage"),
+        nextStageBody: t("externalSessionsNextStageBody"),
+        noSelectionTitle: t("externalSessionsNoSelectionTitle"),
+        noSelectionBody: t("externalSessionsNoSelectionBody"),
+        back: t("externalSessionsBack"),
+        transcript: t("externalSessionsTranscript"),
+        loadingTranscript: t("externalSessionsLoadingTranscript"),
+        noMessages: t("externalSessionsNoMessages"),
+        readOnlyTitle: t("externalSessionsReadOnlyTitle"),
+        readOnlyBody: t("externalSessionsReadOnlyBody"),
+        writableTitle: t("externalSessionsWritableTitle"),
+        writableBody: t("externalSessionsWritableBody"),
+        fork: t("externalSessionsFork"),
+        forking: t("externalSessionsForking"),
+        composerPlaceholder: t("externalSessionsComposerPlaceholder"),
+        send: t("externalSessionsSend"),
+        stop: t("externalSessionsStop"),
+        approve: t("externalSessionsApprove"),
+        alwaysApprove: t("externalSessionsAlwaysApprove"),
+        deny: t("externalSessionsDeny"),
+        you: t("externalSessionsYou"),
+        assistant: t("externalSessionsAssistant"),
+        system: t("externalSessionsSystem"),
+        sourceStates: {
+          ready: t("externalSourceReady"),
+          adapter_required: t("externalSourceAdapterRequired"),
+          not_installed: t("externalSourceNotInstalled"),
+          error: t("externalSourceError"),
+        },
+        sessionStates: {
+          stored: t("externalStateStored"),
+          idle: t("externalStateIdle"),
+          working: t("externalStateWorking"),
+          waiting: t("externalStateWaiting"),
+          error: t("externalStateError"),
+          unknown: t("externalStateUnknown"),
+        },
+      }}
+    />
+  );
 
   return (
     <div className="app">
@@ -7573,7 +8060,7 @@ export default function App() {
             aria-label={locale === "zh" ? "关闭错误提示" : "Dismiss error"}
             onClick={() => setErr("")}
           >
-            ×
+            <IconClose size={16} />
           </button>
         </div>
       )}
@@ -7655,7 +8142,7 @@ export default function App() {
       {(zone === "chat" || zone === "projects") && (
         <aside className="sidebar workbench-sidebar">
           {brandBar}
-          {selectedInboxAgent || selectedInboxProject ? (
+          {selectedInboxAgent || selectedInboxProject || selectedExternalSession ? (
             <header className="inbox-detail-header">
               <button
                 type="button"
@@ -7679,16 +8166,23 @@ export default function App() {
                     ? "working"
                     : "idle"}
                 />
+              ) : selectedExternalSession ? (
+                <span className={`external-inbox-avatar is-${selectedExternalSession.sourceId}`} aria-hidden>
+                  {selectedExternalSession.sourceId === "codex" ? "CX" : "CL"}
+                </span>
               ) : (
                 <span className="inbox-project-avatar" aria-hidden><IconFolder size={21} /></span>
               )}
               <span className="inbox-detail-copy">
                 <strong>{selectedInboxAgent
                   ? agentDisplayName(selectedInboxAgent)
-                  : basename(selectedInboxProject?.[0] ?? "")}</strong>
+                  : selectedExternalSession?.title ?? basename(selectedInboxProject?.[0] ?? "")}</strong>
                 <small>
-                  {selectedInboxAgent ? agentPublicTitle(selectedInboxAgent) : selectedInboxProject?.[0]}
-                  {" · "}{selectedInboxSessionTotal} {t("inboxConversations")}
+                  {selectedInboxAgent
+                    ? <>{agentPublicTitle(selectedInboxAgent)}{" · "}{selectedInboxSessionTotal} {t("inboxConversations")}</>
+                    : selectedExternalSession
+                      ? <>{selectedExternalSession.workspaceName}{" · "}{externalSessionStateLabel(selectedExternalSession.state)}</>
+                      : <>{selectedInboxProject?.[0]}{" · "}{selectedInboxSessionTotal} {t("inboxConversations")}</>}
                 </small>
               </span>
               {selectedInboxAgent ? (
@@ -7733,9 +8227,23 @@ export default function App() {
                 <IconFolder size={16} /> {t("inboxProjects")}
                 <span>{allProjectGroups.length}</span>
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={workbenchInboxMode === "external"}
+                className={workbenchInboxMode === "external" ? "on" : ""}
+                onClick={() => {
+                  setWorkbenchInboxMode("external");
+                  setWorkbenchInboxTarget(null);
+                  setQ("");
+                }}
+              >
+                <IconSummary size={16} /> {t("inboxExternal")}
+                <span>{externalSessions.length}</span>
+              </button>
             </div>
           )}
-          <div className={`workbench-sidebar-actions ${workbenchInboxMode === "projects" && !selectedInboxAgent ? "is-single" : ""}`}>
+          <div className={`workbench-sidebar-actions ${workbenchInboxMode !== "agents" && !selectedInboxAgent ? "is-single" : ""}`}>
             {selectedInboxAgent ? (
               <>
                 <button
@@ -7753,7 +8261,7 @@ export default function App() {
                     ) void newSession(targetCwd, selectedInboxAgent.ref);
                   }}
                 >
-                  <span className="new-conversation-plus" aria-hidden>＋</span>
+                  <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
                   {t("newConversation")}
                 </button>
                 <button className="new ghost" onClick={() => void openAgentOffice()}>
@@ -7767,15 +8275,20 @@ export default function App() {
                       onFocus={() => warmModule(loadTalentMarket())}
                       onClick={openTalentMarket}
                     >
-                      <span aria-hidden>♜</span>{locale === "zh" ? "人才市场" : "Talent market"}
+                      <span aria-hidden><IconSparkles size={15} /></span>{locale === "zh" ? "人才市场" : "Talent market"}
                     </button>
                   ) : (
                     <button className="new ghost hire-agent-button" onClick={openCustomRecruitment}>
-                      <span aria-hidden>＋</span>{locale === "zh" ? "自定义雇佣" : "Custom hire"}
+                      <span aria-hidden><IconPlus size={15} /></span>{locale === "zh" ? "自定义雇佣" : "Custom hire"}
                     </button>
                   )
                 ) : null}
               </>
+            ) : selectedExternalSession ? (
+              <button className="new withicon" disabled={externalSessionsLoading} onClick={refreshExternalSessions}>
+                <span className="new-conversation-plus" aria-hidden><IconRefresh size={15} /></span>
+                {externalSessionsLoading ? t("externalSessionsRefreshing") : t("externalSessionsRefresh")}
+              </button>
             ) : selectedInboxProject ? (
               <button
                 className="new withicon"
@@ -7784,7 +8297,7 @@ export default function App() {
                   void newSession(selectedInboxProject[0]);
                 }}
               >
-                <span className="new-conversation-plus" aria-hidden>＋</span>
+                <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
                 {t("newHere")}
               </button>
             ) : workbenchInboxMode === "agents" ? (
@@ -7794,7 +8307,7 @@ export default function App() {
                   disabled={assistantCreating}
                   onClick={() => void startNewAssistantConversation()}
                 >
-                  <span className="new-conversation-plus" aria-hidden>＋</span>
+                  <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
                   {assistantCreating ? t("startingConversation") : t("newConversation")}
                 </button>
                 <button className="new ghost" onClick={() => void openAgentOffice()}>
@@ -7808,18 +8321,23 @@ export default function App() {
                       onFocus={() => warmModule(loadTalentMarket())}
                       onClick={openTalentMarket}
                     >
-                      <span aria-hidden>♜</span>{locale === "zh" ? "人才市场" : "Talent market"}
+                      <span aria-hidden><IconSparkles size={15} /></span>{locale === "zh" ? "人才市场" : "Talent market"}
                     </button>
                   ) : (
                     <button className="new ghost hire-agent-button" onClick={openCustomRecruitment}>
-                      <span aria-hidden>＋</span>{locale === "zh" ? "自定义雇佣" : "Custom hire"}
+                      <span aria-hidden><IconPlus size={15} /></span>{locale === "zh" ? "自定义雇佣" : "Custom hire"}
                     </button>
                   )
                 ) : null}
               </>
+            ) : workbenchInboxMode === "external" ? (
+              <button className="new withicon" disabled={externalSessionsLoading} onClick={refreshExternalSessions}>
+                <span className="new-conversation-plus" aria-hidden><IconRefresh size={15} /></span>
+                {externalSessionsLoading ? t("externalSessionsRefreshing") : t("externalSessionsRefresh")}
+              </button>
             ) : (
               <button className="new withicon" onClick={() => void openProject()}>
-                <span className="new-conversation-plus" aria-hidden>＋</span>
+                <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
                 {t("openProject")}
               </button>
             )}
@@ -7828,9 +8346,20 @@ export default function App() {
           <div
             className="sessions workbench-inbox"
             key={`${workbenchInboxMode}:${workbenchInboxTarget?.kind ?? "root"}:${workbenchInboxTarget?.id ?? ""}`}
-            aria-label={workbenchInboxMode === "agents" ? t("inboxAgentDirectory") : t("inboxProjectDirectory")}
+            aria-label={workbenchInboxMode === "agents"
+              ? t("inboxAgentDirectory")
+              : workbenchInboxMode === "external" ? t("inboxExternalDirectory") : t("inboxProjectDirectory")}
           >
-            {selectedInboxAgent || selectedInboxProject ? (
+            {selectedExternalSession ? (
+              <div className="external-inbox-selected">
+                <span className={`external-inbox-avatar is-${selectedExternalSession.sourceId}`} aria-hidden>
+                  {selectedExternalSession.sourceId === "codex" ? "CX" : "CL"}
+                </span>
+                <strong>{selectedExternalSession.title}</strong>
+                <small>{selectedExternalSession.workspaceName}</small>
+                <b className={`is-${selectedExternalSession.state}`}>{externalSessionStateLabel(selectedExternalSession.state)}</b>
+              </div>
+            ) : selectedInboxAgent || selectedInboxProject ? (
               selectedInboxSessions.length ? selectedInboxSessions.map((session) => (
                 sessRow(session, selectedInboxAgent ? "agent" : "project")
               )) : (
@@ -7880,6 +8409,63 @@ export default function App() {
                   </button>
                 );
               }) : <div className="inbox-empty"><small>{t("inboxAgentEmptyHint")}</small></div>
+            ) : workbenchInboxMode === "external" ? (
+              <>
+                <div className="external-source-strip">
+                  {(externalSources ?? []).map((source) => (
+                    <span className={`is-${source.state}`} key={source.id} title={source.version || source.label}>
+                      <i aria-hidden>{source.id === "codex" ? "CX" : "CL"}</i>
+                      <b>{source.label}</b>
+                      <small>{externalSourceStateLabel(source.state)}</small>
+                    </span>
+                  ))}
+                </div>
+                {externalSessionsLoading && !visibleExternalInboxSessions.length ? (
+                  <div className="inbox-empty"><small>{t("externalSessionsRefreshing")}</small></div>
+                ) : visibleExternalInboxSessions.length ? (
+                  <>
+                    {visibleExternalInboxSessions.map((session) => (
+                      <button
+                        type="button"
+                        className="inbox-contact is-external"
+                        key={session.id}
+                        onClick={() => {
+                          setWorkbenchInboxTarget({ kind: "external", id: session.id });
+                          setQ("");
+                        }}
+                      >
+                        <span className={`external-inbox-avatar is-${session.sourceId}`} aria-hidden>
+                          {session.sourceId === "codex" ? "CX" : "CL"}
+                        </span>
+                        <span className="inbox-contact-copy">
+                          <span className="inbox-contact-line">
+                            <strong>{session.title}</strong>
+                            <time>{fmtTime(session.updatedAt)}</time>
+                          </span>
+                          <span className="inbox-contact-line preview">
+                            <span>{session.workspaceName}</span>
+                            <b className={`external-state-dot is-${session.state}`}>{externalSessionStateLabel(session.state)}</b>
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                    {externalSessionsNextCursor ? (
+                      <button
+                        type="button"
+                        className="external-session-load-more"
+                        disabled={externalSessionsLoading}
+                        onClick={() => void loadMoreExternalSessions()}
+                      >
+                        {externalSessionsLoading
+                          ? t("externalSessionsLoadingMore")
+                          : t("externalSessionsLoadMore")}
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="inbox-empty"><small>{externalSessionsError || t("externalSessionsEmpty")}</small></div>
+                )}
+              </>
             ) : visibleProjectGroups.length ? visibleProjectGroups.map(([cwd, list]) => {
               const sorted = sortInboxSessions(list, pins);
               const latest = sorted[0];
@@ -7916,7 +8502,7 @@ export default function App() {
                     aria-label={`${t("removeProject")}：${basename(cwd)}`}
                     onClick={() => removeProjectFromList(cwd)}
                   >
-                    <span aria-hidden>×</span>
+                    <span aria-hidden><IconClose size={13} /></span>
                   </button>
                 </div>
               );
@@ -8847,6 +9433,7 @@ export default function App() {
                 delete={deleteAutomation}
                 install={installAutomationScheduler}
                 openReplay={openAutomationReplay}
+                pickDirectory={pickAutomationDirectory}
               />
             </Suspense>
           )}
@@ -8886,6 +9473,8 @@ export default function App() {
             </Suspense>
           )}
         </div>
+      ) : (zone === "chat" || zone === "projects") && workbenchInboxMode === "external" ? (
+        externalSessionCenterSurface
       ) : (zone === "chat" || zone === "projects") && contextExtensionDock ? (
         <div className={`extension-work${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && contextExtensionDock.mode === "maximized" ? " is-extension-maximized" : ""}`}>
           <div className="extension-primary">{conversation(zone === "chat" ? "im" : "ide")}</div>

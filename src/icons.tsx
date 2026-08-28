@@ -14,6 +14,39 @@ export const IconChat = ({ size }: { size?: number }) => (
 export const IconBack = ({ size }: { size?: number }) => (
   <I size={size} d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
 );
+/** arrow-right */
+export const IconArrowRight = ({ size }: { size?: number }) => (
+  <I size={size} d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+);
+/** arrow-up-right — open a related surface */
+export const IconArrowUpRight = ({ size }: { size?: number }) => (
+  <I size={size} d="M13.5 6H18m0 0v4.5M18 6 9 15m-3.75-6.75v9a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-3" />
+);
+/** chevron-left / chevron-right */
+export const IconChevronLeft = ({ size }: { size?: number }) => (
+  <I size={size} d="m15.75 19.5-7.5-7.5 7.5-7.5" />
+);
+export const IconChevronRight = ({ size }: { size?: number }) => (
+  <I size={size} d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+);
+export const IconChevronDown = ({ size }: { size?: number }) => (
+  <I size={size} d="m4.5 8.25 7.5 7.5 7.5-7.5" />
+);
+/** plus / x-mark */
+export const IconPlus = ({ size }: { size?: number }) => (
+  <I size={size} d="M12 4.5v15m7.5-7.5h-15" />
+);
+export const IconClose = ({ size }: { size?: number }) => (
+  <I size={size} d="M6 18 18 6M6 6l12 12" />
+);
+/** magnifying-glass */
+export const IconSearch = ({ size }: { size?: number }) => (
+  <I size={size} d="m21 21-4.35-4.35m2.1-5.4a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z" />
+);
+/** lock-closed */
+export const IconLock = ({ size }: { size?: number }) => (
+  <I size={size} d="M16.5 10.5V6.75a4.5 4.5 0 0 0-9 0v3.75m-.75 0h10.5A2.25 2.25 0 0 1 19.5 12.75v6A2.25 2.25 0 0 1 17.25 21H6.75a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z" />
+);
 /** folder */
 export const IconFolder = ({ size }: { size?: number }) => (
   <I size={size} d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
@@ -37,6 +70,10 @@ export const IconBot = ({ size }: { size?: number }) => (
     <path d="M8.25 3.75v3M12 3.75v3m3.75-3v3m-7.5 13.5v3m3.75-3v3m3.75-3v3M3.75 8.25h3m-3 3.75h3m-3 3.75h3m13.5-7.5h3m-3 3.75h3m-3 3.75h3" />
   </svg>
 );
+/** bolt — scheduled and autonomous work */
+export const IconTasks = ({ size }: { size?: number }) => (
+  <I size={size} d="M11.25 4.5 5.25 13.5h5.25L9.75 19.5l9-10.5H13.5l.75-4.5h-3Z" />
+);
 /** user-group — optional Groups module */
 export const IconUsers = ({ size }: { size?: number }) => (
   <I
@@ -47,6 +84,22 @@ export const IconUsers = ({ size }: { size?: number }) => (
 /** home — assistant */
 export const IconHome = ({ size }: { size?: number }) => (
   <I size={size} d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75" />
+);
+/** building-office-2 — the shared Agent office */
+export const IconOffice = ({ size }: { size?: number }) => (
+  <I size={size} d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+);
+/** arrows-path — refresh without relying on a font glyph */
+export const IconRefresh = ({ size }: { size?: number }) => (
+  <I size={size} d="M16.023 9.348h4.992V4.356m-.291 9.768a9 9 0 1 1-2.132-9.163l2.423 2.423M7.977 14.652H2.985v4.992m.291-9.768a9 9 0 0 1 2.132 9.163l-2.423-2.423" />
+);
+/** command-line — external coding sessions */
+export const IconCommandLine = ({ size }: { size?: number }) => (
+  <I size={size} d="m6.75 7.5 3 3-3 3m4.5 0h3M3.75 4.5h16.5v15H3.75v-15Z" />
+);
+/** sparkles — curated Talent Bureau */
+export const IconSparkles = ({ size }: { size?: number }) => (
+  <I size={size} d="M9.813 15.904 9 18l-.813-2.096a4.5 4.5 0 0 0-2.591-2.591L3.5 12.5l2.096-.813a4.5 4.5 0 0 0 2.591-2.591L9 7l.813 2.096a4.5 4.5 0 0 0 2.591 2.591l2.096.813-2.096.813a4.5 4.5 0 0 0-2.591 2.591ZM18.259 8.715 18 9.375l-.259-.66a3.375 3.375 0 0 0-1.956-1.956l-.66-.259.66-.259a3.375 3.375 0 0 0 1.956-1.956l.259-.66.259.66a3.375 3.375 0 0 0 1.956 1.956l.66.259-.66.259a3.375 3.375 0 0 0-1.956 1.956ZM16.894 20.567 16.5 21.5l-.394-.933a2.25 2.25 0 0 0-1.173-1.173L14 19l.933-.394a2.25 2.25 0 0 0 1.173-1.173l.394-.933.394.933a2.25 2.25 0 0 0 1.173 1.173L19 19l-.933.394a2.25 2.25 0 0 0-1.173 1.173Z" />
 );
 /** pencil-square — rename */
 export const IconEdit = ({ size }: { size?: number }) => (

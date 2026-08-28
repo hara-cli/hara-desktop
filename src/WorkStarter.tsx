@@ -1,6 +1,8 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  IconArrowRight,
+  IconClose,
   IconDocument,
   IconFolder,
   IconImage,
@@ -368,7 +370,7 @@ export function WorkStarter({
                     onClick={() => setAttachments((current) =>
                       current.filter((item) => item.id !== attachment.id))}
                   >
-                    ×
+                    <IconClose size={12} />
                   </button>
                 </span>
               );
@@ -385,7 +387,7 @@ export function WorkStarter({
               title={copy.resetKind}
               onClick={() => setKind("general")}
             >
-              {templates.find((template) => template.id === kind)?.title} ×
+              {templates.find((template) => template.id === kind)?.title} <IconClose size={12} />
             </button>
           )}
           <span className="workstarter-shortcut" aria-hidden>{copy.shortcut}</span>
@@ -426,7 +428,7 @@ export function WorkStarter({
           <strong>{copy.files}</strong>
           <small>{copy.filesHint}</small>
         </span>
-        <b aria-hidden>→</b>
+        <b aria-hidden><IconArrowRight size={16} /></b>
       </button>
     </section>
   );

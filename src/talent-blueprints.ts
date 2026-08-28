@@ -1,6 +1,11 @@
-import { AGENCY_AGENT_RECORDS, type GeneratedAgencyAgentRecord } from "./generated/agency-agent-records.ts";
+import {
+  AGENCY_AGENT_CATALOG_STATS,
+  AGENCY_AGENT_RECORDS,
+  type GeneratedAgencyAgentRecord,
+} from "./generated/agency-agent-records.ts";
 import type { AgentBlueprint, LocalizedText, TalentDepartmentId, TalentRisk } from "./talent-blueprint.ts";
 export * from "./talent-blueprint.ts";
+export { AGENCY_AGENT_CATALOG_STATS };
 
 export const TALENT_DEPARTMENTS: ReadonlyArray<{
   id: "all" | TalentDepartmentId;
@@ -8,6 +13,7 @@ export const TALENT_DEPARTMENTS: ReadonlyArray<{
   mark: string;
 }> = [
   { id: "all", label: { en: "All talent", zh: "全部人才" }, mark: "✦" },
+  { id: "leadership", label: { en: "Leadership", zh: "公司经营" }, mark: "♛" },
   { id: "people", label: { en: "People / HR", zh: "人事组织" }, mark: "♟" },
   { id: "finance", label: { en: "Finance", zh: "财务" }, mark: "¥" },
   { id: "sales", label: { en: "Sales", zh: "销售" }, mark: "↗" },
@@ -21,6 +27,8 @@ export const TALENT_DEPARTMENTS: ReadonlyArray<{
   { id: "engineering", label: { en: "Engineering", zh: "工程研发" }, mark: "⌘" },
   { id: "testing", label: { en: "Testing", zh: "测试质量" }, mark: "◆" },
   { id: "security", label: { en: "Security", zh: "安全" }, mark: "▣" },
+  { id: "legal", label: { en: "Legal & Compliance", zh: "法务合规" }, mark: "§" },
+  { id: "supply-chain", label: { en: "Supply Chain", zh: "供应链" }, mark: "⇄" },
   { id: "academic", label: { en: "Academic", zh: "学术研究" }, mark: "⌁" },
   { id: "gis", label: { en: "GIS", zh: "地理信息" }, mark: "⌖" },
   { id: "game-development", label: { en: "Game Development", zh: "游戏开发" }, mark: "♜" },
@@ -36,7 +44,7 @@ export const HARA_CURATED_BLUEPRINTS: readonly AgentBlueprint[] = [
     title: { en: "Frontend Developer", zh: "前端开发工程师" },
     bio: { en: "Turns product intent into fast, accessible interfaces.", zh: "把产品意图做成快速、易用、可访问的真实界面。" },
     traits: { en: ["precise", "visual", "pragmatic"], zh: ["精准", "审美", "务实"] },
-    emoji: "🖥️", accent: "#21a8b6", character: "frontend-developer",
+    emoji: "🖥️", avatar: "/avatars/talent/pixel-v2.webp", accent: "#21a8b6", character: "frontend-developer",
     capabilities: { en: ["React", "responsive UI", "performance"], zh: ["React", "响应式界面", "性能优化"] },
     tasks: { en: ["Build a production UI", "Repair responsive behavior", "Profile a slow screen"], zh: ["实现生产级界面", "修复响应式布局", "分析慢页面"] },
     suggestedTools: ["read_file", "grep", "edit_file", "bash"], risk: "write", budget: "standard",
@@ -499,7 +507,11 @@ function stableTalentHash(value: string): string {
 }
 
 function recordDepartment(record: GeneratedAgencyAgentRecord): TalentDepartmentId {
-  const identity = `${record.sourcePath} ${record.name}`.toLowerCase();
+  const identity = `${record.sourcePath} ${record.name.en} ${record.name.zh}`.toLowerCase();
+  if (record.division === "company") return "leadership";
+  if (record.division === "hr") return "people";
+  if (record.division === "legal") return "legal";
+  if (record.division === "supply-chain") return "supply-chain";
   if (/(hr-onboarding|recruitment-specialist|organizational-psychologist|corporate-training-designer|resume-tailor)/.test(identity)) return "people";
   if (/(accounts-payable|chief-financial-officer|pricing-analyst|loan-officer|legal-billing|medical-billing)/.test(identity)) return "finance";
   if (/(sales-outreach|salesforce|sales-data-extraction|presales)/.test(identity)) return "sales";
@@ -532,17 +544,27 @@ function communityTools(department: TalentDepartmentId): string[] {
     return ["read_file", "grep", "edit_file", "bash"];
   }
   if (["marketing", "paid-media", "sales"].includes(department)) return ["read_file", "web_search", "write_file"];
-  if (["academic", "healthcare", "security", "gis"].includes(department)) return ["read_file", "web_search"];
+  if (["academic", "healthcare", "security", "gis", "legal", "leadership"].includes(department)) return ["read_file", "web_search"];
   return ["read_file", "write_file"];
 }
 
 function communityRisk(department: TalentDepartmentId): TalentRisk {
-  if (["finance", "healthcare", "people", "sales", "security"].includes(department)) return "elevated";
+  if (["finance", "healthcare", "leadership", "legal", "people", "sales", "security", "supply-chain"].includes(department)) return "elevated";
   if (["academic", "gis"].includes(department)) return "read";
   return "write";
 }
 
 function communityQualityBar(department: TalentDepartmentId): string[] {
+  if (department === "leadership") return [
+    "Make tradeoffs and decision rights explicit",
+    "Require authorized human approval for commitments, restructuring, capital allocation, or external statements",
+    "Separate recommendations from decisions the Agent is not authorized to make",
+  ];
+  if (department === "legal") return [
+    "Verify the current jurisdiction, effective date, and authoritative legal source",
+    "Present risk analysis and draft language, not a false claim of licensed legal advice",
+    "Require authorized counsel or owner approval before filing, signing, or changing a binding policy",
+  ];
   if (department === "finance") return [
     "Reconcile every figure to an identified source",
     "Never initiate payments, filings, ledger mutations, or investment actions without explicit human approval",
@@ -563,6 +585,11 @@ function communityQualityBar(department: TalentDepartmentId): string[] {
     "Do not present assistance as diagnosis or replace a licensed professional",
     "Escalate urgent or high-risk uncertainty to an authorized human",
   ];
+  if (department === "supply-chain") return [
+    "Reconcile quantities, lead times, and costs to identified source data",
+    "Require approval before purchase orders, supplier commitments, or logistics bookings",
+    "State demand, capacity, quality, and compliance assumptions explicitly",
+  ];
   return [
     "Ground work in the available business context and current evidence",
     "Produce a concrete deliverable instead of generic advice",
@@ -576,33 +603,37 @@ function communityBlueprint(
 ): AgentBlueprint {
   const department = recordDepartment(record);
   const departmentEntry = TALENT_DEPARTMENTS.find((item) => item.id === department)!;
-  const description = record.description || record.vibe || `${record.name} specialist`;
-  const shortBio = record.vibe || description;
+  const description = record.description.en || record.vibe.en || `${record.name.en} specialist`;
   return {
     id: record.id,
     version: "1.0.0",
     sourcePath: record.sourcePath,
+    sourceCatalog: record.sourceCatalog,
+    ...(record.localizationSourcePath ? { localizationSourcePath: record.localizationSourcePath } : {}),
     department,
     username,
-    name: { en: record.name, zh: record.name },
-    title: { en: record.name, zh: record.name },
-    bio: { en: shortBio, zh: shortBio },
+    name: record.name,
+    title: record.name,
+    bio: {
+      en: record.vibe.en || record.description.en,
+      zh: record.vibe.zh || record.description.zh,
+    },
     traits: { en: ["specialist", "community", "outcome-led"], zh: ["专业角色", "社区导入", "结果导向"] },
     emoji: record.emoji,
     accent: recordAccent(record),
     character: `agency-${department}-${stableTalentHash(record.id).slice(0, 5)}`,
     capabilities: {
-      en: [departmentEntry.label.en, record.name, "structured delivery"],
-      zh: [departmentEntry.label.zh, record.name, "结构化交付"],
+      en: [departmentEntry.label.en, record.name.en, "structured delivery"],
+      zh: [departmentEntry.label.zh, record.name.zh, "结构化交付"],
     },
     tasks: {
-      en: [`Assess a ${record.name} brief`, `Execute a bounded ${record.name} assignment`, `Review and verify the outcome`],
-      zh: [`分析 ${record.name} 业务需求`, `执行边界明确的 ${record.name} 任务`, "复核结果并提交证据"],
+      en: [`Assess a ${record.name.en} brief`, `Execute a bounded ${record.name.en} assignment`, "Review and verify the outcome"],
+      zh: [`分析${record.name.zh}业务需求`, `执行边界明确的${record.name.zh}任务`, "复核结果并提交证据"],
     },
     suggestedTools: communityTools(department),
     risk: communityRisk(department),
-    budget: ["finance", "healthcare", "security", "academic"].includes(department) ? "deep" : "standard",
-    mission: `${description}${record.vibe && record.vibe !== description ? ` Working style: ${record.vibe}` : ""}`,
+    budget: ["finance", "healthcare", "leadership", "legal", "security", "academic"].includes(department) ? "deep" : "standard",
+    mission: `${description}${record.vibe.en && record.vibe.en !== description ? ` Working style: ${record.vibe.en}` : ""}`,
     qualityBar: communityQualityBar(department),
     curation: "community",
   };

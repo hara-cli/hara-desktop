@@ -5,6 +5,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DEFAULT_PET_SELECTOR, PET_AWAKE_KEY, PET_SELECTOR_KEY } from "./pet-runtime";
 import { AtlasCanvasPet, useReducedMotion } from "./PetAtlasSprite";
+import { IconClose } from "./icons";
 import type { PetMoveDirection } from "./pet-animation";
 import {
   BUILTIN_HARA_ASSET,
@@ -165,7 +166,7 @@ export default function PetOverlay() {
           void tuckAway();
         }}
       >
-        ×
+        <IconClose size={14} />
       </button>
       <button
         className="pet-chat-launch"

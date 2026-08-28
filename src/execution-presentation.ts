@@ -35,6 +35,9 @@ export function groupConversationItems(items: ConversationItem[]): ConversationS
   };
 
   items.forEach((item, index) => {
+    // Providers can persist tool-call assistant turns with no user-visible text. Keep their
+    // execution evidence, but never turn those protocol records into blank chat bubbles.
+    if (item.kind === "text" && !item.text.trim()) return;
     if (isExecutionDetail(item)) {
       execution.push({ index, item });
       return;

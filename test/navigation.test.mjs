@@ -262,7 +262,7 @@ test("Groups is a native, explicit-read work surface with no renderer-owned tran
   );
 });
 
-test("Workbench exposes a real fresh-conversation action through a two-level Agent and project inbox", () => {
+test("Workbench exposes fresh conversations plus isolated Agent, project, and external-session inbox facets", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const inbox = readFileSync(`${root}/src/workbench-inbox.ts`, "utf8");
 
@@ -276,11 +276,18 @@ test("Workbench exposes a real fresh-conversation action through a two-level Age
   );
   assert.match(app, /workbenchInboxMode === "agents"/);
   assert.match(app, /workbenchInboxMode === "projects"/);
+  assert.match(app, /workbenchInboxMode === "external"/);
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "agent", id: agent\.ref \}\)/);
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "project", id: cwd \}\)/);
+  assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "external", id: session\.id \}\)/);
   assert.match(app, /className="inbox-back"/);
   assert.match(app, /setWorkbenchInboxTarget\(null\)/);
   assert.match(app, /selectedInboxSessions\.map/);
   assert.match(inbox, /mainAgentRef\(session\.agentRef\) === agentRef/);
+  assert.match(app, /externalSessionCenterSurface/);
+  assert.match(app, /externalSessionsNextCursor/);
+  assert.match(app, /loadMoreExternalSessions/);
+  assert.match(app, /cursor,\s*limit: 100/);
+  assert.match(app, /activeSpaceId === "personal"/);
   assert.doesNotMatch(app, /collapsed\["__history"\]/, "history is no longer a nested third level");
 });

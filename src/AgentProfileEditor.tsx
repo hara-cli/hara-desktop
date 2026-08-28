@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentInfo, AgentPublicIdentity } from "./client";
 import { AgentPortrait } from "./AgentPortrait";
 import { MAX_AGENT_AVATAR_BYTES } from "./agent-visual";
+import { IconClose } from "./icons";
 import "./AgentProfileEditor.css";
 
 type EditableIdentity = Omit<AgentPublicIdentity, "version" | "source">;
@@ -92,7 +93,7 @@ export default function AgentProfileEditor({
               <em>@{agent.ref}</em>
             </span>
           </div>
-          <button type="button" className="agent-profile-close" aria-label={locale === "zh" ? "关闭" : "Close"} disabled={saving} onClick={onClose}>×</button>
+          <button type="button" className="agent-profile-close" aria-label={locale === "zh" ? "关闭" : "Close"} disabled={saving} onClick={onClose}><IconClose size={18} /></button>
         </header>
 
         {!editable ? (

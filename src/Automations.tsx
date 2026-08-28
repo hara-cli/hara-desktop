@@ -171,6 +171,8 @@ export interface AutomationCopy {
   schedulerOfflineBody: string;
   schedulerMissing: string;
   schedulerMissingBody: string;
+  schedulerUnsupported: string;
+  schedulerUnsupportedBody: string;
   installScheduler: string;
   lastChecked: string;
   statusScheduled: string;
@@ -179,6 +181,7 @@ export interface AutomationCopy {
   statusPaused: string;
   statusAttention: string;
   statusCompleted: string;
+  statusManual: string;
   statusOffline: string;
   statusScheduledHelp: string;
   statusActiveHelp: string;
@@ -186,6 +189,7 @@ export interface AutomationCopy {
   statusPausedHelp: string;
   statusAttentionHelp: string;
   statusCompletedHelp: string;
+  statusManualHelp: string;
   statusOfflineHelp: string;
   resultOk: string;
   resultError: string;
@@ -219,6 +223,9 @@ export interface AutomationCopy {
   taskPromptPlaceholder: string;
   workingDirectory: string;
   workingDirectoryPlaceholder: string;
+  workingDirectoryHelp: string;
+  browseDirectory: string;
+  directoryPickerFailed: string;
   executionMode: string;
   modePrint: string;
   modePrintHelp: string;
@@ -322,6 +329,8 @@ const DEFAULT_COPY: AutomationCopy = {
   schedulerOfflineBody: "任务不会按时触发，请检查本机服务后再试。",
   schedulerMissing: "需要安装定时服务",
   schedulerMissingBody: "安装一次后，即使 Desktop 没有打开，任务也能按计划运行。",
+  schedulerUnsupported: "当前系统暂不支持后台定时触发",
+  schedulerUnsupportedBody: "当前系统可以保存、编辑和立即运行任务，但还不能在 Hara 关闭后自动定时触发。",
   installScheduler: "安装定时服务",
   lastChecked: "最近检查",
   statusScheduled: "等待首次运行",
@@ -330,6 +339,7 @@ const DEFAULT_COPY: AutomationCopy = {
   statusPaused: "已暂停",
   statusAttention: "需要处理",
   statusCompleted: "已完成",
+  statusManual: "仅手动运行",
   statusOffline: "服务离线",
   statusScheduledHelp: "任务已经准备好，会在下一个计划时间首次运行。",
   statusActiveHelp: "任务已启用，最近一次运行正常。",
@@ -337,6 +347,7 @@ const DEFAULT_COPY: AutomationCopy = {
   statusPausedHelp: "任务保留在列表中，但不会自动运行。",
   statusAttentionHelp: "最近一次运行失败或超时，请查看错误并决定是否重试。",
   statusCompletedHelp: "这是一次性任务，计划的运行已经完成。",
+  statusManualHelp: "当前系统暂不支持后台定时触发；任务仍可保存、编辑和立即运行。",
   statusOfflineHelp: "任务已启用，但本机定时服务当前不可用。",
   resultOk: "成功",
   resultError: "失败",
@@ -370,6 +381,9 @@ const DEFAULT_COPY: AutomationCopy = {
   taskPromptPlaceholder: "例如：读取这个项目今天的提交，整理成一份简短日报。",
   workingDirectory: "在哪个目录工作？",
   workingDirectoryPlaceholder: "可选，例如 /Users/me/project",
+  workingDirectoryHelp: "可以直接输入路径，也可以从本机选择一个文件夹。",
+  browseDirectory: "选择目录",
+  directoryPickerFailed: "无法打开目录选择器，请重试或直接输入路径。",
   executionMode: "如何执行",
   modePrint: "Hara 指令",
   modePrintHelp: "把内容交给 Hara 处理，适合总结、检查和信息整理。",
@@ -430,6 +444,7 @@ type AutomationState =
   | "paused"
   | "attention"
   | "completed"
+  | "manual"
   | "offline";
 
 type EditorKind = "create" | "edit" | "duplicate";
@@ -451,6 +466,7 @@ interface AutomationDataProps extends ActionCallbacks {
   jobs?: readonly AutomationJob[] | null;
   sessions?: readonly AutomationRun[] | null;
   scheduler?: AutomationScheduler | null;
+  pickDirectory?: (current?: string) => Promise<string | null>;
 }
 
 export interface AutomationSidebarProps {
@@ -650,6 +666,7 @@ function getAutomationState(
 ): AutomationState {
   if (job.lastStatus === "running" || job.runningSince) return "running";
   if (job.enabled === false) return "paused";
+  if (scheduler?.supported === false) return "manual";
   if (scheduler?.installed === false || scheduler?.healthy === false || scheduler?.status === "offline") {
     return "offline";
   }
@@ -675,6 +692,7 @@ function stateLabel(state: AutomationState, copy: AutomationCopy): string {
     paused: copy.statusPaused,
     attention: copy.statusAttention,
     completed: copy.statusCompleted,
+    manual: copy.statusManual,
     offline: copy.statusOffline,
   };
   return labels[state];
@@ -688,6 +706,7 @@ function stateHelp(state: AutomationState, copy: AutomationCopy): string {
     paused: copy.statusPausedHelp,
     attention: copy.statusAttentionHelp,
     completed: copy.statusCompletedHelp,
+    manual: copy.statusManualHelp,
     offline: copy.statusOfflineHelp,
   };
   return descriptions[state];
@@ -961,7 +980,7 @@ export function AutomationSidebar({
           {!scheduler
             ? copy.schedulerUnknownBody
             : scheduler.supported === false
-            ? scheduler.detail || copy.schedulerOfflineBody
+            ? copy.schedulerUnsupportedBody
             : scheduler.installed === false
             ? copy.schedulerMissingBody
             : scheduler.healthy === false
@@ -988,9 +1007,9 @@ function SchedulerBanner({
   let title = copy.schedulerUnknown;
   let body = copy.schedulerUnknownBody;
   if (scheduler?.supported === false) {
-    tone = "error";
-    title = copy.schedulerOffline;
-    body = scheduler.detail || scheduler.issue || copy.schedulerOfflineBody;
+    tone = "warning";
+    title = copy.schedulerUnsupported;
+    body = copy.schedulerUnsupportedBody;
   } else if (scheduler?.installed === false) {
     tone = "warning";
     title = copy.schedulerMissing;
@@ -1886,6 +1905,7 @@ function AutomationEditor({
   copy,
   pending,
   error,
+  pickDirectory,
   onClose,
   onSubmit,
 }: {
@@ -1893,6 +1913,7 @@ function AutomationEditor({
   copy: AutomationCopy;
   pending: boolean;
   error: string | null;
+  pickDirectory?: (current?: string) => Promise<string | null>;
   onClose: () => void;
   onSubmit: (draft: AutomationDraft) => void;
 }) {
@@ -1901,6 +1922,8 @@ function AutomationEditor({
     parseEditorValues(state.kind, state.job, copy),
   );
   const [advanced, setAdvanced] = useState(false);
+  const [directoryPicking, setDirectoryPicking] = useState(false);
+  const [directoryError, setDirectoryError] = useState("");
   const [validation, setValidation] = useState<Partial<Record<"name" | "task" | "schedule", string>>>(
     {},
   );
@@ -1914,6 +1937,19 @@ function AutomationEditor({
   const setValue = <Key extends keyof EditorValues>(key: Key, value: EditorValues[Key]) => {
     setValues((current) => ({ ...current, [key]: value }));
     setValidation((current) => ({ ...current, [key]: undefined, schedule: undefined }));
+  };
+  const chooseDirectory = async () => {
+    if (!pickDirectory || directoryPicking) return;
+    setDirectoryPicking(true);
+    setDirectoryError("");
+    try {
+      const selected = await pickDirectory(values.cwd.trim() || undefined);
+      if (selected) setValue("cwd", selected);
+    } catch {
+      setDirectoryError(copy.directoryPickerFailed);
+    } finally {
+      setDirectoryPicking(false);
+    }
   };
   const validateStep = (target: EditorStep) => {
     const errors: typeof validation = {};
@@ -2006,16 +2042,35 @@ function AutomationEditor({
                   placeholder={copy.taskPromptPlaceholder}
                 />
               </FormField>
-              <FormField label={copy.workingDirectory}>
+              <div className="hara-automation-form-field">
+                <span>{copy.workingDirectory}</span>
                 <div className="hara-automation-input-with-icon">
                   <Icon name="folder" size={16} />
                   <input
+                    aria-label={copy.workingDirectory}
                     value={values.cwd}
-                    onChange={(event) => setValue("cwd", event.target.value)}
+                    onChange={(event) => {
+                      setDirectoryError("");
+                      setValue("cwd", event.target.value);
+                    }}
                     placeholder={copy.workingDirectoryPlaceholder}
                   />
+                  {pickDirectory ? (
+                    <button
+                      type="button"
+                      className="hara-automation-directory-button"
+                      onClick={() => void chooseDirectory()}
+                      disabled={directoryPicking}
+                    >
+                      {directoryPicking ? copy.runningAction : copy.browseDirectory}
+                    </button>
+                  ) : null}
                 </div>
-              </FormField>
+                <small>{copy.workingDirectoryHelp}</small>
+                {directoryError ? (
+                  <small className="hara-automation-field-error" role="alert">{directoryError}</small>
+                ) : null}
+              </div>
               <fieldset className="hara-automation-choice-field">
                 <legend>{copy.executionMode}</legend>
                 {(["print", "org", "command"] as const).map((mode) => {
@@ -2361,6 +2416,7 @@ export function AutomationsPage({
   delete: deleteAutomation,
   install,
   openReplay,
+  pickDirectory,
 }: AutomationsPageProps) {
   const copy = useMemo(() => getCopy(copyOverrides), [copyOverrides]);
   const safeJobs = jobs ?? [];
@@ -2424,10 +2480,11 @@ export function AutomationsPage({
           attention: 0,
           offline: 1,
           running: 2,
-          scheduled: 3,
-          active: 4,
-          paused: 5,
-          completed: 6,
+          manual: 3,
+          scheduled: 4,
+          active: 5,
+          paused: 6,
+          completed: 7,
         };
         const stateDifference =
           priority[getAutomationState(left, scheduler)] -
@@ -2599,6 +2656,7 @@ export function AutomationsPage({
             copy={copy}
             pending={pending !== null}
             error={operationError}
+            pickDirectory={pickDirectory}
             onClose={() => setEditor(null)}
             onSubmit={(draft) => void submitEditor(draft)}
           />
@@ -2733,6 +2791,7 @@ export function AutomationsPage({
           copy={copy}
           pending={pending !== null}
           error={operationError}
+          pickDirectory={pickDirectory}
           onClose={() => setEditor(null)}
           onSubmit={(draft) => void submitEditor(draft)}
         />
