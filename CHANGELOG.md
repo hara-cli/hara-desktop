@@ -28,7 +28,7 @@
   without weakening company data, Agent, project, or permission isolation.
 - Finish Daylight/Night contrast and responsive treatment across model details, message/work surfaces,
   Talent Bureau, Agent profiles, company switching, automations, and the compact workbench. Bundle Hara CLI
-  `0.155.0` at exact verified commit `65463a8839fdef3c4c126c6e57970fe91620c7b5`.
+  `0.155.1` at exact verified commit `416089854efbefdfe162bd24673aa4f228430fb8`.
 - Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
   reputation warning.
 
