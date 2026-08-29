@@ -1,5 +1,36 @@
 # Errors
 
+## [ERR-20260829-IMMUTABLE-ATTESTATION-VISIBILITY] Newly published immutable attestation was briefly invisible to the workflow token
+
+**Logged**: 2026-08-29T19:10:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: release-pipeline
+
+### Summary
+
+Desktop 0.1.120 was public and immutable, and independent public downloads matched the signed release,
+but the final GitHub-hosted verifier received a transient attestation-not-found result immediately after
+publication. A later public verification succeeded without changing the release, showing that the failure
+was token visibility or post-publication propagation rather than invalid release bytes.
+
+### Resolution
+
+Use the protected release-policy token for immutable-attestation reads and retry only the attestation
+visibility check for a small bounded window. Apply the same bounded behavior to the independent public-edge
+verifier, while keeping asset size, digest, updater metadata, Gatekeeper, and public-byte checks fail-closed.
+Never reopen, replace, or mutate an immutable release to work around transient verification visibility.
+
+### Metadata
+
+- Source: external_tool_failure
+- Reproducible: transiently after immutable publication
+- Related Files: .github/workflows/build.yml, scripts/verify-public-release-edge.sh, test/release-pipeline.test.mjs
+- Tags: github-release, immutable, attestation, token, retry, verification
+- Pattern-Key: release.retry_immutable_attestation_visibility_without_mutating_publication
+
+---
+
 ## [ERR-20260828-IMAGEGEN-PARALLEL-QUEUE] Parallel built-in portrait calls stalled behind server-side serialization
 
 **Logged**: 2026-08-28T01:50:00+08:00

@@ -1771,6 +1771,9 @@ test("release CDN reads force HTTP/1.1 and stop zero-byte stalls within bounded 
   assert.equal((publicEdge.match(/\/usr\/sbin\/spctl/g) || []).length, 2);
   assert.match(publicEdge, /for attempt in \{1\.\.12\}; do/);
   assert.match(publicEdge, /cmp -s "\$IMMUTABLE_LATEST" "\$STABLE_LATEST"/);
+  assert.match(promotion, /for attempt in \{1\.\.60\}; do/);
+  assert.match(promotion, /attempt \$attempt\/60[\s\S]*?sleep 10/);
+  assert.match(promotion, /did not propagate within 10 minutes/);
 });
 
 test("a post-publication rerun switches to immutable verification without rewriting assets", () => {

@@ -1097,7 +1097,11 @@ test("an unavailable pinned conversation falls back to local read-only history a
   assert.match(app, /当前仅查看本地历史/);
   assert.match(app, /选择连接并携带上下文继续/);
   assert.match(app, /readOnlySessionsRef\.current\[sessionId\]/, "all send entry points fail closed for a replay-only session");
-  assert.match(app, /disabled=\{!!activeReadOnlySession\}/, "the read-only composer cannot accept new text");
+  assert.match(
+    app,
+    /disabled=\{!!activeReadOnlySession \|\| activeAgentDismissed\}/,
+    "the read-only composer cannot accept new text",
+  );
   assert.match(app, /const visibleModelEntries = activeReadOnlySession[\s\S]*\? \[\]/, "the revoked pinned model is not offered as an in-place switch");
   assert.match(
     app,

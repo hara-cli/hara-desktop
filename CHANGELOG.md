@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.121 — 2026-08-30 — recoverable Agent staffing and Qwen vision alignment
+
+- Bundle Hara CLI `0.155.3` at exact verified commit
+  `2ee33d57d807c3bd09d3cf9b4e076999a6ca58f4`. Every discovered Personal Agent can now leave Hara's
+  active staff directory without deleting its source prompt or conversation history. Old conversations
+  remain readable, external Claude Code/OpenClaw/Hermes files stay untouched, live work blocks dismissal,
+  and re-hiring restores the same qualified identity instead of creating a same-name replacement.
+- Keep a dismissed Agent visibly attached to its retained history instead of silently showing the main Hara
+  identity, and disable new messages until the Agent is re-hired. Company Agent lifecycle remains controlled
+  by organization administrators rather than the local Personal roster.
+- Align Alibaba Token Plan end to end: `qwen3.8-flash` is advertised and routed as a native visual model,
+  including Responses `input_image` payloads. Upgrading Desktop replaces the older running engine that could
+  incorrectly label the model as unable to read images.
+- Allow GitHub's immutable-release attestation a bounded ten-minute post-publication propagation window, so
+  a healthy public, signed release is not reported as failed merely because its attestation appears late.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.120 — 2026-08-29 — reliable scheduled Agent execution
 
 - Bundle Hara CLI `0.155.2` at exact verified commit

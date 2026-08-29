@@ -154,7 +154,7 @@ export default function AgentProfileEditor({
 
         {(localError || error) ? <p className="agent-profile-error">{localError || error}</p> : null}
         <footer>
-          {editable && agent.allowedActions?.includes("archive") && onArchive ? (
+          {agent.allowedActions?.includes("archive") && onArchive ? (
             <button type="button" className="agent-profile-dismiss" disabled={saving} onClick={onArchive}>{locale === "zh" ? "解除雇佣" : "Dismiss Agent"}</button>
           ) : null}
           <span className="agent-profile-footer-spacer" />

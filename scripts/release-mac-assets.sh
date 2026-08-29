@@ -541,20 +541,21 @@ FINAL_REMOTE_CLI_COMMIT="$(node scripts/resolve-remote-tag.mjs ../hara-cli origi
 
 release_gh release edit "$TAG" -R "$REPO" --draft=false --prerelease=false --latest
 
-# Repositories with immutable releases produce a GitHub-signed release attestation on publish.
-# Allow normal propagation, then fail loudly if the public release cannot be verified.
+# Repositories with immutable releases produce a GitHub-signed release attestation asynchronously on
+# publish. GitHub can take several minutes after the Release is already public and immutable; keep the
+# signer inside a bounded propagation window so a healthy publication is not misreported as failed.
 RELEASE_ATTESTED=0
-for attempt in {1..12}; do
+for attempt in {1..60}; do
   if release_gh release verify "$TAG" -R "$REPO" >/dev/null 2>&1; then
     RELEASE_ATTESTED=1
     break
   fi
-  echo "immutable release attestation is not available yet (attempt $attempt/12)"
-  sleep 5
+  echo "immutable release attestation is not available yet (attempt $attempt/60)"
+  sleep 10
 done
 [ "$RELEASE_ATTESTED" = "1" ] || {
-  echo "error: GitHub could not verify the immutable release attestation for $TAG" >&2
-  echo "       Enable immutable releases in repository settings before promotion." >&2
+  echo "error: GitHub's immutable release attestation for $TAG did not propagate within 10 minutes" >&2
+  echo "       The repository policy was verified before signing; re-run the failed job in verification-only mode." >&2
   exit 1
 }
 unset RELEASE_GH_TOKEN

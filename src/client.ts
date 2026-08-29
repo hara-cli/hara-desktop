@@ -156,6 +156,8 @@ export interface AgentCatalog {
   agents: AgentInfo[];
   offices: AgentOfficeInfo[];
   currentOfficeId: string;
+  /** Personal Agent refs recoverably hidden from Hara's active staff directory. */
+  dismissedAgentRefs?: string[];
 }
 
 export interface SpaceInfo {

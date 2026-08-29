@@ -3534,16 +3534,21 @@ export default function App() {
     const agent = agentCatalog?.agents.find((candidate) => candidate.ref === profileAgentRef);
     if (!client || !agent?.revision || profileAgentSaving || !agent.allowedActions?.includes("archive")) return;
     const confirmed = window.confirm(locale === "zh"
-      ? `解除雇佣“${agentDisplayName(agent)}”吗？\n\nAgent 会从团队目录隐藏，但提示词文件会以可恢复的归档状态保留；历史对话不会删除。`
-      : `Dismiss “${agentDisplayName(agent)}”?\n\nThe Agent will leave the team directory, but its prompt file remains recoverably archived. Conversation history is not deleted.`);
+      ? `解除雇佣“${agentDisplayName(agent)}”吗？\n\nAgent 会从 Hara 团队目录隐藏；外部角色文件不会被修改，历史对话也不会删除，以后可从人才市场重新雇佣。`
+      : `Dismiss “${agentDisplayName(agent)}”?\n\nThe Agent will leave Hara's active directory. External role files and conversation history stay untouched, and you can re-hire it later.`);
     if (!confirmed) return;
     setProfileAgentSaving(true);
     setProfileAgentError("");
     try {
+      const activeSession = active
+        ? sessionsRef.current.find((session) => session.id === active)
+        : undefined;
       const result = await client.archiveAgent({
         ref: agent.ref,
         expectedRevision: agent.revision,
-        ...(active ? { sessionId: active } : { cwd: agent.home || server?.cwd }),
+        ...(activeSession?.agentRef === agent.ref
+          ? { sessionId: activeSession.id }
+          : { cwd: agent.home || activeSession?.cwd || server?.cwd }),
       });
       setAgentCatalog(result.catalog);
       setProfileAgentRef(null);
@@ -4806,7 +4811,7 @@ export default function App() {
     activeComposerAttachmentCapabilities,
     attachmentFeatureReady,
   );
-  const activeDraftCanSend = !activeReadOnlySession
+  const activeDraftContentCanSend = !activeReadOnlySession
     && !activeModelUnavailable
     && composerCanSend(activeDraft, activeAttachmentIssue);
   const requireAttachmentFeature = (): boolean => {
@@ -5890,6 +5895,11 @@ export default function App() {
   const engineVersionNeedsAttention =
     engineVersionState === "older" || engineVersionState === "incompatible";
   const activeSession = sessions.find((s) => s.id === active);
+  const activeAgentDismissed = Boolean(
+    activeSession?.agentRef
+    && agentCatalog?.dismissedAgentRefs?.includes(activeSession.agentRef),
+  );
+  const activeDraftCanSend = activeDraftContentCanSend && !activeAgentDismissed;
   const activeSpaceId = spaceDirectory?.activeId
     ?? (activeSession ? sessionSpaceId(activeSession, null) : "personal");
   const activeSpace = spaceDirectory?.spaces.find((space) => space.id === activeSpaceId);
@@ -6381,6 +6391,7 @@ export default function App() {
           <AgentPicker
             agents={availableAgents}
             currentAgentRef={activeSession?.agentRef}
+            dismissedAgentRefs={agentCatalog?.dismissedAgentRefs}
             locale={locale}
             onOpenOffice={() => void openAgentOffice()}
             onSelect={(agentRef) => {
@@ -6664,6 +6675,21 @@ export default function App() {
                   </button>
                 </div>
               )}
+              {activeAgentDismissed && !activeReadOnlySession && (
+                <div className="composer-readonly-warning" role="status">
+                  <span>
+                    <strong>{locale === "zh" ? "这个 Agent 已解除雇佣" : "This Agent has been dismissed"}</strong>
+                    <small>
+                      {locale === "zh"
+                        ? "历史对话仍保留在本机；重新从人才市场雇佣后，才可继续派发任务。"
+                        : "Conversation history remains on this device. Re-hire the Agent from the talent market before assigning more work."}
+                    </small>
+                  </span>
+                  <button className="linky" onClick={openTalentMarket}>
+                    {locale === "zh" ? "前往人才市场" : "Open talent market"}
+                  </button>
+                </div>
+              )}
               {activeAttachmentIssue && (
                 <div className="composer-capability-warning" role="status">
                   <span>{attachmentIssueText(locale, activeAttachmentIssue)}</span>
@@ -6710,8 +6736,12 @@ export default function App() {
                 <textarea
                   ref={inputRef}
                   value={input}
-                  disabled={!!activeReadOnlySession}
-                  placeholder={activeReadOnlySession
+                  disabled={!!activeReadOnlySession || activeAgentDismissed}
+                  placeholder={activeAgentDismissed
+                    ? (locale === "zh"
+                        ? "该 Agent 已离职；重新雇佣后可继续对话"
+                        : "This Agent was dismissed; re-hire it to continue")
+                    : activeReadOnlySession
                     ? (locale === "zh"
                         ? "这是只读历史；请选择连接并复制上下文后继续"
                         : "Read-only history; choose a connection and copy context to continue")
@@ -6763,7 +6793,7 @@ export default function App() {
                 <div className="composer-popover-anchor">
                   <button
                     className="composer-tool-button"
-                    disabled={!!activeReadOnlySession}
+                    disabled={!!activeReadOnlySession || activeAgentDismissed}
                     aria-expanded={attachmentMenuOpen}
                     onClick={() => {
                       setModelPickerOpen(false);

@@ -8,6 +8,7 @@ import "./AgentPicker.css";
 interface AgentPickerProps {
   agents: AgentInfo[];
   currentAgentRef?: string;
+  dismissedAgentRefs?: readonly string[];
   locale: "en" | "zh";
   disabled?: boolean;
   onSelect: (agentRef: string) => void;
@@ -17,6 +18,7 @@ interface AgentPickerProps {
 export default function AgentPicker({
   agents,
   currentAgentRef,
+  dismissedAgentRefs = [],
   locale,
   disabled,
   onSelect,
@@ -26,8 +28,10 @@ export default function AgentPicker({
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const activeRef = mainAgentRef(currentAgentRef);
+  const dismissedActive = activeRef !== "main" && dismissedAgentRefs.includes(activeRef);
   const active = agents.find((agent) => agent.ref === activeRef)
-    ?? agents.find((agent) => agent.ref === "main");
+    ?? (dismissedActive ? undefined : agents.find((agent) => agent.ref === "main"));
+  const dismissedName = dismissedActive ? activeRef.slice(activeRef.indexOf(":") + 1) : "";
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return agents
@@ -72,10 +76,12 @@ export default function AgentPicker({
       >
         {active ? (
           <AgentPortrait agentRef={active.ref} name={active.name} identity={active.identity} size="small" />
-        ) : <span className="agent-picker-fallback" aria-hidden>H</span>}
+        ) : <span className="agent-picker-fallback" aria-hidden>—</span>}
         <span className="agent-picker-identity">
-          <small>{locale === "zh" ? "当前 Agent" : "Agent"}</small>
-          <strong>{active ? agentDisplayName(active) : "Hara"}</strong>
+          <small>{dismissedActive
+            ? (locale === "zh" ? "已离职 Agent" : "Dismissed Agent")
+            : (locale === "zh" ? "当前 Agent" : "Agent")}</small>
+          <strong>{active ? agentDisplayName(active) : dismissedName || "Hara"}</strong>
         </span>
         <span className="agent-picker-trigger-meta" aria-hidden><b>{agents.length}</b><i>⌄</i></span>
       </button>
