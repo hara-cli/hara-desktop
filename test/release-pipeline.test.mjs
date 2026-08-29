@@ -1098,6 +1098,8 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(signJob, /\.draft == true or/);
   assert.match(signJob, /\.draft == false and[\s\S]*?\.immutable == true/);
   assert.match(signJob, /RELEASE_IS_DRAFT="\$\(jq -r \.draft/);
+  assert.match(signJob, /HARA_RELEASE_POLICY_TOKEN: \$\{\{ secrets\.HARA_RELEASE_POLICY_TOKEN \}\}/);
+  assert.match(signJob, /GH_TOKEN="\$HARA_RELEASE_POLICY_TOKEN"/);
   assert.match(signJob, /run_with_deadline 120 gh release verify "\$RELEASE_TAG"/);
   assert.match(signJob, /\.digest == \$digest/);
   assert.match(signJob, /releases\/assets\/\$SOURCE_ASSET_ID/);
@@ -1760,6 +1762,7 @@ test("release CDN reads force HTTP/1.1 and stop zero-byte stalls within bounded 
   assert.match(publicEdge, /gh release view "\$TAG"[\s\S]*?isImmutable[\s\S]*?assets/);
   assert.match(publicEdge, /\.isImmutable == true/);
   assert.match(publicEdge, /gh release verify "\$TAG"/);
+  assert.match(publicEdge, /release_gh\(\)[\s\S]*?for attempt in 1 2 3/);
   assert.match(
     publicEdge,
     /\/usr\/bin\/curl[\s\S]*?--http1\.1[\s\S]*?--retry-max-time 540[\s\S]*?--max-time 570[\s\S]*?--speed-limit 1024[\s\S]*?--speed-time 60/,

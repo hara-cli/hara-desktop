@@ -761,6 +761,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          HARA_RELEASE_POLICY_TOKEN: ${{ secrets.HARA_RELEASE_POLICY_TOKEN }}
           RELEASE_ID: ${{ needs.create_draft.outputs.release_id }}
           PINNED_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
           PINNED_CLI_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
@@ -883,7 +884,22 @@ jobs:
 
           RELEASE_IS_DRAFT="$(jq -r .draft "$RELEASE_METADATA")"
           if [ "$RELEASE_IS_DRAFT" = "false" ]; then
-            run_with_deadline 120 gh release verify "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null || {
+            [ -n "$HARA_RELEASE_POLICY_TOKEN" ] || {
+              echo "the protected release policy token is required to reverify a public Release" >&2
+              exit 1
+            }
+            GH_TOKEN="$HARA_RELEASE_POLICY_TOKEN"
+            PUBLIC_ATTESTATION_VERIFIED=0
+            for attestation_attempt in 1 2 3; do
+              if run_with_deadline 120 gh release verify "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null; then
+                PUBLIC_ATTESTATION_VERIFIED=1
+                break
+              fi
+              [ "$attestation_attempt" -lt 3 ] || break
+              echo "public Release attestation read failed ($attestation_attempt/3); retrying after a bounded delay" >&2
+              sleep $((attestation_attempt * 3))
+            done
+            [ "$PUBLIC_ATTESTATION_VERIFIED" = "1" ] || {
               echo "the public Release is not covered by a valid immutable attestation" >&2
               exit 1
             }

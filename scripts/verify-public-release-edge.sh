@@ -13,10 +13,9 @@ REPO="${GITHUB_REPOSITORY:-}"
   echo "public release verification is restricted to hara-cli/hara-desktop" >&2
   exit 2
 }
-[ -n "${GH_TOKEN:-}" ] || {
-  echo "GH_TOKEN is required for immutable release verification" >&2
-  exit 2
-}
+# GitHub-hosted verification supplies GH_TOKEN. A trusted operator may also run the same
+# read-only public-edge audit with their configured `gh` credential, so an environment token
+# is intentionally optional here.
 
 VERSION="${TAG#v}"
 WORK_ROOT="$(mktemp -d)"
@@ -26,7 +25,20 @@ RELEASE_METADATA="$WORK_ROOT/release.json"
 EXPECTED_NAMES="$WORK_ROOT/expected-names.txt"
 ACTUAL_NAMES="$WORK_ROOT/actual-names.txt"
 
-gh release view "$TAG" -R "$REPO" \
+release_gh() {
+  local attempt
+  for attempt in 1 2 3; do
+    if gh "$@"; then
+      return 0
+    fi
+    [ "$attempt" -lt 3 ] || break
+    echo "public-edge: GitHub API read failed ($attempt/3); retrying" >&2
+    /bin/sleep $((attempt * 3))
+  done
+  return 1
+}
+
+release_gh release view "$TAG" -R "$REPO" \
   --json tagName,isDraft,isImmutable,isPrerelease,publishedAt,assets > "$RELEASE_METADATA"
 jq -e --arg tag "$TAG" '
   .tagName == $tag and
@@ -68,7 +80,7 @@ cmp -s "$EXPECTED_NAMES" "$ACTUAL_NAMES" || {
   exit 1
 }
 
-gh release verify "$TAG" -R "$REPO" >/dev/null
+release_gh release verify "$TAG" -R "$REPO" >/dev/null
 
 public_curl() {
   /usr/bin/curl \
