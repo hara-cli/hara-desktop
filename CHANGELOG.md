@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.120 — 2026-08-29 — reliable scheduled Agent execution
+
+- Bundle Hara CLI `0.155.2` at exact verified commit
+  `20a16fef7edc37a1982fbda4d3e1a922242b1718`. Every scheduled prompt now binds its new run to the
+  authoritative personal or company Space, provider, and model before the first model request, fixing
+  runs that previously stopped with “legacy organization session has no verifiable Space binding” or
+  reached an empty/wrong route. Failed pre-launch occurrences remain visible in Desktop automation history.
+- Carry forward the complete `0.1.119` Windows renderer recovery and its verified light/dark surfaces.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.119 — 2026-08-29 — Windows renderer recovery build repair
 
 - Carry forward the complete `0.1.118` Windows black-screen recovery. The `0.1.118` publication was
