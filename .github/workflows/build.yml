@@ -761,7 +761,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          HARA_RELEASE_POLICY_TOKEN: ${{ secrets.HARA_RELEASE_POLICY_TOKEN }}
           RELEASE_ID: ${{ needs.create_draft.outputs.release_id }}
           PINNED_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
           PINNED_CLI_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
@@ -884,11 +883,6 @@ jobs:
 
           RELEASE_IS_DRAFT="$(jq -r .draft "$RELEASE_METADATA")"
           if [ "$RELEASE_IS_DRAFT" = "false" ]; then
-            [ -n "$HARA_RELEASE_POLICY_TOKEN" ] || {
-              echo "the protected release policy token is required to reverify a public Release" >&2
-              exit 1
-            }
-            GH_TOKEN="$HARA_RELEASE_POLICY_TOKEN"
             PUBLIC_ATTESTATION_VERIFIED=0
             for attestation_attempt in 1 2 3; do
               if run_with_deadline 120 gh release verify "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null; then
@@ -1154,6 +1148,7 @@ jobs:
   verify_public_release:
     name: Verify immutable release through the public GitHub edge
     needs: [prepare_release, sign_and_promote]
+    if: always() && needs.prepare_release.result == 'success'
     permissions:
       attestations: read
       contents: read

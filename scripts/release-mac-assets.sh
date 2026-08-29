@@ -545,16 +545,16 @@ release_gh release edit "$TAG" -R "$REPO" --draft=false --prerelease=false --lat
 # publish. GitHub can take several minutes after the Release is already public and immutable; keep the
 # signer inside a bounded propagation window so a healthy publication is not misreported as failed.
 RELEASE_ATTESTED=0
-for attempt in {1..60}; do
+for attempt in {1..180}; do
   if release_gh release verify "$TAG" -R "$REPO" >/dev/null 2>&1; then
     RELEASE_ATTESTED=1
     break
   fi
-  echo "immutable release attestation is not available yet (attempt $attempt/60)"
+  echo "immutable release attestation is not available yet (attempt $attempt/180)"
   sleep 10
 done
 [ "$RELEASE_ATTESTED" = "1" ] || {
-  echo "error: GitHub's immutable release attestation for $TAG did not propagate within 10 minutes" >&2
+  echo "error: GitHub's immutable release attestation for $TAG did not propagate within 30 minutes" >&2
   echo "       The repository policy was verified before signing; re-run the failed job in verification-only mode." >&2
   exit 1
 }

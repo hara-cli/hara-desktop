@@ -1099,7 +1099,8 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(signJob, /\.draft == false and[\s\S]*?\.immutable == true/);
   assert.match(signJob, /RELEASE_IS_DRAFT="\$\(jq -r \.draft/);
   assert.match(signJob, /HARA_RELEASE_POLICY_TOKEN: \$\{\{ secrets\.HARA_RELEASE_POLICY_TOKEN \}\}/);
-  assert.match(signJob, /GH_TOKEN="\$HARA_RELEASE_POLICY_TOKEN"/);
+  assert.doesNotMatch(signJob, /GH_TOKEN="\$HARA_RELEASE_POLICY_TOKEN"/);
+  assert.match(signJob, /Materialize exact release sources[\s\S]*?GH_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(signJob, /run_with_deadline 120 gh release verify "\$RELEASE_TAG"/);
   assert.match(signJob, /\.digest == \$digest/);
   assert.match(signJob, /releases\/assets\/\$SOURCE_ASSET_ID/);
@@ -1129,6 +1130,7 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(signJob, /HARA_DEFER_PUBLIC_EDGE_VERIFY: "1"/);
   assert.match(publicJob, /needs: \[prepare_release, sign_and_promote\]/);
   assert.match(publicJob, /permissions:\n      attestations: read\n      contents: read/);
+  assert.match(publicJob, /if: always\(\) && needs\.prepare_release\.result == 'success'/);
   assert.match(publicJob, /runs-on: macos-15/);
   assert.match(publicJob, /timeout-minutes: 45/);
   assert.match(publicJob, /persist-credentials: false/);
@@ -1771,9 +1773,9 @@ test("release CDN reads force HTTP/1.1 and stop zero-byte stalls within bounded 
   assert.equal((publicEdge.match(/\/usr\/sbin\/spctl/g) || []).length, 2);
   assert.match(publicEdge, /for attempt in \{1\.\.12\}; do/);
   assert.match(publicEdge, /cmp -s "\$IMMUTABLE_LATEST" "\$STABLE_LATEST"/);
-  assert.match(promotion, /for attempt in \{1\.\.60\}; do/);
-  assert.match(promotion, /attempt \$attempt\/60[\s\S]*?sleep 10/);
-  assert.match(promotion, /did not propagate within 10 minutes/);
+  assert.match(promotion, /for attempt in \{1\.\.180\}; do/);
+  assert.match(promotion, /attempt \$attempt\/180[\s\S]*?sleep 10/);
+  assert.match(promotion, /did not propagate within 30 minutes/);
 });
 
 test("a post-publication rerun switches to immutable verification without rewriting assets", () => {

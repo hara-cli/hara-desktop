@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.124 — 2026-08-30 — immutable release verification repair
+
+- Carry forward the complete Alibaba Responses, native Qwen vision, and fast Flow integration from
+  `0.1.123`, with the same exact Hara CLI `0.156.0` sidecar.
+- Keep the Actions token that has `attestations:read` for immutable Release verification instead of
+  replacing it with the separate repository-policy token. The public verifier now still runs after a
+  post-public promotion-step failure, and the bounded attestation propagation window is extended to
+  thirty minutes.
+
 ## 0.1.123 — 2026-08-30 — Alibaba Responses and fast Flow sidecar
 
 - Bundle Hara CLI `0.156.0` at exact verified commit
