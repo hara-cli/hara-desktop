@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.123 — 2026-08-30 — Alibaba Responses and fast Flow sidecar
+
+- Bundle Hara CLI `0.156.0` at exact verified commit
+  `62e64e8dff45065804e56e636121f04e1452b2a4`.
+- Alibaba Token Plan conversations now use the documented Responses routes for current Qwen, DeepSeek V4,
+  and GLM 5.2 Agent models. Qwen 3.8 Flash accepts native image attachments, and normal chat retains its
+  selectable thinking level while Off is sent explicitly.
+- Message Flows default to thinking Off, support a same-connection model override, and can use a validated
+  static result for deterministic zero-model-call routing. The bundled CLI also repairs the narrow legacy
+  provider registry shape that omitted the reserved Personal entry without replacing existing connections.
+
 ## 0.1.122 — 2026-08-30 — renderer hook-order startup hotfix
 
 - Fix a startup crash introduced by the External Session Center: its Codex and Claude Code actions now
