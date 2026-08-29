@@ -1,6 +1,6 @@
 # Hara External Session Runtime
 
-Status: P0–P2 implemented for Desktop 0.1.115 with bundled Hara CLI 0.155.1; P3–P5 remain planned.
+Status: P0–P2 implemented for Desktop 0.1.116 with bundled Hara CLI 0.155.1; P3–P5 remain planned.
 
 This design lets Hara discover Codex and Claude Code sessions without turning Desktop into a second
 provider-owned terminal or weakening Personal/company boundaries. It also defines how Hara can later expose

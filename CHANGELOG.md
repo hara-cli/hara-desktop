@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.116 — 2026-08-29 — reproducible signed release recovery
+
+- Carry forward the complete `0.1.115` External Session Center, 308-role bilingual Talent Bureau,
+  Alibaba Token Plan capability corrections, Agent recovery, automation, responsive layout, and
+  Daylight/Night improvements. The `0.1.115` publication was withheld before release when the protected
+  macOS signer could not retrieve Anthropic's optional Claude Agent SDK through its transparent npm proxy.
+- Keep all signed sidecar inputs on the official npm registry and pinned to Hara CLI `0.155.1`'s immutable
+  lockfile. The protected macOS build now installs the lock without lifecycle scripts, restores only the
+  exact target Claude SDK tarballs through a bounded curl path, verifies their SHA-512 lockfile integrity
+  and safe archive layout, then runs dependency lifecycle scripts and the full CLI compilation. No mirror,
+  floating version, unsigned fallback, or missing Claude-session capability is accepted.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.115 — 2026-08-29 — external session center and bilingual Talent Bureau
 
 - Add an on-device External Session Center for installed Codex and Claude Code runtimes. Users can list

@@ -123,7 +123,17 @@ build_sidecar_binary() {
 
 echo "▸ building hara $EXPECTED standalone sidecar ($TRIPLE, Bun $(bun --version))…"
 if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
-  (cd "$BUILD_CLI" && "$DESKTOP_ROOT/scripts/npm-ci-retry.sh" >/dev/null && npm run build >/dev/null)
+  (
+    cd "$BUILD_CLI"
+    # npm's optional-package fetch may be blocked by a transparent corporate proxy even while the
+    # official registry remains reachable through curl. Install the exact lockfile without running
+    # lifecycle scripts, hydrate only the two target SDK tarballs from registry.npmjs.org after
+    # checking their lockfile SHA-512, then restore dependency install scripts before compiling.
+    HARA_NPM_CI_IGNORE_SCRIPTS=1 "$DESKTOP_ROOT/scripts/npm-ci-retry.sh" >/dev/null
+    node "$DESKTOP_ROOT/scripts/hydrate-locked-sidecar-dependencies.mjs" "$PWD" "$TRIPLE"
+    npm rebuild --no-audit --fund=false >/dev/null
+    npm run build >/dev/null
+  )
 else
   (cd "$BUILD_CLI" && npm run build >/dev/null)
 fi

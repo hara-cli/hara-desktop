@@ -1568,6 +1568,7 @@ test("release installs and audits use finite official-registry retry helpers", (
   const retryHelper = readFileSync(join(root, "scripts/npm-ci-retry.sh"), "utf8");
   const auditHelper = readFileSync(join(root, "scripts/npm-audit-retry.sh"), "utf8");
   const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
+  const lockedHydration = readFileSync(join(root, "scripts/hydrate-locked-sidecar-dependencies.mjs"), "utf8");
 
   assert.match(workflow, /Install locked Desktop dependencies with bounded registry retries[\s\S]*?shell:\s+bash[\s\S]*?\.\/scripts\/npm-ci-retry\.sh/);
   assert.match(workflow, /Audit production dependencies with transient-only retries[\s\S]*?shell:\s+bash[\s\S]*?\.\/scripts\/npm-audit-retry\.sh/);
@@ -1578,12 +1579,63 @@ test("release installs and audits use finite official-registry retry helpers", (
   assert.match(retryHelper, /--fetch-retries=5/);
   assert.match(retryHelper, /--fetch-timeout=300000/);
   assert.doesNotMatch(retryHelper, /while true|registry\.npmmirror\.com|npmmirror/);
+  assert.match(refresh, /HARA_NPM_CI_IGNORE_SCRIPTS=1/);
+  assert.match(refresh, /hydrate-locked-sidecar-dependencies\.mjs/);
+  assert.match(refresh, /npm rebuild --no-audit --fund=false/);
+  assert.match(lockedHydration, /https:\/\/registry\.npmjs\.org/);
+  assert.match(lockedHydration, /sha512-/);
+  assert.match(lockedHydration, /--retry", "4"/);
+  assert.match(lockedHydration, /--max-time", "600"/);
+  assert.doesNotMatch(lockedHydration, /registry\.npmmirror\.com|npmmirror/);
   assert.match(auditHelper, /MAX_ATTEMPTS="\$\{HARA_NPM_AUDIT_ATTEMPTS:-4\}"/);
   assert.match(auditHelper, /metadata\?\.vulnerabilities/);
   assert.match(auditHelper, /audit endpoint returned an error/);
   assert.match(auditHelper, /--registry https:\/\/registry\.npmjs\.org\//);
   assert.match(auditHelper, /--fetch-timeout=180000/);
   assert.doesNotMatch(auditHelper, /while true|registry\.npmmirror\.com|npmmirror/);
+});
+
+test("sidecar-only npm installation defers lifecycle scripts without changing ordinary CI", () => {
+  const directory = mkdtempSync(join(tmpdir(), "hara-npm-ci-retry-"));
+  try {
+    const fakeNpm = join(directory, "npm");
+    const argumentsFile = join(directory, "arguments");
+    writeFileSync(fakeNpm, `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" >"$HARA_TEST_NPM_ARGUMENTS"
+`);
+    chmodSync(fakeNpm, 0o755);
+    const baseEnvironment = {
+      ...process.env,
+      PATH: `${directory}:${process.env.PATH}`,
+      HARA_TEST_NPM_ARGUMENTS: argumentsFile,
+      HARA_NPM_CI_ATTEMPTS: "1",
+    };
+
+    const ordinary = run("bash", [join(root, "scripts/npm-ci-retry.sh")], { env: baseEnvironment });
+    assert.equal(ordinary.status, 0, ordinary.stderr);
+    assert.deepEqual(readFileSync(argumentsFile, "utf8").trim().split("\n").slice(0, 2), ["ci", "--fetch-retries=5"]);
+    assert.doesNotMatch(readFileSync(argumentsFile, "utf8"), /--ignore-scripts|--no-audit|--fund=false/);
+
+    const sidecar = run("bash", [join(root, "scripts/npm-ci-retry.sh")], {
+      env: { ...baseEnvironment, HARA_NPM_CI_IGNORE_SCRIPTS: "1" },
+    });
+    assert.equal(sidecar.status, 0, sidecar.stderr);
+    assert.deepEqual(readFileSync(argumentsFile, "utf8").trim().split("\n").slice(0, 4), [
+      "ci",
+      "--ignore-scripts",
+      "--no-audit",
+      "--fund=false",
+    ]);
+
+    const invalid = run("bash", [join(root, "scripts/npm-ci-retry.sh")], {
+      env: { ...baseEnvironment, HARA_NPM_CI_IGNORE_SCRIPTS: "yes" },
+    });
+    assert.equal(invalid.status, 2);
+    assert.match(invalid.stderr, /must be 0 or 1/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("npm audit helper retries a transient endpoint failure but never retries a real advisory", () => {
