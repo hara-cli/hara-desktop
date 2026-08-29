@@ -4,6 +4,7 @@ import test from "node:test";
 
 const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
+const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const recovery = readFileSync(new URL("../src/RendererRecovery.tsx", import.meta.url), "utf8");
 const nativeHost = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const vite = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
@@ -24,6 +25,17 @@ test("React owns a generic recovery boundary and sends a native boot signal", ()
   assert.match(recovery, /invoke\("renderer_ready"\)/);
   assert.match(recovery, /componentDidCatch\(\)/);
   assert.doesNotMatch(recovery, /this\.state\.error|error\.stack/);
+});
+
+test("App declares every hook before the boot screen can return early", () => {
+  const bootScreen = app.indexOf("// ── boot / error screen");
+  const bootGuard = app.indexOf('if (phase !== "ready")', bootScreen);
+  assert.ok(bootScreen > 0);
+  assert.ok(bootGuard > bootScreen);
+  assert.doesNotMatch(
+    app.slice(bootGuard),
+    /\buse(?:Callback|Context|Effect|LayoutEffect|Memo|Reducer|Ref|State)\s*\(/,
+  );
 });
 
 test("Windows bundles conservative WebView2 syntax and a bounded GPU fallback", () => {

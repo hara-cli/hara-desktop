@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.122 — 2026-08-30 — renderer hook-order startup hotfix
+
+- Fix a startup crash introduced by the External Session Center: its Codex and Claude Code actions now
+  declare every React Hook before the boot screen can return. Connecting to the local engine no longer
+  changes App's Hook count or sends Desktop into the generic “The interface did not start” recovery page.
+- Add a renderer startup regression gate that rejects future App Hooks declared after the boot-screen early
+  return. Sessions, projects, model credentials, the bundled Hara CLI `0.155.3`, and provider routes remain
+  unchanged by this Desktop-only hotfix.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.121 — 2026-08-30 — recoverable Agent staffing and Qwen vision alignment
 
 - Bundle Hara CLI `0.155.3` at exact verified commit

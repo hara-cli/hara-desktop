@@ -5835,6 +5835,102 @@ export default function App() {
   // keep latest handlers reachable from the once-registered shortcut listener + pending-card effect
   apiRef.current = { setZone, openAssistant, openProject };
 
+  // External-session actions are hooks too, so they must be declared before the
+  // boot screen's early return. The selected session is safe to derive while the
+  // engine is still connecting because the local list starts empty.
+  const selectedExternalSession = workbenchInboxTarget?.kind === "external"
+    ? externalSessions.find((session) => session.id === workbenchInboxTarget.id)
+    : undefined;
+  const selectExternalSessionSource = useCallback((sourceId: ExternalSessionSourceId) => {
+    setExternalSessionSourceId(sourceId);
+    setWorkbenchInboxTarget(null);
+    setExternalTranscript(null);
+    setExternalSessionActionError("");
+  }, []);
+  const forkSelectedExternalSession = useCallback(async () => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (!client || !session || !client.supports("external.sessions.fork")) {
+      setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
+      return;
+    }
+    setExternalSessionAction({ sessionId: session.id, kind: "fork" });
+    setExternalSessionActionError("");
+    try {
+      const result = await client.forkExternalSession(session.id);
+      if (clientRef.current !== client) return;
+      setExternalSessions((current) => [
+        result.session,
+        ...current.filter((candidate) => candidate.id !== result.session.id),
+      ]);
+      setExternalSessionActivity((current) => ({ ...current, [result.session.id]: [] }));
+      setExternalTranscript(result);
+      setWorkbenchInboxTarget({ kind: "external", id: result.session.id });
+    } catch (error: any) {
+      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+    } finally {
+      if (clientRef.current === client) {
+        setExternalSessionAction((current) => current?.sessionId === session.id ? null : current);
+      }
+    }
+  }, [locale, selectedExternalSession]);
+  const submitSelectedExternalSession = useCallback(async (text: string) => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (!client || !session || !externalTranscript || externalTranscript.readOnly || !client.supports("external.sessions.submit")) {
+      const message = makeT(locale)("externalSessionsForkFirstBody");
+      setExternalSessionActionError(message);
+      throw new Error(message);
+    }
+    setExternalSessionAction({ sessionId: session.id, kind: "turn" });
+    setExternalSessionActionError("");
+    setExternalSessionActivity((current) => ({
+      ...current,
+      [session.id]: [{ id: `external-user:${Date.now()}`, kind: "user", text }],
+    }));
+    try {
+      const result = await client.submitExternalSession(session.id, text);
+      if (clientRef.current !== client) return;
+      if (result.error) setExternalSessionActionError(result.error);
+      refreshExternalTranscriptRef.current(result.sessionId);
+    } catch (error: any) {
+      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+      throw error;
+    } finally {
+      if (clientRef.current === client) {
+        setExternalSessionAction((current) => current?.sessionId === session.id ? null : current);
+      }
+    }
+  }, [externalTranscript, locale, selectedExternalSession]);
+  const interruptSelectedExternalSession = useCallback(async () => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (!client || !session || !client.supports("external.sessions.interrupt")) return;
+    setExternalSessionAction({ sessionId: session.id, kind: "interrupt" });
+    setExternalSessionActionError("");
+    try {
+      await client.interruptExternalSession(session.id);
+    } catch (error: any) {
+      if (clientRef.current === client) {
+        setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+        setExternalSessionAction({ sessionId: session.id, kind: "turn" });
+      }
+    }
+  }, [selectedExternalSession]);
+  const answerExternalSessionApproval = useCallback(async (verdict: "deny" | "allow" | "always") => {
+    const client = clientRef.current;
+    const approval = externalSessionApproval;
+    if (!client || !approval) return;
+    try {
+      await client.approvalReply(approval.approvalId, verdict !== "deny", verdict === "always");
+      if (clientRef.current === client) {
+        setExternalSessionApproval((current) => current?.approvalId === approval.approvalId ? null : current);
+      }
+    } catch (error: any) {
+      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+    }
+  }, [externalSessionApproval]);
+
   // ── boot / error screen ────────────────────────────────────────────────────
   if (phase !== "ready") {
     return (
@@ -5957,9 +6053,6 @@ export default function App() {
   const selectedInboxProject = workbenchInboxTarget?.kind === "project"
     ? allProjectGroups.find(([cwd]) => cwd === workbenchInboxTarget.id)
     : undefined;
-  const selectedExternalSession = workbenchInboxTarget?.kind === "external"
-    ? externalSessions.find((session) => session.id === workbenchInboxTarget.id)
-    : undefined;
   const selectedInboxSessions = sortInboxSessions(filterInboxSessions(
     selectedInboxAgent
       ? inboxSessionsForAgent(spaceSessions, selectedInboxAgent.ref)
@@ -5983,95 +6076,6 @@ export default function App() {
     error: t("externalStateError"),
     unknown: t("externalStateUnknown"),
   })[state];
-  const selectExternalSessionSource = useCallback((sourceId: ExternalSessionSourceId) => {
-    setExternalSessionSourceId(sourceId);
-    setWorkbenchInboxTarget(null);
-    setExternalTranscript(null);
-    setExternalSessionActionError("");
-  }, []);
-  const forkSelectedExternalSession = useCallback(async () => {
-    const client = clientRef.current;
-    const session = selectedExternalSession;
-    if (!client || !session || !client.supports("external.sessions.fork")) {
-      setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
-      return;
-    }
-    setExternalSessionAction({ sessionId: session.id, kind: "fork" });
-    setExternalSessionActionError("");
-    try {
-      const result = await client.forkExternalSession(session.id);
-      if (clientRef.current !== client) return;
-      setExternalSessions((current) => [
-        result.session,
-        ...current.filter((candidate) => candidate.id !== result.session.id),
-      ]);
-      setExternalSessionActivity((current) => ({ ...current, [result.session.id]: [] }));
-      setExternalTranscript(result);
-      setWorkbenchInboxTarget({ kind: "external", id: result.session.id });
-    } catch (error: any) {
-      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
-    } finally {
-      if (clientRef.current === client) {
-        setExternalSessionAction((current) => current?.sessionId === session.id ? null : current);
-      }
-    }
-  }, [locale, selectedExternalSession]);
-  const submitSelectedExternalSession = useCallback(async (text: string) => {
-    const client = clientRef.current;
-    const session = selectedExternalSession;
-    if (!client || !session || !externalTranscript || externalTranscript.readOnly || !client.supports("external.sessions.submit")) {
-      const message = makeT(locale)("externalSessionsForkFirstBody");
-      setExternalSessionActionError(message);
-      throw new Error(message);
-    }
-    setExternalSessionAction({ sessionId: session.id, kind: "turn" });
-    setExternalSessionActionError("");
-    setExternalSessionActivity((current) => ({
-      ...current,
-      [session.id]: [{ id: `external-user:${Date.now()}`, kind: "user", text }],
-    }));
-    try {
-      const result = await client.submitExternalSession(session.id, text);
-      if (clientRef.current !== client) return;
-      if (result.error) setExternalSessionActionError(result.error);
-      refreshExternalTranscriptRef.current(result.sessionId);
-    } catch (error: any) {
-      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
-      throw error;
-    } finally {
-      if (clientRef.current === client) {
-        setExternalSessionAction((current) => current?.sessionId === session.id ? null : current);
-      }
-    }
-  }, [externalTranscript, locale, selectedExternalSession]);
-  const interruptSelectedExternalSession = useCallback(async () => {
-    const client = clientRef.current;
-    const session = selectedExternalSession;
-    if (!client || !session || !client.supports("external.sessions.interrupt")) return;
-    setExternalSessionAction({ sessionId: session.id, kind: "interrupt" });
-    setExternalSessionActionError("");
-    try {
-      await client.interruptExternalSession(session.id);
-    } catch (error: any) {
-      if (clientRef.current === client) {
-        setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
-        setExternalSessionAction({ sessionId: session.id, kind: "turn" });
-      }
-    }
-  }, [selectedExternalSession]);
-  const answerExternalSessionApproval = useCallback(async (verdict: "deny" | "allow" | "always") => {
-    const client = clientRef.current;
-    const approval = externalSessionApproval;
-    if (!client || !approval) return;
-    try {
-      await client.approvalReply(approval.approvalId, verdict !== "deny", verdict === "always");
-      if (clientRef.current === client) {
-        setExternalSessionApproval((current) => current?.approvalId === approval.approvalId ? null : current);
-      }
-    } catch (error: any) {
-      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
-    }
-  }, [externalSessionApproval]);
   const activeApproval: ApprovalMode = (activeSession?.approval ?? defaultApproval) || "auto-edit";
   const activeComposerWorkObject = active ? visibleSessionWorkObject(active) : null;
   const items = active ? (transcripts[active] ?? []) : [];
