@@ -1126,7 +1126,7 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(promotion, /trusted prepare-job digest/);
   assert.match(signJob, /HARA_DEFER_PUBLIC_EDGE_VERIFY: "1"/);
   assert.match(publicJob, /needs: \[prepare_release, sign_and_promote\]/);
-  assert.match(publicJob, /permissions:\n      contents: read/);
+  assert.match(publicJob, /permissions:\n      attestations: read\n      contents: read/);
   assert.match(publicJob, /runs-on: macos-15/);
   assert.match(publicJob, /timeout-minutes: 45/);
   assert.match(publicJob, /persist-credentials: false/);
@@ -1396,7 +1396,7 @@ test("tag workflow automatically enters the protected promotion job under one co
   assert.match(buildWorkflow, /build:\n[\s\S]*?environment:\n      name: hara-desktop-production/);
   assert.match(
     buildWorkflow,
-    /sign_and_promote:\n[\s\S]*?permissions:\n      actions: read\n      contents: write\n[\s\S]*?environment:/,
+    /sign_and_promote:\n[\s\S]*?permissions:\n      actions: read\n      attestations: read\n      contents: write\n[\s\S]*?environment:/,
   );
   assert.match(buildWorkflow, /secrets\.HARA_RELEASE_POLICY_TOKEN/);
   assert.match(buildWorkflow, /secrets\.HARA_TAURI_SIGNING_PRIVATE_KEY/);

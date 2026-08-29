@@ -747,6 +747,7 @@ jobs:
     needs: [prepare_release, create_draft, assemble_draft, promotion_preflight]
     permissions:
       actions: read
+      attestations: read
       contents: write
     environment:
       name: hara-desktop-production
@@ -1138,6 +1139,7 @@ jobs:
     name: Verify immutable release through the public GitHub edge
     needs: [prepare_release, sign_and_promote]
     permissions:
+      attestations: read
       contents: read
     runs-on: macos-15
     timeout-minutes: 45
