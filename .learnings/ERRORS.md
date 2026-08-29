@@ -1224,3 +1224,33 @@ or copy existing identities to manufacture completeness.
   marker in the user Library cache, returning `Operation not permitted` after correctly reporting zero jobs.
 - Correction: run only that no-op completion-marker step at the host boundary, then read the marker back and
   require `total: 308`. Generation itself remains the scheduled LaunchAgent's responsibility.
+
+## 2026-08-29 — Old-engine reproduction needs the host loopback boundary
+
+- Command: launch an isolated Hara 0.152.2 `serve` on `127.0.0.1:18890` from the workspace sandbox.
+- Failure: the sandbox rejected the loopback bind with `listen EPERM` before compatibility behavior could be
+  exercised.
+- Correction: keep the test HOME and port isolated, but run the exact bounded Serve command at the host
+  boundary; never reuse or stop the user's live discovery owner.
+
+## 2026-08-29 — A Rust target alone is not a Windows cross-check toolchain
+
+- Command: `cargo check --target x86_64-pc-windows-msvc` on the Apple Silicon release workstation.
+- Failure: the target was installed, but `ring` could not compile because the host has no Windows/MSVC C
+  headers (`assert.h` was unavailable).
+- Correction: use local macOS `cargo check` for shared Rust plus source-contract tests for cfg-gated recovery,
+  then require the real `windows-latest` release lane to compile and package the Windows implementation before
+  publication. Do not describe the local target-only attempt as a Windows compile pass.
+
+## 2026-08-29 — Desktop Rust formatting requires the nested manifest
+
+- Command: `cargo fmt --check` from the Desktop repository root.
+- Failure: the Tauri crate lives under `src-tauri`, so Cargo could not find a root-level `Cargo.toml`.
+- Correction: always pass `--manifest-path src-tauri/Cargo.toml` for Desktop Rust format, check, and test gates.
+
+## 2026-08-29 — Desktop Git fetch needs the host SSH boundary
+
+- Command: `git fetch origin main` from the workspace sandbox before the emergency release.
+- Failure: the sandbox rejected the repository SSH hop before GitHub authentication.
+- Correction: rerun the same read-only fetch at the approved host boundary, then require a zero-divergence
+  comparison before committing or tagging; do not skip the remote-race check.

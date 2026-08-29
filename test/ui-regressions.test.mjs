@@ -633,7 +633,7 @@ test("macOS Dock reopen restores or recreates the main window", () => {
   assert.match(nativeHost, /WebviewWindowBuilder::from_config\(app, &config\)/);
   assert.match(
     nativeHost,
-    /#\[cfg\(not\(target_os = "macos"\)\)\][\s\S]*get_or_create_main_window\(app\)[\s\S]*window\.show\(\)/,
+    /#\[cfg\(not\(target_os = "macos"\)\)\][\s\S]*get_or_create_main_window\(app, software_renderer\)[\s\S]*window\.show\(\)/,
     "deferred main-window creation must also create and show the entry window on Windows and Linux",
   );
   assert.match(nativeHost, /window\s*\.unminimize\(\)/);

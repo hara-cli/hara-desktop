@@ -5,6 +5,11 @@ const PET_CHAT_CSP = "default-src 'self'; connect-src 'none'; navigate-to 'none'
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+// Tauri's Windows runtime is WebView2, and managed enterprise machines can lag
+// behind Vite's moving default browser baseline. Keep the generated syntax at a
+// known WebView2-safe level instead of silently inheriting a newer Vite target.
+// @ts-expect-error process is a nodejs global
+const platform = process.env.TAURI_ENV_PLATFORM;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -30,6 +35,7 @@ export default defineConfig(async () => ({
     },
   ],
   build: {
+    target: platform === "windows" ? "chrome95" : "safari13",
     rollupOptions: {
       input: {
         main: "index.html",

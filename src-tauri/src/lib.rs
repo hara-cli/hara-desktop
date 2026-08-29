@@ -4,6 +4,7 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(windows)]
 mod windows_process;
@@ -49,6 +50,84 @@ const WINDOWS_UPDATE_STAGING_FILE_LIMIT: usize = 8;
 #[cfg(windows)]
 const WINDOWS_UPDATE_STAGING_AUTOCLEAN_AGE: std::time::Duration =
     std::time::Duration::from_secs(60 * 60);
+#[cfg(windows)]
+const WINDOWS_RENDERER_BOOT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+#[cfg(windows)]
+const WINDOWS_RENDERER_RECREATE_DELAY: std::time::Duration = std::time::Duration::from_millis(350);
+#[cfg(windows)]
+const WINDOWS_SOFTWARE_RENDERER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu";
+
+#[derive(Default)]
+struct RendererBootState {
+    ready: AtomicBool,
+    #[cfg(windows)]
+    software_mode: AtomicBool,
+    #[cfg(windows)]
+    fallback_started: AtomicBool,
+}
+
+#[cfg(windows)]
+fn windows_software_renderer_marker<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let version = app.package_info().version.to_string();
+    let cache = app
+        .path()
+        .app_cache_dir()
+        .map_err(|error| format!("resolve Hara renderer cache: {error}"))?;
+    Ok(cache.join(format!("webview2-software-{version}.flag")))
+}
+
+#[cfg(windows)]
+fn windows_software_renderer_was_required<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
+    let Ok(marker) = windows_software_renderer_marker(app) else {
+        return false;
+    };
+    fs::symlink_metadata(marker)
+        .map(|metadata| {
+            metadata.is_file() && !metadata.file_type().is_symlink() && metadata.len() <= 64
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn remember_windows_software_renderer<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<(), String> {
+    let marker = windows_software_renderer_marker(app)?;
+    let parent = marker
+        .parent()
+        .ok_or_else(|| "Hara renderer marker has no parent directory".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| format!("prepare Hara renderer cache: {error}"))?;
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(marker)
+    {
+        Ok(mut file) => file
+            .write_all(b"software-renderer-required\n")
+            .map_err(|error| format!("write Hara renderer marker: {error}")),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(format!("create Hara renderer marker: {error}")),
+    }
+}
+
+#[tauri::command]
+fn renderer_ready<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    state: tauri::State<'_, RendererBootState>,
+) -> Result<(), String> {
+    state.ready.store(true, Ordering::Release);
+    #[cfg(windows)]
+    if state.software_mode.load(Ordering::Acquire) {
+        remember_windows_software_renderer(&app)?;
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+    Ok(())
+}
 
 fn macos_updater_target(os: &str, arch: &str) -> Option<&'static str> {
     match (os, arch) {
@@ -555,15 +634,12 @@ fn should_track_window_state(label: &str) -> bool {
 }
 
 #[cfg(desktop)]
-fn get_or_create_main_window<R: tauri::Runtime>(
+fn create_main_window<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
+    software_renderer: bool,
 ) -> Result<tauri::WebviewWindow<R>, String> {
+    #[cfg(windows)]
     use tauri::Manager;
-
-    if let Some(window) = app.get_webview_window("main") {
-        return Ok(window);
-    }
-
     let config = app
         .config()
         .app
@@ -572,15 +648,44 @@ fn get_or_create_main_window<R: tauri::Runtime>(
         .find(|config| config.label == "main")
         .cloned()
         .ok_or_else(|| "main window configuration is missing".to_string())?;
-    tauri::WebviewWindowBuilder::from_config(app, &config)
-        .map_err(|error| format!("prepare main window: {error}"))?
+    let builder = tauri::WebviewWindowBuilder::from_config(app, &config)
+        .map_err(|error| format!("prepare main window: {error}"))?;
+    #[cfg(windows)]
+    let builder = if software_renderer {
+        let data_directory = app
+            .path()
+            .app_cache_dir()
+            .map_err(|error| format!("resolve Hara renderer cache: {error}"))?
+            .join("webview2-software-renderer");
+        builder
+            .additional_browser_args(WINDOWS_SOFTWARE_RENDERER_ARGS)
+            .data_directory(data_directory)
+    } else {
+        builder
+    };
+    #[cfg(not(windows))]
+    let _ = software_renderer;
+    builder
         .build()
         .map_err(|error| format!("create main window: {error}"))
 }
 
+#[cfg(desktop)]
+fn get_or_create_main_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    software_renderer: bool,
+) -> Result<tauri::WebviewWindow<R>, String> {
+    use tauri::Manager;
+
+    if let Some(window) = app.get_webview_window("main") {
+        return Ok(window);
+    }
+    create_main_window(app, software_renderer)
+}
+
 #[cfg(target_os = "macos")]
 fn reopen_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
-    let window = get_or_create_main_window(app)?;
+    let window = get_or_create_main_window(app, false)?;
 
     window
         .unminimize()
@@ -602,6 +707,81 @@ fn reopen_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<()
             .map_err(|error| format!("focus main window: {error}"))?;
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn schedule_windows_renderer_recovery(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        use tauri::Manager;
+
+        std::thread::sleep(WINDOWS_RENDERER_BOOT_TIMEOUT);
+        if app
+            .state::<RendererBootState>()
+            .ready
+            .load(Ordering::Acquire)
+        {
+            return;
+        }
+
+        let destroy_app = app.clone();
+        if let Err(error) = app.run_on_main_thread(move || {
+            let state = destroy_app.state::<RendererBootState>();
+            if state.ready.load(Ordering::Acquire) {
+                return;
+            }
+            state.fallback_started.store(true, Ordering::Release);
+            if let Some(window) = destroy_app.get_webview_window("main") {
+                if let Err(error) = window.destroy() {
+                    state.fallback_started.store(false, Ordering::Release);
+                    eprintln!(
+                        "Windows renderer recovery could not close the stalled window: {error}"
+                    );
+                    return;
+                }
+            }
+        }) {
+            eprintln!("Windows renderer recovery could not schedule window reset: {error}");
+            return;
+        }
+
+        std::thread::sleep(WINDOWS_RENDERER_RECREATE_DELAY);
+        if !app
+            .state::<RendererBootState>()
+            .fallback_started
+            .load(Ordering::Acquire)
+        {
+            return;
+        }
+
+        let create_app = app.clone();
+        if let Err(error) = app.run_on_main_thread(move || {
+            let state = create_app.state::<RendererBootState>();
+            state.ready.store(false, Ordering::Release);
+            state.software_mode.store(true, Ordering::Release);
+            match create_main_window(&create_app, true) {
+                Ok(window) => {
+                    if let Err(error) = window.show() {
+                        eprintln!("Windows software renderer window could not be shown: {error}");
+                    } else if let Err(error) = recover_main_window_if_offscreen(&window) {
+                        eprintln!("Windows software renderer window recovery failed: {error}");
+                    }
+                }
+                Err(error) => {
+                    eprintln!("Windows software renderer fallback failed: {error}");
+                    state.fallback_started.store(false, Ordering::Release);
+                    create_app.exit(1);
+                    return;
+                }
+            }
+            state.fallback_started.store(false, Ordering::Release);
+        }) {
+            eprintln!("Windows software renderer fallback could not be scheduled: {error}");
+            app.state::<RendererBootState>()
+                .fallback_started
+                .store(false, Ordering::Release);
+            app.exit(1);
+        }
+    });
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -2767,6 +2947,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(OwnedPanels(std::sync::Mutex::new(Vec::new())))
+        .manage(RendererBootState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -2807,7 +2988,8 @@ pub fn run() {
             write_temp_image,
             read_presentation_image,
             list_pets,
-            read_pet_asset
+            read_pet_asset,
+            renderer_ready
         ])
         .build(context)
         .expect("error while building tauri application")
@@ -2820,12 +3002,27 @@ pub fn run() {
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
-                    match get_or_create_main_window(app) {
+                    use tauri::Manager;
+                    #[cfg(windows)]
+                    let software_renderer = windows_software_renderer_was_required(app);
+                    #[cfg(not(windows))]
+                    let software_renderer = false;
+                    let renderer_state = app.state::<RendererBootState>();
+                    #[cfg(windows)]
+                    renderer_state
+                        .software_mode
+                        .store(software_renderer, Ordering::Release);
+                    renderer_state.ready.store(false, Ordering::Release);
+                    match get_or_create_main_window(app, software_renderer) {
                         Ok(window) => {
                             if let Err(error) = window.show() {
                                 eprintln!("main window startup visibility failed: {error}");
                             } else if let Err(error) = recover_main_window_if_offscreen(&window) {
                                 eprintln!("main window visibility recovery failed: {error}");
+                            }
+                            #[cfg(windows)]
+                            if !software_renderer {
+                                schedule_windows_renderer_recovery(app.clone());
                             }
                         }
                         Err(error) => {
@@ -2868,6 +3065,17 @@ pub fn run() {
                         );
                     }
                 }
+            }
+            #[cfg(windows)]
+            tauri::RunEvent::ExitRequested { api, .. }
+                if app
+                    .state::<RendererBootState>()
+                    .fallback_started
+                    .load(Ordering::Acquire) =>
+            {
+                // Destroying the only WebView normally requests process exit. Keep the host alive
+                // only for the bounded 350 ms handoff to the software-rendered replacement.
+                api.prevent_exit();
             }
             // app exit: terminate the panel servers WE started (never a server the user had running)
             tauri::RunEvent::Exit => {

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.118 — 2026-08-29 — Windows renderer recovery
+
+- Pin Windows production JavaScript to a conservative WebView2 syntax baseline instead of inheriting
+  Vite's moving browser default. Verify every built HTML/CSS/JavaScript asset reference before packaging,
+  so an incomplete renderer payload cannot become a release.
+- Replace the all-black startup failure with a bilingual, credential-safe recovery surface. A native
+  ten-second watchdog now detects a Windows renderer that never executes and retries in a separate
+  software-rendered WebView2 data directory; normal launches keep GPU acceleration, and a successful
+  fallback is remembered only for this Desktop version.
+- Keep React render failures inside a top-level boundary without exposing raw exceptions, local paths, model
+  payloads, sessions, projects, or credentials. Bundle the unchanged Hara CLI `0.155.1` at exact verified
+  commit `416089854efbefdfe162bd24673aa4f228430fb8`.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.117 — 2026-08-29 — scoped official-registry proxy bypass
 
 - Carry forward the complete `0.1.116` feature and reproducible sidecar-build set. The protected signing
