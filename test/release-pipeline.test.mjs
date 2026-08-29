@@ -1586,6 +1586,8 @@ test("release installs and audits use finite official-registry retry helpers", (
   assert.match(lockedHydration, /sha512-/);
   assert.match(lockedHydration, /--retry", "4"/);
   assert.match(lockedHydration, /--max-time", "600"/);
+  assert.match(lockedHydration, /--noproxy", OFFICIAL_NPM_HOST/);
+  assert.match(lockedHydration, /OFFICIAL_NPM_HOST = "registry\.npmjs\.org"/);
   assert.doesNotMatch(lockedHydration, /registry\.npmmirror\.com|npmmirror/);
   assert.match(auditHelper, /MAX_ATTEMPTS="\$\{HARA_NPM_AUDIT_ATTEMPTS:-4\}"/);
   assert.match(auditHelper, /metadata\?\.vulnerabilities/);

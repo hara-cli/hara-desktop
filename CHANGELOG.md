@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.117 — 2026-08-29 — scoped official-registry proxy bypass
+
+- Carry forward the complete `0.1.116` feature and reproducible sidecar-build set. The protected signing
+  runner injects a local proxy that rejects Anthropic package paths with HTTP 403 even when npm and curl
+  both target `registry.npmjs.org`; `0.1.116` therefore remained an unpublished hidden draft.
+- Bypass that local proxy only for direct TLS downloads from the exact official npm hostname while retaining
+  it for every other release request. Versions still come solely from Hara CLI `0.155.1`'s immutable lockfile,
+  downloaded bytes still require its exact SHA-512, and unsafe archive layouts still fail closed before any
+  extraction or lifecycle script runs.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.116 — 2026-08-29 — reproducible signed release recovery
 
 - Carry forward the complete `0.1.115` External Session Center, 308-role bilingual Talent Bureau,
