@@ -384,14 +384,18 @@ REMOTE_CLI_COMMIT="$(node scripts/resolve-remote-tag.mjs ../hara-cli origin "$CL
 # If the original promotion crossed the public/immutable boundary and only a later CDN check failed,
 # rerunning the failed signing job must verify the already-public release instead of trying to mutate
 # it or reporting a false failure. Source/tag/policy checks above still run before this branch.
-RELEASE_STATE="$(release_view_with_retry --json isDraft,isPrerelease --jq '[.isDraft, .isPrerelease] | @tsv')" || {
+RELEASE_STATE="$(release_view_with_retry --json isDraft,isImmutable,isPrerelease --jq '[.isDraft, .isImmutable, .isPrerelease] | @tsv')" || {
   echo "error: release $TAG is missing" >&2
   exit 1
 }
-if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
+if [ "$RELEASE_STATE" = $'false\ttrue\tfalse' ]; then
   echo "Published immutable release detected; entering verification-only rerun for $TAG."
   require_immutable_releases
-  release_gh release verify "$TAG" -R "$REPO"
+  if [ "${HARA_DEFER_PUBLIC_EDGE_VERIFY:-0}" = "1" ]; then
+    echo "GitHub release attestation verification is delegated to the read-only hosted macOS job."
+  else
+    release_gh release verify "$TAG" -R "$REPO"
+  fi
   release_download_all "$PUBLIC_DIR" "public immutable release download"
   remove_verified_source_archive "$PUBLIC_DIR" "public immutable release"
   node scripts/updater-manifest.mjs validate "$PUBLIC_DIR" "$TAG"
@@ -419,8 +423,8 @@ if [ "$RELEASE_STATE" = $'false\tfalse' ]; then
   echo "✓ $TAG public immutable release reverified without mutation"
   exit 0
 fi
-[ "$RELEASE_STATE" = $'true\tfalse' ] || {
-  echo "error: release $TAG has an unexpected draft/prerelease state: $RELEASE_STATE" >&2
+[ "$RELEASE_STATE" = $'true\tfalse\tfalse' ] || {
+  echo "error: release $TAG has an unexpected draft/immutable/prerelease state: $RELEASE_STATE" >&2
   exit 1
 }
 
@@ -541,23 +545,52 @@ FINAL_REMOTE_CLI_COMMIT="$(node scripts/resolve-remote-tag.mjs ../hara-cli origi
 
 release_gh release edit "$TAG" -R "$REPO" --draft=false --prerelease=false --latest
 
-# Repositories with immutable releases produce a GitHub-signed release attestation asynchronously on
-# publish. GitHub can take several minutes after the Release is already public and immutable; keep the
-# signer inside a bounded propagation window so a healthy publication is not misreported as failed.
-RELEASE_ATTESTED=0
-for attempt in {1..180}; do
-  if release_gh release verify "$TAG" -R "$REPO" >/dev/null 2>&1; then
-    RELEASE_ATTESTED=1
+PUBLISHED_RELEASE_CONFIRMED=0
+for publication_attempt in {1..12}; do
+  if PUBLISHED_RELEASE_METADATA="$(
+    release_view_with_retry \
+      --json tagName,isDraft,isImmutable,isPrerelease,publishedAt
+  )" && jq -e --arg tag "$TAG" '
+    .tagName == $tag and
+    .isDraft == false and
+    .isImmutable == true and
+    .isPrerelease == false and
+    (.publishedAt | type == "string" and length > 0)
+  ' >/dev/null <<<"$PUBLISHED_RELEASE_METADATA"; then
+    PUBLISHED_RELEASE_CONFIRMED=1
     break
   fi
-  echo "immutable release attestation is not available yet (attempt $attempt/180)"
-  sleep 10
+  [ "$publication_attempt" -lt 12 ] || break
+  echo "immutable publication metadata has not converged yet (attempt $publication_attempt/12)"
+  sleep 5
 done
-[ "$RELEASE_ATTESTED" = "1" ] || {
-  echo "error: GitHub's immutable release attestation for $TAG did not propagate within 30 minutes" >&2
-  echo "       The repository policy was verified before signing; re-run the failed job in verification-only mode." >&2
+[ "$PUBLISHED_RELEASE_CONFIRMED" = "1" ] || {
+  echo "error: publication did not produce the expected immutable stable release" >&2
   exit 1
 }
+
+if [ "${HARA_DEFER_PUBLIC_EDGE_VERIFY:-0}" = "1" ]; then
+  # The independent GitHub-hosted job has only attestations:read + contents:read and verifies the
+  # GitHub-signed immutable attestation plus exact public bytes. Keeping that read out of the
+  # protected self-hosted job avoids an Actions-token visibility race without weakening the gate.
+  echo "Immutable publication confirmed; GitHub release attestation verification is delegated to the read-only hosted macOS job."
+else
+  # Manual/non-workflow promotion keeps the complete local check. GitHub creates this attestation
+  # asynchronously, so allow a bounded propagation window after the release becomes immutable.
+  RELEASE_ATTESTED=0
+  for attempt in {1..180}; do
+    if release_gh release verify "$TAG" -R "$REPO" >/dev/null 2>&1; then
+      RELEASE_ATTESTED=1
+      break
+    fi
+    echo "immutable release attestation is not available yet (attempt $attempt/180)"
+    sleep 10
+  done
+  [ "$RELEASE_ATTESTED" = "1" ] || {
+    echo "error: GitHub's immutable release attestation for $TAG did not propagate within 30 minutes" >&2
+    exit 1
+  }
+fi
 unset RELEASE_GH_TOKEN
 
 if [ "${HARA_DEFER_PUBLIC_EDGE_VERIFY:-0}" = "1" ]; then
@@ -590,5 +623,9 @@ else
   }
 fi
 
-echo "✓ $TAG promoted stable after native CI, immutable-release attestation, exact updater validation, and signed/notarized arm64+x64 Mac verification"
+if [ "${HARA_DEFER_PUBLIC_EDGE_VERIFY:-0}" = "1" ]; then
+  echo "✓ $TAG promoted stable after native CI, immutable publication, exact updater validation, and signed/notarized arm64+x64 Mac verification; hosted attestation/public-edge verification remains required"
+else
+  echo "✓ $TAG promoted stable after native CI, immutable-release attestation, exact updater validation, and signed/notarized arm64+x64 Mac verification"
+fi
 echo "! Send the required Feishu hara 反馈群 release notice and reply to each fixed bug report."

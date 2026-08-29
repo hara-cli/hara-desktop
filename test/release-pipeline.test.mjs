@@ -558,7 +558,7 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   assert.match(script, /attempt <= RELEASE_TRANSFER_ATTEMPTS/g);
   assert.match(script, /release_view_with_retry\(\)/);
   assert.match(script, /release state read hit a transient GitHub transport failure/);
-  assert.match(script, /RELEASE_STATE="\$\(release_view_with_retry --json isDraft,isPrerelease/);
+  assert.match(script, /RELEASE_STATE="\$\(release_view_with_retry --json isDraft,isImmutable,isPrerelease/);
   assert.match(script, /release_view_with_retry --json isDraft --jq \.isDraft/g);
   assert.match(script, /mktemp -d "\$WORK\/release-download\.XXXXXX"/);
   assert.match(script, /chmod 600 "\$log"/);
@@ -1101,7 +1101,8 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(signJob, /HARA_RELEASE_POLICY_TOKEN: \$\{\{ secrets\.HARA_RELEASE_POLICY_TOKEN \}\}/);
   assert.doesNotMatch(signJob, /GH_TOKEN="\$HARA_RELEASE_POLICY_TOKEN"/);
   assert.match(signJob, /Materialize exact release sources[\s\S]*?GH_TOKEN: \$\{\{ github\.token \}\}/);
-  assert.match(signJob, /run_with_deadline 120 gh release verify "\$RELEASE_TAG"/);
+  assert.doesNotMatch(signJob, /gh release verify "\$RELEASE_TAG"/);
+  assert.match(signJob, /public attestation verification is delegated to the read-only hosted job/);
   assert.match(signJob, /\.digest == \$digest/);
   assert.match(signJob, /releases\/assets\/\$SOURCE_ASSET_ID/);
   assert.match(signJob, /header = "Authorization: Bearer %s"/);
@@ -1139,6 +1140,7 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.doesNotMatch(publicJob, /contents: write/);
   assert.doesNotMatch(publicJob, /environment:/);
   assert.doesNotMatch(publicJob, /secrets\./);
+  assert.doesNotMatch(publicJob, /continue-on-error/);
 });
 
 test("CI Rosetta smoke is limited to the protected tag signing job", () => {
@@ -1400,8 +1402,13 @@ test("tag workflow automatically enters the protected promotion job under one co
   assert.match(buildWorkflow, /build:\n[\s\S]*?environment:\n      name: hara-desktop-production/);
   assert.match(
     buildWorkflow,
-    /sign_and_promote:\n[\s\S]*?permissions:\n      actions: read\n      attestations: read\n      contents: write\n[\s\S]*?environment:/,
+    /sign_and_promote:\n[\s\S]*?permissions:\n      actions: read\n      contents: write\n[\s\S]*?environment:/,
   );
+  const signPermissions = buildWorkflow.slice(
+    buildWorkflow.indexOf("\n  sign_and_promote:"),
+    buildWorkflow.indexOf("\n  verify_public_release:"),
+  );
+  assert.doesNotMatch(signPermissions, /attestations: read/);
   assert.match(buildWorkflow, /secrets\.HARA_RELEASE_POLICY_TOKEN/);
   assert.match(buildWorkflow, /secrets\.HARA_TAURI_SIGNING_PRIVATE_KEY/);
   assert.doesNotMatch(buildWorkflow, /secrets\.TAURI_SIGNING_PRIVATE_KEY/);
@@ -1706,11 +1713,21 @@ test("promotion rechecks both remote tags at the publication boundary and verifi
   const finalDesktopTagCheck = releaseScript.indexOf("FINAL_REMOTE_DESKTOP_COMMIT");
   const finalCliTagCheck = releaseScript.indexOf("FINAL_REMOTE_CLI_COMMIT");
   const publish = releaseScript.indexOf('release_gh release edit "$TAG"');
+  const publishedMetadata = releaseScript.indexOf("PUBLISHED_RELEASE_METADATA", publish);
+  const delegatedAttestation = releaseScript.indexOf(
+    'if [ "${HARA_DEFER_PUBLIC_EDGE_VERIFY:-0}" = "1" ]',
+    publish,
+  );
   const immutableAttestation = releaseScript.indexOf('release_gh release verify "$TAG"', publish);
   assert.ok(immutablePolicyCheck >= 0 && immutablePolicyCheck < publish);
   assert.ok(finalDesktopTagCheck >= 0 && finalDesktopTagCheck < publish);
   assert.ok(finalCliTagCheck >= 0 && finalCliTagCheck < publish);
-  assert.ok(immutableAttestation > publish);
+  assert.ok(publishedMetadata > publish && publishedMetadata < delegatedAttestation);
+  assert.ok(delegatedAttestation > publish && immutableAttestation > delegatedAttestation);
+  assert.match(
+    releaseScript.slice(publishedMetadata, delegatedAttestation),
+    /\.isDraft == false[\s\S]*?\.isImmutable == true[\s\S]*?\.isPrerelease == false/,
+  );
   assert.match(releaseScript, /RELEASE_GH_TOKEN="\$\{GH_TOKEN:-\}"\n(?:.*\n)?unset GH_TOKEN/);
 });
 
@@ -1786,7 +1803,9 @@ test("a post-publication rerun switches to immutable verification without rewrit
   const publish = script.indexOf('release_gh release edit "$TAG"');
   assert.ok(verificationOnly >= 0 && verificationOnly < localSignedOutputGate && verificationOnly < publish);
   const branch = script.slice(verificationOnly, localSignedOutputGate);
+  assert.match(branch, /HARA_DEFER_PUBLIC_EDGE_VERIFY/);
   assert.match(branch, /release_gh release verify/);
+  assert.match(branch, /GitHub release attestation verification is delegated/);
   assert.match(branch, /release_download_all/);
   assert.match(branch, /updater-manifest\.mjs validate/);
   assert.match(branch, /verify_signed_dmg public .*aarch64-apple-darwin/);
@@ -1797,9 +1816,11 @@ test("a post-publication rerun switches to immutable verification without rewrit
     workflow.indexOf("- name: Install protected signing toolchain"),
   );
   assert.match(sourceGate, /\.draft == false and[\s\S]*?\.immutable == true/);
-  const attestation = sourceGate.indexOf('gh release verify "$RELEASE_TAG"');
+  assert.doesNotMatch(sourceGate, /gh release verify/);
+  const digestGate = sourceGate.indexOf('.digest == $digest');
   const sourceDownload = sourceGate.indexOf('releases/assets/$SOURCE_ASSET_ID');
-  assert.ok(attestation >= 0 && sourceDownload > attestation);
+  assert.ok(digestGate >= 0 && sourceDownload > digestGate);
+  assert.match(sourceGate, /public attestation verification is delegated to the read-only hosted job/);
 });
 
 test("native sidecar builds attest CLI HEAD and cleanliness after compilation", () => {

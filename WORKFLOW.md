@@ -60,9 +60,11 @@ Gates before ANY push (either repo):
    The protected signer consumes the exact Release database ID returned by the trusted draft-creation
    job, reads that repository-bound record through independently bounded HTTP/1.1 REST, and requires the
    exact tag and either the original hidden-draft state or an already-public immutable state before selecting
-   the named archive. A public retry must first pass GitHub's signed immutable-release attestation. It then
-   verifies the same outer digest plus every inner source-pack checksum, and only then executes the pinned
-   source. The archive remains in the immutable public release as reproducibility evidence.
+   the named archive. A public retry is bound to the exact Release database ID, protected tag, prepare-job
+   digest, GitHub asset digest, size, and every inner source-pack checksum before it executes the pinned
+   source. GitHub's signed immutable-release attestation is verified by the independent read-only hosted job,
+   whose token has no signing or Release mutation authority. The archive remains in the immutable public
+   release as reproducibility evidence.
    The guarded job checks Node/Bun/Rust, exact clean
 CLI/Desktop tags, both architectures, the sidecar before and after Developer ID signing and inside
 `Hara.app`, then notarizes/staples both DMGs. Matrix receipts and the public source-provenance asset
@@ -84,8 +86,9 @@ active Desktop `v*` tag ruleset must restrict creation, update, and deletion to 
 release-admin bypass actor so `GITHUB_REF_PROTECTED` is true and ordinary writers cannot authorize
 a release by creating a tag. The workflow pins that actor by immutable numeric user ID and requires
 the ruleset bypass set to contain exactly that one `User` in `always` mode. The original stable tag creation by that bypass actor is the release
-authorization; do not add a second manual dispatch or environment approval. Promotion verifies GitHub's signed
-immutable release attestation after publication. Store a fine-grained token with repository
+authorization; do not add a second manual dispatch or environment approval. Promotion confirms that publication
+produced the exact immutable stable Release; the downstream read-only hosted verifier then requires GitHub's
+signed immutable-release attestation and the matching public asset bytes. Store a fine-grained token with repository
 `Administration: read` only as the environment secret `HARA_RELEASE_POLICY_TOKEN`; it is used solely
 to fail closed on the immutable-release policy immediately before publication. Assign the custom
 runner label only to the signing Mac whose dedicated `hara-ci-signing` keychain contains the

@@ -747,7 +747,6 @@ jobs:
     needs: [prepare_release, create_draft, assemble_draft, promotion_preflight]
     permissions:
       actions: read
-      attestations: read
       contents: write
     environment:
       name: hara-desktop-production
@@ -883,21 +882,13 @@ jobs:
 
           RELEASE_IS_DRAFT="$(jq -r .draft "$RELEASE_METADATA")"
           if [ "$RELEASE_IS_DRAFT" = "false" ]; then
-            PUBLIC_ATTESTATION_VERIFIED=0
-            for attestation_attempt in 1 2 3; do
-              if run_with_deadline 120 gh release verify "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null; then
-                PUBLIC_ATTESTATION_VERIFIED=1
-                break
-              fi
-              [ "$attestation_attempt" -lt 3 ] || break
-              echo "public Release attestation read failed ($attestation_attempt/3); retrying after a bounded delay" >&2
-              sleep $((attestation_attempt * 3))
-            done
-            [ "$PUBLIC_ATTESTATION_VERIFIED" = "1" ] || {
-              echo "the public Release is not covered by a valid immutable attestation" >&2
-              exit 1
-            }
-            echo "Verified immutable public Release before materializing its exact source archive."
+            # A rerun may begin after the first attempt crossed the irreversible publication
+            # boundary. The source archive is still bound to this exact Release ID, protected tag,
+            # prepare-job digest, size, and GitHub asset digest before any byte is executed. The
+            # independent hosted job below owns GitHub's public attestation check; the protected
+            # signing runner deliberately has no attestation permission so token visibility cannot
+            # turn a valid immutable release into a false signing failure.
+            echo "Verified immutable Release metadata and digest-bound source archive; public attestation verification is delegated to the read-only hosted job."
           fi
 
           SOURCE_ASSET_ID="$(jq -r .id "$SOURCE_METADATA")"
