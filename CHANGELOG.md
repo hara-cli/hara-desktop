@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.119 — 2026-08-29 — Windows renderer recovery build repair
+
+- Carry forward the complete `0.1.118` Windows black-screen recovery. The `0.1.118` publication was
+  withheld when the native Windows build caught a Windows-only Tauri trait import that the macOS host
+  cannot compile-check; no `0.1.118` installer or updater manifest was promoted.
+- Put the Tauri manager contract in Windows module scope so both the renderer watchdog and the
+  `ExitRequested` recovery guard compile in the real MSVC target. Keep the unchanged bundled Hara CLI
+  `0.155.1` at exact verified commit `416089854efbefdfe162bd24673aa4f228430fb8`.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.118 — 2026-08-29 — Windows renderer recovery
 
 - Pin Windows production JavaScript to a conservative WebView2 syntax baseline instead of inheriting

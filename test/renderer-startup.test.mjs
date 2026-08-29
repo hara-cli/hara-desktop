@@ -28,6 +28,7 @@ test("React owns a generic recovery boundary and sends a native boot signal", ()
 
 test("Windows bundles conservative WebView2 syntax and a bounded GPU fallback", () => {
   assert.match(vite, /platform === "windows" \? "chrome95" : "safari13"/);
+  assert.match(nativeHost, /#\[cfg\(windows\)\]\s+use tauri::Manager;/);
   assert.match(nativeHost, /WINDOWS_RENDERER_BOOT_TIMEOUT[^\n]*from_secs\(10\)/);
   assert.match(nativeHost, /WINDOWS_SOFTWARE_RENDERER_ARGS[\s\S]*--disable-gpu/);
   assert.match(nativeHost, /if !software_renderer \{[\s\S]*schedule_windows_renderer_recovery/);

@@ -5,6 +5,8 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(windows)]
+use tauri::Manager;
 
 #[cfg(windows)]
 mod windows_process;

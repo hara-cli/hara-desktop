@@ -1254,3 +1254,13 @@ or copy existing identities to manufacture completeness.
 - Failure: the sandbox rejected the repository SSH hop before GitHub authentication.
 - Correction: rerun the same read-only fetch at the approved host boundary, then require a zero-divergence
   comparison before committing or tagging; do not skip the remote-race check.
+
+## 2026-08-29 — Windows-only Tauri traits need a native pre-tag compile gate
+
+- Symptom: Desktop `0.1.118` passed the macOS Rust checks and all renderer regressions, but the real MSVC
+  release lane failed because the Windows-only `ExitRequested` guard called `AppHandle::state` without the
+  `tauri::Manager` trait in that lexical scope.
+- Root cause: the affected arm is removed by `#[cfg(windows)]` on the development Mac, while installing only
+  the Rust Windows target cannot compile native dependencies without the MSVC headers and linker.
+- Correction: import `tauri::Manager` at Windows module scope and add a `windows-latest` Cargo check job to
+  ordinary main/PR CI. A release tag is now created only after that native preflight passes.
