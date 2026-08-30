@@ -261,6 +261,8 @@ test("release policy API reads retry without exposing mutation flags", () => {
         assert.equal(options.timeout, 2_345);
         assert.equal(options.env.GH_HOST, "github.com");
         assert.equal(options.env.GH_PROMPT_DISABLED, "true");
+        assert.equal(options.env.NO_PROXY, "");
+        assert.equal(options.env.no_proxy, "");
         if (calls === 1) throw new Error("TLS handshake timeout");
         return "true\n";
       },
@@ -558,6 +560,13 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   assert.match(script, /attempt <= RELEASE_TRANSFER_ATTEMPTS/g);
   assert.match(script, /release_view_with_retry\(\)/);
   assert.match(script, /release state read hit a transient GitHub transport failure/);
+  assert.match(script, /release_github_transport/);
+  assert.match(script, /HARA_GITHUB_RELEASE_PROXY/);
+  assert.match(script, /HARA_GITHUB_RELEASE_FALLBACK_PROXY/);
+  assert.match(script, /release_github_proxy_works/);
+  assert.match(script, /export NO_PROXY=/);
+  assert.match(script, /export no_proxy=/);
+  assert.match(script, /export HTTPS_PROXY="\$RELEASE_GITHUB_PROXY"/);
   assert.match(script, /RELEASE_STATE="\$\(release_view_with_retry --json isDraft,isImmutable,isPrerelease/);
   assert.match(script, /release_view_with_retry --json isDraft --jq \.isDraft/g);
   assert.match(script, /mktemp -d "\$WORK\/release-download\.XXXXXX"/);
@@ -704,6 +713,8 @@ test("release API fallback accepts only repository-bound assets and exact downlo
     assert.equal(environments.length, 1);
     assert.equal(environments[0].GH_TOKEN, undefined);
     assert.equal(environments[0].GITHUB_TOKEN, undefined);
+    assert.equal(environments[0].NO_PROXY, "");
+    assert.equal(environments[0].no_proxy, "");
     assert.equal(RELEASE_API_ASSET_TIMEOUT_MS, 600_000);
     assert.equal(RELEASE_API_CURL_MAX_TIME_SECONDS, 570);
     assert.throws(
@@ -810,6 +821,7 @@ test("release downloads enforce a hard process deadline without accepting option
   const directory = mkdtempSync(join(tmpdir(), "hara-bounded-release-download-"));
   let observedCommand;
   let observedArguments;
+  let observedEnvironment;
   let observedSignal;
   try {
     const result = await runBoundedReleaseDownload(
@@ -821,9 +833,10 @@ test("release downloads enforce a hard process deadline without accepting option
       },
       {
         timeoutMs: 5,
-        execute(command, arguments_) {
+        execute(command, arguments_, options) {
           observedCommand = command;
           observedArguments = arguments_;
+          observedEnvironment = options.env;
           const listeners = new Map();
           return {
             once(event, listener) {
@@ -840,6 +853,8 @@ test("release downloads enforce a hard process deadline without accepting option
     );
     assert.equal(result.timedOut, true);
     assert.equal(observedCommand, "gh");
+    assert.equal(observedEnvironment.NO_PROXY, "");
+    assert.equal(observedEnvironment.no_proxy, "");
     assert.equal(observedSignal, "SIGKILL");
     assert.deepEqual(observedArguments, [
       "release",

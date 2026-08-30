@@ -68,6 +68,8 @@ export function readGitHubApi(
           ...process.env,
           GH_HOST: "github.com",
           GH_PROMPT_DISABLED: "true",
+          NO_PROXY: "",
+          no_proxy: "",
         },
       }).trimEnd();
     } catch (error) {

@@ -148,6 +148,8 @@ function runAssetDownload(asset, root, { execute, timeoutMs, token }) {
     const curlEnvironment = { ...process.env };
     delete curlEnvironment.GH_TOKEN;
     delete curlEnvironment.GITHUB_TOKEN;
+    curlEnvironment.NO_PROXY = "";
+    curlEnvironment.no_proxy = "";
     child = execute("/usr/bin/curl", releaseApiDownloadArguments(asset.apiUrl, partial), {
       env: curlEnvironment,
       stdio: ["pipe", "ignore", "inherit"],

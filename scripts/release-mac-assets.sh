@@ -16,6 +16,10 @@ RELEASE_GH_TOKEN="${GH_TOKEN:-}"
 unset GH_TOKEN
 SOURCE_ARTIFACT_DIGEST="${HARA_RELEASE_SOURCE_ARTIFACT_DIGEST:-}"
 unset HARA_RELEASE_SOURCE_ARTIFACT_DIGEST
+RELEASE_GITHUB_PRIMARY_PROXY="${HARA_GITHUB_RELEASE_PROXY:-}"
+RELEASE_GITHUB_FALLBACK_PROXY="${HARA_GITHUB_RELEASE_FALLBACK_PROXY:-}"
+unset HARA_GITHUB_RELEASE_PROXY
+unset HARA_GITHUB_RELEASE_FALLBACK_PROXY
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
   echo "error: stable promotion requires a vX.Y.Z tag: $TAG" >&2
   exit 1
@@ -42,14 +46,65 @@ esac
   echo "error: protected release contents token is missing" >&2
   exit 1
 }
+validate_release_github_proxy() {
+  [[ "$1" =~ ^(http|socks5|socks5h)://127\.0\.0\.1:[0-9]{2,5}$ ]]
+}
+validate_release_github_proxy "$RELEASE_GITHUB_PRIMARY_PROXY" || {
+  echo "error: HARA_GITHUB_RELEASE_PROXY must be a loopback HTTP/SOCKS proxy" >&2
+  exit 1
+}
+if [ -n "$RELEASE_GITHUB_FALLBACK_PROXY" ]; then
+  validate_release_github_proxy "$RELEASE_GITHUB_FALLBACK_PROXY" || {
+    echo "error: HARA_GITHUB_RELEASE_FALLBACK_PROXY must be a loopback HTTP/SOCKS proxy" >&2
+    exit 1
+  }
+fi
+release_github_proxy_works() {
+  NO_PROXY= no_proxy= /usr/bin/curl --disable --proxy "$1" --proto '=https' \
+    --fail --silent --show-error --connect-timeout 8 --max-time 15 \
+    --output /dev/null https://api.github.com/zen
+}
+RELEASE_GITHUB_PROXY="$RELEASE_GITHUB_PRIMARY_PROXY"
+if ! release_github_proxy_works "$RELEASE_GITHUB_PROXY"; then
+  if [ -z "$RELEASE_GITHUB_FALLBACK_PROXY" ] ||
+    ! release_github_proxy_works "$RELEASE_GITHUB_FALLBACK_PROXY"; then
+    echo "error: both protected GitHub release routes are unavailable" >&2
+    exit 1
+  fi
+  echo "warning: primary GitHub release route is unavailable; using the configured fallback" >&2
+  RELEASE_GITHUB_PROXY="$RELEASE_GITHUB_FALLBACK_PROXY"
+fi
+readonly RELEASE_GITHUB_PROXY
+release_github_transport() {
+  (
+    # The runner itself must bypass the proxy for Actions Broker traffic, but that broad NO_PROXY
+    # suffix also matches api.github.com. Clear it only inside release API/asset subprocesses.
+    export NO_PROXY=
+    export no_proxy=
+    export HTTP_PROXY="$RELEASE_GITHUB_PROXY"
+    export HTTPS_PROXY="$RELEASE_GITHUB_PROXY"
+    export http_proxy="$RELEASE_GITHUB_PROXY"
+    export https_proxy="$RELEASE_GITHUB_PROXY"
+    command "$@"
+  )
+}
 release_gh() {
-  GH_TOKEN="$RELEASE_GH_TOKEN" command gh "$@"
+  (
+    export GH_TOKEN="$RELEASE_GH_TOKEN"
+    release_github_transport gh "$@"
+  )
 }
 release_gh_download() {
-  GH_TOKEN="$RELEASE_GH_TOKEN" node scripts/github-release-download.mjs "$@"
+  (
+    export GH_TOKEN="$RELEASE_GH_TOKEN"
+    release_github_transport node scripts/github-release-download.mjs "$@"
+  )
 }
 release_gh_api_download() {
-  GH_TOKEN="$RELEASE_GH_TOKEN" node scripts/github-release-api-download.mjs "$@"
+  (
+    export GH_TOKEN="$RELEASE_GH_TOKEN"
+    release_github_transport node scripts/github-release-api-download.mjs "$@"
+  )
 }
 release_download_with_api_fallback() {
   local metadata="$1"
@@ -98,7 +153,8 @@ require_immutable_releases() {
   }
   local enabled
   enabled="$(
-    GH_TOKEN="$RELEASE_POLICY_TOKEN" \
+    export GH_TOKEN="$RELEASE_POLICY_TOKEN"
+    release_github_transport \
       node scripts/github-api-read.mjs "repos/$REPO/immutable-releases" --jq .enabled
   )" || {
     echo "error: could not verify the repository immutable-release policy" >&2

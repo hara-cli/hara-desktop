@@ -57,7 +57,12 @@ export function runBoundedReleaseDownload(
     let settled = false;
     let timedOut = false;
     const child = execute("gh", arguments_, {
-      env: { ...process.env, GH_PROMPT_DISABLED: "true" },
+      env: {
+        ...process.env,
+        GH_PROMPT_DISABLED: "true",
+        NO_PROXY: "",
+        no_proxy: "",
+      },
       stdio: "inherit",
     });
     const timer = setTimeout(() => {
