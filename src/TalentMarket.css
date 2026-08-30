@@ -87,18 +87,44 @@
 .talent-market-header-actions { display: flex; flex: none; align-items: center; gap: 9px; }
 .talent-market-live { display: inline-flex; align-items: center; gap: 7px; color: var(--dim); font-size: 10px; }
 .talent-market-live i { width: 7px; height: 7px; border-radius: 50%; background: #53a56d; box-shadow: 0 0 0 4px color-mix(in srgb, #53a56d 14%, transparent); }
-.talent-market-custom,
-.talent-market-close {
+/* Custom hire is the header's one action, so it keeps the framed, accent-on-hover treatment. Dismiss is
+   not an action of equal standing: it stays quiet at rest and never borrows the accent, matching
+   .agent-profile-close elsewhere in the app. Weight, not size, is what separates them — the 36px target
+   stays so the control is still easy to hit. */
+.talent-market-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 12px;
   background: var(--bg);
   color: var(--fg);
+  font: 700 11px/1 inherit;
   cursor: pointer;
 }
-.talent-market-custom { display: inline-flex; align-items: center; gap: 6px; border-radius: 9px; padding: 9px 12px; font: 700 11px/1 inherit; }
 .talent-market-custom svg { flex: none; color: var(--accent); }
-.talent-market-close { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 50%; }
-.talent-market-custom:hover,
-.talent-market-close:hover { border-color: color-mix(in srgb, var(--accent) 62%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+.talent-market-custom:hover {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+.talent-market-close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  transition: background-color .12s ease, color .12s ease;
+}
+.talent-market-close:hover { background: var(--bg3); color: var(--fg); }
+.talent-market-close:active { background: color-mix(in srgb, var(--fg) 12%, var(--bg3)); }
+.talent-market-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--fg); }
+@media (prefers-reduced-motion: reduce) { .talent-market-close { transition: none; } }
 
 .talent-market-hero {
   display: grid;
