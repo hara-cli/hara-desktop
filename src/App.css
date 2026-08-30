@@ -5913,6 +5913,15 @@ button.provider-preset.enterprise.on {
 .provider-detail-heading > div {
   min-width: 0;
 }
+.provider-detail-heading > .provider-detail-heading-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: max-content;
+}
+.provider-detail-heading-controls .danger {
+  color: var(--danger);
+}
 .provider-detail-heading span:first-child {
   display: block;
   color: #77736e;
@@ -6101,7 +6110,7 @@ button.provider-preset.enterprise.on {
 }
 .organization-management-actions .danger {
   margin-left: auto;
-  color: #d98d80;
+  color: var(--danger);
 }
 .organization-switch-action {
   margin-top: 20px;

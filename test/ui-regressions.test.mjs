@@ -698,7 +698,7 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.doesNotMatch(providerSettings, /localStorage\.(setItem|getItem)/);
   assert.match(providerSettings, /setApiKey\(""\)/, "credential input is cleared after provider changes and save");
   assert.match(providerSettings, /endpointIdentity/, "credential reuse is bound to the exact provider endpoint");
-  assert.match(providerSettings, /profileId === "personal"/, "named-profile credentials are never offered for Personal reuse");
+  assert.match(providerSettings, /canonicalPersonal\?\.keyConfigured/, "Personal credential reuse is bound to the canonical single connection");
   assert.match(providerSettings, /setApiKey\(""\)[\s\S]*await client\.listProviderSettings/, "refresh clears a credential before replacing its draft");
   assert.match(providerSettings, /managedExpiryWarning/, "managed provider settings surface token lifecycle warnings");
   assert.match(providerSettings, /role="alert"/, "an expired managed token is announced accessibly");
@@ -718,13 +718,14 @@ test("provider settings keep credentials transient and support local no-key pres
   for (const method of ["create", "test", "use", "remove"]) {
     assert.match(client, new RegExp(`settings\\.providers\\.connections\\.${method}`));
   }
-  assert.match(providerSettings, /const transientKey = input\.apiKey \?\? "";[\s\S]*setApiKey\(""\);[\s\S]*await mutateRoute\(\(\) => client\.createProviderConnection/,
-    "a newly saved connection removes its credential from renderer state before the RPC");
+  assert.match(providerSettings, /const transientKey = input\.apiKey \?\? "";[\s\S]*setApiKey\(""\);[\s\S]*await mutateRoute\(\(\) => client\.saveProviderSettings/,
+    "a replacement Personal connection removes its credential from renderer state before the RPC");
+  assert.doesNotMatch(providerSettings, /client\.createProviderConnection/,
+    "Desktop must replace the canonical Personal connection instead of creating a second one");
   assert.match(providerSettings, /runRouteMutation\?: <T>/,
     "route-changing provider actions are owned by the App-level Space transaction");
   for (const routeMutation of [
     "saveProviderSettings",
-    "createProviderConnection",
     "useProviderConnection",
     "removeProviderConnection",
     "unpinProjectProfile",
@@ -740,7 +741,7 @@ test("provider settings keep credentials transient and support local no-key pres
   }
   assert.match(providerSettings, /selectedConnection\.keyHint/, "saved connections expose only the engine's redacted key hint");
   assert.match(providerSettings, /client\.testProviderConnection/, "each named connection can be checked independently");
-  assert.match(providerSettings, /client\.useProviderConnection/, "named personal routes can become the new-session default");
+  assert.match(providerSettings, /client\.useProviderConnection/, "the canonical Personal route can become the new-session default");
   assert.match(client, /settings\.profiles\.unpin/);
   assert.match(providerSettings, /state\.current\.profileSource === "pin"/);
   assert.match(providerSettings, /client\.unpinProjectProfile\(cwd\)/, "project route recovery is an explicit authenticated Serve action");
