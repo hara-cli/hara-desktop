@@ -1,4 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 
 interface ModelComboboxProps {
   value: string;
@@ -17,6 +18,10 @@ interface ModelChoice {
   id: string;
   value: string;
   custom: boolean;
+}
+
+interface FloatingListStyle extends CSSProperties {
+  maxHeight: number;
 }
 
 const normalizeSearch = (value: string): string => value.trim().toLocaleLowerCase();
@@ -39,6 +44,7 @@ export function ModelCombobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [floatingStyle, setFloatingStyle] = useState<FloatingListStyle | null>(null);
 
   useEffect(() => {
     if (!open) setQuery(value);
@@ -68,6 +74,46 @@ export function ModelCombobox({
   useEffect(() => {
     if (activeIndex >= choices.length) setActiveIndex(choices.length ? choices.length - 1 : -1);
   }, [activeIndex, choices.length]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setFloatingStyle(null);
+      return;
+    }
+    const positionList = () => {
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const edge = 8;
+      const gap = 5;
+      const desiredHeight = 248;
+      const below = viewportHeight - rect.bottom - edge - gap;
+      const above = rect.top - edge - gap;
+      const placeAbove = below < 160 && above > below;
+      const maxHeight = Math.max(96, Math.min(desiredHeight, placeAbove ? above : below));
+      const width = Math.min(rect.width, viewportWidth - edge * 2);
+      const left = Math.min(Math.max(edge, rect.left), viewportWidth - width - edge);
+      setFloatingStyle({
+        position: "fixed",
+        zIndex: 10_000,
+        left,
+        right: "auto",
+        width,
+        maxHeight,
+        ...(placeAbove
+          ? { top: "auto", bottom: viewportHeight - rect.top + gap }
+          : { top: rect.bottom + gap, bottom: "auto" }),
+      });
+    };
+    positionList();
+    window.addEventListener("resize", positionList);
+    window.addEventListener("scroll", positionList, true);
+    return () => {
+      window.removeEventListener("resize", positionList);
+      window.removeEventListener("scroll", positionList, true);
+    };
+  }, [open]);
 
   const commit = (choice: ModelChoice) => {
     onChange(choice.value);
@@ -181,8 +227,8 @@ export function ModelCombobox({
         </button>
       </div>
 
-      {open && (
-        <div id={listboxId} className="model-combobox-list" role="listbox" aria-label={ariaLabel}>
+      {open && floatingStyle && typeof document !== "undefined" && createPortal(
+        <div id={listboxId} className="model-combobox-list" role="listbox" aria-label={ariaLabel} style={floatingStyle}>
           {choices.length ? choices.map((choice, index) => (
             <button
               type="button"
@@ -205,7 +251,8 @@ export function ModelCombobox({
           )) : (
             <div className="model-combobox-empty">{emptyLabel}</div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

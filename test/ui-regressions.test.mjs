@@ -103,6 +103,35 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(diff, /white-space:\s*pre\s*;/, "unified diff alignment is preserved");
 });
 
+test("Agent execution settings inherit Space defaults and stay company-governed", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const editor = readFileSync(`${root}/src/AgentProfileEditor.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/AgentProfileEditor.css`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+
+  assert.match(client, /execution\?: \{ model\?: string \| null; reasoningEffort\?: string \| null \}/);
+  assert.match(client, /defaultModel\?: string;[\s\S]*defaultReasoningEffort\?: string \| null/);
+  assert.match(app, /modelEntries=\{activeModelInfo\?\.entries\}/);
+  assert.match(app, /onSave=\{\(profile, execution\) => void saveAgentProfile\(profile, execution\)\}/);
+  assert.match(editor, /agent\.owner === "personal" && agent\.ref !== "main"/,
+    "only a non-main Personal Agent may edit its local execution override");
+  assert.match(editor, /主 Agent 始终跟随当前空间的默认连接、模型与思考强度/);
+  assert.match(editor, /公司 Agent 的模型与思考强度由公司管理员在 Hara Control 统一管理/);
+  assert.match(editor, /跟随空间默认[\s\S]*模型自动/);
+  assert.match(editor, /model: agentModel \|\| null,[\s\S]*reasoningEffort: agentEffort \|\| null/);
+  assert.match(css, /\.agent-profile-execution-grid select \{[\s\S]*background:\s*var\(--bg\);[\s\S]*color:\s*var\(--fg\);/,
+    "the Agent selectors remain legible in both light and dark themes");
+});
+
+test("session creation and rename failures stay visible instead of looking like ignored clicks", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  assert.match(app, /sessionCreatingRef\.current/, "session creation has a synchronous duplicate-click guard");
+  assert.match(app, /Could not create the conversation/, "ordinary create failures reach the visible error surface");
+  assert.match(app, /Rename failed:/, "rename RPC failures are visible");
+  assert.doesNotMatch(app, /renameSession\(editingId, editTitle\.trim\(\)\)\.catch\(\(\) => \{\}\)/,
+    "rename failure is not swallowed");
+});
+
 test("an empty extension screen exposes an explicit Agent Office-first view launcher", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const dock = readFileSync(`${root}/src/ExtensionDock.tsx`, "utf8");
@@ -706,6 +735,9 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(modelCombobox, /role="combobox"/);
   assert.match(modelCombobox, /role="listbox"/);
   assert.match(modelCombobox, /role="option"/);
+  assert.match(modelCombobox, /createPortal[\s\S]*document\.body/, "the model menu escapes clipped settings cards and sibling stacking contexts");
+  assert.match(modelCombobox, /position:\s*"fixed"[\s\S]*zIndex:\s*10_000/, "the floating model menu owns a viewport-level layer");
+  assert.match(modelCombobox, /placeAbove = below < 160 && above > below/, "the model menu opens upward when the lower viewport cannot fit it");
   assert.match(modelCombobox, /ArrowDown[\s\S]*ArrowUp[\s\S]*Enter[\s\S]*Escape/, "the searchable model catalog is fully keyboard operable");
   assert.match(modelCombobox, /candidate\.custom/, "a typed model ID remains an explicit custom catalog choice");
   assert.match(providerSettings, /className="provider-result pending" role="status" aria-live="polite"/);
@@ -722,6 +754,22 @@ test("provider settings keep credentials transient and support local no-key pres
     "a replacement Personal connection removes its credential from renderer state before the RPC");
   assert.doesNotMatch(providerSettings, /client\.createProviderConnection/,
     "Desktop must replace the canonical Personal connection instead of creating a second one");
+  assert.match(providerSettings, /state\.connections\?\.length \? <IconCog size=\{14\} \/> : <IconPlus size=\{15\} \/>/,
+    "an existing single Personal connection uses a settings icon instead of an add or switch affordance");
+  assert.match(providerSettings, /"token-plan": \{ en: "Alibaba Cloud Model Studio Token Plan", zh: "阿里云百炼 Token Plan" \}/,
+    "built-in provider names are localized without changing stable provider IDs");
+  assert.match(providerSettings, /<option value=\{provider\.id\} key=\{provider\.id\}>\{providerDisplayName\(provider, locale\)\}<\/option>/,
+    "the provider selector displays the active locale instead of engine-internal English labels");
+  assert.match(providerSettings, /defaultEffort: "Default reasoning effort"[\s\S]*defaultEffort: "默认思考强度"/,
+    "the connection editor names reasoning as a default instead of changing active work");
+  assert.match(providerSettings, /effortMinimal: "最少"[\s\S]*effortXHigh: "超高"/,
+    "provider-native intermediate reasoning levels remain localized");
+  assert.match(providerSettings, /modelEntries\.find\(\(entry\) => entry\.id === personalDraft\.model\.trim\(\)\)\?\.effortLevels/,
+    "the Personal connection editor reads effort levels from the selected model's capability record");
+  assert.match(providerSettings, /personalDraft\.reasoningEffort[\s\S]*clearReasoningEffort: true/,
+    "automatic reasoning explicitly clears an old pinned default while a selected level is persisted");
+  assert.match(app, /minimal: \["最少思考", "Minimal reasoning"\][\s\S]*low: \["低思考", "Low reasoning"\]/,
+    "chat no longer mislabels low reasoning as a provider speed tier");
   assert.match(providerSettings, /runRouteMutation\?: <T>/,
     "route-changing provider actions are owned by the App-level Space transaction");
   for (const routeMutation of [

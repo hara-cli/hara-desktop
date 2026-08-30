@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentInfo, AgentPublicIdentity } from "./client";
+import type { AgentInfo, AgentPublicIdentity, ModelCatalogEntry } from "./client";
 import { AgentPortrait } from "./AgentPortrait";
 import { MAX_AGENT_AVATAR_BYTES } from "./agent-visual";
 import { IconClose } from "./icons";
@@ -10,16 +10,25 @@ type EditableIdentity = Omit<AgentPublicIdentity, "version" | "source">;
 interface AgentProfileEditorProps {
   agent: AgentInfo;
   locale: "en" | "zh";
+  modelEntries?: ModelCatalogEntry[];
+  defaultModel?: string;
+  defaultReasoningEffort?: string | null;
   saving?: boolean;
   error?: string;
   onClose: () => void;
-  onSave: (profile: EditableIdentity) => void;
+  onSave: (
+    profile: EditableIdentity,
+    execution?: { model?: string | null; reasoningEffort?: string | null },
+  ) => void;
   onArchive?: () => void;
 }
 
 export default function AgentProfileEditor({
   agent,
   locale,
+  modelEntries = [],
+  defaultModel,
+  defaultReasoningEffort,
   saving,
   error,
   onClose,
@@ -36,9 +45,39 @@ export default function AgentProfileEditor({
   const [theme, setTheme] = useState(identity?.theme || "");
   const [accent, setAccent] = useState(identity?.accent || "#ff695f");
   const [character, setCharacter] = useState(identity?.character || "");
+  const [agentModel, setAgentModel] = useState(agent.model ?? "");
+  const [agentEffort, setAgentEffort] = useState(agent.reasoningEffort ?? "");
   const [localError, setLocalError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const editable = agent.allowedActions?.includes("edit_profile") === true && Boolean(agent.revision);
+  const executionEditable = editable && agent.owner === "personal" && agent.ref !== "main";
+  const availableModelEntries = modelEntries.filter((entry) => entry.available !== false);
+  const knownModels = [...new Set([
+    ...availableModelEntries.map((entry) => entry.id),
+    ...(agent.model ? [agent.model] : []),
+  ])];
+  const effectiveModel = agentModel || defaultModel || availableModelEntries[0]?.id || agent.model || "";
+  const effortLevels = modelEntries.find((entry) => entry.id === effectiveModel)?.effortLevels ?? [];
+
+  const effortLabel = (effort: string): string => {
+    const labels: Record<string, [string, string]> = {
+      off: ["关闭", "Off"],
+      minimal: ["最少", "Minimal"],
+      low: ["低", "Low"],
+      medium: ["中", "Medium"],
+      high: ["高", "High"],
+      xhigh: ["超高", "Extra high"],
+      max: ["最大", "Maximum"],
+    };
+    return labels[effort]?.[locale === "zh" ? 0 : 1] ?? effort;
+  };
+
+  const changeAgentModel = (model: string) => {
+    setAgentModel(model);
+    const nextEffectiveModel = model || defaultModel || "";
+    const nextLevels = modelEntries.find((entry) => entry.id === nextEffectiveModel)?.effortLevels ?? [];
+    if (agentEffort && !nextLevels.includes(agentEffort)) setAgentEffort("");
+  };
 
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
@@ -152,6 +191,59 @@ export default function AgentProfileEditor({
           </div>
         </div>
 
+        <section className="agent-profile-execution" aria-label={locale === "zh" ? "执行引擎" : "Execution engine"}>
+          <header>
+            <span>
+              <strong>{locale === "zh" ? "执行引擎" : "Execution engine"}</strong>
+              <small>{locale === "zh"
+                ? "默认继承当前空间；只影响该 Agent 以后新建的对话。"
+                : "Defaults follow the current Space and affect only new conversations for this Agent."}</small>
+            </span>
+          </header>
+          {agent.ref === "main" ? (
+            <p className="agent-profile-execution-note">{locale === "zh"
+              ? "主 Agent 始终跟随当前空间的默认连接、模型与思考强度，避免个人配置进入其他公司。"
+              : "The Main Agent always follows the current Space connection, model, and reasoning defaults so Personal configuration cannot leak into another company."}</p>
+          ) : agent.owner === "organization" ? (
+            <p className="agent-profile-execution-note">{locale === "zh"
+              ? "公司 Agent 的模型与思考强度由公司管理员在 Hara Control 统一管理。"
+              : "A company administrator manages this Agent's model and reasoning effort in Hara Control."}</p>
+          ) : null}
+          <div className="agent-profile-execution-grid">
+            <label>
+              <span>{locale === "zh" ? "模型" : "Model"}</span>
+              <select
+                value={agentModel}
+                disabled={!executionEditable || saving}
+                onChange={(event) => changeAgentModel(event.target.value)}
+              >
+                <option value="">{locale === "zh"
+                  ? `跟随空间默认${defaultModel ? ` · ${defaultModel}` : ""}`
+                  : `Follow Space default${defaultModel ? ` · ${defaultModel}` : ""}`}</option>
+                {knownModels.map((model) => <option value={model} key={model}>{model}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>{locale === "zh" ? "思考强度" : "Reasoning effort"}</span>
+              <select
+                value={agentEffort}
+                disabled={!executionEditable || saving || effortLevels.length === 0}
+                onChange={(event) => setAgentEffort(event.target.value)}
+              >
+                <option value="">{effortLevels.length === 0
+                  ? (locale === "zh" ? "该模型使用固定策略" : "This model uses a fixed policy")
+                  : locale === "zh"
+                    ? `跟随空间默认 · ${defaultReasoningEffort ? effortLabel(defaultReasoningEffort) : "模型自动"}`
+                    : `Follow Space default · ${defaultReasoningEffort ? effortLabel(defaultReasoningEffort) : "Model automatic"}`}</option>
+                {agentEffort && !effortLevels.includes(agentEffort)
+                  ? <option value={agentEffort}>{agentEffort}</option>
+                  : null}
+                {effortLevels.map((effort) => <option value={effort} key={effort}>{effortLabel(effort)}</option>)}
+              </select>
+            </label>
+          </div>
+        </section>
+
         {(localError || error) ? <p className="agent-profile-error">{localError || error}</p> : null}
         <footer>
           {agent.allowedActions?.includes("archive") && onArchive ? (
@@ -160,16 +252,19 @@ export default function AgentProfileEditor({
           <span className="agent-profile-footer-spacer" />
           <button type="button" className="ghost" disabled={saving} onClick={onClose}>{editable ? (locale === "zh" ? "取消" : "Cancel") : (locale === "zh" ? "关闭" : "Close")}</button>
           {editable ? <button type="button" disabled={saving || !displayName.trim()} onClick={() => onSave({
-            displayName: displayName.trim(),
-            ...(title.trim() ? { title: title.trim() } : {}),
-            ...(bio.trim() ? { bio: bio.trim() } : {}),
-            ...(traits.trim() ? { traits: traits.split(/[,，、]/).map((item) => item.trim()).filter(Boolean).slice(0, 6) } : {}),
-            ...(emoji.trim() ? { emoji: emoji.trim() } : {}),
-            ...(avatar ? { avatar } : {}),
-            ...(theme.trim() ? { theme: theme.trim() } : {}),
-            ...(accent.trim() ? { accent: accent.trim() } : {}),
-            ...(character.trim() ? { character: character.trim().toLowerCase() } : {}),
-          })}>{saving ? (locale === "zh" ? "保存中…" : "Saving…") : (locale === "zh" ? "保存名片" : "Save profile")}</button> : null}
+              displayName: displayName.trim(),
+              ...(title.trim() ? { title: title.trim() } : {}),
+              ...(bio.trim() ? { bio: bio.trim() } : {}),
+              ...(traits.trim() ? { traits: traits.split(/[,，、]/).map((item) => item.trim()).filter(Boolean).slice(0, 6) } : {}),
+              ...(emoji.trim() ? { emoji: emoji.trim() } : {}),
+              ...(avatar ? { avatar } : {}),
+              ...(theme.trim() ? { theme: theme.trim() } : {}),
+              ...(accent.trim() ? { accent: accent.trim() } : {}),
+              ...(character.trim() ? { character: character.trim().toLowerCase() } : {}),
+            }, executionEditable ? {
+              model: agentModel || null,
+              reasoningEffort: agentEffort || null,
+            } : undefined)}>{saving ? (locale === "zh" ? "保存中…" : "Saving…") : (locale === "zh" ? "保存名片" : "Save profile")}</button> : null}
         </footer>
       </section>
     </div>

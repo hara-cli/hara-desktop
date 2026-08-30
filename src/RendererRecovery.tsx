@@ -36,11 +36,20 @@ export class RendererErrorBoundary extends React.Component<
     return { failed: true };
   }
 
-  componentDidCatch() {
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
     // Raw exceptions can contain local paths or provider payload fragments. Keep
     // the recovery surface intentionally generic and never render the stack.
     markRendererState("recovery");
     void invoke("renderer_ready").catch(() => {});
+    const componentNames = (info.componentStack ?? "")
+      .split("\n")
+      .map((line) => line.trim().match(/^at ([A-Za-z0-9_.-]+)/)?.[1] ?? "")
+      .filter(Boolean)
+      .slice(0, 12);
+    void invoke("record_renderer_failure", {
+      errorName: error.name || "Error",
+      componentNames,
+    }).finally(() => window.dispatchEvent(new Event("hara-crash-draft-updated")));
   }
 
   render() {

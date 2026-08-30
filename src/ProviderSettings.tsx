@@ -12,13 +12,14 @@ import {
 } from "./client";
 import type { Locale } from "./i18n";
 import { ModelCombobox } from "./ModelCombobox";
-import { IconPlus } from "./icons";
+import { IconCog, IconPlus } from "./icons";
 import { providerModelDescription } from "./provider-model-capabilities";
 
 interface Draft {
   provider: string;
   model: string;
   baseURL: string;
+  reasoningEffort: string;
 }
 
 interface OrganizationDraft {
@@ -64,7 +65,7 @@ const words = {
     personal: "Personal",
     personalConnections: "Personal model connection",
     personalConnectionCount: "One connection per Personal Space",
-    addPersonal: "Replace model connection",
+    addPersonal: "Configure model connection",
     addFirstPersonal: "Configure the one model connection owned by this Personal Space.",
     personalUnavailable: "Update the bundled Hara engine to manage the Personal connection here.",
     providerPlan: "Plan or provider",
@@ -74,11 +75,11 @@ const words = {
     setupProgress: "Connection setup progress",
     stepProvider: "Choose connection",
     stepCredential: "Verify key",
-    stepModel: "Choose model",
+    stepModel: "Choose defaults",
     verifyAndLoad: "Verify key & load models",
     transportAuto: "Hara selects the official OpenAI Responses, Chat, or Anthropic-compatible transport automatically. Use OpenAI / compatible for a custom endpoint.",
     savedConnection: "Saved connection",
-    addPersonalTitle: "Replace the Personal model connection",
+    addPersonalTitle: "Edit the Personal model connection",
     addPersonalDescription: "Choose a plan, verify its key, and select a model. Personal keeps one current model connection; company connections stay separate.",
     saveConnectionOnly: "Save and keep current Space",
     addAndUsePersonal: "Save & switch to Personal",
@@ -92,12 +93,23 @@ const words = {
     keyHintLabel: "Saved key",
     noSavedKey: "No API key required",
     immutableConnection: "Personal owns one model connection. Replace it to change provider, endpoint, key, or model; company connections remain independent.",
-    changePersonal: "Replace connection",
+    changePersonal: "Edit connection",
     removePersonal: "Clear connection",
     removingPersonal: "Removing…",
     removePersonalConfirm: "Clear the Personal model connection and its historical compatibility credentials from this device? Personal Space and chat history remain, but affected sessions need a new connection before they can continue. Company connections are not changed.",
     personalRemoved: "Personal model connection cleared. Personal Space, history, and company connections were kept.",
     model: "Model",
+    defaultModel: "Default model",
+    defaultEffort: "Default reasoning effort",
+    defaultEffortHint: "Used by new conversations, tasks, and Agents that inherit the Space default. Existing work is not changed.",
+    effortAutomatic: "Automatic · use the model default",
+    effortOff: "Off",
+    effortMinimal: "Minimal",
+    effortLow: "Low",
+    effortMedium: "Medium",
+    effortHigh: "High",
+    effortXHigh: "Extra high",
+    effortMax: "Maximum",
     modelSearch: "Search or enter a model ID",
     customModel: "Use custom model ID",
     customModelBadge: "CUSTOM",
@@ -230,7 +242,7 @@ const words = {
     personal: "个人连接",
     personalConnections: "个人模型连接",
     personalConnectionCount: "每个个人空间固定 1 个连接",
-    addPersonal: "更换模型连接",
+    addPersonal: "配置模型连接",
     addFirstPersonal: "配置这个个人空间唯一的模型连接。",
     personalUnavailable: "请升级 Desktop 内置 Hara 引擎后在此管理个人连接。",
     providerPlan: "套餐或供应商",
@@ -240,11 +252,11 @@ const words = {
     setupProgress: "连接配置进度",
     stepProvider: "选择连接",
     stepCredential: "验证 Key",
-    stepModel: "选择模型",
+    stepModel: "选择默认值",
     verifyAndLoad: "验证 Key 并加载模型",
     transportAuto: "Hara 会自动选择官方 OpenAI Responses、Chat 或 Anthropic 兼容协议；自定义服务端点请使用 OpenAI / compatible。",
     savedConnection: "已保存连接",
-    addPersonalTitle: "更换个人模型连接",
+    addPersonalTitle: "编辑个人模型连接",
     addPersonalDescription: "选择套餐、验证 Key，再选择模型。个人空间只保留一个当前模型连接；企业连接始终独立。",
     saveConnectionOnly: "保存，保持当前空间",
     addAndUsePersonal: "保存并切换到个人",
@@ -258,12 +270,23 @@ const words = {
     keyHintLabel: "已保存密钥",
     noSavedKey: "无需 API Key",
     immutableConnection: "个人空间只拥有一个模型连接；更换供应商、接口、Key 或模型时直接替换，企业连接不受影响。",
-    changePersonal: "更换连接",
+    changePersonal: "编辑连接",
     removePersonal: "清除连接",
     removingPersonal: "正在移除…",
     removePersonalConfirm: "清除本机的个人模型连接及其历史兼容凭据吗？个人空间和聊天记录会保留，但受影响的会话需要重新配置连接后才能继续；企业连接不受影响。",
     personalRemoved: "个人模型连接已清除；个人空间、聊天记录和企业连接均已保留。",
     model: "模型",
+    defaultModel: "默认模型",
+    defaultEffort: "默认思考强度",
+    defaultEffortHint: "用于新会话、新任务和继承空间默认值的 Agent；不会改写正在进行或已固定的工作。",
+    effortAutomatic: "自动 · 使用模型默认值",
+    effortOff: "关闭",
+    effortMinimal: "最少",
+    effortLow: "低",
+    effortMedium: "中",
+    effortHigh: "高",
+    effortXHigh: "超高",
+    effortMax: "最大",
     modelSearch: "搜索或输入模型 ID",
     customModel: "使用自定义模型 ID",
     customModelBadge: "自定义",
@@ -388,6 +411,7 @@ const draftFromState = (state: ProviderSettingsState): Draft => ({
   provider: state.current.provider,
   model: state.current.model,
   baseURL: state.current.baseURL ?? "",
+  reasoningEffort: state.current.reasoningEffort ?? "",
 });
 
 const endpointIdentity = (value: string | undefined): string => {
@@ -404,6 +428,38 @@ const endpointIdentity = (value: string | undefined): string => {
 
 const LEGACY_PERSONAL_PROVIDER_IDS = new Set(["qwen", "qwen-oauth"]);
 const TOKEN_PLAN_PROVIDER_IDS = new Set(["token-plan", "minimax-token-plan"]);
+
+const PROVIDER_NAMES: Record<string, { en: string; zh: string }> = {
+  anthropic: { en: "Anthropic", zh: "Anthropic" },
+  "token-plan": { en: "Alibaba Cloud Model Studio Token Plan", zh: "阿里云百炼 Token Plan" },
+  "minimax-token-plan": { en: "MiniMax Token Plan", zh: "MiniMax Token Plan" },
+  openai: { en: "OpenAI / compatible", zh: "OpenAI / 兼容接口" },
+  glm: { en: "GLM (Zhipu)", zh: "智谱 AI（GLM）" },
+  deepseek: { en: "DeepSeek", zh: "DeepSeek" },
+  openrouter: { en: "OpenRouter", zh: "OpenRouter" },
+  ollama: { en: "Ollama (local)", zh: "Ollama（本机）" },
+  lmstudio: { en: "LM Studio (local)", zh: "LM Studio（本机）" },
+};
+
+const providerDisplayName = (
+  provider: Pick<ProviderCatalogEntry, "id" | "label"> | undefined,
+  locale: Locale,
+  fallback?: string,
+): string => {
+  if (!provider) return fallback ?? "";
+  return PROVIDER_NAMES[provider.id]?.[locale] ?? provider.label ?? fallback ?? provider.id;
+};
+
+const providerIdDisplayName = (
+  providers: readonly ProviderCatalogEntry[],
+  providerId: string,
+  locale: Locale,
+  fallback?: string,
+): string => providerDisplayName(
+  providers.find((provider) => provider.id === providerId) ?? { id: providerId, label: fallback ?? providerId },
+  locale,
+  fallback,
+);
 
 const isLegacyProvider = (provider: Pick<ProviderCatalogEntry, "id" | "legacy">): boolean =>
   provider.legacy === true || LEGACY_PERSONAL_PROVIDER_IDS.has(provider.id);
@@ -457,7 +513,24 @@ const personalDraftForProvider = (provider: ProviderCatalogEntry): PersonalConne
   provider: provider.id,
   model: provider.defaultModel,
   baseURL: provider.defaultBaseURL ?? "",
+  reasoningEffort: "",
 });
+
+const effortDisplayLabel = (
+  effort: string,
+  copy: typeof words.en | typeof words.zh,
+): string => {
+  switch (effort) {
+    case "off": return copy.effortOff;
+    case "minimal": return copy.effortMinimal;
+    case "low": return copy.effortLow;
+    case "medium": return copy.effortMedium;
+    case "high": return copy.effortHigh;
+    case "xhigh": return copy.effortXHigh;
+    case "max": return copy.effortMax;
+    default: return effort;
+  }
+};
 
 const statusFor = (connection: OrganizationConnection, locale: Locale) => {
   const copy = words[locale];
@@ -501,11 +574,12 @@ export function ProviderSettings({
   const [state, setState] = useState<ProviderSettingsState | null>(null);
   const [organizations, setOrganizations] = useState<OrganizationConnectionsState | null>(null);
   const [organizationsUnsupported, setOrganizationsUnsupported] = useState(false);
-  const [draft, setDraft] = useState<Draft>({ provider: "", model: "", baseURL: "" });
-  const [personalDraft, setPersonalDraft] = useState<PersonalConnectionDraft>({ provider: "", model: "", baseURL: "" });
+  const [draft, setDraft] = useState<Draft>({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
+  const [personalDraft, setPersonalDraft] = useState<PersonalConnectionDraft>({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
   const [personalBusy, setPersonalBusy] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
+  const [modelEntries, setModelEntries] = useState<Array<{ id: string; effortLevels: string[] }>>([]);
   const [verifiedCustomModels, setVerifiedCustomModels] = useState<string[]>([]);
   const [view, setView] = useState<ConnectionView>({ kind: "provider", id: "" });
   const [organizationDraft, setOrganizationDraft] = useState<OrganizationDraft>({ id: "", label: "", gatewayUrl: "" });
@@ -545,6 +619,7 @@ export function ProviderSettings({
       const firstPersonalProvider = next.providers.find((provider) => provider.location !== "managed" && !isLegacyProvider(provider));
       if (firstPersonalProvider) setPersonalDraft(personalDraftForProvider(firstPersonalProvider));
       setModels([]);
+      setModelEntries([]);
       setVerifiedCustomModels([]);
       const fallbackProvider = isLegacyProviderId(next.current.provider)
         ? firstPersonalProvider?.id ?? ""
@@ -647,6 +722,16 @@ export function ProviderSettings({
   );
   const personalKeyMissing = personalProvider?.auth === "api-key" && !apiKey.trim() && !personalCanReuseKey;
   const personalCatalog = models.length > 0 ? models : [...(personalProvider?.knownModels ?? [])];
+  const selectedEffortLevels = modelEntries.find((entry) => entry.id === draft.model.trim())?.effortLevels
+    ?? selected?.knownModelEntries?.find((entry) => entry.id === draft.model.trim())?.effortLevels
+    ?? (draft.provider === state?.current.provider && draft.model.trim() === state.current.model
+      ? state.current.effortLevels ?? []
+      : []);
+  const personalEffortLevels = modelEntries.find((entry) => entry.id === personalDraft.model.trim())?.effortLevels
+    ?? personalProvider?.knownModelEntries?.find((entry) => entry.id === personalDraft.model.trim())?.effortLevels
+    ?? (canonicalPersonal?.provider === personalDraft.provider && canonicalPersonal.model === personalDraft.model.trim()
+      ? canonicalPersonal.effortLevels ?? []
+      : []);
   const personalCandidateKey = modelCandidateKey(personalDraft);
   const personalModelVerified = verifiedCustomModels.includes(personalCandidateKey);
   const personalModelAllowed = personalCatalog.length === 0
@@ -679,10 +764,12 @@ export function ProviderSettings({
       baseURL: provider.id === state?.current.provider
         ? state.current.baseURL ?? provider.defaultBaseURL ?? ""
         : provider.defaultBaseURL ?? "",
+      reasoningEffort: provider.id === state?.current.provider ? state.current.reasoningEffort ?? "" : "",
     });
     setApiKey("");
     setRegistrationCode("");
     setModels([]);
+    setModelEntries(provider.knownModelEntries ? [...provider.knownModelEntries] : []);
     setVerifiedCustomModels([]);
     clearFeedback();
   };
@@ -692,31 +779,46 @@ export function ProviderSettings({
     setApiKey("");
     setRegistrationCode("");
     setModels([]);
+    setModelEntries([]);
     setVerifiedCustomModels([]);
     clearFeedback();
   };
 
   const beginPersonalConnection = (preferredProvider?: ProviderCatalogEntry) => {
     const provider = preferredProvider
+      ?? newPersonalProviders.find((candidate) => candidate.id === canonicalPersonal?.provider)
       ?? newPersonalProviders.find((candidate) => candidate.id === state?.current.provider)
       ?? newPersonalProviders[0];
     if (!provider) return;
-    const next = personalDraftForProvider(provider);
+    const editingExisting = canonicalPersonal?.provider === provider.id;
+    const next = editingExisting
+      ? {
+          provider: canonicalPersonal.provider,
+          model: canonicalPersonal.model,
+          baseURL: canonicalPersonal.baseURL ?? provider.defaultBaseURL ?? "",
+          reasoningEffort: canonicalPersonal.reasoningEffort ?? "",
+        }
+      : personalDraftForProvider(provider);
     setPersonalDraft(next);
     setView({ kind: "add-personal" });
     setApiKey("");
     setRegistrationCode("");
     setModels([]);
+    const knownEntries = provider.knownModelEntries ? [...provider.knownModelEntries] : [];
+    setModelEntries(editingExisting && !knownEntries.some((entry) => entry.id === canonicalPersonal.model)
+      ? [...knownEntries, { id: canonicalPersonal.model, effortLevels: canonicalPersonal.effortLevels ?? [] }]
+      : knownEntries);
     setVerifiedCustomModels([]);
     clearFeedback();
   };
 
   const cancelPersonalConnection = () => {
     setApiKey("");
-    setPersonalDraft({ provider: "", model: "", baseURL: "" });
+    setPersonalDraft({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
     if (activeOrganization) setView({ kind: "organization", id: activeOrganization.id });
     else if (state) setView(viewForPersonalConnection(activePersonalConnection, state.current.provider));
     setModels([]);
+    setModelEntries([]);
     setVerifiedCustomModels([]);
     clearFeedback();
   };
@@ -752,6 +854,9 @@ export function ProviderSettings({
     model: draft.model.trim(),
     ...(draft.baseURL.trim() ? { baseURL: draft.baseURL.trim() } : {}),
     ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+    ...(draft.reasoningEffort
+      ? { reasoningEffort: draft.reasoningEffort }
+      : { clearReasoningEffort: true }),
     ...(state?.current.profileId !== "personal" ? { activatePersonal: true } : {}),
   });
 
@@ -762,6 +867,7 @@ export function ProviderSettings({
     try {
       const result = await client.testProviderSettings(providerInput(), cwd);
       setModels(result.models);
+      setModelEntries(result.entries ?? []);
       if (
         result.models.length > 0
         && TOKEN_PLAN_PROVIDER_IDS.has(selected?.id ?? "")
@@ -801,6 +907,7 @@ export function ProviderSettings({
       setDraft(draftFromState(next));
       setApiKey("");
       setModels([]);
+      setModelEntries([]);
       setVerifiedCustomModels([]);
       setView({ kind: "provider", id: next.current.provider });
       setMessage(copy.nextSession);
@@ -824,6 +931,9 @@ export function ProviderSettings({
     model: personalDraft.model.trim(),
     ...(personalDraft.baseURL.trim() ? { baseURL: personalDraft.baseURL.trim() } : {}),
     ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+    ...(personalDraft.reasoningEffort
+      ? { reasoningEffort: personalDraft.reasoningEffort }
+      : { clearReasoningEffort: true }),
     ...(activate ? { activatePersonal: true } : {}),
   });
 
@@ -835,6 +945,7 @@ export function ProviderSettings({
       const input = personalConnectionInput(false);
       const result = await client.testProviderSettings(input, cwd);
       setModels(result.models);
+      setModelEntries(result.entries ?? []);
       if (
         result.models.length > 0
         && TOKEN_PLAN_PROVIDER_IDS.has(personalProvider?.id ?? "")
@@ -868,8 +979,9 @@ export function ProviderSettings({
       setState(next);
       const nextPersonal = next.connections?.find((connection) => connection.id === "personal");
       setView(viewForPersonalConnection(nextPersonal, next.current.provider));
-      setPersonalDraft({ provider: "", model: "", baseURL: "" });
+      setPersonalDraft({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
       setModels([]);
+      setModelEntries([]);
       setVerifiedCustomModels([]);
       await onSaved(next);
       if (input.activatePersonal && organizations) {
@@ -899,6 +1011,7 @@ export function ProviderSettings({
     try {
       const result = await client.testProviderConnection(connection.id, cwd);
       setModels(result.models);
+      setModelEntries(result.entries ?? []);
       if (result.ok) setMessage(copy.connected);
       else setError(result.error || "Connection failed");
     } catch (reason) {
@@ -949,6 +1062,7 @@ export function ProviderSettings({
         ? { kind: "organization", id: nextOrganization.id }
         : viewForPersonalConnection(nextActive, next.current.provider));
       setModels([]);
+      setModelEntries([]);
       setVerifiedCustomModels([]);
       await onSaved(next);
       setMessage(copy.personalRemoved);
@@ -980,6 +1094,7 @@ export function ProviderSettings({
     setOrganizations(result.organizations);
     setDraft(draftFromState(next));
     setModels([]);
+    setModelEntries([]);
     setVerifiedCustomModels([]);
     setApiKey("");
     setRegistrationCode("");
@@ -1108,8 +1223,12 @@ export function ProviderSettings({
   if (!state || phase === "loading") return <div className="setrow dim">{error || "…"}</div>;
 
   const currentLabel = activeOrganization?.label
-    || activePersonalConnection?.label
-    || (isLegacyProviderId(state.current.provider) ? copy.legacyAlibaba : currentProvider?.label)
+    || (activePersonalConnection
+      ? providerIdDisplayName(state.providers, activePersonalConnection.provider, locale, activePersonalConnection.label)
+      : undefined)
+    || (isLegacyProviderId(state.current.provider)
+      ? copy.legacyAlibaba
+      : providerDisplayName(currentProvider, locale, state.current.provider))
     || state.current.provider;
   const routeSource = state.current.profileSource === "pin"
     ? copy.projectOverride
@@ -1118,7 +1237,9 @@ export function ProviderSettings({
       : copy.globalDefault;
   const currentMeta = activeOrganization
     ? `${activeOrganization.gatewayHost} · ${routeSource}`
-    : `${activePersonalConnection?.label || copy.personal} · ${routeSource}`;
+    : `${activePersonalConnection
+      ? providerIdDisplayName(state.providers, activePersonalConnection.provider, locale, activePersonalConnection.label)
+      : copy.personal} · ${routeSource}`;
   const projectPinned = state.current.profileSource === "pin";
   const selectedModelOptions = selectedCatalog;
   const personalModelOptions = personalCatalog;
@@ -1229,14 +1350,14 @@ export function ProviderSettings({
               <span className="provider-group-label">{copy.personalConnections}</span>
               <button
                 type="button"
-                className="provider-add-mini personal"
+                className={`provider-add-mini personal ${state.connections?.length ? "edit" : ""}`}
                 data-preview-action="add-personal"
-                aria-label={copy.addPersonal}
-                title={copy.addPersonal}
+                aria-label={state.connections?.length ? copy.changePersonal : copy.addPersonal}
+                title={state.connections?.length ? copy.changePersonal : copy.addPersonal}
                 disabled={!personalConnectionsSupported || phase !== "idle" || !!personalBusy || !!organizationBusy}
                 onClick={() => beginPersonalConnection()}
               >
-                <IconPlus size={15} />
+                {state.connections?.length ? <IconCog size={14} /> : <IconPlus size={15} />}
               </button>
             </div>
             <p className="provider-group-caption">
@@ -1258,8 +1379,10 @@ export function ProviderSettings({
               >
                 <span className={`provider-mini-dot ${connection.location}`} />
                 <span>
-                  <strong>{connection.label}</strong>
-                  <small>{isLegacyProviderId(connection.provider) ? copy.legacyAlibaba : connection.provider} · {connection.model}</small>
+                  <strong>{providerIdDisplayName(state.providers, connection.provider, locale, connection.label)}</strong>
+                  <small>{isLegacyProviderId(connection.provider)
+                    ? copy.legacyAlibaba
+                    : providerIdDisplayName(state.providers, connection.provider, locale)} · {connection.model}</small>
                 </span>
                 {connection.active && <em>{copy.active}</em>}
               </button>
@@ -1337,24 +1460,29 @@ export function ProviderSettings({
               <header className="provider-detail-heading">
                 <div>
                   <span>{selected.location === "local" ? copy.local : copy.cloud} · {copy.preset}</span>
-                  <h3>{selected.label}</h3>
+                  <h3>{providerDisplayName(selected, locale)}</h3>
                 </div>
                 <span className={`provider-kind-badge ${selected.location}`}>{copy.personal}</span>
               </header>
               <div className="provider-field">
-                <span>{copy.model}</span>
+                <span>{copy.defaultModel}</span>
                 <ModelCombobox
                   value={draft.model}
                   options={selectedModelOptions}
                   disabled={phase !== "idle"}
-                  ariaLabel={copy.model}
+                  ariaLabel={copy.defaultModel}
                   searchPlaceholder={copy.modelSearch}
                   customOptionLabel={copy.customModel}
                   customBadge={copy.customModelBadge}
                   emptyLabel={copy.noModelMatches}
                   describeOption={(model) => providerModelDescription(selected.id, model, locale)}
                   onChange={(model) => {
-                    setDraft((current) => ({ ...current, model }));
+                    const effortLevels = modelEntries.find((entry) => entry.id === model)?.effortLevels ?? [];
+                    setDraft((current) => ({
+                      ...current,
+                      model,
+                      reasoningEffort: effortLevels.includes(current.reasoningEffort) ? current.reasoningEffort : "",
+                    }));
                     clearFeedback();
                   }}
                 />
@@ -1368,6 +1496,27 @@ export function ProviderSettings({
                 )}
               </div>
 
+              {selectedEffortLevels.length > 0 && (
+                <label className="provider-effort-field">
+                  <span>{copy.defaultEffort}</span>
+                  <select
+                    value={draft.reasoningEffort}
+                    aria-label={copy.defaultEffort}
+                    disabled={phase !== "idle"}
+                    onChange={(event) => {
+                      setDraft((current) => ({ ...current, reasoningEffort: event.target.value }));
+                      clearFeedback();
+                    }}
+                  >
+                    <option value="">{copy.effortAutomatic}</option>
+                    {selectedEffortLevels.map((effort) => (
+                      <option value={effort} key={effort}>{effortDisplayLabel(effort, copy)}</option>
+                    ))}
+                  </select>
+                  <small>{copy.defaultEffortHint}</small>
+                </label>
+              )}
+
               {(selected.customBaseURL || !!selected.defaultBaseURL) && (
                 <label>
                   <span>{copy.endpoint}</span>
@@ -1378,6 +1527,7 @@ export function ProviderSettings({
                     onChange={(event) => {
                       setDraft((current) => ({ ...current, baseURL: event.target.value }));
                       setModels([]);
+                      setModelEntries([]);
                       setVerifiedCustomModels([]);
                       clearFeedback();
                     }}
@@ -1399,6 +1549,7 @@ export function ProviderSettings({
                     onChange={(event) => {
                       setApiKey(event.target.value);
                       setModels([]);
+                      setModelEntries([]);
                       setVerifiedCustomModels([]);
                       clearFeedback();
                     }}
@@ -1435,7 +1586,7 @@ export function ProviderSettings({
               <header className="provider-detail-heading">
                 <div>
                   <span>{copy.personal} · {copy.savedConnection}</span>
-                  <h3>{selectedConnection.label}</h3>
+                  <h3>{providerIdDisplayName(state.providers, selectedConnection.provider, locale, selectedConnection.label)}</h3>
                 </div>
                 <div className="provider-detail-heading-controls">
                   <span className={`provider-kind-badge ${selectedConnection.location}`}>
@@ -1457,7 +1608,9 @@ export function ProviderSettings({
               <div className="organization-facts personal">
                 <div>
                   <span>{copy.profile}</span>
-                  <strong>{selectedConnectionIsLegacyAlibaba ? copy.legacyAlibaba : selectedConnection.provider}</strong>
+                  <strong>{selectedConnectionIsLegacyAlibaba
+                    ? copy.legacyAlibaba
+                    : providerIdDisplayName(state.providers, selectedConnection.provider, locale)}</strong>
                 </div>
                 <div><span>{copy.model}</span><strong>{selectedConnection.model}</strong></div>
                 <div>
@@ -1559,9 +1712,11 @@ export function ProviderSettings({
                       provider: provider.id,
                       model: provider.defaultModel,
                       baseURL: provider.defaultBaseURL ?? "",
+                      reasoningEffort: "",
                     });
                     setApiKey("");
                     setModels([]);
+                    setModelEntries(provider.knownModelEntries ? [...provider.knownModelEntries] : []);
                     setVerifiedCustomModels([]);
                     clearFeedback();
                   }}
@@ -1569,7 +1724,7 @@ export function ProviderSettings({
                   {providerOptionGroups.map((group) => (
                     <optgroup label={group.label} key={group.label}>
                       {group.entries.map((provider) => (
-                        <option value={provider.id} key={provider.id}>{provider.label}</option>
+                        <option value={provider.id} key={provider.id}>{providerDisplayName(provider, locale)}</option>
                       ))}
                     </optgroup>
                   ))}
@@ -1591,6 +1746,7 @@ export function ProviderSettings({
                     onChange={(event) => {
                       setPersonalDraft((current) => ({ ...current, baseURL: event.target.value }));
                       setModels([]);
+                      setModelEntries([]);
                       setVerifiedCustomModels([]);
                       clearFeedback();
                     }}
@@ -1615,6 +1771,7 @@ export function ProviderSettings({
                     onChange={(event) => {
                       setApiKey(event.target.value);
                       setModels([]);
+                      setModelEntries([]);
                       setVerifiedCustomModels([]);
                       clearFeedback();
                     }}
@@ -1638,19 +1795,24 @@ export function ProviderSettings({
               </div>
 
               <div className="provider-field provider-model-step">
-                <span>{copy.model}</span>
+                <span>{copy.defaultModel}</span>
                 <ModelCombobox
                   value={personalDraft.model}
                   options={personalModelOptions}
                   disabled={!!personalBusy}
-                  ariaLabel={copy.model}
+                  ariaLabel={copy.defaultModel}
                   searchPlaceholder={copy.modelSearch}
                   customOptionLabel={copy.customModel}
                   customBadge={copy.customModelBadge}
                   emptyLabel={copy.noModelMatches}
                   describeOption={(model) => providerModelDescription(personalProvider.id, model, locale)}
                   onChange={(model) => {
-                    setPersonalDraft((current) => ({ ...current, model }));
+                    const effortLevels = modelEntries.find((entry) => entry.id === model)?.effortLevels ?? [];
+                    setPersonalDraft((current) => ({
+                      ...current,
+                      model,
+                      reasoningEffort: effortLevels.includes(current.reasoningEffort) ? current.reasoningEffort : "",
+                    }));
                     clearFeedback();
                   }}
                 />
@@ -1663,6 +1825,27 @@ export function ProviderSettings({
                   </small>
                 )}
               </div>
+
+              {personalEffortLevels.length > 0 && (
+                <label className="provider-effort-field">
+                  <span>{copy.defaultEffort}</span>
+                  <select
+                    value={personalDraft.reasoningEffort}
+                    aria-label={copy.defaultEffort}
+                    disabled={!!personalBusy}
+                    onChange={(event) => {
+                      setPersonalDraft((current) => ({ ...current, reasoningEffort: event.target.value }));
+                      clearFeedback();
+                    }}
+                  >
+                    <option value="">{copy.effortAutomatic}</option>
+                    {personalEffortLevels.map((effort) => (
+                      <option value={effort} key={effort}>{effortDisplayLabel(effort, copy)}</option>
+                    ))}
+                  </select>
+                  <small>{copy.defaultEffortHint}</small>
+                </label>
+              )}
 
               <div className="provider-enrollment-safety personal">
                 <span aria-hidden="true">◇</span>
@@ -1709,6 +1892,9 @@ export function ProviderSettings({
 
                 <div className="organization-facts">
                   <div><span>{copy.organizationModel}</span><strong>{selectedOrganization.model || "—"}</strong></div>
+                  <div><span>{copy.defaultEffort}</span><strong>{selectedOrganization.reasoningEffort
+                    ? effortDisplayLabel(selectedOrganization.reasoningEffort, copy)
+                    : copy.effortAutomatic}</strong></div>
                   <div><span>{copy.controlAddress}</span><strong>{selectedOrganization.gatewayHost}</strong></div>
                   <div><span>{copy.expires}</span><strong>{expiry}</strong></div>
                 </div>

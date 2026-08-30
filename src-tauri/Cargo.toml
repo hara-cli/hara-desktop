@@ -1,6 +1,6 @@
 [package]
 name = "hara-desktop"
-version = "0.1.125"
+version = "0.1.126"
 description = "hara desktop — a Tauri shell over `hara serve` (WebSocket JSON-RPC)"
 authors = ["Nanhara"]
 edition = "2021"
@@ -30,6 +30,7 @@ tauri-plugin-window-state = "2.4.1"
 base64 = "0.22.1"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 sha2 = "0.10.9"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Threading"] }

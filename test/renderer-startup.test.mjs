@@ -6,6 +6,7 @@ const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
 const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const recovery = readFileSync(new URL("../src/RendererRecovery.tsx", import.meta.url), "utf8");
+const crashPrompt = readFileSync(new URL("../src/CrashReportPrompt.tsx", import.meta.url), "utf8");
 const nativeHost = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const vite = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
 
@@ -21,10 +22,21 @@ test("renderer watchdog is installed before the module entrypoint", () => {
 
 test("React owns a generic recovery boundary and sends a native boot signal", () => {
   assert.match(main, /<RendererErrorBoundary>/);
+  assert.ok(main.indexOf("<CrashReportHost />") < main.indexOf("<RendererErrorBoundary>"));
   assert.match(main, /<RendererBootSignal>/);
   assert.match(recovery, /invoke\("renderer_ready"\)/);
-  assert.match(recovery, /componentDidCatch\(\)/);
+  assert.match(recovery, /componentDidCatch\(error: Error, info: React\.ErrorInfo\)/);
+  assert.match(recovery, /invoke\("record_renderer_failure"/);
   assert.doesNotMatch(recovery, /this\.state\.error|error\.stack/);
+});
+
+test("crash reports require explicit consent and enumerate the privacy boundary", () => {
+  assert.match(crashPrompt, /pending_crash_report/);
+  assert.match(crashPrompt, /discard_pending_crash_report/);
+  assert.match(crashPrompt, /submit_crash_report/);
+  assert.match(crashPrompt, /No chats, file contents, API keys, cookies/);
+  assert.match(crashPrompt, /不会上传对话、文件内容、API Key、Cookie/);
+  assert.doesNotMatch(crashPrompt, /setInterval|autoSubmit|componentStack/);
 });
 
 test("App declares every hook before the boot screen can return early", () => {

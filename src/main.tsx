@@ -6,6 +6,7 @@ import { ProviderSettingsPreview } from "./ProviderSettingsPreview";
 import { WorkStarter } from "./WorkStarter";
 import { initializeThemePreference } from "./theme";
 import { RendererBootSignal, RendererErrorBoundary } from "./RendererRecovery";
+import { CrashReportHost } from "./CrashReportPrompt";
 import "./theme-light.css";
 
 initializeThemePreference();
@@ -15,6 +16,7 @@ const workbenchPreview = import.meta.env.DEV && params.get("preview") === "workb
 const providersPreview = import.meta.env.DEV && params.get("preview") === "providers";
 const talentPreview = import.meta.env.DEV && params.get("preview") === "talent";
 const TalentMarketPreview = React.lazy(() => import("./TalentMarket"));
+const crashReportEnabled = !petMode && !workbenchPreview && !providersPreview && !talentPreview;
 document.documentElement.classList.toggle("pet-mode", petMode);
 
 const root = document.getElementById("root");
@@ -22,6 +24,7 @@ if (!root) throw new Error("Hara renderer root is unavailable");
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
+    {crashReportEnabled && <CrashReportHost />}
     <RendererErrorBoundary>
       <RendererBootSignal>
         {petMode ? (

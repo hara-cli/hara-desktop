@@ -5584,6 +5584,16 @@ button.provider-preset.personal.on {
   background: #211917;
   color: #d19a8e;
 }
+.provider-add-mini.personal.edit {
+  border-color: transparent;
+  background: transparent;
+  color: #9c756d;
+}
+.provider-add-mini.personal.edit:hover:not(:disabled) {
+  border-color: #594039;
+  background: #211917;
+  color: #e0aa9d;
+}
 button.provider-preset.enterprise.on {
   border-color: #414b61;
   background: #181c25;
@@ -5708,6 +5718,7 @@ button.provider-preset.enterprise.on {
   font-weight: 600;
 }
 .provider-form input,
+.provider-form select,
 .provider-enrollment-form input,
 .provider-enrollment-form select {
   width: 100%;
@@ -5765,7 +5776,7 @@ button.provider-preset.enterprise.on {
 }
 .model-combobox-list {
   position: absolute;
-  z-index: 12;
+  z-index: 10000;
   top: calc(100% + 5px);
   right: 0;
   left: 0;
@@ -5847,10 +5858,12 @@ button.provider-preset.enterprise.on {
 }
 .provider-form input:focus,
 .provider-enrollment-form input:focus,
+.provider-form select:focus,
 .provider-enrollment-form select:focus {
   border-color: #7b4a41;
   box-shadow: 0 0 0 2px rgba(217, 68, 44, 0.08);
 }
+.provider-form select,
 .provider-enrollment-form select {
   appearance: none;
   background-image:

@@ -107,6 +107,8 @@ export interface AgentInfo {
   scope: "main" | "global" | "project";
   project?: string;
   model?: string;
+  /** Agent override; absence follows the selected Space/connection default. */
+  reasoningEffort?: string;
   readOnly?: boolean;
   /** Verified install provenance. The private blueprint prompt is never returned by the engine. */
   blueprint?: AgentBlueprintProvenance;
@@ -437,6 +439,8 @@ export interface ProviderCatalogEntry {
   defaultBaseURL?: string;
   customBaseURL: boolean;
   knownModels?: readonly string[];
+  /** Provider/model-specific reasoning choices available before the first live catalog probe. */
+  knownModelEntries?: Array<{ id: string; effortLevels: string[] }>;
   legacy?: boolean;
 }
 
@@ -454,6 +458,9 @@ export interface ProviderSettingsState {
     profileSource: "flag" | "env" | "pin" | "default" | "fallback";
     editable: boolean;
     environmentOverride?: boolean;
+    /** Default reasoning dial for new work on this route. Missing means provider/model default. */
+    reasoningEffort?: string;
+    effortLevels?: string[];
     /** Managed device-token lifecycle; absent for Personal and legacy control planes. */
     tokenExpiresAt?: string;
     tokenExpired?: boolean;
@@ -481,6 +488,8 @@ export interface ProviderConnection {
   /** Redacted display hint such as ••••1234. Never a usable credential. */
   keyHint?: string;
   createdAt?: string;
+  reasoningEffort?: string;
+  effortLevels?: string[];
 }
 
 export interface ProviderSettingsInput {
@@ -490,6 +499,8 @@ export interface ProviderSettingsInput {
   apiKey?: string;
   clearApiKey?: boolean;
   activatePersonal?: boolean;
+  reasoningEffort?: string;
+  clearReasoningEffort?: boolean;
 }
 
 export interface ProviderConnectionCreateInput extends ProviderSettingsInput {
@@ -501,6 +512,7 @@ export interface ProviderConnectionCreateInput extends ProviderSettingsInput {
 export interface ProviderSettingsTestResult {
   ok: boolean;
   models: string[];
+  entries?: ModelCatalogEntry[];
   error?: string;
 }
 
@@ -573,6 +585,9 @@ export interface OrganizationConnection {
   model: string;
   /** Server-authorized models for this scoped organization credential. */
   availableModels?: string[];
+  /** Company-admin default for new work. Missing means provider/model automatic. */
+  reasoningEffort?: string;
+  effortLevels?: string[];
   enrolledAt?: string;
   expiresAt?: string;
   /** Explicit no-date-expiry policy; the credential remains revocable and budgeted. */
@@ -1187,6 +1202,7 @@ export class HaraClient {
     ref: string;
     expectedRevision: string;
     profile: Omit<AgentPublicIdentity, "version" | "source">;
+    execution?: { model?: string | null; reasoningEffort?: string | null };
     sessionId?: string;
     cwd?: string;
   }): Promise<{ agent?: AgentInfo; catalog: AgentCatalog }> {
@@ -1231,9 +1247,13 @@ export class HaraClient {
     models: string[];
     entries?: ModelCatalogEntry[];
     current: string;
+    /** Connection/Space default, which can differ from a session's current override. */
+    defaultModel?: string;
     currentAvailable?: boolean;
     recommendedModel?: string;
     profileId?: string;
+    /** Missing/null means provider/model automatic. */
+    defaultReasoningEffort?: string | null;
     effort: string | null;
     effortLevels: string[];
     attachmentCapabilities?: EffectiveAttachmentCapabilities;

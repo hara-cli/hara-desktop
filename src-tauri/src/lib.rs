@@ -59,6 +59,13 @@ const WINDOWS_RENDERER_RECREATE_DELAY: std::time::Duration = std::time::Duration
 #[cfg(windows)]
 const WINDOWS_SOFTWARE_RENDERER_ARGS: &str =
     "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu";
+const CRASH_REPORT_ENDPOINT: &str = "https://gw.nanhara.tech/v1/desktop/crash-reports";
+const CRASH_REPORT_VERSION: u8 = 1;
+const CRASH_CONSENT_VERSION: u8 = 1;
+const CRASH_REPORT_MAX_BYTES: u64 = 16 * 1024;
+const CRASH_RUN_MARKER_PREFIX: &str = "desktop-run-";
+const CRASH_RUN_MARKER_SUFFIX: &str = ".active";
+const CRASH_PENDING_FILE: &str = "pending-crash-report.json";
 
 #[derive(Default)]
 struct RendererBootState {
@@ -2401,6 +2408,410 @@ fn read_presentation_image(path: String) -> Result<String, String> {
     read_presentation_image_at(Path::new(&path))
 }
 
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopCrashDraft {
+    report_version: u8,
+    consent_version: u8,
+    app_version: String,
+    platform: String,
+    arch: String,
+    kind: String,
+    occurred_at_ms: u64,
+    fingerprint: String,
+    summary: String,
+    context: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopCrashSubmission {
+    report_version: u8,
+    consent_version: u8,
+    app_version: String,
+    engine_version: String,
+    platform: String,
+    arch: String,
+    kind: String,
+    occurred_at: String,
+    fingerprint: String,
+    summary: String,
+    user_description: String,
+    context: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopCrashReceipt {
+    report_id: String,
+    status: String,
+    occurrence_count: u32,
+}
+
+fn unix_time_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
+}
+
+fn desktop_platform() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    }
+}
+
+fn desktop_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "x86_64",
+        "aarch64" => "aarch64",
+        other => other,
+    }
+}
+
+fn hex_sha256(parts: &[&str]) -> String {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
+
+    let mut digest = Sha256::new();
+    for part in parts {
+        digest.update(part.as_bytes());
+        digest.update([0]);
+    }
+    digest
+        .finalize()
+        .iter()
+        .fold(String::with_capacity(64), |mut output, byte| {
+            let _ = write!(output, "{byte:02x}");
+            output
+        })
+}
+
+fn safe_crash_identifier(value: &str, fallback: &str) -> String {
+    let safe: String = value
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.')
+        })
+        .take(64)
+        .collect();
+    if safe.is_empty() {
+        fallback.to_string()
+    } else {
+        safe
+    }
+}
+
+fn ensure_crash_report_directory(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                return Err("Hara crash report storage is not a private directory".into());
+            }
+            #[cfg(windows)]
+            if metadata_is_reparse_point(&metadata) {
+                return Err("Hara crash report storage is not a private directory".into());
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir_all(path)
+                .map_err(|error| format!("create crash report storage: {error}"))?;
+        }
+        Err(error) => return Err(format!("inspect crash report storage: {error}")),
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("secure crash report storage: {error}"))?;
+    }
+    Ok(())
+}
+
+fn crash_report_directory<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("resolve crash report storage: {error}"))?
+        .join("crash-reports");
+    ensure_crash_report_directory(&directory)?;
+    Ok(directory)
+}
+
+fn write_private_crash_json(path: &Path, value: &DesktopCrashDraft) -> Result<(), String> {
+    let directory = path
+        .parent()
+        .ok_or_else(|| "crash report path has no parent".to_string())?;
+    ensure_crash_report_directory(directory)?;
+    let bytes =
+        serde_json::to_vec(value).map_err(|error| format!("serialize crash report: {error}"))?;
+    if bytes.len() as u64 > CRASH_REPORT_MAX_BYTES {
+        return Err("crash report exceeds the local size limit".into());
+    }
+    let staged = directory.join(format!(
+        ".crash-report-{}-{}.tmp",
+        std::process::id(),
+        unix_time_millis(),
+    ));
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options
+        .open(&staged)
+        .map_err(|error| format!("stage crash report: {error}"))?;
+    let result = file
+        .write_all(&bytes)
+        .and_then(|_| file.sync_all())
+        .map_err(|error| format!("persist crash report: {error}"));
+    drop(file);
+    if let Err(error) = result {
+        let _ = fs::remove_file(&staged);
+        return Err(error);
+    }
+    if let Err(error) = replace_managed_file(&staged, path, "install crash report") {
+        let _ = fs::remove_file(&staged);
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn pending_crash_report_at(path: &Path) -> Result<Option<DesktopCrashDraft>, String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("inspect pending crash report: {error}")),
+    };
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > CRASH_REPORT_MAX_BYTES
+    {
+        return Err("pending crash report is not a bounded regular file".into());
+    }
+    #[cfg(windows)]
+    if metadata_is_reparse_point(&metadata) {
+        return Err("pending crash report is not a bounded regular file".into());
+    }
+    let raw = fs::read(path).map_err(|error| format!("read pending crash report: {error}"))?;
+    serde_json::from_slice(&raw)
+        .map(Some)
+        .map_err(|error| format!("parse pending crash report: {error}"))
+}
+
+fn pending_crash_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
+    Ok(crash_report_directory(app)?.join(CRASH_PENDING_FILE))
+}
+
+fn unclean_exit_draft() -> DesktopCrashDraft {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let platform = desktop_platform().to_string();
+    let arch = desktop_arch().to_string();
+    DesktopCrashDraft {
+        report_version: CRASH_REPORT_VERSION,
+        consent_version: CRASH_CONSENT_VERSION,
+        app_version: version.clone(),
+        platform: platform.clone(),
+        arch: arch.clone(),
+        kind: "unclean_exit".into(),
+        occurred_at_ms: unix_time_millis(),
+        fingerprint: hex_sha256(&["unclean_exit", &version, &platform, &arch]),
+        summary: "The previous Hara Desktop run did not close normally".into(),
+        context: Vec::new(),
+    }
+}
+
+fn desktop_run_marker_pid(name: &str) -> Option<u32> {
+    let raw = name
+        .strip_prefix(CRASH_RUN_MARKER_PREFIX)?
+        .strip_suffix(CRASH_RUN_MARKER_SUFFIX)?;
+    let pid = raw.parse::<u32>().ok()?;
+    (pid > 1 && (!cfg!(unix) || pid <= i32::MAX as u32)).then_some(pid)
+}
+
+fn initialize_crash_tracking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
+    let directory = crash_report_directory(app)?;
+    let pending = directory.join(CRASH_PENDING_FILE);
+    let current_pid = std::process::id();
+    let entries =
+        fs::read_dir(&directory).map_err(|error| format!("scan crash markers: {error}"))?;
+    for entry in entries.take(64) {
+        let entry = entry.map_err(|error| format!("read crash marker: {error}"))?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(pid) = desktop_run_marker_pid(&name) else {
+            continue;
+        };
+        // A marker with our freshly assigned PID predates this process because this launch has not
+        // created its own marker yet. Treat PID reuse as a stale run; only another live PID belongs
+        // to a concurrent Hara instance.
+        if pid != current_pid && process_is_alive(pid) {
+            continue;
+        }
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| format!("inspect crash marker: {error}"))?;
+        if metadata.is_file() && !metadata.file_type().is_symlink() && metadata.len() <= 256 {
+            if pending_crash_report_at(&pending)?.is_none() {
+                write_private_crash_json(&pending, &unclean_exit_draft())?;
+            }
+            fs::remove_file(&path).map_err(|error| format!("retire crash marker: {error}"))?;
+        }
+    }
+    let marker = directory.join(format!(
+        "{CRASH_RUN_MARKER_PREFIX}{current_pid}{CRASH_RUN_MARKER_SUFFIX}",
+    ));
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options
+        .open(&marker)
+        .map_err(|error| format!("arm crash marker: {error}"))?;
+    file.write_all(format!("{}\n", unix_time_millis()).as_bytes())
+        .and_then(|_| file.sync_all())
+        .map_err(|error| format!("persist crash marker: {error}"))
+}
+
+fn clear_crash_tracking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let Ok(directory) = crash_report_directory(app) else {
+        return;
+    };
+    let marker = directory.join(format!(
+        "{CRASH_RUN_MARKER_PREFIX}{}{CRASH_RUN_MARKER_SUFFIX}",
+        std::process::id(),
+    ));
+    let _ = fs::remove_file(marker);
+}
+
+#[tauri::command]
+fn record_renderer_failure(
+    app: tauri::AppHandle,
+    error_name: String,
+    component_names: Vec<String>,
+) -> Result<(), String> {
+    let name = safe_crash_identifier(&error_name, "Error");
+    let context: Vec<String> = component_names
+        .iter()
+        .map(|component| safe_crash_identifier(component, "Component"))
+        .take(12)
+        .collect();
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let platform = desktop_platform().to_string();
+    let arch = desktop_arch().to_string();
+    let context_key = context.join(",");
+    let draft = DesktopCrashDraft {
+        report_version: CRASH_REPORT_VERSION,
+        consent_version: CRASH_CONSENT_VERSION,
+        app_version: version.clone(),
+        platform: platform.clone(),
+        arch: arch.clone(),
+        kind: "renderer_exception".into(),
+        occurred_at_ms: unix_time_millis(),
+        fingerprint: hex_sha256(&[
+            "renderer_exception",
+            &version,
+            &platform,
+            &arch,
+            &name,
+            &context_key,
+        ]),
+        summary: format!("{name} reached the Hara renderer recovery boundary"),
+        context,
+    };
+    write_private_crash_json(&pending_crash_path(&app)?, &draft)
+}
+
+#[tauri::command]
+fn pending_crash_report(app: tauri::AppHandle) -> Result<Option<DesktopCrashDraft>, String> {
+    pending_crash_report_at(&pending_crash_path(&app)?)
+}
+
+#[tauri::command]
+fn discard_pending_crash_report(app: tauri::AppHandle) -> Result<(), String> {
+    let path = pending_crash_path(&app)?;
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("discard pending crash report: {error}")),
+    }
+}
+
+fn validate_crash_submission(value: &DesktopCrashSubmission) -> Result<(), String> {
+    let bounded = |text: &str, max: usize| !text.is_empty() && text.chars().count() <= max;
+    if value.report_version != CRASH_REPORT_VERSION
+        || value.consent_version != CRASH_CONSENT_VERSION
+        || !bounded(&value.app_version, 48)
+        || value.engine_version.chars().count() > 48
+        || !matches!(value.platform.as_str(), "windows" | "macos" | "linux")
+        || !matches!(value.arch.as_str(), "x86_64" | "aarch64" | "arm64")
+        || !matches!(
+            value.kind.as_str(),
+            "unclean_exit" | "renderer_exception" | "renderer_unresponsive"
+        )
+        || value.fingerprint.len() != 64
+        || !value
+            .fingerprint
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        || !bounded(&value.occurred_at, 40)
+        || !bounded(&value.summary, 500)
+        || value.user_description.chars().count() > 1200
+        || value.context.len() > 12
+        || value.context.iter().any(|entry| entry.chars().count() > 80)
+    {
+        return Err("crash report contains unsupported or oversized fields".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn submit_crash_report(
+    app: tauri::AppHandle,
+    report: DesktopCrashSubmission,
+) -> Result<DesktopCrashReceipt, String> {
+    validate_crash_submission(&report)?;
+    let client = reqwest::Client::builder()
+        .https_only(true)
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+        .map_err(|_| "could not prepare the crash report connection".to_string())?;
+    let response = client
+        .post(CRASH_REPORT_ENDPOINT)
+        .header(
+            "User-Agent",
+            format!("Hara-Desktop/{}", env!("CARGO_PKG_VERSION")),
+        )
+        .json(&report)
+        .send()
+        .await
+        .map_err(|_| "could not reach Hara crash report intake".to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "crash report intake returned HTTP {}",
+            response.status().as_u16()
+        ));
+    }
+    let receipt = response
+        .json::<DesktopCrashReceipt>()
+        .await
+        .map_err(|_| "crash report intake returned an invalid receipt".to_string())?;
+    if receipt.report_id.len() > 80 || receipt.status != "received" {
+        return Err("crash report intake returned an invalid receipt".into());
+    }
+    discard_pending_crash_report(app)?;
+    Ok(receipt)
+}
+
 /// Dock badge = manual unread count (macOS). None clears it.
 #[tauri::command]
 fn set_badge(app: tauri::AppHandle, count: Option<i64>) {
@@ -2969,6 +3380,12 @@ pub fn run() {
                 )
                 .build(),
         )
+        .setup(|app| {
+            if let Err(error) = initialize_crash_tracking(app.handle()) {
+                eprintln!("Hara crash tracking could not start: {error}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             read_discovery,
             start_serve,
@@ -2989,6 +3406,10 @@ pub fn run() {
             classify_attachment_paths,
             write_temp_image,
             read_presentation_image,
+            record_renderer_failure,
+            pending_crash_report,
+            discard_pending_crash_report,
+            submit_crash_report,
             list_pets,
             read_pet_asset,
             renderer_ready
@@ -3082,6 +3503,7 @@ pub fn run() {
             // app exit: terminate the panel servers WE started (never a server the user had running)
             tauri::RunEvent::Exit => {
                 use tauri::Manager;
+                clear_crash_tracking(app);
                 let ports = app
                     .state::<OwnedPanels>()
                     .0
@@ -3092,6 +3514,84 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod crash_report_tests {
+    use super::*;
+
+    fn valid_submission() -> DesktopCrashSubmission {
+        DesktopCrashSubmission {
+            report_version: CRASH_REPORT_VERSION,
+            consent_version: CRASH_CONSENT_VERSION,
+            app_version: "0.1.126".into(),
+            engine_version: "0.157.0".into(),
+            platform: "windows".into(),
+            arch: "x86_64".into(),
+            kind: "renderer_exception".into(),
+            occurred_at: "2026-08-30T15:45:00.000Z".into(),
+            fingerprint: "a".repeat(64),
+            summary: "TypeError reached the Hara renderer recovery boundary".into(),
+            user_description: "Clicked New session".into(),
+            context: vec!["App".into(), "SessionList".into()],
+        }
+    }
+
+    #[test]
+    fn crash_identifiers_strip_paths_unicode_and_punctuation() {
+        assert_eq!(
+            safe_crash_identifier("Type/Error: 密钥", "Error"),
+            "TypeError"
+        );
+        assert_eq!(safe_crash_identifier("路径/密钥", "Error"), "Error");
+        assert_eq!(
+            safe_crash_identifier("Session.List_2", "Component"),
+            "Session.List_2"
+        );
+    }
+
+    #[test]
+    fn crash_marker_pid_requires_the_exact_managed_name() {
+        assert_eq!(
+            desktop_run_marker_pid("desktop-run-4132.active"),
+            Some(4132)
+        );
+        assert_eq!(desktop_run_marker_pid("desktop-run-0.active"), None);
+        assert_eq!(desktop_run_marker_pid("desktop-run-4132.active.bak"), None);
+        assert_eq!(desktop_run_marker_pid("other-4132.active"), None);
+    }
+
+    #[test]
+    fn crash_submission_accepts_only_the_bounded_contract() {
+        let mut report = valid_submission();
+        assert!(validate_crash_submission(&report).is_ok());
+
+        report.fingerprint = "A".repeat(64);
+        assert!(validate_crash_submission(&report).is_err());
+        report = valid_submission();
+        report.context = vec!["Component".into(); 13];
+        assert!(validate_crash_submission(&report).is_err());
+        report = valid_submission();
+        report.user_description = "x".repeat(1201);
+        assert!(validate_crash_submission(&report).is_err());
+    }
+
+    #[test]
+    fn pending_crash_draft_is_bounded_and_round_trips() {
+        let root = std::env::temp_dir().join(format!(
+            "hara-crash-report-test-{}-{}",
+            std::process::id(),
+            unix_time_millis(),
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join(CRASH_PENDING_FILE);
+        let draft = unclean_exit_draft();
+        write_private_crash_json(&path, &draft).unwrap();
+        let restored = pending_crash_report_at(&path).unwrap().unwrap();
+        assert_eq!(restored.kind, "unclean_exit");
+        assert_eq!(restored.report_version, CRASH_REPORT_VERSION);
+        fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[cfg(test)]

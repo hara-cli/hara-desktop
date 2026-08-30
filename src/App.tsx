@@ -702,7 +702,8 @@ const imageCapabilityText = (
 const thinkingLabel = (locale: Locale, effort: string): string => {
   const labels: Record<string, [string, string]> = {
     off: ["关闭思考", "Thinking off"],
-    low: ["快速", "Fast"],
+    minimal: ["最少思考", "Minimal reasoning"],
+    low: ["低思考", "Low reasoning"],
     medium: ["平衡", "Balanced"],
     high: ["深入", "Deep"],
     max: ["最强", "Maximum"],
@@ -859,9 +860,11 @@ export default function App() {
     models: string[];
     entries?: ModelCatalogEntry[];
     current: string;
+    defaultModel?: string;
     currentAvailable?: boolean;
     recommendedModel?: string;
     profileId?: string;
+    defaultReasoningEffort?: string | null;
     effort: string | null;
     effortLevels: string[];
     attachmentCapabilities?: EffectiveAttachmentCapabilities;
@@ -1036,6 +1039,8 @@ export default function App() {
   const [panelBusy, setPanelBusy] = useState("");
   const [starterBusy, setStarterBusy] = useState(false);
   const [assistantCreating, setAssistantCreating] = useState(false);
+  const [sessionCreating, setSessionCreating] = useState(false);
+  const sessionCreatingRef = useRef(false);
   const [engineRestarting, setEngineRestarting] = useState(false);
   // settings place: context column = group anchors, stage = the selected group's forms
   const [setSec, setSetSec] = useState<SettingsSection>("providers");
@@ -3468,6 +3473,7 @@ export default function App() {
 
   const saveAgentProfile = async (
     profile: Parameters<HaraClient["updateAgentProfile"]>[0]["profile"],
+    execution?: Parameters<HaraClient["updateAgentProfile"]>[0]["execution"],
   ): Promise<void> => {
     const client = clientRef.current;
     const agent = agentCatalog?.agents.find((candidate) => candidate.ref === profileAgentRef);
@@ -3479,6 +3485,7 @@ export default function App() {
         ref: agent.ref,
         expectedRevision: agent.revision,
         profile,
+        ...(execution ? { execution } : {}),
         ...(active ? { sessionId: active } : { cwd: agent.home || server?.cwd }),
       });
       setAgentCatalog(result.catalog);
@@ -3564,7 +3571,7 @@ export default function App() {
 
   const newSession = async (cwd?: string, agentRef?: string): Promise<string | null> => {
     const c = clientRef.current;
-    if (!c) return null;
+    if (!c || sessionCreatingRef.current) return null;
     const directory = spaceDirectoryRef.current;
     const activeSpace = directory?.spaces.find((space) => space.id === directory.activeId);
     if (
@@ -3589,6 +3596,8 @@ export default function App() {
       ...(agentRef && agentRef !== "main" ? { agentRef } : {}),
     };
     const requestId = ++sessionOpenRequestRef.current;
+    sessionCreatingRef.current = true;
+    setSessionCreating(true);
     let r: Awaited<ReturnType<HaraClient["createSession"]>>;
     try {
       r = await c.createSession({
@@ -3596,15 +3605,21 @@ export default function App() {
         ...(defaultApproval ? { approval: defaultApproval } : {}),
         ...(agentRef && agentRef !== "main" ? { agentRef } : {}),
       });
-    } catch (error) {
+    } catch (error: any) {
       const recovery = companyAccessRecoveryMessage(error, locale);
-      if (!recovery) throw error;
-      setErr(recovery);
-      void Promise.all([
-        refreshSpaceDirectory(sessionHint.cwd),
-        refreshOrganizationRoutes(sessionHint.cwd),
-      ]).catch(() => undefined);
+      setErr(recovery || (locale === "zh"
+        ? `无法新建会话：${String(error?.message ?? error).slice(0, 180)}`
+        : `Could not create the conversation: ${String(error?.message ?? error).slice(0, 180)}`));
+      if (recovery) {
+        void Promise.all([
+          refreshSpaceDirectory(sessionHint.cwd),
+          refreshOrganizationRoutes(sessionHint.cwd),
+        ]).catch(() => undefined);
+      }
       return null;
+    } finally {
+      sessionCreatingRef.current = false;
+      setSessionCreating(false);
     }
     attachedSessionsRef.current.add(r.sessionId);
     rememberSession(r.sessionId, sessionHint);
@@ -6169,11 +6184,19 @@ export default function App() {
 
   const commitRename = async () => {
     const c = clientRef.current;
-    if (editingId && c && editTitle.trim()) {
-      await c.renameSession(editingId, editTitle.trim()).catch(() => {});
-      await refreshSessions();
+    if (!editingId || !c || !editTitle.trim()) {
+      setEditingId(null);
+      return;
     }
-    setEditingId(null);
+    try {
+      await c.renameSession(editingId, editTitle.trim());
+      await refreshSessions();
+      setEditingId(null);
+    } catch (error: any) {
+      setErr(locale === "zh"
+        ? `重命名失败：${String(error?.message ?? error).slice(0, 180)}`
+        : `Rename failed: ${String(error?.message ?? error).slice(0, 180)}`);
+    }
   };
   const archiveIt = async (id: string) => {
     const c = clientRef.current;
@@ -8326,13 +8349,14 @@ export default function App() {
             ) : selectedInboxProject ? (
               <button
                 className="new withicon"
+                disabled={sessionCreating}
                 onClick={() => {
                   if (!setZone("projects")) return;
                   void newSession(selectedInboxProject[0]);
                 }}
               >
                 <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
-                {t("newHere")}
+                {sessionCreating ? t("startingConversation") : t("newHere")}
               </button>
             ) : workbenchInboxMode === "agents" ? (
               <>
@@ -9645,6 +9669,9 @@ export default function App() {
         <AgentProfileEditor
           agent={profileAgent}
           locale={locale}
+          modelEntries={activeModelInfo?.entries}
+          defaultModel={activeModelInfo?.defaultModel}
+          defaultReasoningEffort={activeModelInfo?.defaultReasoningEffort}
           saving={profileAgentSaving}
           error={profileAgentError}
           onClose={() => {
@@ -9652,7 +9679,7 @@ export default function App() {
             setProfileAgentRef(null);
             setProfileAgentError("");
           }}
-          onSave={(profile) => void saveAgentProfile(profile)}
+          onSave={(profile, execution) => void saveAgentProfile(profile, execution)}
           onArchive={() => void archiveProfileAgent()}
         />
       ) : null}
