@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 
 const API_ATTEMPTS = 3;
 const API_TIMEOUT_MS = 45_000;
+const LOOPBACK_PROXY = /^(?:http|socks5|socks5h):\/\/127\.0\.0\.1:[0-9]{2,5}$/;
 
 function wait(milliseconds) {
   execFileSync("/bin/sleep", [String(milliseconds / 1000)], {
@@ -36,6 +37,38 @@ function validateArguments(args) {
   }
 }
 
+function releaseProxyRoutes(environment) {
+  const configured = [
+    environment.HARA_GITHUB_RELEASE_PROXY,
+    environment.HARA_GITHUB_RELEASE_FALLBACK_PROXY,
+  ].filter((value) => typeof value === "string" && value.length > 0);
+  for (const proxy of configured) {
+    if (!LOOPBACK_PROXY.test(proxy)) {
+      throw new Error("release GitHub proxies must use a loopback HTTP/SOCKS endpoint");
+    }
+  }
+  return configured;
+}
+
+function apiEnvironment(environment, proxy) {
+  const childEnvironment = {
+    ...environment,
+    GH_HOST: "github.com",
+    GH_PROMPT_DISABLED: "true",
+  };
+  delete childEnvironment.HARA_GITHUB_RELEASE_PROXY;
+  delete childEnvironment.HARA_GITHUB_RELEASE_FALLBACK_PROXY;
+  if (proxy) {
+    childEnvironment.HTTP_PROXY = proxy;
+    childEnvironment.HTTPS_PROXY = proxy;
+    childEnvironment.http_proxy = proxy;
+    childEnvironment.https_proxy = proxy;
+    childEnvironment.NO_PROXY = "";
+    childEnvironment.no_proxy = "";
+  }
+  return childEnvironment;
+}
+
 export function readGitHubApi(
   endpoint,
   args = [],
@@ -44,6 +77,7 @@ export function readGitHubApi(
     timeoutMs = API_TIMEOUT_MS,
     execute = execFileSync,
     sleep = wait,
+    environment = process.env,
   } = {},
 ) {
   validateEndpoint(endpoint);
@@ -54,9 +88,11 @@ export function readGitHubApi(
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > API_TIMEOUT_MS) {
     throw new Error(`timeout must be between 1 and ${API_TIMEOUT_MS}ms`);
   }
+  const proxies = releaseProxyRoutes(environment);
 
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    const proxy = proxies.length > 0 ? proxies[Math.min(attempt - 1, proxies.length - 1)] : undefined;
     try {
       return execute("gh", ["api", endpoint, ...args], {
         encoding: "utf8",
@@ -64,13 +100,7 @@ export function readGitHubApi(
         timeout: timeoutMs,
         killSignal: "SIGKILL",
         maxBuffer: 4 * 1024 * 1024,
-        env: {
-          ...process.env,
-          GH_HOST: "github.com",
-          GH_PROMPT_DISABLED: "true",
-          NO_PROXY: "",
-          no_proxy: "",
-        },
+        env: apiEnvironment(environment, proxy),
       }).trimEnd();
     } catch (error) {
       lastError = error;

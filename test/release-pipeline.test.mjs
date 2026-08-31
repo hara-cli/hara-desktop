@@ -243,12 +243,19 @@ test("remote tag resolution prefers the peeled commit and retries within hard bo
 
 test("release policy API reads retry without exposing mutation flags", () => {
   let calls = 0;
+  const primaryProxy = "socks5h://127.0.0.1:1081";
+  const fallbackProxy = "socks5h://127.0.0.1:1080";
   const result = readGitHubApi(
     "repos/hara-cli/hara-desktop/immutable-releases",
     ["--jq", ".enabled"],
     {
       timeoutMs: 2_345,
       sleep: () => {},
+      environment: {
+        HARA_GITHUB_RELEASE_PROXY: primaryProxy,
+        HARA_GITHUB_RELEASE_FALLBACK_PROXY: fallbackProxy,
+        NO_PROXY: ".github.com",
+      },
       execute(command, args, options) {
         calls++;
         assert.equal(command, "gh");
@@ -263,6 +270,10 @@ test("release policy API reads retry without exposing mutation flags", () => {
         assert.equal(options.env.GH_PROMPT_DISABLED, "true");
         assert.equal(options.env.NO_PROXY, "");
         assert.equal(options.env.no_proxy, "");
+        assert.equal(options.env.HTTPS_PROXY, calls === 1 ? primaryProxy : fallbackProxy);
+        assert.equal(options.env.HTTP_PROXY, calls === 1 ? primaryProxy : fallbackProxy);
+        assert.equal(options.env.HARA_GITHUB_RELEASE_PROXY, undefined);
+        assert.equal(options.env.HARA_GITHUB_RELEASE_FALLBACK_PROXY, undefined);
         if (calls === 1) throw new Error("TLS handshake timeout");
         return "true\n";
       },
@@ -270,6 +281,29 @@ test("release policy API reads retry without exposing mutation flags", () => {
   );
   assert.equal(result, "true");
   assert.equal(calls, 2);
+  let directEnvironment;
+  assert.equal(
+    readGitHubApi("repos/hara-cli/hara-desktop/immutable-releases", [], {
+      environment: { NO_PROXY: "api.github.com" },
+      execute(_command, _args, options) {
+        directEnvironment = options.env;
+        return "true";
+      },
+    }),
+    "true",
+  );
+  assert.equal(directEnvironment.NO_PROXY, "api.github.com");
+  assert.equal(directEnvironment.HTTPS_PROXY, undefined);
+  assert.throws(
+    () =>
+      readGitHubApi("repos/hara-cli/hara-desktop/immutable-releases", [], {
+        environment: { HARA_GITHUB_RELEASE_PROXY: "https://proxy.example.com" },
+        execute() {
+          throw new Error("must not execute with an untrusted proxy");
+        },
+      }),
+    /loopback/,
+  );
   assert.throws(
     () => readGitHubApi("https://api.github.com/repos/hara-cli/hara-desktop", []),
     /repository-relative/,

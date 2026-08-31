@@ -16,9 +16,15 @@ html[data-theme="light"] {
   --surface-panel: #fffdf8;
   --surface-raised: #ece6dc;
   --surface-hover: #e5ded2;
+  --surface-control: #fffdf8;
+  --surface-selected: #e9e3d8;
   --surface-inset: #e8e2d7;
   --ink-strong: var(--fg);
   --ink-muted: var(--dim);
+  --ink-faint: #8b8379;
+  --border-subtle: #e2dcd2;
+  --border-control: #cfc6b8;
+  --border-strong: #c3b9aa;
   --accent-strong: #a92f20;
   --accent-soft: #f4ddd5;
   --success: #287552;
@@ -31,7 +37,12 @@ html[data-theme="light"] {
   --info-soft: #deebf1;
   --focus-ring: rgba(189, 56, 38, 0.2);
   --grid-line: rgba(70, 60, 49, 0.065);
+  --selection-bg: rgba(189, 56, 38, 0.18);
+  --selection-fg: #211b17;
+  --code-selection-bg: #a94334;
+  --code-selection-fg: #fffdf8;
   --shadow-soft: 0 12px 34px rgba(66, 50, 31, 0.11);
+  --shadow-card: 0 7px 24px rgba(72, 54, 34, 0.07);
   --shadow-float: 0 24px 70px rgba(66, 50, 31, 0.17);
   color-scheme: light;
 }
@@ -42,8 +53,8 @@ html[data-theme="light"] body {
 }
 
 html[data-theme="light"] ::selection {
-  background: rgba(189, 56, 38, 0.18);
-  color: #211b17;
+  background: var(--selection-bg);
+  color: var(--selection-fg);
 }
 
 html[data-theme="light"] button.ghost {
@@ -341,9 +352,8 @@ html[data-theme="light"] .inbox-project-avatar {
 }
 
 /* Settings and provider management */
-html[data-theme="light"] .setnav:hover,
-html[data-theme="light"] .setnav.on {
-  background: #e7e1d6;
+html[data-theme="light"] .setnav:hover {
+  background: var(--surface-hover);
 }
 
 html[data-theme="light"] .setnav.on,
@@ -351,53 +361,16 @@ html[data-theme="light"] .settings-eyebrow {
   color: var(--accent);
 }
 
-html[data-theme="light"] .settings-card {
-  border-color: var(--border);
-  background: var(--surface-panel);
-  box-shadow: 0 7px 24px rgba(72, 54, 34, 0.045);
-}
-
-html[data-theme="light"] .settings-card-head,
-html[data-theme="light"] .settings-notice {
-  border-color: var(--border);
-  background: #f4efe7;
-}
-
 html[data-theme="light"] .settings-item,
 html[data-theme="light"] .gateway-settings-block {
-  border-color: #e2dcd2;
+  border-color: var(--border-subtle);
 }
 
-html[data-theme="light"] .settings-badge {
-  border-color: #cdc4b7;
-  background: #ece6dc;
-  color: #554f48;
-}
-
-html[data-theme="light"] .settings-badge.success {
-  border-color: #9fc3ad;
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-html[data-theme="light"] .settings-badge.warning {
-  border-color: #d9bd82;
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-
-html[data-theme="light"] .settings-notice.error,
 html[data-theme="light"] .provider-result.error,
 html[data-theme="light"] .organization-check-result.error {
   border-color: #d8a298;
   background: var(--danger-soft);
   color: var(--danger);
-}
-
-html[data-theme="light"] .theme-option {
-  border-color: #cec5b8;
-  background: #f5f0e7;
-  color: var(--fg);
 }
 
 html[data-theme="light"] .theme-option:hover {
@@ -525,7 +498,6 @@ html[data-theme="light"] .provider-form input,
 html[data-theme="light"] .provider-enrollment-form input,
 html[data-theme="light"] .provider-form select,
 html[data-theme="light"] .provider-enrollment-form select,
-html[data-theme="light"] .capability-directory-toolbar input,
 html[data-theme="light"] .model-combobox-toggle,
 html[data-theme="light"] .model-combobox-list,
 html[data-theme="light"] .agent-picker-menu > input {
@@ -538,9 +510,7 @@ html[data-theme="light"] .model-combobox-list button.active,
 html[data-theme="light"] .model-combobox-list button:hover,
 html[data-theme="light"] .provider-models button:hover,
 html[data-theme="light"] .module-dock-item:hover,
-html[data-theme="light"] .settings-skill-list .skill:hover,
-html[data-theme="light"] .capability-directory-tabs button:hover,
-html[data-theme="light"] .capability-directory-tabs button.is-active {
+html[data-theme="light"] .settings-skill-list .skill:hover {
   background: #e9e3d8;
 }
 

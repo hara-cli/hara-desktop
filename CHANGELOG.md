@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.127 — 2026-08-31 — reliable conversation creation and themed Capability Center
+
+- Carry forward the complete unpublished `0.1.126` build with its consent-first crash reporting,
+  visible conversation-create and rename failures, duplicate-create guard, Agent execution defaults,
+  provider selector layering repair, and canonical single Personal model connection. Bundle Hara CLI
+  `0.157.0` at exact verified commit `d3f0df00dbfb2278bbf66769fe647769207d374a`.
+- Rebuild the Capability Center on one semantic design contract for Daylight and Night. Its source tabs,
+  search, capability cards, icons, status, keyboard focus, responsive layout, and text selection now keep
+  the same hierarchy and readable contrast in both themes. Add `DESIGN.md` as the ownership and review
+  contract for future global UI work instead of accumulating page-specific light-theme overrides.
+- Make the protected release-policy reader use only validated loopback GitHub proxy routes supplied by the
+  signing host, automatically fall back to its second route, and preserve ordinary direct networking when
+  no release proxy is configured. The `0.1.126` draft remained hidden after this pre-signing read could not
+  reach GitHub; no tagged source or unsigned artifact was replaced or published.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.124 — 2026-08-30 — immutable release verification repair
 
 - Carry forward the complete Alibaba Responses, native Qwen vision, and fast Flow integration from

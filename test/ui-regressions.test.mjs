@@ -41,6 +41,19 @@ test("the static Desktop cat mark keeps both traced eye apertures visible", () =
   );
 });
 
+test("markdown code selections remain legible on the dark code surface in every theme", () => {
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const daylight = readFileSync(`${root}/src/theme-light.css`, "utf8");
+  const codeBlock = css.match(/\.md pre code \{([\s\S]*?)\n\}/)?.[1] ?? "";
+  const selection = css.match(/\.md pre code::selection \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+  assert.match(codeBlock, /color:\s*#f5f2eb\s*;/);
+  assert.match(selection, /background:\s*var\(--code-selection-bg\)\s*;/);
+  assert.match(selection, /color:\s*var\(--code-selection-fg\)\s*;/);
+  assert.match(css, /--code-selection-bg:\s*#a94334\s*;/);
+  assert.match(daylight, /--code-selection-bg:\s*#a94334\s*;/);
+});
+
 test("rail buttons reset global padding so navigation SVGs cannot collapse into dots", () => {
   const css = readFileSync(`${root}/src/App.css`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
@@ -469,6 +482,7 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const settings = readFileSync(`${root}/src/SettingsUI.tsx`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const daylight = readFileSync(`${root}/src/theme-light.css`, "utf8");
   const nativeHost = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
 
   assert.match(settings, /export function SettingsPage/);
@@ -524,19 +538,24 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.match(css, /\.settings-card/);
   assert.match(css, /\.setnav-label/);
   const selectedNav = css.match(/\.setnav\.on \{([\s\S]*?)\n\}/)?.[1] ?? "";
-  const selectedColor = selectedNav.match(/color:\s*#([0-9a-f]{6})/i)?.[1];
-  const selectedBackground = selectedNav.match(/background:\s*#([0-9a-f]{6})/i)?.[1];
-  assert.ok(selectedColor && selectedBackground, "selected settings navigation declares stable colors");
+  assert.match(selectedNav, /color:\s*var\(--accent-strong\)/);
+  assert.match(selectedNav, /background:\s*var\(--surface-selected\)/);
   const luminance = (hex) => {
     const channels = hex.match(/../g).map((part) => Number.parseInt(part, 16) / 255);
     const linear = channels.map((channel) =>
       channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
     return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
   };
-  const foreground = luminance(selectedColor);
-  const background = luminance(selectedBackground);
-  const contrast = (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
-  assert.ok(contrast >= 4.5, `selected 13px navigation contrast is ${contrast.toFixed(2)}:1`);
+  const tokenHex = (source, token) => source.match(new RegExp(`${token}:\\s*#([0-9a-f]{6})`, "i"))?.[1];
+  for (const [name, source] of [["night", css], ["daylight", daylight]]) {
+    const selectedColor = tokenHex(source, "--accent-strong");
+    const selectedBackground = tokenHex(source, "--surface-selected");
+    assert.ok(selectedColor && selectedBackground, `${name} selected navigation declares stable token values`);
+    const foreground = luminance(selectedColor);
+    const background = luminance(selectedBackground);
+    const contrast = (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    assert.ok(contrast >= 4.5, `${name} selected 13px navigation contrast is ${contrast.toFixed(2)}:1`);
+  }
   assert.match(css, /\.board \.boardpad\.setstage/, "settings padding wins over the board's generic rule");
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*\.settings-capability-list \.plug[\s\S]*flex-direction:\s*column/);
 });
@@ -575,7 +594,7 @@ test("the capability center owns skills without duplicating the settings navigat
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const directory = readFileSync(`${root}/src/CapabilityDirectory.tsx`, "utf8");
   const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
-  const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const css = readFileSync(`${root}/src/CapabilityDirectory.css`, "utf8");
 
   assert.match(
     app,
@@ -1405,7 +1424,7 @@ test("the capability directory keeps package sources and reusable skills distinc
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const directory = readFileSync(`${root}/src/CapabilityDirectory.tsx`, "utf8");
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
-  const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const css = readFileSync(`${root}/src/CapabilityDirectory.css`, "utf8");
 
   assert.match(directory, /type DirectoryView = "hara" \| "organization" \| "market" \| "installed" \| "skills"/);
   assert.match(directory, /\["hara", copy\.hara\]/);
@@ -1435,6 +1454,38 @@ test("the capability directory keeps package sources and reusable skills distinc
   assert.match(copy, /officeIncluded: "Included in the open core"/);
   assert.match(copy, /capabilityOpenCore: "开源核心"/);
   assert.match(copy, /capabilityMarketGateTitle: "当前版本尚未启用市场服务"/);
+});
+
+test("the capability center consumes one semantic light and dark design contract", () => {
+  const directory = readFileSync(`${root}/src/CapabilityDirectory.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/CapabilityDirectory.css`, "utf8");
+  const foundation = readFileSync(`${root}/src/App.css`, "utf8");
+  const daylight = readFileSync(`${root}/src/theme-light.css`, "utf8");
+  const design = readFileSync(`${root}/DESIGN.md`, "utf8");
+
+  assert.match(directory, /import "\.\/CapabilityDirectory\.css"/);
+  assert.match(directory, /className="capability-directory-search"/);
+  assert.match(directory, /data-capability=\{item\.id\}/);
+  assert.match(directory, /coreCapabilityIcon\(item\.id\)/);
+  assert.doesNotMatch(css, /#[\da-f]{3,8}\b/i, "component CSS must not hard-code a theme color");
+  for (const token of [
+    "--surface-panel",
+    "--surface-control",
+    "--surface-selected",
+    "--ink-strong",
+    "--ink-muted",
+    "--border-subtle",
+    "--border-control",
+    "--accent-strong",
+    "--focus-ring",
+  ]) {
+    assert.match(css, new RegExp(`var\\(${token}\\)`), `${token} should drive the capability center`);
+    assert.match(foundation, new RegExp(`${token}:`), `${token} needs a night value`);
+    assert.match(daylight, new RegExp(`${token}:`), `${token} needs a daylight value`);
+  }
+  assert.match(design, /Theme ownership/);
+  assert.match(design, /Semantic token contract/);
+  assert.match(design, /Capability Center pattern/);
 });
 
 test("switching places cannot reuse a conversation from the wrong place", () => {

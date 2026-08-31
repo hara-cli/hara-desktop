@@ -11,6 +11,16 @@ import {
   SettingsNotice,
   SettingsPage,
 } from "./SettingsUI";
+import {
+  IconArrowRight,
+  IconChat,
+  IconOffice,
+  IconSearch,
+  IconSparkles,
+  IconTasks,
+  IconUsers,
+} from "./icons";
+import "./CapabilityDirectory.css";
 
 type DirectoryView = "hara" | "organization" | "market" | "installed" | "skills";
 const DIRECTORY_VIEWS: DirectoryView[] = [
@@ -105,6 +115,14 @@ interface CapabilityDirectoryProps {
 }
 
 const normalized = (value: string): string => value.trim().toLocaleLowerCase();
+
+const coreCapabilityIcon = (id: string) => {
+  if (id === "core.chat") return <IconChat size={19} />;
+  if (id === "core.tasks") return <IconTasks size={19} />;
+  if (id === "core.groups") return <IconUsers size={19} />;
+  if (id === "core.office") return <IconOffice size={19} />;
+  return <IconSparkles size={19} />;
+};
 
 export function CapabilityDirectory({
   copy,
@@ -204,13 +222,16 @@ export function CapabilityDirectory({
           ))}
         </div>
         {view === "hara" || view === "installed" || view === "skills" ? (
-          <input
-            type="search"
-            value={query}
-            placeholder={copy.search}
-            aria-label={copy.search}
-            onChange={(event) => setQuery(event.target.value)}
-          />
+          <label className="capability-directory-search">
+            <IconSearch size={15} />
+            <input
+              type="search"
+              value={query}
+              placeholder={copy.search}
+              aria-label={copy.search}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
         ) : null}
       </div>
 
@@ -227,11 +248,17 @@ export function CapabilityDirectory({
                   type="button"
                   className="capability-directory-card is-core"
                   key={item.id}
+                  data-capability={item.id}
                   aria-label={`${copy.open}: ${item.title}`}
                   onClick={() => onOpenCore(item.id)}
                 >
-                  <span className="capability-directory-index">
-                    {String(index + 1).padStart(2, "0")}
+                  <span className="capability-directory-card-top">
+                    <span className="capability-directory-icon" aria-hidden>
+                      {coreCapabilityIcon(item.id)}
+                    </span>
+                    <span className="capability-directory-index">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
                   </span>
                   <div className="capability-directory-card-head">
                     <strong>{item.title}</strong>
@@ -240,7 +267,10 @@ export function CapabilityDirectory({
                   <p>{item.description}</p>
                   <span className="capability-directory-card-footer">
                     <span className="capability-directory-state">{copy.included}</span>
-                    <span className="capability-directory-open">{copy.open} →</span>
+                    <span className="capability-directory-open">
+                      {copy.open}
+                      <IconArrowRight size={13} />
+                    </span>
                   </span>
                 </button>
               ))}
