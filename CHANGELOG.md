@@ -1,11 +1,28 @@
 # Changelog
 
+## 0.1.129 — 2026-09-01 — verified Codex and Claude Code relay
+
+- Carry forward the complete unpublished `0.1.128` build after pausing its protected signing lane before
+  publication for an additional external-session release gate. Hara acts as a local switchboard rather than
+  taking ownership of provider sessions: stored history remains protected, and every writable continuation
+  stays in the provider's native runtime.
+- Verify both real provider paths on this device. Codex accepts protected forks, managed turns, compatible
+  live turns, focused follow-ups, and interruption through its official App Server. Claude Code preserves the
+  original session, creates an official Agent SDK fork, resumes it through `query`, and streams the reply and
+  turn completion through Hara Serve. Desktop therefore supports direct conversation with both providers;
+  independently running Claude turns are never injected into or commandeered.
+- Retain the compact External Session Center, collapsed tool activity, authoritative transcript refresh,
+  responsive Automations dashboard, and the narrow-pane repair from the unpublished build. Bundle Hara CLI
+  `0.159.0` at exact verified commit `132e4aea297df63f286bd6516aea0fc92d3a75cd`.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.128 — 2026-09-01 — controllable coding sessions and compact operations UI
 
 - Upgrade the local External Session Center from a history viewer to a compact Codex operations console.
   Protected history is forked before mutation, Hara-managed and compatible live sessions accept follow-up
-  messages in the same active turn, approvals and interruption stay visible, and Claude Code remains clearly
-  read-only until its official runtime exposes an equivalent safe control channel. Bundle Hara CLI `0.159.0`
+  messages in the same active turn, approvals and interruption stay visible, and stored Claude Code history
+  uses an official protected fork before Hara resumes it. Bundle Hara CLI `0.159.0`
   at exact verified commit `132e4aea297df63f286bd6516aea0fc92d3a75cd`.
 - Keep tool activity collapsed by default while preserving the conversational timeline, retire optimistic
   live rows once the authoritative transcript catches up, and label history, managed, live, working, and
