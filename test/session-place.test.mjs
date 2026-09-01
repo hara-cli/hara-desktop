@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createdSessionListItem,
   isAssistantWorkspace,
+  keepCreatedSessionVisible,
   sessionActivationAllowed,
   sessionBelongsToInteractivePlace,
   sessionPlace,
@@ -33,4 +35,30 @@ test("only the newest async open request may activate a session", () => {
   assert.equal(sessionActivationAllowed(3, 3, "chat", assistant), true);
   assert.equal(sessionActivationAllowed(2, 3, "chat", assistant), false);
   assert.equal(sessionActivationAllowed(3, 3, "projects", assistant), false);
+});
+
+test("a successful create remains visible when a legacy list omits its live draft", () => {
+  const created = createdSessionListItem({
+    sessionId: "new-session",
+    model: "qwen3.8-flash",
+    profileId: "personal",
+    spaceId: "personal",
+  }, {
+    cwd: "C:\\Users\\Alice\\.hara\\workspace",
+    source: "interactive",
+    agentRef: "global:architect",
+  }, "2026-09-01T12:00:00.000Z");
+  assert.deepEqual(created, {
+    id: "new-session",
+    title: "",
+    cwd: "C:\\Users\\Alice\\.hara\\workspace",
+    model: "qwen3.8-flash",
+    profileId: "personal",
+    spaceId: "personal",
+    updatedAt: "2026-09-01T12:00:00.000Z",
+    source: "interactive",
+    agentRef: "global:architect",
+  });
+  assert.deepEqual(keepCreatedSessionVisible([], created), [created]);
+  assert.deepEqual(keepCreatedSessionVisible([created], created), [created], "a fixed engine result is not duplicated");
 });

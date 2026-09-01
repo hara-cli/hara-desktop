@@ -79,6 +79,8 @@ import { applyDesktopUpdateHandoff } from "./desktop-update.js";
 import { checkDesktopUpdate, desktopUpdaterErrorText } from "./desktop-updater";
 import {
   isAssistantWorkspace as isAssistantCwd,
+  createdSessionListItem,
+  keepCreatedSessionVisible,
   sessionActivationAllowed,
   sessionPlace,
   type SessionPlace,
@@ -3625,15 +3627,30 @@ export default function App() {
       setSessionCreating(false);
     }
     attachedSessionsRef.current.add(r.sessionId);
-    rememberSession(r.sessionId, sessionHint);
     setTranscripts((tr) => ({ ...tr, [r.sessionId]: [] }));
-    await refreshSessions();
-    const created = sessionsRef.current.find((session) => session.id === r.sessionId);
+    let refreshError: unknown;
+    try {
+      await refreshSessions();
+    } catch (error) {
+      refreshError = error;
+    }
+    let created = sessionsRef.current.find((session) => session.id === r.sessionId);
+    if (!created) {
+      created = createdSessionListItem(r, sessionHint);
+      const visible = keepCreatedSessionVisible(sessionsRef.current, created);
+      sessionsRef.current = visible;
+      setSessions(visible);
+    }
+    rememberSession(r.sessionId, created);
     if (
-      created
-      && sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, created)
+      sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, created)
     ) {
       activateSession(r.sessionId, created);
+    }
+    if (refreshError) {
+      setErr(locale === "zh"
+        ? `会话已创建并恢复显示，但列表刷新失败：${String((refreshError as any)?.message ?? refreshError).slice(0, 160)}`
+        : `The conversation was created and restored locally, but the list refresh failed: ${String((refreshError as any)?.message ?? refreshError).slice(0, 160)}`);
     }
     return r.sessionId;
   };

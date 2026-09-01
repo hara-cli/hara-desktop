@@ -140,6 +140,10 @@ test("session creation and rename failures stay visible instead of looking like 
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   assert.match(app, /sessionCreatingRef\.current/, "session creation has a synchronous duplicate-click guard");
   assert.match(app, /Could not create the conversation/, "ordinary create failures reach the visible error surface");
+  assert.match(app, /createdSessionListItem\(r, sessionHint\)/,
+    "a successful create remains visible when an older engine omits its in-memory draft from session.list");
+  assert.match(app, /The conversation was created and restored locally, but the list refresh failed/,
+    "post-create refresh failures explain the recovered state instead of becoming an unhandled rejection");
   assert.match(app, /Rename failed:/, "rename RPC failures are visible");
   assert.doesNotMatch(app, /renameSession\(editingId, editTitle\.trim\(\)\)\.catch\(\(\) => \{\}\)/,
     "rename failure is not swallowed");

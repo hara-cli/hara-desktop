@@ -31,6 +31,21 @@ export interface SessionInfo {
   agentRef?: string;
 }
 
+/** Authoritative identity returned by session.create. Newer engines include enough metadata for Desktop
+ * to surface the live draft immediately; optional fields keep Desktop compatible with older sidecars. */
+export interface CreatedSessionInfo {
+  sessionId: string;
+  title?: string;
+  cwd?: string;
+  model: string;
+  profileId?: string;
+  spaceId?: string;
+  approval?: ApprovalMode;
+  updatedAt?: string;
+  source?: "interactive";
+  agentRef?: string;
+}
+
 export type ExternalSessionSourceId = "codex" | "claude";
 export type ExternalSessionSourceState = "ready" | "adapter_required" | "not_installed" | "error";
 export type ExternalSessionState = "stored" | "idle" | "working" | "waiting" | "error" | "unknown";
@@ -1213,7 +1228,7 @@ export class HaraClient {
     return this.call<Record<string, never>>("external.sessions.interrupt", { sessionId });
   }
   createSession(opts?: { cwd?: string; approval?: ApprovalMode; agentRef?: string; profileId?: string; spaceId?: string }) {
-    return this.call<{ sessionId: string; model: string; profileId?: string; spaceId?: string; approval?: ApprovalMode; agentRef?: string }>("session.create", opts ?? {});
+    return this.call<CreatedSessionInfo>("session.create", opts ?? {});
   }
   /** Persistent Agent identities and their project/team offices (feature-detected for compatibility). */
   async listAgents(opts?: { sessionId?: string; cwd?: string }): Promise<AgentCatalog | null> {

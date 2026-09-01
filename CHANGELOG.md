@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.130 — 2026-09-01 — reliable new conversations
+
+- Fix “New conversation” and “New session in this folder” appearing to do nothing, including the reported
+  Windows path. A successful empty conversation is now visible and activated immediately while remaining an
+  in-memory draft until its first message, so abandoned clicks still do not create empty history records.
+- Recover locally from an older engine that omits the fresh draft from its immediate list response, and show
+  a focused message if the post-create refresh itself fails instead of leaving an unhandled silent click.
+- Bundle Hara CLI `0.159.1` at exact verified commit
+  `f9b8605c84adb9f9bbb98249b5f2b8f599bb6755`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.129 — 2026-09-01 — verified Codex and Claude Code relay
 
 - Carry forward the complete unpublished `0.1.128` build after pausing its protected signing lane before

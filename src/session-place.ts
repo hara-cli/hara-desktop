@@ -1,3 +1,5 @@
+import type { CreatedSessionInfo, SessionInfo } from "./client";
+
 export type SessionPlace = "chat" | "projects" | "auto";
 export type InteractiveSessionPlace = Exclude<SessionPlace, "auto">;
 
@@ -30,4 +32,36 @@ export function sessionActivationAllowed(
   session: SessionPlaceInput,
 ): boolean {
   return requestId === currentRequestId && sessionBelongsToInteractivePlace(place, session);
+}
+
+/** Materialize a just-created live draft without waiting for it to become durable. Engines before the
+ * live-draft list fix omit some route fields, so the caller's request remains a compatibility fallback. */
+export function createdSessionListItem(
+  created: CreatedSessionInfo,
+  hint: SessionPlaceInput & { agentRef?: string },
+  fallbackUpdatedAt = new Date().toISOString(),
+): SessionInfo {
+  return {
+    id: created.sessionId,
+    title: created.title ?? "",
+    cwd: created.cwd || hint.cwd,
+    model: created.model,
+    ...(created.approval ? { approval: created.approval } : {}),
+    ...(created.profileId ? { profileId: created.profileId } : {}),
+    ...(created.spaceId ? { spaceId: created.spaceId } : {}),
+    updatedAt: created.updatedAt || fallbackUpdatedAt,
+    source: created.source ?? "interactive",
+    ...(created.agentRef || hint.agentRef ? { agentRef: created.agentRef ?? hint.agentRef } : {}),
+  };
+}
+
+/** A successful create is authoritative even when a legacy engine's immediate session.list omits the
+ * empty draft. Preserve the server's version when it is present and otherwise prepend the fallback. */
+export function keepCreatedSessionVisible(
+  sessions: readonly SessionInfo[],
+  created: SessionInfo,
+): SessionInfo[] {
+  return sessions.some((session) => session.id === created.id)
+    ? [...sessions]
+    : [created, ...sessions];
 }
