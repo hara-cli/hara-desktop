@@ -15,8 +15,10 @@ const petMode = params.get("pet") === "1";
 const workbenchPreview = import.meta.env.DEV && params.get("preview") === "workbench";
 const providersPreview = import.meta.env.DEV && params.get("preview") === "providers";
 const talentPreview = import.meta.env.DEV && params.get("preview") === "talent";
+const automationPreview = import.meta.env.DEV && params.get("preview") === "automation";
 const TalentMarketPreview = React.lazy(() => import("./TalentMarket"));
-const crashReportEnabled = !petMode && !workbenchPreview && !providersPreview && !talentPreview;
+const AutomationPreview = React.lazy(() => import("./AutomationPreview"));
+const crashReportEnabled = !petMode && !workbenchPreview && !providersPreview && !talentPreview && !automationPreview;
 document.documentElement.classList.toggle("pet-mode", petMode);
 
 const root = document.getElementById("root");
@@ -29,6 +31,10 @@ ReactDOM.createRoot(root).render(
       <RendererBootSignal>
         {petMode ? (
           <PetOverlay />
+        ) : automationPreview ? (
+          <React.Suspense fallback={<div>Opening Automations…</div>}>
+            <AutomationPreview locale={params.get("locale") === "en" ? "en" : "zh"} />
+          </React.Suspense>
         ) : talentPreview ? (
           <React.Suspense fallback={<div>Opening Talent Bureau…</div>}>
             <TalentMarketPreview

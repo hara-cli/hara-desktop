@@ -298,6 +298,17 @@ test("automation is one guided control console with local-only status refresh", 
   assert.match(app, /draft\.clearDeliver \? \{ clearDeliver: true \}/);
   assert.match(client, /if \(!result\.ok\) throw new Error/);
   assert.match(client, /nextRunDeferred\?: boolean/);
+  assert.match(client, /interface AutomationRunInfo[\s\S]*status\?: CronJobStatus[\s\S]*error\?: string/);
+  assert.match(
+    automation,
+    /const jobsById = useMemo[\s\S]*const latestRunIdsByJob = useMemo/,
+    "automation rows index jobs once and identify only the newest occurrence per job",
+  );
+  assert.match(
+    automation,
+    /resolveAutomationRun\([\s\S]*latestRunIdsByJob\.get\(run\.jobId\) === run\.id[\s\S]*run\.summary \|\| presentation\.error/,
+    "the latest legacy occurrence can show the job's focused error while historical rows stay independent",
+  );
   assert.match(
     automation,
     /job\.nextRunDeferred \? copy\.nextRunDeferred : copy\.noNextRun/,

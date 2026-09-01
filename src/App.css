@@ -643,6 +643,7 @@ button.deny {
   border-top: 1px solid var(--border);
 }
 .automation-board {
+  container: automation-stage / inline-size;
   min-width: 0;
   overflow: hidden;
 }

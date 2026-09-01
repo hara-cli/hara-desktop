@@ -22,6 +22,17 @@
 }
 
 .hara-automation-sidebar {
+  --automation-coral: var(--accent, #d9442c);
+  --automation-ink: var(--fg, #e8e6e3);
+  --automation-muted: var(--dim, #8a8782);
+  --automation-base: var(--bg, #101012);
+  --automation-panel: var(--bg2, #17171a);
+  --automation-raised: var(--bg3, #1f1f24);
+  --automation-line: var(--border, #2a2a30);
+  --automation-success: #62b982;
+  --automation-warning: #d7a64c;
+  --automation-danger: #e16e61;
+  --automation-info: #79a9d8;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -153,7 +164,7 @@
 
 .hara-automation-nav button.is-active .hara-automation-nav-count {
   border-color: color-mix(in srgb, var(--automation-coral) 26%, var(--automation-line));
-  color: #e7a296;
+  color: color-mix(in srgb, var(--automation-coral) 72%, var(--automation-ink));
 }
 
 .hara-automation-sidebar-note {
@@ -2196,6 +2207,113 @@
   .hara-automation-review > div {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+}
+
+/* The automation stage shares the window with Hara's rail and context sidebar. Viewport queries
+   therefore overestimate the usable width. Container queries make the work surface respond to the
+   space it actually owns, including compact Desktop windows and a resized split view. */
+@container automation-stage (max-width: 760px) {
+  .hara-automations-page {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .hara-automation-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hara-automation-metrics > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .hara-automation-metrics .is-upcoming {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--automation-line);
+  }
+
+  .hara-automation-list-labels {
+    display: none;
+  }
+
+  .hara-automation-task-row {
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 10px;
+  }
+
+  .hara-automation-task-time,
+  .hara-automation-task-result {
+    grid-column: 1 / 2;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .hara-automation-column-label {
+    display: inline;
+  }
+
+  .hara-automation-task-time small,
+  .hara-automation-task-result small {
+    display: none;
+  }
+
+  .hara-automation-more-button {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+  }
+
+  .hara-automation-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container automation-stage (max-width: 520px) {
+  .hara-automations-page {
+    padding: 18px 14px 40px;
+  }
+
+  .hara-automation-page-header,
+  .hara-automation-detail-header,
+  .hara-automation-list-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hara-automation-page-header > button,
+  .hara-automation-detail-actions {
+    width: 100%;
+    margin-top: 0;
+    padding-top: 0;
+  }
+
+  .hara-automation-page-header > button {
+    justify-content: center;
+  }
+
+  .hara-automation-scheduler {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .hara-automation-scheduler > button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .hara-automation-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hara-automation-detail-field,
+  .hara-automation-detail-field:nth-child(2n),
+  .hara-automation-detail-field:nth-child(3n),
+  .hara-automation-detail-field:nth-last-child(-n + 2) {
+    border-right: 0;
+    border-bottom: 1px solid var(--automation-line);
+  }
+
+  .hara-automation-detail-field:last-child {
+    border-bottom: 0;
   }
 }
 

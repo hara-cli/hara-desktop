@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.128 — 2026-09-01 — controllable coding sessions and compact operations UI
+
+- Upgrade the local External Session Center from a history viewer to a compact Codex operations console.
+  Protected history is forked before mutation, Hara-managed and compatible live sessions accept follow-up
+  messages in the same active turn, approvals and interruption stay visible, and Claude Code remains clearly
+  read-only until its official runtime exposes an equivalent safe control channel. Bundle Hara CLI `0.159.0`
+  at exact verified commit `132e4aea297df63f286bd6516aea0fc92d3a75cd`.
+- Keep tool activity collapsed by default while preserving the conversational timeline, retire optimistic
+  live rows once the authoritative transcript catches up, and label history, managed, live, working, and
+  waiting states in both Chinese and English. The session overview and detail view now own the full remaining
+  pane width at compact window sizes instead of collapsing into a narrow vertical strip.
+- Repair the responsive Automations dashboard and run history: the main board can shrink within the app shell,
+  long scheduler diagnostics no longer leak raw engine detail into the layout, and each latest run resolves to
+  a stable completed/error/running presentation before rendering. Add focused preview and responsive regression
+  coverage for the UI that previously clipped or stacked incorrectly.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning.
+
 ## 0.1.127 — 2026-08-31 — reliable conversation creation and themed Capability Center
 
 - Carry forward the complete unpublished `0.1.126` build with its consent-first crash reporting,

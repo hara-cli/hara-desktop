@@ -48,6 +48,7 @@ export interface ExternalSessionSourceInfo {
     resume: boolean;
     observeLive: boolean;
     submit: boolean;
+    steer: boolean;
     interrupt: boolean;
   };
 }
@@ -83,6 +84,7 @@ export interface ExternalSessionReadResult {
   session: ExternalSessionInfo;
   messages: ExternalSessionMessage[];
   readOnly: boolean;
+  controlMode?: "history" | "managed" | "live";
 }
 
 export interface ExternalSessionForkResult extends ExternalSessionReadResult {
@@ -95,6 +97,12 @@ export interface ExternalTurnResult {
   status: "completed" | "interrupted" | "failed";
   reply: string;
   error?: string;
+}
+
+export interface ExternalSteerResult {
+  sessionId: string;
+  turnId: string;
+  accepted: true;
 }
 
 export interface AgentInfo {
@@ -231,9 +239,25 @@ export interface CronJobInfo {
   schedule?: string; // human description ("every 30m", "cron 0 9 * * *")
 }
 
+export interface AutomationRunInfo {
+  id: string;
+  title: string;
+  cwd: string;
+  source: "gateway" | "cron";
+  sourceName?: string;
+  jobId?: string;
+  updatedAt: string;
+  status?: CronJobStatus;
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number;
+  error?: string;
+  needsAttention?: boolean;
+}
+
 export interface AutomationListResult {
   jobs: CronJobInfo[];
-  sessions: SessionInfo[];
+  sessions: AutomationRunInfo[];
   scheduler?: AutomationSchedulerInfo;
 }
 
@@ -1181,6 +1205,9 @@ export class HaraClient {
   }
   submitExternalSession(sessionId: string, text: string) {
     return this.call<ExternalTurnResult>("external.sessions.submit", { sessionId, text });
+  }
+  steerExternalSession(sessionId: string, text: string) {
+    return this.call<ExternalSteerResult>("external.sessions.steer", { sessionId, text });
   }
   interruptExternalSession(sessionId: string) {
     return this.call<Record<string, never>>("external.sessions.interrupt", { sessionId });

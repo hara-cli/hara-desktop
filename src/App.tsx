@@ -1620,6 +1620,9 @@ export default function App() {
       .then((result) => {
         if (clientRef.current !== client || externalTranscriptRequestRef.current !== requestId) return;
         setExternalTranscript(result);
+        // Once the provider transcript has caught up, retire the optimistic/live projection. Keeping both
+        // renders every user and agent message twice after a completed turn.
+        setExternalSessionActivity((current) => ({ ...current, [sessionId]: [] }));
       })
       .catch((error: any) => {
         if (clientRef.current !== client || externalTranscriptRequestRef.current !== requestId) return;
@@ -5917,6 +5920,30 @@ export default function App() {
       }
     }
   }, [externalTranscript, locale, selectedExternalSession]);
+  const steerSelectedExternalSession = useCallback(async (text: string) => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    const source = externalSources?.find((candidate) => candidate.id === session?.sourceId);
+    if (!client || !session || source?.capabilities.steer !== true || !client.supports("external.sessions.steer")) {
+      const message = makeT(locale)("externalSessionsSteerUnavailable");
+      setExternalSessionActionError(message);
+      throw new Error(message);
+    }
+    setExternalSessionActionError("");
+    setExternalSessionActivity((current) => ({
+      ...current,
+      [session.id]: [
+        ...(current[session.id] ?? []),
+        { id: `external-user:${Date.now()}:${++externalActivitySequenceRef.current}`, kind: "user", text },
+      ],
+    }));
+    try {
+      await client.steerExternalSession(session.id, text);
+    } catch (error: any) {
+      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+      throw error;
+    }
+  }, [externalSources, locale, selectedExternalSession]);
   const interruptSelectedExternalSession = useCallback(async () => {
     const client = clientRef.current;
     const session = selectedExternalSession;
@@ -8031,6 +8058,7 @@ export default function App() {
       onSelectSource={selectExternalSessionSource}
       onFork={forkSelectedExternalSession}
       onSubmit={submitSelectedExternalSession}
+      onSteer={steerSelectedExternalSession}
       onInterrupt={interruptSelectedExternalSession}
       onApproval={answerExternalSessionApproval}
       copy={{
@@ -8070,6 +8098,17 @@ export default function App() {
         readOnlyBody: t("externalSessionsReadOnlyBody"),
         writableTitle: t("externalSessionsWritableTitle"),
         writableBody: t("externalSessionsWritableBody"),
+        liveTitle: t("externalSessionsLiveTitle"),
+        liveBody: t("externalSessionsLiveBody"),
+        followUpTitle: t("externalSessionsFollowUpTitle"),
+        followUpBody: t("externalSessionsFollowUpBody"),
+        waitTitle: t("externalSessionsWaitTitle"),
+        waitBody: t("externalSessionsWaitBody"),
+        followUpPlaceholder: t("externalSessionsFollowUpPlaceholder"),
+        followUpSend: t("externalSessionsFollowUpSend"),
+        modeHistory: t("externalSessionsModeHistory"),
+        modeManaged: t("externalSessionsModeManaged"),
+        modeLive: t("externalSessionsModeLive"),
         fork: t("externalSessionsFork"),
         forking: t("externalSessionsForking"),
         composerPlaceholder: t("externalSessionsComposerPlaceholder"),
@@ -9434,7 +9473,7 @@ export default function App() {
         // 🤖 the orchestration place — console density: job table on top, run timeline below;
         // a run opens as a READ-ONLY replay (fork is the only way to continue — automated
         // sessions never become live conversations here)
-        <main className="chat board">
+        <main className="chat board automation-board">
           {activeSpaceId !== "personal" ? (
             <div className="scroll boardpad">
               <div className="autohint dim" role="status">{localResourceIsolationNotice}</div>

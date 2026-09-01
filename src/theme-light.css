@@ -874,7 +874,8 @@ html[data-theme="light"] .learning-rationale b {
 }
 
 html[data-theme="light"] .hara-automation-view,
-html[data-theme="light"] .hara-automations-page {
+html[data-theme="light"] .hara-automations-page,
+html[data-theme="light"] .hara-automation-sidebar {
   --automation-success: var(--success);
   --automation-warning: var(--warning);
   --automation-danger: var(--danger);

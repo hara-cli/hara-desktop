@@ -17,6 +17,7 @@ import {
   type AutomationScheduleDraft,
   type AutomationWeekday,
 } from "./automation-schedule.js";
+import { resolveAutomationRun } from "./automation-run.js";
 import "./Automations.css";
 
 export type AutomationViewId = "tasks" | "attention" | "paused" | "runs";
@@ -1013,7 +1014,7 @@ function SchedulerBanner({
   } else if (scheduler?.installed === false) {
     tone = "warning";
     title = copy.schedulerMissing;
-    body = scheduler.detail || scheduler.issue || copy.schedulerMissingBody;
+    body = copy.schedulerMissingBody;
   } else if (
     scheduler?.healthy === false ||
     scheduler?.status === "offline" ||
@@ -1021,15 +1022,15 @@ function SchedulerBanner({
   ) {
     tone = "error";
     title = copy.schedulerOffline;
-    body = scheduler.detail || scheduler.issue || copy.schedulerOfflineBody;
+    body = copy.schedulerOfflineBody;
   } else if (scheduler?.healthy === true || scheduler?.status === "ready") {
     tone = "ok";
     title = copy.schedulerReady;
-    body = scheduler.detail || copy.schedulerReadyBody;
+    body = copy.schedulerReadyBody;
   } else if (scheduler?.installed === true) {
     tone = "ok";
     title = copy.schedulerReady;
-    body = scheduler.detail || copy.schedulerReadyBody;
+    body = copy.schedulerReadyBody;
   }
   const checked = scheduler?.lastTickAt ? formatInstant(scheduler.lastTickAt, copy) : null;
   return (
@@ -1070,7 +1071,7 @@ function PageMetrics({
     (job) => job.enabled !== false && job.nextRunDeferred && !getNextRun(job),
   );
   return (
-    <div className="hara-automation-metrics" aria-label="任务概览">
+    <div className="hara-automation-metrics" aria-label={copy.taskCount}>
       <div>
         <span>{copy.taskCount}</span>
         <strong>{jobs.length}</strong>
@@ -1313,8 +1314,8 @@ function RunList({
   onOpenReplay?: (run: AutomationRun) => void;
   pending: string | null;
 }) {
-  const jobNames = useMemo(
-    () => new Map(jobs.map((job) => [job.id, job.name] as const)),
+  const jobsById = useMemo(
+    () => new Map(jobs.map((job) => [job.id, job] as const)),
     [jobs],
   );
   const ordered = useMemo(
@@ -1326,6 +1327,13 @@ function RunList({
       ),
     [sessions],
   );
+  const latestRunIdsByJob = useMemo(() => {
+    const latest = new Map<string, string>();
+    for (const run of ordered) {
+      if (run.jobId && !latest.has(run.jobId)) latest.set(run.jobId, run.id);
+    }
+    return latest;
+  }, [ordered]);
   if (!ordered.length) {
     return (
       <div className="hara-automation-empty is-compact">
@@ -1340,14 +1348,22 @@ function RunList({
     <div className="hara-automation-run-list" role="list">
       {ordered.map((run) => {
         const timestamp = run.startedAt ?? run.updatedAt ?? run.finishedAt;
+        const job = run.jobId ? jobsById.get(run.jobId) : undefined;
+        const presentation = resolveAutomationRun(
+          run,
+          job,
+          Boolean(run.jobId && latestRunIdsByJob.get(run.jobId) === run.id),
+        );
         const title =
           run.jobName ||
           run.sourceName ||
-          (run.jobId ? jobNames.get(run.jobId) : undefined) ||
+          job?.name ||
           run.title ||
           copy.task;
         const needsAttention =
-          run.needsAttention || run.status === "error" || run.status === "timed_out";
+          run.needsAttention
+          || presentation.status === "error"
+          || presentation.status === "timed_out";
         return (
           <article
             key={run.id}
@@ -1357,7 +1373,7 @@ function RunList({
             role="listitem"
           >
             <span
-              className={`hara-automation-run-mark is-${run.status ?? "unknown"}`}
+              className={`hara-automation-run-mark is-${presentation.status ?? "unknown"}`}
               aria-hidden
             />
             <div className="hara-automation-run-main">
@@ -1365,10 +1381,10 @@ function RunList({
                 <strong>{title}</strong>
                 {run.unread ? <span className="hara-automation-new-mark">NEW</span> : null}
               </div>
-              <p>{run.summary || run.error || resultLabel(run.status, copy)}</p>
+              <p>{run.summary || presentation.error || resultLabel(presentation.status, copy)}</p>
             </div>
             <div className="hara-automation-run-meta">
-              <strong>{resultLabel(run.status, copy)}</strong>
+              <strong>{resultLabel(presentation.status, copy)}</strong>
               <span>
                 {timestamp ? formatInstant(timestamp, copy) : copy.unknown}
                 {run.durationMs ? ` · ${formatDuration(run.durationMs)}` : ""}

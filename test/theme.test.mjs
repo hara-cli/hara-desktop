@@ -172,6 +172,11 @@ test("saved provider details keep readable semantic ink in both themes", () => {
 
 test("external session center inherits semantic light and dark theme colors", () => {
   const source = readFileSync(`${root}/src/ExternalSessionCenter.css`, "utf8");
+  assert.match(
+    source,
+    /\.external-session-center\s*\{[\s\S]*?flex:\s*1 1 0%;[\s\S]*?width:\s*0;[\s\S]*?min-width:\s*0;/,
+    "the session center must own the app shell's remaining width instead of collapsing to max-content",
+  );
   assert.match(source, /--external-ink:\s*var\(--text,/);
   assert.match(source, /--external-muted:\s*var\(--muted,/);
   assert.match(source, /color:\s*var\(--external-ink\)/);
