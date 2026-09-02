@@ -1939,6 +1939,38 @@ test("sidecar refresh accepts both normal repositories and linked Git worktrees"
   assert.doesNotMatch(refresh, /\[ -d "\$CLI\/\.git" \]/);
 });
 
+test("Hara Live bundles a checksum-pinned Herdr runtime and verifies it after packaging", () => {
+  const lock = JSON.parse(readFileSync(join(root, "scripts/herdr-runtime-lock.json"), "utf8"));
+  assert.equal(lock.version, "0.8.2");
+  assert.equal(lock.repository, "https://github.com/herdrdev/herdr");
+  assert.equal(lock.license, "Apache-2.0");
+  assert.deepEqual(Object.keys(lock.targets).sort(), [
+    "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+  ]);
+  for (const target of Object.values(lock.targets)) {
+    assert.match(target.asset, /^herdr-(?:macos|linux|windows)-/);
+    assert.match(target.sha256, /^[a-f0-9]{64}$/);
+  }
+
+  const config = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"));
+  assert.ok(config.bundle.externalBin.includes("binaries/herdr"));
+  assert.ok(config.bundle.resources.includes("../THIRD_PARTY_NOTICES.md"));
+  const notices = readFileSync(join(root, "THIRD_PARTY_NOTICES.md"), "utf8");
+  assert.match(notices, /Herdr[\s\S]*0\.8\.2[\s\S]*Apache License 2\.0/);
+
+  const refresh = readFileSync(join(root, "scripts/refresh-herdr-runtime.mjs"), "utf8");
+  assert.match(refresh, /if \(actual !== entry\.sha256\)/);
+  assert.match(refresh, /stagedDestination = join\(dirname\(destination\)/);
+  assert.ok(refresh.indexOf("if (actual !== entry.sha256)") < refresh.indexOf("writeFile(stagedDestination"));
+  const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
+  assert.match(packageSmoke, /herdrRuntime\(bundledHerdr\)/);
+  assert.match(packageSmoke, /herdrLock\.version/);
+});
+
 test("draft assembly and promotion both validate published source provenance", () => {
   const buildWorkflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const releaseScript = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");

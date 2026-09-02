@@ -1330,6 +1330,20 @@ fn bundled_sidecar_path(app_executable: &Path, windows: bool) -> Option<PathBuf>
         .map(|directory| directory.join(bundled_sidecar_name(windows)))
 }
 
+fn bundled_herdr_name(windows: bool) -> &'static str {
+    if windows {
+        "herdr.exe"
+    } else {
+        "herdr"
+    }
+}
+
+fn bundled_herdr_path(app_executable: &Path, windows: bool) -> Option<PathBuf> {
+    app_executable
+        .parent()
+        .map(|directory| directory.join(bundled_herdr_name(windows)))
+}
+
 fn managed_cli_path(data_directory: &Path, windows: bool) -> PathBuf {
     data_directory
         .join("bin")
@@ -2035,16 +2049,28 @@ fn available_serve_port() -> Result<u16, String> {
     }
 }
 
-fn serve_command(executable: &Path, port: u16) -> std::process::Command {
+fn serve_command(
+    executable: &Path,
+    port: u16,
+    herdr_executable: Option<&Path>,
+) -> std::process::Command {
     let mut command = std::process::Command::new(executable);
     command.args(["serve", "--port", &port.to_string()]);
     // The sidecar uses this marker only for Desktop-owned migrations such as repairing an already
     // installed Hara scheduler path after an app rename/move. It never auto-installs new OS services.
     command.env("HARA_DESKTOP_SIDECAR", "1");
+    if let Some(herdr_executable) = herdr_executable {
+        command.env("HARA_HERDR_PATH", herdr_executable);
+    }
     command
 }
 
-fn spawn_serve_process(executable: &Path, log_path: &Path, port: u16) -> Result<u32, String> {
+fn spawn_serve_process(
+    executable: &Path,
+    log_path: &Path,
+    port: u16,
+    herdr_executable: Option<&Path>,
+) -> Result<u32, String> {
     let log_directory = log_path
         .parent()
         .ok_or_else(|| "serve log has no parent directory".to_string())?;
@@ -2060,7 +2086,7 @@ fn spawn_serve_process(executable: &Path, log_path: &Path, port: u16) -> Result<
         .try_clone()
         .map_err(|error| format!("clone serve log handle: {error}"))?;
 
-    let mut command = serve_command(executable, port);
+    let mut command = serve_command(executable, port, herdr_executable);
     command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::from(stdout))
@@ -2104,10 +2130,12 @@ fn spawn_serve_process(executable: &Path, log_path: &Path, port: u16) -> Result<
 fn start_serve() -> Result<u32, String> {
     let data_directory = hara_data_dir()?;
     let log_path = data_directory.join("serve.log");
-    let bundled = std::env::current_exe()
-        .ok()
-        .and_then(|executable| bundled_sidecar_path(&executable, cfg!(windows)))
-        .filter(|sidecar| sidecar.is_file());
+    let app_executable = std::env::current_exe()
+        .map_err(|error| format!("resolve Hara Desktop executable: {error}"))?;
+    let bundled =
+        bundled_sidecar_path(&app_executable, cfg!(windows)).filter(|sidecar| sidecar.is_file());
+    let bundled_herdr =
+        bundled_herdr_path(&app_executable, cfg!(windows)).filter(|runtime| runtime.is_file());
     let executable = match bundled {
         Some(sidecar) => sidecar,
         None => {
@@ -2126,7 +2154,7 @@ fn start_serve() -> Result<u32, String> {
     };
     recover_discovered_serve_before_start()?;
     let port = available_serve_port()?;
-    let pid = spawn_serve_process(&executable, &log_path, port)?;
+    let pid = spawn_serve_process(&executable, &log_path, port, bundled_herdr.as_deref())?;
     Ok(pid)
 }
 
@@ -3974,6 +4002,14 @@ mod pet_tests {
             bundled_sidecar_path(app, true).unwrap(),
             Path::new("/opt/hara/hara.exe")
         );
+        assert_eq!(
+            bundled_herdr_path(app, false).unwrap(),
+            Path::new("/opt/hara/herdr")
+        );
+        assert_eq!(
+            bundled_herdr_path(app, true).unwrap(),
+            Path::new("/opt/hara/herdr.exe")
+        );
     }
 
     #[test]
@@ -4276,7 +4312,11 @@ mod pet_tests {
     fn serve_command_executes_the_sidecar_directly() {
         use std::ffi::OsStr;
 
-        let command = serve_command(Path::new("/opt/hara/hara"), 49152);
+        let command = serve_command(
+            Path::new("/opt/hara/hara"),
+            49152,
+            Some(Path::new("/opt/hara/herdr")),
+        );
         assert_eq!(command.get_program(), OsStr::new("/opt/hara/hara"));
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
@@ -4288,6 +4328,9 @@ mod pet_tests {
         );
         assert!(command.get_envs().any(|(key, value)| {
             key == OsStr::new("HARA_DESKTOP_SIDECAR") && value == Some(OsStr::new("1"))
+        }));
+        assert!(command.get_envs().any(|(key, value)| {
+            key == OsStr::new("HARA_HERDR_PATH") && value == Some(OsStr::new("/opt/hara/herdr"))
         }));
     }
 

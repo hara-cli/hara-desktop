@@ -136,7 +136,7 @@
 
 .external-source-switcher {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 4px;
 }
 
@@ -188,6 +188,52 @@
 .external-source-tab .external-source-logo { width: 30px; height: 30px; border-radius: 9px 4px 9px 4px; font-size: 8px; }
 .external-source-logo.is-codex { background: #b9decf; }
 .external-source-logo.is-claude { background: #e7bea0; }
+.external-source-logo.is-runtime {
+  color: #fff8f2;
+  background: linear-gradient(145deg, var(--accent, #d9442c), #863323);
+}
+
+.external-runtime-launcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent, #ff695f) 38%, var(--external-rule));
+  border-radius: 14px;
+  background:
+    linear-gradient(112deg, color-mix(in srgb, var(--accent, #ff695f) 9%, transparent), transparent 42%),
+    var(--external-paper);
+}
+
+.external-runtime-launcher > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.external-runtime-launcher > div:last-child { flex: 0 0 auto; gap: 8px; }
+.external-runtime-launcher strong,
+.external-runtime-launcher small { display: block; }
+.external-runtime-launcher strong { font-size: 13px; }
+.external-runtime-launcher small {
+  max-width: 650px;
+  margin-top: 4px;
+  color: var(--external-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.external-runtime-launcher button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--external-rule-strong);
+  border-radius: 9px;
+  background: var(--external-raised);
+  font-size: 11px;
+  font-weight: 760;
+}
 
 .external-session-seal {
   display: inline-flex;
@@ -521,6 +567,8 @@
   .external-session-conversation { border-right: 0; border-bottom: 1px solid var(--external-rule); }
   .external-session-inspector { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
   .external-session-policy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
+  .external-source-switcher { grid-template-columns: 1fr; }
+  .external-source-tab + .external-source-tab { margin: 3px 0 0; }
 }
 
 @container external-session-center (max-width: 620px) {
@@ -529,8 +577,8 @@
   .external-session-refresh { align-self: flex-start; }
   .external-session-controlbar { grid-template-columns: 1fr; }
   .external-session-seal { min-height: 34px; }
-  .external-source-switcher { grid-template-columns: 1fr; }
-  .external-source-tab + .external-source-tab { margin: 3px 0 0; }
+  .external-runtime-launcher { align-items: stretch; flex-direction: column; }
+  .external-runtime-launcher > div:last-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .external-session-heading { grid-template-columns: 34px 38px minmax(0, 1fr); }
   .external-session-chips { grid-column: 2 / -1; justify-content: flex-start; }
   .external-session-principles { grid-template-columns: 1fr; }

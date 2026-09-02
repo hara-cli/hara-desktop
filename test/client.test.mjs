@@ -69,13 +69,14 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "desk.task.get",
                 "external.sources.list",
                 "external.sessions.list",
+                "external.sessions.create",
                 "external.sessions.read",
                 "external.sessions.fork",
                 "external.sessions.submit",
                 "external.sessions.interrupt",
               ],
               events: ["event.task_state", "event.surface", "external.event.text", "external.approval.request"],
-              features: ["composer.attachments.v1", "models.capabilities.v1", "collaboration.remote.v1", "external.sessions.interaction.v1"],
+              features: ["composer.attachments.v1", "models.capabilities.v1", "collaboration.remote.v1", "external.sessions.interaction.v1", "external.sessions.runtime.v1"],
             },
           } : request.method.startsWith("settings.gateways.login.")
             ? { login }
@@ -85,7 +86,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                       id: "codex",
                       label: "Codex",
                       state: "ready",
-                      capabilities: { listMetadata: true, read: true, fork: true, resume: true, observeLive: false, submit: true, interrupt: true },
+                      capabilities: { listMetadata: true, read: true, create: false, fork: true, resume: true, observeLive: false, submit: true, steer: false, interrupt: true },
                     }],
                   }
               : request.method === "external.sessions.list"
@@ -94,7 +95,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                       id: "codex",
                       label: "Codex",
                       state: "ready",
-                      capabilities: { listMetadata: true, read: true, fork: true, resume: true, observeLive: false, submit: true, interrupt: true },
+                      capabilities: { listMetadata: true, read: true, create: false, fork: true, resume: true, observeLive: false, submit: true, steer: false, interrupt: true },
                     }],
                     sessions: [{
                       id: "ext_codex_safe",
@@ -108,6 +109,25 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                       ephemeral: false,
                     }],
                     page: { limit: request.params.limit, hasMore: false },
+                  }
+              : request.method === "external.sessions.create"
+                ? {
+                    session: {
+                      id: "ext_runtime_safe",
+                      sourceId: "runtime",
+                      title: "Hara Codex",
+                      workspaceName: "hara",
+                      workspaceId: "ws_runtime_safe",
+                      state: "idle",
+                      createdAt: "2026-08-28T00:00:00.000Z",
+                      updatedAt: "2026-08-28T00:00:01.000Z",
+                      origin: "haraRuntime",
+                      agentKind: request.params.agentKind,
+                      ephemeral: false,
+                    },
+                    messages: [],
+                    readOnly: false,
+                    controlMode: "live",
                   }
               : request.method === "external.sessions.read"
                 ? {
@@ -236,6 +256,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supportsFeature("collaboration.remote.v1"), true);
   assert.equal(client.supports("external.sources.list"), true);
   assert.equal(client.supports("external.sessions.list"), true);
+  assert.equal(client.supports("external.sessions.create"), true);
   assert.equal(client.supports("external.sessions.read"), true);
   assert.equal(client.supportsFeature("external.sessions.interaction.v1"), true);
 
@@ -497,6 +518,17 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.deepEqual(requests.at(-1).params, { sessionId: "ext_codex_fork", text: "continue" });
   await client.interruptExternalSession("ext_codex_fork");
   assert.equal(requests.at(-1).method, "external.sessions.interrupt");
+  const runtimeSession = await client.createExternalSession({
+    sourceId: "runtime",
+    cwd: "/workspace/hara",
+    agentKind: "codex",
+  });
+  assert.equal(runtimeSession.session.agentKind, "codex");
+  assert.deepEqual(requests.at(-1).params, {
+    sourceId: "runtime",
+    cwd: "/workspace/hara",
+    agentKind: "codex",
+  });
 
   let received;
   client.onEvent = (event) => {

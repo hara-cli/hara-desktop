@@ -46,7 +46,8 @@ export interface CreatedSessionInfo {
   agentRef?: string;
 }
 
-export type ExternalSessionSourceId = "codex" | "claude";
+export type ExternalSessionSourceId = "runtime" | "codex" | "claude";
+export type ExternalRuntimeAgentKind = "codex" | "claude";
 export type ExternalSessionSourceState = "ready" | "adapter_required" | "not_installed" | "error";
 export type ExternalSessionState = "stored" | "idle" | "working" | "waiting" | "error" | "unknown";
 
@@ -59,6 +60,7 @@ export interface ExternalSessionSourceInfo {
   capabilities: {
     listMetadata: boolean;
     read: boolean;
+    create: boolean;
     fork: boolean;
     resume: boolean;
     observeLive: boolean;
@@ -79,7 +81,8 @@ export interface ExternalSessionInfo {
   state: ExternalSessionState;
   createdAt: string;
   updatedAt: string;
-  origin?: "cli" | "vscode" | "exec" | "appServer" | "subAgent" | "unknown";
+  origin?: "cli" | "vscode" | "exec" | "appServer" | "subAgent" | "haraRuntime" | "unknown";
+  agentKind?: ExternalRuntimeAgentKind | "other";
   ephemeral: boolean;
 }
 
@@ -1207,6 +1210,20 @@ export class HaraClient {
     if (this.methods.size > 0 && !this.supports("external.sessions.list")) return null;
     try {
       return await this.call("external.sessions.list", input);
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  async createExternalSession(input: {
+    sourceId: "runtime";
+    cwd: string;
+    agentKind: ExternalRuntimeAgentKind;
+    title?: string;
+  }): Promise<ExternalSessionReadResult | null> {
+    if (this.methods.size > 0 && !this.supports("external.sessions.create")) return null;
+    try {
+      return await this.call("external.sessions.create", input);
     } catch (error: any) {
       if (error?.code === -32601) return null;
       throw error;

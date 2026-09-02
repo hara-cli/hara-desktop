@@ -233,6 +233,8 @@ CLI_COMMIT="$(git -C ../hara-cli rev-parse "refs/tags/v$EXPECTED_SIDECAR_VERSION
 # ID signature a second time and can lose the trusted timestamp.
 SIDECAR="src-tauri/binaries/hara-$TARGET"
 [ -f "$SIDECAR" ] || { echo "missing sidecar $SIDECAR"; exit 1; }
+HERDR_RUNTIME="src-tauri/binaries/herdr-$TARGET"
+[ -f "$HERDR_RUNTIME" ] || { echo "missing Herdr runtime $HERDR_RUNTIME"; exit 1; }
 
 # refresh-sidecar already executed the native compiler output, or statically inspected Intel output
 # after the native Intel matrix gate passed, while Bun's linker-generated ad-hoc signature remained.
@@ -242,6 +244,13 @@ echo "▸ removing Bun ad-hoc signature before Tauri's single nested-binary sign
 codesign --remove-signature "$SIDECAR"
 if codesign --verify "$SIDECAR" >/dev/null 2>&1; then
   echo "error: Bun signature removal left the source sidecar signed" >&2
+  exit 1
+fi
+if codesign -d "$HERDR_RUNTIME" >/dev/null 2>&1; then
+  codesign --remove-signature "$HERDR_RUNTIME"
+fi
+if codesign --verify "$HERDR_RUNTIME" >/dev/null 2>&1; then
+  echo "error: Herdr signature removal left the source runtime signed" >&2
   exit 1
 fi
 
@@ -327,6 +336,7 @@ HARA_REQUIRE_MAC_SIGNATURES=1 node scripts/package-smoke.mjs
 APP="$RELEASE_BASE/bundle/macos/Hara.app"
 APP_SHELL="$APP/Contents/MacOS/hara-desktop"
 PACKAGED_SIDECAR="$APP/Contents/MacOS/hara"
+PACKAGED_HERDR="$APP/Contents/MacOS/herdr"
 APP_ARCHS="$(/usr/bin/lipo -archs "$APP_SHELL")"
 case " $APP_ARCHS " in
   *" $MACHO_ARCH "*) ;;
@@ -341,6 +351,16 @@ grep -Fq "Authority=$IDENTITY" <<<"$PACKAGED_SIDECAR_SIGNATURE" || {
 }
 grep -Eq '^Timestamp=' <<<"$PACKAGED_SIDECAR_SIGNATURE" || {
   echo "error: packaged sidecar Developer ID signature has no trusted timestamp" >&2
+  exit 1
+}
+codesign --verify --strict --verbose=2 "$PACKAGED_HERDR"
+PACKAGED_HERDR_SIGNATURE="$(codesign -d --verbose=4 "$PACKAGED_HERDR" 2>&1)"
+grep -Fq "Authority=$IDENTITY" <<<"$PACKAGED_HERDR_SIGNATURE" || {
+  echo "error: packaged Herdr runtime is not signed by the expected Developer ID identity" >&2
+  exit 1
+}
+grep -Eq '^Timestamp=' <<<"$PACKAGED_HERDR_SIGNATURE" || {
+  echo "error: packaged Herdr runtime Developer ID signature has no trusted timestamp" >&2
   exit 1
 }
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.131 — 2026-09-02 — Hara Live coding-agent switchboard
+
+- Add Hara Live to the local coding-session center. Pick a workspace and Hara starts an isolated, provider-native
+  Codex or Claude Code terminal that can receive messages, return bounded redacted output, and be interrupted
+  from Desktop. Existing Codex and Claude Code histories retain their protected official adapters and are never
+  taken over; the new runtime appears as a distinct source with responsive launch controls in Chinese and English.
+- Bundle checksum-pinned Herdr `0.8.2` as a separately verified Tauri runtime on macOS, Windows, and Linux, retain
+  its Apache-2.0 notice, verify its exact version after packaging, and re-sign the nested macOS executable during
+  the protected Developer ID build. Runtime identifiers remain device-bound and opaque to the renderer.
+- Add explicit owner-only `/coding` commands for starting, choosing, reading, messaging, and interrupting these
+  live terminals from Feishu, WeChat, and other Hara gateways. Ordinary chat no longer falls into a terminal;
+  the legacy tmux path now requires `/remote send`, removing the confusing injected `%pane` diagnostics.
+- Bundle Hara CLI `0.160.0` at exact verified commit
+  `844bdadc753afc498895c3990b191c59033c903e`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.130 — 2026-09-01 — reliable new conversations
 
 - Fix “New conversation” and “New session in this folder” appearing to do nothing, including the reported

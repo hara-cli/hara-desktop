@@ -61,6 +61,7 @@ import {
   type SpaceDirectory,
   type ExternalSessionInfo,
   type ExternalSessionReadResult,
+  type ExternalRuntimeAgentKind,
   type ExternalSessionSourceId,
   type ExternalSessionSourceInfo,
 } from "./client";
@@ -295,6 +296,10 @@ type SettingsSection =
   | "modules"
   | "pets"
   | "capabilities";
+
+const externalSourceMark = (sourceId: ExternalSessionSourceId): string => (
+  sourceId === "runtime" ? "HR" : sourceId === "codex" ? "CX" : "CL"
+);
 
 const loadGroups = () => import("./Groups");
 const loadAutomations = () => import("./Automations");
@@ -1498,7 +1503,7 @@ export default function App() {
   const [workbenchInboxTarget, setWorkbenchInboxTarget] = useState<WorkbenchInboxTarget | null>(null);
   const [externalSources, setExternalSources] = useState<ExternalSessionSourceInfo[] | null>(null);
   const [externalSessions, setExternalSessions] = useState<ExternalSessionInfo[]>([]);
-  const [externalSessionSourceId, setExternalSessionSourceId] = useState<ExternalSessionSourceId>("codex");
+  const [externalSessionSourceId, setExternalSessionSourceId] = useState<ExternalSessionSourceId>("runtime");
   const [externalSessionsNextCursor, setExternalSessionsNextCursor] = useState<string | null>(null);
   const [externalSessionsLoading, setExternalSessionsLoading] = useState(false);
   const [externalSessionsError, setExternalSessionsError] = useState("");
@@ -1510,6 +1515,7 @@ export default function App() {
     sessionId: string;
     kind: "fork" | "turn" | "interrupt";
   } | null>(null);
+  const [externalSessionCreatingKind, setExternalSessionCreatingKind] = useState<ExternalRuntimeAgentKind | null>(null);
   const [externalSessionActivity, setExternalSessionActivity] = useState<Record<string, ExternalSessionActivity[]>>({});
   const [externalSessionApproval, setExternalSessionApproval] = useState<(ExternalSessionApproval & { sessionId: string }) | null>(null);
   const externalSessionsRequestRef = useRef(0);
@@ -5882,6 +5888,43 @@ export default function App() {
     setExternalTranscript(null);
     setExternalSessionActionError("");
   }, []);
+  const createRuntimeExternalSession = useCallback(async (agentKind: ExternalRuntimeAgentKind) => {
+    const client = clientRef.current;
+    if (!client || !client.supports("external.sessions.create")) {
+      setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
+      return;
+    }
+    const selected = await openDialog({
+      directory: true,
+      multiple: false,
+      title: makeT(locale)("externalSessionsChooseWorkspace"),
+    });
+    if (typeof selected !== "string" || !selected) return;
+    setExternalSessionCreatingKind(agentKind);
+    setExternalSessionActionError("");
+    try {
+      const result = await client.createExternalSession({ sourceId: "runtime", cwd: selected, agentKind });
+      if (clientRef.current !== client) return;
+      if (!result) {
+        setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
+        return;
+      }
+      setExternalSessionSourceId("runtime");
+      setExternalSessions((current) => [
+        result.session,
+        ...current.filter((candidate) => candidate.id !== result.session.id),
+      ]);
+      setExternalSessionActivity((current) => ({ ...current, [result.session.id]: [] }));
+      setExternalTranscript(result);
+      setWorkbenchInboxTarget({ kind: "external", id: result.session.id });
+    } catch (error: any) {
+      if (clientRef.current === client) {
+        setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+      }
+    } finally {
+      if (clientRef.current === client) setExternalSessionCreatingKind(null);
+    }
+  }, [locale]);
   const forkSelectedExternalSession = useCallback(async () => {
     const client = clientRef.current;
     const session = selectedExternalSession;
@@ -8066,6 +8109,7 @@ export default function App() {
       actionBusy={externalSessionAction !== null && externalSessionAction.sessionId === selectedExternalSession?.id
         ? externalSessionAction.kind
         : ""}
+      creatingKind={externalSessionCreatingKind}
       error={externalSessionsError}
       actionError={externalSessionActionError}
       personal={activeSpaceId === "personal"}
@@ -8073,6 +8117,7 @@ export default function App() {
       onRefresh={refreshExternalSessions}
       onBack={() => setWorkbenchInboxTarget(null)}
       onSelectSource={selectExternalSessionSource}
+      onCreate={createRuntimeExternalSession}
       onFork={forkSelectedExternalSession}
       onSubmit={submitSelectedExternalSession}
       onSteer={steerSelectedExternalSession}
@@ -8137,6 +8182,11 @@ export default function App() {
         you: t("externalSessionsYou"),
         assistant: t("externalSessionsAssistant"),
         system: t("externalSessionsSystem"),
+        runtimeTitle: t("externalSessionsRuntimeTitle"),
+        runtimeBody: t("externalSessionsRuntimeBody"),
+        runtimeCodex: t("externalSessionsRuntimeCodex"),
+        runtimeClaude: t("externalSessionsRuntimeClaude"),
+        runtimeCreating: t("externalSessionsRuntimeCreating"),
         sourceStates: {
           ready: t("externalSourceReady"),
           adapter_required: t("externalSourceAdapterRequired"),
@@ -8281,7 +8331,7 @@ export default function App() {
                 />
               ) : selectedExternalSession ? (
                 <span className={`external-inbox-avatar is-${selectedExternalSession.sourceId}`} aria-hidden>
-                  {selectedExternalSession.sourceId === "codex" ? "CX" : "CL"}
+                  {externalSourceMark(selectedExternalSession.sourceId)}
                 </span>
               ) : (
                 <span className="inbox-project-avatar" aria-hidden><IconFolder size={21} /></span>
@@ -8467,7 +8517,7 @@ export default function App() {
             {selectedExternalSession ? (
               <div className="external-inbox-selected">
                 <span className={`external-inbox-avatar is-${selectedExternalSession.sourceId}`} aria-hidden>
-                  {selectedExternalSession.sourceId === "codex" ? "CX" : "CL"}
+                  {externalSourceMark(selectedExternalSession.sourceId)}
                 </span>
                 <strong>{selectedExternalSession.title}</strong>
                 <small>{selectedExternalSession.workspaceName}</small>
@@ -8528,7 +8578,7 @@ export default function App() {
                 <div className="external-source-strip">
                   {(externalSources ?? []).map((source) => (
                     <span className={`is-${source.state}`} key={source.id} title={source.version || source.label}>
-                      <i aria-hidden>{source.id === "codex" ? "CX" : "CL"}</i>
+                      <i aria-hidden>{externalSourceMark(source.id)}</i>
                       <b>{source.label}</b>
                       <small>{externalSourceStateLabel(source.state)}</small>
                     </span>
@@ -8549,7 +8599,7 @@ export default function App() {
                         }}
                       >
                         <span className={`external-inbox-avatar is-${session.sourceId}`} aria-hidden>
-                          {session.sourceId === "codex" ? "CX" : "CL"}
+                          {externalSourceMark(session.sourceId)}
                         </span>
                         <span className="inbox-contact-copy">
                           <span className="inbox-contact-line">

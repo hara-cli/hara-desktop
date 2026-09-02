@@ -60,7 +60,9 @@ jobs:
           toolchain: "1.97.0"
 
       - name: Prepare the test-only sidecar fixture
-        run: cp /usr/bin/true src-tauri/binaries/hara-aarch64-apple-darwin
+        run: |
+          cp /usr/bin/true src-tauri/binaries/hara-aarch64-apple-darwin
+          cp /usr/bin/true src-tauri/binaries/herdr-aarch64-apple-darwin
 
       - name: Run native host regressions
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
@@ -80,7 +82,9 @@ jobs:
 
       - name: Prepare the test-only sidecar fixture
         shell: pwsh
-        run: Copy-Item "$env:WINDIR\System32\where.exe" "src-tauri\binaries\hara-x86_64-pc-windows-msvc.exe"
+        run: |
+          Copy-Item "$env:WINDIR\System32\where.exe" "src-tauri\binaries\hara-x86_64-pc-windows-msvc.exe"
+          Copy-Item "$env:WINDIR\System32\where.exe" "src-tauri\binaries\herdr-x86_64-pc-windows-msvc.exe"
 
       - name: Compile-check the Windows-only native host
         run: cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --locked

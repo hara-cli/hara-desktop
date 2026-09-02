@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type {
+  ExternalRuntimeAgentKind,
   ExternalSessionInfo,
   ExternalSessionMessage,
   ExternalSessionReadResult,
@@ -82,6 +83,11 @@ export interface ExternalSessionCenterCopy {
   you: string;
   assistant: string;
   system: string;
+  runtimeTitle: string;
+  runtimeBody: string;
+  runtimeCodex: string;
+  runtimeClaude: string;
+  runtimeCreating: string;
   sourceStates: Record<ExternalSessionSourceState, string>;
   sessionStates: Record<ExternalSessionState, string>;
 }
@@ -97,6 +103,7 @@ interface ExternalSessionCenterProps {
   loading: boolean;
   transcriptLoading: boolean;
   actionBusy: "" | "fork" | "turn" | "interrupt";
+  creatingKind: ExternalRuntimeAgentKind | null;
   error: string;
   actionError: string;
   personal: boolean;
@@ -105,6 +112,7 @@ interface ExternalSessionCenterProps {
   onRefresh: () => void;
   onBack: () => void;
   onSelectSource: (sourceId: ExternalSessionSourceId) => void;
+  onCreate: (agentKind: ExternalRuntimeAgentKind) => Promise<void>;
   onFork: () => Promise<void>;
   onSubmit: (text: string) => Promise<void>;
   onSteer: (text: string) => Promise<void>;
@@ -113,7 +121,13 @@ interface ExternalSessionCenterProps {
 }
 
 const sourceMark = (sourceId: ExternalSessionInfo["sourceId"]): string => (
-  sourceId === "codex" ? "CX" : "CL"
+  sourceId === "runtime" ? "HR" : sourceId === "codex" ? "CX" : "CL"
+);
+
+const sourceDisplayName = (session: ExternalSessionInfo): string => (
+  session.sourceId === "runtime"
+    ? `Hara Live · ${session.agentKind === "claude" ? "Claude Code" : "Codex"}`
+    : session.sourceId === "codex" ? "Codex" : "Claude Code"
 );
 
 const roleLabel = (role: ExternalSessionMessage["role"], copy: ExternalSessionCenterCopy): string => (
@@ -131,6 +145,7 @@ export default function ExternalSessionCenter({
   loading,
   transcriptLoading,
   actionBusy,
+  creatingKind,
   error,
   actionError,
   personal,
@@ -139,6 +154,7 @@ export default function ExternalSessionCenter({
   onRefresh,
   onBack,
   onSelectSource,
+  onCreate,
   onFork,
   onSubmit,
   onSteer,
@@ -155,6 +171,7 @@ export default function ExternalSessionCenter({
   }, [activity.length, approval?.approvalId, selected?.id, transcript?.messages.length]);
 
   const activeSource = sources?.find((source) => source.id === selected?.sourceId);
+  const runtimeSource = sources?.find((source) => source.id === "runtime");
   const running = actionBusy === "turn";
   const canSteer = activeSource?.capabilities.steer === true;
   const canSendFollowUp = running && canSteer;
@@ -234,6 +251,35 @@ export default function ExternalSessionCenter({
 
         {error ? <div className="external-session-error" role="alert">{error}</div> : null}
 
+        {selectedSourceId === "runtime" && runtimeSource?.capabilities.create ? (
+          <section className="external-runtime-launcher" aria-labelledby="external-runtime-launcher-title">
+            <div>
+              <span className="external-source-logo is-runtime" aria-hidden>HR</span>
+              <span>
+                <strong id="external-runtime-launcher-title">{copy.runtimeTitle}</strong>
+                <small>{copy.runtimeBody}</small>
+              </span>
+            </div>
+            <div>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={Boolean(creatingKind) || Boolean(actionBusy)}
+                onClick={() => void onCreate("codex")}
+              >
+                {creatingKind === "codex" ? copy.runtimeCreating : copy.runtimeCodex}
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(creatingKind) || Boolean(actionBusy)}
+                onClick={() => void onCreate("claude")}
+              >
+                {creatingKind === "claude" ? copy.runtimeCreating : copy.runtimeClaude}
+              </button>
+            </div>
+          </section>
+        ) : null}
+
         {selected ? (
           <section className="external-session-shell" aria-labelledby="external-session-selected-title">
             <header className="external-session-heading">
@@ -254,7 +300,7 @@ export default function ExternalSessionCenter({
 
             <div className="external-session-layout">
               <section className="external-session-conversation" aria-label={copy.transcript}>
-                <header><strong>{copy.transcript}</strong><span>{selected.sourceId === "codex" ? "Codex" : "Claude Code"}</span></header>
+                <header><strong>{copy.transcript}</strong><span>{sourceDisplayName(selected)}</span></header>
                 <div className="external-session-timeline" ref={timelineRef} aria-live="polite">
                   {transcriptLoading ? <p className="external-session-empty">{copy.loadingTranscript}</p> : null}
                   {!transcriptLoading && transcript?.messages.length === 0 && activity.length === 0
@@ -328,7 +374,7 @@ export default function ExternalSessionCenter({
               <aside className="external-session-inspector">
                 <dl className="external-session-facts">
                   <div><dt>{copy.workspace}</dt><dd>{selected.workspaceName}</dd></div>
-                  <div><dt>{copy.source}</dt><dd>{selected.sourceId === "codex" ? "Codex" : "Claude Code"}</dd></div>
+                  <div><dt>{copy.source}</dt><dd>{sourceDisplayName(selected)}</dd></div>
                   <div><dt>{copy.origin}</dt><dd>{selected.origin ?? "—"}</dd></div>
                   <div><dt>{copy.updated}</dt><dd>{new Date(selected.updatedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}</dd></div>
                   <div><dt>{copy.state}</dt><dd>{copy.sessionStates[selected.state]}</dd></div>
