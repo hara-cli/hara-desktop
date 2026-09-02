@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.135 — 2026-09-02 — verified native terminal release
+
+- Carry forward the structured workbench and native terminal inspector from unpublished `0.1.134`: both views
+  control the same Hara Live Codex or Claude Code process, with provider-specific model, effort, safe work mode,
+  and Codex fast-mode controls. Terminal mirroring stays local and consumes no model tokens.
+- Make the checksum-pinned Herdr Windows archive extraction path-safe under Git Bash and native bsdtar. The
+  release matrix now extracts only relative operands inside its verified temporary directory instead of letting
+  a `C:\\...` path be interpreted as a remote tar address.
+- Bundle Hara CLI `0.162.0` at exact verified commit `8bbe7ba8134827fe443e594f4e717cf569bd0486`.
+  Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation
+  warning.
+
 ## 0.1.134 — 2026-09-02 — structured workbench plus native terminal
 
 - Keep Hara's structured coding-session workbench and the provider-native terminal as two views of the same

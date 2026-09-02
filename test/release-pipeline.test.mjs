@@ -1980,6 +1980,9 @@ test("Hara Live bundles a checksum-pinned Herdr runtime and verifies it after pa
   assert.match(refresh, /if \(actual !== entry\.sha256\)/);
   assert.match(refresh, /stagedDestination = join\(dirname\(destination\)/);
   assert.ok(refresh.indexOf("if (actual !== entry.sha256)") < refresh.indexOf("writeFile(stagedDestination"));
+  assert.match(refresh, /spawnSync\("tar", \["-xf", archiveName, "-C", extractedName\]/);
+  assert.match(refresh, /cwd: scratch/);
+  assert.doesNotMatch(refresh, /spawnSync\("tar", \["-xf", archive, "-C", extracted\]/);
   const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
   assert.match(packageSmoke, /herdrRuntime\(bundledHerdr\)/);
   assert.match(packageSmoke, /herdrLock\.version/);

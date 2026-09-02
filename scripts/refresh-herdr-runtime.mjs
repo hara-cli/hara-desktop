@@ -67,11 +67,21 @@ try {
 
   let executable = body;
   if (windows) {
-    const archive = join(scratch, entry.asset);
-    const extracted = join(scratch, "extracted");
+    // Keep tar operands relative to its working directory. Git Bash may resolve `tar` to the
+    // native Windows bsdtar, which treats an absolute `C:\\...` operand as a remote archive
+    // (`host:path`) and fails with "Cannot connect to C". Relative operands work identically for
+    // native bsdtar and GNU tar while keeping extraction contained in the verified scratch tree.
+    const archiveName = basename(entry.asset);
+    const extractedName = "extracted";
+    const archive = join(scratch, archiveName);
+    const extracted = join(scratch, extractedName);
     await mkdir(extracted);
     await writeFile(archive, body, { mode: 0o600 });
-    const result = spawnSync("tar", ["-xf", archive, "-C", extracted], { encoding: "utf8" });
+    const result = spawnSync("tar", ["-xf", archiveName, "-C", extractedName], {
+      cwd: scratch,
+      encoding: "utf8",
+      windowsHide: true,
+    });
     if (result.status !== 0) throw new Error(`extract Herdr Windows archive: ${result.stderr || result.stdout}`);
     const queue = [extracted];
     let found;
