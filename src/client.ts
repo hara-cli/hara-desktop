@@ -1232,6 +1232,15 @@ export class HaraClient {
   readExternalSession(sessionId: string) {
     return this.call<ExternalSessionReadResult>("external.sessions.read", { sessionId });
   }
+  async resumeExternalSession(sessionId: string): Promise<ExternalSessionReadResult | null> {
+    if (this.methods.size > 0 && !this.supports("external.sessions.resume")) return null;
+    try {
+      return await this.call("external.sessions.resume", { sessionId });
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
   forkExternalSession(sessionId: string) {
     return this.call<ExternalSessionForkResult>("external.sessions.fork", { sessionId });
   }

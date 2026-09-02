@@ -1513,7 +1513,7 @@ export default function App() {
   const [externalSessionActionError, setExternalSessionActionError] = useState("");
   const [externalSessionAction, setExternalSessionAction] = useState<{
     sessionId: string;
-    kind: "fork" | "turn" | "interrupt";
+    kind: "resume" | "turn" | "interrupt";
   } | null>(null);
   const [externalSessionCreatingKind, setExternalSessionCreatingKind] = useState<ExternalRuntimeAgentKind | null>(null);
   const [externalSessionActivity, setExternalSessionActivity] = useState<Record<string, ExternalSessionActivity[]>>({});
@@ -1539,6 +1539,12 @@ export default function App() {
     }
     const client = clientRef.current;
     if (!client) return;
+    // Desktop 0.1.131 defaulted to Hara Live before negotiating with the engine. An older sidecar only
+    // accepts `codex` or `claude`, so never put `runtime` on that wire during a staggered upgrade.
+    if (externalSessionSourceId === "runtime" && !client.supports("external.sessions.create")) {
+      setExternalSessionSourceId("codex");
+      return;
+    }
     const requestId = ++externalSessionsRequestRef.current;
     setExternalSessionsNextCursor(null);
     setExternalSessionsLoading(true);
@@ -5925,25 +5931,27 @@ export default function App() {
       if (clientRef.current === client) setExternalSessionCreatingKind(null);
     }
   }, [locale]);
-  const forkSelectedExternalSession = useCallback(async () => {
+  const resumeSelectedExternalSession = useCallback(async () => {
     const client = clientRef.current;
     const session = selectedExternalSession;
-    if (!client || !session || !client.supports("external.sessions.fork")) {
+    if (!client || !session || !client.supports("external.sessions.resume")) {
       setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
       return;
     }
-    setExternalSessionAction({ sessionId: session.id, kind: "fork" });
+    setExternalSessionAction({ sessionId: session.id, kind: "resume" });
     setExternalSessionActionError("");
     try {
-      const result = await client.forkExternalSession(session.id);
+      const result = await client.resumeExternalSession(session.id);
       if (clientRef.current !== client) return;
-      setExternalSessions((current) => [
-        result.session,
-        ...current.filter((candidate) => candidate.id !== result.session.id),
-      ]);
+      if (!result) {
+        setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
+        return;
+      }
+      setExternalSessions((current) => current.map((candidate) => (
+        candidate.id === result.session.id ? result.session : candidate
+      )));
       setExternalSessionActivity((current) => ({ ...current, [result.session.id]: [] }));
       setExternalTranscript(result);
-      setWorkbenchInboxTarget({ kind: "external", id: result.session.id });
     } catch (error: any) {
       if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
     } finally {
@@ -5956,7 +5964,7 @@ export default function App() {
     const client = clientRef.current;
     const session = selectedExternalSession;
     if (!client || !session || !externalTranscript || externalTranscript.readOnly || !client.supports("external.sessions.submit")) {
-      const message = makeT(locale)("externalSessionsForkFirstBody");
+      const message = makeT(locale)("externalSessionsResumeFirstBody");
       setExternalSessionActionError(message);
       throw new Error(message);
     }
@@ -8118,7 +8126,7 @@ export default function App() {
       onBack={() => setWorkbenchInboxTarget(null)}
       onSelectSource={selectExternalSessionSource}
       onCreate={createRuntimeExternalSession}
-      onFork={forkSelectedExternalSession}
+      onResume={resumeSelectedExternalSession}
       onSubmit={submitSelectedExternalSession}
       onSteer={steerSelectedExternalSession}
       onInterrupt={interruptSelectedExternalSession}
@@ -8138,8 +8146,8 @@ export default function App() {
         metadataOnlyBody: t("externalSessionsMetadataOnlyBody"),
         personalOnly: t("externalSessionsPersonalOnly"),
         personalOnlyBody: t("externalSessionsPersonalOnlyBody"),
-        forkFirst: t("externalSessionsForkFirst"),
-        forkFirstBody: t("externalSessionsForkFirstBody"),
+        resumeFirst: t("externalSessionsResumeFirst"),
+        resumeFirstBody: t("externalSessionsResumeFirstBody"),
         selectedEyebrow: t("externalSessionsSelectedEyebrow"),
         workspace: t("externalSessionsWorkspace"),
         source: t("externalSessionsSource"),
@@ -8171,8 +8179,8 @@ export default function App() {
         modeHistory: t("externalSessionsModeHistory"),
         modeManaged: t("externalSessionsModeManaged"),
         modeLive: t("externalSessionsModeLive"),
-        fork: t("externalSessionsFork"),
-        forking: t("externalSessionsForking"),
+        resume: t("externalSessionsResume"),
+        resuming: t("externalSessionsResuming"),
         composerPlaceholder: t("externalSessionsComposerPlaceholder"),
         send: t("externalSessionsSend"),
         stop: t("externalSessionsStop"),

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.132 — 2026-09-02 — native provider-session handoff
+
+- Continue saved Codex and Claude Code histories in their original provider-native session after one explicit
+  handoff. Hara keeps the same opaque row and native Session ID, updates the transcript in place, and no longer
+  creates a duplicate merely to send the next message. The protected read-only state remains until the user
+  chooses “Resume in place”; the optional fork API remains available for deliberate branching only.
+- Replace the misleading “create a copy” controls and explanation with bilingual native-handoff states, and
+  preserve the selected session while its authoritative transcript is refreshed. Older bundled engines now
+  fall back to the supported Codex history source before sending any request, avoiding the raw
+  `sourceId must be codex or claude` error during rolling upgrades.
+- Bundle Hara CLI `0.161.0` at exact verified commit
+  `5a6b325d84bb1b80fabf246bab453cd3b7fff3ba`. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.131 — 2026-09-02 — Hara Live coding-agent switchboard
 
 - Add Hara Live to the local coding-session center. Pick a workspace and Hara starts an isolated, provider-native

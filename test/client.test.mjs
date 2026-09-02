@@ -71,6 +71,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "external.sessions.list",
                 "external.sessions.create",
                 "external.sessions.read",
+                "external.sessions.resume",
                 "external.sessions.fork",
                 "external.sessions.submit",
                 "external.sessions.interrupt",
@@ -144,6 +145,23 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                     },
                     messages: [{ id: "msg_safe", role: "assistant", text: "ready" }],
                     readOnly: true,
+                  }
+              : request.method === "external.sessions.resume"
+                ? {
+                    session: {
+                      id: request.params.sessionId,
+                      sourceId: "codex",
+                      title: "Release audit",
+                      workspaceName: "hara",
+                      workspaceId: "ws_safe",
+                      state: "idle",
+                      createdAt: "2026-08-28T00:00:00.000Z",
+                      updatedAt: "2026-08-28T00:00:01.000Z",
+                      ephemeral: false,
+                    },
+                    messages: [{ id: "msg_safe", role: "assistant", text: "ready" }],
+                    readOnly: false,
+                    controlMode: "managed",
                   }
               : request.method === "external.sessions.fork"
                 ? {
@@ -510,13 +528,18 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     method: "external.sessions.read",
     params: { sessionId: "ext_codex_safe" },
   });
+  const externalResume = await client.resumeExternalSession("ext_codex_safe");
+  assert.equal(externalResume.session.id, "ext_codex_safe");
+  assert.equal(externalResume.readOnly, false);
+  assert.equal(externalResume.controlMode, "managed");
+  assert.equal(requests.at(-1).method, "external.sessions.resume");
   const externalFork = await client.forkExternalSession("ext_codex_safe");
   assert.equal(externalFork.readOnly, false);
   assert.equal(requests.at(-1).method, "external.sessions.fork");
-  const externalTurn = await client.submitExternalSession("ext_codex_fork", "continue");
+  const externalTurn = await client.submitExternalSession("ext_codex_safe", "continue");
   assert.equal(externalTurn.reply, "done");
-  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_codex_fork", text: "continue" });
-  await client.interruptExternalSession("ext_codex_fork");
+  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_codex_safe", text: "continue" });
+  await client.interruptExternalSession("ext_codex_safe");
   assert.equal(requests.at(-1).method, "external.sessions.interrupt");
   const runtimeSession = await client.createExternalSession({
     sourceId: "runtime",

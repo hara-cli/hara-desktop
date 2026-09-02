@@ -37,10 +37,10 @@ export interface ExternalSessionCenterCopy {
   safeBridge: string;
   metadataOnly: string;
   personalOnly: string;
-  forkFirst: string;
+  resumeFirst: string;
   metadataOnlyBody: string;
   personalOnlyBody: string;
-  forkFirstBody: string;
+  resumeFirstBody: string;
   selectedEyebrow: string;
   workspace: string;
   source: string;
@@ -72,8 +72,8 @@ export interface ExternalSessionCenterCopy {
   modeHistory: string;
   modeManaged: string;
   modeLive: string;
-  fork: string;
-  forking: string;
+  resume: string;
+  resuming: string;
   composerPlaceholder: string;
   send: string;
   stop: string;
@@ -102,7 +102,7 @@ interface ExternalSessionCenterProps {
   approval: ExternalSessionApproval | null;
   loading: boolean;
   transcriptLoading: boolean;
-  actionBusy: "" | "fork" | "turn" | "interrupt";
+  actionBusy: "" | "resume" | "turn" | "interrupt";
   creatingKind: ExternalRuntimeAgentKind | null;
   error: string;
   actionError: string;
@@ -113,7 +113,7 @@ interface ExternalSessionCenterProps {
   onBack: () => void;
   onSelectSource: (sourceId: ExternalSessionSourceId) => void;
   onCreate: (agentKind: ExternalRuntimeAgentKind) => Promise<void>;
-  onFork: () => Promise<void>;
+  onResume: () => Promise<void>;
   onSubmit: (text: string) => Promise<void>;
   onSteer: (text: string) => Promise<void>;
   onInterrupt: () => Promise<void>;
@@ -155,7 +155,7 @@ export default function ExternalSessionCenter({
   onBack,
   onSelectSource,
   onCreate,
-  onFork,
+  onResume,
   onSubmit,
   onSteer,
   onInterrupt,
@@ -345,8 +345,8 @@ export default function ExternalSessionCenter({
                 {transcript?.readOnly ? (
                   <div className="external-session-continuation is-read-only">
                     <div><strong>{copy.readOnlyTitle}</strong><p>{copy.readOnlyBody}</p></div>
-                    <button type="button" className="is-primary" disabled={Boolean(actionBusy)} onClick={() => void onFork()}>
-                      {actionBusy === "fork" ? copy.forking : copy.fork}
+                    <button type="button" className="is-primary" disabled={Boolean(actionBusy)} onClick={() => void onResume()}>
+                      {actionBusy === "resume" ? copy.resuming : copy.resume}
                     </button>
                   </div>
                 ) : transcript ? (
@@ -395,7 +395,7 @@ export default function ExternalSessionCenter({
             <div className="external-session-principles">
               <article><b>01</b><strong>{copy.metadataOnly}</strong><p>{copy.metadataOnlyBody}</p></article>
               <article><b>02</b><strong>{copy.personalOnly}</strong><p>{copy.personalOnlyBody}</p></article>
-              <article><b>03</b><strong>{copy.forkFirst}</strong><p>{copy.forkFirstBody}</p></article>
+              <article><b>03</b><strong>{copy.resumeFirst}</strong><p>{copy.resumeFirstBody}</p></article>
             </div>
           </section>
         )}

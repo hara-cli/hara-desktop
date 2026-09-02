@@ -1194,6 +1194,33 @@ test("an unavailable pinned conversation falls back to local read-only history a
   assert.match(css, /\.composer-readonly-warning/);
 });
 
+test("provider history resumes in place and an older engine never receives the Hara Live source id", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const center = readFileSync(`${root}/src/ExternalSessionCenter.tsx`, "utf8");
+  const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
+
+  assert.match(client, /resumeExternalSession\(sessionId: string\)[\s\S]*"external\.sessions\.resume"/);
+  assert.match(
+    app,
+    /externalSessionSourceId === "runtime" && !client\.supports\("external\.sessions\.create"\)[\s\S]*setExternalSessionSourceId\("codex"\)[\s\S]*return;/,
+    "staggered Desktop/engine upgrades fail over before sending an unsupported runtime source id",
+  );
+  assert.match(
+    app,
+    /const result = await client\.resumeExternalSession\(session\.id\)[\s\S]*candidate\.id === result\.session\.id \? result\.session : candidate/,
+    "resume updates the selected session in place instead of inserting a second session",
+  );
+  assert.doesNotMatch(
+    app,
+    /resumeSelectedExternalSession[\s\S]{0,1800}forkExternalSession/,
+    "the primary continuation path must never create a provider fork",
+  );
+  assert.match(center, /onResume\(\)[\s\S]*copy\.resuming[\s\S]*copy\.resume/);
+  assert.match(copy, /externalSessionsResume:\s*"原地恢复并继续"/);
+  assert.match(copy, /Hara 不会复制它，也不会更换 Session ID/);
+});
+
 test("the composer has per-session attachments, bounded folders, and capability-aware model selection", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
