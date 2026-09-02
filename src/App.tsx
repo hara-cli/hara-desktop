@@ -682,14 +682,14 @@ const attachmentIssueText = (
     if (issue === "engine-update-required") return "当前 Hara 引擎太旧，请先更新 Desktop 后再添加附件。";
     if (issue === "image-too-large") return "图片超过 Hara 3.6 MB 附件上限，尚未发送给模型，也不会静默转用 OCR。请压缩或裁剪后重新添加。";
     if (issue === "model-capabilities-loading") return "正在读取当前模型的图片能力，请稍后再发送。";
-    if (issue === "image-unsupported") return "当前模型不能读取图片；请选择原生支持图片的模型。";
+    if (issue === "image-unsupported") return "当前路由不能读取图片；请配置识图前置模型，或选择原生支持图片的模型。";
     if (issue === "image-unknown") return "当前模型的图片能力尚未验证；请选择已验证支持图片的模型。";
     return "";
   }
   if (issue === "engine-update-required") return "Update Hara Desktop before adding attachments.";
   if (issue === "image-too-large") return "This image exceeds Hara's 3.6 MB attachment limit. It was not sent to the model or silently routed to OCR. Compress or crop it, then attach it again.";
   if (issue === "model-capabilities-loading") return "Loading the selected model's image capability.";
-  if (issue === "image-unsupported") return "This model cannot read images. Choose a model with native image input.";
+  if (issue === "image-unsupported") return "This route cannot read images. Configure a vision-first model or choose a model with native image input.";
   if (issue === "image-unknown") return "This model's image capability is unverified. Choose a verified image-capable model.";
   return "";
 };
@@ -701,10 +701,12 @@ const imageCapabilityText = (
   const mode = capabilities?.image.mode;
   if (locale === "zh") {
     if (mode === "native") return "原生读取图片";
+    if (mode === "vision-sidecar") return `先由 ${capabilities?.image.viaModel ?? "识图模型"} 识别`;
     if (!mode || mode === "unknown") return "图片能力未验证";
     return "不支持图片";
   }
   if (mode === "native") return "Native image input";
+  if (mode === "vision-sidecar") return `Vision-first via ${capabilities?.image.viaModel ?? "configured model"}`;
   if (!mode || mode === "unknown") return "Image capability unverified";
   return "No image input";
 };

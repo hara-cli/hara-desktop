@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.139 — 2026-09-03 — explicit vision-first image routing
+
+- Restore a bilingual vision-first control in Model Settings. When enabled, every attached image and computer
+  screenshot is read by the selected image model first; the main conversation model receives only the resulting
+  description text. The setting applies to the next image even in an already-open conversation.
+- Keep image credentials transient and redacted. Personal connections may reuse their current endpoint/key or
+  supply a dedicated vision route, while company connections always reuse the managed gateway and can save only
+  an exact model from Control's server-authoritative allow-list.
+- Bundle Hara CLI `0.164.0` at exact verified commit
+  `c37a83c23eb0555589f7b0b85ddcd92712b9e0c7`, including DeepSeek
+  `deepseek-v4-flash-vision-exp`, Volcengine Ark Agent Plan, and deterministic Cron previews on slow runners.
+  Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation
+  warning.
+
 ## 0.1.138 — 2026-09-02 — clean update restarts and visible delivery recovery
 
 - Retire the current clean-run crash marker synchronously before Tauri replaces the process for an installed

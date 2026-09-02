@@ -814,6 +814,11 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(client, /settings\.providers\.list/);
   assert.match(client, /settings\.providers\.test/);
   assert.match(client, /settings\.providers\.save/);
+  assert.match(client, /settings\.vision\.save/);
+  assert.match(providerSettings, /const transientVisionKey = visionApiKey\.trim\(\);[\s\S]*setVisionApiKey\(""\);[\s\S]*client\.saveVisionSettings/,
+    "the dedicated vision key leaves renderer state before the settings RPC");
+  assert.match(providerSettings, /visionState\.authorizedModels\.includes\(visionDraft\.model\.trim\(\)\)[\s\S]*Boolean\(visionDraft\.model\.trim\(\)\) && visionDraftAuthorized/,
+    "a managed vision draft cannot save a model outside the server-authoritative allow-list");
   for (const method of ["create", "test", "use", "remove"]) {
     assert.match(client, new RegExp(`settings\\.providers\\.connections\\.${method}`));
   }
@@ -1282,9 +1287,10 @@ test("the composer has per-session attachments, bounded folders, and capability-
   assert.match(app, /打开为新项目/, "persistent workspace and one-turn folder context are distinguished");
   assert.match(app, /disabled=\{!activeDraftCanSend\}/, "an attachment-only compatible turn can be sent");
   assert.match(app, /activeAttachmentIssue/, "incompatible image routes block send without deleting the draft");
-  assert.doesNotMatch(app, /vision-sidecar/, "Desktop no longer advertises a secondary image-model route");
-  assert.match(composer, /mode === "unsupported" \|\| capabilities\.image\.mode === "vision-sidecar"/,
-    "an older engine's sidecar capability fails closed instead of silently routing an image");
+  assert.match(app, /mode === "vision-sidecar"/, "Desktop explains the configured image pre-processing route");
+  assert.doesNotMatch(composer, /mode === "unsupported" \|\| capabilities\.image\.mode === "vision-sidecar"/,
+    "an authorized vision-first route accepts an image attachment");
+  assert.match(client, /settings\.vision\.save/, "vision-first settings use an explicit engine RPC");
   assert.match(app, /modelSearch/);
   assert.match(app, /visibleModelEntries/);
   assert.match(client, /features\?: string\[\]/);

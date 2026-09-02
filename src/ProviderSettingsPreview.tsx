@@ -6,6 +6,7 @@ import {
   type ProviderConnectionCreateInput,
   type ProviderSettingsInput,
   type ProviderSettingsState,
+  type VisionSettingsInput,
 } from "./client";
 import type { Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
@@ -71,6 +72,15 @@ const initialProviders = (): ProviderSettingsState => ({
     { id: "ollama", label: "Ollama", location: "local", auth: "none", defaultModel: "qwen3", defaultBaseURL: "http://127.0.0.1:11434/v1", customBaseURL: true },
     { id: "hara-gateway", label: "Hara Enterprise Gateway", location: "managed", auth: "managed", defaultModel: "managed-model", customBaseURL: false },
   ],
+  vision: {
+    enabled: true,
+    model: "deepseek-v4-flash-vision-exp",
+    apiKeyConfigured: false,
+    usesManagedCredential: true,
+    editable: true,
+    authorized: true,
+    authorizedModels: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp"],
+  },
   connections: [
     {
       id: "personal",
@@ -182,7 +192,7 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
       }
     };
     return {
-      supports: (method: string) => method.startsWith("settings.providers.connections.") || method.startsWith("settings.organizations."),
+      supports: (method: string) => method === "settings.vision.save" || method.startsWith("settings.providers.connections.") || method.startsWith("settings.organizations."),
       listProviderSettings: async () => providerState,
       listOrganizationConnections: async () => organizationState,
       testProviderSettings: async () => ({ ok: true, models: ["deepseek-chat", "deepseek-reasoner"] }),
@@ -228,6 +238,31 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
             connections: organizationState.connections.map((connection) => ({ ...connection, active: false })),
           };
         }
+        return providerState;
+      },
+      saveVisionSettings: async (input: VisionSettingsInput) => {
+        providerState = {
+          ...providerState,
+          vision: input.enabled
+            ? {
+                enabled: true,
+                model: input.model,
+                baseURL: input.baseURL,
+                apiKeyConfigured: Boolean(input.apiKey || (providerState.vision?.apiKeyConfigured && !input.clearApiKey)),
+                usesManagedCredential: providerState.current.profileKind === "gateway",
+                editable: true,
+                authorized: true,
+                authorizedModels: providerState.vision?.authorizedModels,
+              }
+            : {
+                enabled: false,
+                apiKeyConfigured: false,
+                usesManagedCredential: providerState.current.profileKind === "gateway",
+                editable: true,
+                authorized: true,
+                authorizedModels: providerState.vision?.authorizedModels,
+              },
+        };
         return providerState;
       },
       createProviderConnection: async (input: ProviderConnectionCreateInput) => {

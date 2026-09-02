@@ -533,6 +533,28 @@ export interface ProviderSettingsState {
   connections?: ProviderConnection[];
   /** A launch override or project pin prevents changing the default connection for new sessions. */
   switchLocked?: boolean;
+  /** Explicit image pre-processing route. Secrets are never returned. */
+  vision?: VisionSettingsState;
+}
+
+export interface VisionSettingsState {
+  enabled: boolean;
+  model?: string;
+  baseURL?: string;
+  apiKeyConfigured: boolean;
+  usesManagedCredential: boolean;
+  editable: boolean;
+  authorized: boolean;
+  /** Server-authoritative allow-list for a company connection; absent for Personal/BYOK. */
+  authorizedModels?: string[];
+}
+
+export interface VisionSettingsInput {
+  enabled: boolean;
+  model?: string;
+  baseURL?: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
 }
 
 export interface ProviderConnection {
@@ -821,7 +843,7 @@ export interface DeskTaskDetails {
   events: DeskEvent[];
 }
 
-/** `vision-sidecar` is accepted only while connecting to an older engine and is treated as unsupported. */
+/** `vision-sidecar` means images are explicitly translated to text before the conversation model runs. */
 export type ImageInputMode = "native" | "vision-sidecar" | "unsupported" | "unknown";
 
 export interface EffectiveAttachmentCapabilities {
@@ -829,7 +851,7 @@ export interface EffectiveAttachmentCapabilities {
     mode: ImageInputMode;
     /** Missing only when an older Serve does not advertise its authoritative image bound. */
     maxBytes?: number;
-    /** @deprecated New engines never advertise a secondary image model. */
+    /** Exact configured vision-first model; never a credential. */
     viaModel?: string;
   };
   textFile: "inline-text";
@@ -1379,6 +1401,9 @@ export class HaraClient {
   }
   saveProviderSettings(input: ProviderSettingsInput, cwd?: string) {
     return this.call<ProviderSettingsState>("settings.providers.save", { ...input, ...(cwd ? { cwd } : {}) });
+  }
+  saveVisionSettings(input: VisionSettingsInput, cwd?: string) {
+    return this.call<ProviderSettingsState>("settings.vision.save", { ...input, ...(cwd ? { cwd } : {}) });
   }
   createProviderConnection(input: ProviderConnectionCreateInput, cwd?: string) {
     return this.call<ProviderSettingsState>("settings.providers.connections.create", { ...input, ...(cwd ? { cwd } : {}) });

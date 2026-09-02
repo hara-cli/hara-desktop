@@ -381,6 +381,7 @@ html[data-theme="light"] .gateway-login-panel,
 html[data-theme="light"] .provider-workbench,
 html[data-theme="light"] .provider-presets,
 html[data-theme="light"] .provider-route,
+html[data-theme="light"] .provider-vision-settings,
 html[data-theme="light"] .provider-note,
 html[data-theme="light"] .provider-data-path,
 html[data-theme="light"] .provider-pin-recovery,
@@ -411,6 +412,16 @@ html[data-theme="light"] .provider-form .provider-field > span,
 html[data-theme="light"] .provider-enrollment-form label > span,
 html[data-theme="light"] .provider-enrollment-form .provider-field > span {
   color: #686158;
+}
+
+html[data-theme="light"] .provider-vision-fields {
+  border-top-color: var(--border);
+}
+
+html[data-theme="light"] .provider-vision-fields input {
+  border-color: var(--border);
+  background: #fffdf8;
+  color: #2f2924;
 }
 
 html[data-theme="light"] button.provider-preset {

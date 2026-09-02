@@ -5201,6 +5201,96 @@ button.compact {
   font-size: 10px;
   text-align: right;
 }
+.provider-vision-settings {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--provider-line);
+  border-left: 3px solid #665f73;
+  background: linear-gradient(110deg, rgba(76, 67, 91, 0.13), #151518 62%);
+}
+.provider-vision-settings.enabled {
+  border-left-color: #8a75ad;
+}
+.provider-vision-settings > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.provider-vision-settings > header strong {
+  display: block;
+  font-size: 13px;
+}
+.provider-vision-settings > header p {
+  max-width: 620px;
+  margin: 4px 0 0;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.provider-vision-toggle {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  color: #bbb5c3;
+  font-size: 11px;
+}
+.provider-vision-toggle input {
+  accent-color: #8a75ad;
+}
+.provider-vision-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #302d35;
+}
+.provider-vision-fields > .provider-field,
+.provider-vision-fields > label {
+  display: block;
+  min-width: 0;
+}
+.provider-vision-fields > .provider-field > span,
+.provider-vision-fields > label > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #aaa6b0;
+  font-size: 11px;
+  font-weight: 600;
+}
+.provider-vision-fields input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #34343a;
+  border-radius: 5px;
+  outline: none;
+  background: #1a1a1e;
+  color: var(--fg);
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+.provider-vision-fields small {
+  display: block;
+  margin-top: 6px;
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.provider-vision-fields .provider-note,
+.provider-vision-fields .provider-warning {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+.provider-vision-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.provider-vision-actions button {
+  min-width: 150px;
+}
 .provider-warning,
 .provider-unsupported {
   padding: 10px 12px;
@@ -6101,6 +6191,12 @@ button.provider-preset.enterprise.on {
   }
   .provider-pin-recovery button {
     align-self: flex-start;
+  }
+  .provider-vision-settings > header {
+    flex-direction: column;
+  }
+  .provider-vision-fields {
+    grid-template-columns: 1fr;
   }
   .organization-facts {
     grid-template-columns: 1fr;

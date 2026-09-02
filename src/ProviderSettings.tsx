@@ -9,6 +9,7 @@ import {
   type ProviderConnection,
   type ProviderSettingsInput,
   type ProviderSettingsState,
+  type VisionSettingsInput,
 } from "./client";
 import type { Locale } from "./i18n";
 import { ModelCombobox } from "./ModelCombobox";
@@ -20,6 +21,12 @@ interface Draft {
   model: string;
   baseURL: string;
   reasoningEffort: string;
+}
+
+interface VisionDraft {
+  enabled: boolean;
+  model: string;
+  baseURL: string;
 }
 
 interface OrganizationDraft {
@@ -100,6 +107,24 @@ const words = {
     personalRemoved: "Personal model connection cleared. Personal Space, history, and company connections were kept.",
     model: "Model",
     defaultModel: "Default model",
+    visionTitle: "Vision-first image recognition",
+    visionSummary: "When enabled, every attached image and computer screenshot is read by this model first. The conversation model receives description text only.",
+    visionEnabled: "Read every image with a dedicated model first",
+    visionModel: "Image recognition model",
+    visionModelHint: "Only the image and a focused transcription prompt are sent on this route — never the conversation or credentials.",
+    visionEndpoint: "Separate vision endpoint (optional)",
+    visionEndpointHint: "Leave blank to reuse the active Personal provider endpoint. Company connections always use the managed gateway.",
+    visionKey: "Separate vision API key (optional)",
+    visionKeyKeep: "Configured — leave blank to keep it",
+    visionKeyHint: "Leave blank to reuse the current Personal key. This field is unavailable on managed company connections.",
+    visionClearKey: "Remove separate key",
+    visionManaged: "This company route can use only models in the administrator's allow-list and always reuses the managed gateway credential.",
+    visionUnauthorized: "The configured image model is not authorized for this company connection. Choose an allowed model before images can be sent.",
+    visionEnvironment: "HARA_VISION_* currently controls this route. Remove the environment override before editing it here.",
+    visionSave: "Save image route",
+    visionSaving: "Saving image route…",
+    visionSaved: "Image route saved. It applies to the next image, including in an already-open conversation.",
+    visionUnavailable: "Update the bundled Hara engine to configure vision-first routing here.",
     defaultEffort: "Default reasoning effort",
     defaultEffortHint: "Used by new conversations, tasks, and Agents that inherit the Space default. Existing work is not changed.",
     effortAutomatic: "Automatic · use the model default",
@@ -278,6 +303,24 @@ const words = {
     personalRemoved: "个人模型连接已清除；个人空间、聊天记录和企业连接均已保留。",
     model: "模型",
     defaultModel: "默认模型",
+    visionTitle: "识图前置模型",
+    visionSummary: "开启后，所有附件图片和电脑截图都会先由这个模型识别；主对话模型只接收文字描述，不再接收原图。",
+    visionEnabled: "所有图片先经过专用识图模型",
+    visionModel: "识图模型",
+    visionModelHint: "此路由只发送图片和聚焦识别提示，不发送对话内容或任何凭据。",
+    visionEndpoint: "独立识图接口（可选）",
+    visionEndpointHint: "留空则复用当前个人供应商地址；公司连接始终使用企业托管网关。",
+    visionKey: "独立识图 API Key（可选）",
+    visionKeyKeep: "已经配置；留空继续使用",
+    visionKeyHint: "留空则复用当前个人 Key；企业托管连接不允许在此填写独立 Key。",
+    visionClearKey: "移除独立 Key",
+    visionManaged: "公司路由只能选择管理员白名单内的模型，并始终复用企业托管网关凭据。",
+    visionUnauthorized: "当前识图模型不在这家公司的授权列表中；重新选择前不会发送任何图片。",
+    visionEnvironment: "当前由 HARA_VISION_* 环境变量控制；移除环境覆盖后才能在这里修改。",
+    visionSave: "保存识图路由",
+    visionSaving: "正在保存识图路由…",
+    visionSaved: "识图路由已保存；下一张图片立即生效，已打开的会话也会使用。",
+    visionUnavailable: "请升级 Desktop 内置 Hara 引擎后在此配置识图前置路由。",
     defaultEffort: "默认思考强度",
     defaultEffortHint: "用于新会话、新任务和继承空间默认值的 Agent；不会改写正在进行或已固定的工作。",
     effortAutomatic: "自动 · 使用模型默认值",
@@ -414,6 +457,12 @@ const draftFromState = (state: ProviderSettingsState): Draft => ({
   model: state.current.model,
   baseURL: state.current.baseURL ?? "",
   reasoningEffort: state.current.reasoningEffort ?? "",
+});
+
+const visionDraftFromState = (state: ProviderSettingsState): VisionDraft => ({
+  enabled: state.vision?.enabled ?? false,
+  model: state.vision?.model ?? "",
+  baseURL: state.vision?.baseURL ?? "",
 });
 
 const endpointIdentity = (value: string | undefined): string => {
@@ -583,6 +632,10 @@ export function ProviderSettings({
   const [organizationsUnsupported, setOrganizationsUnsupported] = useState(false);
   const [draft, setDraft] = useState<Draft>({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
   const [personalDraft, setPersonalDraft] = useState<PersonalConnectionDraft>({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
+  const [visionDraft, setVisionDraft] = useState<VisionDraft>({ enabled: false, model: "", baseURL: "" });
+  const [visionApiKey, setVisionApiKey] = useState("");
+  const [clearVisionApiKey, setClearVisionApiKey] = useState(false);
+  const [visionBusy, setVisionBusy] = useState(false);
   const [personalBusy, setPersonalBusy] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
@@ -623,6 +676,9 @@ export function ProviderSettings({
       setUnsupported(false);
       setState(next);
       setDraft(draftFromState(next));
+      setVisionDraft(visionDraftFromState(next));
+      setVisionApiKey("");
+      setClearVisionApiKey(false);
       const firstPersonalProvider = next.providers.find((provider) => provider.location !== "managed" && !isLegacyProvider(provider));
       if (firstPersonalProvider) setPersonalDraft(personalDraftForProvider(firstPersonalProvider));
       setModels([]);
@@ -1089,6 +1145,41 @@ export function ProviderSettings({
     return next;
   };
 
+  const saveVisionRoute = async () => {
+    if (!client || !state?.vision || visionBusy) return;
+    const transientVisionKey = visionApiKey.trim();
+    const input: VisionSettingsInput = visionDraft.enabled
+      ? {
+          enabled: true,
+          model: visionDraft.model.trim(),
+          ...(!state.vision.usesManagedCredential && visionDraft.baseURL.trim()
+            ? { baseURL: visionDraft.baseURL.trim() }
+            : {}),
+          ...(!state.vision.usesManagedCredential && transientVisionKey
+            ? { apiKey: transientVisionKey }
+            : {}),
+          ...(clearVisionApiKey ? { clearApiKey: true } : {}),
+        }
+      : { enabled: false };
+    setVisionApiKey("");
+    setVisionBusy(true);
+    clearFeedback();
+    try {
+      const next = await mutateRoute(() => client.saveVisionSettings(input, cwd));
+      setState(next);
+      setDraft(draftFromState(next));
+      setVisionDraft(visionDraftFromState(next));
+      setVisionApiKey("");
+      setClearVisionApiKey(false);
+      setMessage(copy.visionSaved);
+      await onSaved(next);
+    } catch (reason) {
+      setError(String(reason instanceof Error ? reason.message : reason));
+    } finally {
+      setVisionBusy(false);
+    }
+  };
+
   const applyProjectUnpin = async (result: ProjectProfileUnpinResult) => {
     const next = result.providers;
     const nextOrganization = result.organizations.connections.find(
@@ -1261,6 +1352,16 @@ export function ProviderSettings({
     && state.providers.some((provider) => LEGACY_PERSONAL_PROVIDER_IDS.has(provider.id));
   const showEngineRestart = engineNeedsRestart || staleAlibabaCatalog;
   const personalRouteTested = models.length > 0 || verifiedCustomModels.length > 0;
+  const visionState = state.vision;
+  const visionSupported = Boolean(visionState && client?.supports("settings.vision.save"));
+  const currentProviderCatalog = state.providers.find((provider) => provider.id === state.current.provider);
+  const visionModelOptions = visionState?.authorizedModels
+    ?? currentProviderCatalog?.knownModels
+    ?? [];
+  const visionDraftAuthorized = !visionState?.authorizedModels
+    || visionState.authorizedModels.includes(visionDraft.model.trim());
+  const visionValid = !visionDraft.enabled
+    || (Boolean(visionDraft.model.trim()) && visionDraftAuthorized);
   const providerOptionGroups = [
     {
       label: copy.subscriptionPlans,
@@ -1349,6 +1450,119 @@ export function ProviderSettings({
         </div>
       ) : lockedProfile ? <div className="provider-warning">{copy.pinned}</div> : null}
       {expiryWarning && <div className="provider-warning" role="alert">{expiryWarning}</div>}
+
+      <section className={`provider-vision-settings ${visionDraft.enabled ? "enabled" : ""}`}>
+        <header>
+          <div>
+            <strong>{copy.visionTitle}</strong>
+            <p>{copy.visionSummary}</p>
+          </div>
+          {visionSupported && visionState && (
+            <label className="provider-vision-toggle">
+              <input
+                type="checkbox"
+                checked={visionDraft.enabled}
+                disabled={!visionState.editable || visionBusy}
+                onChange={(event) => {
+                  setVisionDraft((current) => ({ ...current, enabled: event.target.checked }));
+                  clearFeedback();
+                }}
+              />
+              <span>{copy.visionEnabled}</span>
+            </label>
+          )}
+        </header>
+        {!visionSupported || !visionState ? (
+          <div className="provider-note">{copy.visionUnavailable}</div>
+        ) : !visionState.editable ? (
+          <div className="provider-warning inline">{copy.visionEnvironment}</div>
+        ) : visionDraft.enabled ? (
+          <div className="provider-vision-fields">
+            <div className="provider-field">
+              <span>{copy.visionModel}</span>
+              <ModelCombobox
+                value={visionDraft.model}
+                options={visionModelOptions}
+                disabled={visionBusy}
+                ariaLabel={copy.visionModel}
+                searchPlaceholder={copy.modelSearch}
+                customOptionLabel={copy.customModel}
+                customBadge={copy.customModelBadge}
+                emptyLabel={copy.noModelMatches}
+                describeOption={(model) => providerModelDescription(state.current.provider, model, locale)}
+                onChange={(model) => {
+                  setVisionDraft((current) => ({ ...current, model }));
+                  clearFeedback();
+                }}
+              />
+              <small>{copy.visionModelHint}</small>
+            </div>
+            {visionState.usesManagedCredential ? (
+              <div className="provider-note">{copy.visionManaged}</div>
+            ) : (
+              <>
+                <label>
+                  <span>{copy.visionEndpoint}</span>
+                  <input
+                    value={visionDraft.baseURL}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    disabled={visionBusy}
+                    onChange={(event) => {
+                      setVisionDraft((current) => ({ ...current, baseURL: event.target.value }));
+                      clearFeedback();
+                    }}
+                  />
+                  <small>{copy.visionEndpointHint}</small>
+                </label>
+                <label>
+                  <span>{copy.visionKey}</span>
+                  <input
+                    type="password"
+                    value={visionApiKey}
+                    placeholder={visionState.apiKeyConfigured && !clearVisionApiKey ? copy.visionKeyKeep : ""}
+                    autoComplete="new-password"
+                    disabled={visionBusy || clearVisionApiKey}
+                    onChange={(event) => {
+                      setVisionApiKey(event.target.value);
+                      setClearVisionApiKey(false);
+                      clearFeedback();
+                    }}
+                  />
+                  <small>{copy.visionKeyHint}</small>
+                </label>
+                {visionState.apiKeyConfigured && (
+                  <button
+                    type="button"
+                    className="ghost compact"
+                    disabled={visionBusy}
+                    onClick={() => {
+                      setClearVisionApiKey((current) => !current);
+                      setVisionApiKey("");
+                      clearFeedback();
+                    }}
+                  >
+                    {copy.visionClearKey}{clearVisionApiKey ? " ✓" : ""}
+                  </button>
+                )}
+              </>
+            )}
+            {!visionDraftAuthorized && <div className="provider-warning inline">{copy.visionUnauthorized}</div>}
+          </div>
+        ) : null}
+        {visionSupported && visionState?.editable && (
+          <div className="provider-vision-actions">
+            <button
+              type="button"
+              disabled={!visionValid || visionBusy}
+              onClick={() => void saveVisionRoute()}
+            >
+              {visionBusy ? copy.visionSaving : copy.visionSave}
+            </button>
+          </div>
+        )}
+      </section>
 
       <div className="provider-workbench">
         <nav className="provider-presets" aria-label={copy.choose}>
