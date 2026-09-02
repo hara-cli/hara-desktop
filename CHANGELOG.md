@@ -1,6 +1,20 @@
 # Changelog
 
-## 0.1.136 — 2026-09-02 — cross-shell Windows release
+## 0.1.137 — 2026-09-02 — resilient verified release runtime
+
+- Carry forward the structured workbench and native terminal inspector: both views control the same Hara Live
+  Codex or Claude Code process, with provider-specific model, effort, safe work mode, and Codex fast-mode
+  controls. Terminal mirroring stays local and consumes no model tokens.
+- Download the checksum-pinned Herdr runtime into a versioned build cache with bounded retries and byte-range
+  resume. Interrupted release downloads retain only their partial cache; the runtime is promoted atomically only
+  after its locked SHA-256 matches, so a transient proxy reset no longer restarts an 18 MB download from zero.
+- Keep the Windows-native ZIP extraction fix from the unpublished `0.1.136` candidate and bundle Hara CLI
+  `0.162.0` at exact verified commit `8bbe7ba8134827fe443e594f4e717cf569bd0486`.
+
+## 0.1.136 — 2026-09-02 — unpublished signing candidate
+
+- This tag stayed as a hidden draft and was not promoted: the protected macOS signer lost its GitHub release
+  download after several partial transfers. `0.1.137` adds verified resumable caching before retrying publication.
 
 - Carry forward the structured workbench and native terminal inspector: both views control the same Hara Live
   Codex or Claude Code process, with provider-specific model, effort, safe work mode, and Codex fast-mode

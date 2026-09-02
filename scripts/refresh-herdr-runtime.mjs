@@ -19,6 +19,9 @@ const windows = target.includes("windows");
 const extension = windows ? ".exe" : "";
 const destination = join(root, "src-tauri", "binaries", `herdr-${target}${extension}`);
 const digest = (value) => createHash("sha256").update(value).digest("hex");
+const cacheDirectory = join(tmpdir(), "hara-release-herdr-cache", lock.version);
+const cachedArchive = join(cacheDirectory, entry.asset);
+const partialArchive = `${cachedArchive}.partial`;
 
 if (!windows) {
   try {
@@ -39,26 +42,65 @@ const scratch = await mkdtemp(join(tmpdir(), "hara-herdr-"));
 let stagedDestination;
 try {
   let body = providedArchive ? await readFile(resolve(providedArchive)) : undefined;
-  let fetchError;
   if (!body) {
     try {
-      const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(20_000) });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      body = Buffer.from(await response.arrayBuffer());
-    } catch (error) {
-      fetchError = error;
+      const cached = await readFile(cachedArchive);
+      if (digest(cached) === entry.sha256) {
+        body = cached;
+        console.log(`✓ Herdr ${lock.version} archive cache verified for ${target}`);
+      } else {
+        await rm(cachedArchive, { force: true });
+      }
+    } catch {
+      // A missing cache is populated below. A stale final cache is never resumed.
     }
   }
   if (!body) {
-    const archive = join(scratch, entry.asset);
-    const curl = spawnSync("curl", [
-      "-fL", "--retry", "3", "--retry-all-errors", "--connect-timeout", "20", "--max-time", "300",
-      "--output", archive, url,
-    ], { encoding: "utf8", timeout: 330_000, windowsHide: true });
-    if (curl.error || curl.status !== 0) {
-      throw new Error(`download ${basename(url)} failed: ${curl.stderr || curl.error || fetchError}`);
+    await mkdir(cacheDirectory, { recursive: true });
+    try {
+      const partial = await readFile(partialArchive);
+      if (digest(partial) === entry.sha256) {
+        await rm(cachedArchive, { force: true });
+        await rename(partialArchive, cachedArchive);
+        body = partial;
+        console.log(`✓ Herdr ${lock.version} completed archive cache recovered for ${target}`);
+      }
+    } catch {
+      // Missing and incomplete partial downloads are handled by curl's bounded resume below.
     }
-    body = await readFile(archive);
+  }
+  if (!body) {
+    const deadline = Date.now() + 900_000;
+    let curl;
+    for (let attempt = 1; attempt <= 13; attempt += 1) {
+      const remainingSeconds = Math.max(1, Math.floor((deadline - Date.now()) / 1_000));
+      const transferSeconds = Math.min(300, remainingSeconds);
+      curl = spawnSync("curl", [
+        "--fail", "--location", "--silent", "--show-error", "--http1.1",
+        "--connect-timeout", "20", "--max-time", String(transferSeconds), "--continue-at", "-",
+        "--output", partialArchive, url,
+      ], { encoding: "utf8", timeout: (transferSeconds + 30) * 1_000, windowsHide: true });
+      if (!curl.error && curl.status === 0) break;
+      if (attempt === 13 || Date.now() >= deadline - 2_000) break;
+      console.warn(`warning: Herdr download interrupted (${attempt}/13); retaining partial cache and resuming`);
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
+    }
+    if (!curl || curl.error || curl.status !== 0) {
+      throw new Error(
+        `download ${basename(url)} failed after bounded resumable retries; partial cache retained: ${curl?.stderr || curl?.error || "no curl result"}`,
+      );
+    }
+    body = await readFile(partialArchive);
+    const downloadedDigest = digest(body);
+    if (downloadedDigest !== entry.sha256) {
+      await rm(partialArchive, { force: true });
+      throw new Error(
+        `Herdr archive checksum mismatch for ${target}: expected ${entry.sha256}, got ${downloadedDigest}`,
+      );
+    }
+    await rm(cachedArchive, { force: true });
+    await rename(partialArchive, cachedArchive);
+    console.log(`✓ Herdr ${lock.version} resumable archive cache verified for ${target}`);
   }
   const actual = digest(body);
   if (actual !== entry.sha256) {

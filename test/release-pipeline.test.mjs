@@ -1978,6 +1978,14 @@ test("Hara Live bundles a checksum-pinned Herdr runtime and verifies it after pa
 
   const refresh = readFileSync(join(root, "scripts/refresh-herdr-runtime.mjs"), "utf8");
   assert.match(refresh, /if \(actual !== entry\.sha256\)/);
+  assert.match(refresh, /"--continue-at", "-"/);
+  assert.match(refresh, /for \(let attempt = 1; attempt <= 13; attempt \+= 1\)/);
+  assert.match(refresh, /Date\.now\(\) \+ 900_000/);
+  assert.match(refresh, /partial cache retained/);
+  assert.ok(
+    refresh.indexOf("downloadedDigest !== entry.sha256") <
+      refresh.lastIndexOf("rename(partialArchive, cachedArchive)"),
+  );
   assert.match(refresh, /stagedDestination = join\(dirname\(destination\)/);
   assert.ok(refresh.indexOf("if (actual !== entry.sha256)") < refresh.indexOf("writeFile(stagedDestination"));
   assert.match(refresh, /process\.platform === "win32"/);
