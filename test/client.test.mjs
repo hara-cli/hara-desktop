@@ -75,9 +75,20 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "external.sessions.fork",
                 "external.sessions.submit",
                 "external.sessions.interrupt",
+                "external.sessions.terminal.snapshot",
+                "external.sessions.terminal.input",
+                "external.sessions.terminal.key",
               ],
               events: ["event.task_state", "event.surface", "external.event.text", "external.approval.request"],
-              features: ["composer.attachments.v1", "models.capabilities.v1", "collaboration.remote.v1", "external.sessions.interaction.v1", "external.sessions.runtime.v1"],
+              features: [
+                "composer.attachments.v1",
+                "models.capabilities.v1",
+                "collaboration.remote.v1",
+                "external.sessions.interaction.v1",
+                "external.sessions.runtime.v1",
+                "external.sessions.launch-options.v1",
+                "external.sessions.terminal-mirror.v1",
+              ],
             },
           } : request.method.startsWith("settings.gateways.login.")
             ? { login }
@@ -184,6 +195,14 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 ? { sessionId: request.params.sessionId, turnId: "extturn_safe", status: "completed", reply: "done" }
               : request.method === "external.sessions.interrupt"
                 ? {}
+              : request.method === "external.sessions.terminal.snapshot"
+                ? {
+                    sessionId: request.params.sessionId,
+                    text: "native screen",
+                    capturedAt: "2026-08-28T00:00:02.000Z",
+                  }
+              : request.method === "external.sessions.terminal.input" || request.method === "external.sessions.terminal.key"
+                ? {}
               : request.method === "desk.connections.list"
               ? {
                   connections: [{
@@ -277,6 +296,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supports("external.sessions.create"), true);
   assert.equal(client.supports("external.sessions.read"), true);
   assert.equal(client.supportsFeature("external.sessions.interaction.v1"), true);
+  assert.equal(client.supportsFeature("external.sessions.launch-options.v1"), true);
+  assert.equal(client.supportsFeature("external.sessions.terminal-mirror.v1"), true);
 
   await client.submit("session-1", "Use the new title", undefined, {
     mode: "start_if_idle",
@@ -545,13 +566,32 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     sourceId: "runtime",
     cwd: "/workspace/hara",
     agentKind: "codex",
+    launch: {
+      model: "gpt-5.6-terra",
+      effort: "high",
+      sandboxMode: "read-only",
+      serviceTier: "fast",
+    },
   });
   assert.equal(runtimeSession.session.agentKind, "codex");
   assert.deepEqual(requests.at(-1).params, {
     sourceId: "runtime",
     cwd: "/workspace/hara",
     agentKind: "codex",
+    launch: {
+      model: "gpt-5.6-terra",
+      effort: "high",
+      sandboxMode: "read-only",
+      serviceTier: "fast",
+    },
   });
+  const terminal = await client.terminalSnapshot("ext_runtime_safe");
+  assert.equal(terminal.text, "native screen");
+  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe" });
+  await client.terminalInput("ext_runtime_safe", "/status");
+  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", text: "/status" });
+  await client.terminalKey("ext_runtime_safe", "esc");
+  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", key: "esc" });
 
   let received;
   client.onEvent = (event) => {

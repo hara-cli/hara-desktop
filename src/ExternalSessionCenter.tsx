@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   ExternalRuntimeAgentKind,
+  ExternalRuntimeLaunchOptions,
   ExternalSessionInfo,
   ExternalSessionMessage,
   ExternalSessionReadResult,
@@ -8,8 +9,11 @@ import type {
   ExternalSessionSourceInfo,
   ExternalSessionSourceState,
   ExternalSessionState,
+  ExternalTerminalKey,
+  ExternalTerminalSnapshot,
 } from "./client";
 import { IconBack, IconCommandLine, IconRefresh } from "./icons";
+import { isImeCompositionKey } from "./ime";
 import "./ExternalSessionCenter.css";
 
 export type ExternalSessionActivity =
@@ -61,8 +65,10 @@ export interface ExternalSessionCenterCopy {
   readOnlyBody: string;
   writableTitle: string;
   writableBody: string;
-  liveTitle: string;
-  liveBody: string;
+  liveCodexTitle: string;
+  liveCodexBody: string;
+  liveClaudeTitle: string;
+  liveClaudeBody: string;
   followUpTitle: string;
   followUpBody: string;
   waitTitle: string;
@@ -88,6 +94,31 @@ export interface ExternalSessionCenterCopy {
   runtimeCodex: string;
   runtimeClaude: string;
   runtimeCreating: string;
+  runtimeEngine: string;
+  runtimeModel: string;
+  runtimeModelPlaceholder: string;
+  runtimeEffort: string;
+  runtimeWorkMode: string;
+  runtimeFast: string;
+  runtimeStart: string;
+  runtimeDefault: string;
+  runtimeCodexWork: string;
+  runtimeCodexPlan: string;
+  runtimeClaudeWork: string;
+  runtimeClaudePlan: string;
+  runtimeClaudeManual: string;
+  runtimeClaudeAuto: string;
+  runtimeClaudeDontAsk: string;
+  detailsView: string;
+  terminalView: string;
+  terminalTitle: string;
+  terminalBody: string;
+  terminalEmpty: string;
+  terminalPlaceholder: string;
+  terminalSend: string;
+  terminalRefresh: string;
+  terminalLocalOnly: string;
+  terminalKeyHelp: string;
   sourceStates: Record<ExternalSessionSourceState, string>;
   sessionStates: Record<ExternalSessionState, string>;
 }
@@ -112,12 +143,15 @@ interface ExternalSessionCenterProps {
   onRefresh: () => void;
   onBack: () => void;
   onSelectSource: (sourceId: ExternalSessionSourceId) => void;
-  onCreate: (agentKind: ExternalRuntimeAgentKind) => Promise<void>;
+  onCreate: (agentKind: ExternalRuntimeAgentKind, launch: ExternalRuntimeLaunchOptions) => Promise<void>;
   onResume: () => Promise<void>;
   onSubmit: (text: string) => Promise<void>;
   onSteer: (text: string) => Promise<void>;
   onInterrupt: () => Promise<void>;
   onApproval: (verdict: "deny" | "allow" | "always") => Promise<void>;
+  onReadTerminal: () => Promise<ExternalTerminalSnapshot>;
+  onTerminalInput: (text: string) => Promise<void>;
+  onTerminalKey: (key: ExternalTerminalKey) => Promise<void>;
 }
 
 const sourceMark = (sourceId: ExternalSessionInfo["sourceId"]): string => (
@@ -160,10 +194,30 @@ export default function ExternalSessionCenter({
   onSteer,
   onInterrupt,
   onApproval,
+  onReadTerminal,
+  onTerminalInput,
+  onTerminalKey,
 }: ExternalSessionCenterProps) {
-  const [draft, setDraft] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [runtimeAgentKind, setRuntimeAgentKind] = useState<ExternalRuntimeAgentKind>("codex");
+  const [runtimeModels, setRuntimeModels] = useState<Record<ExternalRuntimeAgentKind, string>>({ codex: "", claude: "" });
+  const [runtimeEfforts, setRuntimeEfforts] = useState<Record<ExternalRuntimeAgentKind, string>>({ codex: "", claude: "" });
+  const [runtimeModes, setRuntimeModes] = useState<Record<ExternalRuntimeAgentKind, string>>({ codex: "workspace-write", claude: "acceptEdits" });
+  const [runtimeFast, setRuntimeFast] = useState(false);
+  const [inspectorViews, setInspectorViews] = useState<Record<string, "details" | "terminal">>({});
+  const [terminalSnapshots, setTerminalSnapshots] = useState<Record<string, ExternalTerminalSnapshot>>({});
+  const [terminalDrafts, setTerminalDrafts] = useState<Record<string, string>>({});
+  const [terminalErrors, setTerminalErrors] = useState<Record<string, string>>({});
+  const [terminalBusy, setTerminalBusy] = useState<Record<string, boolean>>({});
+  const composingRef = useRef(false);
   const timelineRef = useRef<HTMLDivElement>(null);
-  useEffect(() => setDraft(""), [selected?.id]);
+  const terminalRef = useRef<HTMLPreElement>(null);
+  const selectedId = selected?.id ?? "";
+  const draft = selectedId ? drafts[selectedId] ?? "" : "";
+  const setDraft = useCallback((value: string) => {
+    if (!selectedId) return;
+    setDrafts((current) => ({ ...current, [selectedId]: value }));
+  }, [selectedId]);
   useEffect(() => {
     const timeline = timelineRef.current;
     if (!timeline) return;
@@ -180,12 +234,46 @@ export default function ExternalSessionCenter({
   const modeLabel = controlMode === "live"
     ? copy.modeLive
     : controlMode === "managed" ? copy.modeManaged : copy.modeHistory;
+  const liveClaude = selected?.agentKind === "claude" || selected?.sourceId === "claude";
   const composerTitle = running
     ? (canSteer ? copy.followUpTitle : copy.waitTitle)
-    : controlMode === "live" ? copy.liveTitle : copy.writableTitle;
+    : controlMode === "live"
+      ? (liveClaude ? copy.liveClaudeTitle : copy.liveCodexTitle)
+      : copy.writableTitle;
   const composerBody = running
     ? (canSteer ? copy.followUpBody : copy.waitBody)
-    : controlMode === "live" ? copy.liveBody : copy.writableBody;
+    : controlMode === "live"
+      ? (liveClaude ? copy.liveClaudeBody : copy.liveCodexBody)
+      : copy.writableBody;
+  const terminalSupported = selected?.sourceId === "runtime"
+    && activeSource?.capabilities.terminalView === true;
+  const inspectorView = selectedId ? inspectorViews[selectedId] ?? "details" : "details";
+  const terminalSnapshot = selectedId ? terminalSnapshots[selectedId] : undefined;
+  const terminalDraft = selectedId ? terminalDrafts[selectedId] ?? "" : "";
+  const terminalError = selectedId ? terminalErrors[selectedId] ?? "" : "";
+
+  const refreshTerminal = useCallback(async () => {
+    if (!selectedId || !terminalSupported) return;
+    try {
+      const snapshot = await onReadTerminal();
+      if (snapshot.sessionId !== selectedId) return;
+      setTerminalSnapshots((current) => ({ ...current, [selectedId]: snapshot }));
+      setTerminalErrors((current) => ({ ...current, [selectedId]: "" }));
+    } catch (error) {
+      setTerminalErrors((current) => ({ ...current, [selectedId]: String(error instanceof Error ? error.message : error).slice(0, 240) }));
+    }
+  }, [onReadTerminal, selectedId, terminalSupported]);
+
+  useEffect(() => {
+    if (inspectorView !== "terminal" || !terminalSupported) return;
+    void refreshTerminal();
+    const timer = window.setInterval(() => void refreshTerminal(), 1_000);
+    return () => window.clearInterval(timer);
+  }, [inspectorView, refreshTerminal, terminalSupported]);
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (terminal) terminal.scrollTop = terminal.scrollHeight;
+  }, [terminalSnapshot?.text]);
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -193,7 +281,56 @@ export default function ExternalSessionCenter({
     if (!text || composerBlocked) return;
     setDraft("");
     const send = canSendFollowUp ? onSteer : onSubmit;
-    void send(text).catch(() => setDraft((current) => current || text));
+    void send(text).catch(() => {
+      setDrafts((current) => ({ ...current, [selectedId]: current[selectedId] || text }));
+    });
+  };
+
+  const createRuntime = (): void => {
+    const model = runtimeModels[runtimeAgentKind].trim();
+    const effort = runtimeEfforts[runtimeAgentKind];
+    const mode = runtimeModes[runtimeAgentKind];
+    const launch: ExternalRuntimeLaunchOptions = {
+      ...(model ? { model } : {}),
+      ...(effort ? { effort: effort as ExternalRuntimeLaunchOptions["effort"] } : {}),
+      ...(runtimeAgentKind === "codex"
+        ? {
+            sandboxMode: mode as ExternalRuntimeLaunchOptions["sandboxMode"],
+            ...(runtimeFast ? { serviceTier: "fast" as const } : {}),
+          }
+        : { permissionMode: mode as ExternalRuntimeLaunchOptions["permissionMode"] }),
+    };
+    void onCreate(runtimeAgentKind, launch);
+  };
+
+  const submitTerminal = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    if (!selectedId || !terminalDraft.trim() || terminalBusy[selectedId]) return;
+    const text = terminalDraft.trim();
+    setTerminalDrafts((current) => ({ ...current, [selectedId]: "" }));
+    setTerminalBusy((current) => ({ ...current, [selectedId]: true }));
+    try {
+      await onTerminalInput(text);
+      await refreshTerminal();
+    } catch (error) {
+      setTerminalDrafts((current) => ({ ...current, [selectedId]: current[selectedId] || text }));
+      setTerminalErrors((current) => ({ ...current, [selectedId]: String(error instanceof Error ? error.message : error).slice(0, 240) }));
+    } finally {
+      setTerminalBusy((current) => ({ ...current, [selectedId]: false }));
+    }
+  };
+
+  const sendTerminalKey = async (key: ExternalTerminalKey): Promise<void> => {
+    if (!selectedId || terminalBusy[selectedId]) return;
+    setTerminalBusy((current) => ({ ...current, [selectedId]: true }));
+    try {
+      await onTerminalKey(key);
+      await refreshTerminal();
+    } catch (error) {
+      setTerminalErrors((current) => ({ ...current, [selectedId]: String(error instanceof Error ? error.message : error).slice(0, 240) }));
+    } finally {
+      setTerminalBusy((current) => ({ ...current, [selectedId]: false }));
+    }
   };
 
   if (!personal) {
@@ -253,28 +390,73 @@ export default function ExternalSessionCenter({
 
         {selectedSourceId === "runtime" && runtimeSource?.capabilities.create ? (
           <section className="external-runtime-launcher" aria-labelledby="external-runtime-launcher-title">
-            <div>
+            <div className="external-runtime-intro">
               <span className="external-source-logo is-runtime" aria-hidden>HR</span>
               <span>
                 <strong id="external-runtime-launcher-title">{copy.runtimeTitle}</strong>
                 <small>{copy.runtimeBody}</small>
               </span>
             </div>
-            <div>
-              <button
-                type="button"
-                className="is-primary"
-                disabled={Boolean(creatingKind) || Boolean(actionBusy)}
-                onClick={() => void onCreate("codex")}
-              >
-                {creatingKind === "codex" ? copy.runtimeCreating : copy.runtimeCodex}
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(creatingKind) || Boolean(actionBusy)}
-                onClick={() => void onCreate("claude")}
-              >
-                {creatingKind === "claude" ? copy.runtimeCreating : copy.runtimeClaude}
+            <div className="external-runtime-config">
+              <fieldset>
+                <legend>{copy.runtimeEngine}</legend>
+                <div className="external-runtime-segmented">
+                  <button type="button" className={runtimeAgentKind === "codex" ? "is-selected" : ""} onClick={() => setRuntimeAgentKind("codex")}>{copy.runtimeCodex}</button>
+                  <button type="button" className={runtimeAgentKind === "claude" ? "is-selected" : ""} onClick={() => setRuntimeAgentKind("claude")}>{copy.runtimeClaude}</button>
+                </div>
+              </fieldset>
+              <label>
+                <span>{copy.runtimeModel}</span>
+                <input
+                  value={runtimeModels[runtimeAgentKind]}
+                  list={`external-runtime-models-${runtimeAgentKind}`}
+                  placeholder={copy.runtimeModelPlaceholder}
+                  onChange={(event) => setRuntimeModels((current) => ({ ...current, [runtimeAgentKind]: event.currentTarget.value }))}
+                />
+                <datalist id={`external-runtime-models-${runtimeAgentKind}`}>
+                  {(runtimeAgentKind === "codex"
+                    ? ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
+                    : ["default", "best", "sonnet", "opus", "haiku", "opusplan"]
+                  ).map((model) => <option value={model} key={model} />)}
+                </datalist>
+              </label>
+              <label>
+                <span>{copy.runtimeEffort}</span>
+                <select value={runtimeEfforts[runtimeAgentKind]} onChange={(event) => setRuntimeEfforts((current) => ({ ...current, [runtimeAgentKind]: event.currentTarget.value }))}>
+                  <option value="">{copy.runtimeDefault}</option>
+                  {(runtimeAgentKind === "codex"
+                    ? ["minimal", "low", "medium", "high", "xhigh"]
+                    : ["low", "medium", "high", "xhigh", "max"]
+                  ).map((effort) => <option value={effort} key={effort}>{effort}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>{copy.runtimeWorkMode}</span>
+                <select value={runtimeModes[runtimeAgentKind]} onChange={(event) => setRuntimeModes((current) => ({ ...current, [runtimeAgentKind]: event.currentTarget.value }))}>
+                  {runtimeAgentKind === "codex" ? (
+                    <>
+                      <option value="workspace-write">{copy.runtimeCodexWork}</option>
+                      <option value="read-only">{copy.runtimeCodexPlan}</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="acceptEdits">{copy.runtimeClaudeWork}</option>
+                      <option value="plan">{copy.runtimeClaudePlan}</option>
+                      <option value="manual">{copy.runtimeClaudeManual}</option>
+                      <option value="auto">{copy.runtimeClaudeAuto}</option>
+                      <option value="dontAsk">{copy.runtimeClaudeDontAsk}</option>
+                    </>
+                  )}
+                </select>
+              </label>
+              {runtimeAgentKind === "codex" ? (
+                <label className="external-runtime-check">
+                  <input type="checkbox" checked={runtimeFast} onChange={(event) => setRuntimeFast(event.currentTarget.checked)} />
+                  <span>{copy.runtimeFast}</span>
+                </label>
+              ) : <span />}
+              <button type="button" className="is-primary external-runtime-start" disabled={Boolean(creatingKind) || Boolean(actionBusy)} onClick={createRuntime}>
+                {creatingKind ? copy.runtimeCreating : copy.runtimeStart}
               </button>
             </div>
           </section>
@@ -355,6 +537,19 @@ export default function ExternalSessionCenter({
                     <textarea
                       value={draft}
                       onChange={(event) => setDraft(event.currentTarget.value)}
+                      onCompositionStart={() => {
+                        composingRef.current = true;
+                      }}
+                      onCompositionEnd={() => {
+                        composingRef.current = false;
+                      }}
+                      onKeyDown={(event) => {
+                        if (composingRef.current || isImeCompositionKey(event.nativeEvent)) return;
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          event.currentTarget.form?.requestSubmit();
+                        }
+                      }}
                       placeholder={canSendFollowUp ? copy.followUpPlaceholder : copy.composerPlaceholder}
                       disabled={composerBlocked}
                       rows={3}
@@ -371,18 +566,51 @@ export default function ExternalSessionCenter({
                 ) : null}
               </section>
 
-              <aside className="external-session-inspector">
-                <dl className="external-session-facts">
-                  <div><dt>{copy.workspace}</dt><dd>{selected.workspaceName}</dd></div>
-                  <div><dt>{copy.source}</dt><dd>{sourceDisplayName(selected)}</dd></div>
-                  <div><dt>{copy.origin}</dt><dd>{selected.origin ?? "—"}</dd></div>
-                  <div><dt>{copy.updated}</dt><dd>{new Date(selected.updatedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}</dd></div>
-                  <div><dt>{copy.state}</dt><dd>{copy.sessionStates[selected.state]}</dd></div>
-                </dl>
-                <div className="external-session-policy-grid">
-                  <article><span aria-hidden>01</span><strong>{copy.protectionTitle}</strong><p>{copy.protectionBody}</p></article>
-                  <article><span aria-hidden>02</span><strong>{copy.nextStage}</strong><p>{copy.nextStageBody}</p></article>
+              <aside className={`external-session-inspector is-${inspectorView}`}>
+                <div className="external-inspector-switcher" role="tablist">
+                  <button type="button" role="tab" aria-selected={inspectorView === "details"} className={inspectorView === "details" ? "is-selected" : ""} onClick={() => setInspectorViews((current) => ({ ...current, [selected.id]: "details" }))}>{copy.detailsView}</button>
+                  {terminalSupported ? <button type="button" role="tab" aria-selected={inspectorView === "terminal"} className={inspectorView === "terminal" ? "is-selected" : ""} onClick={() => setInspectorViews((current) => ({ ...current, [selected.id]: "terminal" }))}>{copy.terminalView}</button> : null}
                 </div>
+                {inspectorView === "terminal" && terminalSupported ? (
+                  <section className="external-native-terminal" aria-label={copy.terminalTitle}>
+                    <header>
+                      <span><i aria-hidden />{copy.terminalTitle}</span>
+                      <button type="button" onClick={() => void refreshTerminal()} disabled={Boolean(terminalBusy[selected.id])}>{copy.terminalRefresh}</button>
+                    </header>
+                    <p>{copy.terminalBody}</p>
+                    <pre ref={terminalRef} tabIndex={0}>{terminalSnapshot?.text || copy.terminalEmpty}</pre>
+                    {terminalError ? <div className="external-terminal-error" role="alert">{terminalError}</div> : null}
+                    <div className="external-terminal-keys" aria-label={copy.terminalKeyHelp}>
+                      {(["esc", "up", "down", "tab", "ctrl+c"] as ExternalTerminalKey[]).map((key) => (
+                        <button type="button" key={key} disabled={Boolean(terminalBusy[selected.id])} onClick={() => void sendTerminalKey(key)}>{key}</button>
+                      ))}
+                    </div>
+                    <form onSubmit={(event) => void submitTerminal(event)}>
+                      <input
+                        value={terminalDraft}
+                        onChange={(event) => setTerminalDrafts((current) => ({ ...current, [selected.id]: event.currentTarget.value }))}
+                        placeholder={copy.terminalPlaceholder}
+                        disabled={Boolean(terminalBusy[selected.id])}
+                      />
+                      <button type="submit" className="is-primary" disabled={!terminalDraft.trim() || Boolean(terminalBusy[selected.id])}>{copy.terminalSend}</button>
+                    </form>
+                    <small>{copy.terminalLocalOnly}</small>
+                  </section>
+                ) : (
+                  <>
+                    <dl className="external-session-facts">
+                      <div><dt>{copy.workspace}</dt><dd>{selected.workspaceName}</dd></div>
+                      <div><dt>{copy.source}</dt><dd>{sourceDisplayName(selected)}</dd></div>
+                      <div><dt>{copy.origin}</dt><dd>{selected.origin ?? "—"}</dd></div>
+                      <div><dt>{copy.updated}</dt><dd>{new Date(selected.updatedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}</dd></div>
+                      <div><dt>{copy.state}</dt><dd>{copy.sessionStates[selected.state]}</dd></div>
+                    </dl>
+                    <div className="external-session-policy-grid">
+                      <article><span aria-hidden>01</span><strong>{copy.protectionTitle}</strong><p>{copy.protectionBody}</p></article>
+                      <article><span aria-hidden>02</span><strong>{copy.nextStage}</strong><p>{copy.nextStageBody}</p></article>
+                    </div>
+                  </>
+                )}
               </aside>
             </div>
           </section>

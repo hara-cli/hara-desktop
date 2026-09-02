@@ -12,12 +12,45 @@ test("all Desktop composers keep IME commit Enter out of submit shortcuts", () =
   assert.equal(isImeCompositionKey({ isComposing: false, keyCode: 229 }), true);
   assert.equal(isImeCompositionKey({ isComposing: false, keyCode: 13 }), false);
 
-  for (const file of ["App.tsx", "PetChat.tsx", "WorkStarter.tsx"]) {
+  for (const file of ["App.tsx", "PetChat.tsx", "WorkStarter.tsx", "ExternalSessionCenter.tsx"]) {
     const source = readFileSync(`${root}/src/${file}`, "utf8");
     assert.match(source, /onCompositionStart=/, `${file} tracks an active composition`);
     assert.match(source, /onCompositionEnd=/, `${file} retires an active composition`);
     assert.match(source, /isImeCompositionKey\([^)]*nativeEvent\)/, `${file} covers WebKit keyCode 229`);
   }
+});
+
+test("Hara Live composer sends with Enter and keeps provider-specific status copy", () => {
+  const center = readFileSync(`${root}/src/ExternalSessionCenter.tsx`, "utf8");
+  const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
+
+  assert.match(center, /event\.key === "Enter" && !event\.shiftKey/);
+  assert.match(center, /event\.currentTarget\.form\?\.requestSubmit\(\)/);
+  assert.match(center, /selected\?\.agentKind === "claude" \|\| selected\?\.sourceId === "claude"/);
+  assert.match(center, /liveClaude \? copy\.liveClaudeTitle : copy\.liveCodexTitle/);
+  assert.match(i18n, /externalSessionsLiveClaudeTitle: "已连接到 Claude Code 活跃会话"/);
+  assert.match(i18n, /externalSessionsLiveCodexTitle: "已连接到 Codex 活跃会话"/);
+});
+
+test("Hara Live keeps structured work and the native terminal as two views of one session", () => {
+  const center = readFileSync(`${root}/src/ExternalSessionCenter.tsx`, "utf8");
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+
+  assert.match(center, /onCreate: \(agentKind: ExternalRuntimeAgentKind, launch: ExternalRuntimeLaunchOptions\)/);
+  assert.match(center, /runtimeModels\[runtimeAgentKind\]/);
+  assert.match(center, /sandboxMode: mode as ExternalRuntimeLaunchOptions\["sandboxMode"\]/);
+  assert.match(center, /permissionMode: mode as ExternalRuntimeLaunchOptions\["permissionMode"\]/);
+  assert.match(center, /const \[drafts, setDrafts\] = useState<Record<string, string>>\(\{\}\)/);
+  assert.match(center, /const inspectorView = selectedId \? inspectorViews\[selectedId\]/);
+  assert.match(center, /inspectorView === "terminal" && terminalSupported/);
+  assert.match(center, /window\.setInterval\(\(\) => void refreshTerminal\(\), 1_000\)/);
+  assert.match(app, /externalSessionActions\[selectedExternalSession\.id\]/);
+  assert.match(app, /externalSessionApprovals\[selectedExternalSession\.id\]/);
+  assert.match(app, /externalSessionActionErrors\[selectedExternalSession\.id\]/);
+  assert.match(client, /external\.sessions\.terminal\.snapshot/);
+  assert.match(client, /external\.sessions\.terminal\.input/);
+  assert.match(client, /external\.sessions\.terminal\.key/);
 });
 
 test("expired company Spaces stay visible for recovery but cannot be selected", () => {

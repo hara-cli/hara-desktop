@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.134 — 2026-09-02 — structured workbench plus native terminal
+
+- Keep Hara's structured coding-session workbench and the provider-native terminal as two views of the same
+  Hara Live process. The right inspector can switch between session details and a locally refreshed terminal
+  mirror, relay explicit prompts or bounded navigation keys, and never starts a duplicate Codex or Claude Code
+  session merely to show the terminal.
+- Add provider-native launch controls for engine, model, reasoning effort, safe work mode, and Codex fast mode.
+  Unsafe host-wide sandbox and permission-bypass choices remain unavailable. Workbench drafts, terminal drafts,
+  approvals, actions, and errors now stay isolated by session when several coding agents are open.
+- Correct Claude Code live-session labels, send with Enter while keeping Shift+Enter for a new line and IME
+  composition safe, and keep terminal refresh device-local so it consumes no model tokens. Bundle Hara CLI
+  `0.162.0` at exact verified commit `8bbe7ba8134827fe443e594f4e717cf569bd0486`. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.133 — 2026-09-02 — complete native-session release
 
 - Carry forward the same-ID Codex and Claude Code handoff from `0.1.132`, whose tag was stopped before

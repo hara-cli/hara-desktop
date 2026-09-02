@@ -62,8 +62,11 @@ import {
   type ExternalSessionInfo,
   type ExternalSessionReadResult,
   type ExternalRuntimeAgentKind,
+  type ExternalRuntimeLaunchOptions,
   type ExternalSessionSourceId,
   type ExternalSessionSourceInfo,
+  type ExternalTerminalKey,
+  type ExternalTerminalSnapshot,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
 import {
@@ -1511,13 +1514,11 @@ export default function App() {
   const [externalTranscript, setExternalTranscript] = useState<ExternalSessionReadResult | null>(null);
   const [externalTranscriptLoading, setExternalTranscriptLoading] = useState(false);
   const [externalSessionActionError, setExternalSessionActionError] = useState("");
-  const [externalSessionAction, setExternalSessionAction] = useState<{
-    sessionId: string;
-    kind: "resume" | "turn" | "interrupt";
-  } | null>(null);
+  const [externalSessionActionErrors, setExternalSessionActionErrors] = useState<Record<string, string>>({});
+  const [externalSessionActions, setExternalSessionActions] = useState<Record<string, "resume" | "turn" | "interrupt">>({});
   const [externalSessionCreatingKind, setExternalSessionCreatingKind] = useState<ExternalRuntimeAgentKind | null>(null);
   const [externalSessionActivity, setExternalSessionActivity] = useState<Record<string, ExternalSessionActivity[]>>({});
-  const [externalSessionApproval, setExternalSessionApproval] = useState<(ExternalSessionApproval & { sessionId: string }) | null>(null);
+  const [externalSessionApprovals, setExternalSessionApprovals] = useState<Record<string, ExternalSessionApproval>>({});
   const externalSessionsRequestRef = useRef(0);
   const externalTranscriptRequestRef = useRef(0);
   const externalActivitySequenceRef = useRef(0);
@@ -1624,12 +1625,12 @@ export default function App() {
     if (!client || !client.supports("external.sessions.read")) {
       setExternalTranscript(null);
       setExternalTranscriptLoading(false);
-      setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
+      setExternalSessionActionErrors((current) => ({ ...current, [sessionId]: makeT(locale)("externalSessionsOldEngine") }));
       return;
     }
     const requestId = ++externalTranscriptRequestRef.current;
     setExternalTranscriptLoading(true);
-    setExternalSessionActionError("");
+    setExternalSessionActionErrors((current) => ({ ...current, [sessionId]: "" }));
     void client.readExternalSession(sessionId)
       .then((result) => {
         if (clientRef.current !== client || externalTranscriptRequestRef.current !== requestId) return;
@@ -1641,7 +1642,7 @@ export default function App() {
       .catch((error: any) => {
         if (clientRef.current !== client || externalTranscriptRequestRef.current !== requestId) return;
         setExternalTranscript(null);
-        setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+        setExternalSessionActionErrors((current) => ({ ...current, [sessionId]: String(error?.message ?? error).slice(0, 240) }));
       })
       .finally(() => {
         if (clientRef.current === client && externalTranscriptRequestRef.current === requestId) {
@@ -3012,14 +3013,14 @@ export default function App() {
           if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
         case "external.event.turn_start":
-          setExternalSessionAction({ sessionId: e.sessionId, kind: "turn" });
+          setExternalSessionActions((current) => ({ ...current, [e.sessionId]: "turn" }));
           setExternalSessionActivity((current) => {
             const existing = current[e.sessionId] ?? [];
             const last = existing[existing.length - 1];
             const optimisticUser = last?.kind === "user" ? [last] : [];
             return { ...current, [e.sessionId]: optimisticUser };
           });
-          setExternalSessionActionError("");
+          setExternalSessionActionErrors((current) => ({ ...current, [e.sessionId]: "" }));
           break;
         case "external.event.text":
           setExternalSessionActivity((current) => {
@@ -3056,23 +3057,33 @@ export default function App() {
           }));
           break;
         case "external.approval.request":
-          setExternalSessionApproval({
-            sessionId: e.sessionId,
+          setExternalSessionApprovals((current) => ({ ...current, [e.sessionId]: {
             approvalId: e.approvalId,
             question: plain(e.question),
             allowAlways: e.allowAlways === true,
-          });
+          } }));
           break;
         case "external.event.turn_end":
-          setExternalSessionApproval((current) => current?.sessionId === e.requestedSessionId ? null : current);
-          setExternalSessionAction((current) => current?.sessionId === e.requestedSessionId ? null : current);
-          if (e.error) setExternalSessionActionError(plain(e.error));
+          setExternalSessionApprovals((current) => {
+            const next = { ...current };
+            delete next[e.requestedSessionId];
+            return next;
+          });
+          setExternalSessionActions((current) => {
+            const next = { ...current };
+            delete next[e.requestedSessionId];
+            return next;
+          });
           if (e.sessionId === e.requestedSessionId) {
             refreshExternalTranscriptRef.current(e.sessionId);
           } else {
             // A provider-level safety fork changed the opaque id. Refresh metadata before exposing it.
             setWorkbenchInboxTarget({ kind: "external", id: e.sessionId });
             refreshExternalSessions();
+          }
+          if (e.error) {
+            const externalError = plain(e.error);
+            setExternalSessionActionErrors((current) => ({ ...current, [e.requestedSessionId]: externalError }));
           }
           break;
       }
@@ -3126,9 +3137,10 @@ export default function App() {
     setExternalTranscript(null);
     setExternalTranscriptLoading(false);
     setExternalSessionActionError("");
-    setExternalSessionAction(null);
+    setExternalSessionActionErrors({});
+    setExternalSessionActions({});
     setExternalSessionActivity({});
-    setExternalSessionApproval(null);
+    setExternalSessionApprovals({});
     setAuto(null);
     setAutoReplay(null);
     setArtifacts(null);
@@ -5894,9 +5906,16 @@ export default function App() {
     setExternalTranscript(null);
     setExternalSessionActionError("");
   }, []);
-  const createRuntimeExternalSession = useCallback(async (agentKind: ExternalRuntimeAgentKind) => {
+  const createRuntimeExternalSession = useCallback(async (
+    agentKind: ExternalRuntimeAgentKind,
+    launch: ExternalRuntimeLaunchOptions,
+  ) => {
     const client = clientRef.current;
-    if (!client || !client.supports("external.sessions.create")) {
+    if (
+      !client
+      || !client.supports("external.sessions.create")
+      || !client.supportsFeature("external.sessions.launch-options.v1")
+    ) {
       setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
       return;
     }
@@ -5909,7 +5928,7 @@ export default function App() {
     setExternalSessionCreatingKind(agentKind);
     setExternalSessionActionError("");
     try {
-      const result = await client.createExternalSession({ sourceId: "runtime", cwd: selected, agentKind });
+      const result = await client.createExternalSession({ sourceId: "runtime", cwd: selected, agentKind, launch });
       if (clientRef.current !== client) return;
       if (!result) {
         setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
@@ -5931,6 +5950,36 @@ export default function App() {
       if (clientRef.current === client) setExternalSessionCreatingKind(null);
     }
   }, [locale]);
+  const readSelectedExternalTerminal = useCallback(async (): Promise<ExternalTerminalSnapshot> => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (
+      !client
+      || !session
+      || session.sourceId !== "runtime"
+      || !client.supportsFeature("external.sessions.terminal-mirror.v1")
+      || !client.supports("external.sessions.terminal.snapshot")
+    ) {
+      throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
+    }
+    return await client.terminalSnapshot(session.id);
+  }, [locale, selectedExternalSession]);
+  const sendSelectedExternalTerminalInput = useCallback(async (text: string): Promise<void> => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (!client || !session || session.sourceId !== "runtime" || !client.supports("external.sessions.terminal.input")) {
+      throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
+    }
+    await client.terminalInput(session.id, text);
+  }, [locale, selectedExternalSession]);
+  const sendSelectedExternalTerminalKey = useCallback(async (key: ExternalTerminalKey): Promise<void> => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (!client || !session || session.sourceId !== "runtime" || !client.supports("external.sessions.terminal.key")) {
+      throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
+    }
+    await client.terminalKey(session.id, key);
+  }, [locale, selectedExternalSession]);
   const resumeSelectedExternalSession = useCallback(async () => {
     const client = clientRef.current;
     const session = selectedExternalSession;
@@ -5938,13 +5987,13 @@ export default function App() {
       setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
       return;
     }
-    setExternalSessionAction({ sessionId: session.id, kind: "resume" });
-    setExternalSessionActionError("");
+    setExternalSessionActions((current) => ({ ...current, [session.id]: "resume" }));
+    setExternalSessionActionErrors((current) => ({ ...current, [session.id]: "" }));
     try {
       const result = await client.resumeExternalSession(session.id);
       if (clientRef.current !== client) return;
       if (!result) {
-        setExternalSessionActionError(makeT(locale)("externalSessionsOldEngine"));
+        setExternalSessionActionErrors((current) => ({ ...current, [session.id]: makeT(locale)("externalSessionsOldEngine") }));
         return;
       }
       setExternalSessions((current) => current.map((candidate) => (
@@ -5953,10 +6002,16 @@ export default function App() {
       setExternalSessionActivity((current) => ({ ...current, [result.session.id]: [] }));
       setExternalTranscript(result);
     } catch (error: any) {
-      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+      if (clientRef.current === client) {
+        setExternalSessionActionErrors((current) => ({ ...current, [session.id]: String(error?.message ?? error).slice(0, 240) }));
+      }
     } finally {
       if (clientRef.current === client) {
-        setExternalSessionAction((current) => current?.sessionId === session.id ? null : current);
+        setExternalSessionActions((current) => {
+          const next = { ...current };
+          delete next[session.id];
+          return next;
+        });
       }
     }
   }, [locale, selectedExternalSession]);
@@ -5965,11 +6020,12 @@ export default function App() {
     const session = selectedExternalSession;
     if (!client || !session || !externalTranscript || externalTranscript.readOnly || !client.supports("external.sessions.submit")) {
       const message = makeT(locale)("externalSessionsResumeFirstBody");
-      setExternalSessionActionError(message);
+      if (session) setExternalSessionActionErrors((current) => ({ ...current, [session.id]: message }));
+      else setExternalSessionActionError(message);
       throw new Error(message);
     }
-    setExternalSessionAction({ sessionId: session.id, kind: "turn" });
-    setExternalSessionActionError("");
+    setExternalSessionActions((current) => ({ ...current, [session.id]: "turn" }));
+    setExternalSessionActionErrors((current) => ({ ...current, [session.id]: "" }));
     setExternalSessionActivity((current) => ({
       ...current,
       [session.id]: [{ id: `external-user:${Date.now()}`, kind: "user", text }],
@@ -5977,14 +6033,20 @@ export default function App() {
     try {
       const result = await client.submitExternalSession(session.id, text);
       if (clientRef.current !== client) return;
-      if (result.error) setExternalSessionActionError(result.error);
+      if (result.error) setExternalSessionActionErrors((current) => ({ ...current, [session.id]: result.error ?? "" }));
       refreshExternalTranscriptRef.current(result.sessionId);
     } catch (error: any) {
-      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+      if (clientRef.current === client) {
+        setExternalSessionActionErrors((current) => ({ ...current, [session.id]: String(error?.message ?? error).slice(0, 240) }));
+      }
       throw error;
     } finally {
       if (clientRef.current === client) {
-        setExternalSessionAction((current) => current?.sessionId === session.id ? null : current);
+        setExternalSessionActions((current) => {
+          const next = { ...current };
+          delete next[session.id];
+          return next;
+        });
       }
     }
   }, [externalTranscript, locale, selectedExternalSession]);
@@ -5994,10 +6056,11 @@ export default function App() {
     const source = externalSources?.find((candidate) => candidate.id === session?.sourceId);
     if (!client || !session || source?.capabilities.steer !== true || !client.supports("external.sessions.steer")) {
       const message = makeT(locale)("externalSessionsSteerUnavailable");
-      setExternalSessionActionError(message);
+      if (session) setExternalSessionActionErrors((current) => ({ ...current, [session.id]: message }));
+      else setExternalSessionActionError(message);
       throw new Error(message);
     }
-    setExternalSessionActionError("");
+    setExternalSessionActionErrors((current) => ({ ...current, [session.id]: "" }));
     setExternalSessionActivity((current) => ({
       ...current,
       [session.id]: [
@@ -6008,7 +6071,9 @@ export default function App() {
     try {
       await client.steerExternalSession(session.id, text);
     } catch (error: any) {
-      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+      if (clientRef.current === client) {
+        setExternalSessionActionErrors((current) => ({ ...current, [session.id]: String(error?.message ?? error).slice(0, 240) }));
+      }
       throw error;
     }
   }, [externalSources, locale, selectedExternalSession]);
@@ -6016,30 +6081,38 @@ export default function App() {
     const client = clientRef.current;
     const session = selectedExternalSession;
     if (!client || !session || !client.supports("external.sessions.interrupt")) return;
-    setExternalSessionAction({ sessionId: session.id, kind: "interrupt" });
-    setExternalSessionActionError("");
+    setExternalSessionActions((current) => ({ ...current, [session.id]: "interrupt" }));
+    setExternalSessionActionErrors((current) => ({ ...current, [session.id]: "" }));
     try {
       await client.interruptExternalSession(session.id);
     } catch (error: any) {
       if (clientRef.current === client) {
-        setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
-        setExternalSessionAction({ sessionId: session.id, kind: "turn" });
+        setExternalSessionActionErrors((current) => ({ ...current, [session.id]: String(error?.message ?? error).slice(0, 240) }));
+        setExternalSessionActions((current) => ({ ...current, [session.id]: "turn" }));
       }
     }
   }, [selectedExternalSession]);
   const answerExternalSessionApproval = useCallback(async (verdict: "deny" | "allow" | "always") => {
     const client = clientRef.current;
-    const approval = externalSessionApproval;
+    const sessionId = selectedExternalSession?.id;
+    const approval = sessionId ? externalSessionApprovals[sessionId] : undefined;
     if (!client || !approval) return;
     try {
       await client.approvalReply(approval.approvalId, verdict !== "deny", verdict === "always");
       if (clientRef.current === client) {
-        setExternalSessionApproval((current) => current?.approvalId === approval.approvalId ? null : current);
+        setExternalSessionApprovals((current) => {
+          if (!sessionId || current[sessionId]?.approvalId !== approval.approvalId) return current;
+          const next = { ...current };
+          delete next[sessionId];
+          return next;
+        });
       }
     } catch (error: any) {
-      if (clientRef.current === client) setExternalSessionActionError(String(error?.message ?? error).slice(0, 240));
+      if (clientRef.current === client && sessionId) {
+        setExternalSessionActionErrors((current) => ({ ...current, [sessionId]: String(error?.message ?? error).slice(0, 240) }));
+      }
     }
-  }, [externalSessionApproval]);
+  }, [externalSessionApprovals, selectedExternalSession?.id]);
 
   // ── boot / error screen ────────────────────────────────────────────────────
   if (phase !== "ready") {
@@ -8111,15 +8184,15 @@ export default function App() {
       selectedSourceId={externalSessionSourceId}
       transcript={externalTranscript?.session.id === selectedExternalSession?.id ? externalTranscript : null}
       activity={selectedExternalSession ? externalSessionActivity[selectedExternalSession.id] ?? [] : []}
-      approval={externalSessionApproval?.sessionId === selectedExternalSession?.id ? externalSessionApproval : null}
+      approval={selectedExternalSession ? externalSessionApprovals[selectedExternalSession.id] ?? null : null}
       loading={externalSessionsLoading}
       transcriptLoading={externalTranscriptLoading}
-      actionBusy={externalSessionAction !== null && externalSessionAction.sessionId === selectedExternalSession?.id
-        ? externalSessionAction.kind
-        : ""}
+      actionBusy={selectedExternalSession ? externalSessionActions[selectedExternalSession.id] ?? "" : ""}
       creatingKind={externalSessionCreatingKind}
       error={externalSessionsError}
-      actionError={externalSessionActionError}
+      actionError={selectedExternalSession
+        ? externalSessionActionErrors[selectedExternalSession.id] ?? ""
+        : externalSessionActionError}
       personal={activeSpaceId === "personal"}
       locale={locale}
       onRefresh={refreshExternalSessions}
@@ -8131,6 +8204,9 @@ export default function App() {
       onSteer={steerSelectedExternalSession}
       onInterrupt={interruptSelectedExternalSession}
       onApproval={answerExternalSessionApproval}
+      onReadTerminal={readSelectedExternalTerminal}
+      onTerminalInput={sendSelectedExternalTerminalInput}
+      onTerminalKey={sendSelectedExternalTerminalKey}
       copy={{
         eyebrow: t("externalSessionsEyebrow"),
         title: t("externalSessionsTitle"),
@@ -8168,8 +8244,10 @@ export default function App() {
         readOnlyBody: t("externalSessionsReadOnlyBody"),
         writableTitle: t("externalSessionsWritableTitle"),
         writableBody: t("externalSessionsWritableBody"),
-        liveTitle: t("externalSessionsLiveTitle"),
-        liveBody: t("externalSessionsLiveBody"),
+        liveCodexTitle: t("externalSessionsLiveCodexTitle"),
+        liveCodexBody: t("externalSessionsLiveCodexBody"),
+        liveClaudeTitle: t("externalSessionsLiveClaudeTitle"),
+        liveClaudeBody: t("externalSessionsLiveClaudeBody"),
         followUpTitle: t("externalSessionsFollowUpTitle"),
         followUpBody: t("externalSessionsFollowUpBody"),
         waitTitle: t("externalSessionsWaitTitle"),
@@ -8195,6 +8273,31 @@ export default function App() {
         runtimeCodex: t("externalSessionsRuntimeCodex"),
         runtimeClaude: t("externalSessionsRuntimeClaude"),
         runtimeCreating: t("externalSessionsRuntimeCreating"),
+        runtimeEngine: t("externalSessionsRuntimeEngine"),
+        runtimeModel: t("externalSessionsRuntimeModel"),
+        runtimeModelPlaceholder: t("externalSessionsRuntimeModelPlaceholder"),
+        runtimeEffort: t("externalSessionsRuntimeEffort"),
+        runtimeWorkMode: t("externalSessionsRuntimeWorkMode"),
+        runtimeFast: t("externalSessionsRuntimeFast"),
+        runtimeStart: t("externalSessionsRuntimeStart"),
+        runtimeDefault: t("externalSessionsRuntimeDefault"),
+        runtimeCodexWork: t("externalSessionsRuntimeCodexWork"),
+        runtimeCodexPlan: t("externalSessionsRuntimeCodexPlan"),
+        runtimeClaudeWork: t("externalSessionsRuntimeClaudeWork"),
+        runtimeClaudePlan: t("externalSessionsRuntimeClaudePlan"),
+        runtimeClaudeManual: t("externalSessionsRuntimeClaudeManual"),
+        runtimeClaudeAuto: t("externalSessionsRuntimeClaudeAuto"),
+        runtimeClaudeDontAsk: t("externalSessionsRuntimeClaudeDontAsk"),
+        detailsView: t("externalSessionsDetailsView"),
+        terminalView: t("externalSessionsTerminalView"),
+        terminalTitle: t("externalSessionsTerminalTitle"),
+        terminalBody: t("externalSessionsTerminalBody"),
+        terminalEmpty: t("externalSessionsTerminalEmpty"),
+        terminalPlaceholder: t("externalSessionsTerminalPlaceholder"),
+        terminalSend: t("externalSessionsTerminalSend"),
+        terminalRefresh: t("externalSessionsTerminalRefresh"),
+        terminalLocalOnly: t("externalSessionsTerminalLocalOnly"),
+        terminalKeyHelp: t("externalSessionsTerminalKeyHelp"),
         sourceStates: {
           ready: t("externalSourceReady"),
           adapter_required: t("externalSourceAdapterRequired"),

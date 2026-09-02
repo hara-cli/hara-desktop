@@ -48,6 +48,18 @@ export interface CreatedSessionInfo {
 
 export type ExternalSessionSourceId = "runtime" | "codex" | "claude";
 export type ExternalRuntimeAgentKind = "codex" | "claude";
+export type ExternalRuntimeEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ExternalRuntimeClaudePermissionMode = "manual" | "acceptEdits" | "plan" | "auto" | "dontAsk";
+export type ExternalRuntimeCodexSandboxMode = "read-only" | "workspace-write";
+export type ExternalRuntimeServiceTier = "fast";
+export interface ExternalRuntimeLaunchOptions {
+  model?: string;
+  effort?: ExternalRuntimeEffort;
+  permissionMode?: ExternalRuntimeClaudePermissionMode;
+  sandboxMode?: ExternalRuntimeCodexSandboxMode;
+  serviceTier?: ExternalRuntimeServiceTier;
+}
+export type ExternalTerminalKey = "enter" | "esc" | "up" | "down" | "left" | "right" | "tab" | "shift+tab" | "ctrl+c" | "ctrl+d" | "ctrl+l";
 export type ExternalSessionSourceState = "ready" | "adapter_required" | "not_installed" | "error";
 export type ExternalSessionState = "stored" | "idle" | "working" | "waiting" | "error" | "unknown";
 
@@ -67,6 +79,8 @@ export interface ExternalSessionSourceInfo {
     submit: boolean;
     steer: boolean;
     interrupt: boolean;
+    terminalView?: boolean;
+    terminalInput?: boolean;
   };
 }
 
@@ -121,6 +135,13 @@ export interface ExternalSteerResult {
   sessionId: string;
   turnId: string;
   accepted: true;
+}
+
+export interface ExternalTerminalSnapshot {
+  sessionId: string;
+  text: string;
+  state: ExternalSessionState;
+  updatedAt: string;
 }
 
 export interface AgentInfo {
@@ -1220,6 +1241,7 @@ export class HaraClient {
     cwd: string;
     agentKind: ExternalRuntimeAgentKind;
     title?: string;
+    launch?: ExternalRuntimeLaunchOptions;
   }): Promise<ExternalSessionReadResult | null> {
     if (this.methods.size > 0 && !this.supports("external.sessions.create")) return null;
     try {
@@ -1252,6 +1274,15 @@ export class HaraClient {
   }
   interruptExternalSession(sessionId: string) {
     return this.call<Record<string, never>>("external.sessions.interrupt", { sessionId });
+  }
+  terminalSnapshot(sessionId: string) {
+    return this.call<ExternalTerminalSnapshot>("external.sessions.terminal.snapshot", { sessionId });
+  }
+  terminalInput(sessionId: string, text: string) {
+    return this.call<Record<string, never>>("external.sessions.terminal.input", { sessionId, text });
+  }
+  terminalKey(sessionId: string, key: ExternalTerminalKey) {
+    return this.call<Record<string, never>>("external.sessions.terminal.key", { sessionId, key });
   }
   createSession(opts?: { cwd?: string; approval?: ApprovalMode; agentRef?: string; profileId?: string; spaceId?: string }) {
     return this.call<CreatedSessionInfo>("session.create", opts ?? {});
