@@ -1,6 +1,19 @@
 # Changelog
 
-## 0.1.135 — 2026-09-02 — verified native terminal release
+## 0.1.136 — 2026-09-02 — cross-shell Windows release
+
+- Carry forward the structured workbench and native terminal inspector: both views control the same Hara Live
+  Codex or Claude Code process, with provider-specific model, effort, safe work mode, and Codex fast-mode
+  controls. Terminal mirroring stays local and consumes no model tokens.
+- Extract the checksum-pinned Herdr Windows ZIP with the operating system's `Expand-Archive`, using relative paths
+  inside the verified temporary directory. This works independently of whether the release shell exposes GNU tar
+  or native bsdtar first in `PATH`.
+- Bundle Hara CLI `0.162.0` at exact verified commit `8bbe7ba8134827fe443e594f4e717cf569bd0486`.
+
+## 0.1.135 — 2026-09-02 — unpublished Windows packaging candidate
+
+- This tag stayed as a hidden draft and was not promoted: Git Bash selected GNU tar, which cannot unpack the
+  checksum-pinned Herdr Windows ZIP. `0.1.136` replaces the shell-dependent extraction step.
 
 - Carry forward the structured workbench and native terminal inspector from unpublished `0.1.134`: both views
   control the same Hara Live Codex or Claude Code process, with provider-specific model, effort, safe work mode,

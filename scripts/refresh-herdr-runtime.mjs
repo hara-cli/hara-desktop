@@ -67,22 +67,37 @@ try {
 
   let executable = body;
   if (windows) {
-    // Keep tar operands relative to its working directory. Git Bash may resolve `tar` to the
-    // native Windows bsdtar, which treats an absolute `C:\\...` operand as a remote archive
-    // (`host:path`) and fails with "Cannot connect to C". Relative operands work identically for
-    // native bsdtar and GNU tar while keeping extraction contained in the verified scratch tree.
+    // Keep extractor operands relative to the verified scratch directory. On Windows the release
+    // shell is Git Bash: its GNU tar treats `C:\\...` as a remote address and cannot unpack ZIP,
+    // while Windows PowerShell's built-in Expand-Archive handles the pinned Herdr ZIP directly.
     const archiveName = basename(entry.asset);
     const extractedName = "extracted";
     const archive = join(scratch, archiveName);
     const extracted = join(scratch, extractedName);
     await mkdir(extracted);
     await writeFile(archive, body, { mode: 0o600 });
-    const result = spawnSync("tar", ["-xf", archiveName, "-C", extractedName], {
-      cwd: scratch,
-      encoding: "utf8",
-      windowsHide: true,
-    });
-    if (result.status !== 0) throw new Error(`extract Herdr Windows archive: ${result.stderr || result.stdout}`);
+    let result;
+    if (process.platform === "win32") {
+      const extractorName = "extract-herdr.ps1";
+      await writeFile(join(scratch, extractorName), [
+        "param([Parameter(Mandatory=$true)][string]$Archive, [Parameter(Mandatory=$true)][string]$Destination)",
+        "$ErrorActionPreference = 'Stop'",
+        "Expand-Archive -LiteralPath $Archive -DestinationPath $Destination -Force",
+      ].join("\r\n"), { mode: 0o600 });
+      result = spawnSync("powershell.exe", [
+        "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+        "-File", extractorName, archiveName, extractedName,
+      ], { cwd: scratch, encoding: "utf8", windowsHide: true });
+    } else {
+      result = spawnSync("tar", ["-xf", archiveName, "-C", extractedName], {
+        cwd: scratch,
+        encoding: "utf8",
+        windowsHide: true,
+      });
+    }
+    if (result.error || result.status !== 0) {
+      throw new Error(`extract Herdr Windows archive: ${result.stderr || result.stdout || result.error}`);
+    }
     const queue = [extracted];
     let found;
     while (queue.length && !found) {
