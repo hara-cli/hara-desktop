@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.133 — 2026-09-02 — complete native-session release
+
+- Carry forward the same-ID Codex and Claude Code handoff from `0.1.132`, whose tag was stopped before
+  publication after the release matrix exposed a packaging defect inherited from the earlier Herdr rollout.
+- Hydrate and checksum-verify the pinned Herdr `0.8.2` runtime for every macOS, Windows, and Linux target before
+  Tauri resolves its external binaries. Release checkouts no longer depend on ignored workstation artifacts,
+  so all native packages can include both Hara CLI `0.161.0` and the separately verified Herdr runtime.
+
 ## 0.1.132 — 2026-09-02 — native provider-session handoff
 
 - Continue saved Codex and Claude Code histories in their original provider-native session after one explicit

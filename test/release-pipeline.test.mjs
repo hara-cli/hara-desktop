@@ -1657,6 +1657,20 @@ test("release installs and audits use finite official-registry retry helpers", (
   assert.doesNotMatch(auditHelper, /while true|registry\.npmmirror\.com|npmmirror/);
 });
 
+test("every native release target hydrates the checksum-pinned Herdr runtime before Tauri builds", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const haraCopy = workflow.indexOf('"$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}${EXT}"');
+  const herdrHydration = workflow.indexOf(
+    'node "$GITHUB_WORKSPACE/scripts/refresh-herdr-runtime.mjs" "${{ matrix.target }}"',
+    haraCopy,
+  );
+  const tauriBuild = workflow.indexOf("- name: Build local packages", herdrHydration);
+
+  assert.ok(haraCopy >= 0, "the release matrix must install the target-specific Hara sidecar");
+  assert.ok(herdrHydration > haraCopy, "the matching Herdr runtime must be verified beside Hara");
+  assert.ok(tauriBuild > herdrHydration, "Tauri must not resolve externalBin before Herdr exists");
+});
+
 test("sidecar-only npm installation defers lifecycle scripts without changing ordinary CI", () => {
   const directory = mkdtempSync(join(tmpdir(), "hara-npm-ci-retry-"));
   try {
