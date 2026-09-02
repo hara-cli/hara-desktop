@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.140 — 2026-09-03 — composer stays visible in short windows
+
+- Keep the conversation column shrinkable, make the transcript its sole vertical scroller, and prevent the
+  composer from flex-shrinking. Long replies and short or resized windows can no longer push the input area
+  below the visible Desktop surface.
+- Carry forward Hara CLI `0.164.0`, explicit vision-first routing, DeepSeek
+  `deepseek-v4-flash-vision-exp`, Volcengine Ark Agent Plan, deterministic Cron previews, and clean updater
+  restart accounting from the fully verified `0.1.139` candidate.
+
 ## 0.1.139 — 2026-09-03 — explicit vision-first image routing
 
 - Restore a bilingual vision-first control in Model Settings. When enabled, every attached image and computer

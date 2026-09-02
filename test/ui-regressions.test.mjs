@@ -87,6 +87,19 @@ test("markdown code selections remain legible on the dark code surface in every 
   assert.match(daylight, /--code-selection-bg:\s*#a94334\s*;/);
 });
 
+test("the transcript scrolls without pushing the composer outside a short window", () => {
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const chat = css.match(/^\.chat \{([\s\S]*?)\n\}/m)?.[1] ?? "";
+  const scroll = css.match(/^\.scroll \{([\s\S]*?)\n\}/m)?.[1] ?? "";
+  const inputbar = css.match(/^\.inputbar \{([\s\S]*?)\n\}/m)?.[1] ?? "";
+
+  assert.match(chat, /min-height:\s*0\s*;/, "the conversation column may shrink inside the app shell");
+  assert.match(chat, /overflow:\s*hidden\s*;/, "only the transcript owns vertical overflow");
+  assert.match(scroll, /min-height:\s*0\s*;/, "long messages shrink into the transcript scroller");
+  assert.match(scroll, /overflow-y:\s*auto\s*;/);
+  assert.match(inputbar, /flex:\s*0\s+0\s+auto\s*;/, "the composer remains visible at every supported height");
+});
+
 test("rail buttons reset global padding so navigation SVGs cannot collapse into dots", () => {
   const css = readFileSync(`${root}/src/App.css`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
