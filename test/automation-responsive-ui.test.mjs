@@ -58,3 +58,19 @@ test("scheduler status copy follows the selected Desktop language", () => {
   assert.match(banner, /body = copy\.schedulerOfflineBody/);
   assert.match(banner, /body = copy\.schedulerReadyBody/);
 });
+
+test("automation delivery status distinguishes recoverable and terminal queues without exposing targets", () => {
+  const source = read("src/Automations.tsx");
+  const english = read("src/automation-copy-en.ts");
+  const labeler = source.slice(source.indexOf("function safeDeliveryLabel"), source.indexOf("function nextUpcoming"));
+
+  for (const state of ["pending", "retrying", "blocked", "dead_letter"]) {
+    assert.match(source, new RegExp(`state\\?:[^;]+${state}`), `wire type must retain ${state}`);
+    assert.match(labeler, new RegExp(`job\\.delivery\\.state === \"${state}\"`));
+  }
+  assert.match(labeler, /job\.delivery\.pendingCount/);
+  assert.match(labeler, /copy\.deliveryBlocked/);
+  assert.match(labeler, /copy\.deliveryDeadLetter/);
+  assert.match(english, /Delivery blocked; check credentials/);
+  assert.match(english, /Delivery stopped; check target or authorization/);
+});

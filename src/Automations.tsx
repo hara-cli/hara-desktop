@@ -65,6 +65,8 @@ export interface AutomationJob {
     kind?: "none" | "feishu" | "weixin" | "telegram" | "webhook" | "other" | string;
     label?: string;
     mode?: "always" | "on-output" | "on-error" | string;
+    state?: "ready" | "pending" | "retrying" | "blocked" | "dead_letter" | string;
+    pendingCount?: number;
   };
   deliverMode?: "off" | "always" | "error" | "on-output" | "on-error" | string;
   alertAfter?: number;
@@ -203,6 +205,10 @@ export interface AutomationCopy {
   deliveryLocal: string;
   deliveryWebhook: string;
   deliveryExternal: string;
+  deliveryPending: string;
+  deliveryRetrying: string;
+  deliveryBlocked: string;
+  deliveryDeadLetter: string;
   errorLabel: string;
   close: string;
   cancel: string;
@@ -361,6 +367,10 @@ const DEFAULT_COPY: AutomationCopy = {
   deliveryLocal: "仅保存在 Hara",
   deliveryWebhook: "Webhook（地址已隐藏）",
   deliveryExternal: "外部通知",
+  deliveryPending: "等待投递",
+  deliveryRetrying: "正在重试",
+  deliveryBlocked: "投递已阻塞，请检查凭据",
+  deliveryDeadLetter: "投递已停止，请检查目标或授权",
   errorLabel: "错误",
   close: "关闭",
   cancel: "取消",
@@ -724,8 +734,20 @@ function resultLabel(status: string | undefined, copy: AutomationCopy): string {
 function safeDeliveryLabel(job: AutomationJob, copy: AutomationCopy): string {
   if (job.delivery) {
     if (!job.delivery.kind || job.delivery.kind === "none") return copy.deliveryLocal;
-    if (job.delivery.kind === "webhook") return copy.deliveryWebhook;
-    return job.delivery.label?.trim() || copy.deliveryExternal;
+    const base = job.delivery.kind === "webhook"
+      ? copy.deliveryWebhook
+      : job.delivery.label?.trim() || copy.deliveryExternal;
+    const state = job.delivery.state === "dead_letter"
+      ? copy.deliveryDeadLetter
+      : job.delivery.state === "blocked"
+        ? copy.deliveryBlocked
+        : job.delivery.state === "retrying"
+          ? copy.deliveryRetrying
+          : job.delivery.state === "pending"
+            ? copy.deliveryPending
+            : "";
+    const count = state && job.delivery.pendingCount ? ` (${job.delivery.pendingCount})` : "";
+    return state ? `${base} · ${state}${count}` : base;
   }
   if (!job.deliver || job.deliverMode === "off") return copy.deliveryLocal;
   if (typeof job.deliver === "string") {

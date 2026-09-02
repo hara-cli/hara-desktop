@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   providerModelDescription,
   TOKEN_PLAN_AGENT_MODEL_IDS,
+  VOLCENGINE_AGENT_PLAN_MODEL_IDS,
 } from "../src/provider-model-capabilities.ts";
 
 test("Token Plan chat catalog exposes current Agent models with honest modality labels", () => {
@@ -22,4 +23,13 @@ test("Token Plan chat catalog exposes current Agent models with honest modality 
   assert.doesNotMatch(providerModelDescription("token-plan", "qwen3.7-max", "zh"), /视觉/);
   assert.equal(providerModelDescription("openai", "qwen3.8-flash", "zh"), undefined);
   assert.equal(providerModelDescription("token-plan", "qwen-image-3.0-pro", "zh"), undefined);
+});
+
+test("Volcengine Agent Plan catalog exposes current context, modality, and plan constraints", () => {
+  assert.equal(VOLCENGINE_AGENT_PLAN_MODEL_IDS[0], "ark-code-latest");
+  assert.equal(VOLCENGINE_AGENT_PLAN_MODEL_IDS.includes("doubao-seedream-5.0-lite"), false);
+  assert.match(providerModelDescription("volcengine-agent-plan", "glm-5.3-flash", "zh"), /视觉.*推理.*1M/);
+  assert.match(providerModelDescription("volcengine-agent-plan", "glm-5.3", "zh"), /始终思考/);
+  assert.match(providerModelDescription("volcengine-agent-plan", "kimi-k3", "en"), /Medium plan or higher/);
+  assert.equal(providerModelDescription("openai", "glm-5.3-flash", "zh"), undefined);
 });

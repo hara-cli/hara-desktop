@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.138 — 2026-09-02 — clean update restarts and visible delivery recovery
+
+- Retire the current clean-run crash marker synchronously before Tauri replaces the process for an installed
+  update. A normal updater restart can no longer be reported as `unclean_exit` when the replacement path does
+  not emit the usual application-exit event; a marker retirement failure stops the restart rather than
+  creating a known false report.
+- Show scheduled-delivery state and bounded pending counts in Automations, distinguishing pending, retrying,
+  credential-blocked, and stopped/dead-letter effects without exposing destinations or transport errors.
+- Add Volcengine Ark Agent Plan as a first-class personal connection with the fixed Beijing Responses endpoint,
+  current model catalog, model-specific reasoning controls, and bilingual setup guidance. Codex-style Hara use
+  and direct Claude Code use stay visibly separated because Ark exposes different protocol routes for them.
+- Bundle Hara CLI `0.163.0` at exact verified commit
+  `3b3865a5106342c1f3aeba25205e17535bb62668`, including the Agent Plan provider, delivery preflight and bounded
+  recovery, one-step Home workspace recovery, checkpoint loop prevention, and per-adapter Session Center
+  degradation. DeepSeek's native `deepseek-v4-flash-vision-exp` image route remains included. Windows packages
+  remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.137 — 2026-09-02 — resilient verified release runtime
 
 - Carry forward the structured workbench and native terminal inspector: both views control the same Hara Live

@@ -2710,15 +2710,30 @@ fn initialize_crash_tracking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Re
         .map_err(|error| format!("persist crash marker: {error}"))
 }
 
-fn clear_crash_tracking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    let Ok(directory) = crash_report_directory(app) else {
-        return;
-    };
-    let marker = directory.join(format!(
+fn crash_run_marker<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
+    Ok(crash_report_directory(app)?.join(format!(
         "{CRASH_RUN_MARKER_PREFIX}{}{CRASH_RUN_MARKER_SUFFIX}",
         std::process::id(),
-    ));
-    let _ = fs::remove_file(marker);
+    )))
+}
+
+fn retire_crash_run_marker_at(marker: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(marker) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            Err("crash run marker is not a regular file".into())
+        }
+        Ok(_) => {
+            fs::remove_file(marker).map_err(|error| format!("retire crash run marker: {error}"))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("inspect crash run marker: {error}")),
+    }
+}
+
+fn clear_crash_tracking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Ok(marker) = crash_run_marker(app) {
+        let _ = retire_crash_run_marker_at(&marker);
+    }
 }
 
 #[tauri::command]
@@ -2899,6 +2914,22 @@ fn update_restart_marker(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("resolve app data directory: {e}"))
 }
 
+fn prepare_update_restart_markers_at(
+    update_marker: &Path,
+    crash_marker: &Path,
+) -> Result<(), String> {
+    arm_update_restart_marker_at(update_marker)?;
+    if let Err(retire_error) = retire_crash_run_marker_at(crash_marker) {
+        return match take_update_restart_marker_at(update_marker) {
+            Ok(_) => Err(retire_error),
+            Err(rollback_error) => Err(format!(
+                "{retire_error}; rollback update restart marker: {rollback_error}"
+            )),
+        };
+    }
+    Ok(())
+}
+
 /// This one-shot marker is the only path that auto-starts a sidecar on launch. Ordinary launches
 /// continue to discover an existing Serve process and otherwise wait for the user.
 #[tauri::command]
@@ -2910,7 +2941,10 @@ fn take_update_restart_marker(app: tauri::AppHandle) -> Result<bool, String> {
 /// The marker survives the process boundary, is consumed once, and grants no general process control.
 #[tauri::command]
 fn restart_after_update(app: tauri::AppHandle) -> Result<(), String> {
-    arm_update_restart_marker_at(&update_restart_marker(&app)?)?;
+    // Tauri's process replacement is not guaranteed to deliver RunEvent::Exit before the new binary
+    // starts. Retire this known-clean run synchronously so the next launch cannot report an update as
+    // an unclean exit. If retirement fails, roll back the update marker and do not restart.
+    prepare_update_restart_markers_at(&update_restart_marker(&app)?, &crash_run_marker(&app)?)?;
     app.restart();
 }
 
@@ -4600,6 +4634,34 @@ mod pet_tests {
         arm_update_restart_marker_at(&marker).unwrap();
         assert!(take_update_restart_marker_at(&marker).unwrap());
         assert!(!take_update_restart_marker_at(&marker).unwrap());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn update_restart_prepares_both_markers_atomically_before_process_replacement() {
+        let unique = format!(
+            "hara-desktop-crash-marker-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&dir).unwrap();
+        let crash_marker = dir.join("run-current.marker");
+        let update_marker = dir.join(UPDATE_RESTART_MARKER);
+        fs::write(&crash_marker, b"started\n").unwrap();
+        prepare_update_restart_markers_at(&update_marker, &crash_marker).unwrap();
+        assert!(!crash_marker.exists());
+        assert!(take_update_restart_marker_at(&update_marker).unwrap());
+
+        fs::create_dir(&crash_marker).unwrap();
+        assert!(prepare_update_restart_markers_at(&update_marker, &crash_marker).is_err());
+        assert!(
+            !update_marker.exists(),
+            "a failed crash-marker retirement rolls back the update marker"
+        );
         let _ = fs::remove_dir_all(dir);
     }
 

@@ -827,6 +827,7 @@ test("provider settings keep credentials transient and support local no-key pres
     "built-in provider names are localized without changing stable provider IDs");
   assert.match(providerSettings, /<option value=\{provider\.id\} key=\{provider\.id\}>\{providerDisplayName\(provider, locale\)\}<\/option>/,
     "the provider selector displays the active locale instead of engine-internal English labels");
+  assert.match(providerSettings, /"volcengine-agent-plan": \{ en: "Volcengine Ark Agent Plan", zh: "火山方舟 Agent Plan" \}/);
   assert.match(providerSettings, /defaultEffort: "Default reasoning effort"[\s\S]*defaultEffort: "默认思考强度"/,
     "the connection editor names reasoning as a default instead of changing active work");
   assert.match(providerSettings, /effortMinimal: "最少"[\s\S]*effortXHigh: "超高"/,
@@ -866,18 +867,21 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /provider\.location !== "managed"[\s\S]{0,100}!isLegacyProvider\(provider\)/);
   assert.match(providerSettings, /new Set\(\["qwen", "qwen-oauth"\]\)/, "old engines cannot re-advertise either legacy Qwen setup entry");
   assert.match(providerSettings, /providerOptionGroups[\s\S]*newPersonalProviders\.filter/, "legacy Qwen routes stay readable but cannot be newly created");
-  assert.match(providerSettings, /new Set\(\["token-plan", "minimax-token-plan"\]\)/,
+  assert.match(providerSettings, /SUBSCRIPTION_PLAN_PROVIDER_IDS = new Set\(\[[\s\S]*"token-plan",[\s\S]*"minimax-token-plan",[\s\S]*"volcengine-agent-plan"/,
     "subscription plans share strict key-scoped model-catalog behavior");
   assert.match(providerSettings, /<ModelCombobox[\s\S]*options=\{selectedModelOptions\}/, "known and live models use one searchable selector");
   assert.match(providerSettings, /customModelNeedsTest[\s\S]*customModelVerified/, "catalog-external IDs expose their verification state");
   assert.match(providerSettings, /const testValid[\s\S]*const valid = testValid && selectedModelAllowed/, "a custom model can be tested before it is allowed to save");
   assert.match(providerSettings, /personalConnectionTestValid[\s\S]*personalConnectionValid = personalConnectionTestValid && personalModelAllowed/);
-  assert.match(providerSettings, /!TOKEN_PLAN_PROVIDER_IDS\.has\(selected\?\.id \?\? ""\) \|\| models\.length === 0/,
+  assert.match(providerSettings, /!SUBSCRIPTION_PLAN_PROVIDER_IDS\.has\(selected\?\.id \?\? ""\) \|\| models\.length === 0/,
     "a live subscription catalog remains authoritative even after a custom probe");
   assert.match(providerSettings, /Token Plan[\s\S]*no Token Plan browser login|Token Plan[\s\S]*不提供 Token Plan 浏览器登录/);
   assert.match(providerSettings, /MiniMax Token Plan[\s\S]*MiniMax-M3[\s\S]*(?:text and image|文字与图片)/,
     "MiniMax Token Plan explains its official Codex route and native multimodality");
   assert.match(preview, /id: "minimax-token-plan"[\s\S]*defaultModel: "MiniMax-M3"[\s\S]*https:\/\/api\.minimaxi\.com\/v1/);
+  assert.match(preview, /id: "volcengine-agent-plan"[\s\S]*defaultModel: "ark-code-latest"[\s\S]*https:\/\/ark\.cn-beijing\.volces\.com\/api\/plan\/v3/);
+  assert.match(providerSettings, /火山方舟 Agent Plan[\s\S]*(?:Codex Responses|ARK_API_KEY)/,
+    "Volcengine Agent Plan explains its dedicated Codex route and key type");
   assert.match(
     providerSettings,
     /selected\.customBaseURL \|\| !!selected\.defaultBaseURL[\s\S]*readOnly=\{!selected\.customBaseURL\}/,

@@ -135,6 +135,7 @@ const words = {
     tokenPlanAuth: "Token Plan uses the official fixed Beijing subscription Base URL shown above and an API key. There is no Token Plan browser login.",
     tokenPlanMedia: "This chat list contains Agent conversation models only. Image, audio, realtime voice, and video generation use separate Hara capabilities.",
     miniMaxTokenPlanAuth: "MiniMax Token Plan uses the official Codex Responses Base URL shown above. MiniMax-M3 accepts text and image input.",
+    volcengineAgentPlanAuth: "Volcengine Ark Agent Plan uses the fixed Beijing Codex Responses Base URL and a dedicated ARK_API_KEY. ark-code-latest follows the model selected in the Ark console.",
     legacyAlibaba: "Legacy Alibaba connection",
     legacyAlibabaHint: "This route remains readable, but its old DashScope/Qwen identity is no longer offered for new connections. Move it to the dedicated Token Plan connection.",
     migrateAlibaba: "Move to Token Plan",
@@ -312,6 +313,7 @@ const words = {
     tokenPlanAuth: "Token Plan 使用上方显示的华北 2（北京）官方固定 Base URL 和 API Key，不提供 Token Plan 浏览器登录。",
     tokenPlanMedia: "此处只列可用于 Agent 对话的模型；图片、音频、实时语音和视频生成由 Hara 的独立能力入口提供。",
     miniMaxTokenPlanAuth: "MiniMax Token Plan 使用上方显示的官方 Codex Responses Base URL；MiniMax-M3 原生支持文字与图片输入。",
+    volcengineAgentPlanAuth: "火山方舟 Agent Plan 使用上方显示的华北 2（北京）Codex Responses 固定地址和专属 ARK_API_KEY；ark-code-latest 跟随方舟控制台所选模型。",
     legacyAlibaba: "旧版阿里云连接",
     legacyAlibabaHint: "此连接仍可读取，但旧 DashScope/Qwen 身份不再用于新建连接；请迁移到独立的 Token Plan 连接。",
     migrateAlibaba: "迁移到 Token Plan",
@@ -427,12 +429,17 @@ const endpointIdentity = (value: string | undefined): string => {
 };
 
 const LEGACY_PERSONAL_PROVIDER_IDS = new Set(["qwen", "qwen-oauth"]);
-const TOKEN_PLAN_PROVIDER_IDS = new Set(["token-plan", "minimax-token-plan"]);
+const SUBSCRIPTION_PLAN_PROVIDER_IDS = new Set([
+  "token-plan",
+  "minimax-token-plan",
+  "volcengine-agent-plan",
+]);
 
 const PROVIDER_NAMES: Record<string, { en: string; zh: string }> = {
   anthropic: { en: "Anthropic", zh: "Anthropic" },
   "token-plan": { en: "Alibaba Cloud Model Studio Token Plan", zh: "阿里云百炼 Token Plan" },
   "minimax-token-plan": { en: "MiniMax Token Plan", zh: "MiniMax Token Plan" },
+  "volcengine-agent-plan": { en: "Volcengine Ark Agent Plan", zh: "火山方舟 Agent Plan" },
   openai: { en: "OpenAI / compatible", zh: "OpenAI / 兼容接口" },
   glm: { en: "GLM (Zhipu)", zh: "智谱 AI（GLM）" },
   deepseek: { en: "DeepSeek", zh: "DeepSeek" },
@@ -709,7 +716,7 @@ export function ProviderSettings({
   const selectedModelVerified = verifiedCustomModels.includes(selectedCandidateKey);
   const selectedModelAllowed = selectedCatalog.length === 0
     || selectedCatalog.includes(draft.model.trim())
-    || (selectedModelVerified && (!TOKEN_PLAN_PROVIDER_IDS.has(selected?.id ?? "") || models.length === 0));
+    || (selectedModelVerified && (!SUBSCRIPTION_PLAN_PROVIDER_IDS.has(selected?.id ?? "") || models.length === 0));
   const testValid = view.kind === "provider" && !!selected && !!draft.model.trim()
     && !keyMissing && !blocked;
   const valid = testValid && selectedModelAllowed;
@@ -736,7 +743,7 @@ export function ProviderSettings({
   const personalModelVerified = verifiedCustomModels.includes(personalCandidateKey);
   const personalModelAllowed = personalCatalog.length === 0
     || personalCatalog.includes(personalDraft.model.trim())
-    || (personalModelVerified && (!TOKEN_PLAN_PROVIDER_IDS.has(personalProvider?.id ?? "") || models.length === 0));
+    || (personalModelVerified && (!SUBSCRIPTION_PLAN_PROVIDER_IDS.has(personalProvider?.id ?? "") || models.length === 0));
   const personalConnectionTestValid = view.kind === "add-personal"
     && !!personalProvider
     && !!personalDraft.model.trim()
@@ -870,7 +877,7 @@ export function ProviderSettings({
       setModelEntries(result.entries ?? []);
       if (
         result.models.length > 0
-        && TOKEN_PLAN_PROVIDER_IDS.has(selected?.id ?? "")
+        && SUBSCRIPTION_PLAN_PROVIDER_IDS.has(selected?.id ?? "")
         && !result.models.includes(draft.model.trim())
       ) {
         setError(copy.modelNotAuthorized);
@@ -948,7 +955,7 @@ export function ProviderSettings({
       setModelEntries(result.entries ?? []);
       if (
         result.models.length > 0
-        && TOKEN_PLAN_PROVIDER_IDS.has(personalProvider?.id ?? "")
+        && SUBSCRIPTION_PLAN_PROVIDER_IDS.has(personalProvider?.id ?? "")
         && !result.models.includes(personalDraft.model.trim())
       ) {
         setError(copy.modelNotAuthorized);
@@ -1257,12 +1264,12 @@ export function ProviderSettings({
   const providerOptionGroups = [
     {
       label: copy.subscriptionPlans,
-      entries: newPersonalProviders.filter((provider) => TOKEN_PLAN_PROVIDER_IDS.has(provider.id)),
+      entries: newPersonalProviders.filter((provider) => SUBSCRIPTION_PLAN_PROVIDER_IDS.has(provider.id)),
     },
     {
       label: copy.apiProviders,
       entries: newPersonalProviders.filter((provider) => (
-        provider.location === "cloud" && !TOKEN_PLAN_PROVIDER_IDS.has(provider.id)
+        provider.location === "cloud" && !SUBSCRIPTION_PLAN_PROVIDER_IDS.has(provider.id)
       )),
     },
     {
@@ -1566,6 +1573,7 @@ export function ProviderSettings({
               {selected.auth === "oauth" && <div className="provider-note">{copy.oauth}</div>}
               {selected.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               {selected.id === "minimax-token-plan" && <div className="provider-note">{copy.miniMaxTokenPlanAuth}</div>}
+              {selected.id === "volcengine-agent-plan" && <div className="provider-note">{copy.volcengineAgentPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               <div className={`provider-data-path ${selected.location}`}>
                 {selected.location === "local" ? copy.dataLocal : copy.dataCloud}
               </div>
@@ -1756,6 +1764,7 @@ export function ProviderSettings({
 
               {personalProvider.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               {personalProvider.id === "minimax-token-plan" && <div className="provider-note">{copy.miniMaxTokenPlanAuth}</div>}
+              {personalProvider.id === "volcengine-agent-plan" && <div className="provider-note">{copy.volcengineAgentPlanAuth}<br />{copy.tokenPlanMedia}</div>}
 
               {personalProvider.auth === "api-key" && (
                 <label>
