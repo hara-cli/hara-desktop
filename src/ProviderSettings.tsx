@@ -7,13 +7,14 @@ import {
   type ProjectProfileUnpinResult,
   type ProviderCatalogEntry,
   type ProviderConnection,
+  type ProviderConnectionCreateInput,
   type ProviderSettingsInput,
   type ProviderSettingsState,
   type VisionSettingsInput,
 } from "./client";
 import type { Locale } from "./i18n";
 import { ModelCombobox } from "./ModelCombobox";
-import { IconCog, IconPlus } from "./icons";
+import { IconPlus } from "./icons";
 import { providerModelDescription } from "./provider-model-capabilities";
 
 interface Draft {
@@ -37,7 +38,10 @@ interface OrganizationDraft {
   gatewayUrl: string;
 }
 
-type PersonalConnectionDraft = Draft;
+interface PersonalConnectionDraft extends Draft {
+  id: string;
+  label: string;
+}
 
 type ConnectionView =
   | { kind: "provider"; id: string }
@@ -72,11 +76,11 @@ const words = {
     managed: "Enterprise managed",
     preset: "Preset",
     personal: "Personal",
-    personalConnections: "Personal model connection",
-    personalConnectionCount: "One connection per Personal Space",
-    addPersonal: "Configure model connection",
-    addFirstPersonal: "Configure the one model connection owned by this Personal Space.",
-    personalUnavailable: "Update the bundled Hara engine to manage the Personal connection here.",
+    personalConnections: "Your model connections",
+    personalConnectionCount: "{count} saved",
+    addPersonal: "Add model connection",
+    addFirstPersonal: "Save another provider or API key as its own named connection.",
+    personalUnavailable: "Update the bundled Hara engine to save more than one personal connection.",
     providerPlan: "Plan or provider",
     subscriptionPlans: "Subscription plans",
     apiProviders: "API providers",
@@ -88,12 +92,16 @@ const words = {
     verifyAndLoad: "Verify key & load models",
     transportAuto: "Hara selects the official OpenAI Responses, Chat, or Anthropic-compatible transport automatically. Use OpenAI / compatible for a custom endpoint.",
     savedConnection: "Saved connection",
-    addPersonalTitle: "Edit the Personal model connection",
-    addPersonalDescription: "Choose a plan, verify its key, and select a model. Personal keeps one current model connection; company connections stay separate.",
-    saveConnectionOnly: "Save and keep current Space",
-    addAndUsePersonal: "Save & switch to Personal",
-    connectionAdded: "Personal connection saved. The current company Space did not change.",
-    connectionAddedAndUsed: "Personal connection saved and selected for new sessions. Running sessions keep their current runtime.",
+    connectionName: "Connection name",
+    connectionNamePlaceholder: "Example: DeepSeek work account",
+    connectionId: "Local connection ID",
+    connectionIdHint: "Generated from the name. It identifies this account on this device and is never a credential.",
+    addPersonalTitle: "Add a personal model connection",
+    addPersonalDescription: "Each provider account is saved independently. You can add the same provider more than once and switch the default at any time.",
+    saveConnectionOnly: "Save without switching",
+    addAndUsePersonal: "Add & use for new sessions",
+    connectionAdded: "Connection saved. The current default route did not change.",
+    connectionAddedAndUsed: "Connection saved and selected for new sessions. Existing sessions keep their original route.",
     usePersonal: "Use for new sessions",
     usingPersonal: "Switching…",
     personalSwitched: "Personal connection switched. Existing sessions keep the connection they started with.",
@@ -101,12 +109,12 @@ const words = {
     testingSaved: "Testing saved connection…",
     keyHintLabel: "Saved key",
     noSavedKey: "No API key required",
-    immutableConnection: "Personal owns one model connection. Replace it to change provider, endpoint, key, or model; company connections remain independent.",
-    changePersonal: "Edit connection",
-    removePersonal: "Clear connection",
+    immutableConnection: "Credentials and routing belong to this exact connection. Add and verify a replacement before removing it; existing sessions are never silently rewritten.",
+    changePersonal: "Add another account",
+    removePersonal: "Remove connection",
     removingPersonal: "Removing…",
-    removePersonalConfirm: "Clear the Personal model connection and its historical compatibility credentials from this device? Personal Space and chat history remain, but affected sessions need a new connection before they can continue. Company connections are not changed.",
-    personalRemoved: "Personal model connection cleared. Personal Space, history, and company connections were kept.",
+    removePersonalConfirm: "Remove this saved connection from this device? Sessions created with it keep their identity and local history, but cannot reconnect after the connection is removed. Add and test a replacement first.",
+    personalRemoved: "Saved connection removed from this device.",
     model: "Model",
     defaultModel: "Default model",
     visionTitle: "Vision-first image recognition",
@@ -281,11 +289,11 @@ const words = {
     managed: "企业托管",
     preset: "预置",
     personal: "个人连接",
-    personalConnections: "个人模型连接",
-    personalConnectionCount: "每个个人空间固定 1 个连接",
-    addPersonal: "配置模型连接",
-    addFirstPersonal: "配置这个个人空间唯一的模型连接。",
-    personalUnavailable: "请升级 Desktop 内置 Hara 引擎后在此管理个人连接。",
+    personalConnections: "你的模型连接",
+    personalConnectionCount: "已保存 {count} 个",
+    addPersonal: "新增模型连接",
+    addFirstPersonal: "把另一家供应商或同一供应商的另一枚 API Key 保存为独立连接。",
+    personalUnavailable: "请升级 Desktop 内置 Hara 引擎后，再保存多个个人连接。",
     providerPlan: "套餐或供应商",
     subscriptionPlans: "订阅套餐",
     apiProviders: "API 供应商",
@@ -297,12 +305,16 @@ const words = {
     verifyAndLoad: "验证 Key 并加载模型",
     transportAuto: "Hara 会自动选择官方 OpenAI Responses、Chat 或 Anthropic 兼容协议；自定义服务端点请使用 OpenAI / compatible。",
     savedConnection: "已保存连接",
-    addPersonalTitle: "编辑个人模型连接",
-    addPersonalDescription: "选择套餐、验证 Key，再选择模型。个人空间只保留一个当前模型连接；企业连接始终独立。",
-    saveConnectionOnly: "保存，保持当前空间",
-    addAndUsePersonal: "保存并切换到个人",
-    connectionAdded: "个人连接已保存，当前公司空间保持不变。",
-    connectionAddedAndUsed: "个人连接已保存并用于新会话；正在运行的会话保持原运行环境。",
+    connectionName: "连接名称",
+    connectionNamePlaceholder: "例如：DeepSeek 工作账号",
+    connectionId: "本机连接标识",
+    connectionIdHint: "根据名称生成，只用于在本机识别这个账号，不是凭据。",
+    addPersonalTitle: "新增个人模型连接",
+    addPersonalDescription: "每个供应商账号独立保存；同一供应商可以添加多次，并可随时切换新会话的默认连接。",
+    saveConnectionOnly: "仅保存，不切换",
+    addAndUsePersonal: "添加并用于新会话",
+    connectionAdded: "连接已保存，当前默认路由保持不变。",
+    connectionAddedAndUsed: "连接已保存并用于新会话；已有会话仍保留原连接。",
     usePersonal: "用于新会话",
     usingPersonal: "正在切换…",
     personalSwitched: "个人连接已切换；已有会话仍保留创建时的连接。",
@@ -310,12 +322,12 @@ const words = {
     testingSaved: "正在测试已保存连接…",
     keyHintLabel: "已保存密钥",
     noSavedKey: "无需 API Key",
-    immutableConnection: "个人空间只拥有一个模型连接；更换供应商、接口、Key 或模型时直接替换，企业连接不受影响。",
-    changePersonal: "编辑连接",
-    removePersonal: "清除连接",
+    immutableConnection: "凭据和路由只属于这一条连接。请先新增并验证替代连接，再移除旧连接；已有会话不会被静默改写。",
+    changePersonal: "添加另一个账号",
+    removePersonal: "移除连接",
     removingPersonal: "正在移除…",
-    removePersonalConfirm: "清除本机的个人模型连接及其历史兼容凭据吗？个人空间和聊天记录会保留，但受影响的会话需要重新配置连接后才能继续；企业连接不受影响。",
-    personalRemoved: "个人模型连接已清除；个人空间、聊天记录和企业连接均已保留。",
+    removePersonalConfirm: "从本机移除这个连接吗？使用它创建的会话会保留原身份和本地历史，但移除后无法重新连接。请先新增并验证替代连接。",
+    personalRemoved: "已从本机移除该连接。",
     model: "模型",
     defaultModel: "默认模型",
     visionTitle: "识图前置模型",
@@ -595,7 +607,29 @@ const uniqueOrganizationId = (
   return `${base.slice(0, 54)}-${Date.now().toString(36)}`;
 };
 
+const uniquePersonalConnectionId = (
+  preferred: string,
+  personal: ProviderConnection[],
+  organizations: OrganizationConnection[],
+): string => {
+  const base = idFromLabel(preferred) || "personal-model";
+  const occupied = new Set([
+    "personal",
+    ...personal.map((item) => item.id),
+    ...organizations.map((item) => item.id),
+  ]);
+  if (!occupied.has(base)) return base;
+  for (let index = 2; index < 1000; index += 1) {
+    const suffix = `-${index}`;
+    const candidate = `${base.slice(0, 64 - suffix.length)}${suffix}`;
+    if (!occupied.has(candidate)) return candidate;
+  }
+  return `${base.slice(0, 54)}-${Date.now().toString(36)}`;
+};
+
 const personalDraftForProvider = (provider: ProviderCatalogEntry): PersonalConnectionDraft => ({
+  id: "",
+  label: provider.label,
   provider: provider.id,
   model: provider.defaultModel,
   baseURL: provider.defaultBaseURL ?? "",
@@ -661,7 +695,8 @@ export function ProviderSettings({
   const [organizations, setOrganizations] = useState<OrganizationConnectionsState | null>(null);
   const [organizationsUnsupported, setOrganizationsUnsupported] = useState(false);
   const [draft, setDraft] = useState<Draft>({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
-  const [personalDraft, setPersonalDraft] = useState<PersonalConnectionDraft>({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
+  const [personalDraft, setPersonalDraft] = useState<PersonalConnectionDraft>({ id: "", label: "", provider: "", model: "", baseURL: "", reasoningEffort: "" });
+  const [personalIdEdited, setPersonalIdEdited] = useState(false);
   const [visionDraft, setVisionDraft] = useState<VisionDraft>({
     enabled: false,
     source: "current",
@@ -834,12 +869,9 @@ export function ProviderSettings({
   const valid = testValid && selectedModelAllowed;
   const personalProvider = personalProviders.find((provider) => provider.id === personalDraft.provider);
   const canonicalPersonal = state?.connections?.find((connection) => connection.id === "personal");
-  const personalCanReuseKey = !!(
-    canonicalPersonal?.keyConfigured
-    && canonicalPersonal.provider === personalDraft.provider
-    && endpointIdentity(canonicalPersonal.baseURL) === endpointIdentity(personalDraft.baseURL || personalProvider?.defaultBaseURL)
-  );
-  const personalKeyMissing = personalProvider?.auth === "api-key" && !apiKey.trim() && !personalCanReuseKey;
+  // Adding a connection always creates a new account boundary. Even when provider and endpoint match,
+  // never borrow the canonical Personal key or another saved connection's credential.
+  const personalKeyMissing = personalProvider?.auth === "api-key" && !apiKey.trim();
   const personalCatalog = models.length > 0 ? models : [...(personalProvider?.knownModels ?? [])];
   const selectedEffortLevels = modelEntries.find((entry) => entry.id === draft.model.trim())?.effortLevels
     ?? selected?.knownModelEntries?.find((entry) => entry.id === draft.model.trim())?.effortLevels
@@ -860,7 +892,10 @@ export function ProviderSettings({
     && !!personalProvider
     && !!personalDraft.model.trim()
     && !personalKeyMissing;
-  const personalConnectionValid = personalConnectionTestValid && personalModelAllowed;
+  const personalIdentityValid = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(personalDraft.id.trim())
+    && personalDraft.id.trim() !== "personal"
+    && !!personalDraft.label.trim();
+  const personalConnectionValid = personalConnectionTestValid && personalModelAllowed && personalIdentityValid;
   const personalConnectionsSupported = Array.isArray(state?.connections);
   const personalSwitchLocked = !!state?.switchLocked || !!state?.current.environmentOverride;
   const organizationValid = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(organizationDraft.id.trim())
@@ -905,35 +940,34 @@ export function ProviderSettings({
 
   const beginPersonalConnection = (preferredProvider?: ProviderCatalogEntry) => {
     const provider = preferredProvider
-      ?? newPersonalProviders.find((candidate) => candidate.id === canonicalPersonal?.provider)
       ?? newPersonalProviders.find((candidate) => candidate.id === state?.current.provider)
       ?? newPersonalProviders[0];
     if (!provider) return;
-    const editingExisting = canonicalPersonal?.provider === provider.id;
-    const next = editingExisting
-      ? {
-          provider: canonicalPersonal.provider,
-          model: canonicalPersonal.model,
-          baseURL: canonicalPersonal.baseURL ?? provider.defaultBaseURL ?? "",
-          reasoningEffort: canonicalPersonal.reasoningEffort ?? "",
-        }
-      : personalDraftForProvider(provider);
-    setPersonalDraft(next);
+    const next = personalDraftForProvider(provider);
+    setPersonalDraft({
+      ...next,
+      label: providerDisplayName(provider, locale),
+      id: uniquePersonalConnectionId(
+        provider.id,
+        state?.connections ?? [],
+        organizations?.connections ?? [],
+      ),
+    });
+    setPersonalIdEdited(false);
     setView({ kind: "add-personal" });
     setApiKey("");
     setRegistrationCode("");
     setModels([]);
     const knownEntries = provider.knownModelEntries ? [...provider.knownModelEntries] : [];
-    setModelEntries(editingExisting && !knownEntries.some((entry) => entry.id === canonicalPersonal.model)
-      ? [...knownEntries, { id: canonicalPersonal.model, effortLevels: canonicalPersonal.effortLevels ?? [] }]
-      : knownEntries);
+    setModelEntries(knownEntries);
     setVerifiedCustomModels([]);
     clearFeedback();
   };
 
   const cancelPersonalConnection = () => {
     setApiKey("");
-    setPersonalDraft({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
+    setPersonalDraft({ id: "", label: "", provider: "", model: "", baseURL: "", reasoningEffort: "" });
+    setPersonalIdEdited(false);
     if (activeOrganization) setView({ kind: "organization", id: activeOrganization.id });
     else if (state) setView(viewForPersonalConnection(activePersonalConnection, state.current.provider));
     setModels([]);
@@ -1045,7 +1079,9 @@ export function ProviderSettings({
     }
   };
 
-  const personalConnectionInput = (activate: boolean): ProviderSettingsInput => ({
+  const personalConnectionInput = (activate: boolean): ProviderConnectionCreateInput => ({
+    id: personalDraft.id.trim(),
+    label: personalDraft.label.trim(),
     provider: personalDraft.provider,
     model: personalDraft.model.trim(),
     ...(personalDraft.baseURL.trim() ? { baseURL: personalDraft.baseURL.trim() } : {}),
@@ -1053,7 +1089,7 @@ export function ProviderSettings({
     ...(personalDraft.reasoningEffort
       ? { reasoningEffort: personalDraft.reasoningEffort }
       : { clearReasoningEffort: true }),
-    ...(activate ? { activatePersonal: true } : {}),
+    activate,
   });
 
   const testNewPersonalConnection = async () => {
@@ -1094,27 +1130,25 @@ export function ProviderSettings({
     setPersonalBusy("create");
     clearFeedback();
     try {
-      const next = await mutateRoute(() => client.saveProviderSettings(input, cwd));
+      const next = await mutateRoute(() => client.createProviderConnection(input, cwd));
       setState(next);
-      const nextPersonal = next.connections?.find((connection) => connection.id === "personal");
-      setView(viewForPersonalConnection(nextPersonal, next.current.provider));
-      setPersonalDraft({ provider: "", model: "", baseURL: "", reasoningEffort: "" });
+      setView({ kind: "connection", id: input.id });
+      setPersonalDraft({ id: "", label: "", provider: "", model: "", baseURL: "", reasoningEffort: "" });
+      setPersonalIdEdited(false);
       setModels([]);
       setModelEntries([]);
       setVerifiedCustomModels([]);
       await onSaved(next);
-      if (input.activatePersonal && organizations) {
+      if (input.activate && organizations) {
         setOrganizations({
           ...organizations,
-          activeId: "personal",
+          activeId: input.id,
           connections: organizations.connections.map((connection) => ({ ...connection, active: false })),
         });
       }
-      setMessage(input.activatePersonal
+      setMessage(input.activate
         ? copy.connectionAddedAndUsed
-        : activeOrganization
-          ? copy.connectionAdded
-          : copy.nextSession);
+        : copy.connectionAdded);
     } catch (reason) {
       const raw = String(reason instanceof Error ? reason.message : reason);
       setError(transientKey ? raw.split(transientKey).join("[redacted]") : raw);
@@ -1814,19 +1848,19 @@ export function ProviderSettings({
               <span className="provider-group-label">{copy.personalConnections}</span>
               <button
                 type="button"
-                className={`provider-add-mini personal ${state.connections?.length ? "edit" : ""}`}
+                className="provider-add-mini personal"
                 data-preview-action="add-personal"
-                aria-label={state.connections?.length ? copy.changePersonal : copy.addPersonal}
-                title={state.connections?.length ? copy.changePersonal : copy.addPersonal}
+                aria-label={copy.addPersonal}
+                title={copy.addPersonal}
                 disabled={!personalConnectionsSupported || phase !== "idle" || !!personalBusy || !!organizationBusy}
                 onClick={() => beginPersonalConnection()}
               >
-                {state.connections?.length ? <IconCog size={14} /> : <IconPlus size={15} />}
+                <IconPlus size={15} />
               </button>
             </div>
             <p className="provider-group-caption">
               {personalConnectionsSupported
-                ? copy.personalConnectionCount
+                ? copy.personalConnectionCount.replace("{count}", String(state.connections?.length ?? 0))
                 : copy.personalUnavailable}
             </p>
             {state.connections?.map((connection) => (
@@ -1843,7 +1877,7 @@ export function ProviderSettings({
               >
                 <span className={`provider-mini-dot ${connection.location}`} />
                 <span>
-                  <strong>{providerIdDisplayName(state.providers, connection.provider, locale, connection.label)}</strong>
+                  <strong>{connection.label}</strong>
                   <small>{isLegacyProviderId(connection.provider)
                     ? copy.legacyAlibaba
                     : providerIdDisplayName(state.providers, connection.provider, locale)} · {connection.model}</small>
@@ -2051,7 +2085,7 @@ export function ProviderSettings({
               <header className="provider-detail-heading">
                 <div>
                   <span>{copy.personal} · {copy.savedConnection}</span>
-                  <h3>{providerIdDisplayName(state.providers, selectedConnection.provider, locale, selectedConnection.label)}</h3>
+                  <h3>{selectedConnection.label}</h3>
                 </div>
                 <div className="provider-detail-heading-controls">
                   <span className={`provider-kind-badge ${selectedConnection.location}`}>
@@ -2174,11 +2208,18 @@ export function ProviderSettings({
                     const provider = newPersonalProviders.find((candidate) => candidate.id === event.target.value);
                     if (!provider) return;
                     setPersonalDraft({
+                      id: uniquePersonalConnectionId(
+                        provider.id,
+                        state.connections ?? [],
+                        organizations?.connections ?? [],
+                      ),
+                      label: providerDisplayName(provider, locale),
                       provider: provider.id,
                       model: provider.defaultModel,
                       baseURL: provider.defaultBaseURL ?? "",
                       reasoningEffort: "",
                     });
+                    setPersonalIdEdited(false);
                     setApiKey("");
                     setModels([]);
                     setModelEntries(provider.knownModelEntries ? [...provider.knownModelEntries] : []);
@@ -2195,6 +2236,33 @@ export function ProviderSettings({
                   ))}
                 </select>
                 <small>{copy.transportAuto}</small>
+              </label>
+
+              <label>
+                <span>{copy.connectionName}</span>
+                <input
+                  value={personalDraft.label}
+                  placeholder={copy.connectionNamePlaceholder}
+                  maxLength={80}
+                  autoComplete="off"
+                  disabled={!!personalBusy}
+                  onChange={(event) => {
+                    const label = event.target.value;
+                    setPersonalDraft((current) => ({
+                      ...current,
+                      label,
+                      ...(!personalIdEdited
+                        ? {
+                            id: uniquePersonalConnectionId(
+                              idFromLabel(label) ? label : current.provider,
+                              state.connections ?? [],
+                              organizations?.connections ?? [],
+                            ),
+                          }
+                        : {}),
+                    }));
+                  }}
+                />
               </label>
 
               {(personalProvider.customBaseURL || !!personalProvider.defaultBaseURL) && (
@@ -2229,7 +2297,7 @@ export function ProviderSettings({
                   <input
                     type="password"
                     value={apiKey}
-                    placeholder={personalCanReuseKey ? copy.keyKeep : copy.keyNeed}
+                    placeholder={copy.keyNeed}
                     spellCheck={false}
                     autoCapitalize="none"
                     autoComplete="new-password"
@@ -2313,13 +2381,33 @@ export function ProviderSettings({
                 </label>
               )}
 
+              <details className="organization-advanced">
+                <summary>{copy.advanced}</summary>
+                <label>
+                  <span>{copy.connectionId}</span>
+                  <input
+                    value={personalDraft.id}
+                    maxLength={64}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    disabled={!!personalBusy}
+                    onChange={(event) => {
+                      setPersonalIdEdited(true);
+                      setPersonalDraft((current) => ({ ...current, id: event.target.value }));
+                    }}
+                  />
+                  <small>{copy.connectionIdHint}</small>
+                </label>
+              </details>
+
               <div className="provider-enrollment-safety personal">
                 <span aria-hidden="true">◇</span>
                 {copy.keySafety}
               </div>
               <div className="provider-actions personal-create-actions">
                 <button type="button" className="ghost" disabled={!!personalBusy} onClick={cancelPersonalConnection}>{copy.cancel}</button>
-                {!activePersonalConnection?.active && !personalSwitchLocked && (
+                {!personalSwitchLocked && (
                   <button
                     type="button"
                     className="ghost"
@@ -2330,11 +2418,7 @@ export function ProviderSettings({
                   </button>
                 )}
                 <button type="submit" disabled={!personalConnectionValid || !!personalBusy}>
-                  {personalBusy === "create"
-                    ? copy.saving
-                    : activePersonalConnection?.active
-                      ? copy.save
-                      : copy.saveConnectionOnly}
+                  {personalBusy === "create" ? copy.saving : copy.saveConnectionOnly}
                 </button>
               </div>
             </form>

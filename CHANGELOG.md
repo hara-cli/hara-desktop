@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.142 — 2026-09-03 — multiple model accounts and resilient feedback recovery
+
+- Let Personal save and switch among multiple independent model connections, including several accounts
+  from the same provider. Each connection owns its label, local ID, endpoint, Key, model, and reasoning
+  default; existing conversations stay pinned to the connection they started with.
+- Recover older vision-first configurations whose compatible API route did not record a provider adapter,
+  and compact oversized durable history before retrying after a failed image/tool turn. The fixed recognition
+  task still sends only the vision model's returned text to the conversation model.
+- Prevent Windows model/work-mode controls from reading a released React event, keep the macOS engine alive
+  when the red window button is clicked, and measure/flip Automation menus so actions remain visible after a
+  window is shrunk or scrolled.
+- Turn a live company-access revocation into a localized, read-only recovery state while preserving local
+  history. Bundle Hara CLI `0.165.0` at exact verified commit
+  `2f95c6a99e1141199645ae1cf1befe07dc446009`.
+
 ## 0.1.141 — 2026-09-03 — connection-bound vision and clean update restarts
 
 - Move vision-first image recognition into Model Settings and bind it to the exact active connection.

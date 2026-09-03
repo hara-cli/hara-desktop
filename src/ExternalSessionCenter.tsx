@@ -411,7 +411,10 @@ export default function ExternalSessionCenter({
                   value={runtimeModels[runtimeAgentKind]}
                   list={`external-runtime-models-${runtimeAgentKind}`}
                   placeholder={copy.runtimeModelPlaceholder}
-                  onChange={(event) => setRuntimeModels((current) => ({ ...current, [runtimeAgentKind]: event.currentTarget.value }))}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setRuntimeModels((current) => ({ ...current, [runtimeAgentKind]: value }));
+                  }}
                 />
                 <datalist id={`external-runtime-models-${runtimeAgentKind}`}>
                   {(runtimeAgentKind === "codex"
@@ -422,7 +425,10 @@ export default function ExternalSessionCenter({
               </label>
               <label>
                 <span>{copy.runtimeEffort}</span>
-                <select value={runtimeEfforts[runtimeAgentKind]} onChange={(event) => setRuntimeEfforts((current) => ({ ...current, [runtimeAgentKind]: event.currentTarget.value }))}>
+                <select value={runtimeEfforts[runtimeAgentKind]} onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setRuntimeEfforts((current) => ({ ...current, [runtimeAgentKind]: value }));
+                }}>
                   <option value="">{copy.runtimeDefault}</option>
                   {(runtimeAgentKind === "codex"
                     ? ["minimal", "low", "medium", "high", "xhigh"]
@@ -432,7 +438,10 @@ export default function ExternalSessionCenter({
               </label>
               <label>
                 <span>{copy.runtimeWorkMode}</span>
-                <select value={runtimeModes[runtimeAgentKind]} onChange={(event) => setRuntimeModes((current) => ({ ...current, [runtimeAgentKind]: event.currentTarget.value }))}>
+                <select value={runtimeModes[runtimeAgentKind]} onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setRuntimeModes((current) => ({ ...current, [runtimeAgentKind]: value }));
+                }}>
                   {runtimeAgentKind === "codex" ? (
                     <>
                       <option value="workspace-write">{copy.runtimeCodexWork}</option>
@@ -588,7 +597,10 @@ export default function ExternalSessionCenter({
                     <form onSubmit={(event) => void submitTerminal(event)}>
                       <input
                         value={terminalDraft}
-                        onChange={(event) => setTerminalDrafts((current) => ({ ...current, [selected.id]: event.currentTarget.value }))}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          setTerminalDrafts((current) => ({ ...current, [selected.id]: value }));
+                        }}
                         placeholder={copy.terminalPlaceholder}
                         disabled={Boolean(terminalBusy[selected.id])}
                       />

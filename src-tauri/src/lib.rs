@@ -3553,6 +3553,23 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             tauri::RunEvent::WindowEvent {
                 label,
+                event: tauri::WindowEvent::CloseRequested { api, .. },
+                ..
+            } if label == "main" => {
+                // The red traffic-light button means "close this window" on macOS, not "quit the
+                // application". Keep the engine and background work alive; Dock reopen and Cmd+Tab
+                // restore this same window. Explicit Cmd+Q still reaches RunEvent::Exit below.
+                use tauri::Manager;
+                api.prevent_close();
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = window.hide() {
+                        eprintln!("main window close-to-hide failed: {error}");
+                    }
+                }
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::WindowEvent {
+                label,
                 event: tauri::WindowEvent::Focused(true),
                 ..
             } if label == "main" => {

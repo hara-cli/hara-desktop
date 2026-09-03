@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -503,6 +504,53 @@ interface MenuState {
   jobId: string;
   x: number;
   y: number;
+}
+
+interface AutomationMenuAnchorRect {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+interface AutomationMenuPoint {
+  x: number;
+  y: number;
+}
+
+export function automationMenuPosition({
+  anchor,
+  point,
+  menuWidth,
+  menuHeight,
+  viewportWidth,
+  viewportHeight,
+}: {
+  anchor?: AutomationMenuAnchorRect | null;
+  point?: AutomationMenuPoint | null;
+  menuWidth: number;
+  menuHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+}): AutomationMenuPoint {
+  const margin = 8;
+  const gap = 6;
+  let x = point ? point.x : (anchor?.right ?? margin) - menuWidth;
+  let y = point ? point.y : (anchor?.bottom ?? margin) + gap;
+  if (point) {
+    if (x + menuWidth + margin > viewportWidth) x = point.x - menuWidth;
+    if (y + menuHeight + margin > viewportHeight) y = point.y - menuHeight;
+  } else if (anchor) {
+    const roomBelow = viewportHeight - anchor.bottom - gap - margin;
+    const roomAbove = anchor.top - gap - margin;
+    if (menuHeight > roomBelow && roomAbove > roomBelow) y = anchor.top - gap - menuHeight;
+  }
+  const maxX = Math.max(margin, viewportWidth - margin - menuWidth);
+  const maxY = Math.max(margin, viewportHeight - margin - menuHeight);
+  return {
+    x: Math.max(margin, Math.min(x, maxX)),
+    y: Math.max(margin, Math.min(y, maxY)),
+  };
 }
 
 interface EditorState {
@@ -2479,26 +2527,53 @@ export function AutomationsPage({
   const [pending, setPending] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuAnchorRef = useRef<HTMLElement | null>(null);
+  const menuPointRef = useRef<AutomationMenuPoint | null>(null);
+
+  const repositionMenu = useCallback(() => {
+    const element = menuRef.current;
+    if (!element || typeof window === "undefined") return;
+    const rectangle = element.getBoundingClientRect();
+    const position = automationMenuPosition({
+      anchor: menuAnchorRef.current?.getBoundingClientRect(),
+      point: menuPointRef.current,
+      menuWidth: rectangle.width,
+      menuHeight: rectangle.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+    setMenu((current) => current && (current.x !== position.x || current.y !== position.y)
+      ? { ...current, ...position }
+      : current);
+  }, []);
 
   const selectedJob = safeJobs.find((job) => job.id === selectedJobId);
   useEffect(() => {
     if (selectedJobId && !selectedJob) setSelectedJobId(null);
   }, [selectedJobId, selectedJob]);
+  useLayoutEffect(() => {
+    if (menu?.jobId) repositionMenu();
+  }, [menu?.jobId, repositionMenu]);
   useEffect(() => {
-    if (!menu) return;
+    if (!menu?.jobId) return;
     const closeOnPointer = (event: PointerEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
     };
     const closeOnKey = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") setMenu(null);
     };
+    const reposition = () => repositionMenu();
     document.addEventListener("pointerdown", closeOnPointer);
     document.addEventListener("keydown", closeOnKey);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
     return () => {
       document.removeEventListener("pointerdown", closeOnPointer);
       document.removeEventListener("keydown", closeOnKey);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
     };
-  }, [menu]);
+  }, [menu?.jobId, repositionMenu]);
 
   const filteredJobs = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase();
@@ -2558,14 +2633,21 @@ export function AutomationsPage({
       event.preventDefault();
       event.stopPropagation();
       const rectangle = event.currentTarget.getBoundingClientRect();
-      const desiredX = contextMenu ? event.clientX : rectangle.right - 224;
-      const desiredY = contextMenu ? event.clientY : rectangle.bottom + 6;
       const viewportWidth = typeof window === "undefined" ? 1_200 : window.innerWidth;
       const viewportHeight = typeof window === "undefined" ? 800 : window.innerHeight;
+      menuAnchorRef.current = contextMenu ? null : event.currentTarget as HTMLElement;
+      menuPointRef.current = contextMenu ? { x: event.clientX, y: event.clientY } : null;
+      const position = automationMenuPosition({
+        anchor: contextMenu ? null : rectangle,
+        point: menuPointRef.current,
+        menuWidth: 224,
+        menuHeight: 196,
+        viewportWidth,
+        viewportHeight,
+      });
       setMenu({
         jobId: job.id,
-        x: Math.max(8, Math.min(desiredX, viewportWidth - 232)),
-        y: Math.max(8, Math.min(desiredY, viewportHeight - 244)),
+        ...position,
       });
     },
     [],

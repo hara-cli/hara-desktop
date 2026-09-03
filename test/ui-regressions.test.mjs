@@ -281,6 +281,11 @@ test("automation is one guided control console with local-only status refresh", 
     assert.match(client, new RegExp(method.replace(".", "\\.")));
   }
   assert.match(automation, /onContextMenu=\{\(event\) => onOpenMenu\(event, job, true\)\}/);
+  assert.match(automation, /export function automationMenuPosition/);
+  assert.match(automation, /useLayoutEffect\(\(\) => \{[\s\S]*repositionMenu\(\)/,
+    "the rendered menu is measured before paint instead of trusting a fixed estimated height");
+  assert.match(automation, /window\.addEventListener\("resize", reposition\)[\s\S]*window\.addEventListener\("scroll", reposition, true\)/,
+    "an open action menu is repositioned when a small window or scrolling changes its viewport bounds");
   assert.match(automation, /setEditor\(\{ kind: "duplicate", job \}\)/);
   assert.match(app, /openDialog\(\{[\s\S]*directory: true,[\s\S]*multiple: false/);
   assert.match(automation, /pickDirectory\(values\.cwd\.trim\(\) \|\| undefined\)/);
@@ -792,6 +797,11 @@ test("macOS Dock reopen restores or recreates the main window", () => {
     /#\[cfg\(target_os = "macos"\)\][\s\S]*tauri::RunEvent::WindowEvent \{[\s\S]*tauri::WindowEvent::Resized\(size\)[\s\S]*label == "main"[\s\S]*recover_main_window_if_offscreen\(&window\)/,
     "late window-state restoration must not leave an unusable on-screen main window",
   );
+  assert.match(
+    nativeHost,
+    /tauri::WindowEvent::CloseRequested \{ api, \.\. \}[\s\S]*api\.prevent_close\(\)[\s\S]*window\.hide\(\)/,
+    "the macOS red close button hides the window while explicit app quit still reaches RunEvent::Exit",
+  );
 });
 
 test("provider settings keep credentials transient and support local no-key presets", () => {
@@ -807,7 +817,9 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.doesNotMatch(providerSettings, /localStorage\.(setItem|getItem)/);
   assert.match(providerSettings, /setApiKey\(""\)/, "credential input is cleared after provider changes and save");
   assert.match(providerSettings, /endpointIdentity/, "credential reuse is bound to the exact provider endpoint");
-  assert.match(providerSettings, /canonicalPersonal\?\.keyConfigured/, "Personal credential reuse is bound to the canonical single connection");
+  assert.match(providerSettings, /const personalKeyMissing = personalProvider\?\.auth === "api-key" && !apiKey\.trim\(\)/,
+    "a new account always requires its own key even when another connection uses the same provider");
+  assert.doesNotMatch(providerSettings, /personalCanReuseKey/, "named accounts never borrow the canonical Personal credential");
   assert.match(providerSettings, /setApiKey\(""\)[\s\S]*await client\.listProviderSettings/, "refresh clears a credential before replacing its draft");
   assert.match(providerSettings, /managedExpiryWarning/, "managed provider settings surface token lifecycle warnings");
   assert.match(providerSettings, /role="alert"/, "an expired managed token is announced accessibly");
@@ -840,12 +852,16 @@ test("provider settings keep credentials transient and support local no-key pres
   for (const method of ["create", "test", "use", "remove"]) {
     assert.match(client, new RegExp(`settings\\.providers\\.connections\\.${method}`));
   }
-  assert.match(providerSettings, /const transientKey = input\.apiKey \?\? "";[\s\S]*setApiKey\(""\);[\s\S]*await mutateRoute\(\(\) => client\.saveProviderSettings/,
-    "a replacement Personal connection removes its credential from renderer state before the RPC");
-  assert.doesNotMatch(providerSettings, /client\.createProviderConnection/,
-    "Desktop must replace the canonical Personal connection instead of creating a second one");
-  assert.match(providerSettings, /state\.connections\?\.length \? <IconCog size=\{14\} \/> : <IconPlus size=\{15\} \/>/,
-    "an existing single Personal connection uses a settings icon instead of an add or switch affordance");
+  assert.match(providerSettings, /const transientKey = input\.apiKey \?\? "";[\s\S]*setApiKey\(""\);[\s\S]*await mutateRoute\(\(\) => client\.createProviderConnection/,
+    "a newly saved account removes its credential from renderer state before the RPC");
+  assert.match(providerSettings, /client\.createProviderConnection/,
+    "Desktop creates a distinct named connection instead of overwriting Personal");
+  assert.match(providerSettings, /className="provider-add-mini personal"[\s\S]*<IconPlus size=\{15\} \/>/,
+    "the add affordance remains available when personal connections already exist");
+  assert.match(providerSettings, /uniquePersonalConnectionId[\s\S]*state\.connections[\s\S]*organizations\?\.connections/,
+    "each account gets a collision-free local connection identity");
+  assert.match(providerSettings, /if \(input\.activate && organizations\)[\s\S]*activeId: input\.id/,
+    "activating a named personal account keeps the shared route state on that exact connection id");
   assert.match(providerSettings, /"token-plan": \{ en: "Alibaba Cloud Model Studio Token Plan", zh: "阿里云百炼 Token Plan" \}/,
     "built-in provider names are localized without changing stable provider IDs");
   assert.match(providerSettings, /<option value=\{provider\.id\} key=\{provider\.id\}>\{providerDisplayName\(provider, locale\)\}<\/option>/,
@@ -865,6 +881,7 @@ test("provider settings keep credentials transient and support local no-key pres
     "route-changing provider actions are owned by the App-level Space transaction");
   for (const routeMutation of [
     "saveProviderSettings",
+    "createProviderConnection",
     "useProviderConnection",
     "removeProviderConnection",
     "unpinProjectProfile",
@@ -1237,6 +1254,11 @@ test("an unavailable pinned conversation falls back to local read-only history a
   assert.match(client, /targetProfileId: string;[\s\S]*targetModel: string;[\s\S]*transferHistory: true/);
   assert.match(app, /await c\.resumeSession\(id, defaultApproval \|\| undefined\)[\s\S]*await c\.readSession\(id\)/);
   assert.match(app, /setSessionReadOnly\(id, \{ reason \}\)/);
+  assert.match(app, /const quarantineCompanySession = useCallback/);
+  assert.match(app, /companyAccessRecoveryMessage\(e, locale\)[\s\S]*quarantineCompanySession\(sessionId, recovery\)/,
+    "a live server-side revocation immediately becomes a localized read-only recovery state");
+  assert.match(app, /accessState: "invalid" as const[\s\S]*authenticated: false/,
+    "a rejected company route is removed from subsequent model choices without waiting for restart");
   assert.match(app, /当前仅查看本地历史/);
   assert.match(app, /选择连接并携带上下文继续/);
   assert.match(app, /readOnlySessionsRef\.current\[sessionId\]/, "all send entry points fail closed for a replay-only session");
@@ -1259,6 +1281,14 @@ test("provider history resumes in place and an older engine never receives the H
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const center = readFileSync(`${root}/src/ExternalSessionCenter.tsx`, "utf8");
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
+
+  assert.doesNotMatch(
+    center,
+    /set(?:RuntimeModels|RuntimeEfforts|RuntimeModes|TerminalDrafts)\(\(current\) => \([^)]*event\.currentTarget\.value/,
+    "React events are read synchronously before deferred functional state updates on Windows",
+  );
+  assert.match(center, /const value = event\.currentTarget\.value;[\s\S]{0,120}setRuntimeModels/);
+  assert.match(center, /const value = event\.currentTarget\.value;[\s\S]{0,120}setTerminalDrafts/);
 
   assert.match(client, /resumeExternalSession\(sessionId: string\)[\s\S]*"external\.sessions\.resume"/);
   assert.match(

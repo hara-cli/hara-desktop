@@ -1311,6 +1311,41 @@ export default function App() {
     void invoke("set_badge", { count: n > 0 ? n : null }).catch(() => {});
   }, [unread]);
   const sessionsRef = useRef<SessionInfo[]>([]);
+  const quarantineCompanySession = useCallback((sessionId: string, reason: string) => {
+    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+    const directory = spaceDirectoryRef.current;
+    if (!session || !directory) return;
+    const targetSpaceId = sessionSpaceId(session, directory);
+    if (targetSpaceId === "personal") return;
+
+    setSessionReadOnly(sessionId, { reason });
+    const nextDirectory = {
+      ...directory,
+      spaces: directory.spaces.map((space) => space.id === targetSpaceId
+        ? { ...space, accessState: "invalid" as const }
+        : space),
+    };
+    spaceDirectoryRef.current = nextDirectory;
+    setSpaceDirectory(nextDirectory);
+    setOrganizationRoutes((current) => current ? {
+      ...current,
+      connections: current.connections.map((connection) => (
+        organizationConnectionSpaceId(connection) === targetSpaceId
+          ? { ...connection, accessState: "invalid" as const }
+          : connection
+      )),
+    } : current);
+    setProviderRoutes((current) => current && current.current.profileId === session.profileId
+      ? {
+          ...current,
+          current: {
+            ...current.current,
+            authenticated: false,
+            tokenExpired: true,
+          },
+        }
+      : current);
+  }, [setSessionReadOnly]);
   type PersonalLocalSurfaceScope = {
     client: HaraClient;
     sessionId: string;
@@ -2347,10 +2382,12 @@ export default function App() {
                 return "steered";
               } catch (steerError: any) {
                 if (steerError?.code !== SERVER_BUSY) {
+                  const recovery = companyAccessRecoveryMessage(steerError, locale);
+                  if (recovery) quarantineCompanySession(sessionId, recovery);
                   resolvePendingUser(sessionId, pendingId, false);
                   push(sessionId, (items) => [...items, {
                     kind: "notice",
-                    text: `error: ${steerError?.message ?? steerError}`,
+                    text: recovery ?? `error: ${steerError?.message ?? steerError}`,
                   }]);
                   setSessionBusy(sessionId, false);
                   notePet(sessionId, "blocked");
@@ -2391,7 +2428,12 @@ export default function App() {
           const persisted = dispatch?.pendingId === pendingId && dispatch.completed === true;
           clearPendingDispatch();
           resolvePendingUser(sessionId, pendingId, persisted);
-          push(sessionId, (items) => [...items, { kind: "notice", text: `error: ${e?.message ?? e}` }]);
+          const recovery = companyAccessRecoveryMessage(e, locale);
+          if (recovery) quarantineCompanySession(sessionId, recovery);
+          push(sessionId, (items) => [...items, {
+            kind: "notice",
+            text: recovery ?? `error: ${e?.message ?? e}`,
+          }]);
           setSessionBusy(sessionId, false);
           if (c.supportsEvent("event.task_state")) {
             const state = taskStatesRef.current[sessionId];
@@ -2405,7 +2447,7 @@ export default function App() {
         }
       }
     },
-    [enqueueInput, flushStagedModelChange, locale, nextPendingInputId, notePet, personalLocalSurfaceSession, push, removePet, resolvePendingUser, setSessionBusy, textWithActiveWorkObject],
+    [enqueueInput, flushStagedModelChange, locale, nextPendingInputId, notePet, personalLocalSurfaceSession, push, quarantineCompanySession, removePet, resolvePendingUser, setSessionBusy, textWithActiveWorkObject],
   );
 
   const retryQueuedInput = useCallback(async (sessionId: string, index: number) => {

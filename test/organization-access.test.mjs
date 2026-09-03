@@ -21,6 +21,13 @@ test("organization HTTP authorization failures become a focused recovery instruc
   assert.match(zh ?? "", /重新接入/);
   assert.doesNotMatch(zh ?? "", /HTTP 401/);
   assert.match(en ?? "", /Re-enroll/);
+  assert.match(
+    companyAccessRecoveryMessage(
+      new Error("company access expired or was revoked; local conversation history is unchanged; sign in or re-enroll before continuing"),
+      "zh",
+    ) ?? "",
+    /公司授权已过期或被管理员撤销/,
+  );
 });
 
 test("unrelated failures remain available to their original error handling", () => {
