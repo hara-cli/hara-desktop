@@ -82,6 +82,8 @@ const words = {
     personalConnectionCount: "{count} saved",
     addPersonal: "Add model connection",
     addFirstPersonal: "Save another provider or API key as its own named connection.",
+    newPersonalDraft: "New model connection",
+    unsavedPersonalDraft: "Unsaved",
     personalEmpty: "No Personal model connection",
     personalEmptyHint: "Personal can stay empty. Add a named connection when you want to start new Personal conversations.",
     personalUnavailable: "Update the bundled Hara engine to save more than one personal connection.",
@@ -300,6 +302,8 @@ const words = {
     personalConnectionCount: "已保存 {count} 个",
     addPersonal: "新增模型连接",
     addFirstPersonal: "把另一家供应商或同一供应商的另一枚 API Key 保存为独立连接。",
+    newPersonalDraft: "新模型连接",
+    unsavedPersonalDraft: "未保存",
     personalEmpty: "Personal 暂无模型连接",
     personalEmptyHint: "Personal 可以保持为空；需要开始新的个人会话时，再添加一个命名连接。",
     personalUnavailable: "请升级 Desktop 内置 Hara 引擎后，再保存多个个人连接。",
@@ -1066,7 +1070,7 @@ export function ProviderSettings({
     const next = personalDraftForProvider(provider);
     setPersonalDraft({
       ...next,
-      label: providerDisplayName(provider, locale),
+      label: "",
       id: uniquePersonalConnectionId(
         provider.id,
         state?.connections ?? [],
@@ -1975,7 +1979,7 @@ export function ProviderSettings({
                 data-preview-action="add-personal"
                 aria-label={copy.addPersonal}
                 title={copy.addPersonal}
-                disabled={!personalConnectionsSupported || phase !== "idle" || !!personalBusy || !!organizationBusy}
+                disabled={!personalConnectionsSupported || view.kind === "add-personal" || phase !== "idle" || !!personalBusy || !!organizationBusy}
                 onClick={() => beginPersonalConnection()}
               >
                 <IconPlus size={15} />
@@ -2008,7 +2012,23 @@ export function ProviderSettings({
                 {connection.active && <em>{copy.active}</em>}
               </button>
             ))}
-            {personalConnectionsSupported && state.connections?.length === 0 && (
+            {view.kind === "add-personal" && personalProvider ? (
+              <button
+                type="button"
+                className="provider-preset personal draft on"
+                data-personal-connection-draft
+                aria-pressed="true"
+                onClick={() => setView({ kind: "add-personal" })}
+              >
+                <span className="provider-mini-dot draft" />
+                <span>
+                  <strong>{personalDraft.label.trim() || copy.newPersonalDraft}</strong>
+                  <small>{providerDisplayName(personalProvider, locale)}{personalDraft.model.trim() ? ` · ${personalDraft.model}` : ""}</small>
+                </span>
+                <em>{copy.unsavedPersonalDraft}</em>
+              </button>
+            ) : null}
+            {personalConnectionsSupported && state.connections?.length === 0 && view.kind !== "add-personal" && (
               <button type="button" className="provider-enterprise-empty personal" onClick={() => beginPersonalConnection()}>
                 <span><IconPlus size={17} /></span>
                 <strong>{copy.addPersonal}</strong>
@@ -2339,7 +2359,7 @@ export function ProviderSettings({
                         state.connections ?? [],
                         organizations?.connections ?? [],
                       ),
-                      label: providerDisplayName(provider, locale),
+                      label: "",
                       provider: provider.id,
                       model: provider.defaultModel,
                       baseURL: provider.defaultBaseURL ?? "",

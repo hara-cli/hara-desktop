@@ -411,6 +411,16 @@
 }
 
 .external-session-chips { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.external-session-remove {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent, #ff695f) 55%, var(--external-rule));
+  border-radius: 999px;
+  color: var(--accent, #ff695f);
+  background: transparent;
+  font-size: 10px;
+  font-weight: 760;
+}
 .external-session-state,
 .external-session-mode {
   padding: 6px 9px;
@@ -427,10 +437,45 @@
 .external-session-state.is-waiting { color: color-mix(in srgb, var(--external-warn) 86%, var(--external-ink)); }
 .external-session-state.is-error { color: var(--accent, #ff695f); }
 
+.external-terminal-unavailable {
+  display: grid;
+  align-content: center;
+  min-height: 420px;
+  padding: clamp(24px, 5cqi, 54px);
+  border: 1px solid color-mix(in srgb, var(--accent, #ff695f) 38%, var(--external-rule));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #ff695f) 7%, var(--external-inset));
+}
+.external-terminal-unavailable > strong { font: 760 19px/1.2 ui-serif, Georgia, serif; }
+.external-terminal-unavailable > p { max-width: 620px; margin: 9px 0 0; color: var(--external-muted); line-height: 1.55; }
+.external-terminal-unavailable > small { margin-top: 13px; overflow-wrap: anywhere; color: var(--accent, #ff695f); }
+.external-terminal-unavailable > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.external-terminal-unavailable button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--external-rule-strong);
+  border-radius: 8px;
+  background: var(--external-raised);
+  font-size: 11px;
+  font-weight: 740;
+}
+
 .external-session-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(290px, 34%);
   min-height: 520px;
+}
+
+.external-session-layout.is-terminal-expanded { grid-template-columns: minmax(0, 1fr); }
+.external-session-layout.is-terminal-expanded .external-session-conversation { display: none; }
+.external-session-layout.is-terminal-expanded .external-session-inspector {
+  display: block;
+  padding: 15px;
+}
+.external-session-layout.is-terminal-expanded .external-native-terminal { min-height: min(70vh, 760px); }
+.external-session-layout.is-terminal-expanded .external-native-terminal pre {
+  min-height: 420px;
+  max-height: min(62vh, 680px);
 }
 
 .external-session-conversation {

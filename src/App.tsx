@@ -1552,7 +1552,7 @@ export default function App() {
   const [externalTranscriptLoading, setExternalTranscriptLoading] = useState(false);
   const [externalSessionActionError, setExternalSessionActionError] = useState("");
   const [externalSessionActionErrors, setExternalSessionActionErrors] = useState<Record<string, string>>({});
-  const [externalSessionActions, setExternalSessionActions] = useState<Record<string, "resume" | "turn" | "interrupt">>({});
+  const [externalSessionActions, setExternalSessionActions] = useState<Record<string, "resume" | "turn" | "interrupt" | "remove">>({});
   const [externalSessionCreatingKind, setExternalSessionCreatingKind] = useState<ExternalRuntimeAgentKind | null>(null);
   const [externalSessionActivity, setExternalSessionActivity] = useState<Record<string, ExternalSessionActivity[]>>({});
   const [externalSessionApprovals, setExternalSessionApprovals] = useState<Record<string, ExternalSessionApproval>>({});
@@ -1672,6 +1672,9 @@ export default function App() {
       .then((result) => {
         if (clientRef.current !== client || externalTranscriptRequestRef.current !== requestId) return;
         setExternalTranscript(result);
+        setExternalSessions((current) => current.map((session) => (
+          session.id === result.session.id ? result.session : session
+        )));
         // Once the provider transcript has caught up, retire the optimistic/live projection. Keeping both
         // renders every user and agent message twice after a completed turn.
         setExternalSessionActivity((current) => ({ ...current, [sessionId]: [] }));
@@ -6006,7 +6009,24 @@ export default function App() {
     ) {
       throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
     }
-    return await client.terminalSnapshot(session.id);
+    try {
+      const snapshot = await client.terminalSnapshot(session.id);
+      if (clientRef.current === client) {
+        setExternalSessions((current) => current.map((candidate) => (
+          candidate.id === snapshot.sessionId
+            ? { ...candidate, state: snapshot.state, updatedAt: snapshot.updatedAt }
+            : candidate
+        )));
+      }
+      return snapshot;
+    } catch (error) {
+      if (clientRef.current === client) {
+        setExternalSessions((current) => current.map((candidate) => (
+          candidate.id === session.id ? { ...candidate, state: "error" } : candidate
+        )));
+      }
+      throw error;
+    }
   }, [locale, selectedExternalSession]);
   const sendSelectedExternalTerminalInput = useCallback(async (text: string): Promise<void> => {
     const client = clientRef.current;
@@ -6129,6 +6149,7 @@ export default function App() {
     setExternalSessionActionErrors((current) => ({ ...current, [session.id]: "" }));
     try {
       await client.interruptExternalSession(session.id);
+      if (clientRef.current === client) refreshExternalTranscriptRef.current(session.id);
     } catch (error: any) {
       if (clientRef.current === client) {
         setExternalSessionActionErrors((current) => ({ ...current, [session.id]: String(error?.message ?? error).slice(0, 240) }));
@@ -6136,6 +6157,53 @@ export default function App() {
       }
     }
   }, [selectedExternalSession]);
+  const removeSelectedExternalSession = useCallback(async () => {
+    const client = clientRef.current;
+    const session = selectedExternalSession;
+    if (
+      !client
+      || !session
+      || session.sourceId !== "runtime"
+      || !client.supportsFeature("external.sessions.runtime-remove.v1")
+      || !client.supports("external.sessions.remove")
+    ) return;
+    if (!window.confirm([
+      `${makeT(locale)("externalSessionsRemoveConfirm")} “${session.title}”?`,
+      makeT(locale)("externalSessionsRemoveWarning"),
+    ].join("\n\n"))) return;
+    setExternalSessionActions((current) => ({ ...current, [session.id]: "remove" }));
+    setExternalSessionActionErrors((current) => ({ ...current, [session.id]: "" }));
+    try {
+      await client.removeExternalSession(session.id);
+      if (clientRef.current !== client) return;
+      setExternalSessions((current) => current.filter((candidate) => candidate.id !== session.id));
+      setExternalTranscript((current) => current?.session.id === session.id ? null : current);
+      setExternalSessionActivity((current) => {
+        const next = { ...current };
+        delete next[session.id];
+        return next;
+      });
+      setExternalSessionApprovals((current) => {
+        const next = { ...current };
+        delete next[session.id];
+        return next;
+      });
+      setWorkbenchInboxTarget(null);
+      refreshExternalSessions();
+    } catch (error: any) {
+      if (clientRef.current === client) {
+        setExternalSessionActionErrors((current) => ({ ...current, [session.id]: String(error?.message ?? error).slice(0, 240) }));
+      }
+    } finally {
+      if (clientRef.current === client) {
+        setExternalSessionActions((current) => {
+          const next = { ...current };
+          delete next[session.id];
+          return next;
+        });
+      }
+    }
+  }, [locale, refreshExternalSessions, selectedExternalSession]);
   const answerExternalSessionApproval = useCallback(async (verdict: "deny" | "allow" | "always") => {
     const client = clientRef.current;
     const sessionId = selectedExternalSession?.id;
@@ -8247,6 +8315,7 @@ export default function App() {
       onSubmit={submitSelectedExternalSession}
       onSteer={steerSelectedExternalSession}
       onInterrupt={interruptSelectedExternalSession}
+      onRemove={removeSelectedExternalSession}
       onApproval={answerExternalSessionApproval}
       onReadTerminal={readSelectedExternalTerminal}
       onTerminalInput={sendSelectedExternalTerminalInput}
@@ -8306,6 +8375,11 @@ export default function App() {
         composerPlaceholder: t("externalSessionsComposerPlaceholder"),
         send: t("externalSessionsSend"),
         stop: t("externalSessionsStop"),
+        remove: t("externalSessionsRemove"),
+        removing: t("externalSessionsRemoving"),
+        startAnother: t("externalSessionsStartAnother"),
+        terminalUnavailableTitle: t("externalSessionsTerminalUnavailableTitle"),
+        terminalUnavailableBody: t("externalSessionsTerminalUnavailableBody"),
         approve: t("externalSessionsApprove"),
         alwaysApprove: t("externalSessionsAlwaysApprove"),
         deny: t("externalSessionsDeny"),

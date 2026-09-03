@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.144 — 2026-09-04 — visible connection drafts and recoverable Hara Live sessions
+
+- Clicking the Personal connection add button now immediately appends and selects a distinct
+  `New model connection · Unsaved` row. Its name, provider, and model update with the form; cancelling
+  removes only the local draft, while a successful save turns it into the persisted connection row.
+- Keep the zero-connection add card out of the way while the draft row is present, and disable the header
+  add button during that one draft so a second click cannot silently reset work in progress.
+- Keep a Hara Live session readable when its provider terminal is waiting for input, synchronize the status
+  after transcript and terminal refreshes, and rename the ambiguous indefinite wait to `Terminal input needed`.
+  The Native terminal tab now expands across the session work area instead of remaining in a narrow sidebar.
+- Suppress the WebView-wide Reload menu on inert app chrome while preserving native context actions for editable
+  fields, links, selected text, and the terminal.
+- Bundle Hara CLI `0.165.3` (`9153da9dd28f941186f93e6a1647182a0e7a54a1`), including a confirmed
+  end-and-remove action for Hara Live sessions; failed terminals now become explicitly unavailable and offer
+  retry, removal, and start-again exits instead of remaining permanently labeled as waiting.
+
 ## 0.1.143 — 2026-09-04 — safe, genuinely removable Personal connections
 
 - Let the original migrated Personal model connection be removed just like any named account, including

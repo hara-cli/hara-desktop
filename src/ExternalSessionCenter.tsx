@@ -83,6 +83,11 @@ export interface ExternalSessionCenterCopy {
   composerPlaceholder: string;
   send: string;
   stop: string;
+  remove: string;
+  removing: string;
+  startAnother: string;
+  terminalUnavailableTitle: string;
+  terminalUnavailableBody: string;
   approve: string;
   alwaysApprove: string;
   deny: string;
@@ -133,7 +138,7 @@ interface ExternalSessionCenterProps {
   approval: ExternalSessionApproval | null;
   loading: boolean;
   transcriptLoading: boolean;
-  actionBusy: "" | "resume" | "turn" | "interrupt";
+  actionBusy: "" | "resume" | "turn" | "interrupt" | "remove";
   creatingKind: ExternalRuntimeAgentKind | null;
   error: string;
   actionError: string;
@@ -148,6 +153,7 @@ interface ExternalSessionCenterProps {
   onSubmit: (text: string) => Promise<void>;
   onSteer: (text: string) => Promise<void>;
   onInterrupt: () => Promise<void>;
+  onRemove?: () => Promise<void>;
   onApproval: (verdict: "deny" | "allow" | "always") => Promise<void>;
   onReadTerminal: () => Promise<ExternalTerminalSnapshot>;
   onTerminalInput: (text: string) => Promise<void>;
@@ -193,6 +199,7 @@ export default function ExternalSessionCenter({
   onSubmit,
   onSteer,
   onInterrupt,
+  onRemove,
   onApproval,
   onReadTerminal,
   onTerminalInput,
@@ -247,7 +254,16 @@ export default function ExternalSessionCenter({
       : copy.writableBody;
   const terminalSupported = selected?.sourceId === "runtime"
     && activeSource?.capabilities.terminalView === true;
-  const inspectorView = selectedId ? inspectorViews[selectedId] ?? "details" : "details";
+  const removable = selected?.sourceId === "runtime"
+    && activeSource?.capabilities.remove === true
+    && Boolean(onRemove);
+  const inspectorView = selectedId
+    ? inspectorViews[selectedId] ?? (
+        selected?.sourceId === "runtime" && (selected.state === "waiting" || selected.state === "error")
+          ? "terminal"
+          : "details"
+      )
+    : "details";
   const terminalSnapshot = selectedId ? terminalSnapshots[selectedId] : undefined;
   const terminalDraft = selectedId ? terminalDrafts[selectedId] ?? "" : "";
   const terminalError = selectedId ? terminalErrors[selectedId] ?? "" : "";
@@ -267,9 +283,10 @@ export default function ExternalSessionCenter({
   useEffect(() => {
     if (inspectorView !== "terminal" || !terminalSupported) return;
     void refreshTerminal();
+    if (selected?.state === "error") return;
     const timer = window.setInterval(() => void refreshTerminal(), 1_000);
     return () => window.clearInterval(timer);
-  }, [inspectorView, refreshTerminal, terminalSupported]);
+  }, [inspectorView, refreshTerminal, selected?.state, terminalSupported]);
   useEffect(() => {
     const terminal = terminalRef.current;
     if (terminal) terminal.scrollTop = terminal.scrollHeight;
@@ -486,10 +503,20 @@ export default function ExternalSessionCenter({
               <div className="external-session-chips">
                 {transcript ? <b className={`external-session-mode is-${controlMode}`}>{modeLabel}</b> : null}
                 <b className={`external-session-state is-${selected.state}`}>{copy.sessionStates[selected.state]}</b>
+                {removable ? (
+                  <button
+                    type="button"
+                    className="external-session-remove"
+                    disabled={Boolean(actionBusy)}
+                    onClick={() => void onRemove?.()}
+                  >
+                    {actionBusy === "remove" ? copy.removing : copy.remove}
+                  </button>
+                ) : null}
               </div>
             </header>
 
-            <div className="external-session-layout">
+            <div className={`external-session-layout${inspectorView === "terminal" && terminalSupported ? " is-terminal-expanded" : ""}`}>
               <section className="external-session-conversation" aria-label={copy.transcript}>
                 <header><strong>{copy.transcript}</strong><span>{sourceDisplayName(selected)}</span></header>
                 <div className="external-session-timeline" ref={timelineRef} aria-live="polite">
@@ -587,25 +614,40 @@ export default function ExternalSessionCenter({
                       <button type="button" onClick={() => void refreshTerminal()} disabled={Boolean(terminalBusy[selected.id])}>{copy.terminalRefresh}</button>
                     </header>
                     <p>{copy.terminalBody}</p>
-                    <pre ref={terminalRef} tabIndex={0}>{terminalSnapshot?.text || copy.terminalEmpty}</pre>
-                    {terminalError ? <div className="external-terminal-error" role="alert">{terminalError}</div> : null}
-                    <div className="external-terminal-keys" aria-label={copy.terminalKeyHelp}>
-                      {(["esc", "up", "down", "tab", "ctrl+c"] as ExternalTerminalKey[]).map((key) => (
-                        <button type="button" key={key} disabled={Boolean(terminalBusy[selected.id])} onClick={() => void sendTerminalKey(key)}>{key}</button>
-                      ))}
-                    </div>
-                    <form onSubmit={(event) => void submitTerminal(event)}>
-                      <input
-                        value={terminalDraft}
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-                          setTerminalDrafts((current) => ({ ...current, [selected.id]: value }));
-                        }}
-                        placeholder={copy.terminalPlaceholder}
-                        disabled={Boolean(terminalBusy[selected.id])}
-                      />
-                      <button type="submit" className="is-primary" disabled={!terminalDraft.trim() || Boolean(terminalBusy[selected.id])}>{copy.terminalSend}</button>
-                    </form>
+                    {actionError ? <div className="external-terminal-error" role="alert">{actionError}</div> : null}
+                    {terminalError ? (
+                      <div className="external-terminal-unavailable" role="alert">
+                        <strong>{copy.terminalUnavailableTitle}</strong>
+                        <p>{copy.terminalUnavailableBody}</p>
+                        <small>{terminalError}</small>
+                        <div>
+                          <button type="button" onClick={() => void refreshTerminal()} disabled={Boolean(terminalBusy[selected.id])}>{copy.terminalRefresh}</button>
+                          <button type="button" className="is-primary" onClick={onBack}>{copy.startAnother}</button>
+                          {removable ? <button type="button" onClick={() => void onRemove?.()} disabled={Boolean(actionBusy)}>{actionBusy === "remove" ? copy.removing : copy.remove}</button> : null}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <pre ref={terminalRef} tabIndex={0} data-native-context-menu="true">{terminalSnapshot?.text || copy.terminalEmpty}</pre>
+                        <div className="external-terminal-keys" aria-label={copy.terminalKeyHelp}>
+                          {(["esc", "up", "down", "tab", "ctrl+c"] as ExternalTerminalKey[]).map((key) => (
+                            <button type="button" key={key} disabled={Boolean(terminalBusy[selected.id])} onClick={() => void sendTerminalKey(key)}>{key}</button>
+                          ))}
+                        </div>
+                        <form onSubmit={(event) => void submitTerminal(event)}>
+                          <input
+                            value={terminalDraft}
+                            onChange={(event) => {
+                              const value = event.currentTarget.value;
+                              setTerminalDrafts((current) => ({ ...current, [selected.id]: value }));
+                            }}
+                            placeholder={copy.terminalPlaceholder}
+                            disabled={Boolean(terminalBusy[selected.id])}
+                          />
+                          <button type="submit" className="is-primary" disabled={!terminalDraft.trim() || Boolean(terminalBusy[selected.id])}>{copy.terminalSend}</button>
+                        </form>
+                      </>
+                    )}
                     <small>{copy.terminalLocalOnly}</small>
                   </section>
                 ) : (

@@ -42,8 +42,14 @@ test("Hara Live keeps structured work and the native terminal as two views of on
   assert.match(center, /sandboxMode: mode as ExternalRuntimeLaunchOptions\["sandboxMode"\]/);
   assert.match(center, /permissionMode: mode as ExternalRuntimeLaunchOptions\["permissionMode"\]/);
   assert.match(center, /const \[drafts, setDrafts\] = useState<Record<string, string>>\(\{\}\)/);
-  assert.match(center, /const inspectorView = selectedId \? inspectorViews\[selectedId\]/);
+  assert.match(center, /const inspectorView = selectedId[\s\S]{0,120}inspectorViews\[selectedId\]/);
+  assert.match(center, /selected\?\.sourceId === "runtime" && \(selected\.state === "waiting" \|\| selected\.state === "error"\)/,
+    "a Hara Live terminal waiting for input or needing recovery opens directly into its actionable native terminal");
   assert.match(center, /inspectorView === "terminal" && terminalSupported/);
+  assert.match(center, /external-session-layout\$\{inspectorView === "terminal" && terminalSupported \? " is-terminal-expanded"/,
+    "the native-terminal tab expands into the full session work area instead of staying in a narrow inspector");
+  assert.match(center, /data-native-context-menu="true"/,
+    "the expanded terminal keeps the native selection and copy menu");
   assert.match(center, /window\.setInterval\(\(\) => void refreshTerminal\(\), 1_000\)/);
   assert.match(app, /externalSessionActions\[selectedExternalSession\.id\]/);
   assert.match(app, /externalSessionApprovals\[selectedExternalSession\.id\]/);
@@ -51,6 +57,14 @@ test("Hara Live keeps structured work and the native terminal as two views of on
   assert.match(client, /external\.sessions\.terminal\.snapshot/);
   assert.match(client, /external\.sessions\.terminal\.input/);
   assert.match(client, /external\.sessions\.terminal\.key/);
+  assert.match(client, /external\.sessions\.remove/);
+  assert.match(app, /external\.sessions\.runtime-remove\.v1/);
+  assert.match(app, /window\.confirm\(\[/,
+    "ending the original provider terminal requires explicit user confirmation");
+  assert.match(center, /copy\.terminalUnavailableTitle[\s\S]*copy\.startAnother[\s\S]*copy\.remove/,
+    "an unreadable terminal exposes retry, restart, and removal instead of a permanent waiting label");
+  assert.match(center, /actionError \? <div className="external-terminal-error"/,
+    "a failed removal remains visible while the wide terminal hides the conversation column");
 });
 
 test("expired company Spaces stay visible for recovery but cannot be selected", () => {
@@ -858,6 +872,15 @@ test("provider settings keep credentials transient and support local no-key pres
     "Desktop creates a distinct named connection instead of overwriting Personal");
   assert.match(providerSettings, /className="provider-add-mini personal"[\s\S]*<IconPlus size=\{15\} \/>/,
     "the add affordance remains available when personal connections already exist");
+  assert.match(providerSettings,
+    /view\.kind === "add-personal" && personalProvider[\s\S]*data-personal-connection-draft[\s\S]*newPersonalDraft[\s\S]*unsavedPersonalDraft/,
+    "clicking add immediately inserts a selected unsaved connection row beside the editor");
+  assert.match(providerSettings,
+    /state\.connections\?\.length === 0 && view\.kind !== "add-personal"/,
+    "the zero-connection call to action yields to the visible draft row while creation is in progress");
+  assert.match(providerSettings,
+    /disabled=\{!personalConnectionsSupported \|\| view\.kind === "add-personal"/,
+    "the plus button cannot silently reset an in-progress draft");
   assert.doesNotMatch(providerSettings, /window\.confirm\(copy\.removePersonalConfirm\)/,
     "personal connection removal does not depend on a WebView-native confirm prompt");
   assert.match(providerSettings, /setPersonalRemoval\(selectedConnection\)[\s\S]*<PersonalConnectionRemoveDialog/,
@@ -947,7 +970,7 @@ test("provider settings keep credentials transient and support local no-key pres
     /personalProvider\.customBaseURL \|\| !!personalProvider\.defaultBaseURL[\s\S]*readOnly=\{!personalProvider\.customBaseURL\}/,
     "named Token Plan connections show the same fixed endpoint",
   );
-  const addFlow = providerSettings.slice(providerSettings.indexOf('{view.kind === "add-personal" && personalProvider'));
+  const addFlow = providerSettings.slice(providerSettings.indexOf('className="provider-enrollment-form provider-personal-form"'));
   const planPosition = addFlow.indexOf("copy.providerPlan");
   const endpointPosition = addFlow.indexOf("copy.endpoint");
   const keyPosition = addFlow.indexOf("copy.key");
@@ -1324,6 +1347,12 @@ test("provider history resumes in place and an older engine never receives the H
   assert.match(center, /onResume\(\)[\s\S]*copy\.resuming[\s\S]*copy\.resume/);
   assert.match(copy, /externalSessionsResume:\s*"原地恢复并继续"/);
   assert.match(copy, /Hara 不会复制它，也不会更换 Session ID/);
+  assert.match(copy, /externalStateWaiting: "终端待输入 · 可继续"/,
+    "a persistent provider prompt is not presented as an indefinite app-level wait");
+  assert.match(copy, /externalStateError: "不可用"/,
+    "a failed external session is presented as unusable instead of another vague activity state");
+  assert.match(copy, /externalSessionsModeHistory: "需手动接入"/,
+    "protected history describes the required action instead of looking like a pending spinner");
 });
 
 test("the composer has per-session attachments, bounded folders, and capability-aware model selection", () => {

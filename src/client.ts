@@ -79,6 +79,7 @@ export interface ExternalSessionSourceInfo {
     submit: boolean;
     steer: boolean;
     interrupt: boolean;
+    remove?: boolean;
     terminalView?: boolean;
     terminalInput?: boolean;
   };
@@ -1304,6 +1305,9 @@ export class HaraClient {
   }
   interruptExternalSession(sessionId: string) {
     return this.call<Record<string, never>>("external.sessions.interrupt", { sessionId });
+  }
+  removeExternalSession(sessionId: string) {
+    return this.call<Record<string, never>>("external.sessions.remove", { sessionId });
   }
   terminalSnapshot(sessionId: string) {
     return this.call<ExternalTerminalSnapshot>("external.sessions.terminal.snapshot", { sessionId });

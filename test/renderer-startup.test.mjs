@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { shouldSuppressAppContextMenu } from "../src/context-menu.ts";
 
 const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
+const contextMenu = readFileSync(new URL("../src/context-menu.ts", import.meta.url), "utf8");
 const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const recovery = readFileSync(new URL("../src/RendererRecovery.tsx", import.meta.url), "utf8");
 const crashPrompt = readFileSync(new URL("../src/CrashReportPrompt.tsx", import.meta.url), "utf8");
@@ -28,6 +30,19 @@ test("React owns a generic recovery boundary and sends a native boot signal", ()
   assert.match(recovery, /componentDidCatch\(error: Error, info: React\.ErrorInfo\)/);
   assert.match(recovery, /invoke\("record_renderer_failure"/);
   assert.doesNotMatch(recovery, /this\.state\.error|error\.stack/);
+});
+
+test("app chrome cannot expose the WebView-wide Reload menu", () => {
+  assert.match(main, /installAppContextMenuBoundary\(\)/);
+  assert.match(contextMenu, /event\.defaultPrevented/);
+  assert.match(contextMenu, /input[\s\S]*textarea[\s\S]*contenteditable[\s\S]*a\[href\][\s\S]*data-native-context-menu/);
+  assert.match(contextMenu, /doc\.getSelection\(\)\?\.toString\(\)/);
+  assert.match(contextMenu, /shouldSuppressAppContextMenu\(event\.target, selectedText\)/);
+  assert.match(contextMenu, /event\.preventDefault\(\)/);
+  assert.equal(shouldSuppressAppContextMenu(null, ""), true);
+  assert.equal(shouldSuppressAppContextMenu({ closest: () => null }, ""), true);
+  assert.equal(shouldSuppressAppContextMenu({ closest: () => ({}) }, ""), false);
+  assert.equal(shouldSuppressAppContextMenu(null, "selected transcript"), false);
 });
 
 test("crash reports require explicit consent and enumerate the privacy boundary", () => {

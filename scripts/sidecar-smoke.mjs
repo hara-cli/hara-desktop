@@ -194,11 +194,14 @@ async function smokeServeCapabilities(binary, expectedVersion) {
     }
     const methods = new Set(initialized.result?.capabilities?.methods ?? []);
     const features = new Set(initialized.result?.capabilities?.features ?? []);
-    for (const method of ["desk.connections.list", "desk.snapshot", "desk.task.get"]) {
+    for (const method of ["desk.connections.list", "desk.snapshot", "desk.task.get", "external.sessions.remove"]) {
       if (!methods.has(method)) throw new Error(`actual sidecar is missing ${method}`);
     }
     if (!features.has("collaboration.remote.v1")) {
       throw new Error("actual sidecar is missing collaboration.remote.v1");
+    }
+    if (!features.has("external.sessions.runtime-remove.v1")) {
+      throw new Error("actual sidecar is missing external.sessions.runtime-remove.v1");
     }
     const connections = await rpcCall(socket, 2, "desk.connections.list", {});
     if (
