@@ -361,18 +361,25 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
         return providerState;
       },
       removeProviderConnection: async (id: string) => {
-        if (id !== "personal") return providerState;
+        const removed = providerState.connections?.find((connection) => connection.id === id);
+        if (!removed) return providerState;
         providerState = {
           ...providerState,
-          connections: providerState.connections?.map((connection) => ({
-            ...connection,
-            keyConfigured: false,
-            authenticated: false,
-            removable: false,
-            keyHint: undefined,
-          })),
-          current: providerState.current.profileId === "personal"
-            ? { ...providerState.current, keyConfigured: false, authenticated: false }
+          connections: providerState.connections?.filter((connection) => connection.id !== id),
+          current: providerState.current.profileId === id
+            ? {
+                ...providerState.current,
+                provider: "anthropic",
+                model: "claude-opus-4-8",
+                baseURL: undefined,
+                location: "cloud",
+                auth: "api-key",
+                keyConfigured: false,
+                authenticated: false,
+                profileId: "personal",
+                profileKind: "byok",
+                editable: true,
+              }
             : providerState.current,
         };
         return providerState;

@@ -395,6 +395,36 @@ html[data-theme="light"] .provider-workbench {
   background: #fffdf8;
 }
 
+html[data-theme="light"] .provider-remove-dialog {
+  border-color: #cfa79e;
+  background: #fffdf8;
+  color: #2f2924;
+  box-shadow: 0 26px 70px rgba(74, 55, 45, 0.24);
+}
+
+html[data-theme="light"] .provider-remove-dialog > header,
+html[data-theme="light"] .provider-remove-dialog > footer {
+  border-color: var(--border);
+}
+
+html[data-theme="light"] .provider-remove-dialog header p,
+html[data-theme="light"] .provider-remove-warning p {
+  color: #6d645d;
+}
+
+html[data-theme="light"] .provider-remove-identity {
+  border-color: var(--border);
+  background: #f7f2ea;
+}
+
+html[data-theme="light"] .provider-remove-identity span {
+  color: #756c65;
+}
+
+html[data-theme="light"] .provider-remove-warning {
+  background: #fbefeb;
+}
+
 html[data-theme="light"] .provider-presets {
   background: #f7f2ea;
 }

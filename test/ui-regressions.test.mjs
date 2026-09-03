@@ -858,6 +858,21 @@ test("provider settings keep credentials transient and support local no-key pres
     "Desktop creates a distinct named connection instead of overwriting Personal");
   assert.match(providerSettings, /className="provider-add-mini personal"[\s\S]*<IconPlus size=\{15\} \/>/,
     "the add affordance remains available when personal connections already exist");
+  assert.doesNotMatch(providerSettings, /window\.confirm\(copy\.removePersonalConfirm\)/,
+    "personal connection removal does not depend on a WebView-native confirm prompt");
+  assert.match(providerSettings, /setPersonalRemoval\(selectedConnection\)[\s\S]*<PersonalConnectionRemoveDialog/,
+    "the first click opens an in-app confirmation instead of deleting immediately");
+  assert.doesNotMatch(providerSettings,
+    /disabled=\{!!personalBusy \|\| !!organizationBusy \|\| \(selectedConnection\.active && personalSwitchLocked\)\}/,
+    "being the active Personal connection never makes a removable account look undeletable");
+  assert.match(providerSettings, /role="dialog"[\s\S]*aria-modal="true"[\s\S]*data-autofocus/,
+    "the removal confirmation is modal, keyboard reachable, and puts safe focus on cancel");
+  assert.match(providerSettings, /personalRemovalInFlight\.current[\s\S]*personalRemovalInFlight\.current = true/,
+    "a double-click cannot dispatch the destructive removal RPC twice before React rerenders");
+  assert.match(providerSettings, /removePersonalHistory[\s\S]*removePersonalIrreversible/,
+    "the confirmation explains both history retention and irreversible credential removal");
+  assert.match(providerSettings, /kind: "empty-personal"[\s\S]*personalEmptyHint/,
+    "a Personal Space with zero saved connections has a real empty state and add affordance");
   assert.match(providerSettings, /uniquePersonalConnectionId[\s\S]*state\.connections[\s\S]*organizations\?\.connections/,
     "each account gets a collision-free local connection identity");
   assert.match(providerSettings, /if \(input\.activate && organizations\)[\s\S]*activeId: input\.id/,

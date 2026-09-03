@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   type HaraClient,
   type OrganizationConnection,
@@ -46,6 +47,7 @@ interface PersonalConnectionDraft extends Draft {
 type ConnectionView =
   | { kind: "provider"; id: string }
   | { kind: "connection"; id: string }
+  | { kind: "empty-personal" }
   | { kind: "add-personal" }
   | { kind: "organization"; id: string }
   | { kind: "enroll"; id?: string };
@@ -80,6 +82,8 @@ const words = {
     personalConnectionCount: "{count} saved",
     addPersonal: "Add model connection",
     addFirstPersonal: "Save another provider or API key as its own named connection.",
+    personalEmpty: "No Personal model connection",
+    personalEmptyHint: "Personal can stay empty. Add a named connection when you want to start new Personal conversations.",
     personalUnavailable: "Update the bundled Hara engine to save more than one personal connection.",
     providerPlan: "Plan or provider",
     subscriptionPlans: "Subscription plans",
@@ -113,7 +117,10 @@ const words = {
     changePersonal: "Add another account",
     removePersonal: "Remove connection",
     removingPersonal: "Removing…",
-    removePersonalConfirm: "Remove this saved connection from this device? Sessions created with it keep their identity and local history, but cannot reconnect after the connection is removed. Add and test a replacement first.",
+    removePersonalTitle: "Remove this model connection?",
+    removePersonalConfirm: "Confirm removing “{name}” ({provider}) from this device.",
+    removePersonalHistory: "Conversations keep their identity and local history, but cannot reconnect through this connection after removal.",
+    removePersonalIrreversible: "Its saved API key and vision-first settings will be erased. This cannot be undone.",
     personalRemoved: "Saved connection removed from this device.",
     model: "Model",
     defaultModel: "Default model",
@@ -293,6 +300,8 @@ const words = {
     personalConnectionCount: "已保存 {count} 个",
     addPersonal: "新增模型连接",
     addFirstPersonal: "把另一家供应商或同一供应商的另一枚 API Key 保存为独立连接。",
+    personalEmpty: "Personal 暂无模型连接",
+    personalEmptyHint: "Personal 可以保持为空；需要开始新的个人会话时，再添加一个命名连接。",
     personalUnavailable: "请升级 Desktop 内置 Hara 引擎后，再保存多个个人连接。",
     providerPlan: "套餐或供应商",
     subscriptionPlans: "订阅套餐",
@@ -326,7 +335,10 @@ const words = {
     changePersonal: "添加另一个账号",
     removePersonal: "移除连接",
     removingPersonal: "正在移除…",
-    removePersonalConfirm: "从本机移除这个连接吗？使用它创建的会话会保留原身份和本地历史，但移除后无法重新连接。请先新增并验证替代连接。",
+    removePersonalTitle: "确认移除这个模型连接？",
+    removePersonalConfirm: "确认从本机移除“{name}”（{provider}）。",
+    removePersonalHistory: "使用它创建的会话会保留原身份和本地历史，但移除后无法再通过这个连接继续调用模型。",
+    removePersonalIrreversible: "已保存的 API Key 和识图前置设置会一并清除，此操作无法撤销。",
     personalRemoved: "已从本机移除该连接。",
     model: "模型",
     defaultModel: "默认模型",
@@ -568,8 +580,13 @@ const isLegacyProviderId = (providerId: string): boolean =>
 const viewForPersonalConnection = (
   connection: ProviderConnection | undefined,
   fallbackProvider: string,
+  connections?: ProviderConnection[],
 ): ConnectionView => {
-  if (!connection) return { kind: "provider", id: fallbackProvider };
+  if (!connection) {
+    return Array.isArray(connections)
+      ? { kind: "empty-personal" }
+      : { kind: "provider", id: fallbackProvider };
+  }
   return { kind: "connection", id: connection.id };
 };
 
@@ -676,6 +693,107 @@ const managedExpiryWarning = (
   return words[locale].expiring;
 };
 
+function PersonalConnectionRemoveDialog({
+  connection,
+  providerName,
+  title,
+  prompt,
+  historyWarning,
+  irreversibleWarning,
+  cancelLabel,
+  confirmLabel,
+  pendingLabel,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  connection: ProviderConnection;
+  providerName: string;
+  title: string;
+  prompt: string;
+  historyWarning: string;
+  irreversibleWarning: string;
+  cancelLabel: string;
+  confirmLabel: string;
+  pendingLabel: string;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previousFocus.current = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    return () => previousFocus.current?.focus();
+  }, []);
+
+  return createPortal(
+    <div
+      className="provider-remove-backdrop"
+      onMouseDown={(event) => {
+        if (!pending && event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="provider-remove-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !pending) {
+            event.preventDefault();
+            onCancel();
+            return;
+          }
+          if (event.key !== "Tab") return;
+          const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ) ?? []);
+          if (!focusable.length) return;
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+      >
+        <header>
+          <span>PERSONAL · MODEL CONNECTION</span>
+          <h2 id={titleId}>{title}</h2>
+          <p id={descriptionId}>{prompt}</p>
+        </header>
+        <div className="provider-remove-identity">
+          <strong>{connection.label}</strong>
+          <span>{providerName} · {connection.model}</span>
+        </div>
+        <div className="provider-remove-warning">
+          <p>{historyWarning}</p>
+          <strong>{irreversibleWarning}</strong>
+        </div>
+        <footer>
+          <button type="button" className="ghost" data-autofocus disabled={pending} onClick={onCancel}>
+            {cancelLabel}
+          </button>
+          <button type="button" className="danger" disabled={pending} onClick={onConfirm}>
+            {pending ? pendingLabel : confirmLabel}
+          </button>
+        </footer>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function ProviderSettings({
   client,
   cwd,
@@ -710,6 +828,7 @@ export function ProviderSettings({
   const [visionModels, setVisionModels] = useState<string[]>([]);
   const [visionRouteTested, setVisionRouteTested] = useState(false);
   const [personalBusy, setPersonalBusy] = useState("");
+  const [personalRemoval, setPersonalRemoval] = useState<ProviderConnection | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [modelEntries, setModelEntries] = useState<Array<{ id: string; effortLevels: string[] }>>([]);
@@ -725,6 +844,7 @@ export function ProviderSettings({
   const [error, setError] = useState("");
   const [unsupported, setUnsupported] = useState(false);
   const request = useRef(0);
+  const personalRemovalInFlight = useRef(false);
 
   const load = useCallback(async () => {
     if (!client) return;
@@ -777,14 +897,14 @@ export function ProviderSettings({
         );
         setView(activeOrganization
           ? { kind: "organization", id: activeOrganization.id }
-          : viewForPersonalConnection(activePersonal, fallbackProvider));
+          : viewForPersonalConnection(activePersonal, fallbackProvider, next.connections));
       } else {
         setOrganizations(null);
         setOrganizationsUnsupported(false);
         const activePersonal = next.connections?.find(
           (connection) => connection.active || connection.id === next.current.profileId,
         );
-        setView(viewForPersonalConnection(activePersonal, fallbackProvider));
+        setView(viewForPersonalConnection(activePersonal, fallbackProvider, next.connections));
         setError(String(organizationResult.reason instanceof Error ? organizationResult.reason.message : organizationResult.reason));
       }
     } catch (reason) {
@@ -969,7 +1089,7 @@ export function ProviderSettings({
     setPersonalDraft({ id: "", label: "", provider: "", model: "", baseURL: "", reasoningEffort: "" });
     setPersonalIdEdited(false);
     if (activeOrganization) setView({ kind: "organization", id: activeOrganization.id });
-    else if (state) setView(viewForPersonalConnection(activePersonalConnection, state.current.provider));
+    else if (state) setView(viewForPersonalConnection(activePersonalConnection, state.current.provider, state.connections));
     setModels([]);
     setModelEntries([]);
     setVerifiedCustomModels([]);
@@ -998,7 +1118,7 @@ export function ProviderSettings({
     setRegistrationCode("");
     setOrganizationDraft({ id: "", label: "", gatewayUrl: "" });
     if (activeOrganization) setView({ kind: "organization", id: activeOrganization.id });
-    else if (state) setView(viewForPersonalConnection(activePersonalConnection, state.current.provider));
+    else if (state) setView(viewForPersonalConnection(activePersonalConnection, state.current.provider, state.connections));
     clearFeedback();
   };
 
@@ -1181,7 +1301,7 @@ export function ProviderSettings({
     try {
       const next = await mutateRoute(() => client.useProviderConnection(connection.id, cwd));
       setState(next);
-      setView(viewForPersonalConnection(connection, next.current.provider));
+      setView(viewForPersonalConnection(connection, next.current.provider, next.connections));
       if (organizations) {
         setOrganizations({
           ...organizations,
@@ -1199,7 +1319,8 @@ export function ProviderSettings({
   };
 
   const removePersonalConnection = async (connection: ProviderConnection) => {
-    if (!client || personalBusy || !connection.removable || !window.confirm(copy.removePersonalConfirm)) return;
+    if (!client || personalBusy || personalRemovalInFlight.current || !connection.removable) return;
+    personalRemovalInFlight.current = true;
     setPersonalBusy(`remove:${connection.id}`);
     clearFeedback();
     try {
@@ -1213,7 +1334,7 @@ export function ProviderSettings({
       );
       setView(nextOrganization
         ? { kind: "organization", id: nextOrganization.id }
-        : viewForPersonalConnection(nextActive, next.current.provider));
+        : viewForPersonalConnection(nextActive, next.current.provider, next.connections));
       setModels([]);
       setModelEntries([]);
       setVerifiedCustomModels([]);
@@ -1222,6 +1343,8 @@ export function ProviderSettings({
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
     } finally {
+      personalRemovalInFlight.current = false;
+      setPersonalRemoval(null);
       setPersonalBusy("");
     }
   };
@@ -1328,7 +1451,7 @@ export function ProviderSettings({
     setRegistrationCode("");
     setView(nextOrganization
       ? { kind: "organization", id: nextOrganization.id }
-      : viewForPersonalConnection(nextPersonal, next.current.provider));
+      : viewForPersonalConnection(nextPersonal, next.current.provider, next.connections));
     await onSaved(next);
   };
 
@@ -1401,7 +1524,7 @@ export function ProviderSettings({
         const nextPersonal = nextProvider.connections?.find(
           (connection) => connection.active || connection.id === nextProvider.current.profileId,
         );
-        setView(viewForPersonalConnection(nextPersonal, nextProvider.current.provider));
+        setView(viewForPersonalConnection(nextPersonal, nextProvider.current.provider, nextProvider.connections));
       }
       setMessage(copy.removed);
     } catch (reason) {
@@ -2095,8 +2218,11 @@ export function ProviderSettings({
                     <button
                       type="button"
                       className="ghost danger compact"
-                      disabled={!!personalBusy || !!organizationBusy || (selectedConnection.active && personalSwitchLocked)}
-                      onClick={() => void removePersonalConnection(selectedConnection)}
+                      disabled={!!personalBusy || !!organizationBusy}
+                      onClick={() => {
+                        clearFeedback();
+                        setPersonalRemoval(selectedConnection);
+                      }}
                     >
                       {personalBusy === `remove:${selectedConnection.id}` ? copy.removingPersonal : copy.removePersonal}
                     </button>
@@ -2609,7 +2735,15 @@ export function ProviderSettings({
             </form>
           )}
 
-          {!selected && !selectedConnection && !selectedOrganization && view.kind !== "enroll" && view.kind !== "add-personal" && (
+          {view.kind === "empty-personal" && (
+            <div className="provider-detail-empty personal">
+              <strong>{copy.personalEmpty}</strong>
+              <span>{copy.personalEmptyHint}</span>
+              <button type="button" onClick={() => beginPersonalConnection()}>{copy.addPersonal}</button>
+            </div>
+          )}
+
+          {!selected && !selectedConnection && !selectedOrganization && view.kind !== "enroll" && view.kind !== "add-personal" && view.kind !== "empty-personal" && (
             <div className="provider-detail-empty">
               <strong>{copy.organizationEmpty}</strong>
               <span>{copy.organizationEmptyHint}</span>
@@ -2636,6 +2770,24 @@ export function ProviderSettings({
           {error && <div className="provider-result error" role="alert" aria-live="assertive"><strong>{copy.loadFailed}</strong>{error}</div>}
         </div>
       </div>
+      {personalRemoval && (
+        <PersonalConnectionRemoveDialog
+          connection={personalRemoval}
+          providerName={providerIdDisplayName(state?.providers ?? [], personalRemoval.provider, locale)}
+          title={copy.removePersonalTitle}
+          prompt={copy.removePersonalConfirm
+            .replace("{name}", personalRemoval.label)
+            .replace("{provider}", providerIdDisplayName(state?.providers ?? [], personalRemoval.provider, locale))}
+          historyWarning={copy.removePersonalHistory}
+          irreversibleWarning={copy.removePersonalIrreversible}
+          cancelLabel={copy.cancel}
+          confirmLabel={copy.removePersonal}
+          pendingLabel={copy.removingPersonal}
+          pending={personalBusy === `remove:${personalRemoval.id}`}
+          onCancel={() => setPersonalRemoval(null)}
+          onConfirm={() => void removePersonalConnection(personalRemoval)}
+        />
+      )}
     </section>
   );
 }

@@ -6206,6 +6206,109 @@ button.provider-preset.enterprise.on {
   color: #e1a692;
   white-space: pre-wrap;
 }
+.provider-remove-backdrop {
+  position: fixed;
+  z-index: 10050;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(5, 5, 7, 0.78);
+  backdrop-filter: blur(8px);
+}
+.provider-remove-dialog {
+  width: min(500px, calc(100vw - 44px));
+  overflow: hidden;
+  border: 1px solid #4b3733;
+  border-radius: 12px;
+  background: #171719;
+  color: var(--fg);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58);
+}
+.provider-remove-dialog > header {
+  padding: 20px 21px 17px;
+  border-bottom: 1px solid #302b2a;
+  background: linear-gradient(135deg, rgba(217, 68, 44, 0.1), transparent 62%);
+}
+.provider-remove-dialog > header > span {
+  color: #b7786b;
+  font: 700 9px/1.3 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.12em;
+}
+.provider-remove-dialog h2 {
+  margin: 6px 0 0;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+.provider-remove-dialog header p {
+  margin: 7px 0 0;
+  color: #9a9691;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.provider-remove-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 17px 20px 0;
+  padding: 12px 13px;
+  border: 1px solid #353236;
+  border-radius: 7px;
+  background: #1c1c20;
+}
+.provider-remove-identity strong,
+.provider-remove-identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-remove-identity strong {
+  font-size: 13px;
+}
+.provider-remove-identity span {
+  color: #85817d;
+  font: 10px/1.4 "SF Mono", ui-monospace, monospace;
+}
+.provider-remove-warning {
+  margin: 12px 20px 19px;
+  padding: 12px 13px;
+  border-left: 3px solid #b44f3e;
+  background: rgba(180, 79, 62, 0.08);
+}
+.provider-remove-warning p,
+.provider-remove-warning strong {
+  display: block;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.provider-remove-warning p {
+  color: #aaa39f;
+}
+.provider-remove-warning strong {
+  margin-top: 6px;
+  color: #e3a397;
+  font-weight: 650;
+}
+.provider-remove-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 13px 20px 18px;
+  border-top: 1px solid #302e31;
+}
+.provider-remove-dialog button {
+  min-width: 92px;
+}
+.provider-remove-dialog button.danger {
+  border-color: #8a4338;
+  background: #8a352b;
+  color: #fff3f0;
+}
+.provider-remove-dialog button.danger:hover:not(:disabled) {
+  background: #a54336;
+}
 @media (max-width: 820px) {
   .provider-workbench {
     grid-template-columns: 1fr;

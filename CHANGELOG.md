@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.143 — 2026-09-04 — safe, genuinely removable Personal connections
+
+- Let the original migrated Personal model connection be removed just like any named account, including
+  while it is the active connection. Removing the
+  last connection now leaves a real zero-connection Personal state with a persistent add action; the
+  internal Personal Space identity and local conversation history remain intact.
+- Replace the WebView-native removal prompt with a bilingual in-app confirmation that names the exact
+  connection, provider, and model. Safe focus starts on Cancel, and the warning explains that the saved Key
+  and connection-bound vision-first settings are irreversibly removed.
+- Bundle Hara CLI `0.165.1` at exact verified commit
+  `a4a33769cdf6cdd21fcd1cc10c0ceb97f4f6f675`.
+
 ## 0.1.142 — 2026-09-03 — multiple model accounts and resilient feedback recovery
 
 - Let Personal save and switch among multiple independent model connections, including several accounts
