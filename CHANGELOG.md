@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.141 — 2026-09-03 — connection-bound vision and clean update restarts
+
+- Move vision-first image recognition into Model Settings and bind it to the exact active connection.
+  Company connections can select only image-capable models in their administrator allow-list and always reuse
+  the managed credential; Personal can reuse its current provider or configure a separately authenticated API
+  adapter. Every Personal route is verified before save and the picker excludes arbitrary or text-only IDs.
+- Send every image through one fixed recognition task when vision-first is enabled, preserve the recognition
+  model's returned text unchanged for the conversation model, and keep non-conversation speech, embedding,
+  image-generation, and video-generation endpoints out of the main model picker. Volcengine Agent Plan now
+  recommends `auto` and follows its current documented model order and multimodal labels.
+- Treat an authenticated one-shot updater marker as a clean restart before reconciling stale run markers, so a
+  normal update no longer creates an `unclean_exit` crash report. Bundle Hara CLI `0.164.2` at exact verified
+  commit `d13e62e9aa0f7c03fbcdf8e2ddc9e2ced20d28d5`.
+
 ## 0.1.140 — 2026-09-03 — composer stays visible in short windows
 
 - Keep the conversation column shrinkable, make the transcript its sole vertical scroller, and prevent the

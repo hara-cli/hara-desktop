@@ -418,10 +418,28 @@ html[data-theme="light"] .provider-vision-fields {
   border-top-color: var(--border);
 }
 
-html[data-theme="light"] .provider-vision-fields input {
+html[data-theme="light"] .provider-vision-fields input,
+html[data-theme="light"] .provider-vision-fields select {
   border-color: var(--border);
   background: #fffdf8;
   color: #2f2924;
+}
+
+html[data-theme="light"] .provider-vision-binding {
+  border-color: #c9bbd5;
+  color: #725c89;
+}
+
+html[data-theme="light"] .provider-vision-source button {
+  border-color: var(--border);
+  background: #fffdf8;
+  color: #686158;
+}
+
+html[data-theme="light"] .provider-vision-source button.on {
+  border-color: #9d88b0;
+  background: #f0e8f5;
+  color: #463752;
 }
 
 html[data-theme="light"] button.provider-preset {

@@ -502,6 +502,8 @@ export interface ProviderCatalogEntry {
   defaultBaseURL?: string;
   customBaseURL: boolean;
   knownModels?: readonly string[];
+  /** Models positively classified by the engine as accepting image input. */
+  knownVisionModels?: readonly string[];
   /** Provider/model-specific reasoning choices available before the first live catalog probe. */
   knownModelEntries?: Array<{ id: string; effortLevels: string[] }>;
   legacy?: boolean;
@@ -539,18 +541,24 @@ export interface ProviderSettingsState {
 
 export interface VisionSettingsState {
   enabled: boolean;
+  source: "current" | "custom";
+  provider: string;
   model?: string;
   baseURL?: string;
   apiKeyConfigured: boolean;
   usesManagedCredential: boolean;
   editable: boolean;
   authorized: boolean;
+  /** Image-capable choices only; non-conversation and text-only models are excluded. */
+  availableModels: string[];
   /** Server-authoritative allow-list for a company connection; absent for Personal/BYOK. */
   authorizedModels?: string[];
 }
 
 export interface VisionSettingsInput {
   enabled: boolean;
+  source?: "current" | "custom";
+  provider?: string;
   model?: string;
   baseURL?: string;
   apiKey?: string;
@@ -1401,6 +1409,9 @@ export class HaraClient {
   }
   saveProviderSettings(input: ProviderSettingsInput, cwd?: string) {
     return this.call<ProviderSettingsState>("settings.providers.save", { ...input, ...(cwd ? { cwd } : {}) });
+  }
+  testVisionSettings(input: Omit<VisionSettingsInput, "enabled"> & { source: "current" | "custom" }, cwd?: string) {
+    return this.call<ProviderSettingsTestResult>("settings.vision.test", { ...input, ...(cwd ? { cwd } : {}) });
   }
   saveVisionSettings(input: VisionSettingsInput, cwd?: string) {
     return this.call<ProviderSettingsState>("settings.vision.save", { ...input, ...(cwd ? { cwd } : {}) });

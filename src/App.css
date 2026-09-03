@@ -5232,6 +5232,16 @@ button.compact {
   font-size: 11px;
   line-height: 1.5;
 }
+.provider-vision-binding {
+  display: inline-flex;
+  margin-top: 7px;
+  padding: 3px 7px;
+  border: 1px solid #3c3548;
+  border-radius: 999px;
+  color: #a99abc;
+  font: 600 9px/1.2 "SF Mono", ui-monospace, monospace;
+  letter-spacing: 0.03em;
+}
 .provider-vision-toggle {
   display: flex;
   flex: 0 0 auto;
@@ -5256,6 +5266,41 @@ button.compact {
   display: block;
   min-width: 0;
 }
+.provider-vision-source {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.provider-vision-source legend {
+  margin-bottom: 6px;
+  color: #aaa6b0;
+  font-size: 11px;
+  font-weight: 600;
+}
+.provider-vision-source > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.provider-vision-source button {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  padding: 9px 11px;
+  border: 1px solid #34313a;
+  border-radius: 6px;
+  background: #18171b;
+  color: #aaa6b0;
+  text-align: left;
+}
+.provider-vision-source button.on {
+  border-color: #75648f;
+  background: rgba(110, 87, 143, 0.16);
+  color: #ded6e8;
+}
+.provider-vision-source button strong { font-size: 11px; }
+.provider-vision-source button small { margin: 0; font-size: 9px; font-weight: 400; }
 .provider-vision-fields > .provider-field > span,
 .provider-vision-fields > label > span {
   display: block;
@@ -5264,7 +5309,8 @@ button.compact {
   font-size: 11px;
   font-weight: 600;
 }
-.provider-vision-fields input {
+.provider-vision-fields input,
+.provider-vision-fields select {
   width: 100%;
   padding: 9px 10px;
   border: 1px solid #34343a;
@@ -5275,6 +5321,7 @@ button.compact {
   font-family: "SF Mono", ui-monospace, monospace;
   font-size: 12px;
 }
+.provider-vision-fields input[readonly] { color: var(--dim); }
 .provider-vision-fields small {
   display: block;
   margin-top: 6px;
@@ -5286,6 +5333,11 @@ button.compact {
 .provider-vision-fields .provider-warning {
   grid-column: 1 / -1;
   margin-top: 0;
+}
+.provider-vision-verify {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-start;
 }
 .provider-vision-actions {
   display: flex;
@@ -6207,6 +6259,9 @@ button.provider-preset.enterprise.on {
   }
 }
 @media (max-width: 560px) {
+  .provider-vision-source > div {
+    grid-template-columns: 1fr;
+  }
   .provider-presets {
     grid-template-columns: 1fr;
   }

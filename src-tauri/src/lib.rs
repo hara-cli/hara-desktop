@@ -2664,12 +2664,14 @@ fn desktop_run_marker_pid(name: &str) -> Option<u32> {
     (pid > 1 && (!cfg!(unix) || pid <= i32::MAX as u32)).then_some(pid)
 }
 
-fn initialize_crash_tracking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
-    let directory = crash_report_directory(app)?;
-    let pending = directory.join(CRASH_PENDING_FILE);
-    let current_pid = std::process::id();
+fn reconcile_crash_run_markers_at(
+    directory: &Path,
+    pending: &Path,
+    current_pid: u32,
+    expected_update_restart: bool,
+) -> Result<(), String> {
     let entries =
-        fs::read_dir(&directory).map_err(|error| format!("scan crash markers: {error}"))?;
+        fs::read_dir(directory).map_err(|error| format!("scan crash markers: {error}"))?;
     for entry in entries.take(64) {
         let entry = entry.map_err(|error| format!("read crash marker: {error}"))?;
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -2686,12 +2688,27 @@ fn initialize_crash_tracking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Re
         let metadata = fs::symlink_metadata(&path)
             .map_err(|error| format!("inspect crash marker: {error}"))?;
         if metadata.is_file() && !metadata.file_type().is_symlink() && metadata.len() <= 256 {
-            if pending_crash_report_at(&pending)?.is_none() {
-                write_private_crash_json(&pending, &unclean_exit_draft())?;
+            // Updaters from before crash-marker retirement leave the old PID marker behind. The
+            // one-shot update marker is already durable before the new process starts, but the renderer
+            // consumes it only after setup. Suppress only this launch's stale-marker report; still retire
+            // every old marker and arm the new run below.
+            if !expected_update_restart && pending_crash_report_at(pending)?.is_none() {
+                write_private_crash_json(pending, &unclean_exit_draft())?;
             }
             fs::remove_file(&path).map_err(|error| format!("retire crash marker: {error}"))?;
         }
     }
+    Ok(())
+}
+
+fn initialize_crash_tracking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
+    let directory = crash_report_directory(app)?;
+    let pending = directory.join(CRASH_PENDING_FILE);
+    let current_pid = std::process::id();
+    let expected_update_restart = update_restart_marker(app)
+        .and_then(|marker| update_restart_marker_pending_at(&marker))
+        .unwrap_or(false);
+    reconcile_crash_run_markers_at(&directory, &pending, current_pid, expected_update_restart)?;
     let marker = directory.join(format!(
         "{CRASH_RUN_MARKER_PREFIX}{current_pid}{CRASH_RUN_MARKER_SUFFIX}",
     ));
@@ -2893,7 +2910,7 @@ fn arm_update_restart_marker_at(marker: &Path) -> Result<(), String> {
         .map_err(|e| format!("persist update restart marker: {e}"))
 }
 
-fn take_update_restart_marker_at(marker: &Path) -> Result<bool, String> {
+fn update_restart_marker_pending_at(marker: &Path) -> Result<bool, String> {
     let metadata = match fs::symlink_metadata(marker) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
@@ -2902,11 +2919,22 @@ fn take_update_restart_marker_at(marker: &Path) -> Result<bool, String> {
     if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 128 {
         return Err("update restart marker is invalid".into());
     }
+    let content = fs::read(marker).map_err(|e| format!("read update restart marker: {e}"))?;
+    if content != b"start-bundled-sidecar-once\n" {
+        return Err("update restart marker is invalid".into());
+    }
+    Ok(true)
+}
+
+fn take_update_restart_marker_at(marker: &Path) -> Result<bool, String> {
+    if !update_restart_marker_pending_at(marker)? {
+        return Ok(false);
+    }
     fs::remove_file(marker).map_err(|e| format!("consume update restart marker: {e}"))?;
     Ok(true)
 }
 
-fn update_restart_marker(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+fn update_restart_marker<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     use tauri::Manager;
     app.path()
         .app_data_dir()
@@ -3652,6 +3680,32 @@ mod crash_report_tests {
         let restored = pending_crash_report_at(&path).unwrap().unwrap();
         assert_eq!(restored.kind, "unclean_exit");
         assert_eq!(restored.report_version, CRASH_REPORT_VERSION);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn expected_update_restart_retires_old_run_marker_without_reporting_a_crash() {
+        let root = std::env::temp_dir().join(format!(
+            "hara-update-crash-reconcile-test-{}-{}",
+            std::process::id(),
+            unix_time_millis(),
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let pending = root.join(CRASH_PENDING_FILE);
+        let stale = root.join("desktop-run-2147483000.active");
+        fs::write(&stale, b"started\n").unwrap();
+
+        reconcile_crash_run_markers_at(&root, &pending, std::process::id(), true).unwrap();
+        assert!(!stale.exists());
+        assert!(pending_crash_report_at(&pending).unwrap().is_none());
+
+        fs::write(&stale, b"started\n").unwrap();
+        reconcile_crash_run_markers_at(&root, &pending, std::process::id(), false).unwrap();
+        assert!(!stale.exists());
+        assert_eq!(
+            pending_crash_report_at(&pending).unwrap().unwrap().kind,
+            "unclean_exit"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }
@@ -4631,6 +4685,10 @@ mod pet_tests {
         let dir = std::env::temp_dir().join(unique);
         let marker = dir.join(UPDATE_RESTART_MARKER);
         assert!(!take_update_restart_marker_at(&marker).unwrap());
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(&marker, b"unexpected\n").unwrap();
+        assert!(take_update_restart_marker_at(&marker).is_err());
+        fs::remove_file(&marker).unwrap();
         arm_update_restart_marker_at(&marker).unwrap();
         assert!(take_update_restart_marker_at(&marker).unwrap());
         assert!(!take_update_restart_marker_at(&marker).unwrap());

@@ -828,10 +828,15 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(client, /settings\.providers\.test/);
   assert.match(client, /settings\.providers\.save/);
   assert.match(client, /settings\.vision\.save/);
+  assert.match(client, /settings\.vision\.test/);
   assert.match(providerSettings, /const transientVisionKey = visionApiKey\.trim\(\);[\s\S]*setVisionApiKey\(""\);[\s\S]*client\.saveVisionSettings/,
     "the dedicated vision key leaves renderer state before the settings RPC");
-  assert.match(providerSettings, /visionState\.authorizedModels\.includes\(visionDraft\.model\.trim\(\)\)[\s\S]*Boolean\(visionDraft\.model\.trim\(\)\) && visionDraftAuthorized/,
-    "a managed vision draft cannot save a model outside the server-authoritative allow-list");
+  assert.match(providerSettings, /visionState\.authorizedModels\.includes\(visionDraft\.model\.trim\(\)\)[\s\S]*visionModelOptions\.includes\(visionDraft\.model\.trim\(\)\)[\s\S]*visionDraftAuthorized/,
+    "a managed vision draft must be both image-capable and inside the server-authoritative allow-list");
+  assert.match(providerSettings, /allowCustom=\{false\}/,
+    "the vision picker cannot commit an arbitrary unverified model id");
+  assert.match(providerSettings, /visionState\?\.usesManagedCredential \|\| visionRouteTested/,
+    "every personal vision route must be verified before save; managed routes use the company allow-list");
   for (const method of ["create", "test", "use", "remove"]) {
     assert.match(client, new RegExp(`settings\\.providers\\.connections\\.${method}`));
   }
@@ -897,7 +902,7 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /MiniMax Token Plan[\s\S]*MiniMax-M3[\s\S]*(?:text and image|文字与图片)/,
     "MiniMax Token Plan explains its official Codex route and native multimodality");
   assert.match(preview, /id: "minimax-token-plan"[\s\S]*defaultModel: "MiniMax-M3"[\s\S]*https:\/\/api\.minimaxi\.com\/v1/);
-  assert.match(preview, /id: "volcengine-agent-plan"[\s\S]*defaultModel: "ark-code-latest"[\s\S]*https:\/\/ark\.cn-beijing\.volces\.com\/api\/plan\/v3/);
+  assert.match(preview, /id: "volcengine-agent-plan"[\s\S]*defaultModel: "auto"[\s\S]*https:\/\/ark\.cn-beijing\.volces\.com\/api\/plan\/v3/);
   assert.match(providerSettings, /火山方舟 Agent Plan[\s\S]*(?:Codex Responses|ARK_API_KEY)/,
     "Volcengine Agent Plan explains its dedicated Codex route and key type");
   assert.match(

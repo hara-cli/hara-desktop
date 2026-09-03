@@ -5,6 +5,8 @@ interface ModelComboboxProps {
   value: string;
   options: readonly string[];
   disabled?: boolean;
+  /** When false, typing only filters verified options and can never commit an arbitrary model id. */
+  allowCustom?: boolean;
   ariaLabel: string;
   searchPlaceholder: string;
   customOptionLabel: string;
@@ -30,6 +32,7 @@ export function ModelCombobox({
   value,
   options,
   disabled = false,
+  allowCustom = true,
   ariaLabel,
   searchPlaceholder,
   customOptionLabel,
@@ -65,11 +68,11 @@ export function ModelCombobox({
       custom: false,
     }));
     const customValue = query.trim();
-    if (customValue && !exact) {
+    if (allowCustom && customValue && !exact) {
       result.push({ id: `${listboxId}-custom`, value: customValue, custom: true });
     }
     return result;
-  }, [listboxId, query, uniqueOptions, value]);
+  }, [allowCustom, listboxId, query, uniqueOptions, value]);
 
   useEffect(() => {
     if (activeIndex >= choices.length) setActiveIndex(choices.length ? choices.length - 1 : -1);
@@ -138,7 +141,7 @@ export function ModelCombobox({
         const next = event.relatedTarget;
         if (next instanceof Node && wrapperRef.current?.contains(next)) return;
         const customValue = query.trim();
-        if (customValue) onChange(customValue);
+        if (allowCustom && customValue) onChange(customValue);
         else setQuery(value);
         setOpen(false);
         setActiveIndex(-1);
@@ -165,7 +168,7 @@ export function ModelCombobox({
           onChange={(event) => {
             const next = event.target.value;
             setQuery(next);
-            onChange(next);
+            if (allowCustom) onChange(next);
             setOpen(true);
             setActiveIndex(-1);
           }}

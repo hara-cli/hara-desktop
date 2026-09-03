@@ -13,19 +13,20 @@ const TOKEN_PLAN_AGENT_MODEL_CAPABILITIES: Readonly<Record<string, { zh: string;
 });
 
 const VOLCENGINE_AGENT_PLAN_MODEL_CAPABILITIES: Readonly<Record<string, { zh: string; en: string }>> = Object.freeze({
-  "ark-code-latest": { zh: "控制台所选模型 · Responses", en: "console-selected model · Responses" },
-  "doubao-seed-2.0-mini": { zh: "文本 · 256K · 极速", en: "text · 256K · fastest" },
+  "auto": { zh: "智能调度 · 效果与速度均衡", en: "automatic routing · quality/speed balanced" },
+  "doubao-seed-evolving": { zh: "文本 · 1M · Coding/Agent · 周更", en: "text · 1M · coding/agent · weekly updates" },
+  "doubao-seed-2.1-turbo": { zh: "视觉 · 推理 · 256K · Agent", en: "vision · reasoning · 256K · agent" },
   "doubao-seed-2.0-lite": { zh: "文本 · 256K · 标准", en: "text · 256K · standard" },
-  "deepseek-v4-flash": { zh: "文本 · 推理 · 1M", en: "text · reasoning · 1M" },
+  "doubao-seed-2.0-mini": { zh: "文本 · 256K · 极速", en: "text · 256K · fastest" },
   "glm-5.3-flash": { zh: "视觉 · 推理 · 1M", en: "vision · reasoning · 1M" },
-  "doubao-seed-2.1-turbo": { zh: "文本 · 256K · 进阶", en: "text · 256K · advanced" },
-  "doubao-seed-evolving": { zh: "文本 · 1M · 进阶", en: "text · 1M · advanced" },
-  "minimax-m3": { zh: "视觉 · 推理 · 1M", en: "vision · reasoning · 1M" },
   "glm-5.3": { zh: "文本 · 1M · 始终思考", en: "text · 1M · always thinking" },
-  "glm-latest": { zh: "文本 · 1M · 始终思考", en: "text · 1M · always thinking" },
-  "kimi-k2.7-code": { zh: "文本 · 256K · 代码", en: "text · 256K · code" },
   "deepseek-v4-pro": { zh: "文本 · 推理 · 1M", en: "text · reasoning · 1M" },
-  "kimi-k3": { zh: "文本 · 1M · Medium 及以上", en: "text · 1M · Medium plan or higher" },
+  "deepseek-v4-flash": { zh: "文本 · 推理 · 1M", en: "text · reasoning · 1M" },
+  "minimax-m3": { zh: "视觉 · 推理 · 1M", en: "vision · reasoning · 1M" },
+  "kimi-k2.7-code": { zh: "视觉/视频 · 推理 · 256K · 代码", en: "image/video · reasoning · 256K · code" },
+  "kimi-k3": { zh: "视觉 · 推理 · 1M · Medium 及以上", en: "vision · reasoning · 1M · Medium plan or higher" },
+  "ark-code-latest": { zh: "控制台所选模型 · Responses", en: "console-selected model · Responses" },
+  "glm-latest": { zh: "文本 · 1M · 始终思考", en: "text · 1M · always thinking" },
 });
 
 const bareModel = (model: string): string => model.trim().split("/").slice(-1)[0]?.toLowerCase() ?? "";

@@ -56,14 +56,15 @@ const initialProviders = (): ProviderSettingsState => ({
       label: "Volcengine Ark Agent Plan",
       location: "cloud",
       auth: "api-key",
-      defaultModel: "ark-code-latest",
+      defaultModel: "auto",
       defaultBaseURL: "https://ark.cn-beijing.volces.com/api/plan/v3",
       customBaseURL: false,
       knownModels: [
-        "ark-code-latest", "doubao-seed-2.0-mini", "doubao-seed-2.0-lite", "deepseek-v4-flash",
-        "glm-5.3-flash", "doubao-seed-2.1-turbo", "doubao-seed-evolving", "minimax-m3",
-        "glm-5.3", "glm-latest", "kimi-k2.7-code", "deepseek-v4-pro", "kimi-k3",
+        "auto", "doubao-seed-evolving", "doubao-seed-2.1-turbo", "doubao-seed-2.0-lite",
+        "doubao-seed-2.0-mini", "glm-5.3-flash", "glm-5.3", "deepseek-v4-pro",
+        "deepseek-v4-flash", "minimax-m3", "kimi-k2.7-code", "kimi-k3", "ark-code-latest", "glm-latest",
       ],
+      knownVisionModels: ["doubao-seed-2.1-turbo", "glm-5.3-flash", "minimax-m3", "kimi-k2.7-code", "kimi-k3"],
     },
     { id: "qwen", label: "Qwen (legacy DashScope)", location: "cloud", auth: "api-key", defaultModel: "qwen-plus", customBaseURL: true, legacy: true },
     { id: "qwen-oauth", label: "Qwen Code OAuth (legacy, not Token Plan)", location: "cloud", auth: "oauth", defaultModel: "coder-model", customBaseURL: false, legacy: true },
@@ -74,11 +75,14 @@ const initialProviders = (): ProviderSettingsState => ({
   ],
   vision: {
     enabled: true,
+    source: "current",
+    provider: "hara-gateway",
     model: "deepseek-v4-flash-vision-exp",
     apiKeyConfigured: false,
     usesManagedCredential: true,
     editable: true,
     authorized: true,
+    availableModels: ["deepseek-v4-flash-vision-exp"],
     authorizedModels: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp"],
   },
   connections: [
@@ -192,10 +196,16 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
       }
     };
     return {
-      supports: (method: string) => method === "settings.vision.save" || method.startsWith("settings.providers.connections.") || method.startsWith("settings.organizations."),
+      supports: (method: string) => method === "settings.vision.save" || method === "settings.vision.test" || method.startsWith("settings.providers.connections.") || method.startsWith("settings.organizations."),
       listProviderSettings: async () => providerState,
       listOrganizationConnections: async () => organizationState,
       testProviderSettings: async () => ({ ok: true, models: ["deepseek-chat", "deepseek-reasoner"] }),
+      testVisionSettings: async (input: Omit<VisionSettingsInput, "enabled"> & { source: "current" | "custom" }) => {
+        const models = input.source === "current"
+          ? providerState.vision?.availableModels ?? []
+          : providerState.providers.find((provider) => provider.id === input.provider)?.knownVisionModels ?? [];
+        return { ok: models.length > 0, models };
+      },
       saveProviderSettings: async (input: ProviderSettingsInput) => {
         const activatePersonal = input.activatePersonal === true || providerState.current.profileId === "personal";
         providerState = {
@@ -246,20 +256,28 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
           vision: input.enabled
             ? {
                 enabled: true,
+                source: providerState.current.profileKind === "gateway" ? "current" : input.source ?? "current",
+                provider: providerState.current.profileKind === "gateway"
+                  ? "hara-gateway"
+                  : input.provider ?? providerState.current.provider,
                 model: input.model,
                 baseURL: input.baseURL,
                 apiKeyConfigured: Boolean(input.apiKey || (providerState.vision?.apiKeyConfigured && !input.clearApiKey)),
                 usesManagedCredential: providerState.current.profileKind === "gateway",
                 editable: true,
                 authorized: true,
+                availableModels: input.model ? [input.model] : [],
                 authorizedModels: providerState.vision?.authorizedModels,
               }
             : {
                 enabled: false,
+                source: "current",
+                provider: providerState.current.provider,
                 apiKeyConfigured: false,
                 usesManagedCredential: providerState.current.profileKind === "gateway",
                 editable: true,
                 authorized: true,
+                availableModels: providerState.vision?.availableModels ?? [],
                 authorizedModels: providerState.vision?.authorizedModels,
               },
         };
