@@ -124,6 +124,14 @@ export interface ExternalSessionCenterCopy {
   terminalRefresh: string;
   terminalLocalOnly: string;
   terminalKeyHelp: string;
+  terminalKeyConfirm: string;
+  terminalKeyCancel: string;
+  terminalKeyUp: string;
+  terminalKeyDown: string;
+  terminalKeySwitch: string;
+  terminalKeyInterrupt: string;
+  terminalKeySent: string;
+  terminalInterruptSent: string;
   sourceStates: Record<ExternalSessionSourceState, string>;
   sessionStates: Record<ExternalSessionState, string>;
 }
@@ -170,6 +178,28 @@ const sourceDisplayName = (session: ExternalSessionInfo): string => (
     : session.sourceId === "codex" ? "Codex" : "Claude Code"
 );
 
+type TerminalControlCopyKey =
+  | "terminalKeyConfirm"
+  | "terminalKeyCancel"
+  | "terminalKeyUp"
+  | "terminalKeyDown"
+  | "terminalKeySwitch"
+  | "terminalKeyInterrupt";
+
+const TERMINAL_CONTROLS: ReadonlyArray<{
+  key: ExternalTerminalKey;
+  keyLabel: string;
+  actionCopy: TerminalControlCopyKey;
+  tone?: "confirm" | "interrupt";
+}> = [
+  { key: "esc", keyLabel: "Esc", actionCopy: "terminalKeyCancel" },
+  { key: "up", keyLabel: "↑", actionCopy: "terminalKeyUp" },
+  { key: "down", keyLabel: "↓", actionCopy: "terminalKeyDown" },
+  { key: "enter", keyLabel: "Enter", actionCopy: "terminalKeyConfirm", tone: "confirm" },
+  { key: "tab", keyLabel: "Tab", actionCopy: "terminalKeySwitch" },
+  { key: "ctrl+c", keyLabel: "Ctrl+C", actionCopy: "terminalKeyInterrupt", tone: "interrupt" },
+];
+
 const roleLabel = (role: ExternalSessionMessage["role"], copy: ExternalSessionCenterCopy): string => (
   role === "user" ? copy.you : role === "assistant" ? copy.assistant : copy.system
 );
@@ -215,6 +245,7 @@ export default function ExternalSessionCenter({
   const [terminalSnapshots, setTerminalSnapshots] = useState<Record<string, ExternalTerminalSnapshot>>({});
   const [terminalDrafts, setTerminalDrafts] = useState<Record<string, string>>({});
   const [terminalErrors, setTerminalErrors] = useState<Record<string, string>>({});
+  const [terminalKeyNotices, setTerminalKeyNotices] = useState<Record<string, string>>({});
   const [terminalBusy, setTerminalBusy] = useState<Record<string, boolean>>({});
   const composingRef = useRef(false);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -267,6 +298,7 @@ export default function ExternalSessionCenter({
   const terminalSnapshot = selectedId ? terminalSnapshots[selectedId] : undefined;
   const terminalDraft = selectedId ? terminalDrafts[selectedId] ?? "" : "";
   const terminalError = selectedId ? terminalErrors[selectedId] ?? "" : "";
+  const terminalKeyNotice = selectedId ? terminalKeyNotices[selectedId] ?? "" : "";
 
   const refreshTerminal = useCallback(async () => {
     if (!selectedId || !terminalSupported) return;
@@ -337,11 +369,22 @@ export default function ExternalSessionCenter({
     }
   };
 
-  const sendTerminalKey = async (key: ExternalTerminalKey): Promise<void> => {
+  const sendTerminalKey = async (control: (typeof TERMINAL_CONTROLS)[number]): Promise<void> => {
     if (!selectedId || terminalBusy[selectedId]) return;
+    const actionLabel = copy[control.actionCopy];
     setTerminalBusy((current) => ({ ...current, [selectedId]: true }));
+    setTerminalErrors((current) => ({ ...current, [selectedId]: "" }));
+    setTerminalKeyNotices((current) => ({ ...current, [selectedId]: "" }));
     try {
-      await onTerminalKey(key);
+      await onTerminalKey(control.key);
+      setTerminalKeyNotices((current) => ({
+        ...current,
+        [selectedId]: control.key === "ctrl+c"
+          ? copy.terminalInterruptSent
+          : copy.terminalKeySent
+              .replace("{action}", actionLabel)
+              .replace("{key}", control.keyLabel),
+      }));
       await refreshTerminal();
     } catch (error) {
       setTerminalErrors((current) => ({ ...current, [selectedId]: String(error instanceof Error ? error.message : error).slice(0, 240) }));
@@ -630,9 +673,24 @@ export default function ExternalSessionCenter({
                       <>
                         <pre ref={terminalRef} tabIndex={0} data-native-context-menu="true">{terminalSnapshot?.text || copy.terminalEmpty}</pre>
                         <div className="external-terminal-keys" aria-label={copy.terminalKeyHelp}>
-                          {(["esc", "up", "down", "tab", "ctrl+c"] as ExternalTerminalKey[]).map((key) => (
-                            <button type="button" key={key} disabled={Boolean(terminalBusy[selected.id])} onClick={() => void sendTerminalKey(key)}>{key}</button>
-                          ))}
+                          {TERMINAL_CONTROLS.map((control) => {
+                            const actionLabel = copy[control.actionCopy];
+                            return (
+                              <button
+                                type="button"
+                                key={control.key}
+                                className={control.tone ? `is-${control.tone}` : undefined}
+                                aria-label={`${actionLabel} (${control.keyLabel})`}
+                                title={`${actionLabel} · ${control.keyLabel}`}
+                                disabled={Boolean(terminalBusy[selected.id])}
+                                onClick={() => void sendTerminalKey(control)}
+                              >
+                                <kbd>{control.keyLabel}</kbd>
+                                <span>{actionLabel}</span>
+                              </button>
+                            );
+                          })}
+                          <span className="external-terminal-key-notice" role="status" aria-live="polite">{terminalKeyNotice}</span>
                         </div>
                         <form onSubmit={(event) => void submitTerminal(event)}>
                           <input

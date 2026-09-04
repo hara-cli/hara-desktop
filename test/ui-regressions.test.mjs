@@ -36,6 +36,7 @@ test("Hara Live keeps structured work and the native terminal as two views of on
   const center = readFileSync(`${root}/src/ExternalSessionCenter.tsx`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
 
   assert.match(center, /onCreate: \(agentKind: ExternalRuntimeAgentKind, launch: ExternalRuntimeLaunchOptions\)/);
   assert.match(center, /runtimeModels\[runtimeAgentKind\]/);
@@ -50,6 +51,21 @@ test("Hara Live keeps structured work and the native terminal as two views of on
     "the native-terminal tab expands into the full session work area instead of staying in a narrow inspector");
   assert.match(center, /data-native-context-menu="true"/,
     "the expanded terminal keeps the native selection and copy menu");
+  assert.match(center, /key: "enter", keyLabel: "Enter", actionCopy: "terminalKeyConfirm"/,
+    "interactive provider choices expose a one-click Enter confirmation instead of only navigation keys");
+  assert.match(center, /key: "ctrl\+c", keyLabel: "Ctrl\+C", actionCopy: "terminalKeyInterrupt"/,
+    "Ctrl+C remains an explicit one-click interrupt rather than being mislabeled as confirmation");
+  assert.match(center, /onClick=\{\(\) => void sendTerminalKey\(control\)\}/,
+    "each visible terminal control sends its declared key directly");
+  assert.match(center, /external-terminal-key-notice" role="status" aria-live="polite"/,
+    "terminal key delivery receives a visible, screen-reader-safe acknowledgment");
+  assert.match(center, /control\.key === "ctrl\+c"[\s\S]*copy\.terminalInterruptSent/,
+    "Ctrl+C delivery explains that Esc, not interrupt, cancels a provider confirmation dialog");
+  assert.match(i18n, /externalSessionsTerminalKeyConfirm: "确认"/);
+  assert.match(i18n, /externalSessionsTerminalKeyInterrupt: "中断"/);
+  assert.match(i18n, /externalSessionsTerminalKeyConfirm: "Confirm"/);
+  assert.match(i18n, /externalSessionsTerminalKeyInterrupt: "Interrupt"/);
+  assert.match(i18n, /externalSessionsTerminalInterruptSent: "已发送中断 · 当前确认框请用 Esc 取消"/);
   assert.match(center, /window\.setInterval\(\(\) => void refreshTerminal\(\), 1_000\)/);
   assert.match(app, /externalSessionActions\[selectedExternalSession\.id\]/);
   assert.match(app, /externalSessionApprovals\[selectedExternalSession\.id\]/);

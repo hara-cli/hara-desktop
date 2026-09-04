@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.145 — 2026-09-04 — actionable bilingual Hara Live terminal controls
+
+- Complete provider-native confirmation flows with a one-click `Enter · Confirm` control alongside Escape,
+  selection movement, Tab, and Ctrl+C. The previous toolbar could move a Claude Code choice but omitted the
+  only key that confirmed it.
+- Give every terminal control a localized semantic label in Chinese and English while keeping the stable key
+  chord visible. Ctrl+C is now unambiguously an interrupt rather than a confirmation action, and its delivery
+  points users to Escape when the provider dialog specifically requires cancellation.
+- Acknowledge every accepted key immediately in the terminal toolbar, including a screen-reader-safe status,
+  so an interrupt that produces no new terminal text no longer looks like an ignored click. Bundle the already
+  verified Hara CLI `0.165.3` at commit `9153da9dd28f941186f93e6a1647182a0e7a54a1` unchanged.
+
 ## 0.1.144 — 2026-09-04 — visible connection drafts and recoverable Hara Live sessions
 
 - Clicking the Personal connection add button now immediately appends and selects a distinct

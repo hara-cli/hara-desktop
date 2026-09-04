@@ -590,8 +590,10 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe" });
   await client.terminalInput("ext_runtime_safe", "/status");
   assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", text: "/status" });
-  await client.terminalKey("ext_runtime_safe", "esc");
-  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", key: "esc" });
+  await client.terminalKey("ext_runtime_safe", "enter");
+  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", key: "enter" });
+  await client.terminalKey("ext_runtime_safe", "ctrl+c");
+  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", key: "ctrl+c" });
 
   let received;
   client.onEvent = (event) => {

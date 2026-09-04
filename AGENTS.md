@@ -35,3 +35,5 @@ A protected stable `vX.Y.Z` tag is a production release authorization. The tag w
 Never commit updater private keys, Apple credentials, certificates, tokens, `.env` files, session data, or user project content. Do not weaken localhost origin/auth checks or move tool permissions into the renderer.
 
 The canonical intake and status channel is Feishu `hara 反馈群` (`oc_17590648f393135cde6a6b9cd6f1c710`). Pull the newest messages and relevant attachments before issue work. Report discovered bugs with Desktop and bundled CLI versions, reproduction/evidence, and expected versus actual behavior, always redacted. After a verified release, reply to each original fixed report with the fixed version and focused checks, then post the group-level version, concise changes, upgrade instructions, and verification request; mention any named tester.
+The shared Feishu helper accepts `messages --preview-limit` values from 1 through 100; keep previews within
+that bound and use `--output` when a complete redacted export is required.
