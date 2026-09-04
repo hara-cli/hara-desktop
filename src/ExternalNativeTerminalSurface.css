@@ -1,0 +1,143 @@
+.external-terminal-surface {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  color: #d9f5e5;
+  background: #090d0b;
+}
+
+.external-terminal-statusbar {
+  display: flex;
+  min-height: 38px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 9px 5px 11px;
+  border-bottom: 1px solid #26312b;
+  background: #111713;
+}
+
+.external-terminal-statusbar > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #a9c8b5;
+  font: 760 9px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.external-terminal-statusbar > span i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #67d493;
+  box-shadow: 0 0 9px rgba(103, 212, 147, .55);
+}
+
+.external-terminal-surface[data-status="observe"] .external-terminal-statusbar > span i,
+.external-terminal-surface[data-status="connecting"] .external-terminal-statusbar > span i { background: #dfbd72; box-shadow: 0 0 9px rgba(223, 189, 114, .45); }
+.external-terminal-surface[data-status="error"] .external-terminal-statusbar > span i,
+.external-terminal-surface[data-status="closed"] .external-terminal-statusbar > span i { background: #ef786c; box-shadow: 0 0 9px rgba(239, 120, 108, .42); }
+.external-terminal-surface[data-status="wezterm"] .external-terminal-statusbar > span i { background: #78a9d1; box-shadow: 0 0 9px rgba(120, 169, 209, .44); }
+
+.external-terminal-statusbar > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.external-terminal-statusbar button,
+.external-terminal-softkeys button {
+  min-height: 27px;
+  padding: 0 8px;
+  border: 1px solid #34433b;
+  border-radius: 6px;
+  color: #b8d4c2;
+  background: #151c18;
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+.external-terminal-statusbar button:hover:not(:disabled),
+.external-terminal-softkeys button:hover:not(:disabled) { border-color: #67d493; color: #e9fff1; }
+.external-terminal-statusbar button:disabled,
+.external-terminal-softkeys button:disabled { cursor: default; opacity: .42; }
+.external-terminal-statusbar button.is-wezterm { border-color: #6c584a; color: #e9ccb6; background: #201914; }
+
+.external-terminal-surface-error {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid #6d342c;
+  color: #ffc3b7;
+  background: #291512;
+  font: 600 9px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.external-terminal-canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 220px;
+  flex: 1 1 auto;
+  padding: 9px 8px 7px;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(255, 255, 255, .014) 1px, transparent 1px) 0 0 / 100% 4px,
+    #090d0b;
+}
+.external-terminal-canvas .xterm { height: 100%; }
+.external-terminal-canvas .xterm-viewport { scrollbar-color: #34433b #090d0b; scrollbar-width: thin; }
+.external-terminal-canvas .xterm-screen { cursor: text; }
+
+.external-terminal-softkeys {
+  display: flex;
+  min-height: 42px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  border-top: 1px solid #202a24;
+  background: #0f1511;
+}
+.external-terminal-softkeys button { display: inline-flex; align-items: center; gap: 6px; }
+.external-terminal-softkeys kbd {
+  min-width: 15px;
+  padding: 2px 4px;
+  border: 1px solid rgba(184, 212, 194, .28);
+  border-radius: 4px;
+  color: #d9f5e5;
+  background: #0b0f0d;
+  font: inherit;
+  text-align: center;
+}
+
+.external-terminal-surface > footer {
+  display: flex;
+  min-height: 29px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 10px;
+  color: #75897c;
+  background: #111713;
+  font: 600 8px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.external-terminal-surface > footer span:last-child { text-align: right; }
+
+.external-terminal-surface.is-legacy pre {
+  min-height: 260px;
+  flex: 1 1 auto;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  color: #d9f5e5;
+  background: #090d0b;
+  font: 500 10px/1.48 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+@container extension-dock (max-width: 520px) {
+  .external-terminal-statusbar { align-items: flex-start; }
+  .external-terminal-statusbar > div { max-width: 58%; }
+  .external-terminal-surface > footer { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .external-terminal-surface > footer span:last-child { text-align: left; }
+}

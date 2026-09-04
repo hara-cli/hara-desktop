@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.146 — 2026-09-04 — interactive Hara Live terminal extension
+
+- Replace the one-second terminal snapshot toolbar with a real ANSI terminal renderer for current engines.
+  Physical keyboard input, Chinese paste, Enter, Escape, arrows, Tab, Ctrl+C, resize, and PgUp/PgDn now reach
+  the exact Herdr-owned Codex or Claude Code terminal; a single explicit controller lease prevents two windows
+  from typing over each other while allowing independent read-only observers.
+- Move the provider terminal into Hara's resizable extension screen so it can stay beside the structured
+  conversation, expand to the full work area, or be hidden without ending the agent. Waiting and error sessions
+  open directly on the actionable terminal instead of remaining indefinitely labeled “waiting for you”.
+- Add an optional confirmed “Open in WezTerm” handoff on macOS and Linux. It attaches WezTerm to the same
+  terminal instead of launching a duplicate agent, and a missing or failed WezTerm leaves Hara's built-in
+  controller usable. Windows keeps the complete built-in terminal experience.
+- Require a successful test of the exact provider, endpoint, Key, and model before a new Personal connection
+  can be saved. A failed test of an existing connection now states that the connection remains saved and clears
+  stale discovered-model results instead of presenting the failure as a load error.
+- Bundle Hara CLI `0.166.0` at exact commit `72736037757d5a2a335aac53673ac03f94ce15af`, including the bounded
+  Volcengine Agent Plan `auto` compatibility retry and the private terminal-stream protocol. Windows packages
+  remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.145 — 2026-09-04 — actionable bilingual Hara Live terminal controls
 
 - Complete provider-native confirmation flows with a one-click `Enter · Confirm` control alongside Escape,

@@ -78,8 +78,21 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "external.sessions.terminal.snapshot",
                 "external.sessions.terminal.input",
                 "external.sessions.terminal.key",
+                "external.sessions.terminal.attach",
+                "external.sessions.terminal.raw-input",
+                "external.sessions.terminal.resize",
+                "external.sessions.terminal.scroll",
+                "external.sessions.terminal.release",
+                "external.sessions.terminal.open-wezterm",
               ],
-              events: ["event.task_state", "event.surface", "external.event.text", "external.approval.request"],
+              events: [
+                "event.task_state",
+                "event.surface",
+                "external.event.text",
+                "external.approval.request",
+                "external.event.terminal.frame",
+                "external.event.terminal.closed",
+              ],
               features: [
                 "composer.attachments.v1",
                 "models.capabilities.v1",
@@ -88,6 +101,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "external.sessions.runtime.v1",
                 "external.sessions.launch-options.v1",
                 "external.sessions.terminal-mirror.v1",
+                "external.sessions.terminal-stream.v2",
               ],
             },
           } : request.method.startsWith("settings.gateways.login.")
@@ -203,6 +217,23 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                   }
               : request.method === "external.sessions.terminal.input" || request.method === "external.sessions.terminal.key"
                 ? {}
+              : request.method === "external.sessions.terminal.attach"
+                ? {
+                    sessionId: request.params.sessionId,
+                    streamId: "termstream_safe",
+                    mode: request.params.mode,
+                    cols: request.params.cols,
+                    rows: request.params.rows,
+                  }
+              : [
+                  "external.sessions.terminal.raw-input",
+                  "external.sessions.terminal.resize",
+                  "external.sessions.terminal.scroll",
+                  "external.sessions.terminal.release",
+                ].includes(request.method)
+                ? {}
+              : request.method === "external.sessions.terminal.open-wezterm"
+                ? { terminal: "wezterm", opened: true }
               : request.method === "desk.connections.list"
               ? {
                   connections: [{
@@ -298,6 +329,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supportsFeature("external.sessions.interaction.v1"), true);
   assert.equal(client.supportsFeature("external.sessions.launch-options.v1"), true);
   assert.equal(client.supportsFeature("external.sessions.terminal-mirror.v1"), true);
+  assert.equal(client.supportsFeature("external.sessions.terminal-stream.v2"), true);
 
   await client.submit("session-1", "Use the new title", undefined, {
     mode: "start_if_idle",
@@ -594,6 +626,47 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", key: "enter" });
   await client.terminalKey("ext_runtime_safe", "ctrl+c");
   assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", key: "ctrl+c" });
+
+  const attached = await client.attachTerminal("ext_runtime_safe", { mode: "control", cols: 100, rows: 32 });
+  assert.deepEqual(attached, {
+    sessionId: "ext_runtime_safe",
+    streamId: "termstream_safe",
+    mode: "control",
+    cols: 100,
+    rows: 32,
+  });
+  await client.terminalRawInput(attached.streamId, "\u0003中文");
+  assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", text: "\u0003中文" });
+  await client.terminalResize(attached.streamId, 120, 40);
+  assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", cols: 120, rows: 40 });
+  await client.terminalScroll(attached.streamId, "up", 6);
+  assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", direction: "up", lines: 6 });
+  await client.releaseTerminal(attached.streamId);
+  assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe" });
+  assert.deepEqual(await client.openTerminalInWezTerm("ext_runtime_safe", true), { terminal: "wezterm", opened: true });
+  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", takeover: true });
+
+  const terminalEvents = [];
+  const stopTerminalEvents = client.onTerminalEvent((event) => terminalEvents.push(event));
+  socket.onmessage({
+    data: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "external.event.terminal.frame",
+      params: {
+        sessionId: "ext_runtime_safe",
+        streamId: "termstream_safe",
+        seq: 1,
+        encoding: "ansi-base64",
+        width: 100,
+        height: 32,
+        full: true,
+        bytes: "G1sySg==",
+      },
+    }),
+  });
+  assert.equal(terminalEvents.length, 1);
+  assert.equal(terminalEvents[0].seq, 1);
+  stopTerminalEvents();
 
   let received;
   client.onEvent = (event) => {

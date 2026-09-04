@@ -36,7 +36,7 @@ test("Hara Live keeps structured work and the native terminal as two views of on
   const center = readFileSync(`${root}/src/ExternalSessionCenter.tsx`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
-  const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
+  const terminal = readFileSync(`${root}/src/ExternalNativeTerminalSurface.tsx`, "utf8");
 
   assert.match(center, /onCreate: \(agentKind: ExternalRuntimeAgentKind, launch: ExternalRuntimeLaunchOptions\)/);
   assert.match(center, /runtimeModels\[runtimeAgentKind\]/);
@@ -47,40 +47,46 @@ test("Hara Live keeps structured work and the native terminal as two views of on
   assert.match(center, /selected\?\.sourceId === "runtime" && \(selected\.state === "waiting" \|\| selected\.state === "error"\)/,
     "a Hara Live terminal waiting for input or needing recovery opens directly into its actionable native terminal");
   assert.match(center, /inspectorView === "terminal" && terminalSupported/);
-  assert.match(center, /external-session-layout\$\{inspectorView === "terminal" && terminalSupported \? " is-terminal-expanded"/,
-    "the native-terminal tab expands into the full session work area instead of staying in a narrow inspector");
-  assert.match(center, /data-native-context-menu="true"/,
-    "the expanded terminal keeps the native selection and copy menu");
-  assert.match(center, /key: "enter", keyLabel: "Enter", actionCopy: "terminalKeyConfirm"/,
-    "interactive provider choices expose a one-click Enter confirmation instead of only navigation keys");
-  assert.match(center, /key: "ctrl\+c", keyLabel: "Ctrl\+C", actionCopy: "terminalKeyInterrupt"/,
-    "Ctrl+C remains an explicit one-click interrupt rather than being mislabeled as confirmation");
-  assert.match(center, /onClick=\{\(\) => void sendTerminalKey\(control\)\}/,
-    "each visible terminal control sends its declared key directly");
-  assert.match(center, /external-terminal-key-notice" role="status" aria-live="polite"/,
-    "terminal key delivery receives a visible, screen-reader-safe acknowledgment");
-  assert.match(center, /control\.key === "ctrl\+c"[\s\S]*copy\.terminalInterruptSent/,
-    "Ctrl+C delivery explains that Esc, not interrupt, cancels a provider confirmation dialog");
-  assert.match(i18n, /externalSessionsTerminalKeyConfirm: "确认"/);
-  assert.match(i18n, /externalSessionsTerminalKeyInterrupt: "中断"/);
-  assert.match(i18n, /externalSessionsTerminalKeyConfirm: "Confirm"/);
-  assert.match(i18n, /externalSessionsTerminalKeyInterrupt: "Interrupt"/);
-  assert.match(i18n, /externalSessionsTerminalInterruptSent: "已发送中断 · 当前确认框请用 Esc 取消"/);
-  assert.match(center, /window\.setInterval\(\(\) => void refreshTerminal\(\), 1_000\)/);
+  assert.match(center, /external-session-layout extension-work[\s\S]*has-visible-extension/,
+    "the native terminal uses the reusable resizable extension-screen layout");
+  assert.match(center, /<ExtensionDock[\s\S]*kind="terminal"[\s\S]*mode=\{terminalDockMode\}/,
+    "the terminal can be resized, hidden, and maximized independently of the conversation");
+  assert.match(terminal, /data-native-context-menu="true"/,
+    "the terminal keeps native selection and copy affordances");
+  assert.match(terminal, /terminal\.onData\(queueInput\)/,
+    "physical keyboard input goes through the raw terminal stream instead of a prompt textbox");
+  assert.match(terminal, /\["Enter", "确认", "\\r"\]/,
+    "interactive provider choices expose a one-click Enter confirmation");
+  assert.match(terminal, /\["Ctrl\+C", "中断", "\\u0003"\]/,
+    "Ctrl+C sends the real interrupt byte instead of a mislabeled UI action");
+  assert.match(terminal, /onScroll\(current\.streamId, direction, lines\)/,
+    "page controls relay real provider-terminal scroll events rather than moving only a stale local snapshot");
+  assert.match(center, /onScroll=\{onTerminalScroll\}/);
+  assert.match(app, /client\.terminalScroll\(streamId, direction, lines\)/);
+  assert.match(terminal, /window\.confirm\(copy\.transferConfirm\)/,
+    "moving the single input lease into WezTerm requires explicit confirmation");
+  assert.match(terminal, /event\.seq !== prior \+ 1 && !event\.full/,
+    "a dropped incremental frame fails closed instead of corrupting the terminal view");
+  assert.match(center, /terminalStreaming \|\| inspectorView !== "terminal"/,
+    "one-second text polling is retained only as an old-engine fallback");
   assert.match(app, /externalSessionActions\[selectedExternalSession\.id\]/);
   assert.match(app, /externalSessionApprovals\[selectedExternalSession\.id\]/);
   assert.match(app, /externalSessionActionErrors\[selectedExternalSession\.id\]/);
   assert.match(client, /external\.sessions\.terminal\.snapshot/);
   assert.match(client, /external\.sessions\.terminal\.input/);
   assert.match(client, /external\.sessions\.terminal\.key/);
+  assert.match(client, /external\.sessions\.terminal\.attach/);
+  assert.match(client, /external\.sessions\.terminal\.raw-input/);
+  assert.match(client, /external\.sessions\.terminal\.resize/);
+  assert.match(client, /external\.sessions\.terminal\.open-wezterm/);
   assert.match(client, /external\.sessions\.remove/);
   assert.match(app, /external\.sessions\.runtime-remove\.v1/);
   assert.match(app, /window\.confirm\(\[/,
     "ending the original provider terminal requires explicit user confirmation");
-  assert.match(center, /copy\.terminalUnavailableTitle[\s\S]*copy\.startAnother[\s\S]*copy\.remove/,
-    "an unreadable terminal exposes retry, restart, and removal instead of a permanent waiting label");
-  assert.match(center, /actionError \? <div className="external-terminal-error"/,
-    "a failed removal remains visible while the wide terminal hides the conversation column");
+  assert.match(terminal, /terminalStatus === "closed" \|\| terminalStatus === "error" \|\| terminalStatus === "wezterm"/,
+    "ended and transferred terminals expose reconnection instead of a permanent waiting label");
+  assert.match(center, /legacyError=\{terminalError \|\| actionError\}/,
+    "old-engine terminal failures stay visible inside the extension screen");
 });
 
 test("expired company Spaces stay visible for recovery but cannot be selected", () => {
@@ -966,7 +972,13 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /<ModelCombobox[\s\S]*options=\{selectedModelOptions\}/, "known and live models use one searchable selector");
   assert.match(providerSettings, /customModelNeedsTest[\s\S]*customModelVerified/, "catalog-external IDs expose their verification state");
   assert.match(providerSettings, /const testValid[\s\S]*const valid = testValid && selectedModelAllowed/, "a custom model can be tested before it is allowed to save");
-  assert.match(providerSettings, /personalConnectionTestValid[\s\S]*personalConnectionValid = personalConnectionTestValid && personalModelAllowed/);
+  assert.match(providerSettings, /personalConnectionValid = personalConnectionTestValid[\s\S]*&& personalRouteTested[\s\S]*&& personalModelAllowed/);
+  assert.match(providerSettings, /personalRouteTested = personalModelVerified/,
+    "a successful probe is bound to the exact provider, endpoint, and model candidate");
+  assert.match(providerSettings, /filter\(\(candidate\) => candidate !== personalCandidateKey\)/,
+    "retesting the same candidate invalidates its prior receipt until the new probe succeeds");
+  assert.match(providerSettings, /savedVerificationFailed:[^\n]*still saved|savedVerificationFailed:[^\n]*仍已保存/);
+  assert.match(providerSettings, /testSavedPersonalConnection[\s\S]*if \(result\.ok\)[\s\S]*setModels\(\[\]\)/);
   assert.match(providerSettings, /!SUBSCRIPTION_PLAN_PROVIDER_IDS\.has\(selected\?\.id \?\? ""\) \|\| models\.length === 0/,
     "a live subscription catalog remains authoritative even after a custom probe");
   assert.match(providerSettings, /Token Plan[\s\S]*no Token Plan browser login|Token Plan[\s\S]*不提供 Token Plan 浏览器登录/);
@@ -1342,7 +1354,8 @@ test("provider history resumes in place and an older engine never receives the H
     "React events are read synchronously before deferred functional state updates on Windows",
   );
   assert.match(center, /const value = event\.currentTarget\.value;[\s\S]{0,120}setRuntimeModels/);
-  assert.match(center, /const value = event\.currentTarget\.value;[\s\S]{0,120}setTerminalDrafts/);
+  assert.doesNotMatch(center, /setTerminalDrafts/,
+    "the live terminal no longer routes keyboard input through a deferred React form event");
 
   assert.match(client, /resumeExternalSession\(sessionId: string\)[\s\S]*"external\.sessions\.resume"/);
   assert.match(

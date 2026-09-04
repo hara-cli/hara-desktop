@@ -65,7 +65,9 @@ import {
   type ExternalRuntimeLaunchOptions,
   type ExternalSessionSourceId,
   type ExternalSessionSourceInfo,
-  type ExternalTerminalKey,
+  type ExternalTerminalEvent,
+  type ExternalTerminalStreamConnection,
+  type ExternalTerminalStreamMode,
   type ExternalTerminalSnapshot,
 } from "./client";
 import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
@@ -6028,22 +6030,66 @@ export default function App() {
       throw error;
     }
   }, [locale, selectedExternalSession]);
-  const sendSelectedExternalTerminalInput = useCallback(async (text: string): Promise<void> => {
+  const attachSelectedExternalTerminal = useCallback(async (
+    mode: ExternalTerminalStreamMode,
+    takeover: boolean,
+    cols: number,
+    rows: number,
+  ): Promise<ExternalTerminalStreamConnection> => {
     const client = clientRef.current;
     const session = selectedExternalSession;
-    if (!client || !session || session.sourceId !== "runtime" || !client.supports("external.sessions.terminal.input")) {
+    if (
+      !client
+      || !session
+      || session.sourceId !== "runtime"
+      || !client.supportsFeature("external.sessions.terminal-stream.v2")
+      || !client.supports("external.sessions.terminal.attach")
+    ) {
       throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
     }
-    await client.terminalInput(session.id, text);
+    return await client.attachTerminal(session.id, { mode, takeover, cols, rows });
   }, [locale, selectedExternalSession]);
-  const sendSelectedExternalTerminalKey = useCallback(async (key: ExternalTerminalKey): Promise<void> => {
+  const sendSelectedExternalTerminalRawInput = useCallback(async (streamId: string, text: string): Promise<void> => {
+    const client = clientRef.current;
+    if (!client || !client.supports("external.sessions.terminal.raw-input")) {
+      throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
+    }
+    await client.terminalRawInput(streamId, text);
+  }, [locale]);
+  const resizeSelectedExternalTerminal = useCallback(async (streamId: string, cols: number, rows: number): Promise<void> => {
+    const client = clientRef.current;
+    if (!client || !client.supports("external.sessions.terminal.resize")) {
+      throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
+    }
+    await client.terminalResize(streamId, cols, rows);
+  }, [locale]);
+  const scrollSelectedExternalTerminal = useCallback(async (
+    streamId: string,
+    direction: "up" | "down",
+    lines: number,
+  ): Promise<void> => {
+    const client = clientRef.current;
+    if (!client || !client.supports("external.sessions.terminal.scroll")) {
+      throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
+    }
+    await client.terminalScroll(streamId, direction, lines);
+  }, [locale]);
+  const releaseSelectedExternalTerminal = useCallback(async (streamId: string): Promise<void> => {
+    const client = clientRef.current;
+    if (!client || !client.supports("external.sessions.terminal.release")) return;
+    await client.releaseTerminal(streamId);
+  }, []);
+  const openSelectedExternalTerminalInWezTerm = useCallback(async (takeover: boolean): Promise<void> => {
     const client = clientRef.current;
     const session = selectedExternalSession;
-    if (!client || !session || session.sourceId !== "runtime" || !client.supports("external.sessions.terminal.key")) {
+    if (!client || !session || session.sourceId !== "runtime" || !client.supports("external.sessions.terminal.open-wezterm")) {
       throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
     }
-    await client.terminalKey(session.id, key);
+    await client.openTerminalInWezTerm(session.id, takeover);
   }, [locale, selectedExternalSession]);
+  const subscribeSelectedExternalTerminal = useCallback((listener: (event: ExternalTerminalEvent) => void): (() => void) => (
+    clientRef.current?.onTerminalEvent(listener) ?? (() => {})
+  ), []);
   const resumeSelectedExternalSession = useCallback(async () => {
     const client = clientRef.current;
     const session = selectedExternalSession;
@@ -8318,8 +8364,14 @@ export default function App() {
       onRemove={removeSelectedExternalSession}
       onApproval={answerExternalSessionApproval}
       onReadTerminal={readSelectedExternalTerminal}
-      onTerminalInput={sendSelectedExternalTerminalInput}
-      onTerminalKey={sendSelectedExternalTerminalKey}
+      terminalStreaming={clientRef.current?.supportsFeature("external.sessions.terminal-stream.v2") === true}
+      onAttachTerminal={attachSelectedExternalTerminal}
+      onTerminalRawInput={sendSelectedExternalTerminalRawInput}
+      onTerminalResize={resizeSelectedExternalTerminal}
+      onTerminalScroll={scrollSelectedExternalTerminal}
+      onTerminalRelease={releaseSelectedExternalTerminal}
+      onOpenWezTerm={openSelectedExternalTerminalInWezTerm}
+      subscribeTerminal={subscribeSelectedExternalTerminal}
       copy={{
         eyebrow: t("externalSessionsEyebrow"),
         title: t("externalSessionsTitle"),

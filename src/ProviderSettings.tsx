@@ -113,6 +113,7 @@ const words = {
     personalSwitched: "Personal connection switched. Existing sessions keep the connection they started with.",
     testSaved: "Test saved connection",
     testingSaved: "Testing saved connection…",
+    savedVerificationFailed: "This connection remains saved, but validation failed: {error}",
     keyHintLabel: "Saved key",
     noSavedKey: "No API key required",
     immutableConnection: "Credentials and routing belong to this exact connection. Add and verify a replacement before removing it; existing sessions are never silently rewritten.",
@@ -284,7 +285,7 @@ const words = {
     reenrolledInactive: "Enterprise access updated. Your current model connection remains active.",
     cancel: "Cancel",
     advanced: "Connection details",
-    loadFailed: "Could not load model connections",
+    loadFailed: "Model connection action did not complete",
   },
   zh: {
     title: "模型与连接",
@@ -333,6 +334,7 @@ const words = {
     personalSwitched: "个人连接已切换；已有会话仍保留创建时的连接。",
     testSaved: "测试已保存连接",
     testingSaved: "正在测试已保存连接…",
+    savedVerificationFailed: "这条连接仍已保存，但验证未通过：{error}",
     keyHintLabel: "已保存密钥",
     noSavedKey: "无需 API Key",
     immutableConnection: "凭据和路由只属于这一条连接。请先新增并验证替代连接，再移除旧连接；已有会话不会被静默改写。",
@@ -504,7 +506,7 @@ const words = {
     reenrolledInactive: "企业授权已更新，当前模型连接保持不变。",
     cancel: "取消",
     advanced: "连接详情",
-    loadFailed: "无法读取模型连接",
+    loadFailed: "模型连接操作未完成",
   },
 } as const;
 
@@ -1009,6 +1011,7 @@ export function ProviderSettings({
       : []);
   const personalCandidateKey = modelCandidateKey(personalDraft);
   const personalModelVerified = verifiedCustomModels.includes(personalCandidateKey);
+  const personalRouteTested = personalModelVerified;
   const personalModelAllowed = personalCatalog.length === 0
     || personalCatalog.includes(personalDraft.model.trim())
     || (personalModelVerified && (!SUBSCRIPTION_PLAN_PROVIDER_IDS.has(personalProvider?.id ?? "") || models.length === 0));
@@ -1019,7 +1022,10 @@ export function ProviderSettings({
   const personalIdentityValid = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(personalDraft.id.trim())
     && personalDraft.id.trim() !== "personal"
     && !!personalDraft.label.trim();
-  const personalConnectionValid = personalConnectionTestValid && personalModelAllowed && personalIdentityValid;
+  const personalConnectionValid = personalConnectionTestValid
+    && personalRouteTested
+    && personalModelAllowed
+    && personalIdentityValid;
   const personalConnectionsSupported = Array.isArray(state?.connections);
   const personalSwitchLocked = !!state?.switchLocked || !!state?.current.environmentOverride;
   const organizationValid = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(organizationDraft.id.trim())
@@ -1220,25 +1226,32 @@ export function ProviderSettings({
     if (!client || !personalConnectionTestValid || personalBusy) return;
     setPersonalBusy("test-new");
     clearFeedback();
+    setVerifiedCustomModels((current) => current.filter((candidate) => candidate !== personalCandidateKey));
     try {
       const input = personalConnectionInput(false);
       const result = await client.testProviderSettings(input, cwd);
-      setModels(result.models);
-      setModelEntries(result.entries ?? []);
       if (
         result.models.length > 0
         && SUBSCRIPTION_PLAN_PROVIDER_IDS.has(personalProvider?.id ?? "")
         && !result.models.includes(personalDraft.model.trim())
       ) {
+        setModels(result.models);
+        setModelEntries(result.entries ?? []);
         setError(copy.modelNotAuthorized);
         return;
       }
       if (result.ok) {
+        setModels(result.models);
+        setModelEntries(result.entries ?? []);
         setVerifiedCustomModels((current) => current.includes(personalCandidateKey)
           ? current
           : [...current, personalCandidateKey]);
         setMessage(copy.connected);
-      } else setError(result.error || "Connection failed");
+      } else {
+        setModels([]);
+        setModelEntries([]);
+        setError(result.error || "Connection failed");
+      }
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
     } finally {
@@ -1287,10 +1300,15 @@ export function ProviderSettings({
     clearFeedback();
     try {
       const result = await client.testProviderConnection(connection.id, cwd);
-      setModels(result.models);
-      setModelEntries(result.entries ?? []);
-      if (result.ok) setMessage(copy.connected);
-      else setError(result.error || "Connection failed");
+      if (result.ok) {
+        setModels(result.models);
+        setModelEntries(result.entries ?? []);
+        setMessage(copy.connected);
+      } else {
+        setModels([]);
+        setModelEntries([]);
+        setError(copy.savedVerificationFailed.replace("{error}", result.error || "Connection failed"));
+      }
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
     } finally {
@@ -1608,7 +1626,6 @@ export function ProviderSettings({
   const staleAlibabaCatalog = !tokenPlanProvider
     && state.providers.some((provider) => LEGACY_PERSONAL_PROVIDER_IDS.has(provider.id));
   const showEngineRestart = engineNeedsRestart || staleAlibabaCatalog;
-  const personalRouteTested = models.length > 0 || verifiedCustomModels.length > 0;
   const visionState = state.vision;
   const visionSupported = Boolean(visionState && client?.supports("settings.vision.save"));
   const visionTestSupported = Boolean(client?.supports("settings.vision.test"));

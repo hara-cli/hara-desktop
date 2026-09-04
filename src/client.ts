@@ -145,6 +145,35 @@ export interface ExternalTerminalSnapshot {
   updatedAt: string;
 }
 
+export type ExternalTerminalStreamMode = "observe" | "control";
+
+export interface ExternalTerminalStreamConnection {
+  sessionId: string;
+  streamId: string;
+  mode: ExternalTerminalStreamMode;
+  cols: number;
+  rows: number;
+}
+
+export type ExternalTerminalEvent =
+  | {
+      method: "external.event.terminal.frame";
+      sessionId: string;
+      streamId: string;
+      seq: number;
+      encoding: "ansi-base64";
+      width: number;
+      height: number;
+      full: boolean;
+      bytes: string;
+    }
+  | {
+      method: "external.event.terminal.closed";
+      sessionId: string;
+      streamId: string;
+      reason: "released" | "runtime_closed" | "sequence_gap" | "invalid_frame" | "transport_error" | "control_transferred" | "slow_client";
+    };
+
 export interface AgentInfo {
   ref: string;
   name: string;
@@ -1133,7 +1162,8 @@ export type ServerEvent =
       approvalId: string;
       question: string;
       allowAlways?: boolean;
-    };
+    }
+  | ExternalTerminalEvent;
 
 interface Pending {
   resolve: (v: any) => void;
@@ -1147,6 +1177,7 @@ export class HaraClient {
   private methods = new Set<string>();
   private events = new Set<string>();
   private features = new Set<string>();
+  private terminalListeners = new Set<(event: ExternalTerminalEvent) => void>();
   private closeWaiters = new Set<{
     resolve: () => void;
     timer: number;
@@ -1186,7 +1217,11 @@ export class HaraClient {
           if (m.error) p.reject(Object.assign(new Error(m.error.message), { code: m.error.code }));
           else p.resolve(m.result);
         } else if (m.method) {
-          this.onEvent({ method: m.method, ...(m.params ?? {}) } as ServerEvent);
+          const event = { method: m.method, ...(m.params ?? {}) } as ServerEvent;
+          if (event.method === "external.event.terminal.frame" || event.method === "external.event.terminal.closed") {
+            for (const listener of this.terminalListeners) listener(event);
+          }
+          this.onEvent(event);
         }
       };
     });
@@ -1216,6 +1251,10 @@ export class HaraClient {
   }
   supportsFeature(feature: string): boolean {
     return this.features.has(feature);
+  }
+  onTerminalEvent(listener: (event: ExternalTerminalEvent) => void): () => void {
+    this.terminalListeners.add(listener);
+    return () => this.terminalListeners.delete(listener);
   }
   /** Resolve only after the transport has actually closed, including the close-before-wait race. */
   waitForClose(timeoutMs = 4_000): Promise<void> {
@@ -1317,6 +1356,29 @@ export class HaraClient {
   }
   terminalKey(sessionId: string, key: ExternalTerminalKey) {
     return this.call<Record<string, never>>("external.sessions.terminal.key", { sessionId, key });
+  }
+  attachTerminal(sessionId: string, input: {
+    mode: ExternalTerminalStreamMode;
+    cols: number;
+    rows: number;
+    takeover?: boolean;
+  }) {
+    return this.call<ExternalTerminalStreamConnection>("external.sessions.terminal.attach", { sessionId, ...input });
+  }
+  terminalRawInput(streamId: string, text: string) {
+    return this.call<Record<string, never>>("external.sessions.terminal.raw-input", { streamId, text });
+  }
+  terminalResize(streamId: string, cols: number, rows: number) {
+    return this.call<Record<string, never>>("external.sessions.terminal.resize", { streamId, cols, rows });
+  }
+  terminalScroll(streamId: string, direction: "up" | "down", lines: number) {
+    return this.call<Record<string, never>>("external.sessions.terminal.scroll", { streamId, direction, lines });
+  }
+  releaseTerminal(streamId: string) {
+    return this.call<Record<string, never>>("external.sessions.terminal.release", { streamId });
+  }
+  openTerminalInWezTerm(sessionId: string, takeover = false) {
+    return this.call<{ terminal: "wezterm"; opened: true }>("external.sessions.terminal.open-wezterm", { sessionId, takeover });
   }
   createSession(opts?: { cwd?: string; approval?: ApprovalMode; agentRef?: string; profileId?: string; spaceId?: string }) {
     return this.call<CreatedSessionInfo>("session.create", opts ?? {});

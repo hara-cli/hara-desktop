@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type {
   ExternalRuntimeAgentKind,
   ExternalRuntimeLaunchOptions,
@@ -9,12 +9,17 @@ import type {
   ExternalSessionSourceInfo,
   ExternalSessionSourceState,
   ExternalSessionState,
-  ExternalTerminalKey,
+  ExternalTerminalEvent,
   ExternalTerminalSnapshot,
+  ExternalTerminalStreamConnection,
+  ExternalTerminalStreamMode,
 } from "./client";
 import { IconBack, IconCommandLine, IconRefresh } from "./icons";
 import { isImeCompositionKey } from "./ime";
 import "./ExternalSessionCenter.css";
+
+const ExtensionDock = lazy(() => import("./ExtensionDock"));
+const ExternalNativeTerminalSurface = lazy(() => import("./ExternalNativeTerminalSurface"));
 
 export type ExternalSessionActivity =
   | { id: string; kind: "user"; text: string }
@@ -164,8 +169,19 @@ interface ExternalSessionCenterProps {
   onRemove?: () => Promise<void>;
   onApproval: (verdict: "deny" | "allow" | "always") => Promise<void>;
   onReadTerminal: () => Promise<ExternalTerminalSnapshot>;
-  onTerminalInput: (text: string) => Promise<void>;
-  onTerminalKey: (key: ExternalTerminalKey) => Promise<void>;
+  terminalStreaming: boolean;
+  onAttachTerminal: (
+    mode: ExternalTerminalStreamMode,
+    takeover: boolean,
+    cols: number,
+    rows: number,
+  ) => Promise<ExternalTerminalStreamConnection>;
+  onTerminalRawInput: (streamId: string, text: string) => Promise<void>;
+  onTerminalResize: (streamId: string, cols: number, rows: number) => Promise<void>;
+  onTerminalScroll: (streamId: string, direction: "up" | "down", lines: number) => Promise<void>;
+  onTerminalRelease: (streamId: string) => Promise<void>;
+  onOpenWezTerm: (takeover: boolean) => Promise<void>;
+  subscribeTerminal: (listener: (event: ExternalTerminalEvent) => void) => () => void;
 }
 
 const sourceMark = (sourceId: ExternalSessionInfo["sourceId"]): string => (
@@ -177,28 +193,6 @@ const sourceDisplayName = (session: ExternalSessionInfo): string => (
     ? `Hara Live · ${session.agentKind === "claude" ? "Claude Code" : "Codex"}`
     : session.sourceId === "codex" ? "Codex" : "Claude Code"
 );
-
-type TerminalControlCopyKey =
-  | "terminalKeyConfirm"
-  | "terminalKeyCancel"
-  | "terminalKeyUp"
-  | "terminalKeyDown"
-  | "terminalKeySwitch"
-  | "terminalKeyInterrupt";
-
-const TERMINAL_CONTROLS: ReadonlyArray<{
-  key: ExternalTerminalKey;
-  keyLabel: string;
-  actionCopy: TerminalControlCopyKey;
-  tone?: "confirm" | "interrupt";
-}> = [
-  { key: "esc", keyLabel: "Esc", actionCopy: "terminalKeyCancel" },
-  { key: "up", keyLabel: "↑", actionCopy: "terminalKeyUp" },
-  { key: "down", keyLabel: "↓", actionCopy: "terminalKeyDown" },
-  { key: "enter", keyLabel: "Enter", actionCopy: "terminalKeyConfirm", tone: "confirm" },
-  { key: "tab", keyLabel: "Tab", actionCopy: "terminalKeySwitch" },
-  { key: "ctrl+c", keyLabel: "Ctrl+C", actionCopy: "terminalKeyInterrupt", tone: "interrupt" },
-];
 
 const roleLabel = (role: ExternalSessionMessage["role"], copy: ExternalSessionCenterCopy): string => (
   role === "user" ? copy.you : role === "assistant" ? copy.assistant : copy.system
@@ -232,8 +226,14 @@ export default function ExternalSessionCenter({
   onRemove,
   onApproval,
   onReadTerminal,
-  onTerminalInput,
-  onTerminalKey,
+  terminalStreaming,
+  onAttachTerminal,
+  onTerminalRawInput,
+  onTerminalResize,
+  onTerminalScroll,
+  onTerminalRelease,
+  onOpenWezTerm,
+  subscribeTerminal,
 }: ExternalSessionCenterProps) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [runtimeAgentKind, setRuntimeAgentKind] = useState<ExternalRuntimeAgentKind>("codex");
@@ -242,14 +242,11 @@ export default function ExternalSessionCenter({
   const [runtimeModes, setRuntimeModes] = useState<Record<ExternalRuntimeAgentKind, string>>({ codex: "workspace-write", claude: "acceptEdits" });
   const [runtimeFast, setRuntimeFast] = useState(false);
   const [inspectorViews, setInspectorViews] = useState<Record<string, "details" | "terminal">>({});
+  const [terminalDockModes, setTerminalDockModes] = useState<Record<string, "docked" | "maximized">>({});
   const [terminalSnapshots, setTerminalSnapshots] = useState<Record<string, ExternalTerminalSnapshot>>({});
-  const [terminalDrafts, setTerminalDrafts] = useState<Record<string, string>>({});
   const [terminalErrors, setTerminalErrors] = useState<Record<string, string>>({});
-  const [terminalKeyNotices, setTerminalKeyNotices] = useState<Record<string, string>>({});
-  const [terminalBusy, setTerminalBusy] = useState<Record<string, boolean>>({});
   const composingRef = useRef(false);
   const timelineRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<HTMLPreElement>(null);
   const selectedId = selected?.id ?? "";
   const draft = selectedId ? drafts[selectedId] ?? "" : "";
   const setDraft = useCallback((value: string) => {
@@ -296,9 +293,8 @@ export default function ExternalSessionCenter({
       )
     : "details";
   const terminalSnapshot = selectedId ? terminalSnapshots[selectedId] : undefined;
-  const terminalDraft = selectedId ? terminalDrafts[selectedId] ?? "" : "";
   const terminalError = selectedId ? terminalErrors[selectedId] ?? "" : "";
-  const terminalKeyNotice = selectedId ? terminalKeyNotices[selectedId] ?? "" : "";
+  const terminalDockMode = selectedId ? terminalDockModes[selectedId] ?? "docked" : "docked";
 
   const refreshTerminal = useCallback(async () => {
     if (!selectedId || !terminalSupported) return;
@@ -313,16 +309,12 @@ export default function ExternalSessionCenter({
   }, [onReadTerminal, selectedId, terminalSupported]);
 
   useEffect(() => {
-    if (inspectorView !== "terminal" || !terminalSupported) return;
+    if (terminalStreaming || inspectorView !== "terminal" || !terminalSupported) return;
     void refreshTerminal();
     if (selected?.state === "error") return;
     const timer = window.setInterval(() => void refreshTerminal(), 1_000);
     return () => window.clearInterval(timer);
-  }, [inspectorView, refreshTerminal, selected?.state, terminalSupported]);
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    if (terminal) terminal.scrollTop = terminal.scrollHeight;
-  }, [terminalSnapshot?.text]);
+  }, [inspectorView, refreshTerminal, selected?.state, terminalStreaming, terminalSupported]);
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -350,47 +342,6 @@ export default function ExternalSessionCenter({
         : { permissionMode: mode as ExternalRuntimeLaunchOptions["permissionMode"] }),
     };
     void onCreate(runtimeAgentKind, launch);
-  };
-
-  const submitTerminal = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    if (!selectedId || !terminalDraft.trim() || terminalBusy[selectedId]) return;
-    const text = terminalDraft.trim();
-    setTerminalDrafts((current) => ({ ...current, [selectedId]: "" }));
-    setTerminalBusy((current) => ({ ...current, [selectedId]: true }));
-    try {
-      await onTerminalInput(text);
-      await refreshTerminal();
-    } catch (error) {
-      setTerminalDrafts((current) => ({ ...current, [selectedId]: current[selectedId] || text }));
-      setTerminalErrors((current) => ({ ...current, [selectedId]: String(error instanceof Error ? error.message : error).slice(0, 240) }));
-    } finally {
-      setTerminalBusy((current) => ({ ...current, [selectedId]: false }));
-    }
-  };
-
-  const sendTerminalKey = async (control: (typeof TERMINAL_CONTROLS)[number]): Promise<void> => {
-    if (!selectedId || terminalBusy[selectedId]) return;
-    const actionLabel = copy[control.actionCopy];
-    setTerminalBusy((current) => ({ ...current, [selectedId]: true }));
-    setTerminalErrors((current) => ({ ...current, [selectedId]: "" }));
-    setTerminalKeyNotices((current) => ({ ...current, [selectedId]: "" }));
-    try {
-      await onTerminalKey(control.key);
-      setTerminalKeyNotices((current) => ({
-        ...current,
-        [selectedId]: control.key === "ctrl+c"
-          ? copy.terminalInterruptSent
-          : copy.terminalKeySent
-              .replace("{action}", actionLabel)
-              .replace("{key}", control.keyLabel),
-      }));
-      await refreshTerminal();
-    } catch (error) {
-      setTerminalErrors((current) => ({ ...current, [selectedId]: String(error instanceof Error ? error.message : error).slice(0, 240) }));
-    } finally {
-      setTerminalBusy((current) => ({ ...current, [selectedId]: false }));
-    }
   };
 
   if (!personal) {
@@ -559,7 +510,8 @@ export default function ExternalSessionCenter({
               </div>
             </header>
 
-            <div className={`external-session-layout${inspectorView === "terminal" && terminalSupported ? " is-terminal-expanded" : ""}`}>
+            <div className={`external-session-layout extension-work${inspectorView === "terminal" && terminalSupported ? " has-visible-extension" : ""}${inspectorView === "terminal" && terminalSupported && terminalDockMode === "maximized" ? " is-extension-maximized" : ""}`}>
+              <div className="external-session-primary extension-primary">
               <section className="external-session-conversation" aria-label={copy.transcript}>
                 <header><strong>{copy.transcript}</strong><span>{sourceDisplayName(selected)}</span></header>
                 <div className="external-session-timeline" ref={timelineRef} aria-live="polite">
@@ -644,86 +596,76 @@ export default function ExternalSessionCenter({
                   </form>
                 ) : null}
               </section>
+              </div>
 
-              <aside className={`external-session-inspector is-${inspectorView}`}>
-                <div className="external-inspector-switcher" role="tablist">
-                  <button type="button" role="tab" aria-selected={inspectorView === "details"} className={inspectorView === "details" ? "is-selected" : ""} onClick={() => setInspectorViews((current) => ({ ...current, [selected.id]: "details" }))}>{copy.detailsView}</button>
-                  {terminalSupported ? <button type="button" role="tab" aria-selected={inspectorView === "terminal"} className={inspectorView === "terminal" ? "is-selected" : ""} onClick={() => setInspectorViews((current) => ({ ...current, [selected.id]: "terminal" }))}>{copy.terminalView}</button> : null}
-                </div>
-                {inspectorView === "terminal" && terminalSupported ? (
-                  <section className="external-native-terminal" aria-label={copy.terminalTitle}>
-                    <header>
-                      <span><i aria-hidden />{copy.terminalTitle}</span>
-                      <button type="button" onClick={() => void refreshTerminal()} disabled={Boolean(terminalBusy[selected.id])}>{copy.terminalRefresh}</button>
-                    </header>
-                    <p>{copy.terminalBody}</p>
-                    {actionError ? <div className="external-terminal-error" role="alert">{actionError}</div> : null}
-                    {terminalError ? (
-                      <div className="external-terminal-unavailable" role="alert">
-                        <strong>{copy.terminalUnavailableTitle}</strong>
-                        <p>{copy.terminalUnavailableBody}</p>
-                        <small>{terminalError}</small>
-                        <div>
-                          <button type="button" onClick={() => void refreshTerminal()} disabled={Boolean(terminalBusy[selected.id])}>{copy.terminalRefresh}</button>
-                          <button type="button" className="is-primary" onClick={onBack}>{copy.startAnother}</button>
-                          {removable ? <button type="button" onClick={() => void onRemove?.()} disabled={Boolean(actionBusy)}>{actionBusy === "remove" ? copy.removing : copy.remove}</button> : null}
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <pre ref={terminalRef} tabIndex={0} data-native-context-menu="true">{terminalSnapshot?.text || copy.terminalEmpty}</pre>
-                        <div className="external-terminal-keys" aria-label={copy.terminalKeyHelp}>
-                          {TERMINAL_CONTROLS.map((control) => {
-                            const actionLabel = copy[control.actionCopy];
-                            return (
-                              <button
-                                type="button"
-                                key={control.key}
-                                className={control.tone ? `is-${control.tone}` : undefined}
-                                aria-label={`${actionLabel} (${control.keyLabel})`}
-                                title={`${actionLabel} · ${control.keyLabel}`}
-                                disabled={Boolean(terminalBusy[selected.id])}
-                                onClick={() => void sendTerminalKey(control)}
-                              >
-                                <kbd>{control.keyLabel}</kbd>
-                                <span>{actionLabel}</span>
-                              </button>
-                            );
-                          })}
-                          <span className="external-terminal-key-notice" role="status" aria-live="polite">{terminalKeyNotice}</span>
-                        </div>
-                        <form onSubmit={(event) => void submitTerminal(event)}>
-                          <input
-                            value={terminalDraft}
-                            onChange={(event) => {
-                              const value = event.currentTarget.value;
-                              setTerminalDrafts((current) => ({ ...current, [selected.id]: value }));
-                            }}
-                            placeholder={copy.terminalPlaceholder}
-                            disabled={Boolean(terminalBusy[selected.id])}
-                          />
-                          <button type="submit" className="is-primary" disabled={!terminalDraft.trim() || Boolean(terminalBusy[selected.id])}>{copy.terminalSend}</button>
-                        </form>
-                      </>
-                    )}
-                    <small>{copy.terminalLocalOnly}</small>
-                  </section>
-                ) : (
-                  <>
-                    <dl className="external-session-facts">
-                      <div><dt>{copy.workspace}</dt><dd>{selected.workspaceName}</dd></div>
-                      <div><dt>{copy.source}</dt><dd>{sourceDisplayName(selected)}</dd></div>
-                      <div><dt>{copy.origin}</dt><dd>{selected.origin ?? "—"}</dd></div>
-                      <div><dt>{copy.updated}</dt><dd>{new Date(selected.updatedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}</dd></div>
-                      <div><dt>{copy.state}</dt><dd>{copy.sessionStates[selected.state]}</dd></div>
-                    </dl>
-                    <div className="external-session-policy-grid">
-                      <article><span aria-hidden>01</span><strong>{copy.protectionTitle}</strong><p>{copy.protectionBody}</p></article>
-                      <article><span aria-hidden>02</span><strong>{copy.nextStage}</strong><p>{copy.nextStageBody}</p></article>
-                    </div>
-                  </>
-                )}
-              </aside>
+              {inspectorView === "terminal" && terminalSupported ? (
+                <Suspense fallback={<div className="external-terminal-loading" role="status">{copy.loadingTranscript}</div>}>
+                <ExtensionDock
+                  kind="terminal"
+                  kindLabel={locale === "zh" ? "原生终端" : "Native terminal"}
+                  title={selected.title}
+                  source="Herdr · WezTerm"
+                  context={selected.workspaceName}
+                  detail={selected.agentKind === "claude" ? "Claude Code" : "Codex"}
+                  mode={terminalDockMode}
+                  copy={locale === "zh" ? {
+                    extension: "扩展屏",
+                    resize: "调整终端宽度",
+                    maximize: "最大化终端",
+                    restore: "恢复分屏",
+                    popOut: "在 WezTerm 打开",
+                    hide: "收起终端",
+                    close: "关闭",
+                    add: "添加扩展",
+                  } : {
+                    extension: "Extension",
+                    resize: "Resize terminal",
+                    maximize: "Maximize terminal",
+                    restore: "Restore split view",
+                    popOut: "Open in WezTerm",
+                    hide: "Hide terminal",
+                    close: "Close",
+                    add: "Add extension",
+                  }}
+                  onModeChange={(mode) => setTerminalDockModes((current) => ({ ...current, [selected.id]: mode }))}
+                  onClose={() => setInspectorViews((current) => ({ ...current, [selected.id]: "details" }))}
+                >
+                  <ExternalNativeTerminalSurface
+                    sessionId={selected.id}
+                    locale={locale}
+                    streaming={terminalStreaming}
+                    legacyText={terminalSnapshot?.text || copy.terminalEmpty}
+                    legacyError={terminalError || actionError}
+                    onLegacyRefresh={refreshTerminal}
+                    onAttach={onAttachTerminal}
+                    onInput={onTerminalRawInput}
+                    onResize={onTerminalResize}
+                    onScroll={onTerminalScroll}
+                    onRelease={onTerminalRelease}
+                    onOpenWezTerm={onOpenWezTerm}
+                    subscribe={subscribeTerminal}
+                  />
+                </ExtensionDock>
+                </Suspense>
+              ) : (
+                <aside className="external-session-inspector is-details">
+                  <div className="external-inspector-switcher" role="tablist">
+                    <button type="button" role="tab" aria-selected className="is-selected">{copy.detailsView}</button>
+                    {terminalSupported ? <button type="button" role="tab" aria-selected={false} onClick={() => setInspectorViews((current) => ({ ...current, [selected.id]: "terminal" }))}>{copy.terminalView}</button> : null}
+                  </div>
+                  <dl className="external-session-facts">
+                    <div><dt>{copy.workspace}</dt><dd>{selected.workspaceName}</dd></div>
+                    <div><dt>{copy.source}</dt><dd>{sourceDisplayName(selected)}</dd></div>
+                    <div><dt>{copy.origin}</dt><dd>{selected.origin ?? "—"}</dd></div>
+                    <div><dt>{copy.updated}</dt><dd>{new Date(selected.updatedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}</dd></div>
+                    <div><dt>{copy.state}</dt><dd>{copy.sessionStates[selected.state]}</dd></div>
+                  </dl>
+                  <div className="external-session-policy-grid">
+                    <article><span aria-hidden>01</span><strong>{copy.protectionTitle}</strong><p>{copy.protectionBody}</p></article>
+                    <article><span aria-hidden>02</span><strong>{copy.nextStage}</strong><p>{copy.nextStageBody}</p></article>
+                  </div>
+                </aside>
+              )}
             </div>
           </section>
         ) : (

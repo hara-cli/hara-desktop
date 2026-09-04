@@ -466,6 +466,17 @@
   min-height: 520px;
 }
 
+.external-session-layout.extension-work.has-visible-extension {
+  display: flex;
+  width: 100%;
+  height: clamp(560px, 72vh, 820px);
+  min-height: 560px;
+}
+.external-session-primary { min-width: 0; min-height: 0; }
+.external-session-layout.has-visible-extension .external-session-conversation { width: 100%; min-height: 0; }
+.external-session-layout.has-visible-extension > .extension-dock { align-self: stretch; }
+.external-terminal-loading { display: grid; min-width: 360px; flex: 0 0 48%; place-items: center; color: var(--external-muted); background: #101013; }
+
 .external-session-layout.is-terminal-expanded { grid-template-columns: minmax(0, 1fr); }
 .external-session-layout.is-terminal-expanded .external-session-conversation { display: none; }
 .external-session-layout.is-terminal-expanded .external-session-inspector {
