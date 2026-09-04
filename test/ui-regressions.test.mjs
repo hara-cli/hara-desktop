@@ -30,6 +30,8 @@ test("Hara Live composer sends with Enter and keeps provider-specific status cop
   assert.match(center, /liveClaude \? copy\.liveClaudeTitle : copy\.liveCodexTitle/);
   assert.match(i18n, /externalSessionsLiveClaudeTitle: "已连接到 Claude Code 活跃会话"/);
   assert.match(i18n, /externalSessionsLiveCodexTitle: "已连接到 Codex 活跃会话"/);
+  assert.match(i18n, /externalSessionsAuthenticationRequiredTitle: "Claude 认证没有共享给 Hara"/);
+  assert.match(center, /continuationUnavailableReason === "authentication_required"/);
 });
 
 test("Hara Live keeps structured work and the native terminal as two views of one session", () => {

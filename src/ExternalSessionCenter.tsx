@@ -68,6 +68,9 @@ export interface ExternalSessionCenterCopy {
   noMessages: string;
   readOnlyTitle: string;
   readOnlyBody: string;
+  authenticationRequiredTitle: string;
+  authenticationRequiredBody: string;
+  authenticationRetry: string;
   writableTitle: string;
   writableBody: string;
   liveCodexTitle: string;
@@ -358,6 +361,7 @@ export default function ExternalSessionCenter({
   }
 
   const readySources = sources?.filter((source) => source.state === "ready").length ?? 0;
+  const authenticationRequired = transcript?.continuationUnavailableReason === "authentication_required";
   return (
     <main className="external-session-center">
       <div className="external-session-frame">
@@ -557,9 +561,12 @@ export default function ExternalSessionCenter({
                 {actionError ? <div className="external-session-error is-inline" role="alert">{actionError}</div> : null}
                 {transcript?.readOnly ? (
                   <div className="external-session-continuation is-read-only">
-                    <div><strong>{copy.readOnlyTitle}</strong><p>{copy.readOnlyBody}</p></div>
+                    <div>
+                      <strong>{authenticationRequired ? copy.authenticationRequiredTitle : copy.readOnlyTitle}</strong>
+                      <p>{authenticationRequired ? copy.authenticationRequiredBody : copy.readOnlyBody}</p>
+                    </div>
                     <button type="button" className="is-primary" disabled={Boolean(actionBusy)} onClick={() => void onResume()}>
-                      {actionBusy === "resume" ? copy.resuming : copy.resume}
+                      {actionBusy === "resume" ? copy.resuming : authenticationRequired ? copy.authenticationRetry : copy.resume}
                     </button>
                   </div>
                 ) : transcript ? (

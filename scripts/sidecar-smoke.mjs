@@ -353,6 +353,24 @@ export function smokeSidecar({ binary, expectedVersion, expectedTarget = nativeT
       throw new Error(`${label} executed cwd bunfig.toml preload during session index initialization`);
     }
 
+    let bundledPlugin;
+    try {
+      bundledPlugin = runSidecar(["plugin", "add", "bundled:chrome"], true, env);
+    } catch (error) {
+      throw new Error(`${label} bundled Chrome capability install failed: ${shortError(error)}`);
+    }
+    if (!bundledPlugin.includes("Installed chrome@")) {
+      throw new Error(`${label} did not materialize the binary-embedded Chrome capability`);
+    }
+    const installedPlugins = runSidecar(["plugin"], true, env);
+    if (!installedPlugins.includes("chrome@") || !bundledPlugin.includes("mcp chrome")) {
+      throw new Error(`${label} bundled Chrome capability was not listed after installation`);
+    }
+    const removedPlugin = runSidecar(["plugin", "remove", "chrome"], true, env);
+    if (!removedPlugin.includes("Removed chrome")) {
+      throw new Error(`${label} bundled Chrome capability could not be cleanly removed`);
+    }
+
     try {
       run(
         process.execPath,
@@ -418,7 +436,7 @@ export function smokeSidecar({ binary, expectedVersion, expectedTarget = nativeT
 
   const execution = translated ? "translated via Rosetta on Apple Silicon" : "natively";
   console.log(
-    `  ✓ ${label} runs ${execution} (${expectedTarget}, hara ${version}; ambient config blocked; sessions; native Desk RPCs; SAB-disabled; --help; serve --help)`,
+    `  ✓ ${label} runs ${execution} (${expectedTarget}, hara ${version}; ambient config blocked; sessions; bundled Chrome capability; native Desk RPCs; SAB-disabled; --help; serve --help)`,
   );
   return version;
 }

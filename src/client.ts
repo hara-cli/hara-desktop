@@ -118,6 +118,7 @@ export interface ExternalSessionReadResult {
   messages: ExternalSessionMessage[];
   readOnly: boolean;
   controlMode?: "history" | "managed" | "live";
+  continuationUnavailableReason?: "authentication_required";
 }
 
 export interface ExternalSessionForkResult extends ExternalSessionReadResult {

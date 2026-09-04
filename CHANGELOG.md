@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.147 — 2026-09-04 — honest authentication and safer blocked-task recovery
+
+- Distinguish readable Claude Code history from an authenticated continuation. When the Claude runtime that
+  Desktop can launch is explicitly logged out, Session Center now says that authentication is not shared,
+  keeps history readable, and offers a focused authentication recheck instead of claiming the original session
+  is connected or silently copying the selected model connection's Key.
+- Bundle Hara CLI `0.166.1` at exact commit `0babc8f7d1d3e9366192dc4dbf81d24254c30cd0`.
+  Identical failed calls now get one strategy-recovery round before the third failure stops, advancing tasks no
+  longer pause at the former 20-round checkpoint, and gateway/hand-off surfaces block requests to send browser
+  storage or other credentials through chat.
+- Carry the signed-package `hara plugin add bundled:chrome` path into the single-file Desktop engine and verify
+  install/list/remove in the native sidecar gate. This direct local capability still requires Chrome 144+,
+  remote debugging and Chrome's explicit connection prompt; it is not an unattended gateway bypass or a claim
+  of per-domain browser isolation.
+
 ## 0.1.146 — 2026-09-04 — interactive Hara Live terminal extension
 
 - Replace the one-second terminal snapshot toolbar with a real ANSI terminal renderer for current engines.
