@@ -2,6 +2,8 @@
 
 Status: architecture contract; no mobile application or public broker is claimed by this release.
 
+The staged product and protocol delivery plan is defined in `MOBILE_COMPANION_MVP_PLAN.md`.
+
 ## Decision
 
 Hara mobile and Hara Desktop use one account identity and separate device identities.
