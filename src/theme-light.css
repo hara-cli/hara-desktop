@@ -260,6 +260,23 @@ html[data-theme="light"] .ready-error {
   box-shadow: var(--shadow-soft);
 }
 
+html[data-theme="light"] .engine-version-alert {
+  border-color: #d6b47c;
+  color: #5d4118;
+  background: rgba(255, 247, 229, 0.97);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="light"] .engine-version-alert span {
+  color: #765f3d;
+}
+
+html[data-theme="light"] .engine-version-alert button {
+  border-color: #b98443;
+  color: #fffdf8;
+  background: #8b5d16;
+}
+
 /* Workbench home and message center */
 html[data-theme="light"] .workstarter-eyebrow,
 html[data-theme="light"] .workstarter-label {

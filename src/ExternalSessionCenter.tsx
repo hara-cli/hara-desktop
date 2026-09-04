@@ -297,7 +297,10 @@ export default function ExternalSessionCenter({
     : "details";
   const terminalSnapshot = selectedId ? terminalSnapshots[selectedId] : undefined;
   const terminalError = selectedId ? terminalErrors[selectedId] ?? "" : "";
-  const terminalDockMode = selectedId ? terminalDockModes[selectedId] ?? "docked" : "docked";
+  // Interactive terminals need room for long commands, approvals, and diffs. Open them as the main
+  // stage by default; restoring the split is an explicit per-session choice and never remounts the
+  // provider process.
+  const terminalDockMode = selectedId ? terminalDockModes[selectedId] ?? "maximized" : "maximized";
 
   const refreshTerminal = useCallback(async () => {
     if (!selectedId || !terminalSupported) return;
@@ -609,16 +612,17 @@ export default function ExternalSessionCenter({
                 <Suspense fallback={<div className="external-terminal-loading" role="status">{copy.loadingTranscript}</div>}>
                 <ExtensionDock
                   kind="terminal"
-                  kindLabel={locale === "zh" ? "原生终端" : "Native terminal"}
+                  kindLabel={locale === "zh" ? "互动终端" : "Interactive terminal"}
                   title={selected.title}
-                  source="Herdr · WezTerm"
+                  source="Herdr · Hara Terminal"
                   context={selected.workspaceName}
                   detail={selected.agentKind === "claude" ? "Claude Code" : "Codex"}
                   mode={terminalDockMode}
+                  showModeLabel
                   copy={locale === "zh" ? {
                     extension: "扩展屏",
                     resize: "调整终端宽度",
-                    maximize: "最大化终端",
+                    maximize: "终端全宽",
                     restore: "恢复分屏",
                     popOut: "在 WezTerm 打开",
                     hide: "收起终端",
@@ -627,7 +631,7 @@ export default function ExternalSessionCenter({
                   } : {
                     extension: "Extension",
                     resize: "Resize terminal",
-                    maximize: "Maximize terminal",
+                    maximize: "Full-width terminal",
                     restore: "Restore split view",
                     popOut: "Open in WezTerm",
                     hide: "Hide terminal",

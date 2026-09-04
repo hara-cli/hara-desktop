@@ -445,6 +445,20 @@
   cursor: pointer;
 }
 
+.extension-dock-actions button.has-label {
+  display: inline-flex;
+  width: auto;
+  gap: 6px;
+  padding: 0 9px;
+}
+
+.extension-dock-action-label {
+  font-size: 10px;
+  font-weight: 680;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .extension-dock-actions button:hover,
 .extension-dock-actions button:focus-visible {
   border-color: #3b3840;
@@ -508,9 +522,6 @@
     min-width: 360px;
     border-left: 1px solid #343239;
     box-shadow: -18px 0 46px rgba(0, 0, 0, 0.2);
-  }
-  .extension-dock-mode-action {
-    display: none !important;
   }
 }
 

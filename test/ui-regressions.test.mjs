@@ -53,6 +53,12 @@ test("Hara Live keeps structured work and the native terminal as two views of on
     "the native terminal uses the reusable resizable extension-screen layout");
   assert.match(center, /<ExtensionDock[\s\S]*kind="terminal"[\s\S]*mode=\{terminalDockMode\}/,
     "the terminal can be resized, hidden, and maximized independently of the conversation");
+  assert.match(center, /terminalDockModes\[selectedId\] \?\? "maximized"/,
+    "an interactive terminal opens at a usable full-workspace size by default");
+  assert.match(center, /mode=\{terminalDockMode\}[\s\S]{0,100}showModeLabel/,
+    "the full-width and split terminal modes remain visible actions rather than icon-only guesswork");
+  assert.match(center, /source="Herdr · Hara Terminal"/,
+    "the embedded renderer is labeled honestly instead of pretending to be an embedded WezTerm GUI");
   assert.match(terminal, /data-native-context-menu="true"/,
     "the terminal keeps native selection and copy affordances");
   assert.match(terminal, /terminal\.onData\(queueInput\)/,
@@ -607,6 +613,12 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.match(app, /~\/\.hara\/bin\/hara/);
   assert.match(app, /classifyEngineVersion\(server\?\.version \?\? "", BUNDLED_ENGINE_VERSION\)/);
   assert.match(app, /engineVersionState === "older" \|\| engineVersionState === "incompatible"/);
+  assert.match(app, /className="engine-version-alert"[\s\S]*t\("engineMismatchBannerTitle"\)[\s\S]*restartBundledEngine\(\)/,
+    "a mixed dev or stale engine is explained and recoverable outside Settings");
+  assert.match(css, /\.engine-version-alert[\s\S]*position:\s*absolute/,
+    "the compatibility warning does not create a third application column");
+  assert.match(daylight, /html\[data-theme="light"\] \.engine-version-alert[\s\S]*background:/,
+    "the compatibility warning remains readable in the user's light theme");
   assert.match(app, /engineVersionState === "newer"[\s\S]*<SettingsNotice tone="neutral"/);
   assert.doesNotMatch(app, /server\.version === BUNDLED_ENGINE_VERSION/, "engine health is not a raw string comparison");
   assert.match(app, /<ProviderSettings\s+embedded/, "the default provider page uses the shared settings shell");
@@ -1744,6 +1756,18 @@ test("plugin dock shortcuts stay default-hidden and reuse the project-authorized
   assert.match(directory, /onTogglePanelInDock\(plugin\.name, panel\.id, !inDock\)/);
 });
 
+test("automation and conversation sidebars keep one context-column width", () => {
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+  assert.match(css, /\.workbench-sidebar\s*\{[\s\S]*?width:\s*286px;[\s\S]*?min-width:\s*286px;/,
+    "the conversation directory owns the reference context-column width");
+  assert.match(css, /\.sidebar\.automation-sidebar-shell\s*\{[\s\S]*?width:\s*286px;[\s\S]*?min-width:\s*286px;/,
+    "automation does not fall back to the narrower legacy sidebar width");
+  assert.match(css, /\.automation-sidebar-shell > \.brand-cluster\s*\{[\s\S]*?padding:\s*14px 12px 10px;/,
+    "both modules align the shared brand and Space switcher to the same inset");
+  assert.match(css, /@media \(max-width:\s*900px\)[\s\S]*?\.workbench-sidebar,[\s\S]*?\.sidebar\.automation-sidebar-shell[\s\S]*?width:\s*260px;/,
+    "both context columns contract together on a smaller window");
+});
+
 test("extension screens remain owner-bound and never display a raw panel URL", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const dock = readFileSync(`${root}/src/ExtensionDock.tsx`, "utf8");
@@ -1803,11 +1827,13 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   assert.doesNotMatch(responsiveDock, /extension-primary[\s\S]*display:\s*none/, "medium windows keep the conversation visible behind the right drawer");
   assert.match(responsiveDock, /position:\s*relative/, "medium windows keep a true side-by-side split");
   assert.doesNotMatch(responsiveDock, /position:\s*absolute/, "the extension screen never overlays the workbench at medium widths");
+  assert.doesNotMatch(responsiveDock, /extension-dock-mode-action[\s\S]*display:\s*none/, "medium windows keep the full-width escape hatch visible");
   assert.match(css, /\.extension-dock:focus-within/, "the selected tab and the actively edited content have separate visual states");
   assert.match(css, /\.extension-dock\.is-stage:not\(\.is-collapsed\)[\s\S]*flex:\s*1 1 100%[\s\S]*width:\s*100%/, "Office document and Browser tabs use the full stage instead of sharing it with the start page");
   assert.match(css, /container-name:\s*extension-dock/, "Office editor breakpoints measure the actual result surface");
   assert.match(css, /\.extension-dock\.is-collapsed[\s\S]*visibility:\s*hidden/, "collapsing keeps the mounted editor state while removing it visually");
-  assert.match(css, /\.extension-dock-mode-action[\s\S]*display:\s*none !important/);
+  assert.match(dock, /showModeLabel\?: boolean/);
+  assert.match(dock, /extension-dock-action-label/);
 });
 
 test("visible right-side work is an explicit chat target without leaking routing wrappers", () => {

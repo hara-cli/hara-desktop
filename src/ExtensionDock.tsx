@@ -61,6 +61,7 @@ interface ExtensionDockProps {
   }>;
   activeTabId?: string | null;
   collapsed?: boolean;
+  showModeLabel?: boolean;
   addItems?: ExtensionDockAddItem[];
   copy: ExtensionDockCopy;
   onTabSelect?: (tabId: string) => void;
@@ -200,6 +201,7 @@ export default function ExtensionDock({
   tabs = [],
   activeTabId = null,
   collapsed = false,
+  showModeLabel = false,
   addItems = [],
   copy,
   onTabSelect,
@@ -353,13 +355,18 @@ export default function ExtensionDock({
           {placement === "split" && (
             <button
               type="button"
-              className="extension-dock-mode-action"
+              className={`extension-dock-mode-action${showModeLabel ? " has-label" : ""}`}
               aria-label={mode === "maximized" ? copy.restore : copy.maximize}
               title={mode === "maximized" ? copy.restore : copy.maximize}
               aria-pressed={mode === "maximized"}
               onClick={() => onModeChange(mode === "maximized" ? "docked" : "maximized")}
             >
               <DockIcon name={mode === "maximized" ? "restore" : "maximize"} />
+              {showModeLabel ? (
+                <span className="extension-dock-action-label">
+                  {mode === "maximized" ? copy.restore : copy.maximize}
+                </span>
+              ) : null}
             </button>
           )}
           {onPopOut && (

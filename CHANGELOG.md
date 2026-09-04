@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.148 — 2026-09-05 — full-width Hara Terminal and visible engine recovery
+
+- Open interactive Hara Live terminals at full workspace width by default, keep a labeled
+  `Terminal full width / Restore split` control visible at medium window sizes, and preserve the same
+  provider process while changing layout. The resizable conversation split remains one explicit click away.
+- Name the embedded renderer honestly as Hara Terminal and retain the confirmed `Open in WezTerm` handoff as
+  a native detached view of the same Herdr PTY. Document the adopted WezTerm pane identity, sequencing,
+  backpressure, scrollback, viewport, and single-controller principles without introducing a second terminal
+  emulator or agent process.
+- Surface a Desktop/Engine compatibility warning in the active workspace, including a one-click safe switch
+  to the bundled engine. A stale development engine can no longer silently explain missing live terminal
+  capabilities only through a small footer version or a Settings-only warning.
+- Align the Automation and Conversation context columns to the same desktop and compact widths, including
+  the shared Hara/Space header inset, while keeping their task-specific navigation content distinct.
+- Bundle Hara CLI `0.166.1` at exact commit `0babc8f7d1d3e9366192dc4dbf81d24254c30cd0` unchanged. Windows
+  packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.147 — 2026-09-04 — honest authentication and safer blocked-task recovery
 
 - Distinguish readable Claude Code history from an authenticated continuation. When the Claude runtime that

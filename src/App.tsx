@@ -8519,6 +8519,24 @@ export default function App() {
           </button>
         </div>
       )}
+      {!err && server?.version && engineVersionNeedsAttention && (
+        <section className="engine-version-alert" role="alert" aria-live="polite">
+          <div>
+            <strong>{t("engineMismatchBannerTitle")}</strong>
+            <span>
+              {t("engineMismatchBannerHint")} {server.version} → {BUNDLED_ENGINE_VERSION}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={engineRestarting || Object.values(busy).some(Boolean)}
+            title={Object.values(busy).some(Boolean) ? t("engineRestartBusy") : undefined}
+            onClick={() => void restartBundledEngine()}
+          >
+            {engineRestarting ? t("engineRestarting") : t("engineRestartNow")}
+          </button>
+        </section>
+      )}
       {showUpdateNotice && (
         <section
           className={`desktop-update-notice ${updateTone === "error" ? "is-error" : updateReady ? "is-ready" : ""}`}

@@ -1,7 +1,7 @@
 # Hara 手机伴侣端 MVP 方案
 
 > 状态：进入协议与安全边界规划；尚未交付手机应用或公网中继服务。
-> 基线：Hara Desktop 0.1.147、Hara Engine 0.166.1。
+> 基线：Hara Desktop 0.1.148、Hara Engine 0.166.1。
 > 关联约束：`MOBILE_IDENTITY_CONTRACT.md`、`EXTERNAL_SESSION_RUNTIME_PLAN.md`。
 
 ## 1. 产品目标
@@ -41,7 +41,7 @@ Desktop 不开放入站端口。Relay 不能解密消息正文，也不能直接
 
 ## 3. 当前已经具备的基础
 
-Desktop 0.1.147 与 Engine 0.166.1 已经把原生终端进程和显示层分开。现有本地协议可以直接
+Desktop 0.1.148 与 Engine 0.166.1 已经把原生终端进程和显示层分开。现有本地协议可以直接
 作为移动协议的语义基础，但目前仍只允许本机客户端使用：
 
 - `external.sessions.list/read/fork/submit/steer/interrupt` 提供供应商无关的会话交互；
