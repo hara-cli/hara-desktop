@@ -466,6 +466,10 @@
   min-height: 520px;
 }
 
+/* App.css also owns a generic .extension-work flex layout. Keep session details
+   on their intended grid; the more specific terminal rule below opts into flex. */
+.external-session-layout.extension-work { display: grid; }
+
 .external-session-layout.extension-work.has-visible-extension {
   display: flex;
   width: 100%;

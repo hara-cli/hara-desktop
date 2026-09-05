@@ -1,6 +1,6 @@
 # Hara 互动终端与外置终端架构审计
 
-> 审计基线：WezTerm `4fbd6b8e90e2`、Hara Desktop 0.1.149、Hara Engine 0.166.1。
+> 审计基线：WezTerm `4fbd6b8e90e2`、Hara Desktop 0.1.150、Hara Engine 0.166.1。
 > 决策：Hara 统一一条 PTY/会话流；Hara Terminal 是完整且默认的产品能力，不依赖第三方终端。
 > 外置终端以后通过能力探测后的中立适配器接入，不复制或并行启动 Codex、Claude Code 与 Shell。
 
@@ -102,7 +102,7 @@ WezTerm 的 pane 将 PTY 尺寸、scrollback、逻辑行和可见 viewport 分�
 
 - 终端默认进入全宽工作区；
 - “终端全宽 / 恢复分屏”改为常显文字按钮，中等窗口不再隐藏；
-- 内嵌来源改为 `Herdr · Hara Terminal`；移除未做通用能力探测的 WezTerm 专属公开入口；
+- 内嵌来源只显示 `Hara Terminal / Hara 终端`，不向普通用户暴露内部 Herdr 运行时；移除未做通用能力探测的 WezTerm 专属公开入口；
 - 控制连接完成和点击终端时显式恢复 xterm 隐藏输入框焦点，实体键盘成为默认输入；
 - Desktop/Engine 混用时在工作区直接告警并可切回内置 Engine。
 

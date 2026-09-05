@@ -1,7 +1,7 @@
 # Hara 手机伴侣端 MVP 方案
 
 > 状态：进入协议与安全边界规划；尚未交付手机应用或公网中继服务。
-> 基线：Hara Desktop 0.1.149、Hara Engine 0.166.1。
+> 基线：Hara Desktop 0.1.150、Hara Engine 0.166.1。
 > 关联约束：`MOBILE_IDENTITY_CONTRACT.md`、`EXTERNAL_SESSION_RUNTIME_PLAN.md`。
 
 ## 1. 产品目标
@@ -41,7 +41,7 @@ Desktop 不开放入站端口。Relay 不能解密消息正文，也不能直接
 
 ## 3. 当前已经具备的基础
 
-Desktop 0.1.149 与 Engine 0.166.1 已经把原生终端进程和显示层分开。现有本地协议可以直接
+Desktop 0.1.150 与 Engine 0.166.1 已经把原生终端进程和显示层分开。现有本地协议可以直接
 作为移动协议的语义基础，但目前仍只允许本机客户端使用：
 
 - `external.sessions.list/read/fork/submit/steer/interrupt` 提供供应商无关的会话交互；
@@ -53,6 +53,11 @@ Desktop 0.1.149 与 Engine 0.166.1 已经把原生终端进程和显示层分开
 
 这意味着手机端不需要复制任何桌面终端或再启动一个 Codex/Claude 进程。它需要新增的是可靠远程
 传输、设备身份、发布授权和移动交互层。
+
+远程交互分为两个明确等级：P2 默认使用 `submit/steer/interrupt` 等高层会话指令，让用户在手机上
+继续同一个 Claude Code 或 Codex 会话；P3 的原始终端按键控制是单独授权的高权限能力，只在确实
+需要操作供应商 TUI 时开启。本机“在外部终端打开”则是 Desktop 的可选显示适配器，与手机远程
+控制相互独立；没有安装 Warp、iTerm2、WezTerm 等外置终端也不影响手机通过 Hara 协议继续会话。
 
 ## 4. 必须补齐的协议
 

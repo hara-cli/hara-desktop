@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.150 — 2026-09-05 — clear Hara Terminal identity and adaptive workspace
+
+- Keep the internal Herdr runtime out of the visible terminal header and label the built-in surface only as
+  `Hara Terminal / Hara 终端`. No external-terminal button is shown until the Engine can advertise a verified,
+  provider-neutral adapter instead of assuming that WezTerm or any other third-party app is installed.
+- Restore the session-details responsive grid after the shared extension flex style overrode it. Compact windows
+  now stack the transcript and inspector as intended instead of squeezing the transcript beside large empty cards.
+- Preserve terminal height for physical-keyboard users by collapsing bilingual special-key controls by default on
+  fine-pointer desktops, while touch devices keep them visible and every user can reveal them with an accessible
+  `Show key controls / 显示快捷键` action.
+- Clarify that remote Hara interaction first continues the same Claude Code or Codex session through high-level
+  commands; raw terminal control is a separately authorized later phase and does not depend on a local external app.
+- Bundle Hara CLI `0.166.1` at exact commit `0babc8f7d1d3e9366192dc4dbf81d24254c30cd0` unchanged. Windows
+  packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.149 — 2026-09-05 — reliable physical-keyboard focus in Hara Terminal
 
 - Make the built-in Hara Terminal a deliberate keyboard focus target. Entering local control or clicking

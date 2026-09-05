@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import type {
@@ -43,10 +43,12 @@ const COPY = {
     controlAction: "取得控制",
     reconnect: "重新连接",
     release: "释放控制",
+    showKeys: "显示快捷键",
+    hideKeys: "收起快捷键",
     scrollUp: "向上翻页",
     scrollDown: "向下翻页",
     takeoverConfirm: "另一窗口可能正在控制这个终端。确认把输入控制切换到当前窗口吗？",
-    inputHint: "点击终端后直接使用键盘；下方按钮仅辅助输入特殊按键。",
+    inputHint: "点击终端后可直接使用键盘；快捷键可辅助输入特殊按键。",
     legacy: "当前引擎仅支持终端快照；升级后可使用实时键盘输入与缩放。",
     refresh: "刷新",
     keys: [
@@ -68,10 +70,12 @@ const COPY = {
     controlAction: "Take control",
     reconnect: "Reconnect",
     release: "Release control",
+    showKeys: "Show key controls",
+    hideKeys: "Hide key controls",
     scrollUp: "Page up",
     scrollDown: "Page down",
     takeoverConfirm: "Another window may control this terminal. Transfer input control to this window?",
-    inputHint: "Click the terminal and type on your keyboard. The buttons below are only helpers for special keys.",
+    inputHint: "Click the terminal and type on your keyboard. Key controls can help with special keys.",
     legacy: "This engine only supports terminal snapshots. Upgrade for live keyboard input and resize.",
     refresh: "Refresh",
     keys: [
@@ -120,6 +124,12 @@ export default function ExternalNativeTerminalSurface({
   const [rendererReady, setRendererReady] = useState(false);
   const [terminalStatus, setTerminalStatus] = useState<TerminalStatus>("connecting");
   const [error, setError] = useState("");
+  const softkeysId = useId();
+  const [softkeysVisible, setSoftkeysVisible] = useState(() => (
+    typeof window !== "undefined"
+      && typeof window.matchMedia === "function"
+      && window.matchMedia("(pointer: coarse)").matches
+  ));
 
   const focusTerminal = useCallback(() => {
     if (streamRef.current?.mode !== "control") return;
@@ -345,6 +355,16 @@ export default function ExternalNativeTerminalSurface({
           {terminalStatus === "closed" || terminalStatus === "error" || terminalStatus === "external"
             ? <button type="button" onClick={() => void attach("control", false)}>{copy.reconnect}</button>
             : null}
+          {terminalStatus === "control" ? (
+            <button
+              type="button"
+              aria-controls={softkeysId}
+              aria-expanded={softkeysVisible}
+              onClick={() => setSoftkeysVisible((current) => !current)}
+            >
+              {softkeysVisible ? copy.hideKeys : copy.showKeys}
+            </button>
+          ) : null}
           {terminalStatus === "control" ? <button type="button" onClick={() => void releaseCurrent().then(() => setTerminalStatus("closed"))}>{copy.release}</button> : null}
         </div>
       </div>
@@ -358,19 +378,21 @@ export default function ExternalNativeTerminalSurface({
         onFocus={focusTerminal}
         onPointerDownCapture={focusTerminal}
       />
-      <div className="external-terminal-softkeys" aria-label={copy.inputHint}>
-        {copy.keys.map(([key, action, bytes]) => (
-          <button type="button" key={key} disabled={terminalStatus !== "control"} title={`${action} · ${key}`} onClick={() => { queueInput(bytes); focusTerminal(); }}>
-            <kbd>{key}</kbd><span>{action}</span>
+      {softkeysVisible ? (
+        <div id={softkeysId} className="external-terminal-softkeys" aria-label={copy.inputHint}>
+          {copy.keys.map(([key, action, bytes]) => (
+            <button type="button" key={key} disabled={terminalStatus !== "control"} title={`${action} · ${key}`} onClick={() => { queueInput(bytes); focusTerminal(); }}>
+              <kbd>{key}</kbd><span>{action}</span>
+            </button>
+          ))}
+          <button type="button" disabled={terminalStatus !== "control"} title={copy.scrollUp} onClick={() => { sendScroll("up"); focusTerminal(); }}>
+            <kbd>PgUp</kbd><span>{copy.scrollUp}</span>
           </button>
-        ))}
-        <button type="button" disabled={terminalStatus !== "control"} title={copy.scrollUp} onClick={() => { sendScroll("up"); focusTerminal(); }}>
-          <kbd>PgUp</kbd><span>{copy.scrollUp}</span>
-        </button>
-        <button type="button" disabled={terminalStatus !== "control"} title={copy.scrollDown} onClick={() => { sendScroll("down"); focusTerminal(); }}>
-          <kbd>PgDn</kbd><span>{copy.scrollDown}</span>
-        </button>
-      </div>
+          <button type="button" disabled={terminalStatus !== "control"} title={copy.scrollDown} onClick={() => { sendScroll("down"); focusTerminal(); }}>
+            <kbd>PgDn</kbd><span>{copy.scrollDown}</span>
+          </button>
+        </div>
+      ) : null}
       <footer><span>{copy.inputHint}</span></footer>
     </section>
   );

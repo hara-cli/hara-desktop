@@ -612,7 +612,7 @@ export default function ExternalSessionCenter({
                   kind="terminal"
                   kindLabel={locale === "zh" ? "互动终端" : "Interactive terminal"}
                   title={selected.title}
-                  source="Herdr · Hara Terminal"
+                  source={locale === "zh" ? "Hara 终端" : "Hara Terminal"}
                   context={selected.workspaceName}
                   detail={selected.agentKind === "claude" ? "Claude Code" : "Codex"}
                   mode={terminalDockMode}

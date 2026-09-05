@@ -39,6 +39,7 @@ test("Hara Live keeps structured work and the native terminal as two views of on
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const terminal = readFileSync(`${root}/src/ExternalNativeTerminalSurface.tsx`, "utf8");
+  const centerCss = readFileSync(`${root}/src/ExternalSessionCenter.css`, "utf8");
 
   assert.match(center, /onCreate: \(agentKind: ExternalRuntimeAgentKind, launch: ExternalRuntimeLaunchOptions\)/);
   assert.match(center, /runtimeModels\[runtimeAgentKind\]/);
@@ -57,8 +58,12 @@ test("Hara Live keeps structured work and the native terminal as two views of on
     "an interactive terminal opens at a usable full-workspace size by default");
   assert.match(center, /mode=\{terminalDockMode\}[\s\S]{0,100}showModeLabel/,
     "the full-width and split terminal modes remain visible actions rather than icon-only guesswork");
-  assert.match(center, /source="Herdr · Hara Terminal"/,
-    "the embedded renderer is labeled honestly instead of pretending to be an embedded WezTerm GUI");
+  assert.match(center, /source=\{locale === "zh" \? "Hara 终端" : "Hara Terminal"\}/,
+    "the embedded renderer uses the Hara product name without leaking an internal runtime dependency");
+  assert.doesNotMatch(center, /source="Herdr|Herdr · Hara Terminal/,
+    "the internal PTY bridge name never leaks into the end-user terminal header");
+  assert.match(centerCss, /\.external-session-layout\.extension-work\s*\{\s*display:\s*grid;/,
+    "the generic extension flex layout cannot squeeze the details view out of its responsive grid");
   assert.match(terminal, /data-native-context-menu="true"/,
     "the terminal keeps native selection and copy affordances");
   assert.match(terminal, /terminal\.onData\(queueInput\)/,
@@ -69,6 +74,10 @@ test("Hara Live keeps structured work and the native terminal as two views of on
     "the WebKit-hosted xterm input textarea receives focus without scrolling the workbench");
   assert.match(terminal, /tabIndex=\{terminalStatus === "control" \? 0 : -1\}/,
     "the controlled terminal is a discoverable keyboard focus target");
+  assert.match(terminal, /window\.matchMedia\("\(pointer: coarse\)"\)\.matches/,
+    "touch devices expose special-key controls by default while desktop keyboards retain terminal space");
+  assert.match(terminal, /aria-expanded=\{softkeysVisible\}/,
+    "desktop users can reveal the bilingual special-key controls explicitly");
   assert.match(terminal, /\["Enter", "确认", "\\r"\]/,
     "interactive provider choices expose a one-click Enter confirmation");
   assert.match(terminal, /\["Ctrl\+C", "中断", "\\u0003"\]/,
