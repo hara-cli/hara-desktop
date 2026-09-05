@@ -183,7 +183,6 @@ interface ExternalSessionCenterProps {
   onTerminalResize: (streamId: string, cols: number, rows: number) => Promise<void>;
   onTerminalScroll: (streamId: string, direction: "up" | "down", lines: number) => Promise<void>;
   onTerminalRelease: (streamId: string) => Promise<void>;
-  onOpenWezTerm: (takeover: boolean) => Promise<void>;
   subscribeTerminal: (listener: (event: ExternalTerminalEvent) => void) => () => void;
 }
 
@@ -235,7 +234,6 @@ export default function ExternalSessionCenter({
   onTerminalResize,
   onTerminalScroll,
   onTerminalRelease,
-  onOpenWezTerm,
   subscribeTerminal,
 }: ExternalSessionCenterProps) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -624,7 +622,7 @@ export default function ExternalSessionCenter({
                     resize: "调整终端宽度",
                     maximize: "终端全宽",
                     restore: "恢复分屏",
-                    popOut: "在 WezTerm 打开",
+                    popOut: "在独立窗口打开",
                     hide: "收起终端",
                     close: "关闭",
                     add: "添加扩展",
@@ -633,7 +631,7 @@ export default function ExternalSessionCenter({
                     resize: "Resize terminal",
                     maximize: "Full-width terminal",
                     restore: "Restore split view",
-                    popOut: "Open in WezTerm",
+                    popOut: "Open in separate window",
                     hide: "Hide terminal",
                     close: "Close",
                     add: "Add extension",
@@ -653,7 +651,6 @@ export default function ExternalSessionCenter({
                     onResize={onTerminalResize}
                     onScroll={onTerminalScroll}
                     onRelease={onTerminalRelease}
-                    onOpenWezTerm={onOpenWezTerm}
                     subscribe={subscribeTerminal}
                   />
                 </ExtensionDock>

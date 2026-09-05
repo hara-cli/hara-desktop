@@ -1,7 +1,7 @@
 # Hara 手机伴侣端 MVP 方案
 
 > 状态：进入协议与安全边界规划；尚未交付手机应用或公网中继服务。
-> 基线：Hara Desktop 0.1.148、Hara Engine 0.166.1。
+> 基线：Hara Desktop 0.1.149、Hara Engine 0.166.1。
 > 关联约束：`MOBILE_IDENTITY_CONTRACT.md`、`EXTERNAL_SESSION_RUNTIME_PLAN.md`。
 
 ## 1. 产品目标
@@ -41,17 +41,17 @@ Desktop 不开放入站端口。Relay 不能解密消息正文，也不能直接
 
 ## 3. 当前已经具备的基础
 
-Desktop 0.1.148 与 Engine 0.166.1 已经把原生终端进程和显示层分开。现有本地协议可以直接
+Desktop 0.1.149 与 Engine 0.166.1 已经把原生终端进程和显示层分开。现有本地协议可以直接
 作为移动协议的语义基础，但目前仍只允许本机客户端使用：
 
 - `external.sessions.list/read/fork/submit/steer/interrupt` 提供供应商无关的会话交互；
 - `external.sessions.terminal.attach` 返回带严格递增序号的 `ansi-base64` 全量或增量帧；
 - `terminal.raw-input/resize/scroll/release` 提供原始输入、尺寸、滚动和控制释放；
-- PTY 同一时刻只有一个输入控制端，Hara 与 WezTerm 之间必须明确移交，观察端不能写入；
+- PTY 同一时刻只有一个输入控制端，Hara、受支持外置终端与手机之间必须明确移交，观察端不能写入；
 - `event.task_state`、`event.workforce_state` 与审批事件提供无需解析聊天文案的真实状态；
 - Desktop 只接收 Hara 不透明会话 ID，供应商原生 ID、完整路径和凭据留在 Core。
 
-这意味着手机端不需要复制 WezTerm 或再启动一个 Codex/Claude 进程。它需要新增的是可靠远程
+这意味着手机端不需要复制任何桌面终端或再启动一个 Codex/Claude 进程。它需要新增的是可靠远程
 传输、设备身份、发布授权和移动交互层。
 
 ## 4. 必须补齐的协议
@@ -130,7 +130,7 @@ type PublishedSessionCapabilities = {
 ## 6. P0 验收门槛
 
 1. 10,000 个重复或乱序帧不会导致重复显示、越权输入或无限内存增长；
-2. 同一个会话在 Desktop、手机仿真端和 WezTerm 间始终只有一个输入租约；
+2. 同一个会话在 Desktop、手机仿真端和任一受支持外置终端间始终只有一个输入租约；
 3. 设备撤销、publication 撤销或 epoch 变化后，旧命令和旧审批全部拒绝；
 4. Relay 数据库、日志、推送和崩溃报告中没有正文、完整路径、原生会话 ID 或凭据；
 5. Personal 与两个不同企业之间的会话、缓存、推送和审计无法串读；
@@ -163,7 +163,7 @@ type PublishedSessionCapabilities = {
 
 工程可以采用 React Native 官方推荐的框架化初始化与原生 development build，但安全相关逻辑、
 审批文案和远程控制能力不得通过绕过应用商店签名链的 OTA JavaScript 更新发布。终端协议继续保持
-ANSI frame + 输入 bytes + resize + lease 的渲染器无关边界，不把 WezTerm mux 协议带到手机端。
+ANSI frame + 输入 bytes + resize + lease 的渲染器无关边界，不把任何桌面终端的私有 mux 协议带到手机端。
 
 ## 8. NayiApp 成熟基线复用
 

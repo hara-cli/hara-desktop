@@ -6079,14 +6079,6 @@ export default function App() {
     if (!client || !client.supports("external.sessions.terminal.release")) return;
     await client.releaseTerminal(streamId);
   }, []);
-  const openSelectedExternalTerminalInWezTerm = useCallback(async (takeover: boolean): Promise<void> => {
-    const client = clientRef.current;
-    const session = selectedExternalSession;
-    if (!client || !session || session.sourceId !== "runtime" || !client.supports("external.sessions.terminal.open-wezterm")) {
-      throw new Error(makeT(locale)("externalSessionsTerminalUnavailable"));
-    }
-    await client.openTerminalInWezTerm(session.id, takeover);
-  }, [locale, selectedExternalSession]);
   const subscribeSelectedExternalTerminal = useCallback((listener: (event: ExternalTerminalEvent) => void): (() => void) => (
     clientRef.current?.onTerminalEvent(listener) ?? (() => {})
   ), []);
@@ -8370,7 +8362,6 @@ export default function App() {
       onTerminalResize={resizeSelectedExternalTerminal}
       onTerminalScroll={scrollSelectedExternalTerminal}
       onTerminalRelease={releaseSelectedExternalTerminal}
-      onOpenWezTerm={openSelectedExternalTerminalInWezTerm}
       subscribeTerminal={subscribeSelectedExternalTerminal}
       copy={{
         eyebrow: t("externalSessionsEyebrow"),

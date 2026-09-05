@@ -42,7 +42,7 @@
 .external-terminal-surface[data-status="connecting"] .external-terminal-statusbar > span i { background: #dfbd72; box-shadow: 0 0 9px rgba(223, 189, 114, .45); }
 .external-terminal-surface[data-status="error"] .external-terminal-statusbar > span i,
 .external-terminal-surface[data-status="closed"] .external-terminal-statusbar > span i { background: #ef786c; box-shadow: 0 0 9px rgba(239, 120, 108, .42); }
-.external-terminal-surface[data-status="wezterm"] .external-terminal-statusbar > span i { background: #78a9d1; box-shadow: 0 0 9px rgba(120, 169, 209, .44); }
+.external-terminal-surface[data-status="external"] .external-terminal-statusbar > span i { background: #78a9d1; box-shadow: 0 0 9px rgba(120, 169, 209, .44); }
 
 .external-terminal-statusbar > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
 .external-terminal-statusbar button,
@@ -60,8 +60,6 @@
 .external-terminal-softkeys button:hover:not(:disabled) { border-color: #67d493; color: #e9fff1; }
 .external-terminal-statusbar button:disabled,
 .external-terminal-softkeys button:disabled { cursor: default; opacity: .42; }
-.external-terminal-statusbar button.is-wezterm { border-color: #6c584a; color: #e9ccb6; background: #201914; }
-
 .external-terminal-surface-error {
   flex: 0 0 auto;
   padding: 8px 10px;
@@ -85,6 +83,12 @@
 .external-terminal-canvas .xterm { height: 100%; }
 .external-terminal-canvas .xterm-viewport { scrollbar-color: #34433b #090d0b; scrollbar-width: thin; }
 .external-terminal-canvas .xterm-screen { cursor: text; }
+.external-terminal-canvas:focus,
+.external-terminal-canvas:focus-within {
+  outline: 1px solid rgba(103, 212, 147, .72);
+  outline-offset: -1px;
+  box-shadow: inset 0 0 0 1px rgba(103, 212, 147, .18);
+}
 
 .external-terminal-softkeys {
   display: flex;
@@ -121,7 +125,6 @@
   background: #111713;
   font: 600 8px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.external-terminal-surface > footer span:last-child { text-align: right; }
 
 .external-terminal-surface.is-legacy pre {
   min-height: 260px;
@@ -139,5 +142,4 @@
   .external-terminal-statusbar { align-items: flex-start; }
   .external-terminal-statusbar > div { max-width: 58%; }
   .external-terminal-surface > footer { align-items: flex-start; flex-direction: column; gap: 3px; }
-  .external-terminal-surface > footer span:last-child { text-align: left; }
 }

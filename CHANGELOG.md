@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.149 — 2026-09-05 — reliable physical-keyboard focus in Hara Terminal
+
+- Make the built-in Hara Terminal a deliberate keyboard focus target. Entering local control or clicking
+  anywhere in the terminal now restores the hidden xterm input element, so physical typing reaches the exact
+  Herdr-owned PTY; the bilingual on-screen controls remain helpers only for special keys and touch input.
+- Remove the public WezTerm-specific launch button and installation error. Hara Terminal remains complete and
+  usable without any third-party terminal; future detached-terminal support will use capability-detected,
+  provider-neutral adapters for the system terminal and explicitly supported applications.
+- Bundle Hara CLI `0.166.1` at exact commit `0babc8f7d1d3e9366192dc4dbf81d24254c30cd0` unchanged. Windows
+  packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.148 — 2026-09-05 — full-width Hara Terminal and visible engine recovery
 
 - Open interactive Hara Live terminals at full workspace width by default, keep a labeled

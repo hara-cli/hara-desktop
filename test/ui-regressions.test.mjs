@@ -63,6 +63,12 @@ test("Hara Live keeps structured work and the native terminal as two views of on
     "the terminal keeps native selection and copy affordances");
   assert.match(terminal, /terminal\.onData\(queueInput\)/,
     "physical keyboard input goes through the raw terminal stream instead of a prompt textbox");
+  assert.match(terminal, /onPointerDownCapture=\{focusTerminal\}/,
+    "clicking anywhere in the terminal explicitly restores physical keyboard focus");
+  assert.match(terminal, /terminal\.textarea\?\.focus\(\{ preventScroll: true \}\)/,
+    "the WebKit-hosted xterm input textarea receives focus without scrolling the workbench");
+  assert.match(terminal, /tabIndex=\{terminalStatus === "control" \? 0 : -1\}/,
+    "the controlled terminal is a discoverable keyboard focus target");
   assert.match(terminal, /\["Enter", "确认", "\\r"\]/,
     "interactive provider choices expose a one-click Enter confirmation");
   assert.match(terminal, /\["Ctrl\+C", "中断", "\\u0003"\]/,
@@ -71,8 +77,10 @@ test("Hara Live keeps structured work and the native terminal as two views of on
     "page controls relay real provider-terminal scroll events rather than moving only a stale local snapshot");
   assert.match(center, /onScroll=\{onTerminalScroll\}/);
   assert.match(app, /client\.terminalScroll\(streamId, direction, lines\)/);
-  assert.match(terminal, /window\.confirm\(copy\.transferConfirm\)/,
-    "moving the single input lease into WezTerm requires explicit confirmation");
+  assert.doesNotMatch(terminal, /WezTerm|wezterm/,
+    "the built-in Hara Terminal does not advertise one optional third-party terminal as a requirement");
+  assert.doesNotMatch(center, /在 WezTerm 打开|Open in WezTerm/,
+    "the public terminal workbench stays provider-neutral until generic external adapters are available");
   assert.match(terminal, /event\.seq !== prior \+ 1 && !event\.full/,
     "a dropped incremental frame fails closed instead of corrupting the terminal view");
   assert.match(center, /terminalStreaming \|\| inspectorView !== "terminal"/,
@@ -91,7 +99,7 @@ test("Hara Live keeps structured work and the native terminal as two views of on
   assert.match(app, /external\.sessions\.runtime-remove\.v1/);
   assert.match(app, /window\.confirm\(\[/,
     "ending the original provider terminal requires explicit user confirmation");
-  assert.match(terminal, /terminalStatus === "closed" \|\| terminalStatus === "error" \|\| terminalStatus === "wezterm"/,
+  assert.match(terminal, /terminalStatus === "closed" \|\| terminalStatus === "error" \|\| terminalStatus === "external"/,
     "ended and transferred terminals expose reconnection instead of a permanent waiting label");
   assert.match(center, /legacyError=\{terminalError \|\| actionError\}/,
     "old-engine terminal failures stay visible inside the extension screen");

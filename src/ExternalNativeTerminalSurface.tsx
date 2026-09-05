@@ -27,11 +27,10 @@ interface ExternalNativeTerminalSurfaceProps {
   onResize: (streamId: string, cols: number, rows: number) => Promise<void>;
   onScroll: (streamId: string, direction: "up" | "down", lines: number) => Promise<void>;
   onRelease: (streamId: string) => Promise<void>;
-  onOpenWezTerm: (takeover: boolean) => Promise<void>;
   subscribe: (listener: (event: ExternalTerminalEvent) => void) => () => void;
 }
 
-type TerminalStatus = "connecting" | "control" | "observe" | "closed" | "error" | "wezterm";
+type TerminalStatus = "connecting" | "control" | "observe" | "closed" | "error" | "external";
 
 const COPY = {
   zh: {
@@ -40,18 +39,15 @@ const COPY = {
     observe: "只读观察",
     closed: "会话终端已结束",
     error: "终端连接中断",
-    wezterm: "控制已转交 WezTerm",
+    external: "控制已转交到其他终端",
     controlAction: "取得控制",
     reconnect: "重新连接",
-    openWezTerm: "在 WezTerm 打开",
     release: "释放控制",
     scrollUp: "向上翻页",
     scrollDown: "向下翻页",
-    installHint: "WezTerm 未安装时仍可继续使用 Hara 内置终端。",
-    transferConfirm: "将输入控制转交给 WezTerm？Hara 内置终端会切换为已转交状态，但不会启动新的 Codex 或 Claude Code 进程。",
     takeoverConfirm: "另一窗口可能正在控制这个终端。确认把输入控制切换到当前窗口吗？",
-    inputHint: "直接点击终端输入；支持中文粘贴、方向键、Tab、Enter 和 Ctrl+C。",
-    legacy: "当前引擎仅支持终端快照；升级后可使用实时输入、缩放和 WezTerm。",
+    inputHint: "点击终端后直接使用键盘；下方按钮仅辅助输入特殊按键。",
+    legacy: "当前引擎仅支持终端快照；升级后可使用实时键盘输入与缩放。",
     refresh: "刷新",
     keys: [
       ["Esc", "取消", "\u001b"],
@@ -68,18 +64,15 @@ const COPY = {
     observe: "Read-only observer",
     closed: "Terminal session ended",
     error: "Terminal connection interrupted",
-    wezterm: "Control transferred to WezTerm",
+    external: "Control transferred to another terminal",
     controlAction: "Take control",
     reconnect: "Reconnect",
-    openWezTerm: "Open in WezTerm",
     release: "Release control",
     scrollUp: "Page up",
     scrollDown: "Page down",
-    installHint: "If WezTerm is not installed, Hara's built-in terminal remains available.",
-    transferConfirm: "Transfer input control to WezTerm? Hara will keep the same Codex or Claude Code process and release its built-in controller.",
     takeoverConfirm: "Another window may control this terminal. Transfer input control to this window?",
-    inputHint: "Click the terminal and type directly. Paste, arrows, Tab, Enter, and Ctrl+C are supported.",
-    legacy: "This engine only supports terminal snapshots. Upgrade for live input, resize, and WezTerm handoff.",
+    inputHint: "Click the terminal and type on your keyboard. The buttons below are only helpers for special keys.",
+    legacy: "This engine only supports terminal snapshots. Upgrade for live keyboard input and resize.",
     refresh: "Refresh",
     keys: [
       ["Esc", "Cancel", "\u001b"],
@@ -112,7 +105,6 @@ export default function ExternalNativeTerminalSurface({
   onResize,
   onScroll,
   onRelease,
-  onOpenWezTerm,
   subscribe,
 }: ExternalNativeTerminalSurfaceProps) {
   const copy = COPY[locale];
@@ -128,6 +120,16 @@ export default function ExternalNativeTerminalSurface({
   const [rendererReady, setRendererReady] = useState(false);
   const [terminalStatus, setTerminalStatus] = useState<TerminalStatus>("connecting");
   const [error, setError] = useState("");
+
+  const focusTerminal = useCallback(() => {
+    if (streamRef.current?.mode !== "control") return;
+    window.requestAnimationFrame(() => {
+      const terminal = terminalRef.current;
+      if (!terminal) return;
+      terminal.focus();
+      terminal.textarea?.focus({ preventScroll: true });
+    });
+  }, []);
 
   const releaseCurrent = useCallback(async () => {
     const current = streamRef.current;
@@ -184,8 +186,8 @@ export default function ExternalNativeTerminalSurface({
       streamRef.current = connection;
       lastSeqRef.current = null;
       terminalRef.current.reset();
-      terminalRef.current.focus();
       setTerminalStatus(connection.mode);
+      if (connection.mode === "control") focusTerminal();
     } catch (cause) {
       if (mode === "control" && !takeover) {
         try {
@@ -202,7 +204,7 @@ export default function ExternalNativeTerminalSurface({
       setError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
       setTerminalStatus("error");
     }
-  }, [onAttach, releaseCurrent, streaming]);
+  }, [focusTerminal, onAttach, releaseCurrent, streaming]);
 
   useEffect(() => {
     if (!streaming || !hostRef.current) return;
@@ -242,6 +244,7 @@ export default function ExternalNativeTerminalSurface({
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(hostRef.current);
+    terminal.textarea?.setAttribute("aria-label", copy.inputHint);
     terminalRef.current = terminal;
     fitRef.current = fit;
     const dataSubscription = terminal.onData(queueInput);
@@ -251,7 +254,7 @@ export default function ExternalNativeTerminalSurface({
       if (event.method === "external.event.terminal.closed") {
         streamRef.current = null;
         lastSeqRef.current = null;
-        if (event.reason === "control_transferred") setTerminalStatus("wezterm");
+        if (event.reason === "control_transferred") setTerminalStatus("external");
         else {
           setTerminalStatus(event.reason === "released" ? "closed" : "error");
           if (event.reason !== "released" && event.reason !== "runtime_closed") setError(event.reason.replace(/_/gu, " "));
@@ -308,29 +311,19 @@ export default function ExternalNativeTerminalSurface({
       fitRef.current = null;
       setRendererReady(false);
     };
-  }, [onResize, queueInput, releaseCurrent, sessionId, streaming, subscribe]);
+  }, [copy.inputHint, onResize, queueInput, releaseCurrent, sessionId, streaming, subscribe]);
 
   useEffect(() => {
     if (rendererReady) void attach("control", false);
   }, [attach, rendererReady, sessionId]);
 
+  useEffect(() => {
+    if (terminalStatus === "control") focusTerminal();
+  }, [focusTerminal, terminalStatus]);
+
   const takeControl = () => {
     if (!window.confirm(copy.takeoverConfirm)) return;
     void attach("control", true);
-  };
-
-  const openWezTerm = async () => {
-    if (!window.confirm(copy.transferConfirm)) return;
-    setError("");
-    try {
-      await onOpenWezTerm(true);
-      streamRef.current = null;
-      lastSeqRef.current = null;
-      setTerminalStatus("wezterm");
-    } catch (cause) {
-      setError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
-      setTerminalStatus(streamRef.current?.mode ?? "error");
-    }
   };
 
   if (!streaming) {
@@ -349,29 +342,36 @@ export default function ExternalNativeTerminalSurface({
         <span><i aria-hidden />{copy[terminalStatus]}</span>
         <div>
           {terminalStatus === "observe" ? <button type="button" onClick={takeControl}>{copy.controlAction}</button> : null}
-          {terminalStatus === "closed" || terminalStatus === "error" || terminalStatus === "wezterm"
+          {terminalStatus === "closed" || terminalStatus === "error" || terminalStatus === "external"
             ? <button type="button" onClick={() => void attach("control", false)}>{copy.reconnect}</button>
             : null}
           {terminalStatus === "control" ? <button type="button" onClick={() => void releaseCurrent().then(() => setTerminalStatus("closed"))}>{copy.release}</button> : null}
-          <button type="button" className="is-wezterm" onClick={() => void openWezTerm()}>{copy.openWezTerm}</button>
         </div>
       </div>
       {error ? <div className="external-terminal-surface-error" role="alert">{error}</div> : null}
-      <div className="external-terminal-canvas" ref={hostRef} data-native-context-menu="true" />
+      <div
+        className="external-terminal-canvas"
+        ref={hostRef}
+        data-native-context-menu="true"
+        tabIndex={terminalStatus === "control" ? 0 : -1}
+        aria-label={copy.inputHint}
+        onFocus={focusTerminal}
+        onPointerDownCapture={focusTerminal}
+      />
       <div className="external-terminal-softkeys" aria-label={copy.inputHint}>
         {copy.keys.map(([key, action, bytes]) => (
-          <button type="button" key={key} disabled={terminalStatus !== "control"} title={`${action} · ${key}`} onClick={() => queueInput(bytes)}>
+          <button type="button" key={key} disabled={terminalStatus !== "control"} title={`${action} · ${key}`} onClick={() => { queueInput(bytes); focusTerminal(); }}>
             <kbd>{key}</kbd><span>{action}</span>
           </button>
         ))}
-        <button type="button" disabled={terminalStatus !== "control"} title={copy.scrollUp} onClick={() => sendScroll("up")}>
+        <button type="button" disabled={terminalStatus !== "control"} title={copy.scrollUp} onClick={() => { sendScroll("up"); focusTerminal(); }}>
           <kbd>PgUp</kbd><span>{copy.scrollUp}</span>
         </button>
-        <button type="button" disabled={terminalStatus !== "control"} title={copy.scrollDown} onClick={() => sendScroll("down")}>
+        <button type="button" disabled={terminalStatus !== "control"} title={copy.scrollDown} onClick={() => { sendScroll("down"); focusTerminal(); }}>
           <kbd>PgDn</kbd><span>{copy.scrollDown}</span>
         </button>
       </div>
-      <footer><span>{copy.inputHint}</span><span>{copy.installHint}</span></footer>
+      <footer><span>{copy.inputHint}</span></footer>
     </section>
   );
 }
