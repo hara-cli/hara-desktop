@@ -180,3 +180,21 @@ New Architecture 创建独立原生工程，并复用其中已经通过生产验
 埋点标识、玄学业务模块、用户数据和历史构建产物。Hara 使用独立包名 `tech.nanhara.hara`、独立
 Keychain/Keystore 命名空间和独立后端协议。复用指工程能力和经过验证的交互算法，不形成两款
 产品之间的运行时数据或账号耦合。
+
+## 9. 平台分发与实施边界
+
+Hara Desktop 与 Hara Mobile 是两个独立产品目标、独立版本和独立签名链：
+
+- macOS Desktop 继续通过官网与公司 CDN 分发 Developer ID 签名、Apple 公证并装订票据的 DMG；
+  当前不把 Desktop 发布到 iOS App Store，也不以 Mac App Store 沙箱版替代官网完整版本；
+- iOS 使用独立 React Native 原生 target，经内部测试和 TestFlight 验证后再申请 App Store 上架；
+  Android 使用独立签名、内部测试轨道和应用市场发布流程；
+- 手机包绝不包含 Hara Desktop、CLI sidecar、本地 Shell、供应商 Key 或启动 Codex / Claude Code
+  进程的能力，只通过配对设备身份与端到端加密协议访问 Desktop 明确发布的会话；
+- Desktop、Engine、Relay 与 Mobile 各自版本化，发布前必须验证协议兼容矩阵；手机版本不能假设
+  用户电脑已更新，也不能因协议不兼容而退回不受控的文本或终端通道。
+
+实施分工以接口边界为准：`hara-mobile` 负责 React Native UI、原生安全模块、设备生命周期和移动端
+测试；Desktop / Engine 负责本地最终裁决、会话发布、控制租约和协议实现；Relay 只负责密文路由。
+跨工程共享内容必须是版本化 schema、测试向量和脱敏错误码，不能复制未文档化常量或通过聊天约定
+隐式耦合。此文档是手机需求与安全验收基线，具体 UI 与代码可由独立实施窗口继续推进。
