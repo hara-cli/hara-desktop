@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.151 — 2026-09-06 — honest provider usage and resumable remote state
+
+- Show the accounting authority for every model connection instead of applying one Hara-wide Token, cost or
+  subscription-window formula. Provider-native subscriptions preserve their own units and reset semantics,
+  Control-metered routes remain Control-authoritative, and older engines state that usage is unavailable rather
+  than presenting a guessed percentage or currency value.
+- Keep the new accounting descriptor optional across the Desktop protocol so an existing Engine continues to
+  work during upgrade. Provider-native exhaustion can drive automatic failover only when the current provider or
+  Control supplies a fresh authoritative signal; missing usage data never blocks ordinary model calls.
+- Bundle Hara CLI `0.167.0` at exact commit `994c6bc5fefe93201a0cb0cf6c902489ecc294b3`, adding replay-safe
+  remote commands, resumable ordered events, controller leases, durable read-only Agent Team state and stronger
+  long-running task continuity. Windows packages remain updater-signed but not Authenticode-signed, so
+  SmartScreen may still show a reputation warning.
+
 ## 0.1.150 — 2026-09-05 — clear Hara Terminal identity and adaptive workspace
 
 - Keep the internal Herdr runtime out of the visible terminal header and label the built-in surface only as
