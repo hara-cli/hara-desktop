@@ -3,6 +3,7 @@ import {
   type HaraClient,
   type OrganizationConnectionsState,
   type OrganizationEnrollmentInput,
+  type ProviderAccountingDescriptor,
   type ProviderConnectionCreateInput,
   type ProviderSettingsInput,
   type ProviderSettingsState,
@@ -10,6 +11,32 @@ import {
 } from "./client";
 import type { Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
+
+const previewAccounting = (provider: string): ProviderAccountingDescriptor => {
+  if (provider === "hara-gateway") return {
+    authority: "organization",
+    mode: "managed",
+    usageReadMethod: "organization-control",
+    haraMayInferBillingFromTransportTokens: false,
+    failoverPolicy: "authoritative-exhaustion-only",
+  };
+  if (provider === "ollama" || provider === "lmstudio") return {
+    authority: "local",
+    mode: "local",
+    usageReadMethod: "not-applicable",
+    haraMayInferBillingFromTransportTokens: false,
+    failoverPolicy: "not-applicable",
+  };
+  return {
+    authority: "provider",
+    mode: ["token-plan", "minimax-token-plan", "volcengine-agent-plan"].includes(provider)
+      ? "subscription"
+      : "provider-defined",
+    usageReadMethod: "provider-console",
+    haraMayInferBillingFromTransportTokens: false,
+    failoverPolicy: "authoritative-exhaustion-only",
+  };
+};
 
 const initialProviders = (): ProviderSettingsState => ({
   current: {
@@ -24,9 +51,10 @@ const initialProviders = (): ProviderSettingsState => ({
     profileKind: "gateway",
     profileSource: "default",
     editable: false,
+    accounting: previewAccounting("hara-gateway"),
     tokenExpiresAt: "2026-08-22T12:00:00.000Z",
   },
-  providers: [
+  providers: ([
     { id: "anthropic", label: "Anthropic", location: "cloud", auth: "api-key", defaultModel: "claude-opus-4-8", customBaseURL: false },
     {
       id: "token-plan",
@@ -72,7 +100,10 @@ const initialProviders = (): ProviderSettingsState => ({
     { id: "openrouter", label: "OpenRouter", location: "cloud", auth: "api-key", defaultModel: "openai/gpt-4o-mini", customBaseURL: true },
     { id: "ollama", label: "Ollama", location: "local", auth: "none", defaultModel: "qwen3", defaultBaseURL: "http://127.0.0.1:11434/v1", customBaseURL: true },
     { id: "hara-gateway", label: "Hara Enterprise Gateway", location: "managed", auth: "managed", defaultModel: "managed-model", customBaseURL: false },
-  ],
+  ] satisfies ProviderSettingsState["providers"]).map((provider) => ({
+    ...provider,
+    accounting: previewAccounting(provider.id),
+  })),
   vision: {
     enabled: true,
     source: "current",
@@ -99,6 +130,7 @@ const initialProviders = (): ProviderSettingsState => ({
       active: false,
       legacyPersonal: true,
       removable: true,
+      accounting: previewAccounting("deepseek"),
       keyHint: "••••4821",
     },
   ],

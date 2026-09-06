@@ -524,6 +524,14 @@ export interface SkillInfo {
   source: string;
 }
 
+export interface ProviderAccountingDescriptor {
+  authority: "provider" | "organization" | "local";
+  mode: "subscription" | "provider-defined" | "managed" | "local";
+  usageReadMethod: "provider-api" | "organization-control" | "provider-console" | "not-applicable";
+  haraMayInferBillingFromTransportTokens: false;
+  failoverPolicy: "authoritative-exhaustion-only" | "not-applicable";
+}
+
 export interface ProviderCatalogEntry {
   id: string;
   label: string;
@@ -532,6 +540,8 @@ export interface ProviderCatalogEntry {
   defaultModel: string;
   defaultBaseURL?: string;
   customBaseURL: boolean;
+  /** Added by newer engines. Optional keeps recovery compatible with an older bundled sidecar. */
+  accounting?: ProviderAccountingDescriptor;
   knownModels?: readonly string[];
   /** Models positively classified by the engine as accepting image input. */
   knownVisionModels?: readonly string[];
@@ -553,6 +563,8 @@ export interface ProviderSettingsState {
     profileKind: "byok" | "gateway";
     profileSource: "flag" | "env" | "pin" | "default" | "fallback";
     editable: boolean;
+    /** Missing only when connected to an older engine. */
+    accounting?: ProviderAccountingDescriptor;
     environmentOverride?: boolean;
     /** Default reasoning dial for new work on this route. Missing means provider/model default. */
     reasoningEffort?: string;
@@ -609,6 +621,8 @@ export interface ProviderConnection {
   active: boolean;
   legacyPersonal: boolean;
   removable: boolean;
+  /** Connection-scoped because the same provider may be saved under several accounts/plans. */
+  accounting?: ProviderAccountingDescriptor;
   /** Redacted display hint such as ••••1234. Never a usable credential. */
   keyHint?: string;
   createdAt?: string;

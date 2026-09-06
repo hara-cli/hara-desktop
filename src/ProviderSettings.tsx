@@ -6,6 +6,7 @@ import {
   type OrganizationConnectionCheck,
   type OrganizationConnectionsState,
   type ProjectProfileUnpinResult,
+  type ProviderAccountingDescriptor,
   type ProviderCatalogEntry,
   type ProviderConnection,
   type ProviderConnectionCreateInput,
@@ -116,6 +117,15 @@ const words = {
     savedVerificationFailed: "This connection remains saved, but validation failed: {error}",
     keyHintLabel: "Saved key",
     noSavedKey: "No API key required",
+    accountingLabel: "Usage authority",
+    accountingProvider: "Provider native",
+    accountingProviderHint: "Subscription balance, units, coefficients, and reset windows come from this provider and plan. Hara never derives them from conversation token counters.",
+    accountingOrganization: "Hara Control",
+    accountingOrganizationHint: "Control preserves the upstream provider or subscription meter and any separate administrator policy. Desktop displays the source without applying a universal formula.",
+    accountingLocal: "Local runtime",
+    accountingLocalHint: "This local model has no remote subscription allowance. Token counters remain context diagnostics.",
+    accountingUnknown: "Not declared by this engine",
+    accountingUnknownHint: "Hara shows usage as unavailable rather than estimating a balance or cost. Restart or update the engine to load accounting-source metadata.",
     immutableConnection: "Credentials and routing belong to this exact connection. Add and verify a replacement before removing it; existing sessions are never silently rewritten.",
     changePersonal: "Add another account",
     removePersonal: "Remove connection",
@@ -248,7 +258,7 @@ const words = {
     organizationServiceDESK_TASKS: "Desk tasks",
     organizationServiceCOLLAB: "Groups",
     organizationServiceEXTENSION_CATALOG: "Extensions",
-    managedData: "Your administrator controls the model, quota, policy, and any organization Desk made available during enrollment. Their credentials remain isolated in Hara's protected local engine and never enter this window.",
+    managedData: "Model access and administrator policy come from Hara Control. The underlying allowance may be a provider subscription, PAYG ledger, prepaid balance, or another native rule; Control preserves that source and Desktop never recalculates it from conversation tokens. Credentials remain isolated in Hara's protected local engine.",
     useOrganization: "Switch organization",
     usingOrganization: "Switching…",
     currentOrganization: "Current connection",
@@ -337,6 +347,15 @@ const words = {
     savedVerificationFailed: "这条连接仍已保存，但验证未通过：{error}",
     keyHintLabel: "已保存密钥",
     noSavedKey: "无需 API Key",
+    accountingLabel: "用量口径",
+    accountingProvider: "供应商原生",
+    accountingProviderHint: "订阅余额、单位、系数和重置窗口以这个供应商及当前套餐为准；Hara 不会根据会话 Token 自行推算。",
+    accountingOrganization: "Hara Control",
+    accountingOrganizationHint: "Control 会保留上游供应商或订阅套餐的原生计量，并单独返回企业管理员策略；Desktop 只展示来源，不套用统一公式。",
+    accountingLocal: "本机运行",
+    accountingLocalHint: "本机模型没有远程订阅额度；Token 计数仅用于上下文诊断。",
+    accountingUnknown: "当前引擎未声明",
+    accountingUnknownHint: "Hara 会显示用量暂不可查，不会估算余额或成本；可重启或升级引擎以加载计量来源元数据。",
     immutableConnection: "凭据和路由只属于这一条连接。请先新增并验证替代连接，再移除旧连接；已有会话不会被静默改写。",
     changePersonal: "添加另一个账号",
     removePersonal: "移除连接",
@@ -469,7 +488,7 @@ const words = {
     organizationServiceDESK_TASKS: "Desk 任务",
     organizationServiceCOLLAB: "群组",
     organizationServiceEXTENSION_CATALOG: "扩展目录",
-    managedData: "模型、额度、策略以及注册时可用的组织 Desk 都由企业管理员管理；各自凭据隔离保存在 Hara 本机引擎中，不会进入这个窗口。",
+    managedData: "模型授权和管理员策略来自 Hara Control。底层额度可能来自厂商订阅、按量账本、预付余额或其他原生规则；Control 保留真实来源，Desktop 不会再根据会话 Token 重新计算。凭据仍隔离保存在 Hara 本机引擎中。",
     useOrganization: "切换组织",
     usingOrganization: "正在切换…",
     currentOrganization: "当前连接",
@@ -555,6 +574,24 @@ const PROVIDER_NAMES: Record<string, { en: string; zh: string }> = {
   openrouter: { en: "OpenRouter", zh: "OpenRouter" },
   ollama: { en: "Ollama (local)", zh: "Ollama（本机）" },
   lmstudio: { en: "LM Studio (local)", zh: "LM Studio（本机）" },
+};
+
+const accountingPresentation = (
+  accounting: ProviderAccountingDescriptor | undefined,
+  locale: Locale,
+  fallbackAuthority?: ProviderAccountingDescriptor["authority"],
+): { label: string; hint: string } => {
+  const copy = words[locale];
+  switch (accounting?.authority ?? fallbackAuthority) {
+    case "provider":
+      return { label: copy.accountingProvider, hint: copy.accountingProviderHint };
+    case "organization":
+      return { label: copy.accountingOrganization, hint: copy.accountingOrganizationHint };
+    case "local":
+      return { label: copy.accountingLocal, hint: copy.accountingLocalHint };
+    default:
+      return { label: copy.accountingUnknown, hint: copy.accountingUnknownHint };
+  }
 };
 
 const providerDisplayName = (
@@ -1623,6 +1660,22 @@ export function ProviderSettings({
   const tokenPlanProvider = newPersonalProviders.find((provider) => provider.id === "token-plan");
   const selectedConnectionIsLegacyAlibaba = !!selectedConnection
     && isLegacyProviderId(selectedConnection.provider);
+  const selectedConnectionAccounting = accountingPresentation(
+    selectedConnection?.accounting
+      ?? state.providers.find((provider) => provider.id === selectedConnection?.provider)?.accounting,
+    locale,
+    selectedConnection?.location === "local" ? "local" : undefined,
+  );
+  const newConnectionAccounting = accountingPresentation(
+    personalProvider?.accounting,
+    locale,
+    personalProvider?.location === "local" ? "local" : undefined,
+  );
+  const organizationAccounting = accountingPresentation(
+    selectedOrganization?.active ? state.current.accounting : undefined,
+    locale,
+    "organization",
+  );
   const staleAlibabaCatalog = !tokenPlanProvider
     && state.providers.some((provider) => LEGACY_PERSONAL_PROVIDER_IDS.has(provider.id));
   const showEngineRestart = engineNeedsRestart || staleAlibabaCatalog;
@@ -2290,6 +2343,10 @@ export function ProviderSettings({
                 {selectedConnection.location === "local" ? copy.dataLocal : copy.dataCloud}
               </div>
               <div className="provider-managed-note personal">
+                <strong>{copy.accountingLabel} · {selectedConnectionAccounting.label}</strong><br />
+                {selectedConnectionAccounting.hint}
+              </div>
+              <div className="provider-managed-note personal">
                 {selectedConnectionIsLegacyAlibaba ? copy.legacyAlibabaHint : copy.immutableConnection}
               </div>
 
@@ -2453,6 +2510,10 @@ export function ProviderSettings({
               {personalProvider.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               {personalProvider.id === "minimax-token-plan" && <div className="provider-note">{copy.miniMaxTokenPlanAuth}</div>}
               {personalProvider.id === "volcengine-agent-plan" && <div className="provider-note">{copy.volcengineAgentPlanAuth}<br />{copy.tokenPlanMedia}</div>}
+              <div className="provider-managed-note personal">
+                <strong>{copy.accountingLabel} · {newConnectionAccounting.label}</strong><br />
+                {newConnectionAccounting.hint}
+              </div>
 
               {personalProvider.auth === "api-key" && (
                 <label>
@@ -2635,6 +2696,10 @@ export function ProviderSettings({
                   </div>
                 )}
 
+                <div className="provider-managed-note">
+                  <strong>{copy.accountingLabel} · {organizationAccounting.label}</strong><br />
+                  {organizationAccounting.hint}
+                </div>
                 <div className="provider-managed-note">{copy.managedData}</div>
                 {organizations?.switchLocked && !projectPinned && <div className="provider-warning inline">{copy.pinned}</div>}
                 {checked && (

@@ -877,6 +877,7 @@ test("provider settings keep credentials transient and support local no-key pres
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const preview = readFileSync(`${root}/src/ProviderSettingsPreview.tsx`, "utf8");
+  const accountingDesign = readFileSync(`${root}/docs/MODEL_CONNECTION_QUOTA_FAILOVER.md`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
   const lightTheme = readFileSync(`${root}/src/theme-light.css`, "utf8");
 
@@ -904,6 +905,18 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /className="provider-result error" role="alert" aria-live="assertive"/);
   assert.doesNotMatch(app, /invoke\("write_config"/, "renderer must not bypass the serve control plane");
   assert.match(client, /settings\.providers\.list/);
+  assert.match(client, /interface ProviderAccountingDescriptor[\s\S]*haraMayInferBillingFromTransportTokens: false/,
+    "Desktop consumes the engine's accounting authority instead of deriving one from turn tokens");
+  assert.match(providerSettings, /accountingProviderHint:[^\n]*never derives them from conversation token counters/);
+  assert.match(providerSettings, /accountingOrganizationHint:[^\n]*without applying a universal formula/);
+  assert.match(providerSettings, /selectedConnectionAccounting[\s\S]*copy\.accountingLabel/,
+    "each saved account exposes its own accounting authority in the connection detail");
+  assert.match(providerSettings, /underlying allowance may be a provider subscription, PAYG ledger, prepaid balance/,
+    "managed routes explain that Control can preserve different upstream accounting modes");
+  assert.doesNotMatch(accountingDesign, /Local session\/request estimate \+ open-console link/,
+    "console-only plans never present local request counters as an allowance estimate");
+  assert.match(accountingDesign, /unit: string;[\s\S]*vendor subscription, a[\s\S]*PAYG gateway ledger/,
+    "the design preserves provider-native units and managed upstream modes");
   assert.match(client, /settings\.providers\.test/);
   assert.match(client, /settings\.providers\.save/);
   assert.match(client, /settings\.vision\.save/);
