@@ -686,14 +686,14 @@ const attachmentIssueText = (
     if (issue === "image-too-large") return "图片超过 Hara 3.6 MB 附件上限，尚未发送给模型，也不会静默转用 OCR。请压缩或裁剪后重新添加。";
     if (issue === "model-capabilities-loading") return "正在读取当前模型的图片能力，请稍后再发送。";
     if (issue === "image-unsupported") return "当前路由不能读取图片；请配置识图前置模型，或选择原生支持图片的模型。";
-    if (issue === "image-unknown") return "当前模型的图片能力尚未验证；请选择已验证支持图片的模型。";
+    if (issue === "image-unknown") return "当前模型的图片能力尚未验证；自动调度也不保证图片会交给多模态模型。请配置识图前置，或在模型列表中选择已验证支持图片的模型。";
     return "";
   }
   if (issue === "engine-update-required") return "Update Hara Desktop before adding attachments.";
   if (issue === "image-too-large") return "This image exceeds Hara's 3.6 MB attachment limit. It was not sent to the model or silently routed to OCR. Compress or crop it, then attach it again.";
   if (issue === "model-capabilities-loading") return "Loading the selected model's image capability.";
   if (issue === "image-unsupported") return "This route cannot read images. Configure a vision-first model or choose a model with native image input.";
-  if (issue === "image-unknown") return "This model's image capability is unverified. Choose a verified image-capable model.";
+  if (issue === "image-unknown") return "This model's image capability is unverified, and automatic routing does not guarantee a multimodal model. Configure vision-first routing or choose a verified image-capable model.";
   return "";
 };
 
@@ -1101,6 +1101,7 @@ export default function App() {
   const [engineRestarting, setEngineRestarting] = useState(false);
   // settings place: context column = group anchors, stage = the selected group's forms
   const [setSec, setSetSec] = useState<SettingsSection>("providers");
+  const [visionSettingsFocusRequest, setVisionSettingsFocusRequest] = useState(0);
   // Context-owned extension screen. A panel/file never changes owner when the user changes place.
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [extensionDockState, setExtensionDockState] = useState<ExtensionDockState>(emptyExtensionDockState);
@@ -6231,11 +6232,24 @@ export default function App() {
     }
     await client.terminalScroll(streamId, direction, lines);
   }, [locale]);
-  const releaseSelectedExternalTerminal = useCallback(async (streamId: string): Promise<void> => {
+  const releaseSelectedExternalTerminal = useCallback(async (
+    streamId: string,
+    discardPendingInput = false,
+  ): Promise<void> => {
     const client = clientRef.current;
     if (!client || !client.supports("external.sessions.terminal.release")) return;
-    await client.releaseTerminal(streamId);
+    await client.releaseTerminal(streamId, discardPendingInput);
   }, []);
+  const acknowledgeSelectedExternalTerminalHandoff = useCallback(async (
+    streamId: string,
+    handoffId: string,
+  ): Promise<void> => {
+    const client = clientRef.current;
+    if (!client || !client.supports("external.sessions.terminal.handoff-ready")) {
+      throw new Error(makeT(locale)("externalSessionsOldEngine"));
+    }
+    await client.readyTerminalHandoff(streamId, handoffId);
+  }, [locale]);
   const subscribeSelectedExternalTerminal = useCallback((listener: (event: ExternalTerminalEvent) => void): (() => void) => (
     clientRef.current?.onTerminalEvent(listener) ?? (() => {})
   ), []);
@@ -7231,15 +7245,29 @@ export default function App() {
                 <div className="composer-capability-warning" role="status">
                   <span>{attachmentIssueText(locale, activeAttachmentIssue)}</span>
                   {(activeAttachmentIssue === "image-unsupported" || activeAttachmentIssue === "image-unknown") && (
-                    <button
-                      className="linky"
-                      onClick={() => {
-                        setAttachmentMenuOpen(false);
-                        setModelPickerOpen(true);
-                      }}
-                    >
-                      {locale === "zh" ? "选择模型" : "Choose model"}
-                    </button>
+                    <div className="composer-capability-actions">
+                      <button
+                        className="linky"
+                        onClick={() => {
+                          setAttachmentMenuOpen(false);
+                          setModelPickerOpen(false);
+                          setVisionSettingsFocusRequest((request) => request + 1);
+                          setSetSec("providers");
+                          setZone("settings");
+                        }}
+                      >
+                        {locale === "zh" ? "配置识图前置" : "Configure vision-first"}
+                      </button>
+                      <button
+                        className="linky"
+                        onClick={() => {
+                          setAttachmentMenuOpen(false);
+                          setModelPickerOpen(true);
+                        }}
+                      >
+                        {locale === "zh" ? "打开模型列表" : "Open model list"}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -8553,6 +8581,7 @@ export default function App() {
       onTerminalRawInput={sendSelectedExternalTerminalRawInput}
       onTerminalResize={resizeSelectedExternalTerminal}
       onTerminalScroll={scrollSelectedExternalTerminal}
+      onTerminalHandoffReady={acknowledgeSelectedExternalTerminalHandoff}
       onTerminalRelease={releaseSelectedExternalTerminal}
       subscribeTerminal={subscribeSelectedExternalTerminal}
       copy={{
@@ -9375,6 +9404,7 @@ export default function App() {
                     embedded
                     client={clientRef.current}
                     cwd={activeSession?.cwd ?? server?.cwd}
+                    focusVisionRequest={visionSettingsFocusRequest}
                     scope={activeSession ? "workspace" : "global"}
                     locale={locale}
                     engineNeedsRestart={engineVersionNeedsAttention}

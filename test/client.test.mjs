@@ -7,6 +7,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   const originalWindow = globalThis.window;
   const requests = [];
   let socket;
+  let failNextTerminalRawInput = false;
 
   class FakeWebSocket {
     OPEN = 1;
@@ -25,6 +26,17 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     send(raw) {
       const request = JSON.parse(raw);
       requests.push(request);
+      if (request.method === "external.sessions.terminal.raw-input" && failNextTerminalRawInput) {
+        failNextTerminalRawInput = false;
+        queueMicrotask(() => this.onmessage?.({
+          data: JSON.stringify({
+            jsonrpc: "2.0",
+            id: request.id,
+            error: { code: -32603, message: "injected terminal input failure" },
+          }),
+        }));
+        return;
+      }
       const login = {
         id: "weixin-login-1",
         platform: "weixin",
@@ -84,6 +96,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "external.sessions.terminal.resize",
                 "external.sessions.terminal.scroll",
                 "external.sessions.terminal.release",
+                "external.sessions.terminal.handoff-ready",
                 "external.sessions.terminal.open-wezterm",
               ],
               events: [
@@ -93,6 +106,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "external.approval.request",
                 "external.event.terminal.frame",
                 "external.event.terminal.closed",
+                "external.event.terminal.handoff_requested",
+                "external.event.terminal.handoff_cancelled",
               ],
               features: [
                 "composer.attachments.v1",
@@ -104,6 +119,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "external.sessions.terminal-mirror.v1",
                 "external.sessions.terminal-stream.v2",
                 "external.sessions.terminal-input-sequence.v1",
+                "external.sessions.terminal-handoff.v1",
               ],
             },
           } : request.method.startsWith("settings.gateways.login.")
@@ -237,6 +253,12 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                     inputSeq: request.params.inputSeq,
                     nextInputSeq: request.params.inputSeq + 1,
                   }
+              : request.method === "external.sessions.terminal.handoff-ready"
+                ? {
+                    accepted: true,
+                    handoffId: request.params.handoffId,
+                    throughInputSeq: request.params.throughInputSeq,
+                  }
               : [
                   "external.sessions.terminal.resize",
                   "external.sessions.terminal.scroll",
@@ -318,6 +340,11 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   const client = new HaraClient();
   await client.connect("127.0.0.1", 4242);
   await client.initialize("redacted-token");
+  assert.deepEqual(requests[0].params.capabilities, {
+    client: "hara-desktop",
+    protocolVersion: 1,
+    features: ["external.sessions.terminal-handoff.v1"],
+  });
   assert.equal(client.supports("session.steer"), true);
   assert.equal(client.supports("session.submit"), true);
   assert.equal(client.supports("session.set-approval"), true);
@@ -341,6 +368,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supportsFeature("external.sessions.launch-options.v1"), true);
   assert.equal(client.supportsFeature("external.sessions.terminal-mirror.v1"), true);
   assert.equal(client.supportsFeature("external.sessions.terminal-stream.v2"), true);
+  assert.equal(client.supportsFeature("external.sessions.terminal-handoff.v1"), true);
 
   await client.submit("session-1", "Use the new title", undefined, {
     mode: "start_if_idle",
@@ -680,12 +708,62 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", text: "\u0003中文", inputSeq: 1 });
   await client.terminalRawInput(attached.streamId, "next");
   assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", text: "next", inputSeq: 2 });
+  await client.readyTerminalHandoff(attached.streamId, "handoff_safe");
+  assert.deepEqual(requests.at(-1).params, {
+    streamId: "termstream_safe",
+    handoffId: "handoff_safe",
+    throughInputSeq: 2,
+  });
+  failNextTerminalRawInput = true;
+  await assert.rejects(
+    client.terminalRawInput(attached.streamId, "retry-safe"),
+    /injected terminal input failure/,
+  );
+  const requestCountBeforeUnsafeHandoff = requests.length;
+  await assert.rejects(
+    client.readyTerminalHandoff(attached.streamId, "handoff_blocked"),
+    /injected terminal input failure/,
+  );
+  assert.equal(
+    requests.length,
+    requestCountBeforeUnsafeHandoff,
+    "a failed terminal input must block the handoff ACK instead of silently lowering its fence",
+  );
+  await client.terminalRawInput(attached.streamId, "retry-safe");
+  assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", text: "retry-safe", inputSeq: 3 });
+  await client.readyTerminalHandoff(attached.streamId, "handoff_retried");
+  assert.deepEqual(requests.at(-1).params, {
+    streamId: "termstream_safe",
+    handoffId: "handoff_retried",
+    throughInputSeq: 3,
+  });
   await client.terminalResize(attached.streamId, 120, 40);
   assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", cols: 120, rows: 40 });
   await client.terminalScroll(attached.streamId, "up", 6);
   assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", direction: "up", lines: 6 });
   await client.releaseTerminal(attached.streamId);
   assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe" });
+
+  const discardable = await client.attachTerminal("ext_runtime_safe", { mode: "control", cols: 90, rows: 28 });
+  failNextTerminalRawInput = true;
+  await assert.rejects(
+    client.terminalRawInput(discardable.streamId, "uncertain-input"),
+    /injected terminal input failure/,
+  );
+  const requestsBeforeBlockedRelease = requests.length;
+  await assert.rejects(
+    client.releaseTerminal(discardable.streamId),
+    /injected terminal input failure/,
+  );
+  assert.equal(
+    requests.length,
+    requestsBeforeBlockedRelease,
+    "ordinary release preserves an unresolved input fence instead of dropping it",
+  );
+  await client.releaseTerminal(discardable.streamId, true);
+  assert.equal(requests.at(-1).method, "external.sessions.terminal.release");
+  assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe" });
+
   assert.deepEqual(await client.openTerminalInWezTerm("ext_runtime_safe", true), { terminal: "wezterm", opened: true });
   assert.deepEqual(requests.at(-1).params, { sessionId: "ext_runtime_safe", takeover: true });
 

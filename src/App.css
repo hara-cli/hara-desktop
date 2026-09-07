@@ -2702,6 +2702,12 @@ select {
 .composer-capability-note > span {
   flex: 1;
 }
+.composer-capability-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
 .composer-input-row {
   display: flex;
   align-items: flex-end;

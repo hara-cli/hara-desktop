@@ -182,7 +182,8 @@ interface ExternalSessionCenterProps {
   onTerminalRawInput: (streamId: string, text: string) => Promise<void>;
   onTerminalResize: (streamId: string, cols: number, rows: number) => Promise<void>;
   onTerminalScroll: (streamId: string, direction: "up" | "down", lines: number) => Promise<void>;
-  onTerminalRelease: (streamId: string) => Promise<void>;
+  onTerminalHandoffReady: (streamId: string, handoffId: string) => Promise<void>;
+  onTerminalRelease: (streamId: string, discardPendingInput?: boolean) => Promise<void>;
   subscribeTerminal: (listener: (event: ExternalTerminalEvent) => void) => () => void;
 }
 
@@ -233,6 +234,7 @@ export default function ExternalSessionCenter({
   onTerminalRawInput,
   onTerminalResize,
   onTerminalScroll,
+  onTerminalHandoffReady,
   onTerminalRelease,
   subscribeTerminal,
 }: ExternalSessionCenterProps) {
@@ -650,6 +652,7 @@ export default function ExternalSessionCenter({
                     onInput={onTerminalRawInput}
                     onResize={onTerminalResize}
                     onScroll={onTerminalScroll}
+                    onHandoffReady={onTerminalHandoffReady}
                     onRelease={onTerminalRelease}
                     subscribe={subscribeTerminal}
                   />

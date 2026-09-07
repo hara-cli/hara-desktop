@@ -165,6 +165,12 @@ export interface ExternalTerminalInputResult {
   nextInputSeq?: number;
 }
 
+export interface ExternalTerminalHandoffResult {
+  accepted: true;
+  handoffId: string;
+  throughInputSeq: number;
+}
+
 export type ExternalTerminalEvent =
   | {
       method: "external.event.terminal.frame";
@@ -182,6 +188,18 @@ export type ExternalTerminalEvent =
       sessionId: string;
       streamId: string;
       reason: "released" | "runtime_closed" | "sequence_gap" | "invalid_frame" | "transport_error" | "control_transferred" | "slow_client";
+    }
+  | {
+      method: "external.event.terminal.handoff_requested";
+      sessionId: string;
+      streamId: string;
+      handoffId: string;
+    }
+  | {
+      method: "external.event.terminal.handoff_cancelled";
+      sessionId: string;
+      streamId: string;
+      handoffId: string;
     };
 
 export interface AgentInfo {
@@ -1386,7 +1404,12 @@ export class HaraClient {
   }
 
   private deliverServerEvent(event: ServerEvent): void {
-    if (event.method === "external.event.terminal.frame" || event.method === "external.event.terminal.closed") {
+    if (
+      event.method === "external.event.terminal.frame"
+      || event.method === "external.event.terminal.closed"
+      || event.method === "external.event.terminal.handoff_requested"
+      || event.method === "external.event.terminal.handoff_cancelled"
+    ) {
       if (event.method === "external.event.terminal.closed") {
         this.terminalNextInputSequence.delete(event.streamId);
         this.terminalInputQueues.delete(event.streamId);
@@ -1462,7 +1485,14 @@ export class HaraClient {
   }
 
   async initialize(token: string): Promise<InitializeResult> {
-    const result = await this.call<InitializeResult>("initialize", { token });
+    const result = await this.call<InitializeResult>("initialize", {
+      token,
+      capabilities: {
+        client: "hara-desktop",
+        protocolVersion: 1,
+        features: ["external.sessions.terminal-handoff.v1"],
+      },
+    });
     this.methods = new Set(result.capabilities?.methods ?? []);
     this.events = new Set(result.capabilities?.events ?? []);
     this.features = new Set(result.capabilities?.features ?? []);
@@ -1779,7 +1809,7 @@ export class HaraClient {
   }
   terminalRawInput(streamId: string, text: string) {
     const previous = this.terminalInputQueues.get(streamId) ?? Promise.resolve();
-    const operation = previous.then(async () => {
+    const operation = previous.catch(() => {}).then(async () => {
       const inputSeq = this.terminalNextInputSequence.get(streamId);
       const result = await this.call<ExternalTerminalInputResult>("external.sessions.terminal.raw-input", {
         streamId,
@@ -1791,11 +1821,11 @@ export class HaraClient {
       }
       return result;
     });
-    const tail = operation.then(() => undefined, () => undefined);
+    const tail = operation.then(() => undefined);
     this.terminalInputQueues.set(streamId, tail);
     void tail.then(() => {
       if (this.terminalInputQueues.get(streamId) === tail) this.terminalInputQueues.delete(streamId);
-    });
+    }, () => {});
     return operation;
   }
   terminalResize(streamId: string, cols: number, rows: number) {
@@ -1804,7 +1834,21 @@ export class HaraClient {
   terminalScroll(streamId: string, direction: "up" | "down", lines: number) {
     return this.call<Record<string, never>>("external.sessions.terminal.scroll", { streamId, direction, lines });
   }
-  async releaseTerminal(streamId: string) {
+  async readyTerminalHandoff(streamId: string, handoffId: string) {
+    await (this.terminalInputQueues.get(streamId) ?? Promise.resolve());
+    const nextInputSeq = this.terminalNextInputSequence.get(streamId);
+    if (!Number.isSafeInteger(nextInputSeq) || nextInputSeq! < 1) {
+      throw new Error("terminal input sequence is unavailable; reconnect before transferring control");
+    }
+    return this.call<ExternalTerminalHandoffResult>("external.sessions.terminal.handoff-ready", {
+      streamId,
+      handoffId,
+      throughInputSeq: nextInputSeq! - 1,
+    });
+  }
+  async releaseTerminal(streamId: string, discardPendingInput = false) {
+    if (discardPendingInput) this.terminalInputQueues.delete(streamId);
+    else await (this.terminalInputQueues.get(streamId) ?? Promise.resolve());
     try {
       return await this.call<Record<string, never>>("external.sessions.terminal.release", { streamId });
     } finally {

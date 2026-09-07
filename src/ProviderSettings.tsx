@@ -64,6 +64,7 @@ interface ProviderSettingsProps {
   engineNeedsRestart?: boolean;
   engineRestarting?: boolean;
   onRestartEngine?: () => void;
+  focusVisionRequest?: number;
 }
 
 const words = {
@@ -848,6 +849,7 @@ export function ProviderSettings({
   engineNeedsRestart = false,
   engineRestarting = false,
   onRestartEngine,
+  focusVisionRequest = 0,
 }: ProviderSettingsProps) {
   const copy = words[locale];
   const mutateRoute = <T,>(mutation: () => Promise<T>): Promise<T> =>
@@ -888,6 +890,8 @@ export function ProviderSettings({
   const [unsupported, setUnsupported] = useState(false);
   const request = useRef(0);
   const personalRemovalInFlight = useRef(false);
+  const visionSectionRef = useRef<HTMLElement | null>(null);
+  const handledVisionFocusRequest = useRef(0);
 
   const load = useCallback(async () => {
     if (!client) return;
@@ -961,6 +965,20 @@ export function ProviderSettings({
     void load();
     return () => { request.current += 1; };
   }, [load]);
+
+  useEffect(() => {
+    if (
+      !focusVisionRequest
+      || phase === "loading"
+      || handledVisionFocusRequest.current === focusVisionRequest
+    ) return;
+    handledVisionFocusRequest.current = focusVisionRequest;
+    const section = visionSectionRef.current;
+    if (!section) return;
+    section.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    const toggle = section.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    (toggle && !toggle.disabled ? toggle : section).focus({ preventScroll: true });
+  }, [focusVisionRequest, phase]);
 
   // Vision settings belong to the active model connection. Any connection switch replaces the draft
   // instead of carrying an endpoint, key state, or model selection across identity boundaries.
@@ -1805,7 +1823,11 @@ export function ProviderSettings({
       ) : lockedProfile ? <div className="provider-warning">{copy.pinned}</div> : null}
       {expiryWarning && <div className="provider-warning" role="alert">{expiryWarning}</div>}
 
-      <section className={`provider-vision-settings ${visionDraft.enabled ? "enabled" : ""}`}>
+      <section
+        className={`provider-vision-settings ${visionDraft.enabled ? "enabled" : ""}`}
+        ref={visionSectionRef}
+        tabIndex={-1}
+      >
         <header>
           <div>
             <strong>{copy.visionTitle}</strong>

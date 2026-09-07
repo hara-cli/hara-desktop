@@ -26,17 +26,19 @@ interface ExternalNativeTerminalSurfaceProps {
   onInput: (streamId: string, text: string) => Promise<void>;
   onResize: (streamId: string, cols: number, rows: number) => Promise<void>;
   onScroll: (streamId: string, direction: "up" | "down", lines: number) => Promise<void>;
-  onRelease: (streamId: string) => Promise<void>;
+  onHandoffReady: (streamId: string, handoffId: string) => Promise<void>;
+  onRelease: (streamId: string, discardPendingInput?: boolean) => Promise<void>;
   subscribe: (listener: (event: ExternalTerminalEvent) => void) => () => void;
 }
 
-type TerminalStatus = "connecting" | "control" | "observe" | "closed" | "error" | "external";
+type TerminalStatus = "connecting" | "control" | "observe" | "handoff" | "closed" | "error" | "external";
 
 const COPY = {
   zh: {
     connecting: "正在连接原生终端…",
     control: "本机控制",
     observe: "只读观察",
+    handoff: "正在安全转交控制…",
     closed: "会话终端已结束",
     error: "终端连接中断",
     external: "控制已转交到其他终端",
@@ -64,6 +66,7 @@ const COPY = {
     connecting: "Connecting to the native terminal…",
     control: "Local control",
     observe: "Read-only observer",
+    handoff: "Transferring control safely…",
     closed: "Terminal session ended",
     error: "Terminal connection interrupted",
     external: "Control transferred to another terminal",
@@ -108,6 +111,7 @@ export default function ExternalNativeTerminalSurface({
   onInput,
   onResize,
   onScroll,
+  onHandoffReady,
   onRelease,
   subscribe,
 }: ExternalNativeTerminalSurfaceProps) {
@@ -120,6 +124,8 @@ export default function ExternalNativeTerminalSurface({
   const inputBufferRef = useRef("");
   const inputTimerRef = useRef<number | null>(null);
   const inputTailRef = useRef(Promise.resolve());
+  const unresolvedInputErrorRef = useRef<unknown>(null);
+  const acceptingInputRef = useRef(true);
   const resizeTimerRef = useRef<number | null>(null);
   const [rendererReady, setRendererReady] = useState(false);
   const [terminalStatus, setTerminalStatus] = useState<TerminalStatus>("connecting");
@@ -141,30 +147,55 @@ export default function ExternalNativeTerminalSurface({
     });
   }, []);
 
-  const releaseCurrent = useCallback(async () => {
-    const current = streamRef.current;
-    streamRef.current = null;
-    lastSeqRef.current = null;
-    if (current) await onRelease(current.streamId).catch(() => {});
-  }, [onRelease]);
-
   const flushInput = useCallback(() => {
     inputTimerRef.current = null;
     const current = streamRef.current;
     const text = inputBufferRef.current;
     inputBufferRef.current = "";
     if (!current || current.mode !== "control" || !text) return;
-    inputTailRef.current = inputTailRef.current
+    const operation = inputTailRef.current
       .catch(() => {})
-      .then(() => onInput(current.streamId, text))
-      .catch((cause) => {
-        setError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
-        setTerminalStatus("error");
-      });
+      .then(() => onInput(current.streamId, text));
+    inputTailRef.current = operation;
+    void operation.catch((cause) => {
+      acceptingInputRef.current = false;
+      unresolvedInputErrorRef.current = cause;
+      setError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
+      setTerminalStatus("error");
+    });
   }, [onInput]);
 
+  const drainInput = useCallback(async () => {
+    if (inputTimerRef.current !== null) {
+      window.clearTimeout(inputTimerRef.current);
+      inputTimerRef.current = null;
+    }
+    flushInput();
+    await inputTailRef.current;
+    if (unresolvedInputErrorRef.current) throw unresolvedInputErrorRef.current;
+  }, [flushInput]);
+
+  const releaseCurrent = useCallback(async (force = false) => {
+    acceptingInputRef.current = false;
+    try {
+      await drainInput();
+    } catch (cause) {
+      if (!force) {
+        acceptingInputRef.current = unresolvedInputErrorRef.current === null
+          && streamRef.current?.mode === "control";
+        throw cause;
+      }
+    }
+    const current = streamRef.current;
+    streamRef.current = null;
+    lastSeqRef.current = null;
+    unresolvedInputErrorRef.current = null;
+    inputTailRef.current = Promise.resolve();
+    if (current) await onRelease(current.streamId, force).catch(() => {});
+  }, [drainInput, onRelease]);
+
   const queueInput = useCallback((text: string) => {
-    if (!text || streamRef.current?.mode !== "control") return;
+    if (!text || !acceptingInputRef.current || streamRef.current?.mode !== "control") return;
     inputBufferRef.current += text;
     if (inputBufferRef.current.length >= 16 * 1024) flushInput();
     else if (inputTimerRef.current === null) inputTimerRef.current = window.setTimeout(flushInput, 12);
@@ -174,20 +205,30 @@ export default function ExternalNativeTerminalSurface({
     const current = streamRef.current;
     if (!current || current.mode !== "control") return;
     const lines = Math.max(1, Math.min(1_000, (terminalRef.current?.rows ?? 24) - 2));
-    inputTailRef.current = inputTailRef.current
-      .catch(() => {})
-      .then(() => onScroll(current.streamId, direction, lines))
-      .catch((cause) => {
-        setError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
-        setTerminalStatus("error");
-      });
+    const operation = inputTailRef.current
+      .then(() => onScroll(current.streamId, direction, lines));
+    inputTailRef.current = operation;
+    void operation.catch((cause) => {
+      setError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
+      setTerminalStatus("error");
+    });
   }, [onScroll]);
 
-  const attach = useCallback(async (mode: ExternalTerminalStreamMode, takeover = false) => {
+  const attach = useCallback(async (
+    mode: ExternalTerminalStreamMode,
+    takeover = false,
+    discardFailedInput = false,
+  ) => {
     if (!streaming || !terminalRef.current || !fitRef.current) return;
     setTerminalStatus("connecting");
     setError("");
-    await releaseCurrent();
+    try {
+      await releaseCurrent(discardFailedInput);
+    } catch (cause) {
+      setError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
+      setTerminalStatus("error");
+      return;
+    }
     fitRef.current.fit();
     const cols = Math.max(2, terminalRef.current.cols || 80);
     const rows = Math.max(2, terminalRef.current.rows || 24);
@@ -195,6 +236,9 @@ export default function ExternalNativeTerminalSurface({
       const connection = await onAttach(mode, takeover, cols, rows);
       streamRef.current = connection;
       lastSeqRef.current = null;
+      unresolvedInputErrorRef.current = null;
+      inputTailRef.current = Promise.resolve();
+      acceptingInputRef.current = connection.mode === "control";
       terminalRef.current.reset();
       setTerminalStatus(connection.mode);
       if (connection.mode === "control") focusTerminal();
@@ -261,7 +305,30 @@ export default function ExternalNativeTerminalSurface({
     const unsubscribe = subscribe((event) => {
       const current = streamRef.current;
       if (!current || event.sessionId !== sessionId || event.streamId !== current.streamId) return;
+      if (event.method === "external.event.terminal.handoff_requested") {
+        acceptingInputRef.current = false;
+        setTerminalStatus("handoff");
+        void drainInput()
+          .then(() => onHandoffReady(current.streamId, event.handoffId))
+          .catch((cause) => {
+            const inputFailed = unresolvedInputErrorRef.current !== null;
+            acceptingInputRef.current = !inputFailed;
+            setError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
+            setTerminalStatus(inputFailed ? "error" : "control");
+            if (!inputFailed) focusTerminal();
+          });
+        return;
+      }
+      if (event.method === "external.event.terminal.handoff_cancelled") {
+        const inputFailed = unresolvedInputErrorRef.current !== null;
+        acceptingInputRef.current = !inputFailed && current.mode === "control";
+        if (!inputFailed) setError("");
+        setTerminalStatus(inputFailed ? "error" : current.mode);
+        if (!inputFailed && current.mode === "control") focusTerminal();
+        return;
+      }
       if (event.method === "external.event.terminal.closed") {
+        acceptingInputRef.current = false;
         streamRef.current = null;
         lastSeqRef.current = null;
         if (event.reason === "control_transferred") setTerminalStatus("external");
@@ -276,7 +343,7 @@ export default function ExternalNativeTerminalSurface({
       if (prior !== null && event.seq !== prior + 1 && !event.full) {
         setError("terminal frame sequence gap");
         setTerminalStatus("error");
-        void releaseCurrent();
+        void releaseCurrent(true);
         return;
       }
       try {
@@ -315,13 +382,13 @@ export default function ExternalNativeTerminalSurface({
       dataSubscription.dispose();
       if (inputTimerRef.current !== null) window.clearTimeout(inputTimerRef.current);
       if (resizeTimerRef.current !== null) window.clearTimeout(resizeTimerRef.current);
-      void releaseCurrent();
+      void releaseCurrent(true);
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;
       setRendererReady(false);
     };
-  }, [copy.inputHint, onResize, queueInput, releaseCurrent, sessionId, streaming, subscribe]);
+  }, [copy.inputHint, drainInput, focusTerminal, onHandoffReady, onResize, queueInput, releaseCurrent, sessionId, streaming, subscribe]);
 
   useEffect(() => {
     if (rendererReady) void attach("control", false);
@@ -353,7 +420,7 @@ export default function ExternalNativeTerminalSurface({
         <div>
           {terminalStatus === "observe" ? <button type="button" onClick={takeControl}>{copy.controlAction}</button> : null}
           {terminalStatus === "closed" || terminalStatus === "error" || terminalStatus === "external"
-            ? <button type="button" onClick={() => void attach("control", false)}>{copy.reconnect}</button>
+            ? <button type="button" onClick={() => void attach("control", false, true)}>{copy.reconnect}</button>
             : null}
           {terminalStatus === "control" ? (
             <button
@@ -365,7 +432,19 @@ export default function ExternalNativeTerminalSurface({
               {softkeysVisible ? copy.hideKeys : copy.showKeys}
             </button>
           ) : null}
-          {terminalStatus === "control" ? <button type="button" onClick={() => void releaseCurrent().then(() => setTerminalStatus("closed"))}>{copy.release}</button> : null}
+          {terminalStatus === "control" ? (
+            <button
+              type="button"
+              onClick={() => void releaseCurrent()
+                .then(() => setTerminalStatus("closed"))
+                .catch((cause) => {
+                  setError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
+                  setTerminalStatus("error");
+                })}
+            >
+              {copy.release}
+            </button>
+          ) : null}
         </div>
       </div>
       {error ? <div className="external-terminal-surface-error" role="alert">{error}</div> : null}

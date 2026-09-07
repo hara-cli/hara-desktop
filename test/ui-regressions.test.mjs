@@ -92,6 +92,16 @@ test("Hara Live keeps structured work and the native terminal as two views of on
     "the public terminal workbench stays provider-neutral until generic external adapters are available");
   assert.match(terminal, /event\.seq !== prior \+ 1 && !event\.full/,
     "a dropped incremental frame fails closed instead of corrupting the terminal view");
+  assert.match(terminal, /unresolvedInputErrorRef\.current = cause[\s\S]*await inputTailRef\.current;[\s\S]*throw unresolvedInputErrorRef\.current/,
+    "a failed keyboard batch blocks control handoff instead of acknowledging a lower input fence");
+  assert.match(terminal, /acceptingInputRef\.current = false;[\s\S]*unresolvedInputErrorRef\.current = cause/,
+    "an unresolved keyboard batch stops accepting later input on the same sequence fence");
+  assert.match(terminal, /onRelease\(current\.streamId, force\)/,
+    "an explicit reconnect propagates its discard decision to the transport release");
+  assert.match(client, /const operation = previous\.catch\(\(\) => \{\}\)\.then[\s\S]*terminalInputQueues\.set\(streamId, tail\)/,
+    "the Desktop transport preserves a failed input fence while allowing an exact retry");
+  assert.match(client, /releaseTerminal\(streamId: string, discardPendingInput = false\)[\s\S]*if \(discardPendingInput\) this\.terminalInputQueues\.delete\(streamId\)[\s\S]*else await \(this\.terminalInputQueues\.get\(streamId\)/,
+    "only an explicit discard path bypasses a failed input queue before releasing control");
   assert.match(center, /terminalStreaming \|\| inspectorView !== "terminal"/,
     "one-second text polling is retained only as an old-engine fallback");
   assert.match(app, /externalSessionActions\[selectedExternalSession\.id\]/);
@@ -1438,6 +1448,7 @@ test("the composer has per-session attachments, bounded folders, and capability-
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   const composer = readFileSync(`${root}/src/composer-state.ts`, "utf8");
+  const providerSettings = readFileSync(`${root}/src/ProviderSettings.tsx`, "utf8");
   const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
 
@@ -1458,6 +1469,12 @@ test("the composer has per-session attachments, bounded folders, and capability-
   assert.match(app, /打开为新项目/, "persistent workspace and one-turn folder context are distinguished");
   assert.match(app, /disabled=\{!activeDraftCanSend\}/, "an attachment-only compatible turn can be sent");
   assert.match(app, /activeAttachmentIssue/, "incompatible image routes block send without deleting the draft");
+  assert.match(app, /自动调度也不保证图片会交给多模态模型/,
+    "an unverified auto route explains that text routing is not an image-capability guarantee");
+  assert.match(app, /setVisionSettingsFocusRequest[\s\S]*setSetSec\("providers"\)[\s\S]*setZone\("settings"\)[\s\S]*配置识图前置/,
+    "the blocked composer links directly to the current connection's vision-first settings");
+  assert.match(providerSettings, /focusVisionRequest[\s\S]*visionSectionRef[\s\S]*scrollIntoView/,
+    "the settings destination reveals and focuses the connection-bound vision section");
   assert.match(app, /mode === "vision-sidecar"/, "Desktop explains the configured image pre-processing route");
   assert.doesNotMatch(composer, /mode === "unsupported" \|\| capabilities\.image\.mode === "vision-sidecar"/,
     "an authorized vision-first route accepts an image attachment");
