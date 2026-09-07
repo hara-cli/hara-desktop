@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.153 — 2026-09-07 — resumable automation questions and credential-safe handoff
+
+- Turn headless `ask_user` calls into one durable question at a time. A reply in the same Desktop or
+  Mobile-controlled conversation resumes the original task, persists the available choices, and maps a numeric
+  answer back to its option without inventing the remaining answers.
+- Stop structured-output retries, scheduled runs, and change tasks at unresolved user dependencies instead of
+  guessing a schema result or reporting an unfinished scaffold as done. Change tasks now require a completion
+  receipt, and misleading success prose is removed from durable history before a verification pause.
+- Refuse credential solicitation and shell-history enrollment patterns, including webhook URLs, `echo`/`printf`,
+  `export`, `setx`, and PowerShell environment assignments. Sensitive values remain outside the conversation and
+  are redacted if encountered.
+- Bundle Hara CLI `0.168.1` at exact commit `c8e78a1eec2035a2c66f11bfc5f3ba7c0b142084`. Windows packages
+  remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.152 — 2026-09-07 — restart-safe Desktop and Mobile control
 
 - Recover reconnects through one ordered event cursor plus an authoritative task, workforce, approval, and
