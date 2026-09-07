@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.152 — 2026-09-07 — restart-safe Desktop and Mobile control
+
+- Recover reconnects through one ordered event cursor plus an authoritative task, workforce, approval, and
+  external-turn snapshot. Desktop applies that snapshot before newer events, so a restarted Engine no longer
+  leaves an acknowledged input, approval, or collaborator state silently missing or out of order.
+- Give each logical Hara, Codex, and Claude Code mutation a stable opaque command ID. Pending external retries
+  persist only a salted SHA-256 fingerprint, never the user's prompt; ordinary session retries remain visible
+  across reconnect and run automatically only when the Engine advertises the write-ahead durable v2 contract.
+- Bundle Hara CLI `0.168.0` at exact commit `82d7cde11b94b69f66a56088b69ba6063d10288d`, including restart-safe
+  command receipts and the opt-in Mobile bridge foundation for explicitly published Personal sessions. The
+  native Mobile UI and production relay rollout remain separate gates. Windows packages remain updater-signed
+  but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.151 — 2026-09-06 — honest provider usage and resumable remote state
 
 - Show the accounting authority for every model connection instead of applying one Hara-wide Token, cost or
