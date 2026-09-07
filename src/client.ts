@@ -154,6 +154,15 @@ export interface ExternalTerminalStreamConnection {
   mode: ExternalTerminalStreamMode;
   cols: number;
   rows: number;
+  /** Present when the engine can deduplicate reconnect-safe private PTY writes. */
+  nextInputSeq?: number;
+}
+
+export interface ExternalTerminalInputResult {
+  accepted?: boolean;
+  duplicate?: boolean;
+  inputSeq?: number;
+  nextInputSeq?: number;
 }
 
 export type ExternalTerminalEvent =
@@ -1007,7 +1016,46 @@ export interface InitializeResult {
   provider: string;
   model: string;
   setupState?: "ready" | "needs-credentials";
+  eventStream?: EventReplayStreamState;
   capabilities?: { methods?: string[]; events?: string[]; features?: string[] };
+  /** Local-client recovery result; added by HaraClient after capability negotiation. */
+  eventRecovery?: EventRecoverySummary;
+}
+
+export interface EventDeliveryCursor {
+  streamId: string;
+  sequence: number;
+}
+
+export interface EventReplayStreamState {
+  streamId: string;
+  currentSequence: number;
+  earliestSequence: number;
+  retainedEvents?: number;
+  retainedBytes?: number;
+}
+
+export interface EventRecoverySummary {
+  streamId: string;
+  replayed: number;
+  throughSequence: number;
+  snapshotRequired: boolean;
+  resetReason?: "stream_changed" | "cursor_expired" | "cursor_ahead";
+}
+
+export interface EventStateSnapshot {
+  streamId: string;
+  throughSequence: number;
+  taskStates: TaskLifecycleEvent[];
+  workforceStates: WorkforceStateEvent[];
+  externalTurns: Array<{ sessionId: string; turnId: string }>;
+  approvals: Array<{
+    approvalId: string;
+    sessionId: string;
+    scope: "session" | "external";
+    question: string;
+    allowAlways: boolean;
+  }>;
 }
 
 /** Context watermark — how full the model's window was on the last turn (serve ≥0.117). */
@@ -1082,7 +1130,7 @@ export interface TaskLifecycleEvent {
     };
   };
   detail?: string;
-  approval?: { id: string; question: string };
+  approval?: { id: string; question: string; allowAlways?: boolean };
 }
 
 export type WorkforceCapability =
@@ -1178,7 +1226,76 @@ export type ServerEvent =
       question: string;
       allowAlways?: boolean;
     }
+  | {
+      method: "external.event.command_committed";
+      sessionId: string;
+      commandId: string;
+      commandMethod: "external.sessions.submit" | "external.sessions.steer" | "external.sessions.interrupt";
+    }
+  | {
+      method: "external.event.command_failed";
+      sessionId: string;
+      commandId: string;
+      commandMethod: "external.sessions.submit" | "external.sessions.steer" | "external.sessions.interrupt";
+      code: number;
+      message: string;
+    }
   | ExternalTerminalEvent;
+
+interface EventReplayResult {
+  streamId: string;
+  currentSequence: number;
+  earliestSequence: number;
+  snapshotRequired: boolean;
+  resetReason?: EventRecoverySummary["resetReason"];
+  replayed: number;
+  throughSequence: number;
+  hasMore: boolean;
+}
+
+interface EventAckResult {
+  streamId: string;
+  acknowledged: number;
+  durableThrough: number;
+  duplicate: boolean;
+}
+
+const EVENT_CURSOR_STORAGE_KEY = "hara.serve.event-cursor.v1";
+const EVENT_ACK_DELAY_MS = 250;
+const EVENT_ACK_BATCH_SIZE = 64;
+const EVENT_REPLAY_PAGE_SIZE = 1_000;
+const MAX_EVENT_REPLAY_PAGES = 100;
+
+function validEventCursor(value: unknown): value is EventDeliveryCursor {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<EventDeliveryCursor>;
+  return typeof candidate.streamId === "string"
+    && candidate.streamId.length > 0
+    && candidate.streamId.length <= 128
+    && Number.isSafeInteger(candidate.sequence)
+    && (candidate.sequence ?? -1) >= 0;
+}
+
+function readStoredEventCursor(): EventDeliveryCursor | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(EVENT_CURSOR_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return validEventCursor(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredEventCursor(cursor: EventDeliveryCursor): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(EVENT_CURSOR_STORAGE_KEY, JSON.stringify(cursor));
+  } catch {
+    // Cursor persistence is a reconnect optimization; Serve snapshots remain authoritative.
+  }
+}
 
 interface Pending {
   resolve: (v: any) => void;
@@ -1193,6 +1310,17 @@ export class HaraClient {
   private events = new Set<string>();
   private features = new Set<string>();
   private terminalListeners = new Set<(event: ExternalTerminalEvent) => void>();
+  private terminalNextInputSequence = new Map<string, number>();
+  private terminalInputQueues = new Map<string, Promise<void>>();
+  private eventStreamId: string | null = null;
+  private eventCursorSequence = 0;
+  private eventFrames = new Map<number, ServerEvent>();
+  private bufferedEventStreamId: string | null = null;
+  private recoveringEvents = true;
+  private eventAckTimer: number | null = null;
+  private eventAckInFlight: Promise<EventAckResult> | null = null;
+  private lastAckedEventSequence = 0;
+  private deliveredEventsSinceAck = 0;
   private closeWaiters = new Set<{
     resolve: () => void;
     timer: number;
@@ -1201,6 +1329,7 @@ export class HaraClient {
   onClose: () => void = () => {};
 
   async connect(host: string, port: number): Promise<void> {
+    this.resetConnectionState();
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(`ws://${host}:${port}`);
       ws.onopen = () => {
@@ -1210,6 +1339,9 @@ export class HaraClient {
       ws.onerror = () => reject(new Error(`cannot reach ws://${host}:${port}`));
       ws.onclose = () => {
         this.ws = null;
+        this.cancelEventAckTimer();
+        this.terminalNextInputSequence.clear();
+        this.terminalInputQueues.clear();
         for (const p of this.pending.values()) p.reject(new Error("connection closed"));
         this.pending.clear();
         for (const waiter of this.closeWaiters) {
@@ -1233,13 +1365,91 @@ export class HaraClient {
           else p.resolve(m.result);
         } else if (m.method) {
           const event = { method: m.method, ...(m.params ?? {}) } as ServerEvent;
-          if (event.method === "external.event.terminal.frame" || event.method === "external.event.terminal.closed") {
-            for (const listener of this.terminalListeners) listener(event);
-          }
-          this.onEvent(event);
+          this.acceptServerEvent(event);
         }
       };
     });
+  }
+
+  private resetConnectionState(): void {
+    this.cancelEventAckTimer();
+    this.eventStreamId = null;
+    this.eventCursorSequence = 0;
+    this.eventFrames.clear();
+    this.bufferedEventStreamId = null;
+    this.recoveringEvents = true;
+    this.eventAckInFlight = null;
+    this.lastAckedEventSequence = 0;
+    this.deliveredEventsSinceAck = 0;
+    this.terminalNextInputSequence.clear();
+    this.terminalInputQueues.clear();
+  }
+
+  private deliverServerEvent(event: ServerEvent): void {
+    if (event.method === "external.event.terminal.frame" || event.method === "external.event.terminal.closed") {
+      if (event.method === "external.event.terminal.closed") {
+        this.terminalNextInputSequence.delete(event.streamId);
+        this.terminalInputQueues.delete(event.streamId);
+      }
+      for (const listener of this.terminalListeners) listener(event);
+    }
+    this.onEvent(event);
+  }
+
+  private acceptServerEvent(event: ServerEvent): void {
+    const cursor = (event as ServerEvent & { deliveryCursor?: unknown }).deliveryCursor;
+    if (!validEventCursor(cursor)) {
+      this.deliverServerEvent(event);
+      return;
+    }
+
+    const expectedStreamId = this.eventStreamId;
+    if (!expectedStreamId) {
+      if (this.bufferedEventStreamId && this.bufferedEventStreamId !== cursor.streamId) {
+        this.eventFrames.clear();
+      }
+      this.bufferedEventStreamId = cursor.streamId;
+      this.eventFrames.set(cursor.sequence, event);
+      return;
+    }
+    if (cursor.streamId !== expectedStreamId || cursor.sequence <= this.eventCursorSequence) return;
+    this.eventFrames.set(cursor.sequence, event);
+    if (!this.recoveringEvents) this.drainEventFrames();
+  }
+
+  private drainEventFrames(): void {
+    if (!this.eventStreamId) return;
+    while (true) {
+      const sequence = this.eventCursorSequence + 1;
+      const event = this.eventFrames.get(sequence);
+      if (!event) break;
+      this.deliverServerEvent(event);
+      this.eventFrames.delete(sequence);
+      this.eventCursorSequence = sequence;
+      writeStoredEventCursor({ streamId: this.eventStreamId, sequence });
+      this.deliveredEventsSinceAck += 1;
+      this.scheduleEventAck();
+    }
+  }
+
+  private cancelEventAckTimer(): void {
+    if (this.eventAckTimer === null) return;
+    window.clearTimeout(this.eventAckTimer);
+    this.eventAckTimer = null;
+  }
+
+  private scheduleEventAck(): void {
+    if (!this.ws || !this.eventStreamId || !this.supports("events.ack")) return;
+    if (this.deliveredEventsSinceAck >= EVENT_ACK_BATCH_SIZE) {
+      this.cancelEventAckTimer();
+      void this.flushEventAcks().catch(() => {});
+      return;
+    }
+    if (this.eventAckTimer !== null) return;
+    this.eventAckTimer = window.setTimeout(() => {
+      this.eventAckTimer = null;
+      void this.flushEventAcks().catch(() => {});
+    }, EVENT_ACK_DELAY_MS);
   }
 
   private call<T = any>(method: string, params?: Record<string, unknown>): Promise<T> {
@@ -1256,7 +1466,170 @@ export class HaraClient {
     this.methods = new Set(result.capabilities?.methods ?? []);
     this.events = new Set(result.capabilities?.events ?? []);
     this.features = new Set(result.capabilities?.features ?? []);
-    return result;
+    const eventRecovery = await this.recoverEventStream(result.eventStream);
+    return eventRecovery ? { ...result, eventRecovery } : result;
+  }
+
+  private async recoverEventStream(state: EventReplayStreamState | undefined): Promise<EventRecoverySummary | undefined> {
+    const validState = !!state
+      && typeof state.streamId === "string"
+      && state.streamId.length > 0
+      && state.streamId.length <= 128
+      && Number.isSafeInteger(state.currentSequence)
+      && state.currentSequence >= 0
+      && Number.isSafeInteger(state.earliestSequence)
+      && state.earliestSequence >= 1;
+    if (!validState || !state) {
+      this.recoveringEvents = false;
+      const buffered = [...this.eventFrames.entries()].sort(([left], [right]) => left - right);
+      this.eventFrames.clear();
+      this.bufferedEventStreamId = null;
+      for (const [, event] of buffered) this.deliverServerEvent(event);
+      return undefined;
+    }
+
+    this.eventStreamId = state.streamId;
+    this.bufferedEventStreamId = null;
+    for (const [sequence, event] of this.eventFrames) {
+      const cursor = (event as ServerEvent & { deliveryCursor?: unknown }).deliveryCursor;
+      if (!validEventCursor(cursor) || cursor.streamId !== state.streamId) this.eventFrames.delete(sequence);
+    }
+
+    const stored = readStoredEventCursor();
+    let replayed = 0;
+    let snapshotRequired = false;
+    let resetReason: EventRecoverySummary["resetReason"];
+    const resumable = stored?.streamId === state.streamId && stored.sequence <= state.currentSequence;
+    if (resumable && stored) {
+      this.eventCursorSequence = stored.sequence;
+    } else {
+      this.eventCursorSequence = state.currentSequence;
+      snapshotRequired = !!stored;
+      resetReason = stored?.streamId === state.streamId ? "cursor_ahead" : stored ? "stream_changed" : undefined;
+    }
+
+    if (
+      resumable
+      && stored
+      && stored.sequence < state.currentSequence
+      && this.supports("events.replay")
+    ) {
+      let after = stored.sequence;
+      let latestReplayCurrentSequence = state.currentSequence;
+      try {
+        for (let page = 0; page < MAX_EVENT_REPLAY_PAGES; page += 1) {
+          const response = await this.call<EventReplayResult>("events.replay", {
+            streamId: state.streamId,
+            after,
+            limit: EVENT_REPLAY_PAGE_SIZE,
+          });
+          latestReplayCurrentSequence = Math.max(latestReplayCurrentSequence, response.currentSequence);
+          replayed += response.replayed;
+          if (response.snapshotRequired) {
+            snapshotRequired = true;
+            resetReason = response.resetReason;
+            this.eventCursorSequence = response.currentSequence;
+            break;
+          }
+          if (!response.hasMore) break;
+          if (response.throughSequence <= after || page === MAX_EVENT_REPLAY_PAGES - 1) {
+            snapshotRequired = true;
+            this.eventCursorSequence = response.currentSequence;
+            break;
+          }
+          after = response.throughSequence;
+        }
+      } catch {
+        // A replay failure must fall back to authoritative snapshots; never apply a partial event suffix.
+        snapshotRequired = true;
+        this.eventCursorSequence = latestReplayCurrentSequence;
+      }
+    } else if (resumable && stored && stored.sequence < state.currentSequence) {
+      snapshotRequired = true;
+      this.eventCursorSequence = state.currentSequence;
+    }
+
+    for (const sequence of this.eventFrames.keys()) {
+      if (sequence <= this.eventCursorSequence) this.eventFrames.delete(sequence);
+    }
+    this.recoveringEvents = false;
+    writeStoredEventCursor({ streamId: state.streamId, sequence: this.eventCursorSequence });
+    this.drainEventFrames();
+    return {
+      streamId: state.streamId,
+      replayed,
+      throughSequence: this.eventCursorSequence,
+      snapshotRequired,
+      ...(resetReason ? { resetReason } : {}),
+    };
+  }
+
+  /** Flush the highest event applied by the UI. Used before an engine handoff; ACKs are monotonic. */
+  async flushEventAcks(): Promise<EventAckResult | null> {
+    this.cancelEventAckTimer();
+    if (this.eventAckInFlight) {
+      try {
+        await this.eventAckInFlight;
+      } catch {
+        // Re-evaluate the current connection below; a replacement may already be in progress.
+      }
+    }
+    if (
+      !this.ws
+      || !this.eventStreamId
+      || !this.supports("events.ack")
+      || this.eventCursorSequence <= this.lastAckedEventSequence
+    ) return null;
+
+    const streamId = this.eventStreamId;
+    const sequence = this.eventCursorSequence;
+    const request = this.call<EventAckResult>("events.ack", { streamId, sequence });
+    this.eventAckInFlight = request;
+    try {
+      const result = await request;
+      if (result.streamId === streamId) {
+        this.lastAckedEventSequence = Math.max(this.lastAckedEventSequence, result.acknowledged);
+        this.deliveredEventsSinceAck = Math.max(0, this.eventCursorSequence - this.lastAckedEventSequence);
+      }
+      return result;
+    } finally {
+      if (this.eventAckInFlight === request) this.eventAckInFlight = null;
+      if (this.eventCursorSequence > this.lastAckedEventSequence) this.scheduleEventAck();
+    }
+  }
+
+  /** Apply one authoritative reconnect snapshot while newer broadcast events remain buffered. */
+  async synchronizeEventSnapshot(
+    sessionIds: string[],
+    apply: (snapshot: EventStateSnapshot) => void,
+  ): Promise<EventStateSnapshot | null> {
+    if (!this.supports("events.snapshot")) return null;
+    const wasRecovering = this.recoveringEvents;
+    this.recoveringEvents = true;
+    try {
+      const snapshot = await this.call<EventStateSnapshot>("events.snapshot", { sessionIds });
+      if (
+        !this.eventStreamId
+        || snapshot.streamId !== this.eventStreamId
+        || !Number.isSafeInteger(snapshot.throughSequence)
+        || snapshot.throughSequence < this.eventCursorSequence
+      ) {
+        throw new Error("event snapshot does not match the active ordered stream");
+      }
+      apply(snapshot);
+      const previous = this.eventCursorSequence;
+      this.eventCursorSequence = snapshot.throughSequence;
+      for (const sequence of this.eventFrames.keys()) {
+        if (sequence <= snapshot.throughSequence) this.eventFrames.delete(sequence);
+      }
+      writeStoredEventCursor({ streamId: snapshot.streamId, sequence: snapshot.throughSequence });
+      this.deliveredEventsSinceAck += Math.max(0, snapshot.throughSequence - previous);
+      this.scheduleEventAck();
+      return snapshot;
+    } finally {
+      this.recoveringEvents = wasRecovering;
+      if (!this.recoveringEvents) this.drainEventFrames();
+    }
   }
   supports(method: string): boolean {
     return this.methods.has(method);
@@ -1289,6 +1662,7 @@ export class HaraClient {
   }
   /** Gracefully stop the authenticated local engine before a Desktop updater relaunch. */
   async shutdownServer(): Promise<{ accepted: true }> {
+    await this.flushEventAcks().catch(() => null);
     const result = await this.call<{ accepted: boolean }>("server.shutdown", {});
     if (!result.accepted) throw new Error("the Hara engine did not accept the shutdown request");
     await this.waitForClose();
@@ -1351,14 +1725,33 @@ export class HaraClient {
   forkExternalSession(sessionId: string) {
     return this.call<ExternalSessionForkResult>("external.sessions.fork", { sessionId });
   }
-  submitExternalSession(sessionId: string, text: string) {
-    return this.call<ExternalTurnResult>("external.sessions.submit", { sessionId, text });
+  submitExternalSession(sessionId: string, text: string, commandId?: string) {
+    return this.call<ExternalTurnResult>("external.sessions.submit", {
+      sessionId,
+      text,
+      ...(commandId ? { commandId } : {}),
+    });
   }
-  steerExternalSession(sessionId: string, text: string) {
-    return this.call<ExternalSteerResult>("external.sessions.steer", { sessionId, text });
+  steerExternalSession(sessionId: string, text: string, options?: {
+    expectedTurnId?: string;
+    commandId?: string;
+  }) {
+    return this.call<ExternalSteerResult>("external.sessions.steer", {
+      sessionId,
+      text,
+      ...(options?.expectedTurnId ? { expectedTurnId: options.expectedTurnId } : {}),
+      ...(options?.commandId ? { commandId: options.commandId } : {}),
+    });
   }
-  interruptExternalSession(sessionId: string) {
-    return this.call<Record<string, never>>("external.sessions.interrupt", { sessionId });
+  interruptExternalSession(sessionId: string, options?: {
+    expectedTurnId?: string;
+    commandId?: string;
+  }) {
+    return this.call<Record<string, never>>("external.sessions.interrupt", {
+      sessionId,
+      ...(options?.expectedTurnId ? { expectedTurnId: options.expectedTurnId } : {}),
+      ...(options?.commandId ? { commandId: options.commandId } : {}),
+    });
   }
   removeExternalSession(sessionId: string) {
     return this.call<Record<string, never>>("external.sessions.remove", { sessionId });
@@ -1372,16 +1765,38 @@ export class HaraClient {
   terminalKey(sessionId: string, key: ExternalTerminalKey) {
     return this.call<Record<string, never>>("external.sessions.terminal.key", { sessionId, key });
   }
-  attachTerminal(sessionId: string, input: {
+  async attachTerminal(sessionId: string, input: {
     mode: ExternalTerminalStreamMode;
     cols: number;
     rows: number;
     takeover?: boolean;
   }) {
-    return this.call<ExternalTerminalStreamConnection>("external.sessions.terminal.attach", { sessionId, ...input });
+    const result = await this.call<ExternalTerminalStreamConnection>("external.sessions.terminal.attach", { sessionId, ...input });
+    if (Number.isSafeInteger(result.nextInputSeq) && (result.nextInputSeq ?? 0) >= 1) {
+      this.terminalNextInputSequence.set(result.streamId, result.nextInputSeq!);
+    }
+    return result;
   }
   terminalRawInput(streamId: string, text: string) {
-    return this.call<Record<string, never>>("external.sessions.terminal.raw-input", { streamId, text });
+    const previous = this.terminalInputQueues.get(streamId) ?? Promise.resolve();
+    const operation = previous.then(async () => {
+      const inputSeq = this.terminalNextInputSequence.get(streamId);
+      const result = await this.call<ExternalTerminalInputResult>("external.sessions.terminal.raw-input", {
+        streamId,
+        text,
+        ...(inputSeq !== undefined ? { inputSeq } : {}),
+      });
+      if (Number.isSafeInteger(result.nextInputSeq) && (result.nextInputSeq ?? 0) >= 1) {
+        this.terminalNextInputSequence.set(streamId, result.nextInputSeq!);
+      }
+      return result;
+    });
+    const tail = operation.then(() => undefined, () => undefined);
+    this.terminalInputQueues.set(streamId, tail);
+    void tail.then(() => {
+      if (this.terminalInputQueues.get(streamId) === tail) this.terminalInputQueues.delete(streamId);
+    });
+    return operation;
   }
   terminalResize(streamId: string, cols: number, rows: number) {
     return this.call<Record<string, never>>("external.sessions.terminal.resize", { streamId, cols, rows });
@@ -1389,8 +1804,13 @@ export class HaraClient {
   terminalScroll(streamId: string, direction: "up" | "down", lines: number) {
     return this.call<Record<string, never>>("external.sessions.terminal.scroll", { streamId, direction, lines });
   }
-  releaseTerminal(streamId: string) {
-    return this.call<Record<string, never>>("external.sessions.terminal.release", { streamId });
+  async releaseTerminal(streamId: string) {
+    try {
+      return await this.call<Record<string, never>>("external.sessions.terminal.release", { streamId });
+    } finally {
+      this.terminalNextInputSequence.delete(streamId);
+      this.terminalInputQueues.delete(streamId);
+    }
   }
   openTerminalInWezTerm(sessionId: string, takeover = false) {
     return this.call<{ terminal: "wezterm"; opened: true }>("external.sessions.terminal.open-wezterm", { sessionId, takeover });
@@ -1798,6 +2218,7 @@ export class HaraClient {
       expectedModel?: string;
       expectedEffort?: string;
       newTask?: boolean;
+      commandId?: string;
     },
   ) {
     const mode = options?.mode ?? "start_or_steer";
@@ -1811,19 +2232,26 @@ export class HaraClient {
         ? { expectedModel: options.expectedModel, expectedEffort: options.expectedEffort ?? "" }
         : {}),
       ...(options?.newTask ? { newTask: true } : {}),
+      ...(options?.commandId ? { commandId: options.commandId } : {}),
     });
   }
-  send(sessionId: string, text: string, attachments?: SessionAttachmentIntent[]) {
+  send(sessionId: string, text: string, attachments?: SessionAttachmentIntent[], commandId?: string) {
     return this.call<SessionTurnResult>(
       "session.send",
-      { sessionId, text, ...(attachments?.length ? { attachments } : {}) },
+      {
+        sessionId,
+        text,
+        ...(attachments?.length ? { attachments } : {}),
+        ...(commandId ? { commandId } : {}),
+      },
     );
   }
-  steer(sessionId: string, text: string, expectedTurnId: string) {
+  steer(sessionId: string, text: string, expectedTurnId: string, commandId?: string) {
     return this.call<{ accepted: true; taskId: string; turnId: string }>("session.steer", {
       sessionId,
       text,
       expectedTurnId,
+      ...(commandId ? { commandId } : {}),
     });
   }
   /** Fuzzy project-file lookup for the @-mention autocomplete (serve ≥0.117). Null on older serves. */
@@ -1867,8 +2295,8 @@ export class HaraClient {
       throw e;
     }
   }
-  interrupt(sessionId: string) {
-    return this.call("session.interrupt", { sessionId });
+  interrupt(sessionId: string, commandId?: string) {
+    return this.call("session.interrupt", { sessionId, ...(commandId ? { commandId } : {}) });
   }
   approvalReply(approvalId: string, allow: boolean, always = false) {
     return this.call("approval.reply", { approvalId, allow, always });

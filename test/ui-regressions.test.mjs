@@ -543,7 +543,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   );
   assert.match(
     app,
-    /catch \(steerError: any\)[\s\S]*const currentTurnId = activeTurnsRef\.current\[sessionId\][\s\S]*if \(!live\) \{\s*busyAttempt = 0;\s*continue;/,
+    /catch \(steerError: any\)[\s\S]*const currentTurnId = activeTurnsRef\.current\[sessionId\][\s\S]*if \(!live\) \{\s*busyAttempt = 0;\s*nextLogicalAttempt\(\);\s*continue;/,
     "a late fallback-steer BUSY response rechecks live state and retries as a fresh send",
   );
   assert.match(
@@ -1107,8 +1107,14 @@ test("Space changes and reconnects clear tenant-bound surfaces before authoritat
   );
 
   const connectSource = app.slice(connectStart, switchStart);
-  assert.match(connectSource, /clearEngineBoundSurfaces\(\);[\s\S]*previous\?\.close\(\)/);
+  assert.match(connectSource, /clearEngineBoundSurfaces\(\{ preserveQueuedInputs: true \}\);[\s\S]*previous\?\.close\(\)/);
   assert.match(connectSource, /c\.onClose = \(\) => \{[\s\S]*clearEngineBoundSurfaces\(\)/);
+  assert.match(app, /const sessionCommandOutcomeUnknown[\s\S]*idempotency receipt could not be saved/,
+    "an acknowledged transport is still outcome-unknown when the durable terminal receipt failed");
+  assert.match(app, /if \(!client\.supportsFeature\(SESSION_DURABLE_COMMAND_FEATURE\)\) return false;/,
+    "an old v1-only engine never advertises a reconnect retry as crash-safe");
+  assert.match(app, /if \(sessionCommandOutcomeUnknown\(c, e\)\)[\s\S]*attachedSessionsRef\.current\.delete\(sessionId\)[\s\S]*commandId/,
+    "a visible retry must resume/reconcile before reusing the exact internal command UUID");
   assert.match(app, /if \(session && sessionSpaceId\(session, spaceDirectory\) === spaceDirectory\.activeId\) return;[\s\S]*activeRef\.current = null;[\s\S]*setActive\(null\)/);
 
   const providerMutationSource = app.slice(providerMutationStart, app.indexOf("/** Open an automated run", providerMutationStart));
@@ -1875,8 +1881,8 @@ test("visible right-side work is an explicit chat target without leaking routing
   assert.match(app, /hiddenExtensionContextsRef\.current\.has\(contextKey\)/, "a collapsed Dock returns chat to its normal unscoped behavior");
   assert.match(app, /messageWithActiveWorkObject\(item, text\)/);
   assert.match(app, /const wireText = options\?\.wireText \?\? textWithActiveWorkObject/);
-  assert.match(app, /c\.send\(sessionId, wireText, attachmentIntents\)/);
-  assert.match(app, /c\.steer\(sessionId, wireText, turnId\)/);
+  assert.match(app, /c\.send\(sessionId, wireText, attachmentIntents, commandId\)/);
+  assert.match(app, /c\.steer\(sessionId, wireText, turnId, steerCommandId\)/);
   assert.match(app, /wireText: next\.wireText/, "queued work keeps the target selected at submit time");
   assert.match(app, /userVisibleText\(/, "persisted routing envelopes are stripped at the renderer boundary");
   assert.match(app, /className="composer-active-work-object"/);

@@ -74,6 +74,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "external.sessions.resume",
                 "external.sessions.fork",
                 "external.sessions.submit",
+                "external.sessions.steer",
                 "external.sessions.interrupt",
                 "external.sessions.terminal.snapshot",
                 "external.sessions.terminal.input",
@@ -102,6 +103,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "external.sessions.launch-options.v1",
                 "external.sessions.terminal-mirror.v1",
                 "external.sessions.terminal-stream.v2",
+                "external.sessions.terminal-input-sequence.v1",
               ],
             },
           } : request.method.startsWith("settings.gateways.login.")
@@ -207,6 +209,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                   }
               : request.method === "external.sessions.submit"
                 ? { sessionId: request.params.sessionId, turnId: "extturn_safe", status: "completed", reply: "done" }
+              : request.method === "external.sessions.steer"
+                ? { sessionId: request.params.sessionId, turnId: request.params.expectedTurnId, accepted: true }
               : request.method === "external.sessions.interrupt"
                 ? {}
               : request.method === "external.sessions.terminal.snapshot"
@@ -224,9 +228,16 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                     mode: request.params.mode,
                     cols: request.params.cols,
                     rows: request.params.rows,
+                    nextInputSeq: 1,
+                  }
+              : request.method === "external.sessions.terminal.raw-input"
+                ? {
+                    accepted: true,
+                    duplicate: false,
+                    inputSeq: request.params.inputSeq,
+                    nextInputSeq: request.params.inputSeq + 1,
                   }
               : [
-                  "external.sessions.terminal.raw-input",
                   "external.sessions.terminal.resize",
                   "external.sessions.terminal.scroll",
                   "external.sessions.terminal.release",
@@ -335,6 +346,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     mode: "start_if_idle",
     expectedModel: "deepseek-v4-flash",
     expectedEffort: "high",
+    commandId: "11111111-1111-4111-8111-111111111111",
   });
   assert.deepEqual(requests.at(-1), {
     jsonrpc: "2.0",
@@ -346,6 +358,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
       mode: "start_if_idle",
       expectedModel: "deepseek-v4-flash",
       expectedEffort: "high",
+      commandId: "11111111-1111-4111-8111-111111111111",
     },
   });
 
@@ -589,11 +602,38 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   const externalFork = await client.forkExternalSession("ext_codex_safe");
   assert.equal(externalFork.readOnly, false);
   assert.equal(requests.at(-1).method, "external.sessions.fork");
-  const externalTurn = await client.submitExternalSession("ext_codex_safe", "continue");
+  const externalTurn = await client.submitExternalSession(
+    "ext_codex_safe",
+    "continue",
+    "22222222-2222-4222-8222-222222222222",
+  );
   assert.equal(externalTurn.reply, "done");
-  assert.deepEqual(requests.at(-1).params, { sessionId: "ext_codex_safe", text: "continue" });
-  await client.interruptExternalSession("ext_codex_safe");
+  assert.deepEqual(requests.at(-1).params, {
+    sessionId: "ext_codex_safe",
+    text: "continue",
+    commandId: "22222222-2222-4222-8222-222222222222",
+  });
+  const externalSteer = await client.steerExternalSession("ext_codex_safe", "focus", {
+    expectedTurnId: "extturn_safe",
+    commandId: "33333333-3333-4333-8333-333333333333",
+  });
+  assert.equal(externalSteer.accepted, true);
+  assert.deepEqual(requests.at(-1).params, {
+    sessionId: "ext_codex_safe",
+    text: "focus",
+    expectedTurnId: "extturn_safe",
+    commandId: "33333333-3333-4333-8333-333333333333",
+  });
+  await client.interruptExternalSession("ext_codex_safe", {
+    expectedTurnId: "extturn_safe",
+    commandId: "44444444-4444-4444-8444-444444444444",
+  });
   assert.equal(requests.at(-1).method, "external.sessions.interrupt");
+  assert.deepEqual(requests.at(-1).params, {
+    sessionId: "ext_codex_safe",
+    expectedTurnId: "extturn_safe",
+    commandId: "44444444-4444-4444-8444-444444444444",
+  });
   const runtimeSession = await client.createExternalSession({
     sourceId: "runtime",
     cwd: "/workspace/hara",
@@ -634,9 +674,12 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     mode: "control",
     cols: 100,
     rows: 32,
+    nextInputSeq: 1,
   });
   await client.terminalRawInput(attached.streamId, "\u0003中文");
-  assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", text: "\u0003中文" });
+  assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", text: "\u0003中文", inputSeq: 1 });
+  await client.terminalRawInput(attached.streamId, "next");
+  assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", text: "next", inputSeq: 2 });
   await client.terminalResize(attached.streamId, 120, 40);
   assert.deepEqual(requests.at(-1).params, { streamId: "termstream_safe", cols: 120, rows: 40 });
   await client.terminalScroll(attached.streamId, "up", 6);
@@ -739,6 +782,206 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     question: "Allow command?",
     allowAlways: true,
   });
+});
+
+test("serve client replays one ordered event tail, deduplicates it, and acknowledges the applied cursor", async (t) => {
+  const originalWebSocket = globalThis.WebSocket;
+  const originalWindow = globalThis.window;
+  const localStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const stored = new Map([["hara.serve.event-cursor.v1", JSON.stringify({ streamId: "stream-a", sequence: 1 })]]);
+  const requests = [];
+  let socket;
+
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, value) => stored.set(key, String(value)),
+      removeItem: (key) => stored.delete(key),
+    },
+  });
+
+  class ReplayWebSocket {
+    readyState = 1;
+    onopen;
+    onerror;
+    onclose;
+    onmessage;
+
+    constructor() {
+      socket = this;
+      queueMicrotask(() => this.onopen?.());
+    }
+
+    send(raw) {
+      const request = JSON.parse(raw);
+      requests.push(request);
+      if (request.method === "events.replay") {
+        assert.deepEqual(request.params, { streamId: "stream-a", after: 1, limit: 1_000 });
+        for (const sequence of [3, 2, 2]) {
+          queueMicrotask(() => this.onmessage?.({
+            data: JSON.stringify({
+              jsonrpc: "2.0",
+              method: "event.notice",
+              params: {
+                sessionId: "session-a",
+                text: `notice-${sequence}`,
+                deliveryCursor: { streamId: "stream-a", sequence },
+              },
+            }),
+          }));
+        }
+        queueMicrotask(() => this.onmessage?.({
+          data: JSON.stringify({
+            jsonrpc: "2.0",
+            id: request.id,
+            result: {
+              streamId: "stream-a",
+              currentSequence: 3,
+              earliestSequence: 1,
+              snapshotRequired: false,
+              replayed: 2,
+              throughSequence: 3,
+              hasMore: false,
+            },
+          }),
+        }));
+        return;
+      }
+      if (request.method === "events.snapshot") {
+        assert.deepEqual(request.params, { sessionIds: ["session-a"] });
+        for (const sequence of [4, 5]) {
+          queueMicrotask(() => this.onmessage?.({
+            data: JSON.stringify({
+              jsonrpc: "2.0",
+              method: "event.notice",
+              params: {
+                sessionId: "session-a",
+                text: `notice-${sequence}`,
+                deliveryCursor: { streamId: "stream-a", sequence },
+              },
+            }),
+          }));
+          if (sequence === 4) {
+            queueMicrotask(() => this.onmessage?.({
+              data: JSON.stringify({
+                jsonrpc: "2.0",
+                id: request.id,
+                result: {
+                  streamId: "stream-a",
+                  throughSequence: 4,
+                  taskStates: [{
+                    version: 1,
+                    streamId: "task-stream",
+                    sequence: 1,
+                    sessionId: "session-a",
+                    taskId: "task-a",
+                    turnId: "turn-a",
+                    objective: "recover",
+                    state: "running",
+                    taskStatus: "running",
+                    phase: "restored",
+                    at: "2026-09-07T00:00:00.000Z",
+                    updatedAt: "2026-09-07T00:00:00.000Z",
+                    checkpoint: { done: 0, total: 1 },
+                  }],
+                  workforceStates: [],
+                  externalTurns: [],
+                  approvals: [],
+                },
+              }),
+            }));
+          }
+        }
+        return;
+      }
+      const result = request.method === "initialize"
+        ? {
+            name: "hara",
+            version: "0.167.0",
+            protocol: 1,
+            cwd: "/workspace",
+            provider: "qwen",
+            model: "glm-5",
+            eventStream: {
+              streamId: "stream-a",
+              currentSequence: 3,
+              earliestSequence: 1,
+              retainedEvents: 3,
+              retainedBytes: 300,
+            },
+            capabilities: {
+              methods: ["events.replay", "events.ack", "events.snapshot"],
+              events: ["event.notice"],
+              features: ["events.cursor-replay.v1", "events.restart-replay.v1"],
+            },
+          }
+        : request.method === "events.ack"
+          ? {
+              streamId: request.params.streamId,
+              acknowledged: request.params.sequence,
+              durableThrough: request.params.sequence,
+              duplicate: false,
+            }
+          : {};
+      queueMicrotask(() => this.onmessage?.({
+        data: JSON.stringify({ jsonrpc: "2.0", id: request.id, result }),
+      }));
+    }
+
+    close() {
+      this.readyState = 3;
+      this.onclose?.();
+    }
+  }
+
+  globalThis.WebSocket = ReplayWebSocket;
+  globalThis.window = { setTimeout, clearTimeout };
+  t.after(() => {
+    globalThis.WebSocket = originalWebSocket;
+    globalThis.window = originalWindow;
+    if (localStorageDescriptor) Object.defineProperty(globalThis, "localStorage", localStorageDescriptor);
+    else delete globalThis.localStorage;
+  });
+
+  const events = [];
+  const client = new HaraClient();
+  client.onEvent = (event) => events.push(event);
+  await client.connect("127.0.0.1", 4242);
+  const initialized = await client.initialize("redacted-token");
+  assert.deepEqual(initialized.eventRecovery, {
+    streamId: "stream-a",
+    replayed: 2,
+    throughSequence: 3,
+    snapshotRequired: false,
+  });
+  assert.deepEqual(events.map((event) => event.text), ["notice-2", "notice-3"]);
+
+  const applied = [];
+  await client.synchronizeEventSnapshot(["session-a"], (snapshot) => {
+    applied.push(`snapshot-${snapshot.throughSequence}`);
+  });
+  assert.deepEqual(applied, ["snapshot-4"]);
+  assert.deepEqual(events.map((event) => event.text), ["notice-2", "notice-3", "notice-5"]);
+
+  for (let duplicate = 0; duplicate < 2; duplicate += 1) {
+    socket.onmessage({
+      data: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "event.notice",
+        params: {
+          sessionId: "session-a",
+          text: "notice-6",
+          deliveryCursor: { streamId: "stream-a", sequence: 6 },
+        },
+      }),
+    });
+  }
+  assert.deepEqual(events.map((event) => event.text), ["notice-2", "notice-3", "notice-5", "notice-6"]);
+  const acknowledged = await client.flushEventAcks();
+  assert.equal(acknowledged.acknowledged, 6);
+  assert.deepEqual(JSON.parse(stored.get("hara.serve.event-cursor.v1")), { streamId: "stream-a", sequence: 6 });
+  client.close();
 });
 
 test("native Presentation Workbench requires typed surfaces and exact-revision editor methods", () => {

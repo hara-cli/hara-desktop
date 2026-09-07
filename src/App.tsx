@@ -83,6 +83,7 @@ import { isImeCompositionKey } from "./ime";
 import { classifyEngineVersion } from "./engine-version.js";
 import { applyDesktopUpdateHandoff } from "./desktop-update.js";
 import { checkDesktopUpdate, desktopUpdaterErrorText } from "./desktop-updater";
+import { RemoteCommandRetryTracker, type RemoteCommandMethod } from "./remote-command-retry";
 import {
   isAssistantWorkspace as isAssistantCwd,
   createdSessionListItem,
@@ -726,6 +727,30 @@ const thinkingLabel = (locale: Locale, effort: string): string => {
   return labels[effort]?.[locale === "zh" ? 0 : 1] ?? effort;
 };
 
+/** One UUID identifies one logical remote mutation across an uncertain transport retry. */
+const createRpcCommandId = (): string => crypto.randomUUID();
+const SESSION_DURABLE_COMMAND_FEATURE = "sessions.command-idempotency.durable.v2";
+const EXTERNAL_DURABLE_COMMAND_FEATURE = "external.sessions.command-idempotency.durable.v2";
+
+const sessionCommandOutcomeUnknown = (client: HaraClient, error: unknown): boolean => {
+  // v1 only deduplicates outcomes that reached its terminal receipt. After a process crash, reusing the
+  // UUID against an older engine could repeat a model/tool side effect. Only v2 has the write-ahead fence
+  // that makes the visible reconnect Retry safe.
+  if (!client.supportsFeature(SESSION_DURABLE_COMMAND_FEATURE)) return false;
+  const message = String(error instanceof Error ? error.message : error);
+  if (/no model or tool action was started/i.test(message)) return false;
+  return !client.connected
+    || /^(?:connection closed|not connected)$/i.test(message)
+    || /idempotency receipt could not be saved|started before Hara could save its terminal outcome|command with an uncertain outcome/i.test(message);
+};
+
+const externalCommandOutcomeUnknown = (client: HaraClient, error: unknown): boolean => {
+  const message = String(error instanceof Error ? error.message : error);
+  return !client.connected
+    || /^(?:connection closed|not connected)$/i.test(message)
+    || /idempotency result could not be saved|inspect the provider-native session before retrying/i.test(message);
+};
+
 interface QueuedInput {
   id: string;
   text: string;
@@ -734,6 +759,8 @@ interface QueuedInput {
   attachments?: ComposerAttachment[];
   /** The optimistic transcript entry already exists; a later retry must not duplicate it. */
   recorded?: boolean;
+  /** Reused only when the first transport closed before its terminal RPC outcome was observable. */
+  commandId?: string;
 }
 
 const recentPetMessages = (items: ConversationItem[]): PetChatState["messages"] =>
@@ -760,7 +787,22 @@ const conversationItemsFromHistory = (
         text: displayHistoryText(message.text),
         ...(message.attachments?.length ? { attachments: message.attachments } : {}),
       }
-    : { kind: "text", text: message.text });
+      : { kind: "text", text: message.text });
+
+const withRestoredTaskApproval = (
+  items: ConversationItem[],
+  task: TaskLifecycleEvent | undefined,
+): ConversationItem[] => {
+  const approval = task?.approval;
+  if (!approval || !taskStateIsLive(task.state)) return items;
+  if (items.some((item) => item.kind === "approval" && item.approvalId === approval.id)) return items;
+  return [...items, {
+    kind: "approval",
+    approvalId: approval.id,
+    question: approval.question,
+    allowAlways: approval.allowAlways === true,
+  }];
+};
 
 const conversationHistory = (
   history: ClientHistoryMessage[],
@@ -823,6 +865,7 @@ export default function App() {
   const handleEventRef = useRef<(event: ServerEvent) => void>(() => {});
   const pendingSendDispatchesRef = useRef<Record<string, {
     pendingId: string;
+    commandId?: string;
     turnId?: string;
     completed?: boolean;
   }>>({});
@@ -1561,6 +1604,19 @@ export default function App() {
   const externalSessionsRequestRef = useRef(0);
   const externalTranscriptRequestRef = useRef(0);
   const externalActivitySequenceRef = useRef(0);
+  const externalActiveTurnsRef = useRef<Record<string, string>>({});
+  const externalCommandRetriesRef = useRef<RemoteCommandRetryTracker | null>(null);
+  if (!externalCommandRetriesRef.current) {
+    externalCommandRetriesRef.current = new RemoteCommandRetryTracker({ storage: localStorage });
+  }
+  const beginExternalCommand = useCallback(async (
+    client: HaraClient,
+    method: RemoteCommandMethod,
+    sessionId: string,
+    payload: string,
+  ): Promise<string | undefined> => client.supportsFeature(EXTERNAL_DURABLE_COMMAND_FEATURE)
+    ? externalCommandRetriesRef.current!.begin(method, sessionId, payload)
+    : undefined, []);
   const refreshExternalTranscriptRef = useRef<(sessionId: string) => void>(() => {});
   const externalSessionTargetId = workbenchInboxTarget?.kind === "external" ? workbenchInboxTarget.id : null;
   const refreshExternalSessions = useCallback(() => {
@@ -2190,6 +2246,7 @@ export default function App() {
         requeueFrontOnBusy?: boolean;
         pendingId?: string;
         wireText?: string;
+        commandId?: string;
       },
     ): Promise<"started" | "steered" | "queued" | "failed"> => {
       const c = clientRef.current;
@@ -2234,6 +2291,12 @@ export default function App() {
         : undefined;
       let atomicSubmitMode: SessionSubmitMode = pendingModelRoute ? "start_if_idle" : "start_or_steer";
       const pendingId = options?.pendingId ?? nextPendingInputId();
+      let commandId = c.supportsFeature("sessions.command-idempotency.v1")
+        ? options?.commandId ?? createRpcCommandId()
+        : undefined;
+      const nextLogicalAttempt = () => {
+        if (commandId) commandId = createRpcCommandId();
+      };
       if (options?.recordUser !== false) {
         push(sessionId, (items) => [...items, {
           kind: "user",
@@ -2271,7 +2334,10 @@ export default function App() {
         }
       };
       while (true) {
-        pendingSendDispatchesRef.current[sessionId] = { pendingId };
+        pendingSendDispatchesRef.current[sessionId] = {
+          pendingId,
+          ...(commandId ? { commandId } : {}),
+        };
         try {
           const attachmentIntents: SessionAttachmentIntent[] | undefined = attachments?.map(
             ({ id, name: _name, byteSize: _byteSize, ...attachment }) => ({
@@ -2288,8 +2354,9 @@ export default function App() {
                       expectedEffort: pendingModelRoute.effort,
                     }
                   : {}),
+                ...(commandId ? { commandId } : {}),
               })
-            : await c.send(sessionId, wireText, attachmentIntents);
+            : await c.send(sessionId, wireText, attachmentIntents, commandId);
           if ("submission" in submission && submission.submission === "not_submitted") {
             if (submission.reason === "empty_input") {
               throw new Error(
@@ -2326,6 +2393,7 @@ export default function App() {
             }
             if ((!submission.activeTurnId || !reportedTurnStillLive) && busyAttempt < BUSY_SEND_RETRIES) {
               busyAttempt += 1;
+              nextLogicalAttempt();
               await new Promise<void>((resolve) => window.setTimeout(resolve, busyAttempt * 120));
               continue;
             }
@@ -2374,14 +2442,18 @@ export default function App() {
               turnId = activeTurnsRef.current[sessionId];
               taskState = taskStatesRef.current[sessionId];
               live = !!turnId || (taskState ? taskStateIsLive(taskState.state) : false);
-              if (!live) continue;
+              if (!live) {
+                nextLogicalAttempt();
+                continue;
+              }
             }
             if (!attachments?.length && turnId && c.supports("session.steer")) {
               // The attempted session.send did not start a turn. A following turn_end belongs to the
               // existing turn and must never acknowledge this optimistic message.
               clearPendingDispatch();
               try {
-                await c.steer(sessionId, wireText, turnId);
+                const steerCommandId = commandId ? createRpcCommandId() : undefined;
+                await c.steer(sessionId, wireText, turnId, steerCommandId);
                 resolvePendingUser(sessionId, pendingId, true);
                 notePet(sessionId, "running");
                 return "steered";
@@ -2405,6 +2477,7 @@ export default function App() {
                 );
                 if (!live) {
                   busyAttempt = 0;
+                  nextLogicalAttempt();
                   continue;
                 }
               }
@@ -2427,6 +2500,27 @@ export default function App() {
               setSessionBusy(sessionId, false);
               notePet(sessionId, "paused", "Message queued — engine is still preparing");
             }
+            return "queued";
+          }
+          if (sessionCommandOutcomeUnknown(c, e)) {
+            clearPendingDispatch();
+            // A live transport can still return outcome-unknown when the provider finished but its receipt
+            // did not. Force the visible Retry through session.resume so Core can reconcile the write-ahead
+            // marker before this exact UUID is considered again.
+            attachedSessionsRef.current.delete(sessionId);
+            const stillRecorded = (transcriptsRef.current[sessionId] ?? []).some(
+              (item) => item.kind === "user" && item.pendingId === pendingId,
+            );
+            enqueueInput(sessionId, {
+              id: pendingId,
+              text,
+              wireText,
+              ...(attachments?.length ? { attachments } : {}),
+              ...(stillRecorded ? { recorded: true } : {}),
+              ...(commandId ? { commandId } : {}),
+            }, "front");
+            setSessionBusy(sessionId, false);
+            notePet(sessionId, "paused", "Connection interrupted — safe retry available");
             return "queued";
           }
           const dispatch = pendingSendDispatchesRef.current[sessionId];
@@ -2494,7 +2588,7 @@ export default function App() {
       };
       queueRef.current = next;
       setQueue(next);
-      await sendText(
+      const outcome = await sendText(
         sessionId,
         retry.text,
         retry.attachments,
@@ -2502,8 +2596,24 @@ export default function App() {
           recordUser: retry.recorded !== true,
           pendingId: retry.id,
           wireText: retry.wireText,
+          commandId: retry.commandId,
         },
       );
+      if (retry.commandId && outcome !== "queued" && clientRef.current === c) {
+        const recovered = await c.resumeSession(sessionId, defaultApproval || undefined);
+        if (clientRef.current !== c) throw new Error("Hara engine reconnected while reconciling the retry");
+        const currentTranscripts = transcriptsRef.current;
+        const nextTranscripts = {
+          ...currentTranscripts,
+          [sessionId]: restoreAuthoritativeConversation(
+            conversationHistory(recovered.history),
+            currentTranscripts[sessionId] ?? [],
+          ),
+        };
+        transcriptsRef.current = nextTranscripts;
+        setTranscripts(nextTranscripts);
+        hydrateLegacyTaskState(c, sessionId, recovered.task);
+      }
     } catch (error: any) {
       push(sessionId, (items) => [...items, {
         kind: "notice",
@@ -3010,6 +3120,7 @@ export default function App() {
                     requeueFrontOnBusy: true,
                     pendingId: next.id,
                     wireText: next.wireText,
+                    commandId: next.commandId,
                   },
                 )
                 .catch((error) => {
@@ -3062,6 +3173,7 @@ export default function App() {
           if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
           break;
         case "external.event.turn_start":
+          externalActiveTurnsRef.current[e.sessionId] = e.turnId;
           setExternalSessionActions((current) => ({ ...current, [e.sessionId]: "turn" }));
           setExternalSessionActivity((current) => {
             const existing = current[e.sessionId] ?? [];
@@ -3113,6 +3225,8 @@ export default function App() {
           } }));
           break;
         case "external.event.turn_end":
+          delete externalActiveTurnsRef.current[e.requestedSessionId];
+          delete externalActiveTurnsRef.current[e.sessionId];
           setExternalSessionApprovals((current) => {
             const next = { ...current };
             delete next[e.requestedSessionId];
@@ -3135,13 +3249,17 @@ export default function App() {
             setExternalSessionActionErrors((current) => ({ ...current, [e.requestedSessionId]: externalError }));
           }
           break;
+        case "external.event.command_committed":
+        case "external.event.command_failed":
+          externalCommandRetriesRef.current?.settle(e.commandId);
+          break;
       }
     },
     [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, locale, notePet, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, recoverPresentationSurface, refreshArtifacts, refreshExternalSessions, removePet, resolvePendingUser, sendText, setSessionBusy],
   );
   handleEventRef.current = handleEvent;
 
-  const clearEngineBoundSurfaces = useCallback(() => {
+  const clearEngineBoundSurfaces = useCallback((options?: { preserveQueuedInputs?: boolean }) => {
     sessionOpenRequestRef.current += 1;
     artifactOpenRequestRef.current += 1;
     // A Space or provider-route transition invalidates every renderer attachment even though the
@@ -3156,7 +3274,7 @@ export default function App() {
     busyRef.current = {};
     taskStatesRef.current = {};
     workforceStatesRef.current = {};
-    queueRef.current = {};
+    if (!options?.preserveQueuedInputs) queueRef.current = {};
     setActive(null);
     setSessions([]);
     setTranscripts({});
@@ -3165,7 +3283,7 @@ export default function App() {
     setTaskStates({});
     setWorkforceStates({});
     setComposerDrafts({});
-    setQueue({});
+    if (!options?.preserveQueuedInputs) setQueue({});
     setUnread({});
     setCtxMap({});
     setAgentCatalog(null);
@@ -3190,6 +3308,7 @@ export default function App() {
     setExternalSessionActions({});
     setExternalSessionActivity({});
     setExternalSessionApprovals({});
+    externalActiveTurnsRef.current = {};
     setAuto(null);
     setAutoReplay(null);
     setArtifacts(null);
@@ -3220,7 +3339,7 @@ export default function App() {
     pendingSendDispatchesRef.current = {};
     presentationSurfaceTurnsRef.current = {};
     clearStagedModelChanges();
-    clearEngineBoundSurfaces();
+    clearEngineBoundSurfaces({ preserveQueuedInputs: true });
     previous?.close();
     organizationRoutesRequestRef.current += 1;
     setOrganizationRoutes(null);
@@ -3303,13 +3422,45 @@ export default function App() {
         setPhase("lost");
       };
       await c.connect(d.host, d.port);
-      const info = await c.initialize(d.token);
-      const list = await c.listSessions();
       if (stale()) {
         c.close();
         return;
       }
+      // Initialize may synchronously replay missed events. Publish the negotiated client first so
+      // lifecycle reducers feature-detect the new engine instead of taking legacy fallback paths.
       clientRef.current = c;
+      const info = await c.initialize(d.token);
+      const list = await c.listSessions();
+      await c.synchronizeEventSnapshot(
+        list.sessions.slice(0, 100).map((session) => session.id),
+        (snapshot) => {
+          for (const taskState of snapshot.taskStates) {
+            handleEventRef.current({ method: "event.task_state", ...taskState });
+          }
+          for (const workforceState of snapshot.workforceStates) {
+            handleEventRef.current({ method: "event.workforce_state", ...workforceState });
+          }
+          externalActiveTurnsRef.current = Object.fromEntries(
+            snapshot.externalTurns.map((turn) => [turn.sessionId, turn.turnId]),
+          );
+          setExternalSessionActions(Object.fromEntries(
+            snapshot.externalTurns.map((turn) => [turn.sessionId, "turn" as const]),
+          ));
+          setExternalSessionApprovals(Object.fromEntries(
+            snapshot.approvals
+              .filter((approval) => approval.scope === "external")
+              .map((approval) => [approval.sessionId, {
+                approvalId: approval.approvalId,
+                question: plain(approval.question),
+                allowAlways: approval.allowAlways,
+              }]),
+          ));
+        },
+      );
+      if (stale()) {
+        c.close();
+        return;
+      }
       setServer({ pid: d.pid, version: info.version, provider: info.provider, model: info.model, cwd: info.cwd });
       sessionsRef.current = list.sessions;
       setSessions(list.sessions);
@@ -4071,7 +4222,13 @@ export default function App() {
       setErr("");
       hydrateLegacyTaskState(c, id, r.task);
       setTranscripts((tr) => {
-        const next = { ...tr, [id]: conversationItemsFromHistory(r.history) };
+        const next = {
+          ...tr,
+          [id]: withRestoredTaskApproval(
+            conversationItemsFromHistory(r.history),
+            taskStatesRef.current[id],
+          ),
+        };
         transcriptsRef.current = next;
         return next;
       });
@@ -6132,12 +6289,23 @@ export default function App() {
       ...current,
       [session.id]: [{ id: `external-user:${Date.now()}`, kind: "user", text }],
     }));
+    let commandId: string | undefined;
     try {
-      const result = await client.submitExternalSession(session.id, text);
+      commandId = await beginExternalCommand(
+        client,
+        "external.sessions.submit",
+        session.id,
+        text,
+      );
+      const result = await client.submitExternalSession(session.id, text, commandId);
+      externalCommandRetriesRef.current?.settle(commandId);
       if (clientRef.current !== client) return;
       if (result.error) setExternalSessionActionErrors((current) => ({ ...current, [session.id]: result.error ?? "" }));
       refreshExternalTranscriptRef.current(result.sessionId);
     } catch (error: any) {
+      if (!externalCommandOutcomeUnknown(client, error)) {
+        externalCommandRetriesRef.current?.settle(commandId);
+      }
       if (clientRef.current === client) {
         setExternalSessionActionErrors((current) => ({ ...current, [session.id]: String(error?.message ?? error).slice(0, 240) }));
       }
@@ -6151,7 +6319,7 @@ export default function App() {
         });
       }
     }
-  }, [externalTranscript, locale, selectedExternalSession]);
+  }, [beginExternalCommand, externalTranscript, locale, selectedExternalSession]);
   const steerSelectedExternalSession = useCallback(async (text: string) => {
     const client = clientRef.current;
     const session = selectedExternalSession;
@@ -6170,31 +6338,55 @@ export default function App() {
         { id: `external-user:${Date.now()}:${++externalActivitySequenceRef.current}`, kind: "user", text },
       ],
     }));
+    const expectedTurnId = externalActiveTurnsRef.current[session.id];
+    let commandId: string | undefined;
     try {
-      await client.steerExternalSession(session.id, text);
+      commandId = await beginExternalCommand(
+        client,
+        "external.sessions.steer",
+        session.id,
+        JSON.stringify({ text, expectedTurnId: expectedTurnId ?? null }),
+      );
+      await client.steerExternalSession(session.id, text, { expectedTurnId, commandId });
+      externalCommandRetriesRef.current?.settle(commandId);
     } catch (error: any) {
+      if (!externalCommandOutcomeUnknown(client, error)) {
+        externalCommandRetriesRef.current?.settle(commandId);
+      }
       if (clientRef.current === client) {
         setExternalSessionActionErrors((current) => ({ ...current, [session.id]: String(error?.message ?? error).slice(0, 240) }));
       }
       throw error;
     }
-  }, [externalSources, locale, selectedExternalSession]);
+  }, [beginExternalCommand, externalSources, locale, selectedExternalSession]);
   const interruptSelectedExternalSession = useCallback(async () => {
     const client = clientRef.current;
     const session = selectedExternalSession;
     if (!client || !session || !client.supports("external.sessions.interrupt")) return;
     setExternalSessionActions((current) => ({ ...current, [session.id]: "interrupt" }));
     setExternalSessionActionErrors((current) => ({ ...current, [session.id]: "" }));
+    const expectedTurnId = externalActiveTurnsRef.current[session.id];
+    let commandId: string | undefined;
     try {
-      await client.interruptExternalSession(session.id);
+      commandId = await beginExternalCommand(
+        client,
+        "external.sessions.interrupt",
+        session.id,
+        expectedTurnId ?? "no-active-turn",
+      );
+      await client.interruptExternalSession(session.id, { expectedTurnId, commandId });
+      externalCommandRetriesRef.current?.settle(commandId);
       if (clientRef.current === client) refreshExternalTranscriptRef.current(session.id);
     } catch (error: any) {
+      if (!externalCommandOutcomeUnknown(client, error)) {
+        externalCommandRetriesRef.current?.settle(commandId);
+      }
       if (clientRef.current === client) {
         setExternalSessionActionErrors((current) => ({ ...current, [session.id]: String(error?.message ?? error).slice(0, 240) }));
         setExternalSessionActions((current) => ({ ...current, [session.id]: "turn" }));
       }
     }
-  }, [selectedExternalSession]);
+  }, [beginExternalCommand, selectedExternalSession]);
   const removeSelectedExternalSession = useCallback(async () => {
     const client = clientRef.current;
     const session = selectedExternalSession;
