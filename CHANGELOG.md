@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.154 — 2026-09-07 — lossless terminal handoff and direct vision routing
+
+- Transfer Hara Terminal control between Desktop and Mobile only after the current controller stops new keyboard
+  input, drains its serialized input queue, and acknowledges the exact accepted sequence. Input errors block the
+  handoff; timeout, launch failure, disconnect, and racing reattach restore or preserve the verified owner.
+- Keep ordinary terminal release fail-closed while an input batch is unresolved. An explicit reconnect can discard
+  that failed local batch and release the old stream, so a renderer close cannot leave a hidden controller behind.
+- Explain that an automatic model route does not guarantee image support, and give blocked image attachments direct
+  actions for the current model connection's vision-first settings or the verified image-capable model list.
+- Bundle Hara CLI `0.168.2` at exact commit `df5cc13e3b6835bf791ed65ece18a420fcff0b9d`. Windows packages
+  remain updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.153 — 2026-09-07 — resumable automation questions and credential-safe handoff
 
 - Turn headless `ask_user` calls into one durable question at a time. A reply in the same Desktop or

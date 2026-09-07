@@ -1,7 +1,7 @@
 {
   "name": "hara-desktop",
   "private": true,
-  "version": "0.1.153",
+  "version": "0.1.154",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
