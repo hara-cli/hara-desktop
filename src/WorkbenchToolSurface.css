@@ -27,10 +27,10 @@
   border: 1px solid #4a464d;
   border-radius: 7px;
   background: #19181c;
-  color: #d8d2ca;
-  font-family: "SF Mono", ui-monospace, monospace;
-  font-size: 10px;
-  font-weight: 750;
+}
+
+.workbench-tool-intro > span img {
+  display: block;
 }
 
 .workbench-tool-intro strong {

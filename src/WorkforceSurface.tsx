@@ -7,6 +7,7 @@ import type { OfficeActor, OfficeActorState } from "./agent-office";
 import { useReducedMotion } from "./PetAtlasSprite";
 import { AgentCharacter, AgentPortrait } from "./AgentPortrait";
 import { IconChevronLeft, IconChevronRight } from "./icons";
+import HaraLogo from "./mark";
 import {
   AGENT_OFFICE_CAPABILITY,
   type WorkforceRendererId,
@@ -299,7 +300,7 @@ export default function WorkforceSurface({
           </Suspense>
           {actors.length === 0 ? (
             <div className="workforce-three-empty">
-              <span aria-hidden>H</span>
+              <span aria-hidden><HaraLogo size={23} /></span>
               <div>
                 <h3>{copy.noTask}</h3>
                 <p>{copy.noTaskHint}</p>
@@ -310,7 +311,7 @@ export default function WorkforceSurface({
         </div>
       ) : actors.length === 0 ? (
         <div className="workforce-empty">
-          <span aria-hidden>H</span>
+          <span aria-hidden><HaraLogo size={38} /></span>
           <h3>{copy.noTask}</h3>
           <p>{copy.noTaskHint}</p>
           <button type="button" onClick={onReturnToChat}>{copy.returnToChat}</button>

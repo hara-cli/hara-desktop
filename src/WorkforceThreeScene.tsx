@@ -35,6 +35,7 @@ import {
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { WorkforceCapability } from "./client";
 import type { OfficeActor, OfficeActorState } from "./agent-office";
+import HaraLogo from "./mark";
 import "./WorkforceThreeScene.css";
 
 interface WorkforceThreeSceneProps {
@@ -947,7 +948,7 @@ export default function WorkforceThreeScene({
   return (
     <div className="workforce-three" data-renderer="webgl" data-camera={cameraMode}>
       <div ref={hostRef} className="workforce-three-canvas" />
-      <div className="workforce-three-compass" aria-hidden><i>N</i><span>H</span></div>
+      <div className="workforce-three-compass" aria-hidden><i>N</i><span><HaraLogo size={14} /></span></div>
       <div className="workforce-three-runtime" aria-hidden>
         <span><i />GOD / WEBGL / LOCAL</span>
         <b>{hint}</b>

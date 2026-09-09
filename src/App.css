@@ -3326,11 +3326,11 @@ select {
   color: var(--accent);
 }
 
-/* ── brand with the hara mark (capital wordmark per Jeff 2026-07-11; vermilion H kept) ── */
+/* ── Hara V3.2 gateway mark with a single-color wordmark ── */
 .brand {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 4px;
 }
 .brand-cluster {
   display: flex;
@@ -3340,9 +3340,6 @@ select {
 }
 .wordmark {
   display: inline-block;
-}
-.wordmark::first-letter {
-  color: var(--accent);
 }
 .brand.big {
   font-size: 30px;

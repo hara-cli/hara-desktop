@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState, type CSSProperties } fr
 import { AgentPortrait } from "./AgentPortrait";
 import type { AgentPublicIdentity } from "./client";
 import { IconArrowRight, IconClose, IconPlus, IconSearch } from "./icons";
+import HaraLogo from "./mark";
 import {
   AGENT_BLUEPRINTS,
   AGENCY_AGENT_CATALOG_STATS,
@@ -98,7 +99,7 @@ export default function TalentMarket({
       <section className="talent-market-shell" role="dialog" aria-modal={!suspended} aria-labelledby="talent-market-title">
         <header className="talent-market-header">
           <div className="talent-market-brand" aria-label="Hara Talent Bureau">
-            <span className="talent-market-brand-mark" aria-hidden>H</span>
+            <span className="talent-market-brand-mark" aria-hidden><HaraLogo size={30} /></span>
             <div>
               <small>HARA CAMPUS · TALENT BUREAU</small>
               <strong id="talent-market-title">{locale === "zh" ? "人才中心" : "Talent Bureau"}</strong>

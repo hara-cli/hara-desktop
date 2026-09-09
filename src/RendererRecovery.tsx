@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import HaraLogo from "./mark";
 import "./renderer-recovery.css";
 
 declare global {
@@ -58,7 +59,7 @@ export class RendererErrorBoundary extends React.Component<
     return (
       <main className="renderer-recovery" role="alert">
         <section className="renderer-recovery-card">
-          <div className="renderer-recovery-mark" aria-hidden="true">H</div>
+          <div className="renderer-recovery-mark" aria-hidden="true"><HaraLogo size={38} /></div>
           <p className="renderer-recovery-kicker">HARA · DESKTOP</p>
           <h1>{zh ? "界面没有正常启动" : "The interface did not start"}</h1>
           <p>

@@ -71,10 +71,11 @@
   transform: rotate(-2deg);
   border: 2px solid color-mix(in srgb, var(--fg) 82%, transparent);
   border-radius: 11px 8px 12px 9px;
-  background: var(--accent);
-  color: #fff8ed;
+  background: #131316;
   box-shadow: 3px 3px 0 color-mix(in srgb, var(--fg) 74%, transparent);
-  font: 900 23px/1 Georgia, serif;
+}
+.talent-market-brand-mark img {
+  display: block;
 }
 .talent-market-brand > div { display: grid; min-width: 0; gap: 1px; }
 .talent-market-brand small,
@@ -367,7 +368,8 @@
   .talent-market-overlay { padding: 0; }
   .talent-market-shell { width: 100vw; height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
   .talent-market-header { min-height: 58px; padding-inline: 10px; }
-  .talent-market-brand-mark { width: 36px; height: 36px; font-size: 19px; }
+  .talent-market-brand-mark { width: 36px; height: 36px; }
+  .talent-market-brand-mark img { width: 26px; height: 26px; }
   .talent-market-brand small { display: none; }
   .talent-market-brand strong { font-size: 16px; }
   .talent-market-header-actions { gap: 6px; }

@@ -7790,7 +7790,7 @@ export default function App() {
   const brandBar = (
     <div className="brand-cluster">
       <div className="brand">
-        <HaraLogo size={20} /> <span className="wordmark">Hara</span>{" "}
+        <HaraLogo size={30} /> <span className="wordmark">Hara</span>{" "}
         <span className="ver" title={t("desktopVersion")}>
           {desktopVersion || "…"}
         </span>

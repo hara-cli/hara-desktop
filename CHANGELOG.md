@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.156 — 2026-09-10 — one Hara V3.2 identity everywhere
+
+- Use the final V3.2 B gateway-and-path silhouette in the Desktop header, startup and recovery screens,
+  Workbench, Workforce, Talent Bureau, and every macOS, Windows, Linux, Android, and iOS package icon.
+- Retire the alternate 16–24 px silhouette and the remaining letter/logo placeholders so small sizes preserve
+  the same recognizable negative-space path as the registered primary mark.
+
 ## 0.1.155 — 2026-09-09 — responsive task guidance, typed progress, and Logo V3
 
 - Keep live task status inside the transcript scroller so shrinking the Desktop window never pushes the composer

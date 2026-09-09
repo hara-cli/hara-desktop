@@ -77,6 +77,7 @@
 .workforce-three-compass::after { width: 28px; height: 1px; }
 .workforce-three-compass i { position: absolute; top: 3px; z-index: 1; color: #ff776d; font-style: normal; }
 .workforce-three-compass span { z-index: 1; color: #ded9d2; font-weight: 850; }
+.workforce-three-compass span img { display: block; }
 
 .workforce-three-runtime {
   position: absolute;

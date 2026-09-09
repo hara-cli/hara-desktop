@@ -26,9 +26,11 @@
   display: grid;
   place-items: center;
   border-radius: 16px;
-  color: #fff7ee;
-  background: #e64c3c;
-  font: 800 24px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #131316;
+}
+
+.renderer-recovery-mark img {
+  display: block;
 }
 
 .renderer-recovery-kicker {

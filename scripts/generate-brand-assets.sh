@@ -5,8 +5,10 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mark_source="${root_dir}/brand/hara-mark.svg"
 runtime_mark="${root_dir}/src/assets/hara-mark.svg"
+public_mark="${root_dir}/public/hara-mark.svg"
 icon_source="${root_dir}/brand/hara-desktop-icon.png"
 image_tool="${MAGICK_BIN:-magick}"
+png_determinism=(-strip -define png:exclude-chunks=date,time)
 
 if ! command -v "${image_tool}" >/dev/null 2>&1; then
   echo "ImageMagick is required to regenerate Hara Desktop brand assets." >&2
@@ -21,13 +23,15 @@ fi
 
 mkdir -p "${root_dir}/brand" "${root_dir}/src/assets"
 cp "${mark_source}" "${runtime_mark}"
+cp "${mark_source}" "${public_mark}"
 
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/hara-desktop-brand.XXXXXX")"
 trap 'rm -rf "${temporary_dir}"' EXIT
 temporary_mark="${temporary_dir}/mark.png"
 
 "${image_tool}" -background none "${mark_source}" \
-  -resize 704x704 \
+  -resize 768x768 \
+  "${png_determinism[@]}" \
   "PNG32:${temporary_mark}"
 
 "${image_tool}" \
@@ -38,8 +42,9 @@ temporary_mark="${temporary_dir}/mark.png"
   -draw 'roundrectangle 24,24 1000,1000 220,220' \
   "${temporary_mark}" \
   -gravity center \
-  -geometry +0+8 \
+  -geometry +0-8 \
   -composite \
+  "${png_determinism[@]}" \
   "PNG32:${icon_source}"
 
 "${root_dir}/node_modules/.bin/tauri" icon "${icon_source}" -o "${root_dir}/src-tauri/icons"

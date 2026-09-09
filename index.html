@@ -26,6 +26,12 @@
           shell.style.cssText = "min-height:100vh;display:grid;place-items:center;padding:32px;box-sizing:border-box;background:#101012;color:#f3ece4;font-family:system-ui,-apple-system,Segoe UI,sans-serif";
           var card = document.createElement("section");
           card.style.cssText = "width:min(440px,100%);padding:34px;box-sizing:border-box;border:1px solid #494043;border-radius:24px;background:#1f1d1e;box-shadow:0 24px 70px rgba(0,0,0,.34)";
+          var mark = document.createElement("img");
+          mark.src = "/hara-mark.svg";
+          mark.alt = "";
+          mark.width = 52;
+          mark.height = 52;
+          mark.style.cssText = "display:block;width:52px;height:52px;margin:0 0 24px";
           var title = document.createElement("h1");
           title.textContent = zh ? "Hara 界面未能启动" : "Hara could not start its interface";
           title.style.cssText = "margin:0 0 14px;font-size:28px;line-height:1.2";
@@ -37,7 +43,7 @@
           button.textContent = zh ? "重新加载 Hara" : "Reload Hara";
           button.style.cssText = "min-height:44px;padding:0 19px;border:0;border-radius:13px;color:white;background:#d94737;font:700 15px system-ui;cursor:pointer";
           button.onclick = function () { window.location.reload(); };
-          card.appendChild(title); card.appendChild(body); card.appendChild(button); shell.appendChild(card); root.appendChild(shell);
+          card.appendChild(mark); card.appendChild(title); card.appendChild(body); card.appendChild(button); shell.appendChild(card); root.appendChild(shell);
         }
         var timer = window.setTimeout(recover, 9000);
         window.addEventListener("hara-renderer-ready", function () { window.clearTimeout(timer); }, { once: true });

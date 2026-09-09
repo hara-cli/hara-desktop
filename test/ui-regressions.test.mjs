@@ -133,16 +133,32 @@ test("expired company Spaces stay visible for recovery but cannot be selected", 
   assert.match(switcher, /重新注册后可切换/);
 });
 
-test("the static Desktop Hara mark uses the generated V3 gateway master", () => {
+test("every in-app Desktop Hara mark uses the generated V3.2 B master", () => {
   const mark = readFileSync(`${root}/src/mark.tsx`, "utf8");
   const svg = readFileSync(`${root}/src/assets/hara-mark.svg`, "utf8");
+  const talentMarket = readFileSync(`${root}/src/TalentMarket.tsx`, "utf8");
+  const recovery = readFileSync(`${root}/src/RendererRecovery.tsx`, "utf8");
+  const staticShell = readFileSync(`${root}/index.html`, "utf8");
+  const workforce = readFileSync(`${root}/src/WorkforceSurface.tsx`, "utf8");
+  const workforceThree = readFileSync(`${root}/src/WorkforceThreeScene.tsx`, "utf8");
+  const workbench = readFileSync(`${root}/src/WorkbenchToolSurface.tsx`, "utf8");
 
   assert.match(mark, /import haraMarkUrl from "\.\/assets\/hara-mark\.svg"/);
+  assert.doesNotMatch(mark, /haraMicroMarkUrl|size <= 24/);
   assert.match(mark, /<img src=\{haraMarkUrl\}/);
-  assert.match(svg, /data-brand-version="3"/);
-  assert.match(svg, /d="M96 56/);
-  assert.match(svg, /d="M416 56/);
-  assert.match(svg, /d="M176 456/);
+  assert.match(talentMarket, /<HaraLogo size=\{30\} \/>/);
+  assert.doesNotMatch(talentMarket, /talent-market-brand-mark" aria-hidden>H</);
+  assert.match(recovery, /<HaraLogo size=\{38\} \/>/);
+  assert.match(staticShell, /mark\.src = "\/hara-mark\.svg"/);
+  assert.doesNotMatch(recovery, /renderer-recovery-mark" aria-hidden="true">H</);
+  assert.doesNotMatch(workforce, /<span aria-hidden>H<\/span>/);
+  assert.doesNotMatch(workforceThree, /<span>H<\/span>/);
+  assert.match(workforceThree, /<HaraLogo size=\{14\} \/>/);
+  assert.doesNotMatch(workbench, /<span aria-hidden>H<\/span>/);
+  assert.match(svg, /data-brand-version="3\.2"/);
+  assert.match(svg, /d="M396 3366/);
+  assert.match(svg, /d="M2962 3371/);
+  assert.match(svg, /d="M1950 2059/);
   assert.doesNotMatch(svg, /M604 4545/, "the obsolete auto-traced path must not return");
 });
 

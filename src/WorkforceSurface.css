@@ -410,10 +410,10 @@
   place-items: center;
   border: 1px solid #65423e;
   border-radius: 8px;
-  color: #ff655c;
   background: #271c1b;
-  font-size: 12px;
-  font-weight: 850;
+}
+.workforce-three-empty > span img {
+  display: block;
 }
 
 .workforce-three-empty h3 { margin: 0 0 2px; font-size: 11px; }
@@ -1100,7 +1100,8 @@
   padding: 40px;
   text-align: center;
 }
-.workforce-empty > span { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid #5d3a36; border-radius: 16px; background: #261c1b; color: #ff655c; font-weight: 900; }
+.workforce-empty > span { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid #5d3a36; border-radius: 16px; background: #261c1b; }
+.workforce-empty > span img { display: block; }
 .workforce-empty h3 { margin: 16px 0 4px; font-size: 16px; }
 .workforce-empty p { max-width: 360px; margin: 0 0 16px; color: #7b807f; font-size: 10px; line-height: 1.6; }
 

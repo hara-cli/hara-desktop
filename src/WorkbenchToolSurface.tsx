@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { HaraClient, TaskLifecycleEvent } from "./client";
 import type { ConversationItem } from "./ConversationTimeline";
 import { IconDocument, IconFolder, IconSearch } from "./icons";
+import HaraLogo from "./mark";
 import type {
   ReviewExtension,
   WorkbenchToolExtension,
@@ -45,7 +46,7 @@ interface WorkbenchToolSurfaceProps {
 function SurfaceIntro({ title, hint }: { title: string; hint: string }) {
   return (
     <header className="workbench-tool-intro">
-      <span aria-hidden>H</span>
+      <span aria-hidden><HaraLogo size={19} /></span>
       <div>
         <strong>{title}</strong>
         <p>{hint}</p>
