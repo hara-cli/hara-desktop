@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.155 — 2026-09-09 — responsive task guidance, typed progress, and Logo V3
+
+- Keep live task status inside the transcript scroller so shrinking the Desktop window never pushes the composer
+  out of reach. Long manual commands now start collapsed and use their own bounded scroll area when expanded.
+- Render the Engine's typed round, tool-call, token, todo, checkpoint-stall, and no-progress state directly in the
+  conversation instead of inferring task health from terminal prose; repeated work remains a resumable safe pause.
+- Replace the Desktop mark and macOS, Windows, Linux, Android, and iOS icon family with the canonical Hara Logo V3,
+  and retain its versioned SVG source plus deterministic generation script for future releases.
+- Bundle Hara CLI `0.169.0` at exact commit `97f25396cbb2912afdc29e7bbfbf8822f42ed175`, including native
+  Feishu/WeChat delivery, explicit group-to-DM bridges, and bounded unattended progress. Windows packages remain
+  updater-signed but not Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.154 — 2026-09-07 — lossless terminal handoff and direct vision routing
 
 - Transfer Hara Terminal control between Desktop and Mobile only after the current controller stops new keyboard
