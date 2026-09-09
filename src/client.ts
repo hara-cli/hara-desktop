@@ -972,7 +972,7 @@ export interface SessionTurnResult {
   taskId: string;
   turnId: string;
   status?: "paused";
-  stopReason?: "deadline" | "task_round_budget" | "max_rounds" | "strategy_stall";
+  stopReason?: "deadline" | "task_round_budget" | "max_rounds" | "strategy_stall" | "no_progress" | "repeat_loop";
 }
 
 export type SessionSubmitResult =
@@ -1096,6 +1096,26 @@ export type TaskLifecyclePhase =
   | "stopping"
   | "finished";
 
+export interface AgentRunProgress {
+  state: "working" | "warning" | "stopped";
+  trigger?: "repeated_tool_call" | "similar_tool_evidence" | "unattended_without_checkpoint" | "unattended_token_budget";
+  toolCalls: number;
+  unattendedRounds: number;
+  evidenceStaleRounds: number;
+  noProgressRounds: number;
+  checkpointStaleRounds: number;
+  checkpointAdvanced: boolean;
+  similarity?: number;
+  repeatedTool?: string;
+  repeatedCount?: number;
+  tokens: { input: number; output: number; total: number };
+  todo: { done: number; total: number; unchangedRounds: number; advanced: boolean };
+  rounds: number;
+  maxRounds: number;
+  cumulativeTaskRounds: number;
+  taskRoundLimit?: number;
+}
+
 export interface TaskLifecycleEvent {
   version: 1;
   /** Present in Hara CLI 0.130.0+. Optional so Desktop can still attach to an older local engine. */
@@ -1149,6 +1169,8 @@ export interface TaskLifecycleEvent {
   };
   detail?: string;
   approval?: { id: string; question: string; allowAlways?: boolean };
+  /** Optional in CLI 0.168.2 and earlier; new Engines publish this safe typed snapshot each tool round. */
+  progress?: AgentRunProgress;
 }
 
 export type WorkforceCapability =

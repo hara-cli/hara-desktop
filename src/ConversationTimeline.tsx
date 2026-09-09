@@ -97,6 +97,49 @@ async function copyTaskText(text: string): Promise<boolean> {
   }
 }
 
+function TaskProgressTelemetry({
+  progress,
+  t,
+}: {
+  progress: NonNullable<TaskLifecycleEvent["progress"]>;
+  t: (key: Key) => string;
+}) {
+  const stateLabel = progress.state === "stopped"
+    ? t("taskProgressStopped")
+    : progress.state === "warning"
+      ? t("taskProgressWarning")
+      : undefined;
+  return (
+    <div className={`task-progress-telemetry is-${progress.state}`}>
+      {stateLabel ? (
+        <div className="task-progress-telemetry-state" role="status">
+          <i aria-hidden="true" />
+          <strong>{stateLabel}</strong>
+          <span>{progress.checkpointStaleRounds} {t("taskProgressCheckpointStale")}</span>
+        </div>
+      ) : null}
+      <div className="task-progress-metrics" aria-label={t("taskProgress")}>
+        <span>
+          <small>{t("taskProgressRound")}</small>
+          <b>{progress.rounds}/{progress.maxRounds}</b>
+        </span>
+        <span>
+          <small>{t("taskProgressActions")}</small>
+          <b>{progress.toolCalls.toLocaleString()}</b>
+        </span>
+        <span>
+          <small>{t("tokens")}</small>
+          <b>{progress.tokens.total.toLocaleString()}</b>
+        </span>
+        <span>
+          <small>{t("taskProgressTodo")}</small>
+          <b>{progress.todo.done}/{progress.todo.total}</b>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /** Pure projection of one session transcript. Runtime state and routing stay outside this component. */
 export function ConversationTimeline({
   items,
@@ -179,134 +222,150 @@ export function ConversationTimeline({
     ...(dependency?.evidence ?? []),
   ]);
   const manualActionCard = manualAction || knownHintKeys.length ? (
-    <div className="task-manual-action">
-      {manualCommand ? (
-        <div className="task-manual-command">
-          <div>
-            <strong>{t("taskManualCommand")}</strong>
-            <small>{t("taskManualCommandSafe")}</small>
-          </div>
-          <pre><code>{manualCommand}</code></pre>
-          <button type="button" onClick={() => copyAction("command", manualCommand)}>
-            {copiedAction === "command" ? t("taskCopied") : t("taskCopyCommand")}
-          </button>
-        </div>
-      ) : null}
-      {verifyCommand ? (
-        <div className="task-manual-command is-verification">
-          <div>
-            <strong>{t("taskVerifyCommand")}</strong>
-            <small>{t("taskVerifyCommandSafe")}</small>
-          </div>
-          <pre><code>{verifyCommand}</code></pre>
-          <button type="button" onClick={() => copyAction("verify", verifyCommand)}>
-            {copiedAction === "verify" ? t("taskCopied") : t("taskCopyVerifyCommand")}
-          </button>
-        </div>
-      ) : null}
-      {manualHints.length || knownHintKeys.length ? (
-        <div className="task-manual-hints">
-          <span>{t("taskFlagHints")}</span>
-          {manualHints.map((hint, index) => (
-            <div key={`${hint.term}-${index}`}>
-              <abbr title={hint.detail}><code>{hint.term}</code></abbr>
-              <small>{hint.detail}</small>
+    <details className="task-manual-action">
+      <summary>
+        <span className="task-manual-summary-mark" aria-hidden="true">›</span>
+        <strong>
+          {manualCommand
+            ? t("taskManualCommand")
+            : verifyCommand
+              ? t("taskVerifyCommand")
+              : resumePhrase
+                ? t("taskResumePhrase")
+                : t("taskAuthenticationDetails")}
+        </strong>
+        <small>{t("showDetails")}</small>
+      </summary>
+      <div className="task-manual-action-body">
+        {manualCommand ? (
+          <div className="task-manual-command">
+            <div>
+              <strong>{t("taskManualCommand")}</strong>
+              <small>{t("taskManualCommandSafe")}</small>
             </div>
-          ))}
-          {knownHintKeys.map((key) => (
-            <div className="task-manual-known-hint" key={key}>
-              <span aria-hidden="true">!</span>
-              <small>{t(key)}</small>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {resumePhrase ? (
-        <div className="task-resume-phrase">
-          <span>{t("taskResumePhrase")}</span>
-          <code>{resumePhrase}</code>
-          <button type="button" onClick={() => copyAction("resume", resumePhrase)}>
-            {copiedAction === "resume" ? t("taskCopied") : t("taskCopyPhrase")}
-          </button>
-          {onContinueTask && !authenticationPause ? (
-            <button type="button" disabled={busy} onClick={() => onContinueTask(resumePhrase)}>
-              {t("taskContinueWithPhrase")}
+            <pre><code>{manualCommand}</code></pre>
+            <button type="button" onClick={() => copyAction("command", manualCommand)}>
+              {copiedAction === "command" ? t("taskCopied") : t("taskCopyCommand")}
             </button>
-          ) : null}
+          </div>
+        ) : null}
+        {verifyCommand ? (
+          <div className="task-manual-command is-verification">
+            <div>
+              <strong>{t("taskVerifyCommand")}</strong>
+              <small>{t("taskVerifyCommandSafe")}</small>
+            </div>
+            <pre><code>{verifyCommand}</code></pre>
+            <button type="button" onClick={() => copyAction("verify", verifyCommand)}>
+              {copiedAction === "verify" ? t("taskCopied") : t("taskCopyVerifyCommand")}
+            </button>
+          </div>
+        ) : null}
+        {manualHints.length || knownHintKeys.length ? (
+          <div className="task-manual-hints">
+            <span>{t("taskFlagHints")}</span>
+            {manualHints.map((hint, index) => (
+              <div key={`${hint.term}-${index}`}>
+                <abbr title={hint.detail}><code>{hint.term}</code></abbr>
+                <small>{hint.detail}</small>
+              </div>
+            ))}
+            {knownHintKeys.map((key) => (
+              <div className="task-manual-known-hint" key={key}>
+                <span aria-hidden="true">!</span>
+                <small>{t(key)}</small>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {resumePhrase ? (
+          <div className="task-resume-phrase">
+            <span>{t("taskResumePhrase")}</span>
+            <code>{resumePhrase}</code>
+            <button type="button" onClick={() => copyAction("resume", resumePhrase)}>
+              {copiedAction === "resume" ? t("taskCopied") : t("taskCopyPhrase")}
+            </button>
+            {onContinueTask && !authenticationPause ? (
+              <button type="button" disabled={busy} onClick={() => onContinueTask(resumePhrase)}>
+                {t("taskContinueWithPhrase")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </details>
+  ) : null;
+
+  const taskProgressCard = visibleTask ? (
+    <section className={`task-progress ${visibleTask.state}`} aria-live="polite">
+      <div className="task-progress-head">
+        <strong>{taskLabel}</strong>
+        {visibleTask.checkpoint.total > 0 && (
+          <span>
+            {visibleTask.checkpoint.done}/{visibleTask.checkpoint.total}
+          </span>
+        )}
+      </div>
+      <div className="task-progress-current">
+        {taskCurrent}
+      </div>
+      {visibleTask.checkpoint.total > 0 && (
+        <progress
+          aria-label={t("taskProgress")}
+          max={visibleTask.checkpoint.total}
+          value={Math.min(visibleTask.checkpoint.done, visibleTask.checkpoint.total)}
+        />
+      )}
+      {visibleTask.progress ? <TaskProgressTelemetry progress={visibleTask.progress} t={t} /> : null}
+      {authenticationPause ? (
+        <div className="task-auth-recovery" role="status">
+          <div className="task-auth-recovery-copy">
+            <span>{t("taskUserDependency")}</span>
+            <strong>{t("taskAuthenticationExpired")}</strong>
+            <p>{t("taskAuthenticationPaused")}</p>
+            {authenticationPause.capability ? (
+              <small>
+                {t("taskAuthenticationTarget").replace("{target}", authenticationPause.capability)}
+              </small>
+            ) : null}
+          </div>
+          <div className="task-auth-recovery-actions">
+            {onContinueTask ? (
+              <button type="button" disabled={busy} onClick={() => onContinueTask(resumePhrase)}>
+                {t("taskAuthenticationContinue")}
+              </button>
+            ) : null}
+            <details>
+              <summary>{t("taskAuthenticationDetails")}</summary>
+              <p>
+                {t(authenticationPause.automaticRefreshFailed
+                  ? "taskAuthenticationRefreshFailed"
+                  : "taskAuthenticationRejected")}
+              </p>
+            </details>
+          </div>
+          {manualActionCard}
+        </div>
+      ) : blocker ? (
+        <div className="task-progress-detail">
+          <span>{dependency ? t("taskUserDependency") : t("taskBlockReason")}</span>
+          {(dependencyLabel || blockedStep) && <strong>{dependencyLabel || blockedStep}</strong>}
+          <div>{blocker}</div>
+          {dependencyEvidence ? <small>{dependencyEvidence}</small> : null}
         </div>
       ) : null}
-    </div>
+      {!authenticationPause && manualActionCard}
+      {!authenticationPause && (visibleTask.state === "blocked" || visibleTask.state === "paused") && nextStep && (
+        <div className="task-progress-next">
+          <span>{t("taskNextStep")}</span>
+          {nextStep}
+        </div>
+      )}
+    </section>
   ) : null;
 
   return (
-    <>
-      {visibleTask && (
-        <section className={`task-progress ${visibleTask.state}`} aria-live="polite">
-          <div className="task-progress-head">
-            <strong>{taskLabel}</strong>
-            {visibleTask.checkpoint.total > 0 && (
-              <span>
-                {visibleTask.checkpoint.done}/{visibleTask.checkpoint.total}
-              </span>
-            )}
-          </div>
-          <div className="task-progress-current">
-            {taskCurrent}
-          </div>
-          {visibleTask.checkpoint.total > 0 && (
-            <progress
-              aria-label={t("taskProgress")}
-              max={visibleTask.checkpoint.total}
-              value={Math.min(visibleTask.checkpoint.done, visibleTask.checkpoint.total)}
-            />
-          )}
-          {authenticationPause ? (
-            <div className="task-auth-recovery" role="status">
-              <div className="task-auth-recovery-copy">
-                <span>{t("taskUserDependency")}</span>
-                <strong>{t("taskAuthenticationExpired")}</strong>
-                <p>{t("taskAuthenticationPaused")}</p>
-                {authenticationPause.capability ? (
-                  <small>
-                    {t("taskAuthenticationTarget").replace("{target}", authenticationPause.capability)}
-                  </small>
-                ) : null}
-              </div>
-              <div className="task-auth-recovery-actions">
-                {onContinueTask ? (
-                  <button type="button" disabled={busy} onClick={() => onContinueTask(resumePhrase)}>
-                    {t("taskAuthenticationContinue")}
-                  </button>
-                ) : null}
-                <details>
-                  <summary>{t("taskAuthenticationDetails")}</summary>
-                  <p>
-                    {t(authenticationPause.automaticRefreshFailed
-                      ? "taskAuthenticationRefreshFailed"
-                      : "taskAuthenticationRejected")}
-                  </p>
-                </details>
-              </div>
-              {manualActionCard}
-            </div>
-          ) : blocker ? (
-            <div className="task-progress-detail">
-              <span>{dependency ? t("taskUserDependency") : t("taskBlockReason")}</span>
-              {(dependencyLabel || blockedStep) && <strong>{dependencyLabel || blockedStep}</strong>}
-              <div>{blocker}</div>
-              {dependencyEvidence ? <small>{dependencyEvidence}</small> : null}
-            </div>
-          ) : null}
-          {!authenticationPause && manualActionCard}
-          {!authenticationPause && (visibleTask.state === "blocked" || visibleTask.state === "paused") && nextStep && (
-            <div className="task-progress-next">
-              <span>{t("taskNextStep")}</span>
-              {nextStep}
-            </div>
-          )}
-        </section>
-      )}
-      <div className="scroll">
+    <div className="scroll">
         {segments.map((segment) => {
           if (segment.kind === "execution") {
             if (!executionViewShowsLog(displayMode)) return null;
@@ -430,6 +489,7 @@ export function ConversationTimeline({
               );
           }
         })}
+        {taskProgressCard}
         {busy &&
           (() => {
             const lastUser = items.map((item) => item.kind).lastIndexOf("user");
@@ -445,7 +505,6 @@ export function ConversationTimeline({
             );
           })()}
         <div ref={bottomRef} />
-      </div>
-    </>
+    </div>
   );
 }

@@ -1421,7 +1421,8 @@ button.deny {
 }
 .task-progress {
   flex: 0 0 auto;
-  margin: 10px 16px 0;
+  min-width: 0;
+  margin: 0 0 4px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
   border-radius: 10px;
@@ -1546,15 +1547,79 @@ button.deny {
 }
 .task-manual-action {
   margin-top: 8px;
-  padding: 10px;
-  display: grid;
-  gap: 10px;
+  display: block;
+  overflow: hidden;
   border: 1px solid color-mix(in srgb, #d7a74f 30%, var(--border));
   border-radius: 8px;
   background: color-mix(in srgb, #d7a74f 6%, var(--bg2));
 }
 .task-auth-recovery .task-manual-action {
   margin-top: 0;
+}
+.task-manual-action > summary {
+  min-height: 42px;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.task-manual-action > summary::-webkit-details-marker {
+  display: none;
+}
+.task-manual-action > summary::marker {
+  content: "";
+}
+.task-manual-action > summary:hover {
+  background: color-mix(in srgb, #d7a74f 7%, transparent);
+}
+.task-manual-action > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.task-manual-action > summary strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-manual-action > summary small {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.task-manual-summary-mark {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, #d7a74f 28%, var(--border));
+  border-radius: 50%;
+  color: #d7a74f;
+  font-size: 15px;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+.task-manual-action[open] .task-manual-summary-mark {
+  transform: rotate(90deg);
+}
+.task-manual-action[open] > summary {
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.task-manual-action-body {
+  max-height: min(34vh, 320px);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .task-manual-command,
 .task-resume-phrase {
@@ -1660,6 +1725,91 @@ button.deny {
   margin-top: 8px;
   border: 0;
   accent-color: var(--accent);
+}
+.task-progress-telemetry {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+}
+.task-progress-telemetry-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--warning);
+  font-size: 11px;
+}
+.task-progress-telemetry-state i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 13%, transparent);
+}
+.task-progress-telemetry-state strong {
+  font-weight: 720;
+}
+.task-progress-telemetry-state span {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-progress-telemetry.is-stopped .task-progress-telemetry-state {
+  color: var(--danger);
+}
+.task-progress-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg) 46%, transparent);
+}
+.task-progress-metrics > span {
+  min-width: 0;
+  padding: 6px 8px;
+  border-left: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+.task-progress-metrics > span:first-child {
+  border-left: 0;
+}
+.task-progress-metrics small,
+.task-progress-metrics b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-progress-metrics small {
+  color: var(--dim);
+  font-size: 9px;
+  font-weight: 690;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+.task-progress-metrics b {
+  margin-top: 2px;
+  color: var(--fg);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 670;
+}
+@media (max-width: 720px) {
+  .task-progress-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .task-progress-metrics > span:nth-child(3) {
+    border-left: 0;
+  }
+  .task-progress-metrics > span:nth-child(n + 3) {
+    border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  }
 }
 .execution-log {
   align-self: stretch;

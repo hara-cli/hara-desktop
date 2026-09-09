@@ -133,16 +133,17 @@ test("expired company Spaces stay visible for recovery but cannot be selected", 
   assert.match(switcher, /重新注册后可切换/);
 });
 
-test("the static Desktop cat mark keeps both traced eye apertures visible", () => {
+test("the static Desktop Hara mark uses the generated V3 gateway master", () => {
   const mark = readFileSync(`${root}/src/mark.tsx`, "utf8");
+  const svg = readFileSync(`${root}/src/assets/hara-mark.svg`, "utf8");
 
-  assert.match(mark, /The two eye apertures are already cut out/);
-  assert.match(mark, /<path d="/);
-  assert.doesNotMatch(
-    mark,
-    /<circle\b/,
-    "website blink-overlay circles fill the eye apertures when copied without their animation",
-  );
+  assert.match(mark, /import haraMarkUrl from "\.\/assets\/hara-mark\.svg"/);
+  assert.match(mark, /<img src=\{haraMarkUrl\}/);
+  assert.match(svg, /data-brand-version="3"/);
+  assert.match(svg, /d="M96 56/);
+  assert.match(svg, /d="M416 56/);
+  assert.match(svg, /d="M176 456/);
+  assert.doesNotMatch(svg, /M604 4545/, "the obsolete auto-traced path must not return");
 });
 
 test("markdown code selections remain legible on the dark code surface in every theme", () => {

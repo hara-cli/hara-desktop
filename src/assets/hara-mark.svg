@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc" data-brand-version="3">
+  <title id="title">Hara gateway mark</title>
+  <desc id="desc">An open gateway with a continuous road carrying work between devices.</desc>
+  <g fill="#FF6B5C">
+    <path d="M96 56C76 56 60 72 60 92V420C60 440 76 456 96 456C106 456 116 452 124 444L220 348V156L124 64C116 58 106 56 96 56Z"/>
+    <path d="M416 56C436 56 452 72 452 92V420C452 440 436 456 416 456C406 456 396 452 388 444L340 414C325 405 316 388 316 370V156C316 143 323 132 334 125L388 64C396 58 406 56 416 56Z"/>
+    <path d="M176 456L241 392C276 358 278 334 250 302C222 270 225 238 254 218C275 204 294 195 316 188V228C296 235 286 245 286 258C286 272 298 286 315 305C342 335 347 374 325 408L295 456H176Z"/>
+  </g>
+</svg>

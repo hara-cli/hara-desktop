@@ -811,6 +811,20 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
         at: "2026-07-19T00:00:00.000Z",
         updatedAt: "2026-07-19T00:00:00.000Z",
         checkpoint: { done: 1, total: 2, current: "Approve export" },
+        progress: {
+          state: "warning",
+          toolCalls: 9,
+          unattendedRounds: 5,
+          evidenceStaleRounds: 2,
+          noProgressRounds: 5,
+          checkpointStaleRounds: 5,
+          checkpointAdvanced: false,
+          tokens: { input: 9000, output: 1200, total: 10200 },
+          todo: { done: 1, total: 2, unchangedRounds: 5, advanced: false },
+          rounds: 5,
+          maxRounds: 64,
+          cumulativeTaskRounds: 12,
+        },
         approval: { id: "approval-1", question: "Export the file?" },
       },
     }),
@@ -820,6 +834,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(received.sequence, 12);
   assert.equal(received.state, "waiting");
   assert.equal(received.approval.id, "approval-1");
+  assert.equal(received.progress.tokens.total, 10200);
+  assert.equal(received.progress.checkpointStaleRounds, 5);
 
   socket.onmessage({
     data: JSON.stringify({
