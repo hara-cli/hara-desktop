@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.157 — 2026-09-10 — deterministic recovery and connection-aware model routing
+
+- Bundle Hara CLI `0.170.0` at exact commit `9059a01ab954cec816b162c2798ccf1e309c0be9`, adding
+  credential-free deterministic runtime replay, resumable Serve pause/migration, durable Relay cursors,
+  bounded Agent mailboxes and whole-tree execution, and human-reviewed isolated Worktree Diffs.
+- Keep model behavior bound to the selected saved connection: live Personal or enterprise catalogs remain
+  authoritative, fallback checks the current turn's image/tool/context requirements, and no account Key,
+  endpoint, capability, health state, or provider-specific usage formula is inferred from a model name alone.
+- Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may still show a
+  reputation warning. Authenticated two-device Mobile replay remains a separate real-device acceptance gate.
+
 ## 0.1.156 — 2026-09-10 — one Hara V3.2 identity everywhere
 
 - Use the final V3.2 B gateway-and-path silhouette in the Desktop header, startup and recovery screens,
