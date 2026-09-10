@@ -438,6 +438,21 @@ test("automation is one guided control console with local-only status refresh", 
     /await client\.validateAutomationSchedule\(input\.schedule, input\.tz, jobId\);\s*await client\.updateAutomation\(jobId, input\)/,
     "edits are engine-validated against their existing task before they are persisted",
   );
+  assert.match(
+    automation,
+    /const succeeded =[\s\S]*?await perform\([\s\S]*?if \(succeeded\) setEditor\(null\)/,
+    "a rejected Engine validation keeps the create/edit dialog open",
+  );
+  assert.match(
+    automation,
+    /<AutomationEditor[\s\S]*?error=\{operationError\}/,
+    "the Engine's delivery-contract error is passed into the task editor",
+  );
+  assert.match(
+    automation,
+    /className="hara-automation-form-error" role="alert"/,
+    "the Engine's delivery-contract error is visible inside the task editor",
+  );
   assert.match(app, /draft\.clearDeliver \? \{ clearDeliver: true \}/);
   assert.match(client, /if \(!result\.ok\) throw new Error/);
   assert.match(client, /nextRunDeferred\?: boolean/);
@@ -1766,6 +1781,29 @@ test("the capability directory keeps package sources and reusable skills distinc
   assert.match(copy, /officeIncluded: "Included in the open core"/);
   assert.match(copy, /capabilityOpenCore: "开源核心"/);
   assert.match(copy, /capabilityMarketGateTitle: "当前版本尚未启用市场服务"/);
+});
+
+test("Computer Use is a core capability with an engine-owned safety policy", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const component = readFileSync(`${root}/src/ComputerUseSettings.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const capabilities = readFileSync(`${root}/src/preinstalled-capabilities.ts`, "utf8");
+  const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
+
+  assert.match(capabilities, /id: "core\.computer-use"/);
+  assert.match(app, /id: COMPUTER_USE_CAPABILITY\.id/);
+  assert.match(app, /<ComputerUseSettings/);
+  assert.match(app, /setSetSec\("security"\)/);
+  assert.match(client, /"settings\.computer\.get"/);
+  assert.match(client, /"settings\.computer\.save"/);
+  assert.match(client, /"settings\.computer\.browser\.install"/);
+  assert.match(component, /MODES: ComputerUseMode\[\] = \["off", "read", "click", "full"\]/);
+  assert.match(component, /client\.saveComputerSettings/);
+  assert.match(component, /client\.installCoreBrowser/);
+  assert.match(component, /settings\.modeEditable/);
+  assert.match(component, /settings\.appsEditable/);
+  assert.match(copy, /computerUseSafetyHint: "本机屏幕控制保留应用白名单和逐次动作确认/);
+  assert.doesNotMatch(component, /apiKey|password|cookie|token/i, "the Computer Use surface never handles credentials");
 });
 
 test("the capability center consumes one semantic light and dark design contract", () => {

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.159 — 2026-09-10 — governed Computer Use and reliable browser work
+
+- Bundle Hara CLI `0.172.0` at exact commit `7001d3da4d46cfcfaae88b853a4d54ac94f6bc03`, adding a
+  first-party Computer Use tool, lazy structured-browser capability, and screenshot understanding through the
+  active Space's exact model connection instead of a separate or inferred provider route.
+- Add one Security → Computer Use policy surface for off, screen-read, click, and text-input limits; exact app
+  allowlists and launch-environment locks remain Engine-owned, while every local action still requires approval.
+- Let users install the reviewed isolated browser backend and restart the Engine from Desktop. New conversations
+  discover useful browser control immediately, and page actions remain separated from unrelated browser sessions.
+- Keep scheduled delivery fail-closed when a message is still only local instead of reporting an external Feishu
+  or WeChat send as complete. Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen
+  may still show a reputation warning.
+
 ## 0.1.158 — 2026-09-10 — model-aware connection fallback
 
 - Bundle Hara CLI `0.171.0` at exact commit `062c31c6958990965e52d7bfce76a5110d319460`, including

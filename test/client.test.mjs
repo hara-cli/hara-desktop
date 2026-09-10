@@ -76,6 +76,9 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "settings.gateways.login.start",
                 "settings.gateways.login.status",
                 "settings.gateways.login.cancel",
+                "settings.computer.get",
+                "settings.computer.save",
+                "settings.computer.browser.install",
                 "desk.connections.list",
                 "desk.snapshot",
                 "desk.task.get",
@@ -348,6 +351,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supports("session.steer"), true);
   assert.equal(client.supports("session.submit"), true);
   assert.equal(client.supports("session.set-approval"), true);
+  assert.equal(client.supports("settings.computer.get"), true);
   assert.equal(client.supports("artifact.import"), true);
   assert.equal(client.supports("artifact.validate"), true);
   assert.equal(client.supports("artifact.export"), true);
@@ -875,6 +879,28 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     approvalId: "approval-external",
     question: "Allow command?",
     allowAlways: true,
+  });
+
+  await client.getComputerSettings("/workspace");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.computer.get",
+    params: { cwd: "/workspace" },
+  });
+  await client.saveComputerSettings("full", ["Chrome", "WeChat"], "/workspace");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.computer.save",
+    params: { mode: "full", apps: ["Chrome", "WeChat"], cwd: "/workspace" },
+  });
+  await client.installCoreBrowser();
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.computer.browser.install",
+    params: {},
   });
 });
 

@@ -119,6 +119,7 @@ import {
   SettingsNotice,
   SettingsPage,
 } from "./SettingsUI";
+import { ComputerUseSettings } from "./ComputerUseSettings";
 import {
   AppRail,
   type AppPlace,
@@ -261,7 +262,7 @@ import {
   workforceFromTask,
   workforceStateIsNewer,
 } from "./workforce-state";
-import { AGENT_OFFICE_CAPABILITY } from "./preinstalled-capabilities";
+import { AGENT_OFFICE_CAPABILITY, COMPUTER_USE_CAPABILITY } from "./preinstalled-capabilities";
 import AgentPicker from "./AgentPicker";
 import { AgentPortrait } from "./AgentPortrait";
 import AgentProfileEditor from "./AgentProfileEditor";
@@ -5849,6 +5850,19 @@ export default function App() {
     }
   };
 
+  const refreshPluginInventory = async () => {
+    const c = clientRef.current;
+    if (!c) return;
+    try {
+      const result = await c.listPlugins();
+      if (clientRef.current !== c) return;
+      pluginsRef.current = result.plugins;
+      setPlugins(result.plugins);
+    } catch {
+      // The Computer Use card already owns the actionable install error. Inventory refresh is secondary.
+    }
+  };
+
   const waitForDiscoveryRetirement = async () => {
     const deadline = Date.now() + 4_000;
     while (Date.now() < deadline) {
@@ -9673,6 +9687,14 @@ export default function App() {
                 title={t("setSecurity")}
                 description={t("securityDescription")}
               >
+                <ComputerUseSettings
+                  client={clientRef.current}
+                  cwd={server?.cwd}
+                  restarting={engineRestarting}
+                  t={t}
+                  onRestartEngine={() => void restartBundledEngine()}
+                  onPluginsChanged={() => void refreshPluginInventory()}
+                />
                 <SettingsCard title={t("approvalTitleSetting")} description={t("approvalDescription")}>
                   <SettingsItem
                     title={t("defaultApprovalTitle")}
@@ -9919,6 +9941,11 @@ export default function App() {
                     { id: "core.groups", title: t("zoneGroups"), description: t("moduleGroupsDescription") },
                     { id: "core.office", title: t("zoneOffice"), description: t("moduleOfficeDescription") },
                     {
+                      id: COMPUTER_USE_CAPABILITY.id,
+                      title: t("computerUseTitle"),
+                      description: t("computerUseDescription"),
+                    },
+                    {
                       id: AGENT_OFFICE_CAPABILITY.id,
                       title: t("capabilityAgentOfficeTitle"),
                       description: t("capabilityAgentOfficeDescription"),
@@ -9987,6 +10014,9 @@ export default function App() {
                   onOpenCore={(id) => {
                     if (id === AGENT_OFFICE_CAPABILITY.id) {
                       void openAgentOffice();
+                    } else if (id === COMPUTER_USE_CAPABILITY.id) {
+                      setSetSec("security");
+                      queueMicrotask(() => document.getElementById("settings-computer-use")?.scrollIntoView({ block: "start" }));
                     } else if (id === "core.chat") {
                       void openAssistant();
                     } else if (id === "core.tasks") {

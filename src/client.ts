@@ -545,6 +545,27 @@ export interface PluginInfo {
   panels?: PanelSpec[];
 }
 
+export type ComputerUseMode = "off" | "read" | "click" | "full";
+
+export interface ComputerSettingsState {
+  mode: ComputerUseMode;
+  apps: string[];
+  modeEditable: boolean;
+  appsEditable: boolean;
+  platform: string;
+  backend: string;
+  browser: {
+    installed: boolean;
+    enabled: boolean;
+    version?: string;
+  };
+}
+
+export interface CoreBrowserInstallResult {
+  plugin: Pick<PluginInfo, "name" | "version" | "description" | "enabled">;
+  restartRequired: boolean;
+}
+
 export interface SkillInfo {
   id: string;
   description: string;
@@ -1979,6 +2000,25 @@ export class HaraClient {
   }
   setPlugin(name: string, enabled: boolean) {
     return this.call<{ name: string; enabled: boolean }>("plugins.set", { name, enabled });
+  }
+  async getComputerSettings(cwd?: string): Promise<ComputerSettingsState | null> {
+    if (this.methods.size > 0 && !this.supports("settings.computer.get")) return null;
+    try {
+      return await this.call("settings.computer.get", cwd ? { cwd } : {});
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  saveComputerSettings(mode: ComputerUseMode, apps: string[], cwd?: string) {
+    return this.call<ComputerSettingsState>("settings.computer.save", {
+      mode,
+      apps,
+      ...(cwd ? { cwd } : {}),
+    });
+  }
+  installCoreBrowser() {
+    return this.call<CoreBrowserInstallResult>("settings.computer.browser.install", {});
   }
   listSkills(cwd?: string) {
     return this.call<{ skills: SkillInfo[] }>("skills.list", cwd ? { cwd } : {});
