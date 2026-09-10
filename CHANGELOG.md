@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.158 — 2026-09-10 — model-aware connection fallback
+
+- Bundle Hara CLI `0.171.0` at exact commit `062c31c6958990965e52d7bfce76a5110d319460`, including
+  replay-safe ordered fallback across explicitly authorized Personal model connections and conservative
+  capability matching for the current provider/model catalogs.
+- Show the selected saved connection's credential-free health, circuit state, image/tool/reasoning support,
+  known context window, region, and provider-native accounting authority directly in Models & connections.
+- Let Personal users opt exact saved connections into a deterministic fallback order, move them earlier or
+  later, and remove authorization without deleting the account. Authentication and exhausted allowance switch
+  only to a different underlying account; the same Key under another label or model is never shown as redundancy.
+- Keep the new diagnostics and fallback controls usable at compact Desktop widths, while unknown model
+  capabilities remain visibly unknown and excluded from automatic recovery rather than inferred from a name.
+
 ## 0.1.157 — 2026-09-10 — deterministic recovery and connection-aware model routing
 
 - Bundle Hara CLI `0.170.0` at exact commit `9059a01ab954cec816b162c2798ccf1e309c0be9`, adding

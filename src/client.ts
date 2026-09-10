@@ -559,6 +559,42 @@ export interface ProviderAccountingDescriptor {
   failoverPolicy: "authoritative-exhaustion-only" | "not-applicable";
 }
 
+export type ProviderCapabilitySupport = "supported" | "unsupported" | "unknown";
+
+/** Credential-free facts for the exact saved provider/model route. Optional fields keep Desktop able to
+ * recover against an older bundled engine; unknown must never be promoted to supported by the renderer. */
+export interface ProviderModelCapabilities {
+  wireApi: "chat" | "responses" | "anthropic";
+  imageInput: ProviderCapabilitySupport;
+  toolCalling: ProviderCapabilitySupport;
+  reasoning: ProviderCapabilitySupport;
+  contextWindowTokens?: number;
+  region: "cn-beijing" | "cn" | "global" | "local" | "managed" | "custom";
+  accounting: ProviderAccountingDescriptor;
+}
+
+export interface ProviderConnectionHealth {
+  state: "unknown" | "healthy" | "degraded" | "unavailable";
+  circuit: "closed" | "open" | "half_open";
+  consecutiveFailures: number;
+  lastCheckedAt?: string;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  lastFailureKind?:
+    | "context_overflow"
+    | "quota_exhausted"
+    | "region_unavailable"
+    | "rate_limit"
+    | "overloaded"
+    | "auth"
+    | "timeout"
+    | "transient"
+    | "circuit_open"
+    | "interrupted"
+    | "unknown";
+  retryAt?: string;
+}
+
 export interface ProviderCatalogEntry {
   id: string;
   label: string;
@@ -592,6 +628,9 @@ export interface ProviderSettingsState {
     editable: boolean;
     /** Missing only when connected to an older engine. */
     accounting?: ProviderAccountingDescriptor;
+    /** Exact connection/model capability and process-local circuit snapshots (serve >= 0.170). */
+    capabilities?: ProviderModelCapabilities;
+    health?: ProviderConnectionHealth;
     environmentOverride?: boolean;
     /** Default reasoning dial for new work on this route. Missing means provider/model default. */
     reasoningEffort?: string;
@@ -603,6 +642,9 @@ export interface ProviderSettingsState {
   providers: ProviderCatalogEntry[];
   /** Saved personal/BYOK identities. Absent on older bundled engines. Credentials are never returned. */
   connections?: ProviderConnection[];
+  /** User-authorized Personal fallback order. Every id resolves an exact saved connection. */
+  fallbackConnectionIds?: string[];
+  fallbackConnectionIdsEditable?: boolean;
   /** A launch override or project pin prevents changing the default connection for new sessions. */
   switchLocked?: boolean;
   /** Explicit image pre-processing route. Secrets are never returned. */
@@ -650,6 +692,9 @@ export interface ProviderConnection {
   removable: boolean;
   /** Connection-scoped because the same provider may be saved under several accounts/plans. */
   accounting?: ProviderAccountingDescriptor;
+  /** Never contains an endpoint, credential, or runtime circuit key. */
+  capabilities?: ProviderModelCapabilities;
+  health?: ProviderConnectionHealth;
   /** Redacted display hint such as ••••1234. Never a usable credential. */
   keyHint?: string;
   createdAt?: string;
@@ -1994,6 +2039,12 @@ export class HaraClient {
   }
   removeProviderConnection(id: string, cwd?: string) {
     return this.call<ProviderSettingsState>("settings.providers.connections.remove", { id, ...(cwd ? { cwd } : {}) });
+  }
+  saveProviderFailover(connectionIds: string[], cwd?: string) {
+    return this.call<ProviderSettingsState>("settings.providers.failover.save", {
+      connectionIds,
+      ...(cwd ? { cwd } : {}),
+    });
   }
   /** Explicitly remove the project profile override governing cwd. Existing sessions remain pinned. */
   async unpinProjectProfile(cwd?: string): Promise<ProjectProfileUnpinResult | null> {

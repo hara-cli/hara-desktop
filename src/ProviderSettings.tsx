@@ -7,9 +7,12 @@ import {
   type OrganizationConnectionsState,
   type ProjectProfileUnpinResult,
   type ProviderAccountingDescriptor,
+  type ProviderCapabilitySupport,
   type ProviderCatalogEntry,
   type ProviderConnection,
   type ProviderConnectionCreateInput,
+  type ProviderConnectionHealth,
+  type ProviderModelCapabilities,
   type ProviderSettingsInput,
   type ProviderSettingsState,
   type VisionSettingsInput,
@@ -127,6 +130,51 @@ const words = {
     accountingLocalHint: "This local model has no remote subscription allowance. Token counters remain context diagnostics.",
     accountingUnknown: "Not declared by this engine",
     accountingUnknownHint: "Hara shows usage as unavailable rather than estimating a balance or cost. Restart or update the engine to load accounting-source metadata.",
+    connectionHealthLabel: "Connection condition",
+    connectionHealthUnknown: "Not observed yet",
+    connectionHealthHealthy: "Healthy",
+    connectionHealthDegraded: "Unstable",
+    connectionHealthUnavailable: "Temporarily isolated",
+    connectionHealthRecovering: "Recovery probe ready",
+    connectionHealthUnknownHint: "Hara has not completed a model turn on this exact account, endpoint, and model since the engine started.",
+    connectionHealthHealthyHint: "The most recent model turn on this exact connection completed successfully.",
+    connectionHealthDegradedHint: "Recent model turns failed, but Hara has not isolated this connection.",
+    connectionHealthUnavailableHint: "Hara temporarily stopped new automatic attempts on this exact connection after a typed provider failure.",
+    connectionHealthRecoveringHint: "The cooldown ended. Hara will allow one model turn to verify recovery.",
+    connectionFailures: "{count} consecutive failure(s)",
+    connectionRetry: "Next recovery probe after {time}",
+    modelCapabilitiesLabel: "Current model capabilities",
+    capabilityImage: "Images",
+    capabilityTools: "Tools",
+    capabilityReasoning: "Reasoning",
+    capabilityContext: "Context",
+    capabilitySupported: "supported",
+    capabilityUnsupported: "not supported",
+    capabilityUnknown: "unconfirmed",
+    capabilityContextUnknown: "unconfirmed",
+    capabilityAuthorityHint: "These facts belong to this saved connection and model. Live provider discovery or company policy remains authoritative; unconfirmed capability is never used for automatic switching.",
+    failureContextOverflow: "context window exceeded",
+    failureQuotaExhausted: "provider reported allowance exhausted",
+    failureRegionUnavailable: "model unavailable in this region",
+    failureRateLimit: "provider rate limit",
+    failureOverloaded: "provider overloaded",
+    failureAuth: "credential rejected or expired",
+    failureTimeout: "network timeout",
+    failureTransient: "temporary transport failure",
+    failureCircuitOpen: "connection circuit already open",
+    failureInterrupted: "interrupted by user",
+    failureUnknown: "unclassified provider failure",
+    automaticFallbackTitle: "Automatic fallback",
+    automaticFallbackOff: "Not authorized",
+    automaticFallbackPosition: "Priority {position}",
+    automaticFallbackDescription: "For Personal work only. After a replay-safe typed failure, Hara checks each exact saved account, endpoint, key, and current model in your chosen order. Images, tools, context, and circuit health must all match; the request stays on the provider and region shown for that saved connection. A rejected key or exhausted allowance can switch only to a different underlying account; another model on the same key is not a backup account.",
+    automaticFallbackEnable: "Allow as fallback",
+    automaticFallbackDisable: "Remove from fallback",
+    automaticFallbackEarlier: "Move earlier",
+    automaticFallbackLater: "Move later",
+    automaticFallbackLimit: "Up to four saved connections can be authorized. Remove another connection from the fallback order first.",
+    automaticFallbackLocked: "HARA_FALLBACK_CONNECTIONS currently controls this order. Remove the environment override before editing it here.",
+    automaticFallbackSaved: "Automatic fallback order saved. Existing sessions will use it on their next turn.",
     immutableConnection: "Credentials and routing belong to this exact connection. Add and verify a replacement before removing it; existing sessions are never silently rewritten.",
     changePersonal: "Add another account",
     removePersonal: "Remove connection",
@@ -357,6 +405,51 @@ const words = {
     accountingLocalHint: "本机模型没有远程订阅额度；Token 计数仅用于上下文诊断。",
     accountingUnknown: "当前引擎未声明",
     accountingUnknownHint: "Hara 会显示用量暂不可查，不会估算余额或成本；可重启或升级引擎以加载计量来源元数据。",
+    connectionHealthLabel: "连接状态",
+    connectionHealthUnknown: "尚未观测",
+    connectionHealthHealthy: "正常",
+    connectionHealthDegraded: "暂不稳定",
+    connectionHealthUnavailable: "已暂时隔离",
+    connectionHealthRecovering: "可以恢复探测",
+    connectionHealthUnknownHint: "引擎本次启动后，还没有通过这个具体账号、接口地址和模型完成一轮调用。",
+    connectionHealthHealthyHint: "这个具体连接最近一轮模型调用已成功完成。",
+    connectionHealthDegradedHint: "最近的模型调用出现失败，但 Hara 尚未隔离这条连接。",
+    connectionHealthUnavailableHint: "这条连接发生明确的供应商错误后，Hara 已暂时停止新的自动尝试。",
+    connectionHealthRecoveringHint: "冷却时间已结束；下一轮模型调用将作为一次恢复探测。",
+    connectionFailures: "连续失败 {count} 次",
+    connectionRetry: "{time} 后允许恢复探测",
+    modelCapabilitiesLabel: "当前模型能力",
+    capabilityImage: "图片",
+    capabilityTools: "工具调用",
+    capabilityReasoning: "思考",
+    capabilityContext: "上下文",
+    capabilitySupported: "支持",
+    capabilityUnsupported: "不支持",
+    capabilityUnknown: "未确认",
+    capabilityContextUnknown: "未确认",
+    capabilityAuthorityHint: "这些信息只属于当前保存的连接与模型；实时供应商列表或企业策略优先，未确认的能力不会参与自动切换。",
+    failureContextOverflow: "超过上下文窗口",
+    failureQuotaExhausted: "供应商报告额度已用尽",
+    failureRegionUnavailable: "当前区域不可用",
+    failureRateLimit: "供应商限流",
+    failureOverloaded: "供应商过载",
+    failureAuth: "凭据被拒绝或已过期",
+    failureTimeout: "网络超时",
+    failureTransient: "临时传输故障",
+    failureCircuitOpen: "连接已处于熔断状态",
+    failureInterrupted: "用户主动中断",
+    failureUnknown: "未分类的供应商错误",
+    automaticFallbackTitle: "自动备用连接",
+    automaticFallbackOff: "未授权",
+    automaticFallbackPosition: "优先级 {position}",
+    automaticFallbackDescription: "仅用于个人空间。发生可安全重放的明确故障后，Hara 才会按你指定的顺序检查每条已保存连接自己的账号、接口、Key 和当前模型；图片、工具调用、上下文与熔断状态必须匹配，请求会严格发往该连接显示的供应商和区域。Key 被拒或额度用尽时，只能切换到底层不同账号；同一 Key 的另一个模型不算备用账号。",
+    automaticFallbackEnable: "允许作为备用",
+    automaticFallbackDisable: "移出备用顺序",
+    automaticFallbackEarlier: "提高优先级",
+    automaticFallbackLater: "降低优先级",
+    automaticFallbackLimit: "最多可授权 4 条已保存连接；请先从备用顺序中移出另一条连接。",
+    automaticFallbackLocked: "当前由 HARA_FALLBACK_CONNECTIONS 环境变量控制；移除环境覆盖后才能在这里修改。",
+    automaticFallbackSaved: "自动备用顺序已保存；已有会话会在下一轮使用。",
     immutableConnection: "凭据和路由只属于这一条连接。请先新增并验证替代连接，再移除旧连接；已有会话不会被静默改写。",
     changePersonal: "添加另一个账号",
     removePersonal: "移除连接",
@@ -594,6 +687,144 @@ const accountingPresentation = (
       return { label: copy.accountingUnknown, hint: copy.accountingUnknownHint };
   }
 };
+
+const capabilityLabel = (
+  support: ProviderCapabilitySupport,
+  copy: typeof words.en | typeof words.zh,
+): string => {
+  switch (support) {
+    case "supported": return copy.capabilitySupported;
+    case "unsupported": return copy.capabilityUnsupported;
+    default: return copy.capabilityUnknown;
+  }
+};
+
+const failureKindLabel = (
+  kind: ProviderConnectionHealth["lastFailureKind"],
+  copy: typeof words.en | typeof words.zh,
+): string => {
+  switch (kind) {
+    case "context_overflow": return copy.failureContextOverflow;
+    case "quota_exhausted": return copy.failureQuotaExhausted;
+    case "region_unavailable": return copy.failureRegionUnavailable;
+    case "rate_limit": return copy.failureRateLimit;
+    case "overloaded": return copy.failureOverloaded;
+    case "auth": return copy.failureAuth;
+    case "timeout": return copy.failureTimeout;
+    case "transient": return copy.failureTransient;
+    case "circuit_open": return copy.failureCircuitOpen;
+    case "interrupted": return copy.failureInterrupted;
+    default: return copy.failureUnknown;
+  }
+};
+
+const contextWindowLabel = (
+  tokens: number | undefined,
+  locale: Locale,
+  copy: typeof words.en | typeof words.zh,
+): string => {
+  if (!tokens || !Number.isFinite(tokens) || tokens <= 0) return copy.capabilityContextUnknown;
+  return `${new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(tokens)} tokens`;
+};
+
+const moveFallbackConnection = (ids: readonly string[], index: number, offset: -1 | 1): string[] => {
+  const target = index + offset;
+  if (index < 0 || index >= ids.length || target < 0 || target >= ids.length) return [...ids];
+  const next = [...ids];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+};
+
+function ProviderConnectionDiagnostics({
+  health,
+  capabilities,
+  locale,
+}: {
+  health?: ProviderConnectionHealth;
+  capabilities?: ProviderModelCapabilities;
+  locale: Locale;
+}) {
+  if (!health && !capabilities) return null;
+  const copy = words[locale];
+  const healthPresentation = health?.circuit === "half_open"
+    ? {
+        tone: "recovering",
+        label: copy.connectionHealthRecovering,
+        hint: copy.connectionHealthRecoveringHint,
+      }
+    : health?.circuit === "open" || health?.state === "unavailable"
+      ? {
+          tone: "unavailable",
+          label: copy.connectionHealthUnavailable,
+          hint: copy.connectionHealthUnavailableHint,
+        }
+      : health?.state === "healthy"
+        ? {
+            tone: "healthy",
+            label: copy.connectionHealthHealthy,
+            hint: copy.connectionHealthHealthyHint,
+          }
+        : health?.state === "degraded"
+          ? {
+              tone: "degraded",
+              label: copy.connectionHealthDegraded,
+              hint: copy.connectionHealthDegradedHint,
+            }
+          : {
+              tone: "unknown",
+              label: copy.connectionHealthUnknown,
+              hint: copy.connectionHealthUnknownHint,
+            };
+  const retryAt = health?.circuit === "open" && health.retryAt && Number.isFinite(Date.parse(health.retryAt))
+    ? new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(Date.parse(health.retryAt))
+    : null;
+  const capabilitiesList = capabilities ? [
+    { key: "image", label: copy.capabilityImage, value: capabilityLabel(capabilities.imageInput, copy), tone: capabilities.imageInput },
+    { key: "tools", label: copy.capabilityTools, value: capabilityLabel(capabilities.toolCalling, copy), tone: capabilities.toolCalling },
+    { key: "reasoning", label: copy.capabilityReasoning, value: capabilityLabel(capabilities.reasoning, copy), tone: capabilities.reasoning },
+    { key: "context", label: copy.capabilityContext, value: contextWindowLabel(capabilities.contextWindowTokens, locale, copy), tone: capabilities.contextWindowTokens ? "supported" : "unknown" },
+  ] : [];
+
+  return (
+    <section className="provider-connection-diagnostics" aria-label={copy.connectionHealthLabel}>
+      {health ? (
+        <div className={`provider-connection-health ${healthPresentation.tone}`} role="status">
+          <header>
+            <div><span aria-hidden="true" />{copy.connectionHealthLabel}</div>
+            <strong>{healthPresentation.label}</strong>
+          </header>
+          <p>{healthPresentation.hint}</p>
+          {health.lastFailureKind ? (
+            <small>{failureKindLabel(health.lastFailureKind, copy)}</small>
+          ) : null}
+          {health.consecutiveFailures > 0 ? (
+            <small>{copy.connectionFailures.replace("{count}", String(health.consecutiveFailures))}</small>
+          ) : null}
+          {retryAt ? <small>{copy.connectionRetry.replace("{time}", retryAt)}</small> : null}
+        </div>
+      ) : null}
+      {capabilities ? (
+        <div className="provider-model-capabilities">
+          <strong>{copy.modelCapabilitiesLabel}</strong>
+          <div>
+            {capabilitiesList.map((capability) => (
+              <span className={capability.tone} key={capability.key}>
+                {capability.label}<b>{capability.value}</b>
+              </span>
+            ))}
+          </div>
+          <small>{copy.capabilityAuthorityHint}</small>
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 const providerDisplayName = (
   provider: Pick<ProviderCatalogEntry, "id" | "label"> | undefined,
@@ -1426,6 +1657,22 @@ export function ProviderSettings({
     }
   };
 
+  const saveFallbackConnectionIds = async (connectionIds: string[]) => {
+    if (!client || personalBusy || !client.supports("settings.providers.failover.save")) return;
+    setPersonalBusy("fallback");
+    clearFeedback();
+    try {
+      const next = await client.saveProviderFailover(connectionIds, cwd);
+      setState(next);
+      await onSaved(next);
+      setMessage(copy.automaticFallbackSaved);
+    } catch (reason) {
+      setError(String(reason instanceof Error ? reason.message : reason));
+    } finally {
+      setPersonalBusy("");
+    }
+  };
+
   const refreshProviderRoute = async (): Promise<ProviderSettingsState | null> => {
     if (!client) return null;
     const next = await client.listProviderSettings(cwd);
@@ -1684,6 +1931,12 @@ export function ProviderSettings({
     locale,
     selectedConnection?.location === "local" ? "local" : undefined,
   );
+  const fallbackConnectionIds = state.fallbackConnectionIds ?? [];
+  const selectedFallbackIndex = selectedConnection
+    ? fallbackConnectionIds.indexOf(selectedConnection.id)
+    : -1;
+  const fallbackSettingsSupported = Boolean(client?.supports("settings.providers.failover.save"));
+  const fallbackSettingsEditable = state.fallbackConnectionIdsEditable !== false;
   const newConnectionAccounting = accountingPresentation(
     personalProvider?.accounting,
     locale,
@@ -2355,6 +2608,77 @@ export function ProviderSettings({
                   <strong>{selectedConnection.keyHint || copy.noSavedKey}</strong>
                 </div>
               </div>
+              <ProviderConnectionDiagnostics
+                health={selectedConnection.health}
+                capabilities={selectedConnection.capabilities}
+                locale={locale}
+              />
+              {fallbackSettingsSupported ? (
+                <section className="provider-fallback-settings" aria-label={copy.automaticFallbackTitle}>
+                  <header>
+                    <div>
+                      <strong>{copy.automaticFallbackTitle}</strong>
+                      <span>{selectedFallbackIndex >= 0
+                        ? copy.automaticFallbackPosition.replace("{position}", String(selectedFallbackIndex + 1))
+                        : copy.automaticFallbackOff}</span>
+                    </div>
+                    <div className="provider-fallback-actions">
+                      {selectedFallbackIndex >= 0 ? (
+                        <>
+                          <button
+                            type="button"
+                            className="ghost compact"
+                            aria-label={copy.automaticFallbackEarlier}
+                            title={copy.automaticFallbackEarlier}
+                            disabled={!fallbackSettingsEditable || !!personalBusy || selectedFallbackIndex === 0}
+                            onClick={() => void saveFallbackConnectionIds(
+                              moveFallbackConnection(fallbackConnectionIds, selectedFallbackIndex, -1),
+                            )}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost compact"
+                            aria-label={copy.automaticFallbackLater}
+                            title={copy.automaticFallbackLater}
+                            disabled={!fallbackSettingsEditable || !!personalBusy || selectedFallbackIndex === fallbackConnectionIds.length - 1}
+                            onClick={() => void saveFallbackConnectionIds(
+                              moveFallbackConnection(fallbackConnectionIds, selectedFallbackIndex, 1),
+                            )}
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost compact"
+                            disabled={!fallbackSettingsEditable || !!personalBusy}
+                            onClick={() => void saveFallbackConnectionIds(
+                              fallbackConnectionIds.filter((id) => id !== selectedConnection.id),
+                            )}
+                          >
+                            {copy.automaticFallbackDisable}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ghost compact"
+                          disabled={!fallbackSettingsEditable || !!personalBusy || fallbackConnectionIds.length >= 4}
+                          onClick={() => void saveFallbackConnectionIds([...fallbackConnectionIds, selectedConnection.id])}
+                        >
+                          {copy.automaticFallbackEnable}
+                        </button>
+                      )}
+                    </div>
+                  </header>
+                  <p>{copy.automaticFallbackDescription}</p>
+                  {!fallbackSettingsEditable ? <small>{copy.automaticFallbackLocked}</small> : null}
+                  {selectedFallbackIndex < 0 && fallbackConnectionIds.length >= 4
+                    ? <small>{copy.automaticFallbackLimit}</small>
+                    : null}
+                </section>
+              ) : null}
               {selectedConnection.baseURL && (
                 <div className="personal-connection-endpoint">
                   <span>{copy.endpoint}</span>
@@ -2694,6 +3018,14 @@ export function ProviderSettings({
                   <div><span>{copy.controlAddress}</span><strong>{selectedOrganization.gatewayHost}</strong></div>
                   <div><span>{copy.expires}</span><strong>{expiry}</strong></div>
                 </div>
+
+                {selectedOrganization.active ? (
+                  <ProviderConnectionDiagnostics
+                    health={state.current.health}
+                    capabilities={state.current.capabilities}
+                    locale={locale}
+                  />
+                ) : null}
 
                 {selectedOrganization.availableModels && selectedOrganization.availableModels.length > 0 && (
                   <div className="organization-model-catalog">

@@ -938,6 +938,28 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /accountingOrganizationHint:[^\n]*without applying a universal formula/);
   assert.match(providerSettings, /selectedConnectionAccounting[\s\S]*copy\.accountingLabel/,
     "each saved account exposes its own accounting authority in the connection detail");
+  assert.match(client, /interface ProviderConnectionHealth[\s\S]*circuit: "closed" \| "open" \| "half_open"/,
+    "Desktop consumes the engine's exact-connection circuit snapshot without any runtime key");
+  assert.match(client, /interface ProviderConnection[\s\S]*capabilities\?: ProviderModelCapabilities;[\s\S]*health\?: ProviderConnectionHealth/,
+    "each saved provider account carries its own model capability and health metadata");
+  assert.match(providerSettings, /function ProviderConnectionDiagnostics[\s\S]*health\?\.circuit === "half_open"[\s\S]*health\?\.circuit === "open"/,
+    "connection details distinguish recovery probes from an open circuit");
+  assert.match(providerSettings, /capability\.tone[\s\S]*capabilityAuthorityHint/,
+    "the current saved model exposes only typed capabilities and keeps unknown out of automatic switching");
+  assert.match(providerSettings, /failureQuotaExhausted: "供应商报告额度已用尽"/,
+    "Desktop labels allowance exhaustion only when the provider emitted that typed failure");
+  assert.match(providerSettings, /health=\{selectedConnection\.health\}[\s\S]*capabilities=\{selectedConnection\.capabilities\}/,
+    "the selected card renders diagnostics for that exact model connection rather than the provider family");
+  assert.match(client, /saveProviderFailover\(connectionIds: string\[\][\s\S]*settings\.providers\.failover\.save/,
+    "Desktop saves an explicit order of exact connection ids through the negotiated engine method");
+  assert.match(providerSettings, /fallbackConnectionIds\.indexOf\(selectedConnection\.id\)[\s\S]*fallbackConnectionIds\.length >= 4/,
+    "automatic fallback is opt-in per saved account and remains bounded to four connections");
+  assert.match(providerSettings, /moveFallbackConnection\(fallbackConnectionIds, selectedFallbackIndex, -1\)[\s\S]*moveFallbackConnection\(fallbackConnectionIds, selectedFallbackIndex, 1\)/,
+    "the user can deterministically order authorized fallback accounts");
+  assert.match(providerSettings, /每条已保存连接自己的账号、接口、Key 和当前模型/,
+    "the UI states that switching uses each saved connection's exact current route");
+  assert.match(providerSettings, /Key 被拒或额度用尽时，只能切换到底层不同账号；同一 Key 的另一个模型不算备用账号/,
+    "account-scoped failures never disguise another model on the same credential as another account");
   assert.match(providerSettings, /underlying allowance may be a provider subscription, PAYG ledger, prepaid balance/,
     "managed routes explain that Control can preserve different upstream accounting modes");
   assert.doesNotMatch(accountingDesign, /Local session\/request estimate \+ open-console link/,

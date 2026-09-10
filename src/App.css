@@ -6263,6 +6263,171 @@ button.provider-preset.enterprise.on {
   font-size: 10px;
   font-weight: 500;
 }
+.provider-connection-diagnostics {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.72fr) minmax(0, 1.28fr);
+  gap: 8px;
+  margin: -3px 0 16px;
+}
+.provider-connection-health,
+.provider-model-capabilities {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-raised);
+}
+.provider-connection-health header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.provider-connection-health header div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-muted);
+  font-size: 9px;
+}
+.provider-connection-health header div > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+.provider-connection-health header > strong {
+  color: var(--ink-muted);
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 600;
+}
+.provider-connection-health.healthy header div > span {
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-soft);
+}
+.provider-connection-health.healthy header > strong,
+.provider-connection-health.recovering header > strong {
+  color: var(--success);
+}
+.provider-connection-health.degraded header div > span,
+.provider-connection-health.recovering header div > span {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px var(--warning-soft);
+}
+.provider-connection-health.degraded header > strong {
+  color: var(--warning);
+}
+.provider-connection-health.unavailable header div > span {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+.provider-connection-health.unavailable header > strong {
+  color: var(--danger);
+}
+.provider-connection-health p,
+.provider-model-capabilities > small {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.provider-connection-health > small {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-muted);
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 8px;
+}
+.provider-model-capabilities > strong {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 9px;
+  font-weight: 500;
+}
+.provider-model-capabilities > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.provider-model-capabilities > div > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid var(--border-control);
+  border-radius: 999px;
+  color: var(--ink-muted);
+  font-size: 8px;
+}
+.provider-model-capabilities > div > span b {
+  color: var(--ink-strong);
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-weight: 500;
+}
+.provider-model-capabilities > div > span.supported {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border-control));
+}
+.provider-model-capabilities > div > span.unsupported {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border-control));
+}
+.provider-model-capabilities > div > span.unknown {
+  border-style: dashed;
+}
+.provider-fallback-settings {
+  padding: 12px 13px;
+  margin: -3px 0 16px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--info);
+  border-radius: 5px;
+  background: var(--info-soft);
+}
+.provider-fallback-settings > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.provider-fallback-settings > header > div:first-child {
+  min-width: 0;
+}
+.provider-fallback-settings > header strong,
+.provider-fallback-settings > header span {
+  display: block;
+}
+.provider-fallback-settings > header strong {
+  color: var(--ink-strong);
+  font-size: 10px;
+  font-weight: 600;
+}
+.provider-fallback-settings > header span {
+  margin-top: 2px;
+  color: var(--info);
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 8px;
+}
+.provider-fallback-settings > p,
+.provider-fallback-settings > small {
+  display: block;
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.provider-fallback-settings > small {
+  color: var(--warning);
+}
+.provider-fallback-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+.provider-fallback-actions button.compact {
+  min-width: 28px;
+  padding: 5px 8px;
+  font-size: 9px;
+}
 .provider-managed-note,
 .provider-enrollment-safety {
   display: grid;
@@ -6602,6 +6767,13 @@ button.provider-preset.enterprise.on {
   }
   .organization-facts {
     grid-template-columns: 1fr;
+  }
+  .provider-connection-diagnostics {
+    grid-template-columns: 1fr;
+  }
+  .provider-fallback-settings > header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 @media (max-width: 560px) {

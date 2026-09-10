@@ -52,6 +52,22 @@ const initialProviders = (): ProviderSettingsState => ({
     profileSource: "default",
     editable: false,
     accounting: previewAccounting("hara-gateway"),
+    capabilities: {
+      wireApi: "responses",
+      imageInput: "unsupported",
+      toolCalling: "supported",
+      reasoning: "supported",
+      contextWindowTokens: 1_024_000,
+      region: "managed",
+      accounting: previewAccounting("hara-gateway"),
+    },
+    health: {
+      state: "healthy",
+      circuit: "closed",
+      consecutiveFailures: 0,
+      lastCheckedAt: "2026-09-10T04:00:00.000Z",
+      lastSuccessAt: "2026-09-10T04:00:00.000Z",
+    },
     tokenExpiresAt: "2026-08-22T12:00:00.000Z",
   },
   providers: ([
@@ -131,9 +147,58 @@ const initialProviders = (): ProviderSettingsState => ({
       legacyPersonal: true,
       removable: true,
       accounting: previewAccounting("deepseek"),
+      capabilities: {
+        wireApi: "responses",
+        imageInput: "unsupported",
+        toolCalling: "supported",
+        reasoning: "supported",
+        contextWindowTokens: 1_024_000,
+        region: "global",
+        accounting: previewAccounting("deepseek"),
+      },
+      health: {
+        state: "degraded",
+        circuit: "closed",
+        consecutiveFailures: 1,
+        lastFailureKind: "rate_limit",
+      },
       keyHint: "••••4821",
     },
+    {
+      id: "ark-plan",
+      label: "Ark Agent Plan",
+      provider: "volcengine-agent-plan",
+      model: "glm-5.3-flash",
+      baseURL: "https://ark.cn-beijing.volces.com/api/plan/v3",
+      location: "cloud",
+      auth: "api-key",
+      keyConfigured: true,
+      authenticated: true,
+      active: false,
+      legacyPersonal: false,
+      removable: true,
+      accounting: previewAccounting("volcengine-agent-plan"),
+      capabilities: {
+        wireApi: "responses",
+        imageInput: "supported",
+        toolCalling: "supported",
+        reasoning: "supported",
+        contextWindowTokens: 1_024_000,
+        region: "cn-beijing",
+        accounting: previewAccounting("volcengine-agent-plan"),
+      },
+      health: {
+        state: "healthy",
+        circuit: "closed",
+        consecutiveFailures: 0,
+        lastCheckedAt: "2026-09-10T04:00:00.000Z",
+        lastSuccessAt: "2026-09-10T04:00:00.000Z",
+      },
+      keyHint: "••••0910",
+    },
   ],
+  fallbackConnectionIds: ["ark-plan"],
+  fallbackConnectionIdsEditable: true,
   switchLocked: false,
 });
 
@@ -228,7 +293,7 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
       }
     };
     return {
-      supports: (method: string) => method === "settings.vision.save" || method === "settings.vision.test" || method.startsWith("settings.providers.connections.") || method.startsWith("settings.organizations."),
+      supports: (method: string) => method === "settings.vision.save" || method === "settings.vision.test" || method === "settings.providers.failover.save" || method.startsWith("settings.providers.connections.") || method.startsWith("settings.organizations."),
       listProviderSettings: async () => providerState,
       listOrganizationConnections: async () => organizationState,
       testProviderSettings: async () => ({ ok: true, models: ["deepseek-chat", "deepseek-reasoner"] }),
@@ -398,6 +463,7 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
         providerState = {
           ...providerState,
           connections: providerState.connections?.filter((connection) => connection.id !== id),
+          fallbackConnectionIds: providerState.fallbackConnectionIds?.filter((connectionId) => connectionId !== id),
           current: providerState.current.profileId === id
             ? {
                 ...providerState.current,
@@ -414,6 +480,10 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
               }
             : providerState.current,
         };
+        return providerState;
+      },
+      saveProviderFailover: async (connectionIds: string[]) => {
+        providerState = { ...providerState, fallbackConnectionIds: [...connectionIds] };
         return providerState;
       },
       unpinProjectProfile: async () => {
@@ -486,11 +556,18 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
       }
       const selector = scenario === "add"
         ? "[data-preview-action='add-organization']"
+        : scenario === "personal"
+          ? "[data-personal-connection-id='personal']"
+          : scenario === "ark"
+            ? "[data-personal-connection-id='ark-plan']"
         : scenario === "alternate" || scenario === "switch"
           ? "[data-connection-id='acme-client']"
           : "";
       if (selector) document.querySelector<HTMLButtonElement>(selector)?.click();
-    }, 120);
+    // ProviderSettings loads through the same asynchronous RPC-shaped boundary as production. Give the
+    // preview fixture time to mount its connection rows before applying a screenshot scenario; a single
+    // 120 ms attempt was flaky in isolated/headless visual QA and silently captured the active org instead.
+    }, 600);
     return () => {
       window.clearTimeout(timer);
       if (followup !== undefined) window.clearTimeout(followup);

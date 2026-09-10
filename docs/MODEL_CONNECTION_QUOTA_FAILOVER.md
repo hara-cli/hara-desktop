@@ -100,13 +100,16 @@ connection label without restoring the secret.
 
 Automatic switching is disabled by default. A user may create an ordered failover group of compatible saved
 connections, including multiple accounts at the same provider. Creating the group requires consent that the same
-prompt/data may be sent to another provider or region.
+prompt/data may be sent to another provider or region. The current implementation authorizes at most four exact
+Personal connections and re-resolves each connection's own provider, endpoint, key, current model, capability
+record, and circuit immediately before a turn; it never derives a provider from a model name.
 
 Selection gates:
 
 1. connection is enabled, authorized, and not circuit-open;
 2. target supports required image/video/text modality, tool protocol, context size, and reasoning controls;
-3. target satisfies Personal/enterprise realm, data-region, retention, and administrator policy;
+3. target stays inside the Personal realm; its provider/region is visible when the user explicitly authorizes it;
+   company Spaces do not consume this Personal list and require a future Control-authorized equivalent;
 4. model aliases resolve to a deliberately selected compatible model, never an unrelated audio/image-generation model;
 5. allowance is either fresh and authoritatively available, or unknown with explicit user permission to attempt
    the route; unknown is never rewritten as a numeric balance.
@@ -129,8 +132,10 @@ Rate limiting, transport failure, and 5xx responses are health/failover signals,
 used up. They may use a separately enabled availability failover policy after bounded retries, but the UI must not
 label that reason “额度已用尽”.
 
-Authentication failures do not auto-switch: they may indicate a revoked/compromised or incorrectly routed
-credential and require explicit attention. Provider safety/policy refusals never trigger provider shopping.
+Authentication or exhausted-allowance failures may advance only to another explicitly authorized underlying
+account. Another label or model backed by the same endpoint and credential is the same account and is skipped;
+the rejected route remains visibly unhealthy so it can be repaired. Provider safety/policy refusals never trigger
+provider shopping.
 
 Every switch records source connection, destination connection, model mapping, classified reason, attempt count,
 and timestamps without prompt bodies or credentials. The conversation remains one Hara task, but each turn exposes
@@ -149,6 +154,10 @@ explicit boundary and must not overwrite the upstream subscription meter. When e
 the recorded reason identifies which authority made the decision.
 
 ## 7. Implementation order
+
+Items 2, 6, 7, the bounded ordered-connection part of 8, and replay/side-effect boundaries in 9 are implemented.
+Provider-native allowance adapters, tombstoned aggregate history, compatibility preview, and Control-authored
+company failover remain separate follow-up work; their absence is shown as unavailable and never estimated.
 
 1. immutable connection IDs, tombstoned history, and separate transport/accounting records;
 2. accounting-authority metadata in the CLI/Desktop connection protocol;
