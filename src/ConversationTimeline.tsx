@@ -12,11 +12,12 @@ import {
   type ExecutionViewMode,
 } from "./execution-view";
 import type { Key } from "./i18n";
-import { Md } from "./markdown";
+import { AssistantMessage } from "./AssistantMessage";
 import { userVisibleTaskText } from "./user-visible-text";
 import { authenticationPausePresentation } from "./auth-recovery";
 import { IconCog } from "./icons";
 import { knownManualActionHintKeys } from "./task-manual-action";
+import { copyTextToClipboard } from "./clipboard";
 
 type TaskDependencyKind = NonNullable<
   NonNullable<TaskLifecycleEvent["checkpoint"]["completion"]>["dependency"]
@@ -69,32 +70,6 @@ interface ConversationTimelineProps {
   onRewind: (itemIndex: number) => void;
   onApproval: (approvalId: string, verdict: ApprovalVerdict) => void;
   onContinueTask?: (instruction?: string) => void;
-}
-
-async function copyTaskText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Fall through to the bounded, temporary selection path for older WebViews.
-  }
-  let input: HTMLTextAreaElement | undefined;
-  try {
-    input = document.createElement("textarea");
-    input.value = text;
-    input.readOnly = true;
-    input.style.position = "fixed";
-    input.style.opacity = "0";
-    document.body.appendChild(input);
-    input.select();
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    input?.remove();
-  }
 }
 
 function TaskProgressTelemetry({
@@ -207,7 +182,7 @@ export function ConversationTimeline({
     : "";
   const segments = useMemo(() => groupConversationItems(items), [items]);
   const copyAction = (kind: "command" | "verify" | "resume", value: string): void => {
-    void copyTaskText(value).then((ok) => {
+    void copyTextToClipboard(value).then((ok) => {
       if (!ok) return;
       setCopiedAction(kind);
       window.setTimeout(() => setCopiedAction((current) => current === kind ? null : current), 1_600);
@@ -438,9 +413,7 @@ export function ConversationTimeline({
               );
             case "text":
               return (
-                <div key={index} className="msg assistant">
-                  <Md text={item.text} />
-                </div>
+                <AssistantMessage key={index} text={item.text} t={t} />
               );
             case "tool":
             case "diff":

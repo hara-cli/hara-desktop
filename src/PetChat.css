@@ -202,6 +202,7 @@ html.pet-chat-mode #root {
 }
 
 .pet-chat-message {
+  position: relative;
   max-width: 88%;
   padding: 7px 9px;
   color: #dcd6ce;
@@ -222,7 +223,22 @@ html.pet-chat-mode #root {
 
 .pet-chat-message-assistant {
   align-self: flex-start;
+  padding-right: 39px;
   border-bottom-left-radius: 4px;
+}
+
+.pet-chat-copy {
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  opacity: .48;
+  transition: opacity .15s ease;
+}
+
+.pet-chat-message:hover .pet-chat-copy,
+.pet-chat-copy:focus-visible,
+.pet-chat-copy[data-state]:not([data-state="idle"]) {
+  opacity: 1;
 }
 
 .pet-chat-message-notice {

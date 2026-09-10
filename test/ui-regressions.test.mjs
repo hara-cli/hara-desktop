@@ -234,7 +234,7 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(timeline, /checkpoint\.blockReason/, "the persisted blocker is rendered instead of inferred from chat prose");
   assert.match(timeline, /checkpoint\.nextStep/, "paused and blocked work exposes its resumable next action");
   assert.match(timeline, /className="task-manual-action"/, "external checkpoints render a structured action card");
-  assert.match(timeline, /copyTaskText\(/, "external commands can be copied without being executed");
+  assert.match(timeline, /copyTextToClipboard\(/, "external commands can be copied without being executed");
   assert.doesNotMatch(timeline, /(?:invoke|Command|exec|spawn)\([^\n]*manualCommand/, "the renderer never executes a supplied manual command");
   assert.match(timeline, /manualAction\?\.verifyCommand/, "external checkpoints can expose a separate non-destructive verification command");
   assert.match(timeline, /knownManualActionHintKeys/, "known external failure modes receive focused recovery hints");

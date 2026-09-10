@@ -534,6 +534,7 @@
 
 .external-session-empty { margin: auto; color: var(--external-muted); font-size: 12px; }
 .external-session-message {
+  position: relative;
   align-self: flex-start;
   width: min(88%, 720px);
   padding: 11px 13px;
@@ -543,6 +544,24 @@
   background: var(--external-raised);
   content-visibility: auto;
   contain-intrinsic-size: auto 76px;
+}
+
+.external-session-message.is-assistant {
+  padding-right: 42px;
+}
+
+.external-session-copy {
+  position: absolute;
+  right: 7px;
+  bottom: 6px;
+  opacity: .48;
+  transition: opacity .15s ease;
+}
+
+.external-session-message:hover .external-session-copy,
+.external-session-copy:focus-visible,
+.external-session-copy[data-state]:not([data-state="idle"]) {
+  opacity: 1;
 }
 
 .external-session-message.is-user {

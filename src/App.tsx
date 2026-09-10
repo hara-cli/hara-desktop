@@ -240,7 +240,7 @@ import {
   IconTrash,
   IconUsers,
 } from "./icons";
-import { Md } from "./markdown";
+import { AssistantMessage } from "./AssistantMessage";
 import HaraLogo from "./mark";
 import type {
   PetChatApproval,
@@ -8667,6 +8667,9 @@ export default function App() {
         you: t("externalSessionsYou"),
         assistant: t("externalSessionsAssistant"),
         system: t("externalSessionsSystem"),
+        copyResponse: t("copyResponse"),
+        copied: t("taskCopied"),
+        copyFailed: t("copyFailed"),
         runtimeTitle: t("externalSessionsRuntimeTitle"),
         runtimeBody: t("externalSessionsRuntimeBody"),
         runtimeCodex: t("externalSessionsRuntimeCodex"),
@@ -10118,9 +10121,7 @@ export default function App() {
                       {m.text}
                     </div>
                   ) : (
-                    <div key={i} className="msg assistant">
-                      <Md text={m.text} />
-                    </div>
+                    <AssistantMessage key={i} text={m.text} t={t} />
                   ),
                 )}
               </div>

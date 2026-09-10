@@ -16,6 +16,7 @@ import type {
 } from "./client";
 import { IconBack, IconCommandLine, IconRefresh } from "./icons";
 import { isImeCompositionKey } from "./ime";
+import { MessageCopyButton } from "./MessageCopyButton";
 import "./ExternalSessionCenter.css";
 
 const ExtensionDock = lazy(() => import("./ExtensionDock"));
@@ -102,6 +103,9 @@ export interface ExternalSessionCenterCopy {
   you: string;
   assistant: string;
   system: string;
+  copyResponse: string;
+  copied: string;
+  copyFailed: string;
   runtimeTitle: string;
   runtimeBody: string;
   runtimeCodex: string;
@@ -530,11 +534,29 @@ export default function ExternalSessionCenter({
                     <article className={`external-session-message is-${message.role}`} key={message.id}>
                       <span>{roleLabel(message.role, copy)}</span>
                       <p>{message.text}</p>
+                      {message.role === "assistant" ? (
+                        <MessageCopyButton
+                          className="external-session-copy"
+                          text={message.text}
+                          copyLabel={copy.copyResponse}
+                          copiedLabel={copy.copied}
+                          failedLabel={copy.copyFailed}
+                        />
+                      ) : null}
                     </article>
                   ))}
                   {activity.map((item) => item.kind === "text" || item.kind === "user" ? (
                     <article className={`external-session-message is-${item.kind === "user" ? "user" : "assistant"}${item.kind === "text" ? " is-live" : ""}`} key={item.id}>
                       <span>{item.kind === "user" ? copy.you : copy.assistant}</span><p>{item.text}</p>
+                      {item.kind === "text" ? (
+                        <MessageCopyButton
+                          className="external-session-copy"
+                          text={item.text}
+                          copyLabel={copy.copyResponse}
+                          copiedLabel={copy.copied}
+                          failedLabel={copy.copyFailed}
+                        />
+                      ) : null}
                     </article>
                   ) : item.kind === "tool" ? (
                     <details className="external-session-activity is-tool" key={item.id}>

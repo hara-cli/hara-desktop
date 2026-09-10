@@ -1866,6 +1866,29 @@ button.deny {
   background: var(--bg2);
   border: 1px solid var(--border);
 }
+.assistant-message {
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 82%;
+  min-width: 0;
+}
+.assistant-message > .msg {
+  max-width: 100%;
+}
+.assistant-message-actions {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 3px 0;
+  opacity: 0.52;
+  transition: opacity 0.15s ease;
+}
+.assistant-message:hover .assistant-message-actions,
+.assistant-message:focus-within .assistant-message-actions {
+  opacity: 1;
+}
 .tool {
   font-size: 12px;
   color: #c9a36a;
@@ -2569,12 +2592,35 @@ select {
   font-size: 0.92em;
 }
 .md pre {
+  position: relative;
   background: #0c0c0e;
   border: 1px solid var(--bg3);
   border-radius: 8px;
   padding: 10px 12px;
   overflow-x: auto;
   margin: 6px 0 10px;
+}
+.md pre.has-code-copy {
+  padding-top: 36px;
+}
+.md-code-copy {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  min-height: 23px;
+  padding: 2px 7px;
+  border: 1px solid #36363b;
+  border-radius: 6px;
+  color: #aaa6a0;
+  background: #17171a;
+  font: 500 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+.md-code-copy:hover,
+.md-code-copy:focus-visible {
+  color: #f5f2eb;
+  border-color: #555159;
+  background: #222226;
 }
 .md pre code {
   background: none;
@@ -2635,6 +2681,16 @@ select {
 }
 .msg.user .rew:hover {
   color: var(--accent);
+}
+
+.chat.ide .assistant-message {
+  max-width: 100%;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .assistant-message-actions {
+    opacity: 1;
+  }
 }
 
 /* ── context watermark meter + compact (codex tokenUsage) ── */

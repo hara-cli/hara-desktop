@@ -8,6 +8,8 @@ import type {
 } from "./pets";
 import { isImeCompositionKey } from "./ime";
 import { IconArrowUpRight, IconClose } from "./icons";
+import { makeT } from "./i18n";
+import { MessageCopyButton } from "./MessageCopyButton";
 import "./PetChat.css";
 
 const EMPTY_STATE: PetChatState = {
@@ -55,6 +57,7 @@ export default function PetChat() {
   const stateTargetInitialized = useRef(false);
   locale.current = state.locale;
   const zh = state.locale === "zh";
+  const t = useMemo(() => makeT(state.locale), [state.locale]);
   const status = useMemo(() => stateCopy(state), [state]);
 
   useEffect(() => {
@@ -228,6 +231,15 @@ export default function PetChat() {
         ) : state.messages.map((message, index) => (
           <div className={`pet-chat-message pet-chat-message-${message.role}`} key={`${message.role}-${index}`}>
             {message.text}
+            {message.role === "assistant" ? (
+              <MessageCopyButton
+                className="pet-chat-copy"
+                text={message.text}
+                copyLabel={t("copyResponse")}
+                copiedLabel={t("taskCopied")}
+                failedLabel={t("copyFailed")}
+              />
+            ) : null}
           </div>
         ))}
         <div ref={bottom} />
