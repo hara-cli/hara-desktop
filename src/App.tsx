@@ -52,7 +52,11 @@ import {
   type SessionAttachmentIntent,
   type SessionSubmitMode,
   type DeskConnection,
+  type DeskCompleteTaskInput,
+  type DeskCreateTaskInput,
+  type DeskTaskMutationResult,
   type DeskTaskState,
+  type DeskTransitionTaskInput,
   type OrganizationConnection,
   type OrganizationConnectionsState,
   type AgentCatalog,
@@ -241,6 +245,8 @@ import {
   IconUsers,
 } from "./icons";
 import { AssistantMessage } from "./AssistantMessage";
+import { EngineRestartBlocker } from "./EngineRestartBlocker";
+import { collectEngineBlockingTasks } from "./engine-restart-blocker";
 import HaraLogo from "./mark";
 import type {
   PetChatApproval,
@@ -1100,9 +1106,17 @@ export default function App() {
   const [sessionCreating, setSessionCreating] = useState(false);
   const sessionCreatingRef = useRef(false);
   const [engineRestarting, setEngineRestarting] = useState(false);
+  const [engineRestartInterlockOpen, setEngineRestartInterlockOpen] = useState(false);
+  const [engineStoppingSessionId, setEngineStoppingSessionId] = useState<string | null>(null);
+  useEffect(() => {
+    if (engineStoppingSessionId && !busy[engineStoppingSessionId]) {
+      setEngineStoppingSessionId(null);
+    }
+  }, [busy, engineStoppingSessionId]);
   // settings place: context column = group anchors, stage = the selected group's forms
   const [setSec, setSetSec] = useState<SettingsSection>("providers");
   const [visionSettingsFocusRequest, setVisionSettingsFocusRequest] = useState(0);
+  const [organizationEnrollmentFocusRequest, setOrganizationEnrollmentFocusRequest] = useState(0);
   // Context-owned extension screen. A panel/file never changes owner when the user changes place.
   const [projPanels, setProjPanels] = useState<Record<string, ProjectPanel[]>>({});
   const [extensionDockState, setExtensionDockState] = useState<ExtensionDockState>(emptyExtensionDockState);
@@ -1280,6 +1294,8 @@ export default function App() {
       switchOrganization: translate("groupsSwitchOrganization"),
       switchingOrganization: translate("groupsSwitchingOrganization"),
       readOnly: translate("groupsReadOnly"),
+      managed: translate("groupsManaged"),
+      joinOrganization: translate("groupsJoinOrganization"),
       readyTitle: translate("groupsReadyTitle"),
       readyHint: translate("groupsReadyHint"),
       readBoard: translate("groupsReadBoard"),
@@ -1307,12 +1323,60 @@ export default function App() {
       risk: translate("groupsRisk"),
       stateOpen: translate("groupsStateOpen"),
       stateClaimed: translate("groupsStateClaimed"),
+      stateBlocked: translate("groupsStateBlocked"),
+      stateWaitingUser: translate("groupsStateWaitingUser"),
+      stateWaitingRelease: translate("groupsStateWaitingRelease"),
+      stateWaitingVerification: translate("groupsStateWaitingVerification"),
+      stateReview: translate("groupsStateReview"),
       stateDone: translate("groupsStateDone"),
       stateCancelled: translate("groupsStateCancelled"),
       kindFeedback: translate("groupsKindFeedback"),
       kindDispatch: translate("groupsKindDispatch"),
       riskLow: translate("groupsRiskLow"),
       riskHigh: translate("groupsRiskHigh"),
+      createWork: translate("groupsCreateWork"),
+      createFeedback: translate("groupsCreateFeedback"),
+      createTask: translate("groupsCreateTask"),
+      createTitle: translate("groupsCreateTitle"),
+      createTitlePlaceholder: translate("groupsCreateTitlePlaceholder"),
+      createBody: translate("groupsCreateBody"),
+      createBodyPlaceholder: translate("groupsCreateBodyPlaceholder"),
+      priority: translate("groupsPriority"),
+      severity: translate("groupsSeverity"),
+      priorityUrgent: translate("groupsPriorityUrgent"),
+      priorityHigh: translate("groupsPriorityHigh"),
+      priorityNormal: translate("groupsPriorityNormal"),
+      priorityLow: translate("groupsPriorityLow"),
+      severityCritical: translate("groupsSeverityCritical"),
+      severityMajor: translate("groupsSeverityMajor"),
+      severityMinor: translate("groupsSeverityMinor"),
+      severityCosmetic: translate("groupsSeverityCosmetic"),
+      taskActions: translate("groupsTaskActions"),
+      claimTask: translate("groupsClaimTask"),
+      reclaimTask: translate("groupsReclaimTask"),
+      claimExpiredHint: translate("groupsClaimExpiredHint"),
+      riskApprovalRequired: translate("groupsRiskApprovalRequired"),
+      acknowledgeRisk: translate("groupsAcknowledgeRisk"),
+      acknowledgeRiskConfirm: translate("groupsAcknowledgeRiskConfirm"),
+      moveTo: translate("groupsMoveTo"),
+      actionNote: translate("groupsActionNote"),
+      actionNotePlaceholder: translate("groupsActionNotePlaceholder"),
+      releaseVersion: translate("groupsReleaseVersion"),
+      verificationSteps: translate("groupsVerificationSteps"),
+      applyTransition: translate("groupsApplyTransition"),
+      cancelTask: translate("groupsCancelTask"),
+      cancelConfirm: translate("groupsCancelConfirm"),
+      addComment: translate("groupsAddComment"),
+      commentPlaceholder: translate("groupsCommentPlaceholder"),
+      comments: translate("groupsComments"),
+      noComments: translate("groupsNoComments"),
+      saving: translate("groupsSaving"),
+      manageUnavailable: translate("groupsManageUnavailable"),
+      taskSessionOwned: translate("groupsTaskSessionOwned"),
+      occurrence: translate("groupsOccurrence"),
+      sources: translate("groupsSources"),
+      diffs: translate("groupsDiffs"),
+      sla: translate("groupsSla"),
     };
   }, [locale]);
   const [groupsDirectory, setGroupsDirectory] = useState<GroupsDirectoryState>({
@@ -1358,7 +1422,11 @@ export default function App() {
     void invoke("set_badge", { count: n > 0 ? n : null }).catch(() => {});
   }, [unread]);
   const sessionsRef = useRef<SessionInfo[]>([]);
-  const quarantineCompanySession = useCallback((sessionId: string, reason: string) => {
+  const quarantineCompanySession = useCallback((
+    sessionId: string,
+    reason: string,
+    rejectedProfileId?: string,
+  ) => {
     const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
     const directory = spaceDirectoryRef.current;
     if (!session || !directory) return;
@@ -1382,7 +1450,8 @@ export default function App() {
           : connection
       )),
     } : current);
-    setProviderRoutes((current) => current && current.current.profileId === session.profileId
+    const rejectedRouteId = rejectedProfileId ?? session.profileId;
+    setProviderRoutes((current) => current && current.current.profileId === rejectedRouteId
       ? {
           ...current,
           current: {
@@ -1985,8 +2054,109 @@ export default function App() {
     }
   }, [locale]);
 
-  // Entering Groups performs only two local, redacted inventory reads. Remote Desk data is fetched
-  // exclusively by the user's "Read board" or task-detail action; there is no polling or timer.
+  const groupsManagerUnavailable = useCallback((): never => {
+    throw new Error(
+      locale === "zh"
+        ? "当前 Hara 引擎尚不支持单位任务管理，请先更新引擎。"
+        : "This Hara engine does not support organization work management yet. Update the engine first.",
+    );
+  }, [locale]);
+
+  const requireGroupsMutation = useCallback(<T,>(result: T | null): T => {
+    if (result === null) return groupsManagerUnavailable();
+    return result;
+  }, [groupsManagerUnavailable]);
+
+  const createGroupsTask = useCallback(async (
+    profileId: string,
+    input: DeskCreateTaskInput,
+  ): Promise<DeskTaskMutationResult> => {
+    const client = clientRef.current;
+    if (!client) return groupsManagerUnavailable();
+    return requireGroupsMutation(await client.createDeskTask(profileId, input));
+  }, [groupsManagerUnavailable, requireGroupsMutation]);
+
+  const claimGroupsTask = useCallback(async (
+    profileId: string,
+    taskId: string,
+  ): Promise<DeskTaskMutationResult> => {
+    const client = clientRef.current;
+    if (!client) return groupsManagerUnavailable();
+    return requireGroupsMutation(await client.claimDeskTask(profileId, taskId));
+  }, [groupsManagerUnavailable, requireGroupsMutation]);
+
+  const ackGroupsTask = useCallback(async (
+    profileId: string,
+    taskId: string,
+  ): Promise<DeskTaskMutationResult> => {
+    const client = clientRef.current;
+    if (!client) return groupsManagerUnavailable();
+    return requireGroupsMutation(await client.ackDeskTask(profileId, taskId));
+  }, [groupsManagerUnavailable, requireGroupsMutation]);
+
+  const transitionGroupsTask = useCallback(async (
+    profileId: string,
+    taskId: string,
+    input: DeskTransitionTaskInput,
+  ): Promise<DeskTaskMutationResult> => {
+    const client = clientRef.current;
+    if (!client) return groupsManagerUnavailable();
+    return requireGroupsMutation(await client.transitionDeskTask(profileId, taskId, input));
+  }, [groupsManagerUnavailable, requireGroupsMutation]);
+
+  const completeGroupsTask = useCallback(async (
+    profileId: string,
+    taskId: string,
+    input: DeskCompleteTaskInput,
+  ): Promise<DeskTaskMutationResult> => {
+    const client = clientRef.current;
+    if (!client) return groupsManagerUnavailable();
+    return requireGroupsMutation(await client.completeDeskTask(profileId, taskId, input));
+  }, [groupsManagerUnavailable, requireGroupsMutation]);
+
+  const cancelGroupsTask = useCallback(async (
+    profileId: string,
+    taskId: string,
+    detail: string,
+    claimFence?: number,
+  ): Promise<DeskTaskMutationResult> => {
+    const client = clientRef.current;
+    if (!client) return groupsManagerUnavailable();
+    return requireGroupsMutation(await client.cancelDeskTask(profileId, taskId, detail, claimFence));
+  }, [groupsManagerUnavailable, requireGroupsMutation]);
+
+  const commentGroupsTask = useCallback(async (
+    profileId: string,
+    taskId: string,
+    body: string,
+  ): Promise<void> => {
+    const client = clientRef.current;
+    if (!client) return groupsManagerUnavailable();
+    requireGroupsMutation(await client.commentDeskTask(profileId, taskId, body));
+  }, [groupsManagerUnavailable, requireGroupsMutation]);
+
+  const openOrganizationEnrollment = useCallback(() => {
+    setZone("settings");
+    setSetSec("providers");
+    setOrganizationEnrollmentFocusRequest((current) => current + 1);
+  }, []);
+
+  const groupsCanManage = Boolean(
+    phase === "ready"
+    && clientRef.current
+    && [
+      "desk.task.create",
+      "desk.task.claim",
+      "desk.task.ack",
+      "desk.task.transition",
+      "desk.task.complete",
+      "desk.task.cancel",
+      "desk.task.comment",
+    ].every((method) => clientRef.current?.supports(method)),
+  );
+
+  // Entering Groups first performs two local, redacted inventory reads. Once the selected configured
+  // organization is known, Groups performs one bounded board read; there is no polling or timer.
   useEffect(() => {
     if (phase !== "ready" || zone !== "groups") return;
     void refreshGroupsDirectory();
@@ -3992,10 +4162,15 @@ export default function App() {
       void refreshProviderRoutes(sourceSession.cwd).catch(() => {});
       void refreshGroupsDirectory();
     } catch (error) {
+      const recovery = companyAccessRecoveryMessage(error, locale);
+      if (recovery) {
+        quarantineCompanySession(sourceSessionId, recovery, connection.id);
+        setSetupRequired(true);
+      }
       const detail = String(error instanceof Error ? error.message : error);
-      setErr(locale === "zh"
+      setErr(recovery ?? (locale === "zh"
         ? `无法复制当前对话到企业连接：${detail}`
-        : `Could not copy this conversation to the organization connection: ${detail}`);
+        : `Could not copy this conversation to the organization connection: ${detail}`));
     }
   };
 
@@ -4558,7 +4733,17 @@ export default function App() {
   }, [auto, openReplay]);
 
   openPetSessionRef.current = async (sessionId: string) => {
-    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+    let session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+    const directory = spaceDirectoryRef.current;
+    if (session && directory) {
+      const targetSpaceId = sessionSpaceId(session, directory);
+      const targetSpace = directory.spaces.find((space) => space.id === targetSpaceId);
+      if (targetSpace && targetSpaceId !== directory.activeId) {
+        const switched = await switchSpaceRef.current(targetSpaceId);
+        if (!switched) return;
+        session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+      }
+    }
     if (session) {
       const place = sessionPlace(session);
       if (place === "auto") {
@@ -5572,15 +5757,17 @@ export default function App() {
     await answer(request.sessionId, request.approvalId, request.allow ? "allow" : "deny");
   };
 
-  const stopTurn = async (sessionId: string) => {
+  const stopTurn = async (sessionId: string): Promise<boolean> => {
     const c = clientRef.current;
-    if (!c) return;
+    if (!c) return false;
     interruptedSessionsRef.current.add(sessionId);
     try {
       await c.interrupt(sessionId);
+      return true;
     } catch (error) {
       interruptedSessionsRef.current.delete(sessionId);
       setErr(String(error));
+      return false;
     }
   };
 
@@ -5874,8 +6061,9 @@ export default function App() {
 
   const restartBundledEngine = async () => {
     if (engineRestarting || !server) return;
-    if (Object.values(busy).some(Boolean)) {
-      setErr(t("engineRestartBusy"));
+    if (Object.values(busyRef.current).some(Boolean)) {
+      setErr("");
+      setEngineRestartInterlockOpen(true);
       return;
     }
     const client = clientRef.current;
@@ -5885,6 +6073,7 @@ export default function App() {
     }
 
     setErr("");
+    setEngineRestartInterlockOpen(false);
     setEngineRestarting(true);
     plannedUpdateRestartRef.current = true;
     try {
@@ -5908,12 +6097,26 @@ export default function App() {
     }
   };
 
+  const viewEngineBlockingTask = async (sessionId: string) => {
+    setEngineRestartInterlockOpen(false);
+    setErr("");
+    await openPetSessionRef.current(sessionId);
+  };
+
+  const stopEngineBlockingTask = async (sessionId: string) => {
+    if (engineStoppingSessionId) return;
+    setEngineStoppingSessionId(sessionId);
+    const submitted = await stopTurn(sessionId);
+    if (!submitted) {
+      setEngineStoppingSessionId(null);
+      setEngineRestartInterlockOpen(false);
+    }
+  };
+
   ensurePresentationWorkspaceRef.current = async () => {
     if (supportsNativePresentationWorkspace(clientRef.current)) return true;
     if (Object.values(busyRef.current).some(Boolean)) {
-      setErr(locale === "zh"
-        ? "当前任务仍在运行，不能安全更换 Hara 引擎。任务结束后再次新建演示文稿，Desktop 会自动启用安装包内置的新引擎。"
-        : "A task is still running, so Hara cannot safely replace the engine. Try creating the presentation again after it finishes; Desktop will enable the bundled engine automatically.");
+      await restartBundledEngine();
       return false;
     }
     setErr(locale === "zh"
@@ -6552,6 +6755,23 @@ export default function App() {
   const activeSpaceId = spaceDirectory?.activeId
     ?? (activeSession ? sessionSpaceId(activeSession, null) : "personal");
   const activeSpace = spaceDirectory?.spaces.find((space) => space.id === activeSpaceId);
+  const engineBlockingTasks = collectEngineBlockingTasks(
+    busy,
+    sessions,
+    taskStates,
+    spaceDirectory,
+    {
+      personalSpace: t("engineTaskPersonalSpace"),
+      conversation: t("engineTaskConversation"),
+      project: t("engineTaskProject"),
+      automation: t("engineTaskAutomation"),
+      unknownTask: t("engineTaskUnknown"),
+      running: t("taskRunning"),
+      waiting: t("taskWaiting"),
+      stopping: t("engineTaskStopping"),
+    },
+    active,
+  );
   const companyPersonalConnectionsAllowed = activeSpaceId !== "personal"
     && activeSpace?.personalModelConnections === "allowed";
   const companyPersonalConnectionsBlocked = activeSpaceId !== "personal"
@@ -8736,7 +8956,30 @@ export default function App() {
           <span>{locale === "zh" ? "正在加载对应公司的会话、Agent 与模型权限" : "Loading this company's conversations, Agents, and model permissions"}</span>
         </div>
       ) : null}
-      {err && (
+      {engineRestartInterlockOpen && (
+        <EngineRestartBlocker
+          tasks={engineBlockingTasks}
+          stoppingSessionId={engineStoppingSessionId}
+          copy={{
+            eyebrow: t("engineRestartTaskEyebrow"),
+            blockedOne: t("engineRestartBlockedOne"),
+            blockedMany: t("engineRestartBlockedMany"),
+            blockedHint: t("engineRestartBlockedHint"),
+            readyTitle: t("engineRestartTasksFinishedTitle"),
+            readyHint: t("engineRestartTasksFinishedHint"),
+            viewTask: t("engineRestartViewTask"),
+            stopTask: t("engineRestartStopTask"),
+            stoppingTask: t("engineTaskStopping"),
+            restart: t("engineRestartNow"),
+            dismiss: t("engineRestartDismiss"),
+          }}
+          onViewTask={(sessionId) => void viewEngineBlockingTask(sessionId)}
+          onStopTask={(sessionId) => void stopEngineBlockingTask(sessionId)}
+          onRestart={() => void restartBundledEngine()}
+          onDismiss={() => setEngineRestartInterlockOpen(false)}
+        />
+      )}
+      {err && !engineRestartInterlockOpen && (
         <div className="ready-error" role="alert">
           <span>{err}</span>
           <button
@@ -8748,7 +8991,7 @@ export default function App() {
           </button>
         </div>
       )}
-      {!err && server?.version && engineVersionNeedsAttention && (
+      {!err && !engineRestartInterlockOpen && server?.version && engineVersionNeedsAttention && (
         <section className="engine-version-alert" role="alert" aria-live="polite">
           <div>
             <strong>{t("engineMismatchBannerTitle")}</strong>
@@ -8758,11 +9001,15 @@ export default function App() {
           </div>
           <button
             type="button"
-            disabled={engineRestarting || Object.values(busy).some(Boolean)}
-            title={Object.values(busy).some(Boolean) ? t("engineRestartBusy") : undefined}
+            disabled={engineRestarting}
+            title={engineBlockingTasks.length > 0 ? t("engineRestartReviewTasks") : undefined}
             onClick={() => void restartBundledEngine()}
           >
-            {engineRestarting ? t("engineRestarting") : t("engineRestartNow")}
+            {engineRestarting
+              ? t("engineRestarting")
+              : engineBlockingTasks.length > 0
+                ? t("engineRestartReviewTasks")
+                : t("engineRestartNow")}
           </button>
         </section>
       )}
@@ -9339,6 +9586,8 @@ export default function App() {
               setZone("settings");
               setSetSec("providers");
             }}
+            onJoinOrganization={openOrganizationEnrollment}
+            canManage={groupsCanManage}
           />
         </Suspense>
       ) : null}
@@ -9422,12 +9671,19 @@ export default function App() {
                     client={clientRef.current}
                     cwd={activeSession?.cwd ?? server?.cwd}
                     focusVisionRequest={visionSettingsFocusRequest}
+                    focusOrganizationEnrollmentRequest={organizationEnrollmentFocusRequest}
                     scope={activeSession ? "workspace" : "global"}
                     locale={locale}
                     engineNeedsRestart={engineVersionNeedsAttention}
                     engineRestarting={engineRestarting}
                     onRestartEngine={() => void restartBundledEngine()}
                     runRouteMutation={runProviderRouteMutation}
+                    onOrganizationActivated={(profileId) => {
+                      if (!setZone("groups")) return;
+                      void refreshGroupsDirectory()
+                        .then(() => dispatchGroups({ type: "selectProfile", profileId }))
+                        .catch((reason) => setErr(String(reason instanceof Error ? reason.message : reason).slice(0, 240)));
+                    }}
                     onSaved={(next: ProviderSettingsState) => {
                       setProviderRoutes(next);
                       setSetupRequired(!next.current.authenticated);
@@ -9504,10 +9760,14 @@ export default function App() {
                         <button
                           type="button"
                           className="compact"
-                          disabled={engineRestarting || Object.values(busy).some(Boolean)}
+                          disabled={engineRestarting}
                           onClick={() => void restartBundledEngine()}
                         >
-                          {engineRestarting ? t("engineRestarting") : t("engineRestartNow")}
+                          {engineRestarting
+                            ? t("engineRestarting")
+                            : engineBlockingTasks.length > 0
+                              ? t("engineRestartReviewTasks")
+                              : t("engineRestartNow")}
                         </button>
                       }
                     >
@@ -10072,9 +10332,18 @@ export default function App() {
               setZone("settings");
               setSetSec("providers");
             }}
+            onJoinOrganization={openOrganizationEnrollment}
+            canManage={groupsCanManage}
             onReadBoard={(profileId, taskState) => void readGroupsBoard(profileId, taskState)}
             onOpenTask={(profileId, taskId) => void openGroupsTask(profileId, taskId)}
             onCloseTask={() => dispatchGroups({ type: "closeTask" })}
+            onCreateTask={createGroupsTask}
+            onClaimTask={claimGroupsTask}
+            onAckTask={ackGroupsTask}
+            onTransitionTask={transitionGroupsTask}
+            onCompleteTask={completeGroupsTask}
+            onCancelTask={cancelGroupsTask}
+            onCommentTask={commentGroupsTask}
             onManageModules={() => {
               setZone("settings");
               setSetSec("modules");

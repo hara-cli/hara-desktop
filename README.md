@@ -89,6 +89,10 @@ places still preserve separate session ownership and density. Invariants:
   ambient-grade (an automation ran and left a trace) → count chip, NEVER a dock badge.
 - Automated sessions never mix into manual session lists, and never open as live conversations —
   replay is read-only; `session.fork` is the only continuation path.
+- Groups is the organization workbench. Personal use requires no organization; a user may enroll
+  multiple Control profiles, while every Desk board, ticket, task, Agent, Session, event, comment,
+  and Diff remains pinned to one organization realm. Desktop sends intents through Serve and never
+  receives the organization credential.
 - Conversation presentation defaults to **Concise**: task progress, blockers, approvals, notices, and
   results stay visible while tool/diff evidence and token counts stay out of the chat stream. Standard
   adds collapsed execution logs; Debug expands those local logs and token usage. Provider reasoning is

@@ -220,7 +220,7 @@ test("Groups and Office are default-visible but remain local navigation preferen
   assert.equal(initialAppPlace("office", preferences), "office");
 });
 
-test("Groups is a native, explicit-read work surface with no renderer-owned transport", () => {
+test("Groups is a native organization work surface with no renderer-owned transport", () => {
   const groups = readFileSync(`${root}/src/Groups.tsx`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   for (const forbidden of [

@@ -58,8 +58,11 @@ The first implementation intentionally supports only boundaries already present 
 - **Browser**: an agent may offer an already-running project development server as a Web Preview tab.
   CLI and Desktop independently require credential-free loopback HTTP with an explicit port. Existing
   remote or authenticated links continue to open in the system browser; Hara does not iframe them.
-- **Organization Desk**: the existing native, profile-pinned read surface remains authoritative.
-  Moving its task dossier into this dock is a later native refactor, not a web embed.
+- **Organization Desk**: the native, profile-pinned Groups workbench is authoritative. Current
+  Desktop/Serve supports explicit board reads plus task/ticket creation, atomic claim, owner risk
+  acknowledgement, state transitions, release/verification evidence, cancellation, and comments.
+  Its task dossier remains a native surface rather than a web embed; a later dock refactor must
+  preserve the same organization and task identity.
 
 Only a panel origin is shown in UI chrome. Paths, fragments, query parameters, URL credentials, raw
 commands, and Hara/organization tokens are never used as a title or persisted view preference.
@@ -134,6 +137,37 @@ type TenantServiceBinding = {
 `credentialRef` exists only in Control persistence and never belongs to an enrollment or renderer
 contract.
 
+### Current operating model and identity
+
+The shipped Desk server is an organization deployment: one deployment/database represents one
+organization realm. It can be customer-hosted now. A shared Hara-hosted multi-tenant service remains
+a target and must not be claimed until every row, unique constraint, background job, audit stream,
+backup, and restore path is tenant-scoped and protected by enforced row-level isolation.
+
+Desktop may join more than one organization. Each saved Control enrollment installs a separate
+profile and separately scoped Desk binding. Choosing an organization affects new work; already-open
+sessions and task dossiers stay pinned to their original profile. Personal mode remains valid with
+zero organization connections.
+
+Desk distinguishes three identities:
+
+```text
+person / account
+  └─ agent        Hara, Claude Code, Codex, or another registered client
+       └─ session one concrete runtime instance / execution lease
+```
+
+Provider subscription quota may be shared by several Agents, but that does not merge their Agent or
+Session identities. Every task event, claim, comment, execution event, and Diff keeps its actor and,
+when present, Session. Hara, Claude Code, and Codex therefore register as separate Agents even when
+they ultimately bill the same upstream account. A live Session claim is fenced: Desktop cannot
+impersonate it, while an organization owner may explicitly move it into a handoff state.
+
+The Desktop Groups module is a thin workbench. It never receives a Control registration secret,
+organization bearer, or provider key. React sends profile-pinned intents to the local Engine; the
+Engine resolves the matching Desk credential, performs a fixed-origin request, verifies that the
+profile binding did not change during the request, and returns bounded, credential-free data.
+
 In P1, enrollment should return a signed, short-lived organization bootstrap manifest describing the tenant,
 model route, active service bindings, and allowed native/reviewed surfaces. Sidecar verifies region,
 issuer, origin, signature, and versions, then atomically stores service-specific credentials. The
@@ -164,8 +198,8 @@ The following are required first:
   browser handoff, capability-name split, identity/provision/revoke hardening.
 - **P1**: tenant administrator chooses hosted/self-hosted bindings; one enrollment installs the model
   route, Desk/Groups descriptor, and reviewed surface manifest.
-- **P2**: native organization channels, sync wake worker, read state, files/search, and native Desk
-  task detail inside the dock.
+- **P2**: native task/ticket management and task detail are implemented in Groups; organization
+  channels, sync wake worker, richer files/search, and any dock relocation remain pending.
 - **P3**: Panel v2, signed market, real Office preview/edit/commit/export, tenant extension grants,
   metering, lifecycle, and self-host conformance.
 - **P4**: moderated public communities and task hall after identity, reputation, settlement, dispute,

@@ -757,6 +757,7 @@ export interface GatewayStatus {
   platform: "weixin" | "feishu" | string;
   label: string;
   configuration: "ready" | "process-only" | "missing" | "incomplete" | "unreadable";
+  credentialSource?: "environment" | "stored" | "process-only";
   configured: boolean;
   running: boolean;
   runningInstances: number;
@@ -769,6 +770,12 @@ export interface GatewayStatus {
   lastErrorAt?: number;
   lastErrorCode?: string;
   recommendation: string;
+}
+
+export interface FeishuGatewayCredentialInput {
+  appId: string;
+  appSecret: string;
+  domain: "feishu" | "lark";
 }
 
 export type GatewayLoginPhase =
@@ -905,9 +912,20 @@ export interface LearningListResult {
   };
 }
 
-export type DeskTaskState = "open" | "claimed" | "done" | "cancelled";
+export type DeskTaskState =
+  | "open"
+  | "claimed"
+  | "blocked"
+  | "waiting_user"
+  | "waiting_release"
+  | "waiting_verification"
+  | "review"
+  | "done"
+  | "cancelled";
 export type DeskTaskKind = "feedback" | "dispatch";
 export type DeskRisk = "low" | "high";
+export type DeskPriority = "urgent" | "high" | "normal" | "low";
+export type DeskSeverity = "critical" | "major" | "minor" | "cosmetic";
 
 export interface DeskConnection {
   profileId: string;
@@ -943,9 +961,21 @@ export interface DeskTask {
   excerpt: string;
   risk: DeskRisk;
   state: DeskTaskState;
+  priority: DeskPriority;
+  severity: DeskSeverity;
+  slaDueAt: number | null;
+  parentId: string | null;
   createdBy: string;
   claimedBy: string | null;
   ackedBy: string | null;
+  reporterRef: string;
+  occurrenceCount: number;
+  sourceCount: number;
+  releaseVersion: string;
+  verificationSteps: string;
+  claimedSessionId: string | null;
+  claimExpiresAt: number | null;
+  claimFence: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -963,6 +993,81 @@ export interface DeskEvent {
   at: number;
   title?: string;
   kind?: DeskTaskKind;
+}
+
+export interface DeskTaskComment {
+  id: string;
+  taskId: string;
+  actor: string;
+  sessionId: string | null;
+  body: string;
+  at: number;
+}
+
+export interface DeskTaskAttachment {
+  id: string;
+  taskId: string;
+  commentId: string | null;
+  actor: string;
+  sessionId: string | null;
+  name: string;
+  contentType: string;
+  size: number;
+  url: string;
+  storageRef: string;
+  sha256: string;
+  at: number;
+}
+
+export interface DeskTaskSource {
+  id: number;
+  sourceKind: string;
+  sourceChatId: string;
+  sourceMessageId: string;
+  sourceUrl: string;
+  reporterRef: string;
+  createdAt: number;
+}
+
+export interface DeskTaskLink {
+  parentTaskId: string;
+  childTaskId: string;
+  relation: string;
+  createdBy: string;
+  createdAt: number;
+  parentTitle: string;
+  childTitle: string;
+  childState: DeskTaskState;
+}
+
+export interface DeskExecutionEvent {
+  id: number;
+  eventKey: string;
+  agentId: string;
+  sessionId: string | null;
+  taskId: string | null;
+  kind: string;
+  payload: unknown;
+  at: number;
+}
+
+export interface DeskDiffArtifact {
+  id: string;
+  artifactKey: string;
+  taskId: string;
+  agentId: string;
+  sessionId: string;
+  worktreeLabel: string;
+  baseRef: string;
+  headRef: string;
+  patchSha256: string;
+  summary: string;
+  state: "pending" | "approved" | "rejected" | "merged";
+  createdAt: number;
+  reviewedBy: string | null;
+  reviewedAt: number | null;
+  reviewNote: string;
+  mergeRef: string;
 }
 
 export interface DeskCircle {
@@ -987,6 +1092,42 @@ export interface DeskTaskDetails {
   profileId: string;
   task: DeskTaskDetail;
   events: DeskEvent[];
+  comments: DeskTaskComment[];
+  attachments: DeskTaskAttachment[];
+  sources: DeskTaskSource[];
+  links: DeskTaskLink[];
+  executionEvents: DeskExecutionEvent[];
+  diffs: DeskDiffArtifact[];
+}
+
+export interface DeskCreateTaskInput {
+  kind: DeskTaskKind;
+  title: string;
+  body?: string;
+  risk?: DeskRisk;
+  priority?: DeskPriority;
+  severity?: DeskSeverity;
+  slaDueAt?: number;
+}
+
+export interface DeskTransitionTaskInput {
+  state: DeskTaskState;
+  note?: string;
+  releaseVersion?: string;
+  verificationSteps?: string;
+  claimFence?: number;
+}
+
+export interface DeskCompleteTaskInput {
+  detail?: string;
+  releaseVersion?: string;
+  verificationSteps?: string;
+  claimFence?: number;
+}
+
+export interface DeskTaskMutationResult {
+  profileId: string;
+  task: DeskTaskDetail;
 }
 
 /** `vision-sidecar` means images are explicitly translated to text before the conversation model runs. */
@@ -2107,6 +2248,33 @@ export class HaraClient {
       throw e;
     }
   }
+  /** Save a write-only Feishu credential in Engine private state. No identity or secret is returned. */
+  async saveFeishuGatewayCredentials(input: FeishuGatewayCredentialInput): Promise<GatewayStatus | null> {
+    if (this.methods.size > 0 && !this.supports("settings.gateways.credentials.save")) return null;
+    try {
+      const result = await this.call<{ gateway: GatewayStatus }>("settings.gateways.credentials.save", {
+        platform: "feishu",
+        ...input,
+      });
+      return result.gateway;
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  /** Remove only Hara's stored Feishu credential; launch-environment values stay outside Desktop authority. */
+  async removeStoredFeishuGatewayCredentials(): Promise<GatewayStatus | null> {
+    if (this.methods.size > 0 && !this.supports("settings.gateways.credentials.remove")) return null;
+    try {
+      const result = await this.call<{ gateway: GatewayStatus }>("settings.gateways.credentials.remove", {
+        platform: "feishu",
+      });
+      return result.gateway;
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
   /** Start an in-process connector login owned by the local serve engine (serve ≥0.134). */
   async startGatewayLogin(platform: "weixin"): Promise<GatewayLoginSnapshot | null> {
     if (this.methods.size > 0 && !this.supports("settings.gateways.login.start")) return null;
@@ -2196,7 +2364,7 @@ export class HaraClient {
       throw e;
     }
   }
-  /** Explicit organization-pinned read. Entering Groups never calls this method automatically. */
+  /** Organization-pinned bounded read. Groups may call it once on entry, then only on user refresh. */
   async deskSnapshot(profileId: string, state?: DeskTaskState): Promise<DeskSnapshot | null> {
     if (this.methods.size > 0 && !this.supports("desk.snapshot")) return null;
     try {
@@ -2214,6 +2382,91 @@ export class HaraClient {
     if (this.methods.size > 0 && !this.supports("desk.task.get")) return null;
     try {
       return await this.call("desk.task.get", { profileId, taskId });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  async createDeskTask(profileId: string, input: DeskCreateTaskInput): Promise<DeskTaskMutationResult | null> {
+    if (this.methods.size > 0 && !this.supports("desk.task.create")) return null;
+    try {
+      return await this.call("desk.task.create", { profileId, ...input });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  async claimDeskTask(profileId: string, taskId: string): Promise<DeskTaskMutationResult | null> {
+    if (this.methods.size > 0 && !this.supports("desk.task.claim")) return null;
+    try {
+      return await this.call("desk.task.claim", { profileId, taskId });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  async ackDeskTask(profileId: string, taskId: string): Promise<DeskTaskMutationResult | null> {
+    if (this.methods.size > 0 && !this.supports("desk.task.ack")) return null;
+    try {
+      return await this.call("desk.task.ack", { profileId, taskId });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  async transitionDeskTask(
+    profileId: string,
+    taskId: string,
+    input: DeskTransitionTaskInput,
+  ): Promise<DeskTaskMutationResult | null> {
+    if (this.methods.size > 0 && !this.supports("desk.task.transition")) return null;
+    try {
+      return await this.call("desk.task.transition", { profileId, taskId, ...input });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  async completeDeskTask(
+    profileId: string,
+    taskId: string,
+    input: DeskCompleteTaskInput = {},
+  ): Promise<DeskTaskMutationResult | null> {
+    if (this.methods.size > 0 && !this.supports("desk.task.complete")) return null;
+    try {
+      return await this.call("desk.task.complete", { profileId, taskId, ...input });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  async cancelDeskTask(
+    profileId: string,
+    taskId: string,
+    detail: string,
+    claimFence?: number,
+  ): Promise<DeskTaskMutationResult | null> {
+    if (this.methods.size > 0 && !this.supports("desk.task.cancel")) return null;
+    try {
+      return await this.call("desk.task.cancel", {
+        profileId,
+        taskId,
+        detail,
+        ...(claimFence !== undefined ? { claimFence } : {}),
+      });
+    } catch (e: any) {
+      if (e?.code === -32601) return null;
+      throw e;
+    }
+  }
+  async commentDeskTask(
+    profileId: string,
+    taskId: string,
+    body: string,
+  ): Promise<{ profileId: string; comment: DeskTaskComment } | null> {
+    if (this.methods.size > 0 && !this.supports("desk.task.comment")) return null;
+    try {
+      return await this.call("desk.task.comment", { profileId, taskId, body });
     } catch (e: any) {
       if (e?.code === -32601) return null;
       throw e;

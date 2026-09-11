@@ -1,11 +1,17 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 import type {
   DeskConnection,
+  DeskCreateTaskInput,
+  DeskAgent,
+  DeskPriority,
+  DeskSeverity,
   DeskSnapshot,
   DeskTask,
   DeskTaskDetails,
+  DeskTaskMutationResult,
   DeskTaskState,
+  DeskTransitionTaskInput,
   OrganizationConnection,
   OrganizationConnectionsState,
 } from "./client";
@@ -13,6 +19,15 @@ import {
   groupsTaskKey,
   type GroupsState,
 } from "./groups-state";
+import {
+  canClaimDeskTask,
+  DESK_TASK_STATES,
+  deskTaskClaimExpired,
+  deskTransitionRequiresNote,
+  deskTransitionRequiresRelease,
+  desktopTaskTransitions,
+  shouldAutoReadDeskBoard,
+} from "./groups-manager-policy";
 import GroupsPreview, {
   GroupsSidebar as GroupsPreviewSidebar,
   type GroupsPreviewCopy,
@@ -37,6 +52,8 @@ export interface GroupsCopy extends GroupsPreviewCopy {
   switchOrganization: string;
   switchingOrganization: string;
   readOnly: string;
+  managed: string;
+  joinOrganization: string;
   readyTitle: string;
   readyHint: string;
   readBoard: string;
@@ -64,12 +81,60 @@ export interface GroupsCopy extends GroupsPreviewCopy {
   risk: string;
   stateOpen: string;
   stateClaimed: string;
+  stateBlocked: string;
+  stateWaitingUser: string;
+  stateWaitingRelease: string;
+  stateWaitingVerification: string;
+  stateReview: string;
   stateDone: string;
   stateCancelled: string;
   kindFeedback: string;
   kindDispatch: string;
   riskLow: string;
   riskHigh: string;
+  createWork: string;
+  createFeedback: string;
+  createTask: string;
+  createTitle: string;
+  createTitlePlaceholder: string;
+  createBody: string;
+  createBodyPlaceholder: string;
+  priority: string;
+  severity: string;
+  priorityUrgent: string;
+  priorityHigh: string;
+  priorityNormal: string;
+  priorityLow: string;
+  severityCritical: string;
+  severityMajor: string;
+  severityMinor: string;
+  severityCosmetic: string;
+  taskActions: string;
+  claimTask: string;
+  reclaimTask: string;
+  claimExpiredHint: string;
+  riskApprovalRequired: string;
+  acknowledgeRisk: string;
+  acknowledgeRiskConfirm: string;
+  moveTo: string;
+  actionNote: string;
+  actionNotePlaceholder: string;
+  releaseVersion: string;
+  verificationSteps: string;
+  applyTransition: string;
+  cancelTask: string;
+  cancelConfirm: string;
+  addComment: string;
+  commentPlaceholder: string;
+  comments: string;
+  noComments: string;
+  saving: string;
+  manageUnavailable: string;
+  taskSessionOwned: string;
+  occurrence: string;
+  sources: string;
+  diffs: string;
+  sla: string;
 }
 
 export type GroupsDirectoryPhase =
@@ -97,12 +162,29 @@ interface GroupsSharedProps {
   onSelectOrganization: (profileId: string) => void;
   onRetryDirectory: () => void;
   onManageOrganizations: () => void;
+  onJoinOrganization: () => void;
+  canManage: boolean;
 }
 
 interface GroupsStageProps extends GroupsSharedProps {
   onReadBoard: (profileId: string, state: DeskTaskState) => void;
   onOpenTask: (profileId: string, taskId: string) => void;
   onCloseTask: () => void;
+  onCreateTask: (profileId: string, input: DeskCreateTaskInput) => Promise<DeskTaskMutationResult>;
+  onClaimTask: (profileId: string, taskId: string) => Promise<DeskTaskMutationResult>;
+  onAckTask: (profileId: string, taskId: string) => Promise<DeskTaskMutationResult>;
+  onTransitionTask: (
+    profileId: string,
+    taskId: string,
+    input: DeskTransitionTaskInput,
+  ) => Promise<DeskTaskMutationResult>;
+  onCompleteTask: (
+    profileId: string,
+    taskId: string,
+    input: { detail?: string; releaseVersion?: string; verificationSteps?: string; claimFence?: number },
+  ) => Promise<DeskTaskMutationResult>;
+  onCancelTask: (profileId: string, taskId: string, detail: string, claimFence?: number) => Promise<DeskTaskMutationResult>;
+  onCommentTask: (profileId: string, taskId: string, body: string) => Promise<void>;
   onManageModules: () => void;
   onHide: () => void;
 }
@@ -148,10 +230,29 @@ const dateTime = (value: number, locale: "en" | "zh"): string => {
 
 const taskStateLabel = (copy: GroupsCopy, state: DeskTaskState): string => {
   if (state === "claimed") return copy.stateClaimed;
+  if (state === "blocked") return copy.stateBlocked;
+  if (state === "waiting_user") return copy.stateWaitingUser;
+  if (state === "waiting_release") return copy.stateWaitingRelease;
+  if (state === "waiting_verification") return copy.stateWaitingVerification;
+  if (state === "review") return copy.stateReview;
   if (state === "done") return copy.stateDone;
   if (state === "cancelled") return copy.stateCancelled;
   return copy.stateOpen;
 };
+
+const priorityLabel = (copy: GroupsCopy, priority: DeskPriority): string => ({
+  urgent: copy.priorityUrgent,
+  high: copy.priorityHigh,
+  normal: copy.priorityNormal,
+  low: copy.priorityLow,
+})[priority];
+
+const severityLabel = (copy: GroupsCopy, severity: DeskSeverity): string => ({
+  critical: copy.severityCritical,
+  major: copy.severityMajor,
+  minor: copy.severityMinor,
+  cosmetic: copy.severityCosmetic,
+})[severity];
 
 const taskKindLabel = (copy: GroupsCopy, task: DeskTask): string =>
   task.kind === "dispatch" ? copy.kindDispatch : copy.kindFeedback;
@@ -185,6 +286,8 @@ export function GroupsSidebar({
   onSelectOrganization,
   onRetryDirectory,
   onManageOrganizations,
+  onJoinOrganization,
+  canManage,
 }: GroupsSharedProps & {
   brand: ReactNode;
   footer: ReactNode;
@@ -209,13 +312,16 @@ export function GroupsSidebar({
         </span>
         <span>
           <strong>{copy.sidebarTitle}</strong>
-          <small>{copy.readOnly}</small>
+          <small>{canManage ? copy.managed : copy.readOnly}</small>
         </span>
       </div>
 
       <div className="groups-directory-label">
         <span>{copy.organizations}</span>
-        <span>{organizations.length.toString().padStart(2, "0")}</span>
+        <span>
+          {organizations.length.toString().padStart(2, "0")}
+          <button type="button" onClick={onJoinOrganization} aria-label={copy.joinOrganization} title={copy.joinOrganization}>＋</button>
+        </span>
       </div>
 
       {directory.phase === "loading" || directory.phase === "idle" ? (
@@ -233,7 +339,7 @@ export function GroupsSidebar({
         <div className="groups-directory-empty">
           <strong>{copy.noOrganizations}</strong>
           <small>{copy.noOrganizationsHint}</small>
-          <button type="button" onClick={onManageOrganizations}>{copy.manageOrganizations}</button>
+          <button type="button" onClick={onJoinOrganization}>{copy.joinOrganization}</button>
         </div>
       ) : (
         <nav className="groups-organization-list" aria-label={copy.organizations}>
@@ -276,10 +382,13 @@ export function GroupsSidebar({
         </nav>
       )}
 
+      <button className="groups-directory-manage" type="button" onClick={onManageOrganizations}>
+        {copy.manageOrganizations}
+      </button>
       <div className="groups-sidebar-space" />
       <div className="groups-sidebar-footnote">
         <span className="groups-status-light is-local" aria-hidden />
-        <span>{copy.readOnly}</span>
+        <span>{canManage ? copy.managed : copy.readOnly}</span>
       </div>
       {footer}
     </aside>
@@ -340,23 +449,246 @@ function TaskCard({
   );
 }
 
+function TaskComposer({
+  copy,
+  profileId,
+  onCreate,
+  onCreated,
+  onClose,
+}: {
+  copy: GroupsCopy;
+  profileId: string;
+  onCreate: (profileId: string, input: DeskCreateTaskInput) => Promise<DeskTaskMutationResult>;
+  onCreated: (result: DeskTaskMutationResult) => void;
+  onClose: () => void;
+}) {
+  const [kind, setKind] = useState<"feedback" | "dispatch">("feedback");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [risk, setRisk] = useState<"low" | "high">("low");
+  const [priority, setPriority] = useState<DeskPriority>("normal");
+  const [severity, setSeverity] = useState<DeskSeverity>("minor");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await onCreate(profileId, {
+        kind,
+        title: title.trim(),
+        body,
+        risk,
+        priority,
+        severity,
+      });
+      onCreated(result);
+    } catch (reason) {
+      setError(String(reason instanceof Error ? reason.message : reason).slice(0, 240));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="groups-task-composer" aria-labelledby="groups-create-work-title">
+      <header>
+        <div>
+          <span>NEW / ORGANIZATION</span>
+          <h2 id="groups-create-work-title">{copy.createWork}</h2>
+        </div>
+        <button type="button" className="ghost" disabled={busy} onClick={onClose}>×</button>
+      </header>
+      <form onSubmit={(event) => void submit(event)}>
+        <div className="groups-kind-picker" role="group" aria-label={copy.createWork}>
+          <button type="button" className={kind === "feedback" ? "is-active" : ""} aria-pressed={kind === "feedback"} onClick={() => setKind("feedback")}>{copy.createFeedback}</button>
+          <button type="button" className={kind === "dispatch" ? "is-active" : ""} aria-pressed={kind === "dispatch"} onClick={() => setKind("dispatch")}>{copy.createTask}</button>
+        </div>
+        <label className="groups-composer-wide">
+          <span>{copy.createTitle}</span>
+          <input autoFocus value={title} maxLength={200} placeholder={copy.createTitlePlaceholder} onChange={(event) => setTitle(event.target.value)} />
+        </label>
+        <label className="groups-composer-wide">
+          <span>{copy.createBody}</span>
+          <textarea value={body} maxLength={20_000} rows={5} placeholder={copy.createBodyPlaceholder} onChange={(event) => setBody(event.target.value)} />
+        </label>
+        <div className="groups-composer-options">
+          <label>
+            <span>{copy.priority}</span>
+            <select value={priority} onChange={(event) => setPriority(event.target.value as DeskPriority)}>
+              {(["urgent", "high", "normal", "low"] as const).map((value) => <option key={value} value={value}>{priorityLabel(copy, value)}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>{copy.severity}</span>
+            <select value={severity} onChange={(event) => setSeverity(event.target.value as DeskSeverity)}>
+              {(["critical", "major", "minor", "cosmetic"] as const).map((value) => <option key={value} value={value}>{severityLabel(copy, value)}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>{copy.risk}</span>
+            <select value={risk} onChange={(event) => setRisk(event.target.value as "low" | "high")}>
+              <option value="low">{copy.riskLow}</option>
+              <option value="high">{copy.riskHigh}</option>
+            </select>
+          </label>
+        </div>
+        {error ? <p className="groups-manager-error" role="alert">{error}</p> : null}
+        <footer>
+          <button type="button" className="ghost" disabled={busy} onClick={onClose}>{copy.backToBoard}</button>
+          <button type="submit" disabled={busy || !title.trim()}>{busy ? copy.saving : kind === "feedback" ? copy.createFeedback : copy.createTask}</button>
+        </footer>
+      </form>
+    </section>
+  );
+}
+
 function TaskDossier({
   copy,
   organization,
+  actor,
+  canManage,
   details,
   phase,
   error,
   onBack,
   onRetry,
+  onRefresh,
+  onClaim,
+  onAck,
+  onTransition,
+  onComplete,
+  onCancel,
+  onComment,
 }: {
   copy: GroupsCopy;
   organization?: OrganizationConnection;
+  actor?: DeskAgent;
+  canManage: boolean;
   details?: DeskTaskDetails;
   phase: "idle" | "loading" | "ready" | "error";
   error?: string;
   onBack: () => void;
   onRetry: () => void;
+  onRefresh: () => void;
+  onClaim: (taskId: string) => Promise<DeskTaskMutationResult>;
+  onAck: (taskId: string) => Promise<DeskTaskMutationResult>;
+  onTransition: (taskId: string, input: DeskTransitionTaskInput) => Promise<DeskTaskMutationResult>;
+  onComplete: (
+    taskId: string,
+    input: { detail?: string; releaseVersion?: string; verificationSteps?: string; claimFence?: number },
+  ) => Promise<DeskTaskMutationResult>;
+  onCancel: (taskId: string, detail: string, claimFence?: number) => Promise<DeskTaskMutationResult>;
+  onComment: (taskId: string, body: string) => Promise<void>;
 }) {
+  const [transitionTarget, setTransitionTarget] = useState<DeskTaskState>("claimed");
+  const [note, setNote] = useState("");
+  const [releaseVersion, setReleaseVersion] = useState("");
+  const [verificationSteps, setVerificationSteps] = useState("");
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState("");
+  const [managerError, setManagerError] = useState("");
+  const [leaseClock, setLeaseClock] = useState(() => Date.now());
+
+  const task = details?.task;
+  const expiredClaim = task ? deskTaskClaimExpired(task, leaseClock) : false;
+  // One private, renewable workbench Session is maintained by the local Engine for this Agent.
+  // The renderer receives only the public Agent/task identities and fencing number, never its hds token.
+  const sessionOwnedElsewhere = Boolean(
+    task?.claimedSessionId
+    && !expiredClaim
+    && task.claimedBy !== actor?.id
+    && actor?.role !== "owner",
+  );
+  const availableTargets = task ? desktopTaskTransitions(task, actor, leaseClock) : [];
+  const claimable = task ? canClaimDeskTask(task, actor, leaseClock) : false;
+
+  useEffect(() => {
+    const expiresAt = task?.state === "claimed" ? task.claimExpiresAt : null;
+    const current = Date.now();
+    setLeaseClock(current);
+    if (typeof expiresAt !== "number" || expiresAt <= current) return;
+    const timer = window.setTimeout(
+      () => setLeaseClock(Date.now()),
+      Math.min(expiresAt - current + 50, 2_147_000_000),
+    );
+    return () => window.clearTimeout(timer);
+  }, [task?.id, task?.state, task?.claimExpiresAt, task?.claimFence]);
+
+  useEffect(() => {
+    if (!task) return;
+    setTransitionTarget(desktopTaskTransitions(task, actor, Date.now())[0] ?? task.state);
+    setNote("");
+    setReleaseVersion(task.releaseVersion ?? "");
+    setVerificationSteps(task.verificationSteps ?? "");
+    setComment("");
+    setManagerError("");
+  }, [actor?.id, actor?.role, task?.id, task?.state, task?.claimFence, task?.claimExpiresAt, task?.releaseVersion, task?.verificationSteps]);
+
+  const runMutation = async (name: string, mutation: () => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(name);
+    setManagerError("");
+    try {
+      await mutation();
+      onRefresh();
+    } catch (reason) {
+      setManagerError(String(reason instanceof Error ? reason.message : reason).slice(0, 320));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const submitTransition = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!task || !availableTargets.includes(transitionTarget)) return;
+    const detail = note.trim();
+    if (deskTransitionRequiresNote(transitionTarget) && !detail) return;
+    if (transitionTarget === "waiting_verification" && (!releaseVersion.trim() || !verificationSteps.trim())) return;
+    if (transitionTarget === "cancelled") {
+      if (!window.confirm(copy.cancelConfirm)) return;
+      await runMutation("transition", () => onCancel(
+        task.id,
+        detail,
+        task.claimedSessionId && task.claimedBy === actor?.id ? task.claimFence : undefined,
+      ));
+      return;
+    }
+    if (transitionTarget === "done" && task.claimedBy === actor?.id) {
+      await runMutation("transition", () => onComplete(task.id, {
+        detail,
+        ...(releaseVersion.trim() ? { releaseVersion: releaseVersion.trim() } : {}),
+        ...(verificationSteps.trim() ? { verificationSteps: verificationSteps.trim() } : {}),
+        ...(task.claimedSessionId ? { claimFence: task.claimFence } : {}),
+      }));
+      return;
+    }
+    await runMutation("transition", () => onTransition(task.id, {
+      state: transitionTarget,
+      ...(detail ? { note: detail } : {}),
+      ...(releaseVersion.trim() ? { releaseVersion: releaseVersion.trim() } : {}),
+      ...(verificationSteps.trim() ? { verificationSteps: verificationSteps.trim() } : {}),
+      ...(task.claimedSessionId && task.claimedBy === actor?.id
+        ? { claimFence: task.claimFence }
+        : {}),
+    }));
+  };
+
+  const submitComment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!task || !comment.trim()) return;
+    await runMutation("comment", async () => {
+      await onComment(task.id, comment.trim());
+      setComment("");
+    });
+  };
+
+  const requiresTransitionNote = deskTransitionRequiresNote(transitionTarget);
+  const requiresRelease = task ? deskTransitionRequiresRelease(task, transitionTarget) : false;
+
   return (
     <main className="groups-stage groups-task-stage" aria-labelledby="groups-task-title">
       <div className="groups-stage-grid" aria-hidden />
@@ -372,7 +704,7 @@ function TaskDossier({
               {copy.pinnedOrganization}: <strong>{organization?.label ?? details?.profileId ?? "—"}</strong>
             </p>
           </div>
-          <span className="groups-local-seal">{copy.readOnly}</span>
+          <span className="groups-local-seal">{canManage ? copy.managed : copy.readOnly}</span>
         </header>
 
         {phase === "loading" || phase === "idle" ? (
@@ -387,7 +719,10 @@ function TaskDossier({
         ) : details ? (
           <div className="groups-dossier-grid">
             <article className="groups-dossier">
-              <span className="groups-dossier-id">{details.task.id}</span>
+              <div className="groups-dossier-status">
+                <span className="groups-dossier-id">{details.task.id}</span>
+                <span><i className={`is-${details.task.state}`} />{taskStateLabel(copy, details.task.state)}</span>
+              </div>
               <p className="groups-dossier-body">{details.task.body || "—"}</p>
               <dl>
                 <div>
@@ -403,27 +738,160 @@ function TaskDossier({
                   <dd>{details.task.risk === "high" ? copy.riskHigh : copy.riskLow}</dd>
                 </div>
                 <div>
+                  <dt>{copy.priority}</dt>
+                  <dd>{details.task.priority ? priorityLabel(copy, details.task.priority) : "—"}</dd>
+                </div>
+                <div>
+                  <dt>{copy.severity}</dt>
+                  <dd>{details.task.severity ? severityLabel(copy, details.task.severity) : "—"}</dd>
+                </div>
+                <div>
+                  <dt>{copy.occurrence}</dt>
+                  <dd>{details.task.occurrenceCount ?? 1}</dd>
+                </div>
+                <div>
+                  <dt>{copy.sla}</dt>
+                  <dd>{details.task.slaDueAt ? dateTime(details.task.slaDueAt, copy.locale) : "—"}</dd>
+                </div>
+                <div>
                   <dt>{copy.selectedOrganization}</dt>
                   <dd>{organization?.label ?? details.profileId}</dd>
                 </div>
               </dl>
-            </article>
-            <section className="groups-timeline">
-              <h2>{copy.taskTimeline}</h2>
-              {details.events.length === 0 ? (
-                <p className="groups-empty-copy">{copy.noTimeline}</p>
+
+              {canManage ? (
+                <section className="groups-workflow" aria-labelledby="groups-task-actions-title">
+                  <div className="groups-workflow-head">
+                    <h2 id="groups-task-actions-title">{copy.taskActions}</h2>
+                    <span>{actor ? `${actor.name} · ${actor.client}` : "—"}</span>
+                  </div>
+                  <div className="groups-workflow-quick-actions">
+                    {claimable ? (
+                      <button type="button" disabled={Boolean(busy) || !actor} onClick={() => void runMutation("claim", () => onClaim(details.task.id))}>
+                        {busy === "claim" ? copy.saving : expiredClaim ? copy.reclaimTask : copy.claimTask}
+                      </button>
+                    ) : null}
+                    {details.task.risk === "high" && !details.task.ackedBy && actor?.role === "owner" ? (
+                      <button
+                        type="button"
+                        className="ghost"
+                        disabled={Boolean(busy)}
+                        onClick={() => {
+                          const confirmation = copy.acknowledgeRiskConfirm
+                            .replace("{organization}", organization?.label ?? details.profileId)
+                            .replace("{id}", details.task.id)
+                            .replace("{title}", details.task.title);
+                          if (!window.confirm(confirmation)) return;
+                          void runMutation("ack", () => onAck(details.task.id));
+                        }}
+                      >
+                        {busy === "ack" ? copy.saving : copy.acknowledgeRisk}
+                      </button>
+                    ) : null}
+                  </div>
+                  {details.task.risk === "high" && !details.task.ackedBy ? (
+                    <p className="groups-manager-note">{copy.riskApprovalRequired}</p>
+                  ) : expiredClaim ? (
+                    <p className="groups-manager-note">{copy.claimExpiredHint}</p>
+                  ) : null}
+                  {availableTargets.length > 0 && !sessionOwnedElsewhere ? (
+                    <form className="groups-transition-form" onSubmit={(event) => void submitTransition(event)}>
+                      <label>
+                        <span>{copy.moveTo}</span>
+                        <select value={transitionTarget} disabled={Boolean(busy)} onChange={(event) => setTransitionTarget(event.target.value as DeskTaskState)}>
+                          {availableTargets.map((value) => <option key={value} value={value}>{taskStateLabel(copy, value)}</option>)}
+                        </select>
+                      </label>
+                      <label className="groups-workflow-wide">
+                        <span>{copy.actionNote}{requiresTransitionNote ? " *" : ""}</span>
+                        <textarea rows={3} maxLength={2000} value={note} placeholder={copy.actionNotePlaceholder} disabled={Boolean(busy)} onChange={(event) => setNote(event.target.value)} />
+                      </label>
+                      {requiresRelease ? (
+                        <div className="groups-release-fields">
+                          <label>
+                            <span>{copy.releaseVersion}</span>
+                            <input maxLength={64} value={releaseVersion} disabled={Boolean(busy)} onChange={(event) => setReleaseVersion(event.target.value)} />
+                          </label>
+                          <label>
+                            <span>{copy.verificationSteps}</span>
+                            <textarea rows={3} maxLength={4000} value={verificationSteps} disabled={Boolean(busy)} onChange={(event) => setVerificationSteps(event.target.value)} />
+                          </label>
+                        </div>
+                      ) : null}
+                      <button
+                        type="submit"
+                        disabled={Boolean(busy)
+                          || (requiresTransitionNote && !note.trim())
+                          || (requiresRelease && (!releaseVersion.trim() || !verificationSteps.trim()))}
+                      >
+                        {busy === "transition" ? copy.saving : transitionTarget === "cancelled" ? copy.cancelTask : copy.applyTransition}
+                      </button>
+                    </form>
+                  ) : sessionOwnedElsewhere ? (
+                    <p className="groups-manager-note">{copy.taskSessionOwned}</p>
+                  ) : null}
+                  {managerError ? <p className="groups-manager-error" role="alert">{managerError}</p> : null}
+                </section>
               ) : (
-                <ol>
-                  {details.events.map((event) => (
-                    <li key={event.id}>
-                      <span>{event.action}</span>
-                      <strong>{event.actor}</strong>
-                      <small>{event.detail || dateTime(event.at, copy.locale)}</small>
-                    </li>
-                  ))}
-                </ol>
+                <p className="groups-manager-note">{copy.manageUnavailable}</p>
               )}
-            </section>
+            </article>
+            <div className="groups-dossier-aside">
+              <section className="groups-timeline">
+                <h2>{copy.taskTimeline}</h2>
+                {(details.events ?? []).length === 0 ? (
+                  <p className="groups-empty-copy">{copy.noTimeline}</p>
+                ) : (
+                  <ol>
+                    {(details.events ?? []).map((event) => (
+                      <li key={event.id}>
+                        <span>{event.action}</span>
+                        <strong>{event.actor}</strong>
+                        <small>{event.detail || dateTime(event.at, copy.locale)}</small>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+              <section className="groups-comments">
+                <h2>{copy.comments}</h2>
+                {(details.comments ?? []).length === 0 ? (
+                  <p className="groups-empty-copy">{copy.noComments}</p>
+                ) : (
+                  <ol>
+                    {(details.comments ?? []).map((item) => (
+                      <li key={item.id}>
+                        <strong>{item.actor}</strong>
+                        <p>{item.body}</p>
+                        <small>{dateTime(item.at, copy.locale)}</small>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {canManage ? (
+                  <form onSubmit={(event) => void submitComment(event)}>
+                    <textarea rows={3} maxLength={4000} value={comment} placeholder={copy.commentPlaceholder} disabled={Boolean(busy)} onChange={(event) => setComment(event.target.value)} />
+                    <button type="submit" disabled={Boolean(busy) || !comment.trim()}>{busy === "comment" ? copy.saving : copy.addComment}</button>
+                  </form>
+                ) : null}
+              </section>
+              {(details.sources ?? []).length > 0 || (details.diffs ?? []).length > 0 ? (
+                <section className="groups-evidence">
+                  {(details.sources ?? []).length > 0 ? (
+                    <div>
+                      <h2>{copy.sources}</h2>
+                      <ul>{(details.sources ?? []).map((source) => <li key={source.id}>{source.sourceKind} · {source.reporterRef || source.sourceMessageId}</li>)}</ul>
+                    </div>
+                  ) : null}
+                  {(details.diffs ?? []).length > 0 ? (
+                    <div>
+                      <h2>{copy.diffs}</h2>
+                      <ul>{(details.diffs ?? []).map((diff) => <li key={diff.id}>{diff.worktreeLabel || diff.headRef} · {diff.state}</li>)}</ul>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>
@@ -437,13 +905,24 @@ export default function Groups({
   state,
   onRetryDirectory,
   onManageOrganizations,
+  onJoinOrganization,
+  canManage,
   onReadBoard,
   onOpenTask,
   onCloseTask,
+  onCreateTask,
+  onClaimTask,
+  onAckTask,
+  onTransitionTask,
+  onCompleteTask,
+  onCancelTask,
+  onCommentTask,
   onManageModules,
   onHide,
 }: GroupsStageProps) {
   const [taskState, setTaskState] = useState<DeskTaskState>("open");
+  const [composerOpen, setComposerOpen] = useState(false);
+  useEffect(() => setComposerOpen(false), [state.selectedProfileId]);
   const organizations = directory.organizations;
   const selectedOrganization = organizationFor(organizations, state.selectedProfileId);
   const selectedDesk = deskFor(directory.desk?.connections, state.selectedProfileId);
@@ -451,6 +930,23 @@ export default function Groups({
     && owns(state.snapshotsByProfile, state.selectedProfileId)
     ? state.snapshotsByProfile[state.selectedProfileId]
     : undefined;
+
+  useEffect(() => {
+    if (!shouldAutoReadDeskBoard(
+      directory.phase,
+      selectedOrganization?.id,
+      Boolean(selectedDesk?.configured),
+      selectedSnapshot?.phase,
+    )) return;
+    onReadBoard(selectedOrganization!.id, taskState);
+  }, [
+    directory.phase,
+    onReadBoard,
+    selectedDesk?.configured,
+    selectedOrganization?.id,
+    selectedSnapshot?.phase,
+    taskState,
+  ]);
 
   if (directory.phase === "unsupported") {
     return <GroupsPreview copy={copy} onManage={onManageModules} onHide={onHide} />;
@@ -461,15 +957,32 @@ export default function Groups({
   if (state.openTask && openTaskOrganization && openTaskDesk?.configured) {
     const key = groupsTaskKey(state.openTask.profileId, state.openTask.taskId);
     const details = state.tasksByKey[key];
+    const openTaskSnapshot = owns(state.snapshotsByProfile, state.openTask.profileId)
+      ? state.snapshotsByProfile[state.openTask.profileId]?.data
+      : undefined;
+    const profileId = state.openTask.profileId;
+    const taskId = state.openTask.taskId;
     return (
       <TaskDossier
         copy={copy}
         organization={openTaskOrganization}
+        actor={openTaskSnapshot?.me}
+        canManage={canManage}
         details={details?.data}
         phase={details?.phase ?? "idle"}
         error={details?.error}
         onBack={onCloseTask}
-        onRetry={() => onOpenTask(state.openTask!.profileId, state.openTask!.taskId)}
+        onRetry={() => onOpenTask(profileId, taskId)}
+        onRefresh={() => {
+          onOpenTask(profileId, taskId);
+          onReadBoard(profileId, taskState);
+        }}
+        onClaim={(id) => onClaimTask(profileId, id)}
+        onAck={(id) => onAckTask(profileId, id)}
+        onTransition={(id, input) => onTransitionTask(profileId, id, input)}
+        onComplete={(id, input) => onCompleteTask(profileId, id, input)}
+        onCancel={(id, detail, claimFence) => onCancelTask(profileId, id, detail, claimFence)}
+        onComment={(id, body) => onCommentTask(profileId, id, body)}
       />
     );
   }
@@ -480,16 +993,35 @@ export default function Groups({
       <div className="groups-stage-shell">
         <header className="groups-stage-head groups-board-head">
           <div>
-            <span className="groups-eyebrow">ORGANIZATION DESK / NATIVE</span>
+            <span className="groups-eyebrow">ORGANIZATION WORKBENCH / DESK</span>
             <h1 id="groups-board-title">
               {selectedOrganization?.label ?? copy.organizationTitle}
             </h1>
             <p>{copy.organizationHint}</p>
           </div>
           <div className="groups-board-actions">
-            <span className="groups-local-seal">{copy.readOnly}</span>
+            <span className="groups-local-seal">{canManage ? copy.managed : copy.readOnly}</span>
+            {canManage && selectedOrganization && selectedDesk?.configured ? (
+              <button type="button" onClick={() => setComposerOpen((current) => !current)}>
+                {composerOpen ? copy.backToBoard : `＋ ${copy.createWork}`}
+              </button>
+            ) : null}
           </div>
         </header>
+
+        {composerOpen && selectedOrganization && selectedDesk?.configured ? (
+          <TaskComposer
+            copy={copy}
+            profileId={selectedOrganization.id}
+            onCreate={onCreateTask}
+            onClose={() => setComposerOpen(false)}
+            onCreated={(result) => {
+              setComposerOpen(false);
+              onReadBoard(selectedOrganization.id, taskState);
+              onOpenTask(selectedOrganization.id, result.task.id);
+            }}
+          />
+        ) : null}
 
         {directory.phase === "loading" || directory.phase === "idle" ? (
           <div className="groups-board-loading" aria-live="polite">
@@ -505,7 +1037,7 @@ export default function Groups({
             <span className="groups-empty-index">00 / ORGANIZATION</span>
             <h2>{copy.noOrganizations}</h2>
             <p>{copy.noOrganizationsHint}</p>
-            <button type="button" onClick={onManageOrganizations}>{copy.manageOrganizations}</button>
+            <button type="button" onClick={onJoinOrganization}>{copy.joinOrganization}</button>
           </section>
         ) : !selectedDesk?.configured ? (
           <section className="groups-registration">
@@ -526,11 +1058,11 @@ export default function Groups({
               <i />
               <i />
             </span>
-            <span className="groups-empty-index">02 / EXPLICIT READ</span>
+            <span className="groups-empty-index">02 / DESK SYNC</span>
             <h2>{copy.readyTitle}</h2>
             <p>{copy.readyHint}</p>
             <div className="groups-state-picker" role="group" aria-label={copy.tasksMetric}>
-              {(["open", "claimed", "done", "cancelled"] as const).map((value) => (
+              {DESK_TASK_STATES.map((value) => (
                 <button
                   type="button"
                   key={value}
@@ -571,13 +1103,16 @@ export default function Groups({
                 {selectedSnapshot.data.truncated ? ` · ${copy.truncated}` : ""}
               </span>
               <div className="groups-state-picker" role="group" aria-label={copy.tasksMetric}>
-                {(["open", "claimed", "done", "cancelled"] as const).map((value) => (
+                {DESK_TASK_STATES.map((value) => (
                   <button
                     type="button"
                     key={value}
                     className={taskState === value ? "is-active" : ""}
                     aria-pressed={taskState === value}
-                    onClick={() => setTaskState(value)}
+                    onClick={() => {
+                      setTaskState(value);
+                      onReadBoard(selectedOrganization.id, value);
+                    }}
                   >
                     {taskStateLabel(copy, value)}
                   </button>
@@ -592,6 +1127,7 @@ export default function Groups({
                 {selectedSnapshot.phase === "loading" ? copy.readingBoard : copy.refreshBoard}
               </button>
             </div>
+            {!canManage ? <p className="groups-manager-note">{copy.manageUnavailable}</p> : null}
             <SnapshotMetrics snapshot={selectedSnapshot.data} copy={copy} />
             {selectedSnapshot.data.tasks.length === 0 ? (
               <section className="groups-empty-state is-compact">

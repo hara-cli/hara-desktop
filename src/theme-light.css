@@ -730,7 +730,11 @@ html[data-theme="light"] .groups-registration h2,
 html[data-theme="light"] .groups-ready-state h2,
 html[data-theme="light"] .groups-task-card > strong,
 html[data-theme="light"] .groups-metrics strong,
-html[data-theme="light"] .groups-timeline h2 {
+html[data-theme="light"] .groups-timeline h2,
+html[data-theme="light"] .groups-comments h2,
+html[data-theme="light"] .groups-evidence h2,
+html[data-theme="light"] .groups-workflow h2,
+html[data-theme="light"] .groups-task-composer h2 {
   color: var(--fg);
 }
 
@@ -741,7 +745,9 @@ html[data-theme="light"] .groups-error p,
 html[data-theme="light"] .groups-empty-state p,
 html[data-theme="light"] .groups-registration p,
 html[data-theme="light"] .groups-ready-state p,
-html[data-theme="light"] .groups-task-card > p {
+html[data-theme="light"] .groups-task-card > p,
+html[data-theme="light"] .groups-dossier-body,
+html[data-theme="light"] .groups-comments li p {
   color: var(--dim);
 }
 
@@ -760,7 +766,10 @@ html[data-theme="light"] .groups-empty-state,
 html[data-theme="light"] .groups-registration,
 html[data-theme="light"] .groups-ready-state,
 html[data-theme="light"] .groups-dossier,
-html[data-theme="light"] .groups-timeline {
+html[data-theme="light"] .groups-timeline,
+html[data-theme="light"] .groups-comments,
+html[data-theme="light"] .groups-evidence,
+html[data-theme="light"] .groups-task-composer {
   border-color: var(--border);
   background: rgba(255, 253, 248, 0.94);
   box-shadow: var(--shadow-soft);
@@ -768,12 +777,16 @@ html[data-theme="light"] .groups-timeline {
 
 html[data-theme="light"] .groups-lane,
 html[data-theme="light"] .groups-task-card,
-html[data-theme="light"] .groups-state-picker button {
+html[data-theme="light"] .groups-state-picker button,
+html[data-theme="light"] .groups-kind-picker,
+html[data-theme="light"] .groups-kind-picker button,
+html[data-theme="light"] .groups-comments li {
   border-color: var(--border);
   background: #fffdf8;
 }
 
 html[data-theme="light"] .groups-state-picker button.is-active,
+html[data-theme="light"] .groups-kind-picker button.is-active,
 html[data-theme="light"] .groups-task-card:hover,
 html[data-theme="light"] .groups-organization-list > button.is-selected {
   border-color: #d4a69b;
@@ -799,6 +812,37 @@ html[data-theme="light"] .groups-registration code {
   border-color: #cfc6b8;
   background: #eee8de;
   color: #4f4841;
+}
+
+html[data-theme="light"] .groups-task-composer input,
+html[data-theme="light"] .groups-task-composer textarea,
+html[data-theme="light"] .groups-task-composer select,
+html[data-theme="light"] .groups-transition-form input,
+html[data-theme="light"] .groups-transition-form textarea,
+html[data-theme="light"] .groups-transition-form select,
+html[data-theme="light"] .groups-comments textarea {
+  border-color: #cfc6b8;
+  background: #fffdf8;
+  color: var(--fg);
+}
+
+html[data-theme="light"] .groups-manager-note,
+html[data-theme="light"] .groups-manager-error {
+  background: #eee7dc;
+  color: #665f57;
+}
+
+html[data-theme="light"] .groups-dossier-grid,
+html[data-theme="light"] .groups-dossier-aside {
+  border-color: var(--border);
+  background: var(--border);
+}
+
+html[data-theme="light"] .groups-directory-label button,
+html[data-theme="light"] .groups-directory-manage {
+  border-color: var(--border);
+  background: #f8f4ec;
+  color: #8f3b2d;
 }
 
 /* Office home and local deliverables */

@@ -63,6 +63,8 @@ const CRASH_REPORT_ENDPOINT: &str = "https://gw.nanhara.tech/v1/desktop/crash-re
 const CRASH_REPORT_VERSION: u8 = 1;
 const CRASH_CONSENT_VERSION: u8 = 1;
 const CRASH_REPORT_MAX_BYTES: u64 = 16 * 1024;
+const CRASH_REPORT_DIRECTORY: &str = "crash-reports";
+const CRASH_REPORT_DEVELOPMENT_DIRECTORY: &str = "crash-reports-development";
 const CRASH_RUN_MARKER_PREFIX: &str = "desktop-run-";
 const CRASH_RUN_MARKER_SUFFIX: &str = ".active";
 const CRASH_PENDING_FILE: &str = "pending-crash-report.json";
@@ -2560,13 +2562,24 @@ fn ensure_crash_report_directory(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn crash_report_storage_path(app_data_dir: &Path, development: bool) -> PathBuf {
+    app_data_dir.join(if development {
+        CRASH_REPORT_DEVELOPMENT_DIRECTORY
+    } else {
+        CRASH_REPORT_DIRECTORY
+    })
+}
+
 fn crash_report_directory<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     use tauri::Manager;
-    let directory = app
+    let app_data_dir = app
         .path()
         .app_data_dir()
-        .map_err(|error| format!("resolve crash report storage: {error}"))?
-        .join("crash-reports");
+        .map_err(|error| format!("resolve crash report storage: {error}"))?;
+    // `tauri dev` and installed Hara builds share the bundle identifier and therefore the same
+    // app-data root. Keep their run markers and pending reports apart so terminating a development
+    // process cannot be surfaced later as an installed-app crash.
+    let directory = crash_report_storage_path(&app_data_dir, cfg!(debug_assertions));
     ensure_crash_report_directory(&directory)?;
     Ok(directory)
 }
@@ -3697,6 +3710,41 @@ mod crash_report_tests {
         let restored = pending_crash_report_at(&path).unwrap().unwrap();
         assert_eq!(restored.kind, "unclean_exit");
         assert_eq!(restored.report_version, CRASH_REPORT_VERSION);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn development_crash_tracking_is_isolated_from_release_markers() {
+        let root = std::env::temp_dir().join(format!(
+            "hara-crash-profile-isolation-test-{}-{}",
+            std::process::id(),
+            unix_time_millis(),
+        ));
+        let release_directory = crash_report_storage_path(&root, false);
+        let development_directory = crash_report_storage_path(&root, true);
+        assert_eq!(release_directory, root.join(CRASH_REPORT_DIRECTORY));
+        assert_eq!(
+            development_directory,
+            root.join(CRASH_REPORT_DEVELOPMENT_DIRECTORY)
+        );
+        assert_ne!(release_directory, development_directory);
+
+        ensure_crash_report_directory(&release_directory).unwrap();
+        ensure_crash_report_directory(&development_directory).unwrap();
+        let development_marker = development_directory.join("desktop-run-2147483000.active");
+        fs::write(&development_marker, b"started\n").unwrap();
+        let release_pending = release_directory.join(CRASH_PENDING_FILE);
+
+        reconcile_crash_run_markers_at(
+            &release_directory,
+            &release_pending,
+            std::process::id(),
+            false,
+        )
+        .unwrap();
+
+        assert!(development_marker.exists());
+        assert!(pending_crash_report_at(&release_pending).unwrap().is_none());
         fs::remove_dir_all(root).unwrap();
     }
 

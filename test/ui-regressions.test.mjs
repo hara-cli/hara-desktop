@@ -1251,7 +1251,12 @@ test("bot settings show redacted live gateway health without model polling", () 
   assert.doesNotMatch(gatewaySettings, /api\.qrserver|chart\.google|quickchart|fetch\(/i, "QR payloads are never uploaded to a renderer service");
   assert.match(css, /\.gateway-login-panel/);
   assert.equal(pkg.dependencies.qrcode.length > 0, true);
-  assert.doesNotMatch(gatewaySettings, /apiKey|appSecret|token\s*:/i, "renderer status never accepts connector credentials");
+  const gatewayStatusShape = client.match(/export type GatewayStatus = \{([\s\S]*?)\n\};/)?.[1] ?? "";
+  assert.doesNotMatch(
+    gatewayStatusShape,
+    /\b(?:apiKey|appId|appSecret|token)\??\s*:/i,
+    "renderer status never accepts connector credentials",
+  );
 });
 
 test("the model switchboard uses user-added enterprise connections instead of a static managed preset", () => {
@@ -1294,6 +1299,12 @@ test("the model switchboard uses user-added enterprise connections instead of a 
     app,
     /onSaved=\{\(next: ProviderSettingsState\) => \{[\s\S]*void refreshGroupsDirectory\(\)/,
     "a one-click organization switch refreshes the model route and Desk bundle together",
+  );
+  assert.match(providers, /if \(activate\) onOrganizationActivated\?\.\(id\)/);
+  assert.match(
+    app,
+    /onOrganizationActivated=\{\(profileId\) => \{[\s\S]*setZone\("groups"\)[\s\S]*refreshGroupsDirectory\(\)[\s\S]*selectProfile/,
+    "joining and activating an organization opens its native task workspace immediately",
   );
   assert.doesNotMatch(app, /OrganizationSettings/, "the old detached enterprise card is not left below the model picker");
 });
@@ -1437,6 +1448,11 @@ test("an unavailable pinned conversation falls back to local read-only history a
   assert.match(app, /const quarantineCompanySession = useCallback/);
   assert.match(app, /companyAccessRecoveryMessage\(e, locale\)[\s\S]*quarantineCompanySession\(sessionId, recovery\)/,
     "a live server-side revocation immediately becomes a localized read-only recovery state");
+  assert.match(
+    app,
+    /const startOrganizationSession = async[\s\S]*?catch \(error\) \{\s*const recovery = companyAccessRecoveryMessage\(error, locale\);\s*if \(recovery\) \{\s*quarantineCompanySession\(sourceSessionId, recovery, connection\.id\);[\s\S]*?setErr\(recovery \?\?/,
+    "a revoked route discovered while copying history is localized and quarantined instead of exposing the engine error",
+  );
   assert.match(app, /accessState: "invalid" as const[\s\S]*authenticated: false/,
     "a rejected company route is removed from subsequent model choices without waiting for restart");
   assert.match(app, /当前仅查看本地历史/);

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.160 — 2026-09-11 — organization Desk workbench and durable Agent control
+
+- Bundle Hara CLI `0.173.0` at exact commit `e04a7e1648d4ef3c730167b3d606e8ab821a05af`, including
+  exact organization Desk identities, durable Agent mailboxes, parent-turn isolation, bounded execution trees,
+  deterministic replay, and resumable mobile/Relay control.
+- After a user joins and switches to an organization, open Groups directly on its authoritative Desk snapshot.
+  The Desktop workbench can create, claim, comment on, transition, verify, and complete tasks and feedback tickets
+  without exposing the Control-only enrollment credential to the renderer.
+- Provision Hara, Claude Code, and Codex as separate Agents for the same accountable user and installation, with
+  explicit Session boundaries, revocation, provider connection health, and late-response/profile isolation.
+- Improve Engine restart recovery and the docked interactive terminal surface while preserving Settings as the
+  fixed recovery path. Windows packages remain updater-signed but not Authenticode-signed, so SmartScreen may
+  still show a reputation warning.
+
 ## 0.1.159 — 2026-09-10 — governed Computer Use and reliable browser work
 
 - Bundle Hara CLI `0.172.0` at exact commit `7001d3da4d46cfcfaae88b853a4d54ac94f6bc03`, adding a

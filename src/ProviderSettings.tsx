@@ -61,6 +61,7 @@ interface ProviderSettingsProps {
   cwd?: string;
   locale: Locale;
   onSaved: (state: ProviderSettingsState) => void | Promise<void>;
+  onOrganizationActivated?: (profileId: string) => void;
   runRouteMutation?: <T>(mutation: () => Promise<T>) => Promise<T>;
   embedded?: boolean;
   scope?: "global" | "workspace";
@@ -68,6 +69,7 @@ interface ProviderSettingsProps {
   engineRestarting?: boolean;
   onRestartEngine?: () => void;
   focusVisionRequest?: number;
+  focusOrganizationEnrollmentRequest?: number;
 }
 
 const words = {
@@ -1074,6 +1076,7 @@ export function ProviderSettings({
   cwd,
   locale,
   onSaved,
+  onOrganizationActivated,
   runRouteMutation,
   embedded = false,
   scope = "global",
@@ -1081,6 +1084,7 @@ export function ProviderSettings({
   engineRestarting = false,
   onRestartEngine,
   focusVisionRequest = 0,
+  focusOrganizationEnrollmentRequest = 0,
 }: ProviderSettingsProps) {
   const copy = words[locale];
   const mutateRoute = <T,>(mutation: () => Promise<T>): Promise<T> =>
@@ -1123,6 +1127,8 @@ export function ProviderSettings({
   const personalRemovalInFlight = useRef(false);
   const visionSectionRef = useRef<HTMLElement | null>(null);
   const handledVisionFocusRequest = useRef(0);
+  const organizationEnrollmentFormRef = useRef<HTMLFormElement | null>(null);
+  const handledOrganizationEnrollmentFocusRequest = useRef(0);
 
   const load = useCallback(async () => {
     if (!client) return;
@@ -1399,7 +1405,7 @@ export function ProviderSettings({
     clearFeedback();
   };
 
-  const beginEnrollment = (connection?: OrganizationConnection) => {
+  const beginEnrollment = useCallback((connection?: OrganizationConnection) => {
     setView({ kind: "enroll", ...(connection ? { id: connection.id } : {}) });
     setOrganizationDraft(connection
       ? { id: connection.id, label: connection.label, gatewayUrl: connection.gatewayUrl }
@@ -1407,8 +1413,34 @@ export function ProviderSettings({
     setOrganizationIdEdited(!!connection);
     setRegistrationCode("");
     setApiKey("");
-    clearFeedback();
-  };
+    setMessage("");
+    setError("");
+  }, []);
+
+  useEffect(() => {
+    if (
+      !focusOrganizationEnrollmentRequest
+      || phase === "loading"
+      || organizationsUnsupported
+      || handledOrganizationEnrollmentFocusRequest.current === focusOrganizationEnrollmentRequest
+    ) return;
+    handledOrganizationEnrollmentFocusRequest.current = focusOrganizationEnrollmentRequest;
+    beginEnrollment();
+  }, [beginEnrollment, focusOrganizationEnrollmentRequest, organizationsUnsupported, phase]);
+
+  useEffect(() => {
+    if (
+      view.kind !== "enroll"
+      || !focusOrganizationEnrollmentRequest
+      || handledOrganizationEnrollmentFocusRequest.current !== focusOrganizationEnrollmentRequest
+    ) return;
+    const frame = requestAnimationFrame(() => {
+      const form = organizationEnrollmentFormRef.current;
+      form?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+      form?.querySelector<HTMLInputElement>('input:not([disabled])')?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusOrganizationEnrollmentRequest, view.kind]);
 
   const cancelEnrollment = () => {
     setRegistrationCode("");
@@ -1886,6 +1918,7 @@ export function ProviderSettings({
           ? copy.reenrolledInactive
           : organizations?.switchLocked ? copy.enrolledLocked : copy.enrolledOnly;
       setMessage(resultMessage);
+      if (activate) onOrganizationActivated?.(id);
     } catch (reason) {
       const raw = String(reason instanceof Error ? reason.message : reason);
       setError(transientCode ? raw.split(transientCode).join("[redacted]") : raw);
@@ -3079,7 +3112,7 @@ export function ProviderSettings({
           })()}
 
           {view.kind === "enroll" && (
-            <form className="provider-enrollment-form" onSubmit={(event) => { event.preventDefault(); void enrollOrganization(false); }}>
+            <form ref={organizationEnrollmentFormRef} className="provider-enrollment-form" onSubmit={(event) => { event.preventDefault(); void enrollOrganization(false); }}>
               <header className="provider-detail-heading enterprise">
                 <div>
                   <span>{copy.managed} · {editingOrganization ? copy.reenroll : copy.addOrganization}</span>

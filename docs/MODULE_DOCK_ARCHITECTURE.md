@@ -93,9 +93,10 @@ Groups and Office contribute:
 ```
 
 Older engines render a local-only architecture preview. Engines advertising
-`collaboration.remote.v1` render the native, read-only organization Desk described below. Merely
-showing the module, starting Desktop, or entering Groups performs no remote Desk request, starts no
-polling or worker, and creates no collaboration state directory.
+`collaboration.remote.v1` render the native organization Desk described below; engines that also
+advertise `collaboration.remote.manage.v1` enable its task-management controls. Opening Groups or
+switching organizations performs one bounded board read for the selected configured profile. It
+does not start polling or a background worker.
 
 ## Phase 1.5: native organization Desk
 
@@ -106,25 +107,35 @@ The first connected Groups slice is intentionally smaller than a general Discord
 - selecting an organization in the sidebar is the organization switch. There is no second
   **Use for new work** setting;
 - the switch changes the active model route and organization workspace as one context;
-- clicking **Read board** performs a bounded, explicit read for that exact profile;
+- opening Groups or switching organizations performs one bounded read for that exact profile;
+- **Refresh snapshot** remains an explicit retry and there is no timed background polling;
 - task detail stays pinned to `{profileId, taskId}` even if the user later changes the default
   organization;
 - changing the default organization affects only new work. Existing conversations retain their
   persisted profile route;
-- this phase is read-only. Posting, claiming, acknowledging, completing, cancelling, enrollment-key
-  administration, token rotation, and owner actions remain in the managed web/CLI surface.
+- a capable Engine exposes ticket/task creation, claim, high-risk acknowledgement, workflow state
+  transitions, release/verification evidence, cancellation, and comments inside Desktop;
+- an older Engine remains read-only. Enrollment-key administration, token rotation, emergency
+  recovery, and human Diff merge approval remain in the managed web/operator surface.
 
-The renderer consumes three typed Serve methods:
+The renderer consumes typed, profile-pinned Serve methods:
 
 ```text
 desk.connections.list {}
 desk.snapshot { profileId, state? }
 desk.task.get { profileId, taskId }
+desk.task.create { profileId, kind, title, ... }
+desk.task.claim { profileId, taskId }
+desk.task.ack { profileId, taskId }
+desk.task.transition { profileId, taskId, state, ... }
+desk.task.complete { profileId, taskId, ... }
+desk.task.cancel { profileId, taskId, detail, ... }
+desk.task.comment { profileId, taskId, body }
 ```
 
-`desk.connections.list` is a redacted local inventory read. Only the latter two methods contact an
-organization Desk, and both capture the caller-supplied `profileId` before starting any network work.
-There is no active-profile lookup in flight.
+`desk.connections.list` is a redacted local inventory read. Every other method captures the
+caller-supplied `profileId` and verifies the same organization binding still exists after the
+network operation. There is no mutable active-profile lookup in flight.
 
 Desk credentials are separate from Hara Control device tokens. They stay in the Serve process inside
 the private `~/.hara/desk-connections.json` file and never enter renderer props, RPC responses, local
@@ -132,9 +143,10 @@ storage, logs, URLs, or error text. Each binding includes a fingerprint of the g
 identity, so removing and re-enrolling a different company under the same profile ID cannot revive
 the previous company's Desk token. Every registration also rotates a random, non-secret binding
 revision exposed only in the redacted local inventory. Profile removal deletes the local binding. The
-CLI sensitive-file policy blocks both stores from file reads and broad searches. The legacy MCP retains
-its separate flat `~/.hara/desk.json`; it remains visible only as `legacyUnbound` until the user
-explicitly registers a native profile connection, and neither writer can overwrite the other.
+CLI sensitive-file policy blocks both stores from file reads and broad searches. A legacy flat MCP
+credential may remain visible only as `legacyUnbound` until the user explicitly registers a native
+profile connection. The current universal MCP stores credentials separately by Desk origin,
+installation, client kind, and profile, so Claude Code and Codex cannot overwrite one another.
 
 The transport accepts HTTPS origins only, except loopback HTTP for local development. It rejects URL
 credentials, paths, query strings, fragments, cross-origin redirects, invalid task IDs, oversized
@@ -146,10 +158,10 @@ are partitioned by organization enrollment identity plus the opaque Desk binding
 stale async generations, and are removed when the corresponding organization disappears or an old
 profile ID is reused for a new enrollment/binding.
 
-The managed web surface remains necessary for account/OIDC login, enrollment, token administration,
-write operations, audit recovery, and emergency access. Desktop does not iframe or WebView the
-legacy Desk page because that page owns browser storage and streaming behavior that do not satisfy the
-native renderer credential boundary.
+The managed web surface remains necessary for account/OIDC login, enrollment-key and token
+administration, full audit recovery, human Diff merge approval, and emergency access. Desktop does
+not iframe or WebView the Desk page; it uses the Engine-owned credential boundary and typed native
+renderer data instead.
 
 ### One enrollment, separated credentials
 
