@@ -305,6 +305,7 @@ type SettingsSection =
   | "learning"
   | "engine"
   | "security"
+  | "mobile"
   | "lang"
   | "modules"
   | "pets"
@@ -340,6 +341,9 @@ const loadGatewaySettings = () => import("./GatewaySettings").then((module) => (
 const loadLearningCenter = () => import("./LearningCenter").then((module) => ({
   default: module.LearningCenter,
 }));
+const loadMobilePairingSettings = () => import("./MobilePairingSettings").then((module) => ({
+  default: module.MobilePairingSettings,
+}));
 const loadDesktopCompanionSettings = () =>
   import("./companion/DesktopCompanionSettings").then((module) => ({
     default: module.DesktopCompanionSettings,
@@ -374,6 +378,7 @@ const CapabilityDirectory = lazy(loadCapabilityDirectory);
 const ProviderSettings = lazy(loadProviderSettings);
 const GatewaySettings = lazy(loadGatewaySettings);
 const LearningCenter = lazy(loadLearningCenter);
+const MobilePairingSettings = lazy(loadMobilePairingSettings);
 const DesktopCompanionSettings = lazy(loadDesktopCompanionSettings);
 
 const warmModule = (promise: Promise<unknown>): void => {
@@ -388,6 +393,8 @@ const preloadSettingsSection = (section: SettingsSection): void => {
     warmModule(Promise.all([loadProviderSettings(), loadGatewaySettings()]));
   } else if (section === "learning") {
     warmModule(loadLearningCenter());
+  } else if (section === "mobile") {
+    warmModule(loadMobilePairingSettings());
   } else if (section === "pets") {
     warmModule(loadDesktopCompanionSettings());
   } else if (section === "capabilities") {
@@ -9605,6 +9612,7 @@ export default function App() {
                     ["learning", t("setLearning")],
                     ["engine", t("setServer")],
                     ["security", t("setSecurity")],
+                    ["mobile", t("setMobile")],
                     ["lang", t("setLang")],
                   ],
                 },
@@ -10027,6 +10035,24 @@ export default function App() {
                     {t("executionPrivacyHint")}
                   </SettingsNotice>
                 </SettingsCard>
+              </SettingsPage>
+            )}
+            {setSec === "mobile" && (
+              <SettingsPage
+                id="settings-mobile-title"
+                eyebrow={t("settingsSystem")}
+                title={t("setMobile")}
+                description={t("mobileSettingsDescription")}
+              >
+                <Suspense
+                  fallback={(
+                    <div className="settings-empty" role="status">
+                      {t("loading")}
+                    </div>
+                  )}
+                >
+                  <MobilePairingSettings client={clientRef.current} locale={locale} />
+                </Suspense>
               </SettingsPage>
             )}
             {setSec === "lang" && (

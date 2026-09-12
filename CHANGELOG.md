@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.161 — 2026-09-12 — secure Hara Mobile QR pairing
+
+- Bundle Hara CLI `0.174.0` at exact commit `c2d4a00d9385fcc1fd8f1fc02d5626712f005f97`, adding
+  authenticated two-device pairing RPCs with two-minute, single-use invitations and identity pinning.
+- Add a bilingual Mobile pairing page in Settings. Desktop renders the QR locally, keeps a manual code fallback,
+  shows only the phone label, platform and public-key thumbprint, and requires an explicit allow or reject decision.
+- Keep account tokens, device credentials, full public keys, model keys and local paths out of the renderer. Expired,
+  replaced or already-consumed claims fail closed, while account and Desktop credentials can refresh safely.
+- Pairing does not claim remote Session control: published Sessions remain separately gated by the Account/Relay
+  capability, which is not enabled on the current production Account service.
+
 ## 0.1.160 — 2026-09-11 — organization Desk workbench and durable Agent control
 
 - Bundle Hara CLI `0.173.0` at exact commit `e04a7e1648d4ef3c730167b3d606e8ab821a05af`, including

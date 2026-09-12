@@ -798,6 +798,45 @@ export interface GatewayLoginSnapshot {
   errorCode?: "network" | "invalid-response" | "qr-expired" | "local-state";
 }
 
+export interface MobileCompanionStatus {
+  account: { displayName: string; region: "cn" | "global" } | null;
+  accountSession: "active" | "expired" | "missing";
+  desktopCredential: "active" | "expired" | "missing";
+  pairedMobileDevices: number;
+  signedIn: boolean;
+}
+
+export interface MobilePairingInvitation {
+  accountRegion: "cn" | "global";
+  challengeId: string;
+  expiresAt: number;
+  pairingCode: string;
+  protocolVersion: 1;
+  qrPayload: string;
+  state: MobilePairingState;
+}
+
+export type MobilePairingState =
+  | "pending"
+  | "claimed"
+  | "approved"
+  | "rejected"
+  | "consumed"
+  | "expired"
+  | "cancelled";
+
+export interface MobilePairingSnapshot {
+  challengeId: string;
+  expiresAt: number;
+  mobile: {
+    label: string;
+    platform: "ios" | "android";
+    publicKeyThumbprint: string;
+  } | null;
+  pairedDeviceId: string | null;
+  state: MobilePairingState;
+}
+
 export type OrganizationAccessState = "valid" | "permanent" | "expiring" | "expired" | "legacy" | "invalid";
 
 export interface OrganizationServiceSummary {
@@ -2293,6 +2332,27 @@ export class HaraClient {
   cancelGatewayLogin(platform: "weixin", id: string) {
     return this.call<{ login: GatewayLoginSnapshot }>("settings.gateways.login.cancel", { platform, id })
       .then((result) => result.login);
+  }
+  async mobileCompanionStatus(): Promise<MobileCompanionStatus | null> {
+    if (this.methods.size > 0 && !this.supports("mobile.status")) return null;
+    try {
+      return await this.call<MobileCompanionStatus>("mobile.status", {});
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  createMobilePairing() {
+    return this.call<MobilePairingInvitation>("mobile.pairing.create", {});
+  }
+  inspectMobilePairing(challengeId: string) {
+    return this.call<MobilePairingSnapshot>("mobile.pairing.status", { challengeId });
+  }
+  decideMobilePairing(challengeId: string, approved: boolean) {
+    return this.call<MobilePairingSnapshot>("mobile.pairing.decide", {
+      approved,
+      challengeId,
+    });
   }
   /** User-added organization routes. Codes are one-shot request fields and tokens never cross this API. */
   async listOrganizationConnections(cwd?: string): Promise<OrganizationConnectionsState | null> {

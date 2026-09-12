@@ -1,0 +1,182 @@
+.mobile-pairing-action-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 18px 22px 4px;
+}
+
+.mobile-pairing-ritual {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 0.78fr) minmax(300px, 1.22fr);
+  padding: 22px;
+}
+
+.mobile-pairing-qr-panel,
+.mobile-pairing-review-panel {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  min-width: 0;
+  padding: 18px;
+}
+
+.mobile-pairing-qr-panel {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-panel) 88%, var(--surface-raised));
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.mobile-pairing-qr-frame {
+  align-items: center;
+  aspect-ratio: 1;
+  background: #fffdf8;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 17px;
+  display: flex;
+  justify-content: center;
+  max-width: 256px;
+  overflow: hidden;
+  padding: 12px;
+  width: 100%;
+}
+
+.mobile-pairing-qr-frame img {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.mobile-pairing-qr-frame > span {
+  animation: mobile-pairing-pulse 1.2s ease-in-out infinite alternate;
+  background: var(--line);
+  border-radius: 12px;
+  height: 72%;
+  width: 72%;
+}
+
+.mobile-pairing-qr-panel > strong {
+  font-size: 14px;
+  margin-top: 14px;
+}
+
+.mobile-pairing-qr-panel > small {
+  color: var(--muted);
+  line-height: 1.55;
+  margin-top: 7px;
+  max-width: 280px;
+}
+
+.mobile-pairing-review-panel {
+  align-content: start;
+  display: grid;
+  gap: 14px;
+}
+
+.mobile-pairing-code-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mobile-pairing-code-row {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-panel) 76%, var(--surface-raised));
+  border-radius: 14px;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 12px 12px 14px;
+}
+
+.mobile-pairing-code-row code {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-pairing-device-review {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin-top: 4px;
+  padding-top: 18px;
+}
+
+.mobile-pairing-device-mark {
+  align-items: center;
+  background: var(--accent);
+  border-radius: 14px;
+  color: #fff8f0;
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.mobile-pairing-device-review small,
+.mobile-pairing-device-review strong,
+.mobile-pairing-device-review span {
+  display: block;
+}
+
+.mobile-pairing-device-review small,
+.mobile-pairing-device-review span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mobile-pairing-device-review strong {
+  margin: 4px 0;
+}
+
+.mobile-pairing-review-actions {
+  display: flex;
+  gap: 10px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.mobile-pairing-waiting {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 13px;
+  gap: 9px;
+  margin-top: 6px;
+}
+
+.mobile-pairing-waiting > span {
+  animation: mobile-pairing-pulse 0.9s ease-in-out infinite alternate;
+  background: var(--success);
+  border-radius: 999px;
+  height: 8px;
+  width: 8px;
+}
+
+@keyframes mobile-pairing-pulse {
+  from { opacity: 0.28; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 900px) {
+  .mobile-pairing-ritual {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-pairing-qr-frame > span,
+  .mobile-pairing-waiting > span {
+    animation: none;
+  }
+}
