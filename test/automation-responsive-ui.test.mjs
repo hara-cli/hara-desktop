@@ -74,3 +74,19 @@ test("automation delivery status distinguishes recoverable and terminal queues w
   assert.match(english, /Delivery blocked; check credentials/);
   assert.match(english, /Delivery stopped; check target or authorization/);
 });
+
+test("automation jobs surface active scheduler skip diagnostics instead of looking healthy", () => {
+  const source = read("src/Automations.tsx");
+  const client = read("src/client.ts");
+  const english = read("src/automation-copy-en.ts");
+
+  for (const field of ["lastSkippedAt", "lastSkipCode", "lastSkipReason"]) {
+    assert.match(client, new RegExp(`${field}\\?:`), `wire type must retain ${field}`);
+    assert.match(source, new RegExp(`${field}\\?:`), `automation view type must retain ${field}`);
+  }
+  assert.match(source, /job\.lastSkippedAt[^\n]+return "attention"/);
+  assert.match(source, /skipCodeLabel\(job\.lastSkipCode, copy\)/);
+  assert.match(source, /job\.lastSkipReason\?\.trim\(\)/);
+  assert.match(english, /Last skipped/);
+  assert.match(english, /Delivery is not configured/);
+});

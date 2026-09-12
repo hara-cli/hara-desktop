@@ -59,6 +59,10 @@ export interface AutomationJob {
   lastStatus?: "ok" | "error" | "running" | "timed_out" | string;
   lastDurationMs?: number;
   lastError?: string;
+  lastSkippedAt?: number | string | null;
+  lastSkipCode?: "delivery_configuration_required" | "delivery_blocked" | "delivery_dead_letter" | string;
+  /** The Engine redacts this diagnostic before returning automation.list. */
+  lastSkipReason?: string;
   consecutiveErrors?: number;
   deliver?: unknown;
   /** Redacted delivery summary returned by newer engines. */
@@ -142,6 +146,7 @@ export interface AutomationCopy {
   task: string;
   schedule: string;
   lastRun: string;
+  lastSkipped: string;
   nextRun: string;
   nextRunDeferred: string;
   neverRun: string;
@@ -199,7 +204,12 @@ export interface AutomationCopy {
   resultError: string;
   resultRunning: string;
   resultTimedOut: string;
+  resultSkipped: string;
   resultUnknown: string;
+  skipDeliveryConfigurationRequired: string;
+  skipDeliveryBlocked: string;
+  skipDeliveryDeadLetter: string;
+  skipUnknown: string;
   createdDescriptionPrint: string;
   createdDescriptionOrg: string;
   createdDescriptionCommand: string;
@@ -304,6 +314,7 @@ const DEFAULT_COPY: AutomationCopy = {
   task: "任务",
   schedule: "计划",
   lastRun: "上次运行",
+  lastSkipped: "最近跳过",
   nextRun: "下次运行",
   nextRunDeferred: "正在计算",
   neverRun: "尚未运行",
@@ -353,7 +364,7 @@ const DEFAULT_COPY: AutomationCopy = {
   statusActiveHelp: "任务已启用，最近一次运行正常。",
   statusRunningHelp: "Hara 正在执行这个任务，完成后会更新结果。",
   statusPausedHelp: "任务保留在列表中，但不会自动运行。",
-  statusAttentionHelp: "最近一次运行失败或超时，请查看错误并决定是否重试。",
+  statusAttentionHelp: "最近一次运行失败、超时，或到期运行因投递前提未满足而未启动。",
   statusCompletedHelp: "这是一次性任务，计划的运行已经完成。",
   statusManualHelp: "当前系统暂不支持后台定时触发；任务仍可保存、编辑和立即运行。",
   statusOfflineHelp: "任务已启用，但本机定时服务当前不可用。",
@@ -361,7 +372,12 @@ const DEFAULT_COPY: AutomationCopy = {
   resultError: "失败",
   resultRunning: "运行中",
   resultTimedOut: "超时",
+  resultSkipped: "未启动",
   resultUnknown: "无结果",
+  skipDeliveryConfigurationRequired: "投递未配置",
+  skipDeliveryBlocked: "投递已阻塞",
+  skipDeliveryDeadLetter: "投递已停止",
+  skipUnknown: "计划运行被跳过",
   createdDescriptionPrint: "定时向 Hara 发出指令，并把回答保存到运行记录。",
   createdDescriptionOrg: "定时处理 Org 工作流，并保留每次执行结果。",
   createdDescriptionCommand: "在指定工作目录运行命令，并记录输出和异常。",
@@ -729,6 +745,7 @@ function getAutomationState(
   if (scheduler?.installed === false || scheduler?.healthy === false || scheduler?.status === "offline") {
     return "offline";
   }
+  if (job.lastSkippedAt !== undefined && job.lastSkippedAt !== null) return "attention";
   if (
     job.lastStatus === "error" ||
     job.lastStatus === "timed_out" ||
@@ -777,6 +794,13 @@ function resultLabel(status: string | undefined, copy: AutomationCopy): string {
   if (status === "running") return copy.resultRunning;
   if (status === "timed_out") return copy.resultTimedOut;
   return copy.resultUnknown;
+}
+
+function skipCodeLabel(code: string | undefined, copy: AutomationCopy): string {
+  if (code === "delivery_configuration_required") return copy.skipDeliveryConfigurationRequired;
+  if (code === "delivery_blocked") return copy.skipDeliveryBlocked;
+  if (code === "delivery_dead_letter") return copy.skipDeliveryDeadLetter;
+  return copy.skipUnknown;
 }
 
 function safeDeliveryLabel(job: AutomationJob, copy: AutomationCopy): string {
@@ -1265,6 +1289,8 @@ function TaskRow({
   const state = getAutomationState(job, scheduler);
   const next = getNextRun(job);
   const lastRelative = formatRelative(job.lastRunAt);
+  const skipped = job.lastSkippedAt !== undefined && job.lastSkippedAt !== null;
+  const skippedRelative = formatRelative(job.lastSkippedAt);
   const duration = formatDuration(job.lastDurationMs);
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -1320,12 +1346,14 @@ function TaskRow({
         </small>
       </div>
       <div className="hara-automation-task-result">
-        <span className="hara-automation-column-label">{copy.lastRun}</span>
-        <strong className={`is-${job.lastStatus ?? "unknown"}`}>
-          {job.lastRunAt ? resultLabel(job.lastStatus, copy) : copy.neverRun}
+        <span className="hara-automation-column-label">{skipped ? copy.lastSkipped : copy.lastRun}</span>
+        <strong className={`is-${skipped ? "error" : job.lastStatus ?? "unknown"}`}>
+          {skipped ? copy.resultSkipped : job.lastRunAt ? resultLabel(job.lastStatus, copy) : copy.neverRun}
         </strong>
         <small>
-          {job.lastRunAt
+          {skipped
+            ? [skippedRelative, skipCodeLabel(job.lastSkipCode, copy)].filter(Boolean).join(" · ")
+            : job.lastRunAt
             ? [lastRelative, duration].filter(Boolean).join(" · ")
             : stateHelp(state, copy)}
         </small>
@@ -1599,6 +1627,14 @@ function TaskDetail({
             : copy.neverRun}
         </DetailField>
       </div>
+      {job.lastSkippedAt !== undefined && job.lastSkippedAt !== null ? (
+        <div className="hara-automation-error-panel" role="alert">
+          <strong>
+            {copy.lastSkipped} · {formatInstant(job.lastSkippedAt, copy)} · {skipCodeLabel(job.lastSkipCode, copy)}
+          </strong>
+          <pre>{job.lastSkipReason?.trim() || skipCodeLabel(job.lastSkipCode, copy)}</pre>
+        </div>
+      ) : null}
       {job.lastError ? (
         <div className="hara-automation-error-panel" role="alert">
           <strong>{copy.errorLabel}</strong>

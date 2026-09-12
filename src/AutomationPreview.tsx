@@ -31,9 +31,10 @@ const previewJobs: AutomationJob[] = [
     schedule: { kind: "daily", label: "每天 09:00" },
     nextRunAt: "2026-09-02T01:00:00.000Z",
     lastRunAt: "2026-09-01T01:00:00.000Z",
-    lastStatus: "error",
-    lastError: "连接财务台账失败",
-    consecutiveErrors: 1,
+    lastStatus: "ok",
+    lastSkippedAt: "2026-09-02T01:00:00.000Z",
+    lastSkipCode: "delivery_configuration_required",
+    lastSkipReason: "飞书投递尚未配置；配置恢复后会补跑这次到期任务。",
   },
 ];
 

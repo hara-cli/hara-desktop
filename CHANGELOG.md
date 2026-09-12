@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.162 — 2026-09-13 — visible cron skip recovery
+
+- Bundle Hara CLI `0.174.1` at exact commit `91c19a960fe6dea31361778f0ed460f3d927f867`, retaining a
+  blocked cron occurrence for one catch-up attempt after its delivery prerequisite recovers instead of silently
+  losing the matching minute.
+- Treat an unresolved scheduler skip as “Needs attention” in Automations. Task rows now distinguish “Not started”
+  from the previous real run result, while details show the redacted skip time, typed reason and bilingual guidance.
+- Include the Engine's read-only `cron tick --dry-run` diagnostics and durable skip telemetry without exposing the
+  write-only delivery target or credentials. Windows packages remain updater-signed but not Authenticode-signed,
+  so SmartScreen may still show a reputation warning.
+
 ## 0.1.161 — 2026-09-12 — secure Hara Mobile QR pairing
 
 - Bundle Hara CLI `0.174.0` at exact commit `c2d4a00d9385fcc1fd8f1fc02d5626712f005f97`, adding

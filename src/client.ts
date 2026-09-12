@@ -333,6 +333,11 @@ export interface CronJobInfo {
   lastRunAt?: number;
   lastStatus?: CronJobStatus;
   lastError?: string;
+  /** A due run that was intentionally not launched because a required prerequisite was unavailable. */
+  lastSkippedAt?: number;
+  lastSkipCode?: "delivery_configuration_required" | "delivery_blocked" | "delivery_dead_letter" | string;
+  /** Already redacted by the Engine before crossing the local authenticated boundary. */
+  lastSkipReason?: string;
   schedule?: string; // human description ("every 30m", "cron 0 9 * * *")
 }
 
