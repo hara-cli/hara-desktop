@@ -811,6 +811,42 @@ export interface MobileCompanionStatus {
   signedIn: boolean;
 }
 
+export type MobileDesktopAuthorizationState =
+  | "pending"
+  | "approved"
+  | "consumed"
+  | "expired"
+  | "cancelled"
+  | "missing";
+
+export interface MobileDesktopAuthorizationDevice {
+  label: string;
+  platform: "macos" | "windows" | "linux";
+  publicKeyThumbprint: string;
+}
+
+export interface MobileDesktopAuthorizationInvitation {
+  accountRegion: "cn" | "global";
+  authorizationCode: string;
+  challengeId: string;
+  desktop: MobileDesktopAuthorizationDevice;
+  expiresAt: number;
+  protocolVersion: 1;
+  qrPayload: string;
+  signedIn: false;
+  state: "pending";
+}
+
+export interface MobileDesktopAuthorizationSnapshot {
+  account: { displayName: string; region: "cn" | "global" } | null;
+  challengeId: string | null;
+  desktop: MobileDesktopAuthorizationDevice | null;
+  expiresAt: number | null;
+  protocolVersion: 1;
+  signedIn: boolean;
+  state: MobileDesktopAuthorizationState;
+}
+
 export interface MobilePairingInvitation {
   accountRegion: "cn" | "global";
   challengeId: string;
@@ -2366,6 +2402,12 @@ export class HaraClient {
       if (error?.code === -32601) return null;
       throw error;
     }
+  }
+  createMobileDesktopAuthorization() {
+    return this.call<MobileDesktopAuthorizationInvitation>("mobile.authorization.create", {});
+  }
+  mobileDesktopAuthorizationStatus() {
+    return this.call<MobileDesktopAuthorizationSnapshot>("mobile.authorization.status", {});
   }
   createMobilePairing() {
     return this.call<MobilePairingInvitation>("mobile.pairing.create", {});

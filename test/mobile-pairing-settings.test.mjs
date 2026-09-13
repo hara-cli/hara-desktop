@@ -28,6 +28,8 @@ test("Mobile pairing stays capability-gated, one-time, and credential-free in th
 
   for (const method of [
     "mobile.status",
+    "mobile.authorization.create",
+    "mobile.authorization.status",
     "mobile.pairing.create",
     "mobile.pairing.status",
     "mobile.pairing.decide",
@@ -41,8 +43,18 @@ test("Mobile pairing stays capability-gated, one-time, and credential-free in th
   }
 
   assert.match(component, /void import\("qrcode"\)/, "QR rendering stays in the lazy pairing chunk");
+  assert.match(component, /supportsFeature\("mobile\.desktop-authorization\.qr\.v1"\)/);
+  assert.match(component, /hara:\/\/authorize-desktop\?v=1&region=/);
+  assert.match(component, /\^HARA_AUTH_\[A-Za-z0-9_-\]\{22,118\}\$/);
+  assert.match(component, /validDesktopAuthorizationSnapshot\(next, authorization\)/);
+  assert.match(component, /next\.signedIn\) await refreshAccount\(\)/);
+  assert.match(component, /authorizationClient\.createMobileDesktopAuthorization\(\)/);
+  assert.match(component, /window\.setTimeout\(\(\) => void tick\(\), 1_000\)/);
+  assert.match(component, /使用 Hara Mobile 登录/);
+  assert.match(component, /No Sessions are shared until you allow them below/);
+  assert.match(component, /你在下方明确开放前，不会共享任何会话/);
   assert.match(component, /value\.qrPayload === expectedPayload/);
-  assert.match(component, /\^HARA_\[A-Za-z0-9_-\]\{11,123\}\$/);
+  assert.match(component, /\^HARA_\(\?!AUTH_\)\[A-Za-z0-9_-\]\{11,123\}\$/);
   assert.match(component, /pairing\?\.mobile && pairing\.state === "claimed" && invitationActive/);
   assert.match(component, /pairing\.state !== "claimed"[\s\S]*invitation\.expiresAt <= Date\.now\(\)/);
   assert.match(component, /pairingClient\.decideMobilePairing\(invitation\.challengeId, approved\)/);
@@ -85,7 +97,7 @@ test("Mobile pairing stays capability-gated, one-time, and credential-free in th
   assert.ok(dtoBlock, "mobile DTO block is present");
   assert.doesNotMatch(
     dtoBlock,
-    /\b(?:accessToken|refreshToken|credential|privateKey|publicKeySpki)\b/,
+    /\b(?:accessToken|refreshToken|credential|privateKey|publicKeySpki|pollSecret)\b/,
     "account tokens, device credentials, private keys, and full phone public keys never enter renderer DTOs",
   );
   assert.match(dtoBlock, /publicKeyThumbprint: string/);
