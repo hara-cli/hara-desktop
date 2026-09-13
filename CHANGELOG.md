@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.164 — 2026-09-13 — approve Desktop sign-in from Hara Mobile
+
+- Let an unsigned Desktop create a short-lived authorization QR and poll only with its local secret and P-256
+  proof. A signed-in Hara Mobile previews the actual Desktop label, platform, and key fingerprint before the user
+  explicitly approves it; the Desktop then joins the same Hara cloud account and pins the approving phone.
+- Keep the authorization secret, cloud credentials, and complete public keys in the CLI core instead of exposing
+  them to the renderer. Pairing publishes zero Sessions by default, so account membership never silently grants
+  message, approval, or terminal access.
+- Bundle Hara CLI `0.176.0` at exact commit `5f7657fbff9e860e3d658fd4bbacab1a38474391`, including the signed-in
+  phone authorization protocol and durable interactive Agent hosting. The existing signed-in Desktop pairing flow
+  and its granular Session publication controls remain available.
+
 ## 0.1.163 — 2026-09-13 — explicit least-privilege Mobile Session access
 
 - Bundle Hara CLI `0.175.1` at exact commit `ab3c9d9e234b8927478a024b2cef48acdeda87b6`, including
