@@ -31,6 +31,9 @@ test("Mobile pairing stays capability-gated, one-time, and credential-free in th
     "mobile.pairing.create",
     "mobile.pairing.status",
     "mobile.pairing.decide",
+    "mobile.publications.list",
+    "mobile.publications.publish",
+    "mobile.publications.unpublish",
   ]) {
     const methodPattern = new RegExp(method.replaceAll(".", "\\."));
     assert.match(component, methodPattern, `${method} gates the pairing surface`);
@@ -52,6 +55,11 @@ test("Mobile pairing stays capability-gated, one-time, and credential-free in th
   );
   assert.match(component, /<code className="settings-mono">hara mobile login<\/code>/);
   assert.match(component, /Only separately published Sessions appear when remote service is available/);
+  assert.match(component, /Nothing is shared by default/);
+  assert.match(component, /client\.listExternalSessions\(\{ limit: 100 \}\)/);
+  assert.match(component, /publicationClient\.publishMobileSession\(sessionId\)/);
+  assert.match(component, /publicationClient\.unpublishMobileSession\(sessionId\)/);
+  assert.match(component, /aria-pressed=\{published\}/);
   assert.doesNotMatch(component, /The phone can now see/, "pairing alone is not presented as active remote access");
   assert.match(component, /actions=\{\([\s\S]*copy\.refresh/);
   assert.match(component, /window\.setTimeout\(\(\) => void tick\(\), 1_000\)/);

@@ -842,6 +842,11 @@ export interface MobilePairingSnapshot {
   state: MobilePairingState;
 }
 
+export interface MobileSessionPublications {
+  protocolVersion: 1;
+  sessionIds: string[];
+}
+
 export type OrganizationAccessState = "valid" | "permanent" | "expiring" | "expired" | "legacy" | "invalid";
 
 export interface OrganizationServiceSummary {
@@ -2357,6 +2362,19 @@ export class HaraClient {
     return this.call<MobilePairingSnapshot>("mobile.pairing.decide", {
       approved,
       challengeId,
+    });
+  }
+  mobileSessionPublications() {
+    return this.call<MobileSessionPublications>("mobile.publications.list", {});
+  }
+  publishMobileSession(sessionId: string) {
+    return this.call<MobileSessionPublications>("mobile.publications.publish", {
+      sessionId,
+    });
+  }
+  unpublishMobileSession(sessionId: string) {
+    return this.call<MobileSessionPublications>("mobile.publications.unpublish", {
+      sessionId,
     });
   }
   /** User-added organization routes. Codes are one-shot request fields and tokens never cross this API. */

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
+  ExternalSessionInfo,
   HaraClient,
   MobileCompanionStatus,
   MobilePairingInvitation,
@@ -47,6 +48,20 @@ const COPY = {
     instructions:
       "Open Hara Mobile → Pair your computer → Scan QR. If the camera is unavailable, enter the manual code.",
     pending: "Waiting for the phone to scan",
+    privateSession: "Private",
+    publish: "Allow on phone",
+    published: "On phone",
+    publications: "Sessions available on phone",
+    publicationsBody:
+      "Nothing is shared by default. Allow only the Sessions you want to read or control from a paired phone.",
+    publicationsEmpty: "No local Sessions are available yet.",
+    publicationsLoading: "Loading local Sessions…",
+    publicationsRefresh: "Refresh Sessions",
+    publicationsUnsupported:
+      "Update the Hara engine to choose which Sessions appear on your phone.",
+    publicationCount: "{{count}} allowed",
+    relayHint:
+      "Keep Hara Desktop and the Mobile bridge online for live chat and terminal control.",
     qrAlt: "Short-lived Hara Mobile pairing QR code",
     refresh: "Refresh status",
     reject: "Reject",
@@ -56,6 +71,7 @@ const COPY = {
       "The QR contains only a region, expiry, and one-time invitation. It never contains an account token, device private key, or model credential.",
     status: "Paired phones",
     title: "Mobile pairing",
+    unpublish: "Remove phone access",
     unsupported: "Update the Hara engine to use secure QR pairing.",
   },
   zh: {
@@ -85,6 +101,18 @@ const COPY = {
     instructions:
       "打开 Hara Mobile → 配对你的电脑 → 扫描二维码。相机不可用时，可输入下方配对码。",
     pending: "等待手机扫码",
+    privateSession: "仅电脑可见",
+    publish: "允许手机访问",
+    published: "手机可见",
+    publications: "手机可访问的会话",
+    publicationsBody:
+      "默认不会共享任何会话。只开放你准备在已配对手机上查看或控制的会话。",
+    publicationsEmpty: "当前没有可开放的本机会话。",
+    publicationsLoading: "正在读取本机会话…",
+    publicationsRefresh: "刷新会话",
+    publicationsUnsupported: "请更新 Hara 引擎后选择要开放到手机的会话。",
+    publicationCount: "已开放 {{count}} 个",
+    relayHint: "实时聊天和终端控制期间，请保持 Hara Desktop 与手机桥接在线。",
     qrAlt: "短时有效的 Hara 手机配对二维码",
     refresh: "刷新状态",
     reject: "拒绝",
@@ -94,6 +122,7 @@ const COPY = {
       "二维码只包含区域、过期时间和一次性邀请，不包含账号 Token、设备私钥或模型密钥。",
     status: "已配对手机",
     title: "手机配对",
+    unpublish: "撤销手机访问",
     unsupported: "请更新 Hara 引擎后使用安全二维码配对。",
   },
 } as const;
@@ -137,8 +166,16 @@ export function MobilePairingSettings({ client, locale }: Props) {
   const [busy, setBusy] = useState<"create" | "approve" | "reject" | "">("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const [publicationError, setPublicationError] = useState("");
+  const [publicationBusy, setPublicationBusy] = useState("");
+  const [publicationChecked, setPublicationChecked] = useState(false);
+  const [publishedSessionIds, setPublishedSessionIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [sessions, setSessions] = useState<ExternalSessionInfo[]>([]);
   const [now, setNow] = useState(Date.now());
   const accountRequestRef = useRef(0);
+  const publicationRequestRef = useRef(0);
   const currentClientRef = useRef(client);
   currentClientRef.current = client;
   const supported = Boolean(
@@ -148,6 +185,45 @@ export function MobilePairingSettings({ client, locale }: Props) {
     && client.supports("mobile.pairing.status")
     && client.supports("mobile.pairing.decide"),
   );
+  const publicationSupported = Boolean(
+    client
+    && client.supports("external.sessions.list")
+    && client.supports("mobile.publications.list")
+    && client.supports("mobile.publications.publish")
+    && client.supports("mobile.publications.unpublish"),
+  );
+
+  const refreshPublications = useCallback(async () => {
+    if (!client || !publicationSupported || currentClientRef.current !== client) return;
+    const requestId = ++publicationRequestRef.current;
+    setPublicationChecked(false);
+    setPublicationError("");
+    try {
+      const [publications, directory] = await Promise.all([
+        client.mobileSessionPublications(),
+        client.listExternalSessions({ limit: 100 }),
+      ]);
+      if (
+        currentClientRef.current !== client
+        || publicationRequestRef.current !== requestId
+      ) return;
+      if (!directory || publications.protocolVersion !== 1) {
+        throw new Error(copy.publicationsUnsupported);
+      }
+      setPublishedSessionIds(new Set(publications.sessionIds));
+      setSessions(directory.sessions);
+    } catch (reason) {
+      if (
+        currentClientRef.current === client
+        && publicationRequestRef.current === requestId
+      ) setPublicationError(safeError(reason));
+    } finally {
+      if (
+        currentClientRef.current === client
+        && publicationRequestRef.current === requestId
+      ) setPublicationChecked(true);
+    }
+  }, [client, copy.publicationsUnsupported, publicationSupported]);
 
   const refreshAccount = useCallback(async () => {
     if (!client || !supported || currentClientRef.current !== client) return;
@@ -177,11 +253,28 @@ export function MobilePairingSettings({ client, locale }: Props) {
     setBusy("");
     setCopied(false);
     setError("");
+    setPublicationError("");
+    setPublicationBusy("");
+    setPublicationChecked(false);
+    setPublishedSessionIds(new Set());
+    setSessions([]);
     void refreshAccount();
     return () => {
       accountRequestRef.current += 1;
+      publicationRequestRef.current += 1;
     };
   }, [refreshAccount]);
+
+  useEffect(() => {
+    if (account?.signedIn && publicationSupported) {
+      void refreshPublications();
+      return;
+    }
+    publicationRequestRef.current += 1;
+    setPublicationChecked(false);
+    setPublishedSessionIds(new Set());
+    setSessions([]);
+  }, [account?.signedIn, publicationSupported, refreshPublications]);
 
   useEffect(() => {
     if (!invitation) return;
@@ -299,6 +392,31 @@ export function MobilePairingSettings({ client, locale }: Props) {
       window.setTimeout(() => setCopied(false), 1_500);
     } catch (reason) {
       setError(safeError(reason));
+    }
+  };
+
+  const setSessionPublished = async (
+    sessionId: string,
+    published: boolean,
+  ) => {
+    if (!client || publicationBusy) return;
+    const publicationClient = client;
+    setPublicationBusy(sessionId);
+    setPublicationError("");
+    try {
+      const next = published
+        ? await publicationClient.publishMobileSession(sessionId)
+        : await publicationClient.unpublishMobileSession(sessionId);
+      if (currentClientRef.current !== publicationClient) return;
+      setPublishedSessionIds(new Set(next.sessionIds));
+    } catch (reason) {
+      if (currentClientRef.current === publicationClient) {
+        setPublicationError(safeError(reason));
+      }
+    } finally {
+      if (currentClientRef.current === publicationClient) {
+        setPublicationBusy("");
+      }
     }
   };
 
@@ -426,6 +544,76 @@ export function MobilePairingSettings({ client, locale }: Props) {
           </div>
         ) : null}
       </SettingsCard>
+
+      {!account?.signedIn ? null : !publicationSupported ? (
+        <SettingsNotice tone="warning" title={copy.publications}>
+          {copy.publicationsUnsupported}
+        </SettingsNotice>
+      ) : (
+        <SettingsCard
+          title={copy.publications}
+          description={copy.publicationsBody}
+          aside={(
+            <SettingsBadge tone={publishedSessionIds.size > 0 ? "success" : "neutral"}>
+              {copy.publicationCount.replace("{{count}}", String(publishedSessionIds.size))}
+            </SettingsBadge>
+          )}
+        >
+          <div className="mobile-publications-toolbar">
+            <span>{copy.relayHint}</span>
+            <button
+              type="button"
+              className="ghost"
+              disabled={!publicationChecked || Boolean(publicationBusy)}
+              onClick={() => void refreshPublications()}
+            >
+              {copy.publicationsRefresh}
+            </button>
+          </div>
+
+          {publicationError ? (
+            <SettingsNotice tone="error" title={copy.publications}>
+              {publicationError}
+            </SettingsNotice>
+          ) : !publicationChecked ? (
+            <div className="mobile-publications-empty" aria-live="polite">
+              {copy.publicationsLoading}
+            </div>
+          ) : sessions.length === 0 ? (
+            <div className="mobile-publications-empty">{copy.publicationsEmpty}</div>
+          ) : (
+            <div className="mobile-publications-list">
+              {sessions.map(session => {
+                const published = publishedSessionIds.has(session.id);
+                return (
+                  <div className="mobile-publication-row" key={session.id}>
+                    <div className="mobile-publication-copy">
+                      <strong>{session.title}</strong>
+                      <span>
+                        {session.sourceId.toUpperCase()} · {session.workspaceName}
+                      </span>
+                    </div>
+                    <SettingsBadge tone={published ? "success" : "neutral"}>
+                      {published ? copy.published : copy.privateSession}
+                    </SettingsBadge>
+                    <button
+                      type="button"
+                      className={published ? "ghost" : undefined}
+                      aria-pressed={published}
+                      disabled={Boolean(publicationBusy)}
+                      onClick={() => void setSessionPublished(session.id, !published)}
+                    >
+                      {publicationBusy === session.id
+                        ? copy.publicationsLoading
+                        : published ? copy.unpublish : copy.publish}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </SettingsCard>
+      )}
 
       <SettingsNotice tone="neutral" title={copy.safety}>{copy.safetyBody}</SettingsNotice>
     </>
