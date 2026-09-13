@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.163 — 2026-09-13 — explicit least-privilege Mobile Session access
+
+- Bundle Hara CLI `0.175.1` at exact commit `ab3c9d9e234b8927478a024b2cef48acdeda87b6`, including
+  authenticated Relay upgrades and an explicit, Desktop-owned publication record for every Session exposed to
+  a paired phone. Existing preview allowlists migrate to read-only instead of retaining implicit control.
+- Start every newly published Session as read-only, then let the user separately grant message submission and
+  interruption, approval replies, terminal observation, and short-lived terminal control. Requested grants are
+  intersected again with the live Hara, Codex, or Claude Code source capabilities before use.
+- Refuse the granular publication UI against an older Engine that could interpret a read-only request as full
+  access. Pairing still exposes no Sessions by itself, and production remote Session access remains unavailable
+  until the Account service advertises Relay capability. Windows packages remain updater-signed but not
+  Authenticode-signed, so SmartScreen may still show a reputation warning.
+
 ## 0.1.162 — 2026-09-13 — visible cron skip recovery
 
 - Bundle Hara CLI `0.174.1` at exact commit `91c19a960fe6dea31361778f0ed460f3d927f867`, retaining a
