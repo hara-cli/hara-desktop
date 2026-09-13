@@ -79,6 +79,12 @@ test("Mobile pairing stays capability-gated, one-time, and credential-free in th
   assert.match(component, /const READ_ONLY_MOBILE_CAPABILITIES:[\s\S]*read: true[\s\S]*submit: false/);
   assert.match(component, /New access starts read-only/);
   assert.match(component, /新开放的会话默认只读/);
+  assert.match(component, /connectionState/);
+  assert.match(component, /mobileCompanionStatus\(\)[\s\S]*window\.setTimeout\(\(\) => void tick\(\), 2_000\)/);
+  assert.match(component, /After pairing, its encrypted Mobile connection stays online automatically/);
+  assert.match(component, /配对后，加密手机连接会自动保持在线/);
+  assert.match(component, /relayPresentation\.tone/);
+  assert.match(client, /managedByServe: true/);
   assert.match(component, /capability === "terminalControl" && enabled[\s\S]*terminalObserve: true/);
   assert.match(component, /capability === "terminalObserve" && !enabled[\s\S]*terminalControl: false/);
   assert.match(component, /sourceCapabilities\?\.terminalView === true/);

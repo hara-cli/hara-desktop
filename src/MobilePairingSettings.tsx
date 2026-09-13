@@ -85,8 +85,24 @@ const COPY = {
     publicationsUnsupported:
       "Update the Hara engine to choose which Sessions appear on your phone.",
     publicationCount: "{{count}} allowed",
+    relay: "Remote connection",
+    relayConnecting: "Connecting",
+    relayConnectingBody: "Hara is opening the encrypted connection for this Desktop.",
+    relayLegacy: "Engine update required",
+    relayLegacyBody: "Update the Hara engine to keep the Mobile connection online automatically.",
+    relayOnline: "Online",
+    relayOnlineBody: "Paired phones can now reach the Sessions you explicitly allow below.",
+    relayRetrying: "Reconnecting",
+    relayRetryingBody: "The cloud connection was interrupted. Hara will keep retrying in the background.",
+    relayStopped: "Stopped",
+    relayStoppedBody: "Restart the Hara engine to restore the Mobile connection.",
+    relayUnavailable: "Cloud unavailable",
+    relayUnavailableBody: "Hara Cloud Relay is temporarily unavailable. Pairing and your access choices are preserved.",
+    relayWaiting: "Waiting",
+    relayWaitingAccountBody: "Sign in this Desktop before the encrypted Mobile connection can start.",
+    relayWaitingPairBody: "Pair a phone to start the encrypted Mobile connection.",
     relayHint:
-      "Keep Hara Desktop and the Mobile bridge online for live chat and terminal control.",
+      "Keep Hara Desktop running. After pairing, its encrypted Mobile connection stays online automatically.",
     qrAlt: "Short-lived Hara Mobile pairing QR code",
     refresh: "Refresh status",
     reject: "Reject",
@@ -157,7 +173,23 @@ const COPY = {
     publicationsRefresh: "刷新会话",
     publicationsUnsupported: "请更新 Hara 引擎后选择要开放到手机的会话。",
     publicationCount: "已开放 {{count}} 个",
-    relayHint: "实时聊天和终端控制期间，请保持 Hara Desktop 与手机桥接在线。",
+    relay: "远程连接",
+    relayConnecting: "正在连接",
+    relayConnectingBody: "Hara 正在为这台 Desktop 建立加密连接。",
+    relayLegacy: "需要更新引擎",
+    relayLegacyBody: "请更新 Hara 引擎，以自动保持手机连接在线。",
+    relayOnline: "已在线",
+    relayOnlineBody: "已配对手机现在可以访问你在下方明确开放的会话。",
+    relayRetrying: "正在重连",
+    relayRetryingBody: "云端连接刚刚中断，Hara 会继续在后台自动重试。",
+    relayStopped: "已停止",
+    relayStoppedBody: "请重启 Hara 引擎以恢复手机连接。",
+    relayUnavailable: "云服务暂不可用",
+    relayUnavailableBody: "Hara 云端 Relay 暂不可用；配对关系和会话权限均已保留。",
+    relayWaiting: "等待就绪",
+    relayWaitingAccountBody: "这台 Desktop 登录后才会启动加密手机连接。",
+    relayWaitingPairBody: "配对一台手机后会自动启动加密连接。",
+    relayHint: "保持 Hara Desktop 运行即可；配对后，加密手机连接会自动保持在线。",
     qrAlt: "短时有效的 Hara 手机配对二维码",
     refresh: "刷新状态",
     reject: "拒绝",
@@ -398,6 +430,32 @@ export function MobilePairingSettings({ client, locale }: Props) {
       publicationRequestRef.current += 1;
     };
   }, [refreshAccount]);
+
+  useEffect(() => {
+    if (!client || !statusSupported) return;
+    let disposed = false;
+    let timer: number | null = null;
+    const tick = async () => {
+      try {
+        const next = await client.mobileCompanionStatus();
+        if (!disposed && currentClientRef.current === client) {
+          setAccount(next);
+          setAccountChecked(true);
+        }
+      } catch {
+        // The primary refresh action owns visible errors; background Relay polling stays quiet.
+      } finally {
+        if (!disposed && currentClientRef.current === client) {
+          timer = window.setTimeout(() => void tick(), 2_000);
+        }
+      }
+    };
+    timer = window.setTimeout(() => void tick(), 2_000);
+    return () => {
+      disposed = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [client, statusSupported]);
 
   useEffect(() => {
     if (account?.signedIn && publicationSupported) {
@@ -705,6 +763,35 @@ export function MobilePairingSettings({ client, locale }: Props) {
     );
   }, [account, copy.accountReady]);
 
+  const relayPresentation = useMemo(() => {
+    const relay = account?.relay;
+    if (!relay) return {
+      body: copy.relayLegacyBody,
+      label: copy.relayLegacy,
+      tone: "warning" as const,
+    };
+    switch (relay.connectionState) {
+      case "online":
+        return { body: copy.relayOnlineBody, label: copy.relayOnline, tone: "success" as const };
+      case "connecting":
+        return { body: copy.relayConnectingBody, label: copy.relayConnecting, tone: "neutral" as const };
+      case "retrying":
+        return { body: copy.relayRetryingBody, label: copy.relayRetrying, tone: "warning" as const };
+      case "unavailable":
+        return { body: copy.relayUnavailableBody, label: copy.relayUnavailable, tone: "warning" as const };
+      case "stopped":
+        return { body: copy.relayStoppedBody, label: copy.relayStopped, tone: "warning" as const };
+      default:
+        return {
+          body: relay.reason === "not_signed_in"
+            ? copy.relayWaitingAccountBody
+            : copy.relayWaitingPairBody,
+          label: copy.relayWaiting,
+          tone: "neutral" as const,
+        };
+    }
+  }, [account?.relay, copy]);
+
   if (!statusSupported) {
     return <SettingsNotice tone="warning" title={copy.title}>{copy.unsupported}</SettingsNotice>;
   }
@@ -732,6 +819,11 @@ export function MobilePairingSettings({ client, locale }: Props) {
         </SettingsItem>
         <SettingsItem title={copy.status}>
           <span className="settings-mono">{account?.pairedMobileDevices ?? 0}</span>
+        </SettingsItem>
+        <SettingsItem title={copy.relay} description={relayPresentation.body}>
+          <SettingsBadge tone={relayPresentation.tone}>
+            <span aria-live="polite">{relayPresentation.label}</span>
+          </SettingsBadge>
         </SettingsItem>
 
         {!accountChecked ? null : !account?.signedIn && authorizationSupported ? (

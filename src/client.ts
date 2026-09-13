@@ -808,6 +808,13 @@ export interface MobileCompanionStatus {
   accountSession: "active" | "expired" | "missing";
   desktopCredential: "active" | "expired" | "missing";
   pairedMobileDevices: number;
+  relay?: {
+    connectionState: "waiting" | "connecting" | "online" | "retrying" | "unavailable" | "stopped";
+    managedByServe: true;
+    reason: "starting" | "not_signed_in" | "not_paired" | "account_unavailable" | "credential_refresh_failed" | "relay_disabled" | "relay_unavailable" | "relay_disconnected" | "identity_changed" | null;
+    retryAt: number | null;
+    updatedAt: number;
+  };
   signedIn: boolean;
 }
 

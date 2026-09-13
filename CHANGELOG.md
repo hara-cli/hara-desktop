@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.165 — 2026-09-13 — automatic Hara Mobile Relay connection
+
+- Bundle Hara CLI `0.177.0` at exact commit `c07769abbef68eccb0880737d5f574e1ce1cbb42`, including
+  replay-safe Mobile approval and terminal commands plus a Serve-owned supervisor that automatically connects,
+  refreshes credentials, and retries the encrypted Relay whenever this Desktop is signed in and has a paired phone.
+- Show the credential-free Relay state in Mobile pairing settings and refresh it in the background, so users can
+  distinguish waiting for sign-in or pairing, connecting, online, retrying, and cloud-unavailable states without
+  opening a separate bridge command. Pairing still publishes zero Sessions until the Desktop owner explicitly
+  grants access and capabilities for each Session.
+
 ## 0.1.164 — 2026-09-13 — approve Desktop sign-in from Hara Mobile
 
 - Let an unsigned Desktop create a short-lived authorization QR and poll only with its local secret and P-256
