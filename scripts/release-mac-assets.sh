@@ -407,7 +407,7 @@ TAG_COMMIT="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" 2>/dev/null ||
   echo "error: desktop HEAD must exactly match $TAG before release promotion" >&2
   exit 1
 }
-REMOTE_DESKTOP_COMMIT="$(node scripts/resolve-remote-tag.mjs . origin "$TAG")" || {
+REMOTE_DESKTOP_COMMIT="$(release_github_transport node scripts/resolve-remote-tag.mjs . origin "$TAG")" || {
   echo "error: could not read remote desktop tag $TAG" >&2
   exit 1
 }
@@ -428,7 +428,7 @@ CLI_TAG_COMMIT="$(git -C ../hara-cli rev-parse -q --verify "refs/tags/$CLI_TAG^{
   echo "error: local hara-cli $CLI_TAG ($CLI_TAG_COMMIT) does not match locked SIDECAR_COMMIT ($SIDECAR_COMMIT)" >&2
   exit 1
 }
-REMOTE_CLI_COMMIT="$(node scripts/resolve-remote-tag.mjs ../hara-cli origin "$CLI_TAG")" || {
+REMOTE_CLI_COMMIT="$(release_github_transport node scripts/resolve-remote-tag.mjs ../hara-cli origin "$CLI_TAG")" || {
   echo "error: could not read remote hara-cli tag $CLI_TAG" >&2
   exit 1
 }
@@ -582,7 +582,7 @@ unset RELEASE_POLICY_TOKEN
 
 # Close the last tag-mutation window immediately before publication. Earlier checks bind every
 # local and draft artifact, while these reads prove both remote refs still name those same commits.
-FINAL_REMOTE_DESKTOP_COMMIT="$(node scripts/resolve-remote-tag.mjs . origin "$TAG")" || {
+FINAL_REMOTE_DESKTOP_COMMIT="$(release_github_transport node scripts/resolve-remote-tag.mjs . origin "$TAG")" || {
   echo "error: could not re-read remote desktop tag $TAG before publication" >&2
   exit 1
 }
@@ -590,7 +590,7 @@ FINAL_REMOTE_DESKTOP_COMMIT="$(node scripts/resolve-remote-tag.mjs . origin "$TA
   echo "error: remote desktop tag moved before publication: $FINAL_REMOTE_DESKTOP_COMMIT != $TAG_COMMIT" >&2
   exit 1
 }
-FINAL_REMOTE_CLI_COMMIT="$(node scripts/resolve-remote-tag.mjs ../hara-cli origin "$CLI_TAG")" || {
+FINAL_REMOTE_CLI_COMMIT="$(release_github_transport node scripts/resolve-remote-tag.mjs ../hara-cli origin "$CLI_TAG")" || {
   echo "error: could not re-read remote hara-cli tag $CLI_TAG before publication" >&2
   exit 1
 }

@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 
 const REMOTE_TAG_ATTEMPTS = 3;
 const REMOTE_TAG_TIMEOUT_MS = 45_000;
+const LOOPBACK_PROXY = /^(?:http|socks5|socks5h):\/\/127\.0\.0\.1:[0-9]{2,5}$/;
 
 function wait(milliseconds) {
   execFileSync("/bin/sleep", [String(milliseconds / 1000)], {
@@ -20,6 +21,37 @@ function requireStableTag(tag) {
   if (!/^v\d+\.\d+\.\d+$/.test(tag)) {
     throw new Error(`expected a stable vX.Y.Z tag, received ${JSON.stringify(tag)}`);
   }
+}
+
+function releaseProxyRoutes(environment) {
+  const configured = [
+    environment.HARA_GITHUB_RELEASE_PROXY,
+    environment.HARA_GITHUB_RELEASE_FALLBACK_PROXY,
+  ].filter((value) => typeof value === "string" && value.length > 0);
+  for (const proxy of configured) {
+    if (!LOOPBACK_PROXY.test(proxy)) {
+      throw new Error("release GitHub proxies must use a loopback HTTP/SOCKS endpoint");
+    }
+  }
+  return configured;
+}
+
+function tagEnvironment(environment, proxy) {
+  const childEnvironment = {
+    ...environment,
+    GIT_TERMINAL_PROMPT: "0",
+  };
+  delete childEnvironment.HARA_GITHUB_RELEASE_PROXY;
+  delete childEnvironment.HARA_GITHUB_RELEASE_FALLBACK_PROXY;
+  if (proxy) {
+    childEnvironment.HTTP_PROXY = proxy;
+    childEnvironment.HTTPS_PROXY = proxy;
+    childEnvironment.http_proxy = proxy;
+    childEnvironment.https_proxy = proxy;
+    childEnvironment.NO_PROXY = "";
+    childEnvironment.no_proxy = "";
+  }
+  return childEnvironment;
 }
 
 export function parseRemoteTagRefs(value, tag) {
@@ -60,6 +92,7 @@ export function resolveRemoteTagCommit(
     timeoutMs = REMOTE_TAG_TIMEOUT_MS,
     execute = execFileSync,
     sleep = wait,
+    environment = process.env,
   } = {},
 ) {
   if (!repository || typeof repository !== "string") throw new Error("repository directory is required");
@@ -73,9 +106,11 @@ export function resolveRemoteTagCommit(
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > REMOTE_TAG_TIMEOUT_MS) {
     throw new Error(`timeout must be between 1 and ${REMOTE_TAG_TIMEOUT_MS}ms`);
   }
+  const proxies = releaseProxyRoutes(environment);
 
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    const proxy = proxies.length > 0 ? proxies[Math.min(attempt - 1, proxies.length - 1)] : undefined;
     try {
       const output = execute(
         "git",
@@ -100,10 +135,7 @@ export function resolveRemoteTagCommit(
           timeout: timeoutMs,
           killSignal: "SIGKILL",
           maxBuffer: 1024 * 1024,
-          env: {
-            ...process.env,
-            GIT_TERMINAL_PROMPT: "0",
-          },
+          env: tagEnvironment(environment, proxy),
         },
       );
       return parseRemoteTagRefs(output, tag);

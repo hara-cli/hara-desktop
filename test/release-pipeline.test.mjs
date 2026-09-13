@@ -228,6 +228,36 @@ test("remote tag resolution prefers the peeled commit and retries within hard bo
   });
   assert.equal(commit, peeledCommit);
   assert.equal(calls, 3);
+
+  const primaryProxy = "socks5h://127.0.0.1:1081";
+  const fallbackProxy = "socks5h://127.0.0.1:1080";
+  let proxyCalls = 0;
+  assert.equal(
+    resolveRemoteTagCommit(".", "origin", tag, {
+      attempts: 2,
+      timeoutMs: 1_234,
+      sleep: () => {},
+      environment: {
+        HARA_GITHUB_RELEASE_PROXY: primaryProxy,
+        HARA_GITHUB_RELEASE_FALLBACK_PROXY: fallbackProxy,
+        NO_PROXY: ".github.com",
+      },
+      execute(_command, _args, options) {
+        proxyCalls++;
+        assert.equal(options.env.NO_PROXY, "");
+        assert.equal(options.env.no_proxy, "");
+        assert.equal(options.env.HTTPS_PROXY, proxyCalls === 1 ? primaryProxy : fallbackProxy);
+        assert.equal(options.env.HTTP_PROXY, proxyCalls === 1 ? primaryProxy : fallbackProxy);
+        assert.equal(options.env.HARA_GITHUB_RELEASE_PROXY, undefined);
+        assert.equal(options.env.HARA_GITHUB_RELEASE_FALLBACK_PROXY, undefined);
+        if (proxyCalls === 1) throw new Error("primary route unavailable");
+        return refs;
+      },
+    }),
+    peeledCommit,
+  );
+  assert.equal(proxyCalls, 2);
+
   let invalidCalls = 0;
   assert.throws(
     () =>
@@ -239,6 +269,16 @@ test("remote tag resolution prefers the peeled commit and retries within hard bo
     /stable vX\.Y\.Z/,
   );
   assert.equal(invalidCalls, 0);
+  assert.throws(
+    () =>
+      resolveRemoteTagCommit(".", "origin", tag, {
+        environment: { HARA_GITHUB_RELEASE_PROXY: "https://proxy.example.com" },
+        execute() {
+          throw new Error("must not execute with an untrusted proxy");
+        },
+      }),
+    /loopback/,
+  );
 });
 
 test("release policy API reads retry without exposing mutation flags", () => {
@@ -601,6 +641,11 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   assert.match(script, /export NO_PROXY=/);
   assert.match(script, /export no_proxy=/);
   assert.match(script, /export HTTPS_PROXY="\$RELEASE_GITHUB_PROXY"/);
+  assert.equal(
+    [...script.matchAll(/release_github_transport node scripts\/resolve-remote-tag\.mjs/g)].length,
+    4,
+  );
+  assert.equal([...script.matchAll(/resolve-remote-tag\.mjs/g)].length, 4);
   assert.match(script, /RELEASE_STATE="\$\(release_view_with_retry --json isDraft,isImmutable,isPrerelease/);
   assert.match(script, /release_view_with_retry --json isDraft --jq \.isDraft/g);
   assert.match(script, /mktemp -d "\$WORK\/release-download\.XXXXXX"/);

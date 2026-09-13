@@ -9,6 +9,8 @@
   distinguish waiting for sign-in or pairing, connecting, online, retrying, and cloud-unavailable states without
   opening a separate bridge command. Pairing still publishes zero Sessions until the Desktop owner explicitly
   grants access and capabilities for each Session.
+- Route protected signing and final remote-tag checks through the validated loopback GitHub release proxy, with a
+  bounded fallback route, so a workstation DNS outage cannot strand a fully verified release before publication.
 
 ## 0.1.164 — 2026-09-13 — approve Desktop sign-in from Hara Mobile
 

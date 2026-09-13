@@ -184,3 +184,8 @@ The fail-closed trust model, current evidence and required release choreography 
 - Put the signing Mac in a dedicated runner group restricted to `hara-cli/hara-desktop` and the
   release workflow; never schedule pull requests or ordinary CI on it. Prefer an ephemeral runner,
   or clean the workspace completely after every run.
+- Give the signing runner only the dedicated `HARA_GITHUB_RELEASE_PROXY` and optional fallback proxy
+  variables. Do not set runner-wide `HTTP_PROXY` or `HTTPS_PROXY`: Actions log/result uploads can
+  redirect to non-GitHub storage that a release-only proxy rejects. Release scripts scope the
+  validated loopback proxy to GitHub tag, policy, metadata, and asset subprocesses and clear the
+  runner's broad `NO_PROXY` only inside those subprocesses.
