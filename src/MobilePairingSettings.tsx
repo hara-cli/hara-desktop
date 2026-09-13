@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ExternalSessionInfo,
+  ExternalSessionSourceInfo,
   HaraClient,
   MobileCompanionStatus,
   MobilePairingInvitation,
   MobilePairingSnapshot,
+  MobilePublicationCapabilities,
+  MobileSessionPublications,
 } from "./client";
 import {
   SettingsBadge,
@@ -48,6 +51,12 @@ const COPY = {
     instructions:
       "Open Hara Mobile → Pair your computer → Scan QR. If the camera is unavailable, enter the manual code.",
     pending: "Waiting for the phone to scan",
+    accessApprove: "Answer approvals",
+    accessRead: "Read conversation",
+    accessSend: "Send & interrupt",
+    accessTerminalControl: "Control terminal",
+    accessTerminalView: "View terminal",
+    capabilitiesHint: "New access starts read-only. Enable each additional ability explicitly.",
     privateSession: "Private",
     publish: "Allow on phone",
     published: "On phone",
@@ -101,6 +110,12 @@ const COPY = {
     instructions:
       "打开 Hara Mobile → 配对你的电脑 → 扫描二维码。相机不可用时，可输入下方配对码。",
     pending: "等待手机扫码",
+    accessApprove: "处理审批",
+    accessRead: "查看对话",
+    accessSend: "发消息与中断",
+    accessTerminalControl: "控制终端",
+    accessTerminalView: "查看终端",
+    capabilitiesHint: "新开放的会话默认只读；其他能力需逐项明确开启。",
     privateSession: "仅电脑可见",
     publish: "允许手机访问",
     published: "手机可见",
@@ -126,6 +141,30 @@ const COPY = {
     unsupported: "请更新 Hara 引擎后使用安全二维码配对。",
   },
 } as const;
+
+const READ_ONLY_MOBILE_CAPABILITIES: MobilePublicationCapabilities = Object.freeze({
+  approve: false,
+  interrupt: false,
+  read: true,
+  submit: false,
+  terminalControl: false,
+  terminalObserve: false,
+});
+
+function publicationMap(
+  snapshot: MobileSessionPublications,
+): ReadonlyMap<string, MobilePublicationCapabilities> {
+  if (!snapshot.publications) {
+    return new Map(snapshot.sessionIds.map((sessionId) => [
+      sessionId,
+      READ_ONLY_MOBILE_CAPABILITIES,
+    ]));
+  }
+  return new Map(snapshot.publications.map((publication) => [
+    publication.sessionId,
+    publication.capabilities,
+  ]));
+}
 
 const TERMINAL_PAIRING_STATES: ReadonlySet<MobilePairingSnapshot["state"]> = new Set([
   "approved",
@@ -169,10 +208,11 @@ export function MobilePairingSettings({ client, locale }: Props) {
   const [publicationError, setPublicationError] = useState("");
   const [publicationBusy, setPublicationBusy] = useState("");
   const [publicationChecked, setPublicationChecked] = useState(false);
-  const [publishedSessionIds, setPublishedSessionIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
+  const [publicationGrants, setPublicationGrants] = useState<ReadonlyMap<string, MobilePublicationCapabilities>>(
+    () => new Map(),
   );
   const [sessions, setSessions] = useState<ExternalSessionInfo[]>([]);
+  const [sessionSources, setSessionSources] = useState<ExternalSessionSourceInfo[]>([]);
   const [now, setNow] = useState(Date.now());
   const accountRequestRef = useRef(0);
   const publicationRequestRef = useRef(0);
@@ -187,6 +227,7 @@ export function MobilePairingSettings({ client, locale }: Props) {
   );
   const publicationSupported = Boolean(
     client
+    && client.supportsFeature("mobile.session-publications.granular-capabilities.v2")
     && client.supports("external.sessions.list")
     && client.supports("mobile.publications.list")
     && client.supports("mobile.publications.publish")
@@ -210,8 +251,9 @@ export function MobilePairingSettings({ client, locale }: Props) {
       if (!directory || publications.protocolVersion !== 1) {
         throw new Error(copy.publicationsUnsupported);
       }
-      setPublishedSessionIds(new Set(publications.sessionIds));
+      setPublicationGrants(publicationMap(publications));
       setSessions(directory.sessions);
+      setSessionSources(directory.sources);
     } catch (reason) {
       if (
         currentClientRef.current === client
@@ -256,8 +298,9 @@ export function MobilePairingSettings({ client, locale }: Props) {
     setPublicationError("");
     setPublicationBusy("");
     setPublicationChecked(false);
-    setPublishedSessionIds(new Set());
+    setPublicationGrants(new Map());
     setSessions([]);
+    setSessionSources([]);
     void refreshAccount();
     return () => {
       accountRequestRef.current += 1;
@@ -272,8 +315,9 @@ export function MobilePairingSettings({ client, locale }: Props) {
     }
     publicationRequestRef.current += 1;
     setPublicationChecked(false);
-    setPublishedSessionIds(new Set());
+    setPublicationGrants(new Map());
     setSessions([]);
+    setSessionSources([]);
   }, [account?.signedIn, publicationSupported, refreshPublications]);
 
   useEffect(() => {
@@ -395,20 +439,24 @@ export function MobilePairingSettings({ client, locale }: Props) {
     }
   };
 
-  const setSessionPublished = async (
+  const sourceCapabilitiesById = useMemo(() => new Map(
+    sessionSources.map((source) => [source.id, source.capabilities]),
+  ), [sessionSources]);
+
+  const saveSessionGrant = async (
     sessionId: string,
-    published: boolean,
+    capabilities: MobilePublicationCapabilities | null,
   ) => {
     if (!client || publicationBusy) return;
     const publicationClient = client;
     setPublicationBusy(sessionId);
     setPublicationError("");
     try {
-      const next = published
-        ? await publicationClient.publishMobileSession(sessionId)
+      const next = capabilities
+        ? await publicationClient.publishMobileSession(sessionId, capabilities)
         : await publicationClient.unpublishMobileSession(sessionId);
       if (currentClientRef.current !== publicationClient) return;
-      setPublishedSessionIds(new Set(next.sessionIds));
+      setPublicationGrants(publicationMap(next));
     } catch (reason) {
       if (currentClientRef.current === publicationClient) {
         setPublicationError(safeError(reason));
@@ -418,6 +466,38 @@ export function MobilePairingSettings({ client, locale }: Props) {
         setPublicationBusy("");
       }
     }
+  };
+
+  const setSessionPublished = async (
+    sessionId: string,
+    published: boolean,
+  ) => {
+    await saveSessionGrant(
+      sessionId,
+      published ? READ_ONLY_MOBILE_CAPABILITIES : null,
+    );
+  };
+
+  const setSessionCapability = async (
+    sessionId: string,
+    capability: "approve" | "submit" | "terminalControl" | "terminalObserve",
+    enabled: boolean,
+  ) => {
+    const current = publicationGrants.get(sessionId);
+    if (!current) return;
+    const next: MobilePublicationCapabilities = {
+      ...current,
+      ...(capability === "submit"
+        ? { interrupt: enabled, submit: enabled }
+        : { [capability]: enabled }),
+      ...(capability === "terminalControl" && enabled
+        ? { terminalObserve: true }
+        : {}),
+      ...(capability === "terminalObserve" && !enabled
+        ? { terminalControl: false }
+        : {}),
+    };
+    await saveSessionGrant(sessionId, next);
   };
 
   const accountBadge = useMemo(() => {
@@ -554,13 +634,13 @@ export function MobilePairingSettings({ client, locale }: Props) {
           title={copy.publications}
           description={copy.publicationsBody}
           aside={(
-            <SettingsBadge tone={publishedSessionIds.size > 0 ? "success" : "neutral"}>
-              {copy.publicationCount.replace("{{count}}", String(publishedSessionIds.size))}
+            <SettingsBadge tone={publicationGrants.size > 0 ? "success" : "neutral"}>
+              {copy.publicationCount.replace("{{count}}", String(publicationGrants.size))}
             </SettingsBadge>
           )}
         >
           <div className="mobile-publications-toolbar">
-            <span>{copy.relayHint}</span>
+            <span>{copy.capabilitiesHint} {copy.relayHint}</span>
             <button
               type="button"
               className="ghost"
@@ -584,7 +664,14 @@ export function MobilePairingSettings({ client, locale }: Props) {
           ) : (
             <div className="mobile-publications-list">
               {sessions.map(session => {
-                const published = publishedSessionIds.has(session.id);
+                const grant = publicationGrants.get(session.id);
+                const published = Boolean(grant);
+                const sourceCapabilities = sourceCapabilitiesById.get(session.sourceId);
+                const canSubmit = sourceCapabilities?.submit === true;
+                const canApprove = sourceCapabilities?.submit === true;
+                const canObserveTerminal = sourceCapabilities?.terminalView === true;
+                const canControlTerminal = canObserveTerminal
+                  && sourceCapabilities?.terminalInput === true;
                 return (
                   <div className="mobile-publication-row" key={session.id}>
                     <div className="mobile-publication-copy">
@@ -592,6 +679,66 @@ export function MobilePairingSettings({ client, locale }: Props) {
                       <span>
                         {session.sourceId.toUpperCase()} · {session.workspaceName}
                       </span>
+                      {grant ? (
+                        <div className="mobile-publication-capabilities">
+                          <label>
+                            <input type="checkbox" checked disabled />
+                            {copy.accessRead}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={grant.submit}
+                              disabled={Boolean(publicationBusy) || !canSubmit}
+                              onChange={(event) => void setSessionCapability(
+                                session.id,
+                                "submit",
+                                event.currentTarget.checked,
+                              )}
+                            />
+                            {copy.accessSend}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={grant.approve}
+                              disabled={Boolean(publicationBusy) || !canApprove}
+                              onChange={(event) => void setSessionCapability(
+                                session.id,
+                                "approve",
+                                event.currentTarget.checked,
+                              )}
+                            />
+                            {copy.accessApprove}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={grant.terminalObserve}
+                              disabled={Boolean(publicationBusy) || !canObserveTerminal}
+                              onChange={(event) => void setSessionCapability(
+                                session.id,
+                                "terminalObserve",
+                                event.currentTarget.checked,
+                              )}
+                            />
+                            {copy.accessTerminalView}
+                          </label>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={grant.terminalControl}
+                              disabled={Boolean(publicationBusy) || !canControlTerminal}
+                              onChange={(event) => void setSessionCapability(
+                                session.id,
+                                "terminalControl",
+                                event.currentTarget.checked,
+                              )}
+                            />
+                            {copy.accessTerminalControl}
+                          </label>
+                        </div>
+                      ) : null}
                     </div>
                     <SettingsBadge tone={published ? "success" : "neutral"}>
                       {published ? copy.published : copy.privateSession}

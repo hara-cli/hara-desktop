@@ -842,7 +842,22 @@ export interface MobilePairingSnapshot {
   state: MobilePairingState;
 }
 
+export interface MobilePublicationCapabilities {
+  approve: boolean;
+  interrupt: boolean;
+  read: true;
+  submit: boolean;
+  terminalControl: boolean;
+  terminalObserve: boolean;
+}
+
+export interface MobileSessionPublication {
+  capabilities: MobilePublicationCapabilities;
+  sessionId: string;
+}
+
 export interface MobileSessionPublications {
+  publications?: MobileSessionPublication[];
   protocolVersion: 1;
   sessionIds: string[];
 }
@@ -2367,8 +2382,12 @@ export class HaraClient {
   mobileSessionPublications() {
     return this.call<MobileSessionPublications>("mobile.publications.list", {});
   }
-  publishMobileSession(sessionId: string) {
+  publishMobileSession(
+    sessionId: string,
+    capabilities?: MobilePublicationCapabilities,
+  ) {
     return this.call<MobileSessionPublications>("mobile.publications.publish", {
+      ...(capabilities ? { capabilities } : {}),
       sessionId,
     });
   }

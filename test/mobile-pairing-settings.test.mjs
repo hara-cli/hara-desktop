@@ -57,8 +57,24 @@ test("Mobile pairing stays capability-gated, one-time, and credential-free in th
   assert.match(component, /Only separately published Sessions appear when remote service is available/);
   assert.match(component, /Nothing is shared by default/);
   assert.match(component, /client\.listExternalSessions\(\{ limit: 100 \}\)/);
-  assert.match(component, /publicationClient\.publishMobileSession\(sessionId\)/);
+  assert.match(component, /publicationClient\.publishMobileSession\(sessionId, capabilities\)/);
   assert.match(component, /publicationClient\.unpublishMobileSession\(sessionId\)/);
+  assert.match(
+    component,
+    /supportsFeature\("mobile\.session-publications\.granular-capabilities\.v2"\)/,
+    "an older Engine cannot silently interpret read-only publication as full access",
+  );
+  assert.match(component, /const READ_ONLY_MOBILE_CAPABILITIES:[\s\S]*read: true[\s\S]*submit: false/);
+  assert.match(component, /New access starts read-only/);
+  assert.match(component, /新开放的会话默认只读/);
+  assert.match(component, /capability === "terminalControl" && enabled[\s\S]*terminalObserve: true/);
+  assert.match(component, /capability === "terminalObserve" && !enabled[\s\S]*terminalControl: false/);
+  assert.match(component, /sourceCapabilities\?\.terminalView === true/);
+  assert.match(component, /sourceCapabilities\?\.terminalInput === true/);
+  assert.match(component, /copy\.accessApprove/);
+  assert.match(component, /copy\.accessSend/);
+  assert.match(component, /copy\.accessTerminalView/);
+  assert.match(component, /copy\.accessTerminalControl/);
   assert.match(component, /aria-pressed=\{published\}/);
   assert.doesNotMatch(component, /The phone can now see/, "pairing alone is not presented as active remote access");
   assert.match(component, /actions=\{\([\s\S]*copy\.refresh/);

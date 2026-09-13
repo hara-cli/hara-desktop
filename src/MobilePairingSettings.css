@@ -217,6 +217,36 @@
   margin-top: 5px;
 }
 
+.mobile-publication-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  margin-top: 11px;
+}
+
+.mobile-publication-capabilities label {
+  align-items: center;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+  min-height: 24px;
+  white-space: nowrap;
+}
+
+.mobile-publication-capabilities label:has(input:disabled) {
+  color: var(--muted);
+  cursor: default;
+}
+
+.mobile-publication-capabilities input {
+  accent-color: var(--accent);
+  height: 15px;
+  margin: 0;
+  width: 15px;
+}
+
 .mobile-publications-empty {
   color: var(--muted);
   font-size: 13px;
