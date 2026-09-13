@@ -1658,3 +1658,246 @@
   .workforce-stage.is-dense .workforce-actor { transform: translate(-50%, -50%) scale(.58); }
   .workforce-list { grid-template-columns: 1fr; }
 }
+
+/* ── Compact office shell ────────────────────────────────────────────────────
+   The room is the primary surface. Navigation, office selection, and status
+   share one quiet command bar so the same Agent is never presented twice. */
+
+.workforce-command-bar {
+  position: relative;
+  z-index: 80;
+  display: grid;
+  flex: 0 0 auto;
+  gap: 10px;
+  padding: 13px 16px 10px;
+  border-bottom: 1px solid rgba(244, 229, 204, 0.13);
+  background:
+    radial-gradient(circle at 0 0, rgba(255, 105, 95, 0.12), transparent 38%),
+    rgba(25, 21, 19, 0.96);
+}
+
+.workforce-command-bar::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--comic-coral) 0 76px, var(--comic-teal) 76px 118px, transparent 118px);
+  content: "";
+  opacity: 0.55;
+}
+
+.workforce-command-main,
+.workforce-command-lower {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.workforce-command-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.workforce-command-mark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border: 1px solid rgba(255, 139, 125, 0.26);
+  border-radius: 11px;
+  background: rgba(255, 105, 95, 0.07);
+}
+
+.workforce-command-mark img { display: block; }
+
+.workforce-command-identity > div {
+  min-width: 0;
+}
+
+.workforce-command-kicker {
+  display: block;
+  overflow: hidden;
+  color: #b58d84;
+  font: 700 7px/1 "SF Mono", "Roboto Mono", ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.workforce-command-identity h2 {
+  overflow: hidden;
+  margin: 3px 0 1px;
+  color: #fff0db;
+  font-family: "Avenir Next", "PingFang SC", sans-serif;
+  font-size: 17px;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workforce-command-identity p {
+  overflow: hidden;
+  max-width: 430px;
+  margin: 0;
+  color: #8f8276;
+  font-size: 9px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workforce-command-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.workforce-command-bar .workforce-live {
+  height: 27px;
+  padding: 0 8px;
+  box-shadow: none;
+}
+
+.workforce-command-bar .workforce-office-switch {
+  min-height: 30px;
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.workforce-command-bar .workforce-office-switch label {
+  min-width: 112px;
+  grid-template-rows: 8px 15px;
+}
+
+.workforce-command-lower {
+  min-height: 28px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(244, 229, 204, 0.08);
+}
+
+.workforce-status-strip {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.workforce-status-strip::-webkit-scrollbar { display: none; }
+
+.workforce-status-strip span {
+  display: inline-flex;
+  height: 23px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid rgba(244, 229, 204, 0.1);
+  border-radius: 99px;
+  color: #9a8c7f;
+  background: rgba(244, 229, 204, 0.025);
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.workforce-status-strip span > i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #82776c;
+}
+
+.workforce-status-strip span > b {
+  color: #ead6ba;
+  font: 750 10px/1 "Avenir Next", "PingFang SC", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.workforce-status-strip .is-working > i { background: var(--comic-coral); box-shadow: 0 0 8px rgba(255, 105, 95, 0.52); }
+.workforce-status-strip .is-waiting > i { background: var(--comic-mustard); }
+.workforce-status-strip .is-blocked > i { background: #ef716a; }
+.workforce-status-strip .is-available > i { background: var(--comic-teal); }
+
+.workforce-command-bar .workforce-view-switch {
+  flex: 0 0 auto;
+  padding: 2px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.workforce-command-bar .workforce-view-switch button {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 8px;
+}
+
+.workforce-stage:not(.is-webgl) {
+  min-height: 310px;
+  flex-basis: 400px;
+}
+
+.workforce-stage::after { display: none; }
+
+.workforce-camera-controls {
+  top: 10px;
+  right: 11px;
+  border-width: 1px;
+  border-color: rgba(62, 49, 40, 0.4);
+  border-radius: 8px;
+  background: rgba(244, 229, 204, 0.9);
+  box-shadow: 0 5px 16px rgba(44, 31, 24, 0.18);
+  transform: none;
+}
+
+.workforce-camera-controls button { height: 23px; }
+
+.workforce-inspector {
+  min-height: 68px;
+  grid-template-columns: 46px minmax(130px, 0.85fr) minmax(210px, 1.35fr) auto;
+  padding: 8px 13px;
+}
+
+.workforce-inspector-identity > strong { font-size: 12px; }
+
+.workforce-privacy {
+  min-height: 22px;
+  padding-inline: 12px;
+  font-size: 7px;
+}
+
+@container extension-dock (max-width: 760px) {
+  .workforce-command-bar { gap: 8px; padding: 10px 11px 8px; }
+  .workforce-command-main { align-items: flex-start; gap: 8px; }
+  .workforce-command-mark { width: 32px; height: 32px; flex-basis: 32px; }
+  .workforce-command-identity h2 { font-size: 15px; }
+  .workforce-command-identity p { max-width: 220px; }
+  .workforce-command-controls { gap: 5px; }
+  .workforce-command-bar .workforce-live { height: 25px; padding-inline: 7px; font-size: 8px; }
+  .workforce-command-bar .workforce-office-switch { min-height: 27px; }
+  .workforce-command-bar .workforce-office-switch label { min-width: 88px; }
+  .workforce-command-lower { padding-top: 6px; }
+  .workforce-stage:not(.is-webgl) { min-height: 300px; }
+  .workforce-inspector { grid-template-columns: 42px minmax(0, 1fr) auto; }
+}
+
+@container extension-dock (max-width: 520px) {
+  .workforce-command-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .workforce-command-identity p { display: none; }
+  .workforce-command-bar .workforce-live { display: none; }
+  .workforce-command-bar .workforce-office-switch label { min-width: 76px; }
+  .workforce-status-strip span { padding-inline: 6px; }
+  .workforce-command-bar .workforce-view-switch button { padding-inline: 6px; }
+  .workforce-privacy { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

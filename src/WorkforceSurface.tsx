@@ -39,6 +39,7 @@ export interface WorkforceCopy {
   status: string;
   capability: string;
   updated: string;
+  profile: string;
   privacy: string;
   loading: string;
   states: Record<OfficeActorState, string>;
@@ -146,7 +147,9 @@ export default function WorkforceSurface({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [threeUnavailable, setThreeUnavailable] = useState(false);
   const reduced = useReducedMotion();
-  const selected = actors.find((actor) => actor.actorId === selectedId) ?? actors[0];
+  const selected = selectedId
+    ? actors.find((actor) => actor.actorId === selectedId)
+    : undefined;
   const activeOffice = offices.find((office) => office.id === activeOfficeId) ?? offices[0];
   const activeOfficeIndex = Math.max(0, offices.findIndex((office) => office.id === activeOffice?.id));
   const changeOffice = (officeId: string) => {
@@ -171,6 +174,13 @@ export default function WorkforceSurface({
     blocked: actors.filter((actor) => actor.state === "blocked" || actor.state === "failed").length,
     available: actors.filter((actor) => actor.state === "idle").length,
   }), [actors]);
+  const statusSummary = useMemo(() => [
+    { key: "team", value: actors.length, label: copy.list },
+    { key: "working", value: counts.working, label: copy.states.working },
+    { key: "waiting", value: counts.waiting, label: copy.states.waiting },
+    { key: "blocked", value: counts.blocked, label: copy.states.blocked },
+    { key: "available", value: counts.available, label: copy.states.idle },
+  ].filter((item) => item.key === "team" || item.value > 0), [actors.length, copy, counts]);
   const positionedActors = useMemo(() => {
     const available = [...SEATS];
     return actors.slice(0, SEATS.length).map((actor) => {
@@ -184,35 +194,52 @@ export default function WorkforceSurface({
   const selectedPosition = positionedActors.find(({ actor }) => actor.actorId === selected?.actorId)?.seat;
 
   return (
-    <section className="workforce-surface" aria-label={copy.title}>
-      <header className="workforce-overview">
-        <div>
-          <span className="workforce-eyebrow">HARA / AGENT OFFICE</span>
-          <h2>
-            {activeOffice?.name ?? copy.title}
-            <small>{actors.length} {copy.list.toUpperCase()}</small>
-          </h2>
-          <p>{copy.subtitle}</p>
+    <section className="workforce-surface" data-locale={locale} aria-label={copy.title}>
+      <header className="workforce-command-bar">
+        <div className="workforce-command-main">
+          <div className="workforce-command-identity">
+            <span className="workforce-command-mark" aria-hidden><HaraLogo size={25} /></span>
+            <div>
+              <span className="workforce-command-kicker">{copy.title}</span>
+              <h2>{activeOffice?.name ?? copy.title}</h2>
+              <p>{copy.subtitle}</p>
+            </div>
+          </div>
+          <div className="workforce-command-controls">
+            <span className={`workforce-live${live ? " is-live" : ""}`}>
+              <i aria-hidden />{live ? copy.live : copy.compatibility}
+            </span>
+            <div className="workforce-office-switch">
+              {offices.length > 1 ? (
+                <button type="button" aria-label={copy.switchOffice} onClick={() => moveOffice(-1)}><IconChevronLeft size={15} /></button>
+              ) : null}
+              <label>
+                <span>{copy.office} · {activeOfficeIndex + 1}/{Math.max(offices.length, 1)}</span>
+                <select
+                  value={activeOffice?.id ?? ""}
+                  aria-label={copy.switchOffice}
+                  onChange={(event) => changeOffice(event.target.value)}
+                >
+                  {offices.map((office) => (
+                    <option key={office.id} value={office.id}>{office.name}</option>
+                  ))}
+                </select>
+              </label>
+              {offices.length > 1 ? (
+                <button type="button" aria-label={copy.switchOffice} onClick={() => moveOffice(1)}><IconChevronRight size={15} /></button>
+              ) : null}
+            </div>
+          </div>
         </div>
-        <div className="workforce-overview-actions">
-          <span className={`workforce-live${live ? " is-live" : ""}`}>
-            <i aria-hidden />{live ? copy.live : copy.compatibility}
-          </span>
-          <div className="workforce-office-switch">
-            <button type="button" disabled={offices.length < 2} aria-label={copy.switchOffice} onClick={() => moveOffice(-1)}><IconChevronLeft size={15} /></button>
-            <label>
-              <span>{copy.office} · {activeOfficeIndex + 1}/{Math.max(offices.length, 1)}</span>
-              <select
-                value={activeOffice?.id ?? ""}
-                aria-label={copy.switchOffice}
-                onChange={(event) => changeOffice(event.target.value)}
-              >
-                {offices.map((office) => (
-                  <option key={office.id} value={office.id}>{office.name}</option>
-                ))}
-              </select>
-            </label>
-            <button type="button" disabled={offices.length < 2} aria-label={copy.switchOffice} onClick={() => moveOffice(1)}><IconChevronRight size={15} /></button>
+        <div className="workforce-command-lower">
+          <div className="workforce-status-strip" aria-label={copy.status}>
+            {statusSummary.map((item) => (
+              <span key={item.key} className={`is-${item.key}`}>
+                <i aria-hidden />
+                <b>{item.value}</b>
+                {item.label}
+              </span>
+            ))}
           </div>
           <div className="workforce-view-switch" role="group" aria-label={copy.title}>
             <button type="button" className={view === "spatial" ? "is-active" : ""} onClick={() => setView("spatial")}>{copy.scene}</button>
@@ -228,56 +255,10 @@ export default function WorkforceSurface({
         </div>
       </header>
 
-      <div className="workforce-metrics" aria-label={copy.status}>
-        <span className="is-team"><b>{actors.length}</b>{copy.list}</span>
-        <span className="is-working"><b>{counts.working}</b>{copy.states.working}</span>
-        <span className="is-waiting"><b>{counts.waiting}</b>{copy.states.waiting}</span>
-        <span className="is-blocked"><b>{counts.blocked}</b>{copy.states.blocked}</span>
-        <span className="is-complete"><b>{counts.available}</b>{copy.states.idle}</span>
-      </div>
-
-      {actors.length > 0 ? (
-        <div className="workforce-team-deck" role="list" aria-label={copy.list}>
-          <div className="workforce-team-deck-label">
-            <span>{copy.list}</span>
-            <b>{actors.length}</b>
-          </div>
-          <div className="workforce-team-deck-track">
-            {actors.map((actor) => {
-              const label = actorLabel(actor, copy);
-              const visual = CAPABILITY_VISUALS[actor.capability];
-              return (
-                <button
-                  type="button"
-                  role="listitem"
-                  key={actor.actorId}
-                  className={`is-${actor.state}${selected?.actorId === actor.actorId ? " is-selected" : ""}`}
-                  style={{ "--actor-accent": actor.identity?.accent ?? visual.accent } as CSSProperties}
-                  title={actor.agentRef ? `${copy.chatWithAgent}: ${label}` : label}
-                  aria-label={`${label}: ${copy.states[actor.state]}`}
-                  onClick={() => selectActor(actor.actorId)}
-                >
-                  <AgentPortrait
-                    agentRef={actor.agentRef ?? actor.actorId}
-                    name={label}
-                    identity={actor.identity}
-                    state={actor.state}
-                    size="small"
-                  />
-                  <i aria-hidden />
-                  <strong>{label}</strong>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       {threeUnavailable ? <p className="workforce-three-unavailable" role="status">{copy.threeUnavailable}</p> : null}
 
       {view === "webgl" ? (
         <div className="workforce-stage is-webgl" role="region" aria-label={copy.three}>
-          <div className="workforce-stage-mode" aria-hidden><span>EXPERIMENTAL 3D</span><b>GOD VIEW / LAB</b></div>
           <div className="workforce-camera-controls" role="group" aria-label={copy.three}>
             <button type="button" className={camera === "overview" ? "is-active" : ""} onClick={() => setCamera("overview")}>{copy.overview}</button>
             <button type="button" disabled={!selected} className={camera === "focus" && selected ? "is-active" : ""} onClick={() => setCamera("focus")}>{copy.focus}</button>
@@ -291,6 +272,8 @@ export default function WorkforceSurface({
               label={copy.title}
               hint={copy.threeHint}
               unavailable={copy.threeUnavailable}
+              rootLabel={copy.root}
+              capabilityLabels={copy.capabilities}
               onSelectActor={selectActor}
               onUnavailable={() => {
                 setThreeUnavailable(true);
@@ -318,10 +301,9 @@ export default function WorkforceSurface({
         </div>
       ) : view === "spatial" ? (
         <div className={`workforce-stage${actors.length > 18 ? " is-dense" : ""}`} role="region" aria-label={copy.scene}>
-          <div className="workforce-stage-mode" aria-hidden><span>COMIC OFFICE</span><b>LIVE SOCIAL FLOOR</b></div>
           <div className="workforce-camera-controls" role="group" aria-label={copy.scene}>
             <button type="button" className={camera === "overview" ? "is-active" : ""} onClick={() => setCamera("overview")}>{copy.overview}</button>
-            <button type="button" className={camera === "focus" ? "is-active" : ""} onClick={() => setCamera("focus")}>{copy.focus}</button>
+            <button type="button" disabled={!selected} className={camera === "focus" ? "is-active" : ""} onClick={() => setCamera("focus")}>{copy.focus}</button>
           </div>
           <div
             className={`workforce-stage-camera is-${camera}`}
@@ -339,10 +321,6 @@ export default function WorkforceSurface({
               <div className="workforce-plant is-one"><i /></div>
               <div className="workforce-plant is-two"><i /></div>
             </div>
-            <div className="workforce-zone-label is-build">BUILD</div>
-            <div className="workforce-zone-label is-create">CREATE</div>
-            <div className="workforce-zone-label is-evidence">EVIDENCE</div>
-            <div className="workforce-zone-label is-delivery">DELIVERY</div>
             {positionedActors.map(({ actor, seat }, index) => {
               const visual = CAPABILITY_VISUALS[actor.capability];
               const label = actorLabel(actor, copy);
@@ -440,7 +418,7 @@ export default function WorkforceSurface({
           <div className="workforce-inspector-actions">
             {selected.agentRef && onEditAgent ? (
               <button type="button" className="is-profile" onClick={() => onEditAgent(selected.agentRef!)}>
-                {locale === "zh" ? "名片" : "Profile"}
+                {copy.profile}
               </button>
             ) : null}
             <button type="button" onClick={() => selected.agentRef ? onChatWithAgent(selected.agentRef) : onReturnToChat()}>

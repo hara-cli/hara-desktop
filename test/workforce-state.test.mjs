@@ -117,7 +117,7 @@ test("terminal task fallback can reject a stale live workforce projection", () =
   })), false);
 });
 
-test("Agent Office combines public social identities, direct chat, and comic workstations", () => {
+test("Agent Office keeps one compact command bar above the social work surface", () => {
   const surface = readFileSync(`${root}/src/WorkforceSurface.tsx`, "utf8");
   const css = readFileSync(`${root}/src/WorkforceSurface.css`, "utf8");
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
@@ -130,9 +130,10 @@ test("Agent Office combines public social identities, direct chat, and comic wor
   assert.match(surface, /workforce-role-tool/);
   assert.match(surface, /workforce-stage-camera is-\$\{camera\}/);
   assert.match(surface, /changeOffice\(event\.target\.value\)/);
-  assert.match(surface, /workforce-team-deck/);
-  assert.match(surface, /EXPERIMENTAL 3D/);
-  assert.match(surface, /COMIC OFFICE/);
+  assert.match(surface, /workforce-command-bar/);
+  assert.match(surface, /statusSummary\.map/);
+  assert.doesNotMatch(surface, /COMIC OFFICE|LIVE SOCIAL FLOOR|>BUILD<|>CREATE<|>EVIDENCE<|>DELIVERY</);
+  assert.doesNotMatch(surface, /workforce-team-deck/);
   assert.match(surface, /selected\.identity\?\.traits/);
   assert.match(surface, /if \(actor\?\.agentRef\) onChatWithAgent\(actor\.agentRef\)/);
   assert.match(app, /sessionsRef\.current\.filter\(\(session\) => sessionSpaceId\(session, directory\) === activeSpace\)[\s\S]*?cwd,[\s\S]*?agentRef/);
@@ -190,5 +191,7 @@ test("Agent Office ships a lazy local WebGL renderer with explicit fallbacks", (
   assert.match(i18n, /workforceThree: "实验 3D"/);
   assert.match(i18n, /workforceScene: "Comic office"/);
   assert.match(i18n, /workforceScene: "漫画办公室"/);
+  assert.match(i18n, /workforceProfile: "名片"/);
+  assert.doesNotMatch(renderer, /LIVE WORKFORCE|HARA LEAD|GOD \/ WEBGL \/ LOCAL/);
   assert.doesNotMatch(i18n, /workforceScene: "3D (?:office|办公室)"/);
 });

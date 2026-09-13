@@ -8453,6 +8453,7 @@ export default function App() {
     status: t("workforceStatus"),
     capability: t("workforceCapability"),
     updated: t("workforceUpdated"),
+    profile: t("workforceProfile"),
     privacy: t("workforcePrivacy"),
     loading: t("loading"),
     states: {

@@ -46,6 +46,8 @@ interface WorkforceThreeSceneProps {
   label: string;
   hint: string;
   unavailable: string;
+  rootLabel: string;
+  capabilityLabels: Record<WorkforceCapability, string>;
   onSelectActor: (actorId: string) => void;
   onUnavailable: () => void;
 }
@@ -206,12 +208,6 @@ function labelSprite(text: string, accent = "#8f9899", scale = 1): Sprite {
   return sprite;
 }
 
-function addRoomLabel(room: Group, text: string, position: Vector3, color: string, scale = 1): void {
-  const sprite = labelSprite(text, color, scale);
-  sprite.position.copy(position);
-  room.add(sprite);
-}
-
 function createPlant(): Group {
   const plant = new Group();
   const pot = cylinder(0.25, 0.34, 0.48, 0x252b2d, 12);
@@ -268,7 +264,7 @@ function createRoom(): Group {
     room.add(divider);
   }
 
-  const sign = labelSprite("HARA / LIVE WORKFORCE", "#ff655c", 1.38);
+  const sign = labelSprite("HARA", "#ff655c", 1.38);
   sign.position.set(0, 4.55, -6.18);
   room.add(sign);
 
@@ -301,10 +297,6 @@ function createRoom(): Group {
   plantTwo.position.set(-9.15, 0, 5.35);
   room.add(plantTwo);
 
-  addRoomLabel(room, "BUILD", new Vector3(-4.65, 0.055, -5.05), "#f3a83b", 0.76);
-  addRoomLabel(room, "CREATE", new Vector3(4.65, 0.055, -5.05), "#aa7be8", 0.76);
-  addRoomLabel(room, "EVIDENCE", new Vector3(-4.65, 0.055, 5.45), "#63b9ee", 0.76);
-  addRoomLabel(room, "DELIVERY", new Vector3(4.65, 0.055, 5.45), "#52b8b1", 0.76);
   return room;
 }
 
@@ -362,7 +354,11 @@ function createTool(capability: WorkforceCapability, accent: number): Group {
   return tool;
 }
 
-function createActorRig(actor: OfficeActor): ActorRig {
+function createActorRig(
+  actor: OfficeActor,
+  rootLabel: string,
+  capabilityLabels: Record<WorkforceCapability, string>,
+): ActorRig {
   const accent = CAPABILITY_VISUALS[actor.capability].color;
   const group = new Group();
   group.userData.actorId = actor.actorId;
@@ -473,7 +469,12 @@ function createActorRig(actor: OfficeActor): ActorRig {
   group.add(selectionRing);
 
   const caption = labelSprite(
-    actor.kind === "root" ? "HARA LEAD" : (actor.role ?? actor.capability).toUpperCase(),
+    actor.identity?.displayName
+      ?? (actor.kind === "root"
+        ? rootLabel
+        : actor.role && actor.role !== "explore"
+          ? actor.role
+          : capabilityLabels[actor.capability]),
     `#${accent.toString(16).padStart(6, "0")}`,
     0.72,
   );
@@ -525,7 +526,12 @@ function disposeObject(root: Object3D): void {
   });
 }
 
-function positionActors(runtime: OfficeRuntime, actors: OfficeActor[]): void {
+function positionActors(
+  runtime: OfficeRuntime,
+  actors: OfficeActor[],
+  rootLabel: string,
+  capabilityLabels: Record<WorkforceCapability, string>,
+): void {
   const remaining = [...SEATS_3D];
   const positioned = actors
     .slice(0, SEATS_3D.length)
@@ -553,7 +559,7 @@ function positionActors(runtime: OfficeRuntime, actors: OfficeActor[]): void {
       rig = undefined;
     }
     if (!rig) {
-      rig = createActorRig(actor);
+      rig = createActorRig(actor, rootLabel, capabilityLabels);
       runtime.rigs.set(actor.actorId, rig);
       runtime.office.add(rig.group);
     }
@@ -897,6 +903,8 @@ export default function WorkforceThreeScene({
   label,
   hint,
   unavailable,
+  rootLabel,
+  capabilityLabels,
   onSelectActor,
   onUnavailable,
 }: WorkforceThreeSceneProps) {
@@ -934,12 +942,12 @@ export default function WorkforceThreeScene({
   useEffect(() => {
     const runtime = runtimeRef.current;
     if (!runtime) return;
-    positionActors(runtime, actors);
+    positionActors(runtime, actors, rootLabel, capabilityLabels);
     applySemanticZoom(runtime, true);
     selectActor(runtime, selectedId);
     moveCamera(runtime, cameraMode, selectedId, reduced);
     runtime.requestRender();
-  }, [actors, cameraMode, reduced, selectedId]);
+  }, [actors, cameraMode, capabilityLabels, reduced, rootLabel, selectedId]);
 
   if (failed) {
     return <div className="workforce-three-failed" role="status">{unavailable}</div>;
@@ -950,7 +958,7 @@ export default function WorkforceThreeScene({
       <div ref={hostRef} className="workforce-three-canvas" />
       <div className="workforce-three-compass" aria-hidden><i>N</i><span><HaraLogo size={14} /></span></div>
       <div className="workforce-three-runtime" aria-hidden>
-        <span><i />GOD / WEBGL / LOCAL</span>
+        <span><i />{label} · WebGL</span>
         <b>{hint}</b>
       </div>
     </div>

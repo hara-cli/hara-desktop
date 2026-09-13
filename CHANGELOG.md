@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.166 — 2026-09-14 — a calmer Agent Office and safer long-running work
+
+- Rebuild Agent Office around one compact command bar, a nonzero status summary, and the room itself. The former
+  five-card metrics row and duplicate contact deck are gone; Agent details stay closed until a character is chosen,
+  leaving substantially more space for the actual team view at narrow split-screen widths.
+- Keep every visible office label in the active language pack, including the Agent profile action and experimental
+  3D captions. Chinese mode no longer mixes decorative English room labels into the primary office view.
+- Bundle Hara CLI `0.177.1` at exact commit `a6cdbc783821fe6fbc85977bd8691a655541996b`. Retained questions and
+  continuation guidance now follow the user's language, raw no-progress diagnostics become concise guidance, and
+  a run with no verified checkpoint pauses at a 200,000-token boundary instead of continuing indefinitely.
+
 ## 0.1.165 — 2026-09-13 — automatic Hara Mobile Relay connection
 
 - Bundle Hara CLI `0.177.0` at exact commit `c07769abbef68eccb0880737d5f574e1ce1cbb42`, including
