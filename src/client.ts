@@ -774,6 +774,17 @@ export interface GatewayStatus {
   lastMessageAt?: number;
   lastErrorAt?: number;
   lastErrorCode?: string;
+  /** Redacted sender-authorization health. Older Engines omit this field. */
+  directMessageAccess?: "ready" | "blocked" | "unknown";
+  /** True only when the current local Engine owns the connector lifecycle. */
+  managedByServe?: boolean;
+  /** Opaque pairing request; raw platform sender identities remain inside Engine private state. */
+  pendingAuthorization?: {
+    id: string;
+    code: string;
+    requestedAt: number;
+    expiresAt: number;
+  };
   recommendation: string;
 }
 
@@ -2353,6 +2364,42 @@ export class HaraClient {
     } catch (e: any) {
       if (e?.code === -32601) return null;
       throw e;
+    }
+  }
+  /** Start a connector inside the authenticated local Engine (serve ≥0.178). */
+  async startGateway(platform: "weixin" | "feishu"): Promise<GatewayStatus | null> {
+    if (this.methods.size > 0 && !this.supports("settings.gateways.start")) return null;
+    try {
+      const result = await this.call<{ gateway: GatewayStatus }>("settings.gateways.start", { platform });
+      return result.gateway;
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  /** Stop only a connector owned by this local Engine. */
+  async stopGateway(platform: "weixin" | "feishu"): Promise<GatewayStatus | null> {
+    if (this.methods.size > 0 && !this.supports("settings.gateways.stop")) return null;
+    try {
+      const result = await this.call<{ gateway: GatewayStatus }>("settings.gateways.stop", { platform });
+      return result.gateway;
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  /** Approve a matching short-lived Feishu pairing code without receiving the sender open_id. */
+  async approveGatewayAuthorization(requestId: string): Promise<GatewayStatus | null> {
+    if (this.methods.size > 0 && !this.supports("settings.gateways.authorization.approve")) return null;
+    try {
+      const result = await this.call<{ gateway: GatewayStatus }>("settings.gateways.authorization.approve", {
+        platform: "feishu",
+        requestId,
+      });
+      return result.gateway;
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
     }
   }
   /** Save a write-only Feishu credential in Engine private state. No identity or secret is returned. */

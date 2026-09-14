@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.167 — 2026-09-14 — chat bots without terminal setup
+
+- Start and stop WeChat and Feishu directly from Chat bot settings, with no terminal command. The local Engine
+  restores only connectors the user explicitly started and refuses to stop a gateway owned by another process.
+- Pair a new Feishu private sender by matching the short-lived code shown by the bot and Desktop. Approval stays
+  local, and Desktop never receives or displays the sender's raw platform identity.
+- Replace the misleading chat-bot “Connected” state with transport-specific health, and separately show whether
+  direct messages are authorized. Older Engines fail visibly as unknown; Feishu settings also explain that an
+  ordinary group @mention requires an explicit Flow or Bridge instead of entering the full Agent driver.
+- Bundle Hara CLI `0.178.0` at exact commit `b7d9426feda9569ea1855bf0d77399aace65351a`, including the
+  Serve-owned connector supervisor, restart-safe lifecycle preference, redacted private-sender enrollment, and
+  strict external-process ownership boundary.
+
 ## 0.1.166 — 2026-09-14 — a calmer Agent Office and safer long-running work
 
 - Rebuild Agent Office around one compact command bar, a nonzero status summary, and the room itself. The former

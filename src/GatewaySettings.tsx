@@ -17,14 +17,22 @@ const TERMINAL_LOGIN_PHASES = new Set<GatewayLoginSnapshot["phase"]>([
   "timed-out",
   "failed",
 ]);
+type DesktopGatewayPlatform = "weixin" | "feishu";
 
 const words = {
   en: {
     title: "Chat bots",
-    subtitle: "Live, redacted status from the local Hara engine. It refreshes every two minutes without calling a model or consuming tokens.",
+    subtitle: "Credential, process, and transport health from the local Hara engine. Transport online is not an end-to-end reply guarantee. It refreshes every two minutes without calling a model or consuming tokens.",
     refresh: "Refresh",
     refreshing: "Refreshing…",
-    connected: "Connected",
+    transportOnline: "Transport online",
+    directReady: "Authorized sender configured",
+    directBlocked: "No authorized DM sender",
+    directUnknown: "DM authorization unknown",
+    directBlockedHint: "The transport is online, but no sender can use Hara yet. Send the bot a private message, then approve the matching pairing code on this page.",
+    directUnknownHint: "The platform transport is online, but this gateway process does not report whether any direct-message sender is authorized. Restart it with the updated Hara Engine before treating it as usable.",
+    weixinOnlineHint: "Only direct messages from the linked WeChat owner drive Hara.",
+    feishuOnlineHint: "Test with an authorized private message. An ordinary group @mention does not launch Hara unless an explicit Flow or bridge is enabled.",
     starting: "Starting",
     degraded: "Needs attention",
     stopped: "Stopped",
@@ -34,9 +42,22 @@ const words = {
     missing: "Credentials missing",
     incomplete: "Credentials incomplete",
     unreadable: "State unreadable",
-    lastSignal: "Last verified activity",
-    never: "No verified activity yet",
+    lastSignal: "Last transport activity",
+    never: "No transport activity yet",
     pid: "Local process",
+    launch: "Start",
+    launching: "Starting…",
+    stopConnector: "Stop",
+    stoppingConnector: "Stopping…",
+    managedExternally: "Started outside Desktop",
+    lifecycleUnavailable: "Update the bundled Hara engine to start and stop connectors here.",
+    lifecycleFailed: "The connector action could not be completed. Refresh its status and try again.",
+    pairingTitle: "Private sender awaiting approval",
+    pairingBody: "Match this code with the private reply from the Feishu bot. Approving grants that sender access to the local Hara agent; the sender identity remains private in Engine storage.",
+    pairingApprove: "Approve sender",
+    pairingApproving: "Approving…",
+    pairingApproved: "Sender approved. Ask them to send the private message again.",
+    pairingFailed: "The pairing request expired or could not be approved. Send the bot another private message for a new code.",
     unavailable: "Update the bundled Hara engine to see bot connection status here.",
     loadFailed: "Bot status could not be read",
     weixinLogin: "Run `hara gateway --platform weixin --login`, then start the WeChat gateway.",
@@ -58,8 +79,8 @@ const words = {
     feishuProcessOnly: "Held by the running gateway",
     feishuSafety: "Write-only: values are cleared from this screen after submission and never returned by the Engine. Automations use the brokered Feishu channel, not raw credentials.",
     feishuEnvironmentHint: "Desktop will not overwrite a launch-environment or running-process credential. Stop that gateway and remove the environment override before switching to Hara-managed storage.",
-    feishuSaved: "Feishu credential saved. New scheduled deliveries use it immediately; restart an already-running gateway to switch its connection.",
-    feishuRemoved: "The Hara-stored Feishu credential was removed. Stop a running gateway to drop its in-memory connection; revoke the app secret in Feishu if access must end immediately.",
+    feishuSaved: "Feishu credential saved. New scheduled deliveries use it immediately; a Desktop-managed connector restarts with the replacement.",
+    feishuRemoved: "The Hara-stored Feishu credential was removed and its Desktop-managed connector was stopped. Revoke the app secret in Feishu if access must end immediately.",
     feishuSaveFailed: "The credential could not be saved securely. Check the local Hara state permissions and try again.",
     feishuRemoveFailed: "The stored credential could not be removed securely.",
     feishuRemoveConfirm: "Remove the Feishu credential stored by Hara? Scheduled Feishu delivery will pause until another trusted credential is configured.",
@@ -97,10 +118,17 @@ const words = {
   },
   zh: {
     title: "聊天机器人",
-    subtitle: "读取本机 Hara 引擎的脱敏实时状态；每两分钟刷新一次，不调用模型，也不消耗 Token。",
+    subtitle: "读取本机 Hara 引擎的凭据、进程与传输状态；“传输在线”不等于端到端回复已验证。每两分钟刷新一次，不调用模型，也不消耗 Token。",
     refresh: "刷新",
     refreshing: "正在刷新…",
-    connected: "已连接",
+    transportOnline: "传输在线",
+    directReady: "已配置授权用户",
+    directBlocked: "没有已授权私聊用户",
+    directUnknown: "私聊授权未确认",
+    directBlockedHint: "平台传输已在线，但当前还没有用户可以使用 Hara。请先私聊飞书机器人，再在本页核对并授权配对码。",
+    directUnknownHint: "平台传输已在线，但该网关进程没有报告私聊授权状态。请用更新后的 Hara Engine 重启网关，再把它视为可用。",
+    weixinOnlineHint: "只有已绑定微信所有者发来的私聊会驱动 Hara。",
+    feishuOnlineHint: "请用已授权私聊验证收发；普通群聊 @ 不会启动 Hara，除非已显式启用 Flow 或 Bridge。",
     starting: "正在连接",
     degraded: "需要处理",
     stopped: "未运行",
@@ -110,9 +138,22 @@ const words = {
     missing: "缺少凭据",
     incomplete: "凭据不完整",
     unreadable: "状态不可读",
-    lastSignal: "最近确认活动",
-    never: "尚无已确认活动",
+    lastSignal: "最近传输活动",
+    never: "尚无传输活动",
     pid: "本机进程",
+    launch: "启动",
+    launching: "正在启动…",
+    stopConnector: "停止",
+    stoppingConnector: "正在停止…",
+    managedExternally: "由 Desktop 外部启动",
+    lifecycleUnavailable: "请更新 Desktop 内置的 Hara 引擎，之后可直接在这里启动和停止连接。",
+    lifecycleFailed: "没有完成连接操作，请刷新状态后重试。",
+    pairingTitle: "有私聊用户等待授权",
+    pairingBody: "请核对飞书机器人私聊回复中的配对码。确认后，该用户可以调用本机 Hara；用户标识只保存在引擎私有存储中。",
+    pairingApprove: "授权此用户",
+    pairingApproving: "正在授权…",
+    pairingApproved: "用户已授权，请让对方重新发送一次私聊消息。",
+    pairingFailed: "配对请求已过期或授权失败，请重新私聊机器人获取新配对码。",
     unavailable: "请更新 Desktop 内置的 Hara 引擎，之后可在这里查看机器人连接状态。",
     loadFailed: "无法读取机器人状态",
     weixinLogin: "运行 `hara gateway --platform weixin --login`，然后启动微信网关。",
@@ -134,8 +175,8 @@ const words = {
     feishuProcessOnly: "由运行中的网关持有",
     feishuSafety: "只写不读：提交后立即清空本页输入，引擎绝不回传凭据。自动化只调用受控飞书通道，不向 Agent 或脚本提供明文。",
     feishuEnvironmentHint: "Desktop 不会覆盖启动环境或运行进程持有的凭据。若要改由 Hara 保存，请先停止对应网关并移除环境覆盖。",
-    feishuSaved: "飞书凭据已保存。新的定时投递会立即使用；已运行的网关需重启后切换连接。",
-    feishuRemoved: "Hara 私有保存的飞书凭据已移除。若网关仍在运行，请停止它以断开内存中的现有连接；如需立即撤销访问，请同时在飞书开放平台重置 App Secret。",
+    feishuSaved: "飞书凭据已保存。新的定时投递会立即使用；由 Desktop 管理的连接会自动以新凭据重启。",
+    feishuRemoved: "Hara 私有保存的飞书凭据已移除，由 Desktop 管理的连接也已停止；如需立即撤销访问，请同时在飞书开放平台重置 App Secret。",
     feishuSaveFailed: "无法安全保存凭据，请检查本机 Hara 私有状态权限后重试。",
     feishuRemoveFailed: "无法安全移除已存凭据。",
     feishuRemoveConfirm: "移除 Hara 私有保存的飞书凭据？配置新的受信任凭据前，飞书定时投递将保持暂停。",
@@ -184,6 +225,7 @@ const recommendation = (
   locale: Locale,
   desktopLogin: boolean,
   credentialSettings: boolean,
+  lifecycleSettings: boolean,
 ): string => {
   const copy = words[locale];
   const unresolvedError = status.lastErrorAt !== undefined
@@ -199,18 +241,51 @@ const recommendation = (
     if (status.platform === "weixin") return desktopLogin ? copy.weixinDesktopLogin : copy.weixinLogin;
     return credentialSettings ? copy.feishuConfigure : copy.feishuConfigureLegacy;
   }
-  return copy.start.replace("{platform}", status.platform);
+  return lifecycleSettings ? "" : copy.start.replace("{platform}", status.platform);
 };
 
 const badge = (status: GatewayStatus, locale: Locale) => {
   const copy = words[locale];
-  if (status.running && status.runtimeState === "connected") return { label: copy.connected, tone: "success" as const };
+  if (status.running && status.runtimeState === "connected") {
+    return {
+      label: copy.transportOnline,
+      tone: status.directMessageAccess === "ready" ? "success" as const : "warning" as const,
+    };
+  }
   if (status.running && status.runtimeState === "starting") return { label: copy.starting, tone: "warning" as const };
   if (status.running || ["degraded", "failed", "unreadable"].includes(status.runtimeState)) {
     return { label: copy.degraded, tone: "warning" as const };
   }
   if (status.configured) return { label: copy.stopped, tone: "warning" as const };
   return { label: copy.notConfigured, tone: "neutral" as const };
+};
+
+const directMessageAccessLabel = (status: GatewayStatus, locale: Locale): string => {
+  const copy = words[locale];
+  return status.directMessageAccess === "ready"
+    ? copy.directReady
+    : status.directMessageAccess === "blocked"
+      ? copy.directBlocked
+      : copy.directUnknown;
+};
+
+const connectionNote = (
+  status: GatewayStatus,
+  locale: Locale,
+): { title: string; body: string; tone: "neutral" | "warning" } | null => {
+  if (!status.running || status.runtimeState !== "connected") return null;
+  const copy = words[locale];
+  if (status.directMessageAccess === "blocked") {
+    return { title: copy.directBlocked, body: copy.directBlockedHint, tone: "warning" };
+  }
+  if (status.directMessageAccess !== "ready") {
+    return { title: copy.directUnknown, body: copy.directUnknownHint, tone: "warning" };
+  }
+  return {
+    title: copy.directReady,
+    body: status.platform === "weixin" ? copy.weixinOnlineHint : copy.feishuOnlineHint,
+    tone: "neutral",
+  };
 };
 
 const configurationLabel = (status: GatewayStatus, locale: Locale): string => {
@@ -253,6 +328,10 @@ export function GatewaySettings({ client, locale }: { client: HaraClient | null;
   const [credentialBusy, setCredentialBusy] = useState(false);
   const [credentialMessage, setCredentialMessage] = useState("");
   const [credentialError, setCredentialError] = useState("");
+  const [gatewayBusy, setGatewayBusy] = useState<DesktopGatewayPlatform | null>(null);
+  const [gatewayMessage, setGatewayMessage] = useState("");
+  const [gatewayError, setGatewayError] = useState("");
+  const [authorizationBusy, setAuthorizationBusy] = useState("");
   const request = useRef(0);
   const latestLogin = useRef<GatewayLoginSnapshot | null>(null);
   const mounted = useRef(true);
@@ -260,6 +339,10 @@ export function GatewaySettings({ client, locale }: { client: HaraClient | null;
   const desktopLogin = Boolean(client?.supports("settings.gateways.login.start"));
   const credentialSettings = Boolean(client?.supports("settings.gateways.credentials.save"));
   const credentialRemoval = Boolean(client?.supports("settings.gateways.credentials.remove"));
+  const lifecycleSettings = Boolean(
+    client?.supports("settings.gateways.start") && client.supports("settings.gateways.stop"),
+  );
+  const senderAuthorization = Boolean(client?.supports("settings.gateways.authorization.approve"));
 
   const load = useCallback(async (visible = true) => {
     if (!client) return;
@@ -416,6 +499,71 @@ export function GatewaySettings({ client, locale }: { client: HaraClient | null;
     });
   }, []);
 
+  const controlGateway = useCallback(async (
+    platform: DesktopGatewayPlatform,
+    action: "start" | "stop",
+  ) => {
+    if (!client || !lifecycleSettings || gatewayBusy) return;
+    setGatewayBusy(platform);
+    setGatewayMessage("");
+    setGatewayError("");
+    try {
+      const next = action === "start"
+        ? await client.startGateway(platform)
+        : await client.stopGateway(platform);
+      if (!mounted.current) return;
+      if (!next) {
+        setGatewayError(copy.lifecycleUnavailable);
+        return;
+      }
+      applyGatewayStatus(next);
+      window.setTimeout(() => void load(false), 500);
+    } catch {
+      if (mounted.current) setGatewayError(copy.lifecycleFailed);
+    } finally {
+      if (mounted.current) setGatewayBusy(null);
+    }
+  }, [
+    applyGatewayStatus,
+    client,
+    copy.lifecycleFailed,
+    copy.lifecycleUnavailable,
+    gatewayBusy,
+    lifecycleSettings,
+    load,
+  ]);
+
+  const approveSender = useCallback(async (requestId: string) => {
+    if (!client || !senderAuthorization || authorizationBusy) return;
+    setAuthorizationBusy(requestId);
+    setGatewayMessage("");
+    setGatewayError("");
+    try {
+      const next = await client.approveGatewayAuthorization(requestId);
+      if (!mounted.current) return;
+      if (!next) {
+        setGatewayError(copy.lifecycleUnavailable);
+        return;
+      }
+      applyGatewayStatus(next);
+      setGatewayMessage(copy.pairingApproved);
+      window.setTimeout(() => void load(false), 500);
+    } catch {
+      if (mounted.current) setGatewayError(copy.pairingFailed);
+    } finally {
+      if (mounted.current) setAuthorizationBusy("");
+    }
+  }, [
+    applyGatewayStatus,
+    authorizationBusy,
+    client,
+    copy.lifecycleUnavailable,
+    copy.pairingApproved,
+    copy.pairingFailed,
+    load,
+    senderAuthorization,
+  ]);
+
   const saveFeishuCredentials = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!client || credentialBusy || !credentialSettings) return;
@@ -490,8 +638,8 @@ export function GatewaySettings({ client, locale }: { client: HaraClient | null;
     credentialRemoval,
   ]);
 
-  const connected = useMemo(
-    () => gateways.filter((gateway) => gateway.running && gateway.runtimeState === "connected").length,
+  const transportOnline = useMemo(
+    () => gateways.filter((gateway) => gateway.running && gateway.runtimeState === "connected"),
     [gateways],
   );
   const activeLogin = Boolean(login && !TERMINAL_LOGIN_PHASES.has(login.phase));
@@ -505,13 +653,19 @@ export function GatewaySettings({ client, locale }: { client: HaraClient | null;
       description={copy.subtitle}
       aside={
         <div className="settings-choice">
-          {connected > 0 && <SettingsBadge tone="success">{connected} {copy.connected}</SettingsBadge>}
+          {transportOnline.length > 0 && (
+            <SettingsBadge tone={transportOnline.every((status) => status.directMessageAccess === "ready") ? "success" : "warning"}>
+              {transportOnline.length} {copy.transportOnline}
+            </SettingsBadge>
+          )}
           <button type="button" className="ghost" disabled={!client || loading} onClick={() => void load()}>
             {loading ? copy.refreshing : copy.refresh}
           </button>
         </div>
       }
     >
+      {gatewayMessage && <SettingsNotice tone="success" title={gatewayMessage} />}
+      {gatewayError && <SettingsNotice tone="error" title={gatewayError} />}
       {unsupported ? (
         <SettingsNotice title={copy.unavailable} />
       ) : error ? (
@@ -520,7 +674,8 @@ export function GatewaySettings({ client, locale }: { client: HaraClient | null;
         gateways.map((status) => {
           const state = badge(status, locale);
           const activity = latestActivity(status);
-          const action = recommendation(status, locale, desktopLogin, credentialSettings);
+          const action = recommendation(status, locale, desktopLogin, credentialSettings, lifecycleSettings);
+          const connection = connectionNote(status, locale);
           const weixin = status.platform === "weixin";
           const feishu = status.platform === "feishu";
           const externallyManaged = status.credentialSource === "environment"
@@ -536,11 +691,33 @@ export function GatewaySettings({ client, locale }: { client: HaraClient | null;
             <div className="gateway-settings-block" key={status.platform}>
               <SettingsItem
                 title={status.label}
-                description={`${configurationLabel(status, locale)} · ${copy.lastSignal}: ${activity ? new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en", { dateStyle: "medium", timeStyle: "short" }).format(activity) : copy.never}`}
+                description={`${configurationLabel(status, locale)}${status.running ? ` · ${directMessageAccessLabel(status, locale)}` : ""} · ${copy.lastSignal}: ${activity ? new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en", { dateStyle: "medium", timeStyle: "short" }).format(activity) : copy.never}`}
               >
                 <div className="settings-choice">
                   {status.pid && <span className="settings-mono">{copy.pid} {status.pid}</span>}
+                  {status.running && status.managedByServe === false && (
+                    <SettingsBadge>{copy.managedExternally}</SettingsBadge>
+                  )}
                   <SettingsBadge tone={state.tone}>{state.label}</SettingsBadge>
+                  {lifecycleSettings && !status.running && status.configuration === "ready" && (
+                    <button
+                      type="button"
+                      disabled={gatewayBusy !== null}
+                      onClick={() => void controlGateway(status.platform as DesktopGatewayPlatform, "start")}
+                    >
+                      {gatewayBusy === status.platform ? copy.launching : copy.launch}
+                    </button>
+                  )}
+                  {lifecycleSettings && status.running && status.managedByServe && (
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={gatewayBusy !== null}
+                      onClick={() => void controlGateway(status.platform as DesktopGatewayPlatform, "stop")}
+                    >
+                      {gatewayBusy === status.platform ? copy.stoppingConnector : copy.stopConnector}
+                    </button>
+                  )}
                   {weixin && (
                     <button
                       type="button"
@@ -552,6 +729,32 @@ export function GatewaySettings({ client, locale }: { client: HaraClient | null;
                   )}
                 </div>
               </SettingsItem>
+
+              {status.pendingAuthorization && (
+                <SettingsNotice
+                  tone="warning"
+                  title={`${status.label} · ${copy.pairingTitle}`}
+                  actions={senderAuthorization ? (
+                    <button
+                      type="button"
+                      disabled={authorizationBusy.length > 0}
+                      onClick={() => void approveSender(status.pendingAuthorization!.id)}
+                    >
+                      {authorizationBusy === status.pendingAuthorization.id
+                        ? copy.pairingApproving
+                        : copy.pairingApprove}
+                    </button>
+                  ) : undefined}
+                >
+                  <span>{copy.pairingBody} <strong className="settings-mono">{status.pendingAuthorization.code}</strong></span>
+                </SettingsNotice>
+              )}
+
+              {connection && (
+                <SettingsNotice tone={connection.tone} title={`${status.label} · ${connection.title}`}>
+                  {connection.body}
+                </SettingsNotice>
+              )}
 
               {feishu && credentialSettings && (
                 <section

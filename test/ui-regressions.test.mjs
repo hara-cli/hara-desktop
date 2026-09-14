@@ -1243,6 +1243,19 @@ test("bot settings show redacted live gateway health without model polling", () 
   assert.match(gatewaySettings, /status\.runtimeState !== "connected"/);
   assert.match(gatewaySettings, /processOnly/);
   assert.match(gatewaySettings, /不调用模型，也不消耗 Token/);
+  assert.match(gatewaySettings, /“传输在线”不等于端到端回复已验证/);
+  assert.match(gatewaySettings, /核对飞书机器人私聊回复中的配对码/);
+  assert.match(gatewaySettings, /普通群聊 @ 不会启动 Hara，除非已显式启用 Flow 或 Bridge/);
+  assert.match(gatewaySettings, /status\.directMessageAccess === "blocked"/);
+  assert.match(gatewaySettings, /status\.directMessageAccess === "ready"/);
+  assert.match(gatewaySettings, /settings\.gateways\.start/);
+  assert.match(gatewaySettings, /settings\.gateways\.stop/);
+  assert.match(gatewaySettings, /settings\.gateways\.authorization\.approve/);
+  assert.match(gatewaySettings, /status\.managedByServe/);
+  assert.match(gatewaySettings, /status\.pendingAuthorization/);
+  assert.match(gatewaySettings, /授权此用户/);
+  assert.match(gatewaySettings, /无需打开终端/);
+  assert.doesNotMatch(gatewaySettings, /connected: "(?:Connected|已连接)"/);
   assert.match(gatewaySettings, /import\("qrcode"\)/, "the QR encoder is loaded only after login starts");
   assert.match(gatewaySettings, /window\.setTimeout\(\(\) => void poll\(\), LOGIN_POLL_MS\)/, "polling is recursive and non-overlapping");
   assert.match(gatewaySettings, /window\.clearTimeout\(timer\)/, "polling is cancelled when the panel unmounts");
@@ -1252,6 +1265,12 @@ test("bot settings show redacted live gateway health without model polling", () 
   assert.match(css, /\.gateway-login-panel/);
   assert.equal(pkg.dependencies.qrcode.length > 0, true);
   const gatewayStatusShape = client.match(/export type GatewayStatus = \{([\s\S]*?)\n\};/)?.[1] ?? "";
+  assert.match(client, /directMessageAccess\?: "ready" \| "blocked" \| "unknown"/);
+  assert.match(client, /managedByServe\?: boolean/);
+  assert.match(client, /pendingAuthorization\?:/);
+  assert.match(client, /startGateway\(platform: "weixin" \| "feishu"\)/);
+  assert.match(client, /stopGateway\(platform: "weixin" \| "feishu"\)/);
+  assert.match(client, /approveGatewayAuthorization\(requestId: string\)/);
   assert.doesNotMatch(
     gatewayStatusShape,
     /\b(?:apiKey|appId|appSecret|token)\??\s*:/i,
