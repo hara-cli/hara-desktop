@@ -1559,7 +1559,7 @@ export type ServerEvent =
   | { method: "event.reasoning"; sessionId: string; delta: string }
   | { method: "event.tool"; sessionId: string; name: string; preview: string }
   | { method: "event.diff"; sessionId: string; text: string }
-  | { method: "event.notice"; sessionId: string; text: string }
+  | { method: "event.notice"; sessionId: string; text: string; category?: "output" }
   | {
       method: "event.surface";
       sessionId: string;

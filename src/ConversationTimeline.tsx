@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import { memo, useEffect, useMemo, useState, type RefObject } from "react";
 import type { TaskLifecycleEvent } from "./client";
 import {
   countExecutionDetails,
@@ -50,6 +50,7 @@ export type ConversationItem =
   | { kind: "text"; text: string }
   | { kind: "tool"; name: string; preview: string }
   | { kind: "notice"; text: string }
+  | { kind: "output"; text: string; lines: number }
   | { kind: "diff"; text: string }
   | { kind: "end"; usage: { input: number; output: number } }
   | {
@@ -116,7 +117,7 @@ function TaskProgressTelemetry({
 }
 
 /** Pure projection of one session transcript. Runtime state and routing stay outside this component. */
-export function ConversationTimeline({
+export const ConversationTimeline = memo(function ConversationTimeline({
   items,
   busy,
   taskState,
@@ -419,10 +420,33 @@ export function ConversationTimeline({
             case "diff":
               return null;
             case "notice":
+              if (visibleTask?.progress?.state === "stopped"
+                && (item.text.startsWith("⏸ agent paused") || item.text.startsWith("⏸ 任务已暂停"))) {
+                return (
+                  <details key={index} className="tool-output-log">
+                    <summary><strong>{t("pauseDiagnostic")}</strong></summary>
+                    <pre>{item.text}</pre>
+                  </details>
+                );
+              }
               return (
                 <div key={index} className="notice">
                   {item.text}
                 </div>
+              );
+            case "output":
+              return (
+                <details
+                  key={`output-${index}`}
+                  className="tool-output-log"
+                  open={executionViewExpandsLog(displayMode) ? true : undefined}
+                >
+                  <summary>
+                    <strong>{t("toolOutput")}</strong>
+                    <span>{item.lines} {t("outputLines")}</span>
+                  </summary>
+                  <pre>{item.text}</pre>
+                </details>
               );
             case "end":
               return executionViewShowsUsage(displayMode) ? (
@@ -480,4 +504,4 @@ export function ConversationTimeline({
         <div ref={bottomRef} />
     </div>
   );
-}
+});

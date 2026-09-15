@@ -878,6 +878,7 @@ export default function App() {
   const [taskStates, setTaskStates] = useState<Record<string, TaskLifecycleEvent>>({});
   const [workforceStates, setWorkforceStates] = useState<Record<string, WorkforceStateEvent>>({});
   const transcriptsRef = useRef(transcripts);
+  const pendingToolOutputRef = useRef<Record<string, { text: string; lines: number; timer: number }>>({});
   const readOnlySessionsRef = useRef(readOnlySessions);
   const busyRef = useRef(busy);
   const taskStatesRef = useRef(taskStates);
@@ -1274,7 +1275,7 @@ export default function App() {
     applyThemePreference(preference);
     setThemePreferenceState(preference);
   }, []);
-  const t = makeT(locale);
+  const t = useMemo(() => makeT(locale), [locale]);
   const groupsCopy = useMemo<GroupsCopy>(() => {
     const translate = makeT(locale);
     return {
@@ -2333,6 +2334,32 @@ export default function App() {
     [],
   );
 
+  const flushToolOutput = useCallback((sessionId: string) => {
+    const pending = pendingToolOutputRef.current[sessionId];
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    delete pendingToolOutputRef.current[sessionId];
+    push(sessionId, (items) => {
+      const last = items[items.length - 1];
+      if (last?.kind === "output") {
+        return [...items.slice(0, -1), {
+          kind: "output", text: `${last.text}\n${pending.text}`, lines: last.lines + pending.lines,
+        }];
+      }
+      return [...items, { kind: "output", text: pending.text, lines: pending.lines }];
+    });
+  }, [push]);
+  const queueToolOutput = useCallback((sessionId: string, text: string) => {
+    const pending = pendingToolOutputRef.current[sessionId];
+    if (pending) {
+      pending.text += `\n${text}`;
+      pending.lines += 1;
+      return;
+    }
+    const timer = window.setTimeout(() => flushToolOutput(sessionId), 80);
+    pendingToolOutputRef.current[sessionId] = { text, lines: 1, timer };
+  }, [flushToolOutput]);
+
   /** Commit the latest staged composer route only when Serve accepts it between turns.
    *  One in-flight loop owns each session: if the user changes their choice while an RPC is running,
    *  the loop re-reads the newer revision before allowing the next send. */
@@ -2973,6 +3000,10 @@ export default function App() {
 
   const handleEvent = useCallback(
     (e: ServerEvent) => {
+      // Preserve protocol order while coalescing bursts of raw stdout into one renderer update.
+      if ((e.method !== "event.notice" || e.category !== "output") && "sessionId" in e) {
+        flushToolOutput(e.sessionId);
+      }
       switch (e.method) {
         case "event.turn_start":
           if (personalLocalSurfaceSession(e.sessionId)) {
@@ -3040,7 +3071,8 @@ export default function App() {
           push(e.sessionId, (items) => [...items, { kind: "tool", name: e.name, preview: plain(e.preview) }]);
           break;
         case "event.notice":
-          push(e.sessionId, (items) => [...items, { kind: "notice", text: plain(e.text) }]);
+          if (e.category === "output") queueToolOutput(e.sessionId, plain(e.text));
+          else push(e.sessionId, (items) => [...items, { kind: "notice", text: plain(e.text) }]);
           break;
         case "event.diff":
           if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
@@ -3487,11 +3519,13 @@ export default function App() {
           break;
       }
     },
-    [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, locale, notePet, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, recoverPresentationSurface, refreshArtifacts, refreshExternalSessions, removePet, resolvePendingUser, sendText, setSessionBusy],
+    [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, flushToolOutput, locale, notePet, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, queueToolOutput, recoverPresentationSurface, refreshArtifacts, refreshExternalSessions, removePet, resolvePendingUser, sendText, setSessionBusy],
   );
   handleEventRef.current = handleEvent;
 
   const clearEngineBoundSurfaces = useCallback((options?: { preserveQueuedInputs?: boolean }) => {
+    for (const pending of Object.values(pendingToolOutputRef.current)) window.clearTimeout(pending.timer);
+    pendingToolOutputRef.current = {};
     sessionOpenRequestRef.current += 1;
     artifactOpenRequestRef.current += 1;
     // A Space or provider-route transition invalidates every renderer attachment even though the
@@ -6875,6 +6909,27 @@ export default function App() {
     }
   }, [externalSessionApprovals, selectedExternalSession?.id]);
 
+  // Keep the transcript projection stable while typing in the composer. The wrappers read the latest
+  // session actions without giving the large timeline new callback identities on every keystroke.
+  const timelineActionsRef = useRef({ rewindHere, answer, submitSessionText, active, locale });
+  timelineActionsRef.current = { rewindHere, answer, submitSessionText, active, locale };
+  const timelineRewind = useCallback((index: number) => {
+    void timelineActionsRef.current.rewindHere(index);
+  }, []);
+  const timelineApproval = useCallback((approvalId: string, verdict: ApprovalVerdict) => {
+    const { active: sessionId, answer: reply } = timelineActionsRef.current;
+    if (!sessionId) return;
+    void reply(sessionId, approvalId, verdict).catch((error) => setErr(String(error?.message ?? error)));
+  }, []);
+  const timelineContinue = useCallback((requestedInstruction?: string) => {
+    const { active: sessionId, locale: currentLocale, submitSessionText: submit } = timelineActionsRef.current;
+    if (!sessionId) return;
+    const instruction = requestedInstruction || (currentLocale === "zh"
+      ? "/continue 我已完成重新登录。先检查受阻的认证能力；确认恢复后再从原检查点继续，仍未恢复则保持暂停。"
+      : "/continue I signed in again. Check the blocked authentication capability first; resume from the saved checkpoint only if it recovered, otherwise remain paused.");
+    void submit(sessionId, instruction).catch((error) => setErr(String(error?.message ?? error)));
+  }, []);
+
   // ── boot / error screen ────────────────────────────────────────────────────
   if (phase !== "ready") {
     return (
@@ -7507,20 +7562,9 @@ export default function App() {
             displayMode={executionViewMode}
             bottomRef={bottomRef}
             t={t}
-            onRewind={(index) => void rewindHere(index)}
-            onApproval={(approvalId, verdict) =>
-              void answer(active, approvalId, verdict).catch((error) =>
-                setErr(String(error?.message ?? error)),
-              )
-            }
-            onContinueTask={(requestedInstruction) => {
-              const instruction = requestedInstruction || (locale === "zh"
-                ? "/continue 我已完成重新登录。先检查受阻的认证能力；确认恢复后再从原检查点继续，仍未恢复则保持暂停。"
-                : "/continue I signed in again. Check the blocked authentication capability first; resume from the saved checkpoint only if it recovered, otherwise remain paused.");
-              void submitSessionText(active, instruction).catch((error) =>
-                setErr(String(error?.message ?? error)),
-              );
-            }}
+            onRewind={timelineRewind}
+            onApproval={timelineApproval}
+            onContinueTask={timelineContinue}
           />
           {(queue[active!] ?? []).length > 0 && (
             <div className="steerq">

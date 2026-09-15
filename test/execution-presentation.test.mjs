@@ -87,3 +87,15 @@ test("only user-visible tool activity and diffs are execution details", () => {
     assert.equal(isExecutionDetail(item), false);
   }
 });
+
+test("raw output remains a distinct disclosure item while actionable notices stay visible", () => {
+  const segments = groupConversationItems([
+    { kind: "tool", name: "bash", preview: "ls" },
+    { kind: "output", text: "one\ntwo", lines: 2 },
+    { kind: "notice", text: "Approval required" },
+    { kind: "text", text: "Done" },
+  ]);
+  assert.deepEqual(segments.map((segment) => segment.kind), ["execution", "item", "item", "item"]);
+  assert.equal(segments[1].item.kind, "output");
+  assert.equal(segments[2].item.kind, "notice");
+});
