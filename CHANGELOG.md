@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.169 — 2026-09-16 — calmer chat output and verified long-task progress
+
+- Fold raw shell output into an expandable, line-counted disclosure instead of placing every stdout line in
+  the main conversation. Keep ordinary notices, final answers, approvals, and the task pause reason visible;
+  detailed stop diagnostics remain available on demand.
+- Coalesce bursts of raw output and keep the transcript projection stable while the user types, reducing work
+  caused by long execution logs on each keystroke. Chinese UI labels are provided for the new disclosure and
+  pause diagnostics.
+- Bundle Hara CLI `0.178.1` at exact commit `08ae97b5d1bbf806129ad3ffdae5ffc9ca541a88`. The Engine now
+  recognizes committed file-content changes and declared shell/Python output files as verified task progress,
+  while unchanged content still triggers the stalled-run stop.
+
 ## 0.1.168 — 2026-09-15 — recover stale Space links and simplify deliverables
 
 - Explain when an older conversation belongs to a Space that is no longer selectable instead of telling users
