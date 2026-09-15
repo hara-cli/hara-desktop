@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.168 — 2026-09-15 — recover stale Space links and simplify deliverables
+
+- Explain when an older conversation belongs to a Space that is no longer selectable instead of telling users
+  with only Personal Space to switch to a nonexistent Space. Do not advertise those inaccessible sessions through
+  completion notifications, unread badges, or Desktop companion activity.
+- Let Serve decide whether an engine switch or Desktop update can retire the active process. A completed turn's
+  stale renderer busy flag no longer invents a running-task blocker; real work remains protected by Serve's
+  graceful-shutdown refusal.
+- Recheck the active Space before the Desktop companion projects conversation history, submits a message, or
+  answers an approval. A direct open remains blocked until its original Space is available.
+- Move the local presentation, spreadsheet, and document library into Workbench as **Deliverables**. Files can
+  enter through the conversation composer for visual editing; ordinary attachments stay conversation context.
+  Existing Artifact revisions, validation, exports, and owner boundaries are preserved.
+- Bundle Hara CLI `0.178.0` at exact commit `b7d9426feda9569ea1855bf0d77399aace65351a`; this Desktop-only
+  update does not replace the Engine or change its Space authority.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may display a
+  reputation warning.
+
 ## 0.1.167 — 2026-09-14 — chat bots without terminal setup
 
 - Start and stop WeChat and Feishu directly from Chat bot settings, with no terminal command. The local Engine

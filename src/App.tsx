@@ -6235,14 +6235,16 @@ export default function App() {
 
   const restartBundledEngine = async () => {
     if (engineRestarting || !server) return;
-    if (Object.values(busyRef.current).some(Boolean)) {
-      setErr("");
-      setEngineRestartInterlockOpen(true);
-      return;
-    }
     const client = clientRef.current;
     if (!client) {
       setErr(t("engineRestartReconnect"));
+      return;
+    }
+    // Graceful shutdown is the authoritative admission check. A renderer busy flag can outlive its
+    // completed turn after an event gap, but Serve refuses shutdown while it still owns real work.
+    if (!client.supports("server.shutdown") && Object.values(busyRef.current).some(Boolean)) {
+      setErr("");
+      setEngineRestartInterlockOpen(true);
       return;
     }
 
@@ -6264,7 +6266,19 @@ export default function App() {
       await waitForDiscoveryRetirement();
       await startServer();
     } catch (error: any) {
-      setErr(String(error?.message ?? error).slice(0, 220));
+      if (error?.code === SERVER_BUSY) {
+        const knownBlocker = Object.entries(busyRef.current).some(([sessionId, isBusy]) => (
+          isBusy && (!taskStatesRef.current[sessionId] || taskStateIsLive(taskStatesRef.current[sessionId].state))
+        ));
+        if (knownBlocker) {
+          setErr("");
+          setEngineRestartInterlockOpen(true);
+        } else {
+          setErr(t("engineRestartServerBusy"));
+        }
+      } else {
+        setErr(String(error?.message ?? error).slice(0, 220));
+      }
     } finally {
       plannedUpdateRestartRef.current = false;
       setEngineRestarting(false);
@@ -6410,7 +6424,7 @@ export default function App() {
   };
 
   const restartForUpdate = async () => {
-    if (Object.values(busy).some(Boolean)) {
+    if (!clientRef.current?.supports("server.shutdown") && Object.values(busy).some(Boolean)) {
       setUpdateNoticeVisible(true);
       setUpd(t("restartBusy"));
       setUpdateTone("warning");

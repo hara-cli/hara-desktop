@@ -120,6 +120,25 @@ test("a reconnect gap still exposes an identifiable blocker that can be stopped"
   assert.equal(task.statusLabel, "Running");
 });
 
+test("completed task state clears a stale renderer busy flag from the engine blocker", () => {
+  const tasks = collectEngineBlockingTasks(
+    { finished: true, paused: true, live: true },
+    [
+      { id: "finished", title: "Done", cwd: "/work/video", model: "qwen", spaceId: "personal", updatedAt: "2026-09-15T00:00:00Z" },
+      { id: "paused", title: "Paused", cwd: "/work/video", model: "qwen", spaceId: "personal", updatedAt: "2026-09-15T00:00:00Z" },
+      { id: "live", title: "Live", cwd: "/work/video", model: "qwen", spaceId: "personal", updatedAt: "2026-09-15T00:00:00Z" },
+    ],
+    {
+      finished: { state: "completed" },
+      paused: { state: "paused" },
+      live: { state: "running" },
+    },
+    null,
+    labels,
+  );
+  assert.deepEqual(tasks.map((task) => task.sessionId), ["live"]);
+});
+
 test("the restart interlock presents view and stop controls instead of a dead-end error", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const blocker = readFileSync(`${root}/src/EngineRestartBlocker.tsx`, "utf8");
@@ -128,6 +147,11 @@ test("the restart interlock presents view and stop controls instead of a dead-en
   assert.match(app, /setEngineRestartInterlockOpen\(true\)/);
   assert.match(app, /onViewTask=/);
   assert.match(app, /onStopTask=/);
+  const restart = app.match(/const restartBundledEngine = async \(\) => \{[\s\S]*?\n  const viewEngineBlockingTask = async/)?.[0] ?? "";
+  assert.match(restart, /!client\.supports\("server\.shutdown"\) && Object\.values\(busyRef\.current\)\.some\(Boolean\)/, "cached busy blocks only engines without authoritative shutdown");
+  assert.match(restart, /await client\.shutdownServer\(\)/, "Serve decides whether real work permits replacement");
+  assert.match(restart, /error\?\.code === SERVER_BUSY/, "real Serve work still blocks replacement");
+  assert.match(app, /!clientRef\.current\?\.supports\("server\.shutdown"\) && Object\.values\(busy\)\.some\(Boolean\)/, "Desktop update uses the same authoritative boundary");
   assert.doesNotMatch(app, /disabled=\{engineRestarting \|\| Object\.values\(busy\)\.some\(Boolean\)\}/);
   assert.match(blocker, /copy\.viewTask/);
   assert.match(blocker, /copy\.stopTask/);

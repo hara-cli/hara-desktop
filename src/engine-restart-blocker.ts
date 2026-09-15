@@ -5,6 +5,7 @@ import type {
 } from "./client";
 import { sessionPlace, type SessionPlace } from "./session-place.ts";
 import { sessionSpaceId } from "./space-directory.ts";
+import { taskStateIsLive } from "./task-lifecycle.ts";
 
 export type EngineBlockingTaskState = "running" | "waiting" | "stopping";
 
@@ -58,7 +59,9 @@ export function collectEngineBlockingTasks(
   const sessionById = new Map(sessions.map((session) => [session.id, session]));
 
   return Object.entries(busy)
-    .filter(([, isBusy]) => isBusy)
+    .filter(([sessionId, isBusy]) => isBusy && (
+      !taskStates[sessionId] || taskStateIsLive(taskStates[sessionId].state)
+    ))
     .map(([sessionId]): EngineBlockingTask => {
       const session = sessionById.get(sessionId);
       const task = taskStates[sessionId];
