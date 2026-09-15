@@ -327,8 +327,9 @@ test("desktop companion owns its window bridge and registers listeners before wi
   assert.match(companion, /chatRefreshTimerRef\.current !== null/);
   assert.match(companion, /window\.setTimeout\(\(\) => \{[\s\S]*emitChatState\(\);[\s\S]*\}, 50\)/);
   assert.match(companion, /closeChatProjection\(\);[\s\S]*syncPetChatWindow\(false\)/);
-  assert.match(app, /const unavailable = !!target && !session/);
-  assert.match(app, /canSubmit: connected && !unavailable/);
+  assert.match(app, /const unavailable = !!target && \(!spaceReady \|\| !session \|\| sessionSpaceAvailability\(session, spaceDirectoryRef\.current\) !== "current"\)/);
+  assert.match(app, /canSubmit: connected && spaceReady && !unavailable/);
+  assert.match(app, /sessionSpaceAvailability\(requestedSession, spaceDirectoryRef\.current\) !== "current"/, "companion messages cannot cross Space ownership");
   assert.match(app, /if \(sessionId && !requestedSession\)/, "the trusted main renderer rejects a stale or forged target");
   assert.match(app, /expectedApprovalId !== request\.approvalId/, "the trusted main renderer binds approvals to current session state");
   assert.match(companion, /WebviewWindow\.getByLabel\("main"\)/);

@@ -31,7 +31,7 @@ test("module dock preferences tolerate corruption and stale plugin IDs", () => {
 
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
-    ["core.tasks", "core.chat", "core.groups", "core.office"],
+    ["core.tasks", "core.chat", "core.groups"],
   );
 });
 
@@ -123,7 +123,7 @@ test("the Workbench can be hidden, restored, and reordered without exposing a se
   );
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
-    ["core.tasks", "core.groups", "core.office"],
+    ["core.tasks", "core.groups"],
   );
   assert.equal(initialAppPlace("projects", preferences), "auto");
   assert.equal(
@@ -146,7 +146,7 @@ test("the Workbench can be hidden, restored, and reordered without exposing a se
   );
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
-    ["core.tasks", "core.chat", "core.groups", "core.office"],
+    ["core.tasks", "core.chat", "core.groups"],
   );
   assert.equal(initialAppPlace("projects", preferences), "projects");
 
@@ -161,7 +161,12 @@ test("the Workbench can be hidden, restored, and reordered without exposing a se
   assert.equal(initialAppPlace("chat", preferences), "settings");
 });
 
-test("Groups and Office are default-visible but remain local navigation preferences", () => {
+test("Groups remains a primary module while stale Office preferences fall back to Workbench", () => {
+  assert.equal(
+    CORE_NAVIGATION_CONTRIBUTIONS.some((item) => item.id === "core.office"),
+    false,
+    "Deliverables belongs inside Workbench rather than the primary module dock",
+  );
   let preferences = parseNavigationPreferences(JSON.stringify({
     version: 1,
     order: [
@@ -217,7 +222,7 @@ test("Groups and Office are default-visible but remain local navigation preferen
   assert.deepEqual(preferences.shown, []);
   assert.deepEqual(preferences.hidden, []);
   assert.equal(initialAppPlace("groups", preferences), "groups");
-  assert.equal(initialAppPlace("office", preferences), "office");
+  assert.equal(initialAppPlace("office", preferences), "chat");
 });
 
 test("Groups is a native organization work surface with no renderer-owned transport", () => {

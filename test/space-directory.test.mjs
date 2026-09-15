@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { organizationConnectionSpaceId, sessionSpaceId } from "../src/space-directory.ts";
+import { organizationConnectionSpaceId, sessionSpaceAvailability, sessionSpaceId } from "../src/space-directory.ts";
 
 const session = (overrides = {}) => ({
   id: "session-a",
@@ -34,6 +34,28 @@ test("session Space routing preserves durable ownership and maps known legacy co
 test("a removed legacy company route never falls into Personal history", () => {
   assert.equal(sessionSpaceId(session({ profileId: "removed-company" }), directory), "org-profile:removed-company");
   assert.equal(sessionSpaceId(session({ profileId: "removed-company" }), null), "org-profile:removed-company");
+});
+
+test("a session with no selectable owner never suggests an impossible Space switch", () => {
+  assert.equal(sessionSpaceAvailability(session({ profileId: "personal" }), directory), "current");
+  assert.equal(sessionSpaceAvailability(session({ profileId: "company-a" }), directory), "switchable");
+  assert.equal(sessionSpaceAvailability(session({ profileId: "removed-company" }), directory), "missing");
+  assert.equal(sessionSpaceAvailability(session({ profileId: "removed-company" }), {
+    ...directory,
+    spaces: directory.spaces.slice(0, 1),
+  }), "missing");
+  assert.equal(sessionSpaceAvailability(session({ profileId: "company-a" }), {
+    ...directory,
+    switchLocked: true,
+  }), "locked");
+  assert.equal(sessionSpaceAvailability(session({ profileId: "company-a" }), {
+    ...directory,
+    spaces: directory.spaces.map((space) => space.id === "org:tenant-a"
+      ? { ...space, accessState: "expired" }
+      : space),
+  }), "access-unavailable");
+  assert.equal(sessionSpaceAvailability(session({ profileId: "personal" }), null), "current");
+  assert.equal(sessionSpaceAvailability(session({ profileId: "removed-company" }), null), "missing");
 });
 
 test("organization connection routes collapse onto their authoritative tenant Space", () => {

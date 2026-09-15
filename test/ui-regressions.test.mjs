@@ -335,7 +335,8 @@ test("external and not-yet-classified sessions never duplicate channel system no
   const notificationBranch =
     app.match(/const s = sessionsRef\.current\.find\(\(x\) => x\.id === e\.sessionId\);([\s\S]*?)\n\s*}\n\s*}\n\s*break;/)?.[1] ?? "";
 
-  assert.match(notificationBranch, /if \(s && !isAutomated\(s\)\)/);
+  assert.match(notificationBranch, /if \(s && !isAutomated\(s\) && \(spaceAvailability === "current" \|\| spaceAvailability === "switchable"\)\)/);
+  assert.match(notificationBranch, /sessionSpaceAvailability\(s, directory\)/, "an orphaned Space must not advertise an impossible notification target");
   assert.doesNotMatch(
     notificationBranch,
     /!s \|\| !isAutomated\(s\)/,
@@ -526,7 +527,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(app, /const retryQueuedInput = useCallback/);
   assert.match(app, /const currentTurnId = activeTurnsRef\.current\[sessionId\]/);
   assert.match(app, /if \(!live\) \{\s+await sendText\(sessionId, text, undefined, \{ wireText \}\);\s+return "sent";/, "a late stale-steer rejection starts a fresh turn with the submitted work-object target");
-  assert.match(app, /const pendingApproval = target && busyRef\.current\[target\][\s\S]*item\.kind === "approval" && !item\.answered/);
+  assert.match(app, /const pendingApproval = target && !unavailable && busyRef\.current\[target\][\s\S]*item\.kind === "approval" && !item\.answered/);
   assert.match(app, /legacyState[\s\S]*phase: pendingApproval \? "approval"/, "older engines still project approval state into companion chat");
   assert.match(
     app,
@@ -1449,10 +1450,12 @@ test("the model picker keeps Space authority while policy-gating personal billin
   );
   assert.match(
     app,
-    /const wrongSpace = \(binding:[\s\S]*sessionSpaceId\(binding, directory\) !== activeSpaceId[\s\S]*该对话属于另一个空间[\s\S]*if \(session && wrongSpace\(session\)\)/,
+    /const wrongSpace = \(binding:[\s\S]*sessionSpaceId\(binding, directory\) !== activeSpaceId[\s\S]*sessionSpaceErrorKey\(binding, directory\)[\s\S]*if \(session && wrongSpace\(session\)\)/,
     "direct notification/session opens fail closed until their owning Space is active",
   );
   assert.match(app, /preflightReplay = await c\.readSession\(id\)[\s\S]*wrongSpace\(preflightReplay\)/);
+  assert.match(app, /sessionSpaceAvailability\(requestedSession, spaceDirectoryRef\.current\) !== "current"[\s\S]*petChatApprovalRef\.current[\s\S]*sessionSpaceAvailability\(session, spaceDirectoryRef\.current\) !== "current"/, "companion submit and approval both recheck the current Space");
+  assert.match(app, /const unavailable = !!target && \(!spaceReady \|\| !session \|\| sessionSpaceAvailability\(session, spaceDirectoryRef\.current\) !== "current"\)[\s\S]*const transcript = target && !unavailable/, "companion chat never projects cross-Space history");
 });
 
 test("an unavailable pinned conversation falls back to local read-only history and offers an explicit route transfer", () => {
@@ -1808,7 +1811,10 @@ test("the capability directory keeps package sources and reusable skills distinc
     /deviceToken|authorization|enrollKey/,
     "the renderer receives status and catalog metadata, never organization credentials",
   );
-  assert.match(app, /"core\.office", title: t\("zoneOffice"\)/);
+  assert.match(app, /"core\.office", title: t\("inboxDeliverables"\)/);
+  assert.match(app, /id === "core\.office"[\s\S]*showDeliverables\(\)/);
+  assert.match(app, /workbench-deliverables-tab/);
+  assert.match(app, /importArtifactFile\(kind, "workbench"\)/);
   assert.match(app, /activeOrganizationConnection/);
   assert.match(app, /activeOrganizationDesk/);
   assert.match(app, /const OfficeHome = lazy/);

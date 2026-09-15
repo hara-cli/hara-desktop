@@ -344,6 +344,23 @@ html[data-theme="light"] .inbox-contact-line.preview > b {
   color: #5e574f;
 }
 
+html[data-theme="light"] .workbench-deliverables-tab:hover,
+html[data-theme="light"] .workbench-deliverables-tab.on {
+  border-color: #d2c9bb;
+  background: linear-gradient(105deg, #eee8de, #f7f3eb);
+}
+
+html[data-theme="light"] .workbench-deliverables-tab.on {
+  border-color: #dab1a5;
+}
+
+html[data-theme="light"] .workbench-deliverables-icon,
+html[data-theme="light"] .workbench-deliverables-tab > b {
+  border-color: #d2c9bb;
+  background: #e5ddd1;
+  color: #9e3c2c;
+}
+
 html[data-theme="light"] .inbox-contact:hover,
 html[data-theme="light"] .inbox-contact:focus-visible {
   border-color: #d2c9bb;

@@ -79,16 +79,6 @@ export const CORE_NAVIGATION_CONTRIBUTIONS = [
     canHide: true,
     shortcut: "⌘4",
   },
-  {
-    id: "core.office",
-    target: "office",
-    source: "core",
-    icon: "office",
-    defaultOrder: 40,
-    defaultVisible: true,
-    canHide: true,
-    shortcut: "⌘5",
-  },
 ] as const satisfies readonly CoreNavigationContribution[];
 
 const MAX_PLUGIN_NAVIGATION_SURFACES = 256;

@@ -2,7 +2,7 @@ import type { AgentInfo, ExternalSessionInfo, SessionInfo } from "./client.ts";
 import { mainAgentRef } from "./agent-office.ts";
 import { isJunkProjectDirectory } from "./project-list.ts";
 
-export type WorkbenchInboxMode = "agents" | "projects" | "external";
+export type WorkbenchInboxMode = "agents" | "projects" | "external" | "deliverables";
 
 export type WorkbenchInboxTarget =
   | { kind: "agent"; id: string }

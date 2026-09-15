@@ -21,3 +21,20 @@ export function sessionSpaceId(
   ))?.id
     ?? `org-profile:${session.profileId}`;
 }
+
+/** Distinguish a reachable owner from a stale or unavailable Space before suggesting a switch. */
+export function sessionSpaceAvailability(
+  session: Pick<SessionInfo, "profileId" | "spaceId">,
+  directory: SpaceDirectory | null,
+): "current" | "switchable" | "missing" | "locked" | "access-unavailable" {
+  const ownerId = sessionSpaceId(session, directory);
+  if (!directory) return ownerId === "personal" ? "current" : "missing";
+  if (ownerId === directory.activeId) return "current";
+  const owner = directory.spaces.find((space) => space.id === ownerId);
+  if (!owner) return "missing";
+  if (directory.switchLocked) return "locked";
+  if (owner.kind === "organization" && (owner.accessState === "expired" || owner.accessState === "invalid")) {
+    return "access-unavailable";
+  }
+  return "switchable";
+}

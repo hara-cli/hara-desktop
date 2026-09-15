@@ -1,7 +1,8 @@
 // Hara Desktop — Tauri shell over `hara serve` (WS JSON-RPC). The left module dock switches
 // open-core work surfaces; people may hide/reorder entries while recovery/settings stays fixed.
 // Places never share an active session. Groups performs explicit, profile-pinned organization Desk
-// reads; Office owns local Artifact files instead of mixing them into project conversations.
+// reads; versioned deliverables stay isolated behind the Artifact runtime even when their user-facing
+// entry lives inside the conversational Workbench.
 import {
   Suspense,
   lazy,
@@ -275,7 +276,7 @@ import AgentProfileEditor from "./AgentProfileEditor";
 import HireAgentDialog, { type HireAgentInput } from "./HireAgentDialog";
 import type { AgentBlueprint } from "./talent-blueprint";
 import SpaceSwitcher from "./SpaceSwitcher";
-import { organizationConnectionSpaceId, sessionSpaceId } from "./space-directory";
+import { organizationConnectionSpaceId, sessionSpaceAvailability, sessionSpaceId } from "./space-directory";
 import {
   companyAccessRecoveryMessage,
   companySpaceNeedsReenrollment,
@@ -848,6 +849,17 @@ function assistantZone(sessions: SessionInfo[]): { current: SessionInfo | null; 
   }
   const bots = [...folded.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return { current: mine[0] ?? null, bots, history: mine.slice(1) };
+}
+
+function sessionSpaceErrorKey(
+  binding: Pick<SessionInfo, "profileId" | "spaceId">,
+  directory: SpaceDirectory | null,
+): Key {
+  const availability = sessionSpaceAvailability(binding, directory);
+  if (availability === "missing") return "sessionMissingSpaceError";
+  if (availability === "locked") return "sessionLockedSpaceError";
+  if (availability === "access-unavailable") return "sessionUnavailableSpaceError";
+  return "sessionOtherSpaceError";
 }
 
 export default function App() {
@@ -1566,7 +1578,7 @@ export default function App() {
     catalog: petCatalog,
     catalogError: petCatalogError,
     refreshCatalog: refreshPets,
-    note: notePet,
+    note: rawNotePet,
     acknowledge: acknowledgePet,
     clear: removePet,
     refreshChat: refreshPetChat,
@@ -1585,15 +1597,16 @@ export default function App() {
       const session = target
         ? sessionsRef.current.find((candidate) => candidate.id === sessionId)
         : undefined;
-      const unavailable = !!target && !session;
-      const task = target ? taskStatesRef.current[target] : undefined;
-      const transcript = target ? transcriptsRef.current[target] ?? [] : [];
-      const pendingApproval = target && busyRef.current[target]
+      const spaceReady = !clientRef.current?.supports("spaces.list") || !!spaceDirectoryRef.current;
+      const unavailable = !!target && (!spaceReady || !session || sessionSpaceAvailability(session, spaceDirectoryRef.current) !== "current");
+      const task = target && !unavailable ? taskStatesRef.current[target] : undefined;
+      const transcript = target && !unavailable ? transcriptsRef.current[target] ?? [] : [];
+      const pendingApproval = target && !unavailable && busyRef.current[target]
         ? [...transcript]
             .reverse()
             .find((item) => item.kind === "approval" && !item.answered)
         : undefined;
-      const legacyState = pendingApproval
+      const legacyState = unavailable ? undefined : pendingApproval
         ? "waiting"
         : petStatus === "idle"
           ? undefined
@@ -1622,16 +1635,14 @@ export default function App() {
       const connected = !!clientRef.current?.connected && phase === "ready";
       return {
         connected,
-        canSubmit: connected && !unavailable && (!session || !isAutomated(session)),
+        canSubmit: connected && spaceReady && !unavailable && (!session || !isAutomated(session)),
         ...(unavailable ? { unavailable: true } : {}),
         locale,
         ...(target ? { sessionId: target } : {}),
-        title: session?.title || (
-          unavailable
-            ? locale === "zh" ? "会话不可用" : "Conversation unavailable"
-            : locale === "zh" ? "个人助理" : "Personal assistant"
-        ),
-        petStatus,
+        title: unavailable
+          ? (locale === "zh" ? "会话不可用" : "Conversation unavailable")
+          : session?.title || (locale === "zh" ? "个人助理" : "Personal assistant"),
+        petStatus: unavailable ? "idle" : petStatus,
         ...(projectedTask ? { task: projectedTask } : {}),
         messages: recentPetMessages(transcript),
       };
@@ -1639,6 +1650,37 @@ export default function App() {
     onChatSubmit: (request) => petChatSubmitRef.current(request),
     onChatApproval: (request) => petChatApprovalRef.current(request),
   });
+  const notePet = useCallback((sessionId: string, status: Parameters<typeof rawNotePet>[1], title?: string) => {
+    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+    const availability = session ? sessionSpaceAvailability(session, spaceDirectoryRef.current) : "current";
+    if (availability !== "current" && availability !== "switchable") {
+      removePet(sessionId);
+      return;
+    }
+    rawNotePet(sessionId, status, title);
+  }, [rawNotePet, removePet]);
+  useEffect(() => {
+    if (!spaceDirectory) return;
+    const inaccessible = new Set<string>();
+    for (const session of sessions) {
+      const availability = sessionSpaceAvailability(session, spaceDirectory);
+      if (availability !== "current" && availability !== "switchable") {
+        inaccessible.add(session.id);
+        removePet(session.id);
+      }
+    }
+    if (inaccessible.size) setUnread((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const id of inaccessible) {
+        if (next[id]) {
+          next[id] = false;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [removePet, sessions, spaceDirectory]);
   const hydrateLegacyTaskState = useCallback((
     client: HaraClient,
     sessionId: string,
@@ -3315,13 +3357,18 @@ export default function App() {
             );
           }
           if (e.sessionId !== activeRef.current) {
-            setUnread((u) => ({ ...u, [e.sessionId]: true }));
             const s = sessionsRef.current.find((x) => x.id === e.sessionId);
-            if (s && !isAutomated(s)) {
+            const directory = spaceDirectoryRef.current;
+            const spaceAvailability = s ? sessionSpaceAvailability(s, directory) : "missing";
+            if (spaceAvailability === "current" || spaceAvailability === "switchable") {
+              setUnread((u) => ({ ...u, [e.sessionId]: true }));
+            }
+            if (s && !isAutomated(s) && (spaceAvailability === "current" || spaceAvailability === "switchable")) {
               // Only a positively identified local/manual session gets a Desktop notification. A newly
               // arrived Feishu/WeChat/cron session may finish before session.list refreshes; treating that
               // unknown id as manual duplicates the channel app's own operating-system notification.
-              const directory = spaceDirectoryRef.current;
+              // An old owner absent from the Space switcher cannot be opened, so it must not send an
+              // actionable-looking cross-Space completion notice either.
               const sessionSpace = sessionSpaceId(s, directory);
               const currentSpace = directory?.activeId ?? "personal";
               const crossSpace = sessionSpace !== currentSpace;
@@ -3349,7 +3396,13 @@ export default function App() {
             question: plain(e.question),
             allowAlways: e.allowAlways === true,
           }]);
-          if (e.sessionId !== activeRef.current) setUnread((u) => ({ ...u, [e.sessionId]: true }));
+          if (e.sessionId !== activeRef.current) {
+            const session = sessionsRef.current.find((candidate) => candidate.id === e.sessionId);
+            const availability = session ? sessionSpaceAvailability(session, spaceDirectoryRef.current) : "missing";
+            if (availability === "current" || availability === "switchable") {
+              setUnread((u) => ({ ...u, [e.sessionId]: true }));
+            }
+          }
           break;
         case "external.event.turn_start":
           externalActiveTurnsRef.current[e.sessionId] = e.turnId;
@@ -3730,7 +3783,6 @@ export default function App() {
       else if (e.key === "2") (e.preventDefault(), apiRef.current.setZone("projects"));
       else if (e.key === "3") (e.preventDefault(), apiRef.current.setZone("auto"));
       else if (e.key === "4") (e.preventDefault(), apiRef.current.setZone("groups"));
-      else if (e.key === "5") (e.preventDefault(), apiRef.current.setZone("office"));
       else if (e.key === ",") (e.preventDefault(), apiRef.current.setZone("settings"));
       else if (e.key === "n") (e.preventDefault(), apiRef.current.openProject());
       else if (e.key === "f") {
@@ -4343,11 +4395,11 @@ export default function App() {
     const activeSpaceId = directory?.activeId ?? "personal";
     const wrongSpace = (binding: { profileId?: string; spaceId?: string }): boolean =>
       sessionSpaceId(binding, directory) !== activeSpaceId;
-    const reportWrongSpace = (): void => setErr(locale === "zh"
-      ? "该对话属于另一个空间。请先从左上角切换到对应的个人或公司空间。"
-      : "This conversation belongs to another Space. Switch to its Personal or company Space first.");
+    const reportWrongSpace = (binding: { profileId?: string; spaceId?: string }): void => {
+      setErr(t(sessionSpaceErrorKey(binding, directory)));
+    };
     if (session && wrongSpace(session)) {
-      reportWrongSpace();
+      reportWrongSpace(session);
       return;
     }
     if (!session && !c.supports("session.history") && !c.supportsFeature(READONLY_HISTORY_FEATURE)) {
@@ -4381,7 +4433,7 @@ export default function App() {
       // An out-of-directory id is untrusted input (for example a stale notification). Authorize its
       // persisted audience before attaching a provider or hydrating any transcript into this Space.
       if ((!preflightReplay.spaceId && !preflightReplay.profileId) || wrongSpace(preflightReplay)) {
-        reportWrongSpace();
+        reportWrongSpace(preflightReplay);
         return;
       }
       expected = { cwd: preflightReplay.cwd, source: "interactive" };
@@ -4397,7 +4449,7 @@ export default function App() {
     try {
       const r = await c.resumeSession(id, defaultApproval || undefined);
       if (wrongSpace(r)) {
-        reportWrongSpace();
+        reportWrongSpace(r);
         return;
       }
       attachedSessionsRef.current.add(id);
@@ -4432,7 +4484,7 @@ export default function App() {
       try {
         const replay = preflightReplay ?? await c.readSession(id);
         if ((!session && !replay.spaceId && !replay.profileId) || wrongSpace(replay)) {
-          reportWrongSpace();
+          reportWrongSpace(replay);
           return;
         }
         attachedSessionsRef.current.delete(id);
@@ -4742,6 +4794,14 @@ export default function App() {
   openPetSessionRef.current = async (sessionId: string) => {
     let session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
     const directory = spaceDirectoryRef.current;
+    if (session) {
+      const availability = sessionSpaceAvailability(session, directory);
+      if (availability !== "current" && availability !== "switchable") {
+        removePet(sessionId);
+        await openSession(sessionId);
+        return;
+      }
+    }
     if (session && directory) {
       const targetSpaceId = sessionSpaceId(session, directory);
       const targetSpace = directory.spaces.find((space) => space.id === targetSpaceId);
@@ -4803,7 +4863,10 @@ export default function App() {
     if (sessionId) rememberProject(dir);
   };
 
-  const importArtifactFile = async (kind?: ArtifactKind) => {
+  const importArtifactFile = async (
+    kind?: ArtifactKind,
+    ownerTarget?: SessionExtensionOwner | "workbench",
+  ) => {
     const client = clientRef.current;
     if (!client) return;
     if (!client.supports("artifact.import") && !client.supports("presentation.import")) {
@@ -4831,6 +4894,22 @@ export default function App() {
       }],
     });
     if (typeof selected !== "string" || !selected) return;
+    const sessionOwner = ownerTarget === "workbench"
+      ? await ensureWorkbenchArtifactOwner()
+      : ownerTarget;
+    if (ownerTarget === "workbench" && !sessionOwner) return;
+    const surfaceScope = sessionOwner
+      ? capturePersonalLocalSurfaceScope(sessionOwner.sessionId)
+      : null;
+    if (sessionOwner && !surfaceScope) {
+      setErr(t("inboxDeliverablesPersonalError"));
+      return;
+    }
+    const sessionSurfaceIsCurrent = () => !surfaceScope || (
+      personalLocalSurfaceScopeIsCurrent(surfaceScope)
+      && activeRef.current === sessionOwner?.sessionId
+      && zoneRef.current === sessionOwner?.place
+    );
     const requestId = ++artifactOpenRequestRef.current;
     let nativePresentationImport = false;
     setArtifactBusy("import");
@@ -4864,7 +4943,10 @@ export default function App() {
       const presentation = presentationSurface?.details ?? null;
       const preview = presentationSurface?.preview ?? null;
       const verified = presentation ?? await client.getArtifact(imported.artifact.artifactId);
-      if (requestId !== artifactOpenRequestRef.current) return;
+      if (
+        requestId !== artifactOpenRequestRef.current
+        || !sessionSurfaceIsCurrent()
+      ) return;
       setArtifacts(list ?? "old-server");
       setActiveArtifact(verified);
       setActivePresentation(presentation);
@@ -4872,12 +4954,16 @@ export default function App() {
       setArtifactRevisions(revisionResult.revisions);
       setArtifactValidationReport(null);
       setArtifactExportReceipt(null);
-      setActive(null);
-      setAutoReplay(null);
-      setZone("office");
-      setExtensionDock(artifactExtensionFor(verified));
+      if (sessionOwner) {
+        offerExtensionTab(artifactExtensionFor(verified, sessionOwner));
+      } else {
+        setActive(null);
+        setAutoReplay(null);
+        setZone("office");
+        setExtensionDock(artifactExtensionFor(verified));
+      }
     } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) {
+      if (requestId === artifactOpenRequestRef.current && sessionSurfaceIsCurrent()) {
         setErr(nativePresentationImport
           ? makeT(locale)(presentationErrorKey(error))
           : makeT(locale)("artifactImportFailed"));
@@ -4887,9 +4973,24 @@ export default function App() {
     }
   };
 
-  const openArtifact = async (artifactId: string) => {
+  const openArtifact = async (
+    artifactId: string,
+    sessionOwner?: SessionExtensionOwner,
+  ) => {
     const client = clientRef.current;
     if (!client) return;
+    const surfaceScope = sessionOwner
+      ? capturePersonalLocalSurfaceScope(sessionOwner.sessionId)
+      : null;
+    if (sessionOwner && !surfaceScope) {
+      setErr(t("inboxDeliverablesPersonalError"));
+      return;
+    }
+    const sessionSurfaceIsCurrent = () => !surfaceScope || (
+      personalLocalSurfaceScopeIsCurrent(surfaceScope)
+      && activeRef.current === sessionOwner?.sessionId
+      && zoneRef.current === sessionOwner?.place
+    );
     const requestId = ++artifactOpenRequestRef.current;
     let nativePresentationOpen = false;
     setArtifactBusy("open");
@@ -4899,7 +5000,10 @@ export default function App() {
         client.getArtifact(artifactId),
         client.listArtifactRevisions(artifactId),
       ]);
-      if (requestId !== artifactOpenRequestRef.current) return;
+      if (
+        requestId !== artifactOpenRequestRef.current
+        || !sessionSurfaceIsCurrent()
+      ) return;
       let presentation: PresentationArtifactDetails | null = null;
       let previewHtml: string | null = null;
       if (isNativePresentation(details)) {
@@ -4912,7 +5016,7 @@ export default function App() {
           artifactId,
           details.currentRevision.revisionId,
         );
-        if (requestId !== artifactOpenRequestRef.current) return;
+        if (requestId !== artifactOpenRequestRef.current || !sessionSurfaceIsCurrent()) return;
         presentation = loaded.details;
         previewHtml = loaded.preview.html;
       }
@@ -4922,11 +5026,15 @@ export default function App() {
       setArtifactRevisions(revisionResult.revisions);
       setArtifactValidationReport(null);
       setArtifactExportReceipt(null);
-      setActive(null);
-      setAutoReplay(null);
-      setExtensionDock(artifactExtensionFor(presentation ?? details));
+      if (sessionOwner) {
+        offerExtensionTab(artifactExtensionFor(presentation ?? details, sessionOwner));
+      } else {
+        setActive(null);
+        setAutoReplay(null);
+        setExtensionDock(artifactExtensionFor(presentation ?? details));
+      }
     } catch (error: any) {
-      if (requestId === artifactOpenRequestRef.current) {
+      if (requestId === artifactOpenRequestRef.current && sessionSurfaceIsCurrent()) {
         setErr(makeT(locale)(nativePresentationOpen
           ? presentationErrorKey(error)
           : "artifactOpenFailed"));
@@ -5229,6 +5337,53 @@ export default function App() {
       return cur.id;
     }
     return startNewAssistantConversation();
+  };
+
+  const showDeliverables = () => {
+    const currentPlace = zoneRef.current === "chat" || zoneRef.current === "projects"
+      ? zoneRef.current
+      : workbenchPlaceRef.current;
+    if (!setZone(currentPlace)) return;
+    setWorkbenchInboxMode("deliverables");
+    setWorkbenchInboxTarget(null);
+    setQ("");
+    void refreshArtifacts();
+  };
+
+  /** Resolve a real Personal-space conversation before attaching a visual deliverable surface. */
+  const ensureWorkbenchArtifactOwner = async (): Promise<SessionExtensionOwner | null> => {
+    if (spaceDirectoryRef.current?.activeId !== "personal") {
+      setErr(t("inboxDeliverablesPersonalError"));
+      return null;
+    }
+    const currentId = activeRef.current;
+    const current = currentId ? personalLocalSurfaceSession(currentId) : null;
+    const currentPlace = current ? sessionPlace(current) : null;
+    if (
+      current
+      && (currentPlace === "chat" || currentPlace === "projects")
+      && zoneRef.current === currentPlace
+    ) {
+      return {
+        place: currentPlace,
+        sessionId: current.id,
+        cwd: current.cwd,
+      };
+    }
+
+    const sessionId = await openAssistant();
+    const session = sessionId ? personalLocalSurfaceSession(sessionId) : null;
+    const place = session ? sessionPlace(session) : null;
+    if (!session || (place !== "chat" && place !== "projects")) return null;
+    return { place, sessionId: session.id, cwd: session.cwd };
+  };
+
+  const importDeliverableIntoWorkbench = async (kind?: ArtifactKind) =>
+    importArtifactFile(kind, "workbench");
+
+  const openDeliverableInWorkbench = async (artifactId: string) => {
+    const owner = await ensureWorkbenchArtifactOwner();
+    if (owner) await openArtifact(artifactId, owner);
   };
 
   const attachmentSequenceRef = useRef(0);
@@ -5710,6 +5865,9 @@ export default function App() {
     if (!text) return request.sessionId;
     const c = clientRef.current;
     if (!c) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "The Hara engine is not connected.");
+    if (c.supports("spaces.list") && !spaceDirectoryRef.current) {
+      throw new Error(t("sessionSpaceLoadingError"));
+    }
     let sessionId = request.sessionId;
     const requestedSession = sessionId
       ? sessionsRef.current.find((session) => session.id === sessionId)
@@ -5719,6 +5877,9 @@ export default function App() {
     }
     if (requestedSession && isAutomated(requestedSession)) {
       throw new Error(locale === "zh" ? "自动任务记录是只读的，请在主窗口创建分支后继续。" : "Automated runs are read-only. Fork one in the main window to continue.");
+    }
+    if (requestedSession && sessionSpaceAvailability(requestedSession, spaceDirectoryRef.current) !== "current") {
+      throw new Error(t(sessionSpaceErrorKey(requestedSession, spaceDirectoryRef.current)));
     }
     if (!sessionId) sessionId = await openAssistant() || undefined;
     if (!sessionId) throw new Error(locale === "zh" ? "个人助理尚未准备好。" : "The personal assistant is not ready yet.");
@@ -5747,9 +5908,15 @@ export default function App() {
   };
 
   petChatApprovalRef.current = async (request: PetChatApproval): Promise<void> => {
+    if (clientRef.current?.supports("spaces.list") && !spaceDirectoryRef.current) {
+      throw new Error(t("sessionSpaceLoadingError"));
+    }
     const session = sessionsRef.current.find((candidate) => candidate.id === request.sessionId);
     if (!session || isAutomated(session)) {
       throw new Error(locale === "zh" ? "该会话不能从桌面伙伴确认。" : "This conversation cannot be approved from the companion.");
+    }
+    if (sessionSpaceAvailability(session, spaceDirectoryRef.current) !== "current") {
+      throw new Error(t(sessionSpaceErrorKey(session, spaceDirectoryRef.current)));
     }
     const typedApproval = taskStatesRef.current[request.sessionId]?.approval?.id;
     const legacyApproval = [...(transcriptsRef.current[request.sessionId] ?? [])]
@@ -6827,6 +6994,16 @@ export default function App() {
     : undefined;
   const visibleAgentInboxEntries = agentInboxEntries(availableAgents, spaceSessions, q);
   const visibleExternalInboxSessions = visibleExternalSessions(externalSessions, q);
+  const visibleDeliverables = artifacts && artifacts !== "old-server"
+    ? artifacts.artifacts.filter((artifact) => {
+        const needle = q.trim().toLowerCase();
+        return !needle || [
+          artifact.title,
+          artifact.kind,
+          artifact.extension,
+        ].join(" ").toLowerCase().includes(needle);
+      })
+    : [];
   const selectedInboxAgent = workbenchInboxTarget?.kind === "agent"
     ? availableAgents.find((agent) => agent.ref === workbenchInboxTarget.id)
     : undefined;
@@ -7256,13 +7433,6 @@ export default function App() {
               busy={starterBusy}
               apps={([
                 {
-                  id: "core.office",
-                  title: t("zoneOffice"),
-                  description: t("moduleOfficeDescription"),
-                  icon: "office",
-                  source: "Hara",
-                },
-                {
                   id: AGENT_OFFICE_CAPABILITY.id,
                   title: t("capabilityAgentOfficeTitle"),
                   description: t("capabilityAgentOfficeDescription"),
@@ -7288,10 +7458,6 @@ export default function App() {
               onOpenApp={(appId) => {
                 if (appId === AGENT_OFFICE_CAPABILITY.id) {
                   void openAgentOffice();
-                  return;
-                }
-                if (appId === "core.office") {
-                  setZone("office");
                   return;
                 }
                 if (appId === "core.projects") {
@@ -7625,6 +7791,19 @@ export default function App() {
                           <small>{locale === "zh" ? "文本直接读取；其他格式交给本地工具" : "Text is read locally; other formats use tools"}</small>
                         </span>
                       </button>
+                      <button
+                        disabled={Boolean(artifactBusy)}
+                        onClick={() => {
+                          setAttachmentMenuOpen(false);
+                          void importDeliverableIntoWorkbench();
+                        }}
+                      >
+                        <span aria-hidden="true"><IconDocument size={17} /></span>
+                        <span>
+                          <strong>{t("openDeliverable")}</strong>
+                          <small>{t("openDeliverableHint")}</small>
+                        </span>
+                      </button>
                       <button onClick={() => void attachPickedDirectory()}>
                         <span aria-hidden="true"><IconFolder size={17} /></span>
                         <span>
@@ -7915,7 +8094,6 @@ export default function App() {
     "core.chat": t("zoneWorkbench"),
     "core.tasks": t("zoneAuto"),
     "core.groups": t("zoneGroups"),
-    "core.office": t("zoneOffice"),
   };
   const activeOrganizationConnection =
     groupsDirectory.organizations?.connections.find((connection) => connection.active);
@@ -9157,6 +9335,7 @@ export default function App() {
               ) : null}
             </header>
           ) : (
+            <>
             <div className="workbench-inbox-tabs" role="tablist" aria-label={t("zoneWorkbench")}>
               <button
                 type="button"
@@ -9199,6 +9378,20 @@ export default function App() {
                 <span>{externalSessions.length}</span>
               </button>
             </div>
+            <button
+              type="button"
+              className={`workbench-deliverables-tab${workbenchInboxMode === "deliverables" ? " on" : ""}`}
+              aria-pressed={workbenchInboxMode === "deliverables"}
+              onClick={showDeliverables}
+            >
+              <span className="workbench-deliverables-icon" aria-hidden><IconDocument size={15} /></span>
+              <span>
+                <strong>{t("inboxDeliverables")}</strong>
+                <small>{t("inboxDeliverablesHint")}</small>
+              </span>
+              <b>{artifacts && artifacts !== "old-server" ? artifacts.artifacts.length : 0}</b>
+            </button>
+            </>
           )}
           <div className={`workbench-sidebar-actions ${workbenchInboxMode !== "agents" && !selectedInboxAgent ? "is-single" : ""}`}>
             {selectedInboxAgent ? (
@@ -9258,6 +9451,15 @@ export default function App() {
                 <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
                 {sessionCreating ? t("startingConversation") : t("newHere")}
               </button>
+            ) : workbenchInboxMode === "deliverables" ? (
+              <button
+                className="new withicon"
+                disabled={Boolean(artifactBusy) || activeSpaceId !== "personal"}
+                onClick={() => void importDeliverableIntoWorkbench()}
+              >
+                <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
+                {artifactBusy === "import" ? t("artifactImporting") : t("openDeliverable")}
+              </button>
             ) : workbenchInboxMode === "agents" ? (
               <>
                 <button
@@ -9306,7 +9508,11 @@ export default function App() {
             key={`${workbenchInboxMode}:${workbenchInboxTarget?.kind ?? "root"}:${workbenchInboxTarget?.id ?? ""}`}
             aria-label={workbenchInboxMode === "agents"
               ? t("inboxAgentDirectory")
-              : workbenchInboxMode === "external" ? t("inboxExternalDirectory") : t("inboxProjectDirectory")}
+              : workbenchInboxMode === "external"
+                ? t("inboxExternalDirectory")
+                : workbenchInboxMode === "deliverables"
+                  ? t("inboxDeliverableDirectory")
+                  : t("inboxProjectDirectory")}
           >
             {selectedExternalSession ? (
               <div className="external-inbox-selected">
@@ -9325,6 +9531,52 @@ export default function App() {
                   <span aria-hidden>✦</span>
                   <strong>{t("inboxNoConversation")}</strong>
                   <small>{q ? t("inboxNoSearchResults") : t("inboxStartHint")}</small>
+                </div>
+              )
+            ) : workbenchInboxMode === "deliverables" ? (
+              activeSpaceId !== "personal" ? (
+                <div className="inbox-empty">
+                  <span aria-hidden>◇</span>
+                  <strong>{t("inboxDeliverablesPersonalTitle")}</strong>
+                  <small>{t("inboxDeliverablesPersonalHint")}</small>
+                </div>
+              ) : artifacts === "old-server" ? (
+                <div className="inbox-empty"><small>{t("artifactNeedsUpdate")}</small></div>
+              ) : artifacts === null ? (
+                <div className="inbox-empty"><small>{t("loading")}</small></div>
+              ) : visibleDeliverables.length ? (
+                <>
+                  {visibleDeliverables.map((artifact) => (
+                    <button
+                      type="button"
+                      className={`artifact-sidebar-card inbox-deliverable-card${activeArtifact?.artifact.artifactId === artifact.artifactId ? " on" : ""}`}
+                      key={artifact.artifactId}
+                      onClick={() => void openDeliverableInWorkbench(artifact.artifactId)}
+                      title={artifact.title}
+                    >
+                      <span className={`artifact-sidebar-mark ${artifact.kind}`} aria-hidden />
+                      <span className="artifact-sidebar-copy">
+                        <strong>{artifact.title}</strong>
+                        <small>
+                          {artifact.kind === "presentation"
+                            ? t("artifactTypePresentation")
+                            : artifact.kind === "spreadsheet"
+                              ? t("artifactTypeSpreadsheet")
+                              : t("artifactTypeDocument")}
+                          {" · "}{artifact.extension.toUpperCase().slice(1)}
+                        </small>
+                      </span>
+                    </button>
+                  ))}
+                  {artifacts.invalid > 0 ? (
+                    <div className="artifact-sidebar-empty" role="alert">{t("artifactNeedsRepair")}</div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="inbox-empty">
+                  <span aria-hidden>◇</span>
+                  <strong>{q ? t("inboxNoSearchResults") : t("inboxDeliverablesEmpty")}</strong>
+                  {!q ? <small>{t("inboxDeliverablesEmptyHint")}</small> : null}
                 </div>
               )
             ) : workbenchInboxMode === "agents" ? (
@@ -10140,10 +10392,6 @@ export default function App() {
                     title: t("zoneGroups"),
                     description: t("moduleGroupsDescription"),
                   },
-                  "core.office": {
-                    title: t("zoneOffice"),
-                    description: t("moduleOfficeDescription"),
-                  },
                   ...Object.fromEntries(pluginNavigation.map((contribution) => [
                     contribution.id,
                     {
@@ -10229,7 +10477,7 @@ export default function App() {
                     { id: "core.chat", title: t("zoneWorkbench"), description: t("moduleChatDescription") },
                     { id: "core.tasks", title: t("zoneAuto"), description: t("moduleTasksDescription") },
                     { id: "core.groups", title: t("zoneGroups"), description: t("moduleGroupsDescription") },
-                    { id: "core.office", title: t("zoneOffice"), description: t("moduleOfficeDescription") },
+                    { id: "core.office", title: t("inboxDeliverables"), description: t("moduleOfficeDescription") },
                     {
                       id: COMPUTER_USE_CAPABILITY.id,
                       title: t("computerUseTitle"),
@@ -10314,7 +10562,7 @@ export default function App() {
                     } else if (id === "core.groups") {
                       setZone("groups");
                     } else if (id === "core.office") {
-                      setZone("office");
+                      showDeliverables();
                     }
                   }}
                   onTogglePlugin={(name, enabled) => void togglePlugin(name, enabled)}

@@ -5,13 +5,14 @@
 The far-left rail is a configurable **module dock**, not a fixed list of pages and not a list of
 every skill inside every plugin.
 
-- Workbench, Tasks, Groups, and Office are open-core modules and are visible by default.
+- Workbench, Tasks, and Groups are open-core modules and are visible by default.
 - Workbench gives personal conversations and local projects one context index. They remain separate
   internal places with separate active-session authority; selecting a row switches ownership before
   it opens. This is a navigation merge, not a permission or data merge.
-- Office owns presentations, spreadsheets, documents, and local Artifact history. A presentation
-  created from a conversation may open as an owner-bound Workbench extension tab, but Office remains
-  the durable deliverables library.
+- The Workbench exposes **Deliverables** as a secondary library beside conversations and projects.
+  Files enter through the same composer menu: ordinary attachments remain turn context, while
+  **Open file for editing** creates a versioned Artifact and opens its owner-bound visual extension.
+  The internal `office` place remains only as a compatibility route for existing deep links.
 - Settings, update recovery, and future safe-mode recovery stay fixed at the lower left.
 - Enabled legacy plugin panels may be explicitly pinned as default-hidden shortcuts. They remain
   project-owned Extension Dock views, not independent modules.
@@ -49,7 +50,7 @@ Preferences use `hara.navigation.v1` in local storage:
 ```json
 {
   "version": 1,
-  "order": ["core.chat", "core.tasks", "core.groups", "core.office"],
+  "order": ["core.chat", "core.tasks", "core.groups"],
   "hidden": [],
   "shown": []
 }
@@ -64,9 +65,10 @@ make a newly installed default-hidden module appear.
 preference is removed during parsing. Workbench remains visible if either former entry was visible and
 stays hidden only if both were explicitly hidden. A saved internal `projects` place still reopens that
 project context whenever Workbench is visible, so this migration neither loses context nor revives a
-duplicate rail icon.
+duplicate rail icon. The former `core.office` preference is now ignored like any removed contribution;
+an old saved `office` place falls back to the first visible module.
 
-Groups and Office contribute:
+Groups contributes:
 
 ```json
 {
@@ -74,23 +76,21 @@ Groups and Office contribute:
   "target": "groups",
   "source": "core",
   "icon": "groups",
-  "defaultOrder": 40,
+  "defaultOrder": 30,
   "defaultVisible": true,
   "canHide": true
 }
 ```
 
-```json
-{
-  "id": "core.office",
-  "target": "office",
-  "source": "core",
-  "icon": "office",
-  "defaultOrder": 50,
-  "defaultVisible": true,
-  "canHide": true
-}
-```
+Deliverables deliberately does not contribute a primary dock item. The capability directory can open
+the Workbench's Deliverables view, and a selected Artifact opens beside its exact conversation. The
+Artifact runtime, revision history, validation, and export receipts remain isolated from session data;
+the navigation merge does not merge their authority.
+
+Old conversation records whose owner is absent from the current Space directory remain fail-closed.
+The Desktop does not advertise them as clickable companion activities, unread badges, or completion
+notifications; a direct open explains that the owner Space is not selectable. Companion chat also
+checks the active Space before projecting history, sending a message, or answering an approval.
 
 Older engines render a local-only architecture preview. Engines advertising
 `collaboration.remote.v1` render the native organization Desk described below; engines that also
@@ -201,8 +201,8 @@ Installation/enablement and connector authorization remain distinct security sta
 plugin is not presented as connected to organization data unless its connector has separately
 received authorization. This follows the same source/installed separation used by the Codex plugin
 directory while preserving Hara's renderer and Serve boundaries. The Tasks automation console,
-Groups, Office, Artifact details, model/bot settings, Desktop companion settings, and the capability
-directory are split from the initial Assistant bundle. Dock and Settings entries preload their
+Groups, Deliverables, Artifact details, model/bot settings, Desktop companion settings, and the capability
+directory are split from the initial Assistant bundle. Dock, Workbench, and Settings entries preload their
 matching module on pointer hover or keyboard focus, keeping startup lean without making the first
 intentional navigation feel delayed.
 
