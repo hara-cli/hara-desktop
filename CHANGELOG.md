@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.171 — 2026-09-17 — restore Windows WeChat and Feishu replies
+
+- Bundle Hara CLI `0.178.3` at exact commit `83d8ec345c68ebebd056202ff7c160eae47bcf45`.
+- On Windows, re-enter the bundled Hara executable without forwarding Bun's synthetic
+  `B:/~BUN/root/cli.js` entry. WeChat and Feishu replies no longer fail with `too many arguments` while their
+  transports still appear online.
+- Exercise the real compiled self-invocation path in native Windows, macOS, and Linux sidecar smoke tests so the
+  same virtual-entry regression is blocked before a future release.
+
 ## 0.1.170 — 2026-09-16 — complete successful actions without repeating them
 
 - Bundle Hara CLI `0.178.2` at exact commit `2bbb39da79c6f880e6320e02fe6b056b033cd9b7`.
