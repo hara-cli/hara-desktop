@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.170 — 2026-09-16 — complete successful actions without repeating them
+
+- Bundle Hara CLI `0.178.2` at exact commit `2bbb39da79c6f880e6320e02fe6b056b033cd9b7`.
+- When an upload, message, release, or other external action has already succeeded, give the Agent one bounded
+  round to record its completion receipt before the no-progress guard pauses the task.
+- The finalization round explicitly forbids repeating external side effects. If completion still cannot be
+  recorded, the existing safety pause remains in effect with localized recovery guidance.
+
 ## 0.1.169 — 2026-09-16 — calmer chat output and verified long-task progress
 
 - Fold raw shell output into an expandable, line-counted disclosure instead of placing every stdout line in
