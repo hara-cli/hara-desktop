@@ -79,7 +79,7 @@ export function agentVisualTokens(agentRef: string, identity?: AgentPublicIdenti
 export function renderableAgentAvatar(identity?: AgentPublicIdentity): string | undefined {
   const avatar = identity?.avatar;
   if (!avatar) return undefined;
-  if (/^\/(?:avatars|pets)\/[a-z0-9_./-]+$/i.test(avatar)) return avatar;
+  if (/^\/avatars\/[a-z0-9_./-]+$/i.test(avatar)) return avatar;
   if (/^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(avatar)) {
     const bytes = inlineAvatarByteLength(avatar);
     if (bytes !== null && bytes <= MAX_AGENT_AVATAR_BYTES) return avatar;

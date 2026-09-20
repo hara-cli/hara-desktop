@@ -12,7 +12,7 @@ test("all Desktop composers keep IME commit Enter out of submit shortcuts", () =
   assert.equal(isImeCompositionKey({ isComposing: false, keyCode: 229 }), true);
   assert.equal(isImeCompositionKey({ isComposing: false, keyCode: 13 }), false);
 
-  for (const file of ["App.tsx", "PetChat.tsx", "WorkStarter.tsx", "ExternalSessionCenter.tsx"]) {
+  for (const file of ["App.tsx", "WorkStarter.tsx", "ExternalSessionCenter.tsx"]) {
     const source = readFileSync(`${root}/src/${file}`, "utf8");
     assert.match(source, /onCompositionStart=/, `${file} tracks an active composition`);
     assert.match(source, /onCompositionEnd=/, `${file} retires an active composition`);
@@ -139,8 +139,6 @@ test("every in-app Desktop Hara mark uses the generated V3.2 B master", () => {
   const talentMarket = readFileSync(`${root}/src/TalentMarket.tsx`, "utf8");
   const recovery = readFileSync(`${root}/src/RendererRecovery.tsx`, "utf8");
   const staticShell = readFileSync(`${root}/index.html`, "utf8");
-  const workforce = readFileSync(`${root}/src/WorkforceSurface.tsx`, "utf8");
-  const workforceThree = readFileSync(`${root}/src/WorkforceThreeScene.tsx`, "utf8");
   const workbench = readFileSync(`${root}/src/WorkbenchToolSurface.tsx`, "utf8");
 
   assert.match(mark, /import haraMarkUrl from "\.\/assets\/hara-mark\.svg"/);
@@ -151,9 +149,6 @@ test("every in-app Desktop Hara mark uses the generated V3.2 B master", () => {
   assert.match(recovery, /<HaraLogo size=\{38\} \/>/);
   assert.match(staticShell, /mark\.src = "\/hara-mark\.svg"/);
   assert.doesNotMatch(recovery, /renderer-recovery-mark" aria-hidden="true">H</);
-  assert.doesNotMatch(workforce, /<span aria-hidden>H<\/span>/);
-  assert.doesNotMatch(workforceThree, /<span>H<\/span>/);
-  assert.match(workforceThree, /<HaraLogo size=\{14\} \/>/);
   assert.doesNotMatch(workbench, /<span aria-hidden>H<\/span>/);
   assert.match(svg, /data-brand-version="3\.2"/);
   assert.match(svg, /d="M396 3366/);
@@ -283,24 +278,14 @@ test("session creation and rename failures stay visible instead of looking like 
     "rename failure is not swallowed");
 });
 
-test("an empty extension screen exposes an explicit Agent Office-first view launcher", () => {
+test("an empty extension screen exposes the focused workbench tool launcher", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const dock = readFileSync(`${root}/src/ExtensionDock.tsx`, "utf8");
 
   assert.match(app, /activeSession && contextExtensionTabs\.length === 0[\s\S]*<ExtensionViewLauncher/);
-  assert.match(app, /const extensionAddItems = activeSession[\s\S]*id: "workforce" as const/);
+  assert.match(app, /const extensionAddItems = activeSession[\s\S]*id: "terminal" as const[\s\S]*id: "browser" as const[\s\S]*id: "files" as const/);
+  assert.doesNotMatch(app, /id: "workforce" as const|AGENT_OFFICE_CAPABILITY|openAgentOffice|offerWorkforceForSession/);
   assert.match(app, /<AgentPicker[\s\S]*currentAgentRef=\{activeSession\?\.agentRef\}/, "the Agent roster remains visible before a session exists");
-  assert.match(app, /id: AGENT_OFFICE_CAPABILITY\.id,[\s\S]*title: t\("capabilityAgentOfficeTitle"\)/);
-  assert.match(
-    app,
-    /const openAgentOffice = async \(\) => \{[\s\S]*await openAssistant\(\)[\s\S]*offerWorkforceForSession\(session\)/,
-    "the preinstalled launcher must create a real conversation context before opening an empty office",
-  );
-  assert.doesNotMatch(
-    app.match(/const toggleCurrentExtensionScreen = \(\) => \{([\s\S]*?)\n  \};/)?.[1] ?? "",
-    /openWorkbenchTool\("files"\)/,
-    "the first extension-screen action must not silently choose Files",
-  );
   assert.match(dock, /export function ExtensionViewLauncher/);
   assert.match(dock, /role="menu"/);
   assert.match(dock, /event\.key !== "Escape"/);
@@ -515,7 +500,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(app, /allowAlways: e\.allowAlways === true/);
   const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
   assert.match(timeline, /item\.allowAlways !== false/);
-  assert.match(app, /clientRef\.current\?\.supportsEvent\("event\.task_state"\)/);
+  assert.match(app, /client\.supportsEvent\("event\.task_state"\)/);
   assert.match(app, /await c\.steer\(sessionId, wireText, turnId\)/);
   assert.match(app, /const live = taskStateIsLive\(e\.state\)/);
   assert.match(app, /interface QueuedInput[\s\S]*attachments\?: ComposerAttachment\[\]/);
@@ -527,8 +512,6 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(app, /const retryQueuedInput = useCallback/);
   assert.match(app, /const currentTurnId = activeTurnsRef\.current\[sessionId\]/);
   assert.match(app, /if \(!live\) \{\s+await sendText\(sessionId, text, undefined, \{ wireText \}\);\s+return "sent";/, "a late stale-steer rejection starts a fresh turn with the submitted work-object target");
-  assert.match(app, /const pendingApproval = target && !unavailable && busyRef\.current\[target\][\s\S]*item\.kind === "approval" && !item\.answered/);
-  assert.match(app, /legacyState[\s\S]*phase: pendingApproval \? "approval"/, "older engines still project approval state into companion chat");
   assert.match(
     app,
     /updateComposerDraft\(sessionId, \(draft\) => \(\{[\s\S]*appendComposerAttachments\(attachments, draft\.attachments\)/,
@@ -539,22 +522,17 @@ test("typed task lifecycle drives status while conversation and execution inputs
     /const submission = await sendText\(sessionId, text, attachments\);[\s\S]*if \(submission === "failed"\)[\s\S]*appendComposerAttachments\(attachments, draft\.attachments\)/,
     "authoritative Serve validation failures also restore attachment drafts",
   );
-  assert.match(
-    app,
-    /e\.phase === "restored" && e\.state === "completed"\)[\s\S]*removePet\(e\.sessionId\)/,
-    "restored completion clears a stale disconnect activity without creating a notification",
-  );
   assert.match(app, /answered: "expired"/, "turn end retires legacy approvals");
   assert.match(app, /requeueFrontOnBusy: true/, "a drained message retains FIFO order if the engine is still busy");
   assert.match(app, /position === "front" \? \[input, \.\.\.current\]/);
-  assert.match(app, /!attachedSessionsRef\.current\.has\(sessionId\)[\s\S]*const resumed = await c\.resumeSession\(sessionId, defaultApproval \|\| undefined\)/, "cold companion sends attach persisted sessions first with the legacy approval migration hint");
+  assert.match(app, /!attachedSessionsRef\.current\.has\(sessionId\)[\s\S]*const resumed = await c\.resumeSession\(sessionId, defaultApproval \|\| undefined\)/, "cold sends attach persisted sessions first with the legacy approval migration hint");
   assert.match(app, /resolveOptimisticUser\(items, removed\.id, false\)/, "canceling a queue item removes its never-persisted optimistic transcript entry");
   assert.match(app, /persistedUserTurnsFrom\(items, i\)/, "rewind counts only server-persisted user turns");
   assert.match(app, /const pendingSendDispatchesRef = useRef/, "accepted sends are tracked until their matching turn settles");
   assert.match(
     app,
     /const setSessionBusy = useCallback[\s\S]*busyRef\.current = next;\s*setBusy\(next\)/,
-    "the execution lock becomes visible synchronously across the main and companion composers",
+    "the execution lock becomes visible synchronously across all composers",
   );
   assert.match(
     app,
@@ -594,17 +572,12 @@ test("typed task lifecycle drives status while conversation and execution inputs
     /const answer = async[\s\S]*if \(!c\?\.connected\) \{\s*throw new Error/,
     "disconnected approvals fail visibly instead of being marked as accepted",
   );
-  assert.match(app, /hydrateLegacyTaskState\(c, id, r\.task\)/, "legacy resume status reaches the task and companion projection");
+  assert.match(app, /hydrateLegacyTaskState\(c, id, r\.task\)/, "legacy resume status reaches the task projection");
   assert.match(app, /attachedSessionsRef\.current\.clear\(\)/, "a new serve connection invalidates old live attachments");
   assert.match(app, /displayHistoryText\(m\.text\)/, "resumed history hides internal steering wrappers");
-  assert.doesNotMatch(app, /notePet\(sessionId, "running", text\)/, "raw user text never becomes an always-on-top pet title");
-  assert.doesNotMatch(
-    lifecycle,
-    /event\.(?:detail|objective|brief|checkpoint)/,
-    "ambient pet titles do not use raw lifecycle content",
-  );
+  assert.doesNotMatch(app, /notePet|removePet|petChatApprovalRef/, "task lifecycle no longer depends on a desktop pet projection");
   assert.match(app, /activeTurnsRef\.current = \{\}/, "disconnect clears stale execution identity");
-  assert.match(lifecycle, /state === "completed" \? "ready" : state/);
+  assert.match(lifecycle, /return state === "running" \|\| state === "waiting"/);
 });
 
 test("the model picker stages busy selections and confirms them before the next turn", () => {
@@ -750,10 +723,10 @@ test("secondary work surfaces are split from startup and preload on navigation i
     "CapabilityDirectory",
     "ProviderSettings",
     "GatewaySettings",
-    "DesktopCompanionSettings",
   ]) {
     assert.match(app, new RegExp(`const ${component} = lazy\\(`));
   }
+  assert.doesNotMatch(app, /DesktopCompanionSettings/, "startup no longer loads desktop-pet settings");
   assert.match(app, /const GroupsStage = lazy\(loadGroups\)/);
   assert.match(app, /warmModule\(loadAutomations\(\)\)/);
   assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\), loadPresentationWorkbench\(\), loadEmbeddedBrowserSurface\(\), loadExtensionDock\(\)\]\)\)/);
@@ -1454,8 +1427,7 @@ test("the model picker keeps Space authority while policy-gating personal billin
     "direct notification/session opens fail closed until their owning Space is active",
   );
   assert.match(app, /preflightReplay = await c\.readSession\(id\)[\s\S]*wrongSpace\(preflightReplay\)/);
-  assert.match(app, /sessionSpaceAvailability\(requestedSession, spaceDirectoryRef\.current\) !== "current"[\s\S]*petChatApprovalRef\.current[\s\S]*sessionSpaceAvailability\(session, spaceDirectoryRef\.current\) !== "current"/, "companion submit and approval both recheck the current Space");
-  assert.match(app, /const unavailable = !!target && \(!spaceReady \|\| !session \|\| sessionSpaceAvailability\(session, spaceDirectoryRef\.current\) !== "current"\)[\s\S]*const transcript = target && !unavailable/, "companion chat never projects cross-Space history");
+  assert.doesNotMatch(app, /petChatApprovalRef|petChatSubmitRef/, "cross-Space routing has no hidden pet-chat submission path");
 });
 
 test("an unavailable pinned conversation falls back to local read-only history and offers an explicit route transfer", () => {
@@ -1800,7 +1772,8 @@ test("the capability directory keeps package sources and reusable skills distinc
   assert.match(directory, /aria-controls=\{`capability-panel-\$\{id\}`\}/);
   assert.match(directory, /event\.key === "ArrowRight"/, "directory tabs support keyboard navigation");
   assert.match(directory, /onClick=\{\(\) => onOpenCore\(item\.id\)\}/);
-  assert.match(app, /onOpenCore=\{\(id\) => \{[\s\S]*AGENT_OFFICE_CAPABILITY\.id[\s\S]*openAgentOffice\(\)/);
+  assert.doesNotMatch(app, /AGENT_OFFICE_CAPABILITY|openAgentOffice/);
+  assert.match(app, /onOpenCore=\{\(id\) => \{[\s\S]*COMPUTER_USE_CAPABILITY\.id/);
   assert.match(css, /\.capability-directory-card:focus-visible/);
   assert.match(directory, /organization\.model/);
   assert.match(directory, /organization\.deskConnected/);
@@ -1966,7 +1939,8 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   assert.match(app, /tabs=\{dockTabs\}/, "owner-bound surfaces share one multi-tab Visual Dock");
   assert.match(app, /disabled=\{!activeSession\}/, "Workbench keeps an explicit extension-screen affordance before a result exists");
   assert.match(app, /contextExtensionTabs\.length === 0[\s\S]*<ExtensionViewLauncher/, "an empty extension screen asks the user which view to open");
-  assert.match(app, /\{ id: "workforce" as const[\s\S]*\{ id: "terminal" as const/, "Agent Office is the first discoverable view");
+  assert.match(app, /\{ id: "terminal" as const[\s\S]*\{ id: "browser" as const[\s\S]*\{ id: "files" as const/, "the focused workbench views are discoverable in a predictable order");
+  assert.doesNotMatch(app, /\{ id: "workforce" as const/, "the game-like Agent Office is absent from the core workbench");
   assert.match(app, /invoke\("ensure_extension_window_width"\)/, "opening the dock asks the native shell to grow right when the monitor has room");
   assert.match(app, /setCurrentExtensionScreenVisible\(false\)/, "the dock header hides the screen without destroying its tabs");
   assert.match(app, /activeExtensionTabForContext\(extensionDockStateRef\.current, ownerContext\)/);

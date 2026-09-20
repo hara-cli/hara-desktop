@@ -37,7 +37,6 @@ import {
   type ProviderSettingsState,
   type ProviderConnection,
   type TaskLifecycleEvent,
-  type WorkforceStateEvent,
   type ArtifactDetails,
   type ArtifactExportReceipt,
   type ArtifactKind,
@@ -62,7 +61,6 @@ import {
   type OrganizationConnectionsState,
   type AgentCatalog,
   type AgentInfo,
-  type AgentOfficeInfo,
   type SpaceDirectory,
   type ExternalSessionInfo,
   type ExternalSessionReadResult,
@@ -198,7 +196,6 @@ import {
   publicPanelOrigin,
   presentationBrowserTabId,
   reviewTabId,
-  workforceTabId,
   updateExtensionTab,
   upsertExtensionTab,
   webPreviewTabId,
@@ -217,14 +214,12 @@ import {
   type WorkbenchToolExtension,
   type WorkbenchToolKind,
   type ExtensionDockAddKind,
-  type WorkforceExtension,
 } from "./extension-dock-state";
 import { userVisibleText } from "./user-visible-text";
 import {
   loadPresentationSurface,
   presentationErrorKey,
 } from "./presentation-surface";
-import { useDesktopCompanion } from "./companion/useDesktopCompanion";
 import {
   IconArchive,
   IconArrowUpRight,
@@ -249,27 +244,14 @@ import { AssistantMessage } from "./AssistantMessage";
 import { EngineRestartBlocker } from "./EngineRestartBlocker";
 import { collectEngineBlockingTasks } from "./engine-restart-blocker";
 import HaraLogo from "./mark";
-import type {
-  PetChatApproval,
-  PetChatState,
-  PetChatSubmit,
-} from "./pets";
 import {
   restoredTaskLifecycle,
   taskLifecycleIsNewer,
   taskStateIsLive,
-  taskStatePetStatus,
-  taskStateTitle,
   terminalTaskLifecycleFallback,
   type ResumedTaskSnapshot,
 } from "./task-lifecycle";
-import {
-  boundedWorkforceState,
-  workforceHasLiveActors,
-  workforceFromTask,
-  workforceStateIsNewer,
-} from "./workforce-state";
-import { AGENT_OFFICE_CAPABILITY, COMPUTER_USE_CAPABILITY } from "./preinstalled-capabilities";
+import { COMPUTER_USE_CAPABILITY } from "./preinstalled-capabilities";
 import AgentPicker from "./AgentPicker";
 import { AgentPortrait } from "./AgentPortrait";
 import AgentProfileEditor from "./AgentProfileEditor";
@@ -283,7 +265,7 @@ import {
   unavailableCompanySpaceMessage,
 } from "./organization-access";
 import { agentDisplayName, agentPublicTitle } from "./agent-visual";
-import { latestAgentSession, mainAgentRef, officeActors } from "./agent-office";
+import { latestAgentSession, mainAgentRef } from "./agent-session";
 import {
   agentInboxEntries,
   filterInboxSessions,
@@ -309,7 +291,6 @@ type SettingsSection =
   | "mobile"
   | "lang"
   | "modules"
-  | "pets"
   | "capabilities";
 
 const externalSourceMark = (sourceId: ExternalSessionSourceId): string => (
@@ -320,7 +301,6 @@ const loadGroups = () => import("./Groups");
 const loadAutomations = () => import("./Automations");
 const loadExtensionDock = () => import("./ExtensionDock");
 const loadWorkbenchToolSurface = () => import("./WorkbenchToolSurface");
-const loadWorkforceSurface = () => import("./WorkforceSurface");
 const loadTalentMarket = () => import("./TalentMarket");
 const loadOfficeHome = () => import("./OfficeHome").then((module) => ({
   default: module.OfficeHome,
@@ -345,10 +325,6 @@ const loadLearningCenter = () => import("./LearningCenter").then((module) => ({
 const loadMobilePairingSettings = () => import("./MobilePairingSettings").then((module) => ({
   default: module.MobilePairingSettings,
 }));
-const loadDesktopCompanionSettings = () =>
-  import("./companion/DesktopCompanionSettings").then((module) => ({
-    default: module.DesktopCompanionSettings,
-  }));
 
 const GroupsStage = lazy(loadGroups);
 const GroupsContextSidebar = lazy(() =>
@@ -369,7 +345,6 @@ const ExtensionViewLauncher = lazy(() =>
     default: module.ExtensionViewLauncher,
   })));
 const WorkbenchToolSurface = lazy(loadWorkbenchToolSurface);
-const WorkforceSurface = lazy(loadWorkforceSurface);
 const TalentMarket = lazy(loadTalentMarket);
 const OfficeHome = lazy(loadOfficeHome);
 const ArtifactWorkbench = lazy(loadArtifactWorkbench);
@@ -380,7 +355,6 @@ const ProviderSettings = lazy(loadProviderSettings);
 const GatewaySettings = lazy(loadGatewaySettings);
 const LearningCenter = lazy(loadLearningCenter);
 const MobilePairingSettings = lazy(loadMobilePairingSettings);
-const DesktopCompanionSettings = lazy(loadDesktopCompanionSettings);
 
 const warmModule = (promise: Promise<unknown>): void => {
   void promise.catch(() => {
@@ -396,8 +370,6 @@ const preloadSettingsSection = (section: SettingsSection): void => {
     warmModule(loadLearningCenter());
   } else if (section === "mobile") {
     warmModule(loadMobilePairingSettings());
-  } else if (section === "pets") {
-    warmModule(loadDesktopCompanionSettings());
   } else if (section === "capabilities") {
     warmModule(loadCapabilityDirectory());
   }
@@ -778,16 +750,6 @@ interface QueuedInput {
   commandId?: string;
 }
 
-const recentPetMessages = (items: ConversationItem[]): PetChatState["messages"] =>
-  items
-    .flatMap((item): PetChatState["messages"] => {
-      if (item.kind === "user") return [{ role: "user", text: item.text.slice(0, 900) }];
-      if (item.kind === "text") return [{ role: "assistant", text: plain(item.text).slice(0, 1_200) }];
-      if (item.kind === "notice") return [{ role: "notice", text: plain(item.text).slice(0, 500) }];
-      return [];
-    })
-    .slice(-6);
-
 /** Serve persists internal routing wrappers for the model. Render only the user's original text. */
 const displayHistoryText = (text: string): string => {
   return userVisibleText(text);
@@ -876,13 +838,11 @@ export default function App() {
   const [readOnlySessions, setReadOnlySessions] = useState<Record<string, { reason: string }>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [taskStates, setTaskStates] = useState<Record<string, TaskLifecycleEvent>>({});
-  const [workforceStates, setWorkforceStates] = useState<Record<string, WorkforceStateEvent>>({});
   const transcriptsRef = useRef(transcripts);
   const pendingToolOutputRef = useRef<Record<string, { text: string; lines: number; timer: number }>>({});
   const readOnlySessionsRef = useRef(readOnlySessions);
   const busyRef = useRef(busy);
   const taskStatesRef = useRef(taskStates);
-  const workforceStatesRef = useRef(workforceStates);
   const activeTurnsRef = useRef<Record<string, string>>({});
   const presentationSurfaceTurnsRef = useRef<Record<string, {
     startedAt: number;
@@ -901,7 +861,6 @@ export default function App() {
   readOnlySessionsRef.current = readOnlySessions;
   busyRef.current = busy;
   taskStatesRef.current = taskStates;
-  workforceStatesRef.current = workforceStates;
   const setSessionBusy = useCallback((sessionId: string, value: boolean) => {
     const next = { ...busyRef.current, [sessionId]: value };
     busyRef.current = next;
@@ -955,7 +914,6 @@ export default function App() {
   } | null>(null);
   const [modelInfoScope, setModelInfoScope] = useState<string | null>(null);
   const [agentCatalog, setAgentCatalog] = useState<AgentCatalog | null>(null);
-  const [selectedOfficeId, setSelectedOfficeId] = useState<string>("");
   const [profileAgentRef, setProfileAgentRef] = useState<string | null>(null);
   const [profileAgentSaving, setProfileAgentSaving] = useState(false);
   const [profileAgentError, setProfileAgentError] = useState("");
@@ -972,11 +930,6 @@ export default function App() {
     const next = await client.listAgents(opts);
     if (requestId !== agentCatalogRequestRef.current || clientRef.current !== client) return next;
     setAgentCatalog(next);
-    setSelectedOfficeId((current) => (
-      next?.offices.some((office) => office.id === current)
-        ? current
-        : next?.currentOfficeId ?? ""
-    ));
     return next;
   }, []);
   const openAgentProfile = useCallback((agentRef: string) => {
@@ -1568,98 +1521,6 @@ export default function App() {
     }
   };
   const interruptedSessionsRef = useRef(new Set<string>());
-  const openPetSessionRef = useRef<(sessionId: string) => Promise<void>>(async () => {});
-  const petChatSubmitRef = useRef<(request: PetChatSubmit) => Promise<string | undefined>>(async () => undefined);
-  const petChatApprovalRef = useRef<(request: PetChatApproval) => Promise<void>>(async () => {});
-  const {
-    awake: petAwake,
-    setAwake: setPetAwake,
-    selector: petSelector,
-    setSelector: setPetSelector,
-    catalog: petCatalog,
-    catalogError: petCatalogError,
-    refreshCatalog: refreshPets,
-    note: rawNotePet,
-    acknowledge: acknowledgePet,
-    clear: removePet,
-    refreshChat: refreshPetChat,
-  } = useDesktopCompanion({
-    getActivityTitle: (sessionId) =>
-      sessionsRef.current.find((session) => session.id === sessionId)?.title || "Hara task",
-    onOpenActivity: (sessionId) => openPetSessionRef.current(sessionId),
-    resolveChatSession: (requestedSessionId) => {
-      if (requestedSessionId !== undefined) return requestedSessionId;
-      const directory = spaceDirectoryRef.current;
-      const activeSpace = directory?.activeId ?? "personal";
-      return assistantZone(sessionsRef.current.filter((session) => sessionSpaceId(session, directory) === activeSpace)).current?.id;
-    },
-    getChatState: (sessionId, petStatus): PetChatState => {
-      const target = sessionId;
-      const session = target
-        ? sessionsRef.current.find((candidate) => candidate.id === sessionId)
-        : undefined;
-      const spaceReady = !clientRef.current?.supports("spaces.list") || !!spaceDirectoryRef.current;
-      const unavailable = !!target && (!spaceReady || !session || sessionSpaceAvailability(session, spaceDirectoryRef.current) !== "current");
-      const task = target && !unavailable ? taskStatesRef.current[target] : undefined;
-      const transcript = target && !unavailable ? transcriptsRef.current[target] ?? [] : [];
-      const pendingApproval = target && !unavailable && busyRef.current[target]
-        ? [...transcript]
-            .reverse()
-            .find((item) => item.kind === "approval" && !item.answered)
-        : undefined;
-      const legacyState = unavailable ? undefined : pendingApproval
-        ? "waiting"
-        : petStatus === "idle"
-          ? undefined
-          : petStatus === "ready"
-            ? "completed"
-            : petStatus;
-      const projectedTask: PetChatState["task"] = task
-        ? {
-            state: task.state,
-            phase: task.phase,
-            objective: task.objective,
-            checkpoint: task.checkpoint,
-            ...(task.approval ? { approval: task.approval } : {}),
-          }
-        : legacyState
-          ? {
-              state: legacyState,
-              phase: pendingApproval ? "approval" : legacyState === "completed" ? "finished" : "legacy",
-              objective: session?.title || (locale === "zh" ? "个人助理" : "Personal assistant"),
-              checkpoint: { done: 0, total: 0 },
-              ...(pendingApproval?.kind === "approval"
-                ? { approval: { id: pendingApproval.approvalId, question: pendingApproval.question } }
-                : {}),
-            }
-          : undefined;
-      const connected = !!clientRef.current?.connected && phase === "ready";
-      return {
-        connected,
-        canSubmit: connected && spaceReady && !unavailable && (!session || !isAutomated(session)),
-        ...(unavailable ? { unavailable: true } : {}),
-        locale,
-        ...(target ? { sessionId: target } : {}),
-        title: unavailable
-          ? (locale === "zh" ? "会话不可用" : "Conversation unavailable")
-          : session?.title || (locale === "zh" ? "个人助理" : "Personal assistant"),
-        petStatus: unavailable ? "idle" : petStatus,
-        ...(projectedTask ? { task: projectedTask } : {}),
-        messages: recentPetMessages(transcript),
-      };
-    },
-    onChatSubmit: (request) => petChatSubmitRef.current(request),
-    onChatApproval: (request) => petChatApprovalRef.current(request),
-  });
-  const notePet = useCallback((sessionId: string, status: Parameters<typeof rawNotePet>[1], title?: string) => {
-    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
-    const availability = session ? sessionSpaceAvailability(session, spaceDirectoryRef.current) : "current";
-    if (availability !== "current" && availability !== "switchable") {
-      removePet(sessionId);
-      return;
-    }
-    rawNotePet(sessionId, status, title);
-  }, [rawNotePet, removePet]);
   useEffect(() => {
     if (!spaceDirectory) return;
     const inaccessible = new Set<string>();
@@ -1667,7 +1528,6 @@ export default function App() {
       const availability = sessionSpaceAvailability(session, spaceDirectory);
       if (availability !== "current" && availability !== "switchable") {
         inaccessible.add(session.id);
-        removePet(session.id);
       }
     }
     if (inaccessible.size) setUnread((current) => {
@@ -1681,7 +1541,7 @@ export default function App() {
       }
       return changed ? next : current;
     });
-  }, [removePet, sessions, spaceDirectory]);
+  }, [sessions, spaceDirectory]);
   const hydrateLegacyTaskState = useCallback((
     client: HaraClient,
     sessionId: string,
@@ -1696,12 +1556,7 @@ export default function App() {
     if (live) activeTurnsRef.current[sessionId] = event.turnId;
     else delete activeTurnsRef.current[sessionId];
     setSessionBusy(sessionId, live);
-    if (event.state === "completed") removePet(sessionId);
-    else notePet(sessionId, taskStatePetStatus(event.state), taskStateTitle(event));
-  }, [notePet, removePet, setSessionBusy]);
-  useEffect(() => {
-    refreshPetChat();
-  }, [active, locale, phase, refreshPetChat, sessions, taskStates, transcripts]);
+  }, [setSessionBusy]);
   const [q, setQ] = useState("");
   const [workbenchInboxMode, setWorkbenchInboxMode] = useState<WorkbenchInboxMode>(() => (
     zone === "projects" ? "projects" : "agents"
@@ -2312,7 +2167,6 @@ export default function App() {
         setSkills(sk.skills);
       }).catch(() => {});
       void refreshGroupsDirectory();
-      void refreshPets();
     } else {
       capabilityCatalogRequestRef.current += 1;
     }
@@ -2574,7 +2428,6 @@ export default function App() {
         delete presentationSurfaceTurnsRef.current[sessionId];
       }
       setSessionBusy(sessionId, true);
-      notePet(sessionId, "running");
       let busyAttempt = 0;
       const clearPendingDispatch = () => {
         if (pendingSendDispatchesRef.current[sessionId]?.pendingId === pendingId) {
@@ -2662,17 +2515,15 @@ export default function App() {
             const live = reportedTurnStillLive;
             if (!live) {
               setSessionBusy(sessionId, false);
-              notePet(sessionId, "paused", "Message queued — engine is still preparing");
             }
             return "queued";
           }
           clearPendingDispatch();
           resolvePendingUser(sessionId, pendingId, true);
           if ("submission" in submission && submission.submission === "steered") {
-            notePet(sessionId, "running");
             return "steered";
           }
-          if (interruptedSessionsRef.current.delete(sessionId)) removePet(sessionId);
+          interruptedSessionsRef.current.delete(sessionId);
           // the first turn sets the server-side derived title — refresh so the sidebar shows it now
           void c.listSessions().then((l) => setSessions(l.sessions)).catch(() => {});
           return "started";
@@ -2703,7 +2554,6 @@ export default function App() {
                 const steerCommandId = commandId ? createRpcCommandId() : undefined;
                 await c.steer(sessionId, wireText, turnId, steerCommandId);
                 resolvePendingUser(sessionId, pendingId, true);
-                notePet(sessionId, "running");
                 return "steered";
               } catch (steerError: any) {
                 if (steerError?.code !== SERVER_BUSY) {
@@ -2715,7 +2565,6 @@ export default function App() {
                     text: recovery ?? `error: ${steerError?.message ?? steerError}`,
                   }]);
                   setSessionBusy(sessionId, false);
-                  notePet(sessionId, "blocked");
                   return "failed";
                 }
                 const currentTurnId = activeTurnsRef.current[sessionId];
@@ -2746,7 +2595,6 @@ export default function App() {
             );
             if (!live) {
               setSessionBusy(sessionId, false);
-              notePet(sessionId, "paused", "Message queued — engine is still preparing");
             }
             return "queued";
           }
@@ -2768,7 +2616,6 @@ export default function App() {
               ...(commandId ? { commandId } : {}),
             }, "front");
             setSessionBusy(sessionId, false);
-            notePet(sessionId, "paused", "Connection interrupted — safe retry available");
             return "queued";
           }
           const dispatch = pendingSendDispatchesRef.current[sessionId];
@@ -2782,19 +2629,11 @@ export default function App() {
             text: recovery ?? `error: ${e?.message ?? e}`,
           }]);
           setSessionBusy(sessionId, false);
-          if (c.supportsEvent("event.task_state")) {
-            const state = taskStatesRef.current[sessionId];
-            if (!state || taskStateIsLive(state.state)) {
-              if (interrupted) removePet(sessionId);
-              else notePet(sessionId, "blocked");
-            }
-          } else if (!interrupted) notePet(sessionId, "blocked");
-          else removePet(sessionId);
           return persisted ? "started" : "failed";
         }
       }
     },
-    [enqueueInput, flushStagedModelChange, locale, nextPendingInputId, notePet, personalLocalSurfaceSession, push, quarantineCompanySession, removePet, resolvePendingUser, setSessionBusy, textWithActiveWorkObject],
+    [enqueueInput, flushStagedModelChange, locale, nextPendingInputId, personalLocalSurfaceSession, push, quarantineCompanySession, resolvePendingUser, setSessionBusy, textWithActiveWorkObject],
   );
 
   const retryQueuedInput = useCallback(async (sessionId: string, index: number) => {
@@ -2867,11 +2706,10 @@ export default function App() {
         kind: "notice",
         text: `retry: ${error?.message ?? error}`,
       }]);
-      notePet(sessionId, "paused");
     } finally {
       retryingQueuedInputsRef.current.delete(retryKey);
     }
-  }, [defaultApproval, hydrateLegacyTaskState, notePet, push, rememberSessionApproval, sendText]);
+  }, [defaultApproval, hydrateLegacyTaskState, push, rememberSessionApproval, sendText]);
 
   /** Submit against the authoritative execution plane. New engines own start-or-steer routing in one
    * ordered call; this renderer-side branch remains only for compatibility with older bundled engines. */
@@ -2906,7 +2744,6 @@ export default function App() {
         try {
           await c.steer(sessionId, wireText, turnId);
           push(sessionId, (items) => [...items, { kind: "user", text }]);
-          notePet(sessionId, "running");
           return "steered";
         } catch (error: any) {
           if (error?.code !== SERVER_BUSY) throw error;
@@ -2925,13 +2762,12 @@ export default function App() {
         const pendingId = nextPendingInputId();
         push(sessionId, (items) => [...items, { kind: "user", text, pendingId }]);
         enqueueInput(sessionId, { id: pendingId, text, wireText, recorded: true });
-        notePet(sessionId, "running");
         return "queued";
       }
       await sendText(sessionId, text, undefined, { wireText });
       return "sent";
     },
-    [enqueueInput, locale, modelInfo, modelInfoScope, nextPendingInputId, notePet, push, sendText, textWithActiveWorkObject],
+    [enqueueInput, locale, modelInfo, modelInfoScope, nextPendingInputId, push, sendText, textWithActiveWorkObject],
   );
 
   /** Recover only a native revision authored by this exact session/turn window. This is a typed
@@ -3020,7 +2856,6 @@ export default function App() {
             const dispatch = pendingSendDispatchesRef.current[e.sessionId];
             if (dispatch && !dispatch.turnId) dispatch.turnId = e.turnId;
           }
-          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           setSessionBusy(e.sessionId, true);
           break;
         case "event.task_state": {
@@ -3033,28 +2868,9 @@ export default function App() {
           else delete activeTurnsRef.current[e.sessionId];
           setSessionBusy(e.sessionId, live);
           if (!live) void flushStagedModelChange(e.sessionId);
-          const title = taskStateTitle(e);
-          if (e.phase === "restored" && e.state === "completed") {
-            // A restored terminal snapshot hydrates state; it is not a new completion notification.
-            // Clear any stale disconnect/blocked activity left by the previous transport.
-            removePet(e.sessionId);
-          } else if (e.state === "completed" && e.sessionId === activeRef.current && document.hasFocus()) {
-            removePet(e.sessionId);
-          } else {
-            notePet(e.sessionId, taskStatePetStatus(e.state), title);
-          }
-          break;
-        }
-        case "event.workforce_state": {
-          const bounded = boundedWorkforceState(e);
-          if (!bounded || !workforceStateIsNewer(workforceStatesRef.current[e.sessionId], bounded)) break;
-          const nextWorkforceStates = { ...workforceStatesRef.current, [e.sessionId]: bounded };
-          workforceStatesRef.current = nextWorkforceStates;
-          setWorkforceStates(nextWorkforceStates);
           break;
         }
         case "event.text":
-          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => {
             const last = items[items.length - 1];
             if (last?.kind === "text") return [...items.slice(0, -1), { kind: "text", text: last.text + e.delta }];
@@ -3064,10 +2880,8 @@ export default function App() {
         case "event.reasoning":
           // Older Serve versions may still emit provider reasoning. Treat it only as liveness; private
           // reasoning must never enter renderer transcript state or a user-expandable execution log.
-          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           break;
         case "event.tool":
-          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => [...items, { kind: "tool", name: e.name, preview: plain(e.preview) }]);
           break;
         case "event.notice":
@@ -3075,7 +2889,6 @@ export default function App() {
           else push(e.sessionId, (items) => [...items, { kind: "notice", text: plain(e.text) }]);
           break;
         case "event.diff":
-          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "running");
           push(e.sessionId, (items) => [...items, { kind: "diff", text: plain(e.text) }]);
           {
             const session = sessionsRef.current.find((candidate) => candidate.id === e.sessionId);
@@ -3329,12 +3142,6 @@ export default function App() {
           const interrupted = interruptedSessionsRef.current.has(e.sessionId);
           const failed = !!e.error || (!!e.status && e.status !== "completed");
           const typedTask = taskStatesRef.current[e.sessionId];
-          const hasTerminalTaskState = Boolean(
-            typedTask
-            && e.turnId
-            && typedTask.turnId === e.turnId
-            && !taskStateIsLive(typedTask.state),
-          );
           const taskFallback = terminalTaskLifecycleFallback(
             typedTask,
             e.turnId,
@@ -3346,10 +3153,6 @@ export default function App() {
             taskStatesRef.current = nextTaskStates;
             setTaskStates(nextTaskStates);
           }
-          if (interrupted) removePet(e.sessionId);
-          else if (!hasTerminalTaskState && failed) notePet(e.sessionId, "blocked");
-          else if (!hasTerminalTaskState && e.sessionId === activeRef.current && document.hasFocus()) removePet(e.sessionId);
-          else if (!hasTerminalTaskState) notePet(e.sessionId, "ready");
           interruptedSessionsRef.current.delete(e.sessionId);
           // steer queue: auto-dispatch the next queued message for this session
           const pending = queueRef.current[e.sessionId];
@@ -3379,7 +3182,6 @@ export default function App() {
                 .catch((error) => {
                   enqueueInput(e.sessionId, next, "front");
                   setSessionBusy(e.sessionId, false);
-                  notePet(e.sessionId, "paused");
                   push(e.sessionId, (items) => [...items, {
                     kind: "notice",
                     text: `retry: ${error instanceof Error ? error.message : String(error)}`,
@@ -3421,7 +3223,6 @@ export default function App() {
           break;
         }
         case "approval.request":
-          if (!clientRef.current?.supportsEvent("event.task_state")) notePet(e.sessionId, "waiting");
           push(e.sessionId, (items) => [...items, {
             kind: "approval",
             approvalId: e.approvalId,
@@ -3519,7 +3320,7 @@ export default function App() {
           break;
       }
     },
-    [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, flushToolOutput, locale, notePet, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, queueToolOutput, recoverPresentationSurface, refreshArtifacts, refreshExternalSessions, removePet, resolvePendingUser, sendText, setSessionBusy],
+    [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, flushToolOutput, locale, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, queueToolOutput, recoverPresentationSurface, refreshArtifacts, refreshExternalSessions, resolvePendingUser, sendText, setSessionBusy],
   );
   handleEventRef.current = handleEvent;
 
@@ -3539,7 +3340,6 @@ export default function App() {
     readOnlySessionsRef.current = {};
     busyRef.current = {};
     taskStatesRef.current = {};
-    workforceStatesRef.current = {};
     if (!options?.preserveQueuedInputs) queueRef.current = {};
     setActive(null);
     setSessions([]);
@@ -3547,13 +3347,11 @@ export default function App() {
     setReadOnlySessions({});
     setBusy({});
     setTaskStates({});
-    setWorkforceStates({});
     setComposerDrafts({});
     if (!options?.preserveQueuedInputs) setQueue({});
     setUnread({});
     setCtxMap({});
     setAgentCatalog(null);
-    setSelectedOfficeId("");
     setModelInfo(null);
     setModelInfoScope(null);
     setProfileAgentRef(null);
@@ -3658,16 +3456,12 @@ export default function App() {
         setSkills(null);
         setProjPanels({});
         clearExtensionDock();
-        for (const [sessionId, running] of Object.entries(busyRef.current)) {
-          if (running) notePet(sessionId, "blocked", "Hara engine disconnected");
-        }
         activeTurnsRef.current = {};
         presentationSurfaceTurnsRef.current = {};
         attachedSessionsRef.current.clear();
         pendingSendDispatchesRef.current = {};
         clearStagedModelChanges();
         taskStatesRef.current = {};
-        workforceStatesRef.current = {};
         organizationRoutesRequestRef.current += 1;
         setOrganizationRoutes(null);
         spaceDirectoryRequestRef.current += 1;
@@ -3682,7 +3476,6 @@ export default function App() {
         setGroupsDirectory({ phase: "idle" });
         setGroupsSwitchingProfileId("");
         setTaskStates({});
-        setWorkforceStates({});
         busyRef.current = {};
         setBusy({});
         setPhase("lost");
@@ -3702,9 +3495,6 @@ export default function App() {
         (snapshot) => {
           for (const taskState of snapshot.taskStates) {
             handleEventRef.current({ method: "event.task_state", ...taskState });
-          }
-          for (const workforceState of snapshot.workforceStates) {
-            handleEventRef.current({ method: "event.workforce_state", ...workforceState });
           }
           externalActiveTurnsRef.current = Object.fromEntries(
             snapshot.externalTurns.map((turn) => [turn.sessionId, turn.turnId]),
@@ -4475,7 +4265,6 @@ export default function App() {
     const mayActivate = () =>
       sessionActivationAllowed(requestId, sessionOpenRequestRef.current, zoneRef.current, expected);
     setUnread((u) => ({ ...u, [id]: false }));
-    acknowledgePet(id);
     if (transcriptsRef.current[id] && attachedSessionsRef.current.has(id)) {
       if (mayActivate()) activateSession(id, expected);
       return;
@@ -4504,7 +4293,6 @@ export default function App() {
       });
       if (mayActivate()) {
         activateSession(id, expected);
-        acknowledgePet(id);
       }
     } catch (resumeError: any) {
       const reason = String(resumeError?.message ?? resumeError);
@@ -4531,7 +4319,6 @@ export default function App() {
         });
         if (mayActivate()) {
           activateSession(id, expected);
-          acknowledgePet(id);
         }
       } catch (historyError: any) {
         setErr(`${reason}\n${String(historyError?.message ?? historyError)}`);
@@ -4589,7 +4376,6 @@ export default function App() {
       setProviderRoutes(snapshot.providers);
       setOrganizationRoutes(snapshot.organizations);
       setAgentCatalog(snapshot.catalog);
-      setSelectedOfficeId(snapshot.catalog.currentOfficeId);
       setModelInfo(snapshot.models);
       setModelInfoScope(null);
       setProjectListState(projectListStateForSpace(
@@ -4824,39 +4610,6 @@ export default function App() {
     const session = auto.sessions.find((candidate) => candidate.id === run.id);
     if (session) await openReplay(session);
   }, [auto, openReplay]);
-
-  openPetSessionRef.current = async (sessionId: string) => {
-    let session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
-    const directory = spaceDirectoryRef.current;
-    if (session) {
-      const availability = sessionSpaceAvailability(session, directory);
-      if (availability !== "current" && availability !== "switchable") {
-        removePet(sessionId);
-        await openSession(sessionId);
-        return;
-      }
-    }
-    if (session && directory) {
-      const targetSpaceId = sessionSpaceId(session, directory);
-      const targetSpace = directory.spaces.find((space) => space.id === targetSpaceId);
-      if (targetSpace && targetSpaceId !== directory.activeId) {
-        const switched = await switchSpaceRef.current(targetSpaceId);
-        if (!switched) return;
-        session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
-      }
-    }
-    if (session) {
-      const place = sessionPlace(session);
-      if (place === "auto") {
-        if (!setZone("auto")) return;
-        acknowledgePet(sessionId);
-        await openReplay(session);
-        return;
-      }
-      if (!setZone(place)) return;
-    }
-    await openSession(sessionId);
-  };
 
   const rememberProject = (dir: string, remove = false) => {
     setProjectListState((current) => {
@@ -5890,79 +5643,7 @@ export default function App() {
       );
     }
     await c.approvalReply(approvalId, verdict !== "deny", verdict === "always");
-    if (!c.supportsEvent("event.task_state")) notePet(sessionId, "running");
     push(sessionId, (items) => items.map((it) => (it.kind === "approval" && it.approvalId === approvalId ? { ...it, answered: verdict } : it)));
-  };
-
-  petChatSubmitRef.current = async (request: PetChatSubmit): Promise<string | undefined> => {
-    const text = request.text.trim();
-    if (!text) return request.sessionId;
-    const c = clientRef.current;
-    if (!c) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "The Hara engine is not connected.");
-    if (c.supports("spaces.list") && !spaceDirectoryRef.current) {
-      throw new Error(t("sessionSpaceLoadingError"));
-    }
-    let sessionId = request.sessionId;
-    const requestedSession = sessionId
-      ? sessionsRef.current.find((session) => session.id === sessionId)
-      : undefined;
-    if (sessionId && !requestedSession) {
-      throw new Error(locale === "zh" ? "原会话已不可用，请关闭聊天后重新打开。" : "The original conversation is unavailable. Close and reopen the chat.");
-    }
-    if (requestedSession && isAutomated(requestedSession)) {
-      throw new Error(locale === "zh" ? "自动任务记录是只读的，请在主窗口创建分支后继续。" : "Automated runs are read-only. Fork one in the main window to continue.");
-    }
-    if (requestedSession && sessionSpaceAvailability(requestedSession, spaceDirectoryRef.current) !== "current") {
-      throw new Error(t(sessionSpaceErrorKey(requestedSession, spaceDirectoryRef.current)));
-    }
-    if (!sessionId) sessionId = await openAssistant() || undefined;
-    if (!sessionId) throw new Error(locale === "zh" ? "个人助理尚未准备好。" : "The personal assistant is not ready yet.");
-
-    const task = taskStatesRef.current[sessionId];
-    const live = busyRef.current[sessionId] || (
-      task ? taskStateIsLive(task.state) : false
-    );
-    if (!live && !attachedSessionsRef.current.has(sessionId)) {
-      // session.list contains persisted metadata, not a live serve attachment. Resume before the
-      // companion dispatches so a cold Desktop start cannot acknowledge a doomed NO_SESSION send.
-      const resumed = await c.resumeSession(sessionId, defaultApproval || undefined);
-      attachedSessionsRef.current.add(sessionId);
-      rememberSessionApproval(sessionId, resumed.approval);
-      hydrateLegacyTaskState(c, sessionId, resumed.task);
-      loadHistory(sessionId, resumed.history);
-    }
-    if (live) {
-      await submitSessionText(sessionId, text);
-    } else {
-      // Starting a normal turn can take minutes. The companion acknowledges local dispatch immediately;
-      // transcript/task events stream the real progress and any later failure back into the same window.
-      void submitSessionText(sessionId, text).catch((error) => setErr(String(error)));
-    }
-    return sessionId;
-  };
-
-  petChatApprovalRef.current = async (request: PetChatApproval): Promise<void> => {
-    if (clientRef.current?.supports("spaces.list") && !spaceDirectoryRef.current) {
-      throw new Error(t("sessionSpaceLoadingError"));
-    }
-    const session = sessionsRef.current.find((candidate) => candidate.id === request.sessionId);
-    if (!session || isAutomated(session)) {
-      throw new Error(locale === "zh" ? "该会话不能从桌面伙伴确认。" : "This conversation cannot be approved from the companion.");
-    }
-    if (sessionSpaceAvailability(session, spaceDirectoryRef.current) !== "current") {
-      throw new Error(t(sessionSpaceErrorKey(session, spaceDirectoryRef.current)));
-    }
-    const typedApproval = taskStatesRef.current[request.sessionId]?.approval?.id;
-    const legacyApproval = [...(transcriptsRef.current[request.sessionId] ?? [])]
-      .reverse()
-      .find((item) => item.kind === "approval" && !item.answered);
-    const expectedApprovalId = typedApproval || (
-      legacyApproval?.kind === "approval" ? legacyApproval.approvalId : undefined
-    );
-    if (!expectedApprovalId || expectedApprovalId !== request.approvalId) {
-      throw new Error(locale === "zh" ? "这条确认已过期，请刷新状态。" : "This approval is stale. Refresh the conversation state.");
-    }
-    await answer(request.sessionId, request.approvalId, request.allow ? "allow" : "deny");
   };
 
   const stopTurn = async (sessionId: string): Promise<boolean> => {
@@ -6322,7 +6003,16 @@ export default function App() {
   const viewEngineBlockingTask = async (sessionId: string) => {
     setEngineRestartInterlockOpen(false);
     setErr("");
-    await openPetSessionRef.current(sessionId);
+    const session = sessionsRef.current.find((candidate) => candidate.id === sessionId);
+    if (session) {
+      const place = sessionPlace(session);
+      if (place === "auto") {
+        if (setZone("auto")) await openReplay(session);
+        return;
+      }
+      if (!setZone(place)) return;
+    }
+    await openSession(sessionId);
   };
 
   const stopEngineBlockingTask = async (sessionId: string) => {
@@ -7214,17 +6904,11 @@ export default function App() {
     if (!c) return;
     await c.archiveSession(id, true).catch(() => {});
     clearActiveSession(id);
-    removePet(id);
     delete activeTurnsRef.current[id];
     clearStagedModelChange(id);
     setTaskStates((states) => {
       const { [id]: _gone, ...rest } = states;
       taskStatesRef.current = rest;
-      return rest;
-    });
-    setWorkforceStates((states) => {
-      const { [id]: _gone, ...rest } = states;
-      workforceStatesRef.current = rest;
       return rest;
     });
     await refreshSessions();
@@ -7236,18 +6920,12 @@ export default function App() {
       await c.deleteSession(id);
       attachedSessionsRef.current.delete(id);
       clearActiveSession(id);
-      removePet(id);
       delete activeTurnsRef.current[id];
       clearStagedModelChange(id);
       setSessionReadOnly(id, null);
       setTaskStates((states) => {
         const { [id]: _goneTask, ...rest } = states;
         taskStatesRef.current = rest;
-        return rest;
-      });
-      setWorkforceStates((states) => {
-        const { [id]: _goneWorkforce, ...rest } = states;
-        workforceStatesRef.current = rest;
         return rest;
       });
       setTranscripts(({ [id]: _gone, ...rest }) => rest);
@@ -7431,7 +7109,6 @@ export default function App() {
             currentAgentRef={activeSession?.agentRef}
             dismissedAgentRefs={agentCatalog?.dismissedAgentRefs}
             locale={locale}
-            onOpenOffice={() => void openAgentOffice()}
             onSelect={(agentRef) => {
               const agent = availableAgents.find((candidate) => candidate.ref === agentRef);
               // Imported OpenClaw Agents are global addresses with their own execution workspaces. Prefer
@@ -7502,13 +7179,6 @@ export default function App() {
               busy={starterBusy}
               apps={([
                 {
-                  id: AGENT_OFFICE_CAPABILITY.id,
-                  title: t("capabilityAgentOfficeTitle"),
-                  description: t("capabilityAgentOfficeDescription"),
-                  icon: "office",
-                  source: "Hara",
-                },
-                {
                   id: "core.projects",
                   title: t("zoneProjects"),
                   description: t("moduleProjectsDescription"),
@@ -7525,10 +7195,6 @@ export default function App() {
                 })),
               ] satisfies WorkbenchApp[])}
               onOpenApp={(appId) => {
-                if (appId === AGENT_OFFICE_CAPABILITY.id) {
-                  void openAgentOffice();
-                  return;
-                }
                 if (appId === "core.projects") {
                   void openProject();
                   return;
@@ -8460,47 +8126,9 @@ export default function App() {
     setExtensionLoading(false);
     offerExtensionTab(item);
   };
-  const offerWorkforceForSession = (session: SessionInfo) => {
-    const place = sessionPlace(session);
-    if (place !== "chat" && place !== "projects") return;
-    const item: WorkforceExtension = {
-      type: "workforce",
-      id: workforceTabId(session.id),
-      title: t("extensionWorkforce"),
-      surfaceKind: "workforce",
-      owner: { place, sessionId: session.id, cwd: session.cwd },
-      mode: "docked",
-    };
-    warmModule(Promise.all([loadExtensionDock(), loadWorkforceSurface()]));
-    setExtensionLoading(false);
-    offerExtensionTab(item);
-  };
-  const openWorkforce = () => {
-    const session = active ? sessions.find((candidate) => candidate.id === active) : null;
-    const place = session ? sessionPlace(session) : null;
-    if (!session || (place !== "chat" && place !== "projects") || zone !== place) return;
-    offerWorkforceForSession(session);
-  };
-  const openAgentOffice = async () => {
-    let session = activeRef.current
-      ? sessionsRef.current.find((candidate) => candidate.id === activeRef.current)
-      : undefined;
-    const currentPlace = session ? sessionPlace(session) : null;
-    if (session && (currentPlace === "chat" || currentPlace === "projects")) {
-      if (!setZone(currentPlace)) return;
-      await openSession(session.id);
-    } else {
-      const sessionId = await openAssistant();
-      session = sessionId
-        ? sessionsRef.current.find((candidate) => candidate.id === sessionId)
-        : undefined;
-    }
-    if (session) offerWorkforceForSession(session);
-  };
   const openAgentConversation = async (
     agentRef: string,
     cwd: string,
-    keepOfficeOpen = false,
   ): Promise<void> => {
     const directory = spaceDirectoryRef.current;
     const activeSpace = directory?.activeId ?? "personal";
@@ -8522,12 +8150,8 @@ export default function App() {
     }
     if (!session) return;
     await refreshAgentCatalog({ sessionId: session.id }).catch(() => {});
-    if (keepOfficeOpen) offerWorkforceForSession(session);
   };
-  const openExtensionItem = (item: ExtensionDockAddKind) => {
-    if (item === "workforce") openWorkforce();
-    else openWorkbenchTool(item);
-  };
+  const openExtensionItem = (item: ExtensionDockAddKind) => openWorkbenchTool(item);
   const extensionContext: ExtensionContext | null = zone === "office"
     ? { place: "office" }
     : (zone === "chat" || zone === "projects")
@@ -8585,9 +8209,6 @@ export default function App() {
   const reviewExtension = contextExtensionDock?.type === "review"
     ? contextExtensionDock
     : null;
-  const workforceExtension = contextExtensionDock?.type === "workforce"
-    ? contextExtensionDock
-    : null;
   const dockTabs = contextExtensionTabs.map((tab) => ({
     id: tab.id,
     title: tab.title,
@@ -8603,7 +8224,6 @@ export default function App() {
     if (kind === "terminal") return t("extensionTerminal");
     if (kind === "files") return t("extensionFiles");
     if (kind === "review") return t("extensionReview");
-    if (kind === "workforce") return t("extensionWorkforce");
     return t("extensionCapability");
   };
   const extensionCopy = {
@@ -8620,101 +8240,11 @@ export default function App() {
     && (zone === "chat" || zone === "projects")
     && sessionPlace(activeSession) === zone
       ? [
-        { id: "workforce" as const, label: t("extensionWorkforce") },
         { id: "terminal" as const, label: t("extensionTerminal") },
         { id: "browser" as const, label: t("extensionBrowser") },
         { id: "files" as const, label: t("extensionFiles") },
       ]
     : [];
-  const workforceTaskState = workforceExtension
-    ? taskStates[workforceExtension.owner.sessionId]
-    : undefined;
-  const exactWorkforceState = workforceExtension
-    ? workforceStates[workforceExtension.owner.sessionId]
-    : undefined;
-  const workforceSnapshot = workforceExtension
-    ? (exactWorkforceState
-      && (!workforceTaskState || exactWorkforceState.turnId === workforceTaskState.turnId)
-      && !(workforceTaskState && !taskStateIsLive(workforceTaskState.state) && workforceHasLiveActors(exactWorkforceState))
-      ? exactWorkforceState
-      : workforceFromTask(workforceExtension.owner.sessionId, workforceTaskState))
-    : undefined;
-  const workforceSession = workforceExtension
-    ? sessions.find((session) => session.id === workforceExtension.owner.sessionId)
-    : undefined;
-  const fallbackOffice: AgentOfficeInfo = {
-    id: "workspace",
-    name: workforceSession ? basename(workforceSession.cwd) : t("workforceTitle"),
-    cwd: workforceSession?.cwd ?? server?.cwd ?? "",
-    kind: "workspace",
-    agentRefs: ["main"],
-  };
-  const catalogMatchesActiveSpace = Boolean(
-    agentCatalog?.agents.length
-    && agentCatalog.agents.every((agent) => agent.spaceId === activeSpaceId),
-  );
-  const workforceOffices = catalogMatchesActiveSpace && agentCatalog?.offices.length
-    ? agentCatalog.offices
-    : [fallbackOffice];
-  const workforceOffice = workforceOffices.find((office) => office.id === selectedOfficeId)
-    ?? workforceOffices.find((office) => office.id === agentCatalog?.currentOfficeId)
-    ?? workforceOffices[0];
-  const workforceActors = officeActors({
-    office: workforceOffice,
-    agents: availableAgents,
-    snapshot: workforceSnapshot,
-    sessionCwd: workforceSession?.cwd,
-    sessionAgentRef: workforceSession?.agentRef,
-  });
-  const workforceCopy = {
-    title: t("workforceTitle"),
-    subtitle: t("workforceSubtitle"),
-    live: t("workforceLive"),
-    compatibility: t("workforceCompatibility"),
-    three: t("workforceThree"),
-    threeHint: t("workforceThreeHint"),
-    threeUnavailable: t("workforceThreeUnavailable"),
-    scene: t("workforceScene"),
-    list: t("workforceList"),
-    overview: t("workforceOverview"),
-    focus: t("workforceFocus"),
-    noTask: t("workforceNoTask"),
-    noTaskHint: t("workforceNoTaskHint"),
-    returnToChat: t("workforceReturnToChat"),
-    chatWithAgent: t("workforceChatWithAgent"),
-    office: t("workforceOffice"),
-    switchOffice: t("workforceSwitchOffice"),
-    root: t("workforceRoot"),
-    specialist: t("workforceSpecialist"),
-    status: t("workforceStatus"),
-    capability: t("workforceCapability"),
-    updated: t("workforceUpdated"),
-    profile: t("workforceProfile"),
-    privacy: t("workforcePrivacy"),
-    loading: t("loading"),
-    states: {
-      idle: t("workforceStateIdle"),
-      queued: t("workforceStateQueued"),
-      working: t("workforceStateWorking"),
-      waiting: t("workforceStateWaiting"),
-      paused: t("workforceStatePaused"),
-      blocked: t("workforceStateBlocked"),
-      completed: t("workforceStateCompleted"),
-      failed: t("workforceStateFailed"),
-      cancelled: t("workforceStateCancelled"),
-    },
-    capabilities: {
-      orchestration: t("workforceCapabilityOrchestration"),
-      files: t("workforceCapabilityFiles"),
-      code: t("workforceCapabilityCode"),
-      browser: t("workforceCapabilityBrowser"),
-      research: t("workforceCapabilityResearch"),
-      design: t("workforceCapabilityDesign"),
-      office: t("workforceCapabilityOffice"),
-      communication: t("workforceCapabilityCommunication"),
-      other: t("workforceCapabilityOther"),
-    },
-  };
   const openBrowserFromTool = (item: WorkbenchToolExtension, address: string): string | null => {
     const preview = webPreviewExtensionFor(address, t("extensionBrowser"), item.owner);
     if (!preview) return t("extensionBrowserInvalid");
@@ -9472,9 +9002,6 @@ export default function App() {
                   <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
                   {t("newConversation")}
                 </button>
-                <button className="new ghost" onClick={() => void openAgentOffice()}>
-                  {t("inboxOpenOffice")}
-                </button>
                 {activeSpaceId === "personal" && agentCreateReady ? (
                   agentBlueprintFeatureReady ? (
                     <button
@@ -9527,9 +9054,6 @@ export default function App() {
                 >
                   <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
                   {assistantCreating ? t("startingConversation") : t("newConversation")}
-                </button>
-                <button className="new ghost" onClick={() => void openAgentOffice()}>
-                  {t("inboxOpenOffice")}
                 </button>
                 {activeSpaceId === "personal" && agentCreateReady ? (
                   agentBlueprintFeatureReady ? (
@@ -9931,7 +9455,6 @@ export default function App() {
                   label: t("settingsGroupCapabilities"),
                   items: [
                     ["modules", t("setModules")],
-                    ["pets", t("setPets")],
                     ["capabilities", t("setCapabilities")],
                   ],
                 },
@@ -10497,26 +10020,6 @@ export default function App() {
                 }}
               />
             )}
-            {setSec === "pets" && (
-              <Suspense
-                fallback={(
-                  <div className="settings-empty" role="status">
-                    {t("loading")}
-                  </div>
-                )}
-              >
-                <DesktopCompanionSettings
-                  t={t}
-                  awake={petAwake}
-                  selector={petSelector}
-                  catalog={petCatalog}
-                  error={petCatalogError}
-                  onToggleAwake={() => setPetAwake((awake) => !awake)}
-                  onRefresh={() => void refreshPets()}
-                  onSelect={setPetSelector}
-                />
-              </Suspense>
-            )}
             {setSec === "capabilities" && (
               <Suspense
                 fallback={(
@@ -10540,11 +10043,6 @@ export default function App() {
                       id: COMPUTER_USE_CAPABILITY.id,
                       title: t("computerUseTitle"),
                       description: t("computerUseDescription"),
-                    },
-                    {
-                      id: AGENT_OFFICE_CAPABILITY.id,
-                      title: t("capabilityAgentOfficeTitle"),
-                      description: t("capabilityAgentOfficeDescription"),
                     },
                   ]}
                   organization={activeOrganizationConnection ? {
@@ -10608,9 +10106,7 @@ export default function App() {
                   }}
                   onCreateSkill={() => void startSkillCreation()}
                   onOpenCore={(id) => {
-                    if (id === AGENT_OFFICE_CAPABILITY.id) {
-                      void openAgentOffice();
-                    } else if (id === COMPUTER_USE_CAPABILITY.id) {
+                    if (id === COMPUTER_USE_CAPABILITY.id) {
                       setSetSec("security");
                       queueMicrotask(() => document.getElementById("settings-computer-use")?.scrollIntoView({ block: "start" }));
                     } else if (id === "core.chat") {
@@ -10851,23 +10347,6 @@ export default function App() {
                 && activeArtifact?.artifact.artifactId === sessionArtifactExtension.owner.artifactId
                 && artifactWorkbenchSurface}
               {presentationBrowserExtension && presentationBrowserSurface}
-              {workforceExtension && (
-                <WorkforceSurface
-                  actors={workforceActors}
-                  offices={workforceOffices}
-                  activeOfficeId={workforceOffice.id}
-                  locale={locale}
-                  live={Boolean(clientRef.current?.supportsEvent("event.workforce_state"))}
-                  copy={workforceCopy}
-                  onReturnToChat={() => setCurrentExtensionScreenVisible(false)}
-                  onOfficeChange={setSelectedOfficeId}
-                  onChatWithAgent={(agentRef) => {
-                    const targetAgent = availableAgents.find((candidate) => candidate.ref === agentRef);
-                    void openAgentConversation(agentRef, targetAgent?.home || workforceOffice.cwd, true);
-                  }}
-                  onEditAgent={openAgentProfile}
-                />
-              )}
               {(workbenchToolExtension || reviewExtension) && (
                 <WorkbenchToolSurface
                   item={(workbenchToolExtension ?? reviewExtension)!}

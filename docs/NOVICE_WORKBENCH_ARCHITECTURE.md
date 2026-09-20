@@ -67,7 +67,7 @@ flowchart LR
 - Skill/Plugin 列表和启停；
 - project Panel 左右分屏；
 - 图片粘贴；
-- 自动任务、通知和任务状态桌宠。
+- 自动任务、通知和任务状态。
 
 缺口：
 

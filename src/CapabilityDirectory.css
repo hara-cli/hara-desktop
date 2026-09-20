@@ -159,10 +159,6 @@
   --capability-tone: var(--success);
 }
 
-.capability-directory-card[data-capability*="agent-office"] {
-  --capability-tone: var(--accent-strong);
-}
-
 .capability-directory-card:hover {
   border-color: color-mix(in srgb, var(--capability-tone) 56%, var(--border));
   box-shadow: var(--shadow-card);

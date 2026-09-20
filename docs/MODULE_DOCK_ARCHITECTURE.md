@@ -201,7 +201,7 @@ Installation/enablement and connector authorization remain distinct security sta
 plugin is not presented as connected to organization data unless its connector has separately
 received authorization. This follows the same source/installed separation used by the Codex plugin
 directory while preserving Hara's renderer and Serve boundaries. The Tasks automation console,
-Groups, Deliverables, Artifact details, model/bot settings, Desktop companion settings, and the capability
+Groups, Deliverables, Artifact details, model/bot settings, and the capability
 directory are split from the initial Assistant bundle. Dock, Workbench, and Settings entries preload their
 matching module on pointer hover or keyboard focus, keeping startup lean without making the first
 intentional navigation feel delayed.

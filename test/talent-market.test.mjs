@@ -161,8 +161,9 @@ test("Desktop keeps discovery lazy and hiring explicit", () => {
   assert.match(hire, /from "\.\/talent-blueprint(?:\.ts)?"/);
   assert.doesNotMatch(hire, /from "\.\/talent-blueprints(?:\.ts)?"/);
   assert.doesNotMatch(lightweightBlueprint, /generated\/agency-agent-records/);
-  assert.match(portrait, /agent-character-head\$\{avatar && !avatarFailed/);
-  assert.match(portrait, /agent-character-monogram/);
+  assert.match(portrait, /agent-portrait-fallback/);
+  assert.match(portrait, /agent-portrait-presence/);
+  assert.doesNotMatch(portrait, /agent-character/, "the compact Agent roster no longer carries a full-body office character");
   assert.doesNotMatch(portrait, /function Face/);
   assert.doesNotMatch(portraitCss, /agent-art-(?:face|hair|eye|mouth|glasses|outfit)/);
   assert.match(portraitGate, /unexpected\.length/);

@@ -61,29 +61,6 @@
 .agent-picker-trigger-meta b { color: #c7c1ba; font: 700 8px/1 "SF Mono", ui-monospace, monospace; }
 .agent-picker-trigger-meta i { font-size: 10px; font-style: normal; }
 
-.agent-picker-office {
-  display: grid;
-  min-width: 45px;
-  height: 42px;
-  grid-template-columns: auto auto;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0 8px;
-  border: 1px solid #4a3734;
-  border-radius: 10px;
-  color: #e5b3ab;
-  background:
-    linear-gradient(145deg, rgba(255, 101, 92, 0.1), transparent 60%),
-    #211b1a;
-  cursor: pointer;
-}
-
-.agent-picker-office:hover { border-color: #83514a; color: #ffd1c9; background-color: #2b201e; }
-.agent-picker-office:disabled { cursor: default; opacity: 0.48; }
-.agent-picker-office span { font-size: 13px; }
-.agent-picker-office b { font: 750 8px/1 "SF Mono", ui-monospace, monospace; }
-
 .agent-picker-menu {
   position: absolute;
   top: calc(100% + 8px);

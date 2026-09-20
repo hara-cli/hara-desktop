@@ -261,8 +261,10 @@ export interface AgentOfficeInfo {
 
 export interface AgentCatalog {
   agents: AgentInfo[];
-  offices: AgentOfficeInfo[];
-  currentOfficeId: string;
+  /** @deprecated Wire compatibility with older Engines; the simplified Desktop does not render offices. */
+  offices?: AgentOfficeInfo[];
+  /** @deprecated Wire compatibility with older Engines; the simplified Desktop does not select offices. */
+  currentOfficeId?: string;
   /** Personal Agent refs recoverably hidden from Hara's active staff directory. */
   dismissedAgentRefs?: string[];
 }
@@ -1390,7 +1392,8 @@ export interface EventStateSnapshot {
   streamId: string;
   throughSequence: number;
   taskStates: TaskLifecycleEvent[];
-  workforceStates: WorkforceStateEvent[];
+  /** @deprecated Retained only so an older Engine snapshot remains decodable during rollout. */
+  workforceStates?: WorkforceStateEvent[];
   externalTurns: Array<{ sessionId: string; turnId: string }>;
   approvals: Array<{
     approvalId: string;
@@ -2209,7 +2212,7 @@ export class HaraClient {
   createSession(opts?: { cwd?: string; approval?: ApprovalMode; agentRef?: string; profileId?: string; spaceId?: string }) {
     return this.call<CreatedSessionInfo>("session.create", opts ?? {});
   }
-  /** Persistent Agent identities and their project/team offices (feature-detected for compatibility). */
+  /** Persistent Agent identities (feature-detected for compatibility). */
   async listAgents(opts?: { sessionId?: string; cwd?: string }): Promise<AgentCatalog | null> {
     if (this.methods.size > 0 && !this.supports("agents.list")) return null;
     try {

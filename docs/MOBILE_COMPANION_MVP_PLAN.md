@@ -48,7 +48,7 @@ Desktop 0.1.150 与 Engine 0.166.1 已经把原生终端进程和显示层分开
 - `external.sessions.terminal.attach` 返回带严格递增序号的 `ansi-base64` 全量或增量帧；
 - `terminal.raw-input/resize/scroll/release` 提供原始输入、尺寸、滚动和控制释放；
 - PTY 同一时刻只有一个输入控制端，Hara、受支持外置终端与手机之间必须明确移交，观察端不能写入；
-- `event.task_state`、`event.workforce_state` 与审批事件提供无需解析聊天文案的真实状态；
+- `event.task_state` 与审批事件提供无需解析聊天文案的真实状态；
 - Desktop 只接收 Hara 不透明会话 ID，供应商原生 ID、完整路径和凭据留在 Core。
 
 这意味着手机端不需要复制任何桌面终端或再启动一个 Codex/Claude 进程。它需要新增的是可靠远程

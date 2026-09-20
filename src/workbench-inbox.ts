@@ -1,5 +1,5 @@
 import type { AgentInfo, ExternalSessionInfo, SessionInfo } from "./client.ts";
-import { mainAgentRef } from "./agent-office.ts";
+import { mainAgentRef } from "./agent-session.ts";
 import { isJunkProjectDirectory } from "./project-list.ts";
 
 export type WorkbenchInboxMode = "agents" | "projects" | "external" | "deliverables";

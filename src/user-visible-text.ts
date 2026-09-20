@@ -7,7 +7,7 @@ const INTERNAL_PREFIXES = [
 ] as const;
 
 /** Renderer-authored routing envelopes belong to the model wire protocol, never to visible task
- * progress, transcript history, notifications, pets, or accessibility labels. */
+ * progress, transcript history, notifications, or accessibility labels. */
 export function userVisibleText(text: unknown): string {
   let visible = typeof text === "string" ? text : "";
   for (let depth = 0; depth < 4; depth += 1) {

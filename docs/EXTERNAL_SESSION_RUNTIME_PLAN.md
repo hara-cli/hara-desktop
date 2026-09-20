@@ -14,7 +14,7 @@ the same safe surface to a phone.
 - Anthropic Claude Agent SDK official session APIs.
 
 Hara does not copy either project's UI, mascot vocabulary, or storage stack. The useful architectural
-principles are translated into Hara's existing Space, Session, Agent, Task, Workforce, and authenticated
+principles are translated into Hara's existing Space, Session, Agent, Task, and authenticated
 Serve protocol.
 
 ## What Hara borrows
@@ -22,13 +22,13 @@ Serve protocol.
 | Reference idea | Hara translation |
 | --- | --- |
 | Herdr: runtime/server owns shared facts | `hara serve` owns external discovery, opaque identity mapping, state, cursors, and future control leases. Renderer and mobile are projections. |
-| Herdr: semantic state is separate from pane presentation | `ExternalSession.state` is provider-neutral; source logo, label, color, office location, and nickname remain presentation metadata. |
+| Herdr: semantic state is separate from pane presentation | `ExternalSession.state` is provider-neutral; source logo, label, color, and nickname remain presentation metadata. |
 | Herdr: snapshot plus ordered event stream | Lists and transcripts are bounded snapshots; Hara-owned continuation streams typed text, tool, notice, approval, and terminal events. Reconnectable sequence/epoch transport remains a later remote-runtime phase. |
 | Herdr: one lifecycle authority | Codex status comes only from App Server. Claude status will come only from the official Agent SDK. Screen scraping never competes with official state. |
 | Herdr: native session references support resume | Native references stay in Core. Desktop receives an opaque Hara ID and never a provider-native ID. |
 | Gas Town: persistent identity, ephemeral execution | Agent identity, provider session, and individual task/run are separate records. A named Agent can own many sessions and every session can contain many runs. |
-| Gas Town: work bundle differs from worker swarm | Hara Mission/Task is the durable work package; Workforce actors are transient executors. The 2D office visualizes the latter without becoming the source of truth. |
-| Gas Town: chronological activity and problem views | Structured task/workforce events can power Activity and Attention views. No LLM polling is required to decide whether work is stalled. |
+| Gas Town: work bundle differs from worker swarm | Hara Mission/Task is the durable work package; transient executors remain runtime details and never become a second product surface. |
+| Gas Town: chronological activity and problem views | Structured task events can power Activity and Attention views. No LLM polling is required to decide whether work is stalled. |
 | Gas Town: mail versus nudge | Durable handoff details are recorded in Task/Activity; wake-up is a separate event. A notification is never treated as the task record. |
 | Gas Town: escalation acknowledgement and closure | An escalation has owner, severity, acknowledgement, resolution, and stale re-escalation. This matches Hara's feedback acknowledgement/closure convention. |
 | Gas Town: provider integration tiers | Every adapter declares capabilities. Missing optional APIs degrade to metadata-only or unavailable instead of inventing behavior. |
@@ -51,11 +51,12 @@ Persistent Agent identity
   └─ Provider session (Codex / Claude Code / Hara)
        └─ Task or Mission
             └─ Run
-                 └─ Workforce actors and structured activity events
+                 └─ Structured activity, tool, result, and approval events
 ```
 
-The game-like office is one view over this model. A user can switch office/department, select an Agent, and
-open conversation history, but changing a sprite or room never mutates execution state.
+Desktop presents this model through an Agent roster, conversation history, focused work surfaces, results,
+and approvals. It deliberately has no game-like office projection or avatar-room state to reconcile with
+the execution authority.
 
 ## Runtime architecture
 

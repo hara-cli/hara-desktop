@@ -16,11 +16,10 @@ export type ExtensionSurfaceKind =
   | "terminal"
   | "files"
   | "review"
-  | "workforce"
   | "capability";
 
 export type WorkbenchToolKind = "terminal" | "browser" | "files";
-export type ExtensionDockAddKind = WorkbenchToolKind | "workforce";
+export type ExtensionDockAddKind = WorkbenchToolKind;
 
 export type InteractiveExtensionPlace = "chat" | "projects";
 
@@ -97,20 +96,13 @@ export interface ReviewExtension extends ExtensionTabBase {
   owner: SessionExtensionOwner;
 }
 
-export interface WorkforceExtension extends ExtensionTabBase {
-  type: "workforce";
-  surfaceKind: "workforce";
-  owner: SessionExtensionOwner;
-}
-
 export type ExtensionDockItem =
   | LegacyPanelExtension
   | WebPreviewExtension
   | ArtifactExtension
   | PresentationBrowserExtension
   | WorkbenchToolExtension
-  | ReviewExtension
-  | WorkforceExtension;
+  | ReviewExtension;
 
 export interface ExtensionDockState {
   tabs: ExtensionDockItem[];
@@ -322,10 +314,6 @@ export function reviewTabId(sessionId: string): string {
   return `review:${sessionId}:changes`;
 }
 
-export function workforceTabId(sessionId: string): string {
-  return `workforce:${sessionId}:office`;
-}
-
 /** Artifact tabs are owner-scoped: opening the same revision from Office and two project sessions
  * creates three independent tabs instead of silently moving one tab between work contexts. */
 export function artifactExtensionTabId(
@@ -382,8 +370,6 @@ export function messageWithActiveWorkObject(item: ExtensionDockItem, text: strin
     if (origin) context.push(`origin=${origin}`);
   } else if (item.type === "review") {
     context.push("scope=current_task_changes");
-  } else if (item.type === "workforce") {
-    context.push("scope=current_task_workforce");
   } else if (item.tool === "files") {
     context.push("scope=current_workspace_files");
   } else if (item.tool === "terminal") {

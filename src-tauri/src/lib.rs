@@ -3,7 +3,7 @@
 // can't: read the serve discovery file and spawn the server.
 use std::fs;
 use std::io::{Read, Write};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(windows)]
 use tauri::Manager;
@@ -11,13 +11,6 @@ use tauri::Manager;
 #[cfg(windows)]
 mod windows_process;
 
-const MAX_PET_MANIFEST_BYTES: u64 = 64 * 1024;
-const MAX_PET_ASSET_BYTES: u64 = 20 * 1024 * 1024;
-const MAX_PET_CATALOG_SCAN_ENTRIES: usize = 512;
-const MAX_PET_CATALOG_ENTRIES: usize = 256;
-const PET_SHEET_WIDTH: u32 = 1536;
-const PET_FRAME_WIDTH: u32 = 192;
-const PET_FRAME_HEIGHT: u32 = 208;
 const MAX_SERVE_DISCOVERY_BYTES: u64 = 64 * 1024;
 const MAX_MANAGED_CLI_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_MANAGED_CLI_RECEIPT_BYTES: u64 = 16 * 1024;
@@ -795,41 +788,6 @@ fn schedule_windows_renderer_recovery(app: tauri::AppHandle) {
     });
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PetManifest {
-    id: Option<String>,
-    display_name: Option<String>,
-    description: Option<String>,
-    sprite_version_number: Option<u8>,
-    spritesheet_path: Option<String>,
-}
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PetCatalogEntry {
-    selector: String,
-    id: String,
-    display_name: String,
-    description: String,
-    source: String,
-    sprite_version_number: Option<u8>,
-    rows: Option<u32>,
-    compatible: bool,
-    error: Option<String>,
-}
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PetAsset {
-    data_url: String,
-    sprite_version_number: u8,
-    columns: u32,
-    rows: u32,
-    frame_width: u32,
-    frame_height: u32,
-}
-
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CommandLineHaraStatus {
@@ -849,15 +807,6 @@ struct ManagedCliReceipt {
     managed_path: String,
     bundled_version: String,
     sha256: String,
-}
-
-#[derive(Debug)]
-struct ValidatedPet {
-    manifest: PetManifest,
-    asset_path: PathBuf,
-    mime: &'static str,
-    version: u8,
-    rows: u32,
 }
 
 fn user_home() -> Result<PathBuf, String> {
@@ -928,259 +877,6 @@ fn resolve_user_home(
 
 fn hara_data_dir() -> Result<PathBuf, String> {
     Ok(user_home()?.join(".hara"))
-}
-
-fn pet_root(source: &str) -> Result<PathBuf, String> {
-    match source {
-        "hara" => Ok(hara_data_dir()?.join("pets")),
-        "codex" => Ok(user_home()?.join(".codex").join("pets")),
-        _ => Err("unsupported pet source".into()),
-    }
-}
-
-/// A selector may choose one directory directly below a fixed local pet root. It may never become
-/// an arbitrary path, even if a malformed renderer payload reaches this native command.
-fn selector_parts(selector: &str) -> Result<(&str, &str), String> {
-    let (source, directory) = selector
-        .split_once(':')
-        .ok_or_else(|| "pet selector must be <source>:<id>".to_string())?;
-    let mut components = Path::new(directory).components();
-    if directory.is_empty()
-        || !matches!(components.next(), Some(Component::Normal(_)))
-        || components.next().is_some()
-    {
-        return Err("pet id must be one directory name".into());
-    }
-    pet_root(source)?;
-    Ok((source, directory))
-}
-
-fn regular_file_size(path: &Path, max_bytes: u64, label: &str) -> Result<u64, String> {
-    let metadata = fs::symlink_metadata(path).map_err(|e| format!("read {label}: {e}"))?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(format!("{label} must be a regular file"));
-    }
-    if metadata.len() > max_bytes {
-        return Err(format!("{label} is too large"));
-    }
-    Ok(metadata.len())
-}
-
-fn safe_asset_path(pet_dir: &Path, relative: &str) -> Result<PathBuf, String> {
-    let relative_path = Path::new(relative);
-    if relative.is_empty()
-        || relative_path.is_absolute()
-        || relative_path
-            .components()
-            .any(|component| !matches!(component, Component::Normal(_)))
-    {
-        return Err("spritesheetPath must stay inside the pet directory".into());
-    }
-    let canonical_dir = pet_dir
-        .canonicalize()
-        .map_err(|e| format!("resolve pet directory: {e}"))?;
-    let candidate = pet_dir.join(relative_path);
-    regular_file_size(&candidate, MAX_PET_ASSET_BYTES, "pet spritesheet")?;
-    let canonical_asset = candidate
-        .canonicalize()
-        .map_err(|e| format!("resolve pet spritesheet: {e}"))?;
-    if !canonical_asset.starts_with(&canonical_dir) {
-        return Err("spritesheetPath escapes the pet directory".into());
-    }
-    Ok(canonical_asset)
-}
-
-fn sprite_geometry(width: u32, height: u32, declared: Option<u8>) -> Result<(u8, u32), String> {
-    let inferred = match (width, height) {
-        (PET_SHEET_WIDTH, 1872) => (1, 9),
-        (PET_SHEET_WIDTH, 2288) => (2, 11),
-        _ => {
-            return Err(format!(
-                "unsupported spritesheet size {width}x{height}; expected 1536x1872 (v1) or 1536x2288 (v2)"
-            ))
-        }
-    };
-    if declared.is_some_and(|version| version != inferred.0) {
-        return Err(format!(
-            "spriteVersionNumber does not match the {}x{} spritesheet",
-            width, height
-        ));
-    }
-    Ok(inferred)
-}
-
-fn read_pet(selector: &str) -> Result<ValidatedPet, String> {
-    let (source, directory) = selector_parts(selector)?;
-    let root = pet_root(source)?;
-    let canonical_root = root
-        .canonicalize()
-        .map_err(|e| format!("resolve pet root: {e}"))?;
-    let pet_dir = root.join(directory);
-    let pet_metadata =
-        fs::symlink_metadata(&pet_dir).map_err(|e| format!("read pet directory: {e}"))?;
-    if pet_metadata.file_type().is_symlink() || !pet_metadata.is_dir() {
-        return Err("pet package must be a real directory".into());
-    }
-    let canonical_dir = pet_dir
-        .canonicalize()
-        .map_err(|e| format!("resolve pet directory: {e}"))?;
-    if !canonical_dir.starts_with(&canonical_root) {
-        return Err("pet directory escapes its local catalog".into());
-    }
-
-    let manifest_path = pet_dir.join("pet.json");
-    regular_file_size(&manifest_path, MAX_PET_MANIFEST_BYTES, "pet.json")?;
-    let raw = fs::read_to_string(&manifest_path).map_err(|e| format!("read pet.json: {e}"))?;
-    let manifest: PetManifest =
-        serde_json::from_str(&raw).map_err(|e| format!("parse pet.json: {e}"))?;
-    let relative = manifest
-        .spritesheet_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("spritesheet.webp");
-    let asset_path = safe_asset_path(&pet_dir, relative)?;
-    let reader = image::ImageReader::open(&asset_path)
-        .map_err(|e| format!("read pet spritesheet: {e}"))?
-        .with_guessed_format()
-        .map_err(|e| format!("detect pet spritesheet: {e}"))?;
-    let format = reader
-        .format()
-        .ok_or_else(|| "pet spritesheet must be PNG or WebP".to_string())?;
-    let mime = match format {
-        image::ImageFormat::Png => "image/png",
-        image::ImageFormat::WebP => "image/webp",
-        _ => return Err("pet spritesheet must be PNG or WebP".into()),
-    };
-    let (width, height) = reader
-        .into_dimensions()
-        .map_err(|e| format!("decode pet spritesheet dimensions: {e}"))?;
-    let (version, rows) = sprite_geometry(width, height, manifest.sprite_version_number)?;
-    Ok(ValidatedPet {
-        manifest,
-        asset_path,
-        mime,
-        version,
-        rows,
-    })
-}
-
-fn display_text(value: Option<&str>, fallback: &str, max_chars: usize) -> String {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(fallback)
-        .chars()
-        .take(max_chars)
-        .collect()
-}
-
-fn scan_pet_root(source: &str) -> Vec<PetCatalogEntry> {
-    let Ok(root) = pet_root(source) else {
-        return Vec::new();
-    };
-    let Ok(entries) = fs::read_dir(root) else {
-        return Vec::new();
-    };
-    // A user-controlled local directory must not make Settings perform an unbounded scan/decode.
-    // Collect a bounded candidate set first, sort it for a stable UI, and validate at most 256.
-    let mut directories = Vec::new();
-    for entry in entries.flatten().take(MAX_PET_CATALOG_SCAN_ENTRIES) {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if !file_type.is_dir() || file_type.is_symlink() {
-            continue;
-        }
-        let directory = entry.file_name().to_string_lossy().to_string();
-        if selector_parts(&format!("{source}:{directory}")).is_err() {
-            continue;
-        }
-        directories.push(directory);
-    }
-    directories.sort_by_key(|directory| directory.to_lowercase());
-    directories.dedup();
-
-    let catalog_source = match source {
-        "hara" => "hara-local",
-        "codex" => "codex-local",
-        _ => return Vec::new(),
-    };
-    let mut catalog = Vec::new();
-    for directory in directories.into_iter().take(MAX_PET_CATALOG_ENTRIES) {
-        let selector = format!("{source}:{directory}");
-        match read_pet(&selector) {
-            Ok(pet) => catalog.push(PetCatalogEntry {
-                selector,
-                id: display_text(pet.manifest.id.as_deref(), &directory, 120),
-                display_name: display_text(
-                    pet.manifest
-                        .display_name
-                        .as_deref()
-                        .or(pet.manifest.id.as_deref()),
-                    &directory,
-                    120,
-                ),
-                description: display_text(pet.manifest.description.as_deref(), "", 500),
-                source: catalog_source.to_string(),
-                sprite_version_number: Some(pet.version),
-                rows: Some(pet.rows),
-                compatible: true,
-                error: None,
-            }),
-            Err(error) => catalog.push(PetCatalogEntry {
-                selector,
-                id: directory.clone(),
-                display_name: directory,
-                description: String::new(),
-                source: catalog_source.to_string(),
-                sprite_version_number: None,
-                rows: None,
-                compatible: false,
-                error: Some(error.chars().take(300).collect()),
-            }),
-        }
-    }
-    catalog.sort_by(|a, b| {
-        a.display_name
-            .to_lowercase()
-            .cmp(&b.display_name.to_lowercase())
-    });
-    catalog
-}
-
-/// Enumerate only Hara's pet directory and Codex's documented local package directory. The renderer
-/// receives metadata, never arbitrary filesystem paths.
-#[tauri::command]
-fn list_pets() -> Vec<PetCatalogEntry> {
-    let mut pets = scan_pet_root("hara");
-    pets.extend(scan_pet_root("codex"));
-    pets
-}
-
-/// Return a validated image as a data URL. This deliberately avoids granting the pet webview a broad
-/// filesystem/asset-protocol scope; every read repeats the package-root, symlink, size, MIME and geometry
-/// checks above.
-#[tauri::command]
-fn read_pet_asset(selector: String) -> Result<PetAsset, String> {
-    use base64::Engine;
-    let pet = read_pet(&selector)?;
-    let bytes = fs::read(&pet.asset_path).map_err(|e| format!("read pet spritesheet: {e}"))?;
-    if bytes.len() as u64 > MAX_PET_ASSET_BYTES {
-        return Err("pet spritesheet is too large".into());
-    }
-    Ok(PetAsset {
-        data_url: format!(
-            "data:{};base64,{}",
-            pet.mime,
-            base64::engine::general_purpose::STANDARD.encode(bytes)
-        ),
-        sprite_version_number: pet.version,
-        columns: PET_SHEET_WIDTH / PET_FRAME_WIDTH,
-        rows: pet.rows,
-        frame_width: PET_FRAME_WIDTH,
-        frame_height: PET_FRAME_HEIGHT,
-    })
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -3513,8 +3209,6 @@ pub fn run() {
             pending_crash_report,
             discard_pending_crash_report,
             submit_crash_report,
-            list_pets,
-            read_pet_asset,
             renderer_ready
         ])
         .build(context)
@@ -4079,7 +3773,7 @@ mod attachment_path_tests {
 }
 
 #[cfg(test)]
-mod pet_tests {
+mod native_tests {
     use super::*;
 
     fn unscaled_work_area(rect: WindowRect) -> DisplayWorkArea {
@@ -4853,35 +4547,9 @@ mod pet_tests {
     }
 
     #[test]
-    fn selector_is_bound_to_one_catalog_child() {
-        assert_eq!(selector_parts("hara:mila").unwrap(), ("hara", "mila"));
-        assert!(selector_parts("codex:../mila").is_err());
-        assert!(selector_parts("codex:nested/mila").is_err());
-        assert!(selector_parts("other:mila").is_err());
-        assert!(selector_parts("codex:").is_err());
-    }
-
-    #[test]
-    fn spritesheet_path_rejects_escape_and_absolute_components_before_io() {
-        let dir = Path::new("/tmp/does-not-need-to-exist");
-        assert!(safe_asset_path(dir, "../secret.webp").is_err());
-        assert!(safe_asset_path(dir, "/tmp/secret.webp").is_err());
-        assert!(safe_asset_path(dir, "nested/../secret.webp").is_err());
-    }
-
-    #[test]
-    fn geometry_accepts_codex_v1_and_v2_only() {
-        assert_eq!(sprite_geometry(1536, 1872, None).unwrap(), (1, 9));
-        assert_eq!(sprite_geometry(1536, 2288, Some(2)).unwrap(), (2, 11));
-        assert!(sprite_geometry(1536, 2288, Some(1)).is_err());
-        assert!(sprite_geometry(1536, 2000, None).is_err());
-    }
-
-    #[test]
     fn only_the_main_window_uses_persistent_native_geometry() {
         assert!(should_track_window_state("main"));
-        assert!(!should_track_window_state("pet"));
-        assert!(!should_track_window_state("pet-chat"));
+        assert!(!should_track_window_state("panel"));
     }
 
     #[test]

@@ -53,8 +53,7 @@ Shipped: configurable module-dock IA (fresh assistant conversations + folded his
 threads + task console) · open-folder-as-project · bundled hara sidecar
 (zero-dependency) · first-run key onboarding · per-session model & thinking-effort switch · inline
 approvals · steer queue · notifications + dock badge · search / pin / rename / archive · `@file`
-mentions · optional non-focusable task-status pet with local Codex v1/v2 package compatibility ·
-i18n (en/zh) · a dedicated, default-visible Office surface for safe import, integrity checks, and
+mentions · i18n (en/zh) · a dedicated, default-visible Office surface for safe import, integrity checks, and
 revision history ·
 plain-language specialist work starters · signed auto-updates from GitHub Releases · notarized Developer ID macOS
 builds · a unified model switchboard with preset personal providers plus any number of user-added,

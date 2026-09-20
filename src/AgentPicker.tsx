@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentInfo } from "./client";
-import { mainAgentRef } from "./agent-office";
+import { mainAgentRef } from "./agent-session";
 import { AgentPortrait } from "./AgentPortrait";
 import { agentDisplayName, agentPublicTitle } from "./agent-visual";
 import "./AgentPicker.css";
@@ -12,7 +12,6 @@ interface AgentPickerProps {
   locale: "en" | "zh";
   disabled?: boolean;
   onSelect: (agentRef: string) => void;
-  onOpenOffice: () => void;
 }
 
 export default function AgentPicker({
@@ -22,7 +21,6 @@ export default function AgentPicker({
   locale,
   disabled,
   onSelect,
-  onOpenOffice,
 }: AgentPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -85,16 +83,6 @@ export default function AgentPicker({
         </span>
         <span className="agent-picker-trigger-meta" aria-hidden><b>{agents.length}</b><i>⌄</i></span>
       </button>
-      <button
-        type="button"
-        className="agent-picker-office"
-        title={locale === "zh" ? `打开 Agent 办公室 · ${agents.length} 位成员` : `Open Agent Office · ${agents.length} members`}
-        aria-label={locale === "zh" ? "打开 Agent 办公室" : "Open Agent Office"}
-        disabled={disabled}
-        onClick={onOpenOffice}
-      >
-        <span aria-hidden>◫</span><b>{agents.length}</b>
-      </button>
       {open ? (
         <div className="agent-picker-menu" role="dialog" aria-label={locale === "zh" ? "选择 Agent" : "Choose an Agent"}>
           <header>
@@ -102,15 +90,6 @@ export default function AgentPicker({
               <strong>{locale === "zh" ? "选择一起工作的 Agent" : "Choose an Agent"}</strong>
               <small>{locale === "zh" ? `${agents.length} 位成员 · 每个 Agent 拥有独立会话历史` : `${agents.length} members · Every Agent keeps separate history`}</small>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onOpenOffice();
-              }}
-            >
-              ◫ {locale === "zh" ? "进入办公室" : "Open office"}
-            </button>
           </header>
           <input
             autoFocus

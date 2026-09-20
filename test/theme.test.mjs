@@ -125,7 +125,7 @@ test("only follow-system mode subscribes to OS appearance changes and cleans up"
 });
 
 test("Desktop initializes theme before React and exposes an accessible three-way setting", () => {
-  for (const entry of ["main.tsx", "pet-chat-main.tsx"]) {
+  for (const entry of ["main.tsx"]) {
     const source = readFileSync(`${root}/src/${entry}`, "utf8");
     assert.match(source, /initializeThemePreference\(\);/);
     assert.ok(
@@ -148,8 +148,8 @@ test("Desktop initializes theme before React and exposes an accessible three-way
   }
   assert.match(daylight, /html\[data-theme="light"\]/);
   assert.match(daylight, /--bg:\s*#f3f0e8/);
-  assert.match(daylight, /\.workforce-surface/);
-  assert.match(daylight, /\.pet-chat/);
+  assert.doesNotMatch(daylight, /\.workforce-surface/);
+  assert.doesNotMatch(daylight, /\.pet-chat/);
   assert.match(daylight, /\.talent-market-shell/);
 });
 

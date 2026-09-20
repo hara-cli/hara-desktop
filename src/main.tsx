@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import PetOverlay from "./PetOverlay";
 import { ProviderSettingsPreview } from "./ProviderSettingsPreview";
 import { WorkStarter } from "./WorkStarter";
 import { initializeThemePreference } from "./theme";
@@ -13,15 +12,13 @@ import "./theme-light.css";
 initializeThemePreference();
 installAppContextMenuBoundary();
 const params = new URLSearchParams(window.location.search);
-const petMode = params.get("pet") === "1";
 const workbenchPreview = import.meta.env.DEV && params.get("preview") === "workbench";
 const providersPreview = import.meta.env.DEV && params.get("preview") === "providers";
 const talentPreview = import.meta.env.DEV && params.get("preview") === "talent";
 const automationPreview = import.meta.env.DEV && params.get("preview") === "automation";
 const TalentMarketPreview = React.lazy(() => import("./TalentMarket"));
 const AutomationPreview = React.lazy(() => import("./AutomationPreview"));
-const crashReportEnabled = !petMode && !workbenchPreview && !providersPreview && !talentPreview && !automationPreview;
-document.documentElement.classList.toggle("pet-mode", petMode);
+const crashReportEnabled = !workbenchPreview && !providersPreview && !talentPreview && !automationPreview;
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Hara renderer root is unavailable");
@@ -31,9 +28,7 @@ ReactDOM.createRoot(root).render(
     {crashReportEnabled && <CrashReportHost />}
     <RendererErrorBoundary>
       <RendererBootSignal>
-        {petMode ? (
-          <PetOverlay />
-        ) : automationPreview ? (
+        {automationPreview ? (
           <React.Suspense fallback={<div>Opening Automations…</div>}>
             <AutomationPreview locale={params.get("locale") === "en" ? "en" : "zh"} />
           </React.Suspense>
