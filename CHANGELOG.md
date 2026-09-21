@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.172 — 2026-09-22 — conversation-first Agent collaboration
+
+- Rework the main Desktop experience around Agent conversations: a lone Personal Space no longer consumes the
+  contact sidebar, ordinary Agent replies use an open chat layout, streaming follows only while the reader stays
+  near the bottom, and model, permission, and reasoning overrides move into optional runtime settings.
+- Add a bounded Agent collaboration surface for direct messages, task rooms, member lifecycle, and explicit
+  Codex or Claude Code delegation. Runtime grants, idempotent command receipts, session ownership, and Worktree
+  review remain controlled by the Hara Engine rather than the renderer.
+- Keep recoverable provider and organization authorization failures inside the affected conversation with a
+  focused next action instead of leaving an empty or permanently waiting message.
+- Bundle Hara CLI `0.179.0` at exact commit `77e396d4fefd9982fda9b086adf70de9d72f5468`, including Agent rooms,
+  governed external coding workers, typed Serve collaboration methods, and provider-independent Personal naming.
+
 ## 0.1.171 — 2026-09-17 — restore Windows WeChat and Feishu replies
 
 - Bundle Hara CLI `0.178.3` at exact commit `83d8ec345c68ebebd056202ff7c160eae47bcf45`.
