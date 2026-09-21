@@ -28,6 +28,28 @@ test("long task guidance scrolls with the transcript without displacing the comp
     "the transcript remains before the independently sized composer");
 });
 
+test("streaming chat follows only while the reader stays near the latest message", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const styles = readFileSync(`${root}/src/App.css`, "utf8");
+
+  assert.match(app, /const activeTimeline = active \? transcripts\[active\] : undefined/,
+    "background sessions cannot trigger the active conversation's follow-scroll effect");
+  assert.match(app, /scroller\.scrollHeight - scroller\.scrollTop - scroller\.clientHeight/);
+  assert.match(app, /remaining <= 96/,
+    "the reader keeps control after scrolling away from the latest message");
+  assert.match(app, /scroller\.scrollTop = scroller\.scrollHeight/,
+    "streaming updates use one animation-frame-coalesced container scroll");
+  assert.doesNotMatch(app, /bottomRef\.current\?\.scrollIntoView\(\{ behavior: "smooth" \}\)/,
+    "every streamed delta must not restart a smooth-scroll animation");
+  assert.match(app, /timelineHasNewContent[\s\S]*?查看新消息/,
+    "paused follow-scroll exposes an explicit return-to-latest action");
+  assert.match(styles, /\.timeline-new-content-anchor/);
+  assert.match(styles, /\.chat\.im \.assistant-message > \.msg\s*\{[\s\S]*?background:\s*transparent/,
+    "Agent replies read as open conversation text instead of stacked control cards");
+  assert.match(styles, /\.chat\.im \.msg\.user\s*\{[\s\S]*?max-width:\s*min\(72%, 600px\)/,
+    "user bubbles stay readable on wide Desktop windows");
+});
+
 test("manual task commands are disclosed on demand and bounded when expanded", () => {
   const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
   const styles = readFileSync(`${root}/src/App.css`, "utf8");

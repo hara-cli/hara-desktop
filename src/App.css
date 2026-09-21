@@ -663,11 +663,31 @@ button.deny {
 }
 .chat.im .scroll {
   gap: 14px;
-  padding: 20px 26px;
+  padding-block: 22px;
+  padding-inline: max(26px, calc((100% - 840px) / 2));
 }
 .chat.im .msg {
   border-radius: 16px;
   line-height: 1.6;
+}
+.chat.im .msg.user {
+  max-width: min(72%, 600px);
+  border-radius: 16px 16px 6px 16px;
+  padding: 10px 14px;
+}
+.chat.im .assistant-message {
+  width: min(100%, 840px);
+  max-width: 840px;
+}
+.chat.im .assistant-message > .msg {
+  max-width: 100%;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 14px;
+  line-height: 1.68;
 }
 .chat.im .tool,
 .chat.im .notice {
@@ -1414,10 +1434,42 @@ button.deny {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 18px 22px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.timeline-new-content-anchor {
+  position: relative;
+  z-index: 14;
+  height: 0;
+  flex: 0 0 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.timeline-new-content-anchor > button {
+  position: absolute;
+  bottom: 8px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg2) 94%, var(--accent) 6%);
+  color: var(--fg);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
+  font-size: 11px;
+  font-weight: 650;
+  pointer-events: auto;
+}
+.timeline-new-content-anchor > button:hover {
+  filter: none;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--bg3) 90%, var(--accent) 10%);
 }
 .task-progress {
   flex: 0 0 auto;
@@ -2039,7 +2091,7 @@ button.deny {
 }
 .workbench-inbox-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 3px;
   border: 1px solid var(--border);
@@ -2159,6 +2211,36 @@ button.deny {
   background: transparent;
   color: var(--fg);
   text-align: left;
+}
+.inbox-contact-shell:has(.inbox-agent-history) .inbox-contact {
+  padding-right: 38px;
+}
+.inbox-agent-history {
+  color: var(--dim);
+}
+.conversation-destination {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+.conversation-destination > b {
+  color: var(--fg);
+}
+.workspace-context-chip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 180px;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--dim);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .inbox-contact:hover,
 .inbox-contact:focus-visible {
@@ -3003,9 +3085,9 @@ select {
 .inputbar .composer-input-row textarea {
   width: 100%;
   min-width: 0;
-  height: 72px;
-  min-height: 52px;
-  max-height: 180px;
+  height: 52px;
+  min-height: 44px;
+  max-height: 144px;
   padding: 7px 2px;
   border: 0;
   border-radius: 0;
@@ -3095,6 +3177,10 @@ select {
   font-size: 9px;
 }
 .model-route.personal {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--dim);
+}
+.model-route.pinned {
   background: color-mix(in srgb, var(--fg) 6%, transparent);
   color: var(--dim);
 }
@@ -3212,6 +3298,39 @@ select {
 .model-menu-head strong {
   display: block;
   margin-bottom: 8px;
+}
+.runtime-menu-scope {
+  display: block;
+  margin: -4px 0 10px;
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.runtime-menu-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.runtime-menu-controls label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.runtime-menu-controls label > span {
+  color: var(--dim);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.runtime-menu-controls .approval-select,
+.runtime-menu-controls .effort-select {
+  width: 100%;
+  max-width: none;
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--bg3) 82%, transparent);
+  color: var(--fg);
 }
 .model-menu-status {
   margin: -2px 0 9px;

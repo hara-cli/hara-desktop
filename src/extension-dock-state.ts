@@ -15,10 +15,11 @@ export type ExtensionSurfaceKind =
   | "browser"
   | "terminal"
   | "files"
+  | "agents"
   | "review"
   | "capability";
 
-export type WorkbenchToolKind = "terminal" | "browser" | "files";
+export type WorkbenchToolKind = "terminal" | "browser" | "files" | "agents";
 export type ExtensionDockAddKind = WorkbenchToolKind;
 
 export type InteractiveExtensionPlace = "chat" | "projects";

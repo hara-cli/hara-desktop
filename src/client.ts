@@ -223,6 +223,74 @@ export interface AgentInfo {
   revision?: string;
 }
 
+export type AgentTeamRuntime = "hara" | "codex" | "claude";
+export type AgentTeamStatus = "queued" | "working" | "stopping" | "completed" | "failed" | "cancelled" | "interrupted";
+
+export interface AgentTeamMember {
+  id: string;
+  path: string;
+  name: string;
+  parentPath: string;
+  role?: string;
+  runtime: AgentTeamRuntime;
+  /** Coding runtimes this native Hara Agent may launch after an explicit approval. */
+  runtimeGrants: Array<Exclude<AgentTeamRuntime, "hara">>;
+  status: AgentTeamStatus;
+  generation: number;
+  createdAt: string;
+  updatedAt: string;
+  queuedAt: string;
+  startedAt?: string;
+  endedAt?: string;
+  model?: string;
+  usage?: { input: number; output: number; lastInput?: number };
+  pendingMessages: number;
+  hasResult: boolean;
+  workspace?: {
+    mode: "isolated-write";
+    state: "pending" | "ready" | "changes" | "applying" | "applied" | "rejected" | "error";
+    changedPaths?: string[];
+    patchBytes?: number;
+  };
+}
+
+export interface AgentRoom {
+  id: string;
+  name: string;
+  ownerPath: string;
+  participantPaths: string[];
+  createdAt: string;
+  updatedAt: string;
+  closedAt?: string;
+  messageCount: number;
+}
+
+export interface AgentRoomMessage {
+  id: string;
+  sourcePath: string;
+  recipientPaths: string[];
+  content: string;
+  createdAt: string;
+}
+
+export interface AgentRoomDetails extends AgentRoom {
+  messages: AgentRoomMessage[];
+}
+
+export interface SessionAgentTeam {
+  sessionId: string;
+  agents: AgentTeamMember[];
+  rooms: AgentRoom[];
+  budget?: {
+    generationsStarted: number;
+    providerRounds: number;
+    toolCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    exhausted: boolean;
+  };
+}
+
 export interface AgentBlueprintInstallInput {
   id: string;
   version: string;
@@ -1556,6 +1624,13 @@ export interface WorkforceStateEvent {
 
 export type ServerEvent =
   | { method: "event.turn_start"; sessionId: string; taskId?: string; turnId?: string }
+  | {
+      method: "event.session_changed";
+      sessionId: string;
+      change: string;
+      historyRefreshRequired?: boolean;
+      agentRef?: string;
+    }
   | ({ method: "event.task_state" } & TaskLifecycleEvent)
   | ({ method: "event.workforce_state" } & WorkforceStateEvent)
   | { method: "event.text"; sessionId: string; delta: string }
@@ -1563,6 +1638,7 @@ export type ServerEvent =
   | { method: "event.tool"; sessionId: string; name: string; preview: string }
   | { method: "event.diff"; sessionId: string; text: string }
   | { method: "event.notice"; sessionId: string; text: string; category?: "output" }
+  | { method: "event.agent_state"; sessionId: string; agent: AgentTeamMember }
   | {
       method: "event.surface";
       sessionId: string;
@@ -1677,6 +1753,7 @@ export class HaraClient {
   private methods = new Set<string>();
   private events = new Set<string>();
   private features = new Set<string>();
+  private eventListeners = new Set<(event: ServerEvent) => void>();
   private terminalListeners = new Set<(event: ExternalTerminalEvent) => void>();
   private terminalNextInputSequence = new Map<string, number>();
   private terminalInputQueues = new Map<string, Promise<void>>();
@@ -1767,6 +1844,7 @@ export class HaraClient {
       for (const listener of this.terminalListeners) listener(event);
     }
     this.onEvent(event);
+    for (const listener of this.eventListeners) listener(event);
   }
 
   private acceptServerEvent(event: ServerEvent): void {
@@ -2024,6 +2102,10 @@ export class HaraClient {
     this.terminalListeners.add(listener);
     return () => this.terminalListeners.delete(listener);
   }
+  onServerEvent(listener: (event: ServerEvent) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
   /** Resolve only after the transport has actually closed, including the close-before-wait race. */
   waitForClose(timeoutMs = 4_000): Promise<void> {
     if (!this.ws) return Promise.resolve();
@@ -2221,6 +2303,84 @@ export class HaraClient {
       if (e?.code === -32601) return null;
       throw e;
     }
+  }
+  async listSessionAgentTeam(sessionId: string): Promise<SessionAgentTeam | null> {
+    if (this.methods.size > 0 && !this.supports("session.agents.list")) return null;
+    try {
+      return await this.call("session.agents.list", { sessionId });
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  spawnSessionAgent(input: {
+    sessionId: string;
+    taskName: string;
+    message: string;
+    agentRef?: string;
+    runtime?: AgentTeamRuntime;
+    runtimeGrants?: Array<Exclude<AgentTeamRuntime, "hara">>;
+    workspace?: "read-only" | "isolated-write";
+    commandId?: string;
+  }) {
+    return this.call<{ sessionId: string; agent: AgentTeamMember }>("session.agents.spawn", {
+      ...input,
+      commandId: input.commandId ?? crypto.randomUUID(),
+    });
+  }
+  messageSessionAgent(input: {
+    sessionId: string;
+    target: string;
+    message: string;
+    wake?: boolean;
+    commandId?: string;
+  }) {
+    return this.call<{ sessionId: string; agent: AgentTeamMember }>("session.agents.message", {
+      ...input,
+      commandId: input.commandId ?? crypto.randomUUID(),
+    });
+  }
+  interruptSessionAgent(sessionId: string, target: string) {
+    return this.call<{ sessionId: string; agent: AgentTeamMember }>("session.agents.interrupt", {
+      sessionId,
+      target,
+    });
+  }
+  createAgentRoom(input: {
+    sessionId: string;
+    name: string;
+    members: string[];
+    commandId?: string;
+  }) {
+    return this.call<{ sessionId: string; room: AgentRoom }>("session.agent-rooms.create", {
+      ...input,
+      commandId: input.commandId ?? crypto.randomUUID(),
+    });
+  }
+  readAgentRoom(sessionId: string, room: string, limit = 50) {
+    return this.call<{ sessionId: string; room: AgentRoomDetails }>("session.agent-rooms.read", {
+      sessionId,
+      room,
+      limit,
+    });
+  }
+  postAgentRoom(input: {
+    sessionId: string;
+    room: string;
+    message: string;
+    wake?: boolean;
+    commandId?: string;
+  }) {
+    return this.call<{ sessionId: string; room: AgentRoomDetails }>("session.agent-rooms.post", {
+      ...input,
+      commandId: input.commandId ?? crypto.randomUUID(),
+    });
+  }
+  closeAgentRoom(sessionId: string, room: string) {
+    return this.call<{ sessionId: string; room: AgentRoom }>("session.agent-rooms.close", {
+      sessionId,
+      room,
+    });
   }
   async updateAgentProfile(input: {
     ref: string;

@@ -4,6 +4,9 @@
 > 决策日期：2026-09-20
 > 适用范围：Hara Desktop、`hara serve` 的桌面协议与未来 Mobile 投影
 
+> 后续对“一个 Agent 一条可见对话、底层保留多段 Session 与工作区边界”的修订见
+> `ADR-UI-003_AGENT_CONVERSATION_WORKSPACE.md`。
+
 ## 背景
 
 Hara Desktop 曾同时提供桌宠、游戏化 Agent 办公室、会话、任务、工具、交付物和审批。前两项

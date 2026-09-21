@@ -246,6 +246,7 @@ function ReviewSurface({ item, copy }: { item: ReviewExtension; copy: WorkbenchT
 
 export default function WorkbenchToolSurface(props: WorkbenchToolSurfaceProps) {
   if (props.item.type === "review") return <ReviewSurface item={props.item} copy={props.copy} />;
+  if (props.item.tool === "agents") return null;
   if (props.item.tool === "terminal") return <TerminalSurface {...props} />;
   if (props.item.tool === "browser") return <BrowserSurface {...props} item={props.item} />;
   return <FilesSurface {...props} item={props.item} />;

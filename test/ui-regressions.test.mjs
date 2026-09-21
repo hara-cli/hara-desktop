@@ -128,6 +128,11 @@ test("expired company Spaces stay visible for recovery but cannot be selected", 
   const switcher = readFileSync(`${root}/src/SpaceSwitcher.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   assert.match(client, /accessState\?: OrganizationAccessState/);
+  assert.match(switcher, /directory\.spaces\.length === 1 && active\.kind === "personal"/,
+    "a lone Personal Space stays an engine boundary without occupying the conversation sidebar");
+  assert.match(switcher, /当前工作区已固定空间/);
+  assert.doesNotMatch(switcher, /当前项目已固定空间/,
+    "the Space boundary no longer reintroduces Project as a product concept");
   assert.match(switcher, /space\.accessState === "expired" \|\| space\.accessState === "invalid"/);
   assert.match(switcher, /spaceUnavailable && space\.id !== directory\.activeId/);
   assert.match(switcher, /重新注册后可切换/);
@@ -619,6 +624,15 @@ test("the model picker stages busy selections and confirms them before the next 
   assert.match(app, /!activeModelUnavailable[\s\S]*composerCanSend/, "a stale session model cannot dispatch from the composer");
   assert.match(app, /切换到 \$\{activeModelInfo\.recommendedModel\}/, "the live-authorized replacement is a one-click action");
   assert.match(app, /activeSession && activeModelInfo\?\.currentAvailable !== false/, "a removed model is not presented as a normal picker option");
+});
+
+test("the composer keeps the global route implicit and exposes conversation overrides on demand", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+
+  assert.match(app, /默认继承全局模型连接/);
+  assert.match(app, /"运行设置"\s*:\s*"Runtime"/);
+  assert.match(app, /"本对话已固定"\s*:\s*"Pinned here"/);
+  assert.doesNotMatch(app, /<span className="model-pill-main">\{displayedModel\}<\/span>/);
 });
 
 test("settings use shared page templates and keep Desktop, engine, and update state distinct", () => {
@@ -1319,7 +1333,8 @@ test("a resumed conversation exposes its persisted profile inside the searchable
   assert.match(client, /resumeSession[\s\S]*profileId\?: string/);
   assert.match(client, /listModels[\s\S]*profileId\?: string/);
   assert.match(app, /activeModelInfo\?\.profileId/);
-  assert.match(app, /className=\{`model-route/);
+  assert.match(app, /currentRouteBadgeLabel/);
+  assert.match(app, /className="model-route pinned"/);
   assert.match(app, /管理模型与连接/);
   assert.match(css, /\.model-route/);
 });
@@ -1530,7 +1545,7 @@ test("the composer has per-session attachments, bounded folders, and capability-
   assert.match(app, /composer-shell \$\{composerDragActive \? "drop-active" : ""\}/);
   assert.match(app, /松开后加入本轮上下文/);
   assert.match(app, /只建立有界清单，不整目录注入模型/);
-  assert.match(app, /打开为新项目/, "persistent workspace and one-turn folder context are distinguished");
+  assert.match(app, /切换 Agent 工作区/, "persistent workspace and one-turn folder context are distinguished");
   assert.match(app, /disabled=\{!activeDraftCanSend\}/, "an attachment-only compatible turn can be sent");
   assert.match(app, /activeAttachmentIssue/, "incompatible image routes block send without deleting the draft");
   assert.match(app, /自动调度也不保证图片会交给多模态模型/,
@@ -1545,6 +1560,10 @@ test("the composer has per-session attachments, bounded folders, and capability-
   assert.match(client, /settings\.vision\.save/, "vision-first settings use an explicit engine RPC");
   assert.match(app, /modelSearch/);
   assert.match(app, /visibleModelEntries/);
+  assert.match(app, /className="composer-menu model-menu"[\s\S]*?className="runtime-menu-controls"[\s\S]*?approval-select[\s\S]*?effort-select/,
+    "per-conversation permission and reasoning overrides stay inside the on-demand runtime menu");
+  assert.match(app, /if \(!cx \|\| cx\.pct < 70\) return null/,
+    "context usage remains quiet until it becomes operationally relevant");
   assert.match(client, /features\?: string\[\]/);
   assert.match(client, /supportsFeature\(feature: string\)/);
   assert.match(client, /attachments\?: SessionAttachmentIntent\[\]/);
@@ -1786,7 +1805,7 @@ test("the capability directory keeps package sources and reusable skills distinc
   );
   assert.match(app, /"core\.office", title: t\("inboxDeliverables"\)/);
   assert.match(app, /id === "core\.office"[\s\S]*showDeliverables\(\)/);
-  assert.match(app, /workbench-deliverables-tab/);
+  assert.doesNotMatch(app, /workbench-deliverables-tab/, "Deliverables are on-demand Agent output, not a Workbench contact tab");
   assert.match(app, /importArtifactFile\(kind, "workbench"\)/);
   assert.match(app, /activeOrganizationConnection/);
   assert.match(app, /activeOrganizationDesk/);

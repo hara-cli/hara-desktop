@@ -32,7 +32,13 @@ export default function SpaceSwitcher({ directory, locale, switching, onSelect }
   }, [open]);
 
   if (!directory || !active) return null;
+  // A lone Personal Space is a security boundary, not a navigation choice. Keep it in the
+  // underlying directory while giving the scarce conversation sidebar back to the contact list.
+  if (directory.spaces.length === 1 && active.kind === "personal") return null;
   const locked = directory.switchLocked;
+  const activeName = active.kind === "personal"
+    ? (locale === "zh" ? "个人空间" : "Personal Space")
+    : active.name;
   const unavailable = (space: SpaceDirectory["spaces"][number]): boolean =>
     space.kind === "organization" && (space.accessState === "expired" || space.accessState === "invalid");
   return (
@@ -43,7 +49,7 @@ export default function SpaceSwitcher({ directory, locale, switching, onSelect }
         aria-haspopup="listbox"
         aria-expanded={open}
         title={locked
-          ? (locale === "zh" ? "当前项目已固定空间" : "This project pins its Space")
+          ? (locale === "zh" ? "当前工作区已固定空间" : "This workspace pins its Space")
           : (locale === "zh" ? "切换个人 / 公司空间" : "Switch Personal / Company Space")}
         disabled={switching}
         onClick={() => setOpen((value) => !value)}
@@ -52,8 +58,10 @@ export default function SpaceSwitcher({ directory, locale, switching, onSelect }
           {active.kind === "personal" ? "P" : active.name.slice(0, 1).toUpperCase()}
         </span>
         <span className="space-switcher-copy">
-          <small>{active.kind === "personal" ? (locale === "zh" ? "个人空间" : "Personal Space") : (locale === "zh" ? "公司空间" : "Company Space")}</small>
-          <strong>{active.name}</strong>
+          <strong>{activeName}</strong>
+          {active.kind === "organization" ? (
+            <small>{locale === "zh" ? "公司托管" : "Company managed"}</small>
+          ) : null}
         </span>
         <span className="space-switcher-chevron" aria-hidden>{locked ? <IconLock size={13} /> : switching ? "…" : <IconChevronDown size={13} />}</span>
       </button>

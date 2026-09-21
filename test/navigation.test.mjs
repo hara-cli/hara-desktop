@@ -267,22 +267,26 @@ test("Groups is a native organization work surface with no renderer-owned transp
   );
 });
 
-test("Workbench exposes fresh conversations plus isolated Agent, project, and external-session inbox facets", () => {
+test("Workbench exposes Agent contacts and external sessions while project history stays an internal compatibility facet", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const inbox = readFileSync(`${root}/src/workbench-inbox.ts`, "utf8");
+  const tabsStart = app.indexOf('className="workbench-inbox-tabs"');
+  const tabsEnd = app.indexOf("</div>", tabsStart);
+  const visibleTabs = app.slice(tabsStart, tabsEnd);
 
   assert.match(
     app,
     /const startNewAssistantConversation[\s\S]*await newSession\(`\$\{home\}\/\.hara\/workspace`\)/,
   );
-  assert.match(
-    app,
-    /onClick=\{\(\) => void startNewAssistantConversation\(\)\}/,
-  );
+  assert.doesNotMatch(app, /新任务|New task/,
+    "the contact directory does not expose a hidden Session operation as a global task action");
+  assert.match(app, /开始新话题|Start a fresh topic/,
+    "the history detail uses an explicit conversation action instead of task/session terminology");
   assert.match(app, /workbenchInboxMode === "agents"/);
-  assert.match(app, /workbenchInboxMode === "projects"/);
   assert.match(app, /workbenchInboxMode === "external"/);
-  assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "agent", id: agent\.ref \}\)/);
+  assert.doesNotMatch(visibleTabs, /inboxProjects/, "Project is not a first-class Workbench tab");
+  assert.match(app, /void openAgentConversation\(agent\.ref, targetCwd\)/);
+  assert.match(app, /inbox-agent-history/, "older execution segments stay available without becoming contacts");
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "project", id: cwd \}\)/);
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "external", id: session\.id \}\)/);
   assert.match(app, /className="inbox-back"/);

@@ -90,6 +90,9 @@ function DockIcon({ name }: { name: "maximize" | "restore" | "popout" | "close" 
 }
 
 function DockToolIcon({ name }: { name: ExtensionDockAddItem["id"] }) {
+  if (name === "agents") {
+    return <svg viewBox="0 0 20 20" aria-hidden><circle cx="7" cy="8" r="3" /><circle cx="14" cy="9" r="2" /><path d="M2.5 16c.6-3 2.2-4.5 4.7-4.5s4.1 1.5 4.7 4.5M12 13c2.7-.5 4.5.5 5.5 3" /></svg>;
+  }
   if (name === "terminal") {
     return <svg viewBox="0 0 20 20" aria-hidden><rect x="3" y="4" width="14" height="12" rx="2" /><path d="m6 8 2 2-2 2M10 12h4" /></svg>;
   }

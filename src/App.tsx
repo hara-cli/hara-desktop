@@ -216,6 +216,7 @@ import {
   type ExtensionDockAddKind,
 } from "./extension-dock-state";
 import { userVisibleText } from "./user-visible-text";
+import { turnFailureMessage } from "./turn-failure";
 import {
   loadPresentationSurface,
   presentationErrorKey,
@@ -227,6 +228,7 @@ import {
   IconChat,
   IconChevronDown,
   IconClose,
+  IconCog,
   IconDocument,
   IconEdit,
   IconFolder,
@@ -301,6 +303,7 @@ const loadGroups = () => import("./Groups");
 const loadAutomations = () => import("./Automations");
 const loadExtensionDock = () => import("./ExtensionDock");
 const loadWorkbenchToolSurface = () => import("./WorkbenchToolSurface");
+const loadAgentCollaborationSurface = () => import("./AgentCollaborationSurface");
 const loadTalentMarket = () => import("./TalentMarket");
 const loadOfficeHome = () => import("./OfficeHome").then((module) => ({
   default: module.OfficeHome,
@@ -345,6 +348,7 @@ const ExtensionViewLauncher = lazy(() =>
     default: module.ExtensionViewLauncher,
   })));
 const WorkbenchToolSurface = lazy(loadWorkbenchToolSurface);
+const AgentCollaborationSurface = lazy(loadAgentCollaborationSurface);
 const TalentMarket = lazy(loadTalentMarket);
 const OfficeHome = lazy(loadOfficeHome);
 const ArtifactWorkbench = lazy(loadArtifactWorkbench);
@@ -1366,6 +1370,11 @@ export default function App() {
   const groupsSwitchingProfileRef = useRef("");
   const [groupsSwitchingProfileId, setGroupsSwitchingProfileId] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const timelineFollowRef = useRef(true);
+  const timelineScrollFrameRef = useRef<number | null>(null);
+  const timelineLastSessionRef = useRef<string | null>(null);
+  const timelineLastItemCountRef = useRef(0);
+  const [timelineHasNewContent, setTimelineHasNewContent] = useState(false);
   const activeRef = useRef<string | null>(null);
   useEffect(() => {
     activeRef.current = active;
@@ -1395,6 +1404,7 @@ export default function App() {
     void invoke("set_badge", { count: n > 0 ? n : null }).catch(() => {});
   }, [unread]);
   const sessionsRef = useRef<SessionInfo[]>([]);
+  const refreshSessionsRef = useRef<() => Promise<void>>(async () => {});
   const quarantineCompanySession = useCallback((
     sessionId: string,
     reason: string,
@@ -1558,9 +1568,7 @@ export default function App() {
     setSessionBusy(sessionId, live);
   }, [setSessionBusy]);
   const [q, setQ] = useState("");
-  const [workbenchInboxMode, setWorkbenchInboxMode] = useState<WorkbenchInboxMode>(() => (
-    zone === "projects" ? "projects" : "agents"
-  ));
+  const [workbenchInboxMode, setWorkbenchInboxMode] = useState<WorkbenchInboxMode>("agents");
   const [workbenchInboxTarget, setWorkbenchInboxTarget] = useState<WorkbenchInboxTarget | null>(null);
   const [externalSources, setExternalSources] = useState<ExternalSessionSourceInfo[] | null>(null);
   const [externalSessions, setExternalSessions] = useState<ExternalSessionInfo[]>([]);
@@ -2841,6 +2849,11 @@ export default function App() {
         flushToolOutput(e.sessionId);
       }
       switch (e.method) {
+        case "event.session_changed":
+          // Internal Agent routing can create a new execution segment without a Desktop RPC initiating
+          // it. Refresh the contact projection so the stable Agent row immediately points at that segment.
+          void refreshSessionsRef.current().catch(() => {});
+          break;
         case "event.turn_start":
           if (personalLocalSurfaceSession(e.sessionId)) {
             presentationSurfaceTurnsRef.current[e.sessionId] = {
@@ -3125,12 +3138,14 @@ export default function App() {
             resolvePendingUser(e.sessionId, dispatch.pendingId, true);
           }
           delete activeTurnsRef.current[e.sessionId];
+          const failureMessage = turnFailureMessage(e.error, e.status, locale);
           push(e.sessionId, (items) => [
             ...reconcileTerminalReply(items, e.reply).map((item): ConversationItem =>
               item.kind === "approval" && !item.answered
                 ? { ...item, answered: "expired" }
                 : item,
             ),
+            ...(failureMessage ? [{ kind: "notice" as const, text: failureMessage }] : []),
             { kind: "end", usage: e.usage },
           ]);
           setSessionBusy(e.sessionId, false);
@@ -3665,9 +3680,55 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+  const activeTimeline = active ? transcripts[active] : undefined;
+  const activeTimelineTask = active ? taskStates[active] : undefined;
+  const activeTimelineBusy = active ? !!busy[active] : false;
+  const scrollTimelineToLatest = useCallback(() => {
+    timelineFollowRef.current = true;
+    setTimelineHasNewContent(false);
+    if (timelineScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(timelineScrollFrameRef.current);
+    }
+    timelineScrollFrameRef.current = window.requestAnimationFrame(() => {
+      timelineScrollFrameRef.current = null;
+      const scroller = bottomRef.current?.parentElement;
+      if (!scroller) return;
+      scroller.scrollTop = scroller.scrollHeight;
+    });
+  }, []);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcripts, active]);
+    const scroller = bottomRef.current?.parentElement;
+    if (!scroller) return;
+    const updateFollowState = () => {
+      const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      const followsLatest = remaining <= 96;
+      timelineFollowRef.current = followsLatest;
+      if (followsLatest) setTimelineHasNewContent(false);
+    };
+    updateFollowState();
+    scroller.addEventListener("scroll", updateFollowState, { passive: true });
+    return () => scroller.removeEventListener("scroll", updateFollowState);
+  }, [active]);
+  useEffect(() => {
+    const itemCount = activeTimeline?.length ?? 0;
+    const sessionChanged = timelineLastSessionRef.current !== active;
+    const ownMessageAdded = !sessionChanged
+      && itemCount > timelineLastItemCountRef.current
+      && activeTimeline?.[itemCount - 1]?.kind === "user";
+    if (sessionChanged || ownMessageAdded) timelineFollowRef.current = true;
+    if (timelineFollowRef.current) {
+      scrollTimelineToLatest();
+    } else if (itemCount > timelineLastItemCountRef.current) {
+      setTimelineHasNewContent(true);
+    }
+    timelineLastSessionRef.current = active;
+    timelineLastItemCountRef.current = itemCount;
+  }, [active, activeTimeline, activeTimelineBusy, activeTimelineTask, scrollTimelineToLatest]);
+  useEffect(() => () => {
+    if (timelineScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(timelineScrollFrameRef.current);
+    }
+  }, []);
 
   // ambient automation counter: automated sessions updated since last seen marker
   useEffect(() => {
@@ -3754,6 +3815,7 @@ export default function App() {
     sessionsRef.current = list.sessions;
     setSessions(list.sessions);
   };
+  refreshSessionsRef.current = refreshSessions;
 
   const saveAgentProfile = async (
     profile: Parameters<HaraClient["updateAgentProfile"]>[0]["profile"],
@@ -4212,7 +4274,7 @@ export default function App() {
     if (!c) return;
     const session = sessionsRef.current.find((candidate) => candidate.id === id);
     if (session && workbenchInboxMode === "external") {
-      setWorkbenchInboxMode(sessionPlace(session) === "projects" ? "projects" : "agents");
+      setWorkbenchInboxMode("agents");
       setWorkbenchInboxTarget(null);
     }
     const directory = spaceDirectoryRef.current;
@@ -4643,10 +4705,18 @@ export default function App() {
   };
 
   const openProject = async () => {
-    const dir = await openDialog({ directory: true, title: t("openProject") });
+    const source = sessionsRef.current.find((session) => session.id === activeRef.current);
+    const dir = await openDialog({
+      directory: true,
+      title: locale === "zh" ? "选择 Agent 工作区" : "Choose an Agent workspace",
+    });
     if (typeof dir !== "string" || !dir) return;
+    // Workspace is an execution boundary behind the current Agent contact, not a separate product
+    // destination. Preserve the Agent identity while starting a fresh workspace-bound Session segment.
+    setWorkbenchInboxMode("agents");
+    setWorkbenchInboxTarget(null);
     if (!setZone("projects")) return;
-    const sessionId = await newSession(dir);
+    const sessionId = await newSession(dir, mainAgentRef(source?.agentRef));
     if (sessionId) rememberProject(dir);
   };
 
@@ -6747,6 +6817,7 @@ export default function App() {
   };
   const scopedCatalogAgents = agentCatalog?.agents.filter((agent) => agent.spaceId === activeSpaceId) ?? [];
   const availableAgents = scopedCatalogAgents.length ? scopedCatalogAgents : [fallbackMainAgent];
+  const activeAgent = availableAgents.find((agent) => agent.ref === mainAgentRef(activeSession?.agentRef));
   const hiredBlueprintIds = availableAgents.flatMap((agent) => agent.blueprint?.id ? [agent.blueprint.id] : []);
   const profileAgent = profileAgentRef
     ? availableAgents.find((agent) => agent.ref === profileAgentRef)
@@ -7096,7 +7167,16 @@ export default function App() {
       {/* the permanent target anchor — you always know where this message lands */}
       <div className="anchor">
         {temperament === "im" ? (
-          <span>{t("anchorAssistant")}</span>
+          <span className="conversation-destination">
+            {t("anchorAssistant")}
+            <b>{activeAgent ? agentDisplayName(activeAgent) : "Hara"}</b>
+            {activeSession ? (
+              <small className="workspace-context-chip" title={activeSession.cwd}>
+                <IconFolder size={12} />
+                {basename(activeSession.cwd)}
+              </small>
+            ) : null}
+          </span>
         ) : (
           <span>
             {t("anchorRepo")}
@@ -7177,28 +7257,15 @@ export default function App() {
             <WorkStarter
               locale={locale}
               busy={starterBusy}
-              apps={([
-                {
-                  id: "core.projects",
-                  title: t("zoneProjects"),
-                  description: t("moduleProjectsDescription"),
-                  icon: "project",
-                  source: "Hara",
-                },
-                ...pluginNavigation.slice(0, 6).map((contribution): WorkbenchApp => ({
+              apps={pluginNavigation.slice(0, 6).map((contribution): WorkbenchApp => ({
                   id: contribution.id,
                   title: contribution.title,
                   description: contribution.description || contribution.plugin,
                   icon: workbenchAppIconForPanel(contribution),
                   source: contribution.plugin,
                   disabled: !sessions.some((session) => sessionPlace(session) === "projects"),
-                })),
-              ] satisfies WorkbenchApp[])}
+                }))}
               onOpenApp={(appId) => {
-                if (appId === "core.projects") {
-                  void openProject();
-                  return;
-                }
                 const contribution = pluginNavigationById.get(appId);
                 const plugin = contribution
                   ? pluginsRef.current?.find((candidate) => candidate.name === contribution.plugin)
@@ -7262,6 +7329,14 @@ export default function App() {
               ))}
             </div>
           )}
+          {timelineHasNewContent ? (
+            <div className="timeline-new-content-anchor">
+              <button type="button" onClick={scrollTimelineToLatest}>
+                <span aria-hidden>↓</span>
+                {locale === "zh" ? "查看新消息" : "Jump to new messages"}
+              </button>
+            </div>
+          ) : null}
           <div className="inputbar">
             {ac.open && (
               <div className="fileac">
@@ -7284,19 +7359,8 @@ export default function App() {
                   </strong>
                 </div>
               ) : null}
+              {activeComposerWorkObject || pendingAttachments.length > 0 ? (
               <div className="composer-context-row">
-                {activeSession && (
-                  <span
-                    className="composer-workspace"
-                    title={activeSession.cwd}
-                  >
-                    <span aria-hidden="true">▱</span>
-                    {basename(activeSession.cwd)}
-                    <span className="composer-workspace-label">
-                      {locale === "zh" ? "工作区" : "workspace"}
-                    </span>
-                  </span>
-                )}
                 {activeComposerWorkObject && (
                   <span
                     className="composer-active-work-object"
@@ -7336,6 +7400,7 @@ export default function App() {
                   </span>
                 ))}
               </div>
+              ) : null}
               {activeReadOnlySession && (
                 <div className="composer-readonly-warning" role="status">
                   <span>
@@ -7442,8 +7507,8 @@ export default function App() {
                         ? "这是只读历史；请选择连接并复制上下文后继续"
                         : "Read-only history; choose a connection and copy context to continue")
                     : locale === "zh"
-                      ? "描述要做什么；可粘贴图片，或用 + / @ 添加上下文…"
-                      : "Describe the task; paste an image, or use + / @ to add context…"}
+                      ? `发消息给 ${activeAgent ? agentDisplayName(activeAgent) : "Hara"}…`
+                      : `Message ${activeAgent ? agentDisplayName(activeAgent) : "Hara"}…`}
                   onPaste={(e) => void pasteImages(e)}
                   onCompositionStart={() => {
                     inputCompositionRef.current = true;
@@ -7541,8 +7606,8 @@ export default function App() {
                       }}>
                         <span aria-hidden="true"><IconArrowUpRight size={17} /></span>
                         <span>
-                          <strong>{locale === "zh" ? "打开为新项目" : "Open as a new project"}</strong>
-                          <small>{locale === "zh" ? "切换持续工作区，而不是一次性附件" : "Switch the persistent workspace"}</small>
+                          <strong>{locale === "zh" ? "切换 Agent 工作区" : "Switch Agent workspace"}</strong>
+                          <small>{locale === "zh" ? "为后续任务绑定这个文件夹；当前历史保持不变" : "Bind the folder for following tasks; current history stays unchanged"}</small>
                         </span>
                       </button>
                     </div>
@@ -7553,19 +7618,26 @@ export default function App() {
                     <button
                       className={`model-pill ${activeStagedModelChange ? "staged" : ""} ${activeModelUnavailable ? "unavailable" : ""}`}
                       aria-expanded={modelPickerOpen}
-                      aria-label={locale === "zh" ? "选择模型" : "Choose a model"}
+                      aria-label={locale === "zh" ? "打开当前对话的运行设置" : "Open runtime settings for this conversation"}
                       title={busy[active]
-                        ? (locale === "zh" ? "当前轮保持不变；选择会用于下一轮" : "The current turn stays unchanged; selections apply to the next turn")
-                        : undefined}
+                        ? (locale === "zh"
+                            ? `${currentRouteBadgeLabel} · ${displayedModel}；当前轮保持不变，选择会用于下一轮`
+                            : `${currentRouteBadgeLabel} · ${displayedModel}; the current turn stays unchanged and selections apply to the next turn`)
+                        : `${currentRouteBadgeLabel} · ${displayedModel}`}
                       onClick={() => {
                         setAttachmentMenuOpen(false);
                         setModelPickerOpen((open) => !open);
                       }}
                     >
-                      <span className="model-pill-main">{displayedModel}</span>
-                      <span className={`model-route ${currentRouteIsPersonal ? "personal" : "managed"}`}>
-                        {currentRouteBadgeLabel}
+                      <span aria-hidden="true"><IconCog size={14} /></span>
+                      <span className="model-pill-main">
+                        {locale === "zh" ? "运行设置" : "Runtime"}
                       </span>
+                      {newSessionDefaultRoute ? (
+                        <span className="model-route pinned">
+                          {locale === "zh" ? "本对话已固定" : "Pinned here"}
+                        </span>
+                      ) : null}
                       {activeStagedModelChange && (
                         <span className="model-next-turn">
                           {locale === "zh" ? "下一轮" : "Next turn"}
@@ -7576,7 +7648,48 @@ export default function App() {
                     {modelPickerOpen && (
                       <div className="composer-menu model-menu">
                         <div className="model-menu-head">
-                          <strong>{locale === "zh" ? "选择模型" : "Choose a model"}</strong>
+                          <strong>{locale === "zh" ? "运行设置" : "Runtime settings"}</strong>
+                          <small className="runtime-menu-scope">
+                            {locale === "zh"
+                              ? "默认继承全局模型连接；这里的覆盖只用于当前对话的下一执行段。"
+                              : "Global model connections are the default. Overrides here apply only to this conversation's next execution segment."}
+                          </small>
+                          <div className="runtime-menu-controls">
+                            {activeSession
+                              && !isAutomated(activeSession)
+                              && clientRef.current?.supports("session.set-approval") ? (
+                              <label>
+                                <span>{locale === "zh" ? "权限" : "Permissions"}</span>
+                                <select
+                                  className={`approval-select${activeApproval === "full-auto" ? " is-full-auto" : ""}`}
+                                  aria-label={locale === "zh" ? "当前会话权限模式" : "Current conversation permission mode"}
+                                  value={activeApproval}
+                                  disabled={!!activeReadOnlySession || !!busy[activeSession.id]}
+                                  onChange={(event) => void changeApproval(event.target.value as ApprovalMode)}
+                                >
+                                  <option value="suggest">{locale === "zh" ? "逐次确认" : "Ask"}</option>
+                                  <option value="auto-edit">{locale === "zh" ? "自动编辑" : "Auto edit"}</option>
+                                  <option value="full-auto">{locale === "zh" ? "完全自动" : "Full auto"}</option>
+                                </select>
+                              </label>
+                            ) : null}
+                            {active && activeModelInfo && activeComposerEffortLevels.length > 0 ? (
+                              <label>
+                                <span>{locale === "zh" ? "思考" : "Thinking"}</span>
+                                <select
+                                  className={`effort-select ${activeStagedModelChange ? "staged" : ""}`}
+                                  aria-label={locale === "zh" ? "思考强度" : "Reasoning effort"}
+                                  value={displayedEffort}
+                                  onChange={(e) => void changeModel(undefined, e.target.value)}
+                                >
+                                  <option value="">{locale === "zh" ? "自动" : "Auto"}</option>
+                                  {activeComposerEffortLevels.map((level) => (
+                                    <option key={level} value={level}>{thinkingLabel(locale, level)}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : null}
+                          </div>
                           {(busy[active] || activeStagedModelChange) && (
                             <p className="model-menu-status" role="status">
                               {busy[active]
@@ -7733,42 +7846,6 @@ export default function App() {
                     )}
                   </div>
                 )}
-                {activeSession
-                  && !isAutomated(activeSession)
-                  && clientRef.current?.supports("session.set-approval") && (
-                  <select
-                    className={`approval-select${activeApproval === "full-auto" ? " is-full-auto" : ""}`}
-                    aria-label={locale === "zh" ? "当前会话权限模式" : "Current conversation permission mode"}
-                    title={locale === "zh"
-                      ? "只影响当前会话；完全自动仍保留受保护路径、屏幕控制和外部扩展的安全授权。"
-                      : "Affects this conversation only. Full auto keeps protected-path, screen-control, and external-extension security grants."}
-                    value={activeApproval}
-                    disabled={!!activeReadOnlySession || !!busy[activeSession.id]}
-                    onChange={(event) => void changeApproval(event.target.value as ApprovalMode)}
-                  >
-                    <option value="suggest">{locale === "zh" ? "权限 · 逐次确认" : "Permissions · Ask"}</option>
-                    <option value="auto-edit">{locale === "zh" ? "权限 · 自动编辑" : "Permissions · Auto edit"}</option>
-                    <option value="full-auto">{locale === "zh" ? "权限 · 完全自动" : "Permissions · Full auto"}</option>
-                  </select>
-                )}
-                {active && activeModelInfo && activeComposerEffortLevels.length > 0 && (
-                  <select
-                    className={`effort-select ${activeStagedModelChange ? "staged" : ""}`}
-                    aria-label={locale === "zh" ? "思考强度" : "Reasoning effort"}
-                    title={busy[active]
-                      ? (locale === "zh" ? "当前轮保持不变；选择会用于下一轮" : "The current turn stays unchanged; selections apply to the next turn")
-                      : undefined}
-                    value={displayedEffort}
-                    onChange={(e) => void changeModel(undefined, e.target.value)}
-                  >
-                    <option value="">{locale === "zh" ? "思考 · 自动" : "Thinking · Auto"}</option>
-                    {activeComposerEffortLevels.map((level) => (
-                      <option key={level} value={level}>
-                        {locale === "zh" ? "思考" : "Thinking"} · {thinkingLabel(locale, level)}
-                      </option>
-                    ))}
-                  </select>
-                )}
                 {activeStagedModelChange ? (
                   <span className="model-change-status" role="status">
                     {locale === "zh" ? "下一轮" : "Next"} · {activeStagedModelChange.model}
@@ -7784,7 +7861,7 @@ export default function App() {
                 ) : null}
                 {(() => {
                   const cx = active ? ctxMap[active] : undefined;
-                  if (!cx || cx.pct <= 0) return null;
+                  if (!cx || cx.pct < 70) return null;
                   const heat = cx.pct >= 80 ? "hot" : cx.pct >= 60 ? "warm" : "";
                   return (
                     <span className={`ctxm ${heat}`} title={`${t("ctxTip")} — ${cx.lastInput.toLocaleString()} / ${cx.window.toLocaleString()} tokens`}>
@@ -7800,9 +7877,11 @@ export default function App() {
                     </span>
                   );
                 })()}
-                <span className="composer-capability-summary">
-                  {imageCapabilityText(locale, activeComposerAttachmentCapabilities)}
-                </span>
+                {pendingAttachments.length > 0 ? (
+                  <span className="composer-capability-summary">
+                    {imageCapabilityText(locale, activeComposerAttachmentCapabilities)}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -8109,6 +8188,7 @@ export default function App() {
     const place = session ? sessionPlace(session) : null;
     if (!session || (place !== "chat" && place !== "projects") || zone !== place) return;
     const labels: Record<WorkbenchToolKind, string> = {
+      agents: locale === "zh" ? "Agent 协作" : "Agent collaboration",
       terminal: t("extensionTerminal"),
       browser: t("extensionBrowser"),
       files: t("extensionFiles"),
@@ -8122,7 +8202,10 @@ export default function App() {
       owner: { place, sessionId: session.id, cwd: session.cwd },
       mode: "docked",
     };
-    warmModule(Promise.all([loadExtensionDock(), loadWorkbenchToolSurface()]));
+    warmModule(Promise.all([
+      loadExtensionDock(),
+      tool === "agents" ? loadAgentCollaborationSurface() : loadWorkbenchToolSurface(),
+    ]));
     setExtensionLoading(false);
     offerExtensionTab(item);
   };
@@ -8223,6 +8306,7 @@ export default function App() {
     if (kind === "browser") return t("extensionBrowser");
     if (kind === "terminal") return t("extensionTerminal");
     if (kind === "files") return t("extensionFiles");
+    if (kind === "agents") return locale === "zh" ? "Agent 协作" : "Agent collaboration";
     if (kind === "review") return t("extensionReview");
     return t("extensionCapability");
   };
@@ -8240,6 +8324,7 @@ export default function App() {
     && (zone === "chat" || zone === "projects")
     && sessionPlace(activeSession) === zone
       ? [
+        { id: "agents" as const, label: locale === "zh" ? "Agent 协作" : "Agent collaboration" },
         { id: "terminal" as const, label: t("extensionTerminal") },
         { id: "browser" as const, label: t("extensionBrowser") },
         { id: "files" as const, label: t("extensionFiles") },
@@ -8902,7 +8987,7 @@ export default function App() {
                   : selectedExternalSession?.title ?? basename(selectedInboxProject?.[0] ?? "")}</strong>
                 <small>
                   {selectedInboxAgent
-                    ? <>{agentPublicTitle(selectedInboxAgent)}{" · "}{selectedInboxSessionTotal} {t("inboxConversations")}</>
+                    ? <>{agentPublicTitle(selectedInboxAgent)}{" · "}{selectedInboxSessionTotal} {locale === "zh" ? "项历史任务" : "past tasks"}</>
                     : selectedExternalSession
                       ? <>{selectedExternalSession.workspaceName}{" · "}{externalSessionStateLabel(selectedExternalSession.state)}</>
                       : <>{selectedInboxProject?.[0]}{" · "}{selectedInboxSessionTotal} {t("inboxConversations")}</>}
@@ -8941,19 +9026,6 @@ export default function App() {
               <button
                 type="button"
                 role="tab"
-                aria-selected={workbenchInboxMode === "projects"}
-                className={workbenchInboxMode === "projects" ? "on" : ""}
-                onClick={() => {
-                  setWorkbenchInboxMode("projects");
-                  setQ("");
-                }}
-              >
-                <IconFolder size={16} /> {t("inboxProjects")}
-                <span>{allProjectGroups.length}</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
                 aria-selected={workbenchInboxMode === "external"}
                 className={workbenchInboxMode === "external" ? "on" : ""}
                 onClick={() => {
@@ -8966,19 +9038,6 @@ export default function App() {
                 <span>{externalSessions.length}</span>
               </button>
             </div>
-            <button
-              type="button"
-              className={`workbench-deliverables-tab${workbenchInboxMode === "deliverables" ? " on" : ""}`}
-              aria-pressed={workbenchInboxMode === "deliverables"}
-              onClick={showDeliverables}
-            >
-              <span className="workbench-deliverables-icon" aria-hidden><IconDocument size={15} /></span>
-              <span>
-                <strong>{t("inboxDeliverables")}</strong>
-                <small>{t("inboxDeliverablesHint")}</small>
-              </span>
-              <b>{artifacts && artifacts !== "old-server" ? artifacts.artifacts.length : 0}</b>
-            </button>
             </>
           )}
           <div className={`workbench-sidebar-actions ${workbenchInboxMode !== "agents" && !selectedInboxAgent ? "is-single" : ""}`}>
@@ -9000,7 +9059,7 @@ export default function App() {
                   }}
                 >
                   <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
-                  {t("newConversation")}
+                  {locale === "zh" ? "开始新话题" : "Start a fresh topic"}
                 </button>
                 {activeSpaceId === "personal" && agentCreateReady ? (
                   agentBlueprintFeatureReady ? (
@@ -9047,14 +9106,6 @@ export default function App() {
               </button>
             ) : workbenchInboxMode === "agents" ? (
               <>
-                <button
-                  className="new withicon"
-                  disabled={assistantCreating}
-                  onClick={() => void startNewAssistantConversation()}
-                >
-                  <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
-                  {assistantCreating ? t("startingConversation") : t("newConversation")}
-                </button>
                 {activeSpaceId === "personal" && agentCreateReady ? (
                   agentBlueprintFeatureReady ? (
                     <button
@@ -9080,7 +9131,7 @@ export default function App() {
             ) : (
               <button className="new withicon" onClick={() => void openProject()}>
                 <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
-                {t("openProject")}
+                {locale === "zh" ? "关联工作区" : "Connect workspace"}
               </button>
             )}
           </div>
@@ -9166,39 +9217,54 @@ export default function App() {
                 const unreadCount = agentSessions.filter((session) => unread[session.id]).length;
                 const isWorking = agentSessions.some((session) => busy[session.id]);
                 return (
-                  <button
-                    type="button"
-                    className={`inbox-contact ${agentSessions.some((session) => session.id === active) ? "is-active" : ""}`}
-                    key={agent.ref}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      openAgentProfile(agent.ref);
-                    }}
-                    onClick={() => {
-                      setWorkbenchInboxTarget({ kind: "agent", id: agent.ref });
-                      setQ("");
-                    }}
-                  >
-                    <AgentPortrait
-                      agentRef={agent.ref}
-                      name={agent.name}
-                      identity={agent.identity}
-                      size="medium"
-                      state={isWorking ? "working" : "idle"}
-                    />
-                    <span className="inbox-contact-copy">
-                      <span className="inbox-contact-line">
-                        <strong>{agentDisplayName(agent)}</strong>
-                        <time>{latest?.updatedAt ? fmtTime(latest.updatedAt) : ""}</time>
+                  <div className="inbox-contact-shell" key={agent.ref}>
+                    <button
+                      type="button"
+                      className={`inbox-contact ${agentSessions.some((session) => session.id === active) ? "is-active" : ""}`}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        openAgentProfile(agent.ref);
+                      }}
+                      onClick={() => {
+                        setWorkbenchInboxTarget(null);
+                        setQ("");
+                        const targetCwd = latest?.cwd || agent.home || server?.cwd || "";
+                        if (targetCwd) void openAgentConversation(agent.ref, targetCwd);
+                      }}
+                    >
+                      <AgentPortrait
+                        agentRef={agent.ref}
+                        name={agent.name}
+                        identity={agent.identity}
+                        size="medium"
+                        state={isWorking ? "working" : "idle"}
+                      />
+                      <span className="inbox-contact-copy">
+                        <span className="inbox-contact-line">
+                          <strong>{agentDisplayName(agent)}</strong>
+                          <time>{latest?.updatedAt ? fmtTime(latest.updatedAt) : ""}</time>
+                        </span>
+                        <span className="inbox-contact-line preview">
+                          <span>{latest?.title || agentPublicTitle(agent)}</span>
+                          {unreadCount > 0 ? <b className="inbox-unread">{unreadCount}</b> : null}
+                        </span>
                       </span>
-                      <span className="inbox-contact-line preview">
-                        <span>{latest?.title || agentPublicTitle(agent)}</span>
-                        {unreadCount > 0
-                          ? <b className="inbox-unread">{unreadCount}</b>
-                          : agentSessions.length > 0 ? <b>{agentSessions.length}</b> : null}
-                      </span>
-                    </span>
-                  </button>
+                    </button>
+                    {agentSessions.length > 1 ? (
+                      <button
+                        type="button"
+                        className="project-remove inbox-project-remove inbox-agent-history"
+                        title={locale === "zh" ? "历史任务" : "Task history"}
+                        aria-label={`${locale === "zh" ? "历史任务" : "Task history"}：${agentDisplayName(agent)}`}
+                        onClick={() => {
+                          setWorkbenchInboxTarget({ kind: "agent", id: agent.ref });
+                          setQ("");
+                        }}
+                      >
+                        <span aria-hidden><IconSummary size={13} /></span>
+                      </button>
+                    ) : null}
+                  </div>
                 );
               }) : <div className="inbox-empty"><small>{t("inboxAgentEmptyHint")}</small></div>
             ) : workbenchInboxMode === "external" ? (
@@ -10347,7 +10413,15 @@ export default function App() {
                 && activeArtifact?.artifact.artifactId === sessionArtifactExtension.owner.artifactId
                 && artifactWorkbenchSurface}
               {presentationBrowserExtension && presentationBrowserSurface}
-              {(workbenchToolExtension || reviewExtension) && (
+              {workbenchToolExtension?.tool === "agents" && (
+                <AgentCollaborationSurface
+                  item={workbenchToolExtension}
+                  client={clientRef.current}
+                  agents={availableAgents}
+                  locale={locale}
+                />
+              )}
+              {((workbenchToolExtension && workbenchToolExtension.tool !== "agents") || reviewExtension) && (
                 <WorkbenchToolSurface
                   item={(workbenchToolExtension ?? reviewExtension)!}
                   client={clientRef.current}
