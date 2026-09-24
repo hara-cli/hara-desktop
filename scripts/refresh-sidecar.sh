@@ -30,8 +30,12 @@ COMMIT_STAMP_FILE="src-tauri/binaries/SIDECAR_COMMIT"
 BUILD_CLI="$CLI"
 RELEASE_WORKTREE=""
 RELEASE_WORKTREE_ROOT=""
+STAGED_SIDECAR=""
 
 cleanup_release_worktree() {
+  if [ -n "$STAGED_SIDECAR" ] && [ -f "$STAGED_SIDECAR" ]; then
+    rm -f "$STAGED_SIDECAR"
+  fi
   if [ -n "$RELEASE_WORKTREE" ] && [ -d "$RELEASE_WORKTREE" ]; then
     git -C "$CLI" worktree remove --force "$RELEASE_WORKTREE" >/dev/null 2>&1 || true
   fi
@@ -121,6 +125,26 @@ build_sidecar_binary() {
   done
 }
 
+verify_or_repair_macos_adhoc_signature() {
+  local binary_path="$1"
+  local binary_label="$2"
+  case "$TRIPLE" in
+    aarch64-apple-darwin|x86_64-apple-darwin) ;;
+    *) return 0 ;;
+  esac
+  [ "$(uname -s)" = "Darwin" ] || return 0
+  if /usr/bin/codesign --verify "$binary_path" >/dev/null 2>&1; then
+    return 0
+  fi
+  # Bun normally emits a linker-signed ad-hoc Mach-O, but some payload layouts leave that
+  # generated signature stale. macOS kills such an arm64 executable before --version can run.
+  # Repair only the disposable source binary with a local ad-hoc signature; protected release
+  # packaging still removes it before Tauri applies the sole Developer ID signature.
+  echo "warning: stale macOS ad-hoc signature on $binary_label; repairing it" >&2
+  /usr/bin/codesign --force --sign - "$binary_path" >/dev/null
+  /usr/bin/codesign --verify "$binary_path" >/dev/null
+}
+
 echo "▸ building hara $EXPECTED standalone sidecar ($TRIPLE, Bun $(bun --version))…"
 if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
   (
@@ -138,6 +162,7 @@ else
   (cd "$BUILD_CLI" && npm run build >/dev/null)
 fi
 build_sidecar_binary
+verify_or_repair_macos_adhoc_signature "$OUT" "the compiled source sidecar"
 
 if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
   POST_STATUS="$(git -C "$BUILD_CLI" status --porcelain)"
@@ -159,14 +184,22 @@ if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
 fi
 
 mkdir -p src-tauri/binaries
-cp "$OUT$EXT" "src-tauri/binaries/hara-$TRIPLE$EXT"
+BUNDLED_SIDECAR="src-tauri/binaries/hara-$TRIPLE$EXT"
+STAGED_SIDECAR="$BUNDLED_SIDECAR.refresh.$$"
+cp "$OUT$EXT" "$STAGED_SIDECAR"
+verify_or_repair_macos_adhoc_signature "$STAGED_SIDECAR" "the staged Desktop sidecar"
+# Do not truncate an existing signed Mach-O in place. macOS can retain its rejected code-signing
+# vnode state even after identical, valid bytes replace the file and then kill both lipo and the
+# executable with SIGKILL. A verified fresh inode followed by an atomic rename avoids that cache.
+mv -f "$STAGED_SIDECAR" "$BUNDLED_SIDECAR"
+STAGED_SIDECAR=""
 node scripts/refresh-herdr-runtime.mjs "$TRIPLE"
 if [ "${HARA_FOREIGN_MAC_STATIC_VALIDATION:-0}" = "1" ]; then
   node scripts/foreign-mac-validation.mjs \
-    "src-tauri/binaries/hara-$TRIPLE$EXT" "$TRIPLE" "freshly compiled Intel sidecar"
+    "$BUNDLED_SIDECAR" "$TRIPLE" "freshly compiled Intel sidecar"
 else
-  node scripts/sidecar-smoke.mjs "src-tauri/binaries/hara-$TRIPLE$EXT" "$EXPECTED" "$TRIPLE"
+  node scripts/sidecar-smoke.mjs "$BUNDLED_SIDECAR" "$EXPECTED" "$TRIPLE"
 fi
 printf '%s\n' "$EXPECTED" > "$VERSION_STAMP_FILE"
 printf '%s\n' "$SOURCE_COMMIT" > "$COMMIT_STAMP_FILE"
-echo "✓ sidecar refreshed: hara $EXPECTED@$SOURCE_COMMIT → src-tauri/binaries/hara-$TRIPLE$EXT"
+echo "✓ sidecar refreshed: hara $EXPECTED@$SOURCE_COMMIT → $BUNDLED_SIDECAR"

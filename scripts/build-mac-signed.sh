@@ -227,17 +227,18 @@ EXPECTED_SIDECAR_VERSION="$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_VERSI
 HARA_RELEASE_BUILD=1 HARA_SIDECAR_TARGET="$TARGET" ./scripts/refresh-sidecar.sh
 CLI_COMMIT="$(git -C ../hara-cli rev-parse "refs/tags/v$EXPECTED_SIDECAR_VERSION^{commit}")"
 
-# Bun standalone binaries carry a linker-generated ad-hoc signature. Strip it only after
-# refresh-sidecar has executed every boundary smoke, then let Tauri apply the sole Developer ID
-# signature to the copied binary inside Hara.app. Pre-signing here makes Tauri replace a Developer
-# ID signature a second time and can lose the trusted timestamp.
+# Bun standalone binaries carry an ad-hoc signature (linker-generated, or repaired by
+# refresh-sidecar when Bun leaves that signature stale). Strip it only after refresh-sidecar has
+# executed every boundary smoke, then let Tauri apply the sole Developer ID signature to the copied
+# binary inside Hara.app. Developer-ID pre-signing here would make Tauri replace that signature a
+# second time and can lose the trusted timestamp.
 SIDECAR="src-tauri/binaries/hara-$TARGET"
 [ -f "$SIDECAR" ] || { echo "missing sidecar $SIDECAR"; exit 1; }
 HERDR_RUNTIME="src-tauri/binaries/herdr-$TARGET"
 [ -f "$HERDR_RUNTIME" ] || { echo "missing Herdr runtime $HERDR_RUNTIME"; exit 1; }
 
 # refresh-sidecar already executed the native compiler output, or statically inspected Intel output
-# after the native Intel matrix gate passed, while Bun's linker-generated ad-hoc signature remained.
+# after the native Intel matrix gate passed, while its verified ad-hoc source signature remained.
 # Apple Silicon refuses to execute an entirely unsigned arm64 Mach-O, so never run the source
 # sidecar in the gap between signature removal and Tauri packaging.
 echo "▸ removing Bun ad-hoc signature before Tauri's single nested-binary signing pass"

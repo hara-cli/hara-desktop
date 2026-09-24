@@ -1941,6 +1941,30 @@ test("native sidecar builds attest CLI HEAD and cleanliness after compilation", 
   assert.ok(cleanGate > compile && cleanGate < copy);
 });
 
+test("macOS sidecar refresh repairs a stale Bun ad-hoc signature before any runtime smoke", () => {
+  const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
+  const compile = refresh.indexOf("\nbuild_sidecar_binary\n");
+  const sourceRepair = refresh.indexOf(
+    'verify_or_repair_macos_adhoc_signature "$OUT" "the compiled source sidecar"',
+    compile,
+  );
+  const copy = refresh.indexOf('cp "$OUT$EXT" "$STAGED_SIDECAR"', sourceRepair);
+  const stagedRepair = refresh.indexOf(
+    'verify_or_repair_macos_adhoc_signature "$STAGED_SIDECAR" "the staged Desktop sidecar"',
+    copy,
+  );
+  const atomicReplace = refresh.indexOf('mv -f "$STAGED_SIDECAR" "$BUNDLED_SIDECAR"', stagedRepair);
+  const smoke = refresh.indexOf('node scripts/sidecar-smoke.mjs "$BUNDLED_SIDECAR"', atomicReplace);
+  assert.ok(
+    compile >= 0 && sourceRepair > compile && copy > sourceRepair && stagedRepair > copy
+      && atomicReplace > stagedRepair && smoke > atomicReplace,
+  );
+  assert.match(refresh, /\/usr\/bin\/codesign --verify "\$binary_path"/);
+  assert.match(refresh, /\/usr\/bin\/codesign --force --sign - "\$binary_path"/);
+  assert.match(refresh, /Do not truncate an existing signed Mach-O in place/);
+  assert.match(refresh, /packaging still removes it before Tauri applies the sole Developer ID signature/);
+});
+
 test("target-runtime downloads and RPM extraction fail only after bounded portable retries", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.173 — 2026-09-24 — governed WeChat group Agents and quieter recovery
+
+- Add one dedicated local WeChat group Agent scene. Assist mode prepares a reviewable draft; explicitly armed
+  Managed mode replies only in the freshly confirmed visible group and remains bounded by wake-name filtering,
+  rate limits, inbound deduplication, local redacted audit records, and fail-closed conversation revalidation.
+- Add one global opt-in Jev Action Guard for consequential Computer Use, browser, connector, file-delivery, and
+  external-message actions. Its structured advice never overrides deterministic denies, organization policy,
+  application allowlists, or human approval.
+- Hide provider-only reminder payloads from restored conversations, and keep repeated failures grouped by their
+  stable root cause so changing command text cannot keep an Agent in an unproductive loop.
+- Repair stale macOS ad-hoc signatures on disposable Bun sidecars before atomic installation, while preserving
+  the protected release's single Developer ID signing and notarization boundary.
+- Bundle Hara CLI `0.180.0` at exact commit `c05ab1fd3d83ae513c38c41255641b9910a56a5e`.
+
 ## 0.1.172 — 2026-09-22 — conversation-first Agent collaboration
 
 - Rework the main Desktop experience around Agent conversations: a lone Personal Space no longer consumes the

@@ -123,6 +123,8 @@ import {
   SettingsPage,
 } from "./SettingsUI";
 import { ComputerUseSettings } from "./ComputerUseSettings";
+import { DecisionGuardSettings } from "./DecisionGuardSettings";
+import { WeChatSceneSettings } from "./WeChatSceneSettings";
 import {
   AppRail,
   type AppPlace,
@@ -215,7 +217,7 @@ import {
   type WorkbenchToolKind,
   type ExtensionDockAddKind,
 } from "./extension-dock-state";
-import { userVisibleText } from "./user-visible-text";
+import { isInternalUserText, userVisibleText } from "./user-visible-text";
 import { turnFailureMessage } from "./turn-failure";
 import {
   loadPresentationSurface,
@@ -290,10 +292,13 @@ type SettingsSection =
   | "learning"
   | "engine"
   | "security"
+  | "wechat"
   | "mobile"
   | "lang"
   | "modules"
   | "capabilities";
+
+type SecuritySettingsAnchor = "settings-computer-use" | "settings-jev-api-key";
 
 const externalSourceMark = (sourceId: ExternalSessionSourceId): string => (
   sourceId === "runtime" ? "HR" : sourceId === "codex" ? "CX" : "CL"
@@ -761,14 +766,16 @@ const displayHistoryText = (text: string): string => {
 
 const conversationItemsFromHistory = (
   history: ClientHistoryMessage[],
-): ConversationItem[] => history.map((message): ConversationItem =>
-  message.role === "user"
+): ConversationItem[] => history.flatMap((message): ConversationItem[] => {
+  if (message.role === "user" && isInternalUserText(message.text)) return [];
+  return [message.role === "user"
     ? {
         kind: "user",
         text: displayHistoryText(message.text),
         ...(message.attachments?.length ? { attachments: message.attachments } : {}),
       }
-      : { kind: "text", text: message.text });
+    : { kind: "text", text: message.text }];
+});
 
 const withRestoredTaskApproval = (
   items: ConversationItem[],
@@ -788,15 +795,7 @@ const withRestoredTaskApproval = (
 const conversationHistory = (
   history: ClientHistoryMessage[],
 ): ConversationItem[] =>
-  history.map((message): ConversationItem =>
-    message.role === "user"
-      ? {
-          kind: "user",
-          text: displayHistoryText(message.text),
-          ...(message.attachments?.length ? { attachments: message.attachments } : {}),
-        }
-      : { kind: "text", text: message.text },
-  );
+  conversationItemsFromHistory(history);
 
 /** The assistant zone: one active desktop conversation + one thread per external origin.
  *  Starting a fresh conversation promotes the previous active one into folded history:
@@ -1092,6 +1091,19 @@ export default function App() {
   }, [busy, engineStoppingSessionId]);
   // settings place: context column = group anchors, stage = the selected group's forms
   const [setSec, setSetSec] = useState<SettingsSection>("providers");
+  const [securitySettingsAnchor, setSecuritySettingsAnchor] = useState<SecuritySettingsAnchor | null>(null);
+  const openSecuritySettings = useCallback((anchor: SecuritySettingsAnchor) => {
+    setSecuritySettingsAnchor(anchor);
+    setSetSec("security");
+  }, []);
+  useEffect(() => {
+    if (setSec !== "security" || !securitySettingsAnchor) return;
+    const target = document.getElementById(securitySettingsAnchor);
+    if (!target) return;
+    target.scrollIntoView({ block: securitySettingsAnchor === "settings-jev-api-key" ? "center" : "start" });
+    target.focus({ preventScroll: true });
+    setSecuritySettingsAnchor(null);
+  }, [securitySettingsAnchor, setSec]);
   const [visionSettingsFocusRequest, setVisionSettingsFocusRequest] = useState(0);
   const [organizationEnrollmentFocusRequest, setOrganizationEnrollmentFocusRequest] = useState(0);
   // Context-owned extension screen. A panel/file never changes owner when the user changes place.
@@ -4606,7 +4618,9 @@ export default function App() {
         title: session.title,
         sourceName: session.sourceName,
         cwd: session.cwd,
-        items: result.history.map((message) => ({
+        items: result.history.filter((message) => (
+          message.role !== "user" || !isInternalUserText(message.text)
+        )).map((message) => ({
           ...message,
           text: message.role === "user"
             ? displayHistoryText(message.text)
@@ -9513,6 +9527,7 @@ export default function App() {
                     ["learning", t("setLearning")],
                     ["engine", t("setServer")],
                     ["security", t("setSecurity")],
+                    ["wechat", t("setWechatScene")],
                     ["mobile", t("setMobile")],
                     ["lang", t("setLang")],
                   ],
@@ -9866,6 +9881,13 @@ export default function App() {
                   onRestartEngine={() => void restartBundledEngine()}
                   onPluginsChanged={() => void refreshPluginInventory()}
                 />
+                <DecisionGuardSettings
+                  client={clientRef.current}
+                  cwd={server?.cwd}
+                  locale={locale}
+                  restarting={engineRestarting}
+                  onRestartEngine={() => void restartBundledEngine()}
+                />
                 <SettingsCard title={t("approvalTitleSetting")} description={t("approvalDescription")}>
                   <SettingsItem
                     title={t("defaultApprovalTitle")}
@@ -9935,6 +9957,23 @@ export default function App() {
                     {t("executionPrivacyHint")}
                   </SettingsNotice>
                 </SettingsCard>
+              </SettingsPage>
+            )}
+            {setSec === "wechat" && (
+              <SettingsPage
+                id="settings-wechat-title"
+                eyebrow={t("settingsSystem")}
+                title={t("setWechatScene")}
+                description={t("wechatSceneDescription")}
+              >
+                <WeChatSceneSettings
+                  client={clientRef.current}
+                  cwd={server?.cwd}
+                  locale={locale}
+                  onOpenConnections={() => setSetSec("providers")}
+                  onOpenComputerUse={() => openSecuritySettings("settings-computer-use")}
+                  onOpenActionGuard={() => openSecuritySettings("settings-jev-api-key")}
+                />
               </SettingsPage>
             )}
             {setSec === "mobile" && (
@@ -10173,8 +10212,7 @@ export default function App() {
                   onCreateSkill={() => void startSkillCreation()}
                   onOpenCore={(id) => {
                     if (id === COMPUTER_USE_CAPABILITY.id) {
-                      setSetSec("security");
-                      queueMicrotask(() => document.getElementById("settings-computer-use")?.scrollIntoView({ block: "start" }));
+                      openSecuritySettings("settings-computer-use");
                     } else if (id === "core.chat") {
                       void openAssistant();
                     } else if (id === "core.tasks") {

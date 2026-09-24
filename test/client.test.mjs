@@ -79,6 +79,19 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
                 "settings.computer.get",
                 "settings.computer.save",
                 "settings.computer.browser.install",
+                "settings.decision.get",
+                "settings.decision.save",
+                "settings.decision.test",
+                "settings.gateways.test",
+                "settings.wechat-group.get",
+                "settings.wechat-group.save",
+                "settings.wechat-group.prepare",
+                "settings.wechat-group.permissions.request",
+                "settings.wechat-group.start",
+                "settings.wechat-group.stop",
+                "settings.wechat-group.scan",
+                "settings.wechat-group.reply",
+                "settings.wechat-group.fill",
                 "desk.connections.list",
                 "desk.snapshot",
                 "desk.task.get",
@@ -352,6 +365,8 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.equal(client.supports("session.submit"), true);
   assert.equal(client.supports("session.set-approval"), true);
   assert.equal(client.supports("settings.computer.get"), true);
+  assert.equal(client.supports("settings.decision.get"), true);
+  assert.equal(client.supports("settings.gateways.test"), true);
   assert.equal(client.supports("artifact.import"), true);
   assert.equal(client.supports("artifact.validate"), true);
   assert.equal(client.supports("artifact.export"), true);
@@ -902,6 +917,85 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
     method: "settings.computer.browser.install",
     params: {},
   });
+  await client.getDecisionSettings("/workspace");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.decision.get",
+    params: { cwd: "/workspace" },
+  });
+  await client.saveDecisionSettings({
+    engine: "typesafe",
+    mode: "shadow",
+    model: "jev-latest",
+    baseURL: "https://api.typesafe.ai",
+    apiKey: "write-only-key",
+  }, "/workspace");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.decision.save",
+    params: {
+      engine: "typesafe",
+      mode: "shadow",
+      model: "jev-latest",
+      baseURL: "https://api.typesafe.ai",
+      apiKey: "write-only-key",
+      cwd: "/workspace",
+    },
+  });
+  await client.testDecisionSettings({ model: "jev-latest", baseURL: "https://api.typesafe.ai" });
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.decision.test",
+    params: { model: "jev-latest", baseURL: "https://api.typesafe.ai" },
+  });
+  await client.testGateway("weixin");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.gateways.test",
+    params: { platform: "weixin" },
+  });
+  await client.getWechatGroupScene();
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.wechat-group.get",
+    params: {},
+  });
+  await client.saveWechatGroupScene("global:fanli");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.wechat-group.save",
+    params: {
+      agentRef: "global:fanli",
+      mode: "assist",
+      managedTrigger: "mention",
+      managedMentionName: "",
+    },
+  });
+  await client.prepareWechatGroupScene();
+  assert.equal(requests.at(-1).method, "settings.wechat-group.prepare");
+  await client.requestWechatGroupPermissions();
+  assert.equal(requests.at(-1).method, "settings.wechat-group.permissions.request");
+  await client.startWechatGroupScene(true, false, "/workspace");
+  assert.deepEqual(requests.at(-1), {
+    jsonrpc: "2.0",
+    id: requests.at(-1).id,
+    method: "settings.wechat-group.start",
+    params: { confirmGroup: true, confirmManaged: false, cwd: "/workspace" },
+  });
+  await client.scanWechatGroupScene("/workspace");
+  assert.equal(requests.at(-1).method, "settings.wechat-group.scan");
+  await client.draftWechatGroupReply("11111111-1111-4111-8111-111111111111");
+  assert.equal(requests.at(-1).method, "settings.wechat-group.reply");
+  await client.fillWechatGroupDraft("22222222-2222-4222-8222-222222222222");
+  assert.equal(requests.at(-1).method, "settings.wechat-group.fill");
+  await client.stopWechatGroupScene();
+  assert.equal(requests.at(-1).method, "settings.wechat-group.stop");
 });
 
 test("serve client replays one ordered event tail, deduplicates it, and acknowledges the applied cursor", async (t) => {

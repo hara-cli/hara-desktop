@@ -636,6 +636,40 @@ export interface ComputerSettingsState {
   };
 }
 
+export type DecisionEngineId = "off" | "typesafe";
+export type DecisionMode = "shadow" | "advisory" | "enforce";
+
+export interface DecisionSettingsState {
+  engine: DecisionEngineId;
+  mode: DecisionMode;
+  model: string;
+  baseURL: string;
+  credential: "stored" | "environment" | "missing";
+  engineEditable: boolean;
+  modeEditable: boolean;
+  modelEditable: boolean;
+  baseURLEditable: boolean;
+  credentialEditable: boolean;
+}
+
+export interface DecisionSettingsInput {
+  engine: DecisionEngineId;
+  mode: DecisionMode;
+  model: string;
+  baseURL: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
+}
+
+export interface DecisionSettingsTestResult {
+  ok: boolean;
+  decision?: "allow" | "review" | "block";
+  confidence?: number;
+  model?: string;
+  elapsedMs?: number;
+  error?: string;
+}
+
 export interface CoreBrowserInstallResult {
   plugin: Pick<PluginInfo, "name" | "version" | "description" | "enabled">;
   restartRequired: boolean;
@@ -882,6 +916,78 @@ export interface GatewayLoginSnapshot {
   updatedAt: number;
   deadlineAt: number;
   errorCode?: "network" | "invalid-response" | "qr-expired" | "local-state";
+}
+
+export interface GatewayConnectionTestResult {
+  platform: "weixin";
+  delivered: true;
+  testedAt: number;
+}
+
+export type WeChatGroupPermission = "granted" | "required" | "unknown";
+export type WeChatGroupHelperState =
+  | "unsupported"
+  | "not-configured"
+  | "runtime-missing"
+  | "ready"
+  | "error";
+export type WeChatGroupMode = "assist" | "managed";
+export type WeChatGroupManagedTrigger = "mention" | "all";
+export type WeChatGroupManagedEvent = "armed" | "ignored" | "processing" | "sent" | "paused";
+
+export interface WeChatGroupSceneStatus {
+  supported: boolean;
+  helper: WeChatGroupHelperState;
+  helperLabel?: string;
+  configured: boolean;
+  active: boolean;
+  agentRef?: string;
+  trigger: "manual";
+  mode: WeChatGroupMode;
+  managedTrigger: WeChatGroupManagedTrigger;
+  /** Group-visible name after @. Empty/missing uses the selected Agent and Hara aliases. */
+  managedMentionName?: string;
+  managedArmed: boolean;
+  managedPausedReason?: string;
+  lastManagedAt?: number;
+  lastManagedEvent?: WeChatGroupManagedEvent;
+  lastManagedEventAt?: number;
+  lastManagedDetail?: string;
+  screenCapture: WeChatGroupPermission;
+  accessibility: WeChatGroupPermission;
+  wechat: "running" | "not-running" | "unknown";
+  conversation?: string;
+  detail?: string;
+}
+
+export interface WeChatGroupObservedMessage {
+  side: "them" | "me" | "unknown";
+  text: string;
+  sender?: string;
+  confidence: number;
+}
+
+export interface WeChatGroupPreview {
+  scanId: string;
+  conversation: string;
+  messages: WeChatGroupObservedMessage[];
+  latestIncoming?: WeChatGroupObservedMessage;
+  observedAt: number;
+  changed: boolean;
+}
+
+export interface WeChatGroupDraft {
+  draftId: string;
+  scanId: string;
+  conversation: string;
+  text: string;
+  generatedAt: number;
+}
+
+export interface WeChatGroupFillResult {
+  filled: boolean;
+  reviewRequired: boolean;
+  reason: string;
 }
 
 export interface MobileCompanionStatus {
@@ -2442,6 +2548,27 @@ export class HaraClient {
   installCoreBrowser() {
     return this.call<CoreBrowserInstallResult>("settings.computer.browser.install", {});
   }
+  async getDecisionSettings(cwd?: string): Promise<DecisionSettingsState | null> {
+    if (this.methods.size > 0 && !this.supports("settings.decision.get")) return null;
+    try {
+      return await this.call("settings.decision.get", cwd ? { cwd } : {});
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  saveDecisionSettings(input: DecisionSettingsInput, cwd?: string) {
+    return this.call<DecisionSettingsState>("settings.decision.save", {
+      ...input,
+      ...(cwd ? { cwd } : {}),
+    });
+  }
+  testDecisionSettings(input: Pick<DecisionSettingsInput, "model" | "baseURL" | "apiKey" | "clearApiKey">, cwd?: string) {
+    return this.call<DecisionSettingsTestResult>("settings.decision.test", {
+      ...input,
+      ...(cwd ? { cwd } : {}),
+    });
+  }
   listSkills(cwd?: string) {
     return this.call<{ skills: SkillInfo[] }>("skills.list", cwd ? { cwd } : {});
   }
@@ -2550,6 +2677,62 @@ export class HaraClient {
       if (error?.code === -32601) return null;
       throw error;
     }
+  }
+  async testGateway(platform: "weixin"): Promise<GatewayConnectionTestResult | null> {
+    if (this.methods.size > 0 && !this.supports("settings.gateways.test")) return null;
+    try {
+      return await this.call("settings.gateways.test", { platform });
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  async getWechatGroupScene(): Promise<WeChatGroupSceneStatus | null> {
+    if (this.methods.size > 0 && !this.supports("settings.wechat-group.get")) return null;
+    try {
+      return await this.call("settings.wechat-group.get", {});
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  saveWechatGroupScene(
+    agentRef: string,
+    mode: WeChatGroupMode = "assist",
+    managedTrigger: WeChatGroupManagedTrigger = "mention",
+    managedMentionName = "",
+  ) {
+    return this.call<WeChatGroupSceneStatus>("settings.wechat-group.save", {
+      agentRef,
+      mode,
+      managedTrigger,
+      managedMentionName,
+    });
+  }
+  prepareWechatGroupScene() {
+    return this.call<WeChatGroupSceneStatus>("settings.wechat-group.prepare", {});
+  }
+
+  requestWechatGroupPermissions() {
+    return this.call<WeChatGroupSceneStatus>("settings.wechat-group.permissions.request", {});
+  }
+  startWechatGroupScene(confirmGroup: boolean, confirmManaged = false, cwd?: string) {
+    return this.call<{ status: WeChatGroupSceneStatus; preview: WeChatGroupPreview }>(
+      "settings.wechat-group.start",
+      { confirmGroup, confirmManaged, ...(cwd ? { cwd } : {}) },
+    );
+  }
+  stopWechatGroupScene() {
+    return this.call<WeChatGroupSceneStatus>("settings.wechat-group.stop", {});
+  }
+  scanWechatGroupScene(cwd?: string) {
+    return this.call<WeChatGroupPreview>("settings.wechat-group.scan", cwd ? { cwd } : {});
+  }
+  draftWechatGroupReply(scanId: string) {
+    return this.call<WeChatGroupDraft>("settings.wechat-group.reply", { scanId });
+  }
+  fillWechatGroupDraft(draftId: string) {
+    return this.call<WeChatGroupFillResult>("settings.wechat-group.fill", { draftId });
   }
   /** Approve a matching short-lived Feishu pairing code without receiving the sender open_id. */
   async approveGatewayAuthorization(requestId: string): Promise<GatewayStatus | null> {

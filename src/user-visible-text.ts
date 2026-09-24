@@ -5,11 +5,18 @@ const INTERNAL_PREFIXES = [
   ACTIVE_WORK_OBJECT_HISTORY_PREFIX,
   STEERING_HISTORY_PREFIX,
 ] as const;
+const SYSTEM_REMINDER = /^\s*<system-reminder>[\s\S]*<\/system-reminder>\s*$/u;
+
+/** Provider-only context can be persisted in older Engine histories, but it is never authored by a person. */
+export function isInternalUserText(text: unknown): boolean {
+  return typeof text === "string" && SYSTEM_REMINDER.test(text);
+}
 
 /** Renderer-authored routing envelopes belong to the model wire protocol, never to visible task
  * progress, transcript history, notifications, or accessibility labels. */
 export function userVisibleText(text: unknown): string {
   let visible = typeof text === "string" ? text : "";
+  if (isInternalUserText(visible)) return "";
   for (let depth = 0; depth < 4; depth += 1) {
     if (!INTERNAL_PREFIXES.some((prefix) => visible.startsWith(prefix))) break;
     const boundary = visible.indexOf("]\n\n");

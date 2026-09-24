@@ -24,7 +24,7 @@ import {
   webPreviewTabId,
   workbenchToolTabId,
 } from "../src/extension-dock-state.ts";
-import { userVisibleTaskText, userVisibleText } from "../src/user-visible-text.ts";
+import { isInternalUserText, userVisibleTaskText, userVisibleText } from "../src/user-visible-text.ts";
 
 test("renderer routing envelopes never enter visible conversation or progress text", () => {
   const wrapped = [
@@ -45,6 +45,10 @@ test("renderer routing envelopes never enter visible conversation or progress te
     "正在执行",
   );
   assert.doesNotMatch(userVisibleTaskText(wrapped, "正在执行"), /HARA_DESKTOP|revision_id/);
+  const reminder = "<system-reminder>internal checkpoint only</system-reminder>";
+  assert.equal(isInternalUserText(reminder), true);
+  assert.equal(userVisibleText(reminder), "");
+  assert.equal(isInternalUserText("请解释 <system-reminder> 标签"), false);
 });
 
 test("surface recovery accepts only the current native revision authored by this session", () => {

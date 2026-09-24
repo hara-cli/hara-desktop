@@ -580,6 +580,7 @@ test("typed task lifecycle drives status while conversation and execution inputs
   assert.match(app, /hydrateLegacyTaskState\(c, id, r\.task\)/, "legacy resume status reaches the task projection");
   assert.match(app, /attachedSessionsRef\.current\.clear\(\)/, "a new serve connection invalidates old live attachments");
   assert.match(app, /displayHistoryText\(m\.text\)/, "resumed history hides internal steering wrappers");
+  assert.match(app, /isInternalUserText\(message\.text\)/, "resumed history hides provider-only reminder envelopes");
   assert.doesNotMatch(app, /notePet|removePet|petChatApprovalRef/, "task lifecycle no longer depends on a desktop pet projection");
   assert.match(app, /activeTurnsRef\.current = \{\}/, "disconnect clears stale execution identity");
   assert.match(lifecycle, /return state === "running" \|\| state === "waiting"/);
@@ -1837,6 +1838,63 @@ test("Computer Use is a core capability with an engine-owned safety policy", () 
   assert.match(component, /settings\.appsEditable/);
   assert.match(copy, /computerUseSafetyHint: "本机屏幕控制保留应用白名单和逐次动作确认/);
   assert.doesNotMatch(component, /apiKey|password|cookie|token/i, "the Computer Use surface never handles credentials");
+});
+
+test("WeChat separates owner remote control from a local, explicit-fill group Agent scene", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const scene = readFileSync(`${root}/src/WeChatSceneSettings.tsx`, "utf8");
+  const guard = readFileSync(`${root}/src/DecisionGuardSettings.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+
+  assert.match(app, /\["wechat", t\("setWechatScene"\)\]/);
+  assert.match(app, /<WeChatSceneSettings/);
+  assert.match(app, /openSecuritySettings\("settings-computer-use"\)/);
+  assert.match(app, /openSecuritySettings\("settings-jev-api-key"\)/);
+  assert.match(app, /securitySettingsAnchor/);
+  assert.doesNotMatch(app, /queueMicrotask\(\(\) => document\.getElementById\("settings-(?:computer-use|action-guard)"\)/);
+  assert.match(scene, /client\.startGateway\("weixin"\)/);
+  assert.match(scene, /client\.stopGateway\("weixin"\)/);
+  assert.match(scene, /client\.testGateway\("weixin"\)/);
+  assert.match(scene, /client\.getComputerSettings/);
+  assert.match(scene, /client\.getDecisionSettings/);
+  assert.match(scene, /client\.saveWechatGroupScene/);
+  assert.match(scene, /client\.startWechatGroupScene/);
+  assert.match(scene, /window\.confirm\(words\.confirmGroup\)/);
+  assert.match(scene, /window\.confirm\(words\.confirmManaged\)/);
+  assert.match(scene, /groupSettingsSaved/);
+  assert.match(scene, /client\.requestWechatGroupPermissions/);
+  assert.match(scene, /client\.scanWechatGroupScene/);
+  assert.match(scene, /client\.draftWechatGroupReply/);
+  assert.match(scene, /client\.fillWechatGroupDraft/);
+  assert.match(scene, /配置 Computer Use 权限/);
+  assert.match(scene, /配置 Jev 与 API Key/);
+  assert.match(scene, /Assist mode never auto-sends/);
+  assert.match(scene, /辅助模式绝不自动发送/);
+  assert.match(scene, /Screenshots are never returned to Desktop or retained/);
+  assert.match(scene, /wechat-group\.managed-send\.v1/);
+  assert.match(scene, /Only a named @ mention/);
+  assert.match(scene, /群内唤醒名称/);
+  assert.match(scene, /managedMentionName/);
+  assert.match(scene, /result\.reviewRequired/);
+  assert.match(scene, /重新确认并恢复托管/);
+  assert.match(scene, /已识别到最新群消息，但没有发送/);
+  assert.match(scene, /lastManagedDetail === "mention_required"/);
+  assert.match(scene, /managedArmedMention/);
+  assert.match(scene, /function groupErrorMessage/);
+  assert.match(scene, /当前微信在输入框为空时会禁用“发送”按钮/);
+  assert.match(scene, /草稿已安全填入，但没有识别到可信的“发送”控件/);
+  assert.match(scene, /className="wechat-mode-switch"/);
+  assert.match(scene, /aria-pressed=\{groupMode === "managed"\}/);
+  assert.match(scene, /no separate Jev app or source checkout is required/);
+  assert.doesNotMatch(scene, /helperRoot|Jev source directory|Jev 源码目录/);
+  assert.match(guard, /type="password"/);
+  assert.match(guard, /id="settings-jev-api-key"/);
+  assert.match(guard, /client\.testDecisionSettings/);
+  assert.match(guard, /window\.confirm/);
+  assert.match(client, /"settings\.gateways\.test"/);
+  assert.match(client, /"settings\.decision\.save"/);
+  assert.match(client, /"settings\.wechat-group\.reply"/);
+  assert.match(client, /"settings\.wechat-group\.fill"/);
 });
 
 test("the capability center consumes one semantic light and dark design contract", () => {

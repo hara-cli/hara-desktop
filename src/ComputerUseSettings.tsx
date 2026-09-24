@@ -117,7 +117,7 @@ export function ComputerUseSettings({
   };
 
   return (
-    <section id="settings-computer-use" className="computer-use-settings" aria-label={t("computerUseTitle")}>
+    <section id="settings-computer-use" className="computer-use-settings" aria-label={t("computerUseTitle")} tabIndex={-1}>
       <SettingsCard
         title={t("computerUseTitle")}
         description={t("computerUseDescription")}
