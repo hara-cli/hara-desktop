@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.174 — 2026-09-26 — permanent Hara orchestration and exact coding recovery
+
+- Present Hara as the permanent root orchestrator instead of a hired Agent. It is always kept in the roster,
+  never counted as a hire, cannot be dismissed even when an older Engine advertises an invalid archive action,
+  and can still be personalized or reset to the default Hara identity.
+- Keep every Agent's task history reachable even when it contains only one task, while making the root role and
+  its ownership of the active conversation explicit in the contact list and profile editor.
+- Show the exact delegated Codex or Claude Code continuity path in Agent collaboration. Users can reopen a live
+  Hara terminal or copy a `hara coding resume` command that continues the same provider conversation after a
+  terminal or computer restart without exposing the provider-native session identifier.
+- Bundle Hara CLI `0.181.0` at exact commit `d6f57a75b6f1df73a09ac4324dc35e66292a0844`, including durable
+  provider-session links, fail-closed terminal reconstruction, and stable full-suite test concurrency.
+
 ## 0.1.173 — 2026-09-24 — governed WeChat group Agents and quieter recovery
 
 - Add one dedicated local WeChat group Agent scene. Assist mode prepares a reviewable draft; explicitly armed
