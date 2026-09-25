@@ -171,6 +171,25 @@ test("Desktop Agent collaboration client preserves runtime grants, command recei
   client.close();
 });
 
+test("Desktop keeps an opaque continuation link for delegated coding sessions", () => {
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const surface = readFileSync(`${root}/src/AgentCollaborationSurface.tsx`, "utf8");
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+
+  assert.match(client, /runtimeSessionId\?: string/);
+  assert.match(client, /providerSessionId\?: string/);
+  assert.match(surface, /selectedMember\.runtimeSessionId/);
+  assert.match(surface, /selectedMember\.providerSessionId/);
+  assert.match(surface, /onOpenRuntimeSession\(selectedMember\.runtimeSessionId!/);
+  assert.match(surface, /hara coding resume/);
+  assert.match(surface, /codex resume --all/);
+  assert.match(surface, /claude --resume/);
+  assert.match(surface, /copyTextToClipboard/);
+  assert.match(surface, /供应商原生 Session ID 始终不暴露/);
+  assert.doesNotMatch(surface, /Hara 已记录这条原生会话/);
+  assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "external", id: sessionId \}\)/);
+});
+
 test("Agent collaboration UI separates persistent identity from direct coding workers", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const surface = readFileSync(`${root}/src/AgentCollaborationSurface.tsx`, "utf8");

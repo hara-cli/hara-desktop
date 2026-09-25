@@ -223,7 +223,11 @@
 .agent-direct-panel > header small,
 .agent-direct-panel > p { color: var(--agent-muted); font-size: 9px; }
 .agent-direct-panel > header button { border: 1px solid color-mix(in srgb, var(--agent-accent) 45%, transparent); border-radius: 999px; background: transparent; color: var(--agent-accent); padding: 5px 9px; font-size: 9px; }
+.agent-direct-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .agent-direct-panel > p { margin: 7px 0; }
+.agent-direct-continuity { display: grid; gap: 5px; margin: -2px 0 8px; padding-left: 8px; border-left: 2px solid color-mix(in srgb, var(--agent-accent) 52%, transparent); }
+.agent-direct-continuity p { margin: 0; color: var(--agent-muted); font-size: 9px; line-height: 1.5; }
+.agent-direct-continuity code { display: block; max-width: 100%; overflow: hidden; color: var(--agent-accent); font-size: 9px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
 .agent-direct-panel form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .agent-direct-diff { display: inline-block; margin: 0 0 8px; border-radius: 999px; background: color-mix(in srgb, #b87824 15%, transparent); color: #9b5d0c; padding: 4px 8px; font-size: 9px; }
 .agent-collab-blank { display: grid; place-items: center; align-content: center; flex: 1; gap: 12px; padding: 30px; color: var(--agent-muted); text-align: center; }

@@ -22,6 +22,11 @@ runs remain read-only replays unless explicitly forked, and Settings remains the
 - `cargo check --manifest-path src-tauri/Cargo.toml` checks the native host.
 - `npm run tauri dev` runs the desktop app for an interactive smoke test.
 
+When an exact-tag verification includes tests that inspect Git attributes or clean-tree state, use an
+isolated local clone rather than `git archive`; archive exports do not contain the required `.git` metadata.
+When editing repeated metadata in `.learnings/`, anchor every patch hunk to the exact entry heading or stable
+pattern key, then read back the target and any plausible first-match entry before continuing.
+
 Add focused tests for renderer state and release scripts. For native changes, validate both Rust and frontend behavior; for `hara serve` integration, exercise disconnect/reconnect, approvals, and interruption paths.
 
 ## Generated Output & Release Boundary
@@ -37,3 +42,5 @@ Never commit updater private keys, Apple credentials, certificates, tokens, `.en
 The canonical intake and status channel is Feishu `hara 反馈群` (`oc_17590648f393135cde6a6b9cd6f1c710`). Pull the newest messages and relevant attachments before issue work. Report discovered bugs with Desktop and bundled CLI versions, reproduction/evidence, and expected versus actual behavior, always redacted. After a verified release, reply to each original fixed report with the fixed version and focused checks, then post the group-level version, concise changes, upgrade instructions, and verification request; mention any named tester.
 The shared Feishu helper accepts `messages --preview-limit` values from 1 through 100; keep previews within
 that bound and use `--output` when a complete redacted export is required.
+Before projecting any helper JSON with `jq`, inspect its top-level keys and value types; Feishu
+`messages --output` stores the message array under `.messages`, not at the top level.

@@ -219,6 +219,12 @@ export interface AgentInfo {
   blueprint?: AgentBlueprintProvenance;
   spaceId?: string;
   owner: "personal" | "organization" | "external";
+  /** Permanent product identity. It may be personalized, but never dismissed like a hired Agent. */
+  systemRole?: "root_orchestrator";
+  coordination?: {
+    runtimes: Array<"hara" | "codex" | "claude">;
+    durableRuntimeSessions: boolean;
+  };
   allowedActions: Array<"chat" | "edit_profile" | "archive">;
   revision?: string;
 }
@@ -235,6 +241,10 @@ export interface AgentTeamMember {
   runtime: AgentTeamRuntime;
   /** Coding runtimes this native Hara Agent may launch after an explicit approval. */
   runtimeGrants: Array<Exclude<AgentTeamRuntime, "hara">>;
+  /** Opaque Hara continuation id for the exact Codex / Claude Code session. */
+  runtimeSessionId?: string;
+  /** Opaque Hara provider-history id for exact recovery after the live terminal or computer restarts. */
+  providerSessionId?: string;
   status: AgentTeamStatus;
   generation: number;
   createdAt: string;

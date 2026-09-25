@@ -15,6 +15,7 @@ import type {
   SessionAgentTeam,
 } from "./client";
 import type { WorkbenchToolExtension } from "./extension-dock-state";
+import { copyTextToClipboard } from "./clipboard";
 import "./AgentCollaborationSurface.css";
 
 interface Props {
@@ -22,6 +23,7 @@ interface Props {
   client: HaraClient | null;
   agents: AgentInfo[];
   locale: "en" | "zh";
+  onOpenRuntimeSession?: (sessionId: string, runtime: "codex" | "claude") => void;
 }
 
 const COPY = {
@@ -74,6 +76,12 @@ const COPY = {
     changes: "Diff ready",
     budgetExhausted: "Team execution budget reached",
     roomLimit: "A focused room keeps up to 32 ordered messages. Start another room when it is full.",
+    openRuntimeSession: "Continue live terminal",
+    copyNativeResume: "Copy CLI recovery command",
+    nativeResumeCopied: "Recovery command copied",
+    nativeResumeCopyFailed: "Could not copy the CLI recovery command",
+    sessionContinuity: "Continue live terminal reopens the exact Hara terminal while it is alive. If that terminal or the computer restarts, Hara rebuilds it around the same provider conversation on the next instruction; the recovery command lets you take over that exact conversation in your own terminal. Provider-native IDs remain private.",
+    sessionContinuityLegacy: "This older session has only a live-terminal link. If it ended or the computer restarted, use the provider's saved-session picker from the same project.",
   },
   zh: {
     title: "Agent 协作",
@@ -124,8 +132,28 @@ const COPY = {
     changes: "Diff 待审核",
     budgetExhausted: "团队执行预算已用尽",
     roomLimit: "每个聚焦群聊保留最多 32 条有序消息；满后请新建群聊继续。",
+    openRuntimeSession: "继续实时终端",
+    copyNativeResume: "复制 CLI 恢复命令",
+    nativeResumeCopied: "恢复命令已复制",
+    nativeResumeCopyFailed: "无法复制 CLI 恢复命令",
+    sessionContinuity: "“继续实时终端”会在终端仍存活时精确续接；终端结束或电脑重启后，Hara 会在下一条指令时围绕同一条供应商会话重建终端，恢复命令则允许你在自己的终端接管同一会话。供应商原生 Session ID 始终不暴露。",
+    sessionContinuityLegacy: "这条旧会话只有实时终端链接；终端结束或电脑重启后，请从同一项目进入供应商自己的历史会话选择器。",
   },
 } as const;
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function nativeResumeCommand(
+  runtime: Exclude<AgentTeamRuntime, "hara">,
+  cwd: string,
+  providerSessionId?: string,
+): string {
+  if (providerSessionId) return `hara coding resume ${providerSessionId}`;
+  const resume = runtime === "codex" ? "codex resume --all" : "claude --resume";
+  return `cd ${shellQuote(cwd)} && ${resume}`;
+}
 
 function slug(value: string): string {
   const normalized = value.toLowerCase()
@@ -151,7 +179,7 @@ function shortTime(value: string, locale: "en" | "zh"): string {
   }).format(date);
 }
 
-export default function AgentCollaborationSurface({ item, client, agents, locale }: Props) {
+export default function AgentCollaborationSurface({ item, client, agents, locale, onOpenRuntimeSession }: Props) {
   const copy = COPY[locale];
   const sessionId = item.owner.sessionId;
   const supported = Boolean(
@@ -176,6 +204,7 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
   const [assignment, setAssignment] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [copiedResumeMemberId, setCopiedResumeMemberId] = useState<string | null>(null);
   const refreshTimer = useRef<number | null>(null);
   const requestVersion = useRef(0);
 
@@ -310,6 +339,18 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
   };
 
   const selectedMember = team?.agents.find((member) => member.id === selectedMemberId) ?? null;
+  const selectedNativeResumeCommand = selectedMember && selectedMember.runtime !== "hara"
+    ? nativeResumeCommand(selectedMember.runtime, item.owner.cwd, selectedMember.providerSessionId)
+    : null;
+  const copyNativeResumeCommand = async (member: AgentTeamMember, command: string) => {
+    const copied = await copyTextToClipboard(command);
+    if (!copied) {
+      setError(copy.nativeResumeCopyFailed);
+      return;
+    }
+    setError("");
+    setCopiedResumeMemberId(member.id);
+  };
   const sendDirectMessage = (event: FormEvent) => {
     event.preventDefault();
     if (!client || !selectedMember || !directMessage.trim()) return;
@@ -524,14 +565,34 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
                   {selectedMember.runtime} · {selectedMember.status}
                   {selectedMember.runtimeGrants.length ? ` · → ${selectedMember.runtimeGrants.join(" + ")}` : ""}
                 </small></span></div>
-                {(selectedMember.status === "working" || selectedMember.status === "queued" || selectedMember.status === "stopping") ? (
-                  <button type="button" onClick={() => client && void run("interrupt", async () => {
-                    await client.interruptSessionAgent(sessionId, selectedMember.id);
-                    await refreshTeam();
-                  })}>{copy.stop}</button>
-                ) : null}
+                <div className="agent-direct-actions">
+                  {selectedMember.runtime !== "hara" && selectedMember.runtimeSessionId && onOpenRuntimeSession ? (
+                    <button type="button" onClick={() => onOpenRuntimeSession(selectedMember.runtimeSessionId!, selectedMember.runtime as "codex" | "claude")}>{copy.openRuntimeSession}</button>
+                  ) : null}
+                  {selectedNativeResumeCommand ? (
+                    <button
+                      type="button"
+                      title={selectedNativeResumeCommand}
+                      onClick={() => void copyNativeResumeCommand(selectedMember, selectedNativeResumeCommand)}
+                    >
+                      {copiedResumeMemberId === selectedMember.id ? copy.nativeResumeCopied : copy.copyNativeResume}
+                    </button>
+                  ) : null}
+                  {(selectedMember.status === "working" || selectedMember.status === "queued" || selectedMember.status === "stopping") ? (
+                    <button type="button" onClick={() => client && void run("interrupt", async () => {
+                      await client.interruptSessionAgent(sessionId, selectedMember.id);
+                      await refreshTeam();
+                    })}>{copy.stop}</button>
+                  ) : null}
+                </div>
               </header>
               <p>{copy.directHint}</p>
+              {selectedMember.runtime !== "hara" && selectedMember.runtimeSessionId ? (
+                <div className="agent-direct-continuity">
+                  <p>{selectedMember.providerSessionId ? copy.sessionContinuity : copy.sessionContinuityLegacy}</p>
+                  {selectedNativeResumeCommand ? <code>{selectedNativeResumeCommand}</code> : null}
+                </div>
+              ) : null}
               {selectedMember.workspace?.state === "changes" ? <span className="agent-direct-diff">{copy.changes}</span> : null}
               <form onSubmit={sendDirectMessage}>
                 <input value={directMessage} onChange={(event) => setDirectMessage(event.currentTarget.value)} placeholder={copy.messageAgent} maxLength={16_000} />

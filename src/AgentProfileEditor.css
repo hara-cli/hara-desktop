@@ -71,7 +71,8 @@
   color: var(--dim);
 }
 
-.agent-profile-governed {
+.agent-profile-governed,
+.agent-profile-root {
   display: flex;
   gap: 11px;
   margin: 16px 22px 0;
@@ -81,21 +82,31 @@
   background: color-mix(in srgb, #4ea99f 9%, var(--bg));
 }
 
-.agent-profile-governed > b {
+.agent-profile-governed > b,
+.agent-profile-root > b {
   color: #4ea99f;
   font-size: 20px;
 }
 
-.agent-profile-governed > span {
+.agent-profile-governed > span,
+.agent-profile-root > span {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.agent-profile-governed small {
+.agent-profile-governed small,
+.agent-profile-root small {
   color: var(--dim);
   line-height: 1.45;
 }
+
+.agent-profile-root {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 10%, var(--bg)), var(--bg));
+}
+
+.agent-profile-root > b { color: var(--accent); }
 
 .agent-profile-form {
   padding: 18px 22px 8px;
@@ -178,6 +189,12 @@
   font-size: 11px;
 }
 
+.agent-profile-notice {
+  margin: 4px 22px 0;
+  color: color-mix(in srgb, #4ea99f 78%, var(--fg));
+  font-size: 11px;
+}
+
 .agent-profile-execution {
   margin: 10px 22px 4px;
   padding: 14px;
@@ -252,6 +269,8 @@
 }
 .agent-profile-footer-spacer { flex: 1; }
 .agent-profile-editor > footer .agent-profile-dismiss { border-color: color-mix(in srgb, #d2574d 52%, var(--line)); background: transparent; color: #d96a61; }
+.agent-profile-editor > footer .agent-profile-reset { border-color: color-mix(in srgb, var(--accent) 34%, var(--line)); background: transparent; color: var(--dim); }
+.agent-profile-editor > footer .agent-profile-reset:hover { color: var(--fg); }
 
 @media (max-width: 680px) {
   .agent-profile-overlay { padding: 12px; }

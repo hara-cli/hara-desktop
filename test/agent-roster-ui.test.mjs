@@ -19,6 +19,14 @@ test("Desktop keeps dismissed Agent history legible while removing the Agent fro
   assert.match(app, /activeSession\?\.agentRef === agent\.ref[\s\S]*?sessionId: activeSession\.id/);
   assert.match(picker, /dismissedActive \? undefined : agents\.find/);
   assert.match(picker, /已离职 Agent/);
-  assert.match(profile, /\{agent\.allowedActions\?\.includes\("archive"\) && onArchive \?/);
+  assert.match(profile, /\{!isRootOrchestrator && agent\.allowedActions\?\.includes\("archive"\) && onArchive \?/);
   assert.doesNotMatch(profile, /\{editable && agent\.allowedActions\?\.includes\("archive"\)/);
+  assert.match(profile, /systemRole === "root_orchestrator"/);
+  assert.match(profile, /这是你的主 Agent，不属于雇佣列表/);
+  assert.match(profile, /载入默认人格/);
+  assert.match(profile, /点击“保存名片”后才会生效/);
+  assert.match(app, /inbox-agent-root-badge/);
+  assert.match(app, /visibleHiredAgentCount/);
+  assert.match(app, /agentSessions\.length > 0/);
+  assert.match(client, /systemRole\?: "root_orchestrator"/);
 });

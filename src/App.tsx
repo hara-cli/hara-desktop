@@ -269,7 +269,13 @@ import {
   unavailableCompanySpaceMessage,
 } from "./organization-access";
 import { agentDisplayName, agentPublicTitle } from "./agent-visual";
-import { latestAgentSession, mainAgentRef } from "./agent-session";
+import {
+  canonicalAgentRoster,
+  hiredAgentCount,
+  isRootAgent,
+  latestAgentSession,
+  mainAgentRef,
+} from "./agent-session";
 import {
   agentInboxEntries,
   filterInboxSessions,
@@ -6827,10 +6833,18 @@ export default function App() {
     scope: "main",
     spaceId: activeSpaceId,
     owner: activeSpaceId === "personal" ? "personal" : "organization",
+    systemRole: "root_orchestrator",
+    coordination: {
+      runtimes: activeSpaceId === "personal" ? ["hara", "codex", "claude"] : ["hara"],
+      durableRuntimeSessions: true,
+    },
     allowedActions: [],
   };
-  const scopedCatalogAgents = agentCatalog?.agents.filter((agent) => agent.spaceId === activeSpaceId) ?? [];
-  const availableAgents = scopedCatalogAgents.length ? scopedCatalogAgents : [fallbackMainAgent];
+  const availableAgents = canonicalAgentRoster(
+    agentCatalog?.agents.filter((agent) => agent.spaceId === activeSpaceId) ?? [],
+    fallbackMainAgent,
+  );
+  const visibleHiredAgentCount = hiredAgentCount(availableAgents);
   const activeAgent = availableAgents.find((agent) => agent.ref === mainAgentRef(activeSession?.agentRef));
   const hiredBlueprintIds = availableAgents.flatMap((agent) => agent.blueprint?.id ? [agent.blueprint.id] : []);
   const profileAgent = profileAgentRef
@@ -9001,7 +9015,7 @@ export default function App() {
                   : selectedExternalSession?.title ?? basename(selectedInboxProject?.[0] ?? "")}</strong>
                 <small>
                   {selectedInboxAgent
-                    ? <>{agentPublicTitle(selectedInboxAgent)}{" · "}{selectedInboxSessionTotal} {locale === "zh" ? "项历史任务" : "past tasks"}</>
+                    ? <>{isRootAgent(selectedInboxAgent) ? (locale === "zh" ? "主调度 · " : "Root coordinator · ") : null}{agentPublicTitle(selectedInboxAgent)}{" · "}{selectedInboxSessionTotal} {locale === "zh" ? "项历史任务" : "past tasks"}</>
                     : selectedExternalSession
                       ? <>{selectedExternalSession.workspaceName}{" · "}{externalSessionStateLabel(selectedExternalSession.state)}</>
                       : <>{selectedInboxProject?.[0]}{" · "}{selectedInboxSessionTotal} {t("inboxConversations")}</>}
@@ -9035,7 +9049,7 @@ export default function App() {
                 }}
               >
                 <IconUsers size={16} /> {t("inboxAgents")}
-                <span>{availableAgents.length}</span>
+                <span title={locale === "zh" ? "已雇佣 Agent 数；Hara 主调度不计入" : "Hired Agents; Hara's root coordinator is not counted"}>{visibleHiredAgentCount}</span>
               </button>
               <button
                 type="button"
@@ -9073,7 +9087,9 @@ export default function App() {
                   }}
                 >
                   <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
-                  {locale === "zh" ? "开始新话题" : "Start a fresh topic"}
+                  {isRootAgent(selectedInboxAgent)
+                    ? (locale === "zh" ? "向主调度开启新话题" : "Start a topic with Hara")
+                    : (locale === "zh" ? "开始新话题" : "Start a fresh topic")}
                 </button>
                 {activeSpaceId === "personal" && agentCreateReady ? (
                   agentBlueprintFeatureReady ? (
@@ -9231,7 +9247,7 @@ export default function App() {
                 const unreadCount = agentSessions.filter((session) => unread[session.id]).length;
                 const isWorking = agentSessions.some((session) => busy[session.id]);
                 return (
-                  <div className="inbox-contact-shell" key={agent.ref}>
+                  <div className={`inbox-contact-shell${isRootAgent(agent) ? " is-root" : ""}`} key={agent.ref}>
                     <button
                       type="button"
                       className={`inbox-contact ${agentSessions.some((session) => session.id === active) ? "is-active" : ""}`}
@@ -9256,6 +9272,7 @@ export default function App() {
                       <span className="inbox-contact-copy">
                         <span className="inbox-contact-line">
                           <strong>{agentDisplayName(agent)}</strong>
+                          {isRootAgent(agent) ? <b className="inbox-agent-root-badge">{locale === "zh" ? "主调度" : "ROOT"}</b> : null}
                           <time>{latest?.updatedAt ? fmtTime(latest.updatedAt) : ""}</time>
                         </span>
                         <span className="inbox-contact-line preview">
@@ -9264,12 +9281,12 @@ export default function App() {
                         </span>
                       </span>
                     </button>
-                    {agentSessions.length > 1 ? (
+                    {agentSessions.length > 0 ? (
                       <button
                         type="button"
                         className="project-remove inbox-project-remove inbox-agent-history"
-                        title={locale === "zh" ? "历史任务" : "Task history"}
-                        aria-label={`${locale === "zh" ? "历史任务" : "Task history"}：${agentDisplayName(agent)}`}
+                        title={locale === "zh" ? `${agentDisplayName(agent)}：${agentSessions.length} 项历史任务` : `${agentDisplayName(agent)}: ${agentSessions.length} past task${agentSessions.length === 1 ? "" : "s"}`}
+                        aria-label={`${locale === "zh" ? "历史任务" : "Task history"}：${agentDisplayName(agent)}（${agentSessions.length}）`}
                         onClick={() => {
                           setWorkbenchInboxTarget({ kind: "agent", id: agent.ref });
                           setQ("");
@@ -10457,6 +10474,14 @@ export default function App() {
                   client={clientRef.current}
                   agents={availableAgents}
                   locale={locale}
+                  onOpenRuntimeSession={(sessionId) => {
+                    setWorkbenchInboxMode("external");
+                    setExternalSessionSourceId("runtime");
+                    setWorkbenchInboxTarget({ kind: "external", id: sessionId });
+                    setExternalTranscript(null);
+                    setQ("");
+                    refreshExternalSessions();
+                  }}
                 />
               )}
               {((workbenchToolExtension && workbenchToolExtension.tool !== "agents") || reviewExtension) && (

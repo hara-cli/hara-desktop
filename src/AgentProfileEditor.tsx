@@ -7,6 +7,17 @@ import "./AgentProfileEditor.css";
 
 type EditableIdentity = Omit<AgentPublicIdentity, "version" | "source">;
 
+const DEFAULT_ROOT_IDENTITY: EditableIdentity = {
+  displayName: "Hara",
+  title: "Root Orchestrator",
+  bio: "Owns the conversation, coordinates the team, and continues verified Codex and Claude Code sessions.",
+  traits: ["direct", "resourceful", "evidence-led"],
+  emoji: "✦",
+  theme: "warm editorial studio",
+  accent: "#ff695f",
+  character: "orchestrator",
+};
+
 interface AgentProfileEditorProps {
   agent: AgentInfo;
   locale: "en" | "zh";
@@ -48,7 +59,9 @@ export default function AgentProfileEditor({
   const [agentModel, setAgentModel] = useState(agent.model ?? "");
   const [agentEffort, setAgentEffort] = useState(agent.reasoningEffort ?? "");
   const [localError, setLocalError] = useState("");
+  const [localNotice, setLocalNotice] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const isRootOrchestrator = agent.systemRole === "root_orchestrator" || agent.ref === "main";
   const editable = agent.allowedActions?.includes("edit_profile") === true && Boolean(agent.revision);
   const executionEditable = editable && agent.owner === "personal" && agent.ref !== "main";
   const availableModelEntries = modelEntries.filter((entry) => entry.available !== false);
@@ -103,6 +116,7 @@ export default function AgentProfileEditor({
 
   const chooseAvatar = (file?: File) => {
     setLocalError("");
+    setLocalNotice("");
     if (!file) return;
     if (!/^image\/(?:png|jpeg|webp|gif)$/.test(file.type)) {
       setLocalError(locale === "zh" ? "头像仅支持 PNG、JPEG、WebP 或 GIF。" : "Use a PNG, JPEG, WebP, or GIF avatar.");
@@ -118,6 +132,22 @@ export default function AgentProfileEditor({
     reader.readAsDataURL(file);
   };
 
+  const loadDefaultRootIdentity = () => {
+    setDisplayName(DEFAULT_ROOT_IDENTITY.displayName);
+    setTitle(DEFAULT_ROOT_IDENTITY.title ?? "");
+    setBio(DEFAULT_ROOT_IDENTITY.bio ?? "");
+    setTraits((DEFAULT_ROOT_IDENTITY.traits ?? []).join(", "));
+    setEmoji(DEFAULT_ROOT_IDENTITY.emoji ?? "");
+    setAvatar("");
+    setTheme(DEFAULT_ROOT_IDENTITY.theme ?? "");
+    setAccent(DEFAULT_ROOT_IDENTITY.accent ?? "#ff695f");
+    setCharacter(DEFAULT_ROOT_IDENTITY.character ?? "");
+    setLocalError("");
+    setLocalNotice(locale === "zh"
+      ? "已载入 Hara 默认人格草稿；点击“保存名片”后才会生效。"
+      : "Hara's default identity is loaded as a draft. Save the profile to apply it.");
+  };
+
   return (
     <div className="agent-profile-overlay" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget && !saving) onClose();
@@ -127,7 +157,9 @@ export default function AgentProfileEditor({
           <div className="agent-profile-preview">
             <AgentPortrait agentRef={agent.ref} name={agent.name} identity={preview} size="large" />
             <span>
-              <small>{agent.owner === "organization" ? (locale === "zh" ? "公司 Agent" : "Company Agent") : (locale === "zh" ? "个人 Agent" : "Personal Agent")}</small>
+              <small>{isRootOrchestrator
+                ? (locale === "zh" ? "Hara 主调度 · 永久身份" : "Hara root orchestrator · permanent identity")
+                : agent.owner === "organization" ? (locale === "zh" ? "公司 Agent" : "Company Agent") : (locale === "zh" ? "个人 Agent" : "Personal Agent")}</small>
               <strong id="agent-profile-title">{locale === "zh" ? "Agent 名片" : "Agent Profile"}</strong>
               <em>@{agent.ref}</em>
             </span>
@@ -135,7 +167,21 @@ export default function AgentProfileEditor({
           <button type="button" className="agent-profile-close" aria-label={locale === "zh" ? "关闭" : "Close"} disabled={saving} onClick={onClose}><IconClose size={18} /></button>
         </header>
 
-        {!editable ? (
+        {isRootOrchestrator ? (
+          <div className="agent-profile-root">
+            <b aria-hidden>✦</b>
+            <span>
+              <strong>{locale === "zh" ? "这是你的主 Agent，不属于雇佣列表" : "This is your Main Agent, not a hire"}</strong>
+              <small>{editable
+                ? locale === "zh"
+                  ? "可以修改昵称、头像与人格表达，但主调度身份不能解除。它负责拆解任务、组织 Agent，并持续关联 Codex / Claude Code 的编码会话。"
+                  : "You can personalize its name, avatar, and character, but its coordinator role cannot be removed. It delegates work and keeps Codex / Claude Code coding sessions linked."
+                : locale === "zh"
+                  ? "这位主调度由当前公司空间管理，身份不能解除。它仍负责承接对话、拆解任务与组织可用的 Agent。"
+                  : "This root coordinator is managed by the active company Space and cannot be removed. It still owns the conversation, breaks down work, and coordinates available Agents."}</small>
+            </span>
+          </div>
+        ) : !editable ? (
           <div className="agent-profile-governed">
             <b aria-hidden>⌾</b>
             <span>
@@ -202,8 +248,8 @@ export default function AgentProfileEditor({
           </header>
           {agent.ref === "main" ? (
             <p className="agent-profile-execution-note">{locale === "zh"
-              ? "主 Agent 始终跟随当前空间的默认连接、模型与思考强度，避免个人配置进入其他公司。"
-              : "The Main Agent always follows the current Space connection, model, and reasoning defaults so Personal configuration cannot leak into another company."}</p>
+              ? "主 Agent 始终跟随当前空间的默认连接、模型与思考强度；它可在个人空间调度 Hara、Codex 与 Claude Code，并用持久会话回链继续同一次原生工作。"
+              : "The Main Agent follows the active Space defaults. In Personal Space it can coordinate Hara, Codex, and Claude Code while preserving a durable link to the same native session."}</p>
           ) : agent.owner === "organization" ? (
             <p className="agent-profile-execution-note">{locale === "zh"
               ? "公司 Agent 的模型与思考强度由公司管理员在 Hara Control 统一管理。"
@@ -244,10 +290,14 @@ export default function AgentProfileEditor({
           </div>
         </section>
 
+        {localNotice && !localError && !error ? <p className="agent-profile-notice" role="status">{localNotice}</p> : null}
         {(localError || error) ? <p className="agent-profile-error">{localError || error}</p> : null}
         <footer>
-          {agent.allowedActions?.includes("archive") && onArchive ? (
+          {!isRootOrchestrator && agent.allowedActions?.includes("archive") && onArchive ? (
             <button type="button" className="agent-profile-dismiss" disabled={saving} onClick={onArchive}>{locale === "zh" ? "解除雇佣" : "Dismiss Agent"}</button>
+          ) : null}
+          {isRootOrchestrator && editable ? (
+            <button type="button" className="agent-profile-reset" disabled={saving} onClick={loadDefaultRootIdentity}>{locale === "zh" ? "载入默认人格" : "Load default identity"}</button>
           ) : null}
           <span className="agent-profile-footer-spacer" />
           <button type="button" className="ghost" disabled={saving} onClick={onClose}>{editable ? (locale === "zh" ? "取消" : "Cancel") : (locale === "zh" ? "关闭" : "Close")}</button>
