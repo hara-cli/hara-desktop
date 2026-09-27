@@ -64,6 +64,7 @@ export type ConversationItem =
 interface ConversationTimelineProps {
   items: ConversationItem[];
   busy: boolean;
+  assistantName?: string;
   taskState?: TaskLifecycleEvent;
   displayMode: ExecutionViewMode;
   bottomRef: RefObject<HTMLDivElement | null>;
@@ -120,6 +121,7 @@ function TaskProgressTelemetry({
 export const ConversationTimeline = memo(function ConversationTimeline({
   items,
   busy,
+  assistantName = "Hara",
   taskState,
   displayMode,
   bottomRef,
@@ -128,6 +130,10 @@ export const ConversationTimeline = memo(function ConversationTimeline({
   onApproval,
   onContinueTask,
 }: ConversationTimelineProps) {
+  const assistantInitials = Array.from(assistantName.trim() || "Hara")
+    .slice(0, 2)
+    .join("")
+    .toLocaleUpperCase();
   const [copiedAction, setCopiedAction] = useState<"command" | "verify" | "resume" | null>(null);
   const visibleTask = taskState && taskState.state !== "completed" ? taskState : undefined;
   const taskLabel = visibleTask
@@ -414,7 +420,7 @@ export const ConversationTimeline = memo(function ConversationTimeline({
               );
             case "text":
               return (
-                <AssistantMessage key={index} text={item.text} t={t} />
+                <AssistantMessage key={index} text={item.text} t={t} author={assistantName} />
               );
             case "tool":
             case "diff":
@@ -494,10 +500,15 @@ export const ConversationTimeline = memo(function ConversationTimeline({
             const toolCount = tail.filter((item) => item.kind === "tool").length;
             const diffCount = tail.filter((item) => item.kind === "diff").length;
             return (
-              <div className="busy">
-                {t("working")}
-                {displayMode !== "concise" && toolCount > 0 && <span className="busy-tool-count"> · <IconCog size={12} />{toolCount}</span>}
-                {displayMode !== "concise" && diffCount > 0 && ` · ±${diffCount}`}
+              <div className="busy" role="status" aria-live="polite">
+                <span className="busy-agent-avatar" aria-hidden="true">{assistantInitials}</span>
+                <span className="busy-agent-copy">
+                  <strong>{assistantName}</strong>
+                  <span>{t("working")}</span>
+                </span>
+                <span className="busy-typing" aria-hidden="true"><i /><i /><i /></span>
+                {displayMode !== "concise" && toolCount > 0 && <span className="busy-tool-count"><IconCog size={12} />{toolCount}</span>}
+                {displayMode !== "concise" && diffCount > 0 && <span className="busy-diff-count">±{diffCount}</span>}
               </div>
             );
           })()}

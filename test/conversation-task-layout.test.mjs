@@ -50,6 +50,25 @@ test("streaming chat follows only while the reader stays near the latest message
     "user bubbles stay readable on wide Desktop windows");
 });
 
+test("active work reads as Agent presence instead of a protocol status line", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
+  const assistant = readFileSync(`${root}/src/AssistantMessage.tsx`, "utf8");
+  const styles = readFileSync(`${root}/src/App.css`, "utf8");
+  const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
+
+  assert.match(app, /assistantName=\{activeAgent \? agentDisplayName\(activeAgent\) : "Hara"\}/,
+    "the active conversation supplies its real Agent identity");
+  assert.match(timeline, /className="busy" role="status" aria-live="polite"/);
+  assert.match(timeline, /busy-agent-avatar[\s\S]*?busy-agent-copy[\s\S]*?busy-typing/,
+    "working feedback is a named typing presence, not an unexplained text marker");
+  assert.match(assistant, /className="assistant-message-author"/,
+    "ordinary Agent replies retain a conversational author cue");
+  assert.match(styles, /@keyframes hara-typing-pulse/);
+  assert.doesNotMatch(i18n, /working:\s*"▍/,
+    "visible work copy does not expose the former terminal-style glyph");
+});
+
 test("manual task commands are disclosed on demand and bounded when expanded", () => {
   const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
   const styles = readFileSync(`${root}/src/App.css`, "utf8");

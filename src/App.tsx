@@ -7319,6 +7319,7 @@ export default function App() {
           <ConversationTimeline
             items={items}
             busy={!!busy[active]}
+            assistantName={activeAgent ? agentDisplayName(activeAgent) : "Hara"}
             taskState={taskStates[active]}
             displayMode={executionViewMode}
             bottomRef={bottomRef}

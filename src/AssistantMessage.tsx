@@ -5,12 +5,19 @@ import { MessageCopyButton } from "./MessageCopyButton";
 export function AssistantMessage({
   text,
   t,
+  author = "Hara",
 }: {
   text: string;
   t: (key: Key) => string;
+  author?: string;
 }) {
+  const initials = Array.from(author.trim() || "Hara").slice(0, 2).join("").toLocaleUpperCase();
   return (
     <div className="assistant-message">
+      <div className="assistant-message-author">
+        <span aria-hidden="true">{initials}</span>
+        <strong>{author}</strong>
+      </div>
       <div className="msg assistant">
         <Md
           text={text}
