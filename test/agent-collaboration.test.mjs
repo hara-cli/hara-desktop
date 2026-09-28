@@ -190,7 +190,7 @@ test("Desktop keeps an opaque continuation link for delegated coding sessions", 
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "external", id: sessionId \}\)/);
 });
 
-test("Agent collaboration UI separates persistent identity from direct coding workers", () => {
+test("Agent collaboration keeps executor routing inside Hara instead of per-Agent setup", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const surface = readFileSync(`${root}/src/AgentCollaborationSurface.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
@@ -198,14 +198,18 @@ test("Agent collaboration UI separates persistent identity from direct coding wo
   assert.match(app, /const loadAgentCollaborationSurface = \(\) => import\("\.\/AgentCollaborationSurface"\)/);
   assert.match(app, /const AgentCollaborationSurface = lazy\(loadAgentCollaborationSurface\)/,
     "the collaboration workbench stays out of the main Desktop bundle");
-  assert.match(surface, /runtime === "hara" && runtimeGrants\.length > 0 \? \{ runtimeGrants \} : \{\}/,
-    "coding grants belong only to persistent Hara Agents");
-  assert.match(surface, /runtime === "hara" && agentRef !== "main"/,
-    "a direct coding worker never pretends to inherit a private Hara persona");
+  assert.match(surface, /Hara chooses the executor/,
+    "the creation form explains conversational executor routing");
+  assert.match(surface, /由 Hara 自动选择执行器/,
+    "the routing explanation is localized");
+  assert.doesNotMatch(surface, /setRuntime\(/,
+    "users do not preselect a coding runtime while adding an Agent");
+  assert.doesNotMatch(surface, /grantCodex|grantClaude|setRuntimeGrants/,
+    "users do not maintain per-Agent coding-runtime checkboxes");
+  assert.match(surface, /\.\.\.\(agentRef !== "main" \? \{ agentRef \} : \{\}\)/,
+    "the form creates a persistent Hara identity rather than a direct coding worker");
   assert.match(surface, /wake: true/,
     "user-authored direct and group messages explicitly wake bounded Agent generations");
-  assert.match(surface, /isolated Worktree/,
-    "the write boundary is explained where the user grants coding capability");
   assert.match(client, /runtimeGrants\?: Array<Exclude<AgentTeamRuntime, "hara">>/,
-    "the typed transport carries per-Agent coding grants");
+    "the typed transport remains backward-compatible with older hosts and saved teams");
 });

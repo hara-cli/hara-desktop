@@ -1042,6 +1042,20 @@ fn bundled_herdr_path(app_executable: &Path, windows: bool) -> Option<PathBuf> {
         .map(|directory| directory.join(bundled_herdr_name(windows)))
 }
 
+fn bundled_code_runtime_name(windows: bool) -> &'static str {
+    if windows {
+        "hara-code-runtime.exe"
+    } else {
+        "hara-code-runtime"
+    }
+}
+
+fn bundled_code_runtime_path(app_executable: &Path, windows: bool) -> Option<PathBuf> {
+    app_executable
+        .parent()
+        .map(|directory| directory.join(bundled_code_runtime_name(windows)))
+}
+
 fn managed_cli_path(data_directory: &Path, windows: bool) -> PathBuf {
     data_directory
         .join("bin")
@@ -1751,6 +1765,7 @@ fn serve_command(
     executable: &Path,
     port: u16,
     herdr_executable: Option<&Path>,
+    code_runtime_executable: Option<&Path>,
 ) -> std::process::Command {
     let mut command = std::process::Command::new(executable);
     command.args(["serve", "--port", &port.to_string()]);
@@ -1760,6 +1775,9 @@ fn serve_command(
     if let Some(herdr_executable) = herdr_executable {
         command.env("HARA_HERDR_PATH", herdr_executable);
     }
+    if let Some(code_runtime_executable) = code_runtime_executable {
+        command.env("HARA_CODE_RUNTIME_PATH", code_runtime_executable);
+    }
     command
 }
 
@@ -1768,6 +1786,7 @@ fn spawn_serve_process(
     log_path: &Path,
     port: u16,
     herdr_executable: Option<&Path>,
+    code_runtime_executable: Option<&Path>,
 ) -> Result<u32, String> {
     let log_directory = log_path
         .parent()
@@ -1784,7 +1803,12 @@ fn spawn_serve_process(
         .try_clone()
         .map_err(|error| format!("clone serve log handle: {error}"))?;
 
-    let mut command = serve_command(executable, port, herdr_executable);
+    let mut command = serve_command(
+        executable,
+        port,
+        herdr_executable,
+        code_runtime_executable,
+    );
     command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::from(stdout))
@@ -1834,6 +1858,8 @@ fn start_serve() -> Result<u32, String> {
         bundled_sidecar_path(&app_executable, cfg!(windows)).filter(|sidecar| sidecar.is_file());
     let bundled_herdr =
         bundled_herdr_path(&app_executable, cfg!(windows)).filter(|runtime| runtime.is_file());
+    let bundled_code_runtime = bundled_code_runtime_path(&app_executable, cfg!(windows))
+        .filter(|runtime| runtime.is_file());
     let executable = match bundled {
         Some(sidecar) => sidecar,
         None => {
@@ -1852,7 +1878,13 @@ fn start_serve() -> Result<u32, String> {
     };
     recover_discovered_serve_before_start()?;
     let port = available_serve_port()?;
-    let pid = spawn_serve_process(&executable, &log_path, port, bundled_herdr.as_deref())?;
+    let pid = spawn_serve_process(
+        &executable,
+        &log_path,
+        port,
+        bundled_herdr.as_deref(),
+        bundled_code_runtime.as_deref(),
+    )?;
     Ok(pid)
 }
 
@@ -3857,6 +3889,14 @@ mod native_tests {
             bundled_herdr_path(app, true).unwrap(),
             Path::new("/opt/hara/herdr.exe")
         );
+        assert_eq!(
+            bundled_code_runtime_path(app, false).unwrap(),
+            Path::new("/opt/hara/hara-code-runtime")
+        );
+        assert_eq!(
+            bundled_code_runtime_path(app, true).unwrap(),
+            Path::new("/opt/hara/hara-code-runtime.exe")
+        );
     }
 
     #[test]
@@ -4163,6 +4203,7 @@ mod native_tests {
             Path::new("/opt/hara/hara"),
             49152,
             Some(Path::new("/opt/hara/herdr")),
+            Some(Path::new("/opt/hara/hara-code-runtime")),
         );
         assert_eq!(command.get_program(), OsStr::new("/opt/hara/hara"));
         assert_eq!(
@@ -4178,6 +4219,10 @@ mod native_tests {
         }));
         assert!(command.get_envs().any(|(key, value)| {
             key == OsStr::new("HARA_HERDR_PATH") && value == Some(OsStr::new("/opt/hara/herdr"))
+        }));
+        assert!(command.get_envs().any(|(key, value)| {
+            key == OsStr::new("HARA_CODE_RUNTIME_PATH")
+                && value == Some(OsStr::new("/opt/hara/hara-code-runtime"))
         }));
     }
 

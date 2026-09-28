@@ -14,6 +14,9 @@ import { inspectForeignMacExecutable, useForeignMacStaticValidation } from "./fo
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sidecarVersion = readFileSync(join(root, "src-tauri", "binaries", "SIDECAR_VERSION"), "utf8").trim();
+const codeRuntimeVersion = JSON.parse(
+  readFileSync(join(root, "scripts", "opencode-runtime-lock.json"), "utf8"),
+).version;
 
 function run(command, args, label) {
   try {
@@ -57,9 +60,11 @@ export function smokeMacUpdaterArchive({ archive, expectedTarget, requireSignatu
     const app = join(extractionRoot, "Hara.app");
     const shell = join(app, "Contents", "MacOS", "hara-desktop");
     const sidecar = join(app, "Contents", "MacOS", "hara");
+    const codeRuntime = join(app, "Contents", "MacOS", "hara-code-runtime");
     if (!existsSync(app) || !statSync(app).isDirectory()) throw new Error("updater archive does not contain Hara.app");
     requireExecutable(shell, "updater archive desktop shell");
     requireExecutable(sidecar, "updater archive sidecar");
+    requireExecutable(codeRuntime, "updater archive Hara Code Runtime");
 
     const shellArchs = run("/usr/bin/lipo", ["-archs", shell], "updater archive shell architecture").trim().split(/\s+/);
     if (!shellArchs.includes(expectedArch)) {
@@ -68,6 +73,7 @@ export function smokeMacUpdaterArchive({ archive, expectedTarget, requireSignatu
     if (staticOnly) {
       inspectForeignMacExecutable(shell, expectedTarget, "updater archive desktop shell");
       inspectForeignMacExecutable(sidecar, expectedTarget, "updater archive sidecar");
+      inspectForeignMacExecutable(codeRuntime, expectedTarget, "updater archive Hara Code Runtime");
     } else {
       smokeUpdaterEndpoints({ binary: shell, label: "updater archive desktop shell" });
       smokeSidecar({
@@ -76,6 +82,10 @@ export function smokeMacUpdaterArchive({ archive, expectedTarget, requireSignatu
         expectedTarget,
         label: "updater archive sidecar",
       });
+      const codeVersion = run(codeRuntime, ["--version"], "updater archive Hara Code Runtime version");
+      if (!codeVersion.includes(codeRuntimeVersion)) {
+        throw new Error(`updater archive Hara Code Runtime is not pinned version ${codeRuntimeVersion}`);
+      }
     }
 
     if (requireSignatures) {

@@ -194,6 +194,7 @@ verify_or_repair_macos_adhoc_signature "$STAGED_SIDECAR" "the staged Desktop sid
 mv -f "$STAGED_SIDECAR" "$BUNDLED_SIDECAR"
 STAGED_SIDECAR=""
 node scripts/refresh-herdr-runtime.mjs "$TRIPLE"
+node scripts/refresh-opencode-runtime.mjs "$TRIPLE"
 if [ "${HARA_FOREIGN_MAC_STATIC_VALIDATION:-0}" = "1" ]; then
   node scripts/foreign-mac-validation.mjs \
     "$BUNDLED_SIDECAR" "$TRIPLE" "freshly compiled Intel sidecar"

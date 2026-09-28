@@ -438,6 +438,7 @@ jobs:
           # runtime for this exact matrix target beside hara, rather than relying on a developer
           # workstation artifact that is intentionally absent from the release checkout.
           node "$GITHUB_WORKSPACE/scripts/refresh-herdr-runtime.mjs" "${{ matrix.target }}"
+          node "$GITHUB_WORKSPACE/scripts/refresh-opencode-runtime.mjs" "${{ matrix.target }}"
       - name: Build local packages (no release API access)
         shell: bash
         env:

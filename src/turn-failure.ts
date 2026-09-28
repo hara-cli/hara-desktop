@@ -2,6 +2,10 @@ import type { Locale } from "./i18n";
 
 const AUTH_FAILURE = /(?:\b(?:401|403)\b|unauthori[sz]ed|forbidden|auth(?:entication)?|credential|api[ _-]?key|凭证|认证|密钥)/iu;
 
+export function isModelAuthenticationFailure(error: string | undefined): boolean {
+  return !!error && AUTH_FAILURE.test(error);
+}
+
 /**
  * Convert an upstream turn failure into stable product copy.
  *
@@ -15,7 +19,7 @@ export function turnFailureMessage(
   locale: Locale,
 ): string | undefined {
   if (!error) return undefined;
-  if (AUTH_FAILURE.test(error)) {
+  if (isModelAuthenticationFailure(error)) {
     return locale === "zh"
       ? "模型连接认证失败。请在“模型与连接”中更新这个账号，或切换到可用连接后重试。"
       : "The model connection could not authenticate. Update this account in Models & connections, or switch to an available connection and retry.";

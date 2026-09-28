@@ -239,7 +239,7 @@ export interface AgentTeamMember {
   parentPath: string;
   role?: string;
   runtime: AgentTeamRuntime;
-  /** Coding runtimes this native Hara Agent may launch after an explicit approval. */
+  /** Coding runtimes Hara may select for this Agent; each launch still requires just-in-time approval. */
   runtimeGrants: Array<Exclude<AgentTeamRuntime, "hara">>;
   /** Opaque Hara continuation id for the exact Codex / Claude Code / OpenCode session. */
   runtimeSessionId?: string;
@@ -1667,6 +1667,7 @@ export interface TaskLifecycleEvent {
         kind: "missing_secret" | "missing_authority" | "physical_action" | "material_choice" | "external_state" | "destructive_confirmation";
         detail: string;
         evidence: string[];
+        options?: string[];
         capability?: string;
         manualAction?: {
           /** Display/copy only. Desktop never executes this command. */

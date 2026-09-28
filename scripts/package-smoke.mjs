@@ -22,6 +22,7 @@ const releaseBase = triple
   : join(root, "src-tauri", "target", "release");
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const herdrLock = JSON.parse(readFileSync(join(root, "scripts", "herdr-runtime-lock.json"), "utf8"));
+const codeRuntimeLock = JSON.parse(readFileSync(join(root, "scripts", "opencode-runtime-lock.json"), "utf8"));
 const stampPath = join(root, "src-tauri", "binaries", "SIDECAR_VERSION");
 const sidecarVersion = existsSync(stampPath) ? readFileSync(stampPath, "utf8").trim() : "";
 const platform = process.platform;
@@ -117,6 +118,33 @@ function herdrRuntime(path, label = "packaged Herdr runtime") {
       throw new Error(`${label} is not pinned Herdr ${herdrLock.version}: ${output.trim().slice(0, 160)}`);
     }
     ok(`${label} reports Herdr ${herdrLock.version}`);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function codeRuntime(path, label = "packaged Hara Code Runtime") {
+  if (!executable(path, label)) return;
+  try {
+    if (staticForeignMacValidation) {
+      inspectForeignMacExecutable(path, expectedTarget, label);
+      return;
+    }
+    const result = spawnSync(path, ["--version"], {
+      encoding: "utf8",
+      timeout: 15_000,
+      windowsHide: true,
+    });
+    if (result.error || result.status !== 0) {
+      throw new Error(`${label} --version failed: ${commandFailure(result, true)}`);
+    }
+    const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+    if (!output.includes(codeRuntimeLock.version)) {
+      throw new Error(
+        `${label} is not pinned Hara Code Runtime ${codeRuntimeLock.version}: ${output.trim().slice(0, 160)}`,
+      );
+    }
+    ok(`${label} reports Hara Code Runtime ${codeRuntimeLock.version}`);
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
   }
@@ -225,6 +253,15 @@ function smokeInstalledSidecars(artifact, kind, label, wantedName, desktopName) 
       for (const runtime of runtimes) herdrRuntime(runtime, `${label} Herdr runtime`);
     }
 
+    const codeRuntimeName = platform === "win32" ? "hara-code-runtime.exe" : "hara-code-runtime";
+    const codeRuntimes = findFilesNamed(extractionRoot, codeRuntimeName);
+    if (codeRuntimes.length === 0) {
+      fail(`${label} does not contain ${codeRuntimeName}: ${basename(artifact)}`);
+    } else {
+      ok(`${label} extracted (${codeRuntimes.length} ${codeRuntimeName} candidate${codeRuntimes.length === 1 ? "" : "s"})`);
+      for (const runtime of codeRuntimes) codeRuntime(runtime, `${label} Hara Code Runtime`);
+    }
+
     const desktopCandidates = findFilesNamed(extractionRoot, desktopName);
     if (desktopCandidates.length === 0) {
       fail(`${label} does not contain ${desktopName}: ${basename(artifact)}`);
@@ -249,10 +286,12 @@ if (platform === "darwin") {
   const shell = join(app, "Contents", "MacOS", "hara-desktop");
   const bundledSidecar = join(app, "Contents", "MacOS", "hara");
   const bundledHerdr = join(app, "Contents", "MacOS", "herdr");
+  const bundledCodeRuntime = join(app, "Contents", "MacOS", "hara-code-runtime");
   existsSync(app) ? ok("Hara.app present") : fail("Hara.app missing");
   if (executable(shell, "desktop shell")) updaterEndpoints(shell, "desktop shell");
   sidecar(bundledSidecar);
   herdrRuntime(bundledHerdr);
+  codeRuntime(bundledCodeRuntime);
   const dmg = updaterArtifact(join(releaseBase, "bundle", "dmg"), ".dmg", "DMG", true, false);
   if (dmg) {
     try {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { turnFailureMessage } from "../src/turn-failure.ts";
+import { isModelAuthenticationFailure, turnFailureMessage } from "../src/turn-failure.ts";
 
 test("provider authentication failures become actionable copy without echoing upstream details", () => {
   const upstream = "[token-plan error] 403 credential rejected at https://provider.invalid?key=secret";
@@ -9,6 +9,11 @@ test("provider authentication failures become actionable copy without echoing up
   assert.match(message, /模型连接认证失败/);
   assert.match(message, /模型与连接/);
   assert.doesNotMatch(message, /provider\.invalid|secret|token-plan/);
+  assert.equal(isModelAuthenticationFailure(upstream), true);
+});
+
+test("ordinary provider failures do not trigger connection migration recovery", () => {
+  assert.equal(isModelAuthenticationFailure("upstream timed out while streaming"), false);
 });
 
 test("empty and generic failures remain distinct and safe", () => {

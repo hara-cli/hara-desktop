@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.175 — 2026-09-29 — conversational execution and built-in code runtime
+
+- Make Agent work feel like a normal conversation: keep the composer and session-history action visible, fold
+  technical execution detail by default, and render consequential choices as focused cards that resume the same
+  task instead of creating a disconnected follow-up.
+- Let Hara choose the appropriate coding executor from the task and installed capabilities. Codex and Claude Code
+  remain explicit just-in-time launches, while the checksum-pinned OpenCode engine is bundled as the internal
+  **Hara Code Runtime** so ordinary coding work needs no separate runtime setup.
+- Explain when an older conversation is still pinned to an invalid model connection even though a newly saved
+  connection tests successfully, and offer a focused route-selection recovery without rewriting conversation
+  history or silently moving credentials.
+- Bundle Hara CLI `0.182.0` at exact commit `b625ef524ffde60cbfb39fdf2659dd6a6452fa59`, including automatic
+  executor routing, durable material-choice decisions, and the provider-neutral bundled-runtime resolver.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may display a
+  reputation warning.
+
 ## 0.1.174 — 2026-09-26 — permanent Hara orchestration and exact coding recovery
 
 - Present Hara as the permanent root orchestrator instead of a hired Agent. It is always kept in the roster,

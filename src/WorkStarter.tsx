@@ -1,14 +1,10 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  IconArrowRight,
   IconClose,
   IconDocument,
   IconFolder,
   IconImage,
-  IconPresentation,
-  IconSpreadsheet,
-  IconSummary,
 } from "./icons";
 import type { Locale } from "./i18n";
 import { isImeCompositionKey } from "./ime";
@@ -16,21 +12,12 @@ import {
   appendComposerAttachments,
   type ComposerAttachment,
 } from "./composer-state";
-import { buildWorkPrompt, type WorkKind } from "./work-starter-prompt";
+import { buildWorkPrompt } from "./work-starter-prompt";
 
 export interface WorkStarterSubmission {
   prompt: string;
   draftText: string;
   attachments: ComposerAttachment[];
-}
-
-export interface WorkbenchApp {
-  id: string;
-  title: string;
-  description: string;
-  icon: "office" | "project" | "design" | "browser" | "capability";
-  source: string;
-  disabled?: boolean;
 }
 
 interface WorkStarterProps {
@@ -41,36 +28,16 @@ interface WorkStarterProps {
   onPickDirectory: () => Promise<ComposerAttachment[]>;
   onPasteImages: (event: React.ClipboardEvent<HTMLTextAreaElement>) => Promise<ComposerAttachment[]>;
   onDropPaths: (paths: string[]) => Promise<ComposerAttachment[]>;
-  onOpenProject: () => void;
-  apps?: WorkbenchApp[];
-  onOpenApp?: (appId: string) => void;
-}
-
-interface WorkTemplate {
-  id: Exclude<WorkKind, "general">;
-  title: string;
-  description: string;
-  output: string;
-  Icon: typeof IconPresentation;
-}
-
-function WorkbenchAppIcon({ icon }: { icon: WorkbenchApp["icon"] }) {
-  if (icon === "office") return <IconPresentation size={19} />;
-  if (icon === "project") return <IconFolder size={19} />;
-  if (icon === "design") return <IconImage size={19} />;
-  if (icon === "browser") return <IconSummary size={19} />;
-  return <IconDocument size={19} />;
 }
 
 const COPY = {
   en: {
-    eyebrow: "Hara workbench",
-    title: "What do you want to finish today?",
-    hint: "Describe the outcome in plain language. Hara will organize the brief and acceptance checks before it starts changing files.",
+    eyebrow: "Hara",
+    title: "What can Hara help you get done?",
+    hint: "Describe the outcome and add any useful context. Hara will choose the right capability, specialist, or coding runtime for the job.",
     placeholder: "For example: organize this week's customer feedback and give me the three actions we should take next…",
-    start: "Start working",
-    starting: "Preparing the task…",
-    general: "General task",
+    start: "Send",
+    starting: "Starting…",
     describe: "Describe the result you want Hara to complete",
     referenceLabel: "Reference material",
     image: "Images",
@@ -79,36 +46,21 @@ const COPY = {
     drop: "Drop files or a folder here",
     dropping: "Add these materials to the task",
     remove: "Remove",
-    resetKind: "Use a general task instead",
     shortcut: "⌘ / Ctrl + Enter",
-    choose: "Or start with a common job",
-    apps: "Apps & extensions",
-    appsHint: "Open your assistant team or a workspace-owned visual tool without leaving the workbench.",
-    unavailable: "Connect a workspace first",
-    files: "Work from existing files",
-    filesHint: "Open a folder when the job depends on documents, sheets, images, or company material.",
-    presentation: "Create a presentation",
-    presentationDesc: "Audience, key takeaway, story, render checks",
-    presentationOutput: "Request: PPTX · PDF",
-    spreadsheet: "Organize a spreadsheet",
-    spreadsheetDesc: "Clean, summarize, chart, and validate",
-    spreadsheetOutput: "Request: XLSX · CSV",
-    document: "Write a document",
-    documentDesc: "Reports, proposals, notices, and minutes",
-    documentOutput: "Request: DOCX · PDF",
-    summary: "Make sense of files",
-    summaryDesc: "Extract conclusions, evidence, and next actions",
-    summaryOutput: "Request: summary · checklist",
-    capabilityHint: "Each task asks Hara to verify the installed capability before promising a file export.",
+    routing: "Hara chooses the capability. You review decisions, permissions, and results.",
+    examples: [
+      "Summarize customer feedback and recommend next steps",
+      "Inspect a project and fix its most important issue",
+      "Turn these materials into a deliverable plan",
+    ],
   },
   zh: {
-    eyebrow: "Hara 工作台",
-    title: "今天想完成什么？",
-    hint: "像交代同事一样说明结果。Hara 会先整理任务简报和验收条件，再开始修改文件。",
+    eyebrow: "Hara",
+    title: "想让 Hara 帮你完成什么？",
+    hint: "说明想要的结果并添加必要资料。Hara 会自动选择合适的能力、专业助手或编码执行器。",
     placeholder: "例如：整理本周客户反馈，归纳出最重要的三个问题和下一步建议……",
-    start: "开始工作",
-    starting: "正在准备任务……",
-    general: "通用任务",
+    start: "发送",
+    starting: "正在开始……",
     describe: "描述希望 Hara 完成的结果",
     referenceLabel: "参考资料",
     image: "图片",
@@ -117,27 +69,13 @@ const COPY = {
     drop: "可把图片、文件或文件夹拖到这里",
     dropping: "松开后加入本次工作",
     remove: "移除",
-    resetKind: "切回通用任务",
     shortcut: "⌘ / Ctrl + Enter",
-    choose: "也可以从常用工作开始",
-    apps: "应用与扩展",
-    appsHint: "从总工作台打开协作团队或当前工作区的可视化工具。",
-    unavailable: "请先关联工作区",
-    files: "从现有文件开始",
-    filesHint: "需要处理文档、表格、图片或公司资料时，先打开它们所在的文件夹。",
-    presentation: "做演示文稿",
-    presentationDesc: "先定受众、主结论、叙事和渲染校验",
-    presentationOutput: "期望格式：PPTX · PDF",
-    spreadsheet: "整理表格",
-    spreadsheetDesc: "清洗、汇总、图表与结果校验",
-    spreadsheetOutput: "期望格式：XLSX · CSV",
-    document: "写一份文档",
-    documentDesc: "报告、方案、通知与会议纪要",
-    documentOutput: "期望格式：DOCX · PDF",
-    summary: "整理资料",
-    summaryDesc: "从文件中提炼结论、证据和待办",
-    summaryOutput: "期望格式：摘要 · 清单",
-    capabilityHint: "任务会先要求 Hara 检查已安装能力，再承诺文件导出。",
+    routing: "能力由 Hara 选择；你只需检查关键选择、权限和结果。",
+    examples: [
+      "整理客户反馈并给出下一步建议",
+      "检查一个项目并修复最重要的问题",
+      "把这些资料整理成可交付方案",
+    ],
   },
 } as const;
 
@@ -149,12 +87,8 @@ export function WorkStarter({
   onPickDirectory,
   onPasteImages,
   onDropPaths,
-  onOpenProject,
-  apps = [],
-  onOpenApp = () => {},
 }: WorkStarterProps) {
   const copy = COPY[locale];
-  const [kind, setKind] = useState<WorkKind>("general");
   const [brief, setBrief] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
@@ -166,40 +100,6 @@ export function WorkStarter({
   const onDropPathsRef = useRef(onDropPaths);
   busyRef.current = busy;
   onDropPathsRef.current = onDropPaths;
-  const templates = useMemo<WorkTemplate[]>(
-    () => [
-      {
-        id: "presentation",
-        title: copy.presentation,
-        description: copy.presentationDesc,
-        output: copy.presentationOutput,
-        Icon: IconPresentation,
-      },
-      {
-        id: "spreadsheet",
-        title: copy.spreadsheet,
-        description: copy.spreadsheetDesc,
-        output: copy.spreadsheetOutput,
-        Icon: IconSpreadsheet,
-      },
-      {
-        id: "document",
-        title: copy.document,
-        description: copy.documentDesc,
-        output: copy.documentOutput,
-        Icon: IconDocument,
-      },
-      {
-        id: "summary",
-        title: copy.summary,
-        description: copy.summaryDesc,
-        output: copy.summaryOutput,
-        Icon: IconSummary,
-      },
-    ],
-    [copy],
-  );
-
   const ingest = async (loader: () => Promise<ComposerAttachment[]>) => {
     if (busyRef.current || blockedRef.current) return;
     blockedRef.current = true;
@@ -248,7 +148,7 @@ export function WorkStarter({
   const submit = async () => {
     if (busy || (!brief.trim() && attachments.length === 0)) return;
     await onStart({
-      prompt: buildWorkPrompt(kind, brief, locale),
+      prompt: buildWorkPrompt("general", brief, locale),
       draftText: brief.trim(),
       attachments: [...attachments],
     });
@@ -266,36 +166,6 @@ export function WorkStarter({
         <h1 id="workstarter-title">{copy.title}</h1>
         <p>{copy.hint}</p>
       </div>
-
-      {apps.length > 0 && (
-        <section className="workstarter-apps" aria-labelledby="workstarter-apps-title">
-          <div className="workstarter-section-head">
-            <div>
-              <span id="workstarter-apps-title">{copy.apps}</span>
-              <small>{copy.appsHint}</small>
-            </div>
-            <b>{String(apps.length).padStart(2, "0")}</b>
-          </div>
-          <div className="workstarter-app-grid">
-            {apps.map((app) => (
-              <button
-                type="button"
-                key={app.id}
-                disabled={app.disabled}
-                title={app.disabled ? copy.unavailable : app.description}
-                onClick={() => onOpenApp(app.id)}
-              >
-                <span className={`workstarter-app-mark is-${app.icon}`}><WorkbenchAppIcon icon={app.icon} /></span>
-                <span>
-                  <strong>{app.title}</strong>
-                  <small>{app.description}</small>
-                </span>
-                <em>{app.disabled ? copy.unavailable : app.source}</em>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
 
       <div className={`workstarter-compose ${dragActive ? "drop-active" : ""}`}>
         {dragActive ? (
@@ -378,58 +248,28 @@ export function WorkStarter({
           </div>
         ) : null}
         <div className="workstarter-compose-foot">
-          {kind === "general" ? (
-            <span className="workstarter-selected">{copy.general}</span>
-          ) : (
-            <button
-              type="button"
-              className="workstarter-selected workstarter-kind-reset"
-              title={copy.resetKind}
-              onClick={() => setKind("general")}
-            >
-              {templates.find((template) => template.id === kind)?.title} <IconClose size={12} />
-            </button>
-          )}
+          <span className="workstarter-routing">{copy.routing}</span>
           <span className="workstarter-shortcut" aria-hidden>{copy.shortcut}</span>
           <button type="button" disabled={!canSubmit} onClick={() => void submit()}>
             {busy ? copy.starting : copy.start}
           </button>
         </div>
       </div>
-
-      <div id="workstarter-common-jobs" className="workstarter-label">{copy.choose}</div>
-      <div className="workstarter-grid" role="group" aria-labelledby="workstarter-common-jobs">
-        {templates.map(({ id, title, description, output, Icon }, index) => (
+      <div className="workstarter-examples" aria-label={locale === "zh" ? "示例" : "Examples"}>
+        {copy.examples.map((example) => (
           <button
+            key={example}
             type="button"
-            key={id}
-            className={`workstarter-card ${kind === id ? "on" : ""}`}
-            aria-pressed={kind === id}
+            disabled={busy}
             onClick={() => {
-              setKind(id);
-              textareaRef.current?.focus();
+              setBrief(example);
+              requestAnimationFrame(() => textareaRef.current?.focus());
             }}
           >
-            <span className="workstarter-card-index" aria-hidden>0{index + 1}</span>
-            <Icon size={21} />
-            <span className="workstarter-card-copy">
-              <strong>{title}</strong>
-              <small>{description}</small>
-            </span>
-            <span className="workstarter-card-output">{output}</span>
+            {example}
           </button>
         ))}
       </div>
-      <p className="workstarter-capability-hint">{copy.capabilityHint}</p>
-
-      <button type="button" className="workstarter-files" onClick={onOpenProject}>
-        <IconFolder size={18} />
-        <span>
-          <strong>{copy.files}</strong>
-          <small>{copy.filesHint}</small>
-        </span>
-        <b aria-hidden><IconArrowRight size={16} /></b>
-      </button>
     </section>
   );
 }

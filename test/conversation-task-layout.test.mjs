@@ -16,7 +16,7 @@ test("long task guidance scrolls with the transcript without displacing the comp
   const transcript = styles.match(/^\.scroll \{([\s\S]*?)\n\}/m)?.[1] ?? "";
   const inputbar = styles.match(/^\.inputbar \{([\s\S]*?)\n\}/m)?.[1] ?? "";
 
-  assert.match(timeline, /const taskProgressCard = visibleTask \? \(/);
+  assert.match(timeline, /const taskProgressCard = decisionOptions\.length > 0/);
   assert.match(timelineScroll, /\{taskProgressCard\}/,
     "task status belongs to the transcript scroller instead of a fixed row above it");
   assert.match(chat, /min-height:\s*0\s*;/);
@@ -44,8 +44,10 @@ test("streaming chat follows only while the reader stays near the latest message
   assert.match(app, /timelineHasNewContent[\s\S]*?查看新消息/,
     "paused follow-scroll exposes an explicit return-to-latest action");
   assert.match(styles, /\.timeline-new-content-anchor/);
-  assert.match(styles, /\.chat\.im \.assistant-message > \.msg\s*\{[\s\S]*?background:\s*transparent/,
-    "Agent replies read as open conversation text instead of stacked control cards");
+  assert.match(styles, /\.chat\.im \.assistant-message > \.msg\s*\{[\s\S]*?background:\s*var\(--bg2\)/,
+    "Agent replies use a compact conversational bubble instead of a full-width work report");
+  assert.match(styles, /\.chat\.im \.assistant-message\s*\{[\s\S]*?max-width:\s*min\(82%, 720px\)/,
+    "Agent messages stay readable and visibly distinct from system surfaces");
   assert.match(styles, /\.chat\.im \.msg\.user\s*\{[\s\S]*?max-width:\s*min\(72%, 600px\)/,
     "user bubbles stay readable on wide Desktop windows");
 });
@@ -81,4 +83,26 @@ test("manual task commands are disclosed on demand and bounded when expanded", (
   assert.match(actionBody, /overflow-y:\s*auto\s*;/,
     "expanded command details own their overflow instead of growing past the window");
   assert.match(actionBody, /overscroll-behavior:\s*contain\s*;/);
+});
+
+test("structured user choices stay in the chat flow while technical telemetry remains opt-in", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
+  const decision = readFileSync(`${root}/src/DecisionCard.tsx`, "utf8");
+  const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const styles = readFileSync(`${root}/src/App.css`, "utf8");
+
+  assert.match(client, /options\?: string\[\]/, "the Desktop protocol retains structured material choices");
+  assert.match(timeline, /dependency\?\.kind === "material_choice"/);
+  assert.match(timeline, /<DecisionCard[\s\S]*?onSelect=\{onDecision\}/,
+    "a durable material choice renders as an interactive message block");
+  assert.match(app, /onDecision=\{timelineDecision\}/);
+  assert.match(decision, /<fieldset[\s\S]*?data-decision-option/,
+    "choices use native keyboard-operable controls");
+  assert.match(decision, /aria-keyshortcuts=/);
+  assert.match(timeline, /displayMode === "debug" && visibleTask\.progress/,
+    "round, token, and tool telemetry does not interrupt normal chat");
+  assert.match(timeline, /case "output":[\s\S]*?return executionViewShowsLog\(displayMode\)/,
+    "raw tool output is retained but hidden in concise chat mode");
+  assert.match(styles, /\.decision-card-options > button:focus-visible/);
 });

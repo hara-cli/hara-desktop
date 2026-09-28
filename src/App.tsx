@@ -105,7 +105,6 @@ import {
 } from "./project-list";
 import {
   WorkStarter,
-  type WorkbenchApp,
   type WorkStarterSubmission,
 } from "./WorkStarter";
 import type { PresentationTemplate } from "./OfficeHome";
@@ -218,7 +217,7 @@ import {
   type ExtensionDockAddKind,
 } from "./extension-dock-state";
 import { isInternalUserText, userVisibleText } from "./user-visible-text";
-import { turnFailureMessage } from "./turn-failure";
+import { isModelAuthenticationFailure, turnFailureMessage } from "./turn-failure";
 import {
   loadPresentationSurface,
   presentationErrorKey,
@@ -490,20 +489,6 @@ const panelNavigationIcon = (
   }
   if (kind === "browser") return "projects" as const;
   return "tasks" as const;
-};
-
-const workbenchAppIconForPanel = (
-  contribution: Pick<PluginNavigationContribution, "plugin" | "panelId" | "title">,
-): WorkbenchApp["icon"] => {
-  const kind = classifyPanelSurface(
-    contribution.plugin,
-    contribution.panelId,
-    contribution.title,
-  );
-  if (kind === "browser") return "browser";
-  if (kind === "design") return "design";
-  if (kind === "presentation" || kind === "spreadsheet" || kind === "document") return "office";
-  return "capability";
 };
 
 const panelOperationKey = (plugin: string, panelId: string): string =>
@@ -3700,6 +3685,12 @@ export default function App() {
 
   const activeTimeline = active ? transcripts[active] : undefined;
   const activeTimelineTask = active ? taskStates[active] : undefined;
+  const activeModelAuthenticationFailure = [
+    activeTimelineTask?.detail,
+    activeTimelineTask?.checkpoint.blockReason,
+    activeTimelineTask?.checkpoint.completion?.dependency?.detail,
+    ...(activeTimelineTask?.checkpoint.completion?.dependency?.evidence ?? []),
+  ].some(isModelAuthenticationFailure);
   const activeTimelineBusy = active ? !!busy[active] : false;
   const scrollTimelineToLatest = useCallback(() => {
     timelineFollowRef.current = true;
@@ -6709,6 +6700,16 @@ export default function App() {
       : "/continue I signed in again. Check the blocked authentication capability first; resume from the saved checkpoint only if it recovered, otherwise remain paused.");
     void submit(sessionId, instruction).catch((error) => setErr(String(error?.message ?? error)));
   }, []);
+  const timelineDecision = useCallback(async (option: string): Promise<void> => {
+    const { active: sessionId, submitSessionText: submit } = timelineActionsRef.current;
+    if (!sessionId) return;
+    try {
+      await submit(sessionId, option);
+    } catch (error: any) {
+      setErr(String(error?.message ?? error));
+      throw error;
+    }
+  }, []);
 
   // ── boot / error screen ────────────────────────────────────────────────────
   if (phase !== "ready") {
@@ -7285,30 +7286,11 @@ export default function App() {
             <WorkStarter
               locale={locale}
               busy={starterBusy}
-              apps={pluginNavigation.slice(0, 6).map((contribution): WorkbenchApp => ({
-                  id: contribution.id,
-                  title: contribution.title,
-                  description: contribution.description || contribution.plugin,
-                  icon: workbenchAppIconForPanel(contribution),
-                  source: contribution.plugin,
-                  disabled: !sessions.some((session) => sessionPlace(session) === "projects"),
-                }))}
-              onOpenApp={(appId) => {
-                const contribution = pluginNavigationById.get(appId);
-                const plugin = contribution
-                  ? pluginsRef.current?.find((candidate) => candidate.name === contribution.plugin)
-                  : undefined;
-                const panel = contribution
-                  ? plugin?.panels?.find((candidate) => candidate.id === contribution.panelId)
-                  : undefined;
-                if (contribution && panel) void openPanel(contribution.plugin, panel);
-              }}
               onStart={startFromWorkbench}
               onPickFiles={pickComposerFiles}
               onPickDirectory={pickComposerDirectory}
               onPasteImages={persistPastedImages}
               onDropPaths={classifyDroppedComposerAttachments}
-              onOpenProject={() => void openProject()}
             />
           </div>
         ) : (
@@ -7327,6 +7309,7 @@ export default function App() {
             onRewind={timelineRewind}
             onApproval={timelineApproval}
             onContinueTask={timelineContinue}
+            onDecision={timelineDecision}
           />
           {(queue[active!] ?? []).length > 0 && (
             <div className="steerq">
@@ -7464,6 +7447,47 @@ export default function App() {
                   <button className="linky" onClick={openTalentMarket}>
                     {locale === "zh" ? "前往人才市场" : "Open talent market"}
                   </button>
+                </div>
+              )}
+              {activeModelAuthenticationFailure && !activeReadOnlySession && (
+                <div className="composer-capability-warning composer-route-auth-warning" role="alert">
+                  <span>
+                    <strong>
+                      {locale === "zh"
+                        ? "当前对话的模型连接已失效"
+                        : "This conversation's model connection is no longer valid"}
+                    </strong>
+                    <small>
+                      {newSessionDefaultRoute
+                        ? (locale === "zh"
+                            ? `设置页验证的是新会话默认连接“${newSessionDefaultRoute.label}”；当前对话仍固定在“${currentRouteLabel}”。请选择新连接并携带上下文继续。`
+                            : `Settings verified the new-chat default “${newSessionDefaultRoute.label}”; this conversation is still pinned to “${currentRouteLabel}”. Choose a new connection and continue with context.`)
+                        : (locale === "zh"
+                            ? `请更新“${currentRouteLabel}”的凭据，或选择另一条可用连接并携带上下文继续。`
+                            : `Update credentials for “${currentRouteLabel}”, or choose another available connection and continue with context.`)}
+                    </small>
+                  </span>
+                  <div className="composer-capability-actions">
+                    <button
+                      className="linky"
+                      onClick={() => {
+                        setAttachmentMenuOpen(false);
+                        setModelPickerOpen(true);
+                      }}
+                    >
+                      {locale === "zh" ? "选择连接并继续" : "Choose connection & continue"}
+                    </button>
+                    <button
+                      className="linky"
+                      onClick={() => {
+                        setModelPickerOpen(false);
+                        setSetSec("providers");
+                        setZone("settings");
+                      }}
+                    >
+                      {locale === "zh" ? "更新当前连接" : "Update current connection"}
+                    </button>
+                  </div>
                 </div>
               )}
               {activeAttachmentIssue && (
@@ -9294,6 +9318,7 @@ export default function App() {
                         }}
                       >
                         <span aria-hidden><IconSummary size={13} /></span>
+                        <b aria-hidden>{agentSessions.length}</b>
                       </button>
                     ) : null}
                   </div>

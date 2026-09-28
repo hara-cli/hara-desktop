@@ -236,6 +236,8 @@ SIDECAR="src-tauri/binaries/hara-$TARGET"
 [ -f "$SIDECAR" ] || { echo "missing sidecar $SIDECAR"; exit 1; }
 HERDR_RUNTIME="src-tauri/binaries/herdr-$TARGET"
 [ -f "$HERDR_RUNTIME" ] || { echo "missing Herdr runtime $HERDR_RUNTIME"; exit 1; }
+CODE_RUNTIME="src-tauri/binaries/hara-code-runtime-$TARGET"
+[ -f "$CODE_RUNTIME" ] || { echo "missing Hara Code Runtime $CODE_RUNTIME"; exit 1; }
 
 # refresh-sidecar already executed the native compiler output, or statically inspected Intel output
 # after the native Intel matrix gate passed, while its verified ad-hoc source signature remained.
@@ -252,6 +254,13 @@ if codesign -d "$HERDR_RUNTIME" >/dev/null 2>&1; then
 fi
 if codesign --verify "$HERDR_RUNTIME" >/dev/null 2>&1; then
   echo "error: Herdr signature removal left the source runtime signed" >&2
+  exit 1
+fi
+if codesign -d "$CODE_RUNTIME" >/dev/null 2>&1; then
+  codesign --remove-signature "$CODE_RUNTIME"
+fi
+if codesign --verify "$CODE_RUNTIME" >/dev/null 2>&1; then
+  echo "error: Hara Code Runtime signature removal left the source runtime signed" >&2
   exit 1
 fi
 
@@ -338,6 +347,7 @@ APP="$RELEASE_BASE/bundle/macos/Hara.app"
 APP_SHELL="$APP/Contents/MacOS/hara-desktop"
 PACKAGED_SIDECAR="$APP/Contents/MacOS/hara"
 PACKAGED_HERDR="$APP/Contents/MacOS/herdr"
+PACKAGED_CODE_RUNTIME="$APP/Contents/MacOS/hara-code-runtime"
 APP_ARCHS="$(/usr/bin/lipo -archs "$APP_SHELL")"
 case " $APP_ARCHS " in
   *" $MACHO_ARCH "*) ;;
@@ -362,6 +372,16 @@ grep -Fq "Authority=$IDENTITY" <<<"$PACKAGED_HERDR_SIGNATURE" || {
 }
 grep -Eq '^Timestamp=' <<<"$PACKAGED_HERDR_SIGNATURE" || {
   echo "error: packaged Herdr runtime Developer ID signature has no trusted timestamp" >&2
+  exit 1
+}
+codesign --verify --strict --verbose=2 "$PACKAGED_CODE_RUNTIME"
+PACKAGED_CODE_RUNTIME_SIGNATURE="$(codesign -d --verbose=4 "$PACKAGED_CODE_RUNTIME" 2>&1)"
+grep -Fq "Authority=$IDENTITY" <<<"$PACKAGED_CODE_RUNTIME_SIGNATURE" || {
+  echo "error: packaged Hara Code Runtime is not signed by the expected Developer ID identity" >&2
+  exit 1
+}
+grep -Eq '^Timestamp=' <<<"$PACKAGED_CODE_RUNTIME_SIGNATURE" || {
+  echo "error: packaged Hara Code Runtime Developer ID signature has no trusted timestamp" >&2
   exit 1
 }
 

@@ -1,8 +1,9 @@
+import { memo } from "react";
 import type { Key } from "./i18n";
 import { Md } from "./markdown";
 import { MessageCopyButton } from "./MessageCopyButton";
 
-export function AssistantMessage({
+export const AssistantMessage = memo(function AssistantMessage({
   text,
   t,
   author = "Hara",
@@ -36,4 +37,4 @@ export function AssistantMessage({
       </div>
     </div>
   );
-}
+});

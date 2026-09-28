@@ -1,0 +1,29 @@
+{
+  "version": "1.18.32",
+  "repository": "https://github.com/anomalyco/opencode",
+  "commit": "545f51d26cc39a907d2867492d498d9607ea5fa4",
+  "license": "MIT",
+  "productName": "Hara Code Runtime",
+  "targets": {
+    "aarch64-apple-darwin": {
+      "asset": "opencode-darwin-arm64.zip",
+      "sha256": "fa643f93401c13508d8d513780e54ce9cc01203d501114be9b88d62408b8101f"
+    },
+    "x86_64-apple-darwin": {
+      "asset": "opencode-darwin-x64-baseline.zip",
+      "sha256": "3888d74f1478b94ab1682a7c30942ab53e1266329f3786cf05e499381572dea8"
+    },
+    "aarch64-unknown-linux-gnu": {
+      "asset": "opencode-linux-arm64.tar.gz",
+      "sha256": "568461b7d4d8c19865c97e9a1102e613049c6039d01fe772154de873c1865840"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "asset": "opencode-linux-x64-baseline.tar.gz",
+      "sha256": "763af386ef88a8cab18df00fcf055690e5a55e31a7088beabe02307142a6adce"
+    },
+    "x86_64-pc-windows-msvc": {
+      "asset": "opencode-windows-x64-baseline.zip",
+      "sha256": "cd852831bd094c2df2eb379eb98bed7a63db7f823a7caf277c732cdac33cbdb6"
+    }
+  }
+}

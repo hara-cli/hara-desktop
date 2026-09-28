@@ -1702,18 +1702,23 @@ test("release installs and audits use finite official-registry retry helpers", (
   assert.doesNotMatch(auditHelper, /while true|registry\.npmmirror\.com|npmmirror/);
 });
 
-test("every native release target hydrates the checksum-pinned Herdr runtime before Tauri builds", () => {
+test("every native release target hydrates the checksum-pinned built-in runtimes before Tauri builds", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const haraCopy = workflow.indexOf('"$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}${EXT}"');
   const herdrHydration = workflow.indexOf(
     'node "$GITHUB_WORKSPACE/scripts/refresh-herdr-runtime.mjs" "${{ matrix.target }}"',
     haraCopy,
   );
-  const tauriBuild = workflow.indexOf("- name: Build local packages", herdrHydration);
+  const codeRuntimeHydration = workflow.indexOf(
+    'node "$GITHUB_WORKSPACE/scripts/refresh-opencode-runtime.mjs" "${{ matrix.target }}"',
+    herdrHydration,
+  );
+  const tauriBuild = workflow.indexOf("- name: Build local packages", codeRuntimeHydration);
 
   assert.ok(haraCopy >= 0, "the release matrix must install the target-specific Hara sidecar");
   assert.ok(herdrHydration > haraCopy, "the matching Herdr runtime must be verified beside Hara");
-  assert.ok(tauriBuild > herdrHydration, "Tauri must not resolve externalBin before Herdr exists");
+  assert.ok(codeRuntimeHydration > herdrHydration, "the matching Hara Code Runtime must be verified beside Hara");
+  assert.ok(tauriBuild > codeRuntimeHydration, "Tauri must not resolve externalBin before built-in runtimes exist");
 });
 
 test("sidecar-only npm installation defers lifecycle scripts without changing ordinary CI", () => {
@@ -2067,6 +2072,45 @@ test("Hara Live bundles a checksum-pinned Herdr runtime and verifies it after pa
   const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
   assert.match(packageSmoke, /herdrRuntime\(bundledHerdr\)/);
   assert.match(packageSmoke, /herdrLock\.version/);
+});
+
+test("Desktop bundles a checksum-pinned provider-neutral Hara Code Runtime", () => {
+  const lock = JSON.parse(readFileSync(join(root, "scripts/opencode-runtime-lock.json"), "utf8"));
+  assert.equal(lock.version, "1.18.32");
+  assert.equal(lock.repository, "https://github.com/anomalyco/opencode");
+  assert.match(lock.commit, /^[a-f0-9]{40}$/);
+  assert.equal(lock.license, "MIT");
+  assert.equal(lock.productName, "Hara Code Runtime");
+  assert.deepEqual(Object.keys(lock.targets).sort(), [
+    "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+  ]);
+  for (const target of Object.values(lock.targets)) {
+    assert.match(target.asset, /^opencode-(?:darwin|linux|windows)-/);
+    assert.match(target.sha256, /^[a-f0-9]{64}$/);
+  }
+
+  const config = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"));
+  assert.ok(config.bundle.externalBin.includes("binaries/hara-code-runtime"));
+  const notices = readFileSync(join(root, "THIRD_PARTY_NOTICES.md"), "utf8");
+  assert.match(notices, /Hara Code Runtime \(OpenCode\)[\s\S]*1\.18\.32[\s\S]*License: MIT/);
+
+  const refresh = readFileSync(join(root, "scripts/refresh-opencode-runtime.mjs"), "utf8");
+  assert.match(refresh, /if \(actual !== entry\.sha256\)/);
+  assert.match(refresh, /"--continue-at", "-"/);
+  assert.match(refresh, /for \(let attempt = 1; attempt <= 13; attempt \+= 1\)/);
+  assert.match(refresh, /Expand-Archive -LiteralPath \$Archive -DestinationPath \$Destination -Force/);
+  assert.match(refresh, /item\.name\.toLowerCase\(\) === \(windows \? "opencode\.exe" : "opencode"\)/);
+  assert.ok(refresh.indexOf("if (actual !== entry.sha256)") < refresh.indexOf("writeFile(stagedDestination"));
+
+  const nativeHost = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
+  assert.match(nativeHost, /command\.env\("HARA_CODE_RUNTIME_PATH", code_runtime_executable\)/);
+  const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
+  assert.match(packageSmoke, /codeRuntime\(bundledCodeRuntime\)/);
+  assert.match(packageSmoke, /codeRuntimeLock\.version/);
 });
 
 test("draft assembly and promotion both validate published source provenance", () => {

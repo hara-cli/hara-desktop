@@ -51,20 +51,17 @@ const COPY = {
     directHint: "A working Agent receives it at the next boundary; an idle Agent continues in a new bounded generation.",
     messageAgent: "Message this Agent…",
     stop: "Stop",
-    runtime: "Member execution",
     identity: "Agent identity",
-    grants: "Coding delegation",
-    grantsHint: "This is a standing grant for bounded launches. Coding runs use isolated Worktrees; only the main session can review and apply their Diffs.",
-    grantCodex: "Can delegate to Codex",
-    grantClaude: "Can delegate to Claude Code",
-    directRuntimeHint: "A direct coding worker runs the assignment in an isolated Worktree; it is not a persistent Hara persona.",
+    workspace: "Workspace access",
+    automaticCoding: "Hara chooses the executor",
+    automaticCodingHint: "Describe this Agent's responsibility. When coding is needed, Hara can add the built-in code runtime, Codex, or Claude Code and will ask for approval at that moment—there is nothing to configure here.",
     assignment: "Initial assignment",
     assignmentHint: "Give this member a concrete first responsibility…",
     taskName: "Member ID",
     start: "Start Agent",
-    native: "Hara Agent · collaboration and delegation",
-    codex: "Codex coding worker · isolated Worktree",
-    claude: "Claude Code worker · isolated Worktree",
+    native: "Hara Agent",
+    codex: "Codex coding worker",
+    claude: "Claude Code coding worker",
     readOnly: "Read only",
     isolated: "Isolated write",
     unsupported: "Update Hara CLI to use Agent rooms in Desktop.",
@@ -107,20 +104,17 @@ const COPY = {
     directHint: "运行中的 Agent 会在下一个边界收到；空闲 Agent 会在新的有界回合中继续。",
     messageAgent: "给这个 Agent 发消息…",
     stop: "停止",
-    runtime: "成员运行方式",
     identity: "Agent 身份",
-    grants: "编码能力授权",
-    grantsHint: "这是持续有效的有界授权。编码任务始终在隔离 Worktree 中运行，只有主会话可以审核并合并 Diff。",
-    grantCodex: "可委派给 Codex",
-    grantClaude: "可委派给 Claude Code",
-    directRuntimeHint: "直接编码成员会在隔离 Worktree 中执行任务；它不是持久的 Hara 人设。",
+    workspace: "工作区权限",
+    automaticCoding: "由 Hara 自动选择执行器",
+    automaticCodingHint: "这里只需说明 Agent 的职责。需要编码时，Hara 会自行加入内置代码引擎、Codex 或 Claude Code，并在真正启动时请你确认，不需要提前配置。",
     assignment: "初始任务",
     assignmentHint: "给这个成员一个明确的首要职责…",
     taskName: "成员 ID",
     start: "启动 Agent",
-    native: "Hara Agent · 协作与委派",
-    codex: "Codex 编码成员 · 隔离 Worktree",
-    claude: "Claude Code 编码成员 · 隔离 Worktree",
+    native: "Hara Agent",
+    codex: "Codex 编码成员",
+    claude: "Claude Code 编码成员",
     readOnly: "只读",
     isolated: "隔离写入",
     unsupported: "请更新 Hara CLI 后再在 Desktop 使用 Agent 群聊。",
@@ -197,8 +191,6 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
   const [roomMessage, setRoomMessage] = useState("");
   const [directMessage, setDirectMessage] = useState("");
   const [agentRef, setAgentRef] = useState("main");
-  const [runtime, setRuntime] = useState<AgentTeamRuntime>("hara");
-  const [runtimeGrants, setRuntimeGrants] = useState<Array<"codex" | "claude">>([]);
   const [workspace, setWorkspace] = useState<"read-only" | "isolated-write">("read-only");
   const [taskName, setTaskName] = useState("agent_member");
   const [assignment, setAssignment] = useState("");
@@ -312,10 +304,8 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
         sessionId,
         taskName: uniqueName,
         message: assignment.trim(),
-        ...(runtime === "hara" && agentRef !== "main" ? { agentRef } : {}),
-        runtime,
-        ...(runtime === "hara" && runtimeGrants.length > 0 ? { runtimeGrants } : {}),
-        workspace: runtime === "hara" ? workspace : "isolated-write",
+        ...(agentRef !== "main" ? { agentRef } : {}),
+        workspace,
       });
       setAssignment("");
       setTaskName("agent_member");
@@ -442,58 +432,27 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
           </div>
           {showAgentForm ? (
             <form className="agent-collab-form" onSubmit={addAgent}>
-              <label>{copy.runtime}
-                <select value={runtime} onChange={(event) => setRuntime(event.currentTarget.value as AgentTeamRuntime)}>
-                  <option value="hara">{copy.native}</option>
-                  <option value="codex">{copy.codex}</option>
-                  <option value="claude">{copy.claude}</option>
+              <div className="agent-collab-runtime-hint">
+                <strong>{copy.automaticCoding}</strong>
+                <p>{copy.automaticCodingHint}</p>
+              </div>
+              <label>{copy.identity}
+                <select value={agentRef} onChange={(event) => {
+                  const ref = event.currentTarget.value;
+                  setAgentRef(ref);
+                  const selected = eligibleAgents.find((agent) => agent.ref === ref);
+                  setTaskName(slug(selected?.name ?? "agent_member"));
+                }}>
+                  <option value="main">Hara</option>
+                  {eligibleAgents.filter((agent) => agent.ref !== "main").map((agent) => (
+                    <option value={agent.ref} key={agent.ref}>{agent.identity?.displayName || agent.name}</option>
+                  ))}
                 </select>
               </label>
-              {runtime === "hara" ? (
-                <>
-                  <label>{copy.identity}
-                    <select value={agentRef} onChange={(event) => {
-                      const ref = event.currentTarget.value;
-                      setAgentRef(ref);
-                      const selected = eligibleAgents.find((agent) => agent.ref === ref);
-                      setTaskName(slug(selected?.name ?? "agent_member"));
-                    }}>
-                      <option value="main">Hara</option>
-                      {eligibleAgents.filter((agent) => agent.ref !== "main").map((agent) => (
-                        <option value={agent.ref} key={agent.ref}>{agent.identity?.displayName || agent.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="agent-collab-segmented" role="group" aria-label={copy.runtime}>
-                    <button type="button" className={workspace === "read-only" ? "is-on" : ""} onClick={() => setWorkspace("read-only")}>{copy.readOnly}</button>
-                    <button type="button" className={workspace === "isolated-write" ? "is-on" : ""} onClick={() => setWorkspace("isolated-write")}>{copy.isolated}</button>
-                  </div>
-                  <fieldset className="agent-collab-grants">
-                    <legend>{copy.grants}</legend>
-                    <label className="agent-collab-check">
-                      <input
-                        type="checkbox"
-                        checked={runtimeGrants.includes("codex")}
-                        onChange={(event) => setRuntimeGrants((current) => event.currentTarget.checked
-                          ? [...current.filter((grant) => grant !== "codex"), "codex"]
-                          : current.filter((grant) => grant !== "codex"))}
-                      />
-                      <span>{copy.grantCodex}</span>
-                    </label>
-                    <label className="agent-collab-check">
-                      <input
-                        type="checkbox"
-                        checked={runtimeGrants.includes("claude")}
-                        onChange={(event) => setRuntimeGrants((current) => event.currentTarget.checked
-                          ? [...current.filter((grant) => grant !== "claude"), "claude"]
-                          : current.filter((grant) => grant !== "claude"))}
-                      />
-                      <span>{copy.grantClaude}</span>
-                    </label>
-                    <p>{copy.grantsHint}</p>
-                  </fieldset>
-                </>
-              ) : <p className="agent-collab-runtime-hint">{copy.directRuntimeHint}</p>}
+              <div className="agent-collab-segmented" role="group" aria-label={copy.workspace}>
+                <button type="button" className={workspace === "read-only" ? "is-on" : ""} onClick={() => setWorkspace("read-only")}>{copy.readOnly}</button>
+                <button type="button" className={workspace === "isolated-write" ? "is-on" : ""} onClick={() => setWorkspace("isolated-write")}>{copy.isolated}</button>
+              </div>
               <label>{copy.taskName}<input value={taskName} onChange={(event) => setTaskName(event.currentTarget.value)} maxLength={48} /></label>
               <label>{copy.assignment}<textarea value={assignment} onChange={(event) => setAssignment(event.currentTarget.value)} placeholder={copy.assignmentHint} maxLength={32_000} /></label>
               <div className="agent-collab-form-actions">
@@ -514,8 +473,7 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
                 <span>
                   <strong>{memberLabel(member.path)}</strong>
                   <small>
-                    {member.runtime} · {member.status}
-                    {member.runtimeGrants.length ? ` · → ${member.runtimeGrants.join(" + ")}` : ""}
+                    {member.runtime === "hara" ? copy.native : member.runtime === "codex" ? copy.codex : copy.claude} · {member.status}
                   </small>
                 </span>
                 {member.pendingMessages > 0 ? <b>{member.pendingMessages}</b> : null}
@@ -562,8 +520,7 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
             <section className="agent-direct-panel">
               <header>
                 <div><i className={memberTone(selectedMember)} /><span><strong>{memberLabel(selectedMember.path)}</strong><small>
-                  {selectedMember.runtime} · {selectedMember.status}
-                  {selectedMember.runtimeGrants.length ? ` · → ${selectedMember.runtimeGrants.join(" + ")}` : ""}
+                  {selectedMember.runtime === "hara" ? copy.native : selectedMember.runtime === "codex" ? copy.codex : copy.claude} · {selectedMember.status}
                 </small></span></div>
                 <div className="agent-direct-actions">
                   {selectedMember.runtime !== "hara" && selectedMember.runtimeSessionId && onOpenRuntimeSession ? (

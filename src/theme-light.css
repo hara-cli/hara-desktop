@@ -172,10 +172,21 @@ html[data-theme="light"] .msg.user {
 
 html[data-theme="light"] .msg.assistant,
 html[data-theme="light"] .appr,
-html[data-theme="light"] .execution-log {
+html[data-theme="light"] .execution-log,
+html[data-theme="light"] .decision-card {
   border-color: var(--border);
   background: var(--surface-panel);
   box-shadow: 0 1px 2px rgba(62, 48, 31, 0.035);
+}
+
+html[data-theme="light"] .approval-status.approved {
+  background: #dcefe6;
+  color: #0d7950;
+}
+
+html[data-theme="light"] .approval-card-details pre {
+  background: #eee8de;
+  color: #554e46;
 }
 
 html[data-theme="light"] .chat.ide .msg.assistant {
@@ -278,56 +289,38 @@ html[data-theme="light"] .engine-version-alert button {
 }
 
 /* Workbench home and message center */
-html[data-theme="light"] .workstarter-eyebrow,
-html[data-theme="light"] .workstarter-label {
+html[data-theme="light"] .workstarter-eyebrow {
   color: #635d55;
 }
 
-html[data-theme="light"] .workstarter-apps,
-html[data-theme="light"] .workstarter-compose,
-html[data-theme="light"] .workstarter-files {
+html[data-theme="light"] .workstarter-compose {
   border-color: #cec5b7;
   background: rgba(255, 253, 248, 0.96);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="light"] .workstarter-section-head,
 html[data-theme="light"] .workstarter-compose-foot {
   border-color: var(--border);
   background: #f1ece3;
 }
 
-html[data-theme="light"] .workstarter-section-head span,
-html[data-theme="light"] .workstarter-selected {
-  color: #39332d;
-}
-
-html[data-theme="light"] .workstarter-app-grid > button {
-  border-color: var(--border);
-  background: #fffdf8;
-  color: var(--fg);
-}
-
-html[data-theme="light"] .workstarter-app-grid > button:hover:not(:disabled) {
-  background: #f2ede4;
-}
-
-html[data-theme="light"] .workstarter-app-mark,
 html[data-theme="light"] .workstarter-reference-actions button,
-html[data-theme="light"] .workstarter-attachment,
-html[data-theme="light"] .workstarter-compose-foot button.workstarter-kind-reset {
+html[data-theme="light"] .workstarter-attachment {
   border-color: var(--border);
   background: #eee8de;
   color: #554e46;
 }
 
-html[data-theme="light"] .workstarter-card {
-  background: rgba(255, 253, 248, 0.92);
+html[data-theme="light"] .workstarter-examples button {
+  border-color: #d2c8b9;
+  background: rgba(255, 253, 248, 0.86);
+  color: #70685f;
 }
 
-html[data-theme="light"] .workstarter-card:hover,
-html[data-theme="light"] .workstarter-card.on {
-  background: #eee8de;
+html[data-theme="light"] .workstarter-examples button:hover:not(:disabled) {
+  border-color: #b99b8e;
+  background: #f3ece3;
+  color: #3e3832;
 }
 
 html[data-theme="light"] .workbench-inbox-tabs {

@@ -217,6 +217,9 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(rail, /export type \{ AppPlace \} from "\.\/navigation"/);
   assert.match(rail, /items\.map\(\(item\) =>/);
   assert.match(timeline, /case "approval"/, "approvals stay in the session timeline");
+  assert.match(timeline, /className="approval-card-head"/, "approval requests render as an in-conversation action card");
+  assert.match(timeline, /approvalViewRequest/, "long permission requests remain available without dominating the chat");
+  assert.match(timeline, /approvalScopeHint/, "the card explains one-time versus scoped persistent approval");
   assert.match(timeline, /const lastUser = items\.map/, "busy progress remains scoped to the current turn");
   assert.match(timeline, /groupConversationItems\(items\)/, "technical events are projected into a separate execution log");
   assert.match(timeline, /className="execution-log"/, "execution evidence remains available on demand");
@@ -248,6 +251,22 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(diff, /max-height:\s*min\(48vh,\s*420px\)\s*;/);
   assert.match(diff, /overflow:\s*auto\s*;/, "long or wide diffs remain scrollable inside the card");
   assert.match(diff, /white-space:\s*pre\s*;/, "unified diff alignment is preserved");
+});
+
+test("Agent history is a persistent discoverable action instead of a hover-only icon", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/App.css`, "utf8");
+  const historyRuleStart = css.lastIndexOf(".inbox-agent-history {");
+  const historyRule = historyRuleStart >= 0
+    ? css.slice(historyRuleStart, css.indexOf("}", historyRuleStart) + 1)
+    : "";
+
+  assert.match(app, /className="project-remove inbox-project-remove inbox-agent-history"/);
+  assert.match(app, /<b aria-hidden>\{agentSessions\.length\}<\/b>/,
+    "the history entry communicates that more than one recoverable task exists");
+  assert.match(historyRule, /opacity:\s*0\.72\s*;/,
+    "the action remains visible without requiring mouse hover");
+  assert.match(historyRule, /display:\s*inline-flex\s*;/);
 });
 
 test("Agent execution settings inherit Space defaults and stay company-governed", () => {
@@ -500,11 +519,11 @@ test("typed task lifecycle drives status while conversation and execution inputs
     "new engines submit busy attachment input to Core so only a genuinely active turn queues it",
   );
   assert.match(app, /case "event\.task_state"/);
-  assert.match(i18n, /always: "always for this project"/);
-  assert.match(i18n, /always: "此项目内始终允许"/);
+  assert.match(i18n, /always: "Always allow here"/);
+  assert.match(i18n, /always: "在此项目始终允许"/);
   assert.match(app, /allowAlways: e\.allowAlways === true/);
   const timeline = readFileSync(`${root}/src/ConversationTimeline.tsx`, "utf8");
-  assert.match(timeline, /item\.allowAlways !== false/);
+  assert.match(timeline, /allowAlways !== false/);
   assert.match(app, /client\.supportsEvent\("event\.task_state"\)/);
   assert.match(app, /await c\.steer\(sessionId, wireText, turnId\)/);
   assert.match(app, /const live = taskStateIsLive\(e\.state\)/);
@@ -1449,6 +1468,7 @@ test("the model picker keeps Space authority while policy-gating personal billin
 test("an unavailable pinned conversation falls back to local read-only history and offers an explicit route transfer", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
+  const providerSettings = readFileSync(`${root}/src/ProviderSettings.tsx`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
 
   assert.match(client, /readSession\(sessionId: string\)[\s\S]*"session\.history"/);
@@ -1467,6 +1487,13 @@ test("an unavailable pinned conversation falls back to local read-only history a
     "a rejected company route is removed from subsequent model choices without waiting for restart");
   assert.match(app, /当前仅查看本地历史/);
   assert.match(app, /选择连接并携带上下文继续/);
+  assert.match(app, /activeModelAuthenticationFailure/);
+  assert.match(app, /设置页验证的是新会话默认连接/,
+    "an auth-failed pinned conversation explains why a successful settings probe does not migrate it");
+  assert.match(app, /选择连接并继续[\s\S]*更新当前连接/,
+    "an auth failure offers both context-preserving migration and credential repair");
+  assert.match(providerSettings, /已有会话仍保留创建时的连接，不会自动切换/,
+    "a saved-connection probe does not imply that existing conversations were migrated");
   assert.match(app, /readOnlySessionsRef\.current\[sessionId\]/, "all send entry points fail closed for a replay-only session");
   assert.match(
     app,
@@ -1629,7 +1656,9 @@ test("the assistant empty state is a plain-language workbench backed by real ses
   assert.match(prompt, /能力没有返回已验证回执前不能声称导出成功/, "artifact cards must require a verified capability receipt before promising an export");
   assert.match(prompt, /不得另行配置或调用视觉辅助模型/, "ordinary presentation work must not pull a second model into the default path");
   assert.match(starter, /aria-label=\{copy\.describe\}/);
-  assert.match(css, /\.workstarter-grid/);
+  assert.match(starter, /buildWorkPrompt\("general"/, "the homepage sends one goal and leaves capability routing to Hara");
+  assert.doesNotMatch(starter, /WorkbenchApp|onOpenApp|onOpenProject/, "the homepage must not expose an app or project picker");
+  assert.match(css, /\.workstarter-examples/);
   assert.match(css, /@media \(max-width: 760px\)/, "the workbench must remain usable in a narrow window");
 });
 

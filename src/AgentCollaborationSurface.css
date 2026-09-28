@@ -172,10 +172,15 @@
 .agent-collab-check { grid-template-columns: auto minmax(0, 1fr) auto !important; align-items: center; padding: 4px; }
 .agent-collab-check input { width: auto; }
 .agent-collab-check small { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.agent-collab-form fieldset.agent-collab-grants { max-height: none; overflow: visible; }
-.agent-collab-grants .agent-collab-check { grid-template-columns: auto minmax(0, 1fr) !important; color: inherit; font-size: 10px; }
-.agent-collab-grants p,
-.agent-collab-runtime-hint { margin: 5px 4px 1px; color: var(--agent-muted); font-size: 9px; line-height: 1.45; }
+.agent-collab-runtime-hint {
+  margin: 2px 0;
+  padding: 9px 10px;
+  border: 1px solid var(--agent-line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--agent-accent) 5%, transparent);
+}
+.agent-collab-runtime-hint strong { display: block; font-size: 10px; color: var(--agent-ink); }
+.agent-collab-runtime-hint p { margin: 3px 0 0; color: var(--agent-muted); font-size: 9px; line-height: 1.45; }
 
 .agent-collab-form-actions { display: flex; justify-content: flex-end; gap: 7px; }
 .agent-collab-form-actions button,

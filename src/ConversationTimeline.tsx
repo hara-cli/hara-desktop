@@ -18,6 +18,7 @@ import { authenticationPausePresentation } from "./auth-recovery";
 import { IconCog } from "./icons";
 import { knownManualActionHintKeys } from "./task-manual-action";
 import { copyTextToClipboard } from "./clipboard";
+import { DecisionCard } from "./DecisionCard";
 
 type TaskDependencyKind = NonNullable<
   NonNullable<TaskLifecycleEvent["checkpoint"]["completion"]>["dependency"]
@@ -34,6 +35,68 @@ const TASK_DEPENDENCY_LABELS: Record<TaskDependencyKind, Key> = {
 
 export type ApprovalVerdict = "allow" | "always" | "deny";
 export type ApprovalResolution = ApprovalVerdict | "expired";
+
+const APPROVAL_STATUS_KEYS: Record<ApprovalResolution, Key> = {
+  allow: "approvalAllowedOnce",
+  always: "approvalAlwaysAllowed",
+  deny: "approvalDenied",
+  expired: "expired",
+};
+
+function ApprovalCard({
+  approvalId,
+  question,
+  allowAlways,
+  answered,
+  t,
+  onApproval,
+}: {
+  approvalId: string;
+  question: string;
+  allowAlways?: boolean;
+  answered?: ApprovalResolution;
+  t: (key: Key) => string;
+  onApproval: (approvalId: string, verdict: ApprovalVerdict) => void;
+}) {
+  const approved = answered === "allow" || answered === "always";
+  const title = answered
+    ? approved ? t("approvalActionApproved") : t("approvalActionClosed")
+    : t("approvalTitle");
+  return (
+    <section className={`appr approval-card${answered ? " done" : ""}${approved ? " approved" : ""}`}>
+      <header className="approval-card-head">
+        <strong>{title}</strong>
+        <span className={`approval-status${approved ? " approved" : ""}`}>
+          <i aria-hidden />
+          {answered ? t(APPROVAL_STATUS_KEYS[answered]) : t("approvalPending")}
+        </span>
+      </header>
+      <p className="approval-card-summary">{question}</p>
+      <details className="approval-card-details">
+        <summary>{t("approvalViewRequest")}</summary>
+        <pre>{question}</pre>
+      </details>
+      {!answered ? (
+        <>
+          <p className="approval-card-scope">{t("approvalScopeHint")}</p>
+          <div className="approval-card-actions">
+            <button onClick={() => onApproval(approvalId, "allow")}>
+              {t("allow")}
+            </button>
+            {allowAlways !== false ? (
+              <button className="ghost" onClick={() => onApproval(approvalId, "always")}>
+                {t("always")}
+              </button>
+            ) : null}
+            <button className="deny" onClick={() => onApproval(approvalId, "deny")}>
+              {t("deny")}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
 
 export type ConversationItem =
   | {
@@ -72,6 +135,7 @@ interface ConversationTimelineProps {
   onRewind: (itemIndex: number) => void;
   onApproval: (approvalId: string, verdict: ApprovalVerdict) => void;
   onContinueTask?: (instruction?: string) => void;
+  onDecision?: (option: string) => Promise<void>;
 }
 
 function TaskProgressTelemetry({
@@ -129,6 +193,7 @@ export const ConversationTimeline = memo(function ConversationTimeline({
   onRewind,
   onApproval,
   onContinueTask,
+  onDecision,
 }: ConversationTimelineProps) {
   const assistantInitials = Array.from(assistantName.trim() || "Hara")
     .slice(0, 2)
@@ -153,6 +218,9 @@ export const ConversationTimeline = memo(function ConversationTimeline({
   const dependencyLabel = dependency
     ? t(TASK_DEPENDENCY_LABELS[dependency.kind])
     : "";
+  const decisionOptions = dependency?.kind === "material_choice"
+    ? (dependency.options ?? []).map((option) => option.trim()).filter(Boolean).slice(0, 8)
+    : [];
   const manualAction = dependency?.manualAction;
   useEffect(
     () => setCopiedAction(null),
@@ -278,27 +346,45 @@ export const ConversationTimeline = memo(function ConversationTimeline({
     </details>
   ) : null;
 
-  const taskProgressCard = visibleTask ? (
+  const showActionableTask = !!visibleTask && (
+    !!dependency
+    || !!authenticationPause
+    || visibleTask.state === "blocked"
+    || visibleTask.state === "paused"
+  );
+  const taskProgressCard = decisionOptions.length > 0 && dependency && onDecision ? (
+    <DecisionCard
+      question={blocker || dependency.detail}
+      options={decisionOptions}
+      busy={busy}
+      t={t}
+      onSelect={onDecision}
+    />
+  ) : showActionableTask && visibleTask ? (
     <section className={`task-progress ${visibleTask.state}`} aria-live="polite">
       <div className="task-progress-head">
         <strong>{taskLabel}</strong>
-        {visibleTask.checkpoint.total > 0 && (
+        {displayMode === "debug" && visibleTask.checkpoint.total > 0 && (
           <span>
             {visibleTask.checkpoint.done}/{visibleTask.checkpoint.total}
           </span>
         )}
       </div>
-      <div className="task-progress-current">
-        {taskCurrent}
-      </div>
-      {visibleTask.checkpoint.total > 0 && (
+      {displayMode !== "concise" ? (
+        <div className="task-progress-current">
+          {taskCurrent}
+        </div>
+      ) : null}
+      {displayMode === "debug" && visibleTask.checkpoint.total > 0 && (
         <progress
           aria-label={t("taskProgress")}
           max={visibleTask.checkpoint.total}
           value={Math.min(visibleTask.checkpoint.done, visibleTask.checkpoint.total)}
         />
       )}
-      {visibleTask.progress ? <TaskProgressTelemetry progress={visibleTask.progress} t={t} /> : null}
+      {displayMode === "debug" && visibleTask.progress
+        ? <TaskProgressTelemetry progress={visibleTask.progress} t={t} />
+        : null}
       {authenticationPause ? (
         <div className="task-auth-recovery" role="status">
           <div className="task-auth-recovery-copy">
@@ -408,13 +494,15 @@ export const ConversationTimeline = memo(function ConversationTimeline({
                     </div>
                   )}
                   {!busy && !item.pendingId && (
-                    <span
+                    <button
+                      type="button"
                       className="rew"
                       title={t("rewindHere")}
                       onClick={() => onRewind(index)}
+                      aria-label={t("rewindHere")}
                     >
                       ↺
-                    </span>
+                    </button>
                   )}
                 </div>
               );
@@ -441,7 +529,7 @@ export const ConversationTimeline = memo(function ConversationTimeline({
                 </div>
               );
             case "output":
-              return (
+              return executionViewShowsLog(displayMode) ? (
                 <details
                   key={`output-${index}`}
                   className="tool-output-log"
@@ -453,7 +541,7 @@ export const ConversationTimeline = memo(function ConversationTimeline({
                   </summary>
                   <pre>{item.text}</pre>
                 </details>
-              );
+              ) : null;
             case "end":
               return executionViewShowsUsage(displayMode) ? (
                 <div key={index} className="usage dim">
@@ -462,33 +550,15 @@ export const ConversationTimeline = memo(function ConversationTimeline({
               ) : null;
             case "approval":
               return (
-                <div key={index} className={`appr ${item.answered ? "done" : ""}`}>
-                  <div className="modal-title">{t("approvalTitle")}</div>
-                  <div className="question">{item.question}</div>
-                  {item.answered ? (
-                    <div className="dim">{t(item.answered)}</div>
-                  ) : (
-                    <div className="row">
-                      <button onClick={() => onApproval(item.approvalId, "allow")}>
-                        {t("allow")}
-                      </button>
-                      {item.allowAlways !== false ? (
-                        <button
-                          className="ghost"
-                          onClick={() => onApproval(item.approvalId, "always")}
-                        >
-                          {t("always")}
-                        </button>
-                      ) : null}
-                      <button
-                        className="deny"
-                        onClick={() => onApproval(item.approvalId, "deny")}
-                      >
-                        {t("deny")}
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <ApprovalCard
+                  key={index}
+                  approvalId={item.approvalId}
+                  question={item.question}
+                  allowAlways={item.allowAlways}
+                  answered={item.answered}
+                  t={t}
+                  onApproval={onApproval}
+                />
               );
           }
         })}
