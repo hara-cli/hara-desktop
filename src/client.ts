@@ -46,7 +46,7 @@ export interface CreatedSessionInfo {
   agentRef?: string;
 }
 
-export type ExternalSessionSourceId = "runtime" | "codex" | "claude";
+export type ExternalSessionSourceId = "runtime" | "codex" | "claude" | "opencode";
 export type ExternalRuntimeAgentKind = "codex" | "claude";
 export type ExternalRuntimeEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type ExternalRuntimeClaudePermissionMode = "manual" | "acceptEdits" | "plan" | "auto" | "dontAsk";
@@ -241,7 +241,7 @@ export interface AgentTeamMember {
   runtime: AgentTeamRuntime;
   /** Coding runtimes this native Hara Agent may launch after an explicit approval. */
   runtimeGrants: Array<Exclude<AgentTeamRuntime, "hara">>;
-  /** Opaque Hara continuation id for the exact Codex / Claude Code session. */
+  /** Opaque Hara continuation id for the exact Codex / Claude Code / OpenCode session. */
   runtimeSessionId?: string;
   /** Opaque Hara provider-history id for exact recovery after the live terminal or computer restarts. */
   providerSessionId?: string;

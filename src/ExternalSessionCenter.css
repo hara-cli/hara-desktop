@@ -192,6 +192,7 @@
 .external-source-tab .external-source-logo { width: 30px; height: 30px; border-radius: 9px 4px 9px 4px; font-size: 8px; }
 .external-source-logo.is-codex { background: #b9decf; }
 .external-source-logo.is-claude { background: #e7bea0; }
+.external-source-logo.is-opencode { background: #c9c5ee; }
 .external-source-logo.is-runtime {
   color: #fff8f2;
   background: linear-gradient(145deg, var(--accent, #d9442c), #863323);

@@ -307,7 +307,7 @@ type SettingsSection =
 type SecuritySettingsAnchor = "settings-computer-use" | "settings-jev-api-key";
 
 const externalSourceMark = (sourceId: ExternalSessionSourceId): string => (
-  sourceId === "runtime" ? "HR" : sourceId === "codex" ? "CX" : "CL"
+  sourceId === "runtime" ? "HR" : sourceId === "codex" ? "CX" : sourceId === "opencode" ? "OC" : "CL"
 );
 
 const loadGroups = () => import("./Groups");
