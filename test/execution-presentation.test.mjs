@@ -5,6 +5,7 @@ import {
   executionToolNames,
   groupConversationItems,
   isExecutionDetail,
+  splitAssistantTechnicalReceipt,
 } from "../src/execution-presentation.ts";
 
 test("execution evidence is collapsed without changing conversation order or rewind indexes", () => {
@@ -98,4 +99,26 @@ test("raw output remains a distinct disclosure item while actionable notices sta
   assert.deepEqual(segments.map((segment) => segment.kind), ["execution", "item", "item", "item"]);
   assert.equal(segments[1].item.kind, "output");
   assert.equal(segments[2].item.kind, "notice");
+});
+
+test("explicit machine delivery receipts fold away without hiding the human conclusion", () => {
+  const text = [
+    "Fanli replied: received.",
+    "",
+    "**投递回执：**",
+    "- status: `completed`",
+    "- recipient: `nanhara:fanli`",
+    "- sessionId: `private-session-id`",
+    "",
+    "结论：消息双向都通。",
+  ].join("\n");
+  assert.deepEqual(splitAssistantTechnicalReceipt(text), {
+    visibleText: "Fanli replied: received.\n\n结论：消息双向都通。",
+    technicalText: "- status: `completed`\n- recipient: `nanhara:fanli`\n- sessionId: `private-session-id`",
+  });
+});
+
+test("ordinary prose with a technical heading is not hidden without a machine receipt", () => {
+  const text = "技术详情：\n这段内容是给用户看的完整解释。";
+  assert.deepEqual(splitAssistantTechnicalReceipt(text), { visibleText: text });
 });

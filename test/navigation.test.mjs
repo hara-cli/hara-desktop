@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   CORE_NAVIGATION_CONTRIBUTIONS,
+  availableNavigation,
   initialAppPlace,
   moveNavigation,
   parseNavigationPreferences,
@@ -32,6 +33,21 @@ test("module dock preferences tolerate corruption and stale plugin IDs", () => {
   assert.deepEqual(
     visibleNavigation(CORE_NAVIGATION_CONTRIBUTIONS, preferences).map((item) => item.id),
     ["core.tasks", "core.chat", "core.groups"],
+  );
+});
+
+test("organization workspaces appear in the primary dock only after enrollment", () => {
+  assert.deepEqual(
+    availableNavigation(CORE_NAVIGATION_CONTRIBUTIONS, {
+      hasOrganizationWorkspace: false,
+    }).map((item) => item.id),
+    ["core.chat", "core.tasks"],
+  );
+  assert.deepEqual(
+    availableNavigation(CORE_NAVIGATION_CONTRIBUTIONS, {
+      hasOrganizationWorkspace: true,
+    }).map((item) => item.id),
+    ["core.chat", "core.tasks", "core.groups"],
   );
 });
 
@@ -287,6 +303,7 @@ test("Workbench exposes Agent contacts and external sessions while project histo
   assert.doesNotMatch(visibleTabs, /inboxProjects/, "Project is not a first-class Workbench tab");
   assert.match(app, /void openAgentConversation\(agent\.ref, targetCwd\)/);
   assert.match(app, /inbox-agent-history/, "older execution segments stay available without becoming contacts");
+  assert.match(app, /locale === "zh" \? "历史" : "History"/, "history is a named action rather than an icon-only affordance");
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "project", id: cwd \}\)/);
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "external", id: session\.id \}\)/);
   assert.match(app, /className="inbox-back"/);

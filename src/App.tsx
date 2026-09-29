@@ -141,6 +141,7 @@ import {
 import {
   CORE_NAVIGATION_CONTRIBUTIONS,
   NAVIGATION_PREFERENCES_KEY,
+  availableNavigation,
   initialAppPlace,
   moveNavigation,
   navigationIsVisible,
@@ -217,7 +218,11 @@ import {
   type ExtensionDockAddKind,
 } from "./extension-dock-state";
 import { isInternalUserText, userVisibleText } from "./user-visible-text";
-import { isModelAuthenticationFailure, turnFailureMessage } from "./turn-failure";
+import {
+  isModelAuthenticationFailure,
+  turnFailureMessage,
+  updateModelAuthenticationFailureState,
+} from "./turn-failure";
 import {
   loadPresentationSurface,
   presentationErrorKey,
@@ -294,6 +299,7 @@ import "./App.css";
 
 type SettingsSection =
   | "providers"
+  | "automations"
   | "learning"
   | "engine"
   | "security"
@@ -382,6 +388,8 @@ const preloadSettingsSection = (section: SettingsSection): void => {
     warmModule(Promise.all([loadProviderSettings(), loadGatewaySettings()]));
   } else if (section === "learning") {
     warmModule(loadLearningCenter());
+  } else if (section === "automations") {
+    warmModule(loadAutomations());
   } else if (section === "mobile") {
     warmModule(loadMobilePairingSettings());
   } else if (section === "capabilities") {
@@ -830,6 +838,7 @@ export default function App() {
   const [active, setActive] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<Record<string, ConversationItem[]>>({});
   const [readOnlySessions, setReadOnlySessions] = useState<Record<string, { reason: string }>>({});
+  const [modelAuthenticationFailures, setModelAuthenticationFailures] = useState<Record<string, true>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [taskStates, setTaskStates] = useState<Record<string, TaskLifecycleEvent>>({});
   const transcriptsRef = useRef(transcripts);
@@ -1391,7 +1400,9 @@ export default function App() {
   // Automation state is local RPC data, not a model turn. Refreshing it on focus and every 30 seconds
   // keeps next-run/health/result state honest without consuming model tokens.
   useEffect(() => {
-    if (phase !== "ready" || zone !== "auto") return;
+    const automationSurfaceOpen = zone === "auto"
+      || (zone === "settings" && setSec === "automations");
+    if (phase !== "ready" || !automationSurfaceOpen) return;
     void refreshAuto();
     const intervalId = window.setInterval(() => void refreshAuto(), 30_000);
     const onFocus = () => void refreshAuto();
@@ -1400,7 +1411,7 @@ export default function App() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
     };
-  }, [phase, zone, refreshAuto]);
+  }, [phase, refreshAuto, setSec, zone]);
   // dock badge = manual unread count (interruption-grade only; ambient automation never badges)
   useEffect(() => {
     const n = Object.values(unread).filter(Boolean).length;
@@ -3142,6 +3153,8 @@ export default function App() {
           }
           delete activeTurnsRef.current[e.sessionId];
           const failureMessage = turnFailureMessage(e.error, e.status, locale);
+          setModelAuthenticationFailures((current) =>
+            updateModelAuthenticationFailureState(current, e.sessionId, e.error, e.status));
           push(e.sessionId, (items) => [
             ...reconcileTerminalReply(items, e.reply).map((item): ConversationItem =>
               item.kind === "approval" && !item.answered
@@ -3363,6 +3376,7 @@ export default function App() {
     setSessions([]);
     setTranscripts({});
     setReadOnlySessions({});
+    setModelAuthenticationFailures({});
     setBusy({});
     setTaskStates({});
     setComposerDrafts({});
@@ -3685,12 +3699,12 @@ export default function App() {
 
   const activeTimeline = active ? transcripts[active] : undefined;
   const activeTimelineTask = active ? taskStates[active] : undefined;
-  const activeModelAuthenticationFailure = [
-    activeTimelineTask?.detail,
-    activeTimelineTask?.checkpoint.blockReason,
-    activeTimelineTask?.checkpoint.completion?.dependency?.detail,
-    ...(activeTimelineTask?.checkpoint.completion?.dependency?.evidence ?? []),
-  ].some(isModelAuthenticationFailure);
+  const activeModelAuthenticationFailure = !!(active && modelAuthenticationFailures[active]) || [
+      activeTimelineTask?.detail,
+      activeTimelineTask?.checkpoint.blockReason,
+      activeTimelineTask?.checkpoint.completion?.dependency?.detail,
+      ...(activeTimelineTask?.checkpoint.completion?.dependency?.evidence ?? []),
+    ].some(isModelAuthenticationFailure);
   const activeTimelineBusy = active ? !!busy[active] : false;
   const scrollTimelineToLatest = useCallback(() => {
     timelineFollowRef.current = true;
@@ -7961,8 +7975,12 @@ export default function App() {
   const pluginRailLabels = Object.fromEntries(
     pluginNavigation.map((contribution) => [contribution.id, contribution.title]),
   );
+  const hasOrganizationWorkspace = Boolean(organizationRoutes?.connections.length);
+  const railContributions = availableNavigation(navigationContributions, {
+    hasOrganizationWorkspace,
+  });
   const railItems: AppRailItem[] = visibleNavigation(
-    navigationContributions,
+    railContributions,
     navigationPreferences,
   ).map((contribution) => {
     const pluginContribution = pluginNavigationById.get(contribution.id);
@@ -9317,8 +9335,8 @@ export default function App() {
                           setQ("");
                         }}
                       >
-                        <span aria-hidden><IconSummary size={13} /></span>
-                        <b aria-hidden>{agentSessions.length}</b>
+                        <span>{locale === "zh" ? "历史" : "History"}</span>
+                        <b>{agentSessions.length}</b>
                       </button>
                     ) : null}
                   </div>
@@ -9567,6 +9585,7 @@ export default function App() {
                   label: t("settingsGroupGeneral"),
                   items: [
                     ["providers", t("setProviders")],
+                    ["automations", t("setAutomations")],
                     ["learning", t("setLearning")],
                     ["engine", t("setServer")],
                     ["security", t("setSecurity")],
@@ -9681,6 +9700,44 @@ export default function App() {
                   locale={locale}
                 />
               </Suspense>
+            )}
+            {setSec === "automations" && (
+              <SettingsPage
+                id="settings-automations-title"
+                eyebrow={t("settingsSystem")}
+                title={t("setAutomations")}
+                description={t("automationSettingsDescription")}
+              >
+                {activeSpaceId !== "personal" ? (
+                  <div className="settings-empty" role="status">{localResourceIsolationNotice}</div>
+                ) : auto === "old-server" ? (
+                  <div className="settings-empty" role="status">{t("autoNeedsUpdate")}</div>
+                ) : (
+                  <Suspense
+                    fallback={(
+                      <div className="settings-empty" role="status">
+                        {t("loading")}
+                      </div>
+                    )}
+                  >
+                    <AutomationsPage
+                      copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
+                      jobs={auto?.jobs ?? null}
+                      sessions={auto?.sessions ?? null}
+                      scheduler={auto?.scheduler}
+                      view="tasks"
+                      add={addAutomationDraft}
+                      update={updateAutomationDraft}
+                      run={runAutomationNow}
+                      toggle={toggleAutomation}
+                      delete={deleteAutomation}
+                      install={installAutomationScheduler}
+                      openReplay={openAutomationReplay}
+                      pickDirectory={pickAutomationDirectory}
+                    />
+                  </Suspense>
+                )}
+              </SettingsPage>
             )}
             {setSec === "engine" && (
               <SettingsPage
@@ -10261,7 +10318,8 @@ export default function App() {
                     } else if (id === "core.tasks") {
                       setZone("auto");
                     } else if (id === "core.groups") {
-                      setZone("groups");
+                      if (hasOrganizationWorkspace) setZone("groups");
+                      else openOrganizationEnrollment();
                     } else if (id === "core.office") {
                       showDeliverables();
                     }
@@ -10389,14 +10447,13 @@ export default function App() {
                 sessions={auto?.sessions ?? null}
                 scheduler={auto?.scheduler}
                 view={autoView}
-                add={addAutomationDraft}
-                update={updateAutomationDraft}
                 run={runAutomationNow}
-                toggle={toggleAutomation}
-                delete={deleteAutomation}
-                install={installAutomationScheduler}
                 openReplay={openAutomationReplay}
-                pickDirectory={pickAutomationDirectory}
+                onManage={() => {
+                  preloadSettingsSection("automations");
+                  setSetSec("automations");
+                  setZone("settings");
+                }}
               />
             </Suspense>
           )}

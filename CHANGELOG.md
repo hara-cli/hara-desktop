@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.176 — 2026-09-30 — guided Coding Plan and a quieter workspace
+
+- Keep the primary workspace focused on conversations and current execution: Task Center now opens run status and
+  history, while schedule management lives in Settings instead of occupying a permanent business-navigation slot.
+- Treat organization enrollment as configuration. Organization management is available under Models & organizations,
+  and an organization workspace appears in the primary navigation only after this Desktop has actually joined one.
+- Add a guided Volcengine Ark Coding Plan connection. The recommended Auto choice is displayed in plain language while
+  preserving `ark-code-latest` on the wire, current models include fit guidance, and sunset or vector-only models are
+  excluded from new selections.
+- Make Agent conversations quieter and easier to scan by folding technical execution detail, clarifying model-I/O
+  diagnostics, and keeping recoverable actions close to the affected message instead of presenting engine internals as
+  ordinary chat.
+- Bundle Hara CLI `0.183.0` at exact commit `1ebb6b63b9e1f6502e050b634ceb80a55eefb794`, including Ark Coding Plan,
+  deferred long-tail tool schemas, clearer token telemetry, and earlier stalled-run protection.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may display a
+  reputation warning.
+
 ## 0.1.175 — 2026-09-29 — conversational execution and built-in code runtime
 
 - Make Agent work feel like a normal conversation: keep the composer and session-history action visible, fold

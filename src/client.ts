@@ -11,6 +11,19 @@ export interface Discovery {
 
 export type ApprovalMode = "suggest" | "auto-edit" | "full-auto";
 
+/** Per-turn model accounting reported by Hara serve.
+ * `input` and `output` are cumulative logical model I/O across provider calls in
+ * the turn; `lastInput` is the most recent request context, not the cumulative
+ * total. Optional detail fields keep older sidecars wire-compatible. */
+export interface ModelUsage {
+  input: number;
+  output: number;
+  requests?: number;
+  lastInput?: number;
+  cachedInput?: number;
+  reasoningOutput?: number;
+}
+
 export interface SessionInfo {
   id: string;
   title: string;
@@ -253,7 +266,7 @@ export interface AgentTeamMember {
   startedAt?: string;
   endedAt?: string;
   model?: string;
-  usage?: { input: number; output: number; lastInput?: number };
+  usage?: ModelUsage;
   pendingMessages: number;
   hasResult: boolean;
   workspace?: {
@@ -1478,7 +1491,7 @@ export type SessionNotSubmittedReason =
 
 export interface SessionTurnResult {
   reply: string;
-  usage: { input: number; output: number };
+  usage: ModelUsage;
   ctx?: CtxInfo;
   taskId: string;
   turnId: string;
@@ -1765,7 +1778,7 @@ export type ServerEvent =
         | { type: "artifact"; artifactId: string; revisionId: string }
         | { type: "url"; url: string };
     }
-  | { method: "event.turn_end"; sessionId: string; reply: string; error?: string; status?: string; taskId?: string; turnId?: string; usage: { input: number; output: number }; ctx?: CtxInfo }
+  | { method: "event.turn_end"; sessionId: string; reply: string; error?: string; status?: string; taskId?: string; turnId?: string; usage: ModelUsage; ctx?: CtxInfo }
   | { method: "approval.request"; sessionId: string; approvalId: string; question: string; allowAlways?: boolean }
   | { method: "external.event.turn_start"; sessionId: string; turnId: string }
   | { method: "external.event.text"; sessionId: string; turnId: string; delta: string }

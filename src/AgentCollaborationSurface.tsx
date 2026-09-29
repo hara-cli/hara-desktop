@@ -33,10 +33,13 @@ const COPY = {
     refresh: "Refresh",
     rooms: "Rooms",
     members: "Members",
+    codeTasks: "Code tasks",
+    codeTasksHint: "Codex and Claude Code runs are execution tasks, not chat members.",
     newRoom: "New room",
     addAgent: "Add Agent",
     emptyRooms: "No room yet. Start at least one Agent, then create a focused room.",
     emptyMembers: "No delegated Agent in this session yet.",
+    emptyCodeTasks: "No delegated code task in this session yet.",
     roomName: "Room name",
     chooseMembers: "Choose 1–7 members",
     createRoom: "Create room",
@@ -60,8 +63,8 @@ const COPY = {
     taskName: "Member ID",
     start: "Start Agent",
     native: "Hara Agent",
-    codex: "Codex coding worker",
-    claude: "Claude Code coding worker",
+    codex: "Codex engine",
+    claude: "Claude Code engine",
     readOnly: "Read only",
     isolated: "Isolated write",
     unsupported: "Update Hara CLI to use Agent rooms in Desktop.",
@@ -86,10 +89,13 @@ const COPY = {
     refresh: "刷新",
     rooms: "群聊",
     members: "成员",
+    codeTasks: "代码任务",
+    codeTasksHint: "Codex 与 Claude Code 是执行任务，不是聊天成员。",
     newRoom: "新建群聊",
     addAgent: "添加 Agent",
     emptyRooms: "还没有群聊。先启动至少一个 Agent，再创建一个聚焦的群聊。",
     emptyMembers: "当前会话还没有已委派的 Agent。",
+    emptyCodeTasks: "当前会话还没有已委派的代码任务。",
     roomName: "群聊名称",
     chooseMembers: "选择 1–7 个成员",
     createRoom: "创建群聊",
@@ -113,8 +119,8 @@ const COPY = {
     taskName: "成员 ID",
     start: "启动 Agent",
     native: "Hara Agent",
-    codex: "Codex 编码成员",
-    claude: "Claude Code 编码成员",
+    codex: "Codex 引擎",
+    claude: "Claude Code 引擎",
     readOnly: "只读",
     isolated: "隔离写入",
     unsupported: "请更新 Hara CLI 后再在 Desktop 使用 Agent 群聊。",
@@ -203,6 +209,14 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
   const eligibleAgents = useMemo(() => agents.filter((agent) => (
     agent.ref === "main" || agent.home === item.owner.cwd
   )), [agents, item.owner.cwd]);
+  const collaborators = useMemo(
+    () => (team?.agents ?? []).filter((member) => member.runtime === "hara"),
+    [team?.agents],
+  );
+  const codingExecutions = useMemo(
+    () => (team?.agents ?? []).filter((member) => member.runtime !== "hara"),
+    [team?.agents],
+  );
 
   const refreshTeam = useCallback(async () => {
     if (!client || !supported) return;
@@ -216,9 +230,9 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
         return next.rooms.find((candidate) => !candidate.closedAt)?.id ?? next.rooms[0]?.id ?? null;
       });
       setSelectedMemberId((current) => (
-        current && next.agents.some((candidate) => candidate.id === current)
+        current && next.agents.some((candidate) => candidate.id === current && candidate.runtime === "hara")
           ? current
-          : next.agents[0]?.id ?? null
+          : next.agents.find((candidate) => candidate.runtime === "hara")?.id ?? null
       ));
       setError("");
     } catch (cause: any) {
@@ -328,10 +342,7 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
     });
   };
 
-  const selectedMember = team?.agents.find((member) => member.id === selectedMemberId) ?? null;
-  const selectedNativeResumeCommand = selectedMember && selectedMember.runtime !== "hara"
-    ? nativeResumeCommand(selectedMember.runtime, item.owner.cwd, selectedMember.providerSessionId)
-    : null;
+  const selectedMember = collaborators.find((member) => member.id === selectedMemberId) ?? null;
   const copyNativeResumeCommand = async (member: AgentTeamMember, command: string) => {
     const copied = await copyTextToClipboard(command);
     if (!copied) {
@@ -391,7 +402,7 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
               <label>{copy.roomName}<input value={roomName} onChange={(event) => setRoomName(event.currentTarget.value)} maxLength={48} autoFocus /></label>
               <fieldset>
                 <legend>{copy.chooseMembers}</legend>
-                {(team?.agents ?? []).map((member) => (
+                {collaborators.map((member) => (
                   <label className="agent-collab-check" key={member.id}>
                     <input
                       type="checkbox"
@@ -462,7 +473,7 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
             </form>
           ) : null}
           <div className="agent-collab-member-list">
-            {(team?.agents ?? []).length ? team!.agents.map((member) => (
+            {collaborators.length ? collaborators.map((member) => (
               <button
                 type="button"
                 className={member.id === selectedMemberId ? "is-selected" : ""}
@@ -473,12 +484,53 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
                 <span>
                   <strong>{memberLabel(member.path)}</strong>
                   <small>
-                    {member.runtime === "hara" ? copy.native : member.runtime === "codex" ? copy.codex : copy.claude} · {member.status}
+                    {copy.native} · {member.status}
                   </small>
                 </span>
                 {member.pendingMessages > 0 ? <b>{member.pendingMessages}</b> : null}
               </button>
             )) : <p className="agent-collab-empty">{copy.emptyMembers}</p>}
+          </div>
+
+          <div className="agent-collab-section-heading is-code-tasks">
+            <strong>{copy.codeTasks}</strong>
+          </div>
+          <p className="agent-collab-section-hint">{copy.codeTasksHint}</p>
+          <div className="agent-collab-code-list">
+            {codingExecutions.length ? codingExecutions.map((execution) => {
+              const resumeCommand = nativeResumeCommand(execution.runtime as Exclude<AgentTeamRuntime, "hara">, item.owner.cwd, execution.providerSessionId);
+              const runtimeLabel = execution.runtime === "codex" ? copy.codex : copy.claude;
+              return (
+                <article key={execution.id}>
+                  <header>
+                    <i className={memberTone(execution)} />
+                    <span>
+                      <strong>{execution.name}</strong>
+                      <small>{runtimeLabel} · {execution.status}</small>
+                    </span>
+                  </header>
+                  {execution.workspace?.state === "changes" ? <span className="agent-direct-diff">{copy.changes}</span> : null}
+                  <div className="agent-collab-code-actions">
+                    {execution.runtimeSessionId && onOpenRuntimeSession ? (
+                      <button type="button" onClick={() => onOpenRuntimeSession(execution.runtimeSessionId!, execution.runtime as "codex" | "claude")}>{copy.openRuntimeSession}</button>
+                    ) : null}
+                    <button
+                      type="button"
+                      title={resumeCommand}
+                      onClick={() => void copyNativeResumeCommand(execution, resumeCommand)}
+                    >
+                      {copiedResumeMemberId === execution.id ? copy.nativeResumeCopied : copy.copyNativeResume}
+                    </button>
+                    {(execution.status === "working" || execution.status === "queued" || execution.status === "stopping") ? (
+                      <button type="button" onClick={() => client && void run(`interrupt-${execution.id}`, async () => {
+                        await client.interruptSessionAgent(sessionId, execution.id);
+                        await refreshTeam();
+                      })}>{copy.stop}</button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            }) : <p className="agent-collab-empty">{copy.emptyCodeTasks}</p>}
           </div>
         </aside>
 
@@ -520,21 +572,9 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
             <section className="agent-direct-panel">
               <header>
                 <div><i className={memberTone(selectedMember)} /><span><strong>{memberLabel(selectedMember.path)}</strong><small>
-                  {selectedMember.runtime === "hara" ? copy.native : selectedMember.runtime === "codex" ? copy.codex : copy.claude} · {selectedMember.status}
+                  {copy.native} · {selectedMember.status}
                 </small></span></div>
                 <div className="agent-direct-actions">
-                  {selectedMember.runtime !== "hara" && selectedMember.runtimeSessionId && onOpenRuntimeSession ? (
-                    <button type="button" onClick={() => onOpenRuntimeSession(selectedMember.runtimeSessionId!, selectedMember.runtime as "codex" | "claude")}>{copy.openRuntimeSession}</button>
-                  ) : null}
-                  {selectedNativeResumeCommand ? (
-                    <button
-                      type="button"
-                      title={selectedNativeResumeCommand}
-                      onClick={() => void copyNativeResumeCommand(selectedMember, selectedNativeResumeCommand)}
-                    >
-                      {copiedResumeMemberId === selectedMember.id ? copy.nativeResumeCopied : copy.copyNativeResume}
-                    </button>
-                  ) : null}
                   {(selectedMember.status === "working" || selectedMember.status === "queued" || selectedMember.status === "stopping") ? (
                     <button type="button" onClick={() => client && void run("interrupt", async () => {
                       await client.interruptSessionAgent(sessionId, selectedMember.id);
@@ -544,12 +584,6 @@ export default function AgentCollaborationSurface({ item, client, agents, locale
                 </div>
               </header>
               <p>{copy.directHint}</p>
-              {selectedMember.runtime !== "hara" && selectedMember.runtimeSessionId ? (
-                <div className="agent-direct-continuity">
-                  <p>{selectedMember.providerSessionId ? copy.sessionContinuity : copy.sessionContinuityLegacy}</p>
-                  {selectedNativeResumeCommand ? <code>{selectedNativeResumeCommand}</code> : null}
-                </div>
-              ) : null}
               {selectedMember.workspace?.state === "changes" ? <span className="agent-direct-diff">{copy.changes}</span> : null}
               <form onSubmit={sendDirectMessage}>
                 <input value={directMessage} onChange={(event) => setDirectMessage(event.currentTarget.value)} placeholder={copy.messageAgent} maxLength={16_000} />

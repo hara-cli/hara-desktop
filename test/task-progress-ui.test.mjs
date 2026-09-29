@@ -18,6 +18,8 @@ test("Desktop renders typed round, token, todo, and no-progress state from the E
   assert.match(timeline, /\{progress\.rounds\}\/\{progress\.maxRounds\}/);
   assert.match(timeline, /progress\.toolCalls\.toLocaleString\(\)/);
   assert.match(timeline, /progress\.tokens\.total\.toLocaleString\(\)/);
+  assert.match(timeline, /t\("modelIo"\)/, "the cumulative counter is not mislabeled as one context window");
+  assert.match(timeline, /t\("modelIoTip"\)/, "the metric explains its model-request scope");
   assert.match(timeline, /\{progress\.todo\.done\}\/\{progress\.todo\.total\}/);
   assert.match(timeline, /taskProgressStopped/);
   assert.match(timeline, /taskProgressWarning/);

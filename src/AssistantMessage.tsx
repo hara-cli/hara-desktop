@@ -1,7 +1,8 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { Key } from "./i18n";
 import { Md } from "./markdown";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { splitAssistantTechnicalReceipt } from "./execution-presentation";
 
 export const AssistantMessage = memo(function AssistantMessage({
   text,
@@ -13,6 +14,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   author?: string;
 }) {
   const initials = Array.from(author.trim() || "Hara").slice(0, 2).join("").toLocaleUpperCase();
+  const presentation = useMemo(() => splitAssistantTechnicalReceipt(text), [text]);
   return (
     <div className="assistant-message">
       <div className="assistant-message-author">
@@ -21,11 +23,24 @@ export const AssistantMessage = memo(function AssistantMessage({
       </div>
       <div className="msg assistant">
         <Md
-          text={text}
+          text={presentation.visibleText}
           copyCodeLabel={t("copyCode")}
           copiedLabel={t("taskCopied")}
           copyFailedLabel={t("copyFailed")}
         />
+        {presentation.technicalText ? (
+          <details className="assistant-technical-details">
+            <summary>{t("technicalDetails")}</summary>
+            <div>
+              <Md
+                text={presentation.technicalText}
+                copyCodeLabel={t("copyCode")}
+                copiedLabel={t("taskCopied")}
+                copyFailedLabel={t("copyFailed")}
+              />
+            </div>
+          </details>
+        ) : null}
       </div>
       <div className="assistant-message-actions">
         <MessageCopyButton

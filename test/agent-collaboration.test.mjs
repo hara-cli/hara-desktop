@@ -178,9 +178,12 @@ test("Desktop keeps an opaque continuation link for delegated coding sessions", 
 
   assert.match(client, /runtimeSessionId\?: string/);
   assert.match(client, /providerSessionId\?: string/);
-  assert.match(surface, /selectedMember\.runtimeSessionId/);
-  assert.match(surface, /selectedMember\.providerSessionId/);
-  assert.match(surface, /onOpenRuntimeSession\(selectedMember\.runtimeSessionId!/);
+  assert.match(surface, /codingExecutions/);
+  assert.match(surface, /execution\.runtimeSessionId/);
+  assert.match(surface, /execution\.providerSessionId/);
+  assert.match(surface, /onOpenRuntimeSession\(execution\.runtimeSessionId!/);
+  assert.match(surface, /Codex and Claude Code runs are execution tasks, not chat members/);
+  assert.match(surface, /Codex 与 Claude Code 是执行任务，不是聊天成员/);
   assert.match(surface, /hara coding resume/);
   assert.match(surface, /codex resume --all/);
   assert.match(surface, /claude --resume/);
@@ -210,6 +213,10 @@ test("Agent collaboration keeps executor routing inside Hara instead of per-Agen
     "the form creates a persistent Hara identity rather than a direct coding worker");
   assert.match(surface, /wake: true/,
     "user-authored direct and group messages explicitly wake bounded Agent generations");
+  assert.match(surface, /const collaborators = useMemo[\s\S]*member\.runtime === "hara"/,
+    "rooms and direct chat are populated only by conversational Hara collaborators");
+  assert.match(surface, /const codingExecutions = useMemo[\s\S]*member\.runtime !== "hara"/,
+    "native coding runtimes are projected as execution tasks instead of chat members");
   assert.match(client, /runtimeGrants\?: Array<Exclude<AgentTeamRuntime, "hara">>/,
     "the typed transport remains backward-compatible with older hosts and saved teams");
 });

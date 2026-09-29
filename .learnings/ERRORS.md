@@ -3850,3 +3850,78 @@ after the protected workflow has published GitHub assets and the first-party sta
 - Recurrence-Count: 1
 
 ---
+
+## [ERR-20260930-DIRTY-SIDECAR-RELEASE-TEST] development sidecar provenance correctly blocked a release-only test
+
+**Logged**: 2026-09-30T00:57:22+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: release-validation
+
+### Summary
+
+The complete Desktop source suite passed 236 functional tests, while the release-pipeline module refused to load
+because the current development sidecar lock deliberately begins with `dirty-` instead of naming a releasable Git
+commit. The production renderer build still passed.
+
+### Error
+
+```text
+locked sidecar commit must be a full 40-character Git commit, got dirty-<commit>
+```
+
+### Suggested Fix
+
+Treat this as an expected fail-closed release gate while testing a locally modified Engine. Before a real release,
+commit and verify the Engine, refresh the sidecar from that exact commit, and rerun the release pipeline; never rewrite
+the lock to a clean-looking value for development convenience.
+
+### Metadata
+
+- Source: command_failure
+- Reproducible: yes
+- Related Files: `src-tauri/binaries/SIDECAR_COMMIT`, `test/release-pipeline.test.mjs`
+- Tags: sidecar, provenance, development, release
+
+### Resolution
+
+- **Resolved**: 2026-09-30T00:57:22+08:00
+- **Notes**: Isolated the sole failure; all 236 non-release functional tests and the renderer production build passed.
+
+---
+
+## [ERR-20260930-HARA-CAPTURE-UNAVAILABLE] running Desktop window could not be captured for visual QA
+
+**Logged**: 2026-09-30T00:57:22+08:00
+**Priority**: low
+**Status**: open
+**Area**: frontend
+
+### Summary
+
+The computer-use inventory confirmed that Hara was running, but selecting the app twice failed at screen capture. The
+isolated in-app browser was also unavailable, so this run could verify the UI through source tests and a production
+renderer build but could not honestly claim a fresh pixel-level inspection.
+
+### Error
+
+```text
+Computer Use server error -10005: The screen capture failed.
+Browser is not available: iab
+```
+
+### Suggested Fix
+
+Restore the Desktop runner's macOS Screen Recording capture path or connect a supported browser surface, then inspect
+the live light-theme transcript at narrow and wide widths before release.
+
+### Metadata
+
+- Source: external_tool_failure
+- Reproducible: yes
+- Related Files: `src/App.css`, `src/AssistantMessage.tsx`, `src/ConversationTimeline.tsx`
+- Tags: visual-qa, macos, screen-capture, desktop
+- Recurrence-Count: 2
+- Last-Seen: 2026-09-30
+
+---

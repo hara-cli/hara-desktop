@@ -27,7 +27,7 @@ test("concise, standard, and debug expose progressively more local evidence", ()
     [
       { mode: "concise", log: false, expanded: false, usage: false },
       { mode: "standard", log: true, expanded: false, usage: false },
-      { mode: "debug", log: true, expanded: true, usage: true },
+      { mode: "debug", log: true, expanded: false, usage: true },
     ],
   );
 });

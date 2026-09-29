@@ -14,8 +14,10 @@ export function executionViewShowsLog(mode: ExecutionViewMode): boolean {
   return mode !== "concise";
 }
 
-export function executionViewExpandsLog(mode: ExecutionViewMode): boolean {
-  return mode === "debug";
+export function executionViewExpandsLog(_mode: ExecutionViewMode): boolean {
+  // Even diagnostics belong behind an explicit disclosure. Opening every raw tool call makes the
+  // conversation read like a protocol trace and can push the actual Agent reply off screen.
+  return false;
 }
 
 export function executionViewShowsUsage(mode: ExecutionViewMode): boolean {

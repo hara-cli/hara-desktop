@@ -45,6 +45,10 @@ export interface NavigationPreferences {
   shown: string[];
 }
 
+export interface NavigationAvailability {
+  hasOrganizationWorkspace: boolean;
+}
+
 export const NAVIGATION_PREFERENCES_KEY = "hara.navigation.v1";
 const LEGACY_PROJECTS_NAVIGATION_ID = "core.projects";
 
@@ -237,6 +241,18 @@ export function visibleNavigation<T extends NavigationContribution>(
   return orderedNavigation(contributions, preferences).filter((item) =>
     navigationIsVisible(item, preferences),
   );
+}
+
+/** Keep destination-specific navigation out of the primary dock until it can open useful work.
+ * Organization configuration remains reachable from Settings, so hiding Groups here never blocks
+ * enrollment or recovery. */
+export function availableNavigation<T extends NavigationContribution>(
+  contributions: readonly T[],
+  availability: NavigationAvailability,
+): T[] {
+  return contributions.filter((item) => (
+    item.id !== "core.groups" || availability.hasOrganizationWorkspace
+  ));
 }
 
 function normalizedHidden(

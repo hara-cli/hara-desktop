@@ -66,6 +66,10 @@ test("active work reads as Agent presence instead of a protocol status line", ()
     "working feedback is a named typing presence, not an unexplained text marker");
   assert.match(assistant, /className="assistant-message-author"/,
     "ordinary Agent replies retain a conversational author cue");
+  assert.match(assistant, /splitAssistantTechnicalReceipt/,
+    "machine receipts stay available without competing with the Agent's natural reply");
+  assert.match(styles, /\.chat\.ide \.assistant-message > \.msg\s*\{[\s\S]*?width:\s*100%/,
+    "workbench replies own a complete bounded surface instead of fading into the window edge");
   assert.match(styles, /@keyframes hara-typing-pulse/);
   assert.doesNotMatch(i18n, /working:\s*"▍/,
     "visible work copy does not expose the former terminal-style glyph");

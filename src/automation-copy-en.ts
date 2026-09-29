@@ -2,14 +2,15 @@ import type { AutomationCopy } from "./Automations";
 
 /** Complete English copy so changing Desktop language never leaves the task console half translated. */
 export const AUTOMATION_COPY_EN: AutomationCopy = {
-  title: "Automations",
-  subtitle: "Let Hara run recurring work at the right time and keep every result here.",
-  navLabel: "Automation views",
+  title: "Task Center",
+  subtitle: "Monitor scheduled work, exceptions, upcoming runs, and result history in one place.",
+  navLabel: "Task Center views",
   allTasks: "All tasks",
   attention: "Needs attention",
   paused: "Paused",
   runs: "Run history",
   newTask: "New automation",
+  manageTasks: "Manage schedules",
   searchPlaceholder: "Search tasks, descriptions, or workspaces",
   clearSearch: "Clear search",
   taskCount: "Total tasks",

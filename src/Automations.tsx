@@ -138,6 +138,7 @@ export interface AutomationCopy {
   paused: string;
   runs: string;
   newTask: string;
+  manageTasks: string;
   searchPlaceholder: string;
   clearSearch: string;
   taskCount: string;
@@ -298,14 +299,15 @@ export interface AutomationCopy {
 }
 
 const DEFAULT_COPY: AutomationCopy = {
-  title: "自动任务",
-  subtitle: "让 Hara 在合适的时间替你运行工作，并把结果留在这里。",
-  navLabel: "自动任务视图",
+  title: "任务中心",
+  subtitle: "集中查看定时工作的状态、异常、即将运行和历史结果。",
+  navLabel: "任务中心视图",
   allTasks: "全部任务",
   attention: "需要处理",
   paused: "已暂停",
   runs: "运行记录",
   newTask: "添加自动任务",
+  manageTasks: "管理定时计划",
   searchPlaceholder: "搜索任务、说明或工作目录",
   clearSearch: "清除搜索",
   taskCount: "任务总数",
@@ -508,6 +510,7 @@ export interface AutomationSidebarProps {
 
 export interface AutomationsPageProps extends AutomationDataProps {
   view?: AutomationViewId;
+  onManage?: () => void;
 }
 
 export interface AutomationViewProps extends AutomationDataProps {
@@ -1543,6 +1546,7 @@ function TaskDetail({
   onRun,
   onToggle,
   onOpenReplay,
+  onManage,
 }: {
   job: AutomationJob;
   jobs: readonly AutomationJob[];
@@ -1558,6 +1562,7 @@ function TaskDetail({
   onRun: () => void;
   onToggle: () => void;
   onOpenReplay?: (run: AutomationRun) => void;
+  onManage?: () => void;
 }) {
   const state = getAutomationState(job, scheduler);
   const relatedRuns = sessions.filter((run) => run.jobId === job.id);
@@ -1597,6 +1602,12 @@ function TaskDetail({
             >
               <Icon name="paused" size={15} />
               {job.enabled === false ? copy.resume : copy.pause}
+            </button>
+          ) : null}
+          {onManage ? (
+            <button type="button" className="hara-automation-secondary-button" onClick={onManage}>
+              <Icon name="calendar" size={15} />
+              {copy.manageTasks}
             </button>
           ) : null}
         </div>
@@ -2539,6 +2550,7 @@ export function AutomationsPage({
   install,
   openReplay,
   pickDirectory,
+  onManage,
 }: AutomationsPageProps) {
   const copy = useMemo(() => getCopy(copyOverrides), [copyOverrides]);
   const safeJobs = jobs ?? [];
@@ -2797,6 +2809,7 @@ export function AutomationsPage({
             )
           }
           onOpenReplay={openReplay ? replayRun : undefined}
+          onManage={onManage}
         />
         {operationError ? (
           <div className="hara-automation-toast" role="alert">
@@ -2842,6 +2855,11 @@ export function AutomationsPage({
           <button type="button" onClick={() => setEditor({ kind: "create" })}>
             <Icon name="plus" size={16} />
             {copy.newTask}
+          </button>
+        ) : onManage ? (
+          <button type="button" className="hara-automation-secondary-button" onClick={onManage}>
+            <Icon name="calendar" size={16} />
+            {copy.manageTasks}
           </button>
         ) : null}
       </header>

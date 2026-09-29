@@ -190,9 +190,10 @@ html[data-theme="light"] .approval-card-details pre {
 }
 
 html[data-theme="light"] .chat.ide .msg.assistant {
+  border-color: var(--border);
   border-left-color: #c6bcae;
-  background: transparent;
-  box-shadow: none;
+  background: color-mix(in srgb, var(--surface-panel) 94%, transparent);
+  box-shadow: 0 1px 2px rgba(62, 48, 31, 0.035);
 }
 
 html[data-theme="light"] .tool,
@@ -638,6 +639,26 @@ html[data-theme="light"] .model-combobox-list button[aria-selected="true"] {
 
 html[data-theme="light"] .model-combobox-list button small {
   color: #746b62;
+}
+
+html[data-theme="light"] .provider-model-guide {
+  border-color: #d7cec1;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--model-guide-accent) 9%, #fffdf8), #fffdf8 64%);
+}
+
+html[data-theme="light"] .provider-model-guide header > strong {
+  color: #302a25;
+}
+
+html[data-theme="light"] .provider-model-guide header > code,
+html[data-theme="light"] .provider-model-guide p,
+html[data-theme="light"] .provider-model-guide > div > span {
+  color: #6e665e;
+}
+
+html[data-theme="light"] .provider-model-guide > div > span {
+  border-color: color-mix(in srgb, var(--model-guide-accent) 26%, #d7cec1);
+  background: color-mix(in srgb, var(--model-guide-accent) 6%, #fffdf8);
 }
 
 html[data-theme="light"] .model-menu-list > button,

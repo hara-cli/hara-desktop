@@ -43,6 +43,77 @@ hire time rather than bundled eagerly.
 
 ---
 
+## [LRN-20260929-DEV-SIDECAR-IS-RUNTIME-EVIDENCE] correction
+
+**Logged**: 2026-09-29T22:00:00+08:00
+**Priority**: high
+**Status**: in_progress
+**Area**: infra
+
+### Summary
+
+Frontend source and unit tests do not prove a new provider is available in Desktop development mode; the
+actual development sidecar must be refreshed and inspected.
+
+### Details
+
+The Coding Plan provider existed in the React source and CLI working tree, so it was incorrectly described as
+locally complete. The user was already running `tauri dev`, but its bundled `target/debug/hara` still came from
+the earlier 0.182.0 sidecar and did not contain `volcengine-coding-plan`. Because the provider list is returned
+by the running Engine, the UI correctly omitted the provider despite the newer frontend source.
+
+### Suggested Action
+
+For every CLI-backed Desktop feature, refresh the development sidecar, restart the development app, query the
+live RPC or inspect the exact runtime binary, and exercise the real UI path before reporting completion.
+Distinguish source-complete, development-runtime verified, packaged, and released states explicitly.
+
+### Metadata
+
+- Source: user_feedback
+- Related Files: scripts/refresh-sidecar.sh, src/ProviderSettings.tsx, ../hara-cli/src/providers/registry.ts
+- Tags: correction, sidecar, tauri-dev, provider-settings, runtime-evidence
+- Pattern-Key: desktop.cli_features_require_refreshed_dev_sidecar
+- Recurrence-Count: 1
+
+---
+
+## [LRN-20260929-FEISHU-CLOSURE-REQUIRES-RUNTIME-EVIDENCE] correction
+
+**Logged**: 2026-09-29T17:25:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: testing
+
+### Summary
+
+Do not close a Feishu bug from source-pattern tests alone; require evidence that exercises the reported state
+transition or packaged user path.
+
+### Details
+
+Two Desktop feedback threads were prematurely described as fixed after regex/source assertions passed. Those
+assertions proved that code and copy existed, but not that a live 401 survived the terminal task transition or
+that the history affordance remained visible in the rendered contact row. The completion replies had to be
+reopened honestly.
+
+### Suggested Action
+
+Use layered evidence before closing a linked report: a state-driven regression for the exact failure sequence,
+a production build, and visual or packaged-path verification for interaction/visibility defects. Source-pattern
+tests may guard structure, but cannot be the sole closure evidence. Reply to the original Feishu message only
+after the effective release is verified.
+
+### Metadata
+
+- Source: user_feedback
+- Related Files: `src/App.tsx`, `src/App.css`, `src/turn-failure.ts`, `test/turn-failure.test.mjs`, `test/ui-regressions.test.mjs`
+- Tags: feishu, issue-closure, runtime-state, visual-qa, regression-testing
+- Pattern-Key: feedback.close_only_with_reported_path_evidence
+- Recurrence-Count: 2
+
+---
+
 ## [LRN-20260905-EXTERNAL-TERMINAL-IS-AN-ADAPTER] correction
 
 **Logged**: 2026-09-05T10:13:35+08:00

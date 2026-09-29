@@ -256,15 +256,17 @@ test("the app shell delegates stable navigation and transcript presentation", ()
 test("Agent history is a persistent discoverable action instead of a hover-only icon", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const css = readFileSync(`${root}/src/App.css`, "utf8");
-  const historyRuleStart = css.lastIndexOf(".inbox-agent-history {");
+  const historyRuleStart = css.indexOf(".inbox-agent-history {");
   const historyRule = historyRuleStart >= 0
     ? css.slice(historyRuleStart, css.indexOf("}", historyRuleStart) + 1)
     : "";
 
   assert.match(app, /className="project-remove inbox-project-remove inbox-agent-history"/);
-  assert.match(app, /<b aria-hidden>\{agentSessions\.length\}<\/b>/,
+  assert.match(app, /locale === "zh" \? "历史" : "History"/,
+    "the action names the destination instead of relying on an icon");
+  assert.match(app, /<b>\{agentSessions\.length\}<\/b>/,
     "the history entry communicates that more than one recoverable task exists");
-  assert.match(historyRule, /opacity:\s*0\.72\s*;/,
+  assert.match(historyRule, /opacity:\s*1\s*;/,
     "the action remains visible without requiring mouse hover");
   assert.match(historyRule, /display:\s*inline-flex\s*;/);
 });
@@ -369,6 +371,16 @@ test("automation is one guided control console with local-only status refresh", 
   assert.match(app, /<AutomationSidebar/);
   assert.match(app, /<AutomationsPage/);
   assert.doesNotMatch(app, /jobForm|className="jobtable"/, "the legacy duplicate task editor and table are gone");
+  assert.match(
+    app,
+    /setSec === "automations"[\s\S]*?<AutomationsPage[\s\S]*?add=\{addAutomationDraft\}[\s\S]*?update=\{updateAutomationDraft\}[\s\S]*?toggle=\{toggleAutomation\}[\s\S]*?delete=\{deleteAutomation\}[\s\S]*?install=\{installAutomationScheduler\}/,
+    "low-frequency schedule management lives in Settings",
+  );
+  assert.match(
+    app,
+    /zone === "auto"[\s\S]*?<AutomationsPage[\s\S]*?run=\{runAutomationNow\}[\s\S]*?openReplay=\{openAutomationReplay\}[\s\S]*?onManage=\{\(\) => \{[\s\S]*?preloadSettingsSection\("automations"\)[\s\S]*?setSetSec\("automations"\)[\s\S]*?setZone\("settings"\)/,
+    "Task Center stays operational and routes management into Settings",
+  );
   assert.match(
     app,
     /window\.setInterval\(\(\) => void refreshAuto\(\), 30_000\)/,
@@ -957,6 +969,8 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(client, /settings\.providers\.list/);
   assert.match(client, /interface ProviderAccountingDescriptor[\s\S]*haraMayInferBillingFromTransportTokens: false/,
     "Desktop consumes the engine's accounting authority instead of deriving one from turn tokens");
+  assert.match(client, /export interface ModelUsage[\s\S]*requests\?: number[\s\S]*lastInput\?: number[\s\S]*cachedInput\?: number/,
+    "turn telemetry distinguishes cumulative model I\/O from request count, latest context, and cached input");
   assert.match(providerSettings, /accountingProviderHint:[^\n]*never derives them from conversation token counters/);
   assert.match(providerSettings, /accountingOrganizationHint:[^\n]*without applying a universal formula/);
   assert.match(providerSettings, /selectedConnectionAccounting[\s\S]*copy\.accountingLabel/,
@@ -1043,6 +1057,7 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /<option value=\{provider\.id\} key=\{provider\.id\}>\{providerDisplayName\(provider, locale\)\}<\/option>/,
     "the provider selector displays the active locale instead of engine-internal English labels");
   assert.match(providerSettings, /"volcengine-agent-plan": \{ en: "Volcengine Ark Agent Plan", zh: "火山方舟 Agent Plan" \}/);
+  assert.match(providerSettings, /"volcengine-coding-plan": \{ en: "Volcengine Ark Coding Plan", zh: "火山方舟 Coding Plan" \}/);
   assert.match(providerSettings, /defaultEffort: "Default reasoning effort"[\s\S]*defaultEffort: "默认思考强度"/,
     "the connection editor names reasoning as a default instead of changing active work");
   assert.match(providerSettings, /effortMinimal: "最少"[\s\S]*effortXHigh: "超高"/,
@@ -1085,6 +1100,8 @@ test("provider settings keep credentials transient and support local no-key pres
   assert.match(providerSettings, /providerOptionGroups[\s\S]*newPersonalProviders\.filter/, "legacy Qwen routes stay readable but cannot be newly created");
   assert.match(providerSettings, /SUBSCRIPTION_PLAN_PROVIDER_IDS = new Set\(\[[\s\S]*"token-plan",[\s\S]*"minimax-token-plan",[\s\S]*"volcengine-agent-plan"/,
     "subscription plans share strict key-scoped model-catalog behavior");
+  assert.match(providerSettings, /SUBSCRIPTION_PLAN_PROVIDER_IDS = new Set\(\[[\s\S]*"volcengine-coding-plan"/,
+    "Coding Plan also keeps its key-scoped model catalog authoritative");
   assert.match(providerSettings, /<ModelCombobox[\s\S]*options=\{selectedModelOptions\}/, "known and live models use one searchable selector");
   assert.match(providerSettings, /customModelNeedsTest[\s\S]*customModelVerified/, "catalog-external IDs expose their verification state");
   assert.match(providerSettings, /const testValid[\s\S]*const valid = testValid && selectedModelAllowed/, "a custom model can be tested before it is allowed to save");
@@ -1102,8 +1119,11 @@ test("provider settings keep credentials transient and support local no-key pres
     "MiniMax Token Plan explains its official Codex route and native multimodality");
   assert.match(preview, /id: "minimax-token-plan"[\s\S]*defaultModel: "MiniMax-M3"[\s\S]*https:\/\/api\.minimaxi\.com\/v1/);
   assert.match(preview, /id: "volcengine-agent-plan"[\s\S]*defaultModel: "auto"[\s\S]*https:\/\/ark\.cn-beijing\.volces\.com\/api\/plan\/v3/);
+  assert.match(preview, /id: "volcengine-coding-plan"[\s\S]*defaultModel: "ark-code-latest"[\s\S]*https:\/\/ark\.cn-beijing\.volces\.com\/api\/coding\/v3/);
   assert.match(providerSettings, /火山方舟 Agent Plan[\s\S]*(?:Codex Responses|ARK_API_KEY)/,
     "Volcengine Agent Plan explains its dedicated Codex route and key type");
+  assert.match(providerSettings, /火山方舟 Coding Plan[\s\S]*(?:ark-code-latest|ARK_API_KEY)/,
+    "Volcengine Coding Plan explains its separate route and console-selected alias");
   assert.match(
     providerSettings,
     /selected\.customBaseURL \|\| !!selected\.defaultBaseURL[\s\S]*readOnly=\{!selected\.customBaseURL\}/,
@@ -1336,11 +1356,11 @@ test("the model switchboard uses user-added enterprise connections instead of a 
   assert.doesNotMatch(app, /OrganizationSettings/, "the old detached enterprise card is not left below the model picker");
 });
 
-test("the provider visual QA preview can open the Token Plan creation flow", () => {
+test("the provider visual QA preview can open both subscription-plan creation flows", () => {
   const preview = readFileSync(`${root}/src/ProviderSettingsPreview.tsx`, "utf8");
 
-  assert.match(preview, /scenario === "token-plan"[\s\S]*data-preview-action='add-personal'/);
-  assert.match(preview, /providerSelect\.value = "token-plan"/);
+  assert.match(preview, /scenario === "token-plan" \|\| scenario === "coding-plan"[\s\S]*data-preview-action='add-personal'/);
+  assert.match(preview, /scenario === "coding-plan" \? "volcengine-coding-plan" : "token-plan"/);
   assert.doesNotMatch(preview, /data-provider-id='token-plan'/, "preview automation cannot target a provider tile that no longer exists");
 });
 
@@ -1488,6 +1508,8 @@ test("an unavailable pinned conversation falls back to local read-only history a
   assert.match(app, /当前仅查看本地历史/);
   assert.match(app, /选择连接并携带上下文继续/);
   assert.match(app, /activeModelAuthenticationFailure/);
+  assert.match(app, /updateModelAuthenticationFailureState\(current, e\.sessionId, e\.error, e\.status\)/,
+    "the live terminal event retains the auth failure even after task lifecycle completion");
   assert.match(app, /设置页验证的是新会话默认连接/,
     "an auth-failed pinned conversation explains why a successful settings probe does not migrate it");
   assert.match(app, /选择连接并继续[\s\S]*更新当前连接/,

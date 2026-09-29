@@ -17,7 +17,7 @@ test("organization HTTP authorization failures become a focused recovery instruc
   const raw = Object.assign(new Error("organization role sync failed with HTTP 401"), { code: -32603 });
   const zh = companyAccessRecoveryMessage(raw, "zh");
   const en = companyAccessRecoveryMessage(raw, "en");
-  assert.match(zh ?? "", /设置 → AI 与模型/);
+  assert.match(zh ?? "", /设置 → 模型与组织/);
   assert.match(zh ?? "", /重新接入/);
   assert.doesNotMatch(zh ?? "", /HTTP 401/);
   assert.match(en ?? "", /Re-enroll/);

@@ -29,7 +29,7 @@ const previewAccounting = (provider: string): ProviderAccountingDescriptor => {
   };
   return {
     authority: "provider",
-    mode: ["token-plan", "minimax-token-plan", "volcengine-agent-plan"].includes(provider)
+    mode: ["token-plan", "minimax-token-plan", "volcengine-agent-plan", "volcengine-coding-plan"].includes(provider)
       ? "subscription"
       : "provider-defined",
     usageReadMethod: "provider-console",
@@ -109,6 +109,26 @@ const initialProviders = (): ProviderSettingsState => ({
         "deepseek-v4-flash", "minimax-m3", "kimi-k2.7-code", "kimi-k3", "ark-code-latest", "glm-latest",
       ],
       knownVisionModels: ["doubao-seed-2.1-turbo", "glm-5.3-flash", "minimax-m3", "kimi-k2.7-code", "kimi-k3"],
+    },
+    {
+      id: "volcengine-coding-plan",
+      label: "Volcengine Ark Coding Plan",
+      location: "cloud",
+      auth: "api-key",
+      defaultModel: "ark-code-latest",
+      defaultBaseURL: "https://ark.cn-beijing.volces.com/api/coding/v3",
+      customBaseURL: false,
+      knownModels: [
+        "ark-code-latest", "doubao-seed-evolving", "doubao-seed-2.1-pro", "doubao-seed-2.1-lite",
+        "doubao-seed-2.0-mini", "minimax-m3", "glm-5.3", "glm-latest", "glm-5.3-flash",
+        "deepseek-v4.1-flash", "deepseek-v4-flash", "deepseek-v4-pro", "kimi-k2.7-code",
+        "kimi-k2.8-preview", "kimi-k3",
+      ],
+      knownVisionModels: [
+        "ark-code-latest", "doubao-seed-evolving", "doubao-seed-2.1-pro", "doubao-seed-2.1-lite",
+        "doubao-seed-2.0-mini", "minimax-m3", "glm-5.3-flash", "deepseek-v4.1-flash",
+        "kimi-k2.7-code", "kimi-k2.8-preview", "kimi-k3",
+      ],
     },
     { id: "qwen", label: "Qwen (legacy DashScope)", location: "cloud", auth: "api-key", defaultModel: "qwen-plus", customBaseURL: true, legacy: true },
     { id: "qwen-oauth", label: "Qwen Code OAuth (legacy, not Token Plan)", location: "cloud", auth: "oauth", defaultModel: "coder-model", customBaseURL: false, legacy: true },
@@ -544,12 +564,12 @@ export function ProviderSettingsPreview({ locale, scenario }: { locale: Locale; 
     if (!scenario) return;
     let followup: number | undefined;
     const timer = window.setTimeout(() => {
-      if (scenario === "token-plan") {
+      if (scenario === "token-plan" || scenario === "coding-plan") {
         document.querySelector<HTMLButtonElement>("[data-preview-action='add-personal']")?.click();
         followup = window.setTimeout(() => {
           const providerSelect = document.querySelector<HTMLSelectElement>(".provider-personal-form select");
           if (!providerSelect) return;
-          providerSelect.value = "token-plan";
+          providerSelect.value = scenario === "coding-plan" ? "volcengine-coding-plan" : "token-plan";
           providerSelect.dispatchEvent(new Event("change", { bubbles: true }));
         }, 0);
         return;

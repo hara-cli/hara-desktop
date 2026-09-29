@@ -2,8 +2,34 @@ import type { Locale } from "./i18n";
 
 const AUTH_FAILURE = /(?:\b(?:401|403)\b|unauthori[sz]ed|forbidden|auth(?:entication)?|credential|api[ _-]?key|凭证|认证|密钥)/iu;
 
+export type ModelAuthenticationFailureState = Record<string, true>;
+
 export function isModelAuthenticationFailure(error: string | undefined): boolean {
   return !!error && AUTH_FAILURE.test(error);
+}
+
+/**
+ * Keep the recovery banner tied to the latest terminal outcome for each live session.
+ *
+ * The rendered failure message is deliberately sanitized, and the task lifecycle may already have
+ * reached a terminal state before Desktop receives `event.turn_end`. Deriving recovery only from the
+ * lifecycle therefore loses the exact 401/403 signal. This reducer records that signal without retaining
+ * the provider's raw error and clears it after the same pinned route completes successfully.
+ */
+export function updateModelAuthenticationFailureState(
+  current: ModelAuthenticationFailureState,
+  sessionId: string,
+  error: string | undefined,
+  status: string | undefined,
+): ModelAuthenticationFailureState {
+  if (isModelAuthenticationFailure(error)) {
+    return current[sessionId] ? current : { ...current, [sessionId]: true };
+  }
+  if (!error && (!status || status === "completed") && current[sessionId]) {
+    const { [sessionId]: _resolved, ...rest } = current;
+    return rest;
+  }
+  return current;
 }
 
 /**

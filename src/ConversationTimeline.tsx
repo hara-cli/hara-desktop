@@ -1,8 +1,7 @@
 import { memo, useEffect, useMemo, useState, type RefObject } from "react";
-import type { TaskLifecycleEvent } from "./client";
+import type { ModelUsage, TaskLifecycleEvent } from "./client";
 import {
   countExecutionDetails,
-  executionToolNames,
   groupConversationItems,
 } from "./execution-presentation";
 import {
@@ -41,6 +40,13 @@ const APPROVAL_STATUS_KEYS: Record<ApprovalResolution, Key> = {
   always: "approvalAlwaysAllowed",
   deny: "approvalDenied",
   expired: "expired",
+};
+
+const EXECUTION_TOOL_LABEL_KEYS: Partial<Record<string, Key>> = {
+  task_intake: "executionActionUnderstand",
+  task_checkpoint: "executionActionCheckpoint",
+  todo_write: "executionActionTodo",
+  agent_contact: "executionActionContact",
 };
 
 function ApprovalCard({
@@ -115,7 +121,7 @@ export type ConversationItem =
   | { kind: "notice"; text: string }
   | { kind: "output"; text: string; lines: number }
   | { kind: "diff"; text: string }
-  | { kind: "end"; usage: { input: number; output: number } }
+  | { kind: "end"; usage: ModelUsage }
   | {
       kind: "approval";
       approvalId: string;
@@ -168,8 +174,8 @@ function TaskProgressTelemetry({
           <small>{t("taskProgressActions")}</small>
           <b>{progress.toolCalls.toLocaleString()}</b>
         </span>
-        <span>
-          <small>{t("tokens")}</small>
+        <span title={t("modelIoTip")}>
+          <small>{t("modelIo")}</small>
           <b>{progress.tokens.total.toLocaleString()}</b>
         </span>
         <span>
@@ -438,12 +444,8 @@ export const ConversationTimeline = memo(function ConversationTimeline({
           if (segment.kind === "execution") {
             if (!executionViewShowsLog(displayMode)) return null;
             const counts = countExecutionDetails(segment.items);
-            const tools = executionToolNames(segment.items);
-            const summary = [
-              counts.tools > 0 ? `${counts.tools} ${t("executionTools")}` : "",
-              counts.changes > 0 ? `${counts.changes} ${t("executionChanges")}` : "",
-              tools.length > 0 ? tools.join(" · ") : "",
-            ].filter(Boolean).join(" · ");
+            const stepCount = counts.tools + counts.changes;
+            const summary = `${stepCount} ${t(stepCount === 1 ? "executionStep" : "executionSteps")}`;
             return (
               <details
                 className="execution-log"
@@ -457,9 +459,15 @@ export const ConversationTimeline = memo(function ConversationTimeline({
                 <div className="execution-log-body">
                   {segment.items.map(({ item, index }) => {
                     if (item.kind === "tool") {
+                      const labelKey = EXECUTION_TOOL_LABEL_KEYS[item.name];
                       return (
                         <div key={index} className="tool">
-                          <IconCog size={13} /> {item.name} <span className="dim">{item.preview}</span>
+                          <IconCog size={13} />
+                          <strong>{labelKey ? t(labelKey) : t("executionAction")}</strong>
+                          {displayMode === "debug" ? (
+                            <code className="execution-tool-name">{item.name}</code>
+                          ) : null}
+                          {item.preview ? <span className="dim">{item.preview}</span> : null}
                         </div>
                       );
                     }
@@ -544,8 +552,18 @@ export const ConversationTimeline = memo(function ConversationTimeline({
               ) : null;
             case "end":
               return executionViewShowsUsage(displayMode) ? (
-                <div key={index} className="usage dim">
-                  · {item.usage.input}→{item.usage.output} {t("tokens")} ·
+                <div key={index} className="usage dim" title={t("modelIoTip")}>
+                  · {t("modelIo")} · {t("modelInput")} {item.usage.input.toLocaleString()}
+                  {" + "}{t("modelOutput")} {item.usage.output.toLocaleString()}
+                  {item.usage.requests !== undefined
+                    ? ` · ${item.usage.requests.toLocaleString()} ${t("modelRequests")}`
+                    : ""}
+                  {item.usage.lastInput !== undefined
+                    ? ` · ${t("latestContext")} ${item.usage.lastInput.toLocaleString()}`
+                    : ""}
+                  {item.usage.cachedInput !== undefined
+                    ? ` · ${t("cachedInput")} ${item.usage.cachedInput.toLocaleString()}`
+                    : ""} ·
                 </div>
               ) : null;
             case "approval":

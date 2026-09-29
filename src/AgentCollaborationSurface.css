@@ -90,6 +90,8 @@
 }
 
 .agent-collab-section-heading.is-members { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--agent-border); }
+.agent-collab-section-heading.is-code-tasks { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--agent-border); }
+.agent-collab-section-hint { margin: -2px 0 7px; color: var(--agent-muted); font-size: 9px; line-height: 1.45; }
 
 .agent-collab-room-list,
 .agent-collab-member-list { display: grid; gap: 5px; }
@@ -120,6 +122,18 @@
 .agent-collab-member-list small { color: var(--agent-muted); font-size: 10px; }
 .agent-collab-member-list > button > span { display: grid; min-width: 0; gap: 2px; }
 .agent-collab-member-list b { min-width: 20px; border-radius: 999px; background: var(--agent-accent); color: #fff; font-size: 9px; line-height: 20px; text-align: center; }
+
+.agent-collab-code-list { display: grid; gap: 7px; }
+.agent-collab-code-list > article { display: grid; gap: 8px; padding: 9px; border: 1px solid var(--agent-border); border-radius: 10px; background: color-mix(in srgb, currentColor 2%, transparent); }
+.agent-collab-code-list header { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 9px; }
+.agent-collab-code-list header > span { display: grid; min-width: 0; gap: 2px; }
+.agent-collab-code-list strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-collab-code-list small { color: var(--agent-muted); font-size: 10px; }
+.agent-collab-code-list i { width: 8px; height: 8px; border-radius: 50%; background: #9b968f; box-shadow: 0 0 0 3px color-mix(in srgb, #9b968f 14%, transparent); }
+.agent-collab-code-list i.is-active { background: #2d9b66; box-shadow: 0 0 0 3px color-mix(in srgb, #2d9b66 14%, transparent); }
+.agent-collab-code-list i.is-complete { background: #3f7da8; box-shadow: 0 0 0 3px color-mix(in srgb, #3f7da8 14%, transparent); }
+.agent-collab-code-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.agent-collab-code-actions button { border: 1px solid color-mix(in srgb, var(--agent-accent) 40%, transparent); border-radius: 999px; background: transparent; color: var(--agent-accent); padding: 5px 8px; font-size: 9px; }
 
 .agent-collab-member-list i,
 .agent-direct-panel i {

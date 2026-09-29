@@ -20,7 +20,11 @@ import {
 import type { Locale } from "./i18n";
 import { ModelCombobox } from "./ModelCombobox";
 import { IconPlus } from "./icons";
-import { providerModelDescription } from "./provider-model-capabilities";
+import {
+  providerModelDescription,
+  providerModelDisplayName,
+  providerModelPresentation,
+} from "./provider-model-capabilities";
 
 interface Draft {
   provider: string;
@@ -236,6 +240,8 @@ const words = {
     customModelNeedsTest: "Custom model ID — test this exact model before saving.",
     customModelVerified: "Custom model ID verified by this connection.",
     modelNotAuthorized: "This model is not in the current API key's authorized catalog. Choose an authorized model or verify a different ID.",
+    modelGuide: "Best fit",
+    modelTechnicalId: "Model ID",
     endpoint: "Endpoint",
     key: "API key",
     keyKeep: "Configured — leave blank to keep it",
@@ -255,6 +261,7 @@ const words = {
     tokenPlanMedia: "This chat list contains Agent conversation models only. Image, audio, realtime voice, and video generation use separate Hara capabilities.",
     miniMaxTokenPlanAuth: "MiniMax Token Plan uses the official Codex Responses Base URL shown above. MiniMax-M3 accepts text and image input.",
     volcengineAgentPlanAuth: "Volcengine Ark Agent Plan uses the fixed Beijing Codex Responses Base URL and a dedicated ARK_API_KEY. auto is the recommended quality/speed router; ark-code-latest remains a console-model compatibility alias.",
+    volcengineCodingPlanAuth: "Volcengine Ark Coding Plan uses its separate fixed Beijing Responses Base URL and ARK_API_KEY. Use Auto (ark-code-latest) for console-managed selection, or pin a supported Model Name. Allowance is shared across supported coding tools; use this route only for coding/development work, not general API traffic.",
     legacyAlibaba: "Legacy Alibaba connection",
     legacyAlibabaHint: "This route remains readable, but its old DashScope/Qwen identity is no longer offered for new connections. Move it to the dedicated Token Plan connection.",
     migrateAlibaba: "Move to Token Plan",
@@ -511,6 +518,8 @@ const words = {
     customModelNeedsTest: "这是自定义模型 ID，保存前需测试这个精确模型。",
     customModelVerified: "这个自定义模型 ID 已通过当前连接验证。",
     modelNotAuthorized: "此模型不在当前 API Key 的授权目录中，请选择已授权模型，或验证另一个模型 ID。",
+    modelGuide: "适合这样使用",
+    modelTechnicalId: "模型 ID",
     endpoint: "接口地址",
     key: "API 密钥",
     keyKeep: "已经配置；留空继续使用",
@@ -530,6 +539,7 @@ const words = {
     tokenPlanMedia: "此处只列可用于 Agent 对话的模型；图片、音频、实时语音和视频生成由 Hara 的独立能力入口提供。",
     miniMaxTokenPlanAuth: "MiniMax Token Plan 使用上方显示的官方 Codex Responses Base URL；MiniMax-M3 原生支持文字与图片输入。",
     volcengineAgentPlanAuth: "火山方舟 Agent Plan 使用上方显示的华北 2（北京）Codex Responses 固定地址和专属 ARK_API_KEY；推荐使用 auto 智能调度，ark-code-latest 继续兼容控制台所选模型。",
+    volcengineCodingPlanAuth: "火山方舟 Coding Plan 使用独立的华北 2（北京）Responses 固定地址和 ARK_API_KEY；控制台管理请选择 Auto（底层 ID 为 ark-code-latest），也可固定官方 Model Name。套餐额度在支持的编码工具间共享；此连接只应用于编码/开发任务，不用于普通 API 流量。",
     legacyAlibaba: "旧版阿里云连接",
     legacyAlibabaHint: "此连接仍可读取，但旧 DashScope/Qwen 身份不再用于新建连接；请迁移到独立的 Token Plan 连接。",
     migrateAlibaba: "迁移到 Token Plan",
@@ -657,6 +667,7 @@ const SUBSCRIPTION_PLAN_PROVIDER_IDS = new Set([
   "token-plan",
   "minimax-token-plan",
   "volcengine-agent-plan",
+  "volcengine-coding-plan",
 ]);
 
 const PROVIDER_NAMES: Record<string, { en: string; zh: string }> = {
@@ -664,6 +675,7 @@ const PROVIDER_NAMES: Record<string, { en: string; zh: string }> = {
   "token-plan": { en: "Alibaba Cloud Model Studio Token Plan", zh: "阿里云百炼 Token Plan" },
   "minimax-token-plan": { en: "MiniMax Token Plan", zh: "MiniMax Token Plan" },
   "volcengine-agent-plan": { en: "Volcengine Ark Agent Plan", zh: "火山方舟 Agent Plan" },
+  "volcengine-coding-plan": { en: "Volcengine Ark Coding Plan", zh: "火山方舟 Coding Plan" },
   openai: { en: "OpenAI / compatible", zh: "OpenAI / 兼容接口" },
   glm: { en: "GLM (Zhipu)", zh: "智谱 AI（GLM）" },
   deepseek: { en: "DeepSeek", zh: "DeepSeek" },
@@ -825,6 +837,33 @@ function ProviderConnectionDiagnostics({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function ProviderModelGuide({
+  providerId,
+  model,
+  locale,
+}: {
+  providerId: string;
+  model: string;
+  locale: Locale;
+}) {
+  const guide = providerModelPresentation(providerId, model, locale);
+  if (!guide) return null;
+  const copy = words[locale];
+  return (
+    <aside className={`provider-model-guide ${guide.tone}`} aria-live="polite">
+      <header>
+        <span>{copy.modelGuide}</span>
+        <strong>{guide.name}</strong>
+        <code>{copy.modelTechnicalId}: {model}</code>
+      </header>
+      <p>{guide.summary}</p>
+      <div>
+        {guide.facts.map((fact) => <span key={fact}>{fact}</span>)}
+      </div>
+    </aside>
   );
 }
 
@@ -2494,6 +2533,7 @@ export function ProviderSettings({
                   customOptionLabel={copy.customModel}
                   customBadge={copy.customModelBadge}
                   emptyLabel={copy.noModelMatches}
+                  formatOption={(model) => providerModelDisplayName(selected.id, model, locale)}
                   describeOption={(model) => providerModelDescription(selected.id, model, locale)}
                   onChange={(model) => {
                     const effortLevels = modelEntries.find((entry) => entry.id === model)?.effortLevels ?? [];
@@ -2513,6 +2553,7 @@ export function ProviderSettings({
                     {selectedModelVerified ? copy.customModelVerified : copy.customModelNeedsTest}
                   </small>
                 )}
+                <ProviderModelGuide providerId={selected.id} model={draft.model} locale={locale} />
               </div>
 
               {selectedEffortLevels.length > 0 && (
@@ -2586,6 +2627,7 @@ export function ProviderSettings({
               {selected.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               {selected.id === "minimax-token-plan" && <div className="provider-note">{copy.miniMaxTokenPlanAuth}</div>}
               {selected.id === "volcengine-agent-plan" && <div className="provider-note">{copy.volcengineAgentPlanAuth}<br />{copy.tokenPlanMedia}</div>}
+              {selected.id === "volcengine-coding-plan" && <div className="provider-note">{copy.volcengineCodingPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               <div className={`provider-data-path ${selected.location}`}>
                 {selected.location === "local" ? copy.dataLocal : copy.dataCloud}
               </div>
@@ -2889,6 +2931,7 @@ export function ProviderSettings({
               {personalProvider.id === "token-plan" && <div className="provider-note">{copy.tokenPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               {personalProvider.id === "minimax-token-plan" && <div className="provider-note">{copy.miniMaxTokenPlanAuth}</div>}
               {personalProvider.id === "volcengine-agent-plan" && <div className="provider-note">{copy.volcengineAgentPlanAuth}<br />{copy.tokenPlanMedia}</div>}
+              {personalProvider.id === "volcengine-coding-plan" && <div className="provider-note">{copy.volcengineCodingPlanAuth}<br />{copy.tokenPlanMedia}</div>}
               <div className="provider-managed-note personal">
                 <strong>{copy.accountingLabel} · {newConnectionAccounting.label}</strong><br />
                 {newConnectionAccounting.hint}
@@ -2942,6 +2985,7 @@ export function ProviderSettings({
                   customOptionLabel={copy.customModel}
                   customBadge={copy.customModelBadge}
                   emptyLabel={copy.noModelMatches}
+                  formatOption={(model) => providerModelDisplayName(personalProvider.id, model, locale)}
                   describeOption={(model) => providerModelDescription(personalProvider.id, model, locale)}
                   onChange={(model) => {
                     const effortLevels = modelEntries.find((entry) => entry.id === model)?.effortLevels ?? [];
@@ -2961,6 +3005,7 @@ export function ProviderSettings({
                     {personalModelVerified ? copy.customModelVerified : copy.customModelNeedsTest}
                   </small>
                 )}
+                <ProviderModelGuide providerId={personalProvider.id} model={personalDraft.model} locale={locale} />
               </div>
 
               {personalEffortLevels.length > 0 && (

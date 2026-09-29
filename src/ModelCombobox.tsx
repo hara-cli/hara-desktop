@@ -12,6 +12,7 @@ interface ModelComboboxProps {
   customOptionLabel: string;
   customBadge: string;
   emptyLabel: string;
+  formatOption?: (model: string) => string;
   describeOption?: (model: string) => string | undefined;
   onChange: (value: string) => void;
 }
@@ -38,6 +39,7 @@ export function ModelCombobox({
   customOptionLabel,
   customBadge,
   emptyLabel,
+  formatOption,
   describeOption,
   onChange,
 }: ModelComboboxProps) {
@@ -49,9 +51,11 @@ export function ModelCombobox({
   const [activeIndex, setActiveIndex] = useState(-1);
   const [floatingStyle, setFloatingStyle] = useState<FloatingListStyle | null>(null);
 
+  const displayedValue = formatOption?.(value) ?? value;
+
   useEffect(() => {
-    if (!open) setQuery(value);
-  }, [open, value]);
+    if (!open) setQuery(displayedValue);
+  }, [displayedValue, open]);
 
   const uniqueOptions = useMemo(() => [...new Set(options)], [options]);
   const choices = useMemo((): ModelChoice[] => {
@@ -60,7 +64,10 @@ export function ModelCombobox({
     const showFullCatalog = !normalized || normalized === selectedSearch;
     const filtered = showFullCatalog
       ? uniqueOptions
-      : uniqueOptions.filter((model) => normalizeSearch(model).includes(normalized));
+      : uniqueOptions.filter((model) => (
+          normalizeSearch(model).includes(normalized)
+          || normalizeSearch(formatOption?.(model) ?? model).includes(normalized)
+        ));
     const exact = uniqueOptions.some((model) => normalizeSearch(model) === normalized);
     const result = filtered.map((model, index) => ({
       id: `${listboxId}-model-${index}`,
@@ -72,7 +79,7 @@ export function ModelCombobox({
       result.push({ id: `${listboxId}-custom`, value: customValue, custom: true });
     }
     return result;
-  }, [allowCustom, listboxId, query, uniqueOptions, value]);
+  }, [allowCustom, formatOption, listboxId, query, uniqueOptions, value]);
 
   useEffect(() => {
     if (activeIndex >= choices.length) setActiveIndex(choices.length ? choices.length - 1 : -1);
@@ -142,7 +149,7 @@ export function ModelCombobox({
         if (next instanceof Node && wrapperRef.current?.contains(next)) return;
         const customValue = query.trim();
         if (allowCustom && customValue) onChange(customValue);
-        else setQuery(value);
+        else setQuery(displayedValue);
         setOpen(false);
         setActiveIndex(-1);
       }}
@@ -162,6 +169,7 @@ export function ModelCombobox({
           autoComplete="off"
           disabled={disabled}
           onFocus={() => {
+            setQuery(value);
             setOpen(true);
             setActiveIndex(-1);
           }}
@@ -246,7 +254,11 @@ export function ModelCombobox({
               onClick={() => commit(choice)}
             >
               <span className="model-combobox-option-copy">
-                <strong>{choice.custom ? `${customOptionLabel}: ${choice.value}` : choice.value}</strong>
+                <strong title={!choice.custom && formatOption?.(choice.value) !== choice.value ? choice.value : undefined}>
+                  {choice.custom
+                    ? `${customOptionLabel}: ${choice.value}`
+                    : formatOption?.(choice.value) ?? choice.value}
+                </strong>
                 {!choice.custom && describeOption?.(choice.value) ? <small>{describeOption(choice.value)}</small> : null}
               </span>
               <small className="model-combobox-option-state">{choice.custom ? customBadge : choice.value === value ? "✓" : ""}</small>

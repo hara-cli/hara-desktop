@@ -14,6 +14,60 @@ export type ExecutionDetailCounts = {
   changes: number;
 };
 
+export type AssistantTextPresentation = {
+  visibleText: string;
+  technicalText?: string;
+};
+
+const TECHNICAL_RECEIPT_HEADING = /^(?:delivery|execution|technical) receipt$|^(?:投递|执行|技术)回执$|^技术详情$/iu;
+const TECHNICAL_RECEIPT_FIELD = /^(?:[-*+]\s+|\d+[.)]\s+)?`?(?:status|recipient|session(?:id| id)|turn(?:id| id)|task(?:id| id)|provider(?:session)?id|runtime(?:session)?id|agentref|operationid)`?\s*[:：]/iu;
+
+function plainMarkdownLine(line: string): string {
+  return line
+    .trim()
+    .replace(/^#{1,6}\s+/u, "")
+    .replace(/^[*_`]+|[*_`]+$/gu, "")
+    .replace(/[:：]\s*$/u, "")
+    .trim();
+}
+
+function tidyVisibleText(lines: string[]): string {
+  return lines.join("\n").replace(/\n{3,}/gu, "\n\n").trim();
+}
+
+/**
+ * Keep a natural Agent reply in the transcript while preserving an explicitly-labelled machine receipt.
+ * This intentionally recognizes only a narrow heading followed by at least two internal-id/status fields;
+ * ordinary prose, code, and user-requested technical explanations are never heuristically hidden.
+ */
+export function splitAssistantTechnicalReceipt(text: string): AssistantTextPresentation {
+  const lines = text.split(/\r?\n/u);
+  for (let start = 0; start < lines.length; start += 1) {
+    if (!TECHNICAL_RECEIPT_HEADING.test(plainMarkdownLine(lines[start]!))) continue;
+    let end = start + 1;
+    let fields = 0;
+    const detailLines: string[] = [];
+    while (end < lines.length) {
+      const line = lines[end]!;
+      if (!line.trim()) {
+        detailLines.push(line);
+        end += 1;
+        continue;
+      }
+      if (!TECHNICAL_RECEIPT_FIELD.test(line.trim())) break;
+      detailLines.push(line);
+      fields += 1;
+      end += 1;
+    }
+    if (fields < 2) continue;
+    return {
+      visibleText: tidyVisibleText([...lines.slice(0, start), ...lines.slice(end)]),
+      technicalText: tidyVisibleText(detailLines),
+    };
+  }
+  return { visibleText: text };
+}
+
 export function isExecutionDetail(item: ConversationItem): boolean {
   return item.kind === "tool" || item.kind === "diff";
 }
