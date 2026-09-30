@@ -4416,6 +4416,16 @@ mod native_tests {
         for executable in [&plugin_script, &old_node, &supported_node] {
             fs::set_permissions(executable, fs::Permissions::from_mode(0o755)).unwrap();
         }
+        // Prime newly written script fixtures separately from runtime-selection deadlines.
+        // First execution can be delayed on macOS during concurrent builds; production
+        // selection must retain its 2-second bound and still reject a real stalled runtime.
+        for runtime in [&old_node, &supported_node] {
+            let mut probe = std::process::Command::new(runtime);
+            probe.arg("--version");
+            let output = bounded_command_output(&mut probe, std::time::Duration::from_secs(10))
+                .expect("the controlled fixture should start within its setup deadline");
+            assert!(output.status.success());
+        }
         symlink(&plugin_script, data.join("bin").join("hara-design")).unwrap();
         let canonical_plugin_script = plugin_script.canonicalize().unwrap();
         let path = std::env::join_paths([old_node.parent().unwrap()]).unwrap();
