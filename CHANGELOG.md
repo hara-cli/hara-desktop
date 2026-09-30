@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.177 — 2026-09-30 — balanced macOS icon and visible CLI ownership
+
+- Reduce the macOS icon's visual footprint by about 16% while preserving the canonical Hara mark, colors,
+  and other platform exports. Centered safe margins cover small and Retina ICNS frames, and repeat generation
+  produces byte-identical assets.
+- Show the actual terminal CLI version, path, and PATH source in Settings → App & updates, independently of
+  the Desktop-managed CLI. Warn when a separate older installation wins PATH, and offer a copyable command
+  that changes only the current terminal window instead of overwriting npm installs or shell profiles.
+- Keep the managed CLI synchronized with the Desktop bundle so ordinary updates need no separate npm
+  operation. Bundle Hara CLI `0.183.2` at exact commit `e51b95587c761ebcabbe6a7b8e012ef352afb801`.
+- Explain the Engine's typed stalled-run pause cause in normal chat, in English and Chinese, while keeping
+  technical diagnostics folded. Retain the existing progress protection and completed changes; this UI update
+  does not bypass authentication failures, repeat uploads, or automatically resume stalled work.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may display a
+  reputation warning.
+
 ## 0.1.176 — 2026-09-30 — guided Coding Plan and a quieter workspace
 
 - Keep the primary workspace focused on conversations and current execution: Task Center now opens run status and
