@@ -106,6 +106,8 @@ test("structured user choices stay in the chat flow while technical telemetry re
   assert.match(decision, /aria-keyshortcuts=/);
   assert.match(timeline, /displayMode === "debug" && visibleTask\.progress/,
     "round, token, and tool telemetry does not interrupt normal chat");
+  assert.match(timeline, /visibleTask\.progress\?\.state === "stopped"/,
+    "a safe typed stop cause remains visible in concise mode even while telemetry stays opt-in");
   assert.match(timeline, /case "output":[\s\S]*?return executionViewShowsLog\(displayMode\)/,
     "raw tool output is retained but hidden in concise chat mode");
   assert.match(styles, /\.decision-card-options > button:focus-visible/);

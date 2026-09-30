@@ -18,6 +18,7 @@ import { IconCog } from "./icons";
 import { knownManualActionHintKeys } from "./task-manual-action";
 import { copyTextToClipboard } from "./clipboard";
 import { DecisionCard } from "./DecisionCard";
+import { taskProgressStopExplanation } from "./task-progress-presentation";
 
 type TaskDependencyKind = NonNullable<
   NonNullable<TaskLifecycleEvent["checkpoint"]["completion"]>["dependency"]
@@ -391,6 +392,13 @@ export const ConversationTimeline = memo(function ConversationTimeline({
       {displayMode === "debug" && visibleTask.progress
         ? <TaskProgressTelemetry progress={visibleTask.progress} t={t} />
         : null}
+      {visibleTask.progress?.state === "stopped" ? (
+        <div className="task-progress-stop-reason" role="status">
+          <strong>{t("taskProgressStopReason")}</strong>
+          <p>{taskProgressStopExplanation(visibleTask.progress, t)}</p>
+          <small>{t("taskProgressStopRecovery")}</small>
+        </div>
+      ) : null}
       {authenticationPause ? (
         <div className="task-auth-recovery" role="status">
           <div className="task-auth-recovery-copy">

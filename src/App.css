@@ -1400,6 +1400,32 @@ button.deny {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+.task-progress-stop-reason {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 7%, var(--bg));
+  color: var(--fg);
+}
+.task-progress-stop-reason strong {
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 760;
+}
+.task-progress-stop-reason p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.task-progress-stop-reason small {
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.45;
+}
 .task-progress-detail {
   color: #e6a397;
 }
