@@ -7,6 +7,7 @@ mark_source="${root_dir}/brand/hara-mark.svg"
 runtime_mark="${root_dir}/src/assets/hara-mark.svg"
 public_mark="${root_dir}/public/hara-mark.svg"
 icon_source="${root_dir}/brand/hara-desktop-icon.png"
+macos_icon_source="${root_dir}/brand/hara-macos-icon.png"
 image_tool="${MAGICK_BIN:-magick}"
 png_determinism=(-strip -define png:exclude-chunks=date,time)
 
@@ -48,5 +49,14 @@ temporary_mark="${temporary_dir}/mark.png"
   "PNG32:${icon_source}"
 
 "${root_dir}/node_modules/.bin/tauri" icon "${icon_source}" -o "${root_dir}/src-tauri/icons"
+
+# macOS displays the entire ICNS canvas in Dock/Launchpad. Keep its rounded-square
+# surface within the platform safe area without shrinking the other platform exports.
+"${image_tool}" "${icon_source}" -resize 856x856 \
+  -gravity center -background none -extent 1024x1024 \
+  "${png_determinism[@]}" "PNG32:${macos_icon_source}"
+"${root_dir}/node_modules/.bin/tauri" icon "${macos_icon_source}" -o "${temporary_dir}/macos-icons"
+node "${root_dir}/scripts/canonicalize-icns.mjs" "${temporary_dir}/macos-icons/icon.icns"
+cp "${temporary_dir}/macos-icons/icon.icns" "${root_dir}/src-tauri/icons/icon.icns"
 
 echo "Generated Hara Desktop runtime mark and Tauri platform icons."

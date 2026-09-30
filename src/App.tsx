@@ -15,6 +15,8 @@ import {
 } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
+import CommandLineDiagnostics from "./CommandLineDiagnostics";
+import type { CommandLineHaraStatus } from "./command-line-status";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -551,15 +553,6 @@ type DesktopUpdateStorageStatus = {
   reclaimedBytes: number;
   failedEntries: number;
   scanComplete: boolean;
-};
-type CommandLineHaraStatus = {
-  path: string;
-  bundledVersion: string;
-  available: boolean;
-  installed: boolean;
-  current: boolean;
-  managed: boolean;
-  blocked: boolean;
 };
 type ClassifiedAttachmentPath = {
   path: string;
@@ -9861,8 +9854,9 @@ export default function App() {
                     </div>
                   </SettingsItem>
                   <SettingsItem title={t("cliInstallPath")} description={t("cliInstallPathHint")}>
-                    <span className="settings-mono">{commandLineHara?.path || "~/.hara/bin/hara"}</span>
+                    <span className="settings-mono settings-update-storage-path">{commandLineHara?.path || "~/.hara/bin/hara"}</span>
                   </SettingsItem>
+                  <CommandLineDiagnostics managed={commandLineHara} onManagedStatus={setCommandLineHara} t={t} />
                   {commandLineHara?.blocked && (
                     <SettingsNotice tone="error" title={t("cliBlockedTitle")}>
                       {t("cliBlockedHint")}

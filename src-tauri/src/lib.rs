@@ -8,6 +8,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(windows)]
 use tauri::Manager;
 
+#[cfg(test)]
+mod brand_asset_tests;
+mod command_line_probe;
 #[cfg(windows)]
 mod windows_process;
 
@@ -1509,6 +1512,15 @@ fn inspect_command_line_hara() -> Result<CommandLineHaraStatus, String> {
 }
 
 #[tauri::command]
+async fn inspect_terminal_hara() -> Result<command_line_probe::TerminalHaraStatus, String> {
+    let home = user_home()?;
+    let managed = managed_cli_path(&hara_data_dir()?, cfg!(windows));
+    tauri::async_runtime::spawn_blocking(move || command_line_probe::inspect(&home, &managed))
+        .await
+        .map_err(|_| "terminal CLI inspection could not finish".into())
+}
+
+#[tauri::command]
 fn synchronize_command_line_hara() -> Result<CommandLineHaraStatus, String> {
     let executable = std::env::current_exe()
         .map_err(|error| format!("resolve Hara Desktop executable: {error}"))?;
@@ -1803,12 +1815,7 @@ fn spawn_serve_process(
         .try_clone()
         .map_err(|error| format!("clone serve log handle: {error}"))?;
 
-    let mut command = serve_command(
-        executable,
-        port,
-        herdr_executable,
-        code_runtime_executable,
-    );
+    let mut command = serve_command(executable, port, herdr_executable, code_runtime_executable);
     command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::from(stdout))
@@ -3221,6 +3228,7 @@ pub fn run() {
             read_discovery,
             start_serve,
             inspect_command_line_hara,
+            inspect_terminal_hara,
             synchronize_command_line_hara,
             install_command_line_hara,
             terminate_legacy_serve,

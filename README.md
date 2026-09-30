@@ -47,6 +47,22 @@ No file → the app offers to start one.
 npm run tauri build   # bundles hara.app / dmg
 ```
 
+### CLI updates and PATH diagnostics
+
+Desktop installs its exact bundled CLI into `~/.hara/bin/hara` (`hara.exe` on Windows)
+when that path is missing. At launch after a Desktop update, it refreshes only its own,
+unmodified copy. It does not download npm `latest`, overwrite other npm/source installs,
+replace symlinks, or edit shell profiles. Independently installed CLIs remain independent.
+
+On this development branch, **Settings → App & updates → Command-line Hara** shows
+the bundled version, managed path, and the CLI found first on a fresh login shell's PATH.
+The probe ignores aliases and already-open terminals' command caches; if a supported login
+shell cannot be inspected, it explicitly labels the result as Desktop's environment.
+Choose **Recheck** after changing PATH. When another install takes priority, **Copy PATH
+command** provides a quoted command for the current terminal window only (PowerShell on
+Windows). Using the Desktop-managed path avoids separate npm upgrades; permanently adding
+that directory to PATH remains the user's explicit shell configuration choice.
+
 ## Status — public beta (all platforms)
 
 Shipped: configurable module-dock IA (fresh assistant conversations + folded history + per-origin bot
