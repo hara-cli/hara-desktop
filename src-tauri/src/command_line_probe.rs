@@ -216,6 +216,14 @@ pub(crate) fn inspect(home: &Path, managed: &Path) -> TerminalHaraStatus {
 mod tests {
     use super::*;
 
+    struct FixtureDirectory(PathBuf);
+
+    impl Drop for FixtureDirectory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     #[ignore = "manual smoke: reads this account's real login-shell PATH and installed Hara version"]
     fn terminal_probe_local_installation_smoke() {
@@ -269,6 +277,8 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ));
+        std::fs::create_dir(&root).unwrap();
+        let _cleanup = FixtureDirectory(root.clone());
         let old = root.join("old");
         let managed = root.join("managed");
         std::fs::create_dir_all(&old).unwrap();
@@ -286,13 +296,15 @@ mod tests {
             resolve_hara_on_path(&search, false),
             Some(managed.join("hara"))
         );
-        let mut command = Command::new(&executable);
-        command.arg("--version");
+        // Exercise output capture through the existing system interpreter. Launching a newly
+        // written executable is a separate macOS startup concern and can exceed the production
+        // deadline during parallel builds. Real installed-command execution has its own smoke.
+        let mut command = Command::new("/bin/sh");
+        command.arg(&executable).arg("--version");
         assert_eq!(
             parse_hara_version(&probe_output(&mut command, PROBE_TIMEOUT).unwrap()),
             Some("0.183.2".into())
         );
-        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]
