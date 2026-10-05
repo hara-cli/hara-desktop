@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.178 — 2026-10-05 — fewer execution round trips and verified final replies
+
+- Bundle Hara CLI `0.183.4` at exact commit `fe2e007f15e000360cf3544afbdd7278918162fe`, including separately
+  persisted preflight/action rounds without a redundant model request, compatible-route request-tail context,
+  and intent selection based on the authorized outcome.
+  Latency and cache gains remain task/model-dependent, not a universal speed claim.
+- Deliver an accepted completion receipt's final reply once. Keep rejected completion prose out of live
+  output, stored conversations and restoration, and retain bounded credential-solicitation correction for
+  gateway and scheduled replies.
+- Add actual conversation-component regression coverage for live replies, history, resume, reconnect and
+  terminal-reply repair after missing text frames. These isolated renderer checks are not native-device or
+  real-model relay verification.
+- Include the bundled Engine's isolated execution regression gates and privacy-preserving offline network
+  diagnostics. Do not include the pending Computer Use, Laya, Agent-creation or unrelated Desktop UI work.
+- Refresh DOMPurify to patch version `3.4.16`, resolving the production dependency audit advisory
+  `GHSA-p98j-92pf-mc4p` without changing Hara's Markdown configuration.
+- Refresh compatible Browserslist and baseline-browser-mapping build dependencies and their minimum
+  required browser-data packages to resolve the remaining development dependency audit advisories.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may display a
+  reputation warning.
+
 ## 0.1.177 — 2026-09-30 — balanced macOS icon and visible CLI ownership
 
 - Reduce the macOS icon's visual footprint by about 16% while preserving the canonical Hara mark, colors,

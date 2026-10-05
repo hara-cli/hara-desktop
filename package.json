@@ -1,7 +1,7 @@
 {
   "name": "hara-desktop",
   "private": true,
-  "version": "0.1.177",
+  "version": "0.1.178",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -27,7 +27,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "dompurify": "^3.4.13",
+    "dompurify": "3.4.16",
     "marked": "^18.0.6",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
