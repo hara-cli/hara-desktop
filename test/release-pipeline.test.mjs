@@ -1668,6 +1668,44 @@ test("draft asset replacement resolves a hidden release through its database ID"
   assert.doesNotMatch(replacement, /releases\/tags\/\$RELEASE_TAG/);
 });
 
+test("prepare-release installs locked Desktop dependencies before repository regression tests", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const installStep = [
+    "      - name: Install locked prepare-release Desktop dependencies with bounded registry retries",
+    "        shell: bash",
+    "        run: ./scripts/npm-ci-retry.sh",
+    "",
+  ].join("\n");
+  const requireInstallationOrder = (source) => {
+    const prepareStart = source.indexOf("\n  prepare_release:");
+    const prepareEnd = source.indexOf("\n  create_draft:", prepareStart);
+    assert.ok(prepareStart >= 0 && prepareEnd > prepareStart);
+    const prepare = source.slice(prepareStart, prepareEnd);
+    const sourceGate = prepare.indexOf("Verify event source before executing repository code");
+    const metadata = prepare.indexOf("run: node scripts/check-release-metadata.mjs");
+    const install = prepare.indexOf(installStep);
+    const regressionTests = prepare.indexOf("run: npm test");
+    const sourcePin = prepare.indexOf("Pin exact Desktop and CLI source commits");
+    assert.ok(
+      sourceGate >= 0 && metadata > sourceGate && install > metadata
+        && regressionTests > install && sourcePin > regressionTests,
+      "prepare_release must install locked dependencies after source/metadata validation and before tests",
+    );
+    const installEnd = prepare.indexOf("\n      - ", install + 1);
+    const installation = prepare.slice(install, installEnd);
+    assert.doesNotMatch(installation, /\bif:|continue-on-error|--ignore-scripts|--force/);
+  };
+
+  requireInstallationOrder(workflow);
+  const missingInstall = workflow.replace(installStep, "");
+  assert.throws(() => requireInstallationOrder(missingInstall), /must install locked dependencies/);
+  const lateInstall = missingInstall.replace(
+    "      - name: Pin exact Desktop and CLI source commits",
+    installStep + "      - name: Pin exact Desktop and CLI source commits",
+  );
+  assert.throws(() => requireInstallationOrder(lateInstall), /must install locked dependencies/);
+});
+
 test("release installs and audits use finite official-registry retry helpers", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const retryHelper = readFileSync(join(root, "scripts/npm-ci-retry.sh"), "utf8");

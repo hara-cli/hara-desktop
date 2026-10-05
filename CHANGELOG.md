@@ -1,6 +1,21 @@
 # Changelog
 
-## 0.1.178 — 2026-10-05 — fewer execution round trips and verified final replies
+## 0.1.179 — 2026-10-05 — install locked dependencies before release preparation tests
+
+- Install the locked Desktop dependencies from the official npm registry with the existing bounded retry
+  helper after exact event-source and release-metadata validation, before the prepare-release regression
+  tests. Clean tag runners now have the renderer test's esbuild dependency, as main CI already did.
+- Add a prepare-job-scoped ordering regression that rejects missing or late dependency installation.
+  Stable-tag authorization, source locks, native package, signing, notarization and publication gates remain
+  unchanged.
+- Carry forward the execution-latency, verified-final-reply and dependency-audit improvements prepared for
+  0.1.178, with the same official Hara CLI 0.183.4 at exact commit
+  fe2e007f15e000360cf3544afbdd7278918162fe.
+- Desktop 0.1.178 was not published: its tag workflow failed during preparation before package assembly
+  or stable publication. Keep that tag unchanged as failure history; release the corrected workflow under
+  this new version.
+
+## 0.1.178 — 2026-10-05 — fewer execution round trips and verified final replies (unreleased)
 
 - Bundle Hara CLI `0.183.4` at exact commit `fe2e007f15e000360cf3544afbdd7278918162fe`, including separately
   persisted preflight/action rounds without a redundant model request, compatible-route request-tail context,

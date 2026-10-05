@@ -109,6 +109,9 @@ jobs:
           GITHUB_REF_TYPE: tag
           GITHUB_REF_NAME: ${{ env.RELEASE_TAG }}
         run: node scripts/check-release-metadata.mjs
+      - name: Install locked prepare-release Desktop dependencies with bounded registry retries
+        shell: bash
+        run: ./scripts/npm-ci-retry.sh
       - name: Run release-pipeline regression tests
         run: npm test
       - name: Pin exact Desktop and CLI source commits
