@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { configurationFromEnv, createServer, parseAuthority, parseUpstream, routeDecision } from '../scripts/runner-route-proxy.mjs';
 
 const fixtureProxy = 'http://127.0.0.1:12345';
+const dispatchHost = 'run-actions-2-azure-eastus.actions.githubusercontent.com';
 const tlsBytes = Buffer.from([0x16, 0x03, 0x01, 0x00, 0xff, 0x80, 0x00, 0x7f]);
 const serverBytes = Buffer.from([0x16, 0x03, 0x03, 0x00, 0xfe, 0x00]);
 
@@ -169,6 +170,7 @@ test('exact two-host allowlist leaves Azure, Apple, other GitHub hosts, and look
   for (const host of ['github.com', 'objects.githubusercontent.com', 'results-receiver.actions.githubusercontent.com',
     'example.blob.core.windows.net', 'example.vsblob.vsassets.io', 'apple.com', 'api.apple.com',
     'appstoreconnect.apple.com', 'notary-submissions-prod.s3-accelerate.amazonaws.com',
+    dispatchHost,
     'api.github.com.example.net', 'notapi.github.com', 'broker.actions.githubusercontent.com.example.net',
     'broker-actions.githubusercontent.com', 'api.github.com.', 'unknown.example', '[::1]']) {
     assert.equal(routeDecision(`${host}:443`).route, 'direct');
@@ -192,6 +194,37 @@ test('Apple notarization opt-in routes exactly two added hosts and leaves region
     /invalid Apple notarization route flag/);
   assert.throws(() => createServer({ primaryProxy: fixtureProxy, appleNotaryRoute: 'false' }),
     /invalid Apple notarization route flag/);
+});
+
+test('independent Actions and Apple flag matrix preserves exact hosts, suffixes and port boundaries', () => {
+  for (const appleNotaryRoute of [false, true]) {
+    for (const actionsDispatchRoute of [false, true]) {
+      const options = { appleNotaryRoute, actionsDispatchRoute };
+      for (const host of ['api.github.com', 'broker.actions.githubusercontent.com']) {
+        assert.equal(routeDecision(`${host}:443`, options).route, 'upstream');
+      }
+      for (const host of [dispatchHost, dispatchHost.toUpperCase()]) {
+        assert.equal(routeDecision(`${host}:443`, options).route, actionsDispatchRoute ? 'upstream' : 'direct');
+      }
+      for (const host of ['appstoreconnect.apple.com', 'notary-submissions-prod.s3-accelerate.amazonaws.com']) {
+        assert.equal(routeDecision(`${host}:443`, options).route, appleNotaryRoute ? 'upstream' : 'direct');
+      }
+      for (const host of ['run-actions-2-azure-westus.actions.githubusercontent.com',
+        'run-actions-3-azure-eastus.actions.githubusercontent.com', 'actions.githubusercontent.com',
+        'results-receiver.actions.githubusercontent.com', `foo.${dispatchHost}`, `${dispatchHost}.example.net`,
+        `${dispatchHost}.`, 'notary-submissions-prod.s3.us-west-2.amazonaws.com', 'developer.apple.com']) {
+        assert.equal(routeDecision(`${host}:443`, options).route, 'direct');
+      }
+      for (const authority of [`${dispatchHost}:80`, `${dispatchHost}:444`, `${dispatchHost}:0443`,
+        `user@${dispatchHost}:443`, `${dispatchHost}:443/path`, `${dispatchHost}:443\r\nX: spoof`]) {
+        assert.throws(() => routeDecision(authority, options), /invalid CONNECT authority/);
+      }
+    }
+  }
+  assert.throws(() => routeDecision(`${dispatchHost}:443`, { actionsDispatchRoute: 'true' }),
+    /invalid Actions dispatch route flag/);
+  assert.throws(() => createServer({ primaryProxy: fixtureProxy, actionsDispatchRoute: 'false' }),
+    /invalid Actions dispatch route flag/);
 });
 
 test('upstreams accept only explicit unauthenticated literal-loopback HTTP or SOCKS ports', () => {
@@ -222,6 +255,7 @@ test('CLI environment reads the canonical release fallback variable without a mi
     primaryProxy: 'http://127.0.0.1:18081',
     fallbackProxy: 'socks5h://127.0.0.1:18082',
     appleNotaryRoute: false,
+    actionsDispatchRoute: false,
   });
   assert.equal(configurationFromEnv({ ...env, HARA_GITHUB_RELEASE_FALLBACK_PROXY: undefined }).fallbackProxy, undefined);
   assert.throws(() => configurationFromEnv({ ...env, HARA_GITHUB_RELEASE_FALLBACK_PROXY: 'http://user:secret@127.0.0.1:18082' }),
@@ -239,6 +273,82 @@ test('CLI Apple routing opt-in requires literal true or false and defaults to fa
     assert.throws(() => configurationFromEnv({ ...env, HARA_RUNNER_ROUTE_APPLE_NOTARY: flag }),
       /^Error: invalid Apple notarization route flag$/);
   }
+});
+
+test('CLI Actions routing opt-in is strict, default-off and independent of the Apple environment flag', () => {
+  const env = { HARA_RUNNER_ROUTE_PORT: '18080', HARA_GITHUB_RELEASE_PROXY: fixtureProxy };
+  assert.equal(configurationFromEnv(env).actionsDispatchRoute, false);
+  for (const appleFlag of [undefined, 'false', 'true']) {
+    for (const dispatchFlag of [undefined, 'false', 'true']) {
+      const config = configurationFromEnv({ ...env, HARA_RUNNER_ROUTE_APPLE_NOTARY: appleFlag,
+        HARA_RUNNER_ROUTE_ACTIONS_DISPATCH: dispatchFlag });
+      assert.equal(config.actionsDispatchRoute, dispatchFlag === 'true');
+      assert.equal(config.appleNotaryRoute, appleFlag === 'true');
+    }
+  }
+  for (const flag of ['', 'TRUE', 'False', '1', '0', 'yes', 'true ', ' false', null, true, false]) {
+    assert.throws(() => configurationFromEnv({ ...env, HARA_RUNNER_ROUTE_ACTIONS_DISPATCH: flag }),
+      /^Error: invalid Actions dispatch route flag$/);
+  }
+  assert.throws(() => configurationFromEnv({ ...env, HARA_RUNNER_ROUTE_ACTIONS_DISPATCH: 'true',
+    HARA_RUNNER_ROUTE_APPLE_NOTARY: 'TRUE' }), /invalid Apple notarization route flag/);
+});
+
+test('real env-to-server flag combinations route only opted-in hosts with synthesized upstream headers', { timeout: 5000 }, async (t) => {
+  const upstream = await httpProxy(t);
+  const endpoint = net.createServer({ allowHalfOpen: true }, (socket) => echoAfterEnd(socket));
+  const endpointPort = await listen(t, endpoint);
+  const optionalHosts = [dispatchHost, 'appstoreconnect.apple.com', 'notary-submissions-prod.s3-accelerate.amazonaws.com'];
+  for (const appleFlag of ['false', 'true']) {
+    for (const dispatchFlag of ['false', 'true']) {
+      const directHosts = [];
+      const { port: ignoredPort, ...config } = configurationFromEnv({
+        HARA_RUNNER_ROUTE_PORT: '18080', HARA_GITHUB_RELEASE_PROXY: upstream.url,
+        HARA_RUNNER_ROUTE_APPLE_NOTARY: appleFlag, HARA_RUNNER_ROUTE_ACTIONS_DISPATCH: dispatchFlag,
+      });
+      const server = createServer({ ...config, dialDirect: async ({ host, port }) => {
+        directHosts.push({ host, port });
+        const socket = net.createConnection({ host: '127.0.0.1', port: endpointPort, allowHalfOpen: true });
+        await once(socket, 'connect');
+        return socket;
+      } });
+      const port = await listen(t, server);
+      const upstreamCount = upstream.requests.length;
+      const expectedRouted = [];
+      const expectedDirect = [];
+      for (const host of optionalHosts) {
+        const routed = host === dispatchHost ? dispatchFlag === 'true' : appleFlag === 'true';
+        (routed ? expectedRouted : expectedDirect).push(host);
+        const response = await roundTrip(t, port, `${host}:443`, {
+          initial: tlsBytes, headers: 'Authorization: Bearer private-token\r\nProxy-Authorization: Basic private-password\r\n',
+        });
+        assert.deepEqual(response.body, Buffer.concat([tlsBytes, tlsBytes]));
+      }
+      assert.deepEqual(upstream.requests.slice(upstreamCount), expectedRouted.map((host) =>
+        `CONNECT ${host}:443 HTTP/1.1\r\nHost: ${host}:443\r\n\r\n`));
+      assert.deepEqual(directHosts, expectedDirect.map((host) => ({ host, port: 443 })));
+      assert.equal(server.getStats().routed, expectedRouted.length);
+      assert.equal(server.getStats().direct, expectedDirect.length);
+    }
+  }
+});
+
+test('Actions dispatch fallback occurs only before success, never by direct bypass or tunnel replay', { timeout: 5000 }, async (t) => {
+  const primary = await httpProxy(t, { status: 502 });
+  const fallback = await httpProxy(t, { dropAfterSuccess: true });
+  let directCalls = 0;
+  const server = createServer({ primaryProxy: primary.url, fallbackProxy: fallback.url, actionsDispatchRoute: true,
+    dialDirect: () => { directCalls++; throw new Error('wrong route'); } });
+  const port = await listen(t, server);
+  const client = await rawClient(t, port);
+  client.socket.write(requestBytes(`${dispatchHost}:443`));
+  assert.match(await client.header, /^HTTP\/1\.1 200 /);
+  await client.complete;
+  client.socket.end();
+  assert.equal(primary.requests.length, 1);
+  assert.equal(fallback.requests.length, 1);
+  assert.equal(server.getStats().fallbacks, 1);
+  assert.equal(directCalls, 0);
 });
 
 test('opted-in Apple hosts use existing upstream without relaying credentials or enlarging other routes', { timeout: 5000 }, async (t) => {
@@ -305,14 +415,14 @@ test('direct destinations never contact configured upstream and keep their origi
   });
   const port = await listen(t, server);
   for (const host of ['example.blob.core.windows.net', 'apple.com', 'unknown.example', 'api.github.com.example.net',
-    'appstoreconnect.apple.com', 'notary-submissions-prod.s3-accelerate.amazonaws.com']) {
+    'appstoreconnect.apple.com', 'notary-submissions-prod.s3-accelerate.amazonaws.com', dispatchHost]) {
     const response = await roundTrip(t, port, `${host}:443`);
     assert.deepEqual(response.body, tlsBytes);
   }
   assert.deepEqual(directHosts, ['example.blob.core.windows.net', 'apple.com', 'unknown.example', 'api.github.com.example.net',
-    'appstoreconnect.apple.com', 'notary-submissions-prod.s3-accelerate.amazonaws.com']
+    'appstoreconnect.apple.com', 'notary-submissions-prod.s3-accelerate.amazonaws.com', dispatchHost]
     .map((host) => ({ host, port: 443 })));
-  assert.equal(server.getStats().direct, 6);
+  assert.equal(server.getStats().direct, 7);
 });
 
 test('ordinary HTTP and malformed targets fail before any dial; health contains counters only', { timeout: 5000 }, async (t) => {

@@ -197,11 +197,19 @@ The fail-closed trust model, current evidence and required release choreography 
   direct by default. A separately authorized Apple notarization exception may set only this selector's
   `HARA_RUNNER_ROUTE_APPLE_NOTARY=true` to additionally route exactly `appstoreconnect.apple.com:443`
   and `notary-submissions-prod.s3-accelerate.amazonaws.com:443` through the same existing validated
-  loopback upstream. The flag accepts only literal `true` or `false`; absent or `false` keeps the
-  GitHub-only routes. Regional S3, other Apple hosts, and suffix matches remain direct. Test both added
+  loopback upstream. The flag accepts only literal `true` or `false`; absent or `false` keeps these
+  Apple hosts direct. Regional S3, other Apple hosts, and suffix matches remain direct. Test both added
   hosts' real TLS before rerunning the same protected release, retain the private rollback backup,
   and restore the previous selector/configuration if validation fails. The selector never terminates
   TLS, forwards client authentication headers, or logs connection data.
+  A separately authorized Actions dispatch exception may set only this selector's
+  `HARA_RUNNER_ROUTE_ACTIONS_DISPATCH=true` to additionally route exactly
+  `run-actions-2-azure-eastus.actions.githubusercontent.com:443` through that same loopback upstream.
+  This flag independently accepts only literal `true` or `false` and defaults to disabled; it does
+  not enable Apple routing. Other Actions hosts and suffix matches remain direct, and non-443
+  CONNECT targets remain rejected. Before enabling it, bounded tests of the exact host must show
+  that upstream transport is more stable. Keep the previous selector/configuration privately
+  backed up, verify the dedicated runner is idle, and retry only the original protected source/tag.
   Do not configure `http_proxy`, broad suffix routing, or system/VPN settings. Keep the original
   LaunchAgent privately backed up, verify the runner is idle before reloading its environment,
   test real TLS and dispatch acquisition, and restore the original configuration on failure.
