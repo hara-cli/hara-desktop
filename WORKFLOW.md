@@ -185,7 +185,18 @@ The fail-closed trust model, current evidence and required release choreography 
   release workflow; never schedule pull requests or ordinary CI on it. Prefer an ephemeral runner,
   or clean the workspace completely after every run.
 - Give the signing runner only the dedicated `HARA_GITHUB_RELEASE_PROXY` and optional fallback proxy
-  variables. Do not set runner-wide `HTTP_PROXY` or `HTTPS_PROXY`: Actions log/result uploads can
+  variables. Do not point runner-wide `HTTP_PROXY` or `HTTPS_PROXY` at an upstream proxy: Actions log/result uploads can
   redirect to non-GitHub storage that a release-only proxy rejects. Release scripts scope the
   validated loopback proxy to GitHub tag, policy, metadata, and asset subprocesses and clear the
   runner's broad `NO_PROXY` only inside those subprocesses.
+- If direct GitHub dispatch transport is unavailable, an explicitly authorized exception may set
+  only the dedicated runner's `https_proxy` to the local `scripts/runner-route-proxy.mjs` selector.
+  Bind the selector to `127.0.0.1` only. It routes exactly `api.github.com:443` and
+  `broker.actions.githubusercontent.com:443` through the existing validated loopback upstream;
+  every other valid HTTPS destination, including log/result storage and Apple notarization, stays
+  direct. It never terminates TLS, forwards client authentication headers, or logs connection data.
+  Do not configure `http_proxy`, broad suffix routing, or system/VPN settings. Keep the original
+  LaunchAgent privately backed up, verify the runner is idle before reloading its environment,
+  test real TLS and dispatch acquisition, and restore the original configuration on failure.
+  Run `node --test test/runner-route-proxy.test.mjs` before deployment. Established tunnels have no
+  short idle timeout, and fallback is permitted only before establishing a tunnel, never as replay.
