@@ -194,7 +194,14 @@ The fail-closed trust model, current evidence and required release choreography 
   Bind the selector to `127.0.0.1` only. It routes exactly `api.github.com:443` and
   `broker.actions.githubusercontent.com:443` through the existing validated loopback upstream;
   every other valid HTTPS destination, including log/result storage and Apple notarization, stays
-  direct. It never terminates TLS, forwards client authentication headers, or logs connection data.
+  direct by default. A separately authorized Apple notarization exception may set only this selector's
+  `HARA_RUNNER_ROUTE_APPLE_NOTARY=true` to additionally route exactly `appstoreconnect.apple.com:443`
+  and `notary-submissions-prod.s3-accelerate.amazonaws.com:443` through the same existing validated
+  loopback upstream. The flag accepts only literal `true` or `false`; absent or `false` keeps the
+  GitHub-only routes. Regional S3, other Apple hosts, and suffix matches remain direct. Test both added
+  hosts' real TLS before rerunning the same protected release, retain the private rollback backup,
+  and restore the previous selector/configuration if validation fails. The selector never terminates
+  TLS, forwards client authentication headers, or logs connection data.
   Do not configure `http_proxy`, broad suffix routing, or system/VPN settings. Keep the original
   LaunchAgent privately backed up, verify the runner is idle before reloading its environment,
   test real TLS and dispatch acquisition, and restore the original configuration on failure.

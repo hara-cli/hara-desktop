@@ -7,6 +7,10 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROUTED_HOSTS = new Set(['api.github.com', 'broker.actions.githubusercontent.com']);
+const APPLE_NOTARY_HOSTS = new Set([
+  'appstoreconnect.apple.com',
+  'notary-submissions-prod.s3-accelerate.amazonaws.com',
+]);
 const MAX_HEADER_BYTES = 8192;
 const HANDSHAKE_TIMEOUT_MS = 12000;
 const unavailable = () => new Error('transport unavailable');
@@ -32,9 +36,15 @@ export function parseAuthority(value) {
   return { host, port: 443, authority: `${bracketed ? `[${host}]` : host}:443` };
 }
 
-export function routeDecision(authority) {
+function validateAppleNotaryRoute(value) {
+  if (typeof value !== 'boolean') throw new Error('invalid Apple notarization route flag');
+}
+
+export function routeDecision(authority, { appleNotaryRoute = false } = {}) {
+  validateAppleNotaryRoute(appleNotaryRoute);
   const target = parseAuthority(authority);
-  return { ...target, route: ROUTED_HOSTS.has(target.host) ? 'upstream' : 'direct' };
+  const routed = ROUTED_HOSTS.has(target.host) || (appleNotaryRoute && APPLE_NOTARY_HOSTS.has(target.host));
+  return { ...target, route: routed ? 'upstream' : 'direct' };
 }
 
 export function parseUpstream(value) {
@@ -205,7 +215,8 @@ function rejectClient(socket, code) {
 }
 
 export function createServer({ primaryProxy, fallbackProxy, dialDirect = defaultDial,
-  dialProxy = defaultDial, handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS } = {}) {
+  dialProxy = defaultDial, handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS, appleNotaryRoute = false } = {}) {
+  validateAppleNotaryRoute(appleNotaryRoute);
   const primary = parseUpstream(primaryProxy);
   const fallback = fallbackProxy ? parseUpstream(fallbackProxy) : null;
   if (!Number.isInteger(handshakeTimeoutMs) || handshakeTimeoutMs < 1
@@ -247,7 +258,7 @@ export function createServer({ primaryProxy, fallbackProxy, dialDirect = default
     client.pause();
     counts.received++;
     let target;
-    try { target = routeDecision(req.url); }
+    try { target = routeDecision(req.url, { appleNotaryRoute }); }
     catch {
       counts.failed++;
       rejectClient(client, '400 Bad Request');
@@ -328,9 +339,13 @@ export function configurationFromEnv(env) {
   }
   const primaryProxy = env.HARA_GITHUB_RELEASE_PROXY;
   const fallbackProxy = env.HARA_GITHUB_RELEASE_FALLBACK_PROXY;
+  const appleFlag = env.HARA_RUNNER_ROUTE_APPLE_NOTARY;
+  if (appleFlag !== undefined && appleFlag !== 'true' && appleFlag !== 'false') {
+    throw new Error('invalid Apple notarization route flag');
+  }
   parseUpstream(primaryProxy);
   if (fallbackProxy) parseUpstream(fallbackProxy);
-  return { port: Number(portText), primaryProxy, fallbackProxy };
+  return { port: Number(portText), primaryProxy, fallbackProxy, appleNotaryRoute: appleFlag === 'true' };
 }
 
 function main() {
