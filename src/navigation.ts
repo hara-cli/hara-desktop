@@ -60,7 +60,7 @@ export const CORE_NAVIGATION_CONTRIBUTIONS = [
     icon: "chat",
     defaultOrder: 10,
     defaultVisible: true,
-    canHide: true,
+    canHide: false,
     shortcut: "⌘1",
   },
   {
@@ -69,7 +69,7 @@ export const CORE_NAVIGATION_CONTRIBUTIONS = [
     source: "core",
     icon: "tasks",
     defaultOrder: 20,
-    defaultVisible: true,
+    defaultVisible: false,
     canHide: true,
     shortcut: "⌘3",
   },
@@ -187,17 +187,14 @@ export function parseNavigationPreferences(raw: string | null): NavigationPrefer
       || hidden.includes(LEGACY_PROJECTS_NAVIGATION_ID)
       || shown.includes(LEGACY_PROJECTS_NAVIGATION_ID);
     if (hasLegacyProjectsPreference) {
-      const assistantWasHidden = hidden.includes("core.chat");
-      const projectsWereHidden = hidden.includes(LEGACY_PROJECTS_NAVIGATION_ID);
       order = order.filter((id) => id !== LEGACY_PROJECTS_NAVIGATION_ID);
       hidden = hidden.filter((id) => id !== LEGACY_PROJECTS_NAVIGATION_ID);
       shown = shown.filter((id) => id !== LEGACY_PROJECTS_NAVIGATION_ID);
-      // The merged Workbench remains visible if either former entry was visible. Only people who
-      // explicitly hid both Chat and Projects keep the combined entry hidden after migration.
-      if (assistantWasHidden && !projectsWereHidden) {
-        hidden = hidden.filter((id) => id !== "core.chat");
-      }
     }
+    // Workbench is now the permanent work entry. Restore it even when an older version allowed
+    // people to hide both Chat and Projects; keep optional modules and plugin preferences intact.
+    hidden = hidden.filter((id) => id !== "core.chat");
+    shown = shown.filter((id) => id !== "core.chat");
     return {
       version: 1,
       order,
@@ -259,22 +256,48 @@ function normalizedHidden(
   contributions: readonly NavigationContribution[],
   preferences: NavigationPreferences,
 ): string[] {
-  const hideable = new Set(
-    contributions.filter((item) => item.canHide).map((item) => item.id),
-  );
-  return preferences.hidden.filter((id) => hideable.has(id));
+  const byId = new Map(contributions.map((item) => [item.id, item]));
+  // A disabled plugin or unavailable organization can temporarily leave the contribution list.
+  // Editing another shortcut must not erase its preference before it becomes available again.
+  return preferences.hidden.filter((id) => byId.get(id)?.canHide !== false);
 }
 
 function normalizedShown(
   contributions: readonly NavigationContribution[],
   preferences: NavigationPreferences,
 ): string[] {
-  const defaultHidden = new Set(
-    contributions
-      .filter((item) => item.canHide && !item.defaultVisible)
-      .map((item) => item.id),
-  );
-  return preferences.shown.filter((id) => defaultHidden.has(id));
+  const byId = new Map(contributions.map((item) => [item.id, item]));
+  return preferences.shown.filter((id) => {
+    const contribution = byId.get(id);
+    return !contribution || (contribution.canHide && !contribution.defaultVisible);
+  });
+}
+
+function retainedNavigationOrder(
+  contributions: readonly NavigationContribution[],
+  preferences: NavigationPreferences,
+  orderedIds = orderedNavigation(contributions, preferences).map((item) => item.id),
+): string[] {
+  const availableIds = new Set(contributions.map((item) => item.id));
+  let nextIndex = 0;
+  const order = preferences.order.map((id) => (
+    availableIds.has(id) ? orderedIds[nextIndex++] : id
+  ));
+  return [...order, ...orderedIds.slice(nextIndex)];
+}
+
+/** Restore the currently configurable shortcuts without resetting temporarily absent plugins. */
+export function resetNavigationPreferences(
+  contributions: readonly NavigationContribution[],
+  preferences: NavigationPreferences,
+): NavigationPreferences {
+  const availableIds = new Set(contributions.map((item) => item.id));
+  return {
+    version: 1,
+    order: preferences.order.filter((id) => !availableIds.has(id)),
+    hidden: normalizedHidden(contributions, preferences).filter((id) => !availableIds.has(id)),
+    shown: normalizedShown(contributions, preferences).filter((id) => !availableIds.has(id)),
+  };
 }
 
 export function withNavigationVisibility(
@@ -296,7 +319,7 @@ export function withNavigationVisibility(
   }
   return {
     version: 1,
-    order: orderedNavigation(contributions, preferences).map((item) => item.id),
+    order: retainedNavigationOrder(contributions, preferences),
     hidden: [...hidden],
     shown: [...shown],
   };
@@ -315,7 +338,7 @@ export function moveNavigation(
   [order[from], order[to]] = [order[to], order[from]];
   return {
     version: 1,
-    order,
+    order: retainedNavigationOrder(contributions, preferences, order),
     hidden: normalizedHidden(contributions, preferences),
     shown: normalizedShown(contributions, preferences),
   };

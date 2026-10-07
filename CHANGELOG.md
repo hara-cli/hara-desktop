@@ -1,6 +1,29 @@
 # Changelog
 
-## 0.1.179 — 2026-10-05 — install locked dependencies before release preparation tests
+## 0.1.180 — 2026-10-08 — conversational approvals and safer task continuity
+
+- Add an explicit, optional task-scoped approval card for eligible built-in work, limited to the current
+  execution Agent, task, project and tool family for at most 15 minutes. Ordinary allow remains one action;
+  Computer Use, external executors and independent safety gates retain their separate confirmations.
+  Show server-confirmed authorization with a revoke action, preserve uncertain intent for idempotent retry,
+  and restore foreground cards without silently changing a running session's permissions.
+- Render native Codex and Claude Code user questions as focused conversation cards with multiple questions,
+  custom answers, cancellation and expiry where the executor supports them. Do not preselect answers or
+  project secret questions, and retain selections after a retryable submission error.
+- Restore pending Agent-creation proposals, including their detailed presentation, after reconnect and
+  session reopening without reviving already answered cards or exposing proposal details in ambient status.
+- Bundle Hara CLI `0.184.1`, including observed-step Computer Use confirmations and stricter task-approval
+  boundaries. Exact source provenance is recorded in `SIDECAR_VERSION` and `SIDECAR_COMMIT`; task authorization
+  is not an operating-system sandbox and does not approve computer interaction by itself.
+- Offer Laya-MLX as an opt-in experimental local review option alongside Jev, with configuration and
+  diagnostics kept together. Shadow review does not grant permission or replace human consent.
+- Simplify primary navigation and sidebar configuration: schedule management stays in Settings while
+  current execution, conversation and recovery actions remain accessible. Preserve existing tasks, history,
+  files and the user's layout preferences.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may display a
+  reputation warning.
+
+## 0.1.179 — 2026-10-05 — install locked dependencies before release preparation tests (unreleased)
 
 - Install the locked Desktop dependencies from the official npm registry with the existing bounded retry
   helper after exact event-source and release-metadata validation, before the prepare-release regression
@@ -14,6 +37,8 @@
 - Desktop 0.1.178 was not published: its tag workflow failed during preparation before package assembly
   or stable publication. Keep that tag unchanged as failure history; release the corrected workflow under
   this new version.
+- Desktop 0.1.179 also remained a hidden draft: its protected arm64 notarization/stapling lane failed.
+  Its tag remains unchanged; 0.1.180 must complete the same protected gates before becoming public.
 
 ## 0.1.178 — 2026-10-05 — fewer execution round trips and verified final replies (unreleased)
 

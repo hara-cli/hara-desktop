@@ -30,7 +30,12 @@ ReactDOM.createRoot(root).render(
       <RendererBootSignal>
         {automationPreview ? (
           <React.Suspense fallback={<div>Opening Automations…</div>}>
-            <AutomationPreview locale={params.get("locale") === "en" ? "en" : "zh"} />
+            <AutomationPreview
+              locale={params.get("locale") === "en" ? "en" : "zh"}
+              layout={params.get("layout") === "settings" ? "settings" : undefined}
+              section={params.get("section") === "appearance" ? "appearance" : undefined}
+              sidebarExpanded={params.get("advanced") === "1"}
+            />
           </React.Suspense>
         ) : talentPreview ? (
           <React.Suspense fallback={<div>Opening Talent Bureau…</div>}>

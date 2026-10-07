@@ -94,10 +94,13 @@ is documented in
 
 ## Design invariants (模块坞 + 核心场所模型)
 
-Five open-core work modules are visible in the icon dock by default — chat, projects, tasks, groups,
-and Office. Projects owns local-folder conversations and preview splits; Office owns presentations,
-spreadsheets, documents, and their local Artifact revisions. People may hide or reorder these
-entries. Settings stays fixed at the lower left so hidden modules always remain recoverable. Runtime
+Workbench and Settings are fixed, recoverable entries. Workbench combines Agent contacts and external
+sessions; local project and deliverable surfaces remain context-owned rather than separate default
+dock entries. Organization work appears only after enrollment. Scheduled tasks live in Settings with
+plans, attention, paused plans, run history, and read-only replay; their optional dock shortcut is
+default-hidden. New run results remain reachable from an ambient count shortcut when it is hidden.
+Appearance & language contains a collapsed **Customize sidebar** group for applicable optional entries,
+ordering, and restoring defaults. Hiding an entry never deletes data or pauses its schedule. Runtime
 places still preserve separate session ownership and density. Invariants:
 
 - **Notification rule**: interruption-grade (a human must respond) → red dot + dock badge;

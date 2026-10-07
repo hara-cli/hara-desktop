@@ -56,6 +56,40 @@
   background: linear-gradient(var(--automation-coral), transparent);
   opacity: 0.6;
 }
+.hara-automation-sidebar.is-compact {
+  height: auto;
+  padding: 0 0 14px;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+.hara-automation-sidebar.is-compact::after {
+  display: none;
+}
+.hara-automation-sidebar.is-compact .hara-automation-nav {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hara-automation-sidebar.is-compact .hara-automation-nav button {
+  width: auto;
+  min-width: 0;
+  border-color: var(--automation-line);
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  justify-items: stretch;
+  padding: 8px 9px;
+}
+.hara-automation-sidebar.is-compact .hara-automation-nav button > span {
+  display: inline;
+}
+.hara-automation-sidebar.is-compact .hara-automation-nav-count {
+  position: static;
+  display: inline-grid;
+  min-width: 23px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+}
 
 .hara-automation-sidebar-heading {
   display: flex;

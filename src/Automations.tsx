@@ -299,21 +299,21 @@ export interface AutomationCopy {
 }
 
 const DEFAULT_COPY: AutomationCopy = {
-  title: "任务中心",
-  subtitle: "集中查看定时工作的状态、异常、即将运行和历史结果。",
-  navLabel: "任务中心视图",
-  allTasks: "全部任务",
-  attention: "需要处理",
+  title: "定时任务",
+  subtitle: "管理运行计划，查看状态、需关注事项和运行记录。",
+  navLabel: "定时任务视图",
+  allTasks: "全部计划",
+  attention: "需关注",
   paused: "已暂停",
   runs: "运行记录",
-  newTask: "添加自动任务",
+  newTask: "创建定时任务",
   manageTasks: "管理定时计划",
-  searchPlaceholder: "搜索任务、说明或工作目录",
+  searchPlaceholder: "搜索计划、说明或工作目录",
   clearSearch: "清除搜索",
-  taskCount: "任务总数",
-  attentionCount: "需要处理",
+  taskCount: "计划总数",
+  attentionCount: "需关注",
   upcoming: "即将运行",
-  task: "任务",
+  task: "定时任务",
   schedule: "计划",
   lastRun: "上次运行",
   lastSkipped: "最近跳过",
@@ -331,45 +331,45 @@ const DEFAULT_COPY: AutomationCopy = {
   duplicate: "创建副本",
   delete: "删除",
   moreActions: "更多管理操作",
-  openDetails: "查看任务详情",
-  backToTasks: "返回任务列表",
-  taskDetails: "任务详情",
+  openDetails: "查看计划详情",
+  backToTasks: "返回计划列表",
+  taskDetails: "计划详情",
   taskInstructions: "运行内容",
   recentRuns: "最近运行",
   openReplay: "查看运行",
-  noRuns: "还没有运行记录。任务运行后，结果会出现在这里。",
-  noTasksTitle: "还没有自动任务",
+  noRuns: "还没有运行记录。计划运行后，结果会出现在这里。",
+  noTasksTitle: "还没有定时任务",
   noTasksBody: "告诉 Hara 要做什么、什么时候做，其余设置可以稍后调整。",
-  noFilteredTasksTitle: "没有符合条件的任务",
+  noFilteredTasksTitle: "没有符合条件的计划",
   noFilteredTasksBody: "试试清除搜索，或者切换左侧筛选。",
   schedulerReady: "定时服务运行正常",
-  schedulerReadyBody: "Hara 会按计划在本机触发任务。",
+  schedulerReadyBody: "Hara 会按计划在本机执行定时任务。",
   schedulerUnknown: "正在确认定时服务",
-  schedulerUnknownBody: "任务已经保存；连接服务后会显示最新运行状态。",
+  schedulerUnknownBody: "计划已经保存；连接服务后会显示最新运行状态。",
   schedulerOffline: "定时服务需要检查",
-  schedulerOfflineBody: "任务不会按时触发，请检查本机服务后再试。",
+  schedulerOfflineBody: "定时任务不会按时触发，请检查本机服务后再试。",
   schedulerMissing: "需要安装定时服务",
-  schedulerMissingBody: "安装一次后，即使 Desktop 没有打开，任务也能按计划运行。",
+  schedulerMissingBody: "安装一次后，即使 Desktop 没有打开，定时任务也能按计划运行。",
   schedulerUnsupported: "当前系统暂不支持后台定时触发",
-  schedulerUnsupportedBody: "当前系统可以保存、编辑和立即运行任务，但还不能在 Hara 关闭后自动定时触发。",
+  schedulerUnsupportedBody: "当前系统可以保存、编辑和立即运行定时任务，但还不能在 Hara 关闭后自动定时触发。",
   installScheduler: "安装定时服务",
   lastChecked: "最近检查",
   statusScheduled: "等待首次运行",
   statusActive: "按计划运行",
   statusRunning: "正在运行",
   statusPaused: "已暂停",
-  statusAttention: "需要处理",
+  statusAttention: "需关注",
   statusCompleted: "已完成",
   statusManual: "仅手动运行",
   statusOffline: "服务离线",
-  statusScheduledHelp: "任务已经准备好，会在下一个计划时间首次运行。",
-  statusActiveHelp: "任务已启用，最近一次运行正常。",
-  statusRunningHelp: "Hara 正在执行这个任务，完成后会更新结果。",
-  statusPausedHelp: "任务保留在列表中，但不会自动运行。",
+  statusScheduledHelp: "计划已经准备好，会在下一个计划时间首次运行。",
+  statusActiveHelp: "计划已启用，最近一次运行正常。",
+  statusRunningHelp: "Hara 正在执行这个定时任务，完成后会更新结果。",
+  statusPausedHelp: "计划保留在列表中，但不会自动运行。",
   statusAttentionHelp: "最近一次运行失败、超时，或到期运行因投递前提未满足而未启动。",
-  statusCompletedHelp: "这是一次性任务，计划的运行已经完成。",
-  statusManualHelp: "当前系统暂不支持后台定时触发；任务仍可保存、编辑和立即运行。",
-  statusOfflineHelp: "任务已启用，但本机定时服务当前不可用。",
+  statusCompletedHelp: "这是一次性计划，运行已经完成。",
+  statusManualHelp: "当前系统暂不支持后台定时触发；定时任务仍可保存、编辑和立即运行。",
+  statusOfflineHelp: "计划已启用，但本机定时服务当前不可用。",
   resultOk: "成功",
   resultError: "失败",
   resultRunning: "运行中",
@@ -396,16 +396,16 @@ const DEFAULT_COPY: AutomationCopy = {
   back: "上一步",
   continue: "继续",
   save: "保存更改",
-  create: "创建任务",
+  create: "创建定时任务",
   saving: "正在保存…",
-  createTitle: "添加自动任务",
-  editTitle: "编辑自动任务",
-  duplicateTitle: "创建任务副本",
+  createTitle: "创建定时任务",
+  editTitle: "编辑定时任务",
+  duplicateTitle: "创建定时任务副本",
   createIntro: "先用一句话说清工作内容，再选择时间。高级设置并不是必填项。",
   stepTask: "工作内容",
   stepSchedule: "运行计划",
   stepReview: "确认",
-  taskName: "任务名称",
+  taskName: "计划名称",
   taskNamePlaceholder: "例如：每天整理项目进展",
   whatShouldRun: "希望 Hara 做什么？",
   taskPromptPlaceholder: "例如：读取这个项目今天的提交，整理成一份简短日报。",
@@ -447,21 +447,21 @@ const DEFAULT_COPY: AutomationCopy = {
   deliveryOnOutput: "有输出时通知",
   deliveryOnError: "仅失败时通知",
   alertAfter: "连续失败提醒阈值",
-  alertAfterHelp: "连续失败达到这个次数后标记为需要处理。",
-  reviewTitle: "确认任务设置",
+  alertAfterHelp: "连续失败达到这个次数后标记为需关注。",
+  reviewTitle: "确认定时任务设置",
   reviewHelp: "保存后仍可随时编辑、暂停、立即运行或复制。",
   schedulePreview: "计划说明",
   taskRequired: "请写下希望 Hara 执行的工作。",
-  nameRequired: "请给任务起一个容易识别的名称。",
+  nameRequired: "请给计划起一个容易识别的名称。",
   scheduleRequired: "请填写有效的运行时间。",
-  deleteTitle: "删除这个自动任务？",
-  deleteBody: "任务将从列表中移除，并且不会再次自动运行。",
+  deleteTitle: "删除这个定时任务？",
+  deleteBody: "计划将从列表中移除，并且不会再次自动运行。",
   deleteWarning: "已有运行记录可能仍会保留。这个操作无法撤销。",
   deleteConfirm: "确认删除",
   deleting: "正在删除…",
   operationFailed: "操作失败，请稍后重试。",
   runningAction: "正在处理…",
-  loading: "正在读取自动任务…",
+  loading: "正在读取定时任务…",
   unknown: "未知",
   today: "今天",
   tomorrow: "明天",
@@ -501,6 +501,7 @@ interface AutomationDataProps extends ActionCallbacks {
 
 export interface AutomationSidebarProps {
   copy?: Partial<AutomationCopy>;
+  compact?: boolean;
   jobs?: readonly AutomationJob[] | null;
   sessions?: readonly AutomationRun[] | null;
   scheduler?: AutomationScheduler | null;
@@ -1025,6 +1026,7 @@ function countViews(
 
 export function AutomationSidebar({
   copy: copyOverrides,
+  compact = false,
   jobs = [],
   sessions = [],
   scheduler,
@@ -1047,16 +1049,18 @@ export function AutomationSidebar({
     ];
 
   return (
-    <aside className="hara-automation-sidebar">
-      <div className="hara-automation-sidebar-heading">
-        <span className="hara-automation-seal" aria-hidden>
-          <IconBot size={16} />
-        </span>
-        <div>
-          <strong>{copy.title}</strong>
-          <span>{safeJobs.length ? `${safeJobs.length} ${copy.task}` : copy.noTasksTitle}</span>
+    <aside className={`hara-automation-sidebar${compact ? " is-compact" : ""}`}>
+      {!compact ? (
+        <div className="hara-automation-sidebar-heading">
+          <span className="hara-automation-seal" aria-hidden>
+            <IconBot size={16} />
+          </span>
+          <div>
+            <strong>{copy.title}</strong>
+            <span>{safeJobs.length ? `${safeJobs.length} ${copy.task}` : copy.noTasksTitle}</span>
+          </div>
         </div>
-      </div>
+      ) : null}
       <nav className="hara-automation-nav" aria-label={copy.navLabel}>
         {items.map((item) => (
           <button
@@ -1072,20 +1076,22 @@ export function AutomationSidebar({
           </button>
         ))}
       </nav>
-      <div className="hara-automation-sidebar-note">
-        <Icon name="clock" size={15} />
-        <p>
-          {!scheduler
-            ? copy.schedulerUnknownBody
-            : scheduler.supported === false
-            ? copy.schedulerUnsupportedBody
-            : scheduler.installed === false
-            ? copy.schedulerMissingBody
-            : scheduler.healthy === false
-              ? copy.schedulerOfflineBody
-              : copy.schedulerReadyBody}
-        </p>
-      </div>
+      {!compact ? (
+        <div className="hara-automation-sidebar-note">
+          <Icon name="clock" size={15} />
+          <p>
+            {!scheduler
+              ? copy.schedulerUnknownBody
+              : scheduler.supported === false
+              ? copy.schedulerUnsupportedBody
+              : scheduler.installed === false
+              ? copy.schedulerMissingBody
+              : scheduler.healthy === false
+                ? copy.schedulerOfflineBody
+                : copy.schedulerReadyBody}
+          </p>
+        </div>
+      ) : null}
     </aside>
   );
 }

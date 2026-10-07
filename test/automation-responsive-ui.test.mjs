@@ -17,6 +17,8 @@ test("the embedded automation surface responds to its actual stage width", () =>
     "the embedded automation route must opt into its stage container",
   );
   assert.match(shell, /\.automation-board\s*\{[\s\S]*?container:\s*automation-stage\s*\/\s*inline-size;/);
+  assert.match(shell, /\.automation-settings-surface\s*\{[\s\S]*?container:\s*automation-stage\s*\/\s*inline-size;/,
+    "Settings uses its available stage width, not the complete desktop window");
   assert.match(automation, /@container automation-stage \(max-width: 760px\)/);
   assert.match(
     automation,

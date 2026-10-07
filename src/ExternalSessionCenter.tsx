@@ -13,7 +13,10 @@ import type {
   ExternalTerminalSnapshot,
   ExternalTerminalStreamConnection,
   ExternalTerminalStreamMode,
+  ExternalUserQuestionReply,
 } from "./client";
+import ExternalQuestionCard from "./ExternalQuestionCard";
+import { externalQuestionDockMode, externalQuestionPending, type ExternalQuestionEntry } from "./external-question-state";
 import { IconBack, IconCommandLine, IconRefresh } from "./icons";
 import { isImeCompositionKey } from "./ime";
 import { MessageCopyButton } from "./MessageCopyButton";
@@ -156,6 +159,8 @@ interface ExternalSessionCenterProps {
   transcript: ExternalSessionReadResult | null;
   activity: ExternalSessionActivity[];
   approval: ExternalSessionApproval | null;
+  questions?: ExternalQuestionEntry[];
+  onQuestionReply?: (reply: ExternalUserQuestionReply) => Promise<void>;
   loading: boolean;
   transcriptLoading: boolean;
   actionBusy: "" | "resume" | "turn" | "interrupt" | "remove";
@@ -213,6 +218,8 @@ export default function ExternalSessionCenter({
   transcript,
   activity,
   approval,
+  questions = [],
+  onQuestionReply,
   loading,
   transcriptLoading,
   actionBusy,
@@ -252,6 +259,7 @@ export default function ExternalSessionCenter({
   const [terminalDockModes, setTerminalDockModes] = useState<Record<string, "docked" | "maximized">>({});
   const [terminalSnapshots, setTerminalSnapshots] = useState<Record<string, ExternalTerminalSnapshot>>({});
   const [terminalErrors, setTerminalErrors] = useState<Record<string, string>>({});
+  const [questionClock, setQuestionClock] = useState(Date.now);
   const composingRef = useRef(false);
   const timelineRef = useRef<HTMLDivElement>(null);
   const selectedId = selected?.id ?? "";
@@ -264,14 +272,26 @@ export default function ExternalSessionCenter({
     const timeline = timelineRef.current;
     if (!timeline) return;
     timeline.scrollTop = timeline.scrollHeight;
-  }, [activity.length, approval?.approvalId, selected?.id, transcript?.messages.length]);
+  }, [activity.length, approval?.approvalId, selected?.id, transcript?.messages.length, questions.length]);
 
   const activeSource = sources?.find((source) => source.id === selected?.sourceId);
   const runtimeSource = sources?.find((source) => source.id === "runtime");
   const running = actionBusy === "turn";
   const canSteer = activeSource?.capabilities.steer === true;
   const canSendFollowUp = running && canSteer;
-  const composerBlocked = Boolean(approval) || (Boolean(actionBusy) && !canSendFollowUp);
+  const scopedQuestions = questions.filter((entry) => entry.request.sessionId === selectedId);
+  const hasPendingQuestion = scopedQuestions.some((entry) => externalQuestionPending(entry, questionClock));
+  const nextQuestionExpiry = scopedQuestions.reduce((earliest, entry) => {
+    const expiry = Date.parse(entry.request.expiresAt);
+    return !entry.outcome && expiry > questionClock ? Math.min(earliest, expiry) : earliest;
+  }, Infinity);
+  useEffect(() => {
+    setQuestionClock(Date.now());
+    if (!Number.isFinite(nextQuestionExpiry)) return;
+    const timer = window.setTimeout(() => setQuestionClock(Date.now()), Math.max(0, nextQuestionExpiry - Date.now()) + 1);
+    return () => window.clearTimeout(timer);
+  }, [nextQuestionExpiry]);
+  const composerBlocked = Boolean(approval) || hasPendingQuestion || (Boolean(actionBusy) && !canSendFollowUp);
   const controlMode = transcript?.controlMode ?? (transcript?.readOnly ? "history" : "managed");
   const modeLabel = controlMode === "live"
     ? copy.modeLive
@@ -304,7 +324,8 @@ export default function ExternalSessionCenter({
   // Interactive terminals need room for long commands, approvals, and diffs. Open them as the main
   // stage by default; restoring the split is an explicit per-session choice and never remounts the
   // provider process.
-  const terminalDockMode = selectedId ? terminalDockModes[selectedId] ?? "maximized" : "maximized";
+  const preferredTerminalDockMode = selectedId ? terminalDockModes[selectedId] ?? "maximized" : "maximized";
+  const terminalDockMode = externalQuestionDockMode(preferredTerminalDockMode, scopedQuestions, selectedId, questionClock);
 
   const refreshTerminal = useCallback(async () => {
     if (!selectedId || !terminalSupported) return;
@@ -521,7 +542,7 @@ export default function ExternalSessionCenter({
               </div>
             </header>
 
-            <div className={`external-session-layout extension-work${inspectorView === "terminal" && terminalSupported ? " has-visible-extension" : ""}${inspectorView === "terminal" && terminalSupported && terminalDockMode === "maximized" ? " is-extension-maximized" : ""}`}>
+            <div className={`external-session-layout extension-work${hasPendingQuestion ? " has-pending-question" : ""}${inspectorView === "terminal" && terminalSupported ? " has-visible-extension" : ""}${inspectorView === "terminal" && terminalSupported && terminalDockMode === "maximized" ? " is-extension-maximized" : ""}`}>
               <div className="external-session-primary extension-primary">
               <section className="external-session-conversation" aria-label={copy.transcript}>
                 <header><strong>{copy.transcript}</strong><span>{sourceDisplayName(selected)}</span></header>
@@ -568,6 +589,11 @@ export default function ExternalSessionCenter({
                       <span>{copy.system}</span><p>{item.text}</p>
                     </article>
                   ))}
+                  {onQuestionReply ? scopedQuestions.map((entry) => (
+                    <ExternalQuestionCard key={`${selectedId}:${entry.request.questionId}`} entry={entry} locale={locale}
+                      disabled={!personal || transcript?.readOnly !== false}
+                      onReply={onQuestionReply} />
+                  )) : null}
                 </div>
 
                 {approval ? (

@@ -373,14 +373,15 @@ test("automation is one guided control console with local-only status refresh", 
   assert.doesNotMatch(app, /jobForm|className="jobtable"/, "the legacy duplicate task editor and table are gone");
   assert.match(
     app,
-    /setSec === "automations"[\s\S]*?<AutomationsPage[\s\S]*?add=\{addAutomationDraft\}[\s\S]*?update=\{updateAutomationDraft\}[\s\S]*?toggle=\{toggleAutomation\}[\s\S]*?delete=\{deleteAutomation\}[\s\S]*?install=\{installAutomationScheduler\}/,
-    "low-frequency schedule management lives in Settings",
+    /const automationContent[\s\S]*?<AutomationsPage[\s\S]*?add=\{settingsAutomationOpen \? addAutomationDraft : undefined\}[\s\S]*?update=\{settingsAutomationOpen \? updateAutomationDraft : undefined\}[\s\S]*?toggle=\{settingsAutomationOpen \? toggleAutomation : undefined\}[\s\S]*?delete=\{settingsAutomationOpen \? deleteAutomation : undefined\}[\s\S]*?install=\{settingsAutomationOpen \? installAutomationScheduler : undefined\}/,
+    "one shared surface enables schedule management only in Settings",
   );
   assert.match(
     app,
-    /zone === "auto"[\s\S]*?<AutomationsPage[\s\S]*?run=\{runAutomationNow\}[\s\S]*?openReplay=\{openAutomationReplay\}[\s\S]*?onManage=\{\(\) => \{[\s\S]*?preloadSettingsSection\("automations"\)[\s\S]*?setSetSec\("automations"\)[\s\S]*?setZone\("settings"\)/,
-    "Task Center stays operational and routes management into Settings",
+    /const automationContent[\s\S]*?run=\{runAutomationNow\}[\s\S]*?openReplay=\{openAutomationReplay\}[\s\S]*?onManage=\{settingsAutomationOpen \? undefined : \(\) => \{ openAutomations\(autoView\); \}\}/,
+    "the optional pinned monitor shares results and routes management to Settings",
   );
+  assert.match(app, /className="automation-settings-surface">\{automationContent\}/);
   assert.match(
     app,
     /window\.setInterval\(\(\) => void refreshAuto\(\), 30_000\)/,
@@ -2023,7 +2024,8 @@ test("plugin dock shortcuts stay default-hidden and reuse the project-authorized
   assert.match(app, /tab\.panelId === pluginContribution\.panelId/);
   assert.match(app, /tab\.owner\.sessionId === active/);
   assert.match(app, /projectClient\.projectPanels\(\{ sessionId: projectSession\.id \}\)/);
-  assert.match(modules, /item\.source === "core" \? copy\.core : copy\.plugin/);
+  assert.doesNotMatch(modules, /item\.source === "core" \? copy\.core : copy\.plugin/,
+    "routine sidebar controls avoid source architecture badges");
   assert.match(directory, /panelInDock\(plugin\.name, panel\.id\)/);
   assert.match(directory, /onTogglePanelInDock\(plugin\.name, panel\.id, !inDock\)/);
 });

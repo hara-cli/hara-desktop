@@ -659,8 +659,18 @@ export interface ComputerSettingsState {
   };
 }
 
-export type DecisionEngineId = "off" | "typesafe";
+export type DecisionEngineId = "off" | "typesafe" | "laya-mlx";
 export type DecisionMode = "shadow" | "advisory" | "enforce";
+
+export interface LayaRuntimeState {
+  supported: boolean;
+  status: "unsupported" | "missing" | "preparing" | "ready" | "error";
+  model: string;
+  revision: string;
+  contextTokens: number;
+  experimental: true;
+  error?: string;
+}
 
 export interface DecisionSettingsState {
   engine: DecisionEngineId;
@@ -673,6 +683,8 @@ export interface DecisionSettingsState {
   modelEditable: boolean;
   baseURLEditable: boolean;
   credentialEditable: boolean;
+  /** Missing on pre-Laya Engines; do not offer a backend they cannot run. */
+  laya?: LayaRuntimeState;
 }
 
 export interface DecisionSettingsInput {
@@ -691,6 +703,7 @@ export interface DecisionSettingsTestResult {
   model?: string;
   elapsedMs?: number;
   error?: string;
+  experimental?: boolean;
 }
 
 export interface CoreBrowserInstallResult {
@@ -1592,12 +1605,19 @@ export interface EventStateSnapshot {
   /** @deprecated Retained only so an older Engine snapshot remains decodable during rollout. */
   workforceStates?: WorkforceStateEvent[];
   externalTurns: Array<{ sessionId: string; turnId: string }>;
+  /** Foreground recovery, available only with external.questions.v1. */
+  externalQuestions?: ExternalUserQuestionRequest[];
+  taskApprovalStates?: Array<{ sessionId: string } & TaskApprovalState>;
   approvals: Array<{
     approvalId: string;
     sessionId: string;
     scope: "session" | "external";
     question: string;
     allowAlways: boolean;
+    presentation?: AgentCreationApproval;
+    allowForTask?: boolean;
+    taskApproval?: TaskApprovalOffer;
+    expiresAt?: string;
   }>;
 }
 
@@ -1639,6 +1659,66 @@ export interface AgentRunProgress {
   maxRounds: number;
   cumulativeTaskRounds: number;
   taskRoundLimit?: number;
+}
+
+export interface AgentCreationApproval {
+  kind: "agent-create";
+  username: string;
+  name: string;
+  role: string;
+  description: string;
+  instructions: string;
+}
+
+export interface PendingSessionApproval {
+  approvalId: string;
+  question: string;
+  allowAlways: boolean;
+  presentation?: AgentCreationApproval;
+  allowForTask?: boolean;
+  taskApproval?: TaskApprovalOffer;
+  expiresAt?: string;
+}
+
+export type TaskApprovalToolFamily = "bash" | "python" | "file-change";
+/** Safe display metadata only; the authority closure and exact scope never leave the Engine. */
+export interface TaskApprovalOffer {
+  summary: string;
+  toolFamily: TaskApprovalToolFamily;
+  durationMs: number;
+}
+export interface TaskApprovalState {
+  active: boolean;
+  toolFamilies: TaskApprovalToolFamily[];
+  expiresAt?: string;
+  canRevoke: boolean;
+}
+
+export interface ExternalUserQuestionRequest {
+  questionId: string;
+  sessionId: string;
+  turnId: string;
+  expiresAt: string;
+  questions: Array<{
+    id: string;
+    header?: string;
+    question: string;
+    options?: Array<{ label: string; description?: string }>;
+    multiSelect?: boolean;
+    isOther?: boolean;
+    isSecret?: boolean;
+  }>;
+}
+
+export type ExternalUserQuestionOutcome = "answered" | "cancelled" | "timed_out" | "interrupted";
+export type ExternalUserQuestionAnswers = Record<string, { answers: string[] }>;
+export interface ExternalUserQuestionReply {
+  questionId: string;
+  sessionId: string;
+  turnId: string;
+  answers: ExternalUserQuestionAnswers;
+  cancelled?: boolean;
+  commandId: string;
 }
 
 export interface TaskLifecycleEvent {
@@ -1779,11 +1859,15 @@ export type ServerEvent =
         | { type: "url"; url: string };
     }
   | { method: "event.turn_end"; sessionId: string; reply: string; error?: string; status?: string; taskId?: string; turnId?: string; usage: ModelUsage; ctx?: CtxInfo }
-  | { method: "approval.request"; sessionId: string; approvalId: string; question: string; allowAlways?: boolean }
+  | ({ method: "approval.request"; sessionId: string; allowAlways?: boolean } & Omit<PendingSessionApproval, "allowAlways">)
+  | ({ method: "event.task_approval_state"; sessionId: string } & TaskApprovalState)
+  | { method: "event.agents_changed"; sessionId: string }
   | { method: "external.event.turn_start"; sessionId: string; turnId: string }
   | { method: "external.event.text"; sessionId: string; turnId: string; delta: string }
   | { method: "external.event.tool"; sessionId: string; turnId: string; name: string; preview: string }
   | { method: "external.event.notice"; sessionId: string; turnId: string; text: string }
+  | ({ method: "external.question.request" } & ExternalUserQuestionRequest)
+  | { method: "external.question.resolved"; questionId: string; sessionId: string; turnId: string; outcome: ExternalUserQuestionOutcome }
   | {
       method: "external.event.turn_end";
       sessionId: string;
@@ -2048,7 +2132,7 @@ export class HaraClient {
       capabilities: {
         client: "hara-desktop",
         protocolVersion: 1,
-        features: ["external.sessions.terminal-handoff.v1"],
+        features: ["external.sessions.terminal-handoff.v1", "external.questions.v1", "task.approvals.v1"],
       },
     });
     this.methods = new Set(result.capabilities?.methods ?? []);
@@ -2587,11 +2671,14 @@ export class HaraClient {
       ...(cwd ? { cwd } : {}),
     });
   }
-  testDecisionSettings(input: Pick<DecisionSettingsInput, "model" | "baseURL" | "apiKey" | "clearApiKey">, cwd?: string) {
+  testDecisionSettings(input: Partial<Pick<DecisionSettingsInput, "engine" | "model" | "baseURL" | "apiKey" | "clearApiKey">>, cwd?: string) {
     return this.call<DecisionSettingsTestResult>("settings.decision.test", {
       ...input,
       ...(cwd ? { cwd } : {}),
     });
+  }
+  prepareLayaRuntime(confirmDownload: true) {
+    return this.call<LayaRuntimeState>("settings.decision.laya.prepare", { confirmDownload });
   }
   listSkills(cwd?: string) {
     return this.call<{ skills: SkillInfo[] }>("skills.list", cwd ? { cwd } : {});
@@ -3164,6 +3251,9 @@ export class HaraClient {
     return this.call<{ path: string; revisionId: string }>("presentation.preview-file", { artifactId, revisionId });
   }
   resumeSession(sessionId: string, legacyApproval?: ApprovalMode) {
+    // Task-aware engines restore foreground pending requests without changing the live run's
+    // permissions. Defaults belong to creation; explicit changes use session.set-approval.
+    const approval = this.supportsFeature("task.approvals.v1") ? undefined : legacyApproval;
     return this.call<{
       sessionId: string;
       model: string;
@@ -3172,8 +3262,11 @@ export class HaraClient {
       approval?: ApprovalMode;
       agentRef?: string;
       history: ClientHistoryMessage[];
+      /** Explicitly empty is authoritative: no stale pending approval may be restored. */
+      pendingApprovals?: PendingSessionApproval[];
+      taskApprovalState?: TaskApprovalState;
       task?: { id: string; objective: string; status: Exclude<TaskLifecycleState, "waiting">; turnId: string; updatedAt: string };
-    }>("session.resume", { sessionId, ...(legacyApproval ? { approval: legacyApproval } : {}) });
+    }>("session.resume", { sessionId, ...(approval ? { approval } : {}) });
   }
   setSessionApproval(sessionId: string, approval: ApprovalMode) {
     return this.call<{ sessionId: string; approval: ApprovalMode }>("session.set-approval", {
@@ -3279,6 +3372,17 @@ export class HaraClient {
   approvalReply(approvalId: string, allow: boolean, always = false) {
     return this.call("approval.reply", { approvalId, allow, always });
   }
+  replyExternalQuestion(reply: ExternalUserQuestionReply) {
+    return this.call<Record<string, never>>("external.question.reply", { ...reply });
+  }
+  approveForTask(approvalId: string, sessionId: string, commandId: string) {
+    return this.call<{ taskApprovalState: TaskApprovalState }>("approval.reply", {
+      approvalId, sessionId, scope: "session", allow: true, forTask: true, commandId,
+    });
+  }
+  revokeTaskApproval(sessionId: string, commandId: string) {
+    return this.call<{ taskApprovalState: TaskApprovalState }>("session.task-approval.revoke", { sessionId, commandId });
+  }
   close() {
     this.ws?.close();
   }
@@ -3297,4 +3401,22 @@ export function supportsNativePresentationWorkspace(
     && client.supports("presentation.update")
     && client.supports("presentation.render")
     && client.supports("presentation.preview");
+}
+
+export function supportsExternalUserQuestions(
+  client: Pick<HaraClient, "supports" | "supportsEvent" | "supportsFeature"> | null | undefined,
+): boolean {
+  return !!client
+    && client.supportsFeature("external.questions.v1")
+    && client.supports("external.question.reply")
+    && client.supportsEvent("external.question.request")
+    && client.supportsEvent("external.question.resolved");
+}
+
+export function supportsTaskApprovals(
+  client: Pick<HaraClient, "supports" | "supportsEvent" | "supportsFeature"> | null | undefined,
+): boolean {
+  return !!client && client.supportsFeature("task.approvals.v1")
+    && client.supports("approval.reply") && client.supports("session.task-approval.revoke")
+    && client.supportsEvent("event.task_approval_state");
 }

@@ -38,6 +38,7 @@ interface AppRailProps {
   items: AppRailItem[];
   labels: AppRailLabels;
   updateAvailable: string;
+  automationNotice?: { label: string; count: number; onOpen: () => void };
   onSelect: (id: string) => void;
   onIntent: (id: string) => void;
   onSelectSettings: () => void;
@@ -68,6 +69,7 @@ export function AppRail({
   items,
   labels,
   updateAvailable,
+  automationNotice,
   onSelect,
   onIntent,
   onSelectSettings,
@@ -96,6 +98,14 @@ export function AppRail({
         </button>
       ))}
       <div className="railgap" />
+      {automationNotice ? (
+        <button className="rail-automation-notice" type="button"
+          aria-label={automationNotice.label} title={automationNotice.label}
+          onClick={automationNotice.onOpen}>
+          <IconTasks size={18} />
+          <span className="chip">{automationNotice.count > 9 ? "9+" : automationNotice.count}</span>
+        </button>
+      ) : null}
       <button
         className={activePlace === "settings" ? "on" : ""}
         aria-label={

@@ -1,5 +1,6 @@
-import { memo, useEffect, useMemo, useState, type RefObject } from "react";
-import type { ModelUsage, TaskLifecycleEvent } from "./client";
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import type { AgentCreationApproval, ModelUsage, TaskApprovalOffer, TaskLifecycleEvent } from "./client";
+import { approvalRequestExpired, createTaskApprovalSubmission, offeredTaskApproval } from "./task-approval-state";
 import {
   countExecutionDetails,
   groupConversationItems,
@@ -33,7 +34,7 @@ const TASK_DEPENDENCY_LABELS: Record<TaskDependencyKind, Key> = {
   destructive_confirmation: "taskDependencyDestructiveConfirmation",
 };
 
-export type ApprovalVerdict = "allow" | "always" | "deny";
+export type ApprovalVerdict = "allow" | "always" | "deny" | "task";
 export type ApprovalResolution = ApprovalVerdict | "expired";
 
 const APPROVAL_STATUS_KEYS: Record<ApprovalResolution, Key> = {
@@ -41,6 +42,7 @@ const APPROVAL_STATUS_KEYS: Record<ApprovalResolution, Key> = {
   always: "approvalAlwaysAllowed",
   deny: "approvalDenied",
   expired: "expired",
+  task: "approvalTaskAccepted",
 };
 
 const EXECUTION_TOOL_LABEL_KEYS: Partial<Record<string, Key>> = {
@@ -48,6 +50,7 @@ const EXECUTION_TOOL_LABEL_KEYS: Partial<Record<string, Key>> = {
   task_checkpoint: "executionActionCheckpoint",
   todo_write: "executionActionTodo",
   agent_contact: "executionActionContact",
+  agent_create: "executionActionCreateAgent",
 };
 
 function ApprovalCard({
@@ -55,6 +58,13 @@ function ApprovalCard({
   question,
   allowAlways,
   answered,
+  presentation,
+  taskApproval,
+  allowForTask,
+  expiresAt,
+  taskApprovalCommandId,
+  taskApprovalSupported,
+  sessionId,
   t,
   onApproval,
 }: {
@@ -62,43 +72,105 @@ function ApprovalCard({
   question: string;
   allowAlways?: boolean;
   answered?: ApprovalResolution;
+  presentation?: AgentCreationApproval;
+  taskApproval?: TaskApprovalOffer;
+  allowForTask?: boolean;
+  expiresAt?: string;
+  taskApprovalCommandId?: string;
+  taskApprovalSupported: boolean;
+  sessionId?: string;
   t: (key: Key) => string;
-  onApproval: (approvalId: string, verdict: ApprovalVerdict) => void;
+  onApproval: (approvalId: string, verdict: ApprovalVerdict, commandId?: string, sessionId?: string) => Promise<void>;
 }) {
-  const approved = answered === "allow" || answered === "always";
-  const title = answered
-    ? approved ? t("approvalActionApproved") : t("approvalActionClosed")
-    : t("approvalTitle");
+  const locked = useRef(false);
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [now, setNow] = useState(Date.now);
+  const [taskSubmission] = useState(() => createTaskApprovalSubmission(() => crypto.randomUUID(), taskApprovalCommandId));
+  const requestExpired = approvalRequestExpired(expiresAt, now);
+  useEffect(() => {
+    setNow(Date.now());
+    if (!expiresAt || !Number.isFinite(Date.parse(expiresAt))) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, Date.parse(expiresAt) - Date.now()) + 1);
+    return () => window.clearTimeout(timer);
+  }, [expiresAt]);
+  const resolution = answered ?? (requestExpired ? "expired" : undefined);
+  const proposal = presentation?.kind === "agent-create" ? presentation : undefined;
+  const taskChoice = offeredTaskApproval({ taskApproval, allowForTask, expiresAt, presentation }, taskApprovalSupported && !!sessionId, now);
+  const submit = async (verdict: ApprovalVerdict): Promise<void> => {
+    if (answered || locked.current) return;
+    if ((taskApprovalCommandId || !taskSubmission.canChoose(verdict)) && verdict !== "task") return;
+    if (approvalRequestExpired(expiresAt) || (verdict === "task" && (!taskChoice || taskSubmission.isLocked()))) return;
+    locked.current = true;
+    setPending(true);
+    setFailed(false);
+    try {
+      if (verdict === "task") {
+        await taskSubmission.submit((commandId) => onApproval(approvalId, verdict, commandId, sessionId));
+      } else {
+        await onApproval(approvalId, verdict, undefined, sessionId);
+      }
+    } catch {
+      locked.current = false;
+      setPending(false);
+      setFailed(true);
+    }
+  };
+  const approved = resolution === "allow" || resolution === "always" || resolution === "task";
+  const title = resolution
+    ? approved ? t(proposal ? "agentCreateApproved" : "approvalActionApproved") : t("approvalActionClosed")
+    : t(proposal ? "agentCreateTitle" : "approvalTitle");
   return (
-    <section className={`appr approval-card${answered ? " done" : ""}${approved ? " approved" : ""}`}>
+    <section className={`appr approval-card${resolution ? " done" : ""}${approved ? " approved" : ""}`}>
       <header className="approval-card-head">
         <strong>{title}</strong>
         <span className={`approval-status${approved ? " approved" : ""}`}>
           <i aria-hidden />
-          {answered ? t(APPROVAL_STATUS_KEYS[answered]) : t("approvalPending")}
+          {resolution ? t(APPROVAL_STATUS_KEYS[resolution]) : t("approvalPending")}
         </span>
       </header>
-      <p className="approval-card-summary">{question}</p>
-      <details className="approval-card-details">
-        <summary>{t("approvalViewRequest")}</summary>
-        <pre>{question}</pre>
-      </details>
-      {!answered ? (
+      {proposal ? (
+        <div className="agent-create-proposal">
+          <dl>
+            <div><dt>{t("agentCreateName")}</dt><dd>{proposal.name} <small>@{proposal.username}</small></dd></div>
+            <div><dt>{t("agentCreateRole")}</dt><dd>{proposal.role}</dd></div>
+          </dl>
+          <p>{proposal.description}</p>
+          <strong>{t("agentCreateInstructions")}</strong>
+          <pre>{proposal.instructions}</pre>
+        </div>
+      ) : (
         <>
-          <p className="approval-card-scope">{t("approvalScopeHint")}</p>
+          <p className="approval-card-summary">{question}</p>
+          <details className="approval-card-details">
+            <summary>{t("approvalViewRequest")}</summary>
+            <pre>{question}</pre>
+          </details>
+        </>
+      )}
+      {!resolution ? (
+        <>
+          <p className="approval-card-scope">{t(proposal ? "agentCreateScope" : "approvalScopeHint")}</p>
+          {taskChoice ? <div className="task-approval-offer"><p>{t(taskApproval!.toolFamily === "bash" ? "taskApprovalBash" : taskApproval!.toolFamily === "python" ? "taskApprovalPython" : "taskApprovalFiles")} · {taskApproval!.summary}</p><small>{t("approvalTaskScope")}</small></div> : null}
           <div className="approval-card-actions">
-            <button onClick={() => onApproval(approvalId, "allow")}>
-              {t("allow")}
+            <button disabled={pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} aria-busy={pending} onClick={() => void submit("allow")}>
+              {t(proposal ? "agentCreateConfirm" : "allow")}
             </button>
-            {allowAlways !== false ? (
-              <button className="ghost" onClick={() => onApproval(approvalId, "always")}>
+            {taskChoice ? (
+              <button type="button" disabled={pending} className="ghost task-approval-choice" onClick={() => void submit("task")}>
+                {t("approvalForTask")}
+              </button>
+            ) : null}
+            {!proposal && allowAlways !== false ? (
+              <button disabled={pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} className="ghost" onClick={() => void submit("always")}>
                 {t("always")}
               </button>
             ) : null}
-            <button className="deny" onClick={() => onApproval(approvalId, "deny")}>
-              {t("deny")}
+            <button disabled={pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} className="deny" onClick={() => void submit("deny")}>
+              {t(proposal ? "agentCreateDecline" : "deny")}
             </button>
           </div>
+          {failed ? <p role="alert" className="approval-card-scope">{t(taskSubmission.hasAttempted() ? "approvalTaskRetry" : "approvalSubmissionFailed")}</p> : null}
         </>
       ) : null}
     </section>
@@ -129,6 +201,12 @@ export type ConversationItem =
       question: string;
       allowAlways?: boolean;
       answered?: ApprovalResolution;
+      presentation?: AgentCreationApproval;
+      taskApproval?: TaskApprovalOffer;
+      /** Local-only retry identity; never an authority or part of history/model context. */
+      taskApprovalCommandId?: string;
+      allowForTask?: boolean;
+      expiresAt?: string;
     };
 
 interface ConversationTimelineProps {
@@ -136,11 +214,13 @@ interface ConversationTimelineProps {
   busy: boolean;
   assistantName?: string;
   taskState?: TaskLifecycleEvent;
+  sessionId?: string;
+  taskApprovalSupported?: boolean;
   displayMode: ExecutionViewMode;
   bottomRef: RefObject<HTMLDivElement | null>;
   t: (key: Key) => string;
   onRewind: (itemIndex: number) => void;
-  onApproval: (approvalId: string, verdict: ApprovalVerdict) => void;
+  onApproval: (approvalId: string, verdict: ApprovalVerdict, commandId?: string, sessionId?: string) => Promise<void>;
   onContinueTask?: (instruction?: string) => void;
   onDecision?: (option: string) => Promise<void>;
 }
@@ -194,6 +274,8 @@ export const ConversationTimeline = memo(function ConversationTimeline({
   busy,
   assistantName = "Hara",
   taskState,
+  sessionId,
+  taskApprovalSupported = false,
   displayMode,
   bottomRef,
   t,
@@ -577,11 +659,18 @@ export const ConversationTimeline = memo(function ConversationTimeline({
             case "approval":
               return (
                 <ApprovalCard
-                  key={index}
+                  key={item.approvalId}
                   approvalId={item.approvalId}
                   question={item.question}
                   allowAlways={item.allowAlways}
                   answered={item.answered}
+                  presentation={item.presentation}
+                  taskApproval={item.taskApproval}
+                  allowForTask={item.allowForTask}
+                  expiresAt={item.expiresAt}
+                  taskApprovalCommandId={item.taskApprovalCommandId}
+                  taskApprovalSupported={taskApprovalSupported}
+                  sessionId={sessionId}
                   t={t}
                   onApproval={onApproval}
                 />

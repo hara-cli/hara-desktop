@@ -25,6 +25,8 @@ import type { Update } from "@tauri-apps/plugin-updater";
 import {
   HaraClient,
   supportsNativePresentationWorkspace,
+  supportsExternalUserQuestions,
+  supportsTaskApprovals,
   type Discovery,
   type ApprovalMode,
   type SessionInfo,
@@ -74,7 +76,19 @@ import {
   type ExternalTerminalStreamConnection,
   type ExternalTerminalStreamMode,
   type ExternalTerminalSnapshot,
+  type ExternalUserQuestionReply,
+  type TaskApprovalState,
 } from "./client";
+import TaskApprovalStatus from "./TaskApprovalStatus";
+import {
+  approvalDockMode, createTaskApprovalRevisionClock, offeredTaskApproval,
+  projectTaskApprovalState, projectTaskApprovalReceipt, restoreTaskApprovalStates, taskApprovalStateForSession, terminalTaskApprovalState, validTaskApprovalState,
+} from "./task-approval-state";
+import { restoreSessionApprovals } from "./approval-restoration";
+import {
+  externalQuestionPending, interruptExternalQuestions, receiveExternalQuestion,
+  resolveExternalQuestion, restoreExternalQuestions, type ExternalQuestionState,
+} from "./external-question-state";
 import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
 import {
   THEME_PREFERENCES,
@@ -148,6 +162,7 @@ import {
   moveNavigation,
   navigationIsVisible,
   parseNavigationPreferences,
+  resetNavigationPreferences,
   pluginNavigationContributionId,
   pluginNavigationContributions,
   visibleNavigation,
@@ -308,7 +323,6 @@ type SettingsSection =
   | "wechat"
   | "mobile"
   | "lang"
-  | "modules"
   | "capabilities";
 
 type SecuritySettingsAnchor = "settings-computer-use" | "settings-jev-api-key";
@@ -769,21 +783,6 @@ const conversationItemsFromHistory = (
     : { kind: "text", text: message.text }];
 });
 
-const withRestoredTaskApproval = (
-  items: ConversationItem[],
-  task: TaskLifecycleEvent | undefined,
-): ConversationItem[] => {
-  const approval = task?.approval;
-  if (!approval || !taskStateIsLive(task.state)) return items;
-  if (items.some((item) => item.kind === "approval" && item.approvalId === approval.id)) return items;
-  return [...items, {
-    kind: "approval",
-    approvalId: approval.id,
-    question: approval.question,
-    allowAlways: approval.allowAlways === true,
-  }];
-};
-
 const conversationHistory = (
   history: ClientHistoryMessage[],
 ): ConversationItem[] =>
@@ -830,6 +829,22 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<Record<string, ConversationItem[]>>({});
+  const [taskApprovalStates, setTaskApprovalStates] = useState<Record<string, TaskApprovalState>>({});
+  const taskApprovalStatesRef = useRef(taskApprovalStates);
+  taskApprovalStatesRef.current = taskApprovalStates;
+  const [taskApprovalRevisionClock] = useState(createTaskApprovalRevisionClock);
+  const [approvalClock, setApprovalClock] = useState(Date.now);
+  const approvalClockItems = active ? transcripts[active] : undefined;
+  const nextApprovalExpiry = useMemo(() => (approvalClockItems ?? []).reduce((earliest, item) => {
+    const expiry = item.kind === "approval" && !item.answered ? Date.parse(item.expiresAt ?? "") : NaN;
+    return expiry > approvalClock ? Math.min(earliest, expiry) : earliest;
+  }, Infinity), [approvalClockItems, approvalClock]);
+  useEffect(() => {
+    setApprovalClock(Date.now());
+    if (!Number.isFinite(nextApprovalExpiry)) return;
+    const timer = window.setTimeout(() => setApprovalClock(Date.now()), Math.max(0, nextApprovalExpiry - Date.now()) + 1);
+    return () => window.clearTimeout(timer);
+  }, [nextApprovalExpiry]);
   const [readOnlySessions, setReadOnlySessions] = useState<Record<string, { reason: string }>>({});
   const [modelAuthenticationFailures, setModelAuthenticationFailures] = useState<Record<string, true>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
@@ -1083,7 +1098,17 @@ export default function App() {
     }
   }, [busy, engineStoppingSessionId]);
   // settings place: context column = group anchors, stage = the selected group's forms
-  const [setSec, setSetSec] = useState<SettingsSection>("providers");
+  const [setSec, setSettingsSection] = useState<SettingsSection>("providers");
+  const settingsSectionRef = useRef(setSec);
+  const setSetSec = useCallback((section: SettingsSection) => {
+    if (settingsSectionRef.current !== section) {
+      sessionOpenRequestRef.current += 1;
+      setAutoReplay(null);
+    }
+    settingsSectionRef.current = section;
+    setSettingsSection(section);
+  }, []);
+  const [sidebarPreferencesOpen, setSidebarPreferencesOpen] = useState(false);
   const [securitySettingsAnchor, setSecuritySettingsAnchor] = useState<SecuritySettingsAnchor | null>(null);
   const openSecuritySettings = useCallback((anchor: SecuritySettingsAnchor) => {
     setSecuritySettingsAnchor(anchor);
@@ -1165,6 +1190,8 @@ export default function App() {
   const [unread, setUnread] = useState<Record<string, boolean>>({});
   const [autoUnread, setAutoUnread] = useState(0); // ambient counter — never mixes with manual unread
   const [autoView, setAutoView] = useState<AutomationViewId>("tasks");
+  const [autoForking, setAutoForking] = useState(false);
+  const autoForkingRef = useRef(false);
   const [auto, setAuto] = useState<AutomationListResult | null | "old-server">(null);
   const refreshAuto = useCallback(async (): Promise<void> => {
     const client = clientRef.current;
@@ -1176,7 +1203,8 @@ export default function App() {
     try {
       const next = await client.listAutomation();
       if (clientRef.current !== client || spaceDirectoryRef.current?.activeId !== "personal") return;
-      setAuto(next ?? "old-server");
+      // Gateway conversations live in Workbench, not in scheduled-task history or its unread count.
+      setAuto(next ? { ...next, sessions: next.sessions.filter((run) => run.source === "cron") } : "old-server");
     } catch {
       // The connection banner owns transport failures. Focus/interval refresh will retry.
     }
@@ -1391,11 +1419,9 @@ export default function App() {
     })();
   }, []);
   // Automation state is local RPC data, not a model turn. Refreshing it on focus and every 30 seconds
-  // keeps next-run/health/result state honest without consuming model tokens.
+  // keeps next-run/health/result state honest without consuming model tokens, even with its shortcut hidden.
   useEffect(() => {
-    const automationSurfaceOpen = zone === "auto"
-      || (zone === "settings" && setSec === "automations");
-    if (phase !== "ready" || !automationSurfaceOpen) return;
+    if (phase !== "ready" || spaceDirectory?.activeId !== "personal") return;
     void refreshAuto();
     const intervalId = window.setInterval(() => void refreshAuto(), 30_000);
     const onFocus = () => void refreshAuto();
@@ -1404,7 +1430,7 @@ export default function App() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
     };
-  }, [phase, refreshAuto, setSec, zone]);
+  }, [phase, refreshAuto, spaceDirectory?.activeId]);
   // dock badge = manual unread count (interruption-grade only; ambient automation never badges)
   useEffect(() => {
     const n = Object.values(unread).filter(Boolean).length;
@@ -1592,6 +1618,9 @@ export default function App() {
   const [externalSessionCreatingKind, setExternalSessionCreatingKind] = useState<ExternalRuntimeAgentKind | null>(null);
   const [externalSessionActivity, setExternalSessionActivity] = useState<Record<string, ExternalSessionActivity[]>>({});
   const [externalSessionApprovals, setExternalSessionApprovals] = useState<Record<string, ExternalSessionApproval>>({});
+  const [externalQuestions, setExternalQuestions] = useState<ExternalQuestionState>({});
+  const externalQuestionsRef = useRef(externalQuestions);
+  externalQuestionsRef.current = externalQuestions;
   const externalSessionsRequestRef = useRef(0);
   const externalTranscriptRequestRef = useRef(0);
   const externalActivitySequenceRef = useRef(0);
@@ -1779,7 +1808,7 @@ export default function App() {
   const pendingDesktopUpdateRef = useRef<PendingDesktopUpdate | null>(null);
   const pendingRef = useRef<"assistant" | "project" | null>(null);
   const [setupRequired, setSetupRequired] = useState(false);
-  const apiRef = useRef<{ setZone: (z: Zone) => void; openAssistant: () => void; openProject: () => void }>({ setZone: () => {}, openAssistant: () => {}, openProject: () => {} });
+  const apiRef = useRef<{ setZone: (z: Zone) => void; openAutomations: (view?: AutomationViewId) => boolean; openAssistant: () => void; openProject: () => void }>({ setZone: () => {}, openAutomations: () => false, openAssistant: () => {}, openProject: () => {} });
   // Follow-up queue: current engines atomically start-or-steer text through session.submit. Attachments
   // stay with their text as one fresh turn because an active model round cannot absorb new file context.
   const [queue, setQueue] = useState<Record<string, QueuedInput[]>>({});
@@ -2187,9 +2216,22 @@ export default function App() {
     }
     if (z === "auto" && clientRef.current) {
       void refreshAuto();
-      markAutoSeen();
+      if (autoView === "runs") markAutoSeen();
     }
     return true;
+  };
+
+  const openAutomations = (view: AutomationViewId = "tasks"): boolean => {
+    if (!setZone("settings")) return false;
+    preloadSettingsSection("automations");
+    setSetSec("automations");
+    setAutoView(view);
+    return true;
+  };
+  const openSidebarSettings = () => {
+    if (!setZone("settings")) return;
+    setSetSec("lang");
+    setSidebarPreferencesOpen(true);
   };
 
   const push = useCallback(
@@ -2665,21 +2707,27 @@ export default function App() {
       if (!attachedSessionsRef.current.has(sessionId)) {
         // A reconnect invalidates every live serve attachment. Keep the queue item until resume has
         // succeeded so NO_SESSION can never turn a visible retry into dropped work.
+        const submittedRevision = taskApprovalRevisionClock.capture(sessionId);
         const resumed = await c.resumeSession(sessionId, defaultApproval || undefined);
         if (clientRef.current !== c) throw new Error("Hara engine reconnected; retry the message again");
         attachedSessionsRef.current.add(sessionId);
         rememberSessionApproval(sessionId, resumed.approval);
+        hydrateLegacyTaskState(c, sessionId, resumed.task);
+        if (supportsTaskApprovals(c)) {
+          setTaskApprovalStates((states) => projectTaskApprovalReceipt(states, sessionId, resumed.taskApprovalState,
+            submittedRevision, taskApprovalRevisionClock.current(sessionId)));
+        }
         const currentTranscripts = transcriptsRef.current;
         const nextTranscripts = {
           ...currentTranscripts,
-          [sessionId]: restoreAuthoritativeConversation(
-            conversationHistory(resumed.history),
-            currentTranscripts[sessionId] ?? [],
+          [sessionId]: restoreSessionApprovals(
+            restoreAuthoritativeConversation(conversationHistory(resumed.history), currentTranscripts[sessionId] ?? []),
+            sessionId, taskStatesRef.current[sessionId], resumed.pendingApprovals,
+            { sessionId, items: currentTranscripts[sessionId] ?? [] },
           ),
         };
         transcriptsRef.current = nextTranscripts;
         setTranscripts(nextTranscripts);
-        hydrateLegacyTaskState(c, sessionId, resumed.task);
       }
       const latest = queueRef.current[sessionId] ?? [];
       const retryIndex = latest.findIndex((item) => item.id === retry.id);
@@ -2702,19 +2750,25 @@ export default function App() {
         },
       );
       if (retry.commandId && outcome !== "queued" && clientRef.current === c) {
+        const submittedRevision = taskApprovalRevisionClock.capture(sessionId);
         const recovered = await c.resumeSession(sessionId, defaultApproval || undefined);
         if (clientRef.current !== c) throw new Error("Hara engine reconnected while reconciling the retry");
+        hydrateLegacyTaskState(c, sessionId, recovered.task);
+        if (supportsTaskApprovals(c)) {
+          setTaskApprovalStates((states) => projectTaskApprovalReceipt(states, sessionId, recovered.taskApprovalState,
+            submittedRevision, taskApprovalRevisionClock.current(sessionId)));
+        }
         const currentTranscripts = transcriptsRef.current;
         const nextTranscripts = {
           ...currentTranscripts,
-          [sessionId]: restoreAuthoritativeConversation(
-            conversationHistory(recovered.history),
-            currentTranscripts[sessionId] ?? [],
+          [sessionId]: restoreSessionApprovals(
+            restoreAuthoritativeConversation(conversationHistory(recovered.history), currentTranscripts[sessionId] ?? []),
+            sessionId, taskStatesRef.current[sessionId], recovered.pendingApprovals,
+            { sessionId, items: currentTranscripts[sessionId] ?? [] },
           ),
         };
         transcriptsRef.current = nextTranscripts;
         setTranscripts(nextTranscripts);
-        hydrateLegacyTaskState(c, sessionId, recovered.task);
       }
     } catch (error: any) {
       push(sessionId, (items) => [...items, {
@@ -2724,7 +2778,7 @@ export default function App() {
     } finally {
       retryingQueuedInputsRef.current.delete(retryKey);
     }
-  }, [defaultApproval, hydrateLegacyTaskState, push, rememberSessionApproval, sendText]);
+  }, [defaultApproval, hydrateLegacyTaskState, push, rememberSessionApproval, sendText, taskApprovalRevisionClock]);
 
   /** Submit against the authoritative execution plane. New engines own start-or-steer routing in one
    * ordered call; this renderer-side branch remains only for compatibility with older bundled engines. */
@@ -2888,8 +2942,18 @@ export default function App() {
           else delete activeTurnsRef.current[e.sessionId];
           setSessionBusy(e.sessionId, live);
           if (!live) void flushStagedModelChange(e.sessionId);
+          if (!live) {
+            taskApprovalRevisionClock.advance(e.sessionId);
+            setTaskApprovalStates((current) => terminalTaskApprovalState(current, e.sessionId));
+          }
           break;
         }
+        case "event.task_approval_state":
+          if (supportsTaskApprovals(clientRef.current)) {
+            taskApprovalRevisionClock.advance(e.sessionId);
+            setTaskApprovalStates((current) => projectTaskApprovalState(current, e.sessionId, e));
+          }
+          break;
         case "event.text":
           push(e.sessionId, (items) => {
             const last = items[items.length - 1];
@@ -3127,6 +3191,8 @@ export default function App() {
           break;
         }
         case "event.turn_end": {
+          taskApprovalRevisionClock.advance(e.sessionId);
+          setTaskApprovalStates((current) => terminalTaskApprovalState(current, e.sessionId));
           const surfaceTurn = presentationSurfaceTurnsRef.current[e.sessionId];
           delete presentationSurfaceTurnsRef.current[e.sessionId];
           if (surfaceTurn && !surfaceTurn.surfaceOffered && personalLocalSurfaceSession(e.sessionId)) {
@@ -3247,12 +3313,24 @@ export default function App() {
           break;
         }
         case "approval.request":
-          push(e.sessionId, (items) => [...items, {
-            kind: "approval",
-            approvalId: e.approvalId,
-            question: plain(e.question),
-            allowAlways: e.allowAlways === true,
-          }]);
+          push(e.sessionId, (items) => {
+            const approval: ConversationItem = {
+              kind: "approval",
+              approvalId: e.approvalId,
+              question: plain(e.question),
+              allowAlways: e.allowAlways === true,
+              ...(e.presentation ? { presentation: e.presentation } : {}),
+              ...(supportsTaskApprovals(clientRef.current) && e.taskApproval ? {
+                taskApproval: e.taskApproval, allowForTask: e.allowForTask === true,
+              } : {}),
+              ...(e.expiresAt ? { expiresAt: e.expiresAt } : {}),
+            };
+            return items.some((item) => item.kind === "approval" && item.approvalId === e.approvalId)
+              ? items.map((item) => item.kind === "approval" && item.approvalId === e.approvalId
+                ? { ...approval, ...(item.answered ? { answered: item.answered } : {}),
+                    ...(item.taskApprovalCommandId ? { taskApprovalCommandId: item.taskApprovalCommandId } : {}) } : item)
+              : [...items, approval];
+          });
           if (e.sessionId !== activeRef.current) {
             const session = sessionsRef.current.find((candidate) => candidate.id === e.sessionId);
             const availability = session ? sessionSpaceAvailability(session, spaceDirectoryRef.current) : "missing";
@@ -3306,6 +3384,11 @@ export default function App() {
             ],
           }));
           break;
+        case "event.agents_changed":
+          if (e.sessionId === activeRef.current) {
+            void refreshAgentCatalog({ sessionId: e.sessionId }).catch(() => {});
+          }
+          break;
         case "external.approval.request":
           setExternalSessionApprovals((current) => ({ ...current, [e.sessionId]: {
             approvalId: e.approvalId,
@@ -3313,7 +3396,18 @@ export default function App() {
             allowAlways: e.allowAlways === true,
           } }));
           break;
+        case "external.question.request":
+          if (supportsExternalUserQuestions(clientRef.current)) {
+            setExternalQuestions((current) => receiveExternalQuestion(current, e));
+          }
+          break;
+        case "external.question.resolved":
+          if (supportsExternalUserQuestions(clientRef.current)) {
+            setExternalQuestions((current) => resolveExternalQuestion(current, e));
+          }
+          break;
         case "external.event.turn_end":
+          setExternalQuestions((current) => interruptExternalQuestions(current, [e.requestedSessionId, e.sessionId], e.turnId));
           delete externalActiveTurnsRef.current[e.requestedSessionId];
           delete externalActiveTurnsRef.current[e.sessionId];
           setExternalSessionApprovals((current) => {
@@ -3344,7 +3438,7 @@ export default function App() {
           break;
       }
     },
-    [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, flushToolOutput, locale, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, queueToolOutput, recoverPresentationSurface, refreshArtifacts, refreshExternalSessions, resolvePendingUser, sendText, setSessionBusy],
+    [capturePersonalLocalSurfaceScope, enqueueInput, flushStagedModelChange, flushToolOutput, locale, offerExtensionTab, personalLocalSurfaceScopeIsCurrent, personalLocalSurfaceSession, push, queueToolOutput, recoverPresentationSurface, refreshArtifacts, refreshExternalSessions, resolvePendingUser, sendText, setSessionBusy, taskApprovalRevisionClock],
   );
   handleEventRef.current = handleEvent;
 
@@ -3368,6 +3462,9 @@ export default function App() {
     setActive(null);
     setSessions([]);
     setTranscripts({});
+    setTaskApprovalStates({});
+    taskApprovalStatesRef.current = {};
+    taskApprovalRevisionClock.advance();
     setReadOnlySessions({});
     setModelAuthenticationFailures({});
     setBusy({});
@@ -3397,8 +3494,11 @@ export default function App() {
     setExternalSessionActions({});
     setExternalSessionActivity({});
     setExternalSessionApprovals({});
+    setExternalQuestions({});
+    externalQuestionsRef.current = {};
     externalActiveTurnsRef.current = {};
     setAuto(null);
+    setAutoUnread(0);
     setAutoReplay(null);
     setArtifacts(null);
     setActiveArtifact(null);
@@ -3409,7 +3509,7 @@ export default function App() {
     setArtifactExportReceipt(null);
     setArtifactBusy("");
     setProjectListState({ spaceId: "", opened: [], hidden: [] });
-  }, []);
+  }, [taskApprovalRevisionClock]);
 
   const connect = useCallback(async (expectedPid: number | null = null) => {
     const generation = ++connectGenerationRef.current;
@@ -3521,6 +3621,15 @@ export default function App() {
           for (const taskState of snapshot.taskStates) {
             handleEventRef.current({ method: "event.task_state", ...taskState });
           }
+          if (supportsTaskApprovals(c)) {
+            taskApprovalRevisionClock.advance();
+            setTaskApprovalStates(restoreTaskApprovalStates(snapshot.taskApprovalStates));
+          }
+          for (const approval of snapshot.approvals) {
+            if (approval.scope === "session") {
+              handleEventRef.current({ method: "approval.request", ...approval });
+            }
+          }
           externalActiveTurnsRef.current = Object.fromEntries(
             snapshot.externalTurns.map((turn) => [turn.sessionId, turn.turnId]),
           );
@@ -3536,6 +3645,9 @@ export default function App() {
                 allowAlways: approval.allowAlways,
               }]),
           ));
+          if (supportsExternalUserQuestions(c)) {
+            setExternalQuestions((current) => restoreExternalQuestions(current, snapshot.externalQuestions ?? []));
+          }
         },
       );
       if (stale()) {
@@ -3630,7 +3742,7 @@ export default function App() {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "1") (e.preventDefault(), apiRef.current.setZone("chat"));
       else if (e.key === "2") (e.preventDefault(), apiRef.current.setZone("projects"));
-      else if (e.key === "3") (e.preventDefault(), apiRef.current.setZone("auto"));
+      else if (e.key === "3") (e.preventDefault(), apiRef.current.openAutomations());
       else if (e.key === "4") (e.preventDefault(), apiRef.current.setZone("groups"));
       else if (e.key === ",") (e.preventDefault(), apiRef.current.setZone("settings"));
       else if (e.key === "n") (e.preventDefault(), apiRef.current.openProject());
@@ -3748,10 +3860,18 @@ export default function App() {
 
   // ambient automation counter: automated sessions updated since last seen marker
   useEffect(() => {
-    if (!auto || auto === "old-server") return;
+    if (!auto || auto === "old-server") {
+      setAutoUnread(0);
+      return;
+    }
     const seen = localStorage.getItem("hara.autoSeen") ?? "";
+    if (zone === "settings" && setSec === "automations" && autoView === "runs") {
+      localStorage.setItem("hara.autoSeen", new Date().toISOString());
+      setAutoUnread(0);
+      return;
+    }
     setAutoUnread(auto.sessions.filter((s) => s.updatedAt > seen).length);
-  }, [auto]);
+  }, [auto, autoView, setSec, zone]);
   const markAutoSeen = () => {
     localStorage.setItem("hara.autoSeen", new Date().toISOString());
     setAutoUnread(0);
@@ -4348,6 +4468,7 @@ export default function App() {
       return;
     }
     try {
+      const submittedRevision = taskApprovalRevisionClock.capture(id);
       const r = await c.resumeSession(id, defaultApproval || undefined);
       if (wrongSpace(r)) {
         reportWrongSpace(r);
@@ -4355,15 +4476,22 @@ export default function App() {
       }
       attachedSessionsRef.current.add(id);
       rememberSessionApproval(id, r.approval);
+      if (supportsTaskApprovals(c)) {
+        setTaskApprovalStates((current) => projectTaskApprovalReceipt(current, id, r.taskApprovalState,
+          submittedRevision, taskApprovalRevisionClock.current(id)));
+      }
       setSessionReadOnly(id, null);
       setErr("");
       hydrateLegacyTaskState(c, id, r.task);
       setTranscripts((tr) => {
         const next = {
           ...tr,
-          [id]: withRestoredTaskApproval(
+          [id]: restoreSessionApprovals(
             conversationItemsFromHistory(r.history),
+            id,
             taskStatesRef.current[id],
+            r.pendingApprovals,
+            { sessionId: id, items: tr[id] ?? [] },
           ),
         };
         transcriptsRef.current = next;
@@ -4605,7 +4733,7 @@ export default function App() {
     return value as T;
   };
 
-  /** Open an automated run as a READ-ONLY replay in the automation place. */
+  /** Open a read-only result, never a live automated conversation. Drop stale navigation responses. */
   const openReplay = useCallback(async (session: {
     id: string;
     title: string;
@@ -4613,9 +4741,16 @@ export default function App() {
     cwd: string;
   }) => {
     const c = clientRef.current;
-    if (!c) return;
+    if (!c || (spaceDirectoryRef.current?.activeId ?? "personal") !== "personal") return;
+    const requestId = ++sessionOpenRequestRef.current;
+    const replayIsCurrent = () => clientRef.current === c
+      && requestId === sessionOpenRequestRef.current
+      && (spaceDirectoryRef.current?.activeId ?? "personal") === "personal"
+      && (zoneRef.current === "auto"
+        || (zoneRef.current === "settings" && settingsSectionRef.current === "automations"));
     try {
       const result = await c.resumeSession(session.id);
+      if (!replayIsCurrent()) return;
       attachedSessionsRef.current.add(session.id);
       setAutoReplay({
         id: session.id,
@@ -4632,7 +4767,7 @@ export default function App() {
         })),
       });
     } catch (error: any) {
-      setErr(String(error?.message ?? error));
+      if (replayIsCurrent()) setErr(String(error?.message ?? error));
     }
   }, []);
   const pickAutomationDirectory = useCallback(async (current?: string): Promise<string | null> => {
@@ -5721,6 +5856,7 @@ export default function App() {
     sessionId: string,
     approvalId: string,
     verdict: ApprovalVerdict,
+    commandId?: string,
   ) => {
     const c = clientRef.current;
     if (!c?.connected) {
@@ -5730,8 +5866,34 @@ export default function App() {
           : "The Hara engine disconnected, so the approval was not submitted. Reconnect and review it again.",
       );
     }
-    await c.approvalReply(approvalId, verdict !== "deny", verdict === "always");
-    push(sessionId, (items) => items.map((it) => (it.kind === "approval" && it.approvalId === approvalId ? { ...it, answered: verdict } : it)));
+    const switchGeneration = spaceSwitchRequestRef.current;
+    const currentApproval = (transcriptsRef.current[sessionId] ?? []).find((entry) => entry.kind === "approval" && entry.approvalId === approvalId);
+    if (verdict !== "task" && currentApproval?.kind === "approval" && currentApproval.taskApprovalCommandId) {
+      throw new Error("The task permission result is uncertain. Retry the same task choice or revoke its permission.");
+    }
+    if (verdict === "task") {
+      const item = currentApproval;
+      if (activeRef.current !== sessionId || readOnlySessionsRef.current[sessionId] || !commandId
+        || item?.kind !== "approval" || item.answered || !offeredTaskApproval(item, supportsTaskApprovals(c))
+        || (item.taskApprovalCommandId && item.taskApprovalCommandId !== commandId)) {
+        throw new Error("This task permission request is no longer available in the current session.");
+      }
+      // Retain the local intent even if the ACK is lost, including across foreground resume.
+      push(sessionId, (items) => items.map((entry) => entry.kind === "approval" && entry.approvalId === approvalId
+        ? { ...entry, taskApprovalCommandId: commandId } : entry));
+      const submittedRevision = taskApprovalRevisionClock.capture(sessionId);
+      const result = await c.approveForTask(approvalId, sessionId, commandId);
+      if (!validTaskApprovalState(result.taskApprovalState)) throw new Error("The task permission state was not confirmed. Retry the same choice.");
+      if (clientRef.current === c && spaceSwitchRequestRef.current === switchGeneration) {
+        setTaskApprovalStates((current) => projectTaskApprovalReceipt(current, sessionId, result.taskApprovalState,
+          submittedRevision, taskApprovalRevisionClock.current(sessionId)));
+      }
+    } else {
+      await c.approvalReply(approvalId, verdict !== "deny", verdict === "always");
+    }
+    if (clientRef.current === c && spaceSwitchRequestRef.current === switchGeneration) {
+      push(sessionId, (items) => items.map((it) => (it.kind === "approval" && it.approvalId === approvalId ? { ...it, answered: verdict } : it)));
+    }
   };
 
   const stopTurn = async (sessionId: string): Promise<boolean> => {
@@ -6095,7 +6257,7 @@ export default function App() {
     if (session) {
       const place = sessionPlace(session);
       if (place === "auto") {
-        if (setZone("auto")) await openReplay(session);
+        if (openAutomations("runs")) await openReplay(session);
         return;
       }
       if (!setZone(place)) return;
@@ -6316,7 +6478,7 @@ export default function App() {
   };
 
   // keep latest handlers reachable from the once-registered shortcut listener + pending-card effect
-  apiRef.current = { setZone, openAssistant, openProject };
+  apiRef.current = { setZone, openAutomations, openAssistant, openProject };
 
   // External-session actions are hooks too, so they must be declared before the
   // boot screen's early return. The selected session is safe to derive while the
@@ -6686,6 +6848,23 @@ export default function App() {
       }
     }
   }, [externalSessionApprovals, selectedExternalSession?.id]);
+  const answerExternalQuestion = useCallback(async (reply: ExternalUserQuestionReply) => {
+    const client = clientRef.current;
+    const switchGeneration = spaceSwitchRequestRef.current;
+    const entry = externalQuestionsRef.current[reply.questionId];
+    if (!client?.connected || !supportsExternalUserQuestions(client)
+      || spaceDirectoryRef.current?.activeId !== "personal" || selectedExternalSession?.id !== reply.sessionId
+      || !entry || entry.request.sessionId !== reply.sessionId || entry.request.turnId !== reply.turnId
+      || !externalQuestionPending(entry)) {
+      throw new Error("This question is no longer available in the current session.");
+    }
+    await client.replyExternalQuestion(reply);
+    if (clientRef.current === client && spaceSwitchRequestRef.current === switchGeneration) {
+      setExternalQuestions((current) => current[reply.questionId] ? resolveExternalQuestion(current, {
+        ...reply, outcome: reply.cancelled ? "cancelled" : "answered",
+      }) : current);
+    }
+  }, [selectedExternalSession?.id]);
 
   // Keep the transcript projection stable while typing in the composer. The wrappers read the latest
   // session actions without giving the large timeline new callback identities on every keystroke.
@@ -6694,11 +6873,31 @@ export default function App() {
   const timelineRewind = useCallback((index: number) => {
     void timelineActionsRef.current.rewindHere(index);
   }, []);
-  const timelineApproval = useCallback((approvalId: string, verdict: ApprovalVerdict) => {
+  const timelineApproval = useCallback(async (approvalId: string, verdict: ApprovalVerdict, commandId?: string, expectedSessionId?: string): Promise<void> => {
     const { active: sessionId, answer: reply } = timelineActionsRef.current;
-    if (!sessionId) return;
-    void reply(sessionId, approvalId, verdict).catch((error) => setErr(String(error?.message ?? error)));
+    if (!sessionId || (expectedSessionId && expectedSessionId !== sessionId)) throw new Error("The approval conversation is no longer active.");
+    try {
+      await reply(sessionId, approvalId, verdict, commandId);
+    } catch (error) {
+      setErr(String(error instanceof Error ? error.message : error));
+      throw error;
+    }
   }, []);
+  const revokeCurrentTaskApproval = useCallback(async (sessionId: string, commandId: string) => {
+    const client = clientRef.current;
+    const generation = spaceSwitchRequestRef.current;
+    const state = taskApprovalStateForSession(taskApprovalStatesRef.current, sessionId, supportsTaskApprovals(client));
+    if (!client?.connected || activeRef.current !== sessionId || readOnlySessionsRef.current[sessionId] || !state?.canRevoke) {
+      throw new Error("The task permission is not available in the current session.");
+    }
+    const submittedRevision = taskApprovalRevisionClock.capture(sessionId);
+    const result = await client.revokeTaskApproval(sessionId, commandId);
+    if (!validTaskApprovalState(result.taskApprovalState) || result.taskApprovalState.active !== false) throw new Error("Task permission revocation was not confirmed.");
+    if (clientRef.current === client && generation === spaceSwitchRequestRef.current) {
+      setTaskApprovalStates((current) => projectTaskApprovalReceipt(current, sessionId, result.taskApprovalState,
+        submittedRevision, taskApprovalRevisionClock.current(sessionId)));
+    }
+  }, [taskApprovalRevisionClock]);
   const timelineContinue = useCallback((requestedInstruction?: string) => {
     const { active: sessionId, locale: currentLocale, submitSessionText: submit } = timelineActionsRef.current;
     if (!sessionId) return;
@@ -6902,6 +7101,14 @@ export default function App() {
   const activeApproval: ApprovalMode = (activeSession?.approval ?? defaultApproval) || "auto-edit";
   const activeComposerWorkObject = active ? visibleSessionWorkObject(active) : null;
   const items = active ? (transcripts[active] ?? []) : [];
+  const taskApprovalSupported = supportsTaskApprovals(clientRef.current);
+  const activeTaskApproval = taskApprovalStateForSession(taskApprovalStates, active, taskApprovalSupported);
+  const pendingApprovalVisible = approvalDockMode("maximized", items, approvalClock) === "docked";
+  const taskApprovalStatusSurface = active && activeTaskApproval ? (
+    <TaskApprovalStatus key={`${active}:${activeTaskApproval.expiresAt}:${activeTaskApproval.toolFamilies.join(",")}`}
+      state={readOnlySessions[active] ? { ...activeTaskApproval, canRevoke: false } : activeTaskApproval}
+      sessionId={active} locale={locale} onRevoke={revokeCurrentTaskApproval} />
+  ) : null;
   const modelEntries = [...new Set([
     ...(activeSession && activeModelInfo?.currentAvailable !== false ? [activeSession.model] : []),
     ...(activeStagedModelChange ? [activeStagedModelChange.model] : []),
@@ -7044,11 +7251,17 @@ export default function App() {
   /** The replay's escape hatch: fork the automated run into an interactive session and jump there. */
   const continueManually = async () => {
     const c = clientRef.current;
-    if (!c || !autoReplay) return;
+    if (autoForkingRef.current || !c || !autoReplay || (spaceDirectoryRef.current?.activeId ?? "personal") !== "personal"
+      || !(zoneRef.current === "auto"
+        || (zoneRef.current === "settings" && settingsSectionRef.current === "automations"))) return;
     const home = isAssistantCwd(autoReplay.cwd);
     const requestId = ++sessionOpenRequestRef.current;
+    autoForkingRef.current = true;
+    setAutoForking(true);
     try {
       const r = await c.forkSession(autoReplay.id);
+      if (clientRef.current !== c || requestId !== sessionOpenRequestRef.current
+        || (spaceDirectoryRef.current?.activeId ?? "personal") !== "personal") return;
       attachedSessionsRef.current.add(r.sessionId);
       setTranscripts((tr) => ({
         ...tr,
@@ -7060,11 +7273,19 @@ export default function App() {
       }));
       rememberSession(r.sessionId, { cwd: autoReplay.cwd, source: "interactive" });
       await refreshSessions();
-      if (requestId === sessionOpenRequestRef.current && zoneRef.current === "auto") {
+      if (requestId === sessionOpenRequestRef.current
+        && (zoneRef.current === "auto"
+          || (zoneRef.current === "settings" && settingsSectionRef.current === "automations"))) {
         setZone(home ? "chat" : "projects");
       }
     } catch (e: any) {
-      setErr(String(e?.message ?? e));
+      if (clientRef.current === c && requestId === sessionOpenRequestRef.current
+        && (spaceDirectoryRef.current?.activeId ?? "personal") === "personal") {
+        setErr(String(e?.message ?? e));
+      }
+    } finally {
+      autoForkingRef.current = false;
+      setAutoForking(false);
     }
   };
 
@@ -7305,11 +7526,14 @@ export default function App() {
         )
       ) : (
         <>
+          {taskApprovalStatusSurface}
           <ConversationTimeline
             items={items}
             busy={!!busy[active]}
             assistantName={activeAgent ? agentDisplayName(activeAgent) : "Hara"}
             taskState={taskStates[active]}
+            sessionId={active}
+            taskApprovalSupported={taskApprovalSupported && !readOnlySessions[active]}
             displayMode={executionViewMode}
             bottomRef={bottomRef}
             t={t}
@@ -7972,6 +8196,109 @@ export default function App() {
   const railContributions = availableNavigation(navigationContributions, {
     hasOrganizationWorkspace,
   });
+  const localResourceIsolationNotice = locale === "zh"
+    ? "公司空间暂不显示本机全局的自动化与交付物；请切换到个人空间使用，避免跨公司混用。"
+    : "Company Spaces do not expose machine-global automations or deliverables yet. Switch to Personal to keep company data isolated.";
+  const advancedSidebarSettings = (
+    <details className="settings-sidebar-advanced" open={sidebarPreferencesOpen}
+      onToggle={(event) => setSidebarPreferencesOpen(event.currentTarget.open)}>
+      <summary>
+        <strong>{t("setModules")}</strong>
+        <span>{t("moduleDockAdvancedHint")}</span>
+      </summary>
+      <ModuleDockSettings
+        embedded
+        contributions={railContributions}
+        preferences={navigationPreferences}
+        labels={{
+          "core.chat": { title: t("zoneWorkbench"), description: t("moduleChatDescription") },
+          "core.tasks": { title: t("zoneAuto"), description: t("moduleTasksDescription") },
+          "core.groups": { title: t("zoneGroups"), description: t("moduleGroupsDescription") },
+          ...Object.fromEntries(pluginNavigation.map((contribution) => [contribution.id, {
+            title: contribution.title,
+            description: contribution.description,
+          }])),
+        }}
+        copy={{
+          eyebrow: t("settingsPersonalize"), title: t("setModules"),
+          description: t("moduleDockDescription"), cardTitle: t("moduleDockCardTitle"),
+          cardDescription: t("moduleDockCardDescription"),
+          visible: t("moduleVisible"), hidden: t("moduleHidden"),
+          show: t("showModule"), hide: t("hideModule"),
+          moveUp: t("moveModuleUp"), moveDown: t("moveModuleDown"),
+          fixed: t("moduleWorkbenchFixed"), reset: t("moduleDockReset"),
+          fixedTitle: t("moduleSettingsFixed"), fixedDescription: t("moduleSettingsFixedHint"),
+        }}
+        onVisibilityChange={(id, visible) => saveNavigationPreferences((current) =>
+          withNavigationVisibility(navigationContributions, current, id, visible))}
+        onMove={(id, direction) => saveNavigationPreferences((current) =>
+          moveNavigation(railContributions, current, id, direction))}
+        onReset={() => saveNavigationPreferences((current) =>
+          resetNavigationPreferences(railContributions, current))}
+      />
+    </details>
+  );
+  const settingsAutomationOpen = zone === "settings" && setSec === "automations";
+  const automationReplaySurface = autoReplay ? (
+    <div className="automation-replay-surface">
+      <div className="anchor">
+        <button className="linky" onClick={() => {
+          sessionOpenRequestRef.current += 1;
+          setAutoReplay(null);
+        }}>{t("backToBoard")}</button>
+        <span className="botlab">{autoReplay.sourceName || "auto"}</span>
+        <b className="rotitle">{autoReplay.title}</b>
+        <span className="robadge">{t("readonlyAuto")}</span>
+        <button className="paneltab" disabled={autoForking} onClick={() => void continueManually()}>
+          ⑂ {t("forkFromHere")}
+        </button>
+      </div>
+      <div className="scroll">
+        {autoReplay.items.map((message, index) => message.role === "user" ? (
+          <div key={index} className="msg user ro">{message.text}</div>
+        ) : <AssistantMessage key={index} text={message.text} t={t} />)}
+      </div>
+    </div>
+  ) : null;
+  // One result surface for Settings and an explicitly pinned shortcut. Automated history is
+  // always read-only; only the user's fork action above starts an interactive conversation.
+  const automationContent = activeSpaceId !== "personal" ? (
+    <div className="autohint dim" role="status">{localResourceIsolationNotice}</div>
+  ) : autoReplay ? automationReplaySurface : auto === "old-server" ? (
+    <div className="autohint dim" role="status">{t("autoNeedsUpdate")}</div>
+  ) : (
+    <Suspense fallback={<div className="autohint dim" role="status">{t("loading")}</div>}>
+      {settingsAutomationOpen ? (
+        <AutomationSidebar
+          compact
+          copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
+          jobs={auto?.jobs ?? null} sessions={auto?.sessions ?? null} scheduler={auto?.scheduler}
+          view={autoView}
+          onViewChange={(next) => {
+            sessionOpenRequestRef.current += 1;
+            setAutoView(next);
+            setAutoReplay(null);
+            if (next === "runs") markAutoSeen();
+          }}
+        />
+      ) : null}
+      <AutomationsPage
+        key={autoView}
+        copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
+        jobs={auto?.jobs ?? null} sessions={auto?.sessions ?? null} scheduler={auto?.scheduler}
+        view={autoView}
+        add={settingsAutomationOpen ? addAutomationDraft : undefined}
+        update={settingsAutomationOpen ? updateAutomationDraft : undefined}
+        run={runAutomationNow}
+        toggle={settingsAutomationOpen ? toggleAutomation : undefined}
+        delete={settingsAutomationOpen ? deleteAutomation : undefined}
+        install={settingsAutomationOpen ? installAutomationScheduler : undefined}
+        openReplay={openAutomationReplay}
+        pickDirectory={pickAutomationDirectory}
+        onManage={settingsAutomationOpen ? undefined : () => { openAutomations(autoView); }}
+      />
+    </Suspense>
+  );
   const railItems: AppRailItem[] = visibleNavigation(
     railContributions,
     navigationPreferences,
@@ -8016,6 +8343,12 @@ export default function App() {
         updateAvailable: t("updateAvail"),
       }}
       updateAvailable={updAvail}
+      automationNotice={activeSpaceId === "personal" && autoUnread > 0
+        && !railItems.some((item) => item.id === "core.tasks") ? {
+          label: `${t("zoneAuto")} · ${autoUnread} ${t("autoRuns")}`,
+          count: autoUnread,
+          onOpen: () => { openAutomations("runs"); },
+        } : undefined}
       onSelect={(id) => {
         const contribution = CORE_NAVIGATION_CONTRIBUTIONS.find(
           (item) => item.id === id,
@@ -8310,6 +8643,7 @@ export default function App() {
   const contextExtensionDock = extensionContext
     ? activeExtensionTabForContext(extensionDockState, extensionContext)
     : null;
+  const effectiveConversationDockMode = approvalDockMode(contextExtensionDock?.mode ?? "docked", items, approvalClock);
   const activeExtensionContextKey = extensionContext
     ? extensionContextKey(extensionContext)
     : null;
@@ -8421,9 +8755,6 @@ export default function App() {
       (current) => ({ ...current, mode }),
     ));
   };
-  const localResourceIsolationNotice = locale === "zh"
-    ? "公司空间暂不显示本机全局的自动化与交付物；请切换到个人空间使用，避免跨公司混用。"
-    : "Company Spaces do not expose machine-global automations or deliverables yet. Switch to Personal to keep company data isolated.";
   const officeHomeSurface = activeSpaceId !== "personal" ? (
     <main className="office-home">
       <div className="autohint dim" role="status">{localResourceIsolationNotice}</div>
@@ -8705,6 +9036,7 @@ export default function App() {
     !(zone === "settings" && setSec === "engine");
   const externalSessionCenterSurface = (
     <ExternalSessionCenter
+      key={`${activeSpaceId}:${spaceSwitchRequestRef.current}:${server?.pid ?? "none"}`}
       sources={externalSources}
       sessions={externalSessions}
       selected={selectedExternalSession}
@@ -8712,6 +9044,9 @@ export default function App() {
       transcript={externalTranscript?.session.id === selectedExternalSession?.id ? externalTranscript : null}
       activity={selectedExternalSession ? externalSessionActivity[selectedExternalSession.id] ?? [] : []}
       approval={selectedExternalSession ? externalSessionApprovals[selectedExternalSession.id] ?? null : null}
+      questions={activeSpaceId === "personal" && selectedExternalSession && supportsExternalUserQuestions(clientRef.current)
+        ? Object.values(externalQuestions).filter((entry) => entry.request.sessionId === selectedExternalSession.id)
+        : []}
       loading={externalSessionsLoading}
       transcriptLoading={externalTranscriptLoading}
       actionBusy={selectedExternalSession ? externalSessionActions[selectedExternalSession.id] ?? "" : ""}
@@ -8732,6 +9067,7 @@ export default function App() {
       onInterrupt={interruptSelectedExternalSession}
       onRemove={removeSelectedExternalSession}
       onApproval={answerExternalSessionApproval}
+      onQuestionReply={answerExternalQuestion}
       onReadTerminal={readSelectedExternalTerminal}
       terminalStreaming={clientRef.current?.supportsFeature("external.sessions.terminal-stream.v2") === true}
       onAttachTerminal={attachSelectedExternalTerminal}
@@ -9524,9 +9860,10 @@ export default function App() {
                 scheduler={auto?.scheduler}
                 view={autoView}
                 onViewChange={(next) => {
+                  sessionOpenRequestRef.current += 1;
                   setAutoView(next);
                   setAutoReplay(null);
-                  markAutoSeen();
+                  if (next === "runs") markAutoSeen();
                 }}
               />
             </Suspense>
@@ -9590,7 +9927,6 @@ export default function App() {
                 {
                   label: t("settingsGroupCapabilities"),
                   items: [
-                    ["modules", t("setModules")],
                     ["capabilities", t("setCapabilities")],
                   ],
                 },
@@ -9613,9 +9949,15 @@ export default function App() {
                     aria-current={setSec === k ? "page" : undefined}
                     onMouseEnter={() => preloadSettingsSection(k)}
                     onFocus={() => preloadSettingsSection(k)}
-                    onClick={() => setSetSec(k)}
+                    onClick={() => {
+                      if (k === "automations") openAutomations();
+                      else setSetSec(k);
+                    }}
                   >
                     {label}
+                    {k === "automations" && activeSpaceId === "personal" && autoUnread > 0 ? (
+                      <span className="settings-automation-count">{autoUnread}</span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -9701,35 +10043,7 @@ export default function App() {
                 title={t("setAutomations")}
                 description={t("automationSettingsDescription")}
               >
-                {activeSpaceId !== "personal" ? (
-                  <div className="settings-empty" role="status">{localResourceIsolationNotice}</div>
-                ) : auto === "old-server" ? (
-                  <div className="settings-empty" role="status">{t("autoNeedsUpdate")}</div>
-                ) : (
-                  <Suspense
-                    fallback={(
-                      <div className="settings-empty" role="status">
-                        {t("loading")}
-                      </div>
-                    )}
-                  >
-                    <AutomationsPage
-                      copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
-                      jobs={auto?.jobs ?? null}
-                      sessions={auto?.sessions ?? null}
-                      scheduler={auto?.scheduler}
-                      view="tasks"
-                      add={addAutomationDraft}
-                      update={updateAutomationDraft}
-                      run={runAutomationNow}
-                      toggle={toggleAutomation}
-                      delete={deleteAutomation}
-                      install={installAutomationScheduler}
-                      openReplay={openAutomationReplay}
-                      pickDirectory={pickAutomationDirectory}
-                    />
-                  </Suspense>
-                )}
+                <div className="automation-settings-surface">{automationContent}</div>
               </SettingsPage>
             )}
             {setSec === "engine" && (
@@ -10153,71 +10467,8 @@ export default function App() {
                     </div>
                   </SettingsItem>
                 </SettingsCard>
+                {advancedSidebarSettings}
               </SettingsPage>
-            )}
-            {setSec === "modules" && (
-              <ModuleDockSettings
-                contributions={navigationContributions}
-                preferences={navigationPreferences}
-                labels={{
-                  "core.chat": {
-                    title: t("zoneWorkbench"),
-                    description: t("moduleChatDescription"),
-                  },
-                  "core.tasks": {
-                    title: t("zoneAuto"),
-                    description: t("moduleTasksDescription"),
-                  },
-                  "core.groups": {
-                    title: t("zoneGroups"),
-                    description: t("moduleGroupsDescription"),
-                  },
-                  ...Object.fromEntries(pluginNavigation.map((contribution) => [
-                    contribution.id,
-                    {
-                      title: contribution.title,
-                      description: [contribution.plugin, contribution.description]
-                        .filter(Boolean)
-                        .join(" · "),
-                    },
-                  ])),
-                }}
-                copy={{
-                  eyebrow: t("settingsPersonalize"),
-                  title: t("setModules"),
-                  description: t("moduleDockDescription"),
-                  cardTitle: t("moduleDockCardTitle"),
-                  cardDescription: t("moduleDockCardDescription"),
-                  core: t("moduleSourceCore"),
-                  plugin: t("moduleSourcePlugin"),
-                  visible: t("moduleVisible"),
-                  hidden: t("moduleHidden"),
-                  show: t("showModule"),
-                  hide: t("hideModule"),
-                  moveUp: t("moveModuleUp"),
-                  moveDown: t("moveModuleDown"),
-                  fixedTitle: t("moduleSettingsFixed"),
-                  fixedDescription: t("moduleSettingsFixedHint"),
-                }}
-                onVisibilityChange={(id, visible) => {
-                  saveNavigationPreferences((current) =>
-                    withNavigationVisibility(
-                      navigationContributions,
-                      current,
-                      id,
-                      visible,
-                    ));
-                }}
-                onMove={(id, direction) => {
-                  saveNavigationPreferences((current) =>
-                    moveNavigation(
-                      navigationContributions,
-                      current,
-                      id,
-                      direction,
-                    ));
-                }}
-              />
             )}
             {setSec === "capabilities" && (
               <Suspense
@@ -10310,7 +10561,7 @@ export default function App() {
                     } else if (id === "core.chat") {
                       void openAssistant();
                     } else if (id === "core.tasks") {
-                      setZone("auto");
+                      openAutomations();
                     } else if (id === "core.groups") {
                       if (hasOrganizationWorkspace) setZone("groups");
                       else openOrganizationEnrollment();
@@ -10372,10 +10623,7 @@ export default function App() {
             onCompleteTask={completeGroupsTask}
             onCancelTask={cancelGroupsTask}
             onCommentTask={commentGroupsTask}
-            onManageModules={() => {
-              setZone("settings");
-              setSetSec("modules");
-            }}
+            onManageModules={openSidebarSettings}
             onHide={() => {
               saveNavigationPreferences((current) =>
                 withNavigationVisibility(
@@ -10384,8 +10632,7 @@ export default function App() {
                   "core.groups",
                   false,
                 ));
-              setZone("settings");
-              setSetSec("modules");
+              openSidebarSettings();
             }}
           />
         </Suspense>
@@ -10394,63 +10641,7 @@ export default function App() {
         // a run opens as a READ-ONLY replay (fork is the only way to continue — automated
         // sessions never become live conversations here)
         <main className="chat board automation-board">
-          {activeSpaceId !== "personal" ? (
-            <div className="scroll boardpad">
-              <div className="autohint dim" role="status">{localResourceIsolationNotice}</div>
-            </div>
-          ) : autoReplay ? (
-            <>
-              <div className="anchor">
-                <button className="linky" onClick={() => setAutoReplay(null)}>
-                  {t("backToBoard")}
-                </button>
-                <span className="botlab">{autoReplay.sourceName || "auto"}</span>
-                <b className="rotitle">{autoReplay.title}</b>
-                <span className="robadge">{t("readonlyAuto")}</span>
-                <button className="paneltab" onClick={() => void continueManually()}>
-                  ⑂ {t("forkFromHere")}
-                </button>
-              </div>
-              <div className="scroll">
-                {autoReplay.items.map((m, i) =>
-                  m.role === "user" ? (
-                    <div key={i} className="msg user ro">
-                      {m.text}
-                    </div>
-                  ) : (
-                    <AssistantMessage key={i} text={m.text} t={t} />
-                  ),
-                )}
-              </div>
-            </>
-          ) : auto === "old-server" ? (
-            <div className="scroll boardpad">
-              <div className="autohint dim">{t("autoNeedsUpdate")}</div>
-            </div>
-          ) : (
-            <Suspense
-              fallback={(
-                <div className="scroll boardpad">
-                  <div className="autohint dim" role="status">{t("loading")}</div>
-                </div>
-              )}
-            >
-              <AutomationsPage
-                copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
-                jobs={auto?.jobs ?? null}
-                sessions={auto?.sessions ?? null}
-                scheduler={auto?.scheduler}
-                view={autoView}
-                run={runAutomationNow}
-                openReplay={openAutomationReplay}
-                onManage={() => {
-                  preloadSettingsSection("automations");
-                  setSetSec("automations");
-                  setZone("settings");
-                }}
-              />
-            </Suspense>
-          )}
+          {automationContent}
         </main>
       ) : zone === "office" ? (
         <div className={`extension-work office-extension-work${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && contextExtensionDock?.mode === "maximized" ? " is-extension-maximized" : ""}`}>
@@ -10490,7 +10681,7 @@ export default function App() {
       ) : (zone === "chat" || zone === "projects") && workbenchInboxMode === "external" ? (
         externalSessionCenterSurface
       ) : (zone === "chat" || zone === "projects") && contextExtensionDock ? (
-        <div className={`extension-work${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && contextExtensionDock.mode === "maximized" ? " is-extension-maximized" : ""}`}>
+        <div className={`extension-work${pendingApprovalVisible ? " has-pending-approval" : ""}${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && effectiveConversationDockMode === "maximized" ? " is-extension-maximized" : ""}`}>
           <div className="extension-primary">{conversation(zone === "chat" ? "im" : "ide")}</div>
           <Suspense fallback={<aside className="extension-dock is-docked" aria-busy="true" />}>
             <ExtensionDock
@@ -10502,7 +10693,7 @@ export default function App() {
               detail={panelExtension || webPreviewExtension
                 ? publicPanelOrigin((panelExtension ?? webPreviewExtension)!.url) ?? t("extensionLocalCapability")
                 : (sessionArtifactExtension ?? presentationBrowserExtension)?.owner.revisionId.slice(-8).toUpperCase()}
-              mode={contextExtensionDock.mode}
+              mode={effectiveConversationDockMode}
               loading={contextExtensionDock.type === "artifact" || contextExtensionDock.type === "presentation-browser"
                 ? artifactBusy === "open" || activeArtifact?.artifact.artifactId !== contextExtensionDock.owner.artifactId
                   || (contextExtensionDock.type === "presentation-browser" && !presentationBrowserSurface)
@@ -10523,6 +10714,7 @@ export default function App() {
                 : undefined}
               onClose={() => setCurrentExtensionScreenVisible(false)}
             >
+              {contextExtensionScreenVisible && effectiveConversationDockMode === "maximized" ? taskApprovalStatusSurface : null}
               {panelExtension && (
                 <iframe
                   src={panelExtension.url}
