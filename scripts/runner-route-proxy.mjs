@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROUTED_HOSTS = new Set(['api.github.com', 'broker.actions.githubusercontent.com']);
 const ACTIONS_DISPATCH_HOST = 'run-actions-2-azure-eastus.actions.githubusercontent.com';
+const ACTIONS_PIPELINE_HOST = 'pipelinesghubeus7.actions.githubusercontent.com';
 const APPLE_NOTARY_HOSTS = new Set([
   'appstoreconnect.apple.com',
   'notary-submissions-prod.s3-accelerate.amazonaws.com',
@@ -45,12 +46,19 @@ function validateActionsDispatchRoute(value) {
   if (typeof value !== 'boolean') throw new Error('invalid Actions dispatch route flag');
 }
 
-export function routeDecision(authority, { appleNotaryRoute = false, actionsDispatchRoute = false } = {}) {
+function validateActionsPipelineRoute(value) {
+  if (typeof value !== 'boolean') throw new Error('invalid Actions pipeline route flag');
+}
+
+export function routeDecision(authority, { appleNotaryRoute = false, actionsDispatchRoute = false,
+  actionsPipelineRoute = false } = {}) {
   validateAppleNotaryRoute(appleNotaryRoute);
   validateActionsDispatchRoute(actionsDispatchRoute);
+  validateActionsPipelineRoute(actionsPipelineRoute);
   const target = parseAuthority(authority);
   const routed = ROUTED_HOSTS.has(target.host) || (appleNotaryRoute && APPLE_NOTARY_HOSTS.has(target.host))
-    || (actionsDispatchRoute && target.host === ACTIONS_DISPATCH_HOST);
+    || (actionsDispatchRoute && target.host === ACTIONS_DISPATCH_HOST)
+    || (actionsPipelineRoute && target.host === ACTIONS_PIPELINE_HOST);
   return { ...target, route: routed ? 'upstream' : 'direct' };
 }
 
@@ -223,9 +231,10 @@ function rejectClient(socket, code) {
 
 export function createServer({ primaryProxy, fallbackProxy, dialDirect = defaultDial,
   dialProxy = defaultDial, handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS, appleNotaryRoute = false,
-  actionsDispatchRoute = false } = {}) {
+  actionsDispatchRoute = false, actionsPipelineRoute = false } = {}) {
   validateAppleNotaryRoute(appleNotaryRoute);
   validateActionsDispatchRoute(actionsDispatchRoute);
+  validateActionsPipelineRoute(actionsPipelineRoute);
   const primary = parseUpstream(primaryProxy);
   const fallback = fallbackProxy ? parseUpstream(fallbackProxy) : null;
   if (!Number.isInteger(handshakeTimeoutMs) || handshakeTimeoutMs < 1
@@ -267,7 +276,7 @@ export function createServer({ primaryProxy, fallbackProxy, dialDirect = default
     client.pause();
     counts.received++;
     let target;
-    try { target = routeDecision(req.url, { appleNotaryRoute, actionsDispatchRoute }); }
+    try { target = routeDecision(req.url, { appleNotaryRoute, actionsDispatchRoute, actionsPipelineRoute }); }
     catch {
       counts.failed++;
       rejectClient(client, '400 Bad Request');
@@ -356,10 +365,14 @@ export function configurationFromEnv(env) {
   if (dispatchFlag !== undefined && dispatchFlag !== 'true' && dispatchFlag !== 'false') {
     throw new Error('invalid Actions dispatch route flag');
   }
+  const pipelineFlag = env.HARA_RUNNER_ROUTE_ACTIONS_PIPELINE;
+  if (pipelineFlag !== undefined && pipelineFlag !== 'true' && pipelineFlag !== 'false') {
+    throw new Error('invalid Actions pipeline route flag');
+  }
   parseUpstream(primaryProxy);
   if (fallbackProxy) parseUpstream(fallbackProxy);
   return { port: Number(portText), primaryProxy, fallbackProxy, appleNotaryRoute: appleFlag === 'true',
-    actionsDispatchRoute: dispatchFlag === 'true' };
+    actionsDispatchRoute: dispatchFlag === 'true', actionsPipelineRoute: pipelineFlag === 'true' };
 }
 
 function main() {

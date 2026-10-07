@@ -210,6 +210,15 @@ The fail-closed trust model, current evidence and required release choreography 
   CONNECT targets remain rejected. Before enabling it, bounded tests of the exact host must show
   that upstream transport is more stable. Keep the previous selector/configuration privately
   backed up, verify the dedicated runner is idle, and retry only the original protected source/tag.
+  A separately authorized Actions pipeline exception may set only this selector's
+  `HARA_RUNNER_ROUTE_ACTIONS_PIPELINE=true` to additionally route exactly
+  `pipelinesghubeus7.actions.githubusercontent.com:443` through that same validated loopback upstream.
+  This independent flag accepts only literal `true` or `false` and defaults to disabled; it does
+  not enable Apple or dispatch routing. Other pipeline/Actions hosts, suffixes and lookalikes remain
+  direct, and non-443 CONNECT targets remain rejected. Keep the previous selector/configuration
+  privately backed up and verify the dedicated runner is idle before deployment. Validate real TLS
+  and authenticated dispatch health before one authorized retry of the original protected source/tag;
+  a public no-auth HEAD success alone is not authenticated session or job-acquisition evidence.
   Do not configure `http_proxy`, broad suffix routing, or system/VPN settings. Keep the original
   LaunchAgent privately backed up, verify the runner is idle before reloading its environment,
   test real TLS and dispatch acquisition, and restore the original configuration on failure.
