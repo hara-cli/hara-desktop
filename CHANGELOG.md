@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.181 — 2026-10-10 — coding preferences and focused execution interactions
+
+- Add a personal-space coding executor preference in Settings for new coding work. Automatic uses OpenCode;
+  Pi is an explicit experimental choice. Codex and Claude Code retain their existing local sign-ins, and
+  saving a preference does not grant execution permission or change the main chat model.
+- Show delegated executor questions and one-action approval cards in their originating foreground
+  conversation. Bind replies to the original session and turn, restore pending cards after reconnect,
+  preserve an uncertain decision for an explicit retry, and close expired or interrupted interactions.
+- Separate external engine sessions from the managed terminal in the connection surfaces, keeping their
+  existing session identities and capabilities.
+- Preserve paused task status and ignore stale terminal events from older turns. Keep sent-message
+  admission uncertain until a server receipt arrives, and show safe failure notices without duplicating
+  a terminal event's notice or displaying raw RPC diagnostics.
+- Simplify the Talent Bureau into a searchable candidate grid with an on-demand details drawer. Restore
+  keyboard focus when closing details and keep browsing, inspecting and hiring as separate actions.
+- Bundle Hara CLI `0.185.2` at exact commit `5b5de8c1b4b96ba3a49ddd552d2323532b867f05`, including
+  the experimental Pi coding worker and optional per-criterion completion citations bound to successful
+  tool results observed in the same task and turn. These citations establish provenance, not independent
+  proof of business success; legacy receipts remain compatible, without extra model requests or action retries.
+  Reuse Desktop's checksum-pinned OpenCode sidecar as its coding runtime and include Pi/MCP license notices offline.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may display
+  a reputation warning.
+
 ## 0.1.180 — 2026-10-08 — conversational approvals and safer task continuity
 
 - Add an explicit, optional task-scoped approval card for eligible built-in work, limited to the current

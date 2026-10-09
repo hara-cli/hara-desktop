@@ -82,7 +82,7 @@ test("confirmation clicks are single-flight, retryable after failure, and restor
   const timeline = readFileSync(new URL("src/ConversationTimeline.tsx", root), "utf8");
   const app = readFileSync(new URL("src/App.tsx", root), "utf8");
   const styles = readFileSync(new URL("src/App.css", root), "utf8");
-  assert.match(timeline, /if \(answered \|\| locked\.current\) return/);
+  assert.match(timeline, /if \(disabled \|\| answered \|\| locked\.current\) return/);
   assert.match(timeline, /locked\.current = true;[\s\S]*?await onApproval/);
   assert.match(timeline, /catch \{[\s\S]*?locked\.current = false;[\s\S]*?setFailed\(true\)/);
   assert.match(timeline, /key=\{item\.approvalId\}/, "card-local submission state follows its approval identity");

@@ -408,9 +408,9 @@ jobs:
           for attempt in 1 2 3; do
             rm -f dist/bin/hara-sidecar dist/bin/hara-sidecar.exe
             if [ -n "$BUN_TARGET" ]; then
-              BUILD_COMMAND=(bun scripts/build-binary.ts dist/bin/hara-sidecar "$BUN_TARGET")
+              BUILD_COMMAND=(bun scripts/build-binary.ts dist/bin/hara-sidecar "$BUN_TARGET" dist/cli.js desktop-sidecar)
             else
-              BUILD_COMMAND=(bun scripts/build-binary.ts dist/bin/hara-sidecar)
+              BUILD_COMMAND=(bun scripts/build-binary.ts dist/bin/hara-sidecar "" dist/cli.js desktop-sidecar)
             fi
             if "${BUILD_COMMAND[@]}"; then
               break

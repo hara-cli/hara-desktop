@@ -360,7 +360,7 @@ test("serve client negotiates lifecycle events and sends expected-turn steering"
   assert.deepEqual(requests[0].params.capabilities, {
     client: "hara-desktop",
     protocolVersion: 1,
-    features: ["external.sessions.terminal-handoff.v1", "external.questions.v1", "task.approvals.v1"],
+    features: ["external.sessions.terminal-handoff.v1", "external.questions.v1", "external.delegated-interaction.v1", "task.approvals.v1"],
   });
   assert.equal(client.supports("session.steer"), true);
   assert.equal(client.supports("session.submit"), true);

@@ -171,16 +171,16 @@ test("Desktop keeps discovery lazy and hiring explicit", () => {
   assert.match(portraitGate, /PORTRAIT_EDGE = 256/);
   assert.match(css, /Hara Talent Bureau/);
   assert.match(css, /prefers-reduced-motion/);
-  assert.match(
-    css,
-    /\.talent-market-stats \{[\s\S]*?width:\s*min\(100%, 400px\);[\s\S]*?grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/,
-    "market statistics use bounded tracks instead of overflowing the hero",
-  );
+  assert.doesNotMatch(market, /talent-market-(?:hero|stats|journey)/, "discovery starts with the compact catalog, not a forced hiring journey");
+  assert.match(css, /\.talent-market-body \{[^}]*grid-template-columns: minmax\(0, 1fr\)/, "the catalog uses the full available width");
+  assert.match(css, /\.talent-market-shell \{[^}]*max-width: 100%;[^}]*max-height: 100%;/, "viewport-sized shell stays inside the overlay padding instead of cropping the drawer");
+  assert.match(css, /\.talent-market-overlay \{[^}]*grid-template-columns: minmax\(0, 1fr\);[^}]*grid-template-rows: minmax\(0, 1fr\);/, "overlay tracks cannot grow to the shell's preferred viewport size plus padding");
+  assert.match(css, /\.talent-dossier \{[^}]*width: min\(460px, 100%\)/, "candidate details are an on-demand bounded drawer");
   assert.match(
     css,
     /@media \(max-width: 560px\) \{[\s\S]*?\.talent-market-card-grid \{ grid-template-columns: 1fr; \}/,
     "compact windows use readable single-column candidate cards",
   );
-  assert.doesNotMatch(css, /talent-market-stats > span:nth-child\(2\)[^{]*\{[^}]*display:\s*none/, "compact layouts keep every catalog statistic available");
+  assert.match(css, /@media \(max-width: 680px\)[\s\S]*?\.talent-dossier \{ width: 100%;/, "the drawer is full width in compact windows");
   assert.doesNotMatch(app, /AGENT_BLUEPRINTS/);
 });

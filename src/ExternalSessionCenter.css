@@ -144,6 +144,12 @@
   padding: 4px;
 }
 
+.external-source-groups { display: flex; flex-wrap: wrap; gap: 10px; min-width: 0; }
+.external-source-group { flex: 1 1 220px; min-width: 0; }
+.external-source-group.is-terminals { flex: 0 1 260px; }
+.external-source-group > h2 { margin: 0 0 6px 4px; color: var(--external-muted); font-size: 10px; font-weight: 650; }
+.external-source-group.is-terminals .external-source-switcher { grid-template-columns: 1fr; }
+
 .external-source-tab {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) auto;

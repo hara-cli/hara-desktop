@@ -2,6 +2,7 @@ import type {
   ExternalUserQuestionAnswers, ExternalUserQuestionOutcome, ExternalUserQuestionReply,
   ExternalUserQuestionRequest,
 } from "./client";
+import { validExternalInteractionPresentation } from "./external-interaction-state.ts";
 
 export interface ExternalQuestionEntry {
   request: ExternalUserQuestionRequest;
@@ -28,6 +29,7 @@ function appendEntry(state: ExternalQuestionState, id: string, entry: ExternalQu
 
 export function readableExternalQuestion(request: ExternalUserQuestionRequest): boolean {
   return validBinding(request)
+    && validExternalInteractionPresentation(request)
     && typeof request.expiresAt === "string" && Number.isFinite(Date.parse(request.expiresAt))
     && Array.isArray(request.questions) && request.questions.length > 0 && request.questions.length <= 16
     && request.questions.every((question) => question && typeof question === "object" && typeof question.id === "string" && question.id.length > 0 && question.id.length <= 160

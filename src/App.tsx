@@ -26,6 +26,7 @@ import {
   HaraClient,
   supportsNativePresentationWorkspace,
   supportsExternalUserQuestions,
+  supportsExternalDelegatedInteractions,
   supportsTaskApprovals,
   type Discovery,
   type ApprovalMode,
@@ -77,6 +78,7 @@ import {
   type ExternalTerminalStreamMode,
   type ExternalTerminalSnapshot,
   type ExternalUserQuestionReply,
+  type ExternalDelegatedApprovalReply,
   type TaskApprovalState,
 } from "./client";
 import TaskApprovalStatus from "./TaskApprovalStatus";
@@ -85,6 +87,13 @@ import {
   projectTaskApprovalState, projectTaskApprovalReceipt, restoreTaskApprovalStates, taskApprovalStateForSession, terminalTaskApprovalState, validTaskApprovalState,
 } from "./task-approval-state";
 import { restoreSessionApprovals } from "./approval-restoration";
+import { externalSessionSourceGroups } from "./external-session-presentation";
+import DelegatedInteractionCards from "./DelegatedInteractionCards";
+import {
+  createDelegatedApprovalSubmission, externalInteractionInConversation, externalInteractionReplyAllowed, interruptDelegatedApprovals,
+  readableDelegatedApproval, receiveDelegatedApproval, resolveDelegatedApproval, restoreDelegatedApprovals,
+  type DelegatedApprovalState,
+} from "./external-interaction-state";
 import {
   externalQuestionPending, interruptExternalQuestions, receiveExternalQuestion,
   resolveExternalQuestion, restoreExternalQuestions, type ExternalQuestionState,
@@ -138,6 +147,7 @@ import {
   SettingsPage,
 } from "./SettingsUI";
 import { ComputerUseSettings } from "./ComputerUseSettings";
+import { CodingExecutorSettings } from "./CodingExecutorSettings";
 import { DecisionGuardSettings } from "./DecisionGuardSettings";
 import { WeChatSceneSettings } from "./WeChatSceneSettings";
 import {
@@ -237,6 +247,7 @@ import {
 import { isInternalUserText, userVisibleText } from "./user-visible-text";
 import {
   isModelAuthenticationFailure,
+  rpcTurnFailureMessage,
   turnFailureMessage,
   updateModelAuthenticationFailureState,
 } from "./turn-failure";
@@ -274,6 +285,8 @@ import {
   taskLifecycleIsNewer,
   taskStateIsLive,
   terminalTaskLifecycleFallback,
+  terminalTaskState,
+  terminalTurnIsCurrent,
   type ResumedTaskSnapshot,
 } from "./task-lifecycle";
 import { COMPUTER_USE_CAPABILITY } from "./preinstalled-capabilities";
@@ -866,6 +879,7 @@ export default function App() {
     commandId?: string;
     turnId?: string;
     completed?: boolean;
+    failureNotified?: boolean;
   }>>({});
   const attachedSessionsRef = useRef(new Set<string>());
   transcriptsRef.current = transcripts;
@@ -1603,6 +1617,8 @@ export default function App() {
   const [q, setQ] = useState("");
   const [workbenchInboxMode, setWorkbenchInboxMode] = useState<WorkbenchInboxMode>("agents");
   const [workbenchInboxTarget, setWorkbenchInboxTarget] = useState<WorkbenchInboxTarget | null>(null);
+  const workbenchInboxTargetRef = useRef(workbenchInboxTarget);
+  workbenchInboxTargetRef.current = workbenchInboxTarget;
   const [externalSources, setExternalSources] = useState<ExternalSessionSourceInfo[] | null>(null);
   const [externalSessions, setExternalSessions] = useState<ExternalSessionInfo[]>([]);
   const [externalSessionSourceId, setExternalSessionSourceId] = useState<ExternalSessionSourceId>("runtime");
@@ -1619,8 +1635,24 @@ export default function App() {
   const [externalSessionActivity, setExternalSessionActivity] = useState<Record<string, ExternalSessionActivity[]>>({});
   const [externalSessionApprovals, setExternalSessionApprovals] = useState<Record<string, ExternalSessionApproval>>({});
   const [externalQuestions, setExternalQuestions] = useState<ExternalQuestionState>({});
+  const [delegatedApprovals, setDelegatedApprovals] = useState<DelegatedApprovalState>({});
+  const delegatedApprovalSubmissionRef = useRef<ReturnType<typeof createDelegatedApprovalSubmission> | null>(null);
+  if (!delegatedApprovalSubmissionRef.current) delegatedApprovalSubmissionRef.current = createDelegatedApprovalSubmission(() => crypto.randomUUID());
+  const delegatedApprovalsRef = useRef(delegatedApprovals);
+  delegatedApprovalsRef.current = delegatedApprovals;
   const externalQuestionsRef = useRef(externalQuestions);
   externalQuestionsRef.current = externalQuestions;
+  const [interactionClock, setInteractionClock] = useState(Date.now);
+  const nextInteractionExpiry = [...Object.values(externalQuestions), ...Object.values(delegatedApprovals)].reduce((earliest, entry) => {
+    const expiry = Date.parse(entry.request.expiresAt);
+    return !entry.outcome && expiry > interactionClock ? Math.min(earliest, expiry) : earliest;
+  }, Infinity);
+  useEffect(() => {
+    setInteractionClock(Date.now());
+    if (!Number.isFinite(nextInteractionExpiry)) return;
+    const timer = window.setTimeout(() => setInteractionClock(Date.now()), Math.max(0, nextInteractionExpiry - Date.now()) + 1);
+    return () => window.clearTimeout(timer);
+  }, [nextInteractionExpiry]);
   const externalSessionsRequestRef = useRef(0);
   const externalTranscriptRequestRef = useRef(0);
   const externalActivitySequenceRef = useRef(0);
@@ -2619,7 +2651,7 @@ export default function App() {
                   resolvePendingUser(sessionId, pendingId, false);
                   push(sessionId, (items) => [...items, {
                     kind: "notice",
-                    text: recovery ?? `error: ${steerError?.message ?? steerError}`,
+                    text: recovery ?? rpcTurnFailureMessage(steerError, locale)!,
                   }]);
                   setSessionBusy(sessionId, false);
                   return "failed";
@@ -2677,14 +2709,20 @@ export default function App() {
           }
           const dispatch = pendingSendDispatchesRef.current[sessionId];
           const persisted = dispatch?.pendingId === pendingId && dispatch.completed === true;
+          const failureNotified = persisted && dispatch?.failureNotified === true;
           clearPendingDispatch();
-          resolvePendingUser(sessionId, pendingId, persisted);
+          // A missing terminal event is not proof of rejection or admission. Keep the local input
+          // pending (not rewindable), without retrying it or falsely acknowledging server history.
+          if (persisted) resolvePendingUser(sessionId, pendingId, true);
           const recovery = companyAccessRecoveryMessage(e, locale);
           if (recovery) quarantineCompanySession(sessionId, recovery);
-          push(sessionId, (items) => [...items, {
-            kind: "notice",
-            text: recovery ?? `error: ${e?.message ?? e}`,
-          }]);
+          const failureMessage = rpcTurnFailureMessage(e, locale, failureNotified);
+          if (failureMessage) {
+            push(sessionId, (items) => [...items, {
+              kind: "notice",
+              text: recovery ?? failureMessage,
+            }]);
+          }
           setSessionBusy(sessionId, false);
           return persisted ? "started" : "failed";
         }
@@ -3191,6 +3229,8 @@ export default function App() {
           break;
         }
         case "event.turn_end": {
+          const typedTask = taskStatesRef.current[e.sessionId];
+          if (!terminalTurnIsCurrent(typedTask, e.turnId, activeTurnsRef.current[e.sessionId])) break;
           taskApprovalRevisionClock.advance(e.sessionId);
           setTaskApprovalStates((current) => terminalTaskApprovalState(current, e.sessionId));
           const surfaceTurn = presentationSurfaceTurnsRef.current[e.sessionId];
@@ -3205,13 +3245,14 @@ export default function App() {
               0,
             );
           }
+          const failureMessage = turnFailureMessage(e.error, e.status, locale);
           const dispatch = pendingSendDispatchesRef.current[e.sessionId];
           if (dispatch?.turnId && e.turnId === dispatch.turnId) {
             dispatch.completed = true;
+            dispatch.failureNotified = Boolean(failureMessage);
             resolvePendingUser(e.sessionId, dispatch.pendingId, true);
           }
           delete activeTurnsRef.current[e.sessionId];
-          const failureMessage = turnFailureMessage(e.error, e.status, locale);
           setModelAuthenticationFailures((current) =>
             updateModelAuthenticationFailureState(current, e.sessionId, e.error, e.status));
           push(e.sessionId, (items) => [
@@ -3230,18 +3271,16 @@ export default function App() {
           void flushStagedModelChange(e.sessionId);
           if (e.ctx) setCtxMap((m) => ({ ...m, [e.sessionId]: e.ctx! }));
           const interrupted = interruptedSessionsRef.current.has(e.sessionId);
-          const failed = !!e.error || (!!e.status && e.status !== "completed");
-          const typedTask = taskStatesRef.current[e.sessionId];
           const taskFallback = terminalTaskLifecycleFallback(
             typedTask,
             e.turnId,
-            interrupted ? "paused" : failed ? "blocked" : "completed",
+            terminalTaskState(e.error, e.status, interrupted),
             new Date().toISOString(),
           );
           if (taskFallback) {
             const nextTaskStates = { ...taskStatesRef.current, [e.sessionId]: taskFallback };
             taskStatesRef.current = nextTaskStates;
-            setTaskStates(nextTaskStates);
+            setTaskStates((current) => ({ ...current, [e.sessionId]: taskFallback }));
           }
           interruptedSessionsRef.current.delete(e.sessionId);
           // steer queue: auto-dispatch the next queued message for this session
@@ -3390,14 +3429,26 @@ export default function App() {
           }
           break;
         case "external.approval.request":
+          if (e.parentSessionId !== undefined) {
+            if (supportsExternalDelegatedInteractions(clientRef.current)) {
+              setDelegatedApprovals((current) => receiveDelegatedApproval(current, e));
+            }
+            break;
+          }
           setExternalSessionApprovals((current) => ({ ...current, [e.sessionId]: {
             approvalId: e.approvalId,
             question: plain(e.question),
             allowAlways: e.allowAlways === true,
           } }));
           break;
+        case "external.approval.resolved":
+          if (supportsExternalDelegatedInteractions(clientRef.current)) {
+            setDelegatedApprovals((current) => resolveDelegatedApproval(current, e));
+          }
+          break;
         case "external.question.request":
-          if (supportsExternalUserQuestions(clientRef.current)) {
+          if (supportsExternalUserQuestions(clientRef.current)
+            && (e.parentSessionId === undefined || supportsExternalDelegatedInteractions(clientRef.current))) {
             setExternalQuestions((current) => receiveExternalQuestion(current, e));
           }
           break;
@@ -3408,6 +3459,7 @@ export default function App() {
           break;
         case "external.event.turn_end":
           setExternalQuestions((current) => interruptExternalQuestions(current, [e.requestedSessionId, e.sessionId], e.turnId));
+          setDelegatedApprovals((current) => interruptDelegatedApprovals(current, [e.requestedSessionId, e.sessionId], e.turnId));
           delete externalActiveTurnsRef.current[e.requestedSessionId];
           delete externalActiveTurnsRef.current[e.sessionId];
           setExternalSessionApprovals((current) => {
@@ -3424,7 +3476,9 @@ export default function App() {
             refreshExternalTranscriptRef.current(e.sessionId);
           } else {
             // A provider-level safety fork changed the opaque id. Refresh metadata before exposing it.
-            setWorkbenchInboxTarget({ kind: "external", id: e.sessionId });
+            if (workbenchInboxTargetRef.current?.kind === "external" && workbenchInboxTargetRef.current.id === e.requestedSessionId) {
+              setWorkbenchInboxTarget({ kind: "external", id: e.sessionId });
+            }
             refreshExternalSessions();
           }
           if (e.error) {
@@ -3495,6 +3549,10 @@ export default function App() {
     setExternalSessionActivity({});
     setExternalSessionApprovals({});
     setExternalQuestions({});
+    setDelegatedApprovals({});
+    delegatedApprovalsRef.current = {};
+    // Keep uncertain receipt intent across reconnects; this bounded ledger stores no question text.
+    // Current client/Space/parent checks above submission remain the only routing authority.
     externalQuestionsRef.current = {};
     externalActiveTurnsRef.current = {};
     setAuto(null);
@@ -3638,7 +3696,7 @@ export default function App() {
           ));
           setExternalSessionApprovals(Object.fromEntries(
             snapshot.approvals
-              .filter((approval) => approval.scope === "external")
+              .filter((approval) => approval.scope === "external" && approval.parentSessionId === undefined)
               .map((approval) => [approval.sessionId, {
                 approvalId: approval.approvalId,
                 question: plain(approval.question),
@@ -3646,7 +3704,12 @@ export default function App() {
               }]),
           ));
           if (supportsExternalUserQuestions(c)) {
-            setExternalQuestions((current) => restoreExternalQuestions(current, snapshot.externalQuestions ?? []));
+            setExternalQuestions((current) => restoreExternalQuestions(current, (snapshot.externalQuestions ?? [])
+              .filter((request) => request.parentSessionId === undefined || supportsExternalDelegatedInteractions(c))));
+          }
+          if (supportsExternalDelegatedInteractions(c)) {
+            setDelegatedApprovals((current) => restoreDelegatedApprovals(current, snapshot.approvals
+              .filter((approval) => approval.scope === "external" && approval.parentSessionId !== undefined)));
           }
         },
       );
@@ -6853,8 +6916,12 @@ export default function App() {
     const switchGeneration = spaceSwitchRequestRef.current;
     const entry = externalQuestionsRef.current[reply.questionId];
     if (!client?.connected || !supportsExternalUserQuestions(client)
-      || spaceDirectoryRef.current?.activeId !== "personal" || selectedExternalSession?.id !== reply.sessionId
-      || !entry || entry.request.sessionId !== reply.sessionId || entry.request.turnId !== reply.turnId
+      || !entry || !externalInteractionReplyAllowed(entry.request, {
+        activeSessionId: activeRef.current, selectedExternalSessionId: selectedExternalSession?.id,
+        personal: spaceDirectoryRef.current?.activeId === "personal",
+        readOnly: !!(activeRef.current && readOnlySessionsRef.current[activeRef.current]),
+      }) || (entry.request.parentSessionId !== undefined && !supportsExternalDelegatedInteractions(client))
+      || entry.request.sessionId !== reply.sessionId || entry.request.turnId !== reply.turnId
       || !externalQuestionPending(entry)) {
       throw new Error("This question is no longer available in the current session.");
     }
@@ -6865,6 +6932,21 @@ export default function App() {
       }) : current);
     }
   }, [selectedExternalSession?.id]);
+  const answerDelegatedApproval = useCallback(async (reply: ExternalDelegatedApprovalReply) => {
+    const client = clientRef.current;
+    const generation = spaceSwitchRequestRef.current;
+    const entry = delegatedApprovalsRef.current[reply.approvalId];
+    if (!client?.connected || !supportsExternalDelegatedInteractions(client) || !entry || entry.outcome
+      || !readableDelegatedApproval(entry.request) || Date.parse(entry.request.expiresAt) <= Date.now()
+      || entry.request.sessionId !== reply.sessionId || entry.request.turnId !== reply.turnId
+      || !externalInteractionReplyAllowed(entry.request, { activeSessionId: activeRef.current,
+        personal: spaceDirectoryRef.current?.activeId === "personal", readOnly: !!(activeRef.current && readOnlySessionsRef.current[activeRef.current]),
+      })) throw new Error("This execution approval is no longer available in the current conversation.");
+    await delegatedApprovalSubmissionRef.current!.submit(entry.request, reply.allow, async (boundReply) => { await client.replyExternalApproval(boundReply); });
+    if (clientRef.current === client && generation === spaceSwitchRequestRef.current) {
+      setDelegatedApprovals((current) => resolveDelegatedApproval(current, { ...reply, outcome: "answered" }));
+    }
+  }, []);
 
   // Keep the transcript projection stable while typing in the composer. The wrappers read the latest
   // session actions without giving the large timeline new callback identities on every keystroke.
@@ -6916,6 +6998,17 @@ export default function App() {
       throw error;
     }
   }, []);
+  const activeSession = sessions.find((session) => session.id === active);
+  const activeSpaceId = spaceDirectory?.activeId
+    ?? (activeSession ? sessionSpaceId(activeSession, null) : "personal");
+  const delegatedInteractionSupported = supportsExternalDelegatedInteractions(clientRef.current);
+  const delegatedInteractionSurface = useMemo(() => delegatedInteractionSupported ? <DelegatedInteractionCards
+    activeSessionId={active} personal={activeSpaceId === "personal"} locale={locale}
+    disabled={!clientRef.current?.connected || !!(active && readOnlySessions[active])}
+    questions={Object.values(externalQuestions)} approvals={Object.values(delegatedApprovals)}
+    onQuestionReply={answerExternalQuestion} onApprovalReply={answerDelegatedApproval}
+  /> : null, [delegatedInteractionSupported, active, activeSpaceId, locale, phase, readOnlySessions,
+    externalQuestions, delegatedApprovals, answerExternalQuestion, answerDelegatedApproval]);
 
   // ── boot / error screen ────────────────────────────────────────────────────
   if (phase !== "ready") {
@@ -6976,14 +7069,11 @@ export default function App() {
   const engineVersionState = classifyEngineVersion(server?.version ?? "", BUNDLED_ENGINE_VERSION);
   const engineVersionNeedsAttention =
     engineVersionState === "older" || engineVersionState === "incompatible";
-  const activeSession = sessions.find((s) => s.id === active);
   const activeAgentDismissed = Boolean(
     activeSession?.agentRef
     && agentCatalog?.dismissedAgentRefs?.includes(activeSession.agentRef),
   );
   const activeDraftCanSend = activeDraftContentCanSend && !activeAgentDismissed;
-  const activeSpaceId = spaceDirectory?.activeId
-    ?? (activeSession ? sessionSpaceId(activeSession, null) : "personal");
   const activeSpace = spaceDirectory?.spaces.find((space) => space.id === activeSpaceId);
   const engineBlockingTasks = collectEngineBlockingTasks(
     busy,
@@ -7103,7 +7193,11 @@ export default function App() {
   const items = active ? (transcripts[active] ?? []) : [];
   const taskApprovalSupported = supportsTaskApprovals(clientRef.current);
   const activeTaskApproval = taskApprovalStateForSession(taskApprovalStates, active, taskApprovalSupported);
-  const pendingApprovalVisible = approvalDockMode("maximized", items, approvalClock) === "docked";
+  const parentInteractionPending = delegatedInteractionSupported && [
+    ...Object.values(externalQuestions), ...Object.values(delegatedApprovals),
+  ].some((entry) => externalInteractionInConversation(entry.request, active, activeSpaceId === "personal")
+    && !entry.outcome && Date.parse(entry.request.expiresAt) > interactionClock);
+  const pendingApprovalVisible = parentInteractionPending || approvalDockMode("maximized", items, approvalClock) === "docked";
   const taskApprovalStatusSurface = active && activeTaskApproval ? (
     <TaskApprovalStatus key={`${active}:${activeTaskApproval.expiresAt}:${activeTaskApproval.toolFamilies.join(",")}`}
       state={readOnlySessions[active] ? { ...activeTaskApproval, canRevoke: false } : activeTaskApproval}
@@ -7541,6 +7635,7 @@ export default function App() {
             onApproval={timelineApproval}
             onContinueTask={timelineContinue}
             onDecision={timelineDecision}
+            interactionCards={delegatedInteractionSurface}
           />
           {(queue[active!] ?? []).length > 0 && (
             <div className="steerq">
@@ -8643,7 +8738,7 @@ export default function App() {
   const contextExtensionDock = extensionContext
     ? activeExtensionTabForContext(extensionDockState, extensionContext)
     : null;
-  const effectiveConversationDockMode = approvalDockMode(contextExtensionDock?.mode ?? "docked", items, approvalClock);
+  const effectiveConversationDockMode = parentInteractionPending ? "docked" : approvalDockMode(contextExtensionDock?.mode ?? "docked", items, approvalClock);
   const activeExtensionContextKey = extensionContext
     ? extensionContextKey(extensionContext)
     : null;
@@ -9045,7 +9140,7 @@ export default function App() {
       activity={selectedExternalSession ? externalSessionActivity[selectedExternalSession.id] ?? [] : []}
       approval={selectedExternalSession ? externalSessionApprovals[selectedExternalSession.id] ?? null : null}
       questions={activeSpaceId === "personal" && selectedExternalSession && supportsExternalUserQuestions(clientRef.current)
-        ? Object.values(externalQuestions).filter((entry) => entry.request.sessionId === selectedExternalSession.id)
+        ? Object.values(externalQuestions).filter((entry) => entry.request.parentSessionId === undefined && entry.request.sessionId === selectedExternalSession.id)
         : []}
       loading={externalSessionsLoading}
       transcriptLoading={externalTranscriptLoading}
@@ -9086,6 +9181,9 @@ export default function App() {
         unavailableTitle: t("externalSessionsUnavailableTitle"),
         unavailableBody: t("externalSessionsUnavailableBody"),
         sources: t("externalSessionsSources"),
+        engineSources: t("externalSessionsEngineSources"),
+        terminalSources: t("externalSessionsTerminalSources"),
+        managedTerminal: t("externalSessionsManagedTerminal"),
         sessions: t("externalSessionsCount"),
         safeBridge: t("externalSessionsSafeBridge"),
         metadataOnly: t("externalSessionsMetadataOnly"),
@@ -9674,10 +9772,10 @@ export default function App() {
             ) : workbenchInboxMode === "external" ? (
               <>
                 <div className="external-source-strip">
-                  {(externalSources ?? []).map((source) => (
-                    <span className={`is-${source.state}`} key={source.id} title={source.version || source.label}>
+                  {[...externalSessionSourceGroups(externalSources ?? []).engines, ...externalSessionSourceGroups(externalSources ?? []).terminals].map((source) => (
+                    <span className={`is-${source.state}`} key={source.id} title={source.id === "runtime" ? t("externalSessionsTerminalSources") : source.version || source.label}>
                       <i aria-hidden>{externalSourceMark(source.id)}</i>
-                      <b>{source.label}</b>
+                      <b>{source.id === "runtime" ? t("externalSessionsManagedTerminal") : source.label}</b>
                       <small>{externalSourceStateLabel(source.state)}</small>
                     </span>
                   ))}
@@ -10110,6 +10208,10 @@ export default function App() {
                     </SettingsNotice>
                   )}
                 </SettingsCard>
+
+                <CodingExecutorSettings key={`${activeSpaceId}:${server?.pid ?? "none"}:${phase}`}
+                  client={phase === "ready" ? clientRef.current : null} cwd={server?.cwd}
+                  personal={activeSpaceId === "personal"} t={t} />
 
                 <SettingsCard
                   title={t("cliTitle")}

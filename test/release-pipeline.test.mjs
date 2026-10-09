@@ -2019,10 +2019,19 @@ test("target-runtime downloads and RPM extraction fail only after bounded portab
   assert.match(workflow, /BUN_WINDOWS_BASELINE_SHA256: "39f12024edc27d3706baa7b72a06156896b536af61472e0f9a6fe9c5e25b97cc"/);
   assert.match(workflow, /sha256sum "\$\(command -v bun\)"/);
   assert.match(workflow, /x86_64-pc-windows-msvc\)\s+BUN_TARGET=""/);
-  assert.match(workflow, /BUILD_COMMAND=\(bun scripts\/build-binary\.ts dist\/bin\/hara-sidecar\)/);
+  assert.match(workflow, /BUILD_COMMAND=\(bun scripts\/build-binary\.ts dist\/bin\/hara-sidecar "" dist\/cli\.js desktop-sidecar\)/);
   assert.match(workflow, /libarchive-tools/);
   assert.match(packageSmoke, /runExtractionTool\(\s*"bsdtar"/);
   assert.doesNotMatch(packageSmoke, /"rpm2cpio"/);
+});
+
+test("Desktop reuses its pinned OpenCode sidecar without embedding another runtime copy", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
+  const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
+  assert.match(workflow, /BUILD_COMMAND=\(bun scripts\/build-binary\.ts dist\/bin\/hara-sidecar "\$BUN_TARGET" dist\/cli\.js desktop-sidecar\)/);
+  assert.match(refresh, /bun scripts\/build-binary\.ts "dist\/bin\/hara-refresh" "\$BUN_TARGET" dist\/cli\.js desktop-sidecar/);
+  assert.match(workflow, /refresh-opencode-runtime\.mjs/);
+  assert.match(refresh, /refresh-opencode-runtime\.mjs/);
 });
 
 test("every x64 sidecar uses a baseline CPU target and executes the hostile-cwd boundary smoke", () => {

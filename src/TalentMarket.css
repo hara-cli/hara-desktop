@@ -4,6 +4,8 @@
   z-index: 138;
   inset: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   padding: clamp(12px, 2.2vw, 30px);
   background:
@@ -20,9 +22,11 @@
   position: relative;
   isolation: isolate;
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   width: min(1460px, calc(100vw - 24px));
   height: min(900px, calc(100vh - 24px));
+  max-width: 100%;
+  max-height: 100%;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--line) 78%, var(--fg));
   border-radius: 22px 18px 25px 16px;
@@ -35,6 +39,7 @@
 
 .talent-market-shell,
 .talent-market-shell * { box-sizing: border-box; }
+.talent-market-catalog { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto auto auto minmax(0, 1fr); }
 
 .talent-market-shell::before {
   position: absolute;
@@ -78,13 +83,13 @@
   display: block;
 }
 .talent-market-brand > div { display: grid; min-width: 0; gap: 1px; }
-.talent-market-brand small,
-.talent-market-hero small {
+.talent-market-brand small {
   color: var(--dim);
   font: 800 9px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: .15em;
 }
 .talent-market-brand strong { overflow: hidden; font: 750 20px/1.1 "Avenir Next", "PingFang SC", sans-serif; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.talent-market-brand p { margin: 5px 0 0; color: var(--dim); font-size: 10px; line-height: 1.45; }
 .talent-market-header-actions { display: flex; flex: none; align-items: center; gap: 9px; }
 .talent-market-live { display: inline-flex; align-items: center; gap: 7px; color: var(--dim); font-size: 10px; }
 .talent-market-live i { width: 7px; height: 7px; border-radius: 50%; background: #53a56d; box-shadow: 0 0 0 4px color-mix(in srgb, #53a56d 14%, transparent); }
@@ -127,47 +132,9 @@
 .talent-market-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--fg); }
 @media (prefers-reduced-motion: reduce) { .talent-market-close { transition: none; } }
 
-.talent-market-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 30px;
-  padding: 22px 26px 19px;
-  border-bottom: 1px solid var(--line);
-  background:
-    linear-gradient(113deg, color-mix(in srgb, var(--accent) 10%, var(--bg2)), transparent 58%),
-    color-mix(in srgb, var(--bg) 35%, var(--bg2));
-}
-.talent-market-hero > * { min-width: 0; }
-.talent-market-hero h2 { margin: 5px 0 4px; font: 800 clamp(25px, 3vw, 42px)/1.04 Georgia, "Songti SC", serif; letter-spacing: -.045em; }
-.talent-market-hero p { max-width: 720px; margin: 0; color: var(--dim); font-size: 11px; line-height: 1.6; }
-.talent-market-stats {
-  display: grid;
-  width: min(100%, 400px);
-  min-width: 0;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  justify-self: end;
-  gap: 8px;
-}
-.talent-market-stats > span {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-  overflow: hidden;
-  padding: 10px 12px 9px;
-  transform: rotate(var(--tilt, -.5deg));
-  border: 1px solid var(--line);
-  border-radius: 7px 10px 8px 6px;
-  background: color-mix(in srgb, var(--bg2) 92%, var(--fg));
-  box-shadow: 2px 2px 0 color-mix(in srgb, var(--line) 75%, transparent);
-}
-.talent-market-stats > span:nth-child(2) { --tilt: .7deg; }
-.talent-market-stats b { font: 850 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.talent-market-stats small { overflow: hidden; color: var(--dim); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-
 .talent-market-search-row {
   display: grid;
-  grid-template-columns: minmax(280px, .85fr) minmax(440px, 1.15fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 22px;
   padding: 12px 20px;
@@ -188,13 +155,6 @@
 .talent-market-search > span { display: grid; place-items: center; color: var(--accent); }
 .talent-market-search input { min-width: 0; border: 0; outline: 0; padding: 10px 4px; background: transparent; color: var(--fg); font: 600 11px/1.2 inherit; }
 .talent-market-search button { display: grid; margin-right: 6px; padding: 5px; place-items: center; border: 0; background: transparent; color: var(--dim); cursor: pointer; }
-.talent-market-journey { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 0; overflow: hidden; }
-.talent-market-journey span { position: relative; display: flex; min-width: 0; align-items: center; gap: 5px; color: var(--dim); font: 650 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
-.talent-market-journey span:not(:last-child)::after { width: clamp(13px, 2.2vw, 38px); height: 1px; margin: 0 6px; content: ""; background: var(--line); }
-.talent-market-journey i { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid var(--line); border-radius: 50%; font: normal 800 8px/1 inherit; }
-.talent-market-journey .is-now { color: var(--fg); }
-.talent-market-journey .is-now i { border-color: var(--accent); background: var(--accent); color: #fff; }
-
 .talent-market-departments {
   display: flex;
   gap: 7px;
@@ -222,13 +182,13 @@
 .talent-market-departments i { color: var(--accent); font: normal 900 11px/1 Georgia, serif; }
 .talent-market-departments b { display: grid; min-width: 17px; height: 17px; place-items: center; border-radius: 999px; background: color-mix(in srgb, var(--fg) 7%, transparent); font: 750 8px/1 ui-monospace, monospace; }
 
-.talent-market-body { display: grid; min-width: 0; min-height: 0; grid-template-columns: minmax(0, 1fr) minmax(330px, 390px); }
+.talent-market-body { display: grid; min-width: 0; min-height: 0; grid-template-columns: minmax(0, 1fr); }
 .talent-market-body > * { min-width: 0; }
 .talent-market-roster { min-width: 0; overflow: auto; padding: 15px 17px 30px; overscroll-behavior: contain; }
 .talent-market-roster-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 2px 12px; }
 .talent-market-roster-heading span { font: 800 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
 .talent-market-roster-heading small { color: var(--dim); font-size: 9px; }
-.talent-market-card-grid { display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 11px; }
+.talent-market-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 11px; }
 .talent-card {
   --talent-accent: var(--accent);
   position: relative;
@@ -270,8 +230,7 @@
 .talent-card-footer { display: flex; grid-column: 1 / -1; align-items: flex-end; justify-content: space-between; gap: 8px; border-top: 1px dashed color-mix(in srgb, var(--line) 84%, transparent); padding-top: 8px; }
 .talent-card-footer > span { display: flex; min-width: 0; flex-wrap: wrap; gap: 4px; }
 .talent-card-footer i { max-width: 105px; overflow: hidden; border-radius: 999px; padding: 4px 6px; background: color-mix(in srgb, var(--talent-accent) 10%, var(--bg)); color: var(--dim); font: normal 650 7px/1 inherit; text-overflow: ellipsis; white-space: nowrap; }
-.talent-card-footer > b { display: grid; min-width: 24px; height: 24px; place-items: center; border: 1px solid color-mix(in srgb, var(--talent-accent) 48%, var(--line)); border-radius: 50%; color: var(--talent-accent); font: 800 11px/1 ui-monospace, monospace; white-space: nowrap; }
-.talent-card.is-hired .talent-card-footer > b { width: auto; border-radius: 999px; padding: 0 7px; font-size: 7px; }
+.talent-card-footer > b { display: flex; min-height: 24px; flex: none; align-items: center; gap: 3px; color: var(--talent-accent); font: 750 8px/1 inherit; white-space: nowrap; }
 .talent-market-more { display: grid; min-height: 150px; place-items: center; align-content: center; gap: 5px; border: 1px dashed color-mix(in srgb, var(--accent) 46%, var(--line)); border-radius: 11px; background: color-mix(in srgb, var(--accent) 5%, var(--bg2)); color: var(--fg); cursor: pointer; }
 .talent-market-more:hover { background: color-mix(in srgb, var(--accent) 10%, var(--bg2)); }
 .talent-market-more span { font: 800 12px/1.2 inherit; }
@@ -283,7 +242,11 @@
 .talent-market-empty p { margin: 0; font-size: 10px; }
 .talent-market-empty button { margin-top: 5px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; background: var(--bg); color: var(--fg); cursor: pointer; }
 
-.talent-dossier { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; border-left: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 58%, var(--bg2)); }
+.talent-drawer-overlay { position: absolute; z-index: 3; inset: 0; display: flex; justify-content: flex-end; background: rgb(10 9 8 / 40%); }
+.talent-dossier { display: grid; width: min(460px, 100%); min-height: 0; grid-template-rows: auto auto minmax(0, 1fr) auto; border-left: 1px solid var(--line); background: var(--bg2); box-shadow: -16px 0 46px rgb(0 0 0 / 20%); }
+.talent-dossier:focus { outline: none; }
+.talent-dossier-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--line); }
+.talent-dossier-toolbar strong { font-size: 11px; }
 .talent-dossier-top {
   --talent-accent: var(--accent);
   position: relative;
@@ -340,7 +303,6 @@
 .talent-dossier-footer button:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 color-mix(in srgb, var(--fg) 70%, transparent); }
 .talent-dossier-footer button:disabled { border-color: var(--line); background: color-mix(in srgb, var(--fg) 9%, var(--bg2)); color: var(--dim); cursor: default; box-shadow: none; }
 .talent-dossier-footer button span { font-size: 16px; }
-.talent-dossier-empty { display: grid; min-height: 100%; place-items: center; color: var(--dim); font-size: 11px; }
 
 @keyframes talent-market-arrive {
   from { transform: translateY(10px) scale(.985); opacity: 0; }
@@ -348,20 +310,13 @@
 }
 
 @media (max-width: 1180px) {
-  .talent-market-card-grid { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
-  .talent-market-body { grid-template-columns: minmax(0, 1fr) minmax(310px, 350px); }
-  .talent-market-journey span:not(:last-child)::after { width: 13px; }
+  .talent-market-card-grid { grid-template-columns: repeat(3, minmax(190px, 1fr)); }
 }
 
 @media (max-width: 900px) {
   .talent-market-shell { width: calc(100vw - 18px); height: calc(100vh - 18px); }
   .talent-market-live { display: none; }
-  .talent-market-hero { grid-template-columns: 1fr; gap: 12px; }
-  .talent-market-stats { justify-self: start; }
-  .talent-market-search-row { grid-template-columns: 1fr; gap: 9px; }
-  .talent-market-journey { justify-content: flex-start; }
-  .talent-market-body { grid-template-columns: minmax(0, 1fr) minmax(290px, 42%); }
-  .talent-market-card-grid { grid-template-columns: 1fr; }
+  .talent-market-card-grid { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
 }
 
 @media (max-width: 680px) {
@@ -374,19 +329,13 @@
   .talent-market-brand strong { font-size: 16px; }
   .talent-market-header-actions { gap: 6px; }
   .talent-market-custom { padding: 8px; font-size: 9px; }
-  .talent-market-hero { padding: 16px 15px 13px; }
-  .talent-market-hero h2 { font-size: 26px; }
-  .talent-market-stats > span { min-width: 0; padding: 8px; }
-  .talent-market-stats b { font-size: 16px; }
+  .talent-market-brand p { max-width: 38ch; font-size: 9px; }
   .talent-market-search-row { padding: 9px 12px; }
-  .talent-market-journey { display: none; }
   .talent-market-departments { padding-inline: 11px; }
-  .talent-market-body { display: block; overflow: auto; }
-  .talent-market-roster { overflow: visible; padding: 13px 12px; }
+  .talent-market-roster { padding: 13px 12px; }
   .talent-market-card-grid { grid-template-columns: repeat(2, minmax(145px, 1fr)); }
   .talent-card { min-height: 178px; grid-template-columns: 50px minmax(0, 1fr); padding-inline: 10px; }
-  .talent-dossier { min-height: 600px; border-top: 1px solid var(--line); border-left: 0; }
-  .talent-dossier-scroll { overflow: visible; }
+  .talent-dossier { width: 100%; border-left: 0; }
 }
 
 @media (max-width: 560px) {
@@ -396,7 +345,6 @@
 
 @media (max-width: 430px) {
   .talent-market-custom { width: 36px; height: 36px; justify-content: center; gap: 0; overflow: hidden; padding: 0; font-size: 0; }
-  .talent-market-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

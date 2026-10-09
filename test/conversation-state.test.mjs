@@ -120,3 +120,18 @@ test("turn end ignores empty terminal replies used by paused or failed turns", (
   assert.equal(reconcileTerminalReply(items, ""), items);
   assert.equal(reconcileTerminalReply(items, "   "), items);
 });
+
+test("paused turn restores its saved handoff without replaying execution details", () => {
+  const items = [
+    { kind: "user", text: "upload and notify" },
+    { kind: "tool", name: "upload", preview: "receipt saved" },
+    { kind: "text", text: "The task is paused; " },
+  ];
+  const handoff = "The task is paused; the upload receipt is retained, but notification still needs verification. Do not upload again.";
+  const repaired = reconcileTerminalReply(items, handoff);
+  assert.deepEqual(repaired, [
+    ...items.slice(0, 2),
+    { kind: "text", text: handoff },
+  ]);
+  assert.equal(reconcileTerminalReply(repaired, handoff), repaired);
+});

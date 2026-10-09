@@ -107,7 +107,7 @@ test("pending card layout is a temporary compact split and status remains in ter
   assert.match(css, /has-pending-approval > \.extension-primary \{ display: flex; \}/);
   assert.match(css, /@container extension-work \(max-width: 760px\)[\s\S]*?has-pending-approval\.has-visible-extension \{ flex-direction: column; \}/);
   const source = readFileSync(new URL("src/App.tsx", root), "utf8");
-  assert.match(source, /const effectiveConversationDockMode = approvalDockMode\(contextExtensionDock\?\.mode \?\? "docked", items, approvalClock\)/);
+  assert.match(source, /const effectiveConversationDockMode = parentInteractionPending \? "docked" : approvalDockMode\(contextExtensionDock\?\.mode \?\? "docked", items, approvalClock\)/);
   assert.match(source, /effectiveConversationDockMode === "maximized" \? taskApprovalStatusSurface : null/);
   assert.match(source, /taskApprovalSupported=\{taskApprovalSupported && !readOnlySessions\[active\]\}/);
   assert.doesNotMatch(source, /setExtensionDockMode\(effectiveConversationDockMode/);

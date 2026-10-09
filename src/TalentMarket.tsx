@@ -1,13 +1,11 @@
-import { useDeferredValue, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { AgentPortrait } from "./AgentPortrait";
 import type { AgentPublicIdentity } from "./client";
 import { IconArrowRight, IconClose, IconPlus, IconSearch } from "./icons";
 import HaraLogo from "./mark";
 import {
   AGENT_BLUEPRINTS,
-  AGENCY_AGENT_CATALOG_STATS,
   AGENCY_AGENTS_LICENSE,
-  HARA_CURATED_BLUEPRINTS,
   TALENT_DEPARTMENTS,
   filterTalentBlueprints,
   talentBlueprintIdentity,
@@ -22,6 +20,7 @@ import {
   type TalentDepartmentId,
   type TalentLocale,
 } from "./talent-blueprints";
+import { bindTalentDrawerFocus, talentMarketEscapeAction } from "./talent-market-navigation";
 import "./TalentMarket.css";
 
 interface TalentMarketProps {
@@ -67,7 +66,11 @@ export default function TalentMarket({
 }: TalentMarketProps) {
   const [query, setQuery] = useState("");
   const [department, setDepartment] = useState<"all" | TalentDepartmentId>("all");
-  const [selectedId, setSelectedId] = useState(() => AGENT_BLUEPRINTS.find((item) => item.featured)?.id ?? AGENT_BLUEPRINTS[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const selectedCardRef = useRef<HTMLButtonElement | null>(null);
+  const suspendedRef = useRef(suspended);
+  suspendedRef.current = suspended;
   const [visibleLimit, setVisibleLimit] = useState(INITIAL_VISIBLE_TALENT);
   const deferredQuery = useDeferredValue(query);
   const hired = useMemo(() => new Set(hiredBlueprintIds), [hiredBlueprintIds]);
@@ -75,16 +78,31 @@ export default function TalentMarket({
     () => filterTalentBlueprints(AGENT_BLUEPRINTS, deferredQuery, department),
     [deferredQuery, department],
   );
-  const selected = filtered.find((item) => item.id === selectedId) ?? filtered[0] ?? null;
+  const selected = AGENT_BLUEPRINTS.find((item) => item.id === selectedId) ?? null;
   const visibleBlueprints = filtered.slice(0, visibleLimit);
 
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !suspended) onClose();
+      if (event.key !== "Escape") return;
+      const action = talentMarketEscapeAction(!!selected, suspended);
+      if (!action) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (action === "drawer") setSelectedId(null);
+      else onClose();
     };
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
-  }, [onClose, suspended]);
+  }, [onClose, selected, suspended]);
+  useEffect(() => {
+    if (!selected || suspended || !drawerRef.current) return;
+    const release = bindTalentDrawerFocus(drawerRef.current);
+    return () => {
+      release();
+      // Do not steal focus from the separate hiring/approval modal while this market is suspended.
+      if (!suspendedRef.current && selectedCardRef.current?.isConnected) selectedCardRef.current.focus({ preventScroll: true });
+    };
+  }, [selected, suspended]);
 
   return (
     <div
@@ -93,16 +111,21 @@ export default function TalentMarket({
       inert={suspended}
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !suspended) onClose();
+        if (event.target === event.currentTarget && !suspended) {
+          if (selected) setSelectedId(null);
+          else onClose();
+        }
       }}
     >
-      <section className="talent-market-shell" role="dialog" aria-modal={!suspended} aria-labelledby="talent-market-title">
+      <section className="talent-market-shell" role="dialog" aria-modal={!suspended && !selected} aria-labelledby="talent-market-title">
+        <div className="talent-market-catalog" inert={!!selected} aria-hidden={!!selected || undefined}>
         <header className="talent-market-header">
           <div className="talent-market-brand" aria-label="Hara Talent Bureau">
             <span className="talent-market-brand-mark" aria-hidden><HaraLogo size={30} /></span>
             <div>
               <small>HARA CAMPUS · TALENT BUREAU</small>
               <strong id="talent-market-title">{locale === "zh" ? "人才中心" : "Talent Bureau"}</strong>
+              <p>{locale === "zh" ? "查看能力与边界，再决定是否雇佣。浏览不会授予工具权限。" : "Explore capabilities and boundaries before hiring. Browsing grants no tool permissions."}</p>
             </div>
           </div>
           <div className="talent-market-header-actions">
@@ -114,27 +137,12 @@ export default function TalentMarket({
           </div>
         </header>
 
-        <div className="talent-market-hero">
-          <div>
-            <small>{locale === "zh" ? "先选能力，再谈入职" : "CAPABILITY FIRST · HIRE SECOND"}</small>
-            <h2>{locale === "zh" ? "今天，你想推进什么？" : "What should move forward today?"}</h2>
-            <p>{locale === "zh"
-              ? "搜索结果而不是职位名称。候选人未入职前不读取项目、不占用工位，也不会获得任何工具权限。"
-              : "Search for an outcome, not a job title. Candidates cannot read projects, occupy a desk, or gain tools before hiring."}</p>
-          </div>
-          <div className="talent-market-stats" aria-label={locale === "zh" ? "人才市场统计" : "Talent market statistics"}>
-            <span><b>{AGENT_BLUEPRINTS.length}</b><small>{locale === "zh" ? "完整人才库" : "full catalog"}</small></span>
-            <span><b>{AGENCY_AGENT_CATALOG_STATS.domesticAdditions}</b><small>{locale === "zh" ? "国内新增岗位" : "China-specific roles"}</small></span>
-            <span><b>{HARA_CURATED_BLUEPRINTS.length}</b><small>{locale === "zh" ? "Hara 精选" : "Hara curated"}</small></span>
-            <span><b>0</b><small>{locale === "zh" ? "自动授权" : "automatic grants"}</small></span>
-          </div>
-        </div>
-
         <div className="talent-market-search-row">
           <label className="talent-market-search">
             <span aria-hidden><IconSearch size={17} /></span>
             <input
               autoFocus
+              aria-label={locale === "zh" ? "搜索候选人" : "Search candidates"}
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
@@ -148,12 +156,6 @@ export default function TalentMarket({
               setVisibleLimit(INITIAL_VISIBLE_TALENT);
             }}><IconClose size={14} /></button> : null}
           </label>
-          <div className="talent-market-journey" aria-label={locale === "zh" ? "招聘流程" : "Hiring journey"}>
-            <span className="is-now"><i>1</i>{locale === "zh" ? "发现" : "Discover"}</span>
-            <span><i>2</i>{locale === "zh" ? "审阅" : "Inspect"}</span>
-            <span><i>3</i>{locale === "zh" ? "授权入职" : "Authorize"}</span>
-            <span><i>4</i>{locale === "zh" ? "进入办公室" : "Enter office"}</span>
-          </div>
         </div>
 
         <nav className="talent-market-departments" aria-label={locale === "zh" ? "职能部门" : "Departments"}>
@@ -182,7 +184,7 @@ export default function TalentMarket({
           <div className="talent-market-roster" aria-label={locale === "zh" ? "候选人列表" : "Candidate roster"}>
             <div className="talent-market-roster-heading">
               <span>{locale === "zh" ? `找到 ${filtered.length} 位候选人` : `${filtered.length} candidates`}</span>
-              <small>{locale === "zh" ? "点击名片查看入职档案" : "Select a card for the hiring dossier"}</small>
+              <small>{locale === "zh" ? "点击查看详情，不会直接雇佣" : "View details first; selecting a card does not hire"}</small>
             </div>
             {filtered.length ? (
               <div className="talent-market-card-grid">
@@ -197,8 +199,13 @@ export default function TalentMarket({
                       type="button"
                       key={blueprint.id}
                       className={`talent-card${isSelected ? " is-selected" : ""}${isHired ? " is-hired" : ""}`}
-                      aria-pressed={isSelected}
-                      onClick={() => setSelectedId(blueprint.id)}
+                      aria-haspopup="dialog"
+                      aria-expanded={isSelected}
+                      aria-controls={isSelected ? "talent-candidate-details" : undefined}
+                      onClick={(event) => {
+                        selectedCardRef.current = event.currentTarget;
+                        setSelectedId(blueprint.id);
+                      }}
                       style={{ "--talent-accent": blueprint.accent } as CSSProperties}
                     >
                       <span className="talent-card-number">NO.{String(index + 1).padStart(2, "0")}</span>
@@ -214,7 +221,7 @@ export default function TalentMarket({
                       </span>
                       <span className="talent-card-footer">
                         <span>{blueprint.capabilities[locale].slice(0, 2).map((capability) => <i key={capability}>{capability}</i>)}</span>
-                        <b>{isHired ? (locale === "zh" ? "已入职" : "HIRED") : <IconPlus size={15} />}</b>
+                        <b>{isHired ? (locale === "zh" ? "已入职 · " : "Hired · ") : ""}{locale === "zh" ? "查看详情" : "View details"}<IconArrowRight size={12} /></b>
                       </span>
                     </button>
                   );
@@ -235,8 +242,18 @@ export default function TalentMarket({
               </div>
             )}
           </div>
+        </div>
+        </div>
 
-          <aside className="talent-dossier" aria-live="polite">
+        {selected ? <div className="talent-drawer-overlay" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setSelectedId(null);
+        }}>
+          <aside ref={drawerRef} id="talent-candidate-details" className="talent-dossier" role="dialog" aria-modal={!suspended}
+            aria-labelledby="talent-dossier-title" tabIndex={-1}>
+            <header className="talent-dossier-toolbar">
+              <strong>{locale === "zh" ? "候选人详情" : "Candidate details"}</strong>
+              <button type="button" className="talent-market-close" aria-label={locale === "zh" ? "关闭候选人详情" : "Close candidate details"} onClick={() => setSelectedId(null)}><IconClose size={18} /></button>
+            </header>
             {selected ? (() => {
               const identity = blueprintIdentity(selected, locale);
               const isHired = hired.has(selected.id);
@@ -250,7 +267,7 @@ export default function TalentMarket({
                     <AgentPortrait agentRef={`talent:${selected.id}`} name={identity.displayName} identity={identity} size="large" />
                     <div>
                       <small>@{selected.username}</small>
-                      <h3>{talentText(selected.name, locale)}</h3>
+                      <h3 id="talent-dossier-title">{talentText(selected.name, locale)}</h3>
                       <p>{talentText(selected.title, locale)}</p>
                     </div>
                   </div>
@@ -322,11 +339,9 @@ export default function TalentMarket({
                   </footer>
                 </>
               );
-            })() : (
-              <div className="talent-dossier-empty">{locale === "zh" ? "选择一位候选人" : "Select a candidate"}</div>
-            )}
+            })() : null}
           </aside>
-        </div>
+        </div> : null}
       </section>
     </div>
   );

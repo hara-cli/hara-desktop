@@ -53,6 +53,31 @@ export function taskStateIsLive(state: TaskLifecycleEvent["state"]): boolean {
   return state === "running" || state === "waiting";
 }
 
+/** An older terminal event cannot clear a newer turn's busy/approval state or replay its reply.
+ * Legacy engines without wire turn IDs retain their existing terminal handling. */
+export function terminalTurnIsCurrent(
+  current: TaskLifecycleEvent | undefined,
+  turnId: string | undefined,
+  activeTurnId: string | undefined,
+): boolean {
+  if (!turnId) return true;
+  if (activeTurnId) return turnId === activeTurnId;
+  return !current || current.turnId === turnId;
+}
+
+/** A paused logical turn is not a failed business task. Typed terminal checkpoints remain the
+ * authority; this classification is used only when their final event did not reach the renderer. */
+export function terminalTaskState(
+  error: string | undefined,
+  status: string | undefined,
+  interrupted = false,
+): "paused" | "completed" | "blocked" {
+  if (interrupted) return "paused";
+  if (error) return "blocked";
+  if (status === "paused") return "paused";
+  return status && status !== "completed" ? "blocked" : "completed";
+}
+
 export function terminalTaskLifecycleFallback(
   current: TaskLifecycleEvent | undefined,
   turnId: string | undefined,

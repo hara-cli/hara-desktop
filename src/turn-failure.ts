@@ -59,3 +59,17 @@ export function turnFailureMessage(
     ? "本轮没有完成。任务和已发送消息仍然保留；请查看任务状态后重试。"
     : "This turn did not finish. The task and your message were kept; review the task status and retry.";
 }
+
+/** session.send can reject after its terminal event already rendered the safe failure notice. Keep
+ * that receipt/error contract, but never append its raw diagnostic or duplicate the event's notice. */
+export function rpcTurnFailureMessage(
+  error: unknown,
+  locale: Locale,
+  failureNotified = false,
+): string | undefined {
+  if (failureNotified) return undefined;
+  const candidate = error && typeof error === "object" ? error as { message?: unknown } : undefined;
+  const detail = typeof error === "string" ? error
+    : typeof candidate?.message === "string" ? candidate.message : "Request failed.";
+  return turnFailureMessage(detail || "Request failed.", "error", locale);
+}

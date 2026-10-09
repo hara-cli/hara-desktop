@@ -17,6 +17,7 @@ import type {
 } from "./client";
 import ExternalQuestionCard from "./ExternalQuestionCard";
 import { externalQuestionDockMode, externalQuestionPending, type ExternalQuestionEntry } from "./external-question-state";
+import { externalSessionSourceGroups } from "./external-session-presentation";
 import { IconBack, IconCommandLine, IconRefresh } from "./icons";
 import { isImeCompositionKey } from "./ime";
 import { MessageCopyButton } from "./MessageCopyButton";
@@ -46,6 +47,9 @@ export interface ExternalSessionCenterCopy {
   unavailableTitle: string;
   unavailableBody: string;
   sources: string;
+  engineSources: string;
+  terminalSources: string;
+  managedTerminal: string;
   sessions: string;
   safeBridge: string;
   metadataOnly: string;
@@ -279,7 +283,7 @@ export default function ExternalSessionCenter({
   const running = actionBusy === "turn";
   const canSteer = activeSource?.capabilities.steer === true;
   const canSendFollowUp = running && canSteer;
-  const scopedQuestions = questions.filter((entry) => entry.request.sessionId === selectedId);
+  const scopedQuestions = questions.filter((entry) => !entry.request.parentSessionId && entry.request.sessionId === selectedId);
   const hasPendingQuestion = scopedQuestions.some((entry) => externalQuestionPending(entry, questionClock));
   const nextQuestionExpiry = scopedQuestions.reduce((earliest, entry) => {
     const expiry = Date.parse(entry.request.expiresAt);
@@ -389,6 +393,7 @@ export default function ExternalSessionCenter({
   }
 
   const readySources = sources?.filter((source) => source.state === "ready").length ?? 0;
+  const sourceGroups = externalSessionSourceGroups(sources ?? []);
   const authenticationRequired = transcript?.continuationUnavailableReason === "authentication_required";
   return (
     <main className="external-session-center">
@@ -410,21 +415,28 @@ export default function ExternalSessionCenter({
             <span><b>{String(readySources).padStart(2, "0")}</b>{copy.sources}</span>
             <span><b>{String(sessions.length).padStart(2, "0")}</b>{copy.sessions}</span>
           </div>
-          <div className="external-source-switcher" aria-label={copy.sources}>
-            {(sources ?? []).map((source) => (
-              <button
-                type="button"
-                className={`external-source-tab is-${source.state}${selectedSourceId === source.id ? " is-selected" : ""}`}
-                key={source.id}
-                onClick={() => onSelectSource(source.id)}
-                disabled={loading || source.state !== "ready"}
-                aria-pressed={selectedSourceId === source.id}
-              >
-                <span className={`external-source-logo is-${source.id}`} aria-hidden>{sourceMark(source.id)}</span>
-                <span><strong>{source.label}</strong><small>{copy.sourceStates[source.state]}</small></span>
-                <em>{source.capabilities.observeLive ? copy.modeLive : copy.modeHistory}</em>
-              </button>
-            ))}
+          <div className="external-source-groups">
+            {(["engines", "terminals"] as const).map((group) => sourceGroups[group].length > 0 ? (
+              <section className={`external-source-group is-${group}`} key={group} aria-label={group === "engines" ? copy.engineSources : copy.terminalSources}>
+                <h2>{group === "engines" ? copy.engineSources : copy.terminalSources}</h2>
+                <div className="external-source-switcher">
+                  {sourceGroups[group].map((source) => (
+                    <button
+                      type="button"
+                      className={`external-source-tab is-${source.state}${selectedSourceId === source.id ? " is-selected" : ""}`}
+                      key={source.id}
+                      onClick={() => onSelectSource(source.id)}
+                      disabled={loading || source.state !== "ready"}
+                      aria-pressed={selectedSourceId === source.id}
+                    >
+                      <span className={`external-source-logo is-${source.id}`} aria-hidden>{sourceMark(source.id)}</span>
+                      <span><strong>{source.id === "runtime" ? copy.managedTerminal : source.label}</strong><small>{copy.sourceStates[source.state]}</small></span>
+                      <em>{source.capabilities.observeLive ? copy.modeLive : copy.modeHistory}</em>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : null)}
           </div>
           <span className="external-session-seal"><i aria-hidden />{copy.safeBridge}</span>
         </section>

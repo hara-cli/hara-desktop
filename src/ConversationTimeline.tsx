@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { AgentCreationApproval, ModelUsage, TaskApprovalOffer, TaskLifecycleEvent } from "./client";
 import { approvalRequestExpired, createTaskApprovalSubmission, offeredTaskApproval } from "./task-approval-state";
 import {
@@ -53,7 +53,7 @@ const EXECUTION_TOOL_LABEL_KEYS: Partial<Record<string, Key>> = {
   agent_create: "executionActionCreateAgent",
 };
 
-function ApprovalCard({
+export function ApprovalCard({
   approvalId,
   question,
   allowAlways,
@@ -65,6 +65,7 @@ function ApprovalCard({
   taskApprovalCommandId,
   taskApprovalSupported,
   sessionId,
+  disabled = false,
   t,
   onApproval,
 }: {
@@ -79,6 +80,7 @@ function ApprovalCard({
   taskApprovalCommandId?: string;
   taskApprovalSupported: boolean;
   sessionId?: string;
+  disabled?: boolean;
   t: (key: Key) => string;
   onApproval: (approvalId: string, verdict: ApprovalVerdict, commandId?: string, sessionId?: string) => Promise<void>;
 }) {
@@ -98,7 +100,7 @@ function ApprovalCard({
   const proposal = presentation?.kind === "agent-create" ? presentation : undefined;
   const taskChoice = offeredTaskApproval({ taskApproval, allowForTask, expiresAt, presentation }, taskApprovalSupported && !!sessionId, now);
   const submit = async (verdict: ApprovalVerdict): Promise<void> => {
-    if (answered || locked.current) return;
+    if (disabled || answered || locked.current) return;
     if ((taskApprovalCommandId || !taskSubmission.canChoose(verdict)) && verdict !== "task") return;
     if (approvalRequestExpired(expiresAt) || (verdict === "task" && (!taskChoice || taskSubmission.isLocked()))) return;
     locked.current = true;
@@ -153,20 +155,20 @@ function ApprovalCard({
           <p className="approval-card-scope">{t(proposal ? "agentCreateScope" : "approvalScopeHint")}</p>
           {taskChoice ? <div className="task-approval-offer"><p>{t(taskApproval!.toolFamily === "bash" ? "taskApprovalBash" : taskApproval!.toolFamily === "python" ? "taskApprovalPython" : "taskApprovalFiles")} · {taskApproval!.summary}</p><small>{t("approvalTaskScope")}</small></div> : null}
           <div className="approval-card-actions">
-            <button disabled={pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} aria-busy={pending} onClick={() => void submit("allow")}>
+            <button disabled={disabled || pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} aria-busy={pending} onClick={() => void submit("allow")}>
               {t(proposal ? "agentCreateConfirm" : "allow")}
             </button>
             {taskChoice ? (
-              <button type="button" disabled={pending} className="ghost task-approval-choice" onClick={() => void submit("task")}>
+              <button type="button" disabled={disabled || pending} className="ghost task-approval-choice" onClick={() => void submit("task")}>
                 {t("approvalForTask")}
               </button>
             ) : null}
             {!proposal && allowAlways !== false ? (
-              <button disabled={pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} className="ghost" onClick={() => void submit("always")}>
+              <button disabled={disabled || pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} className="ghost" onClick={() => void submit("always")}>
                 {t("always")}
               </button>
             ) : null}
-            <button disabled={pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} className="deny" onClick={() => void submit("deny")}>
+            <button disabled={disabled || pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} className="deny" onClick={() => void submit("deny")}>
               {t(proposal ? "agentCreateDecline" : "deny")}
             </button>
           </div>
@@ -218,6 +220,7 @@ interface ConversationTimelineProps {
   taskApprovalSupported?: boolean;
   displayMode: ExecutionViewMode;
   bottomRef: RefObject<HTMLDivElement | null>;
+  interactionCards?: ReactNode;
   t: (key: Key) => string;
   onRewind: (itemIndex: number) => void;
   onApproval: (approvalId: string, verdict: ApprovalVerdict, commandId?: string, sessionId?: string) => Promise<void>;
@@ -278,6 +281,7 @@ export const ConversationTimeline = memo(function ConversationTimeline({
   taskApprovalSupported = false,
   displayMode,
   bottomRef,
+  interactionCards,
   t,
   onRewind,
   onApproval,
@@ -697,6 +701,7 @@ export const ConversationTimeline = memo(function ConversationTimeline({
               </div>
             );
           })()}
+        {interactionCards}
         <div ref={bottomRef} />
     </div>
   );

@@ -1,5 +1,7 @@
 // hara serve client — JSON-RPC 2.0 over WebSocket (protocol v1, mirrors hara-cli src/serve/protocol.ts).
 // Request/response correlation + typed event callbacks; the UI layer stays purely declarative.
+import { codingSettingsState, isCodingExecutorPreference, type CodingExecutorPreference, type CodingSettingsState } from "./coding-executor-state.ts";
+export type { CodingExecutorId, CodingExecutorPreference, CodingSettingsState } from "./coding-executor-state.ts";
 
 export interface Discovery {
   host: string;
@@ -1509,7 +1511,7 @@ export interface SessionTurnResult {
   taskId: string;
   turnId: string;
   status?: "paused";
-  stopReason?: "deadline" | "task_round_budget" | "max_rounds" | "strategy_stall" | "no_progress" | "repeat_loop";
+  stopReason?: "deadline" | "task_round_budget" | "max_rounds" | "strategy_stall" | "no_progress" | "repeat_loop" | "completion_verification";
 }
 
 export type SessionSubmitResult =
@@ -1618,6 +1620,9 @@ export interface EventStateSnapshot {
     allowForTask?: boolean;
     taskApproval?: TaskApprovalOffer;
     expiresAt?: string;
+    turnId?: string;
+    parentSessionId?: string;
+    agentPath?: string;
   }>;
 }
 
@@ -1699,6 +1704,9 @@ export interface ExternalUserQuestionRequest {
   sessionId: string;
   turnId: string;
   expiresAt: string;
+  /** Presentation only. Replies always target the original external session and turn. */
+  parentSessionId?: string;
+  agentPath?: string;
   questions: Array<{
     id: string;
     header?: string;
@@ -1711,6 +1719,22 @@ export interface ExternalUserQuestionRequest {
 }
 
 export type ExternalUserQuestionOutcome = "answered" | "cancelled" | "timed_out" | "interrupted";
+export interface ExternalDelegatedApprovalRequest {
+  approvalId: string;
+  sessionId: string;
+  turnId: string;
+  parentSessionId: string;
+  agentPath?: string;
+  expiresAt: string;
+  question: string;
+}
+export interface ExternalDelegatedApprovalReply {
+  approvalId: string;
+  sessionId: string;
+  turnId: string;
+  allow: boolean;
+  commandId?: string;
+}
 export type ExternalUserQuestionAnswers = Record<string, { answers: string[] }>;
 export interface ExternalUserQuestionReply {
   questionId: string;
@@ -1883,7 +1907,12 @@ export type ServerEvent =
       approvalId: string;
       question: string;
       allowAlways?: boolean;
+      turnId?: string;
+      expiresAt?: string;
+      parentSessionId?: string;
+      agentPath?: string;
     }
+  | { method: "external.approval.resolved"; approvalId: string; sessionId: string; turnId: string; outcome: ExternalUserQuestionOutcome }
   | {
       method: "external.event.command_committed";
       sessionId: string;
@@ -2132,7 +2161,7 @@ export class HaraClient {
       capabilities: {
         client: "hara-desktop",
         protocolVersion: 1,
-        features: ["external.sessions.terminal-handoff.v1", "external.questions.v1", "task.approvals.v1"],
+        features: ["external.sessions.terminal-handoff.v1", "external.questions.v1", "external.delegated-interaction.v1", "task.approvals.v1"],
       },
     });
     this.methods = new Set(result.capabilities?.methods ?? []);
@@ -2636,6 +2665,28 @@ export class HaraClient {
   }
   setPlugin(name: string, enabled: boolean) {
     return this.call<{ name: string; enabled: boolean }>("plugins.set", { name, enabled });
+  }
+  async getCodingSettings(cwd?: string): Promise<CodingSettingsState | null> {
+    if (!this.supportsFeature("coding.settings.v1") || !this.supports("settings.coding.get") || !this.supports("settings.coding.update")) return null;
+    try {
+      const next = codingSettingsState(await this.call("settings.coding.get", cwd ? { cwd } : {}));
+      if (!next) throw new Error("invalid_coding_settings");
+      return next;
+    } catch (error: any) {
+      if (error?.code === -32601) return null;
+      throw error;
+    }
+  }
+  async updateCodingSettings(input: { executor: CodingExecutorPreference; expectedRevision: number }, cwd?: string): Promise<CodingSettingsState> {
+    if (!this.supportsFeature("coding.settings.v1") || !this.supports("settings.coding.get") || !this.supports("settings.coding.update")) throw new Error("coding_settings_unsupported");
+    if (!isCodingExecutorPreference(input.executor) || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) {
+      throw new Error("invalid_coding_settings_input");
+    }
+    const next = codingSettingsState(await this.call("settings.coding.update", {
+      executor: input.executor, expectedRevision: input.expectedRevision, ...(cwd ? { cwd } : {}),
+    }));
+    if (!next) throw new Error("invalid_coding_settings");
+    return next;
   }
   async getComputerSettings(cwd?: string): Promise<ComputerSettingsState | null> {
     if (this.methods.size > 0 && !this.supports("settings.computer.get")) return null;
@@ -3373,7 +3424,17 @@ export class HaraClient {
     return this.call("approval.reply", { approvalId, allow, always });
   }
   replyExternalQuestion(reply: ExternalUserQuestionReply) {
-    return this.call<Record<string, never>>("external.question.reply", { ...reply });
+    return this.call<Record<string, never>>("external.question.reply", {
+      questionId: reply.questionId, sessionId: reply.sessionId, turnId: reply.turnId,
+      answers: reply.answers, commandId: reply.commandId, ...(reply.cancelled === true ? { cancelled: true } : {}),
+    });
+  }
+  replyExternalApproval(reply: ExternalDelegatedApprovalReply) {
+    // Parent/path are presentation metadata, and can never replace or broaden this identity.
+    return this.call<Record<string, never>>("external.approval.reply", {
+      approvalId: reply.approvalId, sessionId: reply.sessionId, turnId: reply.turnId, allow: reply.allow,
+      ...(reply.commandId ? { commandId: reply.commandId } : {}),
+    });
   }
   approveForTask(approvalId: string, sessionId: string, commandId: string) {
     return this.call<{ taskApprovalState: TaskApprovalState }>("approval.reply", {
@@ -3411,6 +3472,16 @@ export function supportsExternalUserQuestions(
     && client.supports("external.question.reply")
     && client.supportsEvent("external.question.request")
     && client.supportsEvent("external.question.resolved");
+}
+
+export function supportsExternalDelegatedInteractions(
+  client: Pick<HaraClient, "supports" | "supportsEvent" | "supportsFeature"> | null | undefined,
+): boolean {
+  return supportsExternalUserQuestions(client) && !!client
+    && client.supportsFeature("external.delegated-interaction.v1")
+    && client.supports("external.approval.reply")
+    && client.supportsEvent("external.approval.request")
+    && client.supportsEvent("external.approval.resolved");
 }
 
 export function supportsTaskApprovals(

@@ -113,7 +113,7 @@ build_sidecar_binary() {
   local attempt
   for attempt in 1 2 3; do
     rm -f "$OUT" "$OUT.exe"
-    if (cd "$BUILD_CLI" && bun scripts/build-binary.ts "dist/bin/hara-refresh" "$BUN_TARGET" >/dev/null); then
+    if (cd "$BUILD_CLI" && bun scripts/build-binary.ts "dist/bin/hara-refresh" "$BUN_TARGET" dist/cli.js desktop-sidecar >/dev/null); then
       return 0
     fi
     [ "$attempt" -lt 3 ] || {
