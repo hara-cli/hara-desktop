@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.183 — 2026-10-10 — bundled recovery regression maintenance
+
+- Bundle Hara CLI `0.185.3` at exact commit `df06ee4b253cd5192cd0c2f2ef61edecc6b4e635`.
+  Its six additional WebSocket and production disk-store regression cases verify deterministic
+  closeout recovery and duplicate-command protection; production execution behavior is unchanged.
+- Retain 0.1.182's readable, independently scoped conversation choice cards and accessible Talent
+  Bureau candidate names. This maintenance release does not add UI, provider or permission changes.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may
+  display a reputation warning.
+
 ## 0.1.182 — 2026-10-10 — readable and independent conversation choices
 
 - Keep next-step choice cards at their content height in a long, scrolling conversation. All options
