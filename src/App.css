@@ -1286,6 +1286,8 @@ button.deny {
   border-color: color-mix(in srgb, #e05a47 52%, var(--border));
 }
 .decision-card {
+  /* Keep choices readable when the flex-column transcript needs to scroll. */
+  flex: 0 0 auto;
   width: min(82%, 680px);
   min-width: 0;
   margin: 0 0 4px;

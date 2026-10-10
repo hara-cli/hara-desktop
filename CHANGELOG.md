@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.182 — 2026-10-10 — readable and independent conversation choices
+
+- Keep next-step choice cards at their content height in a long, scrolling conversation. All options
+  remain reachable instead of collapsing to an empty legend, while the message composer keeps its space.
+- Scope a choice card's pending submission to its original session, task, turn, question and options.
+  A new question can be answered independently; refreshing the same question does not unlock it for
+  duplicate submission. Retryable failures retain the explicit retry behavior.
+- Verify the real conversation and confirmation components across short and narrow windows, both
+  languages and themes. No permissions, execution routing or model requests are changed by these fixes.
+- Give each lazily rendered Talent Bureau candidate an explicit localized accessible name, so assistive
+  technology can identify the candidate, role and details action even before its card content is rendered.
+- Keep Hara CLI `0.185.2` at exact commit `5b5de8c1b4b96ba3a49ddd552d2323532b867f05` unchanged.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may display
+  a reputation warning.
+
 ## 0.1.181 — 2026-10-10 — coding preferences and focused execution interactions
 
 - Add a personal-space coding executor preference in Settings for new coding work. Automatic uses OpenCode;

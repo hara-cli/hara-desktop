@@ -19,6 +19,7 @@ import { IconCog } from "./icons";
 import { knownManualActionHintKeys } from "./task-manual-action";
 import { copyTextToClipboard } from "./clipboard";
 import { DecisionCard } from "./DecisionCard";
+import { decisionCardIdentity } from "./decision-card-identity";
 import { taskProgressStopExplanation } from "./task-progress-presentation";
 
 type TaskDependencyKind = NonNullable<
@@ -447,6 +448,13 @@ export const ConversationTimeline = memo(function ConversationTimeline({
   );
   const taskProgressCard = decisionOptions.length > 0 && dependency && onDecision ? (
     <DecisionCard
+      key={decisionCardIdentity(
+        sessionId,
+        visibleTask?.taskId,
+        visibleTask?.turnId,
+        dependency.detail,
+        decisionOptions,
+      )}
       question={blocker || dependency.detail}
       options={decisionOptions}
       busy={busy}

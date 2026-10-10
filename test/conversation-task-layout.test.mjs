@@ -28,6 +28,18 @@ test("long task guidance scrolls with the transcript without displacing the comp
     "the transcript remains before the independently sized composer");
 });
 
+test("next-step choice cards keep their content height in an overflowing chat transcript", () => {
+  const styles = readFileSync(`${root}/src/App.css`, "utf8");
+  const decision = styles.match(/^\.decision-card \{([\s\S]*?)\n\}/m)?.[1] ?? "";
+
+  assert.match(decision, /flex:\s*0\s+0\s+auto\s*;/,
+    "overflow-hidden choice cards must not flex-shrink to an empty legend below long chat history");
+  assert.match(decision, /min-width:\s*0\s*;/,
+    "long options may wrap inside the available chat width");
+  assert.doesNotMatch(decision, /(?:^|;)\s*(?:max-)?height:\s*\d+(?:px|vh)\s*;/,
+    "all choices remain reachable through the transcript instead of a fixed clipped card height");
+});
+
 test("streaming chat follows only while the reader stays near the latest message", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const styles = readFileSync(`${root}/src/App.css`, "utf8");

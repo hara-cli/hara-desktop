@@ -39,6 +39,19 @@ test("initial real catalog has no selected candidate, drawer, or hiring action i
   assert.match(render("en", true), /aria-hidden="true" inert=""/);
 });
 
+test("each lazily rendered candidate has an explicit localized accessible action name", () => {
+  for (const locale of ["en", "zh"]) {
+    const cards = render(locale).match(/<button[^>]*class="talent-card(?: |\")[^>]*>/g) ?? [];
+    assert.equal(cards.length, 48);
+    for (const card of cards) {
+      assert.match(card, locale === "zh"
+        ? /aria-label="[^\"]+ · [^\"]+ · 查看详情"/
+        : /aria-label="[^\"]+ · [^\"]+ · View details"/,
+      "content-visibility must not leave the candidate's button unnamed");
+    }
+  }
+});
+
 test("Escape dismisses the drawer before the market and never touches the suspended hiring modal", () => {
   assert.equal(talentMarketEscapeAction(true, false), "drawer");
   assert.equal(talentMarketEscapeAction(false, false), "market");

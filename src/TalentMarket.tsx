@@ -199,6 +199,7 @@ export default function TalentMarket({
                       type="button"
                       key={blueprint.id}
                       className={`talent-card${isSelected ? " is-selected" : ""}${isHired ? " is-hired" : ""}`}
+                      aria-label={`${talentText(blueprint.name, locale)} · ${talentText(blueprint.title, locale)} · ${locale === "zh" ? "查看详情" : "View details"}`}
                       aria-haspopup="dialog"
                       aria-expanded={isSelected}
                       aria-controls={isSelected ? "talent-candidate-details" : undefined}
