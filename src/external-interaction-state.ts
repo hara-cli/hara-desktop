@@ -1,11 +1,14 @@
-import type { ExternalDelegatedApprovalReply, ExternalDelegatedApprovalRequest, ExternalUserQuestionOutcome } from "./client";
+import type { DelegatedInteractionPresentation, ExternalDelegatedApprovalReply, ExternalDelegatedApprovalRequest, ExternalUserQuestionOutcome } from "./client";
 
 const own = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 const id = (value: unknown): value is string => typeof value === "string" && value.length > 0
   && value.length <= 512 && !/[\u0000-\u001f\u007f]/.test(value) && !["__proto__", "constructor", "prototype"].includes(value);
-export function validExternalInteractionPresentation(value: { parentSessionId?: unknown; agentPath?: unknown }): boolean {
+export function validExternalInteractionPresentation(value: DelegatedInteractionPresentation): boolean {
   return (value.parentSessionId === undefined || id(value.parentSessionId))
-    && (value.agentPath === undefined || id(value.agentPath));
+    && (value.agentPath === undefined || id(value.agentPath))
+    && (value.interactionKind === undefined || value.interactionKind === "agent")
+    && (value.executorAgentRef === undefined || id(value.executorAgentRef))
+    && (value.executorDisplayName === undefined || (id(value.executorDisplayName) && value.executorDisplayName.length <= 160));
 }
 /** Display scope only; RPC authority remains the original external identity. */
 export function externalInteractionInConversation(

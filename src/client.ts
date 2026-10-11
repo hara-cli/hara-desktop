@@ -133,7 +133,23 @@ export interface ExternalSessionReadResult {
   messages: ExternalSessionMessage[];
   readOnly: boolean;
   controlMode?: "history" | "managed" | "live";
+  conversationLinkAvailable?: boolean;
   continuationUnavailableReason?: "authentication_required";
+}
+
+/** A user-selected address only. A link never remembers approval or changes a native session's owner. */
+export interface ConversationCodingLink {
+  sessionId: string;
+  sourceId: "codex" | "claude" | "runtime";
+  workspaceId: string;
+  title: string;
+  revision: string;
+  linkedAt: string;
+}
+export interface ConversationCodingLinkView {
+  link: ConversationCodingLink | null;
+  target?: ExternalSessionInfo;
+  available?: boolean;
 }
 
 export interface ExternalSessionForkResult extends ExternalSessionReadResult {
@@ -1609,6 +1625,8 @@ export interface EventStateSnapshot {
   externalTurns: Array<{ sessionId: string; turnId: string }>;
   /** Foreground recovery, available only with external.questions.v1. */
   externalQuestions?: ExternalUserQuestionRequest[];
+  agentQuestions?: ExternalUserQuestionRequest[];
+  agentApprovals?: ExternalDelegatedApprovalRequest[];
   taskApprovalStates?: Array<{ sessionId: string } & TaskApprovalState>;
   approvals: Array<{
     approvalId: string;
@@ -1623,6 +1641,8 @@ export interface EventStateSnapshot {
     turnId?: string;
     parentSessionId?: string;
     agentPath?: string;
+    executorAgentRef?: string;
+    executorDisplayName?: string;
   }>;
 }
 
@@ -1699,14 +1719,19 @@ export interface TaskApprovalState {
   canRevoke: boolean;
 }
 
-export interface ExternalUserQuestionRequest {
+export interface DelegatedInteractionPresentation {
+  parentSessionId?: string;
+  agentPath?: string;
+  interactionKind?: "agent";
+  executorAgentRef?: string;
+  executorDisplayName?: string;
+}
+export interface ExternalUserQuestionRequest extends DelegatedInteractionPresentation {
   questionId: string;
   sessionId: string;
   turnId: string;
   expiresAt: string;
-  /** Presentation only. Replies always target the original external session and turn. */
-  parentSessionId?: string;
-  agentPath?: string;
+  /** Presentation only. Replies always target the original Agent or external session and turn. */
   questions: Array<{
     id: string;
     header?: string;
@@ -1719,7 +1744,7 @@ export interface ExternalUserQuestionRequest {
 }
 
 export type ExternalUserQuestionOutcome = "answered" | "cancelled" | "timed_out" | "interrupted";
-export interface ExternalDelegatedApprovalRequest {
+export interface ExternalDelegatedApprovalRequest extends DelegatedInteractionPresentation {
   approvalId: string;
   sessionId: string;
   turnId: string;
@@ -1890,8 +1915,10 @@ export type ServerEvent =
   | { method: "external.event.text"; sessionId: string; turnId: string; delta: string }
   | { method: "external.event.tool"; sessionId: string; turnId: string; name: string; preview: string }
   | { method: "external.event.notice"; sessionId: string; turnId: string; text: string }
-  | ({ method: "external.question.request" } & ExternalUserQuestionRequest)
-  | { method: "external.question.resolved"; questionId: string; sessionId: string; turnId: string; outcome: ExternalUserQuestionOutcome }
+  | ({ method: "external.question.request" | "agent.question.request" } & ExternalUserQuestionRequest)
+  | { method: "external.question.resolved" | "agent.question.resolved"; questionId: string; sessionId: string; turnId: string; outcome: ExternalUserQuestionOutcome }
+  | ({ method: "agent.approval.request"; allowAlways: false } & ExternalDelegatedApprovalRequest)
+  | { method: "agent.approval.resolved"; approvalId: string; sessionId: string; turnId: string; outcome: ExternalUserQuestionOutcome }
   | {
       method: "external.event.turn_end";
       sessionId: string;
@@ -1911,6 +1938,8 @@ export type ServerEvent =
       expiresAt?: string;
       parentSessionId?: string;
       agentPath?: string;
+      executorAgentRef?: string;
+      executorDisplayName?: string;
     }
   | { method: "external.approval.resolved"; approvalId: string; sessionId: string; turnId: string; outcome: ExternalUserQuestionOutcome }
   | {
@@ -2161,7 +2190,7 @@ export class HaraClient {
       capabilities: {
         client: "hara-desktop",
         protocolVersion: 1,
-        features: ["external.sessions.terminal-handoff.v1", "external.questions.v1", "external.delegated-interaction.v1", "task.approvals.v1"],
+        features: ["external.sessions.terminal-handoff.v1", "external.questions.v1", "external.delegated-interaction.v1", "agent.delegated-interaction.v1", "task.approvals.v1"],
       },
     });
     this.methods = new Set(result.capabilities?.methods ?? []);
@@ -2377,6 +2406,12 @@ export class HaraClient {
     return this.call<{ sessions: SessionInfo[] }>("session.list", cwd ? { cwd } : {});
   }
   /** Local coding-agent session metadata. Personal Space only; native IDs, paths and transcripts stay in Serve. */
+  getConversationCodingLink(sessionId: string) {
+    return this.call<ConversationCodingLinkView>("session.coding-link.get", { sessionId });
+  }
+  setConversationCodingLink(sessionId: string, targetSessionId: string | null, expectedRevision: string | null) {
+    return this.call<ConversationCodingLinkView>("session.coding-link.set", { sessionId, targetSessionId, expectedRevision });
+  }
   async listExternalSources(): Promise<{ sources: ExternalSessionSourceInfo[] } | null> {
     if (this.methods.size > 0 && !this.supports("external.sources.list")) return null;
     try {
@@ -3436,6 +3471,18 @@ export class HaraClient {
       ...(reply.commandId ? { commandId: reply.commandId } : {}),
     });
   }
+  replyAgentQuestion(reply: ExternalUserQuestionReply) {
+    return this.call<Record<string, never>>("agent.question.reply", {
+      questionId: reply.questionId, sessionId: reply.sessionId, turnId: reply.turnId,
+      answers: reply.answers, commandId: reply.commandId, ...(reply.cancelled === true ? { cancelled: true } : {}),
+    });
+  }
+  replyAgentApproval(reply: ExternalDelegatedApprovalReply) {
+    return this.call<Record<string, never>>("agent.approval.reply", {
+      approvalId: reply.approvalId, sessionId: reply.sessionId, turnId: reply.turnId, allow: reply.allow,
+      ...(reply.commandId ? { commandId: reply.commandId } : {}),
+    });
+  }
   approveForTask(approvalId: string, sessionId: string, commandId: string) {
     return this.call<{ taskApprovalState: TaskApprovalState }>("approval.reply", {
       approvalId, sessionId, scope: "session", allow: true, forTask: true, commandId,
@@ -3482,6 +3529,16 @@ export function supportsExternalDelegatedInteractions(
     && client.supports("external.approval.reply")
     && client.supportsEvent("external.approval.request")
     && client.supportsEvent("external.approval.resolved");
+}
+
+export function supportsAgentDelegatedInteractions(
+  client: Pick<HaraClient, "supports" | "supportsEvent" | "supportsFeature"> | null | undefined,
+): boolean {
+  return supportsExternalUserQuestions(client) && !!client
+    && client.supportsFeature("agent.delegated-interaction.v1")
+    && ["agent.question.reply", "agent.approval.reply"].every((method) => client.supports(method))
+    && ["agent.question.request", "agent.question.resolved", "agent.approval.request", "agent.approval.resolved"]
+      .every((event) => client.supportsEvent(event));
 }
 
 export function supportsTaskApprovals(

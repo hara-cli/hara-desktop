@@ -153,7 +153,8 @@ export function ApprovalCard({
       )}
       {!resolution ? (
         <>
-          <p className="approval-card-scope">{t(proposal ? "agentCreateScope" : "approvalScopeHint")}</p>
+          <p className="approval-card-scope">{t(proposal ? "agentCreateScope"
+            : !allowAlways && !taskChoice ? "approvalSingleActionScope" : "approvalScopeHint")}</p>
           {taskChoice ? <div className="task-approval-offer"><p>{t(taskApproval!.toolFamily === "bash" ? "taskApprovalBash" : taskApproval!.toolFamily === "python" ? "taskApprovalPython" : "taskApprovalFiles")} · {taskApproval!.summary}</p><small>{t("approvalTaskScope")}</small></div> : null}
           <div className="approval-card-actions">
             <button disabled={disabled || pending || !!taskApprovalCommandId || taskSubmission.hasAttempted()} aria-busy={pending} onClick={() => void submit("allow")}>

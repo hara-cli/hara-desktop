@@ -27,6 +27,7 @@ import {
   supportsNativePresentationWorkspace,
   supportsExternalUserQuestions,
   supportsExternalDelegatedInteractions,
+  supportsAgentDelegatedInteractions,
   supportsTaskApprovals,
   type Discovery,
   type ApprovalMode,
@@ -291,6 +292,7 @@ import {
 } from "./task-lifecycle";
 import { COMPUTER_USE_CAPABILITY } from "./preinstalled-capabilities";
 import AgentPicker from "./AgentPicker";
+import ConversationCodingConnection from "./ConversationCodingConnection";
 import { AgentPortrait } from "./AgentPortrait";
 import AgentProfileEditor from "./AgentProfileEditor";
 import HireAgentDialog, { type HireAgentInput } from "./HireAgentDialog";
@@ -2260,6 +2262,18 @@ export default function App() {
     setAutoView(view);
     return true;
   };
+  const openCodingRecovery = (): boolean => {
+    if (!setZone("chat")) return false;
+    setWorkbenchInboxMode("external");
+    setWorkbenchInboxTarget(null);
+    setQ("");
+    return true;
+  };
+  const returnToAgentDirectory = (): void => {
+    setWorkbenchInboxMode("agents");
+    setWorkbenchInboxTarget(null);
+    setQ("");
+  };
   const openSidebarSettings = () => {
     if (!setZone("settings")) return;
     setSetSec("lang");
@@ -3428,6 +3442,11 @@ export default function App() {
             void refreshAgentCatalog({ sessionId: e.sessionId }).catch(() => {});
           }
           break;
+        case "agent.approval.request":
+          if (supportsAgentDelegatedInteractions(clientRef.current) && e.interactionKind === "agent") {
+            setDelegatedApprovals((current) => receiveDelegatedApproval(current, e));
+          }
+          break;
         case "external.approval.request":
           if (e.parentSessionId !== undefined) {
             if (supportsExternalDelegatedInteractions(clientRef.current)) {
@@ -3441,19 +3460,25 @@ export default function App() {
             allowAlways: e.allowAlways === true,
           } }));
           break;
+        case "agent.approval.resolved":
         case "external.approval.resolved":
-          if (supportsExternalDelegatedInteractions(clientRef.current)) {
+          if (e.method === "agent.approval.resolved" ? supportsAgentDelegatedInteractions(clientRef.current)
+            : supportsExternalDelegatedInteractions(clientRef.current)) {
             setDelegatedApprovals((current) => resolveDelegatedApproval(current, e));
           }
           break;
+        case "agent.question.request":
         case "external.question.request":
-          if (supportsExternalUserQuestions(clientRef.current)
-            && (e.parentSessionId === undefined || supportsExternalDelegatedInteractions(clientRef.current))) {
+          if (e.method === "agent.question.request" ? supportsAgentDelegatedInteractions(clientRef.current) && e.interactionKind === "agent"
+            : supportsExternalUserQuestions(clientRef.current)
+              && (e.parentSessionId === undefined || supportsExternalDelegatedInteractions(clientRef.current))) {
             setExternalQuestions((current) => receiveExternalQuestion(current, e));
           }
           break;
+        case "agent.question.resolved":
         case "external.question.resolved":
-          if (supportsExternalUserQuestions(clientRef.current)) {
+          if (e.method === "agent.question.resolved" ? supportsAgentDelegatedInteractions(clientRef.current)
+            : supportsExternalUserQuestions(clientRef.current)) {
             setExternalQuestions((current) => resolveExternalQuestion(current, e));
           }
           break;
@@ -3705,11 +3730,15 @@ export default function App() {
           ));
           if (supportsExternalUserQuestions(c)) {
             setExternalQuestions((current) => restoreExternalQuestions(current, (snapshot.externalQuestions ?? [])
-              .filter((request) => request.parentSessionId === undefined || supportsExternalDelegatedInteractions(c))));
+              .filter((request) => request.parentSessionId === undefined || supportsExternalDelegatedInteractions(c))
+              .concat(supportsAgentDelegatedInteractions(c) ? (snapshot.agentQuestions ?? []).filter((request) => request.interactionKind === "agent") : [])));
           }
-          if (supportsExternalDelegatedInteractions(c)) {
-            setDelegatedApprovals((current) => restoreDelegatedApprovals(current, snapshot.approvals
-              .filter((approval) => approval.scope === "external" && approval.parentSessionId !== undefined)));
+          if (supportsExternalDelegatedInteractions(c) || supportsAgentDelegatedInteractions(c)) {
+            setDelegatedApprovals((current) => restoreDelegatedApprovals(current, [
+              ...(supportsExternalDelegatedInteractions(c) ? snapshot.approvals
+                .filter((approval) => approval.scope === "external" && approval.parentSessionId !== undefined) : []),
+              ...(supportsAgentDelegatedInteractions(c) ? (snapshot.agentApprovals ?? []).filter((request) => request.interactionKind === "agent") : []),
+            ]));
           }
         },
       );
@@ -6920,12 +6949,14 @@ export default function App() {
         activeSessionId: activeRef.current, selectedExternalSessionId: selectedExternalSession?.id,
         personal: spaceDirectoryRef.current?.activeId === "personal",
         readOnly: !!(activeRef.current && readOnlySessionsRef.current[activeRef.current]),
-      }) || (entry.request.parentSessionId !== undefined && !supportsExternalDelegatedInteractions(client))
+      }) || (entry.request.interactionKind === "agent" ? !supportsAgentDelegatedInteractions(client)
+        : entry.request.parentSessionId !== undefined && !supportsExternalDelegatedInteractions(client))
       || entry.request.sessionId !== reply.sessionId || entry.request.turnId !== reply.turnId
       || !externalQuestionPending(entry)) {
       throw new Error("This question is no longer available in the current session.");
     }
-    await client.replyExternalQuestion(reply);
+    if (entry.request.interactionKind === "agent") await client.replyAgentQuestion(reply);
+    else await client.replyExternalQuestion(reply);
     if (clientRef.current === client && spaceSwitchRequestRef.current === switchGeneration) {
       setExternalQuestions((current) => current[reply.questionId] ? resolveExternalQuestion(current, {
         ...reply, outcome: reply.cancelled ? "cancelled" : "answered",
@@ -6936,13 +6967,17 @@ export default function App() {
     const client = clientRef.current;
     const generation = spaceSwitchRequestRef.current;
     const entry = delegatedApprovalsRef.current[reply.approvalId];
-    if (!client?.connected || !supportsExternalDelegatedInteractions(client) || !entry || entry.outcome
+    if (!client?.connected || !entry || (entry.request.interactionKind === "agent"
+      ? !supportsAgentDelegatedInteractions(client) : !supportsExternalDelegatedInteractions(client)) || entry.outcome
       || !readableDelegatedApproval(entry.request) || Date.parse(entry.request.expiresAt) <= Date.now()
       || entry.request.sessionId !== reply.sessionId || entry.request.turnId !== reply.turnId
       || !externalInteractionReplyAllowed(entry.request, { activeSessionId: activeRef.current,
         personal: spaceDirectoryRef.current?.activeId === "personal", readOnly: !!(activeRef.current && readOnlySessionsRef.current[activeRef.current]),
       })) throw new Error("This execution approval is no longer available in the current conversation.");
-    await delegatedApprovalSubmissionRef.current!.submit(entry.request, reply.allow, async (boundReply) => { await client.replyExternalApproval(boundReply); });
+    await delegatedApprovalSubmissionRef.current!.submit(entry.request, reply.allow, async (boundReply) => {
+      if (entry.request.interactionKind === "agent") await client.replyAgentApproval(boundReply);
+      else await client.replyExternalApproval(boundReply);
+    });
     if (clientRef.current === client && generation === spaceSwitchRequestRef.current) {
       setDelegatedApprovals((current) => resolveDelegatedApproval(current, { ...reply, outcome: "answered" }));
     }
@@ -7001,7 +7036,8 @@ export default function App() {
   const activeSession = sessions.find((session) => session.id === active);
   const activeSpaceId = spaceDirectory?.activeId
     ?? (activeSession ? sessionSpaceId(activeSession, null) : "personal");
-  const delegatedInteractionSupported = supportsExternalDelegatedInteractions(clientRef.current);
+  const delegatedInteractionSupported = supportsExternalDelegatedInteractions(clientRef.current)
+    || supportsAgentDelegatedInteractions(clientRef.current);
   const delegatedInteractionSurface = useMemo(() => delegatedInteractionSupported ? <DelegatedInteractionCards
     activeSessionId={active} personal={activeSpaceId === "personal"} locale={locale}
     disabled={!clientRef.current?.connected || !!(active && readOnlySessions[active])}
@@ -7992,6 +8028,9 @@ export default function App() {
                     </div>
                   )}
                 </div>
+                {active && <ConversationCodingConnection key={active} client={clientRef.current} sessionId={active}
+                  personal={activeSpaceId === "personal"} disabled={!!activeReadOnlySession || activeAgentDismissed}
+                  busy={!!busy[active]} locale={locale} />}
                 {activeSession && (
                   <div className="composer-popover-anchor model-anchor">
                     <button
@@ -9507,34 +9546,15 @@ export default function App() {
             </header>
           ) : (
             <>
-            <div className="workbench-inbox-tabs" role="tablist" aria-label={t("zoneWorkbench")}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={workbenchInboxMode === "agents"}
-                className={workbenchInboxMode === "agents" ? "on" : ""}
-                onClick={() => {
-                  setWorkbenchInboxMode("agents");
-                  setQ("");
-                }}
-              >
-                <IconUsers size={16} /> {t("inboxAgents")}
+            <div className="workbench-inbox-heading">
+              <strong><IconUsers size={16} /> {workbenchInboxMode === "external" ? t("codingRecoveryTitle") : t("inboxAgents")}</strong>
+              {workbenchInboxMode === "external" ? (
+                <button type="button" className="linky" onClick={returnToAgentDirectory}>
+                  <IconBack size={14} /> {t("codingRecoveryBack")}
+                </button>
+              ) : (
                 <span title={locale === "zh" ? "已雇佣 Agent 数；Hara 主调度不计入" : "Hired Agents; Hara's root coordinator is not counted"}>{visibleHiredAgentCount}</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={workbenchInboxMode === "external"}
-                className={workbenchInboxMode === "external" ? "on" : ""}
-                onClick={() => {
-                  setWorkbenchInboxMode("external");
-                  setWorkbenchInboxTarget(null);
-                  setQ("");
-                }}
-              >
-                <IconSummary size={16} /> {t("inboxExternal")}
-                <span>{externalSessions.length}</span>
-              </button>
+              )}
             </div>
             </>
           )}
@@ -10212,6 +10232,13 @@ export default function App() {
                 <CodingExecutorSettings key={`${activeSpaceId}:${server?.pid ?? "none"}:${phase}`}
                   client={phase === "ready" ? clientRef.current : null} cwd={server?.cwd}
                   personal={activeSpaceId === "personal"} t={t} />
+
+                <SettingsCard title={t("codingRecoveryTitle")} description={t("codingRecoveryDescription")}>
+                  <SettingsItem title={t("codingRecoveryOpen")} description={t("externalSessionsUnavailableBody")}>
+                    <button type="button" className="compact" disabled={activeSpaceId !== "personal"}
+                      onClick={openCodingRecovery}>{t("codingRecoveryOpen")}</button>
+                  </SettingsItem>
+                </SettingsCard>
 
                 <SettingsCard
                   title={t("cliTitle")}

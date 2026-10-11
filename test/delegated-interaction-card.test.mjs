@@ -65,6 +65,19 @@ test("switching parent or Space removes all private card content; read-only keep
   assert.equal((html.match(/<button[^>]*disabled=""/g) ?? []).length, 4);
 });
 
+test("colleague decisions show the actual person instead of an internal routing path in both languages", () => {
+  const identity = { interactionKind: "agent", executorAgentRef: "global:coder", executorDisplayName: "Cora", agentPath: "/root/global:manager/global:coder" };
+  for (const locale of ["zh", "en"]) {
+    const html = render([{ request: { ...question.request, ...identity } }], [{ request: { ...approval.request, ...identity } }], "parent-1", true, false, locale);
+    assert.match(html, /Cora/); assert.match(html, locale === "zh" ? /需要你决定/ : /Needs your decision/);
+    assert.match(html, locale === "zh" ? /aria-label="需要你决定"/ : /aria-label="Needs your decision"/);
+    assert.match(html, locale === "zh" ? /本次确认只针对这一次操作/ : /This decision applies only to this action/);
+    assert.doesNotMatch(html, /save a scoped rule|保存一条范围明确的规则/);
+    assert.doesNotMatch(html, /\/root\/global:manager|Always allow|始终允许|checked=""/);
+    assert.match(html, /Which files\?/); assert.match(html, /Apply these changes\?/);
+  }
+});
+
 test("answered/expired cards are inert and unsafe metadata or secret questions have no projection", () => {
   const closed = render([{ ...question, outcome:"answered" }], [{...approval,outcome:"interrupted"}]);
   assert.doesNotMatch(closed, /<button/);

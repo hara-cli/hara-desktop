@@ -35,6 +35,10 @@ test("invalid presentation metadata is rejected rather than downgraded to a lega
     assert.deepEqual(receiveExternalQuestion({}, { ...question, parentSessionId }), {});
   }
   assert.equal(readableDelegatedApproval({ ...request, agentPath: "x".repeat(513) }), false);
+  for (const identity of [{ interactionKind: "unknown" }, { executorDisplayName: "x".repeat(161) }, { executorDisplayName: "Cora\nspoof" }, { executorAgentRef: "" }]) {
+    assert.equal(readableDelegatedApproval({ ...request, ...identity }), false);
+    assert.deepEqual(receiveExternalQuestion({}, { ...question, ...identity }), {});
+  }
   assert.deepEqual(receiveDelegatedApproval({}, { ...request, turnId: undefined }), {});
   assert.deepEqual(receiveDelegatedApproval({}, { ...request, expiresAt: "unknown" }), {});
 });

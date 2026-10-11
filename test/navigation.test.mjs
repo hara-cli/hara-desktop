@@ -447,12 +447,12 @@ test("Groups is a native organization work surface with no renderer-owned transp
   );
 });
 
-test("Workbench exposes Agent contacts and external sessions while project history stays an internal compatibility facet", () => {
+test("Workbench defaults to Agent contacts and keeps native recovery in Settings, not a peer chat tab", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const inbox = readFileSync(`${root}/src/workbench-inbox.ts`, "utf8");
-  const tabsStart = app.indexOf('className="workbench-inbox-tabs"');
-  const tabsEnd = app.indexOf("</div>", tabsStart);
-  const visibleTabs = app.slice(tabsStart, tabsEnd);
+  const headingStart = app.indexOf('className="workbench-inbox-heading"');
+  const headingEnd = app.indexOf("</div>", headingStart);
+  const directoryHeading = app.slice(headingStart, headingEnd);
 
   assert.match(
     app,
@@ -464,7 +464,10 @@ test("Workbench exposes Agent contacts and external sessions while project histo
     "the history detail uses an explicit conversation action instead of task/session terminology");
   assert.match(app, /workbenchInboxMode === "agents"/);
   assert.match(app, /workbenchInboxMode === "external"/);
-  assert.doesNotMatch(visibleTabs, /inboxProjects/, "Project is not a first-class Workbench tab");
+  assert.doesNotMatch(directoryHeading, /inboxProjects|inboxExternal|role="tab"/, "Project/native sessions are not peer chat tabs");
+  assert.doesNotMatch(app, /className="workbench-inbox-tabs"/);
+  assert.match(app, /<SettingsCard title=\{t\("codingRecoveryTitle"\)\}[\s\S]*onClick=\{openCodingRecovery\}/);
+  assert.match(directoryHeading, /onClick=\{returnToAgentDirectory\}/);
   assert.match(app, /void openAgentConversation\(agent\.ref, targetCwd\)/);
   assert.match(app, /inbox-agent-history/, "older execution segments stay available without becoming contacts");
   assert.match(app, /locale === "zh" \? "历史" : "History"/, "history is a named action rather than an icon-only affordance");

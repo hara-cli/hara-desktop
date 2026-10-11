@@ -92,6 +92,29 @@ test("automation shortcuts use Settings and retain the requested task, attention
   assert.equal(blocked("runs"), false);
 });
 
+test("coding recovery is an explicit navigation only and respects a cancelled transition", () => {
+  const actions = [];
+  const open = callback("openCodingRecovery", {
+    setZone: (zone) => { actions.push(["zone", zone]); return true; },
+    setWorkbenchInboxMode: (mode) => actions.push(["mode", mode]),
+    setWorkbenchInboxTarget: (target) => actions.push(["target", target]),
+    setQ: (query) => actions.push(["query", query]),
+  });
+  assert.equal(open(), true);
+  assert.deepEqual(actions, [["zone", "chat"], ["mode", "external"], ["target", null], ["query", ""]]);
+  const blocked = callback("openCodingRecovery", { setZone: () => false,
+    setWorkbenchInboxMode: () => assert.fail("must not change the directory after cancellation"),
+    setWorkbenchInboxTarget: () => assert.fail("must not forget a selection after cancellation"),
+    setQ: () => assert.fail("must not clear a search after cancellation"),
+  });
+  assert.equal(blocked(), false);
+  const back = callback("returnToAgentDirectory", {
+    setWorkbenchInboxMode: (mode) => actions.push(["mode", mode]),
+    setWorkbenchInboxTarget: (target) => actions.push(["target", target]), setQ: (query) => actions.push(["query", query]),
+  });
+  back(); assert.deepEqual(actions.slice(-3), [["mode", "agents"], ["target", null], ["query", ""]]);
+});
+
 test("changing Settings sections invalidates pending opens and synchronizes the section ref immediately", () => {
   const request = { current: 3 };
   const section = { current: "automations" };

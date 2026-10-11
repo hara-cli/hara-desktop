@@ -27,7 +27,7 @@ function DelegatedApprovalCard({ entry, locale, disabled, onReply }: {
     }} />;
 }
 
-/** Foreground-only projection. No external output or private history is merged into the parent. */
+/** Foreground-only projection. No child output or private history is merged into the parent. */
 export default function DelegatedInteractionCards({ activeSessionId, personal, disabled, questions, approvals, locale, onQuestionReply, onApprovalReply }: {
   activeSessionId: string | null; personal: boolean; disabled: boolean; locale: Locale;
   questions: ExternalQuestionEntry[]; approvals: DelegatedApprovalEntry[];
@@ -40,13 +40,17 @@ export default function DelegatedInteractionCards({ activeSessionId, personal, d
     && externalInteractionInConversation(entry.request, activeSessionId, personal));
   if (!questionCards.length && !approvalCards.length) return null;
   const t = makeT(locale);
-  return <section className="delegated-interaction-cards" aria-label={t("externalDelegatedInteractionTitle")}>
+  return <section className="delegated-interaction-cards" aria-label={t("agentDelegatedInteractionTitle")}>
     {questionCards.map((entry) => <div key={`question:${entry.request.questionId}`}>
-      <p className="dim">{t("externalDelegatedInteractionTitle")}{entry.request.agentPath ? ` · ${entry.request.agentPath}` : ""}</p>
+      <p className="dim">{entry.request.executorDisplayName ? `${entry.request.executorDisplayName} · ` : ""}
+        {t(entry.request.interactionKind === "agent" ? "agentDelegatedInteractionTitle" : "externalDelegatedInteractionTitle")}
+        {!entry.request.executorDisplayName && entry.request.agentPath ? ` · ${entry.request.agentPath}` : ""}</p>
       <ExternalQuestionCard entry={entry} locale={locale} disabled={disabled} onReply={onQuestionReply} />
     </div>)}
     {approvalCards.map((entry) => <div key={`approval:${entry.request.approvalId}`}>
-      <p className="dim">{t("externalDelegatedInteractionTitle")}{entry.request.agentPath ? ` · ${entry.request.agentPath}` : ""}</p>
+      <p className="dim">{entry.request.executorDisplayName ? `${entry.request.executorDisplayName} · ` : ""}
+        {t(entry.request.interactionKind === "agent" ? "agentDelegatedInteractionTitle" : "externalDelegatedInteractionTitle")}
+        {!entry.request.executorDisplayName && entry.request.agentPath ? ` · ${entry.request.agentPath}` : ""}</p>
       <DelegatedApprovalCard entry={entry} locale={locale} disabled={disabled} onReply={onApprovalReply} />
     </div>)}
   </section>;

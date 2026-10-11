@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.184 — 2026-10-11 — Agent-first chats and explicit coding connections
+
+- Keep Agent contacts as the default chat directory. Move advanced coding session history, recovery
+  and diagnostics to Settings → Apps & updates, with a clear return to Agents. This navigation change
+  does not start, stop or delete existing sessions and respects cancelled draft transitions.
+- Add a lazy conversation-local coding connection drawer with explicit target selection, no default
+  choice, capability/Personal-Space checks, request deadlines and stale-result isolation. Binding saves
+  an address only; messages still require fresh exact-target approval in the original chat.
+- Return persistent-colleague questions and one-action approvals to the initiating conversation,
+  showing the real executor's name. Keep original identities, deadlines and input-control fences
+  across compatible reconnect, without reviving expired cards or displaying them in another Space.
+- Bundle Hara CLI `0.186.0` at exact commit `100dc72f9ebebc8a1a97c1403f393b04b83f0787`, including
+  bounded colleague delegation, non-owning active Codex steering, uncertain-send receipts and opt-in
+  named-Agent Feishu reply-thread follow-ups. Group execution requires a new source-labelled human
+  card and retains per-action approval, expiry/revocation, original-thread closure and no replay on restart.
+  No broad listener or arbitrary Claude CLI/tmux injection is enabled. Isolated regression coverage
+  is not a claim of real public-network or external business acceptance.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may
+  display a reputation warning.
+
 ## 0.1.183 — 2026-10-10 — bundled recovery regression maintenance
 
 - Bundle Hara CLI `0.185.3` at exact commit `df06ee4b253cd5192cd0c2f2ef61edecc6b4e635`.
