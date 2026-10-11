@@ -11,7 +11,7 @@
 - Return persistent-colleague questions and one-action approvals to the initiating conversation,
   showing the real executor's name. Keep original identities, deadlines and input-control fences
   across compatible reconnect, without reviving expired cards or displaying them in another Space.
-- Bundle Hara CLI `0.186.0` at exact commit `100dc72f9ebebc8a1a97c1403f393b04b83f0787`, including
+- Bundle Hara CLI `0.186.0` at exact commit `16a3d4edeb97409b7e190adc987cde521d021f11`, including
   bounded colleague delegation, non-owning active Codex steering, uncertain-send receipts and opt-in
   named-Agent Feishu reply-thread follow-ups. Group execution requires a new source-labelled human
   card and retains per-action approval, expiry/revocation, original-thread closure and no replay on restart.

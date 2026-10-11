@@ -273,7 +273,6 @@ import {
   IconRefresh,
   IconSparkles,
   IconStar,
-  IconSummary,
   IconTrash,
   IconUsers,
 } from "./icons";
