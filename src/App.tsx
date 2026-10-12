@@ -335,6 +335,7 @@ import "./ConversationWorkspace.css";
 
 type SettingsSection =
   | "providers"
+  | "connections"
   | "automations"
   | "learning"
   | "engine"
@@ -373,6 +374,7 @@ const loadProviderSettings = () => import("./ProviderSettings").then((module) =>
 const loadGatewaySettings = () => import("./GatewaySettings").then((module) => ({
   default: module.GatewaySettings,
 }));
+const loadMailboxSettings = () => import("./MailboxSettings").then((module) => ({ default: module.MailboxSettings }));
 const loadLearningCenter = () => import("./LearningCenter").then((module) => ({
   default: module.LearningCenter,
 }));
@@ -409,6 +411,7 @@ const EmbeddedBrowserSurface = lazy(loadEmbeddedBrowserSurface);
 const CapabilityDirectory = lazy(loadCapabilityDirectory);
 const ProviderSettings = lazy(loadProviderSettings);
 const GatewaySettings = lazy(loadGatewaySettings);
+const MailboxSettings = lazy(loadMailboxSettings);
 const LearningCenter = lazy(loadLearningCenter);
 const MobilePairingSettings = lazy(loadMobilePairingSettings);
 
@@ -421,7 +424,9 @@ const warmModule = (promise: Promise<unknown>): void => {
 
 const preloadSettingsSection = (section: SettingsSection): void => {
   if (section === "providers") {
-    warmModule(Promise.all([loadProviderSettings(), loadGatewaySettings()]));
+    warmModule(loadProviderSettings());
+  } else if (section === "connections") {
+    warmModule(Promise.all([loadGatewaySettings(), loadMailboxSettings()]));
   } else if (section === "learning") {
     warmModule(loadLearningCenter());
   } else if (section === "automations") {
@@ -9971,6 +9976,7 @@ export default function App() {
                   label: t("settingsGroupGeneral"),
                   items: [
                     ["providers", t("setProviders")],
+                    ["connections", t("setConnections")],
                     ["automations", t("setAutomations")],
                     ["learning", t("setLearning")],
                     ["engine", t("setServer")],
@@ -10073,6 +10079,13 @@ export default function App() {
                         : { cwd: server?.cwd }).catch(() => {});
                     }}
                   />
+                </Suspense>
+              </SettingsPage>
+            )}
+            {setSec === "connections" && (
+              <SettingsPage id="settings-connections" eyebrow={t("settingsGroupGeneral")} title={t("setConnections")} description={locale === "zh" ? "管理聊天机器人、公司邮箱与主 Bot 的连接。" : "Manage chat bots, company mailboxes and the main Bot."}>
+                <Suspense fallback={<div className="settings-empty" role="status">{t("loading")}</div>}>
+                  <MailboxSettings key={`${activeSpaceId}:${server?.pid ?? "none"}:${phase}`} client={clientRef.current} space={activeSpace} locale={locale} />
                   <GatewaySettings client={clientRef.current} locale={locale} />
                 </Suspense>
               </SettingsPage>

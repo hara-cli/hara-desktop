@@ -1436,6 +1436,33 @@ export interface DeskSnapshot {
   truncated: boolean;
 }
 
+export interface MailConnectionState {
+  id: string; provider: "tencent" | "feishu" | "imap"; servers?: { imapHost: string; imapPort: number; imapSecurity: "tls" | "starttls"; smtpHost: string; smtpPort: number; smtpSecurity: "tls" | "starttls"; }; mailbox: string; projectId: string; mainBotId: string;
+  revision: number; paused: boolean; pendingCount: number; lastSyncAt?: number; phase?: string;
+  error?: string; needsRebind?: boolean; receiverRunning: boolean;
+  transport?: "cli" | "api" | "imap-smtp"; ownership?: "personal" | "company"; ownerMemberId?: string;
+  receiverMode?: "local" | "server"; local?: boolean; allowReplies?: boolean;
+  checks?: { list?: string; body?: string; sending?: string };
+}
+export interface MailAuthState { phase: string; url?: string; error?: string; }
+export interface MailConnectionsState { connections: MailConnectionState[]; auth?: MailAuthState; offline?: boolean; syncedAt?: number; }
+export interface BusIdentity { memberId: string; agentId: string; admin: boolean; session: boolean; agentIds: string[]; offline?: boolean; syncedAt?: number; }
+export interface BusMember { id: string; name: string; role: string; state: string; revision: number; agentIds: string[]; }
+export interface BusProject { id: string; name: string; revision: number; grants?: Record<string, string[]>; memberGrants?: Record<string, string[]>; }
+export interface BusMailOutgoing { id: string; taskId: string; bindingId: string; state: string; revision: number; contentHash: string;
+  body: { from: string; to: string[]; subject: string; body: string }; receipt: { evidence?: string }; }
+export interface BusTask {
+  id: string; projectId: string; kind: "feedback" | "dispatch"; title: string; body: string; workType: string;
+  state: string; risk: "low" | "high"; revision: number; targetAgentId: string; reviewerId: string;
+  parentId: string | null; claimFence: number; claimExpiresAt: number | null;
+  releaseVersion?: string; verificationSteps?: string;
+}
+export interface BusTaskDetails {
+  task: BusTask;
+  results: { result_hash: string; body: { summary: string; evidence: string }; actor: string }[];
+  events: { id: number; actor: string; action: string; detail: string }[];
+}
+
 export interface DeskTaskDetails {
   profileId: string;
   task: DeskTaskDetail;
@@ -3104,6 +3131,22 @@ export class HaraClient {
       if (e?.code === -32601) return null;
       throw e;
     }
+  }
+  async mailConnections(profileId: string, spaceId: string): Promise<MailConnectionsState> {
+    if (!this.supports("mail.connections.list")) throw new Error("Update Hara Engine to use mailbox connections");
+    return this.call("mail.connections.list", { profileId, spaceId });
+  }
+  async mailCommand<T = Record<string, unknown>>(profileId: string, spaceId: string, operation: string, input: Record<string, unknown> = {}): Promise<T> {
+    if (!this.supports("mail.command")) throw new Error("Update Hara Engine to use mailbox connections");
+    return this.call("mail.command", { profileId, spaceId, operation, input });
+  }
+  async mailAuthStatus(profileId: string, spaceId: string): Promise<MailAuthState> {
+    if (!this.supports("mail.auth.status")) throw new Error("Update Hara Engine to use mailbox authorization");
+    return this.call("mail.auth.status", { profileId, spaceId });
+  }
+  async taskbusRequest<T = Record<string, unknown>>(profileId: string, spaceId: string, operation: string, input: Record<string, unknown> = {}): Promise<T> {
+    if (!this.supports("desk.taskbus.request")) throw new Error("Update Hara Engine and Desk for taskbus.v1");
+    return this.call("desk.taskbus.request", { profileId, spaceId, operation, input });
   }
   /** Organization-pinned bounded read. Groups may call it once on entry, then only on user refresh. */
   async deskSnapshot(profileId: string, state?: DeskTaskState): Promise<DeskSnapshot | null> {

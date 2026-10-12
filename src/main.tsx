@@ -14,13 +14,15 @@ installAppContextMenuBoundary();
 const params = new URLSearchParams(window.location.search);
 const workbenchPreview = import.meta.env.DEV && params.get("preview") === "workbench";
 const providersPreview = import.meta.env.DEV && params.get("preview") === "providers";
+const mailboxPreview = import.meta.env.DEV && params.get("preview") === "mailbox";
+const MailboxPreview = import.meta.env.DEV ? React.lazy(() => import("./MailboxSettingsPreview").then(m => ({ default: m.MailboxSettingsPreview }))) : null;
 const talentPreview = import.meta.env.DEV && params.get("preview") === "talent";
 const automationPreview = import.meta.env.DEV && params.get("preview") === "automation";
 const conversationPreview = import.meta.env.DEV && params.get("preview") === "conversation";
 const ConversationPreview = import.meta.env.DEV ? React.lazy(() => import("./ConversationPreview")) : null;
 const TalentMarketPreview = React.lazy(() => import("./TalentMarket"));
 const AutomationPreview = React.lazy(() => import("./AutomationPreview"));
-const crashReportEnabled = !workbenchPreview && !providersPreview && !talentPreview && !automationPreview && !conversationPreview;
+const crashReportEnabled = !workbenchPreview && !providersPreview && !mailboxPreview && !talentPreview && !automationPreview && !conversationPreview;
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Hara renderer root is unavailable");
@@ -30,7 +32,11 @@ ReactDOM.createRoot(root).render(
     {crashReportEnabled && <CrashReportHost />}
     <RendererErrorBoundary>
       <RendererBootSignal>
-        {conversationPreview && ConversationPreview ? (
+        {mailboxPreview && MailboxPreview ? (
+          <React.Suspense fallback={<div>Opening mailbox preview…</div>}>
+            <MailboxPreview locale={params.get("locale") === "en" ? "en" : "zh"} scenario={params.get("scenario")} />
+          </React.Suspense>
+        ) : conversationPreview && ConversationPreview ? (
           <React.Suspense fallback={<div>Opening conversation preview…</div>}>
             <ConversationPreview locale={params.get("locale") === "en" ? "en" : "zh"}
               theme={params.get("theme")} scenario={params.get("scenario")} extension={params.get("extension") === "1"} />

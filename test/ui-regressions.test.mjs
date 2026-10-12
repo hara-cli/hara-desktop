@@ -768,6 +768,7 @@ test("secondary work surfaces are split from startup and preload on navigation i
     "CapabilityDirectory",
     "ProviderSettings",
     "GatewaySettings",
+    "MailboxSettings",
   ]) {
     assert.match(app, new RegExp(`const ${component} = lazy\\(`));
   }
@@ -775,7 +776,8 @@ test("secondary work surfaces are split from startup and preload on navigation i
   assert.match(app, /const GroupsStage = lazy\(loadGroups\)/);
   assert.match(app, /warmModule\(loadAutomations\(\)\)/);
   assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\), loadPresentationWorkbench\(\), loadEmbeddedBrowserSurface\(\), loadExtensionDock\(\)\]\)\)/);
-  assert.match(app, /warmModule\(Promise\.all\(\[loadProviderSettings\(\), loadGatewaySettings\(\)\]\)\)/);
+  assert.match(app, /warmModule\(loadProviderSettings\(\)\)/);
+  assert.match(app, /warmModule\(Promise\.all\(\[loadGatewaySettings\(\), loadMailboxSettings\(\)\]\)\)/);
   assert.match(app, /onMouseEnter=\{\(\) => preloadSettingsSection\(k\)\}/);
   assert.match(app, /onFocus=\{\(\) => preloadSettingsSection\(k\)\}/);
   assert.match(rail, /onMouseEnter=\{\(\) => onIntent\(item\.id\)\}/);

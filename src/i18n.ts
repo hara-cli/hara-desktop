@@ -512,6 +512,7 @@ const dict = {
     // settings
     setLang: "Appearance & language",
     setProviders: "Models & organizations",
+    setConnections: "Connections",
     setAutomations: "Scheduled tasks",
     automationSettingsDescription: "Manage schedules and run history together: create, edit, pause, run now, and send results. Business tasks and tickets are managed in their own workspaces.",
     setLearning: "Business learning",
@@ -1510,6 +1511,7 @@ const dict = {
     // settings
     setLang: "外观与语言",
     setProviders: "模型与组织",
+    setConnections: "连接",
     setAutomations: "定时任务",
     automationSettingsDescription: "在同一处管理定时计划与运行记录：创建、编辑、暂停、立即运行和发送结果。业务任务与工单在各自工作区管理。",
     setLearning: "业务学习",
