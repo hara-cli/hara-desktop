@@ -155,7 +155,7 @@ export default function AgentProfileEditor({
       <section className="agent-profile-editor" role="dialog" aria-modal="true" aria-labelledby="agent-profile-title">
         <header>
           <div className="agent-profile-preview">
-            <AgentPortrait agentRef={agent.ref} name={agent.name} identity={preview} size="large" />
+            <AgentPortrait agentRef={agent.ref} name={agent.name} identity={preview} systemRole={agent.systemRole} size="large" />
             <span>
               <small>{isRootOrchestrator
                 ? (locale === "zh" ? "Hara 主调度 · 永久身份" : "Hara root orchestrator · permanent identity")
@@ -193,7 +193,7 @@ export default function AgentProfileEditor({
 
         <div className="agent-profile-form" aria-disabled={!editable}>
           <div className="agent-profile-avatar-field">
-            <AgentPortrait agentRef={agent.ref} name={agent.name} identity={preview} size="large" />
+            <AgentPortrait agentRef={agent.ref} name={agent.name} identity={preview} systemRole={agent.systemRole} size="large" />
             <span>
               <button type="button" disabled={!editable || saving} onClick={() => fileRef.current?.click()}>{locale === "zh" ? "更换头像" : "Change avatar"}</button>
               {avatar ? <button type="button" className="ghost" disabled={!editable || saving} onClick={() => setAvatar("")}>{locale === "zh" ? "移除" : "Remove"}</button> : null}

@@ -54,7 +54,7 @@ export default function AgentDetailsDrawer({ agent, locale, historyCount, onClos
             <IconClose size={18} /></button></header>
         <div className="agent-details-content">
           <section className="agent-details-identity">
-            <AgentPortrait agentRef={agent.ref} name={agent.name} identity={agent.identity} size="large" />
+            <AgentPortrait agentRef={agent.ref} name={agent.name} identity={agent.identity} systemRole={agent.systemRole} size="large" />
             <h2 id={titleId}>{agentDisplayName(agent)}</h2>
             <p>{agentPublicTitle(agent)}</p>
             {isRootAgent(agent) ? <span className="agent-details-root">{zh ? "你的主 Agent · 对话与团队的托底者" : "Your main Agent · Coordinates and follows through"}</span> : null}

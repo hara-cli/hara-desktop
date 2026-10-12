@@ -294,6 +294,7 @@ import ConversationCodingConnection from "./ConversationCodingConnection";
 import { AgentPortrait } from "./AgentPortrait";
 import AgentProfileEditor from "./AgentProfileEditor";
 import { AgentContact } from "./AgentContact";
+import AgentInboxList from "./AgentInboxList";
 import NewConversationMenu from "./NewConversationMenu";
 import { ComposerInputRow } from "./ComposerInputRow";
 import HireAgentDialog, { type HireAgentInput } from "./HireAgentDialog";
@@ -7577,7 +7578,7 @@ export default function App() {
             <button type="button" className="conversation-person" disabled={!activeAgent}
               aria-label={locale === "zh" ? `查看${activeAgent ? agentDisplayName(activeAgent) : "Hara"}的详情` : `View details for ${activeAgent ? agentDisplayName(activeAgent) : "Hara"}`}
               aria-haspopup="dialog" onClick={() => activeAgent && openAgentDetails(activeAgent.ref)}>
-              {activeAgent ? <AgentPortrait agentRef={activeAgent.ref} name={activeAgent.name} identity={activeAgent.identity} size="small" /> : null}
+              {activeAgent ? <AgentPortrait agentRef={activeAgent.ref} name={activeAgent.name} identity={activeAgent.identity} systemRole={activeAgent.systemRole} size="small" /> : null}
               <span><b>{activeAgent ? agentDisplayName(activeAgent) : "Hara"}</b>
                 <small>{active && busy[active] ? (locale === "zh" ? "正在跟进…" : "Following up…")
                   : activeAgent ? agentPublicTitle(activeAgent) : (locale === "zh" ? "你的 AI 同事" : "Your AI colleague")}</small></span>
@@ -9517,6 +9518,7 @@ export default function App() {
                   agentRef={selectedInboxAgent.ref}
                   name={selectedInboxAgent.name}
                   identity={selectedInboxAgent.identity}
+                  systemRole={selectedInboxAgent.systemRole}
                   size="medium"
                   state={inboxSessionsForAgent(spaceSessions, selectedInboxAgent.ref).some((session) => busy[session.id])
                     ? "working"
@@ -9706,7 +9708,8 @@ export default function App() {
                 </div>
               )
             ) : workbenchInboxMode === "agents" ? (
-              visibleAgentInboxEntries.length ? visibleAgentInboxEntries.map(({ agent, sessions: agentSessions, latest }) => {
+              visibleAgentInboxEntries.length ? <AgentInboxList entries={visibleAgentInboxEntries} locale={locale}
+                renderContact={({ agent, sessions: agentSessions, latest }) => {
                 const isWorking = agentSessions.some((session) => busy[session.id]);
                 return (
                   <AgentContact key={agent.ref} agent={agent} locale={locale} working={isWorking}
@@ -9723,7 +9726,7 @@ export default function App() {
                         if (targetCwd) void openAgentConversation(agent.ref, targetCwd);
                       }} />
                 );
-              }) : <div className="inbox-empty"><small>{t("inboxAgentEmptyHint")}</small></div>
+              }} /> : <div className="inbox-empty"><small>{t("inboxAgentEmptyHint")}</small></div>
             ) : workbenchInboxMode === "external" ? (
               <>
                 <div className="external-source-strip">

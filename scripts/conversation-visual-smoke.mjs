@@ -125,6 +125,42 @@ try {
       assert.ok(result.body <= width + 1); assert.deepEqual(result.overflow, []);
       receipts.push({ locale, theme, width, ...result }); await capture(`${locale}-${theme}-${width}`);
     }
+    for (const locale of ["zh", "en"]) for (const width of [720, 1280]) {
+      await navigate({width, locale, scenario: "roster"});
+      if (width === 720) await click(".conversation-directory-button");
+      assert.equal(await evaluate("document.querySelectorAll('.inbox-main-coordinator .inbox-contact-shell').length"), 1);
+      assert.equal(await evaluate("document.querySelectorAll('.inbox-colleagues .inbox-contact-shell').length"), 26);
+      assert.equal(await evaluate("document.querySelectorAll('.inbox-colleagues .is-root').length"), 0);
+      const top = await evaluate("document.querySelector('.inbox-main-coordinator').getBoundingClientRect().top");
+      await evaluate("(() => {const list=document.querySelector('.workbench-inbox');list.scrollTop=list.scrollHeight;})()");
+      await settled();
+      const scrolledTop = await evaluate("document.querySelector('.inbox-main-coordinator').getBoundingClientRect().top");
+      assert.ok(Math.abs(top - scrolledTop) <= 2, "Main assistant stays pinned while the colleague list scrolls");
+      assert.equal(await evaluate("getComputedStyle(document.querySelector('.inbox-main-coordinator .agent-portrait-presence')).display"), "none", "Idle is not presented as verified online");
+      receipts.push({locale, width, scenario: "pinned-roster", ...await geometry()});
+      await capture(`pinned-roster-${locale}-${width}`);
+    }
+    for (const locale of ["zh", "en"]) {
+      await navigate({width: 1280, locale});
+      await click(".inbox-main-coordinator .inbox-contact-details");
+      await click(".agent-details-rows button:last-child");
+      assert.equal(await evaluate("document.querySelectorAll('.agent-profile-dismiss').length"), 0);
+      await evaluate(`(() => {const input=document.querySelector('.agent-profile-grid input[maxlength="64"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'My coordinator');input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+      await evaluate(`(async () => {const canvas=document.createElement('canvas');canvas.width=2;canvas.height=2;const ctx=canvas.getContext('2d');ctx.fillStyle='#ff695f';ctx.fillRect(0,0,2,2);const blob=await new Promise(done=>canvas.toBlob(done,'image/png'));const data=new DataTransfer();data.items.add(new File([blob],'synthetic-avatar.png',{type:'image/png'}));const input=document.querySelector('.agent-profile-avatar-field input[type=file]');input.files=data.files;input.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(done=>setTimeout(done,150));})()`);
+      await click(".agent-profile-editor footer button:last-child");
+      assert.equal(await evaluate("document.querySelector('.inbox-main-coordinator strong').textContent"), "My coordinator");
+      assert.equal(await evaluate("document.querySelectorAll('.inbox-main-coordinator .agent-portrait-brand').length"), 0);
+      assert.equal(await evaluate("document.querySelectorAll('.inbox-main-coordinator .inbox-agent-root-badge').length"), 1);
+      await click(".inbox-main-coordinator .inbox-contact-details");
+      await click(".agent-details-rows button:last-child");
+      await click(".agent-profile-reset");
+      assert.equal(await evaluate("document.querySelector('.inbox-main-coordinator strong').textContent"), "My coordinator", "Loading defaults changes the draft only");
+      await click(".agent-profile-editor footer button:last-child");
+      assert.equal(await evaluate("document.querySelector('.inbox-main-coordinator strong').textContent"), "Hara");
+      assert.equal(await evaluate("document.querySelectorAll('.inbox-main-coordinator .agent-portrait-brand').length"), 1);
+      receipts.push({locale, scenario: "main-profile-avatar-and-reset", ...await geometry()});
+      await capture(`main-profile-reset-${locale}`);
+    }
     await navigate();
     await input("草稿不会因查看名片而消失");
     const compact = (await geometry()).input.height;
@@ -160,7 +196,7 @@ try {
     await navigate({ width: 720 });
     await click(".conversation-directory-button");
     assert.equal((await geometry()).chat.visible, false);
-    await click(".inbox-contact-shell:nth-child(2) .inbox-contact");
+    await click(".inbox-colleagues .inbox-contact-shell:first-child .inbox-contact");
     assert.ok((await geometry()).chat.width >= 480);
     assert.equal(await evaluate("document.querySelector('.conversation-person b').textContent"), "Lin");
     for (const locale of ["zh", "en"]) for (const theme of ["light", "dark"]) for (const width of [720, 900, 1100, 1280]) for (const scenario of ["long", "approval", "decision"]) {

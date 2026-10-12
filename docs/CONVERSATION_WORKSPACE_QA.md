@@ -83,3 +83,27 @@ an authoritative Agent owner; no ownership is guessed from names.
 No installer, updater manifest, website deployment or installed-app replacement is established by
 this local UI acceptance. Publishing 0.1.185 must use the normal immutable protected pipeline and
 close the linked Hara feedback report only after the public artifacts are verified.
+
+## Unreleased follow-up: the main assistant as a distinct contact
+
+This follow-up is not in the frozen `v0.1.185` tag. It was developed and verified in an isolated
+clone of that exact source while the protected release was running.
+
+- Separate the coordinator above the recency-ordered colleague list, with a sticky main-contact
+  section. Preserve the caller's existing searched, Space-filtered entries and original open/history
+  handlers. No new catalog requests, sessions, subscriptions or permissions are introduced.
+- Identify the coordinator by `main` or the authoritative `root_orchestrator` role, never by its
+  nickname. An ordinary colleague named Hara is not promoted to a coordinator.
+- Reuse `src/mark.tsx` and the existing `src/assets/hara-mark.svg` as the default main portrait.
+  No brand master, platform icon, generated avatar or packaging asset is changed. A valid chosen
+  avatar wins; removing it restores the canonical mark. Accent settings affect the frame, not the
+  logo's approved colors. Idle is not shown as a verified online connection.
+- Keep existing profile authorization, revision checks, avatar validation and explicit save/default
+  restoration behavior. A renamed main assistant retains its permanent role and cannot be dismissed.
+- Local regression: 478 tests pass; TS/Vite production build and 34-asset gate pass. The browser gate
+  retains the original 73 scenarios and adds four scrollable main-contact layouts plus two synthetic
+  profile upload/save/reset flows (Chinese/English): 79 scenarios, cleanup passed.
+
+These are synthetic UI checks only. They do not establish server-side profile persistence,
+multi-client synchronization, packaged WebView or external-action acceptance. The existing production
+profile API and permission authority are unchanged.

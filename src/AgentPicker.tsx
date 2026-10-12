@@ -73,7 +73,7 @@ export default function AgentPicker({
         onClick={() => setOpen((value) => !value)}
       >
         {active ? (
-          <AgentPortrait agentRef={active.ref} name={active.name} identity={active.identity} size="small" />
+          <AgentPortrait agentRef={active.ref} name={active.name} identity={active.identity} systemRole={active.systemRole} size="small" />
         ) : <span className="agent-picker-fallback" aria-hidden>—</span>}
         <span className="agent-picker-identity">
           <small>{dismissedActive
@@ -112,7 +112,7 @@ export default function AgentPicker({
                   onSelect(agent.ref);
                 }}
               >
-                <AgentPortrait agentRef={agent.ref} name={agent.name} identity={agent.identity} size="small" />
+                <AgentPortrait agentRef={agent.ref} name={agent.name} identity={agent.identity} systemRole={agent.systemRole} size="small" />
                 <span>
                   <strong>{agentDisplayName(agent)}{agent.identity?.emoji ? <em>{agent.identity.emoji}</em> : null}</strong>
                   <small>{agentPublicTitle(agent) || (agent.scope === "main"

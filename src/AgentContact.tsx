@@ -18,16 +18,17 @@ export const AgentContact = memo(function AgentContact({
   onDetails: () => void;
 }) {
   const name = agentDisplayName(agent);
+  const root = isRootAgent(agent);
   return (
-    <div className={`inbox-contact-shell${isRootAgent(agent) ? " is-root" : ""}`}>
+    <div className={`inbox-contact-shell${root ? " is-root" : ""}`}>
       <button type="button" className={`inbox-contact${selected ? " is-active" : ""}`}
         aria-current={selected ? "true" : undefined}
         onContextMenu={(event) => { event.preventDefault(); onDetails(); }} onClick={onOpen}>
         <AgentPortrait agentRef={agent.ref} name={agent.name} identity={agent.identity}
-          size="medium" state={working ? "working" : "idle"} />
+          systemRole={agent.systemRole} size={root ? "large" : "medium"} state={working ? "working" : "idle"} />
         <span className="inbox-contact-copy">
           <span className="inbox-contact-line"><strong>{name}</strong>
-            {isRootAgent(agent) ? <b className="inbox-agent-root-badge">{locale === "zh" ? "主理" : "Main"}</b> : null}
+            {root ? <b className="inbox-agent-root-badge">{locale === "zh" ? "主助手" : "Main"}</b> : null}
             {time ? <time>{time}</time> : null}
           </span>
           <span className="inbox-contact-line preview"><span>{preview}</span>

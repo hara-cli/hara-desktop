@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentInfo } from "./client";
 import { AgentContact } from "./AgentContact";
+import AgentInboxList from "./AgentInboxList";
+import AgentProfileEditor from "./AgentProfileEditor";
 import AgentDetailsDrawer from "./AgentDetailsDrawer";
 import NewConversationMenu from "./NewConversationMenu";
 import { ComposerInputRow } from "./ComposerInputRow";
@@ -24,13 +26,18 @@ export default function ConversationPreview({ locale, scenario, theme, extension
 }) {
   const zh = locale === "zh";
   const t = makeT(locale);
-  const agents: AgentInfo[] = [
-    { ref: "main", name: "Hara", description: zh ? "理解需求，安排工作，跟进结果" : "Understands, coordinates, and follows through", home: "/workspace/hara", scope: "main", owner: "personal", allowedActions: ["chat", "edit_profile"], systemRole: "root_orchestrator", identity: { version: 1, displayName: "Hara", title: zh ? "你的主理 Agent" : "Your main Agent", bio: zh ? "和我聊聊你想做的事。我会安排合适的同事一起推进。" : "Tell me what you have in mind. I will bring in the right colleague to help.", traits: zh ? ["主动", "务实", "有始有终"] : ["Resourceful", "Practical", "Accountable"], source: "hara" } },
+  const [agents, setAgents] = useState<AgentInfo[]>(() => [
+    { ref: "main", name: "Hara", description: zh ? "理解需求，安排工作，跟进结果" : "Understands, coordinates, and follows through", home: "/workspace/hara", scope: "main", owner: "personal", allowedActions: ["chat", "edit_profile"], revision: "synthetic-profile", systemRole: "root_orchestrator", identity: { version: 1, displayName: "Hara", title: zh ? "你的主理 Agent" : "Your main Agent", bio: zh ? "和我聊聊你想做的事。我会安排合适的同事一起推进。" : "Tell me what you have in mind. I will bring in the right colleague to help.", traits: zh ? ["主动", "务实", "有始有终"] : ["Resourceful", "Practical", "Accountable"], source: "hara" } },
     { ref: "global:lin", name: "Lin", description: zh ? "开发与代码审查" : "Development and code review", home: "/workspace/sample-project", scope: "global", owner: "personal", allowedActions: ["chat", "edit_profile"] },
     { ref: "global:mori", name: "Mori", description: zh ? "产品设计" : "Product design", home: "", scope: "global", owner: "personal", allowedActions: ["chat"] },
-  ];
+    ...(scenario === "roster" ? Array.from({length: 24}, (_, index): AgentInfo => ({
+      ref: `global:colleague-${index}`, name: `Colleague ${index + 1}`, description: "Synthetic colleague",
+      home: "", scope: "global", owner: "personal", allowedActions: ["chat"],
+    })) : []),
+  ]);
   const [selected, setSelected] = useState("main");
   const [details, setDetails] = useState<string | null>(null);
+  const [profile, setProfile] = useState<string | null>(null);
   const [directory, setDirectory] = useState(false);
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState("");
@@ -49,6 +56,7 @@ export default function ConversationPreview({ locale, scenario, theme, extension
   const bottom = useRef<HTMLDivElement>(null);
   const agent = agents.find((entry) => entry.ref === selected)!;
   const detail = agents.find((entry) => entry.ref === details);
+  const profileAgent = agents.find((entry) => entry.ref === profile);
   const pendingApproval = items.some((item) => item.kind === "approval" && !item.answered);
   useEffect(() => { document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light"; }, [theme]);
   const send = () => {
@@ -91,9 +99,10 @@ export default function ConversationPreview({ locale, scenario, theme, extension
         onSelectAgent={(ref) => { setSelected(ref); setDirectory(false); }} onCreateAgent={() => setNotice("preview-only")}
         onNewTopic={() => { setItems([]); setDirectory(false); }} /></div>
       <input className="search" aria-label={zh ? "搜索聊天" : "Search chats"} placeholder={zh ? "搜索…" : "Search…"} />
-      <div className="sessions workbench-inbox">{agents.map((entry) => <AgentContact key={entry.ref} agent={entry} locale={locale}
+      <div className="sessions workbench-inbox"><AgentInboxList entries={agents.map((agent) => ({agent, sessions: []}))} locale={locale}
+        renderContact={({agent: entry}) => <AgentContact key={entry.ref} agent={entry} locale={locale}
         preview={entry.ref === "main" ? inboxMessagePreview(items) : entry.description} time="12:42" working={false}
-        selected={selected === entry.ref} unread={entry.ref === "global:lin"} onOpen={() => { setSelected(entry.ref); setDirectory(false); }} onDetails={() => setDetails(entry.ref)} />)}</div>
+        selected={selected === entry.ref} unread={entry.ref === "global:lin"} onOpen={() => { setSelected(entry.ref); setDirectory(false); }} onDetails={() => setDetails(entry.ref)} />} /></div>
       <small style={{ padding: 8, color: "var(--dim)" }}>{notice || (zh ? "仅合成组件预览 · 无外部操作" : "Synthetic component preview · No external actions")}</small>
     </aside>
     {extension ? <div className={`extension-work conversation-extension-work${pendingApproval ? " has-pending-approval" : ""}${extensionVisible ? " has-visible-extension" : ""}${mode === "maximized" && extensionVisible ? " is-extension-maximized" : ""}`}>
@@ -103,6 +112,12 @@ export default function ConversationPreview({ locale, scenario, theme, extension
         <pre style={{ padding: 24 }}>// Synthetic file preview. No native execution.</pre></ExtensionDock></div> : chat}
     {detail ? <AgentDetailsDrawer agent={detail} locale={locale} historyCount={3} onClose={() => setDetails(null)}
       onHistory={() => { setNotice(zh ? "聊天历史：3 段话题（预览）" : "Chat history: 3 topics (preview)"); setDetails(null); setDirectory(true); }}
-      onManage={() => { setNotice("preview-only"); setDetails(null); }} /> : null}
+      onManage={() => { setProfile(detail.ref); setDetails(null); }} /> : null}
+    {profileAgent ? <AgentProfileEditor key={profileAgent.ref} agent={profileAgent} locale={locale}
+      onClose={() => setProfile(null)} onSave={(identity) => {
+        setAgents((current) => current.map((entry) => entry.ref === profileAgent.ref
+          ? {...entry, identity: {...identity, version: 1, source: "hara"}} : entry));
+        setProfile(null);
+      }} /> : null}
   </div>;
 }

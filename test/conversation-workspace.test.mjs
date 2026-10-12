@@ -14,6 +14,7 @@ const bundle = await build({
     import {createElement as h} from "react";
     import {renderToStaticMarkup as render} from "react-dom/server";
     import {AgentContact} from "./src/AgentContact.tsx";
+    import AgentInboxList from "./src/AgentInboxList.tsx";
     import AgentDetailsDrawer from "./src/AgentDetailsDrawer.tsx";
     import NewConversationMenu from "./src/NewConversationMenu.tsx";
     import {ComposerInputRow} from "./src/ComposerInputRow.tsx";
@@ -21,12 +22,13 @@ const bundle = await build({
     export const details = (agent, locale, count=3) => render(h(AgentDetailsDrawer,{agent,locale,historyCount:count,onClose(){},onHistory(){},onManage(){}}));
     export const menu = (agents, locale) => render(h(NewConversationMenu,{agents,locale,canCreateAgent:true,onSelectAgent(){},onCreateAgent(){},onNewTopic(){}}));
     export const composer = (busy, canSend) => render(h(ComposerInputRow,{inputRef:{current:null},value:"",busy,canSend,sendLabel:"Send",stopLabel:"Stop",onSend(){},onStop(){}}, h("textarea",{rows:1,defaultValue:"draft"})));
+    export const inbox = (entries, locale) => render(h(AgentInboxList,{entries,locale,renderContact:({agent})=>h(AgentContact,{key:agent.ref,agent,locale,preview:"preview",working:false,unread:false,selected:false,onOpen(){},onDetails(){}})}));
   `, resolveDir: root.pathname, loader: "tsx" },
-  bundle: true, format: "cjs", platform: "node", jsx: "automatic", loader: { ".css": "empty" }, write: false,
+  bundle: true, format: "cjs", platform: "node", jsx: "automatic", loader: { ".css": "empty", ".svg": "dataurl" }, write: false,
 });
 const compiled = join(fixture, "components.cjs");
 writeFileSync(compiled, bundle.outputFiles[0].contents);
-const { contact, details, menu, composer } = createRequire(import.meta.url)(compiled);
+const { contact, details, menu, composer, inbox } = createRequire(import.meta.url)(compiled);
 const main = { ref:"main",name:"Hara",description:"Coordinates work",home:"/workspace/owned",owner:"personal",scope:"main",allowedActions:["chat","edit_profile"],systemRole:"root_orchestrator",
   identity:{version:1,displayName:"My Hara",title:"Coordinator",bio:"A public profile <script>not executable</script>",traits:["Practical"],source:"hara"} };
 
@@ -42,6 +44,39 @@ test("contact renders stable public identity, readable preview and a visible acc
     assert.equal((html.match(/<button/g) ?? []).length, 2);
     assert.doesNotMatch(html, /inbox-unread">\d|inbox-agent-history|privateSession|Worktree/);
   }
+});
+
+test("main assistant is separated from colleagues by stable role, with each searched entry rendered once", () => {
+  const colleague = { ...main, ref: "global:ordinary", systemRole: undefined, name: "Hara", identity: { ...main.identity, displayName: "Ordinary colleague" } };
+  const renamedRoot = { ...main, ref: "organization:coordinator", name: "Coordinator", identity: { ...main.identity, displayName: "My renamed coordinator" } };
+  const entries = [colleague, renamedRoot].map(agent => ({ agent, sessions: [] }));
+  for (const locale of ["zh", "en"]) {
+    const html = inbox(entries, locale);
+    assert.ok(html.indexOf("My renamed coordinator") < html.indexOf("Ordinary colleague"));
+    assert.equal((html.match(/inbox-contact-shell/g) ?? []).length, 2);
+    assert.equal((html.match(/agent-portrait-brand/g) ?? []).length, 1);
+    assert.match(html, locale === "zh" ? /aria-label="主助手"/ : /aria-label="Main assistant"/);
+    assert.match(html, /inbox-colleagues/);
+    assert.doesNotMatch(inbox([entries[0]], locale), /inbox-main-coordinator|agent-portrait-brand/);
+    assert.doesNotMatch(inbox([], locale), /inbox-main-coordinator|inbox-colleagues/);
+  }
+});
+
+test("root uses the canonical logo by default while chosen avatar and nickname remain independent", () => {
+  const standard = contact(main, "zh");
+  assert.match(standard, /agent-portrait-brand/);
+  assert.match(standard, /data:image\/svg\+xml/);
+  const avatar = "data:image/png;base64,iVBORw0KGgo=";
+  const customized = contact({ ...main, identity: { ...main.identity, avatar } }, "en");
+  assert.match(customized, /src="data:image\/png;base64,iVBORw0KGgo="/);
+  assert.match(customized, /My Hara/);
+  assert.doesNotMatch(customized, /agent-portrait-brand/);
+  const portrait = readFileSync(new URL("src/AgentPortrait.tsx", root), "utf8");
+  const portraitCss = readFileSync(new URL("src/AgentPortrait.css", root), "utf8");
+  const list = readFileSync(new URL("src/AgentInboxList.tsx", root), "utf8");
+  assert.match(portrait, /isRootAgent\(\{ ref: agentRef, systemRole \}\)/);
+  assert.match(portraitCss, /\.agent-portrait\.is-root\.is-idle \.agent-portrait-presence \{ display: none; \}/);
+  assert.doesNotMatch(list, /client\.|invoke\(|listAgents|newSession|setApproval|\.name\s*===/);
 });
 
 test("read-only colleague drawer keeps counted history and explicit permission boundary, never a permission form", () => {

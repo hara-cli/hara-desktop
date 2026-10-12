@@ -97,7 +97,7 @@ export default function NewConversationMenu({
               </button> : null}
             </> : visible.map((agent) => (
               <button type="button" role="menuitem" key={agent.ref} onClick={() => choose(() => onSelectAgent(agent.ref))}>
-                <AgentPortrait agentRef={agent.ref} name={agent.name} identity={agent.identity} size="small" />
+                <AgentPortrait agentRef={agent.ref} name={agent.name} identity={agent.identity} systemRole={agent.systemRole} size="small" />
                 <span><strong>{agentDisplayName(agent)}</strong><small>{agentPublicTitle(agent)}</small></span>
               </button>
             ))}

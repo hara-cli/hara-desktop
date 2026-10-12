@@ -31,6 +31,19 @@
 .agent-portrait.is-medium { width: 40px; height: 40px; }
 .agent-portrait.is-large { width: 58px; height: 58px; }
 
+/* The main assistant uses the canonical mark, not a second generated brand silhouette.
+ * A chosen public avatar still wins. Accent settings affect the frame, not the logo's colors. */
+.agent-portrait.is-brand {
+  border-radius: 14px;
+  border-color: color-mix(in srgb, var(--agent-accent) 18%, var(--border));
+  background: color-mix(in srgb, var(--agent-accent) 7%, var(--surface-panel));
+  box-shadow: none;
+}
+.agent-portrait-brand { position: absolute; inset: 0; display: grid; place-items: center; }
+.agent-portrait-brand > img { width: 66%; height: 66%; object-fit: contain; }
+/* Idle is not evidence of a live network connection. Show only an actual execution state. */
+.agent-portrait.is-root.is-idle .agent-portrait-presence { display: none; }
+
 .agent-portrait > img {
   position: absolute;
   z-index: 3;

@@ -57,6 +57,27 @@ html .conversation-first .workbench-inbox .inbox-contact.is-active {
   color: var(--dim);
   font: 500 11px/1.6 var(--font-sans);
 }
+.conversation-first .inbox-main-coordinator {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  flex: 0 0 auto;
+  padding-block: 4px 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+}
+.conversation-first .inbox-main-coordinator .inbox-contact {
+  min-height: 96px;
+  gap: 12px;
+  padding-block: 15px;
+}
+.conversation-first .inbox-main-coordinator .inbox-contact-line strong { font-size: 16px; }
+.conversation-first .inbox-main-coordinator .inbox-contact-line { flex-wrap: wrap; gap: 6px; }
+.conversation-first .inbox-main-coordinator .inbox-contact-line time { display: none; }
+.conversation-first .inbox-main-coordinator .inbox-contact-line.preview { flex-wrap: nowrap; }
+.conversation-first .inbox-main-coordinator .inbox-contact-details { top: 34px; }
+.conversation-first .inbox-colleagues { display: flex; flex-direction: column; gap: 3px; }
 .inbox-contact-details {
   position: absolute;
   right: 3px;
