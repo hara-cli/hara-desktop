@@ -84,7 +84,7 @@ No installer, updater manifest, website deployment or installed-app replacement 
 this local UI acceptance. Publishing 0.1.185 must use the normal immutable protected pipeline and
 close the linked Hara feedback report only after the public artifacts are verified.
 
-## Unreleased follow-up: the main assistant as a distinct contact
+## Desktop 0.1.186 candidate: the main assistant as a distinct contact
 
 This follow-up is not in the frozen `v0.1.185` tag. It was developed and verified in an isolated
 clone of that exact source while the protected release was running.
@@ -107,3 +107,18 @@ clone of that exact source while the protected release was running.
 These are synthetic UI checks only. They do not establish server-side profile persistence,
 multi-client synchronization, packaged WebView or external-action acceptance. The existing production
 profile API and permission authority are unchanged.
+
+### Independent candidate recheck, 2026-10-12
+
+The isolated 0.1.186 candidate passed all 478 regressions, release metadata, the production renderer
+build and its 34-asset gate, and the production dependency audit (0 advisories). The pinned Rust
+1.97.0 host check passed with at most two build jobs; Cargo regenerated only the root package
+version in its lockfile, and the subsequent locked check passed. As in CI, ignored `/usr/bin/true`
+sidecar fixtures were used only for the native compile check, never as release binaries.
+
+The synthetic browser gate independently passed all 79 scenarios. Chinese main-contact scrolling
+and avatar reset screenshots were also inspected. Its own Vite process, headless browser and
+disposable profile were closed; it did not attach to the user's browser or start an Engine.
+These checks do not replace the protected packaging/signing/public-edge gates or establish a
+production gateway deployment. Exact release identities and publication evidence are recorded
+separately after those gates pass.

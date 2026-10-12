@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.186 — 2026-10-12 — A distinct main assistant
+
+- Keep the main Hara assistant in its own pinned section above colleagues, using the stable
+  coordinator identity rather than its editable name. Preserve Space/search filtering, unread
+  state, conversation history and the existing colleague recency order.
+- Use the Hara brand mark by default for the main assistant. Valid uploaded avatars still take
+  priority; failed or invalid images fall back to the brand mark without claiming online presence.
+- Carry nickname, avatar and accent-color personalization consistently through contacts, chat
+  headers, details, profile editing and the New menu. Reset remains a draft until explicitly saved;
+  appearance changes never change Agent identity, permanent role or tool permissions.
+- Retain Engine 0.186.0 unchanged. No new model calls, subscriptions or background history fetches
+  are added. AI-generated avatars and new avatar-shape choices are not included in this patch.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may
+  display a reputation warning.
+
 ## 0.1.185 — 2026-10-12 — Conversation-first workspace
 
 - Consolidate chat/recruitment actions into one New menu; keep existing chats and explicit fresh
