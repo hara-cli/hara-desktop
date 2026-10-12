@@ -13,6 +13,7 @@ export function MailboxSettingsPreview({ locale, scenario }: { locale: Locale; s
     const tasks = [ticket, { ...ticket, id: `t_${"b".repeat(32)}`, kind: "dispatch", title: "验证邮箱重启补取与幂等收件", parentId: ticket.id, targetAgentId: "a_codex", state: "review", revision: 3 }];
     return {
       supports: () => scenario !== "old-engine",
+      mailRuntimeStatus: async () => scenario === "missing-mail-runtime" ? { ready: false, reason: "helper-missing" } : { ready: true, reason: "ready" },
       deskSnapshot: async () => snapshot,
       mailConnections: async () => ({ connections: scenario === "empty" ? [] : [{ id: "mail-demo", provider: "feishu", mailbox: "agent@example.test", projectId: "hara", mainBotId: "a_main", ownerMemberId: "u_owner", ownership: "personal", transport: "imap-smtp", allowReplies: true, local: true, checks: { list: "verified", body: "verified", sending: "smtp-auth-verified" }, revision: 1, paused: false, receiverRunning: true, phase: "connected", pendingCount: 0, lastSyncAt: Date.now() - 12000 }] }),
       taskbusRequest: async (_profile: string, _space: string, operation: string, input: Record<string, unknown>) => {

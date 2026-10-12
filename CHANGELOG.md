@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.187 — 2026-10-12 — Mailbox intake and verified colleague recovery
+
+- Add Settings → Connections → Mailboxes & tasks for organization Spaces: configure explicit
+  IMAP/SMTP endpoints, mailbox ownership and project scope; inspect users/Agent grants, directed
+  tasks, submitted evidence, independent review and release-verification closure in Desk taskbus.v1.
+  Offline copies remain read-only; Space changes discard stale responses and uncertain mutations
+  retain their request identity instead of being silently retried as new actions.
+- Preview exact outgoing mail and require separate confirmation before each send. Mail content
+  is untrusted feedback, not execution authority; this does not wake closed Codex/Claude terminals.
+- Check local receiving prerequisites before binding, starting or syncing. Python 3 and the
+  canonical shared feishu-communicate capability must already be available on the receiving host;
+  they are not auto-installed or logged in. Real mailbox binding and a server receiver deployment
+  remain separate acceptance steps; sleeping/offline computers do not process work immediately.
+- Bundle Engine 0.187.0 at exact commit `9733a36d0b3844beeceb137c6114d43ff3ff3fd3`, including
+  bounded read-only investigate commands, trusted macOS tool PATH, exact archived-colleague restore
+  with live single-use confirmation, clearer consumption pauses and mailbox credential/send fences.
+  Restoration preserves original instructions/history and grants no tools or credentials. Project
+  creation-scope selection, unrestricted process queries and long-context cost tuning are not added.
+- Keep the existing conversation-first layout and pinned main Hara assistant. Windows installers
+  remain updater-signed but not Authenticode-signed, so SmartScreen may display a reputation warning.
+
 ## 0.1.186 — 2026-10-12 — A distinct main assistant
 
 - Keep the main Hara assistant in its own pinned section above colleagues, using the stable

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import type { HaraClient, SpaceInfo, DeskSnapshot, BusProject, BusTask, BusTaskDetails, BusIdentity, BusMember, MailConnectionsState, MailConnectionState } from "./client";
+import type { HaraClient, SpaceInfo, DeskSnapshot, BusProject, BusTask, BusTaskDetails, BusIdentity, BusMember, MailConnectionsState, MailConnectionState, MailRuntimeStatus } from "./client";
 import type { Locale } from "./i18n";
 import { SettingsBadge, SettingsCard, SettingsItem, SettingsNotice } from "./SettingsUI";
 import { MailboxScopeGuard, MailboxRequestKeys } from "./mailbox-state";
@@ -18,6 +18,7 @@ export function MailboxSettings({ client, space, locale }: { client: HaraClient 
   const [identity, setIdentity] = useState<BusIdentity | null>(null), [users, setUsers] = useState<BusMember[]>([]);
   const [offline, setOffline] = useState(false);
   const [mail, setMail] = useState<MailConnectionsState>({ connections: [] });
+  const [runtime, setRuntime] = useState<MailRuntimeStatus | null>(null);
   const [projectId, setProjectId] = useState(""), [tasks, setTasks] = useState<BusTask[]>([]), [detail, setDetail] = useState<BusTaskDetails | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [mailbox, setMailbox] = useState(""), [password, setPassword] = useState("");
@@ -29,7 +30,8 @@ export function MailboxSettings({ client, space, locale }: { client: HaraClient 
   const [title, setTitle] = useState(""), [body, setBody] = useState(""), [workType, setWorkType] = useState("research");
   const [target, setTarget] = useState(""), [reviewer, setReviewer] = useState(""), [parentId, setParentId] = useState("");
   const [note, setNote] = useState(""), [releaseVersion, setReleaseVersion] = useState(""), [verification, setVerification] = useState("");
-  const supported = !!client?.supports("mail.connections.list") && client.supports("desk.taskbus.request");
+  const supported = !!client?.supports("mail.connections.list") && client.supports("mail.command")
+    && client.supports("mail.runtime.status") && client.supports("desk.taskbus.request");
   const profileId = space?.profileId || "", spaceId = space?.id || "";
   const bus = useCallback(<T,>(operation: string, input: Record<string, unknown> = {}) => {
     if (!client || !profileId || !spaceId) throw new Error("Company Space required");
@@ -38,18 +40,21 @@ export function MailboxSettings({ client, space, locale }: { client: HaraClient 
   const refresh = useCallback(async () => {
     if (!client || !supported || space?.kind !== "organization") return;
     const valid = current.current;
-    const [directory, projectList, connections, who, people] = await Promise.all([
+    const [directory, projectList, connections, who, people, prerequisites] = await Promise.all([
       bus<Pick<DeskSnapshot, "me" | "agents"> & { offline?: boolean }>("directory"), bus<{ projects: BusProject[]; offline?: boolean }>("projects.list"), client.mailConnections(profileId, spaceId),
       bus<BusIdentity>("identity"), bus<{ members: BusMember[]; offline?: boolean }>("members.list"),
+      client.mailRuntimeStatus(profileId, spaceId),
     ]);
     if (!valid()) return;
     setMeta({ ...directory, profileId, fetchedAt: Date.now(), tasks: [], events: [], circles: [], truncated: false });
     setProjects(projectList.projects); setMail(connections); setIdentity(who); setUsers(people.members);
+    setRuntime(prerequisites);
     setOffline(!!(directory.offline || projectList.offline || connections.offline || who.offline || people.offline));
     setProjectId(old => projectList.projects.some(p => p.id === old) ? old : projectList.projects[0]?.id || "");
   }, [client, supported, space?.kind, profileId, spaceId, bus]);
   useEffect(() => {
     current.current = guard.current.begin();
+    setRuntime(null); setBusy(false);
     setMeta(null); setIdentity(null); setUsers([]); setOffline(false); setProjects([]); setMail({ connections: [] }); setServers({ ...blankServers }); setOwnership("personal"); setAllowReplies(false); setTasks([]); setDetail(null);
     setProjectId(""); setParentId(""); setTarget(""); setReviewer(""); setMailbox(""); setTitle(""); setBody("");
     setEditId(""); setEditRevision(0); setProjectName(""); setGrants({}); setMemberGrants({}); setPassword(""); setError(""); setNotice("");
@@ -130,6 +135,11 @@ export function MailboxSettings({ client, space, locale }: { client: HaraClient 
       <SettingsNotice title={l("后台接收，任务留在 Desk", "Receive in the background; retain work in Desk")}>
         {l("启用后由本机 Hara 引擎接收新邮件。锁屏时引擎仍须运行；休眠或离线后恢复补取。邮件先形成工单，派发和验收分别授权。", "The local Hara Engine receives new mail while running, including during screen lock. After sleep or an outage it catches up. Mail creates feedback tickets; dispatch and acceptance need separate grants.")}
       </SettingsNotice>
+      {runtime && !runtime.ready && <SettingsNotice tone="warning" title={l("本机邮件接收组件尚未就绪", "Mail receiver prerequisites need setup")}>
+        {runtime.reason === "python-missing"
+          ? l("这台电脑没有可用的 Python 3。请在实际接收邮件的主机准备 Python 3 和共享邮件能力后刷新；工单与任务仍可使用。", "Python 3 is unavailable on this host. Prepare Python 3 and the shared mail capability on the receiver, then refresh. Tickets and tasks remain available.")
+          : l("本机需要可运行的新版共享 feishu-communicate 邮件能力和 Python 3；Hara 不会自动安装、登录或读取邮箱。准备完成后刷新；工单与任务仍可使用。", "This receiver needs a working, updated shared feishu-communicate mail capability and Python 3. Hara does not install it, sign in or read a mailbox automatically. Refresh after setup; tickets and tasks remain available.")}
+      </SettingsNotice>}
       {error && <SettingsNotice tone="error" title={l("需要处理", "Needs attention")}>{error}</SettingsNotice>}
       {notice && <SettingsNotice tone="success" title={notice} />}
       {offline && <SettingsNotice tone="warning" title={l("正在查看本机离线副本", "Viewing a private offline copy")}>{l("暂时只读。恢复连接后自动同步；权限错误不会使用离线副本掩盖。", "Read-only until connectivity recovers. Authorization errors never fall back to a cached copy.")}</SettingsNotice>}
@@ -157,9 +167,9 @@ export function MailboxSettings({ client, space, locale }: { client: HaraClient 
           <label>{l("加密", "Encryption")}<select value={servers[`${protocol}Security`]} disabled={busy} onChange={e => setServers(s => ({ ...s, [`${protocol}Security`]: e.target.value as "tls" | "starttls" }))}><option value="tls">TLS</option><option value="starttls">STARTTLS</option></select></label>
         </div>)}
         <label>{l("邮箱归属", "Ownership")}<select value={ownership} disabled={busy} onChange={e => setOwnership(e.target.value as typeof ownership)}><option value="personal">{l("我的用户邮箱", "My mailbox")}</option>{owner && <option value="company">{l("公司共享邮箱", "Company shared mailbox")}</option>}</select></label>
-        <label>{l("客户端授权码或专用密码", "Client authorization code or password")}<input type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} maxLength={4096} placeholder={l("已在本机授权时可留空", "Leave blank to reuse this host’s account")} disabled={busy} /></label>
+        <label>{l("客户端授权码或专用密码", "Client authorization code or password")}<input type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} maxLength={4096} placeholder={l("同一身份和服务器可留空；变更后需重填", "Leave blank only for the same verified identity and servers")} disabled={busy || !runtime?.ready} /></label>
         <label className="mailbox-check"><input type="checkbox" checked={allowReplies} onChange={e => setAllowReplies(e.target.checked)} disabled={busy} />{l("允许逐封确认后发信", "Allow individually confirmed sends")}</label>
-        <button type="submit" disabled={busy || offline || !projectId}>{l("在本机核验并绑定", "Verify & bind on this host")}</button>
+        <button type="submit" disabled={busy || offline || !projectId || !runtime?.ready}>{l("在本机核验并绑定", "Verify & bind on this host")}</button>
         <small>{l("普通邮箱采用 IMAP 收信、SMTP 发信。授权码仅留在实际收发的主机；服务器参数、用户归属和任务同步到 Desk。只允许验证证书的 TLS / STARTTLS 连接。", "Standard mail uses IMAP to receive and SMTP to send. The client password stays on the receiving host; server settings, ownership and work sync to Desk. TLS / STARTTLS certificates are always verified.")}</small>
       </form>}
       {mail.connections.map(c => <article className="mailbox-connection" key={c.id}>
@@ -171,8 +181,8 @@ export function MailboxSettings({ client, space, locale }: { client: HaraClient 
         </div>
         {(owner || c.ownerMemberId === identity?.memberId) && <div className="mailbox-actions">
           <button type="button" className="compact" disabled={busy || offline} onClick={() => { setMailbox(c.mailbox); setProjectId(c.projectId); setServers(c.servers || (c.provider === "feishu" ? { ...feishuServers } : { ...blankServers })); setOwnership(c.ownership || "personal"); setAllowReplies(c.allowReplies || false); setPassword(""); }}>{l("配置本机接收", "Set up this host")}</button>
-          <button type="button" className="compact" disabled={busy || offline || c.needsRebind} onClick={() => actConnection(c, c.paused ? "start" : "pause")}>{c.paused ? l("启用接收", "Enable receiving") : l("暂停", "Pause")}</button>
-          <button type="button" className="compact" disabled={busy || offline || !c.local || c.paused || c.needsRebind} onClick={() => actConnection(c, "sync")}>{l("同步一次", "Sync once")}</button>
+          <button type="button" className="compact" disabled={busy || offline || c.needsRebind || (c.paused && c.local && !runtime?.ready)} onClick={() => actConnection(c, c.paused ? "start" : "pause")}>{c.paused ? l("启用接收", "Enable receiving") : l("暂停", "Pause")}</button>
+          <button type="button" className="compact" disabled={busy || offline || !c.local || !runtime?.ready || c.paused || c.needsRebind} onClick={() => actConnection(c, "sync")}>{l("同步一次", "Sync once")}</button>
           <button type="button" className="compact" disabled={busy || offline || c.needsRebind} onClick={() => actConnection(c, "remove")}>{l("解绑", "Unbind")}</button>
         </div>}
       </article>)}

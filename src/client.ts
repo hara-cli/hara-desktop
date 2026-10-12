@@ -1445,6 +1445,7 @@ export interface MailConnectionState {
   checks?: { list?: string; body?: string; sending?: string };
 }
 export interface MailAuthState { phase: string; url?: string; error?: string; }
+export interface MailRuntimeStatus { ready: boolean; reason: "ready" | "helper-missing" | "python-missing" | "helper-incompatible" | "unavailable"; }
 export interface MailConnectionsState { connections: MailConnectionState[]; auth?: MailAuthState; offline?: boolean; syncedAt?: number; }
 export interface BusIdentity { memberId: string; agentId: string; admin: boolean; session: boolean; agentIds: string[]; offline?: boolean; syncedAt?: number; }
 export interface BusMember { id: string; name: string; role: string; state: string; revision: number; agentIds: string[]; }
@@ -3135,6 +3136,10 @@ export class HaraClient {
   async mailConnections(profileId: string, spaceId: string): Promise<MailConnectionsState> {
     if (!this.supports("mail.connections.list")) throw new Error("Update Hara Engine to use mailbox connections");
     return this.call("mail.connections.list", { profileId, spaceId });
+  }
+  async mailRuntimeStatus(profileId: string, spaceId: string): Promise<MailRuntimeStatus> {
+    if (!this.supports("mail.runtime.status")) throw new Error("Update Hara Engine to check mailbox prerequisites");
+    return this.call("mail.runtime.status", { profileId, spaceId });
   }
   async mailCommand<T = Record<string, unknown>>(profileId: string, spaceId: string, operation: string, input: Record<string, unknown> = {}): Promise<T> {
     if (!this.supports("mail.command")) throw new Error("Update Hara Engine to use mailbox connections");

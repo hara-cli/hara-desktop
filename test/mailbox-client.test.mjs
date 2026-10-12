@@ -23,7 +23,7 @@ test("mailbox client negotiates capabilities and carries a fixed company/profile
     constructor() { queueMicrotask(() => this.onopen?.()); }
     send(raw) {
       const r = JSON.parse(raw); requests.push(r);
-      const result = r.method === "initialize" ? { name: "hara", version: "test", protocol: 1, capabilities: { methods: advertised ? ["mail.connections.list", "mail.command", "mail.auth.status", "desk.taskbus.request"] : [], features: [], events: [] } } : { ok: true };
+      const result = r.method === "initialize" ? { name: "hara", version: "test", protocol: 1, capabilities: { methods: advertised ? ["mail.connections.list", "mail.runtime.status", "mail.command", "mail.auth.status", "desk.taskbus.request"] : [], features: [], events: [] } } : { ok: true };
       queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ jsonrpc: "2.0", id: r.id, result }) }));
     }
     close() { this.readyState = 3; this.onclose?.(); }
@@ -32,6 +32,7 @@ test("mailbox client negotiates capabilities and carries a fixed company/profile
   t.after(() => { globalThis.WebSocket = previousSocket; globalThis.window = previousWindow; });
   const client = new HaraClient(); await client.connect("127.0.0.1", 4242); await client.initialize("test-token");
   await client.mailConnections("company-a", "org-a");
+  await client.mailRuntimeStatus("company-a", "org-a");
   await client.mailCommand("company-a", "org-a", "pause", { id: "mail-1", expectedRevision: 3, requestKey: "pause-1" });
   await client.mailAuthStatus("company-a", "org-a");
   await client.taskbusRequest("company-a", "org-a", "tasks.accept", { taskId: "task-1", expectedRevision: 4, resultHash: "hash-1", requestKey: "accept-1" });
@@ -41,6 +42,7 @@ test("mailbox client negotiates capabilities and carries a fixed company/profile
   const old = new HaraClient(); await old.connect("127.0.0.1", 4242); await old.initialize("test-token");
   const before = requests.length;
   await assert.rejects(old.mailCommand("company-b", "org-b", "bind"), /Update Hara Engine/);
+  await assert.rejects(old.mailRuntimeStatus("company-b", "org-b"), /Update Hara Engine/);
   await assert.rejects(old.taskbusRequest("company-b", "org-b", "tasks.create"), /Update Hara Engine/);
   assert.equal(requests.length, before, "unsupported engines receive no fallback mutations"); old.close();
 });
