@@ -122,3 +122,23 @@ disposable profile were closed; it did not attach to the user's browser or start
 These checks do not replace the protected packaging/signing/public-edge gates or establish a
 production gateway deployment. Exact release identities and publication evidence are recorded
 separately after those gates pass.
+
+### Final bundled-Engine candidate recheck, 2026-10-12
+
+The candidate now locks Engine 0.186.1 to exact commit
+`28e7c6c863687f6762ba3d1cb57528abb8a9ccb4`. The CLI production change removes only each
+completed polling wait's own abort listener; queued delivery and retries are unchanged. No UI
+implementation or avatar asset changed in this lock update.
+
+The final lock passed all 478 Desktop regressions (0 failures, cancellations or skips), release
+metadata validation, TypeScript/Vite production build and the 34-asset check, the pinned Rust
+1.97.0 host check with two build jobs, and the official-registry production audit (0 advisories).
+The earlier 79-scenario browser evidence applies to the unchanged renderer, not a new live-gateway
+or native packaged-app acceptance claim. The ignored compile-only sidecar fixtures remain excluded
+from signed release builds.
+
+Neither these checks nor a Desktop installation switch a separately running gateway. Live CPU,
+single-consumer maintenance and real receive/send acceptance remain separately pending. Email/Desk
+integration and the newly audited understanding-gate, archived-colleague restore, creation-scope
+and detailed auto-pause improvements are not included in this patch. Protected signing, notarization,
+public-edge verification and first-party updater/CDN verification must pass before release closure.

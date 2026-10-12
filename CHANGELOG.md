@@ -10,8 +10,13 @@
 - Carry nickname, avatar and accent-color personalization consistently through contacts, chat
   headers, details, profile editing and the New menu. Reset remains a draft until explicitly saved;
   appearance changes never change Agent identity, permanent role or tool permissions.
-- Retain Engine 0.186.0 unchanged. No new model calls, subscriptions or background history fetches
-  are added. AI-generated avatars and new avatar-shape choices are not included in this patch.
+- Bundle Engine 0.186.1 at exact commit `28e7c6c863687f6762ba3d1cb57528abb8a9ccb4`. Completed
+  gateway polling waits remove their own abort listener, preventing idle listener accumulation
+  without changing queued delivery or retry rules. Installing Desktop does not replace separately
+  running gateway processes or prove their live CPU and message-delivery acceptance.
+- No new model calls, subscriptions or background history fetches are added. AI-generated avatars,
+  new avatar-shape choices, email/Desk integration and the newly audited understanding-gate,
+  colleague-restore, creation-scope and auto-pause improvements are not included in this patch.
 - Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may
   display a reputation warning.
 
