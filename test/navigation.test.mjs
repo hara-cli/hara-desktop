@@ -450,6 +450,8 @@ test("Groups is a native organization work surface with no renderer-owned transp
 test("Workbench defaults to Agent contacts and keeps native recovery in Settings, not a peer chat tab", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const inbox = readFileSync(`${root}/src/workbench-inbox.ts`, "utf8");
+  const newMenu = readFileSync(`${root}/src/NewConversationMenu.tsx`, "utf8");
+  const details = readFileSync(`${root}/src/AgentDetailsDrawer.tsx`, "utf8");
   const headingStart = app.indexOf('className="workbench-inbox-heading"');
   const headingEnd = app.indexOf("</div>", headingStart);
   const directoryHeading = app.slice(headingStart, headingEnd);
@@ -460,7 +462,7 @@ test("Workbench defaults to Agent contacts and keeps native recovery in Settings
   );
   assert.doesNotMatch(app, /新任务|New task/,
     "the contact directory does not expose a hidden Session operation as a global task action");
-  assert.match(app, /开始新话题|Start a fresh topic/,
+  assert.match(newMenu, /开始新话题|Start a fresh topic/,
     "the history detail uses an explicit conversation action instead of task/session terminology");
   assert.match(app, /workbenchInboxMode === "agents"/);
   assert.match(app, /workbenchInboxMode === "external"/);
@@ -469,8 +471,9 @@ test("Workbench defaults to Agent contacts and keeps native recovery in Settings
   assert.match(app, /<SettingsCard title=\{t\("codingRecoveryTitle"\)\}[\s\S]*onClick=\{openCodingRecovery\}/);
   assert.match(directoryHeading, /onClick=\{returnToAgentDirectory\}/);
   assert.match(app, /void openAgentConversation\(agent\.ref, targetCwd\)/);
-  assert.match(app, /inbox-agent-history/, "older execution segments stay available without becoming contacts");
-  assert.match(app, /locale === "zh" \? "历史" : "History"/, "history is a named action rather than an icon-only affordance");
+  assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "agent", id: detailsAgent\.ref \}\)/,
+    "colleague details still opens the original recoverable execution segments");
+  assert.match(details, /聊天历史|Chat history/, "history has a named action, not just an unlabeled icon");
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "project", id: cwd \}\)/);
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "external", id: session\.id \}\)/);
   assert.match(app, /className="inbox-back"/);

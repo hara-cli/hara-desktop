@@ -253,22 +253,20 @@ test("the app shell delegates stable navigation and transcript presentation", ()
   assert.match(diff, /white-space:\s*pre\s*;/, "unified diff alignment is preserved");
 });
 
-test("Agent history is a persistent discoverable action instead of a hover-only icon", () => {
+test("Agent details is persistent and history stays named, counted, and recoverable", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
-  const css = readFileSync(`${root}/src/App.css`, "utf8");
-  const historyRuleStart = css.indexOf(".inbox-agent-history {");
-  const historyRule = historyRuleStart >= 0
-    ? css.slice(historyRuleStart, css.indexOf("}", historyRuleStart) + 1)
-    : "";
-
-  assert.match(app, /className="project-remove inbox-project-remove inbox-agent-history"/);
-  assert.match(app, /locale === "zh" \? "历史" : "History"/,
-    "the action names the destination instead of relying on an icon");
-  assert.match(app, /<b>\{agentSessions\.length\}<\/b>/,
-    "the history entry communicates that more than one recoverable task exists");
-  assert.match(historyRule, /opacity:\s*1\s*;/,
-    "the action remains visible without requiring mouse hover");
-  assert.match(historyRule, /display:\s*inline-flex\s*;/);
+  const contact = readFileSync(`${root}/src/AgentContact.tsx`, "utf8");
+  const details = readFileSync(`${root}/src/AgentDetailsDrawer.tsx`, "utf8");
+  const css = readFileSync(`${root}/src/ConversationWorkspace.css`, "utf8");
+  assert.match(app, /onDetails=\{\(\) => openAgentDetails\(agent\.ref\)\}/);
+  assert.match(contact, /className="inbox-contact-details"/);
+  assert.match(contact, /详情与历史|Details and history/);
+  assert.match(details, /聊天历史|Chat history/);
+  assert.match(details, /\$\{historyCount\} 段对话记录/);
+  const detailsRule = css.slice(css.indexOf(".inbox-contact-details {"), css.indexOf(".inbox-contact-details:hover"));
+  assert.match(detailsRule, /display:\s*grid\s*;/);
+  assert.doesNotMatch(detailsRule, /opacity:\s*0\s*;/, "details must not require mouse hover");
+  assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "agent", id: detailsAgent\.ref \}\)/);
 });
 
 test("Agent execution settings inherit Space defaults and stay company-governed", () => {
@@ -1597,7 +1595,9 @@ test("the composer has per-session attachments, bounded folders, and capability-
   assert.match(app, /松开后加入本轮上下文/);
   assert.match(app, /只建立有界清单，不整目录注入模型/);
   assert.match(app, /切换 Agent 工作区/, "persistent workspace and one-turn folder context are distinguished");
-  assert.match(app, /disabled=\{!activeDraftCanSend\}/, "an attachment-only compatible turn can be sent");
+  assert.match(app, /canSend=\{activeDraftCanSend\}/, "an attachment-only compatible turn can be sent");
+  const inputRow = readFileSync(`${root}/src/ComposerInputRow.tsx`, "utf8");
+  assert.match(inputRow, /disabled=\{!canSend\}/);
   assert.match(app, /activeAttachmentIssue/, "incompatible image routes block send without deleting the draft");
   assert.match(app, /自动调度也不保证图片会交给多模态模型/,
     "an unverified auto route explains that text routing is not an image-capability guarantee");
@@ -2079,7 +2079,7 @@ test("extension screens remain owner-bound and never display a raw panel URL", (
   assert.match(app, /const discardCurrentExtensionDraft = \(\): boolean =>/);
   assert.match(dock, /role="tablist"/);
   assert.match(dock, /aria-selected=\{tab\.id === activeTabId\}/);
-  assert.match(dock, /aria-label=\{copy\.hide\}/);
+  assert.match(dock, /aria-label=\{copy\.backToChat \?\? copy\.hide\}/);
   assert.match(dock, /DockIcon name="collapse"/, "dock hiding uses a panel-collapse affordance rather than a tab-close icon");
   assert.match(dock, /placement\?: "split" \| "stage"/);
   assert.match(app, /placement="stage"/, "Office promotes an opened document into its full main stage");

@@ -461,3 +461,43 @@ the matching repository; keep DNS failures separate from HTTP asset failures.
 - Recurrence-Count: 1
 
 ---
+
+## [LRN-20261012-CONVERSATION-LAYOUT-COMBINATIONS] best_practice
+
+**Logged**: 2026-10-12
+**Priority**: high
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+
+Conversation layout changes need real-component combination tests, not only static CSS or happy-path screenshots.
+
+### Details
+
+The original split-dock percentage produced a measured 353px/436px chat at 1100px/1280px window widths.
+The first single-pane fix still reserved blank space when a pending approval out-specificed a collapsed dock.
+A named container query cannot change its own container's flex-direction, so the narrow pending-approval
+layout uses a wrapping parent and queries its children. Historical session activation must also leave the
+contact-directory view, while external-session pages remain excluded from contact-only responsive rules.
+Model-only envelopes must be removed before truncation, or a long reminder loses its closing tag and leaks
+into a readable-message preview. Browser fixtures must be gated at both the route and lazy-import boundary.
+
+### Suggested Action
+
+Keep the 73-layout real-component browser gate alongside the source/SSR tests. Assert complete approval
+visibility, returning from history, draft/IME/focus preservation, loaded extreme dock preferences, and
+collapsed/maximized transitions. Bind release claims to the correct source and distinguish component QA
+from native/provider/business acceptance. Use strict shell failure handling; inspect bounded test failures
+instead of dumping whole source assertions. Stop the owned headless browser and retry its own temporary
+profile cleanup asynchronously before reporting success; never remove or attach to a user's profile.
+
+### Metadata
+
+- Source: error
+- Related Files: src/ConversationWorkspace.css, src/App.tsx, src/workbench-inbox.ts, src/main.tsx, scripts/conversation-visual-smoke.mjs
+- Tags: responsive, approvals, history, ime, visibility, browser-cleanup, source-provenance
+- Pattern-Key: frontend.conversation_combination_acceptance
+- Recurrence-Count: 1
+
+---

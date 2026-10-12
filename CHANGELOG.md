@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.185 — 2026-10-12 — Conversation-first workspace
+
+- Consolidate chat/recruitment actions into one New menu; keep existing chats and explicit fresh
+  topics separate. Move public colleague details, counted history and profile management into an
+  on-demand drawer without changing runtime or permission ownership.
+- Use readable loaded-message previews, open assistant text, a compact growing composer and
+  clearer focus states in Chinese/English and light/dark themes.
+- Preserve readable chat width around artifact panels. Narrow layouts provide Back to chat;
+  pending approvals remain accessible and collapsed panels no longer reserve blank space.
+- Retain Engine 0.186.0 unchanged. This does not introduce permanent group chat or multi-client
+  message synchronization. See `docs/CONVERSATION_WORKSPACE_QA.md` for local acceptance boundaries.
+- Windows installers remain updater-signed but are not yet Authenticode-signed, so SmartScreen may
+  display a reputation warning.
+
 ## 0.1.184 — 2026-10-11 — Agent-first chats and explicit coding connections
 
 - Keep Agent contacts as the default chat directory. Move advanced coding session history, recovery

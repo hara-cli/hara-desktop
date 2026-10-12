@@ -1,6 +1,33 @@
 import type { AgentInfo, ExternalSessionInfo, SessionInfo } from "./client.ts";
 import { mainAgentRef } from "./agent-session.ts";
 import { isJunkProjectDirectory } from "./project-list.ts";
+import { userVisibleText } from "./user-visible-text.ts";
+import { splitAssistantTechnicalReceipt } from "./execution-presentation.ts";
+import type { ConversationItem } from "./ConversationTimeline.tsx";
+
+/** A bounded projection of a transcript already loaded for this exact session. Never scan every
+ * history, treat a task title as a message, or expose hidden tool/routing text in the contact list. */
+export function inboxMessagePreview(items: readonly ConversationItem[] | undefined): string {
+  if (!items) return "";
+  for (let index = items.length - 1; index >= Math.max(0, items.length - 80); index -= 1) {
+    const item = items[index];
+    if (!item || (item.kind !== "text" && item.kind !== "user")) continue;
+    if (item.kind === "user" && item.pendingId) continue;
+    // Remove a complete internal envelope before truncating: cutting off a long reminder's closing
+    // tag first would turn model-only context into an apparently readable contact preview.
+    const visible = userVisibleText(item.text).slice(0, 4096);
+    const text = (item.kind === "text" ? splitAssistantTechnicalReceipt(visible).visibleText : visible)
+      .slice(0, 2048)
+      .replace(/```[\s\S]*?(?:```|$)/g, " ")
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/(?:^|\n)\s{0,3}(?:#{1,6}\s+|>\s*|[-*+]\s+)/g, " ")
+      .replace(/[*_`~]/g, "")
+      .replace(/\s+/g, " ").trim();
+    if (text) return Array.from(text).slice(0, 96).join("");
+  }
+  return "";
+}
 
 export type WorkbenchInboxMode = "agents" | "projects" | "external" | "deliverables";
 

@@ -271,7 +271,6 @@ import {
   IconImage,
   IconPlus,
   IconRefresh,
-  IconSparkles,
   IconStar,
   IconTrash,
   IconUsers,
@@ -294,6 +293,9 @@ import AgentPicker from "./AgentPicker";
 import ConversationCodingConnection from "./ConversationCodingConnection";
 import { AgentPortrait } from "./AgentPortrait";
 import AgentProfileEditor from "./AgentProfileEditor";
+import { AgentContact } from "./AgentContact";
+import NewConversationMenu from "./NewConversationMenu";
+import { ComposerInputRow } from "./ComposerInputRow";
 import HireAgentDialog, { type HireAgentInput } from "./HireAgentDialog";
 import type { AgentBlueprint } from "./talent-blueprint";
 import SpaceSwitcher from "./SpaceSwitcher";
@@ -315,6 +317,7 @@ import {
   agentInboxEntries,
   filterInboxSessions,
   inboxSessionsForAgent,
+  inboxMessagePreview,
   isWorkbenchConversation,
   sortInboxSessions,
   visibleExternalSessions,
@@ -327,6 +330,7 @@ import ExternalSessionCenter, {
 } from "./ExternalSessionCenter";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
+import "./ConversationWorkspace.css";
 
 type SettingsSection =
   | "providers"
@@ -396,6 +400,7 @@ const ExtensionViewLauncher = lazy(() =>
 const WorkbenchToolSurface = lazy(loadWorkbenchToolSurface);
 const AgentCollaborationSurface = lazy(loadAgentCollaborationSurface);
 const TalentMarket = lazy(loadTalentMarket);
+const AgentDetailsDrawer = lazy(() => import("./AgentDetailsDrawer"));
 const OfficeHome = lazy(loadOfficeHome);
 const ArtifactWorkbench = lazy(loadArtifactWorkbench);
 const PresentationWorkbench = lazy(loadPresentationWorkbench);
@@ -941,6 +946,8 @@ export default function App() {
   const [modelInfoScope, setModelInfoScope] = useState<string | null>(null);
   const [agentCatalog, setAgentCatalog] = useState<AgentCatalog | null>(null);
   const [profileAgentRef, setProfileAgentRef] = useState<string | null>(null);
+  const [detailsAgentRef, setDetailsAgentRef] = useState<string | null>(null);
+  const [contactDirectoryOpen, setContactDirectoryOpen] = useState(false);
   const [profileAgentSaving, setProfileAgentSaving] = useState(false);
   const [profileAgentError, setProfileAgentError] = useState("");
   const [hireAgentOpen, setHireAgentOpen] = useState(false);
@@ -959,8 +966,12 @@ export default function App() {
     return next;
   }, []);
   const openAgentProfile = useCallback((agentRef: string) => {
+    setDetailsAgentRef(null);
     setProfileAgentError("");
     setProfileAgentRef(agentRef);
+  }, []);
+  const openAgentDetails = useCallback((agentRef: string) => {
+    setDetailsAgentRef(agentRef);
   }, []);
   const openTalentMarket = useCallback(() => {
     setHireAgentError("");
@@ -1567,6 +1578,7 @@ export default function App() {
     if (session) rememberSession(id, session);
     activeRef.current = id;
     setActive(id);
+    setContactDirectoryOpen(false);
   };
   const clearActiveSession = (id: string) => {
     for (const remembered of Object.values(activeByZoneRef.current)) {
@@ -3555,6 +3567,8 @@ export default function App() {
     setModelInfo(null);
     setModelInfoScope(null);
     setProfileAgentRef(null);
+    setDetailsAgentRef(null);
+    setContactDirectoryOpen(false);
     setProfileAgentError("");
     setHireAgentOpen(false);
     setHireAgentError("");
@@ -7182,6 +7196,9 @@ export default function App() {
   const profileAgent = profileAgentRef
     ? availableAgents.find((agent) => agent.ref === profileAgentRef)
     : undefined;
+  const detailsAgent = detailsAgentRef
+    ? availableAgents.find((agent) => agent.ref === detailsAgentRef)
+    : undefined;
   const visibleAgentInboxEntries = agentInboxEntries(availableAgents, spaceSessions, q);
   const visibleExternalInboxSessions = visibleExternalSessions(externalSessions, q);
   const visibleDeliverables = artifacts && artifacts !== "old-server"
@@ -7553,16 +7570,20 @@ export default function App() {
       {/* the permanent target anchor — you always know where this message lands */}
       <div className="anchor">
         {temperament === "im" ? (
-          <span className="conversation-destination">
-            {t("anchorAssistant")}
-            <b>{activeAgent ? agentDisplayName(activeAgent) : "Hara"}</b>
-            {activeSession ? (
-              <small className="workspace-context-chip" title={activeSession.cwd}>
-                <IconFolder size={12} />
-                {basename(activeSession.cwd)}
-              </small>
-            ) : null}
-          </span>
+          <div className="conversation-destination">
+            {workbenchInboxMode === "agents" ? <button type="button" className="conversation-directory-button"
+              aria-label={locale === "zh" ? "返回聊天列表" : "Back to chats"}
+              onClick={() => { setContactDirectoryOpen(true); setWorkbenchInboxTarget(null); }}><IconBack size={18} /></button> : null}
+            <button type="button" className="conversation-person" disabled={!activeAgent}
+              aria-label={locale === "zh" ? `查看${activeAgent ? agentDisplayName(activeAgent) : "Hara"}的详情` : `View details for ${activeAgent ? agentDisplayName(activeAgent) : "Hara"}`}
+              aria-haspopup="dialog" onClick={() => activeAgent && openAgentDetails(activeAgent.ref)}>
+              {activeAgent ? <AgentPortrait agentRef={activeAgent.ref} name={activeAgent.name} identity={activeAgent.identity} size="small" /> : null}
+              <span><b>{activeAgent ? agentDisplayName(activeAgent) : "Hara"}</b>
+                <small>{active && busy[active] ? (locale === "zh" ? "正在跟进…" : "Following up…")
+                  : activeAgent ? agentPublicTitle(activeAgent) : (locale === "zh" ? "你的 AI 同事" : "Your AI colleague")}</small></span>
+              <IconChevronDown size={13} />
+            </button>
+          </div>
         ) : (
           <span>
             {t("anchorRepo")}
@@ -7570,7 +7591,7 @@ export default function App() {
           </span>
         )}
         <div className="anchor-actions">
-          <AgentPicker
+          {temperament === "ide" ? <AgentPicker
             agents={availableAgents}
             currentAgentRef={activeSession?.agentRef}
             dismissedAgentRefs={agentCatalog?.dismissedAgentRefs}
@@ -7582,7 +7603,7 @@ export default function App() {
               const targetCwd = agent?.home || activeSession?.cwd || server?.cwd || "";
               if (targetCwd) void openAgentConversation(agentRef, targetCwd);
             }}
-          />
+          /> : null}
           {temperament === "ide" &&
             activeSession &&
             (projPanels[activeSession.cwd] ?? [])
@@ -7907,9 +7928,13 @@ export default function App() {
                   </button>
                 </div>
               )}
-              <div className="composer-input-row">
+              <ComposerInputRow inputRef={inputRef} value={input} busy={!!active && !!busy[active]}
+                canSend={activeDraftCanSend} sendLabel={t("send")} stopLabel={t("stop")}
+                onSend={() => void sendMsg()} onStop={() => active && void stopTurn(active)}>
                 <textarea
                   ref={inputRef}
+                  rows={1}
+                  aria-label={locale === "zh" ? "消息" : "Message"}
                   value={input}
                   disabled={!!activeReadOnlySession || activeAgentDismissed}
                   placeholder={activeAgentDismissed
@@ -7950,20 +7975,7 @@ export default function App() {
                     }
                   }}
                 />
-                {active && busy[active] ? (
-                  <button className="composer-send stop" onClick={() => void stopTurn(active)}>
-                    {t("stop")}
-                  </button>
-                ) : (
-                  <button
-                    className="composer-send"
-                    onClick={() => void sendMsg()}
-                    disabled={!activeDraftCanSend}
-                  >
-                    {t("send")} <span aria-hidden="true">↑</span>
-                  </button>
-                )}
-              </div>
+              </ComposerInputRow>
               <div className="composer-toolbar">
                 <div className="composer-popover-anchor">
                   <button
@@ -9342,7 +9354,7 @@ export default function App() {
   );
 
   return (
-    <div className="app">
+    <div className={`app conversation-first${zone === "chat" && workbenchInboxMode === "agents" && active ? " has-active-conversation" : ""}${zone === "chat" && workbenchInboxMode === "agents" && (!active || contactDirectoryOpen) ? " is-contact-directory" : ""}`}>
       {rail}
       {spaceSwitching ? (
         <div className="space-switch-shield" role="status" aria-live="polite" aria-busy="true">
@@ -9523,7 +9535,7 @@ export default function App() {
                   : selectedExternalSession?.title ?? basename(selectedInboxProject?.[0] ?? "")}</strong>
                 <small>
                   {selectedInboxAgent
-                    ? <>{isRootAgent(selectedInboxAgent) ? (locale === "zh" ? "主调度 · " : "Root coordinator · ") : null}{agentPublicTitle(selectedInboxAgent)}{" · "}{selectedInboxSessionTotal} {locale === "zh" ? "项历史任务" : "past tasks"}</>
+                    ? <>{isRootAgent(selectedInboxAgent) ? (locale === "zh" ? "主理 Agent · " : "Main Agent · ") : null}{agentPublicTitle(selectedInboxAgent)}{" · "}{selectedInboxSessionTotal} {locale === "zh" ? "段对话记录" : "conversations"}</>
                     : selectedExternalSession
                       ? <>{selectedExternalSession.workspaceName}{" · "}{externalSessionStateLabel(selectedExternalSession.state)}</>
                       : <>{selectedInboxProject?.[0]}{" · "}{selectedInboxSessionTotal} {t("inboxConversations")}</>}
@@ -9533,11 +9545,9 @@ export default function App() {
                 <button
                   type="button"
                   className="inbox-agent-profile"
-                  title={selectedInboxAgent.allowedActions?.includes("edit_profile")
-                    ? (locale === "zh" ? "编辑 Agent 名片" : "Edit Agent profile")
-                    : (locale === "zh" ? "查看 Agent 名片与管理权限" : "View Agent profile and management policy")}
+                  title={locale === "zh" ? "同事详情与历史" : "Colleague details and history"}
                   aria-label={locale === "zh" ? "Agent 名片" : "Agent profile"}
-                  onClick={() => openAgentProfile(selectedInboxAgent.ref)}
+                  onClick={() => openAgentDetails(selectedInboxAgent.ref)}
                 >
                   <IconEdit size={15} />
                 </button>
@@ -9558,45 +9568,28 @@ export default function App() {
             </>
           )}
           <div className={`workbench-sidebar-actions ${workbenchInboxMode !== "agents" && !selectedInboxAgent ? "is-single" : ""}`}>
-            {selectedInboxAgent ? (
-              <>
-                <button
-                  className="new withicon"
-                  onClick={() => {
-                    const targetCwd = selectedInboxAgent.home
-                      || (home ? `${home}/.hara/workspace` : "")
-                      || server?.cwd
-                      || "";
-                    const targetPlace = sessionPlace({ cwd: targetCwd, source: "interactive" });
-                    if (
-                      targetCwd
-                      && (targetPlace === "chat" || targetPlace === "projects")
-                      && setZone(targetPlace)
-                    ) void newSession(targetCwd, selectedInboxAgent.ref);
-                  }}
-                >
-                  <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
-                  {isRootAgent(selectedInboxAgent)
-                    ? (locale === "zh" ? "向主调度开启新话题" : "Start a topic with Hara")
-                    : (locale === "zh" ? "开始新话题" : "Start a fresh topic")}
-                </button>
-                {activeSpaceId === "personal" && agentCreateReady ? (
-                  agentBlueprintFeatureReady ? (
-                    <button
-                      className="new ghost hire-agent-button talent-market-button"
-                      onMouseEnter={() => warmModule(loadTalentMarket())}
-                      onFocus={() => warmModule(loadTalentMarket())}
-                      onClick={openTalentMarket}
-                    >
-                      <span aria-hidden><IconSparkles size={15} /></span>{locale === "zh" ? "人才市场" : "Talent market"}
-                    </button>
-                  ) : (
-                    <button className="new ghost hire-agent-button" onClick={openCustomRecruitment}>
-                      <span aria-hidden><IconPlus size={15} /></span>{locale === "zh" ? "自定义雇佣" : "Custom hire"}
-                    </button>
-                  )
-                ) : null}
-              </>
+            {(selectedInboxAgent || workbenchInboxMode === "agents") && !selectedExternalSession && !selectedInboxProject ? (
+              <NewConversationMenu agents={availableAgents} locale={locale} busy={sessionCreating}
+                canCreateAgent={activeSpaceId === "personal" && agentCreateReady}
+                onCreateAgent={agentBlueprintFeatureReady ? openTalentMarket : openCustomRecruitment}
+                onSelectAgent={(agentRef) => {
+                  const agent = availableAgents.find((candidate) => candidate.ref === agentRef);
+                  const latest = sortInboxSessions(inboxSessionsForAgent(spaceSessions, agentRef))[0];
+                  const targetCwd = latest?.cwd || agent?.home || server?.cwd || "";
+                  setWorkbenchInboxTarget(null); setContactDirectoryOpen(false); setQ("");
+                  if (targetCwd) void openAgentConversation(agentRef, targetCwd);
+                }}
+                onNewTopic={selectedInboxAgent || activeAgent ? () => {
+                  const agent = selectedInboxAgent ?? activeAgent;
+                  if (!agent) return;
+                  const targetCwd = agent.home || activeSession?.cwd
+                    || (home ? `${home}/.hara/workspace` : "") || server?.cwd || "";
+                  const targetPlace = sessionPlace({ cwd: targetCwd, source: "interactive" });
+                  if (targetCwd && (targetPlace === "chat" || targetPlace === "projects") && setZone(targetPlace)) {
+                    setContactDirectoryOpen(false);
+                    void newSession(targetCwd, agent.ref);
+                  }
+                } : undefined} />
             ) : selectedExternalSession ? (
               <button className="new withicon" disabled={externalSessionsLoading} onClick={refreshExternalSessions}>
                 <span className="new-conversation-plus" aria-hidden><IconRefresh size={15} /></span>
@@ -9623,25 +9616,6 @@ export default function App() {
                 <span className="new-conversation-plus" aria-hidden><IconPlus size={15} /></span>
                 {artifactBusy === "import" ? t("artifactImporting") : t("openDeliverable")}
               </button>
-            ) : workbenchInboxMode === "agents" ? (
-              <>
-                {activeSpaceId === "personal" && agentCreateReady ? (
-                  agentBlueprintFeatureReady ? (
-                    <button
-                      className="new ghost hire-agent-button talent-market-button"
-                      onMouseEnter={() => warmModule(loadTalentMarket())}
-                      onFocus={() => warmModule(loadTalentMarket())}
-                      onClick={openTalentMarket}
-                    >
-                      <span aria-hidden><IconSparkles size={15} /></span>{locale === "zh" ? "人才市场" : "Talent market"}
-                    </button>
-                  ) : (
-                    <button className="new ghost hire-agent-button" onClick={openCustomRecruitment}>
-                      <span aria-hidden><IconPlus size={15} /></span>{locale === "zh" ? "自定义雇佣" : "Custom hire"}
-                    </button>
-                  )
-                ) : null}
-              </>
             ) : workbenchInboxMode === "external" ? (
               <button className="new withicon" disabled={externalSessionsLoading} onClick={refreshExternalSessions}>
                 <span className="new-conversation-plus" aria-hidden><IconRefresh size={15} /></span>
@@ -9733,59 +9707,21 @@ export default function App() {
               )
             ) : workbenchInboxMode === "agents" ? (
               visibleAgentInboxEntries.length ? visibleAgentInboxEntries.map(({ agent, sessions: agentSessions, latest }) => {
-                const unreadCount = agentSessions.filter((session) => unread[session.id]).length;
                 const isWorking = agentSessions.some((session) => busy[session.id]);
                 return (
-                  <div className={`inbox-contact-shell${isRootAgent(agent) ? " is-root" : ""}`} key={agent.ref}>
-                    <button
-                      type="button"
-                      className={`inbox-contact ${agentSessions.some((session) => session.id === active) ? "is-active" : ""}`}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        openAgentProfile(agent.ref);
-                      }}
-                      onClick={() => {
+                  <AgentContact key={agent.ref} agent={agent} locale={locale} working={isWorking}
+                    unread={agentSessions.some((session) => unread[session.id])}
+                    selected={agentSessions.some((session) => session.id === active)}
+                    time={latest?.updatedAt ? fmtTime(latest.updatedAt) : undefined}
+                    preview={inboxMessagePreview(latest ? transcripts[latest.id] : undefined) || agentPublicTitle(agent)}
+                    onDetails={() => openAgentDetails(agent.ref)}
+                    onOpen={() => {
                         setWorkbenchInboxTarget(null);
+                        setContactDirectoryOpen(false);
                         setQ("");
                         const targetCwd = latest?.cwd || agent.home || server?.cwd || "";
                         if (targetCwd) void openAgentConversation(agent.ref, targetCwd);
-                      }}
-                    >
-                      <AgentPortrait
-                        agentRef={agent.ref}
-                        name={agent.name}
-                        identity={agent.identity}
-                        size="medium"
-                        state={isWorking ? "working" : "idle"}
-                      />
-                      <span className="inbox-contact-copy">
-                        <span className="inbox-contact-line">
-                          <strong>{agentDisplayName(agent)}</strong>
-                          {isRootAgent(agent) ? <b className="inbox-agent-root-badge">{locale === "zh" ? "主调度" : "ROOT"}</b> : null}
-                          <time>{latest?.updatedAt ? fmtTime(latest.updatedAt) : ""}</time>
-                        </span>
-                        <span className="inbox-contact-line preview">
-                          <span>{latest?.title || agentPublicTitle(agent)}</span>
-                          {unreadCount > 0 ? <b className="inbox-unread">{unreadCount}</b> : null}
-                        </span>
-                      </span>
-                    </button>
-                    {agentSessions.length > 0 ? (
-                      <button
-                        type="button"
-                        className="project-remove inbox-project-remove inbox-agent-history"
-                        title={locale === "zh" ? `${agentDisplayName(agent)}：${agentSessions.length} 项历史任务` : `${agentDisplayName(agent)}: ${agentSessions.length} past task${agentSessions.length === 1 ? "" : "s"}`}
-                        aria-label={`${locale === "zh" ? "历史任务" : "Task history"}：${agentDisplayName(agent)}（${agentSessions.length}）`}
-                        onClick={() => {
-                          setWorkbenchInboxTarget({ kind: "agent", id: agent.ref });
-                          setQ("");
-                        }}
-                      >
-                        <span>{locale === "zh" ? "历史" : "History"}</span>
-                        <b>{agentSessions.length}</b>
-                      </button>
-                    ) : null}
-                  </div>
+                      }} />
                 );
               }) : <div className="inbox-empty"><small>{t("inboxAgentEmptyHint")}</small></div>
             ) : workbenchInboxMode === "external" ? (
@@ -10809,7 +10745,7 @@ export default function App() {
       ) : (zone === "chat" || zone === "projects") && workbenchInboxMode === "external" ? (
         externalSessionCenterSurface
       ) : (zone === "chat" || zone === "projects") && contextExtensionDock ? (
-        <div className={`extension-work${pendingApprovalVisible ? " has-pending-approval" : ""}${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && effectiveConversationDockMode === "maximized" ? " is-extension-maximized" : ""}`}>
+        <div className={`extension-work${zone === "chat" ? " conversation-extension-work" : ""}${pendingApprovalVisible ? " has-pending-approval" : ""}${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && effectiveConversationDockMode === "maximized" ? " is-extension-maximized" : ""}`}>
           <div className="extension-primary">{conversation(zone === "chat" ? "im" : "ide")}</div>
           <Suspense fallback={<aside className="extension-dock is-docked" aria-busy="true" />}>
             <ExtensionDock
@@ -10832,7 +10768,7 @@ export default function App() {
               activeTabId={contextExtensionDock.id}
               collapsed={!contextExtensionScreenVisible}
               addItems={extensionAddItems}
-              copy={extensionCopy}
+              copy={{ ...extensionCopy, backToChat: zone === "chat" ? (locale === "zh" ? "返回聊天" : "Back to chat") : undefined }}
               onTabSelect={selectExtensionTab}
               onTabClose={closeDockTab}
               onAddItem={openExtensionItem}
@@ -10938,6 +10874,18 @@ export default function App() {
               setHireAgentOpen(true);
             }}
           />
+        </Suspense>
+      ) : null}
+      {detailsAgent ? (
+        <Suspense fallback={<div className="agent-details-loading" role="status">{locale === "zh" ? "正在打开同事详情…" : "Opening colleague details…"}</div>}>
+          <AgentDetailsDrawer key={`${activeSpaceId}:${detailsAgent.ref}`} agent={detailsAgent} locale={locale}
+            historyCount={inboxSessionsForAgent(spaceSessions, detailsAgent.ref).length}
+            onClose={() => setDetailsAgentRef(null)}
+            onHistory={() => {
+              setWorkbenchInboxTarget({ kind: "agent", id: detailsAgent.ref });
+              setQ(""); setContactDirectoryOpen(true); setDetailsAgentRef(null);
+            }}
+            onManage={() => { setDetailsAgentRef(null); openAgentProfile(detailsAgent.ref); }} />
         </Suspense>
       ) : null}
       {profileAgent ? (

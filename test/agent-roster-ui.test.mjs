@@ -9,6 +9,7 @@ test("Desktop keeps dismissed Agent history legible while removing the Agent fro
   const picker = readFileSync(new URL("src/AgentPicker.tsx", root), "utf8");
   const profile = readFileSync(new URL("src/AgentProfileEditor.tsx", root), "utf8");
   const client = readFileSync(new URL("src/client.ts", root), "utf8");
+  const contact = readFileSync(new URL("src/AgentContact.tsx", root), "utf8");
 
   assert.match(client, /dismissedAgentRefs\?: string\[\]/);
   assert.match(app, /activeAgentDismissed = Boolean\(/);
@@ -25,8 +26,8 @@ test("Desktop keeps dismissed Agent history legible while removing the Agent fro
   assert.match(profile, /这是你的主 Agent，不属于雇佣列表/);
   assert.match(profile, /载入默认人格/);
   assert.match(profile, /点击“保存名片”后才会生效/);
-  assert.match(app, /inbox-agent-root-badge/);
+  assert.match(contact, /inbox-agent-root-badge/);
   assert.match(app, /visibleHiredAgentCount/);
-  assert.match(app, /agentSessions\.length > 0/);
+  assert.match(app, /historyCount=\{inboxSessionsForAgent\(spaceSessions, detailsAgent\.ref\)\.length\}/);
   assert.match(client, /systemRole\?: "root_orchestrator"/);
 });

@@ -5,9 +5,32 @@ import {
   agentInboxEntries,
   filterInboxSessions,
   inboxSessionsForAgent,
+  inboxMessagePreview,
   sortInboxSessions,
   visibleExternalSessions,
 } from "../src/workbench-inbox.ts";
+
+test("contact preview uses readable loaded messages, not tools, hidden receipts, or an unaccepted send", () => {
+  assert.equal(inboxMessagePreview(undefined), "");
+  assert.equal(inboxMessagePreview([
+    { kind: "user", text: "之前的请求" },
+    { kind: "text", text: "**已检查** [示例页面](https://example.test)。\n\n投递回执：\n- status: completed\n- sessionId: private-session" },
+    { kind: "tool", name: "read_file", preview: "secret output" },
+    { kind: "diff", text: "private diff" },
+    { kind: "user", text: "尚未送达", pendingId: "pending-1" },
+  ]), "已检查 示例页面。");
+  assert.equal(inboxMessagePreview([
+    { kind: "user", text: "可见的消息" },
+    { kind: "user", text: "<system-reminder>do not show</system-reminder>" },
+    { kind: "text", text: "```ts\nconst privateValue = true;\n```" },
+  ]), "可见的消息");
+  assert.equal(inboxMessagePreview([{ kind: "text", text: "👋".repeat(110) }]), "👋".repeat(96));
+  assert.equal(inboxMessagePreview([
+    { kind: "user", text: "上一条可见消息" },
+    { kind: "user", text: `<system-reminder>${"hidden context ".repeat(500)}</system-reminder>` },
+  ]), "上一条可见消息", "truncation must not expose a long model-only envelope");
+  assert.equal(inboxMessagePreview([{ kind: "user", text: "" }, ...Array.from({length:81}, () => ({kind:"notice",text:"internal"}))]), "");
+});
 
 const session = (id, updatedAt, options = {}) => ({
   id,

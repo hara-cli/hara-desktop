@@ -474,6 +474,8 @@
   stroke-linejoin: round;
 }
 
+.extension-dock-return-label { display: none; }
+
 .extension-dock-body {
   position: absolute;
   inset: 54px 0 0;

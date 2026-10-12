@@ -24,6 +24,7 @@ interface ExtensionDockCopy {
   restore: string;
   popOut: string;
   hide: string;
+  backToChat?: string;
   close: string;
   add: string;
 }
@@ -374,8 +375,9 @@ export default function ExtensionDock({
               <DockIcon name="popout" />
             </button>
           )}
-          <button type="button" aria-label={copy.hide} title={copy.hide} onClick={onClose}>
+          <button type="button" className="extension-dock-hide-action" aria-label={copy.backToChat ?? copy.hide} title={copy.backToChat ?? copy.hide} onClick={onClose}>
             <DockIcon name="collapse" />
+            {copy.backToChat ? <span className="extension-dock-return-label">{copy.backToChat}</span> : null}
           </button>
         </div>
       </header>
