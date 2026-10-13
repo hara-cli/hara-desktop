@@ -1166,6 +1166,7 @@ export function ProviderSettings({
   const [error, setError] = useState("");
   const [unsupported, setUnsupported] = useState(false);
   const request = useRef(0);
+  const handledConnectionFocus = useRef<{ profileId: string; request: number } | undefined>(undefined);
   const personalRemovalInFlight = useRef(false);
   const visionSectionRef = useRef<HTMLElement | null>(null);
   const handledVisionFocusRequest = useRef(0);
@@ -1211,39 +1212,52 @@ export function ProviderSettings({
       const fallbackProvider = isLegacyProviderId(next.current.provider)
         ? firstPersonalProvider?.id ?? ""
         : next.current.provider;
-      const focused = focusedModelConnection(focusConnection?.profileId, next.connections ?? [],
-        organizationResult.status === "fulfilled" ? organizationResult.value?.connections ?? [] : []);
+      const requestedFocus = focusConnection && (
+        handledConnectionFocus.current?.profileId !== focusConnection.profileId
+        || handledConnectionFocus.current?.request !== focusConnection.request
+      ) ? focusConnection : undefined;
+      const nextOrganizations = organizationResult.status === "fulfilled"
+        ? organizationResult.value?.connections ?? [] : [];
+      const focused = focusedModelConnection(requestedFocus?.profileId, next.connections ?? [], nextOrganizations);
 
       if (organizationResult.status === "fulfilled") {
         setOrganizationsUnsupported(organizationResult.value === null);
         setOrganizations(organizationResult.value);
-        const activeOrganization = organizationResult.value?.connections.find(
-          (connection) => connection.active || connection.id === next.current.profileId,
-        );
-        const activePersonal = next.connections?.find(
-          (connection) => connection.active || connection.id === next.current.profileId,
-        );
-        setView(focused?.kind === "organization" ? { kind: "organization", id: focused.connection.id }
-          : focused?.kind === "personal" ? viewForPersonalConnection(focused.connection,
-            isLegacyProviderId(focused.connection.provider) ? fallbackProvider : focused.connection.provider, next.connections)
-          : activeOrganization
-          ? { kind: "organization", id: activeOrganization.id }
-          : viewForPersonalConnection(activePersonal, fallbackProvider, next.connections));
       } else {
         setOrganizations(null);
         setOrganizationsUnsupported(false);
-        const activePersonal = next.connections?.find(
-          (connection) => connection.active || connection.id === next.current.profileId,
-        );
-        setView(focused?.kind === "personal"
-          ? viewForPersonalConnection(focused.connection,
-            isLegacyProviderId(focused.connection.provider) ? fallbackProvider : focused.connection.provider, next.connections)
-          : viewForPersonalConnection(activePersonal, fallbackProvider, next.connections));
         setError(String(organizationResult.reason instanceof Error ? organizationResult.reason.message : organizationResult.reason));
       }
-      if (focusConnection && !focused) setError(locale === "zh"
-        ? "请求管理的连接当前不可见或已移除。没有切换连接，请在列表中重新选择。"
-        : "The requested connection is unavailable or was removed. No connection was switched; select it again from the list.");
+      const activeOrganization = nextOrganizations.find(
+        (connection) => connection.active || connection.id === next.current.profileId,
+      );
+      const activePersonal = next.connections?.find(
+        (connection) => connection.active || connection.id === next.current.profileId,
+      );
+      setView((currentView) => {
+        // A recovery request focuses once. Refresh must not undo a later manual account selection.
+        const selection = focused ?? (!requestedFocus
+          ? focusedModelConnection(
+              currentView.kind === "connection" || currentView.kind === "organization" ? currentView.id : undefined,
+              next.connections ?? [], nextOrganizations,
+            )
+          : undefined);
+        return selection?.kind === "organization" ? { kind: "organization", id: selection.connection.id }
+          : selection?.kind === "personal" ? viewForPersonalConnection(selection.connection,
+            isLegacyProviderId(selection.connection.provider) ? fallbackProvider : selection.connection.provider, next.connections)
+          : activeOrganization ? { kind: "organization", id: activeOrganization.id }
+          : viewForPersonalConnection(activePersonal, fallbackProvider, next.connections);
+      });
+      if (requestedFocus) {
+        if (focused || organizationResult.status === "fulfilled") handledConnectionFocus.current = requestedFocus;
+        if (!focused) setError(organizationResult.status === "rejected"
+          ? (locale === "zh"
+            ? "连接列表未能完整加载，暂不能定位请求的连接。没有切换连接，请刷新重试。"
+            : "The connection list could not be fully loaded. No connection was switched; refresh to locate the requested account.")
+          : (locale === "zh"
+            ? "请求管理的连接当前不可见或已移除。没有切换连接，请在列表中重新选择。"
+            : "The requested connection is unavailable or was removed. No connection was switched; select it again from the list."));
+      }
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
     } finally {

@@ -1393,8 +1393,8 @@ test("the chat model picker explicitly copies context into a profile-pinned orga
   assert.match(app, /startOrganizationSession\(connection, model\)/);
   assert.match(
     app,
-    /await client\.useOrganizationConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*await client\.forkSession\(sourceSessionId,[\s\S]*targetProfileId: connection\.id,[\s\S]*targetModel: model,[\s\S]*transferHistory: true/,
-    "cross-profile selection changes the future default and explicitly forks durable context to the chosen route",
+    /await client\.forkSession\(sourceSessionId,[\s\S]*targetProfileId: connection\.id,[\s\S]*targetModel: model,[\s\S]*transferHistory: true[\s\S]*await client\.useOrganizationConnection\(connection\.id, sourceSession\.cwd\)/,
+    "cross-profile selection validates and copies durable context before changing the future default",
   );
   assert.match(app, /window\.confirm\(locale === "zh"/);
   assert.match(app, /当前对话内容、任务状态和附件引用会复制到新对话/);
@@ -1418,8 +1418,8 @@ test("the chat model picker explicitly copies context back to a named personal c
   assert.match(app, /startPersonalConnectionSession\(connection\)/);
   assert.match(
     app,
-    /await client\.useProviderConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*await client\.forkSession\(sourceSessionId,[\s\S]*targetProfileId: connection\.id,[\s\S]*targetModel: connection\.model,[\s\S]*transferHistory: true/,
-    "personal selection explicitly forks durable context to the chosen personal route",
+    /await client\.forkSession\(sourceSessionId,[\s\S]*targetProfileId: connection\.id,[\s\S]*targetModel: connection\.model,[\s\S]*transferHistory: true[\s\S]*await client\.useProviderConnection\(connection\.id, sourceSession\.cwd\)/,
+    "personal selection validates and copies durable context before changing the future default",
   );
   assert.match(app, /当前对话内容、任务状态和附件引用会复制到新的个人对话/);
   assert.match(app, /下一次发送时才会作为上下文交给这条个人连接/);
@@ -1449,7 +1449,7 @@ test("the model picker keeps Space authority while policy-gating personal billin
   );
   assert.match(
     app,
-    /if \(!sourceIsCompany\) \{[\s\S]*await client\.useProviderConnection\(connection\.id, sourceSession\.cwd\)[\s\S]*targetSpaceId: sourceSpaceId/,
+    /targetSpaceId: sourceSpaceId,[\s\S]*if \(!sourceIsCompany\) \{[\s\S]*await client\.useProviderConnection\(connection\.id, sourceSession\.cwd\)/,
     "company BYOK pins the model route without changing the global personal default and forks within the same Space",
   );
   assert.match(
@@ -1501,7 +1501,7 @@ test("an unavailable pinned conversation falls back to local read-only history a
     "a live server-side revocation immediately becomes a localized read-only recovery state");
   assert.match(
     app,
-    /const startOrganizationSession = async[\s\S]*?catch \(error\) \{\s*const recovery = companyAccessRecoveryMessage\(error, locale\);\s*if \(recovery\) \{\s*quarantineCompanySession\(sourceSessionId, recovery, connection\.id\);[\s\S]*?setErr\(recovery \?\?/,
+    /const startOrganizationSession = async[\s\S]*?catch \(error\) \{\s*const recovery = companyAccessRecoveryMessage\(error, locale\);\s*if \(recovery\) \{\s*quarantineCompanySession\(sourceSessionId, recovery, connection\.id\);[\s\S]*?setErr\(copiedSessionId/,
     "a revoked route discovered while copying history is localized and quarantined instead of exposing the engine error",
   );
   assert.match(app, /accessState: "invalid" as const[\s\S]*authenticated: false/,
@@ -1858,8 +1858,9 @@ test("the capability directory keeps package sources and reusable skills distinc
     /deviceToken|authorization|enrollKey/,
     "the renderer receives status and catalog metadata, never organization credentials",
   );
-  assert.match(app, /"core\.office", title: t\("inboxDeliverables"\)/);
-  assert.match(app, /id === "core\.office"[\s\S]*showDeliverables\(\)/);
+  const included = app.slice(app.indexOf("core={["), app.indexOf("organization={", app.indexOf("core={[")));
+  assert.doesNotMatch(included, /core\.(?:chat|tasks|groups|office)/, "business navigation is not duplicated as installable capabilities");
+  assert.match(included, /COMPUTER_USE_CAPABILITY\.id/);
   assert.doesNotMatch(app, /workbench-deliverables-tab/, "Deliverables are on-demand Agent output, not a Workbench contact tab");
   assert.match(app, /importArtifactFile\(kind, "workbench"\)/);
   assert.match(app, /activeOrganizationConnection/);
@@ -1894,61 +1895,23 @@ test("Computer Use is a core capability with an engine-owned safety policy", () 
   assert.doesNotMatch(component, /apiKey|password|cookie|token/i, "the Computer Use surface never handles credentials");
 });
 
-test("WeChat separates owner remote control from a local, explicit-fill group Agent scene", () => {
-  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
-  const scene = readFileSync(`${root}/src/WeChatSceneSettings.tsx`, "utf8");
-  const guard = readFileSync(`${root}/src/DecisionGuardSettings.tsx`, "utf8");
-  const client = readFileSync(`${root}/src/client.ts`, "utf8");
-
-  assert.match(app, /\["wechat", t\("setWechatScene"\)\]/);
-  assert.match(app, /<WeChatSceneSettings/);
+test("the retired local group scene is absent while official owner DMs and global guards remain", () => {
+  const app = readFileSync(root + "/src/App.tsx", "utf8");
+  const gateway = readFileSync(root + "/src/GatewaySettings.tsx", "utf8");
+  const guard = readFileSync(root + "/src/DecisionGuardSettings.tsx", "utf8");
+  const retirement = readFileSync(root + "/src/retired-wechat-scene.ts", "utf8");
+  assert.doesNotMatch(app, /WeChatSceneSettings|setSec === "wechat"|\["wechat",/);
+  assert.match(app, /await stopRetiredWechatScene\(c\)/);
+  assert.match(retirement, /client\.supports\("settings\.wechat-group\.stop"\)/);
+  assert.doesNotMatch(retirement, /startGateway|stopGateway|dismissAgent|unlink|rmSync/);
+  assert.match(app, /<GatewaySettings/);
+  assert.match(gateway, /weixin/);
+  assert.match(gateway, /client\.startGateway/);
+  assert.match(gateway, /client\.stopGateway/);
   assert.match(app, /openSecuritySettings\("settings-computer-use"\)/);
-  assert.match(app, /openSecuritySettings\("settings-jev-api-key"\)/);
-  assert.match(app, /securitySettingsAnchor/);
-  assert.doesNotMatch(app, /queueMicrotask\(\(\) => document\.getElementById\("settings-(?:computer-use|action-guard)"\)/);
-  assert.match(scene, /client\.startGateway\("weixin"\)/);
-  assert.match(scene, /client\.stopGateway\("weixin"\)/);
-  assert.match(scene, /client\.testGateway\("weixin"\)/);
-  assert.match(scene, /client\.getComputerSettings/);
-  assert.match(scene, /client\.getDecisionSettings/);
-  assert.match(scene, /client\.saveWechatGroupScene/);
-  assert.match(scene, /client\.startWechatGroupScene/);
-  assert.match(scene, /window\.confirm\(words\.confirmGroup\)/);
-  assert.match(scene, /window\.confirm\(words\.confirmManaged\)/);
-  assert.match(scene, /groupSettingsSaved/);
-  assert.match(scene, /client\.requestWechatGroupPermissions/);
-  assert.match(scene, /client\.scanWechatGroupScene/);
-  assert.match(scene, /client\.draftWechatGroupReply/);
-  assert.match(scene, /client\.fillWechatGroupDraft/);
-  assert.match(scene, /配置 Computer Use 权限/);
-  assert.match(scene, /配置 Jev 与 API Key/);
-  assert.match(scene, /Assist mode never auto-sends/);
-  assert.match(scene, /辅助模式绝不自动发送/);
-  assert.match(scene, /Screenshots are never returned to Desktop or retained/);
-  assert.match(scene, /wechat-group\.managed-send\.v1/);
-  assert.match(scene, /Only a named @ mention/);
-  assert.match(scene, /群内唤醒名称/);
-  assert.match(scene, /managedMentionName/);
-  assert.match(scene, /result\.reviewRequired/);
-  assert.match(scene, /重新确认并恢复托管/);
-  assert.match(scene, /已识别到最新群消息，但没有发送/);
-  assert.match(scene, /lastManagedDetail === "mention_required"/);
-  assert.match(scene, /managedArmedMention/);
-  assert.match(scene, /function groupErrorMessage/);
-  assert.match(scene, /当前微信在输入框为空时会禁用“发送”按钮/);
-  assert.match(scene, /草稿已安全填入，但没有识别到可信的“发送”控件/);
-  assert.match(scene, /className="wechat-mode-switch"/);
-  assert.match(scene, /aria-pressed=\{groupMode === "managed"\}/);
-  assert.match(scene, /no separate Jev app or source checkout is required/);
-  assert.doesNotMatch(scene, /helperRoot|Jev source directory|Jev 源码目录/);
-  assert.match(guard, /type="password"/);
+  assert.match(app, /<ComputerUseSettings/);
   assert.match(guard, /id="settings-jev-api-key"/);
   assert.match(guard, /client\.testDecisionSettings/);
-  assert.match(guard, /window\.confirm/);
-  assert.match(client, /"settings\.gateways\.test"/);
-  assert.match(client, /"settings\.decision\.save"/);
-  assert.match(client, /"settings\.wechat-group\.reply"/);
-  assert.match(client, /"settings\.wechat-group\.fill"/);
 });
 
 test("the capability center consumes one semantic light and dark design contract", () => {

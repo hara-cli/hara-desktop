@@ -110,9 +110,10 @@ test("coding recovery is an explicit navigation only and respects a cancelled tr
   assert.equal(blocked(), false);
   const back = callback("returnToAgentDirectory", {
     setWorkbenchInboxMode: (mode) => actions.push(["mode", mode]),
-    setWorkbenchInboxTarget: (target) => actions.push(["target", target]), setQ: (query) => actions.push(["query", query]),
+    setWorkbenchInboxTarget: (target) => actions.push(["target", target]),
+    setContactDirectoryOpen: (value) => actions.push(["directory", value]), setQ: (query) => actions.push(["query", query]),
   });
-  back(); assert.deepEqual(actions.slice(-3), [["mode", "agents"], ["target", null], ["query", ""]]);
+  back(); assert.deepEqual(actions.slice(-4), [["mode", "agents"], ["target", null], ["directory", true], ["query", ""]]);
 });
 
 test("changing Settings sections invalidates pending opens and synchronizes the section ref immediately", () => {

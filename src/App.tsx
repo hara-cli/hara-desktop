@@ -150,7 +150,7 @@ import {
 import { ComputerUseSettings } from "./ComputerUseSettings";
 import { CodingExecutorSettings } from "./CodingExecutorSettings";
 import { DecisionGuardSettings } from "./DecisionGuardSettings";
-import { WeChatSceneSettings } from "./WeChatSceneSettings";
+import { stopRetiredWechatScene } from "./retired-wechat-scene";
 import {
   AppRail,
   type AppPlace,
@@ -343,7 +343,6 @@ type SettingsSection =
   | "learning"
   | "engine"
   | "security"
-  | "wechat"
   | "mobile"
   | "lang"
   | "capabilities";
@@ -1027,6 +1026,8 @@ export default function App() {
   }, []);
   const [providerRoutes, setProviderRoutes] = useState<ProviderSettingsState | null>(null);
   const providerRoutesRequestRef = useRef(0);
+  const modelConnectionTransferRef = useRef(false);
+  const [modelConnectionTransferPending, setModelConnectionTransferPending] = useState(false);
   const refreshProviderRoutes = useCallback(async (cwd?: string) => {
     const client = clientRef.current;
     if (!client) return null;
@@ -1146,10 +1147,12 @@ export default function App() {
   }, []);
   const [sidebarPreferencesOpen, setSidebarPreferencesOpen] = useState(false);
   const [securitySettingsAnchor, setSecuritySettingsAnchor] = useState<SecuritySettingsAnchor | null>(null);
-  const openSecuritySettings = useCallback((anchor: SecuritySettingsAnchor) => {
+  const openSecuritySettings = (anchor: SecuritySettingsAnchor): boolean => {
+    if (!setZone("settings")) return false;
     setSecuritySettingsAnchor(anchor);
     setSetSec("security");
-  }, []);
+    return true;
+  };
   useEffect(() => {
     if (setSec !== "security" || !securitySettingsAnchor) return;
     const target = document.getElementById(securitySettingsAnchor);
@@ -2293,6 +2296,7 @@ export default function App() {
   const returnToAgentDirectory = (): void => {
     setWorkbenchInboxMode("agents");
     setWorkbenchInboxTarget(null);
+    setContactDirectoryOpen(true);
     setQ("");
   };
   const openSidebarSettings = () => {
@@ -3721,6 +3725,10 @@ export default function App() {
       // lifecycle reducers feature-detect the new engine instead of taking legacy fallback paths.
       clientRef.current = c;
       const info = await c.initialize(d.token);
+      if (stale()) { c.close(); return; }
+      // Older running engines can outlive the Desktop upgrade. Stop this retired scene before
+      // removing its controls; a failure stays visible rather than leaving hidden automatic replies.
+      await stopRetiredWechatScene(c);
       const list = await c.listSessions();
       await c.synchronizeEventSnapshot(
         list.sessions.slice(0, 100).map((session) => session.id),
@@ -4257,7 +4265,7 @@ export default function App() {
     const sourceSession = sourceSessionId
       ? sessionsRef.current.find((candidate) => candidate.id === sourceSessionId)
       : undefined;
-    if (!client || !sourceSessionId || !sourceSession) return;
+    if (!client || !sourceSessionId || !sourceSession || modelConnectionTransferRef.current) return;
     const sourceSpaceId = sessionSpaceId(sourceSession, spaceDirectoryRef.current);
     const targetSpaceId = organizationConnectionSpaceId(connection);
     if (sourceSpaceId !== targetSpaceId) {
@@ -4298,6 +4306,7 @@ export default function App() {
           "当前对话内容、任务状态和附件引用会复制到新对话。",
           "只有你下一次发送时才会作为上下文交给该企业连接。",
           "原对话仍留在原连接且不会被修改。",
+          "复制成功后，此连接也将作为新对话的默认连接。",
           hasDraft
             ? "当前未发送的文字和附件也会移动到新对话，但不会自动发送。"
             : "新对话会绑定该企业连接，但不会自动发送任何内容。",
@@ -4307,6 +4316,7 @@ export default function App() {
           "Conversation content, task state, and attachment references will be copied into a new conversation.",
           "The copied context reaches that organization connection only after your next Send.",
           "The original conversation stays on its original connection and is not changed.",
+          "After a successful copy, this connection also becomes the default for new conversations.",
           hasDraft
             ? "Your unsent text and attachments also move to the new draft, but are not sent automatically."
             : "The new conversation is pinned to that organization connection and sends nothing automatically.",
@@ -4314,20 +4324,14 @@ export default function App() {
     if (!confirmed) return;
     if (!discardCurrentExtensionDraft()) return;
 
+    modelConnectionTransferRef.current = true;
+    setModelConnectionTransferPending(true);
     setModelPickerOpen(false);
     setModelSearch("");
     setErr("");
+    let copiedSessionId: string | undefined;
+    let defaultUpdateUnconfirmed = false;
     try {
-      const nextRoutes = await client.useOrganizationConnection(connection.id, sourceSession.cwd);
-      setOrganizationRoutes(nextRoutes);
-      const route = await client.listProviderSettings(sourceSession.cwd);
-      if (route) {
-        setProviderRoutes(route);
-        setSetupRequired(!route.current.authenticated);
-        setServer((current) => current
-          ? { ...current, provider: route.current.provider, model: route.current.model }
-          : current);
-      }
       const forked = await client.forkSession(sourceSessionId, {
         targetProfileId: connection.id,
         targetModel: model,
@@ -4335,6 +4339,23 @@ export default function App() {
         transferHistory: true,
       });
       const nextSessionId = forked.sessionId;
+      copiedSessionId = nextSessionId;
+      // The host validates the complete durable history before any default-route mutation.
+      try {
+        const nextRoutes = await client.useOrganizationConnection(connection.id, sourceSession.cwd);
+        setOrganizationRoutes(nextRoutes);
+        const route = await client.listProviderSettings(sourceSession.cwd);
+        if (route) {
+          setProviderRoutes(route);
+          setSetupRequired(!route.current.authenticated);
+          setServer((current) => current
+            ? { ...current, provider: route.current.provider, model: route.current.model }
+            : current);
+        }
+      } catch {
+        // A lost default-update ACK must not hide a successfully created, pinned conversation.
+        defaultUpdateUnconfirmed = true;
+      }
       attachedSessionsRef.current.add(nextSessionId);
       setSessionReadOnly(nextSessionId, null);
       setTranscripts((current) => {
@@ -4352,12 +4373,15 @@ export default function App() {
         delete next[sourceSessionId];
         return next;
       });
-      await refreshSessions();
       setActive(nextSessionId);
+      await refreshSessions();
       await refreshModelInfo({ sessionId: nextSessionId });
       void refreshOrganizationRoutes(sourceSession.cwd).catch(() => {});
       void refreshProviderRoutes(sourceSession.cwd).catch(() => {});
       void refreshGroupsDirectory();
+      if (defaultUpdateUnconfirmed) setErr(locale === "zh"
+        ? "对话复制已完成并绑定所选连接，但默认连接更新未获确认。请在设置中重新读取默认连接；不要重复复制，内容未自动发送。"
+        : "The conversation was copied and pinned to the selected connection, but the default update was not confirmed. Read the default again in Settings; do not copy again. Nothing was sent automatically.");
     } catch (error) {
       const recovery = companyAccessRecoveryMessage(error, locale);
       if (recovery) {
@@ -4365,9 +4389,16 @@ export default function App() {
         setSetupRequired(true);
       }
       const detail = String(error instanceof Error ? error.message : error);
-      setErr(recovery ?? (locale === "zh"
-        ? `无法复制当前对话到企业连接：${detail}`
-        : `Could not copy this conversation to the organization connection: ${detail}`));
+      setErr(copiedSessionId
+        ? (locale === "zh"
+          ? `对话复制已完成，但后续刷新未完成。请刷新并打开已复制的对话，不要重复复制；内容未自动发送。${defaultUpdateUnconfirmed ? "默认连接更新也未获确认，请在设置中核对。" : ""}`
+          : `The conversation was copied, but a follow-up refresh did not finish. Refresh and open the copied conversation; do not copy again. Nothing was sent automatically.${defaultUpdateUnconfirmed ? " The default update was also unconfirmed; check Settings." : ""}`)
+        : recovery ?? (locale === "zh"
+          ? `未能确认复制当前对话到企业连接：${detail}。请先刷新列表核对；默认连接未改变，内容未自动发送。`
+          : `Could not confirm the copy to the organization connection: ${detail}. Check the refreshed list first; the default connection is unchanged and nothing was sent automatically.`));
+    } finally {
+      modelConnectionTransferRef.current = false;
+      setModelConnectionTransferPending(false);
     }
   };
 
@@ -4377,7 +4408,7 @@ export default function App() {
     const sourceSession = sourceSessionId
       ? sessionsRef.current.find((candidate) => candidate.id === sourceSessionId)
       : undefined;
-    if (!client || !sourceSessionId || !sourceSession) return;
+    if (!client || !sourceSessionId || !sourceSession || modelConnectionTransferRef.current) return;
     const sourceSpaceId = sessionSpaceId(sourceSession, spaceDirectoryRef.current);
     const sourceIsCompany = sourceSpaceId !== "personal";
     const sourceSpace = spaceDirectoryRef.current?.spaces.find((space) => space.id === sourceSpaceId);
@@ -4447,6 +4478,7 @@ export default function App() {
             "当前对话内容、任务状态和附件引用会复制到新的个人对话。",
             "只有你下一次发送时才会作为上下文交给这条个人连接。",
             "原对话仍留在原连接且不会被修改。",
+            "复制成功后，此连接也将作为新对话的默认连接。",
             hasDraft
               ? "当前未发送的文字和附件也会移动到新对话，但不会自动发送。"
               : "新对话会绑定这条个人连接，但不会自动发送任何内容。",
@@ -4466,6 +4498,7 @@ export default function App() {
             "Conversation content, task state, and attachment references will be copied into a new personal conversation.",
             "The copied context reaches that personal connection only after your next Send.",
             "The original conversation stays on its original connection and is not changed.",
+            "After a successful copy, this connection also becomes the default for new conversations.",
             hasDraft
               ? "Your unsent text and attachments also move to the new draft, but are not sent automatically."
               : "The new conversation is pinned to that personal connection and sends nothing automatically.",
@@ -4473,25 +4506,14 @@ export default function App() {
     if (!confirmed) return;
     if (!discardCurrentExtensionDraft()) return;
 
+    modelConnectionTransferRef.current = true;
+    setModelConnectionTransferPending(true);
     setModelPickerOpen(false);
     setModelSearch("");
     setErr("");
+    let copiedSessionId: string | undefined;
+    let defaultUpdateUnconfirmed = false;
     try {
-      if (!sourceIsCompany) {
-        const nextRoute = await client.useProviderConnection(connection.id, sourceSession.cwd);
-        setProviderRoutes(nextRoute);
-        setSetupRequired(!nextRoute.current.authenticated);
-        setServer((current) => current
-          ? { ...current, provider: nextRoute.current.provider, model: nextRoute.current.model }
-          : current);
-        setOrganizationRoutes((current) => current
-          ? {
-              ...current,
-              activeId: connection.id,
-              connections: current.connections.map((candidate) => ({ ...candidate, active: false })),
-            }
-          : current);
-      }
       const forked = await client.forkSession(sourceSessionId, {
         targetProfileId: connection.id,
         targetModel: connection.model,
@@ -4499,6 +4521,26 @@ export default function App() {
         transferHistory: true,
       });
       const nextSessionId = forked.sessionId;
+      copiedSessionId = nextSessionId;
+      if (!sourceIsCompany) {
+        try {
+          const nextRoute = await client.useProviderConnection(connection.id, sourceSession.cwd);
+          setProviderRoutes(nextRoute);
+          setSetupRequired(!nextRoute.current.authenticated);
+          setServer((current) => current
+            ? { ...current, provider: nextRoute.current.provider, model: nextRoute.current.model }
+            : current);
+          setOrganizationRoutes((current) => current
+            ? {
+                ...current,
+                activeId: connection.id,
+                connections: current.connections.map((candidate) => ({ ...candidate, active: false })),
+              }
+            : current);
+        } catch {
+          defaultUpdateUnconfirmed = true;
+        }
+      }
       attachedSessionsRef.current.add(nextSessionId);
       setSessionReadOnly(nextSessionId, null);
       setTranscripts((current) => {
@@ -4516,17 +4558,27 @@ export default function App() {
         delete next[sourceSessionId];
         return next;
       });
-      await refreshSessions();
       setActive(nextSessionId);
+      await refreshSessions();
       await refreshModelInfo({ sessionId: nextSessionId });
       void refreshProviderRoutes(sourceSession.cwd).catch(() => {});
       void refreshOrganizationRoutes(sourceSession.cwd).catch(() => {});
       void refreshGroupsDirectory();
+      if (defaultUpdateUnconfirmed) setErr(locale === "zh"
+        ? "对话复制已完成并绑定所选连接，但默认连接更新未获确认。请在设置中重新读取默认连接；不要重复复制，内容未自动发送。"
+        : "The conversation was copied and pinned to the selected connection, but the default update was not confirmed. Read the default again in Settings; do not copy again. Nothing was sent automatically.");
     } catch (error) {
       const detail = String(error instanceof Error ? error.message : error);
-      setErr(locale === "zh"
-        ? `无法复制当前对话到个人连接：${detail}`
-        : `Could not copy this conversation to the personal connection: ${detail}`);
+      setErr(copiedSessionId
+        ? (locale === "zh"
+          ? `对话复制已完成，但后续刷新未完成。请刷新并打开已复制的对话，不要重复复制；内容未自动发送。${defaultUpdateUnconfirmed ? "默认连接更新也未获确认，请在设置中核对。" : ""}`
+          : `The conversation was copied, but a follow-up refresh did not finish. Refresh and open the copied conversation; do not copy again. Nothing was sent automatically.${defaultUpdateUnconfirmed ? " The default update was also unconfirmed; check Settings." : ""}`)
+        : (locale === "zh"
+          ? `未能确认复制当前对话到个人连接：${detail}。请先刷新列表核对；默认连接未改变，内容未自动发送。`
+          : `Could not confirm the copy to the personal connection: ${detail}. Check the refreshed list first; the default connection is unchanged and nothing was sent automatically.`));
+    } finally {
+      modelConnectionTransferRef.current = false;
+      setModelConnectionTransferPending(false);
     }
   };
 
@@ -5472,17 +5524,6 @@ export default function App() {
       return cur.id;
     }
     return startNewAssistantConversation();
-  };
-
-  const showDeliverables = () => {
-    const currentPlace = zoneRef.current === "chat" || zoneRef.current === "projects"
-      ? zoneRef.current
-      : workbenchPlaceRef.current;
-    if (!setZone(currentPlace)) return;
-    setWorkbenchInboxMode("deliverables");
-    setWorkbenchInboxTarget(null);
-    setQ("");
-    void refreshArtifacts();
   };
 
   /** Resolve a real Personal-space conversation before attaching a visual deliverable surface. */
@@ -8261,7 +8302,7 @@ export default function App() {
                               <button
                                 type="button"
                                 className="model-route-option"
-                                disabled={!connectionCanCopyNativeImages(activeHistoryHasNativeImages, connection.capabilities?.imageInput)}
+                                disabled={modelConnectionTransferPending || !connectionCanCopyNativeImages(activeHistoryHasNativeImages, connection.capabilities?.imageInput)}
                                 onClick={() => void startPersonalConnectionSession(connection)}
                               >
                                 <span className="model-row-copy">
@@ -8301,6 +8342,7 @@ export default function App() {
                                   type="button"
                                   className="model-route-option"
                                   key={`${connection.id}:${model}`}
+                                  disabled={modelConnectionTransferPending}
                                   onClick={() => void startOrganizationSession(connection, model)}
                                 >
                                   <span className="model-row-copy">
@@ -8560,11 +8602,12 @@ export default function App() {
           (item) => item.id === id,
         );
         if (contribution) {
-          setZone(contribution.id === "core.chat"
+          const changed = setZone(contribution.id === "core.chat"
             ? (zoneRef.current === "chat" || zoneRef.current === "projects"
                 ? zoneRef.current
                 : workbenchPlaceRef.current)
             : contribution.target);
+          if (changed && contribution.id === "core.chat") returnToAgentDirectory();
           return;
         }
         const pluginContribution = pluginNavigationById.get(id);
@@ -9618,8 +9661,10 @@ export default function App() {
           ) : (
             <>
             <div className="workbench-inbox-heading">
-              <strong><IconUsers size={16} /> {workbenchInboxMode === "external" ? t("codingRecoveryTitle") : t("inboxAgents")}</strong>
-              {workbenchInboxMode === "external" ? (
+              <strong><IconUsers size={16} /> {workbenchInboxMode === "external" ? t("codingRecoveryTitle")
+                : workbenchInboxMode === "deliverables" ? t("inboxDeliverables")
+                : workbenchInboxMode === "projects" ? t("inboxProjectDirectory") : t("inboxAgents")}</strong>
+              {workbenchInboxMode !== "agents" ? (
                 <button type="button" className="linky" onClick={returnToAgentDirectory}>
                   <IconBack size={14} /> {t("codingRecoveryBack")}
                 </button>
@@ -10036,7 +10081,6 @@ export default function App() {
                     ["learning", t("setLearning")],
                     ["engine", t("setServer")],
                     ["security", t("setSecurity")],
-                    ["wechat", t("setWechatScene")],
                     ["mobile", t("setMobile")],
                     ["lang", t("setLang")],
                   ],
@@ -10503,23 +10547,6 @@ export default function App() {
                 </SettingsCard>
               </SettingsPage>
             )}
-            {setSec === "wechat" && (
-              <SettingsPage
-                id="settings-wechat-title"
-                eyebrow={t("settingsSystem")}
-                title={t("setWechatScene")}
-                description={t("wechatSceneDescription")}
-              >
-                <WeChatSceneSettings
-                  client={clientRef.current}
-                  cwd={server?.cwd}
-                  locale={locale}
-                  onOpenConnections={() => setSetSec("providers")}
-                  onOpenComputerUse={() => openSecuritySettings("settings-computer-use")}
-                  onOpenActionGuard={() => openSecuritySettings("settings-jev-api-key")}
-                />
-              </SettingsPage>
-            )}
             {setSec === "mobile" && (
               <SettingsPage
                 id="settings-mobile-title"
@@ -10621,10 +10648,6 @@ export default function App() {
                   isPanelBusy={(pluginName, panelId) =>
                     panelBusy === panelOperationKey(pluginName, panelId)}
                   core={[
-                    { id: "core.chat", title: t("zoneWorkbench"), description: t("moduleChatDescription") },
-                    { id: "core.tasks", title: t("zoneAuto"), description: t("moduleTasksDescription") },
-                    { id: "core.groups", title: t("zoneGroups"), description: t("moduleGroupsDescription") },
-                    { id: "core.office", title: t("inboxDeliverables"), description: t("moduleOfficeDescription") },
                     {
                       id: COMPUTER_USE_CAPABILITY.id,
                       title: t("computerUseTitle"),
@@ -10694,15 +10717,6 @@ export default function App() {
                   onOpenCore={(id) => {
                     if (id === COMPUTER_USE_CAPABILITY.id) {
                       openSecuritySettings("settings-computer-use");
-                    } else if (id === "core.chat") {
-                      void openAssistant();
-                    } else if (id === "core.tasks") {
-                      openAutomations();
-                    } else if (id === "core.groups") {
-                      if (hasOrganizationWorkspace) setZone("groups");
-                      else openOrganizationEnrollment();
-                    } else if (id === "core.office") {
-                      showDeliverables();
                     }
                   }}
                   onTogglePlugin={(name, enabled) => void togglePlugin(name, enabled)}
