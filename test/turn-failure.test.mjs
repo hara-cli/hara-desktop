@@ -6,7 +6,8 @@ import {
   isModelAuthenticationFailure,
   rpcTurnFailureMessage,
   turnFailureMessage,
-  updateModelAuthenticationFailureState,
+  modelConnectionFailureKind,
+  updateModelConnectionFailureState,
 } from "../src/turn-failure.ts";
 
 test("provider authentication failures become actionable copy without echoing upstream details", () => {
@@ -29,15 +30,15 @@ test("empty and generic failures remain distinct and safe", () => {
 });
 
 test("live auth recovery survives the terminal task transition and clears only after success", () => {
-  const failed = updateModelAuthenticationFailureState(
+  const failed = updateModelConnectionFailureState(
     {},
     "old-session",
     "401 invalid API key at https://provider.invalid/private",
     "failed",
   );
-  assert.deepEqual(failed, { "old-session": true });
+  assert.deepEqual(failed, { "old-session": "authentication" });
 
-  const unrelatedFailure = updateModelAuthenticationFailureState(
+  const unrelatedFailure = updateModelConnectionFailureState(
     failed,
     "old-session",
     "upstream timed out",
@@ -45,13 +46,30 @@ test("live auth recovery survives the terminal task transition and clears only a
   );
   assert.equal(unrelatedFailure, failed, "a later non-auth failure cannot falsely clear the recovery route");
 
-  const recovered = updateModelAuthenticationFailureState(
+  const recovered = updateModelConnectionFailureState(
     failed,
     "old-session",
     undefined,
     "completed",
   );
   assert.deepEqual(recovered, {});
+});
+
+test("a later 402 replaces stale 403 recovery with quota guidance and never exposes private details", () => {
+  const auth = updateModelConnectionFailureState({}, "pinned", "403 credential rejected", "failed");
+  const quotaError = "402 Insufficient Balance at https://provider.invalid?key=private-fixture";
+  const quota = updateModelConnectionFailureState(auth, "pinned", quotaError, "failed");
+  assert.deepEqual(quota, { pinned: "quota" });
+  assert.equal(isModelAuthenticationFailure(quotaError), false);
+  for (const locale of ["zh", "en"]) {
+    const notice = turnFailureMessage(quotaError, "failed", locale);
+    assert.match(notice, locale === "zh" ? /服务商报告.*额度或余额不足/ : /provider reports insufficient allowance or balance/);
+    assert.doesNotMatch(notice, /private-fixture|provider\.invalid|认证失败|could not authenticate/);
+  }
+  assert.deepEqual(updateModelConnectionFailureState(quota, "pinned", "401 key rejected", "failed"), { pinned: "authentication" });
+  assert.deepEqual(updateModelConnectionFailureState(quota, "pinned", undefined, "completed"), {});
+  assert.equal(modelConnectionFailureKind("quota_exhausted: account allowance is exhausted"), "quota");
+  assert.equal(modelConnectionFailureKind("upstream temporarily overloaded"), undefined);
 });
 
 test("a matching terminal failure notice suppresses the later RPC error notice without changing the error", () => {

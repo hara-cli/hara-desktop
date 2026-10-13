@@ -1508,8 +1508,8 @@ test("an unavailable pinned conversation falls back to local read-only history a
     "a rejected company route is removed from subsequent model choices without waiting for restart");
   assert.match(app, /当前仅查看本地历史/);
   assert.match(app, /选择连接并携带上下文继续/);
-  assert.match(app, /activeModelAuthenticationFailure/);
-  assert.match(app, /updateModelAuthenticationFailureState\(current, e\.sessionId, e\.error, e\.status\)/,
+  assert.match(app, /activeModelConnectionFailure/);
+  assert.match(app, /updateModelConnectionFailureState\(current, e\.sessionId, e\.error, e\.status\)/,
     "the live terminal event retains the auth failure even after task lifecycle completion");
   assert.match(app, /设置页验证的是新会话默认连接/,
     "an auth-failed pinned conversation explains why a successful settings probe does not migrate it");

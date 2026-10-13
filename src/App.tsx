@@ -247,10 +247,11 @@ import {
 } from "./extension-dock-state";
 import { isInternalUserText, userVisibleText } from "./user-visible-text";
 import {
-  isModelAuthenticationFailure,
+  modelConnectionFailureKind,
+  type ModelConnectionFailureState,
   rpcTurnFailureMessage,
   turnFailureMessage,
-  updateModelAuthenticationFailureState,
+  updateModelConnectionFailureState,
 } from "./turn-failure";
 import {
   loadPresentationSurface,
@@ -291,6 +292,8 @@ import {
 import { COMPUTER_USE_CAPABILITY } from "./preinstalled-capabilities";
 import AgentPicker from "./AgentPicker";
 import ConversationCodingConnection from "./ConversationCodingConnection";
+import ModelConnectionRecovery from "./ModelConnectionRecovery";
+import { conversationHasNativeImages, connectionCanCopyNativeImages } from "./model-connection-recovery";
 import { AgentPortrait } from "./AgentPortrait";
 import AgentProfileEditor from "./AgentProfileEditor";
 import { AgentContact } from "./AgentContact";
@@ -871,7 +874,8 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [nextApprovalExpiry]);
   const [readOnlySessions, setReadOnlySessions] = useState<Record<string, { reason: string }>>({});
-  const [modelAuthenticationFailures, setModelAuthenticationFailures] = useState<Record<string, true>>({});
+  const [modelConnectionFailures, setModelConnectionFailures] = useState<ModelConnectionFailureState>({});
+  const [providerSettingsConnectionFocus, setProviderSettingsConnectionFocus] = useState<{ profileId: string; request: number }>();
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [taskStates, setTaskStates] = useState<Record<string, TaskLifecycleEvent>>({});
   const transcriptsRef = useRef(transcripts);
@@ -3284,8 +3288,8 @@ export default function App() {
             resolvePendingUser(e.sessionId, dispatch.pendingId, true);
           }
           delete activeTurnsRef.current[e.sessionId];
-          setModelAuthenticationFailures((current) =>
-            updateModelAuthenticationFailureState(current, e.sessionId, e.error, e.status));
+          setModelConnectionFailures((current) =>
+            updateModelConnectionFailureState(current, e.sessionId, e.error, e.status));
           push(e.sessionId, (items) => [
             ...reconcileTerminalReply(items, e.reply).map((item): ConversationItem =>
               item.kind === "approval" && !item.answered
@@ -3562,7 +3566,8 @@ export default function App() {
     taskApprovalStatesRef.current = {};
     taskApprovalRevisionClock.advance();
     setReadOnlySessions({});
-    setModelAuthenticationFailures({});
+    setModelConnectionFailures({});
+    setProviderSettingsConnectionFocus(undefined);
     setBusy({});
     setTaskStates({});
     setComposerDrafts({});
@@ -3915,12 +3920,12 @@ export default function App() {
 
   const activeTimeline = active ? transcripts[active] : undefined;
   const activeTimelineTask = active ? taskStates[active] : undefined;
-  const activeModelAuthenticationFailure = !!(active && modelAuthenticationFailures[active]) || [
+  const activeModelConnectionFailure = (active ? modelConnectionFailures[active] : undefined) ?? [
       activeTimelineTask?.detail,
       activeTimelineTask?.checkpoint.blockReason,
       activeTimelineTask?.checkpoint.completion?.dependency?.detail,
       ...(activeTimelineTask?.checkpoint.completion?.dependency?.evidence ?? []),
-    ].some(isModelAuthenticationFailure);
+    ].map(modelConnectionFailureKind).find((kind) => kind !== undefined);
   const activeTimelineBusy = active ? !!busy[active] : false;
   const scrollTimelineToLatest = useCallback(() => {
     timelineFollowRef.current = true;
@@ -4413,6 +4418,15 @@ export default function App() {
       setErr(locale === "zh"
         ? `个人连接“${connection.label}”尚未通过认证，请先到“模型与连接”检查。`
         : `Personal connection “${connection.label}” is not authenticated. Check it in Models & connections first.`);
+      return;
+    }
+    if (!connectionCanCopyNativeImages(
+      conversationHasNativeImages(transcriptsRef.current[sourceSessionId] ?? []),
+      connection.capabilities?.imageInput,
+    )) {
+      setErr(locale === "zh"
+        ? "当前历史含原生图片。请先在“模型与连接”为目标个人连接选择已确认支持图片的模型，再复制并继续；原对话和默认连接未改变。"
+        : "History contains native images. Choose a model with confirmed image support for the target personal connection in Models & connections before copying; the original conversation and default connection are unchanged.");
       return;
     }
     const sourceDraft = composerDrafts[sourceSessionId] ?? emptyComposerDraft();
@@ -5515,13 +5529,34 @@ export default function App() {
     (paths: string[]) => Promise<ComposerAttachment[]>
   >(async () => []);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelConnectionPickerMode, setModelConnectionPickerMode] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
+  useEffect(() => {
+    if (zone !== "settings" || setSec !== "providers") setProviderSettingsConnectionFocus(undefined);
+  }, [zone, setSec]);
+  const openModelConnections = (profileId?: string): boolean => {
+    if (!setZone("settings")) return false;
+    setSetSec("providers");
+    setModelPickerOpen(false);
+    setProviderSettingsConnectionFocus((current) => profileId
+      ? { profileId, request: (current?.request ?? 0) + 1 }
+      : undefined);
+    return true;
+  };
   const nextAttachmentId = () =>
     `attachment-${Date.now()}-${++attachmentSequenceRef.current}`;
   const attachmentFeatureReady = clientRef.current?.supportsFeature(ATTACHMENT_FEATURE) ?? false;
   const agentCreateReady = clientRef.current?.supports("agents.create") ?? false;
   const agentBlueprintFeatureReady = clientRef.current?.supportsFeature(AGENT_BLUEPRINT_FEATURE) ?? false;
   const activeReadOnlySession = active ? readOnlySessions[active] : undefined;
+  const openConnectionPicker = () => {
+    setAttachmentMenuOpen(false);
+    setModelSearch("");
+    setModelConnectionPickerMode(true);
+    setModelPickerOpen(true);
+    void refreshProviderRoutes(activeSession?.cwd).catch(() => {});
+    void refreshOrganizationRoutes(activeSession?.cwd).catch(() => {});
+  };
   const activeModelInfo = active && modelInfoScope === active ? modelInfo : null;
   const activeStagedModelChange = active ? stagedModelChanges[active] : undefined;
   const activeModelUnavailable = activeModelInfo?.currentAvailable === false
@@ -6036,6 +6071,15 @@ export default function App() {
     const unchanged = !staged
       && nextModel === session.model
       && nextEffort === (sessEffort[sessionId] ?? "");
+    if (model !== undefined && nextModel !== session.model
+      && conversationHasNativeImages(transcriptsRef.current[sessionId] ?? [])
+      && (modelInfoScope !== sessionId
+        || modelInfo?.entries?.find((entry) => entry.id === nextModel)?.attachmentCapabilities?.image.mode !== "native")) {
+      setErr(locale === "zh"
+        ? "当前历史含原生图片，请选择支持原生图片的模型。原模型未改变。"
+        : "History contains native images. Choose an image-native model; the original model is unchanged.");
+      return;
+    }
     setModelPickerOpen(false);
     setModelSearch("");
     if (unchanged) return;
@@ -7279,7 +7323,8 @@ export default function App() {
   });
   const displayedModel = activeStagedModelChange?.model ?? activeSession?.model ?? "";
   const displayedEffort = activeStagedModelChange?.effort ?? (active ? sessEffort[active] ?? "" : "");
-  const visibleModelEntries = activeReadOnlySession
+  const activeHistoryHasNativeImages = conversationHasNativeImages(activeTimeline ?? []);
+  const visibleModelEntries = activeReadOnlySession || modelConnectionPickerMode
     ? []
     : modelEntries.filter((entry) =>
         !modelSearch.trim()
@@ -7813,10 +7858,7 @@ export default function App() {
                   </span>
                   <button
                     className="linky"
-                    onClick={() => {
-                      setAttachmentMenuOpen(false);
-                      setModelPickerOpen(true);
-                    }}
+                    onClick={openConnectionPicker}
                   >
                     {locale === "zh" ? "选择连接并携带上下文继续" : "Choose a connection and continue with context"}
                   </button>
@@ -7837,43 +7879,42 @@ export default function App() {
                   </button>
                 </div>
               )}
-              {activeModelAuthenticationFailure && !activeReadOnlySession && (
+              {activeModelConnectionFailure && !activeReadOnlySession && (
                 <div className="composer-capability-warning composer-route-auth-warning" role="alert">
                   <span>
                     <strong>
-                      {locale === "zh"
-                        ? "当前对话的模型连接已失效"
-                        : "This conversation's model connection is no longer valid"}
+                      {activeModelConnectionFailure === "quota"
+                        ? (locale === "zh" ? "服务商报告当前连接额度或余额不足" : "The provider reports insufficient allowance or balance for this connection")
+                        : (locale === "zh" ? "当前对话的模型连接已失效" : "This conversation's model connection is no longer valid")}
                     </strong>
                     <small>
                       {newSessionDefaultRoute
                         ? (locale === "zh"
                             ? `设置页验证的是新会话默认连接“${newSessionDefaultRoute.label}”；当前对话仍固定在“${currentRouteLabel}”。请选择新连接并携带上下文继续。`
                             : `Settings verified the new-chat default “${newSessionDefaultRoute.label}”; this conversation is still pinned to “${currentRouteLabel}”. Choose a new connection and continue with context.`)
-                        : (locale === "zh"
-                            ? `请更新“${currentRouteLabel}”的凭据，或选择另一条可用连接并携带上下文继续。`
-                            : `Update credentials for “${currentRouteLabel}”, or choose another available connection and continue with context.`)}
+                        : activeModelConnectionFailure === "quota"
+                          ? (locale === "zh"
+                              ? `请在服务商处核验“${currentRouteLabel}”的额度或重置时间，或选择另一条可用连接并携带上下文继续。`
+                              : `Check the allowance or reset time for “${currentRouteLabel}” with its provider, or choose another available connection and continue with context.`)
+                          : (locale === "zh"
+                              ? `请更新“${currentRouteLabel}”的凭据，或选择另一条可用连接并携带上下文继续。`
+                              : `Update credentials for “${currentRouteLabel}”, or choose another available connection and continue with context.`)}
                     </small>
                   </span>
                   <div className="composer-capability-actions">
                     <button
                       className="linky"
-                      onClick={() => {
-                        setAttachmentMenuOpen(false);
-                        setModelPickerOpen(true);
-                      }}
+                      onClick={openConnectionPicker}
                     >
                       {locale === "zh" ? "选择连接并继续" : "Choose connection & continue"}
                     </button>
                     <button
                       className="linky"
-                      onClick={() => {
-                        setModelPickerOpen(false);
-                        setSetSec("providers");
-                        setZone("settings");
-                      }}
+                      onClick={() => openModelConnections(currentSessionProfileId)}
                     >
-                      {locale === "zh" ? "更新当前连接" : "Update current connection"}
+                      {activeModelConnectionFailure === "quota"
+                        ? (locale === "zh" ? "查看当前连接" : "Review current connection")
+                        : (locale === "zh" ? "更新当前连接" : "Update current connection")}
                     </button>
                   </div>
                 </div>
@@ -8062,6 +8103,7 @@ export default function App() {
                       onClick={() => {
                         setAttachmentMenuOpen(false);
                         setModelPickerOpen((open) => !open);
+                        setModelConnectionPickerMode(false);
                       }}
                     >
                       <span aria-hidden="true"><IconCog size={14} /></span>
@@ -8083,13 +8125,22 @@ export default function App() {
                     {modelPickerOpen && (
                       <div className="composer-menu model-menu">
                         <div className="model-menu-head">
-                          <strong>{locale === "zh" ? "运行设置" : "Runtime settings"}</strong>
+                          <strong>{modelConnectionPickerMode
+                            ? (locale === "zh" ? "选择模型连接" : "Choose a model connection")
+                            : (locale === "zh" ? "运行设置" : "Runtime settings")}</strong>
+                          {modelConnectionPickerMode ? <ModelConnectionRecovery
+                            label={currentRouteLabel} provider={currentPersonalConnection?.provider ?? activeModelInfo?.entries?.find((entry) => entry.id === activeSession.model)?.providerId}
+                            model={activeSession.model} failure={activeModelConnectionFailure}
+                            hasNativeImages={activeHistoryHasNativeImages} locale={locale}
+                            onManage={() => openModelConnections(currentSessionProfileId)} /> : null}
                           <small className="runtime-menu-scope">
-                            {locale === "zh"
+                            {modelConnectionPickerMode
+                              ? (locale === "zh" ? "这里只列当前空间已保存的其他连接；新增连接请进入“管理模型与连接”。" : "Only other saved connections in this Space appear. Add a connection in Models & connections.")
+                              : locale === "zh"
                               ? "默认继承全局模型连接；这里的覆盖只用于当前对话的下一执行段。"
                               : "Global model connections are the default. Overrides here apply only to this conversation's next execution segment."}
                           </small>
-                          <div className="runtime-menu-controls">
+                          {!modelConnectionPickerMode && <div className="runtime-menu-controls">
                             {activeSession
                               && !isAutomated(activeSession)
                               && clientRef.current?.supports("session.set-approval") ? (
@@ -8124,7 +8175,7 @@ export default function App() {
                                 </select>
                               </label>
                             ) : null}
-                          </div>
+                          </div>}
                           {(busy[active] || activeStagedModelChange) && (
                             <p className="model-menu-status" role="status">
                               {busy[active]
@@ -8154,7 +8205,9 @@ export default function App() {
                             autoFocus
                             value={modelSearch}
                             onChange={(event) => setModelSearch(event.target.value)}
-                            placeholder={locale === "zh" ? "搜索模型或供应商" : "Search models or providers"}
+                            placeholder={modelConnectionPickerMode
+                              ? (locale === "zh" ? "搜索已保存的连接" : "Search saved connections")
+                              : (locale === "zh" ? "搜索模型或供应商" : "Search models or providers")}
                           />
                         </div>
                         <div className="model-menu-list">
@@ -8163,6 +8216,7 @@ export default function App() {
                               key={entry.id}
                               className={entry.id === displayedModel ? "selected" : ""}
                               aria-current={entry.id === displayedModel ? "true" : undefined}
+                              disabled={activeHistoryHasNativeImages && entry.attachmentCapabilities?.image.mode !== "native"}
                               onClick={() => void changeModel(entry.id, undefined)}
                             >
                               <span className="model-row-copy">
@@ -8207,6 +8261,7 @@ export default function App() {
                               <button
                                 type="button"
                                 className="model-route-option"
+                                disabled={!connectionCanCopyNativeImages(activeHistoryHasNativeImages, connection.capabilities?.imageInput)}
                                 onClick={() => void startPersonalConnectionSession(connection)}
                               >
                                 <span className="model-row-copy">
@@ -8218,7 +8273,9 @@ export default function App() {
                                   </small>
                                 </span>
                                 <span className="model-row-state">
-                                  <strong>{locale === "zh" ? "复制并继续" : "Copy & continue"}</strong>
+                                  <strong>{connectionCanCopyNativeImages(activeHistoryHasNativeImages, connection.capabilities?.imageInput)
+                                    ? (locale === "zh" ? "复制并继续" : "Copy & continue")
+                                    : (locale === "zh" ? "需支持图片的模型" : "Image support required")}</strong>
                                 </span>
                               </button>
                             </section>
@@ -8263,17 +8320,15 @@ export default function App() {
                             && visiblePersonalConnectionRoutes.length === 0
                             && visibleOrganizationModelRoutes.length === 0 && (
                             <div className="model-empty">
-                              {locale === "zh" ? "没有匹配的模型" : "No matching models"}
+                              {modelConnectionPickerMode
+                                ? (locale === "zh" ? "没有其他匹配的已保存连接，请管理当前连接或新增连接。" : "No other matching saved connections. Manage the current connection or add another.")
+                                : (locale === "zh" ? "没有匹配的模型" : "No matching models")}
                             </div>
                           )}
                         </div>
                         <button
                           className="model-manage"
-                          onClick={() => {
-                            setModelPickerOpen(false);
-                            setSetSec("providers");
-                            setZone("settings");
-                          }}
+                          onClick={() => openModelConnections()}
                         >
                           {locale === "zh" ? "管理模型与连接…" : "Manage models and connections…"}
                         </button>
@@ -10054,6 +10109,7 @@ export default function App() {
                     cwd={activeSession?.cwd ?? server?.cwd}
                     focusVisionRequest={visionSettingsFocusRequest}
                     focusOrganizationEnrollmentRequest={organizationEnrollmentFocusRequest}
+                    focusConnection={providerSettingsConnectionFocus}
                     scope={activeSession ? "workspace" : "global"}
                     locale={locale}
                     engineNeedsRestart={engineVersionNeedsAttention}

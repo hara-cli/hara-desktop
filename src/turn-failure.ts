@@ -1,11 +1,20 @@
 import type { Locale } from "./i18n";
 
 const AUTH_FAILURE = /(?:\b(?:401|403)\b|unauthori[sz]ed|forbidden|auth(?:entication)?|credential|api[ _-]?key|凭证|认证|密钥)/iu;
+const QUOTA_FAILURE = /(?:\b402\b|insufficient[ _-]?(?:balance|credits?)|(?:quota|allowance|balance)[^\n]{0,60}(?:exhausted|depleted)|余额不足|额度(?:已)?耗尽)/iu;
 
-export type ModelAuthenticationFailureState = Record<string, true>;
+export type ModelConnectionFailureKind = "authentication" | "quota";
+export type ModelConnectionFailureState = Record<string, ModelConnectionFailureKind>;
+
+export function modelConnectionFailureKind(error: string | undefined): ModelConnectionFailureKind | undefined {
+  if (!error) return undefined;
+  if (/\b(?:401|403)\b/u.test(error)) return "authentication";
+  if (QUOTA_FAILURE.test(error)) return "quota";
+  return AUTH_FAILURE.test(error) ? "authentication" : undefined;
+}
 
 export function isModelAuthenticationFailure(error: string | undefined): boolean {
-  return !!error && AUTH_FAILURE.test(error);
+  return modelConnectionFailureKind(error) === "authentication";
 }
 
 /**
@@ -13,17 +22,18 @@ export function isModelAuthenticationFailure(error: string | undefined): boolean
  *
  * The rendered failure message is deliberately sanitized, and the task lifecycle may already have
  * reached a terminal state before Desktop receives `event.turn_end`. Deriving recovery only from the
- * lifecycle therefore loses the exact 401/403 signal. This reducer records that signal without retaining
- * the provider's raw error and clears it after the same pinned route completes successfully.
+ * lifecycle therefore loses the exact 401/403 or quota signal. Record the latest classified failure
+ * without retaining the provider's raw error, and clear it after the pinned route completes successfully.
  */
-export function updateModelAuthenticationFailureState(
-  current: ModelAuthenticationFailureState,
+export function updateModelConnectionFailureState(
+  current: ModelConnectionFailureState,
   sessionId: string,
   error: string | undefined,
   status: string | undefined,
-): ModelAuthenticationFailureState {
-  if (isModelAuthenticationFailure(error)) {
-    return current[sessionId] ? current : { ...current, [sessionId]: true };
+): ModelConnectionFailureState {
+  const kind = modelConnectionFailureKind(error);
+  if (kind) {
+    return current[sessionId] === kind ? current : { ...current, [sessionId]: kind };
   }
   if (!error && (!status || status === "completed") && current[sessionId]) {
     const { [sessionId]: _resolved, ...rest } = current;
@@ -45,6 +55,11 @@ export function turnFailureMessage(
   locale: Locale,
 ): string | undefined {
   if (!error) return undefined;
+  if (modelConnectionFailureKind(error) === "quota") {
+    return locale === "zh"
+      ? "服务商报告模型连接的额度或余额不足。请切换到其他可用连接，或在服务商处核验额度及重置时间。"
+      : "The provider reports insufficient allowance or balance for the model connection. Switch to another available connection, or check the allowance and reset time with the provider.";
+  }
   if (isModelAuthenticationFailure(error)) {
     return locale === "zh"
       ? "模型连接认证失败。请在“模型与连接”中更新这个账号，或切换到可用连接后重试。"

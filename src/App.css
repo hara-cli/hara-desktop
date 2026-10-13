@@ -3636,6 +3636,19 @@ select {
   max-height: 300px;
   overflow-y: auto;
 }
+.model-connection-recovery {
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg3);
+}
+.model-connection-recovery strong { margin: 0; white-space: normal; overflow-wrap: anywhere; }
+.model-connection-recovery p { margin: 3px 0; color: var(--dim); font-size: 11px; line-height: 1.5; }
+.inputbar .model-connection-recovery .model-repair-connection { min-height: 32px; padding: 6px 0; color: var(--accent); }
+.model-menu-list button:disabled { opacity: .55; cursor: not-allowed; }
 .inputbar .model-menu-list > button {
   min-height: 54px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 52%, transparent);

@@ -20,6 +20,7 @@ import {
 import type { Locale } from "./i18n";
 import { ModelCombobox } from "./ModelCombobox";
 import { IconPlus } from "./icons";
+import { focusedModelConnection } from "./model-connection-recovery";
 import {
   providerModelDescription,
   providerModelDisplayName,
@@ -74,6 +75,7 @@ interface ProviderSettingsProps {
   onRestartEngine?: () => void;
   focusVisionRequest?: number;
   focusOrganizationEnrollmentRequest?: number;
+  focusConnection?: { profileId: string; request: number };
 }
 
 const words = {
@@ -1124,6 +1126,7 @@ export function ProviderSettings({
   onRestartEngine,
   focusVisionRequest = 0,
   focusOrganizationEnrollmentRequest = 0,
+  focusConnection,
 }: ProviderSettingsProps) {
   const copy = words[locale];
   const mutateRoute = <T,>(mutation: () => Promise<T>): Promise<T> =>
@@ -1208,6 +1211,8 @@ export function ProviderSettings({
       const fallbackProvider = isLegacyProviderId(next.current.provider)
         ? firstPersonalProvider?.id ?? ""
         : next.current.provider;
+      const focused = focusedModelConnection(focusConnection?.profileId, next.connections ?? [],
+        organizationResult.status === "fulfilled" ? organizationResult.value?.connections ?? [] : []);
 
       if (organizationResult.status === "fulfilled") {
         setOrganizationsUnsupported(organizationResult.value === null);
@@ -1218,7 +1223,10 @@ export function ProviderSettings({
         const activePersonal = next.connections?.find(
           (connection) => connection.active || connection.id === next.current.profileId,
         );
-        setView(activeOrganization
+        setView(focused?.kind === "organization" ? { kind: "organization", id: focused.connection.id }
+          : focused?.kind === "personal" ? viewForPersonalConnection(focused.connection,
+            isLegacyProviderId(focused.connection.provider) ? fallbackProvider : focused.connection.provider, next.connections)
+          : activeOrganization
           ? { kind: "organization", id: activeOrganization.id }
           : viewForPersonalConnection(activePersonal, fallbackProvider, next.connections));
       } else {
@@ -1227,15 +1235,21 @@ export function ProviderSettings({
         const activePersonal = next.connections?.find(
           (connection) => connection.active || connection.id === next.current.profileId,
         );
-        setView(viewForPersonalConnection(activePersonal, fallbackProvider, next.connections));
+        setView(focused?.kind === "personal"
+          ? viewForPersonalConnection(focused.connection,
+            isLegacyProviderId(focused.connection.provider) ? fallbackProvider : focused.connection.provider, next.connections)
+          : viewForPersonalConnection(activePersonal, fallbackProvider, next.connections));
         setError(String(organizationResult.reason instanceof Error ? organizationResult.reason.message : organizationResult.reason));
       }
+      if (focusConnection && !focused) setError(locale === "zh"
+        ? "请求管理的连接当前不可见或已移除。没有切换连接，请在列表中重新选择。"
+        : "The requested connection is unavailable or was removed. No connection was switched; select it again from the list.");
     } catch (reason) {
       setError(String(reason instanceof Error ? reason.message : reason));
     } finally {
       if (requestId === request.current) setPhase("idle");
     }
-  }, [client, cwd]);
+  }, [client, cwd, locale, focusConnection?.profileId, focusConnection?.request]);
 
   useEffect(() => {
     void load();
