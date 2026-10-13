@@ -1,0 +1,24 @@
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const directory = dirname(fileURLToPath(import.meta.url));
+const repository = resolve(directory, "../..");
+const args = process.argv.slice(2);
+const argument = (flag, fallback) => args.includes(flag) ? args[args.indexOf(flag) + 1] : fallback;
+const toolchain = resolve(argument("--toolchain", repository));
+const output = resolve(argument("--output", resolve(repository, ".design-preview/workspace-preview.html")));
+const require = createRequire(resolve(toolchain, "package.json"));
+const { build } = require("esbuild");
+const result = await build({ entryPoints: [resolve(directory, "app.mjs")], bundle: true, write: false, platform: "browser", format: "iife", target: "es2022", logLevel: "silent" });
+const mark = await readFile(resolve(repository, "public/hara-mark.svg"));
+const script = result.outputFiles[0].text.replaceAll("__HARA_MARK__", `data:image/svg+xml;base64,${mark.toString("base64")}`).replace(/<\/script/gi, "<\\/script");
+const style = await readFile(resolve(directory, "style.css"), "utf8");
+const digest = (text) => createHash("sha256").update(text).digest("base64");
+const csp = `default-src 'none'; script-src 'sha256-${digest(script)}'; style-src 'sha256-${digest(style)}'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'`;
+const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><title>Hara Workspace 互動設計原型</title><style>${style}</style></head><body><div id="workspace-prototype"></div><noscript>這是離線合成原型。請啟用 JavaScript 查看互動，不需登入或提供密鑰。</noscript><script>${script}</script></body></html>`;
+await mkdir(dirname(output), { recursive: true });
+await writeFile(output, html, { mode: 0o644 });
+process.stdout.write(JSON.stringify({ output, bytes: Buffer.byteLength(html), sha256: createHash("sha256").update(html).digest("hex"), outboundConnections: false, productionIntegration: false }, null, 2) + "\n");
