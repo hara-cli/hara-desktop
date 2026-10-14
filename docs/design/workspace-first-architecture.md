@@ -52,11 +52,43 @@ Workspace 时恢复它自己的设置，不要求每次切换重填 Key，也不
 | Conversation | workspaceId、频道或私聊、成员与可见性；消息正文和附件遵守同一受众边界 |
 | Task 和 Ticket | workspaceId、来源消息、负责人、资源范围、结果、验收与工单关闭条件 |
 | RuntimeBinding 和 Run | 员工、宿主、引擎、原生 Session、连接代次、目录与执行授权的精确绑定 |
+| ExecutionHost 和 HostGrant | 独立执行机器/受管宿主身份、在线代次、能力与本 Workspace 的资源授权；不是当前客户端设备 |
 | Approval 和 Receipt | 原空间、对话、任务修订、动作摘要、真人、有效期和一次性消费记录 |
 
-同一 AI 员工可以接入多个 Runtime。每次运行固定具体绑定；新任务默认变化不替换旧运行。Codex 和 Claude Code 保留各自的账户授权；OpenCode 和 Pi 沿用 Hara 受控模型及工具边界。现有终端自动发现不等于可接管，任意 tmux 会话也不能被推定属于当前空间。
+按最新确认，每位 AI 员工有一个明确生效的 Runtime 配置，可在新建/编辑时选择已适配且可用的引擎；这是可扩展的适配器选择，不是每次调用自动混选。每次运行固定具体绑定，新配置不替换旧运行。调用多个编码工作者是独立委派，不把工作者身份混成该员工的主 Runtime。Codex 和 Claude Code 保留各自的账户授权；OpenCode 和 Pi 沿用 Hara 受控模型及工具边界。现有终端自动发现不等于可接管，任意 tmux 会话也不能被推定属于当前空间。
 
 业务 Workspace 与代码目录不是同一个概念。当前 CLI 的文件路径 workspace 工具继续承担目录安全；新业务边界使用 workspaceId，目录使用 workdir/resource grant，避免只靠当前 cwd 推导成员或密钥权限。
+
+### 用户确认：协作空间、控制端与执行机器分开（2026-10-15）
+
+Workspace 不绑定当前电脑。后续接入服务器后，人类和 AI 成员通过本空间频道/私聊协作；
+当前 Desktop 可以只是控制台，不要求本机有代码仓库、运行 Agent 或安装每个第三方 CLI。
+同时保留完全本地、可选服务器连接的使用方式，不强迫本地用户登录云端。
+
+三种独立职责为：**Workspace 管协作与业务权限，Runtime 管执行引擎，Host 管实际执行位置**。
+桌面/网页/手机是 Control Surface，不因显示一个 Agent 或会话就取得那台 Host 的工具权限。
+Agent 可显式绑定本机、另一台已授权工作站或受管云 Host；未来可扩展可信宿主池，但本次
+Attempt 只选一个确定 Host，不让模型或当前前台窗口随意改路由。一个 Host 可服务多位 Agent
+或多个 Workspace，每个空间的 HostGrant、资源、凭据引用和撤权边界仍必须独立。
+
+执行接线必须冻结 `workspaceId + agentId + runtime/config revision + hostId/epoch + attemptId`
+及模型连接代次、资源授权和原生 Session 引用。文件目录属于所选 Host，用受授权资源引用
+定位，不能把控制台的 cwd/本地绝对路径当成远端资源。原生 Session 也必须带 Host 和 Runtime
+命名空间；只凭一个 UUID、昵称、最近活跃或 tmux 窗口无法证明归属或接管权。
+
+更换默认 Host/Runtime 只影响新运行，不迁移在途进程、未决批准或原生 Session。远端离线
+显示等待/不可用，不静默改到中控台或另一机器执行，也不复制 Key 来规避不可用。控制端
+断开不等于 Host 崩溃或任务取消；受授权且持有效租约的执行可继续，失去有效执行租约后
+不得接受新的副作用操作。已受理/结果未知的外发或付费动作先对账回执，不自动重放。
+
+UX 仍以和 Agent 聊天为主。其详情/执行卡片按需显示 Runtime、执行位置、在线状态和高级
+恢复，权限卡片明确目标机器与资源；不恢复独立 Hara Live 启动中心，也不把服务端/机器
+绑定等同于给频道成员完整电脑控制权。中控台模式不为了展示聊天而自动启动本地执行器。
+
+以上为架构约束，**不是已完成远端执行**。当前 CLI Runtime v1 仅存 Space/Agent/Runtime
+修订，尚无持久 Host placement；不在旧 v1 中加入会被忽略的远端字段，也不以文档里的字段
+开放权限。后续应复用 Desk 的持久任务/lease/fence、Host Supervisor 和 Account/Control
+鉴权，并独立验收注册/撤销、重连、主机代次、晚到结果与资源隔离后再声明新能力。
 
 ## 隔离范围
 
