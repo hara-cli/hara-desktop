@@ -1,5 +1,5 @@
 import type { AgentInfo, ExternalSessionInfo, SessionInfo } from "./client.ts";
-import { mainAgentRef } from "./agent-session.ts";
+import { isRootAgent, mainAgentRef } from "./agent-session.ts";
 import { isJunkProjectDirectory } from "./project-list.ts";
 import { userVisibleText } from "./user-visible-text.ts";
 import { splitAssistantTechnicalReceipt } from "./execution-presentation.ts";
@@ -119,7 +119,9 @@ export function agentInboxEntries(
       const owned = sortInboxSessions(inboxSessionsForAgent(sessions, agent.ref));
       return { agent, sessions: owned, ...(owned[0] ? { latest: owned[0] } : {}) };
     })
-    .filter(({ agent, sessions: owned }) => !needle || [
+    // The caller supplies only this Workspace's roster. Keep its permanent coordinator reachable
+    // above searched colleagues, but never synthesize/fetch another Workspace's main assistant.
+    .filter(({ agent, sessions: owned }) => isRootAgent(agent) || !needle || [
       agent.name,
       agent.ref,
       agent.description,

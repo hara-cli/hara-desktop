@@ -99,6 +99,17 @@ test("search covers contact identity and conversation metadata", () => {
   assert.deepEqual(filterInboxSessions(sessions, "illustration").map((item) => item.id), ["design"]);
 });
 
+test("search keeps only the supplied Workspace coordinator pinned, never an ordinary namesake", () => {
+  const root = agent("organization:coordinator", "Renamed", { systemRole: "root_orchestrator", spaceId: "org:current" });
+  const namesake = agent("ordinary", "Hara", { spaceId: "org:current" });
+  const designer = agent("designer", "Mori", { description: "Visual systems", spaceId: "org:current" });
+  assert.deepEqual(agentInboxEntries([root, namesake, designer], [], "visual").map(entry => entry.agent.ref), [
+    "designer", "organization:coordinator",
+  ]);
+  assert.deepEqual(agentInboxEntries([namesake, designer], [], "not found"), [], "no global coordinator fallback");
+  assert.deepEqual(agentInboxEntries([], [], "Hara"), []);
+});
+
 test("pinned conversations lead while the rest remain latest-first", () => {
   const sessions = [
     session("old-pinned", "2026-08-20T10:00:00.000Z"),

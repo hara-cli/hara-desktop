@@ -17,18 +17,35 @@ const bundle = await build({
     import AgentInboxList from "./src/AgentInboxList.tsx";
     import AgentDetailsDrawer from "./src/AgentDetailsDrawer.tsx";
     import NewConversationMenu from "./src/NewConversationMenu.tsx";
+    import SpaceSwitcher from "./src/SpaceSwitcher.tsx";
     import {ComposerInputRow} from "./src/ComposerInputRow.tsx";
     export const contact = (agent, locale) => render(h(AgentContact,{agent,locale,preview:"已检查示例页面",working:false,unread:true,selected:true,time:"12:42",onOpen(){},onDetails(){}}));
     export const details = (agent, locale, count=3) => render(h(AgentDetailsDrawer,{agent,locale,historyCount:count,onClose(){},onHistory(){},onManage(){}}));
     export const menu = (agents, locale) => render(h(NewConversationMenu,{agents,locale,canCreateAgent:true,onSelectAgent(){},onCreateAgent(){},onNewTopic(){}}));
     export const composer = (busy, canSend) => render(h(ComposerInputRow,{inputRef:{current:null},value:"",busy,canSend,sendLabel:"Send",stopLabel:"Stop",onSend(){},onStop(){}}, h("textarea",{rows:1,defaultValue:"draft"})));
     export const inbox = (entries, locale) => render(h(AgentInboxList,{entries,locale,renderContact:({agent})=>h(AgentContact,{key:agent.ref,agent,locale,preview:"preview",working:false,unread:false,selected:false,onOpen(){},onDetails(){}})}));
+    export const workspace = (directory, locale, switching=false) => render(h(SpaceSwitcher,{directory,locale,switching,onSelect(){}}));
   `, resolveDir: root.pathname, loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", loader: { ".css": "empty", ".svg": "dataurl" }, write: false,
 });
 const compiled = join(fixture, "components.cjs");
 writeFileSync(compiled, bundle.outputFiles[0].contents);
-const { contact, details, menu, composer, inbox } = createRequire(import.meta.url)(compiled);
+const { contact, details, menu, composer, inbox, workspace } = createRequire(import.meta.url)(compiled);
+
+test("even a solo Workspace has a readable context selector, without an enterprise hierarchy", () => {
+  const directory = {activeId:"personal",activeProfileId:"token-plan",activeSource:"default",switchLocked:false,
+    spaces:[{id:"personal",name:"Personal",kind:"personal",profileId:"token-plan",active:true,authoritative:true,agentProfilePermission:"edit"}]};
+  for (const locale of ["zh", "en"]) {
+    const html = workspace(directory, locale);
+    assert.match(html, locale === "zh" ? /我的工作空间/ : /My Workspace/);
+    assert.match(html, /aria-haspopup="menu"/);
+    assert.match(html, /aria-expanded="false"/);
+    assert.doesNotMatch(html, /Personal Space|个人空间|Company Space|公司空间|is-personal|is-organization/);
+    assert.equal((html.match(/<button/g) ?? []).length, 1);
+    assert.equal(workspace({ ...directory, activeId: "missing" }, locale), "", "never impersonate the first Workspace");
+    assert.match(workspace(directory, locale, true), /disabled=""/);
+  }
+});
 const main = { ref:"main",name:"Hara",description:"Coordinates work",home:"/workspace/owned",owner:"personal",scope:"main",allowedActions:["chat","edit_profile"],systemRole:"root_orchestrator",
   identity:{version:1,displayName:"My Hara",title:"Coordinator",bio:"A public profile <script>not executable</script>",traits:["Practical"],source:"hara"} };
 

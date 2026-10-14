@@ -128,9 +128,11 @@ test("expired company Spaces stay visible for recovery but cannot be selected", 
   const switcher = readFileSync(`${root}/src/SpaceSwitcher.tsx`, "utf8");
   const client = readFileSync(`${root}/src/client.ts`, "utf8");
   assert.match(client, /accessState\?: OrganizationAccessState/);
-  assert.match(switcher, /directory\.spaces\.length === 1 && active\.kind === "personal"/,
-    "a lone Personal Space stays an engine boundary without occupying the conversation sidebar");
-  assert.match(switcher, /当前工作区已固定空间/);
+  assert.doesNotMatch(switcher, /directory\.spaces\.length === 1 && active\.kind === "personal"/,
+    "the selected Workspace-first design keeps even a solo context visible");
+  assert.match(switcher, /当前目录已固定工作空间/);
+  assert.doesNotMatch(switcher, /\?\? directory\?\.spaces\[0\]/,
+    "an unavailable active Workspace never falls into the first directory entry");
   assert.doesNotMatch(switcher, /当前项目已固定空间/,
     "the Space boundary no longer reintroduces Project as a product concept");
   assert.match(switcher, /space\.accessState === "expired" \|\| space\.accessState === "invalid"/);
