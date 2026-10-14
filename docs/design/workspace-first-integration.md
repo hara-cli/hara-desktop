@@ -131,3 +131,32 @@ The first restricted full run retained 21 listen-EPERM failures and five moved-s
 tests now follow actual components without weakening policy/recovery assertions. No version, dependency,
 user data, installed binary or release asset changed. Frontend skills guided existing-token reuse,
 accessible grouping and conditional mounting without adding libraries.
+
+## Main-assistant guided colleague creation (2026-10-15)
+
+This supersedes the manual-first entry above, not its historical test receipts. New → Create a
+colleague opens the main Hara conversation with an editable, unsent creation brief. An idle main chat
+with no draft is reused; a running/read-only chat or existing text/attachments gets a fresh segment.
+No model call, Agent creation or permission grant occurs on the navigation click. The prompt asks
+for only missing requirements, previews the persona, requires the existing single-use approval card,
+and respects the Host default Runtime. The persona-only `agent_create` schema is not extended by a
+prompt; non-default Runtime selection remains in manual setup/profile editing.
+
+The Host now advertises `agent.creation.v1` separately from manual `agents.create`. Older engines
+show only the preserved manual setup action; they are not sent an unsupported guided workflow.
+Late drafts/focus are invalidated after engine replacement, Workspace changes including A→B→A,
+capability loss or navigation away. Functional draft updates preserve text and attachments typed
+while opening. The existing personal audience gate stays closed for unverified new Workspaces.
+
+Tests execute the actual menu actions and guidance controller with synthetic contexts, alongside
+existing creation approval and Runtime dialog regressions. Focused **28/28**, complete Desktop
+**581/581**, zero fail/skip/cancel; TypeScript/Vite production source build and **36** asset checks
+passed. Private receipts: `/private/tmp/hara-chat-first-creation.TF4zcm/{focused-feature,full-committable,build-committable}.log`.
+An initial fixture bundle omitted CSS/SVG loaders and was corrected to use the existing harness;
+its failed log is retained separately. These are source/component checks, not native pixel/focus or
+real-model recruitment acceptance. No dependencies, version, sidecar lock, installed app or private
+user data changed. Frontend skills informed the compact existing-token menu and guarded event flow.
+
+The user also authorized an existing research window to work in parallel. It owns the Account-only
+Workspace membership contract in a separate worktree; this Desktop increment does not claim that
+server slice, full shared channels or end-to-end Workspace isolation is already wired.

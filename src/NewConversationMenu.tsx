@@ -4,17 +4,53 @@ import { agentDisplayName, agentPublicTitle } from "./agent-visual";
 import { AgentPortrait } from "./AgentPortrait";
 import { IconBack, IconPlus, IconSparkles, IconUsers } from "./icons";
 
+interface ConversationActions {
+  locale: "en" | "zh";
+  canCreateAgent: boolean;
+  busy?: boolean;
+  onPeople: () => void;
+  onCreateAgent?: () => void;
+  onConfigureAgent?: () => void;
+  onNewTopic?: () => void;
+}
+
+/** Actual menu actions, kept stateless so navigation remains separate from execution/consent. */
+export function NewConversationActions({
+  locale, canCreateAgent, busy, onPeople, onCreateAgent, onConfigureAgent, onNewTopic,
+}: ConversationActions) {
+  const zh = locale === "zh";
+  return <>
+    <button type="button" role="menuitem" onClick={onPeople}>
+      <IconUsers size={18} /><span><strong>{zh ? "发起聊天" : "Start a chat"}</strong>
+        <small>{zh ? "选择同事，接着聊" : "Choose a colleague and pick up the conversation"}</small></span>
+    </button>
+    {onNewTopic ? <button type="button" role="menuitem" disabled={busy} onClick={onNewTopic}>
+      <IconPlus size={18} /><span><strong>{zh ? "开始新话题" : "Start a fresh topic"}</strong>
+        <small>{zh ? "与当前同事另聊一件事，保留原有历史" : "A fresh start with this colleague; history is kept"}</small></span>
+    </button> : null}
+    {canCreateAgent && onCreateAgent ? <button type="button" role="menuitem" disabled={busy} onClick={onCreateAgent}>
+      <IconSparkles size={18} /><span><strong>{zh ? "建立同事" : "Create a colleague"}</strong>
+        <small>{zh ? "告诉主 Hara 要做什么，先商量再创建" : "Discuss the work with Hara before creating"}</small></span>
+    </button> : null}
+    {canCreateAgent && onConfigureAgent ? <button type="button" role="menuitem" disabled={busy} onClick={onConfigureAgent}>
+      <IconPlus size={18} /><span><strong>{zh ? "手动配置同事" : "Set up a colleague manually"}</strong>
+        <small>{zh ? "已有明确方案？直接填写角色与 Runtime" : "Already have a plan? Choose the role and Runtime"}</small></span>
+    </button> : null}
+  </>;
+}
+
 /** A navigation menu, never an execution or permission grant. Selecting a colleague opens their
- * existing chat; only the separately named fresh-topic action can create a new execution segment. */
+ * existing chat; fresh topics and guided creation can open a separate, initially unsent segment. */
 export default function NewConversationMenu({
-  agents, locale, canCreateAgent, busy, onSelectAgent, onCreateAgent, onNewTopic,
+  agents, locale, canCreateAgent, busy, onSelectAgent, onCreateAgent, onConfigureAgent, onNewTopic,
 }: {
   agents: readonly AgentInfo[];
   locale: "en" | "zh";
   canCreateAgent: boolean;
   busy?: boolean;
   onSelectAgent: (agentRef: string) => void;
-  onCreateAgent: () => void;
+  onCreateAgent?: () => void;
+  onConfigureAgent?: () => void;
   onNewTopic?: () => void;
 }) {
   const [page, setPage] = useState<"actions" | "people" | null>(null);
@@ -82,20 +118,10 @@ export default function NewConversationMenu({
               aria-label={zh ? "搜索同事" : "Search colleagues"} placeholder={zh ? "搜索名字或职责" : "Search name or role"} />
           </> : null}
           <div role="menu" aria-label={zh ? "新建" : "New"} className="new-chat-menu-items">
-            {page === "actions" ? <>
-              <button type="button" role="menuitem" onClick={() => setPage("people")}>
-                <IconUsers size={18} /><span><strong>{zh ? "发起聊天" : "Start a chat"}</strong>
-                  <small>{zh ? "选择同事，接着聊" : "Choose a colleague and pick up the conversation"}</small></span>
-              </button>
-              {onNewTopic ? <button type="button" role="menuitem" disabled={busy} onClick={() => choose(onNewTopic)}>
-                <IconPlus size={18} /><span><strong>{zh ? "开始新话题" : "Start a fresh topic"}</strong>
-                  <small>{zh ? "与当前同事另聊一件事，保留原有历史" : "A fresh start with this colleague; history is kept"}</small></span>
-              </button> : null}
-              {canCreateAgent ? <button type="button" role="menuitem" onClick={() => choose(onCreateAgent)}>
-                <IconSparkles size={18} /><span><strong>{zh ? "创建 Agent" : "Create an Agent"}</strong>
-                  <small>{zh ? "从推荐角色开始，或自定义一位同事" : "Start with a recommended role or make your own"}</small></span>
-              </button> : null}
-            </> : visible.map((agent) => (
+            {page === "actions" ? <NewConversationActions locale={locale} canCreateAgent={canCreateAgent}
+              busy={busy} onPeople={() => setPage("people")} onCreateAgent={onCreateAgent ? () => choose(onCreateAgent) : undefined}
+              onConfigureAgent={onConfigureAgent ? () => choose(onConfigureAgent) : undefined}
+              onNewTopic={onNewTopic ? () => choose(onNewTopic) : undefined} /> : visible.map((agent) => (
               <button type="button" role="menuitem" key={agent.ref} onClick={() => choose(() => onSelectAgent(agent.ref))}>
                 <AgentPortrait agentRef={agent.ref} name={agent.name} identity={agent.identity} systemRole={agent.systemRole} size="small" />
                 <span><strong>{agentDisplayName(agent)}</strong><small>{agentPublicTitle(agent)}</small></span>

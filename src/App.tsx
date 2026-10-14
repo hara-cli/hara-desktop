@@ -300,6 +300,7 @@ import { agentRuntimeSelection } from "./agent-runtime-selection";
 import { AgentContact } from "./AgentContact";
 import AgentInboxList from "./AgentInboxList";
 import NewConversationMenu from "./NewConversationMenu";
+import { agentCreationDraft, openGuidedAgentCreation, reusableAgentCreationConversation, supportsGuidedAgentCreation } from "./guided-agent-creation";
 import { ComposerInputRow } from "./ComposerInputRow";
 import HireAgentDialog, { type HireAgentInput } from "./HireAgentDialog";
 import type { AgentBlueprint } from "./talent-blueprint";
@@ -5503,6 +5504,58 @@ export default function App() {
     }));
   };
 
+  /** Let the main assistant discuss a new colleague; opening the draft neither sends nor creates. */
+  const startAgentCreation = async () => {
+    if (!home || assistantCreationRef.current) return;
+    assistantCreationRef.current = true;
+    setAssistantCreating(true);
+    try {
+      await openGuidedAgentCreation({
+        context: () => ({
+          engine: clientRef.current?.connected ? clientRef.current : null,
+          spaceId: spaceDirectoryRef.current?.activeId ?? "",
+          spaceRevision: spaceSwitchRequestRef.current,
+          switching: spaceSwitchInFlightRef.current,
+          canCreate: supportsGuidedAgentCreation(clientRef.current),
+        }),
+        openMainConversation: async () => {
+          if (!setZone("chat")) return null;
+          const directory = spaceDirectoryRef.current;
+          const target = reusableAgentCreationConversation(
+            sessionsRef.current.filter((session) => sessionSpaceId(session, directory) === "personal"),
+            `${home}/.hara/workspace`,
+            (id) => Boolean(busyRef.current[id] || readOnlySessionsRef.current[id]),
+            composerDrafts,
+          );
+          if (target) {
+            await openSession(target.id);
+            return target.id;
+          }
+          // A busy/read-only chat or an existing draft gets a fresh segment, not an overwrite.
+          return newSession(`${home}/.hara/workspace`, "main");
+        },
+        selected: (id) => activeRef.current === id && zoneRef.current === "chat"
+          && !busyRef.current[id] && !readOnlySessionsRef.current[id],
+        stageDraft: (id, stillCurrent) => {
+          setWorkbenchInboxMode("agents");
+          setWorkbenchInboxTarget(null);
+          setContactDirectoryOpen(false);
+          setQ("");
+          updateComposerDraft(id, (draft) => stillCurrent()
+            ? agentCreationDraft(draft, t("agentCreationPrompt")) : draft);
+        },
+        focusComposer: (stillCurrent) => {
+          requestAnimationFrame(() => { if (stillCurrent()) inputRef.current?.focus(); });
+        },
+      });
+    } catch (error: any) {
+      setErr(String(error?.message ?? error));
+    } finally {
+      assistantCreationRef.current = false;
+      setAssistantCreating(false);
+    }
+  };
+
   /** Office creates through the same conversational Workbench; the right Dock is the result surface. */
   const startPresentationWorkbench = async (template?: PresentationTemplate) => {
     if (!supportsNativePresentationWorkspace(clientRef.current)) {
@@ -5606,6 +5659,7 @@ export default function App() {
     `attachment-${Date.now()}-${++attachmentSequenceRef.current}`;
   const attachmentFeatureReady = clientRef.current?.supportsFeature(ATTACHMENT_FEATURE) ?? false;
   const agentCreateReady = clientRef.current?.supports("agents.create") ?? false;
+  const guidedAgentCreateReady = supportsGuidedAgentCreation(clientRef.current);
   const agentBlueprintFeatureReady = clientRef.current?.supportsFeature(AGENT_BLUEPRINT_FEATURE) ?? false;
   const activeReadOnlySession = active ? readOnlySessions[active] : undefined;
   const openConnectionPicker = () => {
@@ -9688,9 +9742,10 @@ export default function App() {
           )}
           <div className={`workbench-sidebar-actions ${workbenchInboxMode !== "agents" && !selectedInboxAgent ? "is-single" : ""}`}>
             {(selectedInboxAgent || workbenchInboxMode === "agents") && !selectedExternalSession && !selectedInboxProject ? (
-              <NewConversationMenu agents={availableAgents} locale={locale} busy={sessionCreating}
+              <NewConversationMenu agents={availableAgents} locale={locale} busy={sessionCreating || assistantCreating}
                 canCreateAgent={activeSpaceId === "personal" && agentCreateReady}
-                onCreateAgent={openCustomRecruitment}
+                onCreateAgent={guidedAgentCreateReady ? () => void startAgentCreation() : undefined}
+                onConfigureAgent={openCustomRecruitment}
                 onSelectAgent={(agentRef) => {
                   const agent = availableAgents.find((candidate) => candidate.ref === agentRef);
                   const latest = sortInboxSessions(inboxSessionsForAgent(spaceSessions, agentRef))[0];
