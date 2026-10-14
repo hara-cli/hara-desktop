@@ -29,6 +29,11 @@ pattern key, then read back the target and any plausible first-match entry befor
 
 Add focused tests for renderer state and release scripts. For native changes, validate both Rust and frontend behavior; for `hara serve` integration, exercise disconnect/reconnect, approvals, and interruption paths.
 
+Resolve file paths within the actual repository before cross-repository searches; do not pass unexpanded
+zsh globs or a sibling's source paths. For contract checks against large source files, assert a boolean
+match result rather than dumping the full file on failure. Keep complete test logs in a task-private
+temporary directory and return bounded summaries without losing the process completion handle.
+
 ## Generated Output & Release Boundary
 
 Never hand-edit `dist/`, `src-tauri/target/`, packaged apps/installers, updater metadata, or ignored sidecar binaries. `scripts/refresh-sidecar.sh` is the development path for refreshing sidecars; commit the intended `SIDECAR_VERSION` and full `SIDECAR_COMMIT` locks, not ad-hoc binaries. Keep versions synchronized across `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.

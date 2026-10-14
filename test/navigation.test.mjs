@@ -447,7 +447,7 @@ test("Groups is a native organization work surface with no renderer-owned transp
   );
 });
 
-test("Workbench defaults to Agent contacts and keeps native recovery in Settings, not a peer chat tab", () => {
+test("Workbench defaults to Agent contacts without a standalone native-session entry", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const inbox = readFileSync(`${root}/src/workbench-inbox.ts`, "utf8");
   const newMenu = readFileSync(`${root}/src/NewConversationMenu.tsx`, "utf8");
@@ -468,7 +468,8 @@ test("Workbench defaults to Agent contacts and keeps native recovery in Settings
   assert.match(app, /workbenchInboxMode === "external"/);
   assert.doesNotMatch(directoryHeading, /inboxProjects|inboxExternal|role="tab"/, "Project/native sessions are not peer chat tabs");
   assert.doesNotMatch(app, /className="workbench-inbox-tabs"/);
-  assert.match(app, /<SettingsCard title=\{t\("codingRecoveryTitle"\)\}[\s\S]*onClick=\{openCodingRecovery\}/);
+  assert.equal(/<SettingsCard title=\{t\("codingRecoveryTitle"\)\}/.test(app), false,
+    "the retired standalone center must not return through Settings");
   assert.match(directoryHeading, /onClick=\{returnToAgentDirectory\}/);
   assert.match(app, /void openAgentConversation\(agent\.ref, targetCwd\)/);
   assert.match(app, /setWorkbenchInboxTarget\(\{ kind: "agent", id: detailsAgent\.ref \}\)/,

@@ -2286,13 +2286,6 @@ export default function App() {
     setAutoView(view);
     return true;
   };
-  const openCodingRecovery = (): boolean => {
-    if (!setZone("chat")) return false;
-    setWorkbenchInboxMode("external");
-    setWorkbenchInboxTarget(null);
-    setQ("");
-    return true;
-  };
   const returnToAgentDirectory = (): void => {
     setWorkbenchInboxMode("agents");
     setWorkbenchInboxTarget(null);
@@ -9286,6 +9279,7 @@ export default function App() {
   const externalSessionCenterSurface = (
     <ExternalSessionCenter
       key={`${activeSpaceId}:${spaceSwitchRequestRef.current}:${server?.pid ?? "none"}`}
+      allowStandaloneLaunch={false}
       sources={externalSources}
       sessions={externalSessions}
       selected={selectedExternalSession}
@@ -10283,13 +10277,6 @@ export default function App() {
                 <CodingExecutorSettings key={`${activeSpaceId}:${server?.pid ?? "none"}:${phase}`}
                   client={phase === "ready" ? clientRef.current : null} cwd={server?.cwd}
                   personal={activeSpaceId === "personal"} t={t} />
-
-                <SettingsCard title={t("codingRecoveryTitle")} description={t("codingRecoveryDescription")}>
-                  <SettingsItem title={t("codingRecoveryOpen")} description={t("externalSessionsUnavailableBody")}>
-                    <button type="button" className="compact" disabled={activeSpaceId !== "personal"}
-                      onClick={openCodingRecovery}>{t("codingRecoveryOpen")}</button>
-                  </SettingsItem>
-                </SettingsCard>
 
                 <SettingsCard
                   title={t("cliTitle")}

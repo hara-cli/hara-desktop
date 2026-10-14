@@ -156,6 +156,9 @@ export interface ExternalSessionCenterCopy {
 }
 
 interface ExternalSessionCenterProps {
+  /** Retired entry: exact existing Agent executions remain inspectable, but do not expose a
+   * second standalone launch surface. This is presentation only, never an authority grant. */
+  allowStandaloneLaunch?: boolean;
   sources: ExternalSessionSourceInfo[] | null;
   sessions: ExternalSessionInfo[];
   selected?: ExternalSessionInfo;
@@ -215,6 +218,7 @@ const roleLabel = (role: ExternalSessionMessage["role"], copy: ExternalSessionCe
 );
 
 export default function ExternalSessionCenter({
+  allowStandaloneLaunch = false,
   sources,
   sessions,
   selected,
@@ -363,6 +367,7 @@ export default function ExternalSessionCenter({
   };
 
   const createRuntime = (): void => {
+    if (!allowStandaloneLaunch) return;
     const model = runtimeModels[runtimeAgentKind].trim();
     const effort = runtimeEfforts[runtimeAgentKind];
     const mode = runtimeModes[runtimeAgentKind];
@@ -443,7 +448,7 @@ export default function ExternalSessionCenter({
 
         {error ? <div className="external-session-error" role="alert">{error}</div> : null}
 
-        {selectedSourceId === "runtime" && runtimeSource?.capabilities.create ? (
+        {allowStandaloneLaunch && selectedSourceId === "runtime" && runtimeSource?.capabilities.create ? (
           <section className="external-runtime-launcher" aria-labelledby="external-runtime-launcher-title">
             <div className="external-runtime-intro">
               <span className="external-source-logo is-runtime" aria-hidden>HR</span>

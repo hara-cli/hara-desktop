@@ -48,3 +48,21 @@ must pass; exact receipts are recorded in the workspace inbox.
 These are not real browser/native focus-order, clipping, scroll or pixel tests. Actual visual and
 keyboard QA at 390/860/1280/1440 remains unverified; the previously denied private-browser boundary
 is preserved. No installed app, user credential/history, running task or release asset was replaced.
+
+## Retiring the standalone runtime entry
+
+Jeff clarified that "delete the old one" means closing the old entry, not deleting worktrees, Agent
+identities, memory, native sessions or history. The Settings entry into the standalone coding center is
+removed. The remaining exact-execution inspector defaults standalone creation off and the production
+caller explicitly keeps it off, even when an older engine advertises creation. Its create handler also
+refuses while disabled. Existing Agent execution links, transcript/resume and question/approval paths
+remain available; opening or retiring an entry does not stop or delete a running session.
+
+Verification: the new entry/handler regression first failed against the old source; the focused set
+then passed 45/45, the complete Desktop suite passed 552/552, and the production build plus all 36 asset
+checks passed. These are source/automated receipts, not installed-app, browser or release acceptance.
+
+Each Agent binding one explicit Runtime, with the main Hara defaulting to built-in Pi, remains the
+next backend slice. Current Agent profile execution metadata contains model/effort, not that binding;
+the Pi coding worker is not the main governance loop. Do not add a selector that silently continues
+on Hara, move old sessions, or change the global coding preference and claim the migration is done.
