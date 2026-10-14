@@ -112,6 +112,16 @@
   padding: 18px 22px 8px;
 }
 
+.agent-profile-runtime { margin: 12px 22px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.agent-profile-runtime summary { cursor: pointer; }
+.agent-profile-runtime summary > span { font-weight: 650; }
+.agent-profile-runtime summary > small { margin-left: 10px; color: var(--dim); }
+.agent-profile-runtime p { color: var(--dim); line-height: 1.55; font-size: 12px; }
+.agent-profile-runtime-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.agent-profile-runtime-controls label { display: grid; flex: 1 1 230px; min-width: 0; gap: 6px; font-size: 12px; }
+.agent-profile-runtime-controls select { width: 100%; min-width: 0; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
+.agent-profile-runtime-controls button { max-width: 100%; padding: 9px 12px; }
+
 .agent-profile-form[aria-disabled="true"] {
   opacity: .64;
 }

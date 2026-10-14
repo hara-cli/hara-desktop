@@ -296,6 +296,7 @@ import ModelConnectionRecovery from "./ModelConnectionRecovery";
 import { conversationHasNativeImages, connectionCanCopyNativeImages } from "./model-connection-recovery";
 import { AgentPortrait } from "./AgentPortrait";
 import AgentProfileEditor from "./AgentProfileEditor";
+import { agentRuntimeSelection } from "./agent-runtime-selection";
 import { AgentContact } from "./AgentContact";
 import AgentInboxList from "./AgentInboxList";
 import NewConversationMenu from "./NewConversationMenu";
@@ -959,6 +960,9 @@ export default function App() {
   const [contactDirectoryOpen, setContactDirectoryOpen] = useState(false);
   const [profileAgentSaving, setProfileAgentSaving] = useState(false);
   const [profileAgentError, setProfileAgentError] = useState("");
+  const profileAgentRefLive = useRef(profileAgentRef);
+  profileAgentRefLive.current = profileAgentRef;
+  const runtimeSaveInFlightRef = useRef(false);
   const [hireAgentOpen, setHireAgentOpen] = useState(false);
   const [hireAgentSaving, setHireAgentSaving] = useState(false);
   const [hireAgentError, setHireAgentError] = useState("");
@@ -4095,6 +4099,34 @@ export default function App() {
         void refreshAgentCatalog(active ? { sessionId: active } : { cwd: agent.home || server?.cwd }).catch(() => {});
       }
     } finally {
+      setProfileAgentSaving(false);
+    }
+  };
+
+  const saveAgentRuntime = async (runtimeId: Parameters<HaraClient["setAgentRuntime"]>[0]["runtimeId"]): Promise<void> => {
+    const client = clientRef.current;
+    const agent = agentCatalog?.agents.find((candidate) => candidate.ref === profileAgentRef);
+    if (!client?.supports("agents.set-runtime") || !agent || profileAgentSaving || runtimeSaveInFlightRef.current) return;
+    const input = agentRuntimeSelection(agent, runtimeId, agentCatalog?.runtimeOptions ?? []);
+    if (!input) return;
+    runtimeSaveInFlightRef.current = true;
+    const requestId = ++agentCatalogRequestRef.current;
+    const isCurrent = () => clientRef.current === client && profileAgentRefLive.current === agent.ref
+      && agentCatalogRequestRef.current === requestId;
+    setProfileAgentSaving(true);
+    setProfileAgentError("");
+    try {
+      const result = await client.setAgentRuntime({ ...input,
+        ...(active ? { sessionId: active } : { cwd: agent.home || server?.cwd }),
+      });
+      if (isCurrent()) setAgentCatalog(result.catalog);
+    } catch (error: any) {
+      if (isCurrent()) {
+        setProfileAgentError(String(error?.message ?? error).slice(0, 240));
+        if (error?.code === -32005) void refreshAgentCatalog(active ? { sessionId: active } : { cwd: agent.home || server?.cwd }).catch(() => {});
+      }
+    } finally {
+      runtimeSaveInFlightRef.current = false;
       setProfileAgentSaving(false);
     }
   };
@@ -10968,6 +11000,8 @@ export default function App() {
           modelEntries={activeModelInfo?.entries}
           defaultModel={activeModelInfo?.defaultModel}
           defaultReasoningEffort={activeModelInfo?.defaultReasoningEffort}
+          runtimeOptions={agentCatalog?.runtimeOptions}
+          onSaveRuntime={clientRef.current?.supports("agents.set-runtime") ? (id) => void saveAgentRuntime(id) : undefined}
           saving={profileAgentSaving}
           error={profileAgentError}
           onClose={() => {

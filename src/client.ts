@@ -233,6 +233,23 @@ export type ExternalTerminalEvent =
       handoffId: string;
     };
 
+export type AgentRuntimeId = "hara" | "pi" | "opencode" | "codex" | "claude";
+export interface AgentRuntimeOption {
+  id: AgentRuntimeId;
+  label: string;
+  available: boolean;
+  reason?: "general_agent_adapter_pending";
+  recommended: boolean;
+}
+
+export interface AgentRuntimeBinding {
+  version: 1;
+  spaceId: string;
+  agentRef: string;
+  runtimeId: AgentRuntimeId;
+  revision: number;
+}
+
 export interface AgentInfo {
   ref: string;
   name: string;
@@ -258,6 +275,7 @@ export interface AgentInfo {
   };
   allowedActions: Array<"chat" | "edit_profile" | "archive">;
   revision?: string;
+  runtime?: AgentRuntimeBinding & { available: boolean };
 }
 
 export type AgentTeamRuntime = "hara" | "codex" | "claude";
@@ -369,6 +387,7 @@ export interface AgentOfficeInfo {
 }
 
 export interface AgentCatalog {
+  runtimeOptions?: AgentRuntimeOption[];
   agents: AgentInfo[];
   /** @deprecated Wire compatibility with older Engines; the simplified Desktop does not render offices. */
   offices?: AgentOfficeInfo[];
@@ -2697,6 +2716,16 @@ export class HaraClient {
     cwd?: string;
   }): Promise<{ agent?: AgentInfo; catalog: AgentCatalog }> {
     return this.call("agents.update-profile", input);
+  }
+  setAgentRuntime(input: {
+    ref: string;
+    runtimeId: AgentRuntimeId;
+    expectedRevision: number;
+    expectedAgentRevision: string;
+    sessionId?: string;
+    cwd?: string;
+  }): Promise<{ binding: AgentRuntimeBinding; catalog: AgentCatalog }> {
+    return this.call("agents.set-runtime", input);
   }
   createAgent(input: {
     id: string;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentInfo, AgentPublicIdentity, ModelCatalogEntry } from "./client";
+import type { AgentInfo, AgentPublicIdentity, AgentRuntimeId, AgentRuntimeOption, ModelCatalogEntry } from "./client";
+import AgentRuntimePicker from "./AgentRuntimePicker";
 import { AgentPortrait } from "./AgentPortrait";
 import { MAX_AGENT_AVATAR_BYTES } from "./agent-visual";
 import { IconClose } from "./icons";
@@ -32,6 +33,8 @@ interface AgentProfileEditorProps {
     execution?: { model?: string | null; reasoningEffort?: string | null },
   ) => void;
   onArchive?: () => void;
+  runtimeOptions?: AgentRuntimeOption[];
+  onSaveRuntime?: (id: AgentRuntimeId) => void;
 }
 
 export default function AgentProfileEditor({
@@ -45,6 +48,8 @@ export default function AgentProfileEditor({
   onClose,
   onSave,
   onArchive,
+  runtimeOptions,
+  onSaveRuntime,
 }: AgentProfileEditorProps) {
   const identity = agent.identity;
   const [displayName, setDisplayName] = useState(identity?.displayName || agent.name);
@@ -237,10 +242,11 @@ export default function AgentProfileEditor({
           </div>
         </div>
 
-        <section className="agent-profile-execution" aria-label={locale === "zh" ? "执行引擎" : "Execution engine"}>
+        <AgentRuntimePicker agent={agent} options={runtimeOptions} locale={locale} saving={saving} onApply={onSaveRuntime} />
+        <section className="agent-profile-execution" aria-label={locale === "zh" ? "模型与思考" : "Model and reasoning"}>
           <header>
             <span>
-              <strong>{locale === "zh" ? "执行引擎" : "Execution engine"}</strong>
+              <strong>{locale === "zh" ? "模型与思考" : "Model and reasoning"}</strong>
               <small>{locale === "zh"
                 ? "默认继承当前空间；只影响该 Agent 以后新建的对话。"
                 : "Defaults follow the current Space and affect only new conversations for this Agent."}</small>

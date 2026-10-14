@@ -66,3 +66,22 @@ Each Agent binding one explicit Runtime, with the main Hara defaulting to built-
 next backend slice. Current Agent profile execution metadata contains model/effort, not that binding;
 the Pi coding worker is not the main governance loop. Do not add a selector that silently continues
 on Hara, move old sessions, or change the global coding preference and claim the migration is done.
+
+## Runtime profile setting foundation (2026-10-14)
+
+The companion CLI candidate now provides trusted per-Agent Runtime configuration, frozen task binding
+and exact host-driver dispatch. Desktop consumes that explicit projection rather than treating model
+selection or coding-worker detection as a Runtime binding. Agent profile editing contains a folded
+Runtime section using the existing warm-paper tokens; model/reasoning controls have their own label.
+Runtime saves are separate from unsaved persona drafts and do not launch, stop, delete or migrate work.
+The save handler checks both revisions, actual availability, duplicate clicks and late replies after
+Agent/catalog changes. Older engines remain read-only for this setting; unavailable engines cannot be
+selected, and organization bindings cannot be changed by Personal configuration.
+
+Production still registers only the Hara compatibility driver. Pi is NOT yet the main/general Agent
+runtime; Pi/OpenCode/Codex/Claude's existing coding-worker support is not advertised as that capability.
+The creation flow and real Pi adapter remain unfinished. The server refuses unavailable selections,
+so this UI is not a fake Pi dropdown that executes Hara. No sidecar lock, dependency, installer, updater
+or version metadata was changed. Candidate build passed all 36 asset checks (existing large-chunk
+warning remains); all 558 tests passed, including real-component SSR and executable callback checks.
+Native/browser visual QA, packaged-app testing and publication are not claimed.
