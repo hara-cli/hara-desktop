@@ -15,11 +15,16 @@ const bundle = await build({
   stdin: { contents: `
     import {createElement} from "react";
     import {renderToStaticMarkup} from "react-dom/server";
-    import {CodingExecutorSettingsPanel} from "./src/CodingExecutorSettings.tsx";
+    import {CodingExecutorSettingsPanel,CodingExecutorSettings} from "./src/CodingExecutorSettings.tsx";
     import {makeT} from "./src/i18n.ts";
     export function render(view, locale="en", personal=true) {
       return renderToStaticMarkup(createElement(CodingExecutorSettingsPanel, {
         view, personal, t:makeT(locale), onSelect(){},onSave(){},onReload(){}
+      }));
+    }
+    export function renderAdvanced(locale="en") {
+      return renderToStaticMarkup(createElement(CodingExecutorSettings, {
+        client:null,personal:true,t:makeT(locale)
       }));
     }
   `, resolveDir: root.pathname, loader: "tsx" },
@@ -27,10 +32,19 @@ const bundle = await build({
 });
 const compiled = join(fixture, "settings.cjs");
 writeFileSync(compiled, bundle.outputFiles[0].contents);
-const { render } = createRequire(import.meta.url)(compiled);
+const { render, renderAdvanced } = createRequire(import.meta.url)(compiled);
 const settings = (overrides = {}) => ({ version:1,revision:4,executor:"auto",effectiveExecutor:"opencode",recommendedExecutor:"opencode",executorEditable:true,experimental:false,...overrides });
 const ready = (overrides = {}) => ({ phase:"ready",settings:settings(),draft:"auto",message:null,needsReload:false,...overrides });
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b;}); return {promise,resolve,reject}; };
+
+test("the real compatibility control starts folded and does not mount the preference form before expansion", () => {
+  for (const locale of ["en", "zh"]) {
+    const html = renderAdvanced(locale);
+    assert.match(html, /<details class="settings-sidebar-advanced">/);
+    assert.match(html, locale === "zh" ? /不替代 Agent 的 Runtime 绑定/ : /not the Agent&#x27;s Runtime binding/);
+    assert.doesNotMatch(html, /<select|coding-executor-preference|<details[^>]* open=/);
+  }
+});
 function fakeApi(initial = settings()) {
   let saved = initial;
   const calls = [];

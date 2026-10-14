@@ -8,8 +8,9 @@ test("Desktop exposes the exact Mobile pairing destination requested by Hara Mob
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");
   const i18n = readFileSync(`${root}/src/i18n.ts`, "utf8");
 
-  assert.match(app, /type SettingsSection =[^;]*\| "mobile"/s);
-  assert.match(app, /\["mobile", t\("setMobile"\)\]/);
+  const navigation = readFileSync(`${root}/src/SettingsNavigation.tsx`, "utf8");
+  assert.match(navigation, /type SettingsSection =[^;]*\| "mobile"/s);
+  assert.ok(/mobile: t\("setMobile"\)/.test(app), "the exact Mobile destination retains its localized label");
   assert.match(app, /setSec === "mobile"[\s\S]*id="settings-mobile-title"/);
   assert.match(app, /const MobilePairingSettings = lazy\(loadMobilePairingSettings\)/);
   assert.match(app, /section === "mobile"[\s\S]*warmModule\(loadMobilePairingSettings\(\)\)/);

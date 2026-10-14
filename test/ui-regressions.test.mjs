@@ -722,7 +722,8 @@ test("settings use shared page templates and keep Desktop, engine, and update st
   assert.match(app, /updateNoticeReadyBody/, "the ready state explains that Desktop and its managed CLI update together");
   assert.match(css, /\.desktop-update-notice/);
   assert.match(css, /\.desktop-update-progress/);
-  assert.match(app, /role="group"\s+aria-labelledby=/, "settings navigation groups have accessible names");
+  const settingsNavigation = readFileSync(`${root}/src/SettingsNavigation.tsx`, "utf8");
+  assert.match(settingsNavigation, /role="group" aria-labelledby=/, "settings navigation groups have accessible names");
   assert.match(app, /htmlFor="hara-default-approval"/);
   assert.match(app, /id="hara-default-approval"/);
   assert.match(app, /clientRef\.current\?\.supports\("session\.set-approval"\)/, "the composer feature-detects per-conversation permission switching");
@@ -780,8 +781,10 @@ test("secondary work surfaces are split from startup and preload on navigation i
   assert.match(app, /warmModule\(Promise\.all\(\[loadOfficeHome\(\), loadArtifactWorkbench\(\), loadPresentationWorkbench\(\), loadEmbeddedBrowserSurface\(\), loadExtensionDock\(\)\]\)\)/);
   assert.match(app, /warmModule\(loadProviderSettings\(\)\)/);
   assert.match(app, /warmModule\(Promise\.all\(\[loadGatewaySettings\(\), loadMailboxSettings\(\)\]\)\)/);
-  assert.match(app, /onMouseEnter=\{\(\) => preloadSettingsSection\(k\)\}/);
-  assert.match(app, /onFocus=\{\(\) => preloadSettingsSection\(k\)\}/);
+  assert.ok(/onIntent=\{preloadSettingsSection\}/.test(app), "the settings navigation preserves intent preloading");
+  const settingsNavigation = readFileSync(`${root}/src/SettingsNavigation.tsx`, "utf8");
+  assert.match(settingsNavigation, /onMouseEnter=\{\(\) => onIntent\(item\)\}/);
+  assert.match(settingsNavigation, /onFocus=\{\(\) => onIntent\(item\)\}/);
   assert.match(rail, /onMouseEnter=\{\(\) => onIntent\(item\.id\)\}/);
   assert.match(rail, /onFocus=\{\(\) => onIntent\(item\.id\)\}/);
   assert.match(rail, /onMouseEnter=\{onIntentSettings\}/);
@@ -799,7 +802,7 @@ test("the capability center owns skills without duplicating the settings navigat
     /const startSkillCreation = async \(\) => \{[\s\S]*await startNewAssistantConversation\(\)[\s\S]*updateComposerDraft\(sessionId,[\s\S]*t\("skillCreationPrompt"\)/,
     "the builder starts in a fresh assistant conversation and prefills a guided request",
   );
-  assert.match(app, /\["capabilities", t\("setCapabilities"\)\]/);
+  assert.ok(/capabilities: t\("setCapabilities"\)/.test(app), "skills and extensions retain their existing settings route");
   assert.doesNotMatch(app, /\["skills", t\(/, "skills are a capability contribution, not a peer settings destination");
   assert.doesNotMatch(app, /setSec === "skills"/);
   assert.match(app, /onCreateSkill=\{\(\) => void startSkillCreation\(\)\}/);
@@ -1839,20 +1842,18 @@ test("the capability directory keeps package sources and reusable skills distinc
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
   const css = readFileSync(`${root}/src/CapabilityDirectory.css`, "utf8");
 
-  assert.match(directory, /type DirectoryView = "hara" \| "organization" \| "market" \| "installed" \| "skills"/);
-  assert.match(directory, /\["hara", copy\.hara\]/);
-  assert.match(directory, /\["organization", copy\.organization\]/);
-  assert.match(directory, /\["market", copy\.market\]/);
+  assert.match(directory, /type DirectoryView = "skills" \| "installed"/);
+  assert.match(directory, /useState<DirectoryView>\("skills"\)/);
+  assert.doesNotMatch(directory, /\["(?:hara|organization|market)",/);
   assert.match(directory, /\["installed", copy\.installed\]/);
   assert.match(directory, /\["skills", copy\.mySkills\]/);
   assert.match(directory, /aria-controls=\{`capability-panel-\$\{id\}`\}/);
   assert.match(directory, /event\.key === "ArrowRight"/, "directory tabs support keyboard navigation");
-  assert.match(directory, /onClick=\{\(\) => onOpenCore\(item\.id\)\}/);
+  assert.doesNotMatch(directory, /onOpenCore|coreCapabilityIcon/);
   assert.doesNotMatch(app, /AGENT_OFFICE_CAPABILITY|openAgentOffice/);
-  assert.match(app, /onOpenCore=\{\(id\) => \{[\s\S]*COMPUTER_USE_CAPABILITY\.id/);
+  assert.ok(/<ComputerUseSettings/.test(app), "computer permissions remain available in their actual settings");
   assert.match(css, /\.capability-directory-card:focus-visible/);
-  assert.match(directory, /organization\.model/);
-  assert.match(directory, /organization\.deskConnected/);
+  assert.doesNotMatch(directory, /organization\.model|organization\.deskConnected/);
   assert.match(directory, /plugin\.enabled && \(plugin\.panels \?\? \[\]\)\.map/);
   assert.match(directory, /skills === null[\s\S]*visibleSkills\.map/);
   assert.doesNotMatch(
@@ -1860,13 +1861,11 @@ test("the capability directory keeps package sources and reusable skills distinc
     /deviceToken|authorization|enrollKey/,
     "the renderer receives status and catalog metadata, never organization credentials",
   );
-  const included = app.slice(app.indexOf("core={["), app.indexOf("organization={", app.indexOf("core={[")));
-  assert.doesNotMatch(included, /core\.(?:chat|tasks|groups|office)/, "business navigation is not duplicated as installable capabilities");
-  assert.match(included, /COMPUTER_USE_CAPABILITY\.id/);
+  const included = app.slice(app.indexOf("<CapabilityDirectory"), app.indexOf("</Suspense>", app.indexOf("<CapabilityDirectory")));
+  assert.doesNotMatch(included, /core=|organization=|onOpenCore=/, "business navigation and organization status are not duplicated as installable capabilities");
   assert.doesNotMatch(app, /workbench-deliverables-tab/, "Deliverables are on-demand Agent output, not a Workbench contact tab");
   assert.match(app, /importArtifactFile\(kind, "workbench"\)/);
-  assert.match(app, /activeOrganizationConnection/);
-  assert.match(app, /activeOrganizationDesk/);
+  assert.ok(/onManageOrganizations/.test(app), "organization recovery remains in its existing authorized settings flow");
   assert.match(app, /const OfficeHome = lazy/);
   assert.match(app, /const CapabilityDirectory = lazy/);
   assert.match(copy, /officeIncluded: "Included in the open core"/);
@@ -1882,7 +1881,7 @@ test("Computer Use is a core capability with an engine-owned safety policy", () 
   const copy = readFileSync(`${root}/src/i18n.ts`, "utf8");
 
   assert.match(capabilities, /id: "core\.computer-use"/);
-  assert.match(app, /id: COMPUTER_USE_CAPABILITY\.id/);
+  assert.ok(!/id: COMPUTER_USE_CAPABILITY\.id/.test(app), "the duplicate capability-directory shortcut is retired");
   assert.match(app, /<ComputerUseSettings/);
   assert.match(app, /setSetSec\("security"\)/);
   assert.match(client, /"settings\.computer\.get"/);
@@ -1910,7 +1909,7 @@ test("the retired local group scene is absent while official owner DMs and globa
   assert.match(gateway, /weixin/);
   assert.match(gateway, /client\.startGateway/);
   assert.match(gateway, /client\.stopGateway/);
-  assert.match(app, /openSecuritySettings\("settings-computer-use"\)/);
+  assert.ok(/security: t\("setSecurity"\)/.test(app), "computer permissions stay reachable from Safety settings");
   assert.match(app, /<ComputerUseSettings/);
   assert.match(guard, /id="settings-jev-api-key"/);
   assert.match(guard, /client\.testDecisionSettings/);
@@ -1925,8 +1924,8 @@ test("the capability center consumes one semantic light and dark design contract
 
   assert.match(directory, /import "\.\/CapabilityDirectory\.css"/);
   assert.match(directory, /className="capability-directory-search"/);
-  assert.match(directory, /data-capability=\{item\.id\}/);
-  assert.match(directory, /coreCapabilityIcon\(item\.id\)/);
+  assert.match(directory, /className="settings-skill-list"/);
+  assert.match(directory, /<SettingsBadge>/);
   assert.doesNotMatch(css, /#[\da-f]{3,8}\b/i, "component CSS must not hard-code a theme color");
   for (const token of [
     "--surface-panel",

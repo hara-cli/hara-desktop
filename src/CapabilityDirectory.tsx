@@ -11,64 +11,19 @@ import {
   SettingsNotice,
   SettingsPage,
 } from "./SettingsUI";
-import {
-  IconArrowRight,
-  IconChat,
-  IconOffice,
-  IconSearch,
-  IconSparkles,
-  IconTasks,
-  IconUsers,
-} from "./icons";
+import { IconSearch } from "./icons";
 import "./CapabilityDirectory.css";
 
-type DirectoryView = "hara" | "organization" | "market" | "installed" | "skills";
-const DIRECTORY_VIEWS: DirectoryView[] = [
-  "hara",
-  "organization",
-  "market",
-  "installed",
-  "skills",
-];
-
-interface CoreCapability {
-  id: string;
-  title: string;
-  description: string;
-}
-
-interface OrganizationCapabilityContext {
-  label: string;
-  model: string;
-  deskConnected: boolean;
-  deskHost?: string;
-}
+type DirectoryView = "skills" | "installed";
+const DIRECTORY_VIEWS: DirectoryView[] = ["skills", "installed"];
 
 interface CapabilityDirectoryCopy {
   eyebrow: string;
   title: string;
   description: string;
   search: string;
-  hara: string;
-  organization: string;
-  market: string;
   installed: string;
   mySkills: string;
-  included: string;
-  openCore: string;
-  open: string;
-  currentOrganization: string;
-  noOrganization: string;
-  noOrganizationHint: string;
-  modelRoute: string;
-  organizationDesk: string;
-  connected: string;
-  notProvided: string;
-  organizationCatalogHint: string;
-  marketTitle: string;
-  marketHint: string;
-  marketGateTitle: string;
-  marketGateHint: string;
   installedTitle: string;
   installedHint: string;
   loading: string;
@@ -100,14 +55,11 @@ interface CapabilityDirectoryCopy {
 
 interface CapabilityDirectoryProps {
   copy: CapabilityDirectoryCopy;
-  core: CoreCapability[];
   plugins: PluginInfo[] | null;
   skills: SkillInfo[] | null;
-  organization?: OrganizationCapabilityContext;
   isSkillCreating: boolean;
   isPanelBusy: (pluginName: string, panelId: string) => boolean;
   onCreateSkill: () => void;
-  onOpenCore: (id: string) => void;
   onTogglePlugin: (name: string, enabled: boolean) => void;
   onOpenPanel: (pluginName: string, panel: PanelSpec) => void;
   panelInDock: (pluginName: string, panelId: string) => boolean;
@@ -116,44 +68,25 @@ interface CapabilityDirectoryProps {
 
 const normalized = (value: string): string => value.trim().toLocaleLowerCase();
 
-const coreCapabilityIcon = (id: string) => {
-  if (id === "core.chat") return <IconChat size={19} />;
-  if (id === "core.tasks") return <IconTasks size={19} />;
-  if (id === "core.groups") return <IconUsers size={19} />;
-  if (id === "core.office") return <IconOffice size={19} />;
-  return <IconSparkles size={19} />;
-};
-
 export function CapabilityDirectory({
   copy,
-  core,
   plugins,
   skills,
-  organization,
   isSkillCreating,
   isPanelBusy,
   onCreateSkill,
-  onOpenCore,
   onTogglePlugin,
   onOpenPanel,
   panelInDock,
   onTogglePanelInDock,
 }: CapabilityDirectoryProps) {
-  const [view, setView] = useState<DirectoryView>("hara");
+  const [view, setView] = useState<DirectoryView>("skills");
   const [query, setQuery] = useState("");
   const tabRefs = useRef<Record<DirectoryView, HTMLButtonElement | null>>({
-    hara: null,
-    organization: null,
-    market: null,
     installed: null,
     skills: null,
   });
   const needle = normalized(query);
-  const visibleCore = useMemo(
-    () => core.filter((item) =>
-      !needle || normalized(`${item.title} ${item.description}`).includes(needle)),
-    [core, needle],
-  );
   const visiblePlugins = useMemo(
     () => (plugins ?? []).filter((item) =>
       !needle || normalized(`${item.name} ${item.description}`).includes(needle)),
@@ -194,11 +127,8 @@ export function CapabilityDirectory({
       <div className={`capability-directory-toolbar is-${view}`}>
         <div className="capability-directory-tabs" role="tablist" aria-label={copy.title}>
           {([
-            ["hara", copy.hara],
-            ["organization", copy.organization],
-            ["market", copy.market],
-            ["installed", copy.installed],
             ["skills", copy.mySkills],
+            ["installed", copy.installed],
           ] as const).map(([id, label]) => (
             <button
               type="button"
@@ -221,8 +151,7 @@ export function CapabilityDirectory({
             </button>
           ))}
         </div>
-        {view === "hara" || view === "installed" || view === "skills" ? (
-          <label className="capability-directory-search">
+        <label className="capability-directory-search">
             <IconSearch size={15} />
             <input
               type="search"
@@ -231,105 +160,8 @@ export function CapabilityDirectory({
               aria-label={copy.search}
               onChange={(event) => setQuery(event.target.value)}
             />
-          </label>
-        ) : null}
+        </label>
       </div>
-
-      {view === "hara" ? (
-        <section
-          role="tabpanel"
-          id="capability-panel-hara"
-          aria-labelledby="capability-tab-hara"
-        >
-          <SettingsCard title={copy.hara} description={copy.included}>
-            <div className="capability-directory-grid">
-              {visibleCore.map((item, index) => (
-                <button
-                  type="button"
-                  className="capability-directory-card is-core"
-                  key={item.id}
-                  data-capability={item.id}
-                  aria-label={`${copy.open}: ${item.title}`}
-                  onClick={() => onOpenCore(item.id)}
-                >
-                  <span className="capability-directory-card-top">
-                    <span className="capability-directory-icon" aria-hidden>
-                      {coreCapabilityIcon(item.id)}
-                    </span>
-                    <span className="capability-directory-index">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                  </span>
-                  <div className="capability-directory-card-head">
-                    <strong>{item.title}</strong>
-                    <SettingsBadge>{copy.openCore}</SettingsBadge>
-                  </div>
-                  <p>{item.description}</p>
-                  <span className="capability-directory-card-footer">
-                    <span className="capability-directory-state">{copy.included}</span>
-                    <span className="capability-directory-open">
-                      {copy.open}
-                      <IconArrowRight size={13} />
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-            {visibleCore.length === 0 ? (
-              <div className="settings-empty">{copy.noResults}</div>
-            ) : null}
-          </SettingsCard>
-        </section>
-      ) : null}
-
-      {view === "organization" ? (
-        <section
-          role="tabpanel"
-          id="capability-panel-organization"
-          aria-labelledby="capability-tab-organization"
-        >
-          <SettingsCard
-            title={organization?.label ?? copy.currentOrganization}
-            description={copy.organizationCatalogHint}
-          >
-            {!organization ? (
-              <div className="settings-empty capability-organization-empty">
-                <strong>{copy.noOrganization}</strong>
-                <span>{copy.noOrganizationHint}</span>
-              </div>
-            ) : (
-              <div className="capability-organization-bundle">
-                <div>
-                  <span>{copy.modelRoute}</span>
-                  <strong>{organization.model || "—"}</strong>
-                  <SettingsBadge>{copy.connected}</SettingsBadge>
-                </div>
-                <div>
-                  <span>{copy.organizationDesk}</span>
-                  <strong>{organization.deskHost || copy.notProvided}</strong>
-                  <SettingsBadge>
-                    {organization.deskConnected ? copy.connected : copy.notProvided}
-                  </SettingsBadge>
-                </div>
-              </div>
-            )}
-          </SettingsCard>
-        </section>
-      ) : null}
-
-      {view === "market" ? (
-        <section
-          role="tabpanel"
-          id="capability-panel-market"
-          aria-labelledby="capability-tab-market"
-        >
-          <SettingsCard title={copy.marketTitle} description={copy.marketHint}>
-            <SettingsNotice tone="neutral" title={copy.marketGateTitle}>
-              {copy.marketGateHint}
-            </SettingsNotice>
-          </SettingsCard>
-        </section>
-      ) : null}
 
       {view === "installed" ? (
         <section

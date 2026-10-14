@@ -128,8 +128,10 @@ test("App wires only existing chat/create/history flows and keeps the component 
   const app = readFileSync(new URL("src/App.tsx", root), "utf8");
   const entry = readFileSync(new URL("src/main.tsx", root), "utf8");
   const drawer = readFileSync(new URL("src/AgentDetailsDrawer.tsx", root), "utf8");
-  assert.match(app, /onCreateAgent=\{agentBlueprintFeatureReady \? openTalentMarket : openCustomRecruitment\}/);
-  assert.match(app, /canCreateAgent=\{activeSpaceId === "personal" && agentCreateReady\}/);
+  assert.ok(/onCreateAgent=\{openCustomRecruitment\}/.test(app), "creating a colleague is not a mandatory catalog visit");
+  assert.ok(/onBrowseCandidates=\{agentBlueprintFeatureReady \? openTalentMarket : undefined\}/.test(app), "optional role browsing remains capability gated");
+  assert.ok(/suspended=\{talentMarketOpen && !hireAgentBlueprint\}/.test(app), "browsing keeps the custom form mounted, with its draft preserved");
+  assert.ok(/canCreateAgent=\{activeSpaceId === "personal" && agentCreateReady\}/.test(app), "old engines retain their existing audience and creation guards");
   assert.match(app, /preview=\{inboxMessagePreview\(latest \? transcripts\[latest.id\] : undefined\) \|\| agentPublicTitle\(agent\)\}/);
   assert.match(app, /key=\{`\$\{activeSpaceId\}:\$\{detailsAgent.ref\}`\}/);
   assert.match(app, /setDetailsAgentRef\(null\)/);

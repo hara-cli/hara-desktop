@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { HaraClient } from "./client";
 import type { Key } from "./i18n";
 import {
@@ -66,13 +66,28 @@ export function CodingExecutorSettingsPanel({ view, personal, t, onSelect, onSav
   );
 }
 
-export function CodingExecutorSettings({ client, cwd, personal, t }: {
+interface CodingExecutorSettingsProps {
   client: HaraClient | null; cwd?: string; personal: boolean; t: (key: Key) => string;
-}) {
+}
+
+function CodingExecutorSettingsContent({ client, cwd, personal, t }: CodingExecutorSettingsProps) {
   const controller = useMemo(() => createCodingSettingsController(personal ? client : null, cwd), [client, cwd, personal]);
   const view = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   useEffect(() => { controller.activate(); void controller.load(); return () => controller.dispose(); }, [controller]);
   return <CodingExecutorSettingsPanel view={view} personal={personal} t={t}
     onSelect={(executor) => { controller.select(executor); }}
     onSave={() => { void controller.save(); }} onReload={() => { void controller.load(); }} />;
+}
+
+export function CodingExecutorSettings(props: CodingExecutorSettingsProps) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <details className="settings-sidebar-advanced" onToggle={(event) => setExpanded(event.currentTarget.open)}>
+      <summary>
+        <strong>{props.t("codingExecutorAdvancedTitle")}</strong>
+        <span>{props.t("codingExecutorAdvancedHint")}</span>
+      </summary>
+      {expanded ? <CodingExecutorSettingsContent {...props} /> : null}
+    </details>
+  );
 }

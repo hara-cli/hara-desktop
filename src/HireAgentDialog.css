@@ -1,4 +1,6 @@
 .hire-agent-overlay { position: fixed; z-index: 141; inset: 0; display: grid; place-items: center; padding: 26px; background: rgb(12 10 9 / 66%); backdrop-filter: blur(12px); }
+.hire-agent-overlay[hidden] { display: none; }
+.hire-agent-recommendations { margin-bottom: 15px; }
 .hire-agent-dialog { width: min(720px, calc(100vw - 40px)); max-height: calc(100vh - 52px); overflow: auto; border: 1px solid var(--line); border-radius: 20px 18px 16px 22px; background: var(--bg2); color: var(--fg); box-shadow: 0 32px 100px rgb(0 0 0 / 46%), 5px 6px 0 color-mix(in srgb, var(--accent) 22%, var(--line)); }
 .hire-agent-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 24px 18px; border-bottom: 1px solid var(--line); background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 11%, var(--bg2)), var(--bg2) 62%); }
 .hire-agent-dialog > header > div { display: flex; flex-direction: column; gap: 4px; }
@@ -14,8 +16,9 @@
 .hire-agent-blueprint-note em { border-radius: 999px; padding: 5px 7px; background: color-mix(in srgb, #4f9c73 12%, var(--bg2)); color: #4f9c73; font: normal 750 7px/1 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
 .hire-agent-form label { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: var(--dim); font-size: 11px; }
 .hire-agent-form label > span:first-child b { margin-left: 3px; color: var(--accent); }
-.hire-agent-form input, .hire-agent-form textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; outline: none; background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; }
-.hire-agent-form input:focus, .hire-agent-form textarea:focus { border-color: var(--accent); }
+.hire-agent-form input, .hire-agent-form textarea, .hire-agent-form select { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; outline: none; background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; }
+.hire-agent-form input:focus, .hire-agent-form textarea:focus, .hire-agent-form select:focus-visible { border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 2px; }
+.hire-agent-form > label + label { margin-top: 15px; }
 .hire-agent-form label > small { color: var(--dim); font-size: 9px; line-height: 1.45; }
 .hire-agent-username { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
 .hire-agent-username:focus-within { border-color: var(--accent); }

@@ -16,6 +16,7 @@ import {
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import CommandLineDiagnostics from "./CommandLineDiagnostics";
+import { SettingsNavigation, type SettingsSection } from "./SettingsNavigation";
 import type { CommandLineHaraStatus } from "./command-line-status";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -289,7 +290,6 @@ import {
   terminalTurnIsCurrent,
   type ResumedTaskSnapshot,
 } from "./task-lifecycle";
-import { COMPUTER_USE_CAPABILITY } from "./preinstalled-capabilities";
 import AgentPicker from "./AgentPicker";
 import ConversationCodingConnection from "./ConversationCodingConnection";
 import ModelConnectionRecovery from "./ModelConnectionRecovery";
@@ -336,17 +336,6 @@ import ExternalSessionCenter, {
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 import "./ConversationWorkspace.css";
-
-type SettingsSection =
-  | "providers"
-  | "connections"
-  | "automations"
-  | "learning"
-  | "engine"
-  | "security"
-  | "mobile"
-  | "lang"
-  | "capabilities";
 
 type SecuritySettingsAnchor = "settings-computer-use" | "settings-jev-api-key";
 
@@ -4134,6 +4123,10 @@ export default function App() {
   const hireAgent = async (input: HireAgentInput): Promise<void> => {
     const client = clientRef.current;
     if (!client || hireAgentSaving) return;
+    if (input.runtimeId && !agentCatalog?.runtimeOptions?.some((option) => option.id === input.runtimeId && option.available)) {
+      setHireAgentError(locale === "zh" ? "所选引擎已不可用，请重新选择；不会自动切换。" : "The selected Runtime is no longer available. Choose explicitly; no fallback will run.");
+      return;
+    }
     if (!client.supports("agents.create")) {
       setHireAgentError(locale === "zh" ? "当前 Hara 引擎版本还不支持雇佣 Agent。" : "This Hara engine does not support hiring Agents yet.");
       return;
@@ -8455,13 +8448,6 @@ export default function App() {
     "core.tasks": t("zoneAuto"),
     "core.groups": t("zoneGroups"),
   };
-  const activeOrganizationConnection =
-    groupsDirectory.organizations?.connections.find((connection) => connection.active);
-  const activeOrganizationDesk = activeOrganizationConnection
-    ? groupsDirectory.desk?.connections.find(
-        (connection) => connection.profileId === activeOrganizationConnection.id,
-      )
-    : undefined;
   const pluginRailLabels = Object.fromEntries(
     pluginNavigation.map((contribution) => [contribution.id, contribution.title]),
   );
@@ -9704,7 +9690,7 @@ export default function App() {
             {(selectedInboxAgent || workbenchInboxMode === "agents") && !selectedExternalSession && !selectedInboxProject ? (
               <NewConversationMenu agents={availableAgents} locale={locale} busy={sessionCreating}
                 canCreateAgent={activeSpaceId === "personal" && agentCreateReady}
-                onCreateAgent={agentBlueprintFeatureReady ? openTalentMarket : openCustomRecruitment}
+                onCreateAgent={openCustomRecruitment}
                 onSelectAgent={(agentRef) => {
                   const agent = availableAgents.find((candidate) => candidate.ref === agentRef);
                   const latest = sortInboxSessions(inboxSessionsForAgent(spaceSessions, agentRef))[0];
@@ -10095,61 +10081,18 @@ export default function App() {
       {zone === "settings" && (
         <aside className="sidebar">
           {brandBar}
-          <nav className="sessions setlist" key={zone} aria-label={t("settingsNavigation")}>
-            {(
-              [
-                {
-                  label: t("settingsGroupGeneral"),
-                  items: [
-                    ["providers", t("setProviders")],
-                    ["connections", t("setConnections")],
-                    ["automations", t("setAutomations")],
-                    ["learning", t("setLearning")],
-                    ["engine", t("setServer")],
-                    ["security", t("setSecurity")],
-                    ["mobile", t("setMobile")],
-                    ["lang", t("setLang")],
-                  ],
-                },
-                {
-                  label: t("settingsGroupCapabilities"),
-                  items: [
-                    ["capabilities", t("setCapabilities")],
-                  ],
-                },
-              ] as const
-            ).map((group, groupIndex) => (
-              <div
-                className="setnav-group"
-                role="group"
-                aria-labelledby={`settings-nav-group-${groupIndex}`}
-                key={group.label}
-              >
-                <div className="setnav-label" id={`settings-nav-group-${groupIndex}`}>
-                  {group.label}
-                </div>
-                {group.items.map(([k, label]) => (
-                  <button
-                    type="button"
-                    key={k}
-                    className={`setnav ${setSec === k ? "on" : ""}`}
-                    aria-current={setSec === k ? "page" : undefined}
-                    onMouseEnter={() => preloadSettingsSection(k)}
-                    onFocus={() => preloadSettingsSection(k)}
-                    onClick={() => {
-                      if (k === "automations") openAutomations();
-                      else setSetSec(k);
-                    }}
-                  >
-                    {label}
-                    {k === "automations" && activeSpaceId === "personal" && autoUnread > 0 ? (
-                      <span className="settings-automation-count">{autoUnread}</span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </nav>
+          <SettingsNavigation key={zone} section={setSec} label={t("settingsNavigation")}
+            groupLabels={{ work: t("settingsGroupWork"), app: t("settingsGroupApp") }}
+            labels={{ providers: t("setProviders"), connections: t("setConnections"),
+              automations: t("setAutomations"), learning: t("setLearning"), capabilities: t("setCapabilities"),
+              engine: t("setServer"), security: t("setSecurity"), mobile: t("setMobile"), lang: t("setLang") }}
+            automationCount={activeSpaceId === "personal" ? autoUnread : 0}
+            onIntent={preloadSettingsSection}
+            onSelect={(section) => {
+              if (section === "automations") openAutomations();
+              else if (section === "security") openSecuritySettings("settings-computer-use");
+              else setSetSec(section);
+            }} />
           {footBar}
         </aside>
       )}
@@ -10666,44 +10609,13 @@ export default function App() {
                   isSkillCreating={assistantCreating}
                   isPanelBusy={(pluginName, panelId) =>
                     panelBusy === panelOperationKey(pluginName, panelId)}
-                  core={[
-                    {
-                      id: COMPUTER_USE_CAPABILITY.id,
-                      title: t("computerUseTitle"),
-                      description: t("computerUseDescription"),
-                    },
-                  ]}
-                  organization={activeOrganizationConnection ? {
-                    label: activeOrganizationConnection.label,
-                    model: activeOrganizationConnection.model,
-                    deskConnected: activeOrganizationDesk?.configured === true,
-                    deskHost: activeOrganizationDesk?.host,
-                  } : undefined}
                   copy={{
                     eyebrow: t("settingsCapabilities"),
                     title: t("setCapabilities"),
                     description: t("capabilitiesDescription"),
                     search: t("capabilityDirectorySearch"),
-                    hara: t("capabilitySourceHara"),
-                    organization: t("capabilitySourceOrganization"),
-                    market: t("capabilitySourceMarket"),
                     installed: t("capabilitySourceInstalled"),
                     mySkills: t("capabilitySourceSkills"),
-                    included: t("capabilityIncluded"),
-                    openCore: t("capabilityOpenCore"),
-                    open: t("capabilityOpen"),
-                    currentOrganization: t("capabilityCurrentOrganization"),
-                    noOrganization: t("capabilityNoOrganization"),
-                    noOrganizationHint: t("capabilityNoOrganizationHint"),
-                    modelRoute: t("capabilityModelRoute"),
-                    organizationDesk: t("capabilityOrganizationDesk"),
-                    connected: t("capabilityConnected"),
-                    notProvided: t("capabilityNotProvided"),
-                    organizationCatalogHint: t("capabilityOrgCatalogHint"),
-                    marketTitle: t("capabilityMarketTitle"),
-                    marketHint: t("capabilityMarketHint"),
-                    marketGateTitle: t("capabilityMarketGateTitle"),
-                    marketGateHint: t("capabilityMarketGateHint"),
                     installedTitle: t("installedCapabilities"),
                     installedHint: t("installedCapabilitiesHint"),
                     loading: t("loading"),
@@ -10733,11 +10645,6 @@ export default function App() {
                     skillSourceCapability: t("skillSourceCapability"),
                   }}
                   onCreateSkill={() => void startSkillCreation()}
-                  onOpenCore={(id) => {
-                    if (id === COMPUTER_USE_CAPABILITY.id) {
-                      openSecuritySettings("settings-computer-use");
-                    }
-                  }}
                   onTogglePlugin={(name, enabled) => void togglePlugin(name, enabled)}
                   onOpenPanel={(pluginName, panel) => void openPanel(pluginName, panel)}
                   panelInDock={(pluginName, panelId) => {
@@ -10967,12 +10874,15 @@ export default function App() {
           <TalentMarket
             locale={locale}
             hiredBlueprintIds={hiredBlueprintIds}
-            suspended={hireAgentOpen}
+            suspended={hireAgentOpen && Boolean(hireAgentBlueprint)}
             onClose={() => {
               setTalentMarketOpen(false);
               setHireAgentBlueprint(null);
             }}
-            onCustomHire={openCustomRecruitment}
+            onCustomHire={() => {
+              setTalentMarketOpen(false);
+              openCustomRecruitment();
+            }}
             onHire={(blueprint) => {
               setHireAgentError("");
               setHireAgentBlueprint(blueprint);
@@ -11020,6 +10930,9 @@ export default function App() {
           saving={hireAgentSaving}
           error={hireAgentError}
           blueprint={hireAgentBlueprint}
+          runtimeOptions={agentCatalog?.runtimeOptions}
+          suspended={talentMarketOpen && !hireAgentBlueprint}
+          onBrowseCandidates={agentBlueprintFeatureReady ? openTalentMarket : undefined}
           onClose={() => {
             if (hireAgentSaving) return;
             setHireAgentOpen(false);

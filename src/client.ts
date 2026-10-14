@@ -2729,6 +2729,7 @@ export class HaraClient {
   }
   createAgent(input: {
     id: string;
+    runtimeId?: AgentRuntimeId;
     description?: string;
     instructions?: string;
     blueprint?: AgentBlueprintInstallInput;

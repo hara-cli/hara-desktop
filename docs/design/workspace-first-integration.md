@@ -85,3 +85,49 @@ so this UI is not a fake Pi dropdown that executes Hara. No sidecar lock, depend
 or version metadata was changed. Candidate build passed all 36 asset checks (existing large-chunk
 warning remains); all 558 tests passed, including real-component SSR and executable callback checks.
 Native/browser visual QA, packaged-app testing and publication are not claimed.
+
+## Built-in Pi creation and isolated local dev increment (2026-10-14)
+
+This supersedes the Hara-only candidate state above, not its historical receipts. The companion CLI
+now registers a real Pi SDK bounded model-step Driver under the shared task/tool/approval/question,
+cancellation/budget/history governor. Hiring uses the trusted Runtime catalog, recommends available
+Pi, disables unavailable Drivers and rechecks before submission. Old engines receive no invented
+field. Existing main/Agent preferences are not silently migrated, and coding-worker support does
+not make Codex/Claude/OpenCode general-Agent Drivers. Main history stays Hara-authoritative.
+
+Debug-only `HARA_DESKTOP_DEV_HOME` accepts an explicit private owned canonical home, rejects invalid
+or real installed homes, clears the isolated Engine environment and is ignored by release builds.
+`scripts/local-runtime-dev.mjs` launches a candidate Engine/native dev with a synthetic loopback model,
+no copied real keys/history and explicitly Pi-bound main. This is not an installer/sidecar-lock update.
+Native tests passed 53 with one existing ignored case. Cargo reported startup, but Computer Use did
+not expose a separately selectable development identity. Native visual/focus QA remains unverified;
+no installed app or private browser was used as a substitute.
+
+## First redundancy-removal implementation (2026-10-14)
+
+Jeff authorized implementation after the source audit. The directory opens Skills and exposes only
+Skills/Extensions. Empty Market, duplicate organization/model/Desk status, duplicate Computer Use
+shortcut and their renderer props/branches are removed. Computer Use remains in Safety settings
+with its engine-owned policy and cancellation-safe navigation. Skills, plugin controls/work panels,
+shortcut preferences and guided skill creation retain their contracts.
+
+`SettingsNavigation` separates Work settings from App/device, preserving every route exactly once,
+unread scoping, intent preloading and recovery. It does not claim new Workspace authority: membership,
+storage partitioning and unified Workspace model connections remain open. The coding-worker preference
+starts folded, explicitly differs from an Agent Runtime, and mounts its controller only on expansion;
+closing disposes it, without resetting the preference.
+
+New colleague creation opens the guarded custom form rather than requiring a talent-catalog visit.
+Catalog suggestions remain optional/capability-gated. Browsing suspends the mounted custom form,
+preserving its draft; hidden/inert onboarding cannot hire, dismiss or consume Escape. Blueprint
+selection still requires explicit onboarding and grants no tools. Automatic model-ranked suggestions
+and fully chat-first recruitment are not claimed by this increment.
+
+The real-directory red tests failed 2/2 against the old source. Focused tests passed 27/27; the complete
+Desktop suite passed **569/569**, zero fail/skip/cancel, after the authorized loopback gate. Source
+production build and all **36** asset checks passed. Private logs:
+`/private/tmp/hara-simplification-implementation.0xxAcE/{red,focused,build-complete,full-approved}.log`.
+The first restricted full run retained 21 listen-EPERM failures and five moved-source contract checks;
+tests now follow actual components without weakening policy/recovery assertions. No version, dependency,
+user data, installed binary or release asset changed. Frontend skills guided existing-token reuse,
+accessible grouping and conditional mounting without adding libraries.

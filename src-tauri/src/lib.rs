@@ -813,11 +813,64 @@ struct ManagedCliReceipt {
 }
 
 fn user_home() -> Result<PathBuf, String> {
+    if let Some(home) = development_home_override(
+        cfg!(debug_assertions),
+        std::env::var_os("HARA_DESKTOP_DEV_HOME").map(PathBuf::from),
+    )? {
+        return Ok(home);
+    }
     resolve_user_home(
         std::env::var_os("HOME").map(PathBuf::from),
         std::env::var_os("USERPROFILE").map(PathBuf::from),
         cfg!(windows),
     )
+}
+
+/// Opt-in development instances must never discover, stop or write the installed application's
+/// engine/history. Release builds ignore this override entirely. The caller creates a private,
+/// canonical directory; no fallback to the real home is allowed for an invalid explicit override.
+fn development_home_override(
+    enabled: bool,
+    requested: Option<PathBuf>,
+) -> Result<Option<PathBuf>, String> {
+    if !enabled {
+        return Ok(None);
+    }
+    let Some(home) = requested else {
+        return Ok(None);
+    };
+    if !home.is_absolute() || home.parent().is_none() {
+        return Err("development home must be an explicit isolated absolute directory".into());
+    }
+    if let Ok(real_home) = resolve_user_home(
+        std::env::var_os("HOME").map(PathBuf::from),
+        std::env::var_os("USERPROFILE").map(PathBuf::from),
+        cfg!(windows),
+    ) {
+        if real_home.canonicalize().ok().as_ref() == Some(&home) {
+            return Err("development home must not be the installed application's home".into());
+        }
+    }
+    let metadata = fs::symlink_metadata(&home).map_err(|_| "development home is unavailable")?;
+    if !metadata.is_dir()
+        || metadata.file_type().is_symlink()
+        || home
+            .canonicalize()
+            .map_err(|_| "development home cannot be resolved")?
+            != home
+    {
+        return Err("development home must be a canonical non-symlink directory".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.permissions().mode() & 0o077 != 0
+        {
+            return Err("development home must be private and owned by the current user".into());
+        }
+    }
+    Ok(Some(home))
 }
 
 /// Mirror hara-cli's portable-home contract without depending on the host running these tests.
@@ -1778,8 +1831,28 @@ fn serve_command(
     port: u16,
     herdr_executable: Option<&Path>,
     code_runtime_executable: Option<&Path>,
-) -> std::process::Command {
+) -> Result<std::process::Command, String> {
     let mut command = std::process::Command::new(executable);
+    if let Some(home) = development_home_override(
+        cfg!(debug_assertions),
+        std::env::var_os("HARA_DESKTOP_DEV_HOME").map(PathBuf::from),
+    )? {
+        // Do not import developer account/API/proxy/preload variables into an isolated dev engine.
+        let search_path = std::env::var_os("PATH");
+        let system_root = std::env::var_os("SystemRoot");
+        command
+            .env_clear()
+            .env("HOME", &home)
+            .env("USERPROFILE", &home)
+            .env("HARA_UPDATE_CHECK", "0")
+            .env("NO_COLOR", "1");
+        if let Some(value) = search_path {
+            command.env("PATH", value);
+        }
+        if let Some(value) = system_root {
+            command.env("SystemRoot", value);
+        }
+    }
     command.args(["serve", "--port", &port.to_string()]);
     // The sidecar uses this marker only for Desktop-owned migrations such as repairing an already
     // installed Hara scheduler path after an app rename/move. It never auto-installs new OS services.
@@ -1790,7 +1863,7 @@ fn serve_command(
     if let Some(code_runtime_executable) = code_runtime_executable {
         command.env("HARA_CODE_RUNTIME_PATH", code_runtime_executable);
     }
-    command
+    Ok(command)
 }
 
 fn spawn_serve_process(
@@ -1815,7 +1888,7 @@ fn spawn_serve_process(
         .try_clone()
         .map_err(|error| format!("clone serve log handle: {error}"))?;
 
-    let mut command = serve_command(executable, port, herdr_executable, code_runtime_executable);
+    let mut command = serve_command(executable, port, herdr_executable, code_runtime_executable)?;
     command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::from(stdout))
@@ -3845,6 +3918,42 @@ mod native_tests {
     }
 
     #[test]
+    fn development_home_is_opt_in_private_and_ignored_by_release_builds() {
+        assert_eq!(
+            development_home_override(false, Some(PathBuf::from("/"))).unwrap(),
+            None
+        );
+        assert_eq!(development_home_override(true, None).unwrap(), None);
+        assert!(development_home_override(true, Some(PathBuf::from("relative"))).is_err());
+        let directory = std::env::temp_dir().join(format!(
+            "hara-isolated-dev-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let directory = directory.canonicalize().unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        assert_eq!(
+            development_home_override(true, Some(directory.clone())).unwrap(),
+            Some(directory.clone())
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(development_home_override(true, Some(directory.clone())).is_err());
+        }
+        fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
     fn portable_home_normalization_is_platform_parameterized() {
         let cases = [
             ("/c/Users/alice", r"C:\Users\alice"),
@@ -4212,7 +4321,8 @@ mod native_tests {
             49152,
             Some(Path::new("/opt/hara/herdr")),
             Some(Path::new("/opt/hara/hara-code-runtime")),
-        );
+        )
+        .unwrap();
         assert_eq!(command.get_program(), OsStr::new("/opt/hara/hara"));
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),

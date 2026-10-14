@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import type { AgentBlueprintInstallInput, AgentPublicIdentity } from "./client";
+import { useEffect, useId, useMemo, useState } from "react";
+import type { AgentBlueprintInstallInput, AgentPublicIdentity, AgentRuntimeId, AgentRuntimeOption } from "./client";
+import { agentRuntimeLabel } from "./agent-runtime-selection";
 import { AgentPortrait } from "./AgentPortrait";
 import {
   talentBlueprintIdentity,
@@ -16,6 +17,7 @@ export interface HireAgentInput {
   instructions?: string;
   blueprint?: AgentBlueprintInstallInput;
   profile: Omit<AgentPublicIdentity, "version" | "source">;
+  runtimeId?: AgentRuntimeId;
 }
 
 interface HireAgentDialogProps {
@@ -23,11 +25,19 @@ interface HireAgentDialogProps {
   saving?: boolean;
   error?: string;
   blueprint?: AgentBlueprint | null;
+  runtimeOptions?: AgentRuntimeOption[];
+  suspended?: boolean;
+  onBrowseCandidates?: () => void;
   onClose: () => void;
   onHire: (input: HireAgentInput) => void;
 }
 
-export default function HireAgentDialog({ locale, saving, error, blueprint, onClose, onHire }: HireAgentDialogProps) {
+export default function HireAgentDialog({ locale, saving, error, blueprint, runtimeOptions = [], suspended = false, onBrowseCandidates, onClose, onHire }: HireAgentDialogProps) {
+  const [chosenRuntime, setChosenRuntime] = useState<AgentRuntimeId | "">("");
+  const runtimeNoteId = useId();
+  const runtimeId = chosenRuntime || runtimeOptions.find((option) => option.id === "pi" && option.available)?.id
+    || runtimeOptions.find((option) => option.id === "hara" && option.available)?.id;
+  const runtimeValid = !runtimeOptions.length || runtimeOptions.some((option) => option.id === runtimeId && option.available);
   const blueprintIdentity = blueprint ? talentBlueprintIdentity(blueprint, locale) : null;
   const [id, setId] = useState(() => blueprint?.username ?? "");
   const [displayName, setDisplayName] = useState(() => blueprintIdentity?.displayName ?? "");
@@ -53,16 +63,17 @@ export default function HireAgentDialog({ locale, saving, error, blueprint, onCl
   };
 
   useEffect(() => {
+    if (suspended) return;
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !saving) onClose();
     };
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
-  }, [onClose, saving]);
+  }, [onClose, saving, suspended]);
 
   return (
-    <div className="hire-agent-overlay" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) onClose();
+    <div className="hire-agent-overlay" role="presentation" hidden={suspended} inert={suspended} aria-hidden={suspended || undefined} onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !saving && !suspended) onClose();
     }}>
       <section className="hire-agent-dialog" role="dialog" aria-modal="true" aria-labelledby="hire-agent-title">
         <header>
@@ -70,7 +81,7 @@ export default function HireAgentDialog({ locale, saving, error, blueprint, onCl
             <small>{blueprint ? "PERSONAL · BLUEPRINT ONBOARDING" : "PERSONAL · CUSTOM RECRUITMENT"}</small>
             <strong id="hire-agent-title">{blueprint
               ? (locale === "zh" ? `为${talentText(blueprint.name, locale)}办理入职` : `Onboard ${talentText(blueprint.name, locale)}`)
-              : (locale === "zh" ? "自定义招聘一位 Agent" : "Hire a custom Agent")}</strong>
+              : (locale === "zh" ? "创建一位 AI 同事" : "Create an AI colleague")}</strong>
             <p>{blueprint
               ? (locale === "zh" ? "蓝图只提供角色起点；用户名、公开名片与私有工作说明都可以在入职前调整。" : "The blueprint is a starting point. Adjust the username, public profile, and private brief before hiring.")
               : (locale === "zh" ? "创建独立身份与私有工作提示词；以后可随时修改名片或解除雇佣。" : "Create an independent identity and private work brief. You can edit the profile or dismiss the Agent later.")}</p>
@@ -78,6 +89,26 @@ export default function HireAgentDialog({ locale, saving, error, blueprint, onCl
           <AgentPortrait agentRef={`global:${username || "new-agent"}`} name={profile.displayName} identity={profile} size="large" />
         </header>
         <div className="hire-agent-form">
+          {!blueprint && onBrowseCandidates ? (
+            <button type="button" className="ghost hire-agent-recommendations" disabled={saving || suspended}
+              onClick={() => { if (!saving && !suspended) onBrowseCandidates(); }}>
+              {locale === "zh" ? "没想好职责？看看岗位推荐" : "Need inspiration? Browse role suggestions"}
+            </button>
+          ) : null}
+          {runtimeOptions.length ? <label>
+            <span>{locale === "zh" ? "执行引擎" : "Execution Runtime"}</span>
+            <select value={runtimeId ?? ""} disabled={saving} aria-describedby={runtimeNoteId}
+              onChange={(event) => setChosenRuntime(event.target.value as AgentRuntimeId)}>
+              {!runtimeId ? <option value="" disabled>{locale === "zh" ? "暂无可用引擎" : "No available Runtime"}</option> : null}
+              {runtimeOptions.map((option) => <option key={option.id} value={option.id} disabled={!option.available}>
+                {agentRuntimeLabel(option.id, locale)}{option.id === "pi" && option.available ? locale === "zh" ? " · 推荐" : " · recommended" : ""}
+                {!option.available ? locale === "zh" ? " · 暂不可用" : " · unavailable" : ""}
+              </option>)}
+            </select>
+            <small id={runtimeNoteId}>{locale === "zh"
+              ? "Pi 已内建，无需另外安装。引擎不授予工具权限；模型跟随本空间连接，历史与记忆属于这位 Agent。以后可在名片中修改。"
+              : "Pi is built in. A Runtime does not grant tool permissions; models follow this Workspace's connection and history belongs to this Agent. Edit it later in the profile."}</small>
+          </label> : null}
           {blueprint ? (
             <div className="hire-agent-blueprint-note">
               <span aria-hidden>{blueprint.emoji}</span>
@@ -103,11 +134,16 @@ export default function HireAgentDialog({ locale, saving, error, blueprint, onCl
         </div>
         {error ? <p className="hire-agent-error">{error}</p> : null}
         <footer>
-          <button type="button" className="ghost" disabled={saving} onClick={onClose}>{locale === "zh" ? "取消" : "Cancel"}</button>
-          <button type="button" disabled={saving || !username || !displayName.trim()} onClick={() => onHire({
+          <button type="button" className="ghost" disabled={saving || suspended} onClick={() => {
+            if (!saving && !suspended) onClose();
+          }}>{locale === "zh" ? "取消" : "Cancel"}</button>
+          <button type="button" disabled={saving || suspended || !runtimeValid || !username || !displayName.trim()} onClick={() => {
+            if (saving || suspended || !runtimeValid) return;
+            onHire({
             id: username,
             description: bio.trim() || title.trim(),
             instructions: instructions.trim(),
+            ...(runtimeOptions.length && runtimeId ? { runtimeId } : {}),
             ...(blueprint ? { blueprint: talentBlueprintInstallInput(blueprint) } : {}),
             profile: {
               displayName: displayName.trim(),
@@ -118,7 +154,8 @@ export default function HireAgentDialog({ locale, saving, error, blueprint, onCl
               ...(accent.trim() ? { accent: accent.trim() } : {}),
               ...(character.trim() ? { character: character.trim().toLowerCase() } : {}),
             },
-          })}>{saving ? (locale === "zh" ? "办理入职…" : "Hiring…") : (locale === "zh" ? "确认雇佣" : "Hire Agent")}</button>
+          });
+          }}>{saving ? (locale === "zh" ? "办理入职…" : "Hiring…") : (locale === "zh" ? "确认雇佣" : "Hire Agent")}</button>
         </footer>
       </section>
     </div>
