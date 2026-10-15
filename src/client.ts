@@ -1,7 +1,7 @@
 // hara serve client — JSON-RPC 2.0 over WebSocket (protocol v1, mirrors hara-cli src/serve/protocol.ts).
 // Request/response correlation + typed event callbacks; the UI layer stays purely declarative.
 import { codingSettingsState, isCodingExecutorPreference, type CodingExecutorPreference, type CodingSettingsState } from "./coding-executor-state.ts";
-import type { CollaborationResult, CollaborationDirectory, CollaborationBootstrap, CollaborationSync, CollaborationSent, CollaborationCreated } from "./workspace-collaboration-state.ts";
+import type { CollaborationResult, CollaborationDirectory, CollaborationBootstrap, CollaborationSync, CollaborationSent, CollaborationCreated, CollaborationHistory } from "./workspace-collaboration-state.ts";
 export type { CodingExecutorId, CodingExecutorPreference, CodingSettingsState } from "./coding-executor-state.ts";
 
 export interface Discovery {
@@ -2760,6 +2760,13 @@ export class HaraClient {
   }
   listCollaborationWorkspaces(cursor?: string) {
     return this.collaborationCall<CollaborationDirectory>("workspace.collaboration.list", cursor ? { cursor } : {});
+  }
+  supportsCollaborationHistory() {
+    return this.supportsFeature("workspace.collaboration.history.v1") && this.supports("workspace.collaboration.history");
+  }
+  readCollaborationHistory(input: { workspaceId: string; channelId: string; accountScope: string; before?: string }) {
+    if (!this.supportsCollaborationHistory()) return Promise.resolve<CollaborationResult<CollaborationHistory>>({ ok: false, error: { code: "UNAVAILABLE" } });
+    return this.collaborationCall<CollaborationHistory>("workspace.collaboration.history", input);
   }
   bootstrapCollaborationWorkspace(workspaceId: string, accountScope: string) {
     return this.collaborationCall<CollaborationBootstrap>("workspace.collaboration.bootstrap", { workspaceId, accountScope });

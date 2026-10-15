@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { WorkspaceCollaborationModel } from "../src/workspace-collaboration-state.ts";
+import { WorkspaceCollaborationModel, mergeCollaborationMessages } from "../src/workspace-collaboration-state.ts";
 
 const A = "workspace-a", B = "workspace-b", C = "channel-a", D = "channel-b";
 const ok = value => ({ ok: true, value }), fail = code => ({ ok: false, error: { code } });
@@ -163,4 +163,109 @@ test("first-page absence with a continuation is not revocation of the selected l
   assert.equal(f.model.getSnapshot().workspaceId, A); assert.equal(f.model.getSnapshot().bootstrap.workspaceId, A);
   assert.equal(f.model.getSnapshot().draft, "later-page draft"); assert.deepEqual(f.model.getSnapshot().pending, pending);
   assert.equal(f.model.getSnapshot().error, null);
+});
+const historyMessage = (index, channelId = C) => ({ id: "history-" + index, channelId, senderPrincipalId: "other",
+  body: "record " + index, sequence: String(index), createdAt: "2026-10-15T01:00:00Z" });
+const settle = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+function withHistory() {
+  const f = fixture(), requests = [];
+  f.client.readCollaborationHistory = async input => {
+    requests.push(input);
+    return ok({ workspaceId: input.workspaceId, channelId: input.channelId,
+      messages: input.before ? [historyMessage(1, input.channelId), historyMessage(2, input.channelId)]
+        : [historyMessage(3, input.channelId), historyMessage(4, input.channelId)],
+      nextBefore: input.before ? null : "older-3" });
+  };
+  return { ...f, requests, async readyHistory() { await f.ready(); await settle(); } };
+}
+test("latest history loads on selection and older pages prepend without changing live cursor or draft", async () => {
+  const f = withHistory(); await f.readyHistory(); f.model.setDraft("keep draft");
+  assert.deepEqual(f.model.getSnapshot().messages.map(item => item.sequence), ["3", "4"]);
+  await f.model.loadHistory(true);
+  assert.deepEqual(f.model.getSnapshot().messages.map(item => item.sequence), ["1", "2", "3", "4"]);
+  assert.equal(f.model.getSnapshot().bootstrap.cursor, "cursor-0"); assert.equal(f.model.getSnapshot().draft, "keep draft");
+  assert.equal(f.model.getSnapshot().history.nextBefore, null);
+});
+test("late history merges live messages without duplicates or same-timestamp misordering", async () => {
+  const f = withHistory(); await f.readyHistory(); const older = deferred();
+  f.client.readCollaborationHistory = () => older.promise;
+  const request = f.model.loadHistory(true);
+  f.client.syncCollaborationWorkspace = async () => ok({ workspaceId: A, cursor: "live-5", hasMore: false,
+    events: [4, 5].map(index => ({ id: "event-" + index, type: "message.created", message: historyMessage(index) })) });
+  await f.model.sync();
+  older.resolve(ok({ workspaceId: A, channelId: C, messages: [historyMessage(1), historyMessage(2), historyMessage(3)], nextBefore: null })); await request;
+  assert.deepEqual(f.model.getSnapshot().messages.map(item => item.sequence), ["1", "2", "3", "4", "5"]);
+  assert.equal(f.model.getSnapshot().bootstrap.cursor, "live-5");
+});
+test("history A→B→A and same-Workspace channel A→B→A both reject old responses", async () => {
+  const f = withHistory(), first = deferred(); let count = 0;
+  f.client.readCollaborationHistory = async input => ++count === 1 ? first.promise
+    : ok({ workspaceId: input.workspaceId, channelId: input.channelId, messages: [historyMessage(8, input.channelId)], nextBefore: null });
+  await f.ready(); await f.model.selectWorkspace(B); await f.model.selectWorkspace(A); await settle();
+  first.resolve(ok({ workspaceId: A, channelId: C, messages: [historyMessage(1)], nextBefore: null })); await settle();
+  assert.equal(f.model.getSnapshot().messages[0].sequence, "8");
+  const oldChannel = deferred(); let calls = 0;
+  f.client.readCollaborationHistory = async input => ++calls === 1 ? oldChannel.promise
+    : ok({ workspaceId: A, channelId: input.channelId, messages: [historyMessage(9, input.channelId)], nextBefore: null });
+  f.model.selectChannel(D); f.model.selectChannel(C); f.model.selectChannel(D); await settle();
+  oldChannel.resolve(ok({ workspaceId: A, channelId: D, messages: [historyMessage(2, D)], nextBefore: null })); await settle();
+  assert.equal(f.model.getSnapshot().channelId, D); assert.equal(f.model.getSnapshot().messages[0].sequence, "9");
+});
+test("history cursor staleness clears old transcript but never loses uncertain send identity or draft", async () => {
+  const f = withHistory(); await f.readyHistory(); f.model.setDraft("pending body");
+  f.client.sendCollaborationMessage = async () => fail("OUTCOME_UNKNOWN"); await f.model.send();
+  const pending = f.model.getSnapshot().pending;
+  f.client.readCollaborationHistory = async () => fail("HISTORY_STALE"); await f.model.loadHistory(true);
+  assert.equal(f.model.getSnapshot().history.error, "HISTORY_STALE"); assert.equal(f.model.getSnapshot().history.nextBefore, null);
+  assert.deepEqual(f.model.getSnapshot().pending, pending); assert.equal(f.model.getSnapshot().draft, "pending body");
+  assert.deepEqual(f.model.getSnapshot().messages, []); assert.equal(f.model.getSnapshot().bootstrap.workspaceId, A);
+});
+test("failed older read retains its cursor and repeated clicks do not overlap reads", async () => {
+  const f = withHistory(); await f.readyHistory(); const pending = deferred(); let count = 0;
+  f.client.readCollaborationHistory = () => { count++; return pending.promise; };
+  const read = f.model.loadHistory(true); await f.model.loadHistory(true); assert.equal(count, 1);
+  pending.resolve(fail("UNAVAILABLE")); await read;
+  assert.equal(f.model.getSnapshot().history.nextBefore, "older-3"); assert.equal(f.model.getSnapshot().history.error, "UNAVAILABLE");
+  assert.equal(f.model.getSnapshot().messages.length, 2);
+});
+test("real history access denial hides content and wrong scope cannot repaint the selected channel", async () => {
+  for (const code of ["AUTH_REQUIRED", "ACCESS_CHANGED", "SCOPE_CHANGED"]) {
+    const f = withHistory(); await f.readyHistory(); f.model.setDraft("private");
+    f.client.readCollaborationHistory = async () => fail(code); await f.model.loadHistory(true);
+    assert.equal(f.model.getSnapshot().bootstrap, null); assert.equal(f.model.getSnapshot().draft, ""); assert.deepEqual(f.model.getSnapshot().messages, []);
+  }
+  const f = withHistory(); await f.readyHistory();
+  f.client.readCollaborationHistory = async () => ok({ workspaceId: B, channelId: C, messages: [], nextBefore: null });
+  await f.model.loadHistory(true); assert.equal(f.model.getSnapshot().error, "SCOPE_CHANGED");
+});
+test("history is bounded at 500 messages without consuming a page that cannot be shown", async () => {
+  const f = withHistory(); let count = 0;
+  f.client.readCollaborationHistory = async input => {
+    count++; const high = input.before ? Number(input.before) - 1 : 1000, low = high - 49;
+    return ok({ workspaceId: input.workspaceId, channelId: input.channelId,
+      messages: Array.from({ length: 50 }, (_, index) => historyMessage(low + index)), nextBefore: String(low) });
+  };
+  await f.readyHistory();
+  for (let i = 0; i < 9; i++) await f.model.loadHistory(true);
+  assert.equal(f.model.getSnapshot().messages.length, 500); assert.equal(f.model.getSnapshot().history.limited, true);
+  await f.model.loadHistory(true); assert.equal(count, 10);
+});
+test("channel switch fetches fresh history and filters unrelated live channel bodies", async () => {
+  const f = withHistory(); await f.readyHistory(); f.model.selectChannel(D); await settle();
+  assert.ok(f.model.getSnapshot().messages.every(item => item.channelId === D));
+  f.client.syncCollaborationWorkspace = async () => ok({ workspaceId: A, cursor: "next", hasMore: false,
+    events: [{ id: "other", type: "message.created", message: historyMessage(10, C) }] });
+  await f.model.sync(); assert.ok(f.model.getSnapshot().messages.every(item => item.channelId === D));
+});
+test("visited names are scoped to sign-in and history feature absence preserves older-engine behavior", async () => {
+  const f = withHistory(); f.client.supportsCollaborationHistory = () => false;
+  f.client.bootstrapCollaborationWorkspace = async id => ok({ ...bootstrap(id), displayName: id === A ? "Nanhara" : "Studio" });
+  await f.ready(); assert.equal(f.requests.length, 0); assert.equal(f.model.getSnapshot().history.phase, "unsupported");
+  await f.model.selectWorkspace(B); assert.deepEqual(f.model.getSnapshot().workspaceNames, { [A]: "Nanhara", [B]: "Studio" });
+  f.client.listCollaborationWorkspaces = async () => ok({ schemaVersion: 1, accountScope: "new-account", accountRegion: "CN", workspaces: [], nextCursor: null });
+  await f.model.loadDirectory(); assert.deepEqual(f.model.getSnapshot().workspaceNames, {});
+});
+test("message sequence merge is exact above Number.MAX_SAFE_INTEGER", () => {
+  const a = { ...historyMessage(1), sequence: "9007199254740993" }, b = { ...historyMessage(2), sequence: "9007199254740992" };
+  assert.deepEqual(mergeCollaborationMessages([a], [b]).map(item => item.sequence), ["9007199254740992", "9007199254740993"]);
 });

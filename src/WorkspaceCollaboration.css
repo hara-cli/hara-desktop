@@ -48,6 +48,10 @@
 .workspace-collaboration-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 30px; color: var(--accent); font-size: 13px; border-bottom: 1px solid var(--line); }
 .workspace-collaboration-messages { flex: 1; min-height: 0; padding: 18px clamp(16px, 4vw, 55px); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 16px; }
 .workspace-collaboration-history-note { font-size: 11px; line-height: 1.5; color: var(--dim); text-align: center; margin: 0 0 10px; }
+.workspace-collaboration-history-more { align-self: center; font-size: 12px !important; color: var(--dim) !important; }
+.workspace-collaboration-history-error { font-size: 12px; line-height: 1.6; color: var(--dim); text-align: center; }
+.workspace-collaboration-history-error p { margin: 0 0 8px; }
+.workspace-collaboration-new-messages { align-self: center; font-size: 12px !important; margin: 0 0 4px; box-shadow: 0 3px 12px #00000008; }
 .workspace-collaboration-empty { margin: auto; padding: 35px; text-align: center; color: var(--dim); max-width: 470px; line-height: 1.8; font-size: 14px; }
 .workspace-collaboration-message { align-self: flex-start; max-width: min(85%, 720px); min-width: 0; }
 .workspace-collaboration-message > span { display: block; margin: 0 8px 5px; color: var(--dim); font-size: 11px; }

@@ -64,6 +64,25 @@ test("a selected later-page Workspace remains explicitly selected in the real pi
     workspaces: [{ workspaceId: "ws_b", membership: { role: "MEMBER" } }], nextCursor: "next" } });
   assert.match(html, /<option value="ws_a" selected="">Nanhara · Not in this page/);
 });
+test("history-ready view replaces the preview limitation with real older-page controls", () => {
+  const html = render({ ...ready, history: { phase: "ready", nextBefore: "opaque", error: null, limited: false },
+    workspaceNames: { ws_a: "Nanhara", ws_b: "Studio" },
+    directory: { ...ready.directory, workspaces: [...ready.directory.workspaces, { workspaceId: "ws_b", membership: { role: "MEMBER" } }] } });
+  assert.match(html, /Load earlier messages/); assert.doesNotMatch(html, /earlier history is not connected yet/);
+  assert.match(html, /<option value="ws_b">Studio/);
+  assert.match(html, /Enter to send/);
+});
+test("history failure is a separate read state and uncertain sends retain the explicit retry bubble", () => {
+  const html = render({ ...ready, history: { phase: "error", nextBefore: null, error: "HISTORY_STALE", limited: false },
+    pending: { body: "still unconfirmed", state: "unknown", code: "OUTCOME_UNKNOWN", idempotencyKey: "same" } });
+  assert.match(html, /Retry history/); assert.match(html, /Retry same request/); assert.match(html, /still unconfirmed/);
+  assert.match(html, /unconfirmed sends are retained/);
+});
+test("loading and bounded history do not claim transcript completeness", () => {
+  assert.match(render({ ...ready, history: { phase: "loading", nextBefore: null, error: null, limited: false } }), /Loading channel history/);
+  const html = render({ ...ready, history: { phase: "ready", nextBefore: "older", error: null, limited: true } });
+  assert.match(html, /up to 500 messages/); assert.doesNotMatch(html, /Load earlier messages/);
+});
 test("App integration is feature-gated, lazy and does not convert a cloud ID to local spaces.use", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(app, /supportsFeature\("workspace.collaboration.v1"\)/);

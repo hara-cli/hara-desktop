@@ -1,5 +1,5 @@
 /** Hosted collaboration DTOs. Local Agent/session/model authority never enters this state. */
-export type CollaborationCode = "AUTH_REQUIRED" | "SCOPE_CHANGED" | "ACCESS_CHANGED" | "PROJECTION_PENDING" | "DIRECTORY_STALE" | "INVALID_INPUT" | "UNAVAILABLE" | "OUTCOME_UNKNOWN";
+export type CollaborationCode = "AUTH_REQUIRED" | "SCOPE_CHANGED" | "ACCESS_CHANGED" | "PROJECTION_PENDING" | "DIRECTORY_STALE" | "HISTORY_STALE" | "INVALID_INPUT" | "UNAVAILABLE" | "OUTCOME_UNKNOWN";
 export type CollaborationResult<T> = { ok: true; value: T } | { ok: false; error: { code: CollaborationCode } };
 export interface CollaborationDirectory {
   schemaVersion: 1; accountScope: string; accountRegion: "CN" | "GLOBAL";
@@ -12,11 +12,14 @@ export interface CollaborationBootstrap {
   membership: { principalId: string; role: "OWNER" | "ADMIN" | "MEMBER"; epoch: number };
   channels: CollaborationChannel[];
 }
-export interface CollaborationMessage { id: string; channelId: string; senderPrincipalId: string; body: string; createdAt: string }
+export interface CollaborationMessage { id: string; channelId: string; senderPrincipalId: string; body: string; createdAt: string; sequence?: string }
+export interface CollaborationHistory { workspaceId: string; channelId: string; messages: CollaborationMessage[]; nextBefore: string | null }
 export interface CollaborationSync { workspaceId: string; cursor: string; hasMore: boolean; events: { id: string; type: string; message: CollaborationMessage | null; channel?: CollaborationChannel | null }[] }
-export interface CollaborationSent { workspaceId: string; messageId: string; channelId: string; senderPrincipalId: string; createdAt: string }
+export interface CollaborationSent { workspaceId: string; messageId: string; channelId: string; senderPrincipalId: string; createdAt: string; sequence?: string }
 export interface CollaborationCreated { workspaceId: string; channel: CollaborationChannel }
 export interface WorkspaceCollaborationTransport {
+  supportsCollaborationHistory?(): boolean;
+  readCollaborationHistory?(input: { workspaceId: string; channelId: string; accountScope: string; before?: string }): Promise<CollaborationResult<CollaborationHistory>>;
   listCollaborationWorkspaces(cursor?: string): Promise<CollaborationResult<CollaborationDirectory>>;
   bootstrapCollaborationWorkspace(workspaceId: string, accountScope: string): Promise<CollaborationResult<CollaborationBootstrap>>;
   syncCollaborationWorkspace(workspaceId: string, cursor: string, accountScope: string): Promise<CollaborationResult<CollaborationSync>>;
@@ -34,11 +37,21 @@ export interface CollaborationView {
   error: CollaborationCode | null; channelId: string | null; draft: string;
   messages: CollaborationMessage[]; pending: PendingCollaborationMessage | null;
   syncing: boolean; hasMore: boolean;
+  workspaceNames: Record<string, string>;
+  history: { phase: "unsupported" | "idle" | "loading" | "ready" | "error"; nextBefore: string | null; error: CollaborationCode | null; limited: boolean };
   creation: { slug: string; displayName: string; idempotencyKey: string; state: "sending" | "unknown" | "failed"; code?: CollaborationCode } | null;
 }
 const empty = (): CollaborationView => ({ directory: null, directoryBusy: false, workspaceId: null, bootstrap: null,
-  phase: "idle", error: null, channelId: null, draft: "", messages: [], pending: null, syncing: false, hasMore: false, creation: null });
+  phase: "idle", error: null, channelId: null, draft: "", messages: [], pending: null, syncing: false, hasMore: false, creation: null,
+  workspaceNames: {}, history: { phase: "unsupported", nextBefore: null, error: null, limited: false } });
 const revoked = (code: CollaborationCode) => ["AUTH_REQUIRED", "SCOPE_CHANGED", "ACCESS_CHANGED"].includes(code);
+export function mergeCollaborationMessages(existing: CollaborationMessage[], incoming: CollaborationMessage[], older = false): CollaborationMessage[] {
+  const merged = [...new Map((older ? [...incoming, ...existing] : [...existing, ...incoming]).map(item => [item.id, item])).values()];
+  if (merged.every(item => typeof item.sequence === "string" && /^[1-9][0-9]{0,18}$/.test(item.sequence))) {
+    merged.sort((a, b) => BigInt(a.sequence!) < BigInt(b.sequence!) ? -1 : BigInt(a.sequence!) > BigInt(b.sequence!) ? 1 : 0);
+  }
+  return merged.slice(-500);
+}
 
 /** Per mounted client, in-memory only. Epochs invalidate A→B→A requests, including delayed sends and
  * directory pagination. A failed sync never advances its cursor. No model, automatic send, or localStorage. */
@@ -48,6 +61,8 @@ export class WorkspaceCollaborationModel {
   private epoch = 0;
   private directoryEpoch = 0;
   private syncEpoch: number | null = null;
+  private channelEpoch = 0;
+  private historyRequest = 0;
   private drafts = new Map<string, string>();
   private pending = new Map<string, PendingCollaborationMessage>();
   private identities = new Map<string, string>();
@@ -58,6 +73,7 @@ export class WorkspaceCollaborationModel {
   constructor(client: WorkspaceCollaborationTransport, key: () => string = () => crypto.randomUUID()) { this.client = client; this.key = key; }
   getSnapshot = (): CollaborationView => this.value;
   hasUnresolvedMutations = (): boolean => this.pending.size > 0 || this.creations.size > 0;
+  private historySupported() { return typeof this.client.readCollaborationHistory === "function" && (this.client.supportsCollaborationHistory?.() ?? true); }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private update(next: Partial<CollaborationView>) {
     if (this.disposed) return;
@@ -121,7 +137,8 @@ export class WorkspaceCollaborationModel {
         this.creations.delete(workspaceId);
       }
       this.identities.set(workspaceId, identity);
-      this.update({ bootstrap: result.value, phase: "ready", creation: this.creations.get(workspaceId) ?? null });
+      this.update({ bootstrap: result.value, phase: "ready", creation: this.creations.get(workspaceId) ?? null,
+        workspaceNames: { ...this.value.workspaceNames, [workspaceId]: result.value.displayName } });
       const channelId = result.value.channels[0]?.id;
       if (channelId) this.selectChannel(channelId);
     } catch { if (this.current(epoch, workspaceId)) this.update({ phase: "error", error: "UNAVAILABLE" }); }
@@ -129,7 +146,40 @@ export class WorkspaceCollaborationModel {
   selectChannel(channelId: string) {
     if (this.value.phase !== "ready" || !this.value.bootstrap?.channels.some(item => item.id === channelId)) return;
     const target = this.target(this.value.workspaceId, channelId);
-    this.update({ channelId, draft: this.drafts.get(target) ?? "", pending: this.pending.get(target) ?? null });
+    const changed = this.value.channelId !== channelId;
+    if (changed) { ++this.channelEpoch; ++this.historyRequest; }
+    this.update({ channelId, draft: this.drafts.get(target) ?? "", pending: this.pending.get(target) ?? null,
+      ...(changed ? { messages: this.historySupported() ? [] : this.value.messages,
+        history: { phase: this.historySupported() ? "idle" : "unsupported", nextBefore: null, error: null, limited: false } } : {}) });
+    if (changed && this.historySupported()) void this.loadHistory();
+  }
+  async loadHistory(older = false) {
+    const { workspaceId, channelId, directory, history } = this.value, epoch = this.epoch, channelEpoch = this.channelEpoch;
+    if (!workspaceId || !channelId || !directory || this.value.phase !== "ready" || !this.historySupported() || history.phase === "loading") return;
+    if (older && (!history.nextBefore || history.limited)) return;
+    if (older && this.value.messages.length >= 500) { this.update({ history: { ...history, limited: true } }); return; }
+    const before = older ? history.nextBefore! : undefined, request = ++this.historyRequest;
+    this.update({ history: { ...history, phase: "loading", error: null } });
+    const current = () => this.current(epoch, workspaceId) && this.channelEpoch === channelEpoch && this.value.channelId === channelId && this.historyRequest === request;
+    try {
+      const result = await this.client.readCollaborationHistory!({ workspaceId, channelId, accountScope: directory.accountScope, ...(before ? { before } : {}) });
+      if (!current()) return;
+      if (!result.ok) {
+        if (revoked(result.error.code)) { this.failure(result.error.code); return; }
+        this.update({ history: { ...history, phase: "error", error: result.error.code, nextBefore: result.error.code === "HISTORY_STALE" ? null : history.nextBefore },
+          ...(result.error.code === "HISTORY_STALE" ? { messages: [] } : {}) }); return;
+      }
+      if (result.value.workspaceId !== workspaceId || result.value.channelId !== channelId
+        || result.value.messages.some(item => item.channelId !== channelId)) { this.failure("SCOPE_CHANGED"); return; }
+      if (before && result.value.nextBefore === before) {
+        this.update({ history: { ...history, phase: "error", error: "HISTORY_STALE" } }); return;
+      }
+      const existing = this.value.messages.filter(item => item.channelId === channelId);
+      const available = Math.max(0, 500 - existing.length);
+      const incoming = older ? (available ? result.value.messages.slice(-available) : []) : result.value.messages;
+      const messages = mergeCollaborationMessages(existing, incoming, older);
+      this.update({ messages, history: { phase: "ready", error: null, nextBefore: result.value.nextBefore, limited: messages.length >= 500 } });
+    } catch { if (current()) this.update({ history: { ...history, phase: "error", error: "UNAVAILABLE" } }); }
   }
   setDraft(draft: string) {
     if (!this.value.channelId || this.value.phase !== "ready" || this.value.pending?.state === "sending") return;
@@ -151,10 +201,12 @@ export class WorkspaceCollaborationModel {
         if (!event.message) continue;
         const item = event.message;
         if (!channels.has(item.channelId)) continue;
+        if (this.historySupported() && item.channelId !== this.value.channelId) continue;
         messages.set(item.id, item);
       }
       // Bounded memory. Original server cursor remains authoritative; older history is not fabricated.
-      this.update({ bootstrap: { ...this.value.bootstrap!, channels: [...channels.values()], cursor: result.value.cursor }, messages: [...messages.values()].slice(-500), hasMore: result.value.hasMore, error: null });
+      this.update({ bootstrap: { ...this.value.bootstrap!, channels: [...channels.values()], cursor: result.value.cursor },
+        messages: mergeCollaborationMessages([], [...messages.values()]), hasMore: result.value.hasMore, error: null });
       if (!this.value.channelId && channels.size) this.selectChannel(channels.keys().next().value!);
     } catch { if (this.current(epoch, workspaceId)) this.update({ error: "UNAVAILABLE" }); }
     finally { if (this.syncEpoch === epoch) this.syncEpoch = null; if (this.current(epoch, workspaceId)) this.update({ syncing: false }); }
@@ -186,8 +238,9 @@ export class WorkspaceCollaborationModel {
       // Do not erase a newer draft typed after navigation.
       if (this.drafts.get(target) === item.body) this.drafts.delete(target);
       if (!this.current(epoch, workspaceId)) return;
-      const sent = { id: result.value.messageId, channelId, senderPrincipalId: result.value.senderPrincipalId, body: item.body, createdAt: result.value.createdAt };
-      const messages = [...new Map([...this.value.messages, sent].map(message => [message.id, message])).values()].slice(-500);
+      const sent = { id: result.value.messageId, channelId, senderPrincipalId: result.value.senderPrincipalId, body: item.body, createdAt: result.value.createdAt,
+        ...(result.value.sequence ? { sequence: result.value.sequence } : {}) };
+      const messages = this.historySupported() && this.value.channelId !== channelId ? this.value.messages : mergeCollaborationMessages(this.value.messages, [sent]);
       this.update({ messages, ...(this.value.channelId === channelId ? { pending: null, draft: this.drafts.get(target) ?? "" } : {}) });
       await this.sync();
     } catch {

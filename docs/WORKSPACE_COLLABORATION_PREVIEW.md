@@ -26,9 +26,23 @@ and leaving the surface requires an explicit warning acknowledgment. Explicit re
 the original body, target and idempotency key. No typing, selecting, model or automatic send
 approves a message. Core interruption/reload does not roll back a server send.
 
-Current limitations are visible in the UI: only post-connection events, no historical transcript
-integration or complete member profiles. Workspace labels may fall back to opaque IDs until
-Collab supplies name metadata. Agent execution, private channels, attachments, key sharing,
+When Core advertises workspace.collaboration.history.v1, selection loads the latest 50 messages,
+with explicit older paging and a separate opaque history cursor. Exact bigint sequence ordering
+and server-ID deduplication merge concurrent live/history replies at equal timestamps. Channel and
+request generations isolate delayed replies, and each channel selection reloads its authorized
+transcript. History pagination expiry clears the transcript/cursor but preserves the draft and
+uncertain send/create IDs; true access denial or sign-in drift clears old-account content.
+The 500-message view limit is explicit; reads never auto-send or replace the live-sync cursor.
+
+The viewport follows new messages only near the bottom. Reading older content preserves the anchor
+on prepend and offers a new-messages button without forcing a jump. Enter sends, Shift+Enter adds
+a line, and composing/repeat/modifier key events do not submit. Text remains escaped, not raw HTML.
+Selected/visited Workspace names come from authorized bootstrap and are reset with account scope;
+unvisited names remain opaque IDs without context fan-out. Older Core engines visibly retain their
+post-connection-only history limitation.
+
+Current limitations include no complete member profiles or durable transcript/retry queue.
+Agent execution, private channels, attachments, key sharing,
 Desk cards and complete local-to-hosted Workspace migration are not implemented in this slice.
 
 ## Synthetic visual fixture
