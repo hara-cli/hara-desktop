@@ -55,7 +55,7 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
     if (!node) return;
     scrolling.current.layout(node, scrollScope, lastMessageId, pendingKey, view.history.phase === "loading");
     setUnread(scrolling.current.unread);
-  }, [scrollScope, lastMessageId, pendingKey, messages.length, view.history.phase]);
+  }, [scrollScope, lastMessageId, pendingKey, messages.length, view.history.phase, view.pending?.state, view.pending?.code, view.draftMentions.length]);
   const readOlder = () => {
     if (messagesRef.current) scrolling.current.beforeOlder(messagesRef.current);
     void model.loadHistory(true);

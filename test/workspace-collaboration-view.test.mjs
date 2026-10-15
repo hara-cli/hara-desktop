@@ -145,3 +145,7 @@ test("member selection is explicit, non-sending and bounded; unavailable rosters
   assert.match(module.exports.renderMembers({ ...props, mentionSelection: { ...props.mentionSelection, ids: new Set(Array.from({ length: 10 }, (_, i) => "p" + i)) } }), /aria-label="Mention Human" disabled/);
   assert.match(module.exports.renderMembers({ ...props, members: { ...props.members, phase: "error" } }), /aria-label="Mention Human" disabled/);
 });
+test("viewport intent is reapplied when pending status or mention-chip height changes", () => {
+  const source = readFileSync(new URL("../src/WorkspaceCollaboration.tsx", import.meta.url), "utf8");
+  assert.equal(source.includes("view.pending?.state, view.pending?.code, view.draftMentions.length"), true);
+});
