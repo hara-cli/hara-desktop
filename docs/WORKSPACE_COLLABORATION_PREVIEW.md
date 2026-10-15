@@ -1,0 +1,46 @@
+# Workspace channel UI — local candidate
+
+2026-10-15. No release, production API, account enrollment or existing Dev restart.
+
+The authenticated Core feature workspace.collaboration.v1 adds a collaboration entry next
+to the existing local Workspace switcher. It opens a distinct, lazy-loaded channel surface.
+Closing returns to the local Workspace without switching its profile or stopping local tasks.
+An unconfigured or older Core advertises no collaboration entry; local Hara stays account-optional.
+
+The preview provides an explicit Workspace picker, actual authorized channels, plain-text
+messages, owner/admin channel creation, explicit send receipts and same-ID retry. Core owns
+all Account credentials and short-lived assertions; renderer receives redacted DTOs and an
+opaque accountScope. It cannot supply a remote URL, model key, Realm or role override.
+
+Request generations isolate A→B→A transitions. Sign-in/access changes hide old content and
+clear drafts/selection. Background tabs do not poll; visible tabs poll one bounded cursor page
+every five seconds without overlapping reads. A failed sync never advances its cursor.
+Messages are deduplicated by server ID, capped at 500 in memory, and escaped as text.
+New channel events carry only validated public metadata, not the server's arbitrary payload.
+
+The local retry state is not durable. Pending sends/creates remain unknown across navigation,
+and leaving the surface requires an explicit warning acknowledgment. Explicit retry freezes
+the original body, target and idempotency key. No typing, selecting, model or automatic send
+approves a message. Core interruption/reload does not roll back a server send.
+
+Current limitations are visible in the UI: only post-connection events, no historical transcript
+integration or complete member profiles. Workspace labels may fall back to opaque IDs until
+Collab supplies name metadata. Agent execution, private channels, attachments, key sharing,
+Desk cards and complete local-to-hosted Workspace migration are not implemented in this slice.
+
+## Synthetic visual fixture
+
+With the repository's pinned Node toolchain, start a separately owned Vite port and open:
+
+    test/fixtures/workspace-collaboration-preview.html
+
+The fixture uses the actual UI/model and explicitly synthetic messages; it has no Account/Core
+network transport, model key or real send. It is not evidence of a deployed service. Do not
+replace the user's running Dev app to inspect it. Browser/native screenshot verification must
+be recorded separately from component SSR and state tests.
+
+The shared Core wire contract is maintained in hara-cli/docs/workspace-collaboration-client.md.
+Run npm test and npm run build, plus real authenticated Account/Collab/Core/Desktop client
+integration with separately created disposable databases. A sandbox loopback EPERM or skipped
+database test is not passing acceptance. Keep private evidence and temporary signing material
+out of Git; stop every test-owned service/database after verification.

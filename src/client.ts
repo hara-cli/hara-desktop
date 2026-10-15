@@ -1,6 +1,7 @@
 // hara serve client — JSON-RPC 2.0 over WebSocket (protocol v1, mirrors hara-cli src/serve/protocol.ts).
 // Request/response correlation + typed event callbacks; the UI layer stays purely declarative.
 import { codingSettingsState, isCodingExecutorPreference, type CodingExecutorPreference, type CodingSettingsState } from "./coding-executor-state.ts";
+import type { CollaborationResult, CollaborationDirectory, CollaborationBootstrap, CollaborationSync, CollaborationSent, CollaborationCreated } from "./workspace-collaboration-state.ts";
 export type { CodingExecutorId, CodingExecutorPreference, CodingSettingsState } from "./coding-executor-state.ts";
 
 export interface Discovery {
@@ -2752,6 +2753,25 @@ export class HaraClient {
   }
   useSpace(spaceId: string, cwd?: string) {
     return this.call<SpaceDirectory>("spaces.use", { spaceId, ...(cwd ? { cwd } : {}) });
+  }
+  private collaborationCall<T>(method: string, params: Record<string, unknown>, mutation = false): Promise<CollaborationResult<T>> {
+    if (!this.supportsFeature("workspace.collaboration.v1") || !this.supports(method)) return Promise.resolve({ ok: false, error: { code: "UNAVAILABLE" } });
+    return this.call<CollaborationResult<T>>(method, params).catch(() => ({ ok: false, error: { code: mutation ? "OUTCOME_UNKNOWN" : "UNAVAILABLE" } }));
+  }
+  listCollaborationWorkspaces(cursor?: string) {
+    return this.collaborationCall<CollaborationDirectory>("workspace.collaboration.list", cursor ? { cursor } : {});
+  }
+  bootstrapCollaborationWorkspace(workspaceId: string, accountScope: string) {
+    return this.collaborationCall<CollaborationBootstrap>("workspace.collaboration.bootstrap", { workspaceId, accountScope });
+  }
+  syncCollaborationWorkspace(workspaceId: string, cursor: string, accountScope: string) {
+    return this.collaborationCall<CollaborationSync>("workspace.collaboration.sync", { workspaceId, cursor, accountScope });
+  }
+  sendCollaborationMessage(input: { workspaceId: string; channelId: string; body: string; idempotencyKey: string; accountScope: string }) {
+    return this.collaborationCall<CollaborationSent>("workspace.collaboration.send", input, true);
+  }
+  createCollaborationChannel(input: { workspaceId: string; slug: string; displayName: string; idempotencyKey: string; accountScope: string }) {
+    return this.collaborationCall<CollaborationCreated>("workspace.collaboration.create-channel", input, true);
   }
   listPlugins() {
     return this.call<{ plugins: PluginInfo[] }>("plugins.list", {});

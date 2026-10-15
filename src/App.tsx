@@ -337,6 +337,7 @@ import ExternalSessionCenter, {
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 import "./ConversationWorkspace.css";
+import "./WorkspaceCollaboration.css";
 
 type SecuritySettingsAnchor = "settings-computer-use" | "settings-jev-api-key";
 
@@ -345,6 +346,8 @@ const externalSourceMark = (sourceId: ExternalSessionSourceId): string => (
 );
 
 const loadGroups = () => import("./Groups");
+const loadWorkspaceCollaboration = () => import("./WorkspaceCollaboration");
+const WorkspaceCollaboration = lazy(loadWorkspaceCollaboration);
 const loadAutomations = () => import("./Automations");
 const loadExtensionDock = () => import("./ExtensionDock");
 const loadWorkbenchToolSurface = () => import("./WorkbenchToolSurface");
@@ -843,6 +846,7 @@ export default function App() {
   const bootstrapStartedRef = useRef(false);
   const plannedUpdateRestartRef = useRef(false);
   const [phase, setPhase] = useState<Phase>("boot");
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
   const [server, setServer] = useState<{ pid: number; version: string; provider: string; model: string; cwd: string } | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -8734,6 +8738,14 @@ export default function App() {
         switching={spaceSwitching}
         onSelect={(spaceId) => void switchSpace(spaceId)}
       />
+      {phase === "ready" && clientRef.current?.supportsFeature("workspace.collaboration.v1") ? (
+        <button type="button" className="workspace-collaboration-launch"
+          onPointerEnter={() => warmModule(loadWorkspaceCollaboration())}
+          onFocus={() => warmModule(loadWorkspaceCollaboration())}
+          onClick={() => setCollaborationOpen(true)}>
+          {locale === "zh" ? "開啟協作 Workspace →" : "Open collaboration Workspace →"}
+        </button>
+      ) : null}
     </div>
   );
   const clearArtifactSurface = () => {
@@ -9521,6 +9533,20 @@ export default function App() {
         },
       }}
     />
+  );
+
+  if (collaborationOpen) return (
+    <Suspense fallback={<div role="status">{t("loading")}</div>}>
+      {phase === "ready" && clientRef.current ? <WorkspaceCollaboration
+        client={clientRef.current}
+        locale={locale}
+        onClose={() => setCollaborationOpen(false)}
+        onSignIn={() => { setCollaborationOpen(false); setZone("settings"); setSetSec("mobile"); }}
+      /> : <div role="alert">
+        <p>{locale === "zh" ? "本機引擎連線中斷，協作內容已隱藏。" : "Core disconnected. Collaboration content is hidden."}</p>
+        <button type="button" onClick={() => setCollaborationOpen(false)}>{locale === "zh" ? "返回" : "Back"}</button>
+      </div>}
+    </Suspense>
   );
 
   return (
