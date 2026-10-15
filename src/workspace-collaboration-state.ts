@@ -1,5 +1,5 @@
 /** Hosted collaboration DTOs. Local Agent/session/model authority never enters this state. */
-export type CollaborationCode = "AUTH_REQUIRED" | "SCOPE_CHANGED" | "ACCESS_CHANGED" | "PROJECTION_PENDING" | "INVALID_INPUT" | "UNAVAILABLE" | "OUTCOME_UNKNOWN";
+export type CollaborationCode = "AUTH_REQUIRED" | "SCOPE_CHANGED" | "ACCESS_CHANGED" | "PROJECTION_PENDING" | "DIRECTORY_STALE" | "INVALID_INPUT" | "UNAVAILABLE" | "OUTCOME_UNKNOWN";
 export type CollaborationResult<T> = { ok: true; value: T } | { ok: false; error: { code: CollaborationCode } };
 export interface CollaborationDirectory {
   schemaVersion: 1; accountScope: string; accountRegion: "CN" | "GLOBAL";
@@ -82,7 +82,12 @@ export class WorkspaceCollaborationModel {
     try {
       const result = await this.client.listCollaborationWorkspaces(cursor ?? undefined);
       if (request !== this.directoryEpoch || this.disposed) return;
-      if (!result.ok) { this.failure(result.error.code); return; }
+      if (!result.ok) {
+        if (result.error.code === "DIRECTORY_STALE" && this.value.directory) {
+          this.update({ directory: { ...this.value.directory, nextCursor: null } });
+        }
+        this.failure(result.error.code); return;
+      }
       const previous = this.value.directory;
       if (more && previous?.accountScope !== result.value.accountScope) { this.failure("SCOPE_CHANGED"); return; }
       if (previous && previous.accountScope !== result.value.accountScope) {
@@ -91,7 +96,7 @@ export class WorkspaceCollaborationModel {
       const workspaces = more && previous ? [...new Map([...previous.workspaces, ...result.value.workspaces].map(item => [item.workspaceId, item])).values()] : result.value.workspaces;
       this.update({ directory: { ...result.value, workspaces }, directoryBusy: false });
       // A directory refresh cannot leave a removed Workspace's messages visible or writable.
-      if (this.value.workspaceId && !workspaces.some(item => item.workspaceId === this.value.workspaceId)) this.failure("ACCESS_CHANGED");
+      if (this.value.workspaceId && !workspaces.some(item => item.workspaceId === this.value.workspaceId) && !result.value.nextCursor) this.failure("ACCESS_CHANGED");
     } catch { if (request === this.directoryEpoch) this.update({ error: "UNAVAILABLE" }); }
     finally { if (request === this.directoryEpoch) this.update({ directoryBusy: false }); }
   }

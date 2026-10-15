@@ -59,6 +59,11 @@ test("signed-out, revoked and loading states cannot show an enabled composer", (
   }
   assert.match(render({ ...initial, phase: "loading" }), /aria-busy="true"/);
 });
+test("a selected later-page Workspace remains explicitly selected in the real picker", () => {
+  const html = render({ ...ready, directory: { ...ready.directory,
+    workspaces: [{ workspaceId: "ws_b", membership: { role: "MEMBER" } }], nextCursor: "next" } });
+  assert.match(html, /<option value="ws_a" selected="">Nanhara · Not in this page/);
+});
 test("App integration is feature-gated, lazy and does not convert a cloud ID to local spaces.use", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(app, /supportsFeature\("workspace.collaboration.v1"\)/);

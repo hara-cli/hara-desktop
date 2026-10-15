@@ -142,3 +142,25 @@ test("remote channel creation becomes visible before its message in the same syn
   await f.model.sync(); f.model.selectChannel("remote");
   assert.equal(f.model.getSnapshot().channelId, "remote"); assert.equal(f.model.getSnapshot().messages[0].body, "new channel text");
 });
+test("stale directory page retains uncertain send identity and resets pagination, not membership", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("uncertain text");
+  const requests = [];
+  f.client.sendCollaborationMessage = async request => { requests.push(request); return fail("OUTCOME_UNKNOWN"); };
+  await f.model.send(); const before = f.model.getSnapshot().pending;
+  f.client.listCollaborationWorkspaces = async () => fail("DIRECTORY_STALE"); await f.model.loadDirectory();
+  assert.equal(f.model.getSnapshot().bootstrap.workspaceId, A); assert.deepEqual(f.model.getSnapshot().pending, before);
+  assert.equal(f.model.hasUnresolvedMutations(), true);
+  assert.equal(f.model.getSnapshot().directory.nextCursor, null);
+  await f.model.send(true); assert.deepEqual(requests[1], requests[0]);
+});
+test("first-page absence with a continuation is not revocation of the selected later-page Workspace", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("later-page draft");
+  f.client.sendCollaborationMessage = async () => fail("OUTCOME_UNKNOWN"); await f.model.send();
+  const pending = f.model.getSnapshot().pending;
+  f.client.listCollaborationWorkspaces = async () => ok({ schemaVersion: 1, accountScope: "scope-1", accountRegion: "CN",
+    workspaces: [{ workspaceId: B, membership: { role: "MEMBER", membershipVersion: 1, policyVersion: 1 } }], nextCursor: "page-2" });
+  await f.model.loadDirectory();
+  assert.equal(f.model.getSnapshot().workspaceId, A); assert.equal(f.model.getSnapshot().bootstrap.workspaceId, A);
+  assert.equal(f.model.getSnapshot().draft, "later-page draft"); assert.deepEqual(f.model.getSnapshot().pending, pending);
+  assert.equal(f.model.getSnapshot().error, null);
+});

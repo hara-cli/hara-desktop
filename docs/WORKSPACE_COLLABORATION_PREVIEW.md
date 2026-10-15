@@ -17,6 +17,9 @@ clear drafts/selection. Background tabs do not poll; visible tabs poll one bound
 every five seconds without overlapping reads. A failed sync never advances its cursor.
 Messages are deduplicated by server ID, capped at 500 in memory, and escaped as text.
 New channel events carry only validated public metadata, not the server's arbitrary payload.
+Directory cursor expiry/staleness is not revocation and preserves uncertain mutation identities.
+A selected Workspace absent from a partial first page stays explicit in the picker; only a
+complete directory or authenticated access denial may remove its selection.
 
 The local retry state is not durable. Pending sends/creates remain unknown across navigation,
 and leaving the surface requires an explicit warning acknowledgment. Explicit retry freezes

@@ -8,6 +8,7 @@ const errors: Record<CollaborationCode, [string, string]> = {
   SCOPE_CHANGED: ["登入身分已改變。請重新載入工作空間。", "Your sign-in changed. Reload Workspaces."],
   ACCESS_CHANGED: ["權限或內容已改變，請重新載入。舊空間內容已隱藏。", "Access or content changed. Reload; old Workspace content is hidden."],
   PROJECTION_PENDING: ["正在同步工作空間權限，稍後再重新整理。", "Workspace access is still synchronizing. Refresh shortly."],
+  DIRECTORY_STALE: ["空間清單的分頁已失效，請重新載入清單。未確認的發送記錄仍保留。", "Workspace pagination expired or changed. Reload the directory; unconfirmed sends are retained."],
   INVALID_INPUT: ["內容不符合要求，請檢查輸入。", "Check the input requirements."],
   UNAVAILABLE: ["目前無法連線。未切換到其他服務，也未自動重送。", "Cannot connect. No service fallback or automatic resend occurred."],
   OUTCOME_UNKNOWN: ["尚未確認結果。重試會使用同一個發送編號。", "The outcome is not confirmed. Retry uses the same request identity."],
@@ -36,6 +37,8 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
         <select value={view.workspaceId ?? ""} disabled={view.directoryBusy || !view.directory?.workspaces.length}
           onChange={event => { setCreating(false); setSlug(""); setDisplayName(""); void model.selectWorkspace(event.target.value); }}>
           <option value="" disabled>{view.directoryBusy ? copy("載入中…", "Loading…") : copy("選擇工作空間", "Choose a Workspace")}</option>
+          {view.workspaceId && view.bootstrap && !view.directory?.workspaces.some(item => item.workspaceId === view.workspaceId)
+            ? <option value={view.workspaceId}>{view.bootstrap.displayName + copy(" · 清單尚未載入", " · Not in this page")}</option> : null}
           {view.directory?.workspaces.map(item => <option key={item.workspaceId} value={item.workspaceId}>
             {view.bootstrap?.workspaceId === item.workspaceId ? view.bootstrap.displayName : item.workspaceId}
           </option>)}
