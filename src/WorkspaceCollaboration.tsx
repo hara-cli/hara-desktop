@@ -29,6 +29,7 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
   const [unread, setUnread] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const membersTrigger = useRef<HTMLButtonElement>(null);
+  const membersReturnFocus = useRef<HTMLButtonElement | null>(null);
   const memberLabels = useMemo(() => workspaceMemberLabels(view.members.items), [view.members.items]);
   const selectedMentionIds = useMemo(() => new Set(view.draftMentions.map(item => item.principalId)), [view.draftMentions]);
   const messagesRef = useRef<HTMLElement>(null);
@@ -100,13 +101,13 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
         <div><h1>{selected ? "# " + selected.displayName : copy("一起協作", "Work together")}</h1><p>{view.bootstrap?.displayName ?? copy("選擇工作空間與頻道開始聊天", "Choose a Workspace and channel to start chatting")}</p></div>
         <div className="workspace-collaboration-header-actions">
           <button ref={membersTrigger} type="button" disabled={view.phase !== "ready"} aria-expanded={membersOpen} aria-haspopup="dialog"
-            onClick={() => setMembersOpen(value => !value)}>{copy("成員", "Members")}{view.members.items.length ? " · " + view.members.items.length + (view.members.nextCursor ? "+" : "") : ""}</button>
+            onClick={event => { membersReturnFocus.current = event.currentTarget; setMembersOpen(value => !value); }}>{copy("成員", "Members")}{view.members.items.length ? " · " + view.members.items.length + (view.members.nextCursor ? "+" : "") : ""}</button>
           <button type="button" disabled={view.phase !== "ready" || view.syncing} onClick={() => void model.sync()}>{view.syncing ? copy("同步中…", "Syncing…") : copy("重新整理", "Refresh")}</button>
         </div>
       </header>
       {membersOpen ? <WorkspaceMembers members={view.members} labels={memberLabels} ownPrincipalId={membership?.principalId} locale={locale}
         errorText={view.members.error ? errors[view.members.error][zh ? 0 : 1] : undefined}
-        onClose={() => { setMembersOpen(false); membersTrigger.current?.focus(); }}
+        onClose={() => { setMembersOpen(false); (membersReturnFocus.current ?? membersTrigger.current)?.focus(); }}
         onRefresh={() => void model.loadMembers()} onMore={() => void model.loadMembers(true)}
         mentionSelection={view.mentionsSupported ? { ids: selectedMentionIds, disabled: view.phase !== "ready" || !selected || !!view.pending,
           onToggle: (id, checked) => model.setMention(id, checked) } : undefined} /> : null}</div>
@@ -166,7 +167,7 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
             event.preventDefault(); void model.send();
           } }} />
         <div>{view.mentionsSupported ? <button type="button" disabled={!selected || view.phase !== "ready" || !!view.pending}
-          aria-label={copy("從名冊選擇提及對象", "Choose mention targets from roster")} onClick={() => setMembersOpen(true)}>@</button> : null}
+          aria-label={copy("從名冊選擇提及對象", "Choose mention targets from roster")} onClick={event => { membersReturnFocus.current = event.currentTarget; setMembersOpen(true); }}>@</button> : null}
           <small>{draftBytes > 8192 ? copy("訊息超過 8 KB，請縮短內容。", "Message exceeds 8 KB. Shorten it.") : copy("Enter 發送 · Shift + Enter 換行", "Enter to send · Shift + Enter for a new line")}</small>
           <button type="submit" disabled={!selected || view.phase !== "ready" || !view.draft.trim() || draftBytes > 8192 || !!view.pending}>{copy("發送 ↑", "Send ↑")}</button></div>
       </form>
