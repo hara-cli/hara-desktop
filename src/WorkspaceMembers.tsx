@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import type { CollaborationView } from "./workspace-collaboration-state";
 
 interface Props {
@@ -11,7 +11,18 @@ interface Props {
 export default function WorkspaceMembers({ members, labels, ownPrincipalId, locale, errorText, onClose, onRefresh, onMore, mentionSelection }: Props) {
   const [query, setQuery] = useState("");
   const search = useRef<HTMLInputElement>(null), titleId = useId();
+  const readTrigger = useRef<HTMLButtonElement | null>(null);
   useLayoutEffect(() => { search.current?.focus(); }, []);
+  useLayoutEffect(() => {
+    if (members.phase === "loading" || !readTrigger.current) return;
+    const trigger = readTrigger.current; readTrigger.current = null;
+    // The last More button (or an error Retry button) can disappear after a read. Do not leave
+    // keyboard focus on body, but never take it back from another control the user selected.
+    if (document.activeElement === document.body) (trigger.isConnected ? trigger : search.current)?.focus();
+  }, [members.phase, members.nextCursor, members.items]);
+  const read = (event: MouseEvent<HTMLButtonElement>, more = false) => {
+    readTrigger.current = event.currentTarget; (more ? onMore : onRefresh)();
+  };
   const copy = (zh: string, en: string) => locale === "zh" ? zh : en;
   const needle = query.normalize("NFKC").trim().toLowerCase();
   const visible = members.items.filter(item => (labels.get(item.principalId) ?? item.displayName).normalize("NFKC").toLowerCase().includes(needle));
@@ -26,7 +37,7 @@ export default function WorkspaceMembers({ members, labels, ownPrincipalId, loca
     <div className="workspace-collaboration-members-list" aria-busy={members.phase === "loading"}>
       {members.phase === "unsupported" ? <p>{copy("目前引擎尚未接上成員名冊。", "This engine has no member-directory connection.")}</p> : null}
       {members.phase === "loading" ? <p role="status">{copy("正在讀取名冊…", "Loading members…")}</p> : null}
-      {members.phase === "error" ? <div role="alert"><p>{errorText}</p><button type="button" onClick={members.nextCursor ? onMore : onRefresh}>{copy("重新讀取", "Retry members")}</button></div> : null}
+      {members.phase === "error" ? <div role="alert"><p>{errorText}</p><button type="button" onClick={event => read(event, !!members.nextCursor)}>{copy("重新讀取", "Retry members")}</button></div> : null}
       <ul>{visible.map(member => <li key={member.principalId}>
         <span className="workspace-collaboration-member-avatar" aria-hidden>{Array.from(member.displayName.trim()).slice(0, 2).join("")}</span>
         <div><strong>{labels.get(member.principalId) ?? member.displayName}</strong>
@@ -38,10 +49,10 @@ export default function WorkspaceMembers({ members, labels, ownPrincipalId, loca
           {mentionSelection.ids.has(member.principalId) ? copy("已選", "Selected") : "@"}</button> : null}
       </li>)}</ul>
       {members.phase === "ready" && !visible.length ? <p>{copy("已載入名冊中沒有符合的成員。", "No matches in the loaded roster.")}</p> : null}
-      {members.phase === "ready" && members.nextCursor && !members.limited ? <button type="button" onClick={onMore}>{copy("載入更多成員", "Load more members")}</button> : null}
+      {members.phase === "ready" && members.nextCursor && !members.limited ? <button type="button" onClick={event => read(event, true)}>{copy("載入更多成員", "Load more members")}</button> : null}
     </div>
     <footer><span>{copy("已載入", "Loaded")} {members.items.length}{members.nextCursor ? "+" : ""}</span>
-      <button type="button" disabled={members.phase === "loading" || members.phase === "unsupported"} onClick={onRefresh}>{copy("更新名冊", "Refresh roster")}</button></footer>
+      <button type="button" disabled={members.phase === "loading" || members.phase === "unsupported"} onClick={event => read(event)}>{copy("更新名冊", "Refresh roster")}</button></footer>
     <small>{members.limited ? copy("本次最多載入 1000 位成員。", "This view loads at most 1,000 members.") : copy("搜尋僅涵蓋已載入名冊，並非全域搜尋。", "Search covers loaded members, not a global directory.")}
       {mentionSelection ? copy(" 每則訊息最多選擇 10 位提及對象；選人不會發送訊息。", " Select up to 10 mention targets per message; selecting does not send.") : ""}
       {copy(" 尚未接入 Agent 成員；此處不授予執行權限。", " Agent members are not connected; this view grants no execution permissions.")}</small>
