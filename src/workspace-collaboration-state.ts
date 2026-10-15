@@ -175,9 +175,9 @@ export class WorkspaceCollaborationModel {
         this.update({ history: { ...history, phase: "error", error: "HISTORY_STALE" } }); return;
       }
       const existing = this.value.messages.filter(item => item.channelId === channelId);
-      const available = Math.max(0, 500 - existing.length);
-      const incoming = older ? (available ? result.value.messages.slice(-available) : []) : result.value.messages;
-      const messages = mergeCollaborationMessages(existing, incoming, older);
+      // Deduplicate and sort the complete page before applying the view cap. Live sync may have
+      // already supplied the page's newest records; budgeting first can silently skip novel ones.
+      const messages = mergeCollaborationMessages(existing, result.value.messages, older);
       this.update({ messages, history: { phase: "ready", error: null, nextBefore: result.value.nextBefore, limited: messages.length >= 500 } });
     } catch { if (current()) this.update({ history: { ...history, phase: "error", error: "UNAVAILABLE" } }); }
   }

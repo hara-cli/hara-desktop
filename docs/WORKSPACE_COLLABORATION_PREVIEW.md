@@ -28,14 +28,17 @@ approves a message. Core interruption/reload does not roll back a server send.
 
 When Core advertises workspace.collaboration.history.v1, selection loads the latest 50 messages,
 with explicit older paging and a separate opaque history cursor. Exact bigint sequence ordering
-and server-ID deduplication merge concurrent live/history replies at equal timestamps. Channel and
+and server-ID deduplication merge concurrent live/history replies at equal timestamps. The complete
+incoming page is deduplicated before the 500-message cap, so overlapping live records cannot consume
+the older-page budget and skip nearer history. Channel and
 request generations isolate delayed replies, and each channel selection reloads its authorized
 transcript. History pagination expiry clears the transcript/cursor but preserves the draft and
 uncertain send/create IDs; true access denial or sign-in drift clears old-account content.
 The 500-message view limit is explicit; reads never auto-send or replace the live-sync cursor.
 
 The viewport follows new messages only near the bottom. Reading older content preserves the anchor
-on prepend and offers a new-messages button without forcing a jump. Enter sends, Shift+Enter adds
+on prepend and offers a new-messages button without forcing a jump. Native overflow anchoring is
+disabled only on the timeline so a later browser paint cannot undo that explicit anchor. Enter sends, Shift+Enter adds
 a line, and composing/repeat/modifier key events do not submit. Text remains escaped, not raw HTML.
 Selected/visited Workspace names come from authorized bootstrap and are reset with account scope;
 unvisited names remain opaque IDs without context fan-out. Older Core engines visibly retain their

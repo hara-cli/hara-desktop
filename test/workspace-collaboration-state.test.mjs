@@ -257,6 +257,26 @@ test("channel switch fetches fresh history and filters unrelated live channel bo
     events: [{ id: "other", type: "message.created", message: historyMessage(10, C) }] });
   await f.model.sync(); assert.ok(f.model.getSnapshot().messages.every(item => item.channelId === D));
 });
+test("overlapping live records cannot consume older-page capacity before deduplication", async () => {
+  const f = withHistory(); let reads = 0;
+  f.client.readCollaborationHistory = async input => {
+    reads++; const high = input.before ? Number(input.before) - 1 : 950, low = high - 49;
+    return ok({ workspaceId: input.workspaceId, channelId: input.channelId,
+      messages: Array.from({ length: 50 }, (_, index) => historyMessage(low + index)), nextBefore: String(low) });
+  };
+  await f.readyHistory();
+  for (let i = 0; i < 8; i++) await f.model.loadHistory(true);
+  assert.equal(f.model.getSnapshot().messages.length, 450);
+  f.client.syncCollaborationWorkspace = async () => ok({ workspaceId: A, cursor: "live-990", hasMore: false,
+    events: [...Array.from({ length: 5 }, (_, i) => 496 + i), ...Array.from({ length: 40 }, (_, i) => 951 + i)]
+      .map(i => ({ id: "event-" + i, type: "message.created", message: historyMessage(i) })) });
+  await f.model.sync(); assert.equal(f.model.getSnapshot().messages.length, 495);
+  await f.model.loadHistory(true);
+  assert.deepEqual(f.model.getSnapshot().messages.map(m => m.sequence), Array.from({ length: 500 }, (_, i) => String(491 + i)));
+  assert.equal(f.model.getSnapshot().history.limited, true);
+  assert.equal(f.model.getSnapshot().bootstrap.cursor, "live-990");
+  await f.model.loadHistory(true); assert.equal(reads, 10);
+});
 test("visited names are scoped to sign-in and history feature absence preserves older-engine behavior", async () => {
   const f = withHistory(); f.client.supportsCollaborationHistory = () => false;
   f.client.bootstrapCollaborationWorkspace = async id => ok({ ...bootstrap(id), displayName: id === A ? "Nanhara" : "Studio" });

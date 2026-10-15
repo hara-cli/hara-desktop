@@ -46,7 +46,7 @@
 .workspace-collaboration-header button { flex-shrink: 0; font-size: 12px; }
 .workspace-collaboration-boundary { padding: 9px 30px; color: var(--dim); font-size: 11px; line-height: 1.5; background: var(--bg2); }
 .workspace-collaboration-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 30px; color: var(--accent); font-size: 13px; border-bottom: 1px solid var(--line); }
-.workspace-collaboration-messages { flex: 1; min-height: 0; padding: 18px clamp(16px, 4vw, 55px); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 16px; }
+.workspace-collaboration-messages { flex: 1; min-height: 0; padding: 18px clamp(16px, 4vw, 55px); overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 16px; }
 .workspace-collaboration-history-note { font-size: 11px; line-height: 1.5; color: var(--dim); text-align: center; margin: 0 0 10px; }
 .workspace-collaboration-history-more { align-self: center; font-size: 12px !important; color: var(--dim) !important; }
 .workspace-collaboration-history-error { font-size: 12px; line-height: 1.6; color: var(--dim); text-align: center; }

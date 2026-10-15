@@ -83,6 +83,10 @@ test("loading and bounded history do not claim transcript completeness", () => {
   const html = render({ ...ready, history: { phase: "ready", nextBefore: "older", error: null, limited: true } });
   assert.match(html, /up to 500 messages/); assert.doesNotMatch(html, /Load earlier messages/);
 });
+test("manual chat viewport intent is not overridden by native scroll anchoring", () => {
+  const css = readFileSync(new URL("../src/WorkspaceCollaboration.css", import.meta.url), "utf8");
+  assert.match(css, /\.workspace-collaboration-messages\s*\{[^}]*overflow-anchor:\s*none\s*;/);
+});
 test("App integration is feature-gated, lazy and does not convert a cloud ID to local spaces.use", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(app, /supportsFeature\("workspace.collaboration.v1"\)/);
