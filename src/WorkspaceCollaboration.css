@@ -38,7 +38,25 @@
 .workspace-collaboration-local button { text-align: left; font-size: 12px; }
 .workspace-collaboration-exit { font-size: 12px; line-height: 1.7; }
 .workspace-collaboration-exit button { margin: 5px 5px 0 0; }
-.workspace-collaboration-chat { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
+.workspace-collaboration-chat { position: relative; display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; }
+.workspace-collaboration-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.workspace-collaboration-header-wrap { position: relative; flex-shrink: 0; }
+.workspace-collaboration-members { position: absolute; z-index: 5; top: calc(100% + 8px); right: 16px; width: min(340px, calc(100% - 32px)); max-height: min(70dvh, 540px); display: flex; flex-direction: column; gap: 16px; border: 1px solid var(--line); border-radius: 18px; padding: 18px; background: var(--bg); box-shadow: 0 10px 40px #00000018; overflow: auto; }
+.workspace-collaboration-members > header { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+.workspace-collaboration-members h2 { margin: 0; font-size: 17px; }
+.workspace-collaboration-members p { font-size: 12px; line-height: 1.6; color: var(--dim); margin: 6px 0; }
+.workspace-collaboration-members-search { display: grid; gap: 7px; font-size: 12px; color: var(--dim); }
+.workspace-collaboration-members-search input { min-width: 0; width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; background: var(--bg2); }
+.workspace-collaboration-members-list ul { display: grid; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.workspace-collaboration-members-list li { display: flex; gap: 10px; align-items: center; padding: 10px 0; min-width: 0; }
+.workspace-collaboration-member-avatar { flex-shrink: 0; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg2)); }
+.workspace-collaboration-members-list li > div { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.workspace-collaboration-members-list li > button { flex-shrink: 0; padding: 6px 9px; font-size: 12px; }
+.workspace-collaboration-members-list li > button[aria-pressed="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg2)); }
+.workspace-collaboration-members-list strong { font-size: 14px; overflow-wrap: anywhere; }
+.workspace-collaboration-members-list li > div > span { color: var(--dim); font-size: 11px; }
+.workspace-collaboration-members footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--dim); }
+.workspace-collaboration-members > small { font-size: 11px; color: var(--dim); line-height: 1.6; }
 .workspace-collaboration-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 30px 16px; border-bottom: 1px solid var(--line); }
 .workspace-collaboration-header > div { min-width: 0; }
 .workspace-collaboration-header h1 { margin: 0; font: 600 19px/1.4 var(--font-sans); overflow-wrap: anywhere; }
@@ -54,7 +72,7 @@
 .workspace-collaboration-new-messages { align-self: center; font-size: 12px !important; margin: 0 0 4px; box-shadow: 0 3px 12px #00000008; }
 .workspace-collaboration-empty { margin: auto; padding: 35px; text-align: center; color: var(--dim); max-width: 470px; line-height: 1.8; font-size: 14px; }
 .workspace-collaboration-message { align-self: flex-start; max-width: min(85%, 720px); min-width: 0; }
-.workspace-collaboration-message > span { display: block; margin: 0 8px 5px; color: var(--dim); font-size: 11px; }
+.workspace-collaboration-message > span { display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 8px 5px; color: var(--dim); font-size: 11px; }
 .workspace-collaboration-message > div { padding: 12px 16px; border-radius: 15px; background: var(--bg2); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
 .workspace-collaboration-message.is-own { align-self: flex-end; }
 .workspace-collaboration-message.is-own > div { background: color-mix(in srgb, var(--accent) 12%, var(--bg2)); }
@@ -62,10 +80,19 @@
 .workspace-collaboration-message.is-own time { text-align: right; }
 .workspace-collaboration-message.is-pending > div { border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--line)); }
 .workspace-collaboration-message > button { margin-top: 8px; font-size: 12px; }
+.workspace-collaboration-message > button + button { margin-left: 6px; }
+.workspace-collaboration-mention-references, .workspace-collaboration-mention-chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 8px 0 0; padding: 0; }
+.workspace-collaboration-mention-references li { color: var(--dim); font-size: 11px; overflow-wrap: anywhere; }
+.workspace-collaboration-mention-chips { margin: 0 0 8px; }
+.workspace-collaboration-mention-chips li { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 3px 6px 3px 9px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, var(--bg2)); color: var(--accent); font-size: 12px; }
+.workspace-collaboration-mention-chips span { overflow-wrap: anywhere; min-width: 0; }
+.workspace-collaboration-mention-chips button { border: 0; background: transparent; padding: 2px 4px; }
+.workspace-collaboration-mention-note { margin: 0 0 8px; color: var(--dim); font-size: 11px; line-height: 1.5; }
 .workspace-collaboration-composer { margin: 12px clamp(16px, 4vw, 55px) 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg); padding: 12px 14px; box-shadow: 0 3px 14px #00000005; }
 .workspace-collaboration-composer textarea { width: 100%; min-height: 50px; max-height: 180px; resize: vertical; border: 0; outline: 0; background: transparent; line-height: 1.6; font-size: 14px; }
 .workspace-collaboration-composer > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .workspace-collaboration-composer small { color: var(--dim); font-size: 11px; }
+.workspace-collaboration-composer > div > small { flex: 1; }
 .workspace-collaboration-composer button[type="submit"] { background: var(--accent); border-color: var(--accent); color: #fff; flex-shrink: 0; }
 .workspace-collaboration-create { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 10px; border-bottom: 1px solid var(--line); padding: 15px 30px; }
 .workspace-collaboration-create label { display: grid; gap: 6px; color: var(--dim); font-size: 11px; }
@@ -77,6 +104,8 @@
   .workspace-collaboration-sidebar { padding: 18px 10px; }
   .workspace-collaboration-brand > span { display: none; }
   .workspace-collaboration-header, .workspace-collaboration-error { padding: 16px; }
+  .workspace-collaboration-header { flex-wrap: wrap; }
+  .workspace-collaboration-header-actions { flex-wrap: wrap; }
   .workspace-collaboration-boundary { padding: 8px 16px; }
   .workspace-collaboration-create { grid-template-columns: minmax(0, 1fr); padding: 12px 16px; }
   .workspace-collaboration-message { max-width: 95%; }

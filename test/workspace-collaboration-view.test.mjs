@@ -9,7 +9,9 @@ const bundle = await build({ stdin: { contents: [
   'import React from "react";',
   'import {renderToStaticMarkup} from "react-dom/server";',
   'import {WorkspaceCollaborationView} from "./src/WorkspaceCollaboration.tsx";',
+  'import WorkspaceMembers from "./src/WorkspaceMembers.tsx";',
   'export function render(props) { return renderToStaticMarkup(React.createElement(WorkspaceCollaborationView, props)); }',
+  'export function renderMembers(props) { return renderToStaticMarkup(React.createElement(WorkspaceMembers, props)); }',
 ].join("\n"), resolveDir: new URL("../", import.meta.url).pathname, loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} };
@@ -87,6 +89,28 @@ test("manual chat viewport intent is not overridden by native scroll anchoring",
   const css = readFileSync(new URL("../src/WorkspaceCollaboration.css", import.meta.url), "utf8");
   assert.match(css, /\.workspace-collaboration-messages\s*\{[^}]*overflow-anchor:\s*none\s*;/);
 });
+test("trusted roster names identify senders but never turn a human named Hara into an Agent", () => {
+  const view = { ...ready, members: { phase: "ready", items: [
+    { principalId: "human-hara", kind: "human", displayName: "Hara", role: "MEMBER" },
+    { principalId: "known", kind: "human", displayName: "<script>not markup</script>", role: "ADMIN" },
+  ], nextCursor: "page-2", limited: false, error: null }, messages: [
+    { id: "m1", channelId: "ch_a", senderPrincipalId: "human-hara", body: "human text", createdAt: "2026-10-16T01:00:00Z" },
+    { id: "m2", channelId: "ch_a", senderPrincipalId: "known", body: "other text", createdAt: "2026-10-16T01:00:00Z" },
+  ] };
+  const html = render(view);
+  assert.match(html, /Members · 2\+/); assert.match(html, /title="Hara"/);
+  assert.match(html, /&lt;script&gt;not markup&lt;\/script&gt;/); assert.doesNotMatch(html, /<script>|AI employee|Online/);
+});
+test("real member panel is bounded, non-modal, human-only and honest about partial search", () => {
+  const html = module.exports.renderMembers({ members: { phase: "ready", items: [
+    { principalId: "human", kind: "human", displayName: "Hara", role: "MEMBER" },
+  ], nextCursor: "opaque", limited: false, error: null }, labels: new Map([["human", "Hara"]]), ownPrincipalId: "human",
+    locale: "en", onClose() {}, onRefresh() {}, onMore() {} });
+  assert.match(html, /role="dialog"/); assert.doesNotMatch(html, /aria-modal="true"/);
+  assert.match(html, /Human · Member · You/); assert.match(html, /Load more members/);
+  assert.match(html, /Search loaded members/); assert.match(html, /not a global directory/);
+  assert.match(html, /Agent members are not connected/); assert.doesNotMatch(html, /Online|Hire|Start Codex|Task accepted/);
+});
 test("App integration is feature-gated, lazy and does not convert a cloud ID to local spaces.use", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(app, /supportsFeature\("workspace.collaboration.v1"\)/);
@@ -94,4 +118,30 @@ test("App integration is feature-gated, lazy and does not convert a cloud ID to 
   const state = readFileSync(new URL("../src/workspace-collaboration-state.ts", import.meta.url), "utf8");
   const executable = state.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
   assert.equal(/localStorage\.|useSpace\(|agentRef:|apiKey:|refreshToken:|accessToken:/.test(executable), false);
+});
+test("mention chips and references use escaped member labels, not text parsing or Agent impersonation", () => {
+  const member = { principalId: "person", kind: "human", displayName: "<Hara>", role: "MEMBER" };
+  const view = { ...ready, mentionsSupported: true, members: { ...initial.members, phase: "ready", items: [member] },
+    draftMentions: [{ kind: "human", principalId: "person" }], messages: [{ id: "m", channelId: "ch_a", senderPrincipalId: "me", body: "@Hara text",
+      createdAt: "2026-10-16T00:00:00Z", mentions: [{ kind: "human", principalId: "person" }] }] };
+  const html = render(view);
+  assert.match(html, /Draft mentions/); assert.match(html, /Mention references/); assert.match(html, /@&lt;Hara&gt;/);
+  assert.match(html, /Choose mention targets from roster/); assert.match(html, /not notification delivery or Agent task acceptance/);
+  assert.doesNotMatch(html, /<Hara>|Task accepted|Notification delivered/);
+  assert.doesNotMatch(render(ready), /Choose mention targets from roster/);
+});
+test("only a definite first target rejection offers an editable-draft action", () => {
+  const pending = { state: "failed", code: "MENTION_TARGET_UNAVAILABLE", body: "text", mentions: [{ kind: "human", principalId: "unknown" }] };
+  assert.match(render({ ...ready, pending }), /Return to draft to check targets/);
+  assert.doesNotMatch(render({ ...ready, pending: { ...pending, state: "unknown", code: "OUTCOME_UNKNOWN", outcomeUncertain: true } }), /Return to draft to check targets/);
+  assert.match(render({ ...ready, pending }), /@Member unknown/);
+});
+test("member selection is explicit, non-sending and bounded; unavailable rosters cannot add targets", () => {
+  const props = { labels: new Map(), locale: "en", onClose() {}, onRefresh() {}, onMore() {},
+    members: { ...initial.members, phase: "ready", items: [{ principalId: "p", kind: "human", displayName: "Human", role: "MEMBER" }] },
+    mentionSelection: { ids: new Set(), disabled: false, onToggle() {} } };
+  const html = module.exports.renderMembers(props);
+  assert.match(html, /aria-label="Mention Human"/); assert.match(html, /aria-pressed="false"/); assert.match(html, /selecting does not send/);
+  assert.match(module.exports.renderMembers({ ...props, mentionSelection: { ...props.mentionSelection, ids: new Set(Array.from({ length: 10 }, (_, i) => "p" + i)) } }), /aria-label="Mention Human" disabled/);
+  assert.match(module.exports.renderMembers({ ...props, members: { ...props.members, phase: "error" } }), /aria-label="Mention Human" disabled/);
 });

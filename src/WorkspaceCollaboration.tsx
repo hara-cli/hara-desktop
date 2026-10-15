@@ -1,8 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import HaraLogo from "./mark";
 import { WorkspaceCollaborationModel, type CollaborationCode, type CollaborationView, type WorkspaceCollaborationTransport } from "./workspace-collaboration-state";
 import "./WorkspaceCollaboration.css";
 import { WorkspaceChatScroll, submitsWorkspaceMessage } from "./workspace-chat-scroll";
+import WorkspaceMembers from "./WorkspaceMembers";
+import { workspaceMemberLabels } from "./workspace-member-labels";
 
 const errors: Record<CollaborationCode, [string, string]> = {
   AUTH_REQUIRED: ["請先登入 Hara 帳號；登入過期時請重新授權。", "Sign in to Hara or renew the expired authorization."],
@@ -11,6 +13,8 @@ const errors: Record<CollaborationCode, [string, string]> = {
   PROJECTION_PENDING: ["正在同步工作空間權限，稍後再重新整理。", "Workspace access is still synchronizing. Refresh shortly."],
   DIRECTORY_STALE: ["空間清單的分頁已失效，請重新載入清單。未確認的發送記錄仍保留。", "Workspace pagination expired or changed. Reload the directory; unconfirmed sends are retained."],
   HISTORY_STALE: ["歷史分頁已失效或權限版本已變更，請重新讀取頻道紀錄。待確認的發送仍保留。", "History pagination expired or its access version changed. Reload channel history; unconfirmed sends are retained."],
+  MEMBERS_STALE: ["成員名冊已變更或分頁已過期，請重新讀取。草稿與待確認的發送仍保留。", "The member roster changed or its page expired. Reload members; drafts and unconfirmed sends are retained."],
+  MENTION_TARGET_UNAVAILABLE: ["提及對象目前不在可用名冊中，尚未發送。請返回草稿檢查對象。", "A mention target is not available; the message was not sent. Return to the draft to check targets."],
   INVALID_INPUT: ["內容不符合要求，請檢查輸入。", "Check the input requirements."],
   UNAVAILABLE: ["目前無法連線。未切換到其他服務，也未自動重送。", "Cannot connect. No service fallback or automatic resend occurred."],
   OUTCOME_UNKNOWN: ["尚未確認結果。重試會使用同一個發送編號。", "The outcome is not confirmed. Retry uses the same request identity."],
@@ -23,10 +27,18 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
   const [displayName, setDisplayName] = useState("");
   const [exitReview, setExitReview] = useState(false);
   const [unread, setUnread] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const membersTrigger = useRef<HTMLButtonElement>(null);
+  const memberLabels = useMemo(() => workspaceMemberLabels(view.members.items), [view.members.items]);
+  const selectedMentionIds = useMemo(() => new Set(view.draftMentions.map(item => item.principalId)), [view.draftMentions]);
   const messagesRef = useRef<HTMLElement>(null);
   const scrolling = useRef(new WorkspaceChatScroll());
   const zh = locale === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
+  const memberLabel = (principalId: string) => memberLabels.get(principalId) ?? copy("成員", "Member") + " " + principalId.slice(-8);
+  const mentionReferences = (mentions: CollaborationView["draftMentions"] | undefined) => mentions?.length ? <ul className="workspace-collaboration-mention-references" aria-label={copy("提及對象", "Mention references")}>
+    {mentions.map(item => <li key={item.principalId} title={item.principalId}>@{memberLabel(item.principalId)}</li>)}
+  </ul> : null;
   const selected = view.bootstrap?.channels.find(channel => channel.id === view.channelId);
   const membership = view.bootstrap?.membership;
   const canCreate = view.phase === "ready" && (membership?.role === "OWNER" || membership?.role === "ADMIN");
@@ -84,10 +96,20 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
       </div>
     </aside>
     <main className="workspace-collaboration-chat">
-      <header className="workspace-collaboration-header">
+      <div className="workspace-collaboration-header-wrap"><header className="workspace-collaboration-header">
         <div><h1>{selected ? "# " + selected.displayName : copy("一起協作", "Work together")}</h1><p>{view.bootstrap?.displayName ?? copy("選擇工作空間與頻道開始聊天", "Choose a Workspace and channel to start chatting")}</p></div>
-        <button type="button" disabled={view.phase !== "ready" || view.syncing} onClick={() => void model.sync()}>{view.syncing ? copy("同步中…", "Syncing…") : copy("重新整理", "Refresh")}</button>
+        <div className="workspace-collaboration-header-actions">
+          <button ref={membersTrigger} type="button" disabled={view.phase !== "ready"} aria-expanded={membersOpen} aria-haspopup="dialog"
+            onClick={() => setMembersOpen(value => !value)}>{copy("成員", "Members")}{view.members.items.length ? " · " + view.members.items.length + (view.members.nextCursor ? "+" : "") : ""}</button>
+          <button type="button" disabled={view.phase !== "ready" || view.syncing} onClick={() => void model.sync()}>{view.syncing ? copy("同步中…", "Syncing…") : copy("重新整理", "Refresh")}</button>
+        </div>
       </header>
+      {membersOpen ? <WorkspaceMembers members={view.members} labels={memberLabels} ownPrincipalId={membership?.principalId} locale={locale}
+        errorText={view.members.error ? errors[view.members.error][zh ? 0 : 1] : undefined}
+        onClose={() => { setMembersOpen(false); membersTrigger.current?.focus(); }}
+        onRefresh={() => void model.loadMembers()} onMore={() => void model.loadMembers(true)}
+        mentionSelection={view.mentionsSupported ? { ids: selectedMentionIds, disabled: view.phase !== "ready" || !selected || !!view.pending,
+          onToggle: (id, checked) => model.setMention(id, checked) } : undefined} /> : null}</div>
       <div className="workspace-collaboration-boundary">{copy("頻道協作預覽 · 尚未啟用 Agent 執行、檔案或金鑰共享", "Channel collaboration preview · Agent execution, files and key sharing are not enabled")}</div>
       {view.error ? <div className="workspace-collaboration-error" role="alert"><span>{errors[view.error][zh ? 0 : 1]}</span>
         {view.error === "AUTH_REQUIRED" ? <button type="button" onClick={onSignIn}>{copy("帳號授權", "Authorize account")}</button> : null}</div> : null}
@@ -116,25 +138,36 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
         {view.history.limited ? <p className="workspace-collaboration-history-note">{copy("本次最多顯示 500 條訊息，重新進入頻道可回到最新紀錄。", "This view holds up to 500 messages. Reopen the channel for the latest history.")}</p> : null}
         {view.history.phase === "ready" && !messages.length ? <p className="workspace-collaboration-empty">{copy("還沒有訊息，打個招呼吧。", "No messages yet. Say hello.")}</p> : null}
         {messages.map(message => <article key={message.id} className={"workspace-collaboration-message" + (message.senderPrincipalId === membership?.principalId ? " is-own" : "")}>
-          <span>{message.senderPrincipalId === membership?.principalId ? copy("你", "You") : copy("成員", "Member") + " " + message.senderPrincipalId.slice(-8)}</span>
-          <div>{message.body}</div><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleTimeString(zh ? "zh-TW" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
+          <span title={memberLabels.get(message.senderPrincipalId)}>{message.senderPrincipalId === membership?.principalId ? copy("你", "You")
+            : memberLabel(message.senderPrincipalId)}</span>
+          <div>{message.body}</div>{mentionReferences(message.mentions)}<time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleTimeString(zh ? "zh-TW" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
         </article>)}
         {view.pending ? <article className="workspace-collaboration-message is-own is-pending"><span>{copy("你", "You")}</span><div>{view.pending.body}</div>
+          {mentionReferences(view.pending.mentions)}
           <p role="status">{view.pending.state === "sending" ? copy("發送中…", "Sending…") : errors[view.pending.code ?? "OUTCOME_UNKNOWN"][zh ? 0 : 1]}</p>
-          {view.pending.state !== "sending" ? <button type="button" onClick={() => void model.send(true)}>{copy("以同一編號重試", "Retry same request")}</button> : null}</article> : null}
+          {view.pending.state !== "sending" ? <button type="button" onClick={() => void model.send(true)}>{copy("以同一編號重試", "Retry same request")}</button> : null}
+          {view.pending.state === "failed" && view.pending.code === "MENTION_TARGET_UNAVAILABLE" && !view.pending.outcomeUncertain
+            ? <button type="button" onClick={() => model.returnMentionToDraft()}>{copy("返回草稿檢查對象", "Return to draft to check targets")}</button> : null}</article> : null}
         {view.hasMore ? <button type="button" disabled={view.syncing} onClick={() => void model.sync()}>{copy("讀取下一頁新訊息", "Read next page of new messages")}</button> : null}
       </section>
       {unread ? <button type="button" className="workspace-collaboration-new-messages" onClick={() => {
         if (messagesRef.current) scrolling.current.latest(messagesRef.current); setUnread(false);
       }}>{copy("查看新訊息 ↓", "New messages ↓")}</button> : null}
       <form className="workspace-collaboration-composer" onSubmit={event => { event.preventDefault(); void model.send(); }}>
+        {view.draftMentions.length ? <><ul className="workspace-collaboration-mention-chips" aria-label={copy("草稿提及對象", "Draft mentions")}>
+          {view.draftMentions.map(item => <li key={item.principalId}><span title={item.principalId}>@{memberLabel(item.principalId)}</span>
+            <button type="button" disabled={!!view.pending} aria-label={copy("移除提及 ", "Remove mention ") + memberLabel(item.principalId)}
+              onClick={() => model.setMention(item.principalId, false)}>×</button></li>)}
+        </ul><p className="workspace-collaboration-mention-note">{copy("提及只保存對象引用，尚不代表通知送達或 Agent 接單。", "Mentions save references, not notification delivery or Agent task acceptance.")}</p></> : null}
         <textarea rows={2} value={view.draft} disabled={!selected || view.phase !== "ready" || !!view.pending}
           aria-label={copy("發送訊息", "Message")} placeholder={selected ? copy("發送訊息到 #", "Message #") + selected.displayName + "…" : copy("先選擇頻道", "Select a channel first")}
           onChange={event => model.setDraft(event.target.value)}
           onKeyDown={event => { if (submitsWorkspaceMessage({ ...event, isComposing: event.nativeEvent.isComposing, keyCode: event.nativeEvent.keyCode })) {
             event.preventDefault(); void model.send();
           } }} />
-        <div><small>{draftBytes > 8192 ? copy("訊息超過 8 KB，請縮短內容。", "Message exceeds 8 KB. Shorten it.") : copy("Enter 發送 · Shift + Enter 換行", "Enter to send · Shift + Enter for a new line")}</small>
+        <div>{view.mentionsSupported ? <button type="button" disabled={!selected || view.phase !== "ready" || !!view.pending}
+          aria-label={copy("從名冊選擇提及對象", "Choose mention targets from roster")} onClick={() => setMembersOpen(true)}>@</button> : null}
+          <small>{draftBytes > 8192 ? copy("訊息超過 8 KB，請縮短內容。", "Message exceeds 8 KB. Shorten it.") : copy("Enter 發送 · Shift + Enter 換行", "Enter to send · Shift + Enter for a new line")}</small>
           <button type="submit" disabled={!selected || view.phase !== "ready" || !view.draft.trim() || draftBytes > 8192 || !!view.pending}>{copy("發送 ↑", "Send ↑")}</button></div>
       </form>
     </main>

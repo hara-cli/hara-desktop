@@ -160,3 +160,31 @@ user data changed. Frontend skills informed the compact existing-token menu and 
 The user also authorized an existing research window to work in parallel. It owns the Account-only
 Workspace membership contract in a separate worktree; this Desktop increment does not claim that
 server slice, full shared channels or end-to-end Workspace isolation is already wired.
+
+## Hosted human roster and explicit mention preview (2026-10-16)
+
+The opt-in hosted channel surface now consumes independently negotiated member/history/mention
+capabilities through authenticated Core, never by copying local Agent state or Account credentials.
+Only the selected Workspace loads an Account-authorized human page; More is explicit, and search is
+limited to the loaded roster (1,000-entry memory ceiling). The compact member dialog is non-modal,
+focuses search on opening, closes with Escape and restores its trigger. It reuses existing tokens,
+has no new dependency, and remains separate from local colleague recruitment and Runtime settings.
+
+Sender names are public Account names, indexed once per roster change. Duplicate names include
+stable-ID disambiguation. Missing/partial roster entries retain neutral ID labels rather than
+inventing a departure status. A human named Hara is still human, not the protected main Agent.
+Roster errors, pagination and A→B→A fencing never reassign a sender or widen the channel audience.
+
+Selecting @ targets stores explicit human principal IDs in removable draft chips, with at most ten
+targets and no send on selection. Literal @ text is not parsed into a recipient. The new distinct
+method/route cannot silently downgrade to the old plain-send API. Accepted references appear in the
+message timeline; they do not claim notification delivery, Agent task acceptance or execution.
+Draft targets are scoped by Workspace/channel; pending targets/body/request identity are frozen.
+A definite first target rejection offers Return to draft. An outcome that was ever unknown remains
+unknown across subsequent errors and allows only explicit same-identity recovery, not edit/resend.
+
+Member/history cursor failures clear only stale reads, preserving uncertain sends. Actual sign-in or
+access denial clears the old Account view. No persistent retry queue, hidden roster search, imported
+Agent actor registry, new public onboarding or Workspace storage migration is added here. Source,
+actual service-chain, renderer browser, installed native app and publication remain separate gates;
+the exact current receipts live in the Workspace inbox, not in these historical implementation notes.

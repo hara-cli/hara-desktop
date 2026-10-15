@@ -1,7 +1,7 @@
 // hara serve client — JSON-RPC 2.0 over WebSocket (protocol v1, mirrors hara-cli src/serve/protocol.ts).
 // Request/response correlation + typed event callbacks; the UI layer stays purely declarative.
 import { codingSettingsState, isCodingExecutorPreference, type CodingExecutorPreference, type CodingSettingsState } from "./coding-executor-state.ts";
-import type { CollaborationResult, CollaborationDirectory, CollaborationBootstrap, CollaborationSync, CollaborationSent, CollaborationCreated, CollaborationHistory } from "./workspace-collaboration-state.ts";
+import type { CollaborationResult, CollaborationDirectory, CollaborationBootstrap, CollaborationSync, CollaborationSent, CollaborationCreated, CollaborationHistory, CollaborationMembers, CollaborationMention } from "./workspace-collaboration-state.ts";
 export type { CodingExecutorId, CodingExecutorPreference, CodingSettingsState } from "./coding-executor-state.ts";
 
 export interface Discovery {
@@ -2763,6 +2763,20 @@ export class HaraClient {
   }
   supportsCollaborationHistory() {
     return this.supportsFeature("workspace.collaboration.history.v1") && this.supports("workspace.collaboration.history");
+  }
+  supportsCollaborationMembers() {
+    return this.supportsFeature("workspace.collaboration.members.v1") && this.supports("workspace.collaboration.members");
+  }
+  supportsCollaborationMentions() {
+    return this.supportsFeature("workspace.collaboration.mentions.v1") && this.supports("workspace.collaboration.send-with-mentions");
+  }
+  sendCollaborationMentionedMessage(input: { workspaceId: string; channelId: string; body: string; idempotencyKey: string; accountScope: string; mentions: CollaborationMention[] }) {
+    if (!this.supportsCollaborationMentions()) return Promise.resolve<CollaborationResult<CollaborationSent>>({ ok: false, error: { code: "UNAVAILABLE" } });
+    return this.collaborationCall<CollaborationSent>("workspace.collaboration.send-with-mentions", input, true);
+  }
+  listCollaborationMembers(input: { workspaceId: string; accountScope: string; cursor?: string }) {
+    if (!this.supportsCollaborationMembers()) return Promise.resolve<CollaborationResult<CollaborationMembers>>({ ok: false, error: { code: "UNAVAILABLE" } });
+    return this.collaborationCall<CollaborationMembers>("workspace.collaboration.members", input);
   }
   readCollaborationHistory(input: { workspaceId: string; channelId: string; accountScope: string; before?: string }) {
     if (!this.supportsCollaborationHistory()) return Promise.resolve<CollaborationResult<CollaborationHistory>>({ ok: false, error: { code: "UNAVAILABLE" } });
