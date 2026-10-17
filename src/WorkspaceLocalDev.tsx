@@ -6,7 +6,7 @@ import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, ty
 import "./workspace-local-dev.css";
 
 const TOOL_LABELS: Record<string, string> = { task_intake: "確認任務", task_checkpoint: "保存驗證回執", todo_write: "更新步驟",
-  workspace_read: "查看文件", workspace_write: "寫入文件", workspace_verify: "核驗內容", agent_create: "建立同事", agent_contact: "委派同事" };
+  workspace_read: "查看文件", workspace_write: "寫入文件", workspace_verify: "核驗內容", agent_list: "查看同事", agent_create: "建立同事", agent_contact: "委派同事" };
 function Avatar({ agent, large = false }: { agent?: WorkspaceDevAgent; large?: boolean }) {
   return <span className={`wsd-avatar ${agent?.kind === "main" ? "is-main" : ""} ${large ? "is-large" : ""}`}>
     {agent?.kind === "main" ? <HaraLogo size={large ? 36 : 25} /> : (agent?.identity.displayName.slice(0, 1) ?? "H")}
