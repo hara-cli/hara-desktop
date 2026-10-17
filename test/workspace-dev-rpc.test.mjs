@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test, beforeEach, afterEach } from "node:test";
 import { WorkspaceDevConnectionClient } from "../src/workspace-dev-rpc.ts";
+import { WorkspaceRpcWaitError } from "../src/workspace-dev-errors.ts";
 const original = globalThis.WebSocket;
 class Socket extends EventTarget {
   static OPEN = 1; static CONNECTING = 0; static CLOSED = 3; static instances = [];
@@ -62,4 +63,23 @@ test("real-key attachment requires matching private native mode and exact new ca
     const checked = result.syntheticOnly === false && result.capabilities.length === 2 ? ready : assert.rejects(ready, /不支援/);
     socket.open(); await tick(); socket.reply(socket.sent[0].id, result); await checked; client.close();
   }
+});
+test("15-second transport expiry is typed unknown, late ACK is ignored and no mutation is resent", async t => {
+  const f = await setup(); t.mock.timers.enable({ apis: ["setTimeout"] });
+  let settled = false;
+  const request = f.client.request("workspace.session.resume", { requestId: "one-original-nonce" });
+  const checked = assert.rejects(request, error => { settled = true; return error instanceof WorkspaceRpcWaitError && error.method === "workspace.session.resume"; });
+  const id = f.socket.sent.at(-1).id; t.mock.timers.tick(14999); await tick(); assert.equal(settled, false);
+  t.mock.timers.tick(1); await checked; f.socket.reply(id, { runId: "accepted-before-expiry" });
+  const lookup = f.client.request("workspace.session.receipt", { requestId: "one-original-nonce" });
+  f.socket.reply(f.socket.sent.at(-1).id, { state: "accepted" }); assert.deepEqual(await lookup, { state: "accepted" });
+  assert.equal(f.socket.sent.filter(row => row.method === "workspace.session.resume").length, 1);
+});
+test("a synchronous transport send failure cleans its timer without reconnecting or retrying", async () => {
+  const f = await setup(), originalSend = f.socket.send;
+  f.socket.send = () => { throw new Error("synthetic socket failure"); };
+  await assert.rejects(f.client.request("workspace.session.send", {}), /勿重送/);
+  f.socket.send = originalSend;
+  const lookup = f.client.request("workspace.session.receipt", {}); f.socket.reply(f.socket.sent.at(-1).id, { state: "unknown" }); await lookup;
+  assert.equal(Socket.instances.length, 1); assert.equal(f.socket.sent.some(row => row.method === "workspace.session.send"), false);
 });

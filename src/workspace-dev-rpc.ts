@@ -1,4 +1,5 @@
 import type { WorkspaceDevRpc } from "./workspace-dev-state";
+import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
 export interface WorkspaceDevConnection { port: number; token: string; instanceId: string; root: string; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" }
 /** One listener per socket, bounded pending requests, no token persistence/logging or legacy fallback. */
 export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
@@ -44,9 +45,10 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
     if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("Workspace 尚未連接"));
     return new Promise<T>((resolve, reject) => {
       const id = ++this.serial;
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error("Workspace 回應逾時")); }, 15000);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new WorkspaceRpcWaitError(method)); }, 15000);
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
-      this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+      try { this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params })); }
+      catch { clearTimeout(timer); this.pending.delete(id); reject(new Error("Workspace 傳輸中斷；請只讀核對原請求，勿重送")); }
     });
   }
   close(): void { this.socket.close(); }

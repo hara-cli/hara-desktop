@@ -75,6 +75,7 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
         <button onClick={() => setSettings(current => !current)} disabled={!workspace}>空間設定 <span>↗</span></button></header>
       {disconnected ? <div className="wsd-notice" role="alert">連接中斷；歷史與產物仍在本機，不會自動重跑。<button onClick={onReconnect}>重新連接</button></div> : null}
       {view.error ? <div className="wsd-notice is-error" role="alert">{view.error}</div> : null}
+      {view.syncNotice ? <div className="wsd-notice" role="status">{view.syncNotice}</div> : null}
       <div className="wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
         {!workspace && view.loading && view.workspaceId ? <div className="wsd-sidebar-note">正在打開對話…</div> : !workspace ? <section className="wsd-welcome"><div className="wsd-welcome-mark"><HaraLogo size={57} /></div><p className="wsd-kicker">YOUR PEOPLE. YOUR SPACE.</p>
           <h1>一個空間，<br />從你和 Hara 開始。</h1><p>聊天、找同事、一起完成事情。<br />連接、任務與歷史都留在各自的 Workspace。</p>
@@ -90,7 +91,9 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
             {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified">✓ 已核驗結果 <span>任務已閉環，詳情按需展開</span></p> : null}
             {["needs_recovery", "blocked", "cancelled", "interrupted"].includes(workspace.conversation.state) ? <section className="wsd-resume"><strong>{workspace.conversation.state === "cancelled" ? "本次執行已取消" : "上次任務尚未完成"}</strong>
               {workspace.conversation.blockReason ? <p role="alert">{workspace.conversation.blockReason}</p> : null}
-              <p>歷史與已產生的文件都保留了。請先檢查結果，再明確繼續原任務；重啟不會自動重跑。</p><button onClick={() => void model.send(true)} disabled={view.sending || !hasConnection}>繼續原任務</button></section> : null}
+              <p>歷史與已產生的文件都保留了。請先檢查結果，再明確繼續原任務；重啟不會自動重跑。</p>
+              {workspace.conversation.resumeAdmission?.allowed === false ? <p>原任務的續跑預算不可用，沒有新增模型調用；請先檢查結果與預算。</p> : null}
+              <button onClick={() => void model.send(true)} disabled={view.sending || view.pendingUnknown || !hasConnection || workspace.conversation.resumeAdmission?.allowed === false}>繼續原任務</button></section> : null}
             {busy && !workspace.approvals.length ? <div className="wsd-typing"><Avatar agent={agent} /><span>{workspace.conversation.state === "draining" ? "正在取消，等待原操作安全結束" : `${agent?.identity.displayName ?? "Hara"} 正在回覆`}</span><i /><i /><i /></div> : null}
             <div ref={end} /></div>}
       </div>
@@ -98,7 +101,7 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
         placeholder={hasConnection ? `發訊息給 ${agent?.identity.displayName ?? "Hara"}…` : "請先啟用這個空間的連接"} disabled={!hasConnection || Boolean(disconnected)} rows={2}
         onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.send(); } }} />
         <div className="wsd-composer-bar"><span>Pi <i /> 本空間預設連接</span>{busy ? <button onClick={() => void model.cancel()} disabled={workspace.conversation.state === "draining"}>停止</button>
-          : view.pendingUnknown ? <button onClick={() => void model.send(false, true)}>核對上次送出結果</button> : <button className="wsd-send" onClick={() => void model.send()} disabled={!canSend} aria-label="發送訊息">↑</button>}</div></div>
+          : view.pendingUnknown ? <button onClick={() => void model.verifyPending()}>核對上次送出結果</button> : <button className="wsd-send" onClick={() => void model.send()} disabled={!canSend} aria-label="發送訊息">↑</button>}</div></div>
         <p>{realKey ? "真實模型 · 火山 Coding Plan · 本機隔離驗收" : "合成模式 · 固定場景腳本，不代表真實模型能力"} <span>Enter 發送，Shift + Enter 換行</span></p></footer> : null}
     </main>
     {creating ? <div className="wsd-modal-backdrop"><section className="wsd-modal" role="dialog" aria-modal="true" aria-labelledby="wsd-create-title"><button className="wsd-close" aria-label="關閉建立空間" onClick={() => setCreating(false)}>×</button>

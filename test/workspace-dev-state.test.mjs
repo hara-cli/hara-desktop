@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
+import { WorkspaceRpcWaitError } from "../src/workspace-dev-errors.ts";
 
 const defer = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -55,12 +56,16 @@ test("typing is local, and double submission sends exactly one nonce", async () 
   const first = f.model.send(); await f.model.send(); assert.equal(f.calls.filter(call => call.method === "workspace.session.send").length, 1);
   wait.resolve({ runId: "run" }); await first; assert.equal(f.model.getSnapshot().draft, "");
 });
-test("unknown outcome retains original message and nonce for explicit retry", async () => {
+test("unknown outcome verifies the original nonce read-only, never retries a mutation", async () => {
   const f = fixture(); await f.ready(); f.model.setDraft("original"); f.handlers["workspace.session.send"] = () => { throw new Error("timeout"); };
   await f.model.send(); assert.equal(f.model.getSnapshot().pendingUnknown, true); f.model.setDraft("new draft"); await f.model.send();
   assert.equal(f.calls.filter(call => call.method === "workspace.session.send").length, 1);
-  f.handlers["workspace.session.send"] = () => ({}); await f.model.send(false, true);
-  const sends = f.calls.filter(call => call.method === "workspace.session.send"); assert.deepEqual(sends[1], sends[0]); assert.equal(f.model.getSnapshot().draft, "new draft");
+  f.handlers["workspace.session.receipt"] = p => ({ ...p, resourceGeneration: p.expectedGeneration, state: "accepted", runId: "run", reason: null });
+  await f.model.send(false, true);
+  const sends = f.calls.filter(call => call.method === "workspace.session.send"); assert.equal(sends.length, 1);
+  assert.deepEqual(f.calls.find(call => call.method === "workspace.session.receipt").params,
+    { workspaceId: "A", expectedGeneration: "generation-1", agentId: "main", requestId: sends[0].params.requestId });
+  assert.equal(f.model.getSnapshot().draft, "new draft"); assert.equal(f.model.getSnapshot().pendingUnknown, false);
 });
 test("an in-flight A send cannot repaint B and has no B retry authority", async () => {
   const f = fixture(); await f.ready(); f.model.setDraft("A body"); const wait = defer(); f.handlers["workspace.session.send"] = () => wait.promise;
@@ -82,9 +87,18 @@ test("A→B→A settles the exact pending nonce instead of leaving sending stuck
 test("notifications during refresh are coalesced, not lost at final completion", async () => {
   const f = fixture(); await f.ready(); const first = defer(); let count = 0;
   f.handlers["workspace.snapshot"] = () => ++count === 1 ? first.promise : snapshot();
-  const refresh = f.model.refresh(); await f.model.refresh(); await f.model.refresh();
+  const refresh = f.model.refresh(), joinedOne = f.model.refresh(), joinedTwo = f.model.refresh();
   first.resolve({ ...snapshot(), conversation: { ...snapshot().conversation, state: "running" } }); await refresh; await tick();
+  await Promise.all([joinedOne, joinedTwo]);
   assert.equal(count, 2); assert.equal(f.model.getSnapshot().workspace.conversation.state, "completed");
+});
+test("coalesced refresh callers wait for the actual snapshot instead of returning against stale state", async () => {
+  const f = fixture(); await f.ready(); const wait = defer(); let joined = false;
+  f.handlers["workspace.snapshot"] = () => wait.promise;
+  const first = f.model.refresh(), second = f.model.refresh().then(() => { joined = true; });
+  await tick(); assert.equal(joined, false);
+  wait.resolve({ ...snapshot(), label: "actually refreshed" }); await Promise.all([first, second]);
+  assert.equal(f.model.getSnapshot().workspace.label, "actually refreshed");
 });
 test("stale or foreign approval cards never dispatch", async () => {
   const f = fixture(); await f.ready(); const card = { id: "approval", workspaceId: "A", resourceGeneration: "generation-1", agentId: "main" };
@@ -108,4 +122,57 @@ test("real mode is bound to native attachment and never accepts a synthetic dire
   await model.loadDirectory(); handlers["workspace.select"] = () => snapshot();
   await model.selectWorkspace("A"); assert.equal(model.getSnapshot().workspace, null);
   assert.ok(model.getSnapshot().error.includes("原視圖"));
+});
+test("transport ACK expiry reconciles an accepted background run with one read, not a failed task or resend", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("hello");
+  f.handlers["workspace.session.send"] = () => { throw new WorkspaceRpcWaitError("workspace.session.send"); };
+  f.handlers["workspace.session.receipt"] = p => ({ ...p, resourceGeneration: p.expectedGeneration, state: "accepted", runId: "original-run", reason: null });
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, runId: "original-run", state: "running", taskState: "running" } });
+  await f.model.send(); const view = f.model.getSnapshot();
+  assert.equal(view.workspace.conversation.state, "running"); assert.equal(view.error, ""); assert.equal(view.pendingUnknown, false); assert.equal(view.draft, "");
+  assert.equal(f.calls.filter(c => c.method === "workspace.session.send").length, 1);
+  assert.equal(f.calls.filter(c => c.method === "workspace.session.receipt").length, 1);
+  assert.equal(f.calls.find(c => c.method === "workspace.session.send").params.source, "ui");
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, runId: "original-run", state: "completed", taskState: "completed", completion: { state: "verified" } } });
+  await f.model.refresh(); assert.equal(f.model.getSnapshot().workspace.conversation.completion.state, "verified");
+  assert.equal(f.calls.filter(c => c.method === "workspace.session.send").length, 1);
+});
+test("read-only refresh expiry retains known running state and uses a neutral sync status", async () => {
+  const f = fixture(); await f.ready();
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "running" } }); await f.model.refresh();
+  f.handlers["workspace.snapshot"] = () => { throw new WorkspaceRpcWaitError("workspace.snapshot"); }; await f.model.refresh();
+  assert.equal(f.model.getSnapshot().workspace.conversation.state, "running"); assert.equal(f.model.getSnapshot().error, "");
+  assert.match(f.model.getSnapshot().syncNotice, /同步/); assert.equal(f.calls.some(c => c.method.startsWith("workspace.session.")), false);
+  f.handlers["workspace.snapshot"] = () => snapshot(); await f.model.refresh(); assert.equal(f.model.getSnapshot().syncNotice, "");
+});
+test("unknown receipt and repeated verification never send or auto-resume again", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("original");
+  f.handlers["workspace.session.send"] = () => { throw new WorkspaceRpcWaitError("workspace.session.send"); };
+  f.handlers["workspace.session.receipt"] = p => ({ ...p, resourceGeneration: p.expectedGeneration, state: "unknown", runId: null, reason: null });
+  await f.model.send(); await f.model.verifyPending(); await f.model.send();
+  assert.equal(f.model.getSnapshot().pendingUnknown, true); assert.equal(f.model.getSnapshot().draft, "original");
+  assert.equal(f.calls.filter(c => c.method === "workspace.session.send").length, 1); assert.equal(f.calls.some(c => c.method === "workspace.session.resume"), false);
+});
+test("foreign/generation receipts cannot settle or repaint a new view", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("old");
+  f.handlers["workspace.session.send"] = () => { throw new WorkspaceRpcWaitError("workspace.session.send"); };
+  f.handlers["workspace.session.receipt"] = p => ({ ...p, resourceGeneration: "other-generation", state: "accepted", runId: "foreign", reason: null });
+  await f.model.send(); assert.equal(f.model.getSnapshot().pendingUnknown, true); assert.equal(f.model.getSnapshot().draft, "old");
+  const wait = defer(); f.handlers["workspace.session.receipt"] = () => wait.promise;
+  const check = f.model.verifyPending(); await f.model.selectWorkspace("B"); f.model.setDraft("B draft");
+  wait.resolve({ workspaceId: "A", agentId: "main", resourceGeneration: "generation-1", requestId: "nonce-1", state: "accepted", runId: "original", reason: null }); await check;
+  assert.equal(f.model.getSnapshot().workspaceId, "B"); assert.equal(f.model.getSnapshot().draft, "B draft");
+});
+test("exhausted resume button/typed continue has no mutation and startup reads never resume", async () => {
+  const f = fixture(); await f.ready();
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked", resumeAdmission: { allowed: false, reason: "run_tokens" } } });
+  await f.model.refresh(); await f.model.send(true); f.model.setDraft("/continue"); await f.model.send();
+  assert.equal(f.calls.some(c => c.method.startsWith("workspace.session.")), false);
+  assert.match(f.model.getSnapshot().error, /預算/);
+});
+test("explicit server refusal is not marked unknown or retried", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("/continue");
+  f.handlers["workspace.session.resume"] = () => { throw Object.assign(new Error("budget refused"), { code: -32602 }); };
+  await f.model.send(); assert.equal(f.model.getSnapshot().pendingUnknown, false); assert.equal(f.model.getSnapshot().draft, "/continue");
+  assert.equal(f.calls.filter(c => c.method === "workspace.session.resume").length, 1); assert.equal(f.calls.some(c => c.method === "workspace.session.receipt"), false);
 });

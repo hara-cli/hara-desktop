@@ -1,4 +1,5 @@
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
+import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T> }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
   workspaces: { workspaceId: string; label: string; role: string; active: boolean }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" }
@@ -15,20 +16,22 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
   approvals: WorkspaceDevApproval[]; conversation: { revision: number; state: string; sessionId: string; taskId: string | null; runId: string | null;
     taskState: string | null; objective: string; history: WorkspaceDevMessage[]; pastTaskCount: number;
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };
-    completion: { state: string; evidence?: string[] } | null; blockReason?: string | null } }
+    completion: { state: string; evidence?: string[] } | null; blockReason?: string | null;
+    resumeAdmission?: { allowed: boolean; reason: string | null } } }
 interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume"; payload: Record<string, unknown>;
   message: string; state: "sending" | "unknown" }
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
   roster: WorkspaceDevAgent[];
-  workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string }
+  workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string }
 
 export class WorkspaceDevModel {
-  private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "" };
+  private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "" };
   private readonly listeners = new Set<() => void>();
   private readonly drafts = new Map<string, string>();
   private readonly pending = new Map<string, PendingMessage>();
   private epoch = 0;
   private refreshEpoch: number | null = null;
+  private refreshWait: Promise<void> | null = null;
   private refreshDirty = false;
   private readonly rpc: WorkspaceDevRpc;
   private readonly nonce: () => string;
@@ -47,7 +50,7 @@ export class WorkspaceDevModel {
     if (this.view.workspace && this.view.workspace.resourceGeneration !== snapshot.resourceGeneration) this.epoch++;
     const key = this.key(snapshot), pending = this.pending.get(key);
     this.update({ workspace: snapshot, workspaceId: snapshot.workspaceId, agentId: snapshot.selectedAgentId, roster: snapshot.agents,
-      draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "" });
+      draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "", syncNotice: "" });
   }
   async loadDirectory(): Promise<void> {
     const epoch = this.epoch; const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
@@ -56,7 +59,7 @@ export class WorkspaceDevModel {
   }
   async selectWorkspace(workspaceId: string): Promise<void> {
     const epoch = ++this.epoch;
-    this.update({ workspaceId, agentId: null, roster: [], workspace: null, draft: "", loading: true, sending: false, pendingUnknown: false, error: "" });
+    this.update({ workspaceId, agentId: null, roster: [], workspace: null, draft: "", loading: true, sending: false, pendingUnknown: false, error: "", syncNotice: "" });
     try {
       const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
       if (epoch !== this.epoch) return;
@@ -70,7 +73,7 @@ export class WorkspaceDevModel {
   async selectAgent(agentId: string): Promise<void> {
     const workspace = this.view.workspace; if (!workspace || !workspace.agents.some(agent => agent.agentId === agentId)) return;
     const epoch = ++this.epoch;
-    this.update({ agentId, workspace: null, draft: "", loading: true, sending: false, pendingUnknown: false, error: "" });
+    this.update({ agentId, workspace: null, draft: "", loading: true, sending: false, pendingUnknown: false, error: "", syncNotice: "" });
     try {
       const snapshot = await this.rpc.request<WorkspaceDevSnapshot>("workspace.agent.select", { workspaceId: workspace.workspaceId,
         expectedGeneration: workspace.resourceGeneration, agentId });
@@ -80,15 +83,19 @@ export class WorkspaceDevModel {
   async refresh(): Promise<void> {
     const { workspaceId, agentId } = this.view; if (!workspaceId || !agentId) return;
     const epoch = this.epoch;
-    if (this.refreshEpoch === epoch) { this.refreshDirty = true; return; }
+    if (this.refreshEpoch === epoch) { this.refreshDirty = true; await this.refreshWait; return; }
     this.refreshEpoch = epoch;
+    let refreshed!: () => void;
+    this.refreshWait = new Promise<void>(resolve => { refreshed = resolve; });
     try {
       const snapshot = await this.rpc.request<WorkspaceDevSnapshot>("workspace.snapshot", { workspaceId, agentId });
       if (epoch !== this.epoch) return; this.valid(snapshot, workspaceId, agentId); this.apply(snapshot);
-    } catch (error) { if (epoch === this.epoch) this.update({ error: String(error) }); }
+    } catch (error) { if (epoch === this.epoch) this.update(error instanceof WorkspaceRpcWaitError
+      ? { syncNotice: "正在同步最新狀態；後台任務不會因此重送或被判為失敗。" } : { error: String(error) }); }
     finally {
+      refreshed();
       if (this.refreshEpoch === epoch) {
-        this.refreshEpoch = null; const again = this.refreshDirty; this.refreshDirty = false;
+        this.refreshEpoch = null; this.refreshWait = null; const again = this.refreshDirty; this.refreshDirty = false;
         if (again && epoch === this.epoch) queueMicrotask(() => { void this.refresh(); });
       }
     }
@@ -119,15 +126,20 @@ export class WorkspaceDevModel {
   }
   async send(resume = false, retryUnknown = false): Promise<void> {
     const workspace = this.view.workspace, key = this.key();
+    if (retryUnknown) { await this.verifyPending(); return; } // compatibility: verification is now READ-ONLY, never a resend
     if (!workspace || !key || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
     const retained = this.pending.get(key);
     if (retained?.state === "unknown" && !retryUnknown) return;
     if (!workspace.connections.defaultConnectionId) { this.update({ error: this.syntheticOnly ? "請先在這個 Workspace 啟用合成連接。" : "請先在這個 Workspace 配置模型連接。" }); return; }
-    const message = resume ? "/continue" : this.view.draft.trim(); if (!message && !retryUnknown) return;
-    const pending: PendingMessage = retained && retryUnknown ? { ...retained, state: "sending" } : {
+    const message = resume ? "/continue" : this.view.draft.trim(); if (!message) return;
+    resume ||= message === "/continue";
+    if (resume && workspace.conversation.resumeAdmission?.allowed === false) {
+      this.update({ error: "原任務的續跑預算不可用；沒有重跑、增加模型調用或改寫原聊天。請先檢查結果與預算原因。" }); return;
+    }
+    const pending: PendingMessage = {
       method: resume ? "workspace.session.resume" : "workspace.session.send", message, state: "sending",
       payload: { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration,
-        agentId: workspace.selectedAgentId, message, requestId: this.nonce() } };
+        agentId: workspace.selectedAgentId, message, requestId: this.nonce(), source: "ui" } };
     this.pending.set(key, pending); this.update({ sending: true, pendingUnknown: false, error: "" });
     try {
       await this.rpc.request(pending.method, pending.payload);
@@ -138,8 +150,42 @@ export class WorkspaceDevModel {
       if (this.key() === key) { this.update({ sending: false, pendingUnknown: false, draft: this.drafts.get(key) ?? "" }); await this.refresh(); }
     } catch (error) {
       if (this.pending.get(key) !== pending) return;
-      this.pending.set(key, { ...pending, state: "unknown" });
-      if (this.key() === key) this.update({ sending: false, pendingUnknown: true, error: `送出結果尚未確認；請核對後用原訊息查詢，勿重複發送。${String(error)}` });
+      if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "number") {
+        this.pending.delete(key); // explicit server refusal, not a transport-unknown mutation
+        if (this.key() === key) this.update({ sending: false, pendingUnknown: false, error: String(error) });
+        return;
+      }
+      const unknown: PendingMessage = { ...pending, state: "unknown" }; this.pending.set(key, unknown);
+      if (this.key() === key) this.update({ sending: false, pendingUnknown: true, error: "",
+        syncNotice: "尚在確認原請求是否已接收；不會重新發送。" });
+      if (error instanceof WorkspaceRpcWaitError) await this.checkReceipt(key, unknown);
+    }
+  }
+  async verifyPending(): Promise<void> {
+    const key = this.key(), pending = this.pending.get(key);
+    if (pending?.state === "unknown") await this.checkReceipt(key, pending);
+  }
+  private async checkReceipt(key: string, pending: PendingMessage): Promise<void> {
+    const { workspaceId, expectedGeneration, agentId, requestId } = pending.payload;
+    try {
+      const receipt = await this.rpc.request<{ workspaceId: string; agentId: string; resourceGeneration: string; requestId: string; state: string; runId: string | null; reason: string | null }>(
+        "workspace.session.receipt", { workspaceId, expectedGeneration, agentId, requestId });
+      if (this.pending.get(key) !== pending) return;
+      if (receipt.workspaceId !== workspaceId || receipt.agentId !== agentId || receipt.resourceGeneration !== expectedGeneration || receipt.requestId !== requestId
+        || !["accepted", "rejected", "unknown"].includes(receipt.state) || (receipt.state === "accepted" && !receipt.runId)) throw new Error("回執不符合原 Workspace／代次／同事／請求，已拒絕套用。");
+      if (receipt.state === "unknown") {
+        if (this.key() === key) this.update({ syncNotice: "尚未找到可確認的原請求回執；保留原訊息，不自動重送。" }); return;
+      }
+      this.pending.delete(key);
+      if (receipt.state === "accepted" && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
+      if (this.key() === key) {
+        this.update({ sending: false, pendingUnknown: false, draft: this.drafts.get(key) ?? "", error: "", syncNotice: "" });
+        await this.refresh();
+        if (receipt.state === "rejected" && this.key() === key) this.update({ error: "原請求未獲接納；沒有新增模型調用。請檢查原任務的預算與狀態。" });
+      }
+    } catch (error) {
+      if (this.key() === key && this.pending.get(key) === pending) this.update({ error: error instanceof WorkspaceRpcWaitError ? "" : String(error),
+        syncNotice: "暫未取得原請求回執；訊息保留，不自動重送。" });
     }
   }
   async respond(card: WorkspaceDevApproval, approved: boolean): Promise<void> {
@@ -149,12 +195,20 @@ export class WorkspaceDevModel {
     const epoch = this.epoch;
     try { await this.rpc.request("workspace.approval.respond", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, approvalId: card.id, approved });
       if (epoch === this.epoch) await this.refresh();
-    } catch (error) { if (epoch === this.epoch) this.update({ error: String(error) }); }
+    } catch (error) {
+      if (epoch !== this.epoch) return;
+      if (error instanceof WorkspaceRpcWaitError) { this.update({ syncNotice: "正在只讀核對確認結果；不會重複提交。" }); await this.refresh(); }
+      else this.update({ error: String(error) });
+    }
   }
   async cancel(): Promise<void> {
     const workspace = this.view.workspace; if (!workspace?.conversation.runId) return; const epoch = this.epoch;
     try { await this.rpc.request("workspace.session.cancel", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration,
       agentId: workspace.selectedAgentId, runId: workspace.conversation.runId }); if (epoch === this.epoch) await this.refresh();
-    } catch (error) { if (epoch === this.epoch) this.update({ error: String(error) }); }
+    } catch (error) {
+      if (epoch !== this.epoch) return;
+      if (error instanceof WorkspaceRpcWaitError) { this.update({ syncNotice: "正在只讀核對取消狀態；不會重新執行任務。" }); await this.refresh(); }
+      else this.update({ error: String(error) });
+    }
   }
 }
