@@ -12,6 +12,8 @@ import "./theme-light.css";
 initializeThemePreference();
 installAppContextMenuBoundary();
 const params = new URLSearchParams(window.location.search);
+const workspaceDev = import.meta.env.DEV && import.meta.env.VITE_HARA_WORKSPACE_DEV === "1";
+const WorkspaceLocalDev = workspaceDev ? React.lazy(() => import("./WorkspaceLocalDev")) : null;
 const workbenchPreview = import.meta.env.DEV && params.get("preview") === "workbench";
 const providersPreview = import.meta.env.DEV && params.get("preview") === "providers";
 const mailboxPreview = import.meta.env.DEV && params.get("preview") === "mailbox";
@@ -22,7 +24,7 @@ const conversationPreview = import.meta.env.DEV && params.get("preview") === "co
 const ConversationPreview = import.meta.env.DEV ? React.lazy(() => import("./ConversationPreview")) : null;
 const TalentMarketPreview = React.lazy(() => import("./TalentMarket"));
 const AutomationPreview = React.lazy(() => import("./AutomationPreview"));
-const crashReportEnabled = !workbenchPreview && !providersPreview && !mailboxPreview && !talentPreview && !automationPreview && !conversationPreview;
+const crashReportEnabled = !workspaceDev && !workbenchPreview && !providersPreview && !mailboxPreview && !talentPreview && !automationPreview && !conversationPreview;
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Hara renderer root is unavailable");
@@ -32,7 +34,9 @@ ReactDOM.createRoot(root).render(
     {crashReportEnabled && <CrashReportHost />}
     <RendererErrorBoundary>
       <RendererBootSignal>
-        {mailboxPreview && MailboxPreview ? (
+        {workspaceDev && WorkspaceLocalDev ? (
+          <React.Suspense fallback={<div>Opening isolated Workspace Dev…</div>}><WorkspaceLocalDev /></React.Suspense>
+        ) : mailboxPreview && MailboxPreview ? (
           <React.Suspense fallback={<div>Opening mailbox preview…</div>}>
             <MailboxPreview locale={params.get("locale") === "en" ? "en" : "zh"} scenario={params.get("scenario")} />
           </React.Suspense>

@@ -949,7 +949,7 @@ fn discovery_path() -> Result<PathBuf, String> {
 /// Read the CLI-owned discovery file through a bounded, no-follow descriptor. The renderer receives its
 /// token because it must authenticate to Serve, but it never receives a native "kill arbitrary pid" API:
 /// the legacy bridge below re-reads and validates this same private record itself.
-fn read_private_discovery_at(path: &Path) -> Result<(String, ServeDiscoveryRecord), String> {
+fn read_private_native_document_at(path: &Path) -> Result<String, String> {
     let parent = path
         .parent()
         .ok_or_else(|| "serve discovery has no parent directory".to_string())?;
@@ -1038,6 +1038,11 @@ fn read_private_discovery_at(path: &Path) -> Result<(String, ServeDiscoveryRecor
         }
     }
 
+    Ok(raw)
+}
+
+fn read_private_discovery_at(path: &Path) -> Result<(String, ServeDiscoveryRecord), String> {
+    let raw = read_private_native_document_at(path)?;
     let record: ServeDiscoveryRecord =
         serde_json::from_str(&raw).map_err(|error| format!("parse serve discovery: {error}"))?;
     if record.pid <= 1 || (cfg!(unix) && record.pid > i32::MAX as u32) {
@@ -1068,6 +1073,119 @@ fn process_is_alive(_pid: u32) -> bool {
 fn read_discovery() -> Option<String> {
     let (raw, record) = read_private_discovery_at(&discovery_path().ok()?).ok()?;
     process_is_alive(record.pid).then_some(raw)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceDevConnection {
+    port: u16,
+    token: String,
+    instance_id: String,
+    root: String,
+    synthetic_only: bool,
+}
+
+fn checked_workspace_dev_directory(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| "Workspace Dev directory unavailable")?;
+    if !metadata.is_dir()
+        || metadata.file_type().is_symlink()
+        || path
+            .canonicalize()
+            .map_err(|_| "Workspace Dev directory cannot be resolved")?
+            != path
+    {
+        return Err("Workspace Dev requires canonical non-symlink directories".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o077 != 0 {
+            return Err(
+                "Workspace Dev directories must be owned by this user with mode 0700".into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn workspace_dev_connection_at(
+    enabled: bool,
+    requested: Option<PathBuf>,
+) -> Result<WorkspaceDevConnection, String> {
+    if !enabled {
+        return Err("Workspace Dev is unavailable in release builds".into());
+    }
+    let root = requested.ok_or("Start the explicit isolated Workspace Dev harness first")?;
+    if !root.is_absolute() || root.parent().is_none() {
+        return Err("Workspace Dev root must be explicit".into());
+    }
+    for path in [
+        &root,
+        &root.join(".hara"),
+        &root.join("home"),
+        &root.join("home/.hara"),
+        &root.join("home/.hara/workspace-local-dev"),
+    ] {
+        checked_workspace_dev_directory(path)?;
+    }
+    let marker: serde_json::Value = serde_json::from_str(&read_private_native_document_at(
+        &root.join(".hara/workspace-dev-fixture.json"),
+    )?)
+    .map_err(|_| "Invalid Workspace Dev fixture marker")?;
+    if marker.as_object().map(|o| o.len()) != Some(3)
+        || marker["schemaVersion"] != 1
+        || marker["kind"] != "synthetic-workspace-dev"
+        || marker["instanceId"].as_str().map(str::len) != Some(36)
+    {
+        return Err("Not an initialized synthetic Workspace Dev root".into());
+    }
+    let (raw, record) =
+        read_private_discovery_at(&root.join("home/.hara/workspace-local-dev/serve-v2.json"))?;
+    if !process_is_alive(record.pid) {
+        return Err("The isolated Workspace Dev engine is not running".into());
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|_| "Invalid Workspace Dev discovery")?;
+    let port = value["port"]
+        .as_u64()
+        .filter(|port| *port > 0 && *port <= u16::MAX as u64)
+        .ok_or("Invalid Workspace Dev port")? as u16;
+    let token = value["token"]
+        .as_str()
+        .filter(|token| {
+            token.len() == 64
+                && token
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+        .ok_or("Invalid Workspace Dev authentication")?;
+    let instance = value["instanceId"]
+        .as_str()
+        .filter(|id| id.len() == 36)
+        .ok_or("Invalid Workspace Dev instance")?;
+    if value.as_object().map(|o| o.len()) != Some(6)
+        || value["schemaVersion"] != 2
+        || value["capability"] != "workspace.local-dev.v2"
+    {
+        return Err("Unsupported Workspace Dev protocol; no legacy fallback".into());
+    }
+    Ok(WorkspaceDevConnection {
+        port,
+        token: token.into(),
+        instance_id: instance.into(),
+        root: root.to_string_lossy().into_owned(),
+        synthetic_only: true,
+    })
+}
+
+/// Read-only attachment to the explicitly selected, owner-only synthetic Dev. Never start/stop or
+/// discover the installed engine, copy its keys, or expose a general filesystem/PID operation.
+#[tauri::command]
+fn workspace_dev_connection() -> Result<WorkspaceDevConnection, String> {
+    workspace_dev_connection_at(
+        cfg!(debug_assertions),
+        std::env::var_os("HARA_DESKTOP_WORKSPACE_DEV_ROOT").map(PathBuf::from),
+    )
 }
 
 fn bundled_sidecar_name(windows: bool) -> &'static str {
@@ -3299,6 +3417,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_discovery,
+            workspace_dev_connection,
             start_serve,
             inspect_command_line_hara,
             inspect_terminal_hara,
@@ -4676,6 +4795,84 @@ mod native_tests {
             Path::new("/opt/hara"),
             false,
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn workspace_dev_attachment_is_explicit_private_and_protocol_bound() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        assert!(workspace_dev_connection_at(false, Some(PathBuf::from("/not-read"))).is_err());
+        assert!(workspace_dev_connection_at(true, None).is_err());
+        assert!(workspace_dev_connection_at(true, Some(PathBuf::from("relative"))).is_err());
+        let unique = format!(
+            "hara-workspace-native-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().canonicalize().unwrap().join(unique);
+        for relative in [
+            "",
+            ".hara",
+            "home",
+            "home/.hara",
+            "home/.hara/workspace-local-dev",
+        ] {
+            let dir = root.join(relative);
+            fs::create_dir(&dir).unwrap();
+            fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let private_write = |path: &Path, value: &serde_json::Value| {
+            fs::write(path, serde_json::to_vec(value).unwrap()).unwrap();
+            fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
+        };
+        let marker_path = root.join(".hara/workspace-dev-fixture.json");
+        let marker = serde_json::json!({"schemaVersion": 1, "kind": "synthetic-workspace-dev", "instanceId": "12345678-1234-4234-8234-123456789abc"});
+        private_write(&marker_path, &marker);
+        let discovery_path = root.join("home/.hara/workspace-local-dev/serve-v2.json");
+        let record = serde_json::json!({"schemaVersion": 2, "capability": "workspace.local-dev.v2", "pid": std::process::id(),
+            "port": 12345, "token": "a".repeat(64), "instanceId": "12345678-1234-4234-8234-123456789abc"});
+        private_write(&discovery_path, &record);
+        let attached = workspace_dev_connection_at(true, Some(root.clone())).unwrap();
+        assert_eq!(attached.port, 12345);
+        assert!(attached.synthetic_only);
+        assert_eq!(attached.root, root.to_string_lossy());
+        for (field, value) in [
+            ("port", serde_json::json!(0)),
+            ("port", serde_json::json!(65536)),
+            ("token", serde_json::json!("bad")),
+            ("capability", serde_json::json!("legacy")),
+            ("extra", serde_json::json!(true)),
+        ] {
+            let mut invalid = record.clone();
+            invalid[field] = value;
+            private_write(&discovery_path, &invalid);
+            assert!(workspace_dev_connection_at(true, Some(root.clone())).is_err());
+        }
+        private_write(&discovery_path, &record);
+        fs::set_permissions(&discovery_path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(workspace_dev_connection_at(true, Some(root.clone())).is_err());
+        fs::set_permissions(&discovery_path, fs::Permissions::from_mode(0o600)).unwrap();
+        let hardlink = root.join("linked.json");
+        fs::hard_link(&discovery_path, &hardlink).unwrap();
+        assert!(workspace_dev_connection_at(true, Some(root.clone())).is_err());
+        fs::remove_file(hardlink).unwrap();
+        let target = root.join("target.json");
+        fs::rename(&discovery_path, &target).unwrap();
+        symlink(&target, &discovery_path).unwrap();
+        assert!(workspace_dev_connection_at(true, Some(root.clone())).is_err());
+        fs::remove_file(&discovery_path).unwrap();
+        fs::rename(target, &discovery_path).unwrap();
+        let mut invalid_marker = marker.clone();
+        invalid_marker["kind"] = serde_json::json!("release");
+        private_write(&marker_path, &invalid_marker);
+        assert!(workspace_dev_connection_at(true, Some(root.clone())).is_err());
+        private_write(&marker_path, &marker);
+        fs::set_permissions(root.join("home"), fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(workspace_dev_connection_at(true, Some(root.clone())).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]

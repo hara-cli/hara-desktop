@@ -10,6 +10,7 @@
   "scripts": {
     "audit:release-channel": "node scripts/release-channel-audit.mjs",
     "dev": "vite",
+    "dev:workspace": "node scripts/local-workspace-dev.mjs",
     "generate:talent-catalog": "node scripts/build-agency-talent-catalog.mjs",
     "check:talent-avatars": "node --experimental-strip-types scripts/talent-avatar-queue.mjs --validate",
     "build": "npm run check:talent-avatars && tsc && vite build && node scripts/check-dist-assets.mjs",

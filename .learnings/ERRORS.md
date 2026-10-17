@@ -3890,6 +3890,25 @@ the lock to a clean-looking value for development convenience.
 
 ---
 
+## [ERR-20261017-WORKSPACE-LAB-REGRESSION-ENV] full Desktop tests need local loopback permission
+
+**Logged**: 2026-10-17
+**Priority**: medium
+**Status**: resolved
+**Area**: testing
+
+The isolated Workspace candidate's first full suite reported 646 pass / 21 fail. All 21 were
+existing proxy transport tests failing `listen EPERM 127.0.0.1` in the filesystem sandbox, not
+product assertions. After permission for local synthetic sockets, the unchanged full suite
+passed 667/667. Original and host logs retained in the task's private evidence directory.
+Do not skip these tests, loosen their assertions, change the real proxy, or call this a release.
+
+During race review, also add A→B→A coverage for a pending send: settle the exact original nonce's
+status when returning to the identical generation/Agent, then refresh with the current epoch;
+never apply its old transcript. Otherwise a lost completion notification can leave “sending” stuck.
+
+---
+
 ## [ERR-20260930-HARA-CAPTURE-UNAVAILABLE] running Desktop window could not be captured for visual QA
 
 **Logged**: 2026-09-30T00:57:22+08:00
