@@ -15,11 +15,12 @@ export function parseOptions(args) {
   for (let index = 0; index < args.length; index++) {
     const key = args[index];
     if (key === "--smoke" && !options.smoke) options.smoke = true;
-    else if (["--root", "--core", "--ark-key-file"].includes(key) && !options[key.slice(2)] && args[index + 1]) options[key.slice(2)] = args[++index];
+    else if (["--root", "--core", "--ark-key-file", "--ark-slice"].includes(key) && !options[key.slice(2)] && args[index + 1]) options[key.slice(2)] = args[++index];
     else throw new Error("Use --core ABSOLUTE_CORE_WORKTREE --root ABSOLUTE_PRIVATE_FIXTURE [--smoke] [--ark-key-file ABSOLUTE_PRIVATE_FILE]");
   }
   assert.ok(isAbsolute(options.root ?? "") && isAbsolute(options.core ?? ""), "Explicit absolute --core and --root are required");
   if (options["ark-key-file"]) assert.ok(isAbsolute(options["ark-key-file"]), "Key reference must be an absolute file path, never a Key value");
+  if (options["ark-slice"]) assert.ok(options["ark-key-file"] && options["ark-slice"] === "context-trim-20261017", "Unknown or unapproved real-key slice");
   return options;
 }
 export function isolatedEnvironment(source, home, native = false) {
@@ -66,6 +67,7 @@ export async function main(args) {
   assert.ok(Number(process.versions.node.split(".")[0]) >= 22, "Use the repository's modern Node, not the system Node");
   const options = parseOptions(args), desktop = realpathSync.native(fileURLToPath(new URL("../", import.meta.url))), core = realpathSync.native(options.core);
   const realKey = Boolean(options["ark-key-file"]), keyArgs = realKey ? ["--ark-key-file", options["ark-key-file"]] : [];
+  if (options["ark-slice"]) keyArgs.push("--ark-slice", options["ark-slice"]);
   const root = realpathSync.native(options.root), info = lstatSync(root);
   assert.equal(root, options.root, "Use a canonical root, not a symlink alias");
   assert.ok(info.isDirectory() && !info.isSymbolicLink() && (process.platform === "win32" || (info.uid === process.getuid() && (info.mode & 0o077) === 0)), "Fixture root must be private/owned");
@@ -76,7 +78,7 @@ export async function main(args) {
   const logs = [], log = name => { const fd = openSync(join(evidence, name), "wx", 0o600); logs.push(fd); return fd; };
   let serve, ui, stopping = false;
   const receipt = { schemaVersion: 1, root, core, desktop, coreSha, desktopSha, evidence, node: process.version,
-    identifier: LAB_IDENTIFIER, syntheticOnly: !realKey, ...(realKey ? { budgetFile: join(root, ".hara/real-key-budget-v1.json") } : { realModelCalls: 0 }), state: "starting" };
+    identifier: LAB_IDENTIFIER, syntheticOnly: !realKey, ...(realKey ? { budgetFile: join(root, ".hara/real-key-budget-v1.json"), slice: options["ark-slice"] ?? "original" } : { realModelCalls: 0 }), state: "starting" };
   const recordReceipt = () => writeFileSync(join(evidence, "receipt.json"), JSON.stringify(receipt, null, 2) + "\n", { mode: 0o600 });
   const stop = async () => {
     if (stopping) return; stopping = true;

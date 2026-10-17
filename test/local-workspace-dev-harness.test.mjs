@@ -7,6 +7,9 @@ test("native lab requires explicit Core/root and rejects hidden/duplicate option
   assert.notEqual(LAB_IDENTIFIER, "com.nanhara.hara"); assert.notEqual(LAB_IDENTIFIER, "com.nanhara.hara.dev");
   assert.equal(parseOptions(["--core", "/a", "--root", "/b", "--ark-key-file", "/private/source.key"])["ark-key-file"], "/private/source.key");
   assert.throws(() => parseOptions(["--core", "/a", "--root", "/b", "--ark-key-file", "a-key-value"]));
+  assert.equal(parseOptions(["--core", "/a", "--root", "/b", "--ark-key-file", "/private/source.key", "--ark-slice", "context-trim-20261017"])["ark-slice"], "context-trim-20261017");
+  assert.throws(() => parseOptions(["--core", "/a", "--root", "/b", "--ark-slice", "context-trim-20261017"]));
+  assert.throws(() => parseOptions(["--core", "/a", "--root", "/b", "--ark-key-file", "/private/source.key", "--ark-slice", "larger-budget"]));
 });
 test("child environment never inherits model credentials, proxies, preload or existing discovery", () => {
   const source = { HOME: "/real", PATH: "/approved/bin", OPENAI_API_KEY: "sensitive", ANTHROPIC_API_KEY: "sensitive", NODE_OPTIONS: "--import unsafe",

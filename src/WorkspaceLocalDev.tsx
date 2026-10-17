@@ -82,7 +82,7 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
           <small>這是隔離的本機 Dev，不讀寫日常 Hara 資料。{realKey ? "本次使用已批准的火山 Key 文件引用。" : "不連接真實模型。"}</small></section>
           : <div className="wsd-thread">
             {!hasConnection ? <section className="wsd-connect-card"><div className="wsd-kicker">先準備好這個空間</div><h2>跟 Hara 聊天，先接上模型。</h2>
-              <p>{realKey ? "使用已批准的火山 Coding Plan 連接；Key 只在本機引擎讀取，不會傳到這個介面。整片上限 300k token／24 次請求。" : "本次只啟用固定合成腳本，驗證 Pi 與任務流程。沒有外部模型請求或額度消耗。"}</p><button className="wsd-primary" onClick={() => void connect()}>{realKey ? "引用已授權火山 Key" : "啟用本機合成連接"}</button></section> : null}
+              <p>{realKey ? `使用已批准的火山 Coding Plan 連接；Key 只在本機引擎讀取，不會傳到這個介面。整片上限 ${workspace.budget?.maxTokens ?? "待核對"} token／${workspace.budget?.maxRequests ?? "待核對"} 次請求，跨任務及重啟累計。` : "本次只啟用固定合成腳本，驗證 Pi 與任務流程。沒有外部模型請求或額度消耗。"}</p><button className="wsd-primary" onClick={() => void connect()}>{realKey ? "引用已授權火山 Key" : "啟用本機合成連接"}</button></section> : null}
             {hasConnection && !workspace.conversation.history.length ? <div className="wsd-chat-start"><h2>今天，想一起完成什麼？</h2><p>先打個招呼，或請我「建立同事 Coder」。</p>
               <button onClick={() => model.setDraft("建立一位同事 Coder，負責本空間的文件工作")}>建立一位同事 <span>↗</span></button></div> : null}
             <Transcript history={workspace.conversation.history} agent={agent} />
