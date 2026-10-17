@@ -3890,6 +3890,24 @@ the lock to a clean-looking value for development convenience.
 
 ---
 
+## [ERR-20261017-WORKSPACE-LAB-RELAUNCH] AX observation can reopen a quit native app
+
+**Logged**: 2026-10-17
+**Priority**: medium
+**Status**: resolved
+**Area**: native-dev
+
+After Cmd-Q, requesting AX state reopened the private Lab .app through LaunchServices (confirmed
+original PID exited and a new owned bundle PID appeared). That loses the explicit shell variables.
+The Lab renderer's dedicated command rejected a missing fixture, without mounting legacy App;
+native crash records are in this separate identifier's app-data directory, not real ~/.hara.
+Still, add native preflight before any setup: this identifier must have a valid synthetic root and
+its matching explicit private Home. Missing/mismatched/release cases fail closed; ordinary Hara
+startup remains unchanged. Avoid post-quit AX reads; inspect owned process exit before relaunching
+with the same private root. The temporary .app holds the same checked native executable hash.
+
+---
+
 ## [ERR-20261017-WORKSPACE-LAB-IPV4] native startup waited on a different loopback address
 
 **Logged**: 2026-10-17

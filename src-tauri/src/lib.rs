@@ -1188,6 +1188,26 @@ fn workspace_dev_connection() -> Result<WorkspaceDevConnection, String> {
     )
 }
 
+fn workspace_lab_preflight(
+    identifier: &str,
+    enabled: bool,
+    root: Option<PathBuf>,
+    home: Option<PathBuf>,
+) -> Result<(), String> {
+    if identifier != "com.nanhara.hara.workspace-lab" {
+        return Ok(());
+    }
+    // LaunchServices/Computer Use can reopen a debug .app without its original shell environment.
+    // Fail before any setup/renderer/legacy command rather than treating the real Home as fallback.
+    let connection = workspace_dev_connection_at(enabled, root)?;
+    let home = development_home_override(enabled, home)?
+        .ok_or("Workspace Lab requires its explicit private Home")?;
+    if home != Path::new(&connection.root).join("home") {
+        return Err("Workspace Lab Home must belong to the selected fixture".into());
+    }
+    Ok(())
+}
+
 fn bundled_sidecar_name(windows: bool) -> &'static str {
     if windows {
         "hara.exe"
@@ -3347,6 +3367,17 @@ fn release_updater_endpoints(config: &tauri::utils::config::Config) -> Result<Ve
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
+    if workspace_lab_preflight(
+        &context.config().identifier,
+        cfg!(debug_assertions),
+        std::env::var_os("HARA_DESKTOP_WORKSPACE_DEV_ROOT").map(PathBuf::from),
+        std::env::var_os("HARA_DESKTOP_DEV_HOME").map(PathBuf::from),
+    )
+    .is_err()
+    {
+        eprintln!("Workspace Lab was not started with its isolated fixture/Home; no fallback startup was performed");
+        return;
+    }
     // Release package smoke executes this exact desktop binary natively. Reading the generated
     // runtime config is architecture-safe; searching Mach-O/PE/ELF bytes is not, because linkers may
     // split or transform string data without changing the value Tauri reconstructs at runtime.
@@ -4836,6 +4867,42 @@ mod native_tests {
             "port": 12345, "token": "a".repeat(64), "instanceId": "12345678-1234-4234-8234-123456789abc"});
         private_write(&discovery_path, &record);
         let attached = workspace_dev_connection_at(true, Some(root.clone())).unwrap();
+        assert!(workspace_lab_preflight("com.nanhara.hara", false, None, None).is_ok());
+        assert!(workspace_lab_preflight(
+            "com.nanhara.hara.workspace-lab",
+            false,
+            Some(root.clone()),
+            Some(root.join("home"))
+        )
+        .is_err());
+        assert!(workspace_lab_preflight(
+            "com.nanhara.hara.workspace-lab",
+            true,
+            Some(root.clone()),
+            None
+        )
+        .is_err());
+        assert!(workspace_lab_preflight(
+            "com.nanhara.hara.workspace-lab",
+            true,
+            None,
+            Some(root.join("home"))
+        )
+        .is_err());
+        assert!(workspace_lab_preflight(
+            "com.nanhara.hara.workspace-lab",
+            true,
+            Some(root.clone()),
+            Some(root.join("home"))
+        )
+        .is_ok());
+        assert!(workspace_lab_preflight(
+            "com.nanhara.hara.workspace-lab",
+            true,
+            Some(root.clone()),
+            Some(root.join("project"))
+        )
+        .is_err());
         assert_eq!(attached.port, 12345);
         assert!(attached.synthetic_only);
         assert_eq!(attached.root, root.to_string_lossy());

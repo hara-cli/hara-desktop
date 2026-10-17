@@ -34,7 +34,8 @@ In the native window:
 3. Send `你好`; this is a fixed synthetic response through the actual governed Pi driver.
 4. Send `建立 Pi 同事 Coder`, then approve the inline card once. Declining must create nobody.
 5. Send `委派 Coder 生成 hello.md 並驗證`. Read the completion in main Hara and inspect Coder's
-   separate chat. The file is inside the scoped project under `ROOT/project`, not real projects.
+   separate chat. The file is `ROOT/project/WORKSPACE_ID/hello.md`, not real projects. Every
+   Workspace has a distinct project root; an identical relative filename never reuses another's file.
 6. Quit only this lab, rerun the same command/root, and inspect the same Workspace/connection/
    colleague/transcripts/completion before sending anything. Viewing history does not run models.
 
@@ -47,3 +48,13 @@ This synthetic lane refuses every other model/endpoint/Key before calling it. Th
 only these fixed scenarios; that is an intentional safety boundary, not evidence of real reasoning.
 No Account/enterprise/remote host, channels, Desk, Codex/Claude/OpenCode general-agent driver, or
 legacy history migration is included. Those remain separate work.
+
+Earlier Lab candidates used a shared fixture project. Retain those roots as earlier evidence;
+do not migrate their interrupted RunBindings or artifacts into this candidate. A mismatched
+project-root binding is readable but execution is refused before Provider construction.
+Start a fresh empty fixture for this candidate, then reuse that root for its restart test.
+
+Computer Use may relaunch a quit `.app` while asking for its AX tree. The Lab native preflight
+requires both the explicit fixture root and matching private Home before setup; a GUI-only
+relaunch without these fails closed. After quitting, inspect the owned process receipt instead
+of asking an automation tool to reopen it. The harness always supplies the required environment.
