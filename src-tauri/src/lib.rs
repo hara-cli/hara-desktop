@@ -1083,6 +1083,7 @@ struct WorkspaceDevConnection {
     instance_id: String,
     root: String,
     synthetic_only: bool,
+    execution_mode: String,
 }
 
 fn checked_workspace_dev_directory(path: &Path) -> Result<(), String> {
@@ -1163,7 +1164,8 @@ fn workspace_dev_connection_at(
         .as_str()
         .filter(|id| id.len() == 36)
         .ok_or("Invalid Workspace Dev instance")?;
-    if value.as_object().map(|o| o.len()) != Some(6)
+    let real_key = value["executionMode"] == "ark-real-key";
+    if value.as_object().map(|o| o.len()) != Some(if real_key { 7 } else { 6 })
         || value["schemaVersion"] != 2
         || value["capability"] != "workspace.local-dev.v2"
     {
@@ -1174,7 +1176,8 @@ fn workspace_dev_connection_at(
         token: token.into(),
         instance_id: instance.into(),
         root: root.to_string_lossy().into_owned(),
-        synthetic_only: true,
+        synthetic_only: !real_key,
+        execution_mode: if real_key { "ark-real-key" } else { "synthetic" }.into(),
     })
 }
 
@@ -4905,7 +4908,17 @@ mod native_tests {
         .is_err());
         assert_eq!(attached.port, 12345);
         assert!(attached.synthetic_only);
+        assert_eq!(attached.execution_mode, "synthetic");
         assert_eq!(attached.root, root.to_string_lossy());
+        let mut real_record = record.clone();
+        real_record["executionMode"] = serde_json::json!("ark-real-key");
+        private_write(&discovery_path, &real_record);
+        let real_attached = workspace_dev_connection_at(true, Some(root.clone())).unwrap();
+        assert!(!real_attached.synthetic_only);
+        assert_eq!(real_attached.execution_mode, "ark-real-key");
+        real_record["executionMode"] = serde_json::json!("arbitrary-real-key");
+        private_write(&discovery_path, &real_record);
+        assert!(workspace_dev_connection_at(true, Some(root.clone())).is_err());
         for (field, value) in [
             ("port", serde_json::json!(0)),
             ("port", serde_json::json!(65536)),

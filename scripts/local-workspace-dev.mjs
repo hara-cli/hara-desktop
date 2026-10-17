@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Explicit opt-in native lab. No installed sidecar/discovery, inherited model environment, or Key.
+// Explicit opt-in native lab. Real-key slice requires an explicit file reference; never a Key value.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -15,10 +15,11 @@ export function parseOptions(args) {
   for (let index = 0; index < args.length; index++) {
     const key = args[index];
     if (key === "--smoke" && !options.smoke) options.smoke = true;
-    else if (["--root", "--core"].includes(key) && !options[key.slice(2)] && args[index + 1]) options[key.slice(2)] = args[++index];
-    else throw new Error("Use --core ABSOLUTE_CORE_WORKTREE --root ABSOLUTE_PRIVATE_FIXTURE [--smoke]");
+    else if (["--root", "--core", "--ark-key-file"].includes(key) && !options[key.slice(2)] && args[index + 1]) options[key.slice(2)] = args[++index];
+    else throw new Error("Use --core ABSOLUTE_CORE_WORKTREE --root ABSOLUTE_PRIVATE_FIXTURE [--smoke] [--ark-key-file ABSOLUTE_PRIVATE_FILE]");
   }
   assert.ok(isAbsolute(options.root ?? "") && isAbsolute(options.core ?? ""), "Explicit absolute --core and --root are required");
+  if (options["ark-key-file"]) assert.ok(isAbsolute(options["ark-key-file"]), "Key reference must be an absolute file path, never a Key value");
   return options;
 }
 export function isolatedEnvironment(source, home, native = false) {
@@ -45,7 +46,7 @@ async function assertFree(port) {
   const server = createServer(); await new Promise((resolve, reject) => { server.once("error", () => reject(new Error(`Lab port ${port} is occupied; no process was stopped`))); server.listen(port, "127.0.0.1", resolve); });
   await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 }
-async function authenticate(record) {
+async function authenticate(record, realKey) {
   const socket = new WebSocket(`ws://127.0.0.1:${record.port}`);
   try {
     await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error("Lab handshake timed out")), 10000);
@@ -56,12 +57,15 @@ async function authenticate(record) {
         clearTimeout(timer); if (value.error) reject(new Error("Lab authentication rejected")); else resolve(value.result); }); });
     socket.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { token: record.token } }));
     const result = await initialized;
-    assert.equal(result.syntheticOnly, true); assert.ok(result.capabilities.includes("workspace.local-dev.v2")); return result;
+    assert.equal(result.syntheticOnly, !realKey); assert.ok(result.capabilities.includes("workspace.local-dev.v2"));
+    if (realKey) { assert.equal(result.executionMode, "ark-real-key"); assert.ok(result.capabilities.includes("workspace.real-key-slice.v1")); }
+    return result;
   } finally { socket.close(); }
 }
 export async function main(args) {
   assert.ok(Number(process.versions.node.split(".")[0]) >= 22, "Use the repository's modern Node, not the system Node");
   const options = parseOptions(args), desktop = realpathSync.native(fileURLToPath(new URL("../", import.meta.url))), core = realpathSync.native(options.core);
+  const realKey = Boolean(options["ark-key-file"]), keyArgs = realKey ? ["--ark-key-file", options["ark-key-file"]] : [];
   const root = realpathSync.native(options.root), info = lstatSync(root);
   assert.equal(root, options.root, "Use a canonical root, not a symlink alias");
   assert.ok(info.isDirectory() && !info.isSymbolicLink() && (process.platform === "win32" || (info.uid === process.getuid() && (info.mode & 0o077) === 0)), "Fixture root must be private/owned");
@@ -72,7 +76,7 @@ export async function main(args) {
   const logs = [], log = name => { const fd = openSync(join(evidence, name), "wx", 0o600); logs.push(fd); return fd; };
   let serve, ui, stopping = false;
   const receipt = { schemaVersion: 1, root, core, desktop, coreSha, desktopSha, evidence, node: process.version,
-    identifier: LAB_IDENTIFIER, syntheticOnly: true, realModelCalls: 0, state: "starting" };
+    identifier: LAB_IDENTIFIER, syntheticOnly: !realKey, ...(realKey ? { budgetFile: join(root, ".hara/real-key-budget-v1.json") } : { realModelCalls: 0 }), state: "starting" };
   const recordReceipt = () => writeFileSync(join(evidence, "receipt.json"), JSON.stringify(receipt, null, 2) + "\n", { mode: 0o600 });
   const stop = async () => {
     if (stopping) return; stopping = true;
@@ -96,10 +100,10 @@ export async function main(args) {
     assert.equal(build.status, 0, "Candidate Core build failed; inspect private core-build.log");
     const entry = join(core, "dist/cli.js"); receipt.coreEntrySha256 = createHash("sha256").update(readFileSync(entry)).digest("hex");
     const home = join(root, "home"), env = isolatedEnvironment(process.env, home), engineLog = log("engine.log");
-    const initialized = spawnSync(process.execPath, [entry, "workspace-dev", "init", "--root", root], { cwd: core, env, stdio: ["ignore", engineLog, engineLog], timeout: 15000 });
+    const initialized = spawnSync(process.execPath, [entry, "workspace-dev", "init", "--root", root, ...keyArgs], { cwd: core, env, stdio: ["ignore", engineLog, engineLog], timeout: 15000 });
     assert.equal(initialized.status, 0, "Fixture initialization refused; existing files were not adopted");
     if (stopping) return;
-    serve = spawn(process.execPath, [entry, "workspace-dev", "serve", "--root", root, "--port", "0"], { cwd: core, env, stdio: ["ignore", engineLog, engineLog] });
+    serve = spawn(process.execPath, [entry, "workspace-dev", "serve", "--root", root, "--port", "0", ...keyArgs], { cwd: core, env, stdio: ["ignore", engineLog, engineLog] });
     let startupError; serve.once("error", error => { startupError = error; });
     const discovery = join(home, ".hara/workspace-local-dev/serve-v2.json"), deadline = Date.now() + 20000;
     let record;
@@ -115,9 +119,10 @@ export async function main(args) {
     if (stopping) return;
     assert.ok(record && !startupError, "Isolated Core did not become ready; inspect private engine.log");
     assert.equal(record.capability, "workspace.local-dev.v2"); assert.ok(/^[a-f0-9]{64}$/.test(record.token));
-    await authenticate(record); if (stopping) return;
+    await authenticate(record, realKey); if (stopping) return;
     receipt.enginePid = serve.pid; receipt.enginePort = record.port; receipt.state = "ready"; recordReceipt();
-    console.log(JSON.stringify({ root, evidence, receipt: join(evidence, "receipt.json"), coreSha, desktopSha, syntheticOnly: true, realModelCalls: 0 }));
+    console.log(JSON.stringify({ root, evidence, receipt: join(evidence, "receipt.json"), coreSha, desktopSha, syntheticOnly: !realKey,
+      ...(realKey ? { budgetFile: receipt.budgetFile } : { realModelCalls: 0 }) }));
     if (options.smoke) return;
     const uiLog = log("desktop.log"), nativeEnv = isolatedEnvironment(process.env, home, true);
     nativeEnv.CARGO_TARGET_DIR = process.env.HARA_WORKSPACE_LAB_TARGET ?? join(evidence, "target");

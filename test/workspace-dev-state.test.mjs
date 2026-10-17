@@ -98,3 +98,14 @@ test("read-only refresh never sends/resumes; missing connection refuses executio
   await f.model.refresh(); f.model.setDraft("hello"); await f.model.send(); await f.model.send(true);
   assert.equal(f.calls.some(call => call.method.startsWith("workspace.session.")), false); assert.ok(f.model.getSnapshot().error.includes("合成連接"));
 });
+test("real mode is bound to native attachment and never accepts a synthetic directory or transcript", async () => {
+  const calls = [], handlers = { "workspace.list": () => ({ revision: 1, activeWorkspaceId: null, workspaces: [], syntheticOnly: true }) };
+  const rpc = { async request(method, params) { calls.push({ method, params }); return handlers[method](); } };
+  const model = new WorkspaceDevModel(rpc, () => "nonce", false);
+  await assert.rejects(model.loadDirectory(), /模式不符/);
+  assert.equal(model.getSnapshot().directory, null);
+  handlers["workspace.list"] = () => ({ revision: 1, activeWorkspaceId: null, workspaces: [{ workspaceId: "A", active: true }], syntheticOnly: false, executionMode: "ark-real-key" });
+  await model.loadDirectory(); handlers["workspace.select"] = () => snapshot();
+  await model.selectWorkspace("A"); assert.equal(model.getSnapshot().workspace, null);
+  assert.ok(model.getSnapshot().error.includes("原視圖"));
+});

@@ -3977,3 +3977,28 @@ the live light-theme transcript at narrow and wide widths before release.
 - Last-Seen: 2026-09-30
 
 ---
+
+## [ERR-20261017-WORKSPACE-REAL-KEY-GATES] Native Lab and strip-only test setup
+
+**Logged**: 2026-10-17
+**Priority**: low
+**Status**: resolved
+**Area**: tests
+
+### Summary
+
+The new mode flag initially used a TypeScript constructor parameter property; production `tsc` passed,
+but the repository's Node strip-only test loader rejected it. Replaced with an explicit class field;
+kept the original test command and assertions. A focused transform-types run alone was insufficient.
+An initial native Cargo test omitted the Lab's bundle override and failed because no installed sidecar
+exists in this isolated checkout. Rerun with the existing explicit Lab identifier and externalBin=[],
+not by copying/installing a production sidecar. One mixed-repo read used the Desktop cwd for Core files;
+resolved paths before retrying, with no file edits from that failed read.
+
+### Metadata
+
+- Related Files: `src/workspace-dev-state.ts`, `scripts/local-workspace-dev.mjs`
+- Evidence: `/private/tmp/hara-real-key-acceptance-20261017.yB2RBp/desktop-tests.log`
+- Pattern-Key: workspace_lab.verify_exact_strip_loader_and_native_override
+
+---

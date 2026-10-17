@@ -1,15 +1,18 @@
 import type { WorkspaceDevRpc } from "./workspace-dev-state";
-export interface WorkspaceDevConnection { port: number; token: string; instanceId: string; root: string; syntheticOnly: true }
+export interface WorkspaceDevConnection { port: number; token: string; instanceId: string; root: string; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" }
 /** One listener per socket, bounded pending requests, no token persistence/logging or legacy fallback. */
 export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
   private serial = 0;
   private readonly pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   private readonly socket: WebSocket;
   private readonly onDisconnect: () => void;
+  private readonly realKey: boolean;
   private onChanged: (workspaceId: string) => void = () => {};
   constructor(info: WorkspaceDevConnection, onDisconnect: () => void) {
     this.onDisconnect = onDisconnect;
-    if (!Number.isSafeInteger(info.port) || info.port < 1 || info.port > 65535 || !/^[a-f0-9]{64}$/.test(info.token) || info.syntheticOnly !== true) throw new Error("不是受支援的本機 Workspace Dev。");
+    this.realKey = info.syntheticOnly === false && info.executionMode === "ark-real-key";
+    if (!Number.isSafeInteger(info.port) || info.port < 1 || info.port > 65535 || !/^[a-f0-9]{64}$/.test(info.token)
+      || (!this.realKey && info.syntheticOnly !== true) || (info.syntheticOnly === true && info.executionMode && info.executionMode !== "synthetic")) throw new Error("不是受支援的本機 Workspace Dev。");
     this.socket = new WebSocket(`ws://127.0.0.1:${info.port}`);
     this.socket.addEventListener("message", event => {
       let value: { id?: number; method?: string; params?: { workspaceId?: string }; result?: unknown; error?: { message?: string; code?: number } };
@@ -30,8 +33,11 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       const failed = () => { clearTimeout(timer); this.socket.removeEventListener("open", opened); this.socket.removeEventListener("error", failed); reject(new Error("本機 Workspace Dev 無法連接")); };
       const timer = setTimeout(failed, 10000); this.socket.addEventListener("open", opened, { once: true }); this.socket.addEventListener("error", failed, { once: true });
     });
-    const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean }>("initialize", { token });
-    if (!result.capabilities?.includes("workspace.local-dev.v2") || result.syntheticOnly !== true) { this.close(); throw new Error("引擎不支援這個獨立 Workspace Dev；沒有切換到舊連接。"); }
+    const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean; executionMode?: string }>("initialize", { token });
+    if (!result.capabilities?.includes("workspace.local-dev.v2") || (this.realKey
+      ? result.syntheticOnly !== false || result.executionMode !== "ark-real-key" || !result.capabilities.includes("workspace.real-key-slice.v1")
+      : result.syntheticOnly !== true || (result.executionMode && result.executionMode !== "synthetic"))) {
+      this.close(); throw new Error("引擎不支援這個獨立 Workspace Dev；沒有切換到舊連接。"); }
   }
   setChangedListener(listener: (workspaceId: string) => void): void { this.onChanged = listener; }
   request<T>(method: string, params: Record<string, unknown>): Promise<T> {

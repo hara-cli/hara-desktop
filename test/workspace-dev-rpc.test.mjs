@@ -51,3 +51,15 @@ test("disconnect rejects every pending request without automatic resend or recon
   const replies = Promise.allSettled([one, two]); f.socket.close(); assert.ok((await replies).every(row => row.status === "rejected"));
   assert.equal(f.disconnects(), 1); assert.equal(Socket.instances.length, 1); assert.equal(f.socket.sent.length, 3);
 });
+test("real-key attachment requires matching private native mode and exact new capability, never downgrades", async () => {
+  for (const result of [
+    { capabilities: ["workspace.local-dev.v2"], syntheticOnly: false, executionMode: "ark-real-key" },
+    { capabilities: ["workspace.local-dev.v2", "workspace.real-key-slice.v1"], syntheticOnly: true, executionMode: "synthetic" },
+    { capabilities: ["workspace.local-dev.v2", "workspace.real-key-slice.v1"], syntheticOnly: false, executionMode: "ark-real-key" },
+  ]) {
+    const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "ark-real-key" }, () => {});
+    const socket = Socket.instances.at(-1), ready = client.initialize(info().token);
+    const checked = result.syntheticOnly === false && result.capabilities.length === 2 ? ready : assert.rejects(ready, /不支援/);
+    socket.open(); await tick(); socket.reply(socket.sent[0].id, result); await checked; client.close();
+  }
+});
