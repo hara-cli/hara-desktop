@@ -3890,6 +3890,21 @@ the lock to a clean-looking value for development convenience.
 
 ---
 
+## [ERR-20261017-WORKSPACE-LAB-IPV4] native startup waited on a different loopback address
+
+**Logged**: 2026-10-17
+**Priority**: medium
+**Status**: resolved
+**Area**: native-dev
+
+The first native Lab launch waited for `http://127.0.0.1:1437`, while Vite's default localhost
+listener could be IPv6-only on macOS. Existing frontend/unit builds did not catch this. Bind
+the opt-in Lab's frontend and HMR explicitly to IPv4 loopback, keep normal Dev host semantics
+unchanged, and cover both configurations. Never resolve this by killing another Dev or widening
+the listen address to all interfaces. Native verification continues after the fix.
+
+---
+
 ## [ERR-20261017-WORKSPACE-LAB-REGRESSION-ENV] full Desktop tests need local loopback permission
 
 **Logged**: 2026-10-17

@@ -26,12 +26,16 @@ export default defineConfig(async () => ({
   server: {
     port: workspaceDev ? 1437 : 1420,
     strictPort: true,
-    host: host || false,
-    hmr: host
+    // The lab's native devUrl/discovery is IPv4 loopback. macOS localhost can bind only ::1;
+    // keep both endpoints identical rather than letting Tauri wait forever for 127.0.0.1.
+    host: workspaceDev ? "127.0.0.1" : host || false,
+    hmr: workspaceDev
+      ? { protocol: "ws", host: "127.0.0.1", port: 1438 }
+      : host
       ? {
           protocol: "ws",
           host,
-          port: workspaceDev ? 1438 : 1421,
+          port: 1421,
         }
       : undefined,
     watch: {
