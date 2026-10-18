@@ -1,5 +1,45 @@
 # Errors
 
+## [ERR-20261018-SETTINGS-NATIVE-HARNESS] resolved, evidence retained
+
+- Bare Tauri Dev binaries are not selectable by the app automation inventory. Use an exact
+  executable + PID guarded native accessibility tool, never an ambiguous Hara bundle/name.
+- A first harness made process HOME equal HARA_DESKTOP_DEV_HOME; product correctly refused that
+  unsafe identity. Use two private directories, preserve the check, and never use the real Home as
+  a workaround. Close stdin safely or use a PTY; otherwise an owned fixture server can outlive its
+  command session. Delete only its exact test keychain/key directory after owned processes exit.
+- A new native test referenced a helper private to another Rust module. Gave it a unique owned
+  temporary directory; the corrected Rust suite passed 59 tests, with one original ignored test.
+- A shared Dev window changed to a runtime registration confirmation without this driver's action.
+  Paused UI clicks and requested coordination; discard screenshots whose actual heading differs
+  from the intended stage. Missing controls during concurrent use are not evidence of a product bug.
+
+
+## [ERR-20261018-SETTINGS-TEST-ENVIRONMENT] native and strip-only test boundaries
+
+**Logged**: 2026-10-18
+**Priority**: medium
+**Status**: resolved in focused gates; final full gate recorded separately
+**Area**: tests
+
+### Summary
+
+The first Desktop run mixed denied loopback sockets with obsolete navigation contracts and a new
+TypeScript constructor parameter-property unsupported by Node's strip-only test runner. Keep explicit
+class fields for directly imported TS modules; update contracts to the approved full-window navigation,
+not weaker assertions. Never enlarge the old Serve timeout.
+
+The first Rust gate also failed in clang: private HOME could not resolve DARWIN_USER_TEMP_DIR and the
+sandbox denied a temporary compiler file. An explicit task-private TMPDIR and approved local process
+access ran the same Rust gate: 58 pass / 0 fail / 1 pre-existing ignored. No signing Key was accessed.
+
+### Prevention
+
+Use exact repo cwd/rg-resolved paths, pinned toolchains, task-private HOME/TMPDIR and complete bounded
+logs. A sandbox failure is not product evidence; preserve it separately from a properly scoped test run.
+
+---
+
 ## [ERR-20261018-SETTINGS-NATIVE-TEST-PREP] Private temp and offline test resources
 
 **Logged**: 2026-10-18

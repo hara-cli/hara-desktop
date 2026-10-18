@@ -5,12 +5,13 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(windows)]
 use tauri::Manager;
+use tauri_plugin_updater::UpdaterExt;
 
 #[cfg(test)]
 mod brand_asset_tests;
 mod command_line_probe;
+mod update_channel;
 #[cfg(windows)]
 mod windows_process;
 
@@ -148,6 +149,38 @@ fn macos_updater_target(os: &str, arch: &str) -> Option<&'static str> {
 fn desktop_updater_target() -> Option<&'static str> {
     macos_updater_target(std::env::consts::OS, std::env::consts::ARCH)
 }
+
+#[tauri::command]
+fn desktop_update_info() -> serde_json::Value {
+    serde_json::json!({ "desktop": env!("CARGO_PKG_VERSION"), "engine": BUNDLED_CLI_VERSION.trim(), "channel": update_channel::channel(), "arch": std::env::consts::ARCH })
+}
+
+fn effective_update_endpoints() -> Result<Vec<String>, String> {
+    #[cfg(debug_assertions)]
+    if let Ok(value) = std::env::var("HARA_DESKTOP_UPDATER_TEST_ENDPOINT") {
+        return Ok(vec![update_channel::test_endpoint(&value)?]);
+    }
+    update_channel::endpoints(update_channel::channel())
+}
+
+#[tauri::command]
+async fn desktop_check_update<R: tauri::Runtime>(webview: tauri::Webview<R>) -> Result<Option<serde_json::Value>, String> {
+    let urls = effective_update_endpoints()?.into_iter().map(|value| tauri::Url::parse(&value).map_err(|_| "Invalid updater endpoint".to_string())).collect::<Result<Vec<_>, _>>()?;
+    let mut builder = webview.updater_builder().endpoints(urls).map_err(|_| "Hara update endpoint unavailable".to_string())?
+        .timeout(std::time::Duration::from_secs(20));
+    if let Some(target) = desktop_updater_target() { builder = builder.target(target); }
+    let updater = builder.build().map_err(|_| "Hara updater unavailable".to_string())?;
+    let update = updater.check().await.map_err(|_| "Hara update check failed; current version remains usable".to_string())?;
+    Ok(update.map(|update| {
+        let current_version = update.current_version.clone(); let version = update.version.clone();
+        let body = update.body.clone(); let date = update.date.map(|date| date.to_string()); let raw_json = update.raw_json.clone();
+        let rid = webview.resources_table().add(update);
+        serde_json::json!({ "rid": rid, "currentVersion": current_version, "version": version, "body": body, "date": date, "rawJson": raw_json })
+    }))
+}
+
+#[tauri::command]
+fn desktop_restart_for_update<R: tauri::Runtime>(app: tauri::AppHandle<R>) { app.restart(); }
 
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -1248,6 +1281,30 @@ fn workspace_connection_at(root: &Path) -> Result<WorkspaceDevConnection, String
 }
 
 struct OwnedWorkspaceStartup { root: PathBuf, child: std::process::Child }
+
+// Read-only discovery roots belong to the OS account, not the data/SDK HOME or bundle identifier.
+// getpwuid_r is deliberate: NSHomeDirectory/os::homedir may reflect an isolated process HOME.
+#[cfg(unix)]
+fn os_account_identity() -> Result<(PathBuf, Option<std::ffi::OsString>), String> {
+    use std::os::unix::ffi::OsStrExt;
+    let mut record: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    let mut buffer = vec![0u8; 65536];
+    let code = unsafe { libc::getpwuid_r(libc::geteuid(), &mut record, buffer.as_mut_ptr().cast(), buffer.len(), &mut result) };
+    if code != 0 || result.is_null() || record.pw_dir.is_null() { return Err("OS account Home unavailable; no data-Home fallback".into()); }
+    let home = PathBuf::from(std::ffi::OsStr::from_bytes(unsafe { std::ffi::CStr::from_ptr(record.pw_dir) }.to_bytes()));
+    if !home.is_absolute() || home.parent().is_none() { return Err("Invalid OS account Home".into()); }
+    let shell = if record.pw_shell.is_null() { None } else { Some(std::ffi::OsStr::from_bytes(unsafe { std::ffi::CStr::from_ptr(record.pw_shell) }.to_bytes()).to_os_string()) };
+    Ok((home, shell))
+}
+#[cfg(not(unix))]
+fn os_account_identity() -> Result<(PathBuf, Option<std::ffi::OsString>), String> {
+    Ok((resolve_user_home(std::env::var_os("HOME").map(PathBuf::from), std::env::var_os("USERPROFILE").map(PathBuf::from), cfg!(windows))?, None))
+}
+fn legacy_source_home(os_home: &Path, debug: bool, requested: Option<PathBuf>) -> Result<PathBuf, String> {
+    if debug { if let Some(source) = requested { checked_workspace_dev_directory(&source)?; return Ok(source); } }
+    Ok(os_home.to_path_buf())
+}
 // Outcome-unknown startup is retained. Retrying attachment must not spawn a second Core.
 static WORKSPACE_START_LOCK: std::sync::Mutex<Option<OwnedWorkspaceStartup>> = std::sync::Mutex::new(None);
 
@@ -1294,9 +1351,13 @@ fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
     let search_path = std::env::var_os("PATH"); let system_root = std::env::var_os("SystemRoot");
     command.env_clear().env("HOME", root.join("home")).env("USERPROFILE", root.join("home"))
         .env("HARA_UPDATE_CHECK", "0").env("NO_COLOR", "1");
-    // Host-only discovery/import origin. It is never an SDK HOME or a renderer-selected path.
+    // Writes remain in the selected stable data Home; the separate sources are read-only and are
+    // never renderer parameters. A debug fixture can supply a sanitized legacy-copy Home.
     command.env("HARA_WORKSPACE_HOST_HOME", user_home()?);
-    if let Some(shell) = std::env::var_os("SHELL") { command.env("HARA_WORKSPACE_HOST_SHELL", shell); }
+    let (os_home, shell) = os_account_identity()?;
+    command.env("HARA_WORKSPACE_DISCOVERY_HOME", &os_home);
+    command.env("HARA_WORKSPACE_LEGACY_SOURCE_HOME", legacy_source_home(&os_home, cfg!(debug_assertions), std::env::var_os("HARA_DESKTOP_LEGACY_SOURCE_HOME").map(PathBuf::from))?);
+    if let Some(shell) = shell { command.env("HARA_WORKSPACE_HOST_SHELL", shell); }
     if let Some(value) = search_path { command.env("PATH", value); }
     if let Some(value) = system_root { command.env("SystemRoot", value); }
     command.args(["workspace", "serve", "--root"]).arg(&root).args(["--port", "0"])
@@ -3471,7 +3532,18 @@ fn release_updater_endpoints(config: &tauri::utils::config::Config) -> Result<Ve
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let context = tauri::generate_context!();
+    let mut context = tauri::generate_context!();
+    // Development-only signed fixture: production ignores these variables and embeds the one
+    // existing public key. No private signing material is ever accepted by the native app.
+    #[cfg(debug_assertions)]
+    if std::env::var("HARA_DESKTOP_UPDATER_TEST_ENDPOINT").is_ok() {
+        if effective_update_endpoints().is_err() { eprintln!("Invalid local updater fixture"); return; }
+        let Ok(pubkey) = std::env::var("HARA_DESKTOP_UPDATER_TEST_PUBKEY") else { eprintln!("Missing fixture public key"); return; };
+        if let Some(value) = context.config_mut().plugins.0.get_mut("updater") {
+            value["pubkey"] = serde_json::json!(pubkey);
+            value["dangerousInsecureTransportProtocol"] = serde_json::json!(true);
+        }
+    }
     if workspace_lab_preflight(
         &context.config().identifier,
         cfg!(debug_assertions),
@@ -3487,22 +3559,30 @@ pub fn run() {
     // runtime config is architecture-safe; searching Mach-O/PE/ELF bytes is not, because linkers may
     // split or transform string data without changing the value Tauri reconstructs at runtime.
     if std::env::args_os().any(|arg| arg == UPDATER_ENDPOINT_SMOKE_ARG) {
-        let endpoints = release_updater_endpoints(context.config())
+        let configured = release_updater_endpoints(context.config())
             .expect("release updater endpoint diagnostics require valid generated configuration");
-        let expected = vec![
+        let expected_config = vec![
             FIRST_PARTY_UPDATER_ENDPOINT.to_string(),
             GITHUB_UPDATER_ENDPOINT.to_string(),
         ];
-        if endpoints != expected {
+        if configured != expected_config {
             eprintln!("generated updater endpoints do not match the release contract");
             std::process::exit(2);
         }
+        let endpoints = update_channel::endpoints(update_channel::channel()).expect("valid update channel");
         println!(
             "{}",
             serde_json::to_string(&endpoints)
                 .expect("release updater endpoints must serialize as JSON")
         );
         return;
+    }
+
+    // Keep the plugin's own check API on the same channel too. This is in-memory build-channel
+    // routing, not a new public key or a user-editable endpoint in production configuration.
+    let Ok(endpoints) = effective_update_endpoints() else { eprintln!("Invalid Hara update routing"); return; };
+    if let Some(updater) = context.config_mut().plugins.0.get_mut("updater") {
+        updater["endpoints"] = serde_json::json!(endpoints);
     }
 
     // Tauri's Windows updater intentionally persists its installer directory before exiting to let
@@ -3572,6 +3652,9 @@ pub fn run() {
             inspect_desktop_update_storage,
             clean_desktop_update_storage,
             desktop_updater_target,
+            desktop_update_info,
+            desktop_check_update,
+            desktop_restart_for_update,
             classify_attachment_paths,
             write_temp_image,
             read_presentation_image,
@@ -4145,6 +4228,20 @@ mod attachment_path_tests {
 #[cfg(test)]
 mod native_tests {
     use super::*;
+
+    #[test]
+    fn discovery_identity_and_legacy_copy_are_independent_of_writable_data_home() {
+        let (home, _) = os_account_identity().unwrap();
+        assert!(home.is_absolute()); assert!(home.parent().is_some());
+        // Release builds ignore a fixture copy; debug validates it before any source read.
+        assert_eq!(legacy_source_home(&home, false, Some(PathBuf::from("/missing-fixture"))).unwrap(), home);
+        assert!(legacy_source_home(&home, true, Some(PathBuf::from("/missing-fixture"))).is_err());
+        let source = std::env::temp_dir().canonicalize().unwrap().join(format!("hara-discovery-source-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir(&source).unwrap();
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).unwrap(); }
+        assert_eq!(legacy_source_home(&home, true, Some(source.clone())).unwrap(), source);
+        fs::remove_dir_all(source).unwrap();
+    }
 
     #[test]
     fn workspace_formal_entry_is_default_and_rollback_is_explicit() {

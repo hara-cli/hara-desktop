@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { Update } from "@tauri-apps/plugin-updater";
 import {
   assertMacUpdaterManifestTarget,
   type MacUpdaterTarget,
@@ -18,7 +18,8 @@ export type { MacUpdaterTarget } from "./desktop-updater-policy";
  */
 export async function checkDesktopUpdate(): Promise<Update | null> {
   const target = await invoke<MacUpdaterTarget | null>("desktop_updater_target");
-  const candidate = await check(target ? { target } : undefined);
+  const metadata = await invoke<ConstructorParameters<typeof Update>[0] | null>("desktop_check_update");
+  const candidate = metadata ? new Update(metadata) : null;
   if (!candidate || !target) return candidate;
   try {
     assertMacUpdaterManifestTarget(candidate.rawJson, target);

@@ -96,20 +96,21 @@ test("production sidebar omits LAB even before directory arrival, while explicit
 });
 test("real v1 screen retains Hara, colleague creation, collapsed execution and task closure without old feature entrypoints", () => {
   const html = renderScreen(view({ approval: true }));
-  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /查看執行詳情/, /已核驗結果/, /空間設定/, /發訊息給 Hara/]) assert.match(html, marker);
+  for (const marker of [/主 Hara/, /Coder/, /工作空间主导航/, /任务与工单/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /查看執行詳情/, /已核驗結果/, /⚙ 设置/, /浏览器扩展/, /發訊息給 Hara/]) assert.ok(marker.test(html), `v1 contract retained: ${marker}`);
+  assert.equal(html.includes("AI 同事"), false);
   assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|頻道|频道|deliverables|WORKSPACE LAB/);
 });
 test("real v1 screen preserves explicit resume and never opens a legacy surface for blocked tasks", () => {
   const html = renderScreen(view({ state: "blocked" })); assert.match(html, /上次任務尚未完成/); assert.match(html, /繼續原任務/);
   assert.doesNotMatch(html, /群组|MailboxSettings|WorkspaceCollaboration|WORKSPACE LAB/);
 });
-test("v1 exposes workspace schedules and skills in the actual sidebar without loading global legacy pages", () => {
+test("v1 keeps schedules and skills in full-window settings, not the sidebar or global legacy pages", () => {
   const html = renderScreen(view());
-  assert.match(html, /aria-label="工作空間功能"/); assert.match(html, />定時任務<\/button>/); assert.match(html, />技能<\/button>/);
+  assert.equal(/aria-label="工作空間功能"|>定時任務<\/button>|>技能<\/button>/.test(html), false);
   const source = read("src/WorkspaceLocalDev.tsx");
-  assert.match(source, /setFeature\("schedules"\)/); assert.match(source, /setFeature\("skills"\)/);
-  assert.match(source, /<WorkspaceFeaturePanel key=\{`\$\{workspace\.workspaceId\}:\$\{feature\}`\}/);
-  assert.doesNotMatch(source, /AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/);
+  assert.equal(source.includes('setSettings("schedules")'), true); assert.equal(source.includes("<WorkspaceSettings"), true);
+  const settings = read("src/WorkspaceSettings.tsx"); assert.equal(settings.includes('kind={page}'), true); assert.equal(settings.includes('"schedules", "skills"'), true);
+  assert.equal(/AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/.test(source + settings), false);
 });
 test("legacy feature code is retained instead of deleting its stored resources or backend contract", () => {
   const app = read("src/App.tsx"), mailbox = read("src/MailboxSettings.tsx");

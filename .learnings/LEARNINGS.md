@@ -1,5 +1,26 @@
 # Hara Desktop Learnings
 
+## [LRN-20261018-SETTINGS-UPDATE-BOUNDARIES] best_practice
+
+**Logged**: 2026-10-18
+**Priority**: high
+**Status**: implemented on isolated settings feat branch; not released
+**Area**: frontend
+
+- Full-window settings owns a second authenticated RPC view. Switching its Workspace must not call the
+  foreground catalog-selection route; stale form responses and confirmations remain generation/epoch-fenced.
+- Keep one updater controller across settings/chat. Cleanup and restart must tolerate React StrictMode;
+  a Finished download event is not a verified signature. Only successful native download verification can
+  reach ready, and only a human restart plus atomic Host idle lease can reach install.
+- Build-time candidate/stable routing is native and fail-closed. Loopback endpoint/public-key overrides
+  are debug-only fixture inputs; do not alter the embedded production public key or stable tag gate.
+- The signing helper clears inherited key/path variables, reads the fixed service/account from Keychain,
+  and exports only inside the build subprocess. Missing credentials must not read a plaintext fallback.
+- Dora v3 browser control/isolation suggestions await Jeff; retain the old loopback display extension,
+  not unapproved ordinary-site/CDP capabilities. Preserve existing theme tokens and pending-scope decisions.
+
+---
+
 ## [LRN-20261018-CONNECTION-MIGRATION-NOTICE] correction
 
 **Logged**: 2026-10-18

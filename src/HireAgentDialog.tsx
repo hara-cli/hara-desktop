@@ -81,7 +81,7 @@ export default function HireAgentDialog({ locale, saving, error, blueprint, runt
             <small>{blueprint ? "PERSONAL · BLUEPRINT ONBOARDING" : "PERSONAL · CUSTOM RECRUITMENT"}</small>
             <strong id="hire-agent-title">{blueprint
               ? (locale === "zh" ? `为${talentText(blueprint.name, locale)}办理入职` : `Onboard ${talentText(blueprint.name, locale)}`)
-              : (locale === "zh" ? "创建一位 AI 同事" : "Create an AI colleague")}</strong>
+              : (locale === "zh" ? "创建一位同事" : "Create a Hara colleague")}</strong>
             <p>{blueprint
               ? (locale === "zh" ? "蓝图只提供角色起点；用户名、公开名片与私有工作说明都可以在入职前调整。" : "The blueprint is a starting point. Adjust the username, public profile, and private brief before hiring.")
               : (locale === "zh" ? "创建独立身份与私有工作提示词；以后可随时修改名片或解除雇佣。" : "Create an independent identity and private work brief. You can edit the profile or dismiss the Agent later.")}</p>

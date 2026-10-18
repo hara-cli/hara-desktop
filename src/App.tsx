@@ -7748,7 +7748,7 @@ export default function App() {
               {activeAgent ? <AgentPortrait agentRef={activeAgent.ref} name={activeAgent.name} identity={activeAgent.identity} systemRole={activeAgent.systemRole} size="small" /> : null}
               <span><b>{activeAgent ? agentDisplayName(activeAgent) : "Hara"}</b>
                 <small>{active && busy[active] ? (locale === "zh" ? "正在跟进…" : "Following up…")
-                  : activeAgent ? agentPublicTitle(activeAgent) : (locale === "zh" ? "你的 AI 同事" : "Your AI colleague")}</small></span>
+                  : activeAgent ? agentPublicTitle(activeAgent) : (locale === "zh" ? "你的 Hara 同事" : "Your Hara colleague")}</small></span>
               <IconChevronDown size={13} />
             </button>
           </div>

@@ -43,7 +43,8 @@ function die(message) {
 
 function validateTag(tag) {
   try {
-    requireStableTag(tag, version);
+    if (channel === "stable") requireStableTag(tag, version);
+    else if (!/^\d+\.\d+\.\d+(?:-rc\.[1-9]\d*)?$/.test(version) || tag !== `v${version}`) throw new Error("candidate tag must match the exact package version");
   } catch (error) {
     die(error instanceof Error ? error.message : String(error));
   }
@@ -84,7 +85,7 @@ function signatureFor(directory, artifact) {
 }
 
 function expectedPlatforms(directory, tag) {
-  const baseUrl = `https://github.com/${repository}/releases/download/${tag}`;
+  const baseUrl = channel === "candidate" ? `https://assets.nanhara.com/hara/desktop/candidate/${version}` : `https://github.com/${repository}/releases/download/${tag}`;
   return Object.fromEntries(
     platformAssets.map(([platform, artifact]) => [
       platform,
@@ -115,11 +116,16 @@ function assertManifest(manifest, directory, tag) {
   }
 }
 
-const [, , command, directoryArgument, tag, fourth] = process.argv;
+const args = process.argv.slice(2);
+const channelIndex = args.indexOf("--channel");
+let channel = "stable";
+if (channelIndex !== -1) { channel = args[channelIndex + 1]; args.splice(channelIndex, 2); }
+if (!["stable", "candidate"].includes(channel) || args.includes("--channel")) die("--channel must be stable or candidate");
+const [command, directoryArgument, tag, fourth] = args;
 if (!command || !directoryArgument || !tag || !["build", "validate"].includes(command)) {
   console.error("usage:");
-  console.error("  node scripts/updater-manifest.mjs build <asset-directory> <tag> <pub-date>");
-  console.error("  node scripts/updater-manifest.mjs validate <asset-directory> <tag> [manifest-path]");
+  console.error("  node scripts/updater-manifest.mjs build <asset-directory> <tag> <pub-date> [--channel stable|candidate]");
+  console.error("  node scripts/updater-manifest.mjs validate <asset-directory> <tag> [manifest-path] [--channel stable|candidate]");
   process.exit(2);
 }
 

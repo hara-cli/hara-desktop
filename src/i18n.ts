@@ -927,7 +927,7 @@ const dict = {
     skillBuilderSafetyTitle: "You approve before saving",
     skillBuilderSafetyDescription: "Hara previews the skill first, removes secrets and machine-specific details, then writes it only after your confirmation.",
     skillCreationPrompt: "I want to create a reusable Hara skill. Ask no more than four short questions to understand the scenario, when it should trigger, the steps or constraints, and where it should be saved (personal or project). After I answer, show a preview with name, description, instructions, and scope. Do not write any file yet. Only after I explicitly confirm may you use skill_create. Before saving, remove API keys, tokens, passwords, email addresses, and machine-specific absolute paths. If I choose a project skill and this conversation is not in that project, explain that and ask me to open the target project first.",
-    agentCreationPrompt: "I'd like to create an AI colleague in this Workspace. First ask what work I want them to own; suggest an existing colleague if suitable. Ask only for missing details. Preview their name, responsibilities and standing instructions, then wait for my explicit confirmation and the creation approval card. The Host assigns the default Runtime (built-in Pi when available); do not add Runtime fields to agent_create or invent availability. If I need another Runtime, direct me to manual colleague setup instead. Creating a colleague grants no computer, coding, credential or tool permissions, and must not change existing Agents or running tasks.",
+    agentCreationPrompt: "I'd like to create a Hara colleague in this Workspace. First ask what work I want them to own; suggest an existing colleague if suitable. Ask only for missing details. Preview their name, responsibilities and standing instructions, then wait for my explicit confirmation and the creation approval card. The Host assigns the default Runtime (built-in Pi when available); do not add Runtime fields to agent_create or invent availability. If I need another Runtime, direct me to manual colleague setup instead. Creating a colleague grants no computer, coding, credential or tool permissions, and must not change existing Agents or running tasks.",
     availableSkills: "Available skills",
     availableSkillsHint: "Personal skills work across projects. Project skills travel with that project. Capability skills come from installed packages.",
     noSkills: "No custom or capability skills are available yet.",
@@ -1931,7 +1931,7 @@ const dict = {
     skillBuilderSafetyTitle: "确认后才会保存",
     skillBuilderSafetyDescription: "Hara 会先展示技能预览，移除密钥和本机专属信息；只有你明确确认后才写入文件。",
     skillCreationPrompt: "我想创建一个可复用的 Hara 技能。请先用不超过 4 个简短问题了解使用场景、触发时机、操作步骤或限制，以及保存范围（个人或项目）。我回答后，先展示包含名称、描述、操作说明和范围的预览，不要立即写文件。只有我明确确认后，才可以调用 skill_create。保存前请移除 API Key、令牌、密码、邮箱和本机绝对路径。如果我选择项目技能，而当前会话不在目标项目中，请先说明并让我打开对应项目。",
-    agentCreationPrompt: "我想在当前工作空间创建一位 AI 同事。先问我希望他负责什么；如果现有同事合适，先建议复用，只补问缺少的信息。先预览名字、职责和长期指令，等我明确确认，并通过创建审批卡片后再创建。Runtime 由宿主绑定预设值（内建 Pi 可用时使用）；不要给 agent_create 添加 Runtime 字段，也不要猜测可用性。如需其他 Runtime，请引导我使用手动配置同事。创建同事不授予电脑、编码、密钥或工具权限，也不能修改既有 Agent 或正在执行的任务。",
+    agentCreationPrompt: "我想在当前工作空间创建一位同事。先问我希望他负责什么；如果现有同事合适，先建议复用，只补问缺少的信息。先预览名字、职责和长期指令，等我明确确认，并通过创建审批卡片后再创建。Runtime 由宿主绑定预设值（内建 Pi 可用时使用）；不要给 agent_create 添加 Runtime 字段，也不要猜测可用性。如需其他 Runtime，请引导我使用手动配置同事。创建同事不授予电脑、编码、密钥或工具权限，也不能修改既有 Agent 或正在执行的任务。",
     availableSkills: "可用技能",
     availableSkillsHint: "个人技能可跨项目使用，项目技能随项目共享，能力技能来自已安装的能力包。",
     noSkills: "还没有自定义技能或能力技能。",
@@ -2015,10 +2015,13 @@ const dict = {
 
 export type Key = keyof typeof dict.en;
 
+/** Generic zh uses the existing Simplified Chinese dictionary. Full language switching is separate. */
+export function localeFromSystem(language: string): Locale { return language.toLowerCase().startsWith("zh") ? "zh" : "en"; }
+
 export function detectLocale(): Locale {
   const saved = localStorage.getItem("hara.locale");
   if (saved === "en" || saved === "zh") return saved;
-  return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+  return localeFromSystem(navigator.language);
 }
 
 export function saveLocale(l: Locale): void {

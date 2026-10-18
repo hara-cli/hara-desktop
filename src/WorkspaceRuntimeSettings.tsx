@@ -1,22 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import type { RuntimeApprovalCard, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceModelConnection } from "./workspace-dev-state";
 
-export function WorkspaceConnectionForm({ model, existing, onSaved }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; onSaved?: () => void }) {
+export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, onDirty }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void }) {
   const [label, setLabel] = useState(existing?.label ?? "我的模型連接"), [provider, setProvider] = useState<"openai" | "anthropic">(existing?.provider ?? "openai");
   const [baseURL, setBaseURL] = useState(existing?.baseURL ?? ""), [defaultModel, setDefaultModel] = useState(existing?.defaultModel ?? ""), [apiKey, setKey] = useState("");
   const [saving, setSaving] = useState(false);
   const saveFence = useRef(false);
-  return <form className="wsd-connection-form" onSubmit={event => { event.preventDefault(); if (saveFence.current) return; saveFence.current = true;
+  return <form className="wsd-connection-form" onChange={() => onDirty?.(true)} onSubmit={event => { event.preventDefault(); if (saveFence.current) return; saveFence.current = true;
     const input = { label, provider, baseURL, defaultModel, apiKey };
     setSaving(true); void (existing ? model.editConnection(existing.id, input) : model.configureConnection(input)).then(saved => {
-      if (saved) { setKey(""); onSaved?.(); }
+      if (saved) { setKey(""); onDirty?.(false); onSaved?.(); }
     }).finally(() => { saveFence.current = false; setSaving(false); }); }}>
     <label>連接名稱<input value={label} onChange={event => setLabel(event.target.value)} maxLength={80} required /></label>
     <label>接口協議<select value={provider} onChange={event => setProvider(event.target.value as "openai" | "anthropic")}><option value="openai">OpenAI 相容</option><option value="anthropic">Anthropic 相容</option></select></label>
     <label>Base URL<input type="url" value={baseURL} onChange={event => setBaseURL(event.target.value)} placeholder="https://…" autoComplete="off" required /></label>
     <label>模型 ID<input value={defaultModel} onChange={event => setDefaultModel(event.target.value)} autoComplete="off" required /></label>
-    <label>API Key{existing ? "（留空不修改）" : ""}<input type="password" value={apiKey} onChange={event => setKey(event.target.value)} autoComplete="new-password" spellCheck={false} required={!existing} /></label>
-    <small>設定保存到固定的本機工作空間；Key 只存系統鑰匙串。不會靜默繼承其他空間的密鑰，可先確認再匯入舊連接。</small>
+    <label>API Key{existing && !existing.credentialRequired ? "（留空不修改）" : ""}<input type="password" value={apiKey} onChange={event => setKey(event.target.value)} autoComplete="new-password" spellCheck={false} required={!existing || existing.credentialRequired} /></label>
+    <small>Key 只保存在 macOS 钥匙串，不会写入设置、日志、备份或同步；保存后无法查看，只能替换或删除。留空编辑表示保留已保存的 Key。首次保存时系统可能请求授权。</small>
+    <small>修改只影响本空间。新任务使用新设置；已开始的任务不会随默认连接切换。</small>
+    {onCancel ? <button type="button" disabled={saving} onClick={() => { setKey(""); onDirty?.(false); onCancel(); }}>取消</button> : null}
     <button className="wsd-primary" disabled={saving}>{saving ? "正在保存…" : "保存本空間連接"}</button>
   </form>;
 }
@@ -35,13 +37,14 @@ export default function WorkspaceRuntimeSettings({ model, workspace }: { model: 
     try { await model.approveRuntime(card, approved); setCard(null); setNotice(approved ? "安裝請求已接收，完成狀態將在下方更新。" : "已取消，沒有下載。"); }
     catch { setCard(null); setNotice("安裝結果暫未確認。請刷新核對，不會自動重送。"); } finally { setPending(false); } };
   return <section aria-label="按需安裝編程運行時"><h3>運行時</h3><p>Pi 已內建。先探測本機已安裝的工具，不會自動下載。找不到時才可另外批准安裝。</p>
+    <div className="wsd-connection wsd-runtime-row"><div><strong>Pi</strong><small>1.1.0 · Hara 已内置 · 可用</small><small>系统默认运行时，不需要另装本机 Pi CLI。</small></div></div>
     <button disabled={detecting || pending} onClick={() => { setDetecting(true); setChecked(false); setNotice(""); void model.detectRuntimes().then(() => setChecked(true)).catch(() => setNotice("本機探測未完成，未下載。")).finally(() => setDetecting(false)); }}>{detecting ? "正在探測本機…" : "重新探測本機"}</button>
-    {workspace.runtimes?.options.map(runtime => <div className="wsd-connection" key={runtime.runtimeId}>
-      <strong>{runtime.label}</strong><small>{runtime.registered ? `${runtime.version} · 已校驗註冊` : runtime.state === "detected" ? `${runtime.version} · 本機已安裝` : runtime.state === "integrity_failed" ? "完整性檢查失敗，已禁止使用" : detecting || !checked ? "正在確認本機安裝" : "未找到可用安裝"}</small>
+    {workspace.runtimes?.options.map(runtime => <div className="wsd-connection wsd-runtime-row" key={runtime.runtimeId}>
+      <div><strong>{runtime.label}</strong><small>{runtime.registered ? `${runtime.version} · 已校驗註冊` : runtime.state === "detected" ? `${runtime.version} · 本機已安裝` : runtime.state === "integrity_failed" ? "完整性檢查失敗，已禁止使用" : detecting || !checked ? "正在確認本機安裝" : "未找到可用安裝"}</small>
       {runtime.path ? <code className="wsd-root">{runtime.path}</code> : null}
+      {runtime.registered && !runtime.generalAgentDriverAvailable ? <small>文件已校驗註冊，尚未執行；通用同事驅動未開放，不會靜默改綁 Agent。</small> : null}</div>
       {runtime.state === "detected" ? <button disabled={pending || detecting} onClick={() => setLocal(runtime)}>使用本機安裝</button>
         : !runtime.path ? <button disabled={pending || downloading || detecting || !checked} onClick={() => void propose(runtime.runtimeId)}>{runtime.registered ? "檢查新版本" : "按需安裝"}</button> : null}
-      {runtime.registered && !runtime.generalAgentDriverAvailable ? <small>文件已校驗註冊，尚未執行；通用同事驅動未開放，不會靜默改綁 Agent。</small> : null}
     </div>)}
     {workspace.runtimes?.operations.map(operation => <div className="wsd-runtime-operation" key={operation.id}><span>{operation.runtimeId} · {{ downloading: "正在下載與校驗…", registered: "安裝完成，已註冊", failed: "安裝未完成，未授予執行權限", cancelled: "安裝已取消" }[operation.state] ?? operation.state}</span>
       {operation.state === "downloading" ? <button onClick={() => void model.cancelRuntime(operation.id)}>取消安裝</button> : null}</div>)}

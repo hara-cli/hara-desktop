@@ -289,15 +289,11 @@ clean_tauri_bundle_attempt() {
 
 export APPLE_SIGNING_IDENTITY="$IDENTITY"
 export APPLE_API_KEY="$KEY_ID" APPLE_API_ISSUER="$ISSUER" APPLE_API_KEY_PATH="$P8"
-TAURI_SIGNING_PRIVATE_KEY="$(cat "$HOME/.tauri/hara-desktop.key")"
-export TAURI_SIGNING_PRIVATE_KEY
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-
 run_tauri_bundle_attempt() {
   if [ "$TARGET" = "x86_64-apple-darwin" ]; then
-    npm run tauri build -- --target "$TARGET"
+    /bin/bash scripts/with-updater-keychain.sh npm run tauri build -- --target "$TARGET"
   else
-    npm run tauri build
+    /bin/bash scripts/with-updater-keychain.sh npm run tauri build
   fi
 }
 
