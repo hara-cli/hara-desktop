@@ -462,6 +462,43 @@ the matching repository; keep DNS failures separate from HTTP asset failures.
 
 ---
 
+## [LRN-20261018-NATIVE-ENTRY-PREVIEW-BOUNDARY] best_practice
+
+**Logged**: 2026-10-18T11:47:05+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+
+Retiring a Desktop feature surface requires one native-selected root and matching preview/lazy-load boundaries, not only hiding its sidebar item.
+
+### Details
+
+The old App was already gated behind the explicit legacy entry, but main.tsx still selected older
+Mailbox and other DEV previews directly from the URL. Moving all of those routes behind the same
+native entry decision preserves rollback while keeping ordinary Workspace/Lab free of old surfaces.
+Real React Suspense tests observe which lazy leaf modules evaluate, and an actual Vite production
+manifest checks the complete static startup/Workspace closure. A generated common chunk may be
+keyed by its hashed file rather than its source path; inspect the real graph instead of assuming
+manifest keys. Lab branding must use the already-selected entry mode, not directory data that may
+not have arrived yet, to avoid a production badge flash.
+
+### Suggested Action
+
+Keep native failure/loading paths fail-closed, preserve old resources for explicit rollback, and
+test both module loading and actual screen markup. Record locked native visual QA separately from
+SSR/component/build checks; do not claim that synthetic tests are real native interactions.
+
+### Metadata
+
+- Source: conversation / test evidence
+- Related Files: src/main.tsx, src/WorkspaceEntry.tsx, src/LegacyDesktopEntry.tsx, src/WorkspaceLocalDev.tsx, test/v1-entry-surface.test.mjs
+- Tags: native-entry, lazy-loading, rollback, workspace, v1, preview
+- Pattern-Key: frontend.native_entry_gates_previews_and_feature_mounts
+
+---
+
 ## [LRN-20261018-ADHOC-REPAIR-BOUNDARY] correction
 
 **Logged**: 2026-10-18T10:03:00+08:00

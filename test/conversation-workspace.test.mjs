@@ -126,7 +126,7 @@ test("collapsed New menu is a single labeled entry, and the composer preserves s
 
 test("App wires only existing chat/create/history flows and keeps the component preview development-only", () => {
   const app = readFileSync(new URL("src/App.tsx", root), "utf8");
-  const entry = readFileSync(new URL("src/main.tsx", root), "utf8");
+  const entry = readFileSync(new URL("src/LegacyDesktopEntry.tsx", root), "utf8");
   const drawer = readFileSync(new URL("src/AgentDetailsDrawer.tsx", root), "utf8");
   assert.ok(/onCreateAgent=\{guidedAgentCreateReady \? \(\) => void startAgentCreation\(\) : undefined\}/.test(app), "supported guided creation starts with the main assistant, not a mandatory catalog visit");
   assert.ok(/onConfigureAgent=\{openCustomRecruitment\}/.test(app), "manual configuration remains an explicit fallback");

@@ -28,6 +28,34 @@ run bindings. The old SDK-backed Claude adapter is unavailable without its remov
 or account fallback is silently substituted. Keep prior production artifacts for a binary rollback.
 Lab (`com.nanhara.hara.workspace-lab`) remains an explicit, separate acceptance application.
 
+## v1 visible surface and legacy rollback
+
+v1 is the local Workspace loop, not the cloud/channel preview. `main.tsx` always mounts
+`WorkspaceEntry`; only the native `workspace_entry_mode` decision may select a legacy entry.
+Unset/`0` selects Workspace, `1` explicitly selects legacy, and invalid values fail closed. URL
+parameters, browser storage and DEV alone cannot select legacy or suppress the normal crash host.
+
+The complete old `App.tsx` lives behind the lazy `LegacyDesktopEntry` boundary. This keeps these
+old surfaces out of v1 without deleting their code, preferences, history or backend contracts:
+
+- `core.groups`, the organization Desk workbench and its organization connection state;
+- the workbench inbox's `agents / projects / external / deliverables` modes;
+- `WorkspaceCollaboration` channel preview;
+- Settings → Connections → Mailbox, including `DeskUsersPanel` and `DeskMailComposer`.
+
+Old DEV component previews also live inside that native-selected rollback entry; `?preview=mailbox`
+or another old preview query on a normal Workspace no longer bypasses the entry decision. The
+production build retains rollback chunks for explicit recovery; this is not physical removal of
+all old code or a server-side authorization change. Standalone synthetic test fixtures are not
+product entrypoints and are not production build inputs.
+
+The normal Workspace keeps its main Hara, colleagues, colleague-approval cards, collapsed execution
+details, verified result, explicit continuation and settings for scoped model connections, runtime
+installation and local task/usage records. The sidebar shows `WORKSPACE LAB` only when the native
+entry selected Lab, never in production or while its directory is still loading. Entry tests use
+real React Suspense/SSR and the actual Vite import graph; they do not replace unlocked native pixel
+and keyboard/mouse acceptance.
+
 ## Runtime distribution
 
 Pi is the only preinstalled Agent runtime. Desktop external binaries are Core (including Pi) and

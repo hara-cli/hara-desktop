@@ -37,7 +37,7 @@ function Transcript({ history, agent }: { history: WorkspaceDevMessage[]; agent?
     </div>;
   })}</>;
 }
-function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string }) {
+export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string; mode: "workspace" | "lab" }) {
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   const [settings, setSettings] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState("我的工作空間");
   const input = useRef<HTMLTextAreaElement>(null), end = useRef<HTMLDivElement>(null), nearBottom = useRef(true);
@@ -54,7 +54,7 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
   const create = async () => { await model.createWorkspace(name); setCreating(false); };
   return <div className="wsd-app">
     <aside className="wsd-sidebar">
-      <div className="wsd-brand"><HaraLogo size={29} /><span>Hara</span><small>WORKSPACE LAB</small></div>
+      <div className="wsd-brand"><HaraLogo size={29} /><span>Hara</span>{mode === "lab" ? <small>WORKSPACE LAB</small> : null}</div>
       <label className="wsd-space-label">目前空間</label>
       <div className="wsd-space-switch"><select aria-label="切換 Workspace" value={view.workspaceId ?? ""} disabled={view.loading || !view.directory?.workspaces.length}
         onChange={event => { setSettings(false); void model.selectWorkspace(event.target.value); }}>
@@ -138,5 +138,5 @@ export default function WorkspaceLocalDev({ mode = "workspace" }: { mode?: "work
     return () => { active = false; client?.close(); };
   }, [reconnect, mode]);
   if (!model) return <div className="wsd-boot"><HaraLogo size={48} /><h1>{mode === "lab" ? "Hara Workspace Lab" : "Hara"}</h1><p>{error || "正在連接你的工作空間…"}</p>{error ? <button onClick={() => setReconnect(value => value + 1)}>重新連接</button> : null}<small>{mode === "lab" ? "獨立本機驗收 · 不讀寫日常 Hara 資料或歷史" : "原有資料保留，不會自動切換連接或重新發送任務"}</small></div>;
-  return <WorkspaceScreen model={model} disconnected={error} root={root} onReconnect={() => setReconnect(value => value + 1)} />;
+  return <WorkspaceScreen model={model} disconnected={error} root={root} mode={mode} onReconnect={() => setReconnect(value => value + 1)} />;
 }

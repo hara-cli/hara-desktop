@@ -19,7 +19,9 @@ function fixture() {
 test("formal entry is independent of Vite/DEV flags; legacy is native-selected rollback only", () => {
   const main = read("src/main.tsx"), entry = read("src/WorkspaceEntry.tsx"), native = read("src-tauri/src/lib.rs");
   assert.match(main, /<WorkspaceEntry/); assert.doesNotMatch(main, /VITE_HARA_WORKSPACE_DEV|const workspaceDev/);
-  assert.match(entry, /invoke<string>\("workspace_entry_mode"\)/); assert.match(entry, /mode === "legacy"/); assert.match(entry, /lazy\(\(\) => import\("\.\/App"\)\)/);
+  assert.match(entry, /invoke<string>\("workspace_entry_mode"\)/); assert.match(entry, /mode === "legacy"/); assert.match(entry, /lazy\(\(\) => import\("\.\/LegacyDesktopEntry"\)\)/);
+  assert.doesNotMatch(main, /Preview|URLSearchParams|location\.|from "\.\/App"/);
+  assert.match(read("src/LegacyDesktopEntry.tsx"), /lazy\(\(\) => import\("\.\/App"\)\)/);
   assert.doesNotMatch(entry, /import\.meta\.env|location\.|localStorage|<Legacy[^]*?catch/);
   assert.match(native, /None \| Some\("0"\) => Ok\("workspace"\)/); assert.match(native, /HARA_DESKTOP_LEGACY_ENTRY/);
   assert.match(native, /workspace_connection\(\)/); assert.match(native, /observe_owned_workspace_start\(&mut pending/);
