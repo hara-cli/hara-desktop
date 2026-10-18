@@ -462,6 +462,45 @@ the matching repository; keep DNS failures separate from HTTP asset failures.
 
 ---
 
+## [LRN-20261018-ADHOC-REPAIR-BOUNDARY] correction
+
+**Logged**: 2026-10-18T10:03:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: infra
+
+### Summary
+
+Preserve the existing keyless ad-hoc repair in the sidecar refresh script; do not ship a task-specific signing prohibition.
+
+### Details
+
+The previous local slice added HARA_SIDECAR_NO_SIGNING and enabled it, stopping the existing
+verify_or_repair_macos_adhoc_signature helper before its normal repair of Bun's stale linker signature.
+Jeff clarified that this interceptor, not a missing repair implementation, caused that stop. The current
+authorization permits only local ad-hoc signing with `codesign --force --sign -`; Developer ID,
+Keychain access, notarization and distribution remain out of scope. Remove the interceptor rather
+than adding a second signing path or weakening verification.
+
+### Suggested Action
+
+Reuse the original helper, keep post-repair verification, and test that the task-only interceptor
+is absent before any future main integration. Report local ad-hoc validation separately from release signing.
+
+### Metadata
+
+- Source: user_feedback
+- Related Files: scripts/refresh-sidecar.sh, test/workspace-production-entry.test.mjs
+- Tags: bun, macos, adhoc, local-only, signing-boundary
+- Pattern-Key: build.reuse_existing_adhoc_repair
+
+### Resolution
+
+- Removed the slice-only interceptor and replaced its test with the original verify/repair contract.
+- Formal signing, notarization, main integration and publication are not authorized by this correction.
+
+---
+
 ## [LRN-20261012-CONVERSATION-LAYOUT-COMBINATIONS] best_practice
 
 **Logged**: 2026-10-12

@@ -143,12 +143,6 @@ verify_or_repair_macos_adhoc_signature() {
   if /usr/bin/codesign --verify "$binary_path" >/dev/null 2>&1; then
     return 0
   fi
-  # Local verification slices can prohibit even keyless ad-hoc repair. This does not skip the
-  # signature gate: an invalid compiler output remains a hard failure, never an unsigned pass.
-  if [ "${HARA_SIDECAR_NO_SIGNING:-0}" = "1" ]; then
-    echo "error: $binary_label needs ad-hoc repair but this local slice forbids signing" >&2
-    return 1
-  fi
   # Bun normally emits a linker-signed ad-hoc Mach-O, but some payload layouts leave that
   # generated signature stale. macOS kills such an arm64 executable before --version can run.
   # Repair only the disposable source binary with a local ad-hoc signature; protected release

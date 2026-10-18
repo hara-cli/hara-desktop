@@ -29,10 +29,10 @@ test("isolated Core source override cannot enter a release/signing refresh", () 
   assert.match(source, /\[ "\$\{HARA_RELEASE_BUILD:-\}" != "1" \] \|\| \{ echo "error: Core path override is development-only"/);
   assert.ok(source.indexOf("Core path override is development-only") < source.indexOf('CLI="$(cd "$HARA_SIDECAR_CORE_DIR"'));
   assert.match(source, /\[\[ "\$HARA_SIDECAR_CORE_DIR" = \/\* \]\]/);
-  const guard = source.indexOf('if [ "${HARA_SIDECAR_NO_SIGNING:-0}" = "1" ]');
-  assert.ok(guard > source.indexOf('/usr/bin/codesign --verify "$binary_path"'));
-  assert.ok(guard < source.indexOf('/usr/bin/codesign --force --sign - "$binary_path"'));
-  assert.match(source.slice(guard, source.indexOf('/usr/bin/codesign --force --sign - "$binary_path"')), /return 1/);
+  assert.doesNotMatch(source, /HARA_SIDECAR_NO_SIGNING|local slice forbids signing/);
+  const verify = source.indexOf('/usr/bin/codesign --verify "$binary_path"');
+  const repair = source.indexOf('/usr/bin/codesign --force --sign - "$binary_path"');
+  assert.ok(verify >= 0 && repair > verify, "retain the original verify-then-ad-hoc-repair path");
 });
 test("formal connection writes only explicit scope/generation and never puts the fake key in view state", async () => {
   const f = fixture(); await f.model.selectWorkspace("A");
