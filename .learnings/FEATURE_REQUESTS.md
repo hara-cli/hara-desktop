@@ -1,5 +1,36 @@
 # Hara Desktop Feature Requests
 
+## [FEAT-20261018-WIP-CONNECTED-SESSION-CONTINUITY] retained design constraints
+
+**Logged**: 2026-10-18
+**Priority**: high
+**Status**: in_progress
+**Area**: architecture
+
+### Capability and boundaries
+
+Retain main-WIP `FEAT-20260901-001`'s useful direction: main/colleague chat owns delegation and
+structured input; an advanced standalone launcher is not another default peer conversation.
+Discovery or explicitly choosing metadata does not grant control. Any external follow-up binding
+must freeze authorized account/chat/actor/thread/task, device, Agent, provider and exact native
+session, with expiry/revocation, one writer, replay-safe receipts and original-message closeout.
+Ambiguous targets need a choice, not a guess from the foreground or most recent activity.
+
+Do not advertise Claude SDK continuation as live injection into an arbitrary running terminal, or
+an accepted delivery as completed work. Cancellation must not terminate an independently owned
+target. Restart restores receipts, not automatic execution; outcome_unknown stays quarantined.
+Do not install another listener or broadcast ordinary Feishu chat to every Agent.
+
+### Current scope
+
+This is a deduplicated design constraint from backup `78958b9`, not a new implementation/acceptance
+claim. Existing feat source and newer connection callbacks remain authoritative. Jeff's Workspace
+v1 hides old navigation and has no channels; deferred channel/cloud/native-runtime acceptance is
+not reintroduced by this note. Original detailed three-slice history, counts and message references
+remain intact on `wip/main-backup-20261018` rather than being copied as current shipped behavior.
+
+---
+
 ## [FEAT-20260921-CHAT-IM] conversation-first-desktop-and-persistent-agent-groups
 
 **Logged**: 2026-09-21T12:00:00+08:00

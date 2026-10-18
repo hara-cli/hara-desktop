@@ -1,5 +1,6 @@
 import type { Locale } from "./i18n";
 
+const INTERRUPTED_TURN = /^(?:interrupted|\(interrupted\))$/iu;
 const AUTH_FAILURE = /(?:\b(?:401|403)\b|unauthori[sz]ed|forbidden|auth(?:entication)?|credential|api[ _-]?key|凭证|认证|密钥)/iu;
 const QUOTA_FAILURE = /(?:\b402\b|insufficient[ _-]?(?:balance|credits?)|(?:quota|allowance|balance)[^\n]{0,60}(?:exhausted|depleted)|余额不足|额度(?:已)?耗尽)/iu;
 
@@ -55,6 +56,13 @@ export function turnFailureMessage(
   locale: Locale,
 ): string | undefined {
   if (!error) return undefined;
+  // Core retains its error/RPC outcome for interruption. Earlier side effects may already have
+  // completed; safe presentation preserves that uncertainty instead of suggesting a blind retry.
+  if (INTERRUPTED_TURN.test(error.trim())) {
+    return locale === "zh"
+      ? "本轮执行已中断。已完成的操作不会因此撤销。请先核对实际结果，再从保存的进度继续，避免重复上传或发送。"
+      : "This turn was interrupted. Completed actions are not undone. Check the actual results before continuing from the saved progress to avoid duplicate uploads or messages.";
+  }
   if (modelConnectionFailureKind(error) === "quota") {
     return locale === "zh"
       ? "服务商报告模型连接的额度或余额不足。请切换到其他可用连接，或在服务商处核验额度及重置时间。"
@@ -71,8 +79,8 @@ export function turnFailureMessage(
       : "The model returned no usable content. Your message was kept; retry or switch model connections.";
   }
   return locale === "zh"
-    ? "本轮没有完成。任务和已发送消息仍然保留；请查看任务状态后重试。"
-    : "This turn did not finish. The task and your message were kept; review the task status and retry.";
+    ? "本轮没有完成。已保存的任务和消息仍然保留；请先核对任务状态及实际结果，再决定如何继续，避免重复上传或发送。"
+    : "This turn did not finish. Saved task progress and messages were kept. Check the task status and actual results before continuing to avoid duplicate uploads or messages.";
 }
 
 /** session.send can reject after its terminal event already rendered the safe failure notice. Keep

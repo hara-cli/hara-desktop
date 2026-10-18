@@ -1,5 +1,50 @@
 # Errors
 
+## [ERR-20261018-WIP-UI-AND-RELEASE-RULES] Retain recovery and release lessons without reverting newer Workspace code
+
+**Logged**: 2026-10-18
+**Priority**: high
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+
+Original main WIP is preserved byte-for-byte at local `wip/main-backup-20261018`, commit
+`78958b9124a8562c858278eeb7f803f2c885957e`. ModelConnectionRecovery, its pure helpers and CSS
+already match the Workspace feat. Its provider/transfer callbacks and regression tests are newer;
+do not replace them with the older WIP versions merely because the files differ.
+
+### Retained rules
+
+- Recovery focuses an exact saved connection once, keeps a later manual selection on refresh and
+  does not consume requested organization focus after a partial list failure. Copy durable history
+  before changing a default; preserve successful copies after uncertain ACK/refresh; fence double
+  clicks and incompatible image targets. Do not silently switch Workspace/model/authority.
+- An interrupted final turn does not undo prior uploads/messages. Keep Core's paused checkpoint,
+  original error/RPC outcome and receipts. Show safe localized verification/continue guidance,
+  suppress duplicate terminal/RPC notices, and never infer the interruption cause from a screenshot.
+- Decision cards need real viewport/flex sizing checks; source assertions or a legend alone do not
+  prove clickable choices. Keep one-action wording consistent with the actual available decisions,
+  proposal details on recovery, original expiry and exact parent/worker identity.
+- Separate sandbox loopback/Keychain/capture failures, locked-screen white captures and fixture
+  mistakes from product results. Use pinned tools and the repository build command, real compiled
+  entry smoke, uniquely anchored metadata edits and persistent authoring worktrees; do not bypass
+  commit guards, change tests/deadlines for green or call denied UI/package checks verified.
+- Signing/notary success is not publication. Retain source-bound failures and exact job IDs;
+  protected immutable publication, hosted edge bytes, Gatekeeper, install and tester acceptance are
+  independent facts. A notary upload transport failure is not a rejection; uncertain submissions
+  require query/recovery, not automatic resubmission. Client prechecks do not provide atomic
+  immutable-upload guarantees. Never infer a cancelling actor from a run's triggering actor.
+
+### Provenance and limits
+
+Consolidated from main-WIP delegated-card, decision-layout, Agent proposal, connection recovery,
+HARA-FB-001588, tooling, audit, signer/notary/promotion and immutable-upload notes (2026-09 through
+2026-10). Original bodies/statuses remain on the backup. Old test counts, dependencies and channel
+entry designs are not asserted as current; no new permissions, source of secrets or release occurs.
+
+---
+
 ## [ERR-20261018-NATIVE-WINDOW-LOCKED-SCREEN] Native pixel acceptance requires an unlocked session
 
 **Logged**: 2026-10-18T11:10:00+08:00
