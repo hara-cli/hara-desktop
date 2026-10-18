@@ -4,6 +4,7 @@ import HaraLogo from "./mark";
 import { WorkspaceDevConnectionClient, type WorkspaceDevConnection } from "./workspace-dev-rpc";
 import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval } from "./workspace-dev-state";
 import "./workspace-local-dev.css";
+import WorkspaceRuntimeSettings, { WorkspaceConnectionForm } from "./WorkspaceRuntimeSettings";
 
 const TOOL_LABELS: Record<string, string> = { task_intake: "確認任務", task_checkpoint: "保存驗證回執", todo_write: "更新步驟",
   workspace_read: "查看文件", workspace_write: "寫入文件", workspace_verify: "核驗內容", agent_list: "查看同事", agent_create: "建立同事", agent_contact: "委派同事" };
@@ -43,8 +44,9 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
   const busy = workspace ? ["running", "draining"].includes(workspace.conversation.state) : false;
   const hasConnection = Boolean(workspace?.connections.defaultConnectionId);
-  const realKey = view.directory?.syntheticOnly === false;
-  const connect = () => realKey ? model.addApprovedConnection() : model.addSynthetic();
+  const realKey = view.directory?.executionMode === "ark-real-key";
+  const production = view.directory?.executionMode === "workspace";
+  const connect = () => production ? setSettings(true) : realKey ? model.addApprovedConnection() : model.addSynthetic();
   const canSend = Boolean(workspace && hasConnection && view.draft.trim() && !view.sending && !busy && !view.pendingUnknown && !disconnected);
   useEffect(() => { if (nearBottom.current) end.current?.scrollIntoView({ block: "end", behavior: "auto" }); }, [workspace?.conversation.history.length, workspace?.approvals.length, busy]);
   useEffect(() => { if (!busy) return; const timer = setInterval(() => { void model.refresh(); }, 1000); return () => clearInterval(timer); }, [model, busy]);
@@ -68,7 +70,7 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
           {!agents.some(row => row.kind === "colleague") ? <p className="wsd-sidebar-note">跟 Hara 聊聊你需要誰，<br />它會提議合適的同事。</p> : null}</div>
         <button className="wsd-new-colleague" disabled={view.loading} onClick={() => { const main = agents.find(row => row.kind === "main"); if (main && main.agentId !== view.agentId) void model.selectAgent(main.agentId); else model.setDraft("建立一位同事 Coder，負責本空間的文件工作"); }}>＋ 與 Hara 討論新同事</button>
       </> : <p className="wsd-sidebar-note">每個空間都有自己的<br />Hara、同事、連接與記憶。</p>}
-      <div className="wsd-sidebar-footer"><span className="wsd-test-mode"><i />{realKey ? "火山真實模型驗收" : "本機合成驗收"}</span><button onClick={() => setSettings(current => !current)} disabled={!workspace} aria-label="空間設定">⚙</button></div>
+      <div className="wsd-sidebar-footer"><span className="wsd-test-mode"><i />{production ? "本機工作空間" : realKey ? "火山真實模型驗收" : "本機合成驗收"}</span><button onClick={() => setSettings(current => !current)} disabled={!workspace} aria-label="空間設定">⚙</button></div>
     </aside>
     <main className="wsd-chat">
       <header className="wsd-header"><div className="wsd-header-person"><Avatar agent={agent} /><div><strong>{agent?.identity.displayName ?? "歡迎來到 Hara"}</strong><small>{agent ? `${agent.kind === "main" ? "主 Hara" : "AI 同事"} · Pi 內建 Runtime` : "從一個屬於你的空間開始"}</small></div></div>
@@ -80,10 +82,10 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
         {!workspace && view.loading && view.workspaceId ? <div className="wsd-sidebar-note">正在打開對話…</div> : !workspace ? <section className="wsd-welcome"><div className="wsd-welcome-mark"><HaraLogo size={57} /></div><p className="wsd-kicker">YOUR PEOPLE. YOUR SPACE.</p>
           <h1>一個空間，<br />從你和 Hara 開始。</h1><p>聊天、找同事、一起完成事情。<br />連接、任務與歷史都留在各自的 Workspace。</p>
           <button className="wsd-primary" onClick={() => setCreating(true)} disabled={view.loading}>{view.loading ? "正在打開空間…" : "建立個人 Workspace"}</button>
-          <small>這是隔離的本機 Dev，不讀寫日常 Hara 資料。{realKey ? "本次使用已批准的火山 Key 文件引用。" : "不連接真實模型。"}</small></section>
+          <small>{production ? "每個工作空間都有獨立的同事、模型連接與工作記錄。原有記憶保留，不會自動匯入。" : <>這是隔離的本機 Dev，不讀寫日常 Hara 資料。{realKey ? "本次使用已批准的火山 Key 文件引用。" : "不連接真實模型。"}</>}</small></section>
           : <div className="wsd-thread">
             {!hasConnection ? <section className="wsd-connect-card"><div className="wsd-kicker">先準備好這個空間</div><h2>跟 Hara 聊天，先接上模型。</h2>
-              <p>{realKey ? `使用已批准的火山 Coding Plan 連接；Key 只在本機引擎讀取，不會傳到這個介面。整片上限 ${workspace.budget?.maxTokens ?? "待核對"} token／${workspace.budget?.maxRequests ?? "待核對"} 次請求，跨任務及重啟累計。` : "本次只啟用固定合成腳本，驗證 Pi 與任務流程。沒有外部模型請求或額度消耗。"}</p><button className="wsd-primary" onClick={() => void connect()}>{realKey ? "引用已授權火山 Key" : "啟用本機合成連接"}</button></section> : null}
+              <p>{production ? "先為這個工作空間添加模型連接。其他空間的密鑰和用量不會自動帶入。" : realKey ? `使用已批准的火山 Coding Plan 連接；Key 只在本機引擎讀取，不會傳到這個介面。整片上限 ${workspace.budget?.maxTokens ?? "待核對"} token／${workspace.budget?.maxRequests ?? "待核對"} 次請求，跨任務及重啟累計。` : "本次只啟用固定合成腳本，驗證 Pi 與任務流程。沒有外部模型請求或額度消耗。"}</p><button className="wsd-primary" onClick={() => void connect()}>{production ? "配置本空間連接" : realKey ? "引用已授權火山 Key" : "啟用本機合成連接"}</button></section> : null}
             {hasConnection && !workspace.conversation.history.length ? <div className="wsd-chat-start"><h2>今天，想一起完成什麼？</h2><p>先打個招呼，或請我「建立同事 Coder」。</p>
               <button onClick={() => model.setDraft("建立一位同事 Coder，負責本空間的文件工作")}>建立一位同事 <span>↗</span></button></div> : null}
             <Transcript history={workspace.conversation.history} agent={agent} />
@@ -102,7 +104,7 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
         onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.send(); } }} />
         <div className="wsd-composer-bar"><span>Pi <i /> 本空間預設連接</span>{busy ? <button onClick={() => void model.cancel()} disabled={workspace.conversation.state === "draining"}>停止</button>
           : view.pendingUnknown ? <button onClick={() => void model.verifyPending()}>核對上次送出結果</button> : <button className="wsd-send" onClick={() => void model.send()} disabled={!canSend} aria-label="發送訊息">↑</button>}</div></div>
-        <p>{realKey ? "真實模型 · 火山 Coding Plan · 本機隔離驗收" : "合成模式 · 固定場景腳本，不代表真實模型能力"} <span>Enter 發送，Shift + Enter 換行</span></p></footer> : null}
+        <p>{production ? "Pi · 本空間連接 · 任務與歷史保存在本機" : realKey ? "真實模型 · 火山 Coding Plan · 本機隔離驗收" : "合成模式 · 固定場景腳本，不代表真實模型能力"} <span>Enter 發送，Shift + Enter 換行</span></p></footer> : null}
     </main>
     {creating ? <div className="wsd-modal-backdrop"><section className="wsd-modal" role="dialog" aria-modal="true" aria-labelledby="wsd-create-title"><button className="wsd-close" aria-label="關閉建立空間" onClick={() => setCreating(false)}>×</button>
       <p className="wsd-kicker">A FRESH WORKSPACE</p><h2 id="wsd-create-title">給新空間一個名字。</h2><p>會為你準備獨立的主 Hara。連接與同事稍後透過聊天安排。</p><label>空間名稱<input autoFocus aria-label="Workspace 名稱" value={name} maxLength={80} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim()) void create(); }} /></label>
@@ -110,30 +112,31 @@ function WorkspaceScreen({ model, disconnected, onReconnect, root }: { model: Wo
     {settings && workspace ? <aside className="wsd-settings" role="dialog" aria-label="目前 Workspace 設定"><button className="wsd-close" aria-label="關閉空間設定" onClick={() => setSettings(false)}>×</button>
       <p className="wsd-kicker">WORKSPACE SETTINGS</p><h2>{workspace.label}</h2><p>這裡的連接只屬於目前空間。開始執行後，任務會固定原連接，不跟隨預設切換。</p>
       <h3>模型連接</h3>{workspace.connections.connections.map(connection => <div className="wsd-connection" key={connection.id}><strong>{connection.label}</strong><small>{connection.defaultModel} · {connection.status === "active" ? "已配置" : "已撤銷"}</small></div>)}
-      {!hasConnection ? <button className="wsd-primary" onClick={() => void connect()}>{realKey ? "引用已授權火山 Key" : "啟用本機合成連接"}</button> : null}
-      <h3>Runtime</h3><p>Pi 已內建。本次僅開通 Pi；其他編程 Runtime 尚未接入這條通用 Agent 鏈路。</p>
-      <details><summary>本機驗收資料</summary><p className="wsd-root">{root}</p><p>{workspace.conversation.pastTaskCount} 項歷史任務 · {workspace.conversation.usage.modelCalls} 次{realKey ? "模型步驟" : "合成步驟"}。不是供應商帳單。</p>
+      {production ? <WorkspaceConnectionForm key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} />
+        : !hasConnection ? <button className="wsd-primary" onClick={() => void connect()}>{realKey ? "引用已授權火山 Key" : "啟用本機合成連接"}</button> : null}
+      {production ? <WorkspaceRuntimeSettings key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} /> : <><h3>Runtime</h3><p>Pi 已內建。這個隔離 Lab 不下載額外運行時。</p></>}
+      <details><summary>本機工作資料</summary><p className="wsd-root">{root}</p><p>{workspace.conversation.pastTaskCount} 項歷史任務 · {workspace.conversation.usage.modelCalls} 次{production || realKey ? "模型步驟" : "合成步驟"}。不是供應商帳單。</p>
         {workspace.budget ? <p>全片 {workspace.budget.requests}/{workspace.budget.maxRequests} 次請求 · 已回報 {workspace.budget.inputTokens + workspace.budget.outputTokens}/{workspace.budget.maxTokens} token；未結算預留 {workspace.budget.uncertainReservedTokens}。</p> : null}</details>
-      <small>未讀寫日常 Hara 資料，沒有發布。{realKey ? "真實模型實測受獨立預算限制。" : "未啟用真實模型。"}</small></aside> : null}
+      <small>{production ? "連接、執行權限與工作記錄只屬於目前工作空間。" : <>未讀寫日常 Hara 資料，沒有發布。{realKey ? "真實模型實測受獨立預算限制。" : "未啟用真實模型。"}</>}</small></aside> : null}
   </div>;
 }
 
-export default function WorkspaceLocalDev() {
+export default function WorkspaceLocalDev({ mode = "workspace" }: { mode?: "workspace" | "lab" }) {
   const [model, setModel] = useState<WorkspaceDevModel | null>(null), [error, setError] = useState(""), [root, setRoot] = useState(""), [reconnect, setReconnect] = useState(0);
   useEffect(() => {
     let active = true, client: WorkspaceDevConnectionClient | undefined;
     setError(""); setModel(null);
     void (async () => {
-      const info = await invoke<WorkspaceDevConnection>("workspace_dev_connection"); if (!active) return;
+      const info = await invoke<WorkspaceDevConnection>(mode === "lab" ? "workspace_dev_connection" : "workspace_connection"); if (!active) return;
       client = new WorkspaceDevConnectionClient(info, () => { if (active) setError("本機引擎連接已中斷"); });
       await client.initialize(info.token); if (!active) { client.close(); return; }
-      const next = new WorkspaceDevModel(client, undefined, info.syntheticOnly); client.setChangedListener(id => { if (active && next.getSnapshot().workspaceId === id) void next.refresh(); });
+      const next = new WorkspaceDevModel(client, undefined, info.syntheticOnly, info.executionMode); client.setChangedListener(id => { if (active && next.getSnapshot().workspaceId === id) void next.refresh(); });
       setRoot(info.root); setModel(next); await next.loadDirectory();
       const directory = next.getSnapshot().directory;
       if (active && directory?.activeWorkspaceId && directory.workspaces.some(row => row.workspaceId === directory.activeWorkspaceId && row.active)) await next.selectWorkspace(directory.activeWorkspaceId);
-    })().catch(() => { if (active) setError("無法連接這次隔離的 Workspace Dev。請先啟動專用驗收腳本；沒有連接或啟停正式版引擎。"); });
+    })().catch(() => { if (active) setError(mode === "lab" ? "無法連接這次隔離的 Workspace Dev。請先啟動專用驗收腳本；沒有連接或啟停正式版引擎。" : "尚未連接到本機工作空間引擎。原資料已保留；可重試連接，不會重新發送任務或切換舊連接。"); });
     return () => { active = false; client?.close(); };
-  }, [reconnect]);
-  if (!model) return <div className="wsd-boot"><HaraLogo size={48} /><h1>Hara Workspace Lab</h1><p>{error || "正在連接這次獨立的本機空間…"}</p>{error ? <button onClick={() => setReconnect(value => value + 1)}>重新連接</button> : null}<small>獨立本機驗收 · 不讀寫日常 Hara 資料或歷史</small></div>;
+  }, [reconnect, mode]);
+  if (!model) return <div className="wsd-boot"><HaraLogo size={48} /><h1>{mode === "lab" ? "Hara Workspace Lab" : "Hara"}</h1><p>{error || "正在連接你的工作空間…"}</p>{error ? <button onClick={() => setReconnect(value => value + 1)}>重新連接</button> : null}<small>{mode === "lab" ? "獨立本機驗收 · 不讀寫日常 Hara 資料或歷史" : "原有資料保留，不會自動切換連接或重新發送任務"}</small></div>;
   return <WorkspaceScreen model={model} disconnected={error} root={root} onReconnect={() => setReconnect(value => value + 1)} />;
 }

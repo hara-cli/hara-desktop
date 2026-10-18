@@ -31,8 +31,7 @@
     "targets": "all",
     "externalBin": [
       "binaries/hara",
-      "binaries/herdr",
-      "binaries/hara-code-runtime"
+      "binaries/herdr"
     ],
     "resources": [
       "../LICENSE",

@@ -4002,3 +4002,23 @@ resolved paths before retrying, with no file edits from that failed read.
 - Pattern-Key: workspace_lab.verify_exact_strip_loader_and_native_override
 
 ---
+
+## [ERR-20261018-PI-ONLY-NATIVE-SIGNATURE] Native sidecar preparation is blocked by the no-signing constraint
+
+- Logged: 2026-10-18
+- Status: open; requires Jeff's decision, no repair performed
+- Scope: isolated `feat/local-workspace-shell-20261017`, Core `8d7e21195c9d4728ccc15b28056f011ea1d073e4`
+- After successful fixed-source Node/Core, Desktop, npm artifact and local mock tests, Bun compiled
+  the actual native sidecar. Its existing ad-hoc signature failed read-only `codesign --verify`.
+- This slice only authorizes a signing/notarization checklist. `HARA_SIDECAR_NO_SIGNING=1` therefore
+  refuses the helper's usual keyless ad-hoc repair. No signing/private-key/notary command was run.
+- Do not disable validation, reuse an older binary under the new SHA, or call source/npm evidence a
+  native package pass. Actual candidate .app/DMG/updater and native formal auto-start remain unverified.
+- The formal six-step workflow separately passed using the actual Desktop Model/RPC Client and
+  fixed Core Node entry with a loopback mock: 12 synthetic requests, zero paid requests, zero new
+  requests on full backend/client restart, same history/credential generation/artifact inode/hash.
+- Evidence: `/private/tmp/hara-pi-only-20261018.M9EdmB/sidecar-refresh.log`, `formal-six-result.json`.
+- Report/decision: `inbox/2026-10-18-codex-to-jeff-workspace-pi-only-implementation.md`.
+- Pattern-Key: releases.no_signing_is_a_hard_boundary_not_permission_to_skip_verification
+
+---

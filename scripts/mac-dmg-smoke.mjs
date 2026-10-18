@@ -11,12 +11,10 @@ import { smokeSidecar } from "./sidecar-smoke.mjs";
 import { validateStapledArtifact } from "./stapler-validate.mjs";
 import { smokeUpdaterEndpoints } from "./updater-endpoint-smoke.mjs";
 import { inspectForeignMacExecutable, useForeignMacStaticValidation } from "./foreign-mac-validation.mjs";
+import { assertNoOptionalRuntimeFiles } from "./check-runtime-distribution.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sidecarVersion = readFileSync(join(root, "src-tauri", "binaries", "SIDECAR_VERSION"), "utf8").trim();
-const codeRuntimeVersion = JSON.parse(
-  readFileSync(join(root, "scripts", "opencode-runtime-lock.json"), "utf8"),
-).version;
 const COMMAND_TIMEOUT_MS = 120_000;
 
 function run(command, args, label) {
@@ -69,11 +67,10 @@ export function smokeMacDmg({ dmg, expectedTarget, requireSignatures = false }) 
     const app = join(mountPoint, "Hara.app");
     const shell = join(app, "Contents", "MacOS", "hara-desktop");
     const sidecar = join(app, "Contents", "MacOS", "hara");
-    const codeRuntime = join(app, "Contents", "MacOS", "hara-code-runtime");
     if (!existsSync(app) || !statSync(app).isDirectory()) throw new Error("DMG does not contain Hara.app");
     requireExecutable(shell, "DMG desktop shell");
     requireExecutable(sidecar, "DMG sidecar");
-    requireExecutable(codeRuntime, "DMG Hara Code Runtime");
+    assertNoOptionalRuntimeFiles(app);
 
     const shellArchs = run("/usr/bin/lipo", ["-archs", shell], "DMG shell architecture").trim().split(/\s+/);
     if (!shellArchs.includes(expectedArch)) {
@@ -82,14 +79,9 @@ export function smokeMacDmg({ dmg, expectedTarget, requireSignatures = false }) 
     if (staticOnly) {
       inspectForeignMacExecutable(shell, expectedTarget, "DMG desktop shell");
       inspectForeignMacExecutable(sidecar, expectedTarget, "DMG sidecar");
-      inspectForeignMacExecutable(codeRuntime, expectedTarget, "DMG Hara Code Runtime");
     } else {
       smokeUpdaterEndpoints({ binary: shell, label: "DMG desktop shell" });
       smokeSidecar({ binary: sidecar, expectedVersion: sidecarVersion, expectedTarget, label: "DMG sidecar" });
-      const codeVersion = run(codeRuntime, ["--version"], "DMG Hara Code Runtime version");
-      if (!codeVersion.includes(codeRuntimeVersion)) {
-        throw new Error(`DMG Hara Code Runtime is not pinned version ${codeRuntimeVersion}`);
-      }
     }
 
     if (requireSignatures) {

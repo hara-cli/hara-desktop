@@ -2,7 +2,7 @@
 import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T> }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
-  workspaces: { workspaceId: string; label: string; role: string; active: boolean }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" }
+  workspaces: { workspaceId: string; label: string; role: string; active: boolean }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
   identity: { displayName: string; title?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 export interface WorkspaceDevApproval { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
@@ -10,7 +10,9 @@ export interface WorkspaceDevApproval { id: string; workspaceId: string; resourc
 export type WorkspaceDevMessage = { role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] };
 export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
-  agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key";
+  agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
+  runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean }[];
+    operations: { id: string; runtimeId: string; state: string }[] };
   budget?: { maxTokens: number; maxRequests: number; requests: number; inputTokens: number; outputTokens: number; uncertainReservedTokens: number; paused: boolean };
   connections: { revision: number; defaultConnectionId: string | null; connections: { id: string; label: string; status: string; defaultModel: string }[] };
   approvals: WorkspaceDevApproval[]; conversation: { revision: number; state: string; sessionId: string; taskId: string | null; runId: string | null;
@@ -23,6 +25,8 @@ interface PendingMessage { method: "workspace.session.send" | "workspace.session
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
   roster: WorkspaceDevAgent[];
   workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string }
+export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
+  maxBytes: number; expiresAt: string; target: { platform: string; arch: string }; workspaceId: string; resourceGeneration: string; viewEpoch: number }
 
 export class WorkspaceDevModel {
   private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "" };
@@ -36,13 +40,16 @@ export class WorkspaceDevModel {
   private readonly rpc: WorkspaceDevRpc;
   private readonly nonce: () => string;
   private readonly syntheticOnly: boolean;
-  constructor(rpc: WorkspaceDevRpc, nonce: () => string = () => crypto.randomUUID(), syntheticOnly = true) { this.rpc = rpc; this.nonce = nonce; this.syntheticOnly = syntheticOnly; }
+  private readonly executionMode: string;
+  constructor(rpc: WorkspaceDevRpc, nonce: () => string = () => crypto.randomUUID(), syntheticOnly = true, executionMode = syntheticOnly ? "synthetic" : "ark-real-key") {
+    this.rpc = rpc; this.nonce = nonce; this.syntheticOnly = syntheticOnly; this.executionMode = executionMode;
+  }
   getSnapshot = (): WorkspaceDevView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private update(next: Partial<WorkspaceDevView>): void { this.view = { ...this.view, ...next }; for (const listener of this.listeners) listener(); }
   private key(snapshot = this.view.workspace): string { return snapshot ? JSON.stringify([snapshot.workspaceId, snapshot.resourceGeneration, snapshot.selectedAgentId]) : ""; }
   private valid(snapshot: WorkspaceDevSnapshot, workspaceId: string, agentId?: string): void {
-    if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== "ark-real-key") || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
+    if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== this.executionMode) || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
       || (agentId && snapshot.selectedAgentId !== agentId) || !Array.isArray(snapshot.agents)
       || !Array.isArray(snapshot.conversation?.history)) throw new Error("Workspace 回應不符合原視圖，已拒絕顯示。");
   }
@@ -54,7 +61,7 @@ export class WorkspaceDevModel {
   }
   async loadDirectory(): Promise<void> {
     const epoch = this.epoch; const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
-    if (directory.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && directory.executionMode !== "ark-real-key")) throw new Error("Workspace 模型模式不符；沒有改接其他引擎。");
+    if (directory.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && directory.executionMode !== this.executionMode)) throw new Error("Workspace 模型模式不符；沒有改接其他引擎。");
     if (epoch === this.epoch) this.update({ directory });
   }
   async selectWorkspace(workspaceId: string): Promise<void> {
@@ -63,7 +70,7 @@ export class WorkspaceDevModel {
     try {
       const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
       if (epoch !== this.epoch) return;
-      if (directory.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && directory.executionMode !== "ark-real-key")) throw new Error("Workspace 模型模式不符。");
+      if (directory.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && directory.executionMode !== this.executionMode)) throw new Error("Workspace 模型模式不符。");
       if (!directory.workspaces.some(row => row.workspaceId === workspaceId && row.active)) throw new Error("這個 Workspace 不可用。");
       this.update({ directory });
       const snapshot = await this.rpc.request<WorkspaceDevSnapshot>("workspace.select", { workspaceId, expectedRevision: directory.revision });
@@ -115,6 +122,32 @@ export class WorkspaceDevModel {
   }
   async addApprovedConnection(): Promise<void> {
     return this.addConnection("workspace.connection.approved");
+  }
+  async configureConnection(input: { label: string; provider: "openai" | "anthropic"; baseURL: string; defaultModel: string; apiKey: string }): Promise<boolean> {
+    const workspace = this.view.workspace; if (!workspace || this.executionMode !== "workspace") return false;
+    const epoch = this.epoch;
+    try { await this.rpc.request("workspace.connection.add", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration,
+      expectedRevision: workspace.connections.revision, input });
+      if (epoch !== this.epoch) return false; await this.refresh(); return true;
+    } catch { if (epoch === this.epoch) this.update({ error: "連接未確認保存，請刷新後核對；不會將密鑰寫入瀏覽器儲存或錯誤記錄。" }); return false; }
+  }
+  async proposeRuntime(runtimeId: string): Promise<RuntimeApprovalCard> {
+    const workspace = this.view.workspace; if (!workspace) throw new Error("請先選工作空間"); const epoch = this.epoch;
+    const card = await this.rpc.request<Omit<RuntimeApprovalCard, "workspaceId" | "resourceGeneration" | "viewEpoch">>("workspace.runtime.propose",
+      { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration, runtimeId });
+    if (epoch !== this.epoch) throw new Error("原安裝提案的視圖已切換");
+    return { ...card, workspaceId: workspace.workspaceId, resourceGeneration: workspace.resourceGeneration, viewEpoch: epoch };
+  }
+  async approveRuntime(card: RuntimeApprovalCard, approved: boolean): Promise<void> {
+    const workspace = this.view.workspace;
+    if (!workspace || workspace.workspaceId !== card.workspaceId || workspace.resourceGeneration !== card.resourceGeneration || card.viewEpoch !== this.epoch) throw new Error("安裝確認不屬於目前空間");
+    await this.rpc.request("workspace.runtime.approve", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, proposalId: card.id, approved });
+    await this.refresh();
+  }
+  async cancelRuntime(operationId: string): Promise<void> {
+    const workspace = this.view.workspace; if (!workspace) return;
+    await this.rpc.request("workspace.runtime.cancel", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration, operationId });
+    await this.refresh();
   }
   private async addConnection(method: string): Promise<void> {
     const workspace = this.view.workspace; if (!workspace) return; const epoch = this.epoch;

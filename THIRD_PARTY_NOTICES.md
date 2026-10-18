@@ -36,15 +36,16 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FO
 OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-## Hara Code Runtime (OpenCode)
+## Optional OpenCode (not preinstalled)
 
-Hara Desktop includes an unmodified, checksum-pinned OpenCode command-line executable as its
-provider-neutral built-in code runtime. It is launched only behind Hara's task, workspace, approval,
-and event-journal boundary; the OpenCode Desktop or web interface is not included.
+Pi is the only preinstalled Agent runtime. OpenCode, Codex and Claude Code native executables and
+the Claude Agent SDK are not distributed in this package. Optional CLIs require a per-Workspace
+approval and checksum-verified acquisition. The historical OpenCode notice below is retained for
+the compatibility adapter source; it does not describe a bundled executable.
 
 - Project: OpenCode
 - Source: https://github.com/anomalyco/opencode
-- Bundled version: 1.18.32
+- Historical compatibility version: 1.18.32
 - Source revision: 545f51d26cc39a907d2867492d498d9607ea5fa4
 - Copyright (c) 2025 opencode
 - License: MIT

@@ -1191,6 +1191,125 @@ fn workspace_dev_connection() -> Result<WorkspaceDevConnection, String> {
     )
 }
 
+fn workspace_entry_selection(identifier: &str, rollback: Option<&str>) -> Result<&'static str, String> {
+    if identifier == "com.nanhara.hara.workspace-lab" { return Ok("lab"); }
+    match rollback {
+        None | Some("0") => Ok("workspace"),
+        Some("1") => Ok("legacy"),
+        _ => Err("Invalid explicit legacy-entry switch".into()),
+    }
+}
+
+#[tauri::command]
+fn workspace_entry_mode(app: tauri::AppHandle) -> Result<String, String> {
+    workspace_entry_selection(&app.config().identifier, std::env::var("HARA_DESKTOP_LEGACY_ENTRY").ok().as_deref()).map(str::to_string)
+}
+
+fn create_private_workspace_directory(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => checked_workspace_dev_directory(path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let mut builder = fs::DirBuilder::new();
+            #[cfg(unix)] { use std::os::unix::fs::DirBuilderExt; builder.mode(0o700); }
+            builder.create(path).map_err(|_| "Cannot create private Workspace directory")?;
+            checked_workspace_dev_directory(path)
+        },
+        Err(_) => Err("Cannot inspect Workspace directory".into()),
+    }
+}
+
+fn workspace_root() -> Result<PathBuf, String> {
+    // An explicit operator path also works in a release build; it is NOT a renderer path parameter.
+    // Invalid overrides fail closed, and never become permission to reuse an arbitrary old directory.
+    if let Some(root) = std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").map(PathBuf::from) {
+        checked_workspace_dev_directory(&root)?; return Ok(root);
+    }
+    let data = hara_data_dir()?; create_private_workspace_directory(&data)?;
+    let root = data.join("workspaces-v1"); create_private_workspace_directory(&root)?; Ok(root)
+}
+
+fn workspace_connection_at(root: &Path) -> Result<WorkspaceDevConnection, String> {
+    for path in [root.to_path_buf(), root.join(".hara"), root.join("home"), root.join("home/.hara"), root.join("home/.hara/workspace-runtime")] {
+        checked_workspace_dev_directory(&path)?;
+    }
+    let marker: serde_json::Value = serde_json::from_str(&read_private_native_document_at(&root.join(".hara/workspace-root-v1.json"))?)
+        .map_err(|_| "Invalid Workspace root identity")?;
+    if marker.as_object().map(|o| o.len()) != Some(3) || marker["schemaVersion"] != 1 || marker["kind"] != "hara-workspace"
+        || marker["instanceId"].as_str().map(str::len) != Some(36) { return Err("Not a formal Workspace root".into()); }
+    let (raw, discovery) = read_private_discovery_at(&root.join("home/.hara/workspace-runtime/serve-v2.json"))?;
+    if !process_is_alive(discovery.pid) { return Err("Workspace engine is not running".into()); }
+    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|_| "Invalid Workspace discovery")?;
+    let token = value["token"].as_str().filter(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))).ok_or("Invalid Workspace authentication")?;
+    let port = value["port"].as_u64().filter(|p| *p > 0 && *p <= u16::MAX as u64).ok_or("Invalid Workspace port")? as u16;
+    let instance = value["instanceId"].as_str().filter(|s| s.len() == 36).ok_or("Invalid Workspace instance")?;
+    if value.as_object().map(|o| o.len()) != Some(7) || value["schemaVersion"] != 2 || value["capability"] != "workspace.v1"
+        || value["executionMode"] != "workspace" { return Err("Unsupported Workspace protocol; no legacy fallback".into()); }
+    Ok(WorkspaceDevConnection { port, token: token.into(), instance_id: instance.into(), root: root.to_string_lossy().into_owned(), synthetic_only: false, execution_mode: "workspace".into() })
+}
+
+struct OwnedWorkspaceStartup { root: PathBuf, child: std::process::Child }
+// Outcome-unknown startup is retained. Retrying attachment must not spawn a second Core.
+static WORKSPACE_START_LOCK: std::sync::Mutex<Option<OwnedWorkspaceStartup>> = std::sync::Mutex::new(None);
+
+fn observe_owned_workspace_start(pending: &mut Option<OwnedWorkspaceStartup>, wait: std::time::Duration) -> Result<WorkspaceDevConnection, String> {
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        let owned = pending.as_mut().ok_or("No owned Workspace startup")?;
+        if owned.child.try_wait().map_err(|_| "Cannot inspect owned Workspace startup")?.is_some() {
+            *pending = None; return Err("Workspace Core startup failed; original data preserved".into());
+        }
+        if let Ok(value) = workspace_connection_at(&owned.root) {
+            if let Ok((_, record)) = read_private_discovery_at(&owned.root.join("home/.hara/workspace-runtime/serve-v2.json")) {
+                if record.pid == owned.child.id() {
+                    let mut child = pending.take().unwrap().child;
+                    std::thread::spawn(move || { let _ = child.wait(); }); return Ok(value);
+                }
+            }
+        }
+        if std::time::Instant::now() >= deadline { return Err("Workspace startup is not yet confirmed; attachment may be retried without restarting or resending tasks".into()); }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
+    let mut pending = WORKSPACE_START_LOCK.lock().map_err(|_| "Workspace startup lock unavailable")?;
+    let root = workspace_root()?;
+    if let Some(owned) = pending.as_ref() {
+        if owned.root != root { return Err("Another owned Workspace startup is still pending; no new engine was launched".into()); }
+        return observe_owned_workspace_start(&mut pending, std::time::Duration::from_secs(20));
+    }
+    let discovery = root.join("home/.hara/workspace-runtime/serve-v2.json");
+    if discovery.exists() {
+        // An unsafe/unknown live owner is never killed or replaced. A stopped host is recovered by Core.
+        if let Ok(value) = workspace_connection_at(&root) { return Ok(value); }
+        if let Ok((_, record)) = read_private_discovery_at(&discovery) {
+            if process_is_alive(record.pid) { return Err("Existing Workspace engine cannot be safely attached".into()); }
+        } else { return Err("Existing Workspace discovery is unsafe; data preserved".into()); }
+    }
+    let app = std::env::current_exe().map_err(|_| "Cannot resolve Desktop executable")?;
+    let executable = bundled_sidecar_path(&app, cfg!(windows)).filter(|p| p.is_file())
+        .or_else(|| if cfg!(debug_assertions) { fallback_sidecar_path(&hara_data_dir().ok()?, std::env::var_os("PATH").as_deref(), cfg!(windows)) } else { None })
+        .ok_or("The exact Hara Core sidecar is unavailable")?;
+    let mut command = std::process::Command::new(executable);
+    let search_path = std::env::var_os("PATH"); let system_root = std::env::var_os("SystemRoot");
+    command.env_clear().env("HOME", root.join("home")).env("USERPROFILE", root.join("home"))
+        .env("HARA_UPDATE_CHECK", "0").env("NO_COLOR", "1");
+    if let Some(value) = search_path { command.env("PATH", value); }
+    if let Some(value) = system_root { command.env("SystemRoot", value); }
+    command.args(["workspace", "serve", "--root"]).arg(&root).args(["--port", "0"])
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    #[cfg(unix)] { use std::os::unix::process::CommandExt; command.process_group(0); }
+    #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
+    let child = command.spawn().map_err(|_| "Cannot start Workspace Core")?;
+    *pending = Some(OwnedWorkspaceStartup { root, child });
+    observe_owned_workspace_start(&mut pending, std::time::Duration::from_secs(20))
+}
+
+#[tauri::command]
+async fn workspace_connection() -> Result<WorkspaceDevConnection, String> {
+    tauri::async_runtime::spawn_blocking(connect_or_start_workspace).await.map_err(|_| "Workspace startup worker unavailable".to_string())?
+}
+
 fn workspace_lab_preflight(
     identifier: &str,
     enabled: bool,
@@ -1237,20 +1356,6 @@ fn bundled_herdr_path(app_executable: &Path, windows: bool) -> Option<PathBuf> {
     app_executable
         .parent()
         .map(|directory| directory.join(bundled_herdr_name(windows)))
-}
-
-fn bundled_code_runtime_name(windows: bool) -> &'static str {
-    if windows {
-        "hara-code-runtime.exe"
-    } else {
-        "hara-code-runtime"
-    }
-}
-
-fn bundled_code_runtime_path(app_executable: &Path, windows: bool) -> Option<PathBuf> {
-    app_executable
-        .parent()
-        .map(|directory| directory.join(bundled_code_runtime_name(windows)))
 }
 
 fn managed_cli_path(data_directory: &Path, windows: bool) -> PathBuf {
@@ -1971,7 +2076,6 @@ fn serve_command(
     executable: &Path,
     port: u16,
     herdr_executable: Option<&Path>,
-    code_runtime_executable: Option<&Path>,
 ) -> Result<std::process::Command, String> {
     let mut command = std::process::Command::new(executable);
     if let Some(home) = development_home_override(
@@ -2001,9 +2105,8 @@ fn serve_command(
     if let Some(herdr_executable) = herdr_executable {
         command.env("HARA_HERDR_PATH", herdr_executable);
     }
-    if let Some(code_runtime_executable) = code_runtime_executable {
-        command.env("HARA_CODE_RUNTIME_PATH", code_runtime_executable);
-    }
+    // An obsolete neighbouring executable is never implicitly trusted as an approved installation.
+    command.env_remove("HARA_CODE_RUNTIME_PATH");
     Ok(command)
 }
 
@@ -2012,7 +2115,6 @@ fn spawn_serve_process(
     log_path: &Path,
     port: u16,
     herdr_executable: Option<&Path>,
-    code_runtime_executable: Option<&Path>,
 ) -> Result<u32, String> {
     let log_directory = log_path
         .parent()
@@ -2029,7 +2131,7 @@ fn spawn_serve_process(
         .try_clone()
         .map_err(|error| format!("clone serve log handle: {error}"))?;
 
-    let mut command = serve_command(executable, port, herdr_executable, code_runtime_executable)?;
+    let mut command = serve_command(executable, port, herdr_executable)?;
     command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::from(stdout))
@@ -2079,8 +2181,6 @@ fn start_serve() -> Result<u32, String> {
         bundled_sidecar_path(&app_executable, cfg!(windows)).filter(|sidecar| sidecar.is_file());
     let bundled_herdr =
         bundled_herdr_path(&app_executable, cfg!(windows)).filter(|runtime| runtime.is_file());
-    let bundled_code_runtime = bundled_code_runtime_path(&app_executable, cfg!(windows))
-        .filter(|runtime| runtime.is_file());
     let executable = match bundled {
         Some(sidecar) => sidecar,
         None => {
@@ -2104,7 +2204,6 @@ fn start_serve() -> Result<u32, String> {
         &log_path,
         port,
         bundled_herdr.as_deref(),
-        bundled_code_runtime.as_deref(),
     )?;
     Ok(pid)
 }
@@ -3452,6 +3551,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_discovery,
             workspace_dev_connection,
+            workspace_entry_mode,
+            workspace_connection,
             start_serve,
             inspect_command_line_hara,
             inspect_terminal_hara,
@@ -4042,6 +4143,30 @@ mod attachment_path_tests {
 mod native_tests {
     use super::*;
 
+    #[test]
+    fn workspace_formal_entry_is_default_and_rollback_is_explicit() {
+        assert_eq!(workspace_entry_selection("com.nanhara.hara", None).unwrap(), "workspace");
+        assert_eq!(workspace_entry_selection("com.nanhara.hara", Some("0")).unwrap(), "workspace");
+        assert_eq!(workspace_entry_selection("com.nanhara.hara", Some("1")).unwrap(), "legacy");
+        assert!(workspace_entry_selection("com.nanhara.hara", Some("unexpected")).is_err());
+        assert_eq!(workspace_entry_selection("com.nanhara.hara.workspace-lab", None).unwrap(), "lab");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn outcome_unknown_workspace_startup_retains_the_same_child() {
+        let child = std::process::Command::new("/bin/sleep").arg("10").spawn().unwrap();
+        let pid = child.id();
+        let mut pending = Some(OwnedWorkspaceStartup { root: PathBuf::from("/not-a-workspace"), child });
+        for _ in 0..2 {
+            assert!(observe_owned_workspace_start(&mut pending, std::time::Duration::ZERO).is_err());
+            assert_eq!(pending.as_ref().unwrap().child.id(), pid);
+        }
+        let owned = pending.as_mut().unwrap(); owned.child.kill().unwrap(); owned.child.wait().unwrap();
+        assert!(observe_owned_workspace_start(&mut pending, std::time::Duration::ZERO).is_err());
+        assert!(pending.is_none());
+    }
+
     fn unscaled_work_area(rect: WindowRect) -> DisplayWorkArea {
         DisplayWorkArea {
             rect,
@@ -4158,14 +4283,6 @@ mod native_tests {
         assert_eq!(
             bundled_herdr_path(app, true).unwrap(),
             Path::new("/opt/hara/herdr.exe")
-        );
-        assert_eq!(
-            bundled_code_runtime_path(app, false).unwrap(),
-            Path::new("/opt/hara/hara-code-runtime")
-        );
-        assert_eq!(
-            bundled_code_runtime_path(app, true).unwrap(),
-            Path::new("/opt/hara/hara-code-runtime.exe")
         );
     }
 
@@ -4473,7 +4590,6 @@ mod native_tests {
             Path::new("/opt/hara/hara"),
             49152,
             Some(Path::new("/opt/hara/herdr")),
-            Some(Path::new("/opt/hara/hara-code-runtime")),
         )
         .unwrap();
         assert_eq!(command.get_program(), OsStr::new("/opt/hara/hara"));
@@ -4492,8 +4608,7 @@ mod native_tests {
             key == OsStr::new("HARA_HERDR_PATH") && value == Some(OsStr::new("/opt/hara/herdr"))
         }));
         assert!(command.get_envs().any(|(key, value)| {
-            key == OsStr::new("HARA_CODE_RUNTIME_PATH")
-                && value == Some(OsStr::new("/opt/hara/hara-code-runtime"))
+            key == OsStr::new("HARA_CODE_RUNTIME_PATH") && value.is_none()
         }));
     }
 

@@ -1,6 +1,6 @@
 import type { WorkspaceDevRpc } from "./workspace-dev-state";
 import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
-export interface WorkspaceDevConnection { port: number; token: string; instanceId: string; root: string; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" }
+export interface WorkspaceDevConnection { port: number; token: string; instanceId: string; root: string; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
 /** One listener per socket, bounded pending requests, no token persistence/logging or legacy fallback. */
 export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
   private serial = 0;
@@ -8,12 +8,14 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
   private readonly socket: WebSocket;
   private readonly onDisconnect: () => void;
   private readonly realKey: boolean;
+  private readonly production: boolean;
   private onChanged: (workspaceId: string) => void = () => {};
   constructor(info: WorkspaceDevConnection, onDisconnect: () => void) {
     this.onDisconnect = onDisconnect;
     this.realKey = info.syntheticOnly === false && info.executionMode === "ark-real-key";
+    this.production = info.syntheticOnly === false && info.executionMode === "workspace";
     if (!Number.isSafeInteger(info.port) || info.port < 1 || info.port > 65535 || !/^[a-f0-9]{64}$/.test(info.token)
-      || (!this.realKey && info.syntheticOnly !== true) || (info.syntheticOnly === true && info.executionMode && info.executionMode !== "synthetic")) throw new Error("不是受支援的本機 Workspace Dev。");
+      || (!this.realKey && !this.production && info.syntheticOnly !== true) || (info.syntheticOnly === true && info.executionMode && info.executionMode !== "synthetic")) throw new Error("不是受支援的本機 Workspace。");
     this.socket = new WebSocket(`ws://127.0.0.1:${info.port}`);
     this.socket.addEventListener("message", event => {
       let value: { id?: number; method?: string; params?: { workspaceId?: string }; result?: unknown; error?: { message?: string; code?: number } };
@@ -35,7 +37,8 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       const timer = setTimeout(failed, 10000); this.socket.addEventListener("open", opened, { once: true }); this.socket.addEventListener("error", failed, { once: true });
     });
     const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean; executionMode?: string }>("initialize", { token });
-    if (!result.capabilities?.includes("workspace.local-dev.v2") || (this.realKey
+    if (this.production ? !result.capabilities?.includes("workspace.v1") || result.syntheticOnly !== false || result.executionMode !== "workspace"
+      : !result.capabilities?.includes("workspace.local-dev.v2") || (this.realKey
       ? result.syntheticOnly !== false || result.executionMode !== "ark-real-key" || !result.capabilities.includes("workspace.real-key-slice.v1")
       : result.syntheticOnly !== true || (result.executionMode && result.executionMode !== "synthetic"))) {
       this.close(); throw new Error("引擎不支援這個獨立 Workspace Dev；沒有切換到舊連接。"); }

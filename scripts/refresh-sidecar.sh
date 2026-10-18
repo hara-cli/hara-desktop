@@ -6,6 +6,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 DESKTOP_ROOT="$PWD"
 CLI="../hara-cli"
+# Local isolated candidates may select their approved Core worktree. Release provenance remains the
+# exact sibling repository/tag/origin contract; this override is never accepted by a signing job.
+if [ -n "${HARA_SIDECAR_CORE_DIR:-}" ]; then
+  [ "${HARA_RELEASE_BUILD:-}" != "1" ] || { echo "error: Core path override is development-only" >&2; exit 1; }
+  [[ "$HARA_SIDECAR_CORE_DIR" = /* ]] || { echo "error: Core path override must be absolute" >&2; exit 1; }
+  CLI="$(cd "$HARA_SIDECAR_CORE_DIR" && pwd -P)"
+fi
 [ "$(git -C "$CLI" rev-parse --is-inside-work-tree 2>/dev/null || true)" = "true" ] || {
   echo "hara-cli repository not found at $CLI" >&2
   exit 1
@@ -136,6 +143,12 @@ verify_or_repair_macos_adhoc_signature() {
   if /usr/bin/codesign --verify "$binary_path" >/dev/null 2>&1; then
     return 0
   fi
+  # Local verification slices can prohibit even keyless ad-hoc repair. This does not skip the
+  # signature gate: an invalid compiler output remains a hard failure, never an unsigned pass.
+  if [ "${HARA_SIDECAR_NO_SIGNING:-0}" = "1" ]; then
+    echo "error: $binary_label needs ad-hoc repair but this local slice forbids signing" >&2
+    return 1
+  fi
   # Bun normally emits a linker-signed ad-hoc Mach-O, but some payload layouts leave that
   # generated signature stale. macOS kills such an arm64 executable before --version can run.
   # Repair only the disposable source binary with a local ad-hoc signature; protected release
@@ -194,7 +207,7 @@ verify_or_repair_macos_adhoc_signature "$STAGED_SIDECAR" "the staged Desktop sid
 mv -f "$STAGED_SIDECAR" "$BUNDLED_SIDECAR"
 STAGED_SIDECAR=""
 node scripts/refresh-herdr-runtime.mjs "$TRIPLE"
-node scripts/refresh-opencode-runtime.mjs "$TRIPLE"
+# Pi is compiled into Core; optional coding CLIs are never hydrated into the Desktop bundle.
 if [ "${HARA_FOREIGN_MAC_STATIC_VALIDATION:-0}" = "1" ]; then
   node scripts/foreign-mac-validation.mjs \
     "$BUNDLED_SIDECAR" "$TRIPLE" "freshly compiled Intel sidecar"

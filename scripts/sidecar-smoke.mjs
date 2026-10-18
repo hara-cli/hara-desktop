@@ -8,6 +8,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { assertPiRuntimeManifest } from "./check-runtime-distribution.mjs";
 
 const COMMAND_TIMEOUT_MS = 30_000;
 
@@ -323,6 +324,7 @@ export function smokeSidecar({ binary, expectedVersion, expectedTarget = nativeT
     if (version !== expectedVersion) {
       throw new Error(`${label} version mismatch: expected ${expectedVersion}, got ${version || "<empty>"}`);
     }
+    assertPiRuntimeManifest(runSidecar(["--runtime-manifest"], true, env));
     if (existsSync(ambientPreloadMarker)) {
       throw new Error(`${label} executed cwd bunfig.toml preload before Hara startup`);
     }

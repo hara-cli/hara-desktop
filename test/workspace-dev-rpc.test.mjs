@@ -23,6 +23,13 @@ async function setup() {
   socket.reply(socket.sent[0].id, { capabilities: ["workspace.local-dev.v2"], syntheticOnly: true }); await ready;
   return { client, socket, disconnects: () => disconnects };
 }
+test("formal connection accepts workspace.v1 only, not a Lab or real-key acceptance host", async () => {
+  for (const reply of [{ capabilities: ["workspace.v1"], executionMode: "workspace", syntheticOnly: false }, { capabilities: ["workspace.local-dev.v2"], executionMode: "synthetic", syntheticOnly: true }]) {
+    const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "workspace" }, () => {}), socket = Socket.instances.at(-1);
+    const ready = client.initialize(info().token), outcome = reply.executionMode === "workspace" ? ready : assert.rejects(ready);
+    socket.open(); await tick(); socket.reply(socket.sent[0].id, reply); await outcome; assert.equal(socket.closes, reply.executionMode === "workspace" ? 0 : 1); client.close();
+  }
+});
 test("invalid native transport metadata never opens a socket or falls back", () => {
   for (const invalid of [{ ...info(), port: 0 }, { ...info(), port: 65536 }, { ...info(), token: "bad" }, { ...info(), syntheticOnly: false }]) {
     assert.throws(() => new WorkspaceDevConnectionClient(invalid, () => {}));

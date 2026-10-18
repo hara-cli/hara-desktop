@@ -7,7 +7,7 @@ export interface CodingSettingsState {
   revision: number;
   executor: CodingExecutorPreference;
   effectiveExecutor: CodingExecutorId;
-  recommendedExecutor: "opencode";
+  recommendedExecutor: "opencode" | "pi";
   executorEditable: boolean;
   experimental: boolean;
 }
@@ -22,11 +22,11 @@ export function codingSettingsState(value: unknown): CodingSettingsState | null 
   const item = value as Record<string, unknown>;
   if (item.version !== 1 || !Number.isSafeInteger(item.revision) || (item.revision as number) < 0
     || !isCodingExecutorPreference(item.executor) || !isCodingExecutorPreference(item.effectiveExecutor)
-    || item.effectiveExecutor === "auto" || item.recommendedExecutor !== "opencode"
+    || item.effectiveExecutor === "auto" || !["opencode", "pi"].includes(String(item.recommendedExecutor))
     || typeof item.executorEditable !== "boolean" || typeof item.experimental !== "boolean") return null;
   return {
     version: 1, revision: item.revision as number, executor: item.executor,
-    effectiveExecutor: item.effectiveExecutor, recommendedExecutor: "opencode",
+    effectiveExecutor: item.effectiveExecutor, recommendedExecutor: item.recommendedExecutor as "opencode" | "pi",
     executorEditable: item.executorEditable, experimental: item.experimental,
   };
 }

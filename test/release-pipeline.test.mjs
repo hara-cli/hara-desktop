@@ -1740,23 +1740,21 @@ test("release installs and audits use finite official-registry retry helpers", (
   assert.doesNotMatch(auditHelper, /while true|registry\.npmmirror\.com|npmmirror/);
 });
 
-test("every native release target hydrates the checksum-pinned built-in runtimes before Tauri builds", () => {
+test("every native release target hydrates only Core/Pi and the checksum-pinned non-Agent helper before Tauri builds", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const haraCopy = workflow.indexOf('"$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}${EXT}"');
   const herdrHydration = workflow.indexOf(
     'node "$GITHUB_WORKSPACE/scripts/refresh-herdr-runtime.mjs" "${{ matrix.target }}"',
     haraCopy,
   );
-  const codeRuntimeHydration = workflow.indexOf(
-    'node "$GITHUB_WORKSPACE/scripts/refresh-opencode-runtime.mjs" "${{ matrix.target }}"',
-    herdrHydration,
-  );
-  const tauriBuild = workflow.indexOf("- name: Build local packages", codeRuntimeHydration);
+  const distributionCheck = workflow.indexOf("check-runtime-distribution.mjs", herdrHydration);
+  const tauriBuild = workflow.indexOf("- name: Build local packages", distributionCheck);
 
   assert.ok(haraCopy >= 0, "the release matrix must install the target-specific Hara sidecar");
   assert.ok(herdrHydration > haraCopy, "the matching Herdr runtime must be verified beside Hara");
-  assert.ok(codeRuntimeHydration > herdrHydration, "the matching Hara Code Runtime must be verified beside Hara");
-  assert.ok(tauriBuild > codeRuntimeHydration, "Tauri must not resolve externalBin before built-in runtimes exist");
+  assert.ok(distributionCheck > herdrHydration, "the Pi-only configuration must be verified before packaging");
+  assert.doesNotMatch(workflow, /refresh-opencode-runtime\.mjs/);
+  assert.ok(tauriBuild > distributionCheck, "Tauri must not resolve externalBin before the supported helper exists");
 });
 
 test("sidecar-only npm installation defers lifecycle scripts without changing ordinary CI", () => {
@@ -2025,13 +2023,14 @@ test("target-runtime downloads and RPM extraction fail only after bounded portab
   assert.doesNotMatch(packageSmoke, /"rpm2cpio"/);
 });
 
-test("Desktop reuses its pinned OpenCode sidecar without embedding another runtime copy", () => {
+test("Desktop builds the Pi-only sidecar and never hydrates optional Agent tools", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
   assert.match(workflow, /BUILD_COMMAND=\(bun scripts\/build-binary\.ts dist\/bin\/hara-sidecar "\$BUN_TARGET" dist\/cli\.js desktop-sidecar\)/);
   assert.match(refresh, /bun scripts\/build-binary\.ts "dist\/bin\/hara-refresh" "\$BUN_TARGET" dist\/cli\.js desktop-sidecar/);
-  assert.match(workflow, /refresh-opencode-runtime\.mjs/);
-  assert.match(refresh, /refresh-opencode-runtime\.mjs/);
+  assert.doesNotMatch(workflow, /refresh-opencode-runtime\.mjs/);
+  assert.doesNotMatch(refresh, /refresh-opencode-runtime\.mjs/);
+  assert.match(readFileSync(join(root, "scripts/sidecar-smoke.mjs"), "utf8"), /assertPiRuntimeManifest\(runSidecar\(\["--runtime-manifest"\]/);
 });
 
 test("every x64 sidecar uses a baseline CPU target and executes the hostile-cwd boundary smoke", () => {
@@ -2121,43 +2120,18 @@ test("Hara Live bundles a checksum-pinned Herdr runtime and verifies it after pa
   assert.match(packageSmoke, /herdrLock\.version/);
 });
 
-test("Desktop bundles a checksum-pinned provider-neutral Hara Code Runtime", () => {
-  const lock = JSON.parse(readFileSync(join(root, "scripts/opencode-runtime-lock.json"), "utf8"));
-  assert.equal(lock.version, "1.18.32");
-  assert.equal(lock.repository, "https://github.com/anomalyco/opencode");
-  assert.match(lock.commit, /^[a-f0-9]{40}$/);
-  assert.equal(lock.license, "MIT");
-  assert.equal(lock.productName, "Hara Code Runtime");
-  assert.deepEqual(Object.keys(lock.targets).sort(), [
-    "aarch64-apple-darwin",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-apple-darwin",
-    "x86_64-pc-windows-msvc",
-    "x86_64-unknown-linux-gnu",
-  ]);
-  for (const target of Object.values(lock.targets)) {
-    assert.match(target.asset, /^opencode-(?:darwin|linux|windows)-/);
-    assert.match(target.sha256, /^[a-f0-9]{64}$/);
-  }
-
+test("Desktop preinstalls only Pi; optional native tools are neither bundled, auto-discovered nor signed", () => {
   const config = JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8"));
-  assert.ok(config.bundle.externalBin.includes("binaries/hara-code-runtime"));
+  assert.deepEqual(config.bundle.externalBin, ["binaries/hara", "binaries/herdr"]);
   const notices = readFileSync(join(root, "THIRD_PARTY_NOTICES.md"), "utf8");
-  assert.match(notices, /Hara Code Runtime \(OpenCode\)[\s\S]*1\.18\.32[\s\S]*License: MIT/);
-
-  const refresh = readFileSync(join(root, "scripts/refresh-opencode-runtime.mjs"), "utf8");
-  assert.match(refresh, /if \(actual !== entry\.sha256\)/);
-  assert.match(refresh, /"--continue-at", "-"/);
-  assert.match(refresh, /for \(let attempt = 1; attempt <= 13; attempt \+= 1\)/);
-  assert.match(refresh, /Expand-Archive -LiteralPath \$Archive -DestinationPath \$Destination -Force/);
-  assert.match(refresh, /item\.name\.toLowerCase\(\) === \(windows \? "opencode\.exe" : "opencode"\)/);
-  assert.ok(refresh.indexOf("if (actual !== entry.sha256)") < refresh.indexOf("writeFile(stagedDestination"));
-
+  assert.match(notices, /OpenCode \(not preinstalled\)/);
   const nativeHost = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
-  assert.match(nativeHost, /command\.env\("HARA_CODE_RUNTIME_PATH", code_runtime_executable\)/);
+  assert.match(nativeHost, /command\.env_remove\("HARA_CODE_RUNTIME_PATH"\)/);
+  assert.doesNotMatch(nativeHost, /bundled_code_runtime_path/);
   const packageSmoke = readFileSync(join(root, "scripts/package-smoke.mjs"), "utf8");
-  assert.match(packageSmoke, /codeRuntime\(bundledCodeRuntime\)/);
-  assert.match(packageSmoke, /codeRuntimeLock\.version/);
+  assert.match(packageSmoke, /onlyPiInventory\(app\)/);
+  assert.match(packageSmoke, /onlyPiInventory\(extractionRoot\)/);
+  for (const file of ["scripts/build-mac-signed.sh", "scripts/mac-dmg-smoke.mjs", "scripts/mac-updater-smoke.mjs"]) assert.doesNotMatch(readFileSync(join(root, file), "utf8"), /PACKAGED_CODE_RUNTIME|CODE_RUNTIME=|bundledCodeRuntime|codeRuntimeLock/);
 });
 
 test("draft assembly and promotion both validate published source provenance", () => {

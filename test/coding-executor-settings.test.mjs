@@ -59,9 +59,13 @@ test("versioned snapshot projects only safe fields and rejects unknown contracts
   assert.deepEqual(CODING_EXECUTOR_PREFERENCES,["auto","opencode","pi","codex","claude"]);
   assert.deepEqual(codingSettingsState({...settings(),apiKey:"synthetic-private",path:"/private/user"}),settings());
   for (const bad of [null,[],{},settings({version:2}),settings({revision:-1}),settings({revision:1.2}),settings({revision:Number.MAX_SAFE_INTEGER+1}),
-    settings({executor:"runtime"}),settings({effectiveExecutor:"auto"}),settings({recommendedExecutor:"pi"}),settings({executorEditable:1}),settings({experimental:"false"})]) {
+    settings({executor:"runtime"}),settings({effectiveExecutor:"auto"}),settings({recommendedExecutor:"unknown"}),settings({executorEditable:1}),settings({experimental:"false"})]) {
     assert.equal(codingSettingsState(bad),null);
   }
+});
+test("compatibility parser accepts the new preinstalled Pi default without rejecting an older exact OpenCode contract", () => {
+  const pi = settings({ effectiveExecutor: "pi", recommendedExecutor: "pi" }); assert.deepEqual(codingSettingsState(pi), pi);
+  assert.deepEqual(codingSettingsState(settings()), settings());
 });
 
 test("a human preference saves exactly one revision-bound request and changes committed state only after ACK", async () => {
@@ -192,7 +196,12 @@ test("actual panel gives all choices, bounded scope and separate accounts in bot
     assert.match(html,locale === "zh" ? /不会共享账号、安装工具/ : /does not share accounts, install tools/);
     assert.doesNotMatch(html,/type="password"|apiKey|commandId|runtimeGrants/);
   }
-  assert.match(render(ready({draft:"pi"})),/not a benchmark winner/);
+  for (const locale of ["en", "zh"]) {
+    const html = render(ready({draft:"pi"}), locale);
+    assert.match(html, locale === "zh" ? /内置 Pi/ : /Built-in Pi/);
+    assert.match(html, locale === "zh" ? /不改变已有运行时或会话绑定/ : /existing runtime and session bindings remain unchanged/);
+    assert.doesNotMatch(html, /Pi (?:is experimental|为实验性)/);
+  }
 });
 
 test("actual panel is inert for managed/unsupported/Company states and failed ACKs cannot look saved", () => {

@@ -47,7 +47,7 @@ export function CodingExecutorSettingsPanel({ view, personal, t, onSelect, onSav
             {!settings.executorEditable ? <SettingsNotice tone="neutral" title={t("codingExecutorManagedTitle")}>
               {t("codingExecutorManagedHint")}
             </SettingsNotice> : null}
-            {view.draft === "pi" ? <SettingsNotice tone="warning" title={t("codingExecutorPiTitle")}>
+            {view.draft === "pi" ? <SettingsNotice tone="neutral" title={t("codingExecutorPiTitle")}>
               {t("codingExecutorPiHint")}
             </SettingsNotice> : null}
           </> : null}
