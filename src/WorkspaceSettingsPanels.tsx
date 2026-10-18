@@ -28,7 +28,8 @@ export function WorkspaceConnections({ model, workspace }: { model: WorkspaceDev
   const [legacy, setLegacy] = useState<LegacyConnectionPreview[]>([]), [confirmImport, setConfirmImport] = useState<LegacyConnectionPreview | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<WorkspaceModelConnection | null>(null), [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false), fence = useRef(false);
-  const readOnly = workspace.connections.readOnly === true;
+  const migrationPending = workspace.connections.migrationPending === true, unavailable = workspace.connections.unavailable === true;
+  const readOnly = workspace.connections.readOnly === true || migrationPending || unavailable;
   useEffect(() => { let active = true; void model.legacyConnections().then(rows => { if (active) setLegacy(rows); }).catch(() => { if (active) setNotice("舊連接預覽不可用；原資料未改動。"); });
     return () => { active = false; }; }, [model, workspace.workspaceId, workspace.resourceGeneration]);
   const perform = async (action: () => Promise<void>) => { if (fence.current) return; fence.current = true; setPending(true); setNotice("");
@@ -36,7 +37,11 @@ export function WorkspaceConnections({ model, workspace }: { model: WorkspaceDev
     catch { setNotice("結果尚未確認，請刷新核對；沒有自動重送或記錄密鑰。"); }
     finally { fence.current = false; setPending(false); } };
   return <section aria-label="本空間模型連接"><h3>模型連接</h3>
-    {readOnly ? <p role="alert">設定為唯讀（較新版本或備份恢復），原檔已保留。</p> : null}
+    {readOnly ? <p role="alert">{migrationPending ? "連接升級待完成：系統憑據存儲未允許或不可用，原設定已保留。你仍可查看歷史與使用空間其他功能。"
+      : unavailable ? "連接設定暫不可用，原檔與備份已保留。空間歷史和其他設定仍可用，沒有改接其他連接。" : "設定為唯讀（較新版本或備份恢復），原檔已保留。"}</p> : null}
+    {migrationPending && !workspace.connections.recovered ? <button disabled={pending} onClick={() => void perform(async () => {
+      await model.workspaceRequest("workspace.connection.migration.retry", { expectedRevision: workspace.connections.revision, approved: true }); await model.refresh();
+    })}>我已確認系統憑據存儲，重試升級</button> : null}
     {workspace.connections.connections.filter(row => row.status === "active").map(connection => <div className="wsd-connection" key={connection.id}>
       <strong>{connection.label}{connection.id === workspace.connections.defaultConnectionId ? <span className="wsd-pill">目前連接</span> : null}</strong>
       <small>{connection.provider === "anthropic" ? "Anthropic 相容" : "OpenAI 相容"} · {connection.defaultModel}</small><code className="wsd-root">{connection.baseURL}</code><small>Key：已保存</small>

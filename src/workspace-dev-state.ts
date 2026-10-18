@@ -14,7 +14,7 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
   runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string }[];
     operations: { id: string; runtimeId: string; state: string }[] };
   budget?: { maxTokens: number; maxRequests: number; requests: number; inputTokens: number; outputTokens: number; uncertainReservedTokens: number; paused: boolean };
-  connections: { revision: number; defaultConnectionId: string | null; readOnly?: boolean; recovered?: boolean; connections: WorkspaceModelConnection[] };
+  connections: { revision: number; defaultConnectionId: string | null; readOnly?: boolean; recovered?: boolean; migrationPending?: boolean; unavailable?: boolean; connections: WorkspaceModelConnection[] };
   approvals: WorkspaceDevApproval[]; conversation: { revision: number; state: string; sessionId: string; taskId: string | null; runId: string | null;
     taskState: string | null; objective: string; history: WorkspaceDevMessage[]; pastTaskCount: number;
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };

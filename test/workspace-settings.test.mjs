@@ -33,6 +33,18 @@ test("connection settings render safe metadata and editable blank-key semantics,
  const form=render("WorkspaceConnectionForm",{model:{},existing:snapshot("A").connections.connections[0]});
  assert.match(form,/留空不修改/);assert.match(form,/type="password"[^>]*value=""/);assert.doesNotMatch(form,/type="password"[^>]*required/);
 });
+test("pending connection migration is read-only without losing the space or displaying a damaged-data claim",()=>{
+ const workspace=snapshot("A");workspace.connections={revision:0,defaultConnectionId:null,connections:[],readOnly:true,migrationPending:true,recovered:false};
+ const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/連接升級待完成/);assert.match(html,/查看歷史與使用空間其他功能/);
+ assert.match(html,/我已確認系統憑據存儲，重試升級/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|資料損壞|設定為唯讀（較新版本/);
+ const source=read("src/WorkspaceSettingsPanels.tsx");assert.match(source,/model\.workspaceRequest\("workspace\.connection\.migration\.retry", \{ expectedRevision: workspace\.connections\.revision, approved: true \}\)/);
+});
+test("unavailable connections and backup-only recovery retain distinct non-destructive notices",()=>{
+ for(const flags of [{unavailable:true},{recovered:true},{migrationPending:true,recovered:true}]){
+  const workspace=snapshot("A");workspace.connections={revision:0,defaultConnectionId:null,connections:[],readOnly:true,...flags};
+  const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原檔|原設定/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|我已確認系統憑據存儲，重試升級/);
+ }
+});
 test("local discovery is visible before install, includes version/path and asks confirmation instead of downloading",()=>{
  const workspace={...snapshot("A"),runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"detected",version:"1.2.3",path:"/fixture/nvm/bin/codex"}],operations:[]}};
  const html=render("Runtime",{model:{},workspace});assert.match(html,/1\.2\.3 · 本機已安裝/);assert.match(html,/fixture\/nvm\/bin\/codex/);assert.match(html,/使用本機安裝/);assert.doesNotMatch(html,/>按需安裝<\/button>/);

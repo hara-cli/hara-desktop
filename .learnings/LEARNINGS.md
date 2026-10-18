@@ -1,5 +1,21 @@
 # Hara Desktop Learnings
 
+## [LRN-20261018-CONNECTION-MIGRATION-NOTICE] correction
+
+**Logged**: 2026-10-18
+**Priority**: high
+**Status**: implemented and tested on isolated fix branch; no native package/release
+**Area**: frontend
+
+- A credential migration awaiting system authorization must not become a damaged-data message or a
+  blank/unopenable Workspace. Render pending/unavailable/read-only notices while retaining history.
+- Preserve the existing same-frame ref fence and workspace/generation/epoch checks. Retry migration
+  only on an explicit confirmed button, not in an effect, refresh, polling or reconnect. Backup-only
+  recovery remains read-only and cannot offer a migration that would overwrite the sole good copy.
+- Synthetic component and full-suite verification is not a native Keychain or signed-app acceptance.
+
+---
+
 ## [LRN-20261018-WORKSPACE-SETTINGS-UX] Scoped settings and stable appearance
 
 **Logged**: 2026-10-18
