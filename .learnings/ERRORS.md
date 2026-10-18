@@ -1,5 +1,48 @@
 # Errors
 
+## [ERR-20261018-NATIVE-WINDOW-LOCKED-SCREEN] Native pixel acceptance requires an unlocked session
+
+**Logged**: 2026-10-18T11:10:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: tests
+
+### Summary
+
+The packaged window and auto-started Core worked, but Computer Use could not find a usable window
+and a target-window capture was white while the macOS session was locked.
+
+### Error
+
+Computer Use returned `cgWindowNotFound` after a prolonged tool wait. The initial fixture's bounded
+visual wait expired and correctly stopped its owned app/Core without making a model request.
+An independent, candidate-PID-only native probe later reported `screenLocked=true`,
+`frontmostIsCandidate=false`, and an on-screen 1100x760 main window. A white capture in that
+state is not evidence of either a successful UI or a renderer defect.
+
+### Context
+
+- Candidate source: Desktop 91fa39f, Core ef6f971, isolated private HOME/Workspace.
+- Separate loopback-only native six-step and full cold-restart tests passed; no real model calls.
+- `--no-sign` leaves the outer app resource seal unsigned. The same shell Mach-O verifies outside
+  the app; Core and Herdr verify in-place. Do not mislabel this local condition as a signed release.
+
+### Suggested Fix
+
+Before pixel acceptance, check the screen-lock flag without exposing session details. If locked,
+stop at that boundary and ask the user to unlock. Keep GUI pixel results separate from native
+window creation, bundled-Core startup, client/RPC execution and retained history. Do not unlock,
+weaken permissions, auto-resend tasks, or add another signing implementation to make a test pass.
+
+### Metadata
+
+- Reproducible: locked-session observation confirmed; unlocked pixel result remains unverified
+- Related Files: scripts/refresh-sidecar.sh, docs/workspace-formal-entry.md
+- Private Evidence: /private/tmp/hara-native-pi-adhoc-20261018.oV7fCh/
+- Tags: macos, screen-lock, native-window, adhoc, acceptance-boundary
+
+---
+
 ## [ERR-20260923-SECURITY-ANCHOR-RACE] Security shortcuts landed on the same settings card
 
 **Logged**: 2026-09-23T13:10:00+08:00

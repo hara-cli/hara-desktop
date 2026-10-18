@@ -51,6 +51,22 @@ login remain separate validation; missing vendor checksums fail closed rather th
 
 ## Signing/notarization checklist (not executed)
 
+### Local-only ad-hoc acceptance is separate
+
+The sidecar refresh script's existing `verify_or_repair_macos_adhoc_signature` verifies Bun output
+and repairs a stale linker signature with `codesign --force --sign -`. Do not add a task-specific
+signing prohibition to this normal path, bypass its verification, or duplicate the signing helper.
+This keyless local repair is not Developer ID signing, Keychain access or notarization.
+
+A local Tauri `--no-sign` app/DMG with updater artifact creation disabled can verify the packaged
+Core, Pi-only inventory, native window startup and scoped synthetic RPC flow. The outer app resource
+seal and updater/Developer ID/notarization release gates remain unpassed, not waived. Check that the
+interactive session is unlocked before pixel QA; an on-screen native window and working RPC do not
+prove that its chat UI rendered correctly. Keep exact source/config/binary/DMG hashes and distinguish
+six-step client/RPC automation from six actual GUI interactions.
+
+### Authorized release checklist
+
 1. Authorize a new release version/tag; Core tag, full source SHA and Desktop sidecar lock must agree.
    A local candidate SHA is not an existing published tag; do not weaken the tag/origin gates.
 2. Run native platform, npm artifact, Pi-only absence, Pi SDK execution and packaged UI smoke gates.
