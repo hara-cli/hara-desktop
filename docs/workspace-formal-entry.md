@@ -12,6 +12,11 @@ acceptance are separate protocols/roots, never fallback providers. An unknown st
 same owned child; retry observes it instead of starting a second Core. Window closure does not
 cancel an accepted background task. Reopening is read-only until an explicit new send/resume.
 
+Workspace Provider construction explicitly disables ambient SDK account/auth defaults and debug
+logging. Passing a scoped API key alone is insufficient: an independently started CLI could otherwise
+inherit an Anthropic bearer token or OpenAI organization/project from its process environment.
+No temporary process.env mutation is used, so concurrent Workspaces cannot race over a shared value.
+
 Operator-only `HARA_DESKTOP_WORKSPACE_ROOT` can select a canonical, owned, private root. It must be
 empty on first open or carry its formal identity marker. The renderer cannot supply a path. Default
 roots live under the app's Hara data directory in `workspaces-v1`. Unmarked/unsafe old directories
