@@ -103,6 +103,14 @@ test("real v1 screen preserves explicit resume and never opens a legacy surface 
   const html = renderScreen(view({ state: "blocked" })); assert.match(html, /上次任務尚未完成/); assert.match(html, /繼續原任務/);
   assert.doesNotMatch(html, /群组|MailboxSettings|WorkspaceCollaboration|WORKSPACE LAB/);
 });
+test("v1 exposes workspace schedules and skills in the actual sidebar without loading global legacy pages", () => {
+  const html = renderScreen(view());
+  assert.match(html, /aria-label="工作空間功能"/); assert.match(html, />定時任務<\/button>/); assert.match(html, />技能<\/button>/);
+  const source = read("src/WorkspaceLocalDev.tsx");
+  assert.match(source, /setFeature\("schedules"\)/); assert.match(source, /setFeature\("skills"\)/);
+  assert.match(source, /<WorkspaceFeaturePanel key=\{`\$\{workspace\.workspaceId\}:\$\{feature\}`\}/);
+  assert.doesNotMatch(source, /AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/);
+});
 test("legacy feature code is retained instead of deleting its stored resources or backend contract", () => {
   const app = read("src/App.tsx"), mailbox = read("src/MailboxSettings.tsx");
   for (const marker of [/"core\.groups"/, /hasOrganizationWorkspace/, /<AgentInboxList/, /<WorkspaceCollaboration/, /<MailboxSettings/, /workbenchInboxMode/]) assert.ok(marker.test(app), `legacy component contract retained: ${marker}`);

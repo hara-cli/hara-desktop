@@ -4,7 +4,9 @@ import HaraLogo from "./mark";
 import { WorkspaceDevConnectionClient, type WorkspaceDevConnection } from "./workspace-dev-rpc";
 import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval } from "./workspace-dev-state";
 import "./workspace-local-dev.css";
-import WorkspaceRuntimeSettings, { WorkspaceConnectionForm } from "./WorkspaceRuntimeSettings";
+import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
+import { WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
+import "./workspace-theme.css";
 
 const TOOL_LABELS: Record<string, string> = { task_intake: "確認任務", task_checkpoint: "保存驗證回執", todo_write: "更新步驟",
   workspace_read: "查看文件", workspace_write: "寫入文件", workspace_verify: "核驗內容", agent_list: "查看同事", agent_create: "建立同事", agent_contact: "委派同事" };
@@ -40,6 +42,8 @@ function Transcript({ history, agent }: { history: WorkspaceDevMessage[]; agent?
 export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string; mode: "workspace" | "lab" }) {
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   const [settings, setSettings] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState("我的工作空間");
+  const [feature, setFeature] = useState<"schedules" | "skills" | null>(null);
+  const theme = useStableWorkspaceTheme(model);
   const input = useRef<HTMLTextAreaElement>(null), end = useRef<HTMLDivElement>(null), nearBottom = useRef(true);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
   const busy = workspace ? ["running", "draining"].includes(workspace.conversation.state) : false;
@@ -57,7 +61,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }
       <div className="wsd-brand"><HaraLogo size={29} /><span>Hara</span>{mode === "lab" ? <small>WORKSPACE LAB</small> : null}</div>
       <label className="wsd-space-label">目前空間</label>
       <div className="wsd-space-switch"><select aria-label="切換 Workspace" value={view.workspaceId ?? ""} disabled={view.loading || !view.directory?.workspaces.length}
-        onChange={event => { setSettings(false); void model.selectWorkspace(event.target.value); }}>
+        onChange={event => { setSettings(false); setFeature(null); void model.selectWorkspace(event.target.value); }}>
         <option value="" disabled>選擇工作空間</option>{view.directory?.workspaces.map(row => <option value={row.workspaceId} key={row.workspaceId} disabled={!row.active}>{row.label}</option>)}
       </select><button aria-label="建立新 Workspace" title="建立新 Workspace" onClick={() => setCreating(true)}>＋</button></div>
       {view.workspaceId && agents.length ? <>
@@ -70,6 +74,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }
           {!agents.some(row => row.kind === "colleague") ? <p className="wsd-sidebar-note">跟 Hara 聊聊你需要誰，<br />它會提議合適的同事。</p> : null}</div>
         <button className="wsd-new-colleague" disabled={view.loading} onClick={() => { const main = agents.find(row => row.kind === "main"); if (main && main.agentId !== view.agentId) void model.selectAgent(main.agentId); else model.setDraft("建立一位同事 Coder，負責本空間的文件工作"); }}>＋ 與 Hara 討論新同事</button>
       </> : <p className="wsd-sidebar-note">每個空間都有自己的<br />Hara、同事、連接與記憶。</p>}
+      <nav className="wsd-feature-nav" aria-label="工作空間功能"><button disabled={!workspace} onClick={() => setFeature("schedules")}>定時任務</button><button disabled={!workspace} onClick={() => setFeature("skills")}>技能</button></nav>
       <div className="wsd-sidebar-footer"><span className="wsd-test-mode"><i />{production ? "本機工作空間" : realKey ? "火山真實模型驗收" : "本機合成驗收"}</span><button onClick={() => setSettings(current => !current)} disabled={!workspace} aria-label="空間設定">⚙</button></div>
     </aside>
     <main className="wsd-chat">
@@ -79,6 +84,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }
       {view.error ? <div className="wsd-notice is-error" role="alert">{view.error}</div> : null}
       {view.syncNotice ? <div className="wsd-notice" role="status">{view.syncNotice}</div> : null}
       <div className="wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
+        {feature && workspace ? <WorkspaceFeaturePanel key={`${workspace.workspaceId}:${feature}`} model={model} workspace={workspace} kind={feature} onClose={() => setFeature(null)} /> : null}
         {!workspace && view.loading && view.workspaceId ? <div className="wsd-sidebar-note">正在打開對話…</div> : !workspace ? <section className="wsd-welcome"><div className="wsd-welcome-mark"><HaraLogo size={57} /></div><p className="wsd-kicker">YOUR PEOPLE. YOUR SPACE.</p>
           <h1>一個空間，<br />從你和 Hara 開始。</h1><p>聊天、找同事、一起完成事情。<br />連接、任務與歷史都留在各自的 Workspace。</p>
           <button className="wsd-primary" onClick={() => setCreating(true)} disabled={view.loading}>{view.loading ? "正在打開空間…" : "建立個人 Workspace"}</button>
@@ -111,9 +117,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }
       <button className="wsd-primary" onClick={() => void create()} disabled={view.loading || !name.trim()}>建立 Workspace</button></section></div> : null}
     {settings && workspace ? <aside className="wsd-settings" role="dialog" aria-label="目前 Workspace 設定"><button className="wsd-close" aria-label="關閉空間設定" onClick={() => setSettings(false)}>×</button>
       <p className="wsd-kicker">WORKSPACE SETTINGS</p><h2>{workspace.label}</h2><p>這裡的連接只屬於目前空間。開始執行後，任務會固定原連接，不跟隨預設切換。</p>
-      <h3>模型連接</h3>{workspace.connections.connections.map(connection => <div className="wsd-connection" key={connection.id}><strong>{connection.label}</strong><small>{connection.defaultModel} · {connection.status === "active" ? "已配置" : "已撤銷"}</small></div>)}
-      {production ? <WorkspaceConnectionForm key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} />
+      {production ? <WorkspaceConnections key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} />
         : !hasConnection ? <button className="wsd-primary" onClick={() => void connect()}>{realKey ? "引用已授權火山 Key" : "啟用本機合成連接"}</button> : null}
+      <WorkspaceThemeSettings theme={theme} />
       {production ? <WorkspaceRuntimeSettings key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} /> : <><h3>Runtime</h3><p>Pi 已內建。這個隔離 Lab 不下載額外運行時。</p></>}
       <details><summary>本機工作資料</summary><p className="wsd-root">{root}</p><p>{workspace.conversation.pastTaskCount} 項歷史任務 · {workspace.conversation.usage.modelCalls} 次{production || realKey ? "模型步驟" : "合成步驟"}。不是供應商帳單。</p>
         {workspace.budget ? <p>全片 {workspace.budget.requests}/{workspace.budget.maxRequests} 次請求 · 已回報 {workspace.budget.inputTokens + workspace.budget.outputTokens}/{workspace.budget.maxTokens} token；未結算預留 {workspace.budget.uncertainReservedTokens}。</p> : null}</details>

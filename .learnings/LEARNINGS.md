@@ -1,5 +1,25 @@
 # Hara Desktop Learnings
 
+## [LRN-20261018-WORKSPACE-SETTINGS-UX] Scoped settings and stable appearance
+
+**Logged**: 2026-10-18
+**Priority**: high
+**Status**: implemented on isolated fix branch; no package/release
+**Area**: frontend
+
+- An incomplete local runtime discovery is not proof of absence. Show installed version/path first;
+  registration, download approval and permission to execute tasks are separate states.
+- Pin async settings requests to workspace/generation/view epoch; remount confirmations/password forms
+  on scope change. Use same-frame ref fences, not React state alone, to prevent repeated submissions.
+- Never put saved Keys into form defaults, localStorage, view state or diagnostics. Blank editing
+  preserves the Key. Import/delete/cleanup are explicit scoped decisions and never auto-retry.
+- Stable host appearance preference is authoritative; localStorage is only a pre-render cache. Preserve
+  system/light/dark plus matchMedia cleanup. Assert text contrast on chat/settings/cards/actions.
+- New scoped schedules/skills must not mount legacy global pages. Do not imply a live scheduler cutover
+  occurred. A skill enablement locks source material, not global directories, credentials or tool rights.
+
+---
+
 ## [LRN-20260825-AGENT-PORTRAIT-SILHOUETTES] correction
 
 **Logged**: 2026-08-25T02:50:00+08:00

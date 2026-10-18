@@ -1,0 +1,35 @@
+/* One resolved data-theme from theme.ts covers welcome, chat, feature pages, dialogs and settings. */
+.wsd-app,.wsd-boot {
+  --wsd-paper:#faf9f6; --wsd-surface:#fffefa; --wsd-sidebar:#f2f1ed; --wsd-card:#f0efeb;
+  --wsd-ink:#292724; --wsd-muted:#666158; --wsd-line:#d3cec4; --wsd-red:#b93b29;
+  --wsd-user:#f3e3db; --wsd-primary-ink:#ffffff; --wsd-success:#356446; color-scheme:light;
+}
+:root[data-theme="dark"] .wsd-app,:root[data-theme="dark"] .wsd-boot {
+  --wsd-paper:#181b1f; --wsd-surface:#181b1f; --wsd-sidebar:#202327; --wsd-card:#292d32;
+  --wsd-ink:#eee9e2; --wsd-muted:#b9b2a6; --wsd-line:#50555d; --wsd-red:#f0826d;
+  --wsd-user:#49312d; --wsd-primary-ink:#1d2024; --wsd-success:#9acda6; color-scheme:dark;
+}
+.wsd-app .wsd-chat,.wsd-app .wsd-composer-wrap,.wsd-app .wsd-settings,.wsd-app .wsd-modal { background:var(--wsd-surface); color:var(--wsd-ink); }
+.wsd-app .wsd-sidebar { background:var(--wsd-sidebar); }
+.wsd-app button,.wsd-app input,.wsd-app select { background:var(--wsd-surface); color:var(--wsd-ink); border-color:var(--wsd-line); }
+.wsd-app button:hover:not(:disabled),.wsd-app .wsd-connection,.wsd-app .wsd-approval,.wsd-app .wsd-resume,.wsd-app .wsd-notice,.wsd-app .wsd-execution pre { background:var(--wsd-card); color:var(--wsd-ink); }
+.wsd-app .wsd-bubble { background:var(--wsd-card); color:var(--wsd-ink); }
+.wsd-app .is-user .wsd-bubble,.wsd-app .wsd-contact.is-selected { background:var(--wsd-user); color:var(--wsd-ink); }
+.wsd-app .wsd-contact { background:transparent; }.wsd-app .wsd-avatar:not(.is-main) { background:var(--wsd-card); color:var(--wsd-ink); }
+.wsd-app .wsd-primary,.wsd-app .wsd-send { background:var(--wsd-red); border-color:var(--wsd-red); color:var(--wsd-primary-ink); }
+.wsd-app .wsd-primary:hover:not(:disabled),.wsd-app .wsd-send:hover:not(:disabled) { background:var(--wsd-red); filter:brightness(.92); }
+.wsd-app .wsd-header,.wsd-app .wsd-settings,.wsd-app .wsd-composer { border-color:var(--wsd-line); }
+.wsd-app small,.wsd-app .wsd-sidebar-note,.wsd-app .wsd-welcome>small,.wsd-app .wsd-section-label,.wsd-app .wsd-composer-wrap>p,.wsd-app .wsd-composer-wrap>p span,
+.wsd-app .wsd-connection small,.wsd-app .wsd-connection strong,.wsd-app .wsd-execution,.wsd-app .wsd-execution summary span,.wsd-app .wsd-resume p,.wsd-app .wsd-approval details { color:var(--wsd-muted); }
+.wsd-app .wsd-verified { color:var(--wsd-success); }.wsd-app .wsd-verified span { color:var(--wsd-muted); }
+.wsd-app textarea { color:var(--wsd-ink); }.wsd-app textarea::placeholder { color:var(--wsd-muted); }
+.wsd-app .wsd-feature-nav { display:grid; gap:6px; margin:18px 8px; }.wsd-feature-panel { max-width:800px; margin:0 auto 30px; padding:20px; border:1px solid var(--wsd-line); border-radius:14px; background:var(--wsd-surface); }
+.wsd-app .wsd-root,.wsd-app code { overflow-wrap:anywhere; white-space:pre-wrap; }
+.wsd-app .wsd-card-actions { flex-wrap:wrap; gap:8px; }.wsd-settings select { max-width:100%; padding:8px; border:1px solid var(--wsd-line); border-radius:8px; margin:8px; }
+.wsd-feature-panel input[type="checkbox"] { width:auto; }.wsd-legacy-import code { font-size:11px; }
+.wsd-app .wsd-approval textarea { width:100%; min-height:220px; border:1px solid var(--wsd-line); border-radius:10px; background:var(--wsd-surface); padding:12px; resize:vertical; box-sizing:border-box; }
+.wsd-app input:focus-visible,.wsd-app select:focus-visible,.wsd-app button:focus-visible,.wsd-app textarea:focus-visible { outline:2px solid var(--wsd-red); outline-offset:2px; }
+
+/* These retained non-default pages already consume shared tokens; bind them explicitly too. */
+:root[data-theme="light"] .workspace-collaboration,:root[data-theme="light"] .conversation-first { --bg:#fffefa; --bg2:#f2f1ed; --fg:#292724; --dim:#666158; --line:#d3cec4; }
+:root[data-theme="dark"] .workspace-collaboration,:root[data-theme="dark"] .conversation-first { --bg:#181b1f; --bg2:#202327; --fg:#eee9e2; --dim:#b9b2a6; --line:#50555d; }

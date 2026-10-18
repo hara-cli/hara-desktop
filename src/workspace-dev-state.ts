@@ -11,10 +11,10 @@ export type WorkspaceDevMessage = { role: "user"; content: string } | { role: "a
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] };
 export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
   agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
-  runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean }[];
+  runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string }[];
     operations: { id: string; runtimeId: string; state: string }[] };
   budget?: { maxTokens: number; maxRequests: number; requests: number; inputTokens: number; outputTokens: number; uncertainReservedTokens: number; paused: boolean };
-  connections: { revision: number; defaultConnectionId: string | null; connections: { id: string; label: string; status: string; defaultModel: string }[] };
+  connections: { revision: number; defaultConnectionId: string | null; readOnly?: boolean; recovered?: boolean; connections: WorkspaceModelConnection[] };
   approvals: WorkspaceDevApproval[]; conversation: { revision: number; state: string; sessionId: string; taskId: string | null; runId: string | null;
     taskState: string | null; objective: string; history: WorkspaceDevMessage[]; pastTaskCount: number;
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };
@@ -27,6 +27,10 @@ export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; wor
   workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string }
 export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
   maxBytes: number; expiresAt: string; target: { platform: string; arch: string }; workspaceId: string; resourceGeneration: string; viewEpoch: number }
+export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; cleanupPending?: boolean }
+export interface LegacyConnectionPreview { id: string; label: string; provider: "openai" | "anthropic"; baseURL: string; defaultModel: string; keySaved: boolean; source: string }
+export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean }
+export interface WorkspaceFeatureView { revision: number; workspaceId: string; schedules: { id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; enabled: boolean }[]; skills: { id: string; description: string; enabled: boolean; version: string; availableVersion: string; locked: boolean; source: "global" | "private" }[] }
 
 export class WorkspaceDevModel {
   private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "" };
@@ -131,6 +135,34 @@ export class WorkspaceDevModel {
       if (epoch !== this.epoch) return false; await this.refresh(); return true;
     } catch { if (epoch === this.epoch) this.update({ error: "連接未確認保存，請刷新後核對；不會將密鑰寫入瀏覽器儲存或錯誤記錄。" }); return false; }
   }
+  async workspaceRequest<T>(method: string, extra: Record<string, unknown> = {}): Promise<T> {
+    const workspace = this.view.workspace, epoch = this.epoch;
+    if (!workspace) throw new Error("請先選擇工作空間");
+    const value = await this.rpc.request<T>(method, { ...extra, workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration });
+    if (epoch !== this.epoch) throw new Error("原工作空間視圖已切換，未自動重送");
+    return value;
+  }
+  async editConnection(connectionId: string, input: Record<string, unknown>): Promise<boolean> {
+    const epoch = this.epoch;
+    try { await this.workspaceRequest("workspace.connection.edit", { connectionId, input, expectedRevision: this.view.workspace!.connections.revision }); await this.refresh(); return true; }
+    catch { if (epoch === this.epoch) this.update({ error: "連接修改未確認，請刷新核對；沒有自動重送或記錄密鑰。" }); return false; }
+  }
+  async changeConnection(connectionId: string, remove = false): Promise<void> {
+    await this.workspaceRequest(remove ? "workspace.connection.delete" : "workspace.connection.select", {
+      connectionId, expectedRevision: this.view.workspace!.connections.revision, ...(remove ? { approved: true } : {}) });
+    await this.refresh();
+  }
+  async legacyConnections(): Promise<LegacyConnectionPreview[]> { return this.workspaceRequest("workspace.connection.legacy"); }
+  async importConnection(sourceId: string): Promise<void> {
+    await this.workspaceRequest("workspace.connection.import", { sourceId, approved: true, expectedRevision: this.view.workspace!.connections.revision }); await this.refresh();
+  }
+  async detectRuntimes(): Promise<void> { await this.workspaceRequest("workspace.runtime.detect"); await this.refresh(); }
+  async registerLocalRuntime(runtimeId: string, fingerprint: string, workspaceId: string, generation: string): Promise<void> {
+    if (this.view.workspaceId !== workspaceId || this.view.workspace?.resourceGeneration !== generation) throw new Error("原本機安裝確認已失效");
+    await this.workspaceRequest("workspace.runtime.registerLocal", { runtimeId, fingerprint, approved: true }); await this.refresh();
+  }
+  async preferences(): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.get", {}); }
+  async savePreference(theme: string, expectedRevision: number): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.set", { theme, expectedRevision }); }
   async proposeRuntime(runtimeId: string): Promise<RuntimeApprovalCard> {
     const workspace = this.view.workspace; if (!workspace) throw new Error("請先選工作空間"); const epoch = this.epoch;
     const card = await this.rpc.request<Omit<RuntimeApprovalCard, "workspaceId" | "resourceGeneration" | "viewEpoch">>("workspace.runtime.propose",

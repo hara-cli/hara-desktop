@@ -1,5 +1,25 @@
 # Errors
 
+## [ERR-20261018-SETTINGS-NATIVE-TEST-PREP] Private temp and offline test resources
+
+**Logged**: 2026-10-18
+**Priority**: medium
+**Status**: resolved for checks only; no new app/DMG
+**Area**: tests
+
+- Rust check inherited a disallowed Darwin temp path: set TMPDIR to this task's private evidence root.
+  The next attempt correctly reached a missing ignored sidecar resource in the new worktree.
+- Copy baseline sidecar/Herdr for compile-only tests. Do not invoke refresh-sidecar under no-signing
+  constraints; it can repair ad-hoc signatures/download dependencies. Baseline copies are not new Core.
+- Desktop's 21 EPERM failures were restricted loopback; the unchanged synthetic suite passed with
+  loopback authorization. Keep original logs and assertions/timeouts, not reruns seeking green.
+- Check exact Markdown preimages before patching (`Hara Desktop Learnings`, not `Learnings`); a failed
+  patch was not an applied documentation change.
+
+Evidence: `/private/tmp/hara-runtime-connections-20261018.jOD1Cw/`; no signing/Keychain commands run.
+
+---
+
 ## [ERR-20261018-WIP-UI-AND-RELEASE-RULES] Retain recovery and release lessons without reverting newer Workspace code
 
 **Logged**: 2026-10-18

@@ -1294,6 +1294,9 @@ fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
     let search_path = std::env::var_os("PATH"); let system_root = std::env::var_os("SystemRoot");
     command.env_clear().env("HOME", root.join("home")).env("USERPROFILE", root.join("home"))
         .env("HARA_UPDATE_CHECK", "0").env("NO_COLOR", "1");
+    // Host-only discovery/import origin. It is never an SDK HOME or a renderer-selected path.
+    command.env("HARA_WORKSPACE_HOST_HOME", user_home()?);
+    if let Some(shell) = std::env::var_os("SHELL") { command.env("HARA_WORKSPACE_HOST_SHELL", shell); }
     if let Some(value) = search_path { command.env("PATH", value); }
     if let Some(value) = system_root { command.env("SystemRoot", value); }
     command.args(["workspace", "serve", "--root"]).arg(&root).args(["--port", "0"])

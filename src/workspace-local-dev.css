@@ -1,4 +1,4 @@
-.wsd-app, .wsd-boot { --wsd-paper:#faf9f6; --wsd-ink:#292724; --wsd-muted:#79766f; --wsd-line:#e4e1d9; --wsd-red:#b93b29; color:var(--wsd-ink); background:var(--wsd-paper); font-family:"Avenir Next","PingFang TC","Microsoft JhengHei",sans-serif; font-size:14px; line-height:1.6; color-scheme:light; }
+.wsd-app, .wsd-boot { --wsd-paper:#faf9f6; --wsd-ink:#292724; --wsd-muted:#666158; --wsd-line:#e4e1d9; --wsd-red:#b93b29; color:var(--wsd-ink); background:var(--wsd-paper); font-family:"Avenir Next","PingFang TC","Microsoft JhengHei",sans-serif; font-size:14px; line-height:1.6; }
 .wsd-app *,.wsd-boot * { box-sizing:border-box; }
 .wsd-app { display:grid; grid-template-columns:282px minmax(0,1fr); height:100dvh; width:100%; overflow:hidden; position:relative; }
 .wsd-app button,.wsd-boot button { font:inherit; color:inherit; border:1px solid var(--wsd-line); border-radius:10px; background:#fffdf9; padding:8px 14px; cursor:pointer; transition:background .15s,border-color .15s; }
