@@ -4170,3 +4170,15 @@ resolved paths before retrying, with no file edits from that failed read.
 - Pattern-Key: releases.no_signing_is_a_hard_boundary_not_permission_to_skip_verification
 
 ---
+# [ERR-20261019-TEST-LOOPBACK-SANDBOX] verification environment
+
+- Logged: 2026-10-19
+- Status: resolved (environment-corrected original command: 745 pass / 0 fail)
+- The first Desktop full run had 724 pass / 21 fail; the failures were local fixture listeners refused
+  with `listen EPERM 127.0.0.1` because this invocation lacked the required host loopback permission.
+- Preserve `desktop-full.log`. Re-run the original test command once with the explicit local fixture
+  permission, private HOME and Node 22; do not change assertions/timeouts or retry the same environment.
+- Evidence: /private/tmp/hara-host-inheritance-20261019.aDYbsH/desktop-full.log
+- Corrected-environment evidence: desktop-full-host-loopback.log in the same private directory;
+  all 21 failed cases were fixture listeners, with no assertion or timeout changes.
+---

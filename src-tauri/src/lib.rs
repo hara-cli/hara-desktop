@@ -1301,7 +1301,23 @@ fn os_account_identity() -> Result<(PathBuf, Option<std::ffi::OsString>), String
 fn os_account_identity() -> Result<(PathBuf, Option<std::ffi::OsString>), String> {
     Ok((resolve_user_home(std::env::var_os("HOME").map(PathBuf::from), std::env::var_os("USERPROFILE").map(PathBuf::from), cfg!(windows))?, None))
 }
-fn legacy_source_home(os_home: &Path, debug: bool, requested: Option<PathBuf>) -> Result<PathBuf, String> {
+static LOCAL_CANDIDATE_ISOLATION: AtomicBool = AtomicBool::new(false);
+fn legacy_source_home(os_home: &Path, debug: bool, isolated_candidate: bool, requested: Option<PathBuf>) -> Result<PathBuf, String> {
+    // A release-format local candidate with an explicit fixture root must NEVER discover the
+    // real account's ~/.hara. Ordinary production builds still ignore arbitrary source overrides.
+    if isolated_candidate {
+        let source = requested.ok_or("Isolated candidate requires an explicit legacy fixture source")?;
+        checked_workspace_dev_directory(&source)?;
+        let temporary = std::env::temp_dir().canonicalize().map_err(|_| "Cannot verify candidate fixture root")?;
+        if source == os_home || !source.starts_with(&temporary) { return Err("Candidate legacy source must be a private temporary fixture".into()); }
+        let marker: serde_json::Value = serde_json::from_str(&read_private_native_document_at(&source.join(".hara/local-inheritance-fixture-v1.json"))?)
+            .map_err(|_| "Invalid candidate legacy source fixture marker")?;
+        if marker.get("schemaVersion").and_then(|v| v.as_u64()) != Some(1)
+            || marker.get("kind").and_then(|v| v.as_str()) != Some("synthetic-source") {
+            return Err("Candidate legacy source fixture marker required".into());
+        }
+        return Ok(source);
+    }
     if debug { if let Some(source) = requested { checked_workspace_dev_directory(&source)?; return Ok(source); } }
     Ok(os_home.to_path_buf())
 }
@@ -1356,7 +1372,7 @@ fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
     command.env("HARA_WORKSPACE_HOST_HOME", user_home()?);
     let (os_home, shell) = os_account_identity()?;
     command.env("HARA_WORKSPACE_DISCOVERY_HOME", &os_home);
-    command.env("HARA_WORKSPACE_LEGACY_SOURCE_HOME", legacy_source_home(&os_home, cfg!(debug_assertions), std::env::var_os("HARA_DESKTOP_LEGACY_SOURCE_HOME").map(PathBuf::from))?);
+    command.env("HARA_WORKSPACE_LEGACY_SOURCE_HOME", legacy_source_home(&os_home, cfg!(debug_assertions), LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst), std::env::var_os("HARA_DESKTOP_LEGACY_SOURCE_HOME").map(PathBuf::from))?);
     if let Some(shell) = shell { command.env("HARA_WORKSPACE_HOST_SHELL", shell); }
     if let Some(value) = search_path { command.env("PATH", value); }
     if let Some(value) = system_root { command.env("SystemRoot", value); }
@@ -3626,6 +3642,8 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            LOCAL_CANDIDATE_ISOLATION.store(app.config().identifier == "com.nanhara.hara.workspace-v1-candidate"
+                && std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").is_some(), Ordering::SeqCst);
             if let Err(error) = initialize_crash_tracking(app.handle()) {
                 eprintln!("Hara crash tracking could not start: {error}");
             }
@@ -4234,12 +4252,21 @@ mod native_tests {
         let (home, _) = os_account_identity().unwrap();
         assert!(home.is_absolute()); assert!(home.parent().is_some());
         // Release builds ignore a fixture copy; debug validates it before any source read.
-        assert_eq!(legacy_source_home(&home, false, Some(PathBuf::from("/missing-fixture"))).unwrap(), home);
-        assert!(legacy_source_home(&home, true, Some(PathBuf::from("/missing-fixture"))).is_err());
+        assert_eq!(legacy_source_home(&home, false, false, Some(PathBuf::from("/missing-fixture"))).unwrap(), home);
+        assert!(legacy_source_home(&home, true, false, Some(PathBuf::from("/missing-fixture"))).is_err());
         let source = std::env::temp_dir().canonicalize().unwrap().join(format!("hara-discovery-source-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         fs::create_dir(&source).unwrap();
         #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).unwrap(); }
-        assert_eq!(legacy_source_home(&home, true, Some(source.clone())).unwrap(), source);
+        assert_eq!(legacy_source_home(&home, true, false, Some(source.clone())).unwrap(), source);
+        assert!(legacy_source_home(&home, false, true, None).is_err());
+        assert!(legacy_source_home(&home, false, true, Some(home.clone())).is_err());
+        assert!(legacy_source_home(&home, false, true, Some(source.clone())).is_err());
+        fs::create_dir(source.join(".hara")).unwrap();
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(source.join(".hara"), fs::Permissions::from_mode(0o700)).unwrap(); }
+        let marker = source.join(".hara/local-inheritance-fixture-v1.json");
+        fs::write(&marker, r#"{"schemaVersion":1,"kind":"synthetic-source"}"#).unwrap();
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&marker, fs::Permissions::from_mode(0o600)).unwrap(); }
+        assert_eq!(legacy_source_home(&home, false, true, Some(source.clone())).unwrap(), source);
         fs::remove_dir_all(source).unwrap();
     }
 

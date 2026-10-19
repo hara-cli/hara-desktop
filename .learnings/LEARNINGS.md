@@ -655,3 +655,15 @@ profile cleanup asynchronously before reporting success; never remove or attach 
 - Recurrence-Count: 1
 
 ---
+# [LRN-20261019-CANDIDATE-SOURCE-ISOLATION] native acceptance
+
+- Logged: 2026-10-19
+- Status: implemented; Rust regression passed, native window exercise queued until unlock
+- A private process HOME is not sufficient when native discovery deliberately uses the OS account
+  Home. Never reuse an old native fixture driver for automatic inheritance without auditing every
+  source root. Only the fixed local candidate bundle ID AND explicit private Workspace-root launch
+  may opt into a temporary private legacy-source copy, with a verified synthetic-source marker.
+- Missing/invalid candidate source overrides fail closed; production bundles keep the original
+  OS-Home discovery contract. A locked Mac queues signing/visual steps, not unrelated CLI gates.
+- Related Files: src-tauri/src/lib.rs
+---
