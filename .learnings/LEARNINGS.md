@@ -667,3 +667,16 @@ profile cleanup asynchronously before reporting success; never remove or attach 
   OS-Home discovery contract. A locked Mac queues signing/visual steps, not unrelated CLI gates.
 - Related Files: src-tauri/src/lib.rs
 ---
+
+## [LRN-20261019-ALIGNED-1-0-CANDIDATE] release preparation
+
+- Logged: 2026-10-19
+- Status: implemented; refreshed candidate verification pending
+- Desktop/Core 1.0.0 is a local candidate designation, not evidence of publication or installed-app
+  replacement. Align both npm root lock versions, Tauri, Cargo manifest/lock, and exact sidecar
+  version/SHA. Reuse the original sidecar refresh and its ad-hoc repair; preserve the older candidate.
+- Queue Developer ID, notarization and native first-start/upgrade/rollback while locked. Do not turn
+  the version bump into permission to tag, push, activate imported schedules or replace /Applications.
+- Related Files: package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/binaries/SIDECAR_COMMIT
+
+---

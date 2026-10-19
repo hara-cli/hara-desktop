@@ -16,7 +16,7 @@ const snapshot = id => ({ workspaceId: id, resourceGeneration: "generation-" + i
   agents: [{ agentId: "main", kind: "main", state: "active", identity: { displayName: "Hara" }, runtime: { id: "pi", label: "Pi", available: true } }],
   connections: { revision: 1, defaultConnectionId: null, connections: [] }, approvals: [], conversation: { history: [], state: "idle", usage: { modelCalls: 0 }, runUsage: { modelCalls: 0 } } });
 function controller() { return new WorkspaceUpdater({ load: async () => updateDefaults(), save: async () => {}, check: async () => null, activity: async () => ({ running: 0 }), prepare: async () => ({ id: "fixture" }), release: async () => {}, restart: async () => {}, error: () => "Fixture error" }); }
-const info = { desktop: "0.1.188", engine: "0.187.1", channel: "candidate", arch: "aarch64" };
+const info = { desktop: "1.0.0", engine: "1.0.0", channel: "candidate", arch: "aarch64" };
 function settings(page, kind = "personal") {
   const workspace = snapshot("A"), value = { workspaceId: "A", workspace, directory: { workspaces: [{ workspaceId: "A", label: "A", role: "owner", active: true, kind }] }, error: "" };
   const model = { getSnapshot: () => value, subscribe: () => () => {} };
@@ -37,6 +37,7 @@ test("workspace and device page scope chips are distinct; appearance has no unap
 test("preview updates row is present but disabled/off, and version copy contains only safe build metadata", () => {
   const html = settings("updates"); assert.equal(html.includes("接收预览版，以后提供"), true); assert.equal(/aria-label="接收预览版，以后提供" aria-checked="false" disabled=""/.test(html), true);
   for (const value of ["Desktop", "引擎", "candidate", "aarch64", "复制版本信息"]) assert.equal(html.includes(value), true);
+  assert.equal(html.includes("1.0.0"), true, "the prepared Desktop/Core version is visible without changing the installed app");
   assert.equal(/API Key|agent|Codex|Claude|OpenCode/.test(html), false);
 });
 test("settings-only model uses a separate view selection route, with no catalog selection or automatic mutation", async () => {
