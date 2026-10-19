@@ -193,6 +193,7 @@ try{
  await click('.hs-dm');await ready("!document.querySelector('.hs-dm[aria-current=page] .hs-dot')",'Opening the conversation clears its local unread marker');
  receipts.push({composer:'draft retained across Settings; IME does not submit; new DM activity sorts; local unread clears'});
  await navigate({scenario:'partial'});assert.equal(await evaluate("!!document.querySelector('.hs-overview-notice[role=status]')"),true);
+ await click('.hs-dm');await ready("!!document.querySelector('[data-overview-incomplete]')",'Incomplete counts must remain visible in colleague conversations');
  await navigate({scenario:'legacy'});await click('.hs-dm');assert.equal(await evaluate("document.querySelectorAll('.hs-msg.cont').length"),0);
  await navigate({scenario:'no-connection'});assert.equal(await evaluate("document.querySelector('.hs-send').disabled"),true);
  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).opacity"),'1');
