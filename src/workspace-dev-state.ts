@@ -6,17 +6,19 @@ export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: st
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
   identity: { displayName: string; title?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 export interface WorkspaceDevApproval { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
+  status?: "pending" | "approved" | "rejected" | "expired"; risk?: "high" | "normal"; paid?: boolean; externalSend?: boolean; destructive?: boolean;
   draft: { username: string; displayName: string; title: string; instructions: string; runtimeId: "pi" } }
-export type WorkspaceDevMessage = { role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
-  | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] };
+export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
+  | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
 export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
+  colleagueLimit?: number;
   agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
   runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string }[];
     operations: { id: string; runtimeId: string; state: string }[] };
   budget?: { maxTokens: number; maxRequests: number; requests: number; inputTokens: number; outputTokens: number; uncertainReservedTokens: number; paused: boolean };
   connections: { revision: number; defaultConnectionId: string | null; readOnly?: boolean; recovered?: boolean; migrationPending?: boolean; unavailable?: boolean; connections: WorkspaceModelConnection[] };
   approvals: WorkspaceDevApproval[]; conversation: { revision: number; state: string; sessionId: string; taskId: string | null; runId: string | null;
-    taskState: string | null; objective: string; history: WorkspaceDevMessage[]; pastTaskCount: number;
+    taskState: string | null; objective: string; history: WorkspaceDevMessage[]; pastTaskCount: number; updatedAt?: string; unreadCount?: number;
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };
     completion: { state: string; evidence?: string[] } | null; blockReason?: string | null;
     resumeAdmission?: { allowed: boolean; reason: string | null } } }
@@ -37,6 +39,7 @@ export class WorkspaceDevModel {
   private readonly listeners = new Set<() => void>();
   private readonly drafts = new Map<string, string>();
   private readonly pending = new Map<string, PendingMessage>();
+  private readonly approvalDecisions = new Set<string>();
   private epoch = 0;
   private refreshEpoch: number | null = null;
   private refreshWait: Promise<void> | null = null;
@@ -141,6 +144,19 @@ export class WorkspaceDevModel {
     const value = await this.rpc.request<T>(method, { ...extra, workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration });
     if (epoch !== this.epoch) throw new Error("原工作空間視圖已切換，未自動重送");
     return value;
+  }
+  async readOverview(snapshot: WorkspaceDevSnapshot): Promise<{ snapshots: WorkspaceDevSnapshot[]; incomplete: boolean }> {
+    if (snapshot !== this.view.workspace) throw new Error("Overview view changed");
+    const epoch = this.epoch;
+    const results = await Promise.allSettled(snapshot.agents.filter(agent => agent.agentId !== snapshot.selectedAgentId).map(async agent => {
+      const value = await this.rpc.request<WorkspaceDevSnapshot>("workspace.snapshot", { workspaceId: snapshot.workspaceId, agentId: agent.agentId });
+      this.valid(value, snapshot.workspaceId, agent.agentId);
+      if (value.resourceGeneration !== snapshot.resourceGeneration) throw new Error("Overview generation changed");
+      return value;
+    }));
+    if (epoch !== this.epoch || this.view.workspace?.resourceGeneration !== snapshot.resourceGeneration) throw new Error("Overview view changed");
+    return { snapshots: [snapshot, ...results.flatMap(result => result.status === "fulfilled" ? [result.value] : [])],
+      incomplete: results.some(result => result.status === "rejected") };
   }
   async editConnection(connectionId: string, input: Record<string, unknown>): Promise<boolean> {
     const epoch = this.epoch;
@@ -257,6 +273,9 @@ export class WorkspaceDevModel {
     const workspace = this.view.workspace;
     if (!workspace || card.workspaceId !== workspace.workspaceId || card.agentId !== workspace.selectedAgentId
       || card.resourceGeneration !== workspace.resourceGeneration || !workspace.approvals.some(current => current.id === card.id)) return;
+    const decisionKey = JSON.stringify([card.workspaceId, card.resourceGeneration, card.id]);
+    if (this.approvalDecisions.has(decisionKey)) return;
+    this.approvalDecisions.add(decisionKey);
     const epoch = this.epoch;
     try { await this.rpc.request("workspace.approval.respond", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, approvalId: card.id, approved });
       if (epoch === this.epoch) await this.refresh();
@@ -264,7 +283,7 @@ export class WorkspaceDevModel {
       if (epoch !== this.epoch) return;
       if (error instanceof WorkspaceRpcWaitError) { this.update({ syncNotice: "正在只讀核對確認結果；不會重複提交。" }); await this.refresh(); }
       else this.update({ error: String(error) });
-    }
+    } finally { this.approvalDecisions.delete(decisionKey); }
   }
   async cancel(): Promise<void> {
     const workspace = this.view.workspace; if (!workspace?.conversation.runId) return; const epoch = this.epoch;

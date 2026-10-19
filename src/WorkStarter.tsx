@@ -6,7 +6,7 @@ import {
   IconFolder,
   IconImage,
 } from "./icons";
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 import { isImeCompositionKey } from "./ime";
 import {
   appendComposerAttachments,

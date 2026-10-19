@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { detectLocale, makeT } from "./i18n";
 const Workspace = lazy(() => import("./WorkspaceLocalDev"));
 const Legacy = lazy(() => import("./LegacyDesktopEntry"));
 type EntryMode = "workspace" | "lab" | "legacy";
@@ -18,8 +19,9 @@ export default function WorkspaceEntry() {
 }
 /** Keep the v1 surface and its lazy loading behind the same native decision. */
 export function WorkspaceEntryView({ mode, failed = false }: { mode: EntryMode | null; failed?: boolean }) {
-  if (!mode) return <main className="wsd-boot"><h1>Hara</h1><p>{failed ? "無法確認工作空間入口；已保留原資料，沒有切換到其他連接。" : "正在打開你的工作空間…"}</p></main>;
-  return <Suspense fallback={<main className="wsd-boot">正在打開 Hara…</main>}>
+  const t = makeT(detectLocale());
+  if (!mode) return <main className="wsd-boot"><h1>Hara</h1><p>{t(failed ? "ws.boot.entryFailed" : "ws.boot.opening")}</p></main>;
+  return <Suspense fallback={<main className="wsd-boot">{t("ws.boot.opening")}</main>}>
     {mode === "legacy" ? <Legacy /> : <Workspace mode={mode} />}
   </Suspense>;
 }

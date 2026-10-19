@@ -92,13 +92,20 @@ test("stable theme RPC is independent of workspace selection, late save uses ser
  const changes=[],busy={current:false};const change=callback("change",{settings:{revision:4,readOnly:false},busy,model:{async savePreference(theme,revision){assert.equal(revision,4);return {theme,revision:5};}},setSettings(){},setPreference:x=>changes.push(x),saveThemePreference:x=>changes.push(x),setNotice(){}});
  await change("dark");assert.deepEqual(changes,["dark","dark"]);assert.equal(busy.current,false);
 });
-test("both v1 palettes meet AA normal-text contrast for chat, settings, cards, approvals and primary actions",()=>{
- const css=read("src/workspace-theme.css");const blocks=[...css.matchAll(/\{([^{}]+--wsd-paper:[^{}]+)\}/g)].map(m=>Object.fromEntries([...m[1].matchAll(/--wsd-([a-z-]+):\s*(#[a-f0-9]{6})/g)].map(m=>[m[1],m[2].slice(1)])));
- assert.equal(blocks.length,2);const luminance=hex=>hex.match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((total,x,i)=>total+x*[.2126,.7152,.0722][i],0);
+test("both v1.3 cascaded palettes meet AA for actual text pairs and neutral keyboard focus",()=>{
+ const css=read("src/workspace-theme.css"), blocks=[{},{}];
+ for(const match of css.replace(/\/\*[^]*?\*\//g,"").matchAll(/([^{}]+)\{([^{}]*)\}/g)){
+   const selector=match[1].trim();if(selector!==".hs"&&selector!==':root[data-theme="dark"] .hs')continue;
+   const tokens=Object.fromEntries([...match[2].matchAll(/--([a-z-]+):\s*#([a-f0-9]{6}|[a-f0-9]{3})(?=[;\s])/g)].map(m=>[m[1],m[2].length===3?m[2].split("").map(x=>x+x).join(""):m[2]]));
+   for(const colors of selector===".hs"?blocks:[blocks[1]])Object.assign(colors,tokens);
+ }
+ const luminance=hex=>hex.match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((total,x,i)=>total+x*[.2126,.7152,.0722][i],0);
  const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
- for(const colors of blocks){for(const bg of ["paper","surface","sidebar","card","user"])for(const fg of ["ink","muted"])assert(contrast(colors[fg],colors[bg])>=4.5,`${fg}/${bg} AA`);
- assert(contrast(colors["primary-ink"],colors.red)>=4.5);assert(contrast(colors.success,colors.surface)>=4.5);}
- for(const selector of ["wsd-chat","wsd-settings","wsd-approval","wsd-feature-panel","wsd-bubble","wsd-modal","textarea"])assert(css.includes(selector));
+ for(const colors of blocks){for(const bg of ["paper","surface","sidebar","row-selected"])for(const fg of ["ink","muted"])assert(contrast(colors[fg],colors[bg])>=4.5,`${fg}/${bg} AA`);
+ for(const [fg,bg] of [["tag-ink","tag-bg"],["brand-text","brand-soft"],["bubble-ink","bubble"],["mine-ink","mine"],["on-brand","brand"]])assert(contrast(colors[fg],colors[bg])>=4.5,`${fg}/${bg} AA`);
+ assert(contrast(colors.focus,colors.surface)>=3);assert.notEqual(colors.focus,colors.brand);}
+ const structure=read("src/workspace-local-dev.css")+css;
+ for(const selector of ["hs-chat","wsd-settings","wsd-approval","wsd-feature-panel","hs-bub","wsd-modal","textarea"])assert(structure.includes(selector),selector);
  assert.match(css,/data-theme="dark"/);assert.match(css,/color-scheme:dark/);
 });
 test("native host storage stays fixed across bundle IDs while SDK HOME remains isolated",()=>{

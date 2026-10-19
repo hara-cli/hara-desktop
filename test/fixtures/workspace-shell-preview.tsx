@@ -1,0 +1,67 @@
+// DEV-only real-component fixture. No Tauri bridge, credentials, filesystem or model access.
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { WorkspaceScreen } from '../../src/WorkspaceLocalDev';
+import { WorkspaceDevModel, type WorkspaceDevApproval, type WorkspaceDevSnapshot } from '../../src/workspace-dev-state';
+if (!import.meta.env.DEV || !['127.0.0.1','localhost'].includes(location.hostname)) throw new Error('Synthetic localhost development fixture only');
+const params = new URLSearchParams(location.search), scenario = params.get('scenario') ?? 'home';
+const locale = params.get('locale') ?? 'zh-Hant';
+localStorage.setItem('hara.locale', locale);
+if (params.get('reset') !== '0') { localStorage.removeItem('hara.sidebar.sections.A'); localStorage.removeItem('hara.sidebar.sections.B'); }
+const currentTime = Date.now(), stamp = (minutes: number) => new Date(currentTime - minutes*60000).toISOString();
+const agents = [
+  {agentId:'main',kind:'main',state:'active',identity:{displayName:'Hara'},runtime:{id:'pi',label:'Pi',available:true}},
+  ...['Coder','Ops','Frontend Developer','Writer','Iris','Mia','Researcher','Planner','Translator','Reviewer'].map((name,index)=>({
+    agentId:`person-${index}`,kind:'colleague',state:'active',identity:{displayName:name,title:['Engineering','Operations','Frontend','Writing','Research','Design','Research','Planning','Language','Review'][index]},runtime:{id:'pi',label:'Pi',available:true}})),
+  {agentId:'archived',kind:'colleague',state:'archived',identity:{displayName:'Archived fixture'},runtime:{id:'pi',label:'Pi',available:true}}
+] as WorkspaceDevSnapshot['agents'];
+const calls: {method:string;params:Record<string,unknown>}[] = [];
+const snapshots = new Map<string,WorkspaceDevSnapshot>();
+const makeCard = (id:string,agentId:string,urgent=true):WorkspaceDevApproval => ({id,agentId,workspaceId:'A',resourceGeneration:'g-A',expiresAt:new Date(currentTime+(urgent?10:60)*60000).toISOString(),
+  draft:{username:'release-helper',displayName:'Release Helper',title:'Draft release notes',instructions:'Work only in this synthetic workspace. Ask for confirmation before any external action.',runtimeId:'pi'}});
+for (const workspaceId of ['A','B']) for (const [index,agent] of agents.entries()) {
+  const state=workspaceId==='B'?'completed':agent.agentId==='person-1'?'running':agent.agentId==='person-2'?'pending_review':agent.agentId==='person-3'?'waiting_reply':index>5?'completed':agent.agentId==='main'?'idle':'running';
+  const minutes=Math.max(1,index*3);
+  const conversation:WorkspaceDevSnapshot['conversation']={revision:1,state,taskState:state==='idle'?null:state,sessionId:`session-${workspaceId}-${agent.agentId}`,taskId:state==='idle'?null:`task-${workspaceId}-${agent.agentId}`,
+    runId:state==='idle'?null:`run-${agent.agentId}`,objective:agent.agentId==='person-2'?'Review the responsive Settings layout':agent.agentId==='person-3'?'Choose the release note outline':'Prepare the workspace redesign',history:agent.agentId==='main'?[]:[
+      {role:'user',content:'Please check the redesigned workspace shell.',createdAt:stamp(minutes+2)},
+      {role:'assistant',text:'The sidebar is now compact, and each section keeps its own expanded state.',tools:[],createdAt:stamp(minutes+1)},
+      {role:'assistant',text:'The composer uses a neutral focus ring. Pending approvals remain reachable from the home tray and their original conversations.',tools:[],createdAt:stamp(minutes)},
+    ],pastTaskCount:3,usage:{modelCalls:0,inputTokens:0,outputTokens:0},runUsage:{modelCalls:0,inputTokens:0,outputTokens:0},completion:state==='completed'?{state:'verified'}:null,updatedAt:stamp(minutes)};
+  const approvals=workspaceId==='A'&&agent.agentId==='person-1'?[makeCard('fixture-approval','person-1')]:[];
+  snapshots.set(`${workspaceId}:${agent.agentId}`,{workspaceId,resourceGeneration:`g-${workspaceId}`,label:workspaceId==='A'?'My workspace':'Studio',colleagueLimit:10,selectedAgentId:agent.agentId,agents,syntheticOnly:true,executionMode:'synthetic',
+    connections:{revision:1,defaultConnectionId:scenario==='no-connection'?null:'fixture',connections:[]},approvals,conversation});
+}
+if(scenario==='many') snapshots.get('A:person-1')!.approvals=Array.from({length:8},(_,index)=>makeCard(`fixture-${index}`,'person-1',index<5));
+if(scenario==='legacy') for(const snapshot of snapshots.values()) {delete snapshot.conversation.updatedAt;for(const message of snapshot.conversation.history)delete message.createdAt;}
+if(scenario==='tasks') location.hash='#tasks';
+let theme: 'light'|'dark' = params.get('theme')==='dark'?'dark':'light';
+const rpc={async request<T>(method:string, values:Record<string,unknown>):Promise<T>{
+  calls.push({method,params:values});const workspaceId=String(values.workspaceId??'A'), agentId=String(values.agentId??'main');
+  let result:unknown;
+  if(method==='workspace.list')result={revision:1,activeWorkspaceId:'A',syntheticOnly:true,executionMode:'synthetic',workspaces:['A','B'].map(id=>({workspaceId:id,label:id==='A'?'My workspace':'Studio',active:true,role:'OWNER'}))};
+  else if(method==='workspace.preferences.get')result={revision:1,theme,readOnly:false,recovered:false};
+  else if(method==='workspace.preferences.set'){theme=values.theme as typeof theme;result={revision:2,theme,readOnly:false,recovered:false};}
+  else if(['workspace.select','workspace.agent.select','workspace.snapshot'].includes(method)){
+    if(scenario==='partial'&&method==='workspace.snapshot'&&agentId==='person-1')throw new Error('Synthetic read unavailable');
+    result=structuredClone(snapshots.get(`${workspaceId}:${agentId}`));
+  } else if(method==='workspace.approval.respond'){
+    for(const snapshot of snapshots.values())if(snapshot.workspaceId===workspaceId)snapshot.approvals=snapshot.approvals.filter(card=>card.id!==values.approvalId);
+    result={accepted:true};
+  } else if(method==='workspace.session.send'){
+    const snapshot=snapshots.get(`${workspaceId}:${agentId}`)!;
+    snapshot.conversation.history.push({role:'user',content:String(values.message),createdAt:new Date().toISOString()});snapshot.conversation.revision++;result={runId:'fixture-run'};
+  } else if(method==='workspace.connection.synthetic'){
+    for(const snapshot of snapshots.values())if(snapshot.workspaceId===workspaceId)snapshot.connections.defaultConnectionId='fixture';result={};
+  } else if(method==='workspace.session.cancel'){
+    snapshots.get(`${workspaceId}:${agentId}`)!.conversation.state='cancelled';result={};
+  } else if(method==='workspace.features.list')result={workspaceId,revision:1,skills:[],schedules:[]};
+  else throw new Error(`Unsupported synthetic method ${method}`);
+  return result as T;
+}};
+const model=new WorkspaceDevModel(rpc,()=>crypto.randomUUID());
+await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat')await model.selectAgent('person-0');
+(window as any).__HARA_SHELL_FIXTURE__={model,calls,async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
+  async finishApprovals(){const snapshot=snapshots.get('A:person-1')!;snapshot.conversation.state='completed';snapshot.conversation.taskState='completed';await model.refresh();},
+  async idle(){for(const snapshot of snapshots.values())if(snapshot.workspaceId==='A'&&snapshot.selectedAgentId!=='person-1') {snapshot.conversation.state='idle';snapshot.conversation.taskState=null;snapshot.conversation.taskId=null;}await model.refresh();}};
+createRoot(document.getElementById('root')!).render(<React.StrictMode><WorkspaceScreen model={model} disconnected='' onReconnect={()=>{}} root='/synthetic/fixture' mode='lab' onOpenBrowser={()=>{}} /></React.StrictMode>);

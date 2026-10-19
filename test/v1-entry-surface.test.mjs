@@ -53,7 +53,7 @@ test("workspace and Lab never evaluate rollback leaves even with hostile preview
 test("unresolved or failed native entry decision cannot load either screen as a fallback", async () => {
   for (const failed of [false, true]) {
     const result = await renderEntry(null, { failed, dev: true, query: "?preview=mailbox&legacy=1" });
-    assert.deepEqual(result.loads, []); assert.match(result.html, failed ? /無法確認工作空間入口/ : /正在打開你的工作空間/);
+    assert.deepEqual(result.loads, []); assert.match(result.html, failed ? /Could not verify the workspace entry/ : /Opening your workspace/);
   }
 });
 test("explicit native rollback retains the old app including its legacy feature surface", async () => {
@@ -86,29 +86,36 @@ function view({ empty = false, state = "completed", approval = false, directory 
       conversation: { revision: 1, state, taskState: state === "completed" ? "completed" : "blocked", taskId: "task", runId: "run", sessionId: "S", objective: "Local fixture", pastTaskCount: 1, usage, runUsage: usage,
         completion: state === "completed" ? { state: "verified" } : null, history: [{ role: "assistant", text: "Local fixture reply", tools: ["workspace_verify"] }, { role: "tool", results: [{ id: "receipt", name: "workspace_verify", content: "verified", isError: false }] }] } } };
 }
-function renderScreen(value, mode = "workspace") {
-  return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {} }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} });
+function renderScreen(value, mode = "workspace", locale = "zh-Hant") {
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
+  Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:key=>key==="hara.locale"?locale:null}});
+  try { return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {} }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} }); }
+  finally { if(descriptor)Object.defineProperty(globalThis,"localStorage",descriptor);else delete globalThis.localStorage; }
 }
-test("production sidebar omits LAB even before directory arrival, while explicit Lab keeps it", () => {
+test("production keeps lab copy out of the sidebar; explicit Lab is a distinct annotated entry", () => {
   for (const value of [view(), view({ empty: true }), view({ empty: true, directory: false })]) {
-    assert.doesNotMatch(renderScreen(value), /WORKSPACE LAB|Workspace Lab/); assert.match(renderScreen(value, "lab"), /WORKSPACE LAB/);
+    assert.doesNotMatch(renderScreen(value), /WORKSPACE LAB|Workspace Lab/);
+    assert.match(renderScreen(value, "lab"), /data-workspace-mode="lab"/);
   }
 });
-test("real v1 screen retains Hara, colleague creation, collapsed execution and task closure without old feature entrypoints", () => {
-  const html = renderScreen(view({ approval: true }));
-  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /查看執行詳情/, /已核驗結果/, /空間設定/, /發訊息給 Hara/]) assert.match(html, marker);
-  assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|頻道|频道|deliverables|WORKSPACE LAB/);
+test("real workspace screen retains colleague decisions, collapsed execution and verified task closure", () => {
+  const html = renderScreen(view({ state:"blocked", approval: true }));
+  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /查看執行詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
+  assert.match(renderScreen(view()), /已核驗結果/);
+  assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
+  assert.match(html,/還沒有頻道/); // Spec v1.3 intentionally keeps the future-channel empty state.
 });
-test("real v1 screen preserves explicit resume and never opens a legacy surface for blocked tasks", () => {
+test("real workspace screen preserves explicit resume and never opens a legacy surface for blocked tasks", () => {
   const html = renderScreen(view({ state: "blocked" })); assert.match(html, /上次任務尚未完成/); assert.match(html, /繼續原任務/);
   assert.doesNotMatch(html, /群组|MailboxSettings|WorkspaceCollaboration|WORKSPACE LAB/);
 });
-test("v1 exposes workspace schedules and skills in the actual sidebar without loading global legacy pages", () => {
-  const html = renderScreen(view());
-  assert.match(html, /aria-label="工作空間功能"/); assert.match(html, />定時任務<\/button>/); assert.match(html, />技能<\/button>/);
+test("scoped schedules and skills remain reachable through Settings without legacy pages", () => {
+  const html = renderScreen(view());assert.match(html,/aria-label="設定"/);
+  assert.doesNotMatch(html,/wsd-feature-nav/);
   const source = read("src/WorkspaceLocalDev.tsx");
-  assert.match(source, /setFeature\("schedules"\)/); assert.match(source, /setFeature\("skills"\)/);
-  assert.match(source, /<WorkspaceFeaturePanel key=\{`\$\{workspace\.workspaceId\}:\$\{feature\}`\}/);
+  assert.ok(/setFeature\("schedules"\)/.test(source)); assert.ok(/setFeature\("skills"\)/.test(source));
+  assert.ok(/<WorkspaceFeaturePanel key=\{`\$\{workspace\.workspaceId\}:\$\{workspace\.resourceGeneration\}:\$\{feature\}`\}/.test(source));
+  assert.ok(/\{settings \? <ShellDialog/.test(source));
   assert.doesNotMatch(source, /AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/);
 });
 test("legacy feature code is retained instead of deleting its stored resources or backend contract", () => {

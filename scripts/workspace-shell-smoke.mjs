@@ -1,0 +1,214 @@
+#!/usr/bin/env node
+// Real Workspace React components, in a task-owned headless Chrome profile with synthetic RPC only.
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+const base = new URL(process.argv[2] ?? "http://127.0.0.1:54991/");
+if(base.protocol!=="http:" || base.hostname!=="127.0.0.1" || base.pathname!=="/" || base.username || base.password || base.search || base.hash)throw new Error("Use a task-owned IPv4 loopback Vite root");
+if(!process.argv[3])throw new Error("An explicit evidence directory is required");
+const output=resolve(process.argv[3]);mkdirSync(output,{recursive:true,mode:0o700});
+const chromePath = [process.env.CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"]
+  .find((value) => value && existsSync(value));
+if (!chromePath) throw new Error("Chrome/Chromium is required for the component browser gate");
+const profile = mkdtempSync(join(tmpdir(), "hara-shell-chrome-"));
+const chrome = spawn(chromePath, ["--headless=new", "--disable-background-mode", "--disable-background-networking", "--disable-component-update",
+  "--disable-default-apps", "--disable-extensions", "--disable-gpu", "--disable-sync", "--no-default-browser-check", "--no-first-run",
+  "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+let socket;
+const pending = new Map();
+let requestId = 0;
+let sessionId;
+const errors = [];
+const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+async function connect() {
+  const url = await new Promise((done, fail) => {
+    let text = "";
+    const timer = setTimeout(() => fail(new Error("Headless Chrome startup timed out")), 15000);
+    chrome.stderr.on("data", (chunk) => {
+      text = (text + chunk.toString()).slice(-4000);
+      const match = /DevTools listening on (ws:\/\/\S+)/.exec(text);
+      if (match) { clearTimeout(timer); done(match[1]); }
+    });
+    chrome.once("error", (error) => { clearTimeout(timer); fail(error); });
+    chrome.once("exit", () => { clearTimeout(timer); fail(new Error("Headless Chrome exited before ready")); });
+  });
+  socket = new WebSocket(url);
+  await new Promise((done, fail) => { socket.addEventListener("open", done, { once: true }); socket.addEventListener("error", fail, { once: true }); });
+  socket.addEventListener("message", ({data}) => {
+    const message = JSON.parse(data);
+    if (message.method === "Runtime.exceptionThrown") errors.push(message.params.exceptionDetails.text);
+    const request = pending.get(message.id);
+    if (!request) return;
+    pending.delete(message.id); clearTimeout(request.timer);
+    if (message.error) request.fail(new Error(`${request.method}: ${message.error.message}`)); else request.done(message.result);
+  });
+  const target = await send("Target.createTarget", { url: "about:blank" }, false);
+  const attached = await send("Target.attachToTarget", { targetId: target.targetId, flatten: true }, false);
+  sessionId = attached.sessionId;
+  await send("Runtime.enable"); await send("Page.enable");
+}
+async function send(method, params = {}, scoped = true) {
+  const id = ++requestId;
+  const result = new Promise((done, fail) => {
+    const timer = setTimeout(() => { pending.delete(id); fail(new Error(`${method} timed out`)); }, 15000);
+    pending.set(id, { done, fail, timer, method });
+  });
+  socket.send(JSON.stringify({ id, method, params, ...(scoped && sessionId ? { sessionId } : {}) }));
+  return result;
+}
+async function evaluate(expression) {
+  const result = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+  if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
+  return result.result?.value;
+}
+async function settled() { await evaluate("new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))"); }
+async function ready(expression, label) {
+  for(let attempt=0;attempt<160;attempt++){if(await evaluate(expression))return;await pause(75);}
+  const diagnostic=await evaluate('({url:location.href,text:document.body.innerText.slice(0,2500),fixture:!!window.__HARA_SHELL_FIXTURE__})');
+  writeFileSync(join(output,'failure.json'),JSON.stringify({label,errors,diagnostic},null,2)+'\n',{mode:0o600});await capture('failure');
+  throw new Error(label);
+}
+async function navigate({width=1280,locale='zh-Hant',theme='light',scenario='home',reset=true}={}){
+  await send('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:false});
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:0,y:0});
+  const url=new URL('test/fixtures/workspace-shell-preview.html',base);url.search=new URLSearchParams({locale,theme,scenario,reset:reset?'1':'0'}).toString();
+  await send('Page.navigate',{url:url.href});
+  await ready("!!window.__HARA_SHELL_FIXTURE__ && !!document.querySelector('.hs-field textarea,[data-tasks-count]')",'Synthetic Workspace fixture must mount');
+  await ready("document.querySelector('[data-nav-count]')?.textContent === (new URLSearchParams(location.search).get('scenario')==='many'?'10':new URLSearchParams(location.search).get('scenario')==='partial'?'2':'3')",'Overview must settle with the expected scoped count');
+  await settled();assert.equal(await evaluate('document.documentElement.dataset.theme'),theme);assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),locale);
+}
+async function click(selector){assert.ok(await evaluate(`!!document.querySelector(${JSON.stringify(selector)})`),`Missing ${selector}`);await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);await settled();}
+async function key(key,shift=false){const value={key,code:key,modifiers:shift?8:0,windowsVirtualKeyCode:{Enter:13,Tab:9,Escape:27}[key]??0};await send('Input.dispatchKeyEvent',{type:'keyDown',...value,...(key==='Enter'?{text:'\r'}:{})});await send('Input.dispatchKeyEvent',{type:'keyUp',...value});await settled();}
+async function capture(name){await pause(150);const result=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(result.data,'base64'),{mode:0o600});}
+async function geometry(){return evaluate(`(()=>{
+ const rect=selector=>{const node=document.querySelector(selector);if(!node)return null;const r=node.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,bottom:r.bottom};};
+ return {viewport:innerWidth,body:document.documentElement.scrollWidth,sidebar:rect('.hs-side'),chat:rect('.hs-chat'),composer:rect('.hs-field'),send:rect('.hs-send'),
+ badTargets:Array.from(document.querySelectorAll('.hs-icon,.hs-sec-a,.hs-send,.hs-sec-t')).filter(node=>{const r=node.getBoundingClientRect();return r.width&&r.height&&(r.width<31.9||r.height<31.9);}).map(node=>node.className),
+ dmCount:document.querySelectorAll('.hs-dm').length,focusColor:getComputedStyle(document.querySelector('.wsd-app')).getPropertyValue('--focus').trim()};})()`);}
+async function contrast(){return evaluate(`(()=>{
+ const parse=text=>{const v=text.match(/[\\d.]+/g)?.map(Number)??[0,0,0,0];return [v[0]/255,v[1]/255,v[2]/255,v[3]??1];};
+ const over=(a,b)=>[0,1,2].map(i=>a[i]*a[3]+b[i]*(1-a[3])).concat([1]);
+ const background=node=>{const chain=[];for(let current=node;current;current=current.parentElement)chain.push(parse(getComputedStyle(current).backgroundColor));return chain.reverse().reduce((bg,fg)=>over(fg,bg),[1,1,1,1]);};
+ const lum=v=>v.slice(0,3).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((sum,x,i)=>sum+x*[.2126,.7152,.0722][i],0);
+ const walk=document.createTreeWalker(document.querySelector('.wsd-app'),NodeFilter.SHOW_TEXT),issues=[];let min=Infinity,n=0,node;
+ while(node=walk.nextNode()){
+  if(!node.textContent.trim())continue;const element=node.parentElement,style=getComputedStyle(element);
+  if(!element.getClientRects().length||style.visibility==='hidden'||element.closest('[inert],[disabled],option'))continue;
+  const box=element.getBoundingClientRect();if(box.bottom<=0||box.top>=innerHeight)continue;
+  const bg=background(element),fg=over(parse(style.color),bg),a=lum(fg),b=lum(bg),ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+  const large=parseFloat(style.fontSize)>=24||(parseFloat(style.fontSize)>=18.66&&parseInt(style.fontWeight)>=700);n++;min=Math.min(min,ratio);
+  if(ratio<(large?3:4.5))issues.push({text:node.textContent.trim().slice(0,70),ratio,color:style.color,bg});
+ }
+ return {count:n,min,issues};})()`);}
+const receipts=[];
+let completed=false;
+try{
+ await connect();
+ for(const theme of ['light','dark'])for(const scenario of ['home','chat','tasks']){
+  await navigate({theme,scenario});const measured=await geometry();assert.ok(measured.body<=measured.viewport,JSON.stringify(measured));assert.deepEqual(measured.badTargets,[]);assert.equal(measured.dmCount,10);
+  const colors=await contrast();assert.deepEqual(colors.issues,[],`${theme}/${scenario} contrast`);receipts.push({theme,scenario,measured,colors});await capture(`${scenario}-${theme}`);
+  if(scenario==='chat'){
+   assert.equal(await evaluate("document.querySelectorAll('.hs-msg.cont').length"),1);
+   const neutral=await evaluate("(()=>{const input=document.querySelector('.hs-field textarea');input.focus();return {outline:getComputedStyle(input).outlineStyle,shadow:getComputedStyle(input.closest('.hs-field')).boxShadow};})()");
+   assert.equal(neutral.outline,'none');assert.equal(/185, 59, 41|207, 64, 41/.test(neutral.shadow),false);await capture(`composer-focus-${theme}`);
+  }
+  if(scenario==='tasks')assert.equal(await evaluate("document.querySelector('.hs-tab-panel').textContent.includes('Archived fixture')"),true);
+ }
+ for(const locale of ['en','zh-Hans','zh-Hant']){
+  await navigate({locale});assert.equal(await evaluate("document.querySelector('.hs-sec[aria-label] .hs-sec-t').textContent.includes('同事')"),locale!=='en');receipts.push({locale,ok:true});
+ }
+ for(const theme of ['light','dark']){
+  await navigate({theme});await evaluate("window.__HARA_SHELL_FIXTURE__.idle()");await settled();
+  await evaluate("window.__HARA_SHELL_FIXTURE__.model.setDraft('A synthetic message ready to send')");await settled();await pause(150);
+  const enabled=await evaluate("(()=>{const button=document.querySelector('.hs-send'),s=getComputedStyle(button);return {disabled:button.disabled,background:s.backgroundColor,color:s.color};})()");
+  assert.equal(enabled.disabled,false);assert.equal(enabled.background,theme==='light'?'rgb(185, 59, 41)':'rgb(207, 64, 41)');assert.equal(enabled.color,'rgb(255, 255, 255)');
+  await capture(`composer-enabled-${theme}`);
+  const point=await evaluate("(()=>{const r=document.querySelector('.hs-send').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()");
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});await pause(150);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).backgroundColor"),theme==='light'?'rgb(164, 50, 34)':'rgb(185, 54, 35)');
+  await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,...point});await pause(150);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).backgroundColor"),theme==='light'?'rgb(143, 43, 29)':'rgb(165, 50, 31)');
+  await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,...point});await settled();
+  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.session.send').length"),1);
+  receipts.push({theme,composer:'enabled, hover, pressed and single synthetic send checked'});
+ }
+ for(const width of [700,900,1100]){
+  await navigate({width});const measured=await geometry();assert.ok(measured.body<=width);assert.deepEqual(measured.badTargets,[]);assert.ok(measured.composer.width>250);receipts.push({width,measured});if(width===900)await capture('home-900');
+ }
+ // Independent sections, immediate inertness, keyboard activation and per-workspace storage.
+ await navigate();
+ await click('.hs-sec:first-child .hs-sec-t');await key('Tab');
+ assert.equal(await evaluate("document.querySelector('#sec-colleagues').inert"),true);
+ assert.equal(await evaluate("document.querySelector('#sec-channels').inert"),false);
+ await click('.hs-sec:nth-child(3) .hs-sec-t');await capture('sections-collapsed');
+ assert.deepEqual(await evaluate("JSON.parse(localStorage.getItem('hara.sidebar.sections.A'))"),{colleagues:false,channels:true,dms:false});
+ await evaluate("window.__HARA_SHELL_FIXTURE__.model.selectWorkspace('B')");await settled();
+ assert.equal(await evaluate("document.querySelector('#sec-dms').inert"),false);
+ await evaluate("window.__HARA_SHELL_FIXTURE__.model.selectWorkspace('A')");await settled();
+ assert.equal(await evaluate("document.querySelector('#sec-dms').inert"),true);
+ await navigate({reset:false});assert.equal(await evaluate("document.querySelector('#sec-dms').inert"),true);
+ await evaluate("document.querySelector('.hs-sec:nth-child(3) .hs-sec-t').focus()");await key('Enter');assert.equal(await evaluate("document.querySelector('#sec-dms').inert"),false);
+ await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+ assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-sec-b')).transitionDuration"),'0s');await send('Emulation.setEmulatedMedia',{features:[]});
+ receipts.push({sections:'independent, persisted per workspace, inert, keyboard, reduced motion'});
+ // Every urgent approval stays on the home tray; identical counters and original-card navigation.
+ await navigate({scenario:'many'});
+ assert.equal(await evaluate("document.querySelectorAll('.hs-await .hs-ai').length"),5);
+ assert.equal(await evaluate("document.querySelector('[data-await-count]').textContent"),'10');
+ await click('.hs-await-all');assert.equal(await evaluate("document.querySelector('[data-tasks-count]').textContent"),'10');
+ await click('.hs-task[data-approval-id="fixture-0"] button');
+ await ready("document.activeElement?.id==='approval-fixture-0'",'Task link must focus its original decision card');
+ await click('.hs-main');await ready("!!document.querySelector('.hs-await')",'Main Hara must open');
+ await click('.hs-await [data-approval-id="fixture-0"] .pri');
+ assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.approval.respond').length"),0);
+ assert.equal(await evaluate("document.querySelectorAll('[id]').length===new Set(Array.from(document.querySelectorAll('[id]')).map(node=>node.id)).size"),true);
+ assert.equal(await evaluate("!!document.activeElement.closest('[aria-modal=true]')"),true);
+ await key('Tab',true);assert.equal(await evaluate("!!document.activeElement.closest('[aria-modal=true]')"),true);
+ await evaluate("(()=>{const button=document.querySelector('.wsd-approval-dialog .pri');button.click();button.click();})()");
+ await ready("!document.querySelector('.wsd-approval-dialog')",'Shared approval flow must settle');
+ assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.approval.respond').length"),1);
+ const decision=await evaluate("window.__HARA_SHELL_FIXTURE__.calls.find(row=>row.method==='workspace.approval.respond').params");
+ assert.deepEqual(decision,{workspaceId:'A',expectedGeneration:'g-A',approvalId:'fixture-0',approved:true});
+ receipts.push({approvals:'5 urgent + 3 ordinary remain reachable; identical counters; original card; confirm once via existing RPC'});
+ // Drafts/IME and local observations never submit or switch workspace authority.
+ await navigate();await evaluate("window.__HARA_SHELL_FIXTURE__.idle()");await settled();
+ await evaluate("(()=>{const input=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,'Draft kept on this workspace');input.dispatchEvent(new Event('input',{bubbles:true}));})()");await settled();
+ assert.equal(await evaluate("document.querySelector('.hs-send').disabled"),false);
+ await evaluate("document.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,isComposing:true}))");await settled();
+ assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.session.send').length"),0);
+ await click('.hs-set');await ready("!!document.querySelector('.wsd-settings')",'Settings must open');
+ await click('.wsd-settings button.hs-btn:nth-child(1)'); // scoped schedules button
+ assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.some(row=>row.method==='workspace.features.list'&&row.params.workspaceId==='A'&&row.params.expectedGeneration==='g-A')"),true);
+ await key('Escape');assert.equal(await evaluate("document.querySelector('textarea').value"),'Draft kept on this workspace');
+ await navigate({locale:'en'});await click('.hs-set');
+ await evaluate("(()=>{const select=document.querySelector('select[aria-label=Language]');select.value='zh-Hant';select.dispatchEvent(new Event('change',{bubbles:true}));})()");await settled();
+ assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),'zh-Hant');assert.equal(await evaluate("localStorage.getItem('hara.locale')"),'zh-Hant');
+ await capture('settings-language');await key('Escape');
+ await evaluate("window.__HARA_SHELL_FIXTURE__.incoming('person-9','New fixture message')");
+ await ready("document.querySelector('.hs-dm .nm')?.textContent==='Reviewer' && !!document.querySelector('.hs-dm .hs-dot')",'New activity must sort to the top with its unread marker');
+ assert.equal(await evaluate("document.querySelector('.hs-dm .hs-dot')?.getAttribute('aria-label')"),'1 則未讀');
+ await click('.hs-dm');await ready("!document.querySelector('.hs-dm[aria-current=page] .hs-dot')",'Opening the conversation clears its local unread marker');
+ receipts.push({composer:'draft retained across Settings; IME does not submit; new DM activity sorts; local unread clears'});
+ await navigate({scenario:'partial'});assert.equal(await evaluate("!!document.querySelector('.hs-overview-notice[role=status]')"),true);
+ await navigate({scenario:'legacy'});await click('.hs-dm');assert.equal(await evaluate("document.querySelectorAll('.hs-msg.cont').length"),0);
+ await navigate({scenario:'no-connection'});assert.equal(await evaluate("document.querySelector('.hs-send').disabled"),true);
+ assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).opacity"),'1');
+ assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).backgroundColor"),'rgb(231, 228, 222)');
+ await navigate({scenario:'tasks'});assert.equal(await evaluate('location.hash'),'#colleagues/tasks');
+ assert.equal(errors.length,0,JSON.stringify(errors));completed=true;
+ writeFileSync(join(output,'browser-report.json'),JSON.stringify({ok:true,receipts,errors},null,2)+'\n',{mode:0o600});
+ process.stdout.write(JSON.stringify({ok:true,checks:receipts.length,screenshots:13,output})+'\n');
+}catch(error){
+ try{await capture('failure');writeFileSync(join(output,'failure.json'),JSON.stringify({error:String(error),errors,diagnostic:await evaluate('({url:location.href,active:document.activeElement?.outerHTML.slice(0,1500),text:document.body.innerText.slice(0,2000)})')},null,2)+'\n',{mode:0o600});}catch{}
+ throw error;
+}finally{
+ try{socket?.close();}catch{}
+ for(const request of pending.values()){clearTimeout(request.timer);request.fail(new Error('Browser gate closed'));}pending.clear();
+ if(chrome.exitCode===null){chrome.kill('SIGTERM');await Promise.race([once(chrome,'exit'),pause(4000)]);if(chrome.exitCode===null){chrome.kill('SIGKILL');await once(chrome,'exit');}}
+ let removed=false;for(let attempt=0;attempt<15;attempt++){try{rmSync(profile,{recursive:true,force:true});removed=true;break;}catch{await pause(100);}}
+ writeFileSync(join(output,'cleanup.json'),JSON.stringify({completed,chromeExited:chrome.exitCode!==null||chrome.signalCode!==null,profileRemoved:removed,profile:removed?'removed':profile})+'\n',{mode:0o600});
+ if(!removed)throw new Error(`Owned browser profile cleanup incomplete: ${profile}`);
+}

@@ -613,3 +613,24 @@ profile cleanup asynchronously before reporting success; never remove or attach 
 - Recurrence-Count: 1
 
 ---
+
+## [LRN-20261020-SHELL-BASELINE-CONTRACT] best_practice
+
+**Logged**: 2026-10-20T03:20:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+
+A redesign based on main must inspect its frozen Core projection rather than assuming capabilities from a later reference branch.
+
+### Details
+
+Desktop main baceda3 pins Core d54f1b9. Its read-only snapshots expose current tasks and client-owned colleague approvals, but omit past task details, message timestamps, unread receipts and quota. Aggregate current snapshots with scope/generation fencing; show an incomplete-read notice on partial failure, and leave unknown timestamps/quota absent. Group messages only when their timestamps establish the five-minute interval. Resolve task owners from the full roster, including archived colleagues, instead of falling back to the main Hara name. Keep new three-language shell types separate from the explicitly native-gated bilingual rollback surface.
+
+### Metadata
+
+- Source: code_inspection
+- Related Files: src/workspace-shell-state.ts, src/workspace-shell-hooks.ts, src/WorkspaceShell.tsx, src/i18n.ts, docs/workspace-shell-redesign-1.1.0.md
+- Pattern-Key: frontend.redesign_frozen_core_contract

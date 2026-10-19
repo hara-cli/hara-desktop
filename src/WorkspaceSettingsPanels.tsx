@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { WorkspaceConnectionForm } from "./WorkspaceRuntimeSettings";
 import type { LegacyConnectionPreview, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceFeatureView, WorkspaceModelConnection, WorkspacePreferenceView } from "./workspace-dev-state";
 import { bindThemePreference, loadThemePreference, saveThemePreference, type ThemePreference } from "./theme";
+import { makeT, type Locale } from "./i18n";
 
 export function useStableWorkspaceTheme(model: WorkspaceDevModel) {
   const [preference, setPreference] = useState<ThemePreference>(loadThemePreference);
@@ -18,7 +19,13 @@ export function useStableWorkspaceTheme(model: WorkspaceDevModel) {
   };
   return { preference, settings, notice, change };
 }
-export function WorkspaceThemeSettings({ theme }: { theme: ReturnType<typeof useStableWorkspaceTheme> }) {
+export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<typeof useStableWorkspaceTheme>; locale?: Locale }) {
+  if (locale) {
+    const t = makeT(locale);
+    return <section aria-label={t("ws.settings.appearance")}><label>{t("ws.theme.title")}<select aria-label={t("ws.theme.title")} value={theme.preference} disabled={!theme.settings || theme.settings.readOnly}
+      onChange={event => void theme.change(event.target.value as ThemePreference)}><option value="system">{t("ws.theme.system")}</option><option value="light">{t("ws.theme.light")}</option><option value="dark">{t("ws.theme.dark")}</option></select></label>
+      <small>{t("ws.theme.note")}</small>{theme.notice ? <p role="status">{t("ws.theme.unavailable")}</p> : null}</section>;
+  }
   return <section aria-label="外觀設定"><h3>外觀</h3><label>主題<select aria-label="主題" value={theme.preference} disabled={!theme.settings || theme.settings.readOnly}
     onChange={event => void theme.change(event.target.value as ThemePreference)}><option value="system">跟隨系統</option><option value="light">淺色</option><option value="dark">深色</option></select></label>
     <small>偏好保存在固定本機儲存，不隨 app 版本或 bundle id 改變。</small>{theme.notice ? <p role="status">{theme.notice}</p> : null}</section>;

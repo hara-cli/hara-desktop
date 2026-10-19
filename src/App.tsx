@@ -100,7 +100,7 @@ import {
   externalQuestionPending, interruptExternalQuestions, receiveExternalQuestion,
   resolveExternalQuestion, restoreExternalQuestions, type ExternalQuestionState,
 } from "./external-question-state";
-import { detectLocale, saveLocale, makeT, type Key, type Locale } from "./i18n";
+import { detectLegacyLocale as detectLocale, saveLocale, makeT, type Key, type LegacyLocale as Locale } from "./i18n";
 import {
   THEME_PREFERENCES,
   applyThemePreference,

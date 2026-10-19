@@ -4130,3 +4130,32 @@ resolved paths before retrying, with no file edits from that failed read.
 - Pattern-Key: releases.no_signing_is_a_hard_boundary_not_permission_to_skip_verification
 
 ---
+
+## [ERR-20261020-REDESIGN-VERIFICATION] shell redesign verification tooling
+
+**Logged**: 2026-10-20T03:20:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+
+The isolated redesign needed host loopback permission, an official dependency lock URL, and semantic browser waits.
+
+### Details
+
+- Restricted shells refused local proxy connects, process listing and Vite/test loopback listeners. Dependency installation and synthetic listener/browser gates succeeded through their explicit host execution permissions; no real Hara state or Keychain access was needed.
+- The workstation npm mirror inserted an npmmirror URL for Heroicons 2.2.0. The existing supply-chain regression caught it; the one new lock entry now uses the official npm registry URL with its original integrity.
+- Early browser checks assumed a send button during a running conversation, omitted Enter's native virtual key code, sampled a 120ms color transition before completion, and observed sorting before the subsequent unread render. The corrected gate checks the actual textarea/stop state, dispatches a native Enter event, waits for the specified transition and waits for the unread marker before asserting it. No product timeout or safety assertion was relaxed.
+- Several exploratory source reads guessed paths in the wrong repository. Later reads resolved the correct source tree and the frozen Core SHA. Future cross-repository reads must establish cwd and enumerate paths first.
+- The old CSS regression assumed two literal v1 token blocks. It now applies the complete v1.3 cascade and checks actual foreground/background pairs, including separate user-bubble ink and neutral keyboard focus.
+
+### Resolution
+
+All corrected assertions pass in the real-component browser gate; Desktop full tests and the production build pass. Preserve failed harness diagnostics privately as diagnostic history, separately from the final passing receipt.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: scripts/workspace-shell-smoke.mjs, test/workspace-settings.test.mjs, package-lock.json, docs/workspace-shell-redesign-1.1.0.md
+- Pattern-Key: frontend.shell_semantic_browser_acceptance

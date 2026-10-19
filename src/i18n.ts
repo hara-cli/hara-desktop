@@ -1,6 +1,9 @@
-// Lightweight i18n — en/zh, aligned with hara.run's bilingual docs. System locale by default,
-// manual toggle persisted in localStorage. No dependency; the string set is tiny.
-export type Locale = "en" | "zh";
+// Workspace locales follow the Mac preference: English, Simplified and Traditional Chinese.
+// The native rollback surface keeps the original bilingual dictionary below.
+import { WORKSPACE_KEYS, WORKSPACE_EXTRA_KEYS } from "./workspace-i18n.ts";
+export type Locale = "en" | "zh-Hans" | "zh-Hant";
+// The native rollback entry retains its bilingual contract. New Workspace UI uses Locale.
+export type LegacyLocale = "en" | "zh";
 
 const dict = {
   en: {
@@ -2013,18 +2016,31 @@ const dict = {
   },
 } as const;
 
-export type Key = keyof typeof dict.en;
+type WorkspaceRow = (typeof WORKSPACE_KEYS)[number] | (typeof WORKSPACE_EXTRA_KEYS)[number];
+export type Key = keyof typeof dict.en | WorkspaceRow[0];
+const workspaceDictionaries = Object.fromEntries((["en", "zh-Hans", "zh-Hant"] as const).map((locale, index) =>
+  [locale, Object.fromEntries([...WORKSPACE_KEYS, ...WORKSPACE_EXTRA_KEYS].map(row => [row[0], row[index + 1]]))])) as Record<Locale, Record<string, string>>;
 
+export function normalizeLocale(value: string | null | undefined): Locale | null {
+  if (value === "zh") return "zh-Hans";
+  return value === "en" || value === "zh-Hans" || value === "zh-Hant" ? value : null;
+}
 export function detectLocale(): Locale {
-  const saved = localStorage.getItem("hara.locale");
-  if (saved === "en" || saved === "zh") return saved;
-  return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+  try { const saved = normalizeLocale(globalThis.localStorage?.getItem("hara.locale")); if (saved) return saved; } catch { /* use system */ }
+  const language = globalThis.navigator?.language?.toLowerCase() ?? "en";
+  if (/^zh(?:-|$)/.test(language)) return /(?:^|-)(?:tw|hk|mo|hant)(?:-|$)/.test(language) ? "zh-Hant" : "zh-Hans";
+  return "en";
 }
-
-export function saveLocale(l: Locale): void {
-  localStorage.setItem("hara.locale", l);
+export function detectLegacyLocale(): LegacyLocale { return detectLocale() === "en" ? "en" : "zh"; }
+export function saveLocale(locale: Locale | LegacyLocale): void {
+  const normalized = normalizeLocale(locale)!;
+  try { globalThis.localStorage?.setItem("hara.locale", normalized); } catch { /* current view still changes */ }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("hara:locale-changed"));
 }
-
-export function makeT(locale: Locale) {
-  return (k: Key): string => dict[locale][k];
+export function makeT(locale: Locale | LegacyLocale) {
+  const normalized = normalizeLocale(locale) ?? "en";
+  return (key: Key, values: Record<string, string | number> = {}): string => {
+    const text = workspaceDictionaries[normalized][key] ?? dict[normalized === "en" ? "en" : "zh"][key as keyof typeof dict.en] ?? key;
+    return text.replace(/\{(\w+)\}/g, (match, name) => String(values[name] ?? match));
+  };
 }
