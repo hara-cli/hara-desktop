@@ -1,5 +1,26 @@
 # Hara Desktop Learnings
 
+## [LRN-20261019-NATIVE-SETTINGS-DECISION] native interaction coverage
+
+**Logged**: 2026-10-19
+**Priority**: high
+**Status**: fixed and verified on isolated settings feat; not released
+**Area**: frontend
+
+- A literal `window.confirm` source assertion is not proof that an embedded native WebView shows a
+  decision. Settings now renders an application-owned alertdialog before any dirty page/scope/close/
+  create-skill navigation. Cancel retains the draft; confirmation consumes one immutable target and
+  refuses a changed Workspace/generation/page. The decision grants no execution or credential rights.
+- Keep dirty callbacks stable and synchronous. Do not reset dirty state when clicking the current
+  page or when a pending decision is cancelled. Escape cancels; keyboard focus stays inside the card.
+- ExtensionDock's body is a horizontal flex container by default. A browser with address toolbar plus
+  iframe must explicitly stack them, keep the toolbar non-flexing, and let the iframe consume only the
+  remaining height. Native geometry and screenshots complement source/SSR contracts.
+- Use a private HOME, task-owned window PID and fixture-only Keychain for native verification. Never
+  treat an input-event dispatch as success until the fixed public text is independently read back.
+
+---
+
 ## [LRN-20261018-SETTINGS-UPDATE-BOUNDARIES] best_practice
 
 **Logged**: 2026-10-18

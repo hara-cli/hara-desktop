@@ -49,7 +49,11 @@ test("generic zh chooses Simplified Chinese without introducing a full language-
 });
 test("unsaved edits require confirmation before scope/page/return; passwords never populate saved forms", () => {
   const source = readFileSync(new URL("../src/WorkspaceSettings.tsx", import.meta.url), "utf8"), form = readFileSync(new URL("../src/WorkspaceRuntimeSettings.tsx", import.meta.url), "utf8");
-  assert.equal(source.includes('window.confirm("放弃未保存的修改？")'), true); assert.equal(source.includes("workspaceId !== view.workspaceId && !canLeave()"), true);
-  assert.equal(source.includes("next !== page && !canLeave()"), true); assert.equal(source.includes("if (canLeave()) onClose()"), true);
+  assert.equal(source.includes("window.confirm"), false, "Native settings cannot rely on optional WebView host dialogs");
+  assert.equal(source.includes('role="alertdialog" aria-modal="true"'), true); assert.equal(source.includes("放弃未保存的修改？"), true);
+  for (const kind of ["page", "scope", "close", "skill"]) assert.equal(source.includes(`requestLeave({ kind: "${kind}"`), true, kind);
+  assert.equal(source.includes("onDirty={leaveGuard.setDirty}"), true); assert.equal(source.includes("leaveGuard.confirm()"), true);
+  assert.equal(source.includes('event.key === "Escape"'), true); assert.equal(source.includes('event.key === "Tab"'), true);
+  assert.equal(source.includes("inert={Boolean(decision)}"), true);
   assert.equal(form.includes('[apiKey, setKey] = useState("")'), true); assert.equal(form.includes('autoComplete="new-password"'), true);
 });
