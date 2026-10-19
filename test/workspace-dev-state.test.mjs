@@ -25,6 +25,16 @@ test("empty startup lists only; never selects the first Workspace", async () => 
   const f = fixture(); await f.model.loadDirectory(); assert.equal(f.model.getSnapshot().workspaceId, null);
   await f.model.selectWorkspace("foreign"); assert.equal(f.calls.some(call => call.method === "workspace.select"), false);
 });
+test("pending inheritance is visible without claiming deletion, completion or retrying import",async()=>{
+  const f=fixture();f.handlers["workspace.select"]=params=>({...snapshot(params.workspaceId),...(params.workspaceId==="A"?{inheritance:{state:"pending",handoff:false}}:{})});await f.ready();
+  assert.match(f.model.getSnapshot().syncNotice,/尚未完成/);assert.match(f.model.getSnapshot().syncNotice,/原資料仍保留/);
+  assert.equal(f.model.getSnapshot().workspace.agents.length,2);assert.equal(f.calls.some(row=>/import|migration/.test(row.method)),false);
+  await f.model.selectWorkspace("B");assert.equal(f.model.getSnapshot().workspace.workspaceId,"B");assert.equal(f.model.getSnapshot().syncNotice,"");
+});
+test("rolled-back inheritance explains why automatic restart will not repeat it",async()=>{
+  const f=fixture();f.handlers["workspace.select"]=()=>({...snapshot(),inheritance:{state:"rolled_back",handoff:false}});await f.ready();
+  assert.match(f.model.getSnapshot().syncNotice,/撤回/);assert.match(f.model.getSnapshot().syncNotice,/不會/);
+});
 test("a delayed directory cannot dispatch a stale Workspace mutation", async () => {
   const f = fixture(), old = defer(); let count = 0;
   f.handlers["workspace.list"] = () => ++count === 1 ? old.promise : directory;

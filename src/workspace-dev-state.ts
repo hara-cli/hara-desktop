@@ -2,6 +2,7 @@
 import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T> }
+export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
   workspaces: { workspaceId: string; label: string; role: string; active: boolean; kind?: "personal" | "team" }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
@@ -11,6 +12,7 @@ export interface WorkspaceDevApproval { id: string; workspaceId: string; resourc
 export type WorkspaceDevMessage = { role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] };
 export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
+  inheritance?: WorkspaceInheritanceView;
   agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
   runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string }[];
     operations: { id: string; runtimeId: string; state: string }[] };
@@ -67,7 +69,9 @@ export class WorkspaceDevModel {
     if (this.view.workspace && this.view.workspace.resourceGeneration !== snapshot.resourceGeneration) this.epoch++;
     const key = this.key(snapshot), pending = this.pending.get(key);
     this.update({ workspace: snapshot, workspaceId: snapshot.workspaceId, agentId: snapshot.selectedAgentId, roster: snapshot.agents,
-      draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "", syncNotice: "" });
+      draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "",
+      syncNotice: snapshot.inheritance?.state === "pending" ? "舊資料繼承尚未完成，原資料仍保留；舊定時任務沒有交給新版執行。請先檢查遷移狀態，不要重複匯入。"
+        : snapshot.inheritance?.state === "rolled_back" ? "已撤回本次舊資料繼承，原版資料仍保留；不會在重啟後自動重做。" : "" });
   }
   async loadDirectory(): Promise<void> {
     const epoch = this.epoch; const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
