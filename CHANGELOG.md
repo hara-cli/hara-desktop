@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 — 2026-10-20 — Cross-platform release repair
+
+- Align Desktop and its locked Core sidecar to 1.0.1. Core corrects two simulated Keychain test
+  platform assumptions without changing production credential protections or using plaintext fallback.
+- Preserve the verified Workspace migration and Pi-only packaging from 1.0.0. No right-hand panel
+  expansion changes are included; that regression is deferred to 1.0.2.
+- Windows installers remain updater-signed, not Authenticode-signed; SmartScreen may show a warning.
+
 ## 1.0.0 — 2026-10-20 — Workspace-first desktop
 
 - Make the personal Workspace the default entry, with distinct main Hara and colleague identities,
