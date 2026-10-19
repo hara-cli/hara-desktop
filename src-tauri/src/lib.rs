@@ -526,8 +526,10 @@ fn offscreen_window_recovery(
     } else {
         (window.width, window.height)
     };
-    let width = requested_width.min(target.rect.width);
-    let height = requested_height.min(target.rect.height);
+    // Persisted dimensions may be zero, huge, or saved at a different display scale. Keep
+    // recovery within this display, including the case where its work area is below our minimum.
+    let width = requested_width.clamp(minimum_width.min(target.rect.width), target.rect.width);
+    let height = requested_height.clamp(minimum_height.min(target.rect.height), target.rect.height);
     let x = i64::from(target.rect.x) + i64::from(target.rect.width.saturating_sub(width) / 2);
     let y = i64::from(target.rect.y) + i64::from(target.rect.height.saturating_sub(height) / 2);
 
@@ -537,6 +539,21 @@ fn offscreen_window_recovery(
         width,
         height,
     })
+}
+
+/// Global physical coordinates from mixed-DPI monitors can overlap even when the native window
+/// is on a different display. Its actual current monitor/scale is authoritative, not an area tie.
+fn main_window_recovery(
+    window: WindowRect,
+    work_areas: &[DisplayWorkArea],
+    primary_work_area: Option<DisplayWorkArea>,
+    current_work_area: Option<DisplayWorkArea>,
+) -> Option<WindowRect> {
+    if let Some(current) = current_work_area.filter(|area| area.rect.has_area()) {
+        offscreen_window_recovery(window, &[current], Some(current))
+    } else {
+        offscreen_window_recovery(window, work_areas, primary_work_area)
+    }
 }
 
 /// Grow the main window for a side-by-side work object without covering the primary workbench.
@@ -652,7 +669,35 @@ fn recover_main_window_if_offscreen<R: tauri::Runtime>(
         }
     });
 
-    let Some(recovered) = offscreen_window_recovery(current, &work_areas, primary_work_area) else {
+    let current_scale = window.scale_factor()?;
+    let current_work_area = window.current_monitor()?.map(|monitor| {
+        let area = monitor.work_area();
+        DisplayWorkArea {
+            rect: WindowRect {
+                x: area.position.x,
+                y: area.position.y,
+                width: area.size.width,
+                height: area.size.height,
+            },
+            scale_factor: current_scale,
+        }
+    });
+    // Reapply native constraints AFTER the state plugin has restored its cached physical size.
+    // A constraint created on another display can otherwise keep the old scale. A genuinely small
+    // display remains usable: cap the minimum to its work area instead of forcing it off-screen.
+    if let Some(target) = current_work_area
+        .or(primary_work_area)
+        .or_else(|| work_areas.first().copied())
+        .filter(|area| area.rect.has_area())
+    {
+        window.set_min_size(Some(tauri::PhysicalSize::new(
+            logical_to_physical_dimension(MIN_MAIN_WINDOW_WIDTH, target.scale_factor)
+                .min(target.rect.width),
+            logical_to_physical_dimension(MIN_MAIN_WINDOW_HEIGHT, target.scale_factor)
+                .min(target.rect.height),
+        )))?;
+    }
+    let Some(recovered) = main_window_recovery(current, &work_areas, primary_work_area, current_work_area) else {
         return Ok(false);
     };
 
@@ -689,7 +734,8 @@ fn create_main_window<R: tauri::Runtime>(
         .cloned()
         .ok_or_else(|| "main window configuration is missing".to_string())?;
     let builder = tauri::WebviewWindowBuilder::from_config(app, &config)
-        .map_err(|error| format!("prepare main window: {error}"))?;
+        .map_err(|error| format!("prepare main window: {error}"))?
+        .min_inner_size(f64::from(MIN_MAIN_WINDOW_WIDTH), f64::from(MIN_MAIN_WINDOW_HEIGHT));
     #[cfg(windows)]
     let builder = if software_renderer {
         let data_directory = app
@@ -5470,6 +5516,55 @@ mod native_tests {
                 height: DEFAULT_MAIN_WINDOW_HEIGHT * 2,
             })
         );
+    }
+
+    #[test]
+    fn cold_restart_half_size_uses_the_native_current_monitor_not_false_overlap() {
+        let retina = DisplayWorkArea {
+            rect: WindowRect { x: 0, y: 48, width: 3840, height: 2112 },
+            scale_factor: 2.0,
+        };
+        let external = unscaled_work_area(WindowRect {
+            x: 1920, y: 30, width: 2560, height: 1050,
+        });
+        // Captured failing state: these physical values look valid on the 1x display, but
+        // the native window is actually 550x380 points on the Retina display.
+        let stale = WindowRect { x: 2650, y: 104, width: 1100, height: 760 };
+        assert_eq!(offscreen_window_recovery(stale, &[retina, external], Some(retina)), None);
+        let fixed = main_window_recovery(stale, &[retina, external], Some(retina), Some(retina)).unwrap();
+        assert_eq!((fixed.width, fixed.height), (2200, 1520));
+        assert!(fixed.width >= MIN_MAIN_WINDOW_WIDTH * 2 && fixed.height >= MIN_MAIN_WINDOW_HEIGHT * 2);
+        assert_eq!(main_window_recovery(fixed, &[retina, external], Some(retina), Some(retina)), None);
+    }
+
+    #[test]
+    fn native_current_display_preserves_valid_external_window_size() {
+        let retina = DisplayWorkArea {
+            rect: WindowRect { x: 0, y: 48, width: 3840, height: 2112 },
+            scale_factor: 2.0,
+        };
+        let external = unscaled_work_area(WindowRect { x: 1920, y: 30, width: 2560, height: 1050 });
+        let normal = WindowRect { x: 2650, y: 104, width: 1100, height: 760 };
+        assert_eq!(main_window_recovery(normal, &[retina, external], Some(retina), Some(external)), None);
+        assert_eq!(main_window_recovery(normal, &[retina, external], Some(retina), None), None);
+    }
+
+    #[test]
+    fn recovery_clamps_zero_and_extreme_dimensions_within_a_small_display() {
+        let small = unscaled_work_area(WindowRect { x: -640, y: 24, width: 640, height: 400 });
+        for (width, height) in [(0, 0), (u32::MAX, 1), (1, u32::MAX), (550, 380)] {
+            let fixed = main_window_recovery(WindowRect { x: i32::MAX, y: i32::MIN, width, height }, &[small], Some(small), Some(small)).unwrap();
+            assert_eq!(fixed, WindowRect { x: -640, y: 24, width: 640, height: 400 });
+        }
+        let invalid = DisplayWorkArea { rect: WindowRect { x: 0, y: 0, width: 0, height: 0 }, scale_factor: 2.0 };
+        assert!(main_window_recovery(WindowRect { x: 0, y: 0, width: 0, height: 0 }, &[], None, Some(invalid)).is_none());
+    }
+
+    #[test]
+    fn logical_minimum_conversion_rejects_nonfinite_or_nonpositive_scales() {
+        for scale in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(logical_to_physical_dimension(MIN_MAIN_WINDOW_WIDTH, scale), MIN_MAIN_WINDOW_WIDTH);
+        }
     }
 
     #[test]
