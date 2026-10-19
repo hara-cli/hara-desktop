@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0 — 2026-10-20 — Workspace-first desktop
+
+- Make the personal Workspace the default entry, with distinct main Hara and colleague identities,
+  scoped conversations, model connections, credentials, memory, skills and schedules.
+- Preinstall Pi only. Detect existing optional coding tools before offering an approved download;
+  keep local Codex and Claude configuration intact and allow multiple connections per Workspace.
+- Inherit old Agents, schedules and provider connections through an encrypted source snapshot.
+  Accept safe read-only legacy files at 0644 without changing their permissions; new Workspace state
+  stays private at 0600. Cold restarts preserve imported identities and do not duplicate tasks.
+- Preserve schedule definitions and enable preferences; migrated execution remains gated for an
+  explicit single-owner handoff, not simultaneous old/new execution. Skills, appearance, updates and
+  connection recovery remain accessible in Workspace settings. Retire unrelated v1 legacy entries.
+- Bound restored native window dimensions to the current display so a stale small window cannot
+  hide the sidebar, conversation or settings. Bundle Core 1.0.0, with exact source in SIDECAR_COMMIT.
+- Windows updater signatures do not imply Authenticode signing; SmartScreen may show a warning.
+
 ## 0.1.187 — 2026-10-12 — Mailbox intake and verified colleague recovery
 
 - Add Settings → Connections → Mailboxes & tasks for organization Spaces: configure explicit
