@@ -11,6 +11,7 @@ const base = new URL(process.argv[2] ?? "http://127.0.0.1:54991/");
 if(base.protocol!=="http:" || base.hostname!=="127.0.0.1" || base.pathname!=="/" || base.username || base.password || base.search || base.hash)throw new Error("Use a task-owned IPv4 loopback Vite root");
 if(!process.argv[3])throw new Error("An explicit evidence directory is required");
 const output=resolve(process.argv[3]);mkdirSync(output,{recursive:true,mode:0o700});
+const channelsOnly=process.argv[4]==='--channels-only';
 const chromePath = [process.env.CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"]
   .find((value) => value && existsSync(value));
 if (!chromePath) throw new Error("Chrome/Chromium is required for the component browser gate");
@@ -145,6 +146,7 @@ let completed=false;
 let screenshots=0;
 try{
  await connect();
+ if(!channelsOnly){
  for(const theme of ['light','dark'])for(const scenario of ['home','chat','tasks']){
   await navigate({theme,scenario});const measured=await geometry();fullBleed(measured);assert.ok(measured.body<=measured.viewport,JSON.stringify(measured));assert.deepEqual(measured.badTargets,[]);assert.equal(measured.dmCount,10);
   assert.deepEqual(measured.palette,theme==='light'?{brand:'#9b2c24','brand-hover':'#85241d','brand-pressed':'#6f1e18','brand-soft':'#f3e2df','brand-text':'#7a2019',indicator:'#9b2c24','text-red':'#9b2c24','field-ring':'#8c8579',control:'#8c8579'}:{brand:'#c03a33','brand-hover':'#a8322c','brand-pressed':'#922b26','brand-soft':'#3a1e1e','brand-text':'#f2aaa3',indicator:'#f08e84','text-red':'#f08e84','field-ring':'#716b62',control:'#716b62'});
@@ -375,6 +377,86 @@ try{
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.some(row=>row.method==='workspace.session.send'||row.method==='workspace.approval.respond')"),false);
   receipts.push({theme,locale,operations:'three adjacent calls form one row; result order/error retained; next user turn stays separate'});
  }
+ }
+ for(const theme of ['light','dark'])for(const locale of ['en','zh-Hans','zh-Hant']){
+  const t=makeT(locale),name=`Local planning ${locale}`;
+  await navigate({theme,locale,scenario:'channels'});
+  await ready(`!!document.querySelector(${JSON.stringify(`.hs-sec-a[aria-label=${JSON.stringify(t('ws.channels.new'))}]:not(:disabled)`)})`,'Local channel capability must be ready');
+  await click(`.hs-sec-a[aria-label=${JSON.stringify(t('ws.channels.new'))}]`);
+  assert.equal(await evaluate("document.querySelectorAll('.hs-channel-choices input[type=checkbox]').length"),13);
+  await inputValue(`.hs-channel-dialog input[aria-label=${JSON.stringify(t('ws.channels.name'))}]`,name);
+  await buttonText(t('ws.channels.all'),'.hs-channel-dialog');
+  assert.equal(await evaluate("document.querySelectorAll('.hs-channel-choices input:checked').length"),13);
+  const dialogSize=await evaluate("(()=>{const d=document.querySelector('.hs-channel-dialog'),r=d.getBoundingClientRect();return {top:r.top,bottom:r.bottom,width:r.width,scroll:d.scrollHeight,client:d.clientHeight,choices:getComputedStyle(d.querySelector('.hs-channel-choice')).display};})()");
+  assert.ok(dialogSize.top>=0&&dialogSize.bottom<=800&&dialogSize.width<=1280,JSON.stringify(dialogSize));assert.equal(dialogSize.choices,'flex');
+  const createColors=await contrast();assert.deepEqual(createColors.issues,[],`${theme}/${locale} channel creation contrast`);
+  await capture(`channel-create-${locale}-${theme}`);await buttonText(t('ws.channels.new'),'.hs-channel-dialog');
+  await ready("!!document.querySelector('.hs-channel-compose textarea')",'Created local channel must open');
+  const channelId=await evaluate("document.querySelector('[data-local-channel]').dataset.localChannel");
+  await inputValue('.hs-channel-compose textarea','Discuss this plan.');await click('.hs-channel-compose .hs-send');
+  await ready("document.querySelectorAll('[data-channel-speaker]:not([data-channel-speaker=user])').length===13&&!document.querySelector('.hs-channel-thread .wsd-typing')",'All 13 selected colleagues must reply exactly once');
+  assert.equal(await evaluate("document.querySelectorAll('[data-channel-speaker=user]').length"),1);
+  assert.equal(await evaluate("document.querySelector('.hs-channel-thread').textContent.includes('PRIVATE_DM_ONLY')"),false);
+  const colors=await contrast();assert.deepEqual(colors.issues,[],`${theme}/${locale} channel transcript contrast`);
+  await capture(`channel-chat-${locale}-${theme}`);
+  await inputValue('.hs-channel-compose textarea','channel draft preserved');await click('.hs-set');await key('Escape');
+  assert.equal(await evaluate("document.querySelector('.hs-channel-compose textarea').value"),'channel draft preserved');
+  await click('.hs-main');await ready("!!document.querySelector('.wsd-composer textarea')",'Main chat must remain separate');
+  await inputValue('.wsd-composer textarea','PRIVATE_DM_ONLY');await click(`[data-channel-id=${JSON.stringify(channelId)}]`);
+  await ready("!!document.querySelector('.hs-channel-compose textarea')",'Channel must reopen after main chat');
+  assert.equal(await evaluate("document.querySelector('.hs-channel-compose textarea').value"),'channel draft preserved');
+  assert.equal(await evaluate("document.querySelector('.hs-channel-thread').textContent.includes('PRIVATE_DM_ONLY')"),false);
+  await click(`.hs-channel-header-actions [aria-label=${JSON.stringify(t('ws.channels.invite'))}]`);
+  assert.ok(await evaluate(`document.querySelector('[role=dialog]').textContent.includes(${JSON.stringify(t('ws.channels.inviteBody'))})`));
+  assert.equal(await evaluate("!!document.querySelector('[role=dialog] input,[role=dialog] a')"),false);await key('Escape');
+  if(locale==='zh-Hans'&&theme==='light'){
+   await click('.hs-channel-recipients>summary');await buttonText(t('ws.channels.notesOnly'),'.hs-channel-recipients fieldset');await click('.hs-channel-recipient input');await click('.hs-channel-recipients>summary');
+   await click('.hs-set');await key('Escape');
+   assert.equal(await evaluate(`document.querySelector('.hs-channel-recipients>summary').textContent`),t('ws.channels.replyCount',{n:1}),'Settings cannot widen the selected recipients');
+   await inputValue('.hs-channel-compose textarea','one chosen before membership update');await click('.hs-channel-compose .hs-send');
+   await ready("document.querySelectorAll('[data-channel-speaker]:not([data-channel-speaker=user])').length===14&&!document.querySelector('.hs-channel-thread .wsd-typing')",'Only the one chosen colleague must reply');
+   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.send').at(-1).params.recipientIds.length"),1);
+   await click(`.hs-channel-header-actions [aria-label=${JSON.stringify(t('ws.channels.members'))}]`);
+   await buttonText(t('ws.channels.none'),'.hs-channel-dialog');await click('.hs-channel-choices input');
+   await buttonText(t('ws.channels.save'),'.hs-channel-dialog');await ready("!document.querySelector('[role=dialog]')",'Membership update must save');
+   assert.equal(await evaluate("document.querySelectorAll('[data-channel-speaker]:not([data-channel-speaker=user])').length"),14,'Removing colleagues keeps original messages');
+   await inputValue('.hs-channel-compose textarea','one selected colleague');await click('.hs-channel-compose .hs-send');
+   await ready("document.querySelectorAll('[data-channel-speaker]:not([data-channel-speaker=user])').length===15&&!document.querySelector('.hs-channel-thread .wsd-typing')",'Only the remaining selected colleague replies');
+   await click('.hs-channel-recipients>summary');await buttonText(t('ws.channels.notesOnly'),'.hs-channel-recipients fieldset');await click('.hs-channel-recipients>summary');
+   await inputValue('.hs-channel-compose textarea','local note without AI');await click('.hs-channel-compose .hs-send');await ready("document.querySelectorAll('[data-channel-speaker=user]').length===4",'Notes-only send must be stored');
+   assert.equal(await evaluate("document.querySelectorAll('[data-channel-speaker]:not([data-channel-speaker=user])').length"),15);
+   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.send').at(-1).params.recipientIds.length"),0);
+   await click('.hs-channel-recipients>summary');await buttonText(t('ws.channels.all'),'.hs-channel-recipients fieldset');await click('.hs-channel-recipients>summary');
+   await evaluate("window.__HARA_SHELL_FIXTURE__.channelLoseAck()");await inputValue('.hs-channel-compose textarea','exactly once after lost ACK');await click('.hs-channel-compose .hs-send');
+   await ready(`Array.from(document.querySelectorAll('.hs-channel-compose button')).some(node=>node.textContent===${JSON.stringify(t('ws.composer.verify'))})`,'Lost channel ACK must offer read-only verification');
+   const sentBeforeVerify=await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.send').length");
+   await buttonText(t('ws.composer.verify'),'.hs-channel-compose');
+   await ready("!!document.querySelector('.hs-channel-compose .hs-send')&&!document.querySelector('.hs-channel-thread .wsd-typing')",'Original channel receipt must settle');
+   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.send').length"),sentBeforeVerify);
+   await evaluate("window.__HARA_SHELL_FIXTURE__.channelSlow(true)");await inputValue('.hs-channel-compose textarea','stop queued replies');await click('.hs-channel-compose .hs-send');
+   await ready("!!document.querySelector('.hs-channel-compose .hs-stop')",'Active channel must offer stop');await click('.hs-channel-compose .hs-stop');
+   await ready("!!document.querySelector('.hs-channel-compose .hs-send')&&!document.querySelector('.hs-channel-thread .wsd-typing')",'Stopping a channel must finish without queued replies');
+   await evaluate("window.__HARA_SHELL_FIXTURE__.channelSlow(false)");
+   await selectValue('.hs-space','B');await ready("document.querySelector('.hs-space').value==='B'&&!document.querySelector('[data-channel-id]')",'Other Workspace cannot show original channels');
+   await selectValue('.hs-space','A');await ready(`!!document.querySelector('[data-channel-id="${channelId}"]')`,'Original channel catalog must recover');
+   await click(`[data-channel-id=${JSON.stringify(channelId)}]`);await ready("!!document.querySelector('.hs-channel-compose textarea')",'Original channel must open');
+   const messageCount=await evaluate("document.querySelectorAll('[data-channel-speaker]').length");
+   await evaluate("(()=>{const u=new URL(location.href);u.searchParams.set('reset','0');history.replaceState(null,'',u.href);window.__HARA_RELOAD_MARKER__=true;})()");await send('Page.reload');
+   await ready(`!window.__HARA_RELOAD_MARKER__&&!!document.querySelector('.hs-channel-compose textarea')&&document.querySelectorAll('[data-channel-speaker]').length===${messageCount}`,'Local channel history must survive fixture reload in a new document');
+   assert.equal(await evaluate("document.querySelectorAll('[data-channel-speaker]').length"),messageCount);
+   await send('Emulation.setDeviceMetricsOverride',{width:720,height:800,deviceScaleFactor:1,mobile:false});await settled();
+   await click(`.hs-head [aria-label=${JSON.stringify(t('ws.header.browser'))}]`);
+   const previewClose=`#workspace-browser-panel [aria-label=${JSON.stringify(t('ws.browser.close'))}]`;
+   await ready(`!!document.querySelector(${JSON.stringify(previewClose)})`,'Lazy channel preview must finish mounting beside chat');await settled();
+   const measured=await geometry();assert.ok(measured.chat.width>150&&measured.body<=720,JSON.stringify(measured));
+   const pane=await evaluate("(()=>{const a=document.querySelector('.hs-chat').getBoundingClientRect(),b=document.querySelector('#workspace-browser-panel').getBoundingClientRect();return {chatRight:a.right,panelLeft:b.left,panelRight:b.right};})()");
+   assert.ok(pane.panelLeft>=pane.chatRight&&pane.panelRight<=721,JSON.stringify(pane));await capture('channel-narrow-browser-zh-Hans-light');
+   await click(previewClose);
+  }
+  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.some(row=>/workspace\.session\.send|collaboration|account|login/.test(row.method))"),false);
+  receipts.push({theme,locale,channels:'create with 13 members; ordered distinct replies; drafts, DM isolation and invite placeholder verified',colors});
+ }
+ if(!channelsOnly){
  await navigate({scenario:'partial'});assert.equal(await evaluate("!!document.querySelector('.hs-overview-notice[role=status]')"),true);
  await click('.hs-dm');await ready("!!document.querySelector('[data-overview-incomplete]')",'Incomplete counts must remain visible in colleague conversations');
  await navigate({scenario:'legacy'});await click('.hs-dm');assert.equal(await evaluate("document.querySelectorAll('.hs-msg.cont').length"),0);
@@ -382,11 +464,12 @@ try{
  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).opacity"),'1');
  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).backgroundColor"),'rgb(231, 228, 222)');
  await navigate({scenario:'tasks'});assert.equal(await evaluate('location.hash'),'#colleagues/tasks');
+ }
  assert.equal(errors.length,0,JSON.stringify(errors));completed=true;
  writeFileSync(join(output,'browser-report.json'),JSON.stringify({ok:true,receipts,errors},null,2)+'\n',{mode:0o600});
  process.stdout.write(JSON.stringify({ok:true,checks:receipts.length,screenshots,output})+'\n');
 }catch(error){
- try{await capture('failure');writeFileSync(join(output,'failure.json'),JSON.stringify({error:String(error),errors,diagnostic:await evaluate('({url:location.href,active:document.activeElement?.outerHTML.slice(0,1500),text:document.body.innerText.slice(0,2000)})')},null,2)+'\n',{mode:0o600});}catch{}
+ try{await capture('failure');writeFileSync(join(output,'failure.json'),JSON.stringify({error:String(error),errors,diagnostic:await evaluate('({url:location.href,active:document.activeElement?.outerHTML.slice(0,1500),previewButtons:Array.from(document.querySelectorAll("#workspace-browser-panel button")).map(node=>({label:node.getAttribute("aria-label"),text:node.textContent})),text:document.body.innerText.slice(0,2000)})')},null,2)+'\n',{mode:0o600});}catch{}
  throw error;
 }finally{
  try{socket?.close();}catch{}

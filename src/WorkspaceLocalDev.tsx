@@ -14,6 +14,8 @@ import { Avatar, AwaitBar, ColleaguesPage, ShellDialog, SidebarSection } from ".
 import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
 import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
 import { captureWorkspaceReadingPosition } from "./workspace-chat-scroll";
+import { WorkspaceLocalChannelsModel } from "./workspace-local-channels";
+import { LocalChannelComposer, LocalChannelDialog, LocalChannelRows, LocalChannelThread } from "./WorkspaceLocalChannels";
 import "./workspace-local-dev.css";
 import "./workspace-theme.css";
 import "./workspace-states.css";
@@ -25,7 +27,9 @@ const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
 type Translate = ReturnType<typeof makeT>;
 const TOOL_LABELS: Record<string, Key> = Object.fromEntries(["task_intake", "task_checkpoint", "todo_write", "workspace_read", "workspace_write", "workspace_verify", "agent_list", "agent_create", "agent_contact"]
   .map(name => [name, `ws.execution.${name}` as Key]));
-export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDialog = false }: { card: WorkspaceDevApproval; model: WorkspaceDevModel; t: Translate; disabled?: boolean; onSettled?: () => void; inDialog?: boolean }) {
+export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDialog = false }: { card: WorkspaceDevApproval;
+  model: { respond(card: WorkspaceDevApproval, approved: boolean): Promise<void>; getSnapshot(): { workspace: { approvals: WorkspaceDevApproval[] } | null } };
+  t: Translate; disabled?: boolean; onSettled?: () => void; inDialog?: boolean }) {
   const [pending, setPending] = useState(false), fence = useRef(false);
   const decide = async (approved: boolean) => {
     if (fence.current || disabled) return; fence.current = true; setPending(true);
@@ -63,6 +67,11 @@ export function Transcript({ history, agent, t, detailed = false }: { history: W
 export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, onOpenBrowser }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string;
   mode: "workspace" | "lab"; onOpenBrowser?: () => void }) {
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
+  const channels = useMemo(() => new WorkspaceLocalChannelsModel(model), [model]);
+  const channelView = useSyncExternalStore(channels.subscribe, channels.getSnapshot, channels.getSnapshot);
+  const [channelDialog, setChannelDialog] = useState<"create" | "members" | "invite" | null>(null);
+  const channelApprovalActions = useMemo(() => ({ respond: (card: WorkspaceDevApproval, approved: boolean) => channels.respond(card, approved),
+    getSnapshot: () => ({ workspace: { approvals: channels.getSnapshot().channel?.approvals ?? [] } }) }), [channels]);
   const { locale, preference, t, changeLocale } = useWorkspaceLocale();
   const [settings, setSettingsState] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState(() => t("ws.space.default"));
   const [feature, setFeature] = useState<"schedules" | "skills" | null>(null), [searching, setSearching] = useState(false), [search, setSearch] = useState("");
@@ -81,6 +90,16 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const hasConnection = Boolean(workspace?.connections.defaultConnectionId), realKey = view.directory?.executionMode === "ark-real-key", production = view.directory?.executionMode === "workspace";
   const colleagueLimit = Number.isSafeInteger(workspace?.colleagueLimit) && workspace!.colleagueLimit! > 0 ? workspace!.colleagueLimit : undefined;
   const updates = useWorkspaceUpdater(model, production);
+  const inChannel = route.section === "channel";
+  const selectedChannel = inChannel ? channelView.channel?.channel : undefined;
+  useEffect(() => { void channels.bind(workspace?.workspaceId ?? "", workspace?.resourceGeneration ?? ""); setChannelDialog(null); }, [channels, scope]);
+  useEffect(() => { if (workspace) void channels.refresh(); }, [channels, workspace]);
+  useEffect(() => {
+    if (route.section === "channel" && route.channelId && channelView.catalog?.channels.some(row => row.id === route.channelId) && channelView.channelId !== route.channelId) void channels.select(route.channelId);
+  }, [channels, route, channelView.catalog, channelView.channelId]);
+  useEffect(() => { if (!["running", "draining"].includes(channelView.channel?.state ?? "")) return;
+    const timer = setInterval(() => { void channels.refresh(); }, 1000); return () => clearInterval(timer);
+  }, [channels, channelView.channel?.state]);
   scrollContext.current = JSON.stringify([scope, view.agentId, route]);
   const setSettings = (open: boolean) => {
     if (open && scroll.current) scrollResume.current = { key: scrollContext.current, ...captureWorkspaceReadingPosition(scroll.current) };
@@ -96,9 +115,15 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const connect = () => production ? (setSettingsPage("connections"), setSettings(true)) : realKey ? model.addApprovedConnection() : model.addSynthetic();
   const canSend = Boolean(workspace && hasConnection && view.draft.trim() && !view.sending && !busy && !view.pendingUnknown && !disconnected);
   const navigate = (section: "chat" | "colleagues", tab: "people" | "tasks" = "people") => {
+    channels.clearSelection();
     setRoute({ section, tab });
     const hash = section === "chat" ? "" : tab === "tasks" ? "#colleagues/tasks" : "#colleagues";
     history.replaceState(null, "", `${location.pathname}${location.search}${hash}`);
+  };
+  const openChannel = (channelId: string) => {
+    setRoute({ section: "channel", tab: "people", channelId });
+    history.replaceState(null, "", `${location.pathname}${location.search}#channels/${channelId}`);
+    if (channels.getSnapshot().channelId !== channelId) void channels.select(channelId);
   };
   useEffect(() => {
     const update = () => setRoute(normalizeShellRoute(location.hash));
@@ -107,6 +132,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     return () => window.removeEventListener("hashchange", update);
   }, []);
   useEffect(() => { if (nearBottom.current && route.section === "chat") end.current?.scrollIntoView({ block: "end", behavior: "auto" }); }, [workspace?.conversation.history.length, workspace?.approvals.length, busy, route.section]);
+  useEffect(() => { if (nearBottom.current && inChannel && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }, [channelView.channel?.messages.length, channelView.channel?.approvals.length, channelView.channel?.state, inChannel]);
+  useEffect(() => { if (inChannel) { nearBottom.current = true; if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; } }, [channelView.channelId, inChannel]);
   useEffect(() => { if (!busy) return; const timer = setInterval(() => { void model.refresh(); }, 1000); return () => clearInterval(timer); }, [model, busy]);
   useEffect(() => { nearBottom.current = true; if (workspace?.selectedAgentId && route.section === "chat") input.current?.focus(); }, [workspace?.selectedAgentId, route.section]);
   useLayoutEffect(() => { const node = input.current; if (!node) return; node.style.height = "auto"; node.style.height = `${Math.min(160, Math.max(32, node.scrollHeight))}px`; }, [view.draft, workspace?.selectedAgentId, route.section]);
@@ -123,7 +150,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const openAgent = async (agentId: string, approvalId?: string, confirm = false) => {
     const expected = model.getSnapshot().workspace;
     if (!expected || disconnected) return; navigate("chat");
-    if (agentId !== expected.selectedAgentId) await model.selectAgent(agentId);
+    await model.selectAgent(agentId);
     const current = model.getSnapshot().workspace;
     if (!current || current.workspaceId !== expected.workspaceId || current.resourceGeneration !== expected.resourceGeneration || current.selectedAgentId !== agentId) return;
     if (approvalId) {
@@ -151,7 +178,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       order: Date.parse(timestamp ?? "") || shell.activity[row.agentId]?.observedAt || 0 };
   }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity, t]);
   const closeSettings = () => { setSettings(false); setFeature(null); };
-  const modalOpen = settings || creating || approvalDialog?.scope === scope;
+  const modalOpen = settings || creating || !!channelDialog || approvalDialog?.scope === scope;
   const draftSkill = async (workspaceId: string) => {
     if (model.getSnapshot().workspaceId !== workspaceId) await model.selectWorkspace(workspaceId);
     const current = model.getSnapshot().workspace;
@@ -186,8 +213,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             })}
             <button className="hs-row hs-add" onClick={() => navigate("colleagues")}><UsersIcon className="hico" />{t("ws.dm.all", { n: colleagues.length })}<ChevronRightIcon className="hico" /></button>
           </SidebarSection>
-          <SidebarSection id="channels" title={t("ws.sec.channels")} expanded={sections.channels} onToggle={() => toggle("channels")} t={t} icon={<HashtagIcon className="hico sec-ic" />}>
-            <div className="hs-empty"><b>{t("ws.channels.empty.title")}</b>{t("ws.channels.empty.body")}</div>
+          <SidebarSection id="channels" title={t("ws.sec.channels")} expanded={sections.channels} onToggle={() => toggle("channels")} t={t} icon={<HashtagIcon className="hico sec-ic" />}
+            action={<button className="hs-sec-a" aria-label={t("ws.channels.new")} disabled={!channelView.supported || view.loading || !!disconnected} onClick={() => setChannelDialog("create")}><PlusIcon className="hico" /></button>}>
+            <LocalChannelRows view={channelView} t={t} search={search} selected={inChannel ? channelView.channelId : null} onOpen={openChannel} />
+            {channelView.supported && !channelView.catalog?.channels.length ? <button className="hs-row hs-add" onClick={() => setChannelDialog("create")} disabled={view.loading || !!disconnected}><PlusIcon className="hico" />{t("ws.channels.new")}</button> : null}
           </SidebarSection>
           <SidebarSection id="dms" title={t("ws.sec.dms")} expanded={sections.dms} onToggle={() => toggle("dms")} t={t} badge={unread} pending={shell.waiting.some(item => colleagues.some(row => row.agentId === item.agentId))}
             badgeLabel={t("ws.sec.unread", { n: unread })} icon={<ChatBubbleLeftRightIcon className="hico sec-ic" />}
@@ -206,16 +235,21 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         <div className="hs-row hs-me"><span className="hs-ava" aria-hidden="true">{t("ws.me").slice(0, 1)}</span><span className="grow">{t("ws.me")}</span><button className="hs-set" aria-label={t("ws.settings")} onClick={() => setSettings(true)}><Cog6ToothIcon className="hico" />{t("ws.settings")}</button></div></footer>
     </aside>
     <main className="hs-chat wsd-chat" inert={modalOpen}>
-      <header className="hs-head wsd-header"><Avatar agent={agent} /><div className="hs-header-person"><strong>{route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}</strong>
-        <small>{agent ? t(agent.runtime.id === "pi" ? "ws.header.runtime" : "ws.header.otherRuntime", { role: agent.kind === "main" ? t("ws.main.tag") : agent.identity.title ?? t("ws.role.colleague"), runtime: agent.runtime.label }) : t("ws.welcome.title")}</small></div><span className="sp" />
+      <header className="hs-head wsd-header">{inChannel ? <span className="hs-ava" aria-hidden="true"><HashtagIcon className="hico" /></span> : <Avatar agent={agent} />}<div className="hs-header-person"><strong>{inChannel ? selectedChannel?.name ?? t("ws.channels.local") : route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}</strong>
+        <small>{inChannel ? t("ws.channels.memberCount", { n: selectedChannel?.memberIds.length ?? 0 }) : agent ? t(agent.runtime.id === "pi" ? "ws.header.runtime" : "ws.header.otherRuntime", { role: agent.kind === "main" ? t("ws.main.tag") : agent.identity.title ?? t("ws.role.colleague"), runtime: agent.runtime.label }) : t("ws.welcome.title")}</small></div><span className="sp" />
+        {inChannel ? <div className="hs-channel-header-actions"><button className="hs-ghost" aria-label={t("ws.channels.members")} onClick={() => setChannelDialog("members")} disabled={!selectedChannel || !!disconnected || ["running", "draining"].includes(channelView.channel?.state ?? "")}><UsersIcon className="hico" />{t("ws.channels.members")}</button>
+          <button className="hs-ghost" aria-label={t("ws.channels.invite")} onClick={() => setChannelDialog("invite")}><UserPlusIcon className="hico" />{t("ws.channels.invite")}</button></div> : null}
         {<button className="hs-ghost" aria-label={t("ws.header.browser")} title={t("ws.header.browser")} aria-expanded={browser} aria-controls="workspace-browser-panel" onClick={() => { setBrowser(value => !value); onOpenBrowser?.(); }} disabled={!workspace}><GlobeAltIcon className="hico" />{t("ws.header.browser")}</button>}
         <button className="hs-icon" aria-label={t("ws.settings")} onClick={() => setSettings(true)}><Cog6ToothIcon className="hico" /></button></header>
       {disconnected ? <div className="wsd-notice" role="alert">{t("ws.disconnected")}<button className="hs-btn sec" onClick={onReconnect}>{t("ws.reconnect")}</button></div> : null}
       {view.error ? <div className="wsd-notice is-error" role="alert">{workspaceMessageText(t, view.error)}</div> : null}
       {view.syncNotice ? <div className="wsd-notice" role="status">{workspaceMessageText(t, view.syncNotice)}</div> : null}
-      {shell.incomplete && agent?.kind !== "main" ? <div className="wsd-notice" role="status" data-overview-incomplete>{t("ws.tasks.unavailable")}<button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></div> : null}
+      {shell.incomplete && agent?.kind !== "main" && !inChannel ? <div className="wsd-notice" role="status" data-overview-incomplete>{t("ws.tasks.unavailable")}<button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></div> : null}
       <div ref={scroll} className="hs-scroll wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
-        {route.section === "colleagues" && workspace ? <ColleaguesPage shell={shell} agents={colleagues} tab={route.tab} setTab={tab => navigate("colleagues", tab)} t={t} openAgent={id => void openAgent(id)} openItem={item => openItem(item)} discuss={() => void discuss()} />
+        {inChannel && workspace ? <LocalChannelThread view={channelView} colleagues={agents} t={t} retry={() => { if (route.channelId) void channels.select(route.channelId); }}
+          transcript={(messages, author) => <Transcript history={messages} agent={author} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false} />}
+          approval={card => <ApprovalCard card={card} model={channelApprovalActions} t={t} disabled={!!disconnected} />} />
+          : route.section === "colleagues" && workspace ? <ColleaguesPage shell={shell} agents={colleagues} tab={route.tab} setTab={tab => navigate("colleagues", tab)} t={t} openAgent={id => void openAgent(id)} openItem={item => openItem(item)} discuss={() => void discuss()} />
           : !workspace && view.loading && view.workspaceId ? <p role="status">{t("common.loading")}</p> : !workspace ? <section className="wsd-welcome"><HaraLogo size={48} /><h1>{t("ws.welcome.title")}</h1><p>{t("ws.welcome.body")}</p>
             <button className="hs-btn pri" onClick={() => setCreating(true)} disabled={view.loading}>{t("ws.welcome.create")}</button><small>{t(production ? "ws.welcome.note" : "ws.lab.note")}</small></section>
           : <div className="hs-col wsd-thread">
@@ -234,6 +268,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {busy && !liveApprovals.length ? <div className="wsd-typing" role="status"><Avatar agent={agent} /><span>{t(workspace.conversation.state === "draining" ? "ws.draining" : "ws.replying", { name: agent?.identity.displayName ?? "Hara" })}</span><i /><i /><i /></div> : null}<div ref={end} />
           </div>}
       </div>
+      {workspace && inChannel ? <LocalChannelComposer key={`${scope}:${channelView.channelId}`} view={channelView} model={channels} colleagues={colleagues} t={t} disconnected={!!disconnected} hasConnection={hasConnection} configure={() => void connect()} /> : null}
       {workspace && route.section === "chat" ? <footer className="hs-compose wsd-composer-wrap"><div className="hs-field wsd-composer"><textarea ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
         placeholder={hasConnection ? t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" }) : t("ws.composer.noConnection")} disabled={!hasConnection || Boolean(disconnected)} rows={1}
         onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.send(); } }} />
@@ -246,6 +281,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     {creating ? <ShellDialog label={t("ws.space.new")} onClose={() => setCreating(false)}><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={() => setCreating(false)}><XMarkIcon className="hico" /></button>
       <h2>{t("ws.create.title")}</h2><p>{t("ws.create.body")}</p><label>{t("ws.create.name")}<input aria-label={t("ws.create.name")} value={name} maxLength={80} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim()) void create(); }} /></label>
       <button className="hs-btn pri" onClick={() => void create()} disabled={view.loading || !name.trim()}>{t("ws.space.new")}</button></ShellDialog> : null}
+    {channelDialog ? <LocalChannelDialog key={`${scope}:${channelDialog}:${channelView.channelId}`} mode={channelDialog} view={channelView} model={channels} colleagues={colleagues} t={t} onClose={() => setChannelDialog(null)} onCreated={openChannel} /> : null}
     {approvalDialog?.scope === scope ? <ShellDialog label={t("ws.approval.label")} onClose={() => setApprovalDialog(null)} className="wsd-approval-dialog"><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={() => setApprovalDialog(null)}><XMarkIcon className="hico" /></button>
       {dialogCard ? <ApprovalCard card={dialogCard} model={model} t={t} inDialog disabled={Boolean(disconnected)} onSettled={() => setApprovalDialog(null)} /> : <p role="status">{t("ws.approval.stale")}</p>}</ShellDialog> : null}
     {settings ? <ShellDialog key={`settings:${view.workspaceId}`} label={t("ws.settings")} onClose={closeSettings} className="wsd-settings"><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={closeSettings}><XMarkIcon className="hico" /></button>

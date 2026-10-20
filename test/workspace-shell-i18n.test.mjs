@@ -35,7 +35,7 @@ test('system language and saved zh migrate without mistaking Traditional Chinese
   }
 });
 test('the workspace shell contains no hardcoded Chinese JSX text or UI string attributes',()=>{
-  for(const file of ['WorkspaceLocalDev.tsx','WorkspaceShell.tsx','WorkspaceEntry.tsx']){
+  for(const file of ['WorkspaceLocalDev.tsx','WorkspaceLocalChannels.tsx','WorkspaceShell.tsx','WorkspaceEntry.tsx']){
     const source=readFileSync(new URL(`../src/${file}`,import.meta.url),'utf8');
     const ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),violations=[];
     function visit(node){

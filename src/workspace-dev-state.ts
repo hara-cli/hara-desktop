@@ -1,7 +1,7 @@
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
 import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
-export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T> }
+export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean }
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
 export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
@@ -9,6 +9,7 @@ export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: st
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
   identity: { displayName: string; title?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 export interface WorkspaceDevApproval { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
+  channelId?: string;
   status?: "pending" | "approved" | "rejected" | "expired"; risk?: "high" | "normal"; paid?: boolean; externalSend?: boolean; destructive?: boolean;
   draft: { username: string; displayName: string; title: string; instructions: string; runtimeId: "pi" } }
 export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
@@ -59,6 +60,13 @@ export class WorkspaceDevModel {
     this.rpc = rpc; this.nonce = nonce; this.syntheticOnly = syntheticOnly; this.executionMode = executionMode; this.settingsOnly = settingsOnly;
   }
   getSnapshot = (): WorkspaceDevView => this.view;
+  supportsLocalChannels(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.v1") === true; }
+  async localChannelRequest<T>(method: string, params: Record<string, unknown>): Promise<T> {
+    const workspace = this.view.workspace;
+    if (!workspace || workspace.workspaceId !== params.workspaceId || workspace.resourceGeneration !== params.expectedGeneration
+      || (!method.startsWith("workspace.channels.") && method !== "workspace.approval.respond")) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    return this.rpc.request<T>(method, params);
+  }
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   setSettingsFactory(factory: () => Promise<{ model: WorkspaceDevModel; close(): void }>) { this.settingsFactory = factory; }
   openSettingsSession() { if (!this.settingsFactory) return Promise.reject(new WorkspaceViewError("ws.notice.settingsNotReady")); return this.settingsFactory(); }

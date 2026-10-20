@@ -113,8 +113,10 @@ export function loadSidebarSections(workspaceId: string, read: (key: string) => 
     return Object.fromEntries(Object.entries(DEFAULT_SECTIONS).map(([key, fallback]) => [key, typeof value?.[key] === "boolean" ? value[key] : fallback])) as SidebarSections;
   } catch { return { ...DEFAULT_SECTIONS }; }
 }
-export function normalizeShellRoute(hash: string): { section: "chat" | "colleagues"; tab: "people" | "tasks" } {
+export function normalizeShellRoute(hash: string): { section: "chat" | "colleagues" | "channel"; tab: "people" | "tasks"; channelId?: string } {
   const route = hash.replace(/^#\/?/, "");
+  const channel = /^channels\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/.exec(route);
+  if (channel) return { section: "channel", tab: "people", channelId: channel[1] };
   return route === "tasks" || route === "colleagues/tasks" ? { section: "colleagues", tab: "tasks" }
     : { section: route === "colleagues" ? "colleagues" : "chat", tab: "people" };
 }

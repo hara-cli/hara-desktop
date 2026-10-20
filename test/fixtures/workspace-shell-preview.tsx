@@ -3,6 +3,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { WorkspaceScreen } from '../../src/WorkspaceLocalDev';
 import { WorkspaceDevModel, type WorkspaceDevApproval, type WorkspaceDevSnapshot } from '../../src/workspace-dev-state';
+import type { LocalChannelCatalog, LocalChannelSnapshot } from '../../src/workspace-local-channels';
 if (!import.meta.env.DEV || !['127.0.0.1','localhost'].includes(location.hostname)) throw new Error('Synthetic localhost development fixture only');
 const params = new URLSearchParams(location.search), scenario = params.get('scenario') ?? 'home';
 const productionFixture = scenario === 'native-settings';
@@ -12,7 +13,7 @@ if (params.get('reset') !== '0') { localStorage.removeItem('hara.sidebar.section
 const currentTime = Date.now(), stamp = (minutes: number) => new Date(currentTime - minutes*60000).toISOString();
 const agents = [
   {agentId:'main',kind:'main',state:'active',identity:{displayName:'Hara'},runtime:{id:'pi',label:'Pi',available:true}},
-  ...['Coder','Ops','Frontend Developer','Writer','Iris','Mia','Researcher','Planner','Translator','Reviewer'].map((name,index)=>({
+  ...['Coder','Ops','Frontend Developer','Writer','Iris','Mia','Researcher','Planner','Translator','Reviewer',...(scenario==='channels'?['Data Analyst','QA','Security']:[])].map((name,index)=>({
     agentId:`person-${index}`,kind:'colleague',state:'active',identity:{displayName:name,title:['Engineering','Operations','Frontend','Writing','Research','Design','Research','Planning','Language','Review'][index]},runtime:{id:'pi',label:'Pi',available:true}})),
   {agentId:'archived',kind:'colleague',state:'archived',identity:{displayName:'Archived fixture'},runtime:{id:'pi',label:'Pi',available:true}}
 ] as WorkspaceDevSnapshot['agents'];
@@ -31,7 +32,7 @@ for (const workspaceId of ['A','B']) for (const [index,agent] of agents.entries(
       {role:'assistant',text:'The composer uses a neutral focus ring. Pending approvals remain reachable from the home tray and their original conversations.',tools:[],createdAt:stamp(minutes)},
     ],pastTaskCount:3,usage:{modelCalls:0,inputTokens:0,outputTokens:0},runUsage:{modelCalls:0,inputTokens:0,outputTokens:0},completion:state==='completed'?{state:'verified'}:null,updatedAt:stamp(minutes)};
   const approvals=workspaceId==='A'&&agent.agentId==='person-1'?[makeCard('fixture-approval','person-1')]:[];
-  snapshots.set(`${workspaceId}:${agent.agentId}`,{workspaceId,resourceGeneration:`g-${workspaceId}`,label:workspaceId==='A'?'My workspace':'Studio',colleagueLimit:10,selectedAgentId:agent.agentId,agents,syntheticOnly:!productionFixture,executionMode:productionFixture?'workspace':'synthetic',
+  snapshots.set(`${workspaceId}:${agent.agentId}`,{workspaceId,resourceGeneration:`g-${workspaceId}`,label:workspaceId==='A'?'My workspace':'Studio',colleagueLimit:scenario==='channels'?undefined:10,selectedAgentId:agent.agentId,agents,syntheticOnly:!productionFixture,executionMode:productionFixture?'workspace':'synthetic',
     connections:{revision:1,defaultConnectionId:scenario==='no-connection'?null:'fixture',connections:productionFixture ? [{id:'fixture',label:'Model fixture',provider:'openai',status:'active',baseURL:'https://example.invalid/v1',defaultModel:'fixture-model',keySaved:true,keyState:'saved'}] : []},
     ...(productionFixture ? {runtimes:{builtIn:'pi',options:[{runtimeId:'codex',label:'Local fixture',installed:true,registered:false,version:'0.0.0',state:'detected',generalAgentDriverAvailable:false,path:'/synthetic/codex',fingerprint:'fixture-fingerprint'},
       {runtimeId:'opencode',label:'Missing fixture',installed:false,registered:false,version:null,state:'not_installed',generalAgentDriverAvailable:false}],operations:[]}} : {}),approvals,conversation});
@@ -54,7 +55,15 @@ if(scenario==='many') snapshots.get('A:person-1')!.approvals=Array.from({length:
 if(scenario==='legacy') for(const snapshot of snapshots.values()) {delete snapshot.conversation.updatedAt;for(const message of snapshot.conversation.history)delete message.createdAt;}
 if(scenario==='tasks') location.hash='#tasks';
 let theme: 'light'|'dark' = params.get('theme')==='dark'?'dark':'light';
-const rpc={async request<T>(method:string, values:Record<string,unknown>):Promise<T>{
+const channelStorageKey='hara.shell-fixture.local-channels';
+if(params.get('reset')!=='0')localStorage.removeItem(channelStorageKey);
+const channelData: {catalogs:Record<string,LocalChannelCatalog>;snapshots:Record<string,LocalChannelSnapshot>} = JSON.parse(localStorage.getItem(channelStorageKey)??'null') ?? {
+  catalogs:Object.fromEntries(['A','B'].map(workspaceId=>[workspaceId,{workspaceId,resourceGeneration:`g-${workspaceId}`,revision:0,channels:[]}])),snapshots:{},
+};
+const persistChannels=()=>localStorage.setItem(channelStorageKey,JSON.stringify(channelData));
+const channelTimers=new Map<string,ReturnType<typeof setTimeout>>();
+let slowChannel=false,unknownChannelAck=false;
+const rpc={supportsCapability:(capability:string)=>capability==='workspace.local-channels.v1',async request<T>(method:string, values:Record<string,unknown>):Promise<T>{
   calls.push({method,params:values});const workspaceId=String(values.workspaceId??'A'), agentId=String(values.agentId??'main');
   if(failures.has(method))throw new Error('Synthetic read/write failure');
   let result:unknown;
@@ -67,6 +76,32 @@ const rpc={async request<T>(method:string, values:Record<string,unknown>):Promis
   } else if(method==='workspace.approval.respond'){
     for(const snapshot of snapshots.values())if(snapshot.workspaceId===workspaceId)snapshot.approvals=snapshot.approvals.filter(card=>card.id!==values.approvalId);
     result={accepted:true};
+  } else if(method==='workspace.channels.list')result=structuredClone(channelData.catalogs[workspaceId]);
+  else if(method==='workspace.channels.create'){
+    const catalog=channelData.catalogs[workspaceId],id=String(values.channelId),row={id,name:String(values.name),memberIds:values.memberIds as string[],createdAt:new Date().toISOString()};
+    if(!catalog.channels.some(row=>row.id===id))catalog.channels.push(row);catalog.revision++;
+    channelData.snapshots[id]??={workspaceId,resourceGeneration:`g-${workspaceId}`,channel:row,revision:0,state:'idle',messages:[],turns:[],approvals:[]};persistChannels();result=structuredClone(catalog);
+  } else if(method==='workspace.channels.update'){
+    const catalog=channelData.catalogs[workspaceId],id=String(values.channelId),row=catalog.channels.find(row=>row.id===id)!;
+    row.name=String(values.name);row.memberIds=values.memberIds as string[];catalog.revision++;channelData.snapshots[id].channel=row;persistChannels();result=structuredClone(catalog);
+  } else if(['workspace.channels.select','workspace.channels.snapshot'].includes(method))result=structuredClone(channelData.snapshots[String(values.channelId)]);
+  else if(method==='workspace.channels.receipt')result={workspaceId,resourceGeneration:`g-${workspaceId}`,channelId:values.channelId,requestId:values.requestId,state:channelData.snapshots[String(values.channelId)].turns.some(row=>row.id===values.requestId)?'accepted':'unknown'};
+  else if(method==='workspace.channels.send'){
+    const id=String(values.channelId),snapshot=channelData.snapshots[id],turnId=String(values.requestId),recipients=values.recipientIds as string[];
+    if(!snapshot.turns.some(row=>row.id===turnId)){
+      const turn={id:turnId,state:recipients.length?'running':'completed',replies:recipients.map(agentId=>({agentId,displayName:agents.find(row=>row.agentId===agentId)!.identity.displayName,state:'queued'}))};
+      snapshot.turns.push(turn);snapshot.state=turn.state;snapshot.messages.push({id:turnId,turnId,agentId:null,displayName:'',createdAt:new Date().toISOString(),message:{role:'user',content:String(values.message)}});snapshot.revision++;persistChannels();
+      let index=0;const reply=()=>{
+        const target=turn.replies[index];if(!target){snapshot.state=turn.state='completed';channelTimers.delete(id);persistChannels();void model.refresh();return;}
+        target.state='completed';snapshot.messages.push({id:`${turnId}:${target.agentId}`,turnId,agentId:target.agentId,displayName:target.displayName,createdAt:new Date().toISOString(),message:{role:'assistant',text:`${target.displayName}: ${String(values.message)}`,tools:[]}});index++;snapshot.revision++;persistChannels();void model.refresh();
+        channelTimers.set(id,setTimeout(reply,slowChannel?30000:15));
+      };if(recipients.length)channelTimers.set(id,setTimeout(reply,slowChannel?30000:15));
+    }
+    result={workspaceId,resourceGeneration:`g-${workspaceId}`,channelId:id,requestId:turnId,accepted:true};
+    if(unknownChannelAck){unknownChannelAck=false;throw new Error('Synthetic ACK lost after acceptance');}
+  } else if(method==='workspace.channels.cancel'){
+    const id=String(values.channelId),snapshot=channelData.snapshots[id];clearTimeout(channelTimers.get(id));channelTimers.delete(id);snapshot.state='cancelled';
+    for(const turn of snapshot.turns)if(turn.state==='running'){turn.state='cancelled';for(const row of turn.replies)if(row.state==='queued')row.state='cancelled';}persistChannels();result={state:'draining'};
   } else if(method==='workspace.session.send'){
     const snapshot=snapshots.get(`${workspaceId}:${agentId}`)!;
     snapshot.conversation.history.push({role:'user',content:String(values.message),createdAt:new Date().toISOString()});snapshot.conversation.revision++;result={runId:'fixture-run'};
@@ -89,6 +124,7 @@ const rpc={async request<T>(method:string, values:Record<string,unknown>):Promis
 const model=new WorkspaceDevModel(rpc,()=>crypto.randomUUID(),!productionFixture,productionFixture?'workspace':'synthetic');
 await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat')await model.selectAgent('person-0');
 (window as any).__HARA_SHELL_FIXTURE__={model,calls,setFailure(method:string,enabled:boolean){if(enabled)failures.add(method);else failures.delete(method);},async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
+  channelSlow(value:boolean){slowChannel=value;},channelLoseAck(){unknownChannelAck=true;},
   async finishApprovals(){const snapshot=snapshots.get('A:person-1')!;snapshot.conversation.state='completed';snapshot.conversation.taskState='completed';await model.refresh();},
   async idle(){for(const snapshot of snapshots.values())if(snapshot.workspaceId==='A'&&snapshot.selectedAgentId!=='person-1') {snapshot.conversation.state='idle';snapshot.conversation.taskState=null;snapshot.conversation.taskId=null;}await model.refresh();}};
 model.setSettingsFactory(async () => ({ model: new WorkspaceDevModel(rpc, undefined, !productionFixture, productionFixture ? 'workspace' : 'synthetic', true), close() {} }));
