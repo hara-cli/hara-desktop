@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.4 — candidate, not released — Workspace side panel and signing repair
+
+- Keep browser/extension previews beside the current chat at all supported window widths. Only
+  explicit maximize hides the chat; restore/close retain its session, draft and reading position.
+- Make saved/dragged panel widths obey available chat space; use readable light/dark title colors
+  and consistent English, Simplified Chinese and Traditional Chinese browser labels.
+- Restore the controlled Mac formal signing entry's read-only use of the existing private updater
+  key file, without Keychain partition/authorization prompts, key copies, argv or unredacted logs.
+  Preserve all exact-source, public-key, Developer ID, notarization and publication gates.
+- Keep bundled Core 1.0.2 at `4e507e7f1595e618527e5c95a1890ae9271615e7`, with Pi only preinstalled.
+- This is a local candidate only. No tag, upload or stable-channel change is authorized yet.
+
 ## 1.0.3 — 2026-10-20 — Pi-only signed packaging repair
 
 - Repair the formal sidecar source build for the approved Pi-only Core lock: require the pinned,

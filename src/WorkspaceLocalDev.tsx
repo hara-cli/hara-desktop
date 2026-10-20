@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import HaraLogo from "./mark";
 import { WorkspaceDevConnectionClient, type WorkspaceDevConnection } from "./workspace-dev-rpc";
@@ -9,6 +9,8 @@ import WorkspaceSettings, { type SettingsPage } from "./WorkspaceSettings";
 import { WorkspaceUpdateNotice, useWorkspaceUpdater } from "./WorkspaceSoftwareUpdate";
 import { hasUpdateAttention } from "./workspace-updater-state";
 import "./workspace-theme.css";
+import type { ExtensionDockMode } from "./extension-dock-state";
+import { workspaceBrowserCopy } from "./workspace-browser-copy";
 const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
 
 const TOOL_LABELS: Record<string, string> = { task_intake: "確認任務", task_checkpoint: "保存驗證回執", todo_write: "更新步驟",
@@ -47,6 +49,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   const [settings, setSettings] = useState<SettingsPage | null>(null), [creating, setCreating] = useState(false), [name, setName] = useState("我的工作空間");
   const [section, setSection] = useState<"chat" | "colleagues" | "tasks">("chat"), [browser, setBrowser] = useState(false);
+  const [browserMode, setBrowserMode] = useState<ExtensionDockMode>("docked"), [browserWidth, setBrowserWidth] = useState(48);
+  const layout = useRef<HTMLDivElement>(null), browserCopy = workspaceBrowserCopy();
+  const closeBrowser = () => { setBrowser(false); setBrowserMode("docked"); };
   const theme = useStableWorkspaceTheme(model);
   const input = useRef<HTMLTextAreaElement>(null), end = useRef<HTMLDivElement>(null), nearBottom = useRef(true);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
@@ -60,7 +65,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }
   useEffect(() => { if (nearBottom.current) end.current?.scrollIntoView({ block: "end", behavior: "auto" }); }, [workspace?.conversation.history.length, workspace?.approvals.length, busy]);
   useEffect(() => { if (!busy) return; const timer = setInterval(() => { void model.refresh(); }, 1000); return () => clearInterval(timer); }, [model, busy]);
   useEffect(() => { if (workspace?.selectedAgentId) input.current?.focus(); }, [workspace?.selectedAgentId]);
-  useEffect(() => { setBrowser(false); }, [workspace?.workspaceId, workspace?.resourceGeneration]);
+  useEffect(() => { setBrowser(false); setBrowserMode("docked"); }, [workspace?.workspaceId, workspace?.resourceGeneration]);
   useEffect(() => { const open = (event: KeyboardEvent) => { if (event.metaKey && event.key === "," && settings === null) { event.preventDefault(); setSettings("overview"); } };
     window.addEventListener("keydown", open); return () => window.removeEventListener("keydown", open); }, [settings]);
   const create = async () => { await model.createWorkspace(name); setCreating(false); };
@@ -73,7 +78,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }
   };
   if (settings !== null) return <WorkspaceSettings mainModel={model} initialPage={settings} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
     onClose={() => setSettings(null)} onCreateSkill={id => void draftToHara("请和我一起设计这个工作空间的技能。先讨论目标和边界，预览 SKILL.md，等我确认后再保存；不增加工具、权限或密钥。", id)} />;
-  return <div className={`wsd-app ${browser ? "has-browser" : ""}`}>
+  return <div ref={layout} className={`wsd-app ${browser && workspace ? "has-browser" : ""}${browser && browserMode === "maximized" ? " is-browser-maximized" : ""}`} style={{ "--wsd-browser-width": `${browserWidth}%` } as CSSProperties}>
     <aside className="wsd-sidebar">
       <div className="wsd-brand"><HaraLogo size={29} /><span>Hara</span>{mode === "lab" ? <small>WORKSPACE LAB</small> : null}</div>
       <label className="wsd-space-label">目前空間</label>
@@ -97,7 +102,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }
     </aside>
     <main className="wsd-chat">
       <header className="wsd-header"><div className="wsd-header-person"><Avatar agent={agent} /><div><strong>{section === "colleagues" ? "同事" : section === "tasks" ? "任务与工单" : agent?.identity.displayName ?? "歡迎來到 Hara"}</strong><small>{agent ? `${agent.kind === "main" ? "主 Hara" : agent.identity.title ?? "同事"} · Pi 內建 Runtime` : "從一個屬於你的空間開始"}</small></div></div>
-        <button onClick={() => setBrowser(value => !value)} disabled={!workspace} aria-expanded={browser}>浏览器扩展 <span>↗</span></button></header>
+        <button onClick={() => { setBrowserMode("docked"); setBrowser(value => !value); }} disabled={!workspace} aria-expanded={browser}>{browserCopy.title} <span>↗</span></button></header>
       {disconnected ? <div className="wsd-notice" role="alert">連接中斷；歷史與產物仍在本機，不會自動重跑。<button onClick={onReconnect}>重新連接</button></div> : null}
       {view.error ? <div className="wsd-notice is-error" role="alert">{view.error}</div> : null}
       {view.syncNotice ? <div className="wsd-notice" role="status">{view.syncNotice}</div> : null}
@@ -135,7 +140,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode }
     {creating ? <div className="wsd-modal-backdrop"><section className="wsd-modal" role="dialog" aria-modal="true" aria-labelledby="wsd-create-title"><button className="wsd-close" aria-label="關閉建立空間" onClick={() => setCreating(false)}>×</button>
       <p className="wsd-kicker">A FRESH WORKSPACE</p><h2 id="wsd-create-title">給新空間一個名字。</h2><p>會為你準備獨立的主 Hara。連接與同事稍後透過聊天安排。</p><label>空間名稱<input autoFocus aria-label="Workspace 名稱" value={name} maxLength={80} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim()) void create(); }} /></label>
       <button className="wsd-primary" onClick={() => void create()} disabled={view.loading || !name.trim()}>建立 Workspace</button></section></div> : null}
-    {browser && workspace ? <Suspense fallback={<aside className="wsd-sidebar-note">正在打开浏览器扩展…</aside>}><BrowserExtension key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} label={workspace.label} onClose={() => setBrowser(false)} /></Suspense> : null}
+    {browser && workspace ? <Suspense fallback={<aside className="wsd-browser-extension" role="status">{browserCopy.loading}</aside>}><BrowserExtension key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} label={workspace.label} copy={browserCopy} mode={browserMode} onModeChange={setBrowserMode} onWidthChange={setBrowserWidth} resizeContainerRef={layout} onClose={closeBrowser} /></Suspense> : null}
     <WorkspaceUpdateNotice controller={updates.controller} onView={() => setSettings("updates")} />
   </div>;
 }

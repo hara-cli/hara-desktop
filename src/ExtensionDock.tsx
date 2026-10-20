@@ -6,6 +6,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 import {
   EXTENSION_DOCK_WIDTH_KEY,
@@ -69,6 +70,8 @@ interface ExtensionDockProps {
   onTabClose?: (tabId: string) => void;
   onAddItem?: (itemId: ExtensionDockAddItem["id"]) => void;
   onModeChange: (mode: ExtensionDockMode) => void;
+  onWidthChange?: (width: number) => void;
+  resizeContainerRef?: RefObject<HTMLElement | null>;
   onPopOut?: () => void;
   onClose: () => void;
   children: ReactNode;
@@ -209,6 +212,8 @@ export default function ExtensionDock({
   onTabClose,
   onAddItem,
   onModeChange,
+  onWidthChange,
+  resizeContainerRef,
   onPopOut,
   onClose,
   children,
@@ -217,6 +222,7 @@ export default function ExtensionDock({
   const widthRef = useRef(width);
   const [resizing, setResizing] = useState(false);
   const asideRef = useRef<HTMLElement | null>(null);
+  useEffect(() => { onWidthChange?.(width); }, [width, onWidthChange]);
 
   const saveWidth = (next: number, persist = true) => {
     const bounded = extensionDockWidth(next);
@@ -231,7 +237,7 @@ export default function ExtensionDock({
   };
 
   const resizeFromPointer = (event: PointerEvent<HTMLDivElement>) => {
-    const parent = asideRef.current?.parentElement;
+    const parent = resizeContainerRef?.current ?? asideRef.current?.parentElement;
     if (!parent) return;
     const bounds = parent.getBoundingClientRect();
     if (bounds.width <= 0) return;

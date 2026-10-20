@@ -130,6 +130,10 @@ if [ -n "${SKIP_SIDECAR:-}" ]; then
   exit 1
 fi
 
+# Source/tag/toolchain guards above remain mandatory. Refuse an unavailable updater input before
+# unlocking any codesign credential, without triggering login-Keychain authorization.
+node scripts/with-updater-file.mjs --check
+
 IDENTITY="Developer ID Application: Wuxi Nanhara Technologies Co., Ltd. (4GMBSXJ67T)"
 P8="$HOME/.tauri/asc-key-LPV3VLR842.p8"
 KEY_ID="LPV3VLR842"
@@ -291,9 +295,9 @@ export APPLE_SIGNING_IDENTITY="$IDENTITY"
 export APPLE_API_KEY="$KEY_ID" APPLE_API_ISSUER="$ISSUER" APPLE_API_KEY_PATH="$P8"
 run_tauri_bundle_attempt() {
   if [ "$TARGET" = "x86_64-apple-darwin" ]; then
-    /bin/bash scripts/with-updater-keychain.sh npm run tauri build -- --target "$TARGET"
+    node scripts/with-updater-file.mjs npm run tauri build -- --target "$TARGET"
   else
-    /bin/bash scripts/with-updater-keychain.sh npm run tauri build
+    node scripts/with-updater-file.mjs npm run tauri build
   fi
 }
 

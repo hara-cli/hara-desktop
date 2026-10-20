@@ -47,6 +47,9 @@ jobs:
       - name: Build the production renderer
         run: npm run build
 
+      - name: Verify Workspace side panel beside chat with synthetic RPC
+        run: node scripts/workspace-panel-smoke.mjs "$RUNNER_TEMP/workspace-panel-smoke"
+
   native:
     name: Native (${{ matrix.os }}, ${{ matrix.target }})
     strategy:
@@ -80,6 +83,9 @@ jobs:
 
       - name: Build the production renderer
         run: npm run build
+
+      - name: Verify Workspace panel layout on native Mac architecture
+        run: node scripts/workspace-panel-smoke.mjs "$RUNNER_TEMP/workspace-panel-smoke-${{ matrix.target }}"
 
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:

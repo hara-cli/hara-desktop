@@ -1099,6 +1099,11 @@ jobs:
         working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
         run: npm test
 
+      - name: Preflight approved updater file without Keychain authorization
+        working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
+        shell: bash
+        run: node scripts/with-updater-file.mjs --check
+
       - name: Build signed and notarized arm64 assets
         working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
         shell: bash
