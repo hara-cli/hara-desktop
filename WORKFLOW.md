@@ -155,6 +155,17 @@ The fail-closed trust model, current evidence and required release choreography 
 
 ## Secrets & signing
 
+- On the controlled macOS signer the formal `build-mac-signed.sh` entry uses
+  `node scripts/with-updater-file.mjs <build command>` to read the **existing**
+  `~/.tauri/hara-desktop.key` read-only. It requires an owned, non-writable, non-symlink parent and
+  a same-user regular 0600 file (no symlinks/hardlinks, bounded size, change detection).
+  The key exists only in the signing child's memory/environment, never argv, copied plaintext files
+  or logs. Output is bounded and redacted in memory before delivery, on success and failure.
+  Inherited signing credentials/password/path are discarded. Missing/unsafe credentials fail closed;
+  there is no Keychain lookup/partition/GUI authorization or unsigned fallback. The historical
+  `with-updater-keychain.sh` filename is only a compatibility delegate to this same reader.
+  Developer ID and Apple notarization remain separate, mandatory gates with their existing dedicated
+  signing identity; this does not bypass their authorization, source/tag or publication checks.
 - `HARA_TAURI_SIGNING_PRIVATE_KEY` (the `hara-desktop-production` environment secret, exposed to
   Tauri only as `TAURI_SIGNING_PRIVATE_KEY` inside its build steps) = contents of
   `~/.tauri/hara-desktop.key` — updater artifact signing. Keep it out of repository-level secrets so
@@ -165,8 +176,11 @@ The fail-closed trust model, current evidence and required release choreography 
   notarized, stapled assets. The runner uses the dedicated
   `~/Library/Keychains/hara-ci-signing.keychain-db`; its random unlock password stays only in
   `~/.tauri/hara-codesign-keychain.password` with mode `0600`. The signed-build script unlocks it,
-  performs an ephemeral Developer ID signing probe, restores the prior keychain search list, and
-  locks it again on every exit. This random password is not the Mac login password. Ordinary Hara
+  performs an ephemeral Developer ID signing probe using that explicit keychain, and
+  locks it again on every exit. It must not write, repair or restore the user's global search list,
+  default keychain, ACL, partitions or keychain settings. Tauri's nested codesign calls receive the
+  same explicit keychain through the scoped `scripts/codesign-bin` wrapper; there is no search-list
+  fallback. This random password is not the Mac login password. Ordinary Hara
   launch never touches this keychain; cancel any unexpected GUI prompt instead of guessing a
   password, then run only the guarded build script, which unlocks it automatically. Do not copy the
   password into Actions logs, notes, or chat.

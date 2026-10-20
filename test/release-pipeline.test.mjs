@@ -451,7 +451,7 @@ test("signed build cleanup preserves the original failure on macOS Bash 3.2", ()
     /trap 'hara_exit_with_cleanup "\$\{SIGNED_BUILD_COMPLETED:-0\}" clear_signing_environment' EXIT/,
   );
   assert.match(signedBuild, /SIGNED_BUILD_COMPLETED=1\s*$/);
-  assert.match(signedBuild, /ORIGINAL_KEYCHAIN_COUNT=0/);
+  assert.doesNotMatch(signedBuild, /ORIGINAL_KEYCHAIN_COUNT|KEYCHAIN_LIST_CHANGED|security list-keychains/);
   assert.doesNotMatch(signedBuild, /for (?:existing|keychain) in "\$\{ORIGINAL_KEYCHAINS\[@\]\}"/);
   assert.match(
     shellSafety,
@@ -1145,10 +1145,9 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(script, /node scripts\/codesign-timestamp-retry\.mjs "\$CODESIGN_PROBE_LOG"/);
   assert.match(script, /sleep \$\(\(CODESIGN_PROBE_ATTEMPT \* 5\)\)/);
   assert.match(script, /security lock-keychain "\$CODESIGN_KEYCHAIN"/);
-  assert.match(script, /security list-keychains -d user -s "\$\{ORIGINAL_KEYCHAINS\[@\]\}"/);
+  assert.doesNotMatch(script, /security (?:list-keychains|default-keychain|set-keychain-settings|set-key-partition-list)\b/);
   assert.match(script, /hara-codesign-keychain\.password/);
-  assert.match(script, /append_original_keychain/);
-  assert.match(script, /\[ -f "\$candidate" \] \|\| return 0/);
+  assert.match(script, /PATH="\$PWD\/scripts\/codesign-bin:\$PATH" HARA_CODESIGN_KEYCHAIN="\$CODESIGN_KEYCHAIN"/);
   assert.match(script, /stat -f '%Lp'.*CODESIGN_PASSWORD_FILE/);
   assert.doesNotMatch(script, /security show-keychain-info/);
   assert.doesNotMatch(workflow, /HARA_CODESIGN_KEYCHAIN_PASSWORD/);
