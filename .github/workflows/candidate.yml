@@ -1,0 +1,316 @@
+name: candidate
+
+on:
+  push:
+    branches: [candidate/1.1.0-d8d109b]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hara-desktop-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+  NPM_CONFIG_REPLACE_REGISTRY_HOST: always
+  CANDIDATE_DESKTOP_DIR: ${{ github.workspace }}/app
+  CANDIDATE_CORE_DIR: ${{ github.workspace }}/core
+  GH_TOKEN: ${{ github.token }}
+  # Per-process checkout policy; never edit a persistent runner's global git config.
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: orchestration
+
+jobs:
+  admission:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          path: orchestration
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: orchestration/.node-version
+      - name: Reject wrong actor, event, ref or workflow before signer admission
+        run: node scripts/candidate-admission.mjs
+
+  credential_preflight:
+    needs: admission
+    environment: hara-desktop-candidate
+    runs-on:
+      group: hara-desktop-candidate
+      labels: [self-hosted, macOS, ARM64, hara-desktop-release]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          path: orchestration
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          path: app
+          ref: d8d109be68e37a3eff636fe061526259db166bac
+          persist-credentials: false
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          repository: hara-cli/hara
+          path: core
+          ref: 4cde6bd49ad7095bd9820677220d4650ed95bf5c
+          persist-credentials: false
+      - name: Select existing pinned local tools without global settings changes
+        run: |
+          echo /Users/zhujianbo/.bun/bin >> "$GITHUB_PATH"
+          echo /Users/zhujianbo/.nvm/versions/node/v22.23.1/bin >> "$GITHUB_PATH"
+          echo /Users/zhujianbo/.rustup/toolchains/1.97.0-aarch64-apple-darwin/bin >> "$GITHUB_PATH"
+      - name: Exact source and Pi-only formal hydration before expensive native builds
+        run: node scripts/candidate-native.mjs hydrate
+      - name: Original updater-file and background Developer ID preflight
+        run: node scripts/candidate-signing.mjs preflight
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/*-preflight.json
+          if-no-files-found: error
+          retention-days: 7
+
+  native_build:
+    needs: credential_preflight
+    name: candidate-build-${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          path: orchestration
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          path: app
+          ref: d8d109be68e37a3eff636fe061526259db166bac
+          persist-credentials: false
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          repository: hara-cli/hara
+          path: core
+          ref: 4cde6bd49ad7095bd9820677220d4650ed95bf5c
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: orchestration/.node-version
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: '1.97.0'
+          targets: ${{ matrix.target }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: orchestration/.bun-version
+          bun-download-url: ${{ matrix.target == 'x86_64-pc-windows-msvc' && 'https://github.com/oven-sh/bun/releases/download/bun-v1.3.9/bun-windows-x64-baseline.zip' || '' }}
+      - name: Verify native Windows baseline compiler bytes
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: test "$(sha256sum "$(command -v bun)" | cut -d ' ' -f 1)" = 39f12024edc27d3706baa7b72a06156896b536af61472e0f9a6fe9c5e25b97cc
+      - name: Linux build and package extraction dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 libarchive-tools
+      - name: Exact source and Pi-only hydration
+        run: node scripts/candidate-native.mjs hydrate
+      - name: Original complete Core and Desktop tests plus renderer
+        run: node scripts/candidate-native.mjs tests
+      - name: Native sidecar boundary smoke and locked Rust tests
+        run: node scripts/candidate-native.mjs sidecar
+      - name: Complete formal native installer build including Intel DMG
+        run: node scripts/candidate-native.mjs build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-unsigned-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/unsigned-output/*
+          if-no-files-found: error
+          retention-days: 7
+
+  sign_apps:
+    needs: native_build
+    environment: hara-desktop-candidate
+    runs-on:
+      group: hara-desktop-candidate
+      labels: [self-hosted, macOS, ARM64, hara-desktop-release]
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { path: app, ref: d8d109be68e37a3eff636fe061526259db166bac, persist-credentials: false }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { repository: hara-cli/hara, path: core, ref: 4cde6bd49ad7095bd9820677220d4650ed95bf5c, persist-credentials: false }
+      - name: Select pinned local tools
+        run: |
+          echo /Users/zhujianbo/.bun/bin >> "$GITHUB_PATH"
+          echo /Users/zhujianbo/.nvm/versions/node/v22.23.1/bin >> "$GITHUB_PATH"
+          echo /Users/zhujianbo/.rustup/toolchains/1.97.0-aarch64-apple-darwin/bin >> "$GITHUB_PATH"
+      - run: node scripts/candidate-native.mjs hydrate
+      - name: Developer ID sign, notarize and staple exact native Apps
+        run: node scripts/candidate-signing.mjs sign-apps
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-app-signed-aarch64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/app-signed-output-aarch64-apple-darwin/*
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-app-signed-x86_64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/app-signed-output-x86_64-apple-darwin/*
+          if-no-files-found: error
+          retention-days: 7
+
+  native_dmg:
+    needs: sign_apps
+    name: candidate-dmg-${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { path: app, ref: d8d109be68e37a3eff636fe061526259db166bac, persist-credentials: false }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { repository: hara-cli/hara, path: core, ref: 4cde6bd49ad7095bd9820677220d4650ed95bf5c, persist-credentials: false }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with: { node-version-file: orchestration/.node-version }
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with: { toolchain: '1.97.0', targets: '${{ matrix.target }}' }
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with: { bun-version-file: orchestration/.bun-version }
+      - name: Repackage the exact signed App into final DMG on its native CPU
+        run: node scripts/candidate-native.mjs native-dmg
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-dmg-native-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/dmg-native-output/*
+          if-no-files-found: error
+          retention-days: 7
+
+  sign_payloads:
+    needs: [native_build, native_dmg]
+    environment: hara-desktop-candidate
+    runs-on:
+      group: hara-desktop-candidate
+      labels: [self-hosted, macOS, ARM64, hara-desktop-release]
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { path: app, ref: d8d109be68e37a3eff636fe061526259db166bac, persist-credentials: false }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { repository: hara-cli/hara, path: core, ref: 4cde6bd49ad7095bd9820677220d4650ed95bf5c, persist-credentials: false }
+      - name: Select pinned local tools
+        run: |
+          echo /Users/zhujianbo/.bun/bin >> "$GITHUB_PATH"
+          echo /Users/zhujianbo/.nvm/versions/node/v22.23.1/bin >> "$GITHUB_PATH"
+          echo /Users/zhujianbo/.rustup/toolchains/1.97.0-aarch64-apple-darwin/bin >> "$GITHUB_PATH"
+      - run: node scripts/candidate-native.mjs hydrate
+      - name: Sign and notarize native DMGs; sign Linux/Windows updater payloads locally
+        run: node scripts/candidate-signing.mjs sign-final
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-final-aarch64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/final-output-aarch64-apple-darwin/*
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-final-x86_64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/final-output-x86_64-apple-darwin/*
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-final-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/final-output-x86_64-unknown-linux-gnu/*
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-final-x86_64-pc-windows-msvc-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/final-output-x86_64-pc-windows-msvc/*
+          if-no-files-found: error
+          retention-days: 7
+
+  native_verify:
+    needs: sign_payloads
+    name: candidate-verify-${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { path: app, ref: d8d109be68e37a3eff636fe061526259db166bac, persist-credentials: false }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with: { repository: hara-cli/hara, path: core, ref: 4cde6bd49ad7095bd9820677220d4650ed95bf5c, persist-credentials: false }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with: { node-version-file: orchestration/.node-version }
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with: { toolchain: '1.97.0', targets: '${{ matrix.target }}' }
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: orchestration/.bun-version
+          bun-download-url: ${{ matrix.target == 'x86_64-pc-windows-msvc' && 'https://github.com/oven-sh/bun/releases/download/bun-v1.3.9/bun-windows-x64-baseline.zip' || '' }}
+      - name: Linux native extraction and SDK dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libarchive-tools
+      - name: Native package smoke, signature verification and private old-version upgrade checks
+        run: node scripts/candidate-native.mjs verify
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-verified-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/verified-output/*
+          if-no-files-found: error
+          retention-days: 7

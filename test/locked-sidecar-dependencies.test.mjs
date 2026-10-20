@@ -20,9 +20,9 @@ const piLock = () => ({ lockfileVersion: 3, packages: {
   "": { dependencies: { [piPackage]: "1.1.0" } },
   [`node_modules/${piPackage}`]: { version: "1.1.0", integrity: `sha512-${createHash("sha512").update("pi fixture").digest("base64")}` },
 } });
-test("the formal Pi-only lock requires zero retired SDK tarballs on either Mac architecture", () => {
-  for (const target of ["aarch64-apple-darwin", "x86_64-apple-darwin"]) assert.deepEqual(lockedSidecarSpecs(piLock(),target),[]);
-  assert.throws(()=>lockedSidecarSpecs(piLock(),"x86_64-unknown-linux-gnu"),/unsupported signed sidecar target/);
+test("the formal Pi-only lock requires zero retired SDK tarballs on all supported native platforms", () => {
+  for (const target of ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]) assert.deepEqual(lockedSidecarSpecs(piLock(),target),[]);
+  assert.throws(()=>lockedSidecarSpecs(piLock(),"unsupported"),/unsupported signed sidecar target/);
 });
 test("Pi-only hydration cannot silently accept a missing/corrupt/unpinned Pi lock or orphan SDK", () => {
   for (const change of [lock=>delete lock.packages[`node_modules/${piPackage}`],

@@ -1,10 +1,43 @@
-# P0 pre-tag candidate gate — offline foundation, protected lane pending
+# P0 pre-tag candidate gate — controlled native lane (not a release)
 
 Jeff approved this P0 on 2026-10-20 after cancelling Desktop1.0.4. This initial draft establishes
 the mandatory operator rule and reports planned workflow changes **before editing workflows**.
-The offline contracts below are now implemented and synthetically tested. The real workflow lane,
-build/signing adapters, artifact promotion and protection configuration are **not yet connected or
-verified**. No release tag may be created while the complete required gate is absent.
+The original offline contracts are retained below as history. The controlled native adapters and
+candidate workflow are now implemented, but **a passing full real run is still required**. Same-byte
+tag promotion remains pending; the legacy tag workflow is unchanged. No release tag is authorized.
+
+## Current controlled implementation (2026-10-21)
+
+`candidate-inputs.json` freezes application Desktop d8d109b and Core 4cde6bd independently from the
+reviewed orchestration SHA. `candidate.yml` accepts only the exact protected
+`candidate/1.1.0-d8d109b` push from Jeff, requires the separately protected candidate environment,
+and uses organization runner group 3 / runner 242. Production's tag-only environment is unchanged.
+The new lane has contents/actions read plus Actions artifact upload, not Release/OSS/stable writes.
+
+1. Hosted admission reads the live exact environment/reviewer/ref/ruleset before scheduling the
+   signer. The signer rechecks live protection and its own organization registration before keys.
+2. Locked Pi-only hydration and original-file updater / background Developer ID probes precede
+   the native four-platform build, original full suites, real sidecar/Rust and installer gates.
+3. Only the controlled Mac signs native-built Apps and updater artifacts. App notarization/staple
+   is followed by native ARM/Intel DMG construction using each build's Tauri-generated script, then
+   controlled DMG signing/notarization/staple and native final package/quarantine/upgrade verification.
+4. Every job transition downloads only this run/attempt's artifact and verifies GitHub's independent
+   SHA256/size and the inner source-bound receipt. Tar names, PAX overrides, links and extracted
+   trees are checked. Genuine compiler-output sidecars support verification examples; no dummy bins.
+5. `candidate-run-verifier.mjs RUN_ID ORCHESTRATION_SHA PRIVATE_OUTPUT` runs outside Actions after
+   completion: it reads real run/jobs/review history and newly downloads verified assets. It uses
+   actual REST schema and job labels, not synthesized observations for the earlier v1 contract.
+   Ambiguous rerun approval linkage fails closed; it does not reuse old-attempt artifacts.
+
+Core original tests retain their preload and assertions. Tests use private HOME and a short private
+TMP (Unix socket limit unchanged); no inherited Hara preferences override config-default tests.
+macOS upgrade checks install into a private copy of each real released old App (0.1.187/1.0.3).
+Linux/Windows prove the native original SDK comparator/download/signature path, **not GUI/system-wide
+installation**. Windows Authenticode remains the existing separately documented hardening gap.
+
+Original updater/private keys are never uploaded or copied. Apple submission intent/ID is retained
+before polling; an unknown POST result is not resubmitted. Keychain operations specify only the
+existing dedicated keychain; global search/default/ACL/partition configuration is never written.
 
 ## Proposed execution boundary
 
@@ -88,7 +121,7 @@ The helper returns an immutable detached proof of the artifact and inner-file ha
 tag caller must **also** retain original tag actor/ruleset/immutable-release admission and independent
 post-publication verification. This module is neither a signature nor permission to publish.
 
-### Still pending, not counted as passed
+### Historical pending list at the offline foundation (superseded by current section above)
 
 1. Jeff's candidate environment/runner admission decision and a fail-closed hosted admission adapter.
 2. Trusted API/download/native inspection adapter and full shared formal command wiring; no new
