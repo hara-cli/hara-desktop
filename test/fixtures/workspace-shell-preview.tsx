@@ -33,6 +33,9 @@ for (const workspaceId of ['A','B']) for (const [index,agent] of agents.entries(
   snapshots.set(`${workspaceId}:${agent.agentId}`,{workspaceId,resourceGeneration:`g-${workspaceId}`,label:workspaceId==='A'?'My workspace':'Studio',colleagueLimit:10,selectedAgentId:agent.agentId,agents,syntheticOnly:!productionFixture,executionMode:productionFixture?'workspace':'synthetic',
     connections:{revision:1,defaultConnectionId:scenario==='no-connection'?null:'fixture',connections:[]},approvals,conversation});
 }
+if(productionFixture) snapshots.get('A:main')!.conversation.history = Array.from({length:24},(_,index)=>index%2
+  ? {role:'assistant' as const,text:`Native settings scroll reply ${index}`,tools:[],createdAt:stamp(24-index)}
+  : {role:'user' as const,content:`Native settings scroll message ${index}`,createdAt:stamp(24-index)});
 if(scenario==='many') snapshots.get('A:person-1')!.approvals=Array.from({length:8},(_,index)=>makeCard(`fixture-${index}`,'person-1',index<5));
 if(scenario==='legacy') for(const snapshot of snapshots.values()) {delete snapshot.conversation.updatedAt;for(const message of snapshot.conversation.history)delete message.createdAt;}
 if(scenario==='tasks') location.hash='#tasks';

@@ -68,6 +68,9 @@ const server = createServer(async (request, response) => {
 });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 async function captureWindow(stage) {
+  if(process.env.HARA_NATIVE_SKIP_SCREENSHOTS === "1") {
+    write(`native-${stage}-window.json`,{stage,candidatePid:app.pid,pixelStatus:"not captured by CLI; native CUA observation is recorded separately"});return;
+  }
   await new Promise(resolve => setTimeout(resolve, 800));
   const probe = () => {
     const result=spawnSync(join(dirname(evidence),"workspace-native-probe"),[String(app.pid),shell],{encoding:"utf8",timeout:5000});

@@ -4178,3 +4178,23 @@ Core 1.0.2's frozen lock references npmmirror; a fresh npm ci failed ECONNRESET.
 - Related Files: src/WorkspaceSettings.tsx, src/i18n.ts, test/v1-entry-surface.test.mjs, test/workspace-settings-shell.test.mjs
 - Evidence: /private/tmp/hara-redesign-native-20261020/
 - Pattern-Key: integration.preserve_frozen_lock_and_validate_dynamic_entry_identity
+
+
+## [ERR-20261020-REDESIGN-SETTINGS-SCROLL] fullscreen Settings discarded the reading position
+
+**Logged**: 2026-10-20T10:48:55.679821+00:00
+**Priority**: medium
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+Native acceptance found that returning from fullscreen Settings reset a long chat to the top.
+
+### Details
+Reproduced in the packaged ARM64 candidate dc6c74c / Core 1.0.2 through CUA. A real-component regression failed before the fix (scrollTop 0 versus saved 250). Capture the position before leaving and restore it in a layout effect, fenced by Workspace generation, colleague and route; follow new messages only when previously at the bottom. No new persisted user data. The full component gate then passed 31 groups / 25 screenshots in all three locales. Narrow preview layout also needed a compact sidebar and a separate action row for urgent approvals; geometry alone had passed while the text was unreadable, so a minimum text-width check and visual inspection are retained.
+
+### Metadata
+- Related Files: src/WorkspaceLocalDev.tsx, src/workspace-browser.css, scripts/workspace-shell-smoke.mjs
+- Evidence: /private/tmp/hara-redesign-native-20261020/scroll-red.log, scroll-green.log
+- Feishu original: om_x100b624017b824accf4319d7816f8d7
+- Pattern-Key: ui.native_acceptance_preserve_scoped_scroll_and_check_readability

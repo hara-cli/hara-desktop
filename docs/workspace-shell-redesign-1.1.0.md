@@ -39,7 +39,10 @@ Developer ID signing is queued until the separate 1.0.3 release completes.
   method and original workspace/generation/card ID, with a shared in-flight fence.
   Core continues to decide authority and validity. No paid task is replayed.
 - Settings retains the existing scoped connection, Runtime, skills and schedule
-  recovery controls. Schedules and skills now open from Settings.
+  recovery controls. Schedules and skills now open from Settings. Full-window Settings
+  captures/restores the reading position in memory, fenced by Workspace generation,
+  colleague and route. A reader already at the bottom follows new messages; a reader
+  higher up stays at the same position.
 - Sidebar expansion flags are the only new persisted workspace UI data, under
   `hara.sidebar.sections.<workspaceId>`. Message previews, activity and local unread
   observations stay in memory. Locale uses the existing `hara.locale` key.

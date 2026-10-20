@@ -58,13 +58,15 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   mode: "workspace" | "lab"; onOpenBrowser?: () => void }) {
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   const { locale, t, changeLocale } = useWorkspaceLocale();
-  const [settings, setSettings] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState(() => t("ws.space.default"));
+  const [settings, setSettingsState] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState(() => t("ws.space.default"));
   const [feature, setFeature] = useState<"schedules" | "skills" | null>(null), [searching, setSearching] = useState(false), [search, setSearch] = useState("");
   const [route, setRoute] = useState(() => normalizeShellRoute(typeof location === "undefined" ? "" : location.hash));
   const [approvalDialog, setApprovalDialog] = useState<{ id: string; scope: string } | null>(null), [focusApproval, setFocusApproval] = useState<string | null>(null);
   const theme = useStableWorkspaceTheme(model);
   const [settingsPage, setSettingsPage] = useState<SettingsPage>("overview"), [browser, setBrowser] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null), end = useRef<HTMLDivElement>(null), nearBottom = useRef(true), selectedRow = useRef<HTMLButtonElement>(null);
+  const scroll = useRef<HTMLDivElement>(null), scrollContext = useRef("");
+  const scrollResume = useRef<{ key: string; top: number; atBottom: boolean } | null>(null);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
   const colleagues = agents.filter(row => row.kind === "colleague" && row.state !== "archived");
   const shell = useWorkspaceOverview(model, workspace), { sections, toggle } = useSectionState(view.workspaceId ?? "none");
@@ -73,6 +75,17 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const hasConnection = Boolean(workspace?.connections.defaultConnectionId), realKey = view.directory?.executionMode === "ark-real-key", production = view.directory?.executionMode === "workspace";
   const colleagueLimit = Number.isSafeInteger(workspace?.colleagueLimit) && workspace!.colleagueLimit! > 0 ? workspace!.colleagueLimit : undefined;
   const updates = useWorkspaceUpdater(model, production);
+  scrollContext.current = JSON.stringify([scope, view.agentId, route]);
+  const setSettings = (open: boolean) => {
+    if (open && scroll.current) scrollResume.current = { key: scrollContext.current, top: scroll.current.scrollTop, atBottom: nearBottom.current };
+    setSettingsState(open);
+  };
+  useLayoutEffect(() => {
+    if (settings || !scrollResume.current || !scroll.current) return;
+    const saved = scrollResume.current; scrollResume.current = null;
+    if (saved.key === scrollContext.current) scroll.current.scrollTop = saved.atBottom ? scroll.current.scrollHeight : saved.top;
+  }, [settings]);
+
   useEffect(() => { setBrowser(false); }, [scope]);
   const connect = () => production ? (setSettingsPage("connections"), setSettings(true)) : realKey ? model.addApprovedConnection() : model.addSynthetic();
   const canSend = Boolean(workspace && hasConnection && view.draft.trim() && !view.sending && !busy && !view.pendingUnknown && !disconnected);
@@ -195,7 +208,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       {view.error ? <div className="wsd-notice is-error" role="alert">{view.error}</div> : null}
       {view.syncNotice ? <div className="wsd-notice" role="status">{view.syncNotice}</div> : null}
       {shell.incomplete && agent?.kind !== "main" ? <div className="wsd-notice" role="status" data-overview-incomplete>{t("ws.tasks.unavailable")}<button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></div> : null}
-      <div className="hs-scroll wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
+      <div ref={scroll} className="hs-scroll wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
         {route.section === "colleagues" && workspace ? <ColleaguesPage shell={shell} agents={colleagues} tab={route.tab} setTab={tab => navigate("colleagues", tab)} t={t} openAgent={id => void openAgent(id)} openItem={item => openItem(item)} discuss={() => void discuss()} />
           : !workspace && view.loading && view.workspaceId ? <p role="status">{t("common.loading")}</p> : !workspace ? <section className="wsd-welcome"><HaraLogo size={48} /><h1>{t("ws.welcome.title")}</h1><p>{t("ws.welcome.body")}</p>
             <button className="hs-btn pri" onClick={() => setCreating(true)} disabled={view.loading}>{t("ws.welcome.create")}</button><small>{t(production ? "ws.welcome.note" : "ws.lab.note")}</small></section>

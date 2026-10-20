@@ -224,13 +224,17 @@ try{
  await capture('browser-local-preview');await click('.hs-browser-head button:last-child');assert.equal(await evaluate("!!document.querySelector('.hs-browser')"),false);
  receipts.push({browser:'explicit local iframe loads with opaque sandbox, close restores chat'});
  for (const locale of ['en','zh-Hans','zh-Hant']) {
-  await navigate({scenario:'native-settings',locale});await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Independent settings must load');
+  await navigate({scenario:'native-settings',locale});
+  await evaluate("(()=>{const area=document.querySelector('.hs-scroll');area.scrollTop=250;area.dispatchEvent(new Event('scroll',{bubbles:true}));})()");await settled();
+  assert.equal(await evaluate("Math.round(document.querySelector('.hs-scroll').scrollTop)"),250);
+  await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Independent settings must load');
   assert.equal(await evaluate("document.querySelector('.wss-app').getAttribute('lang')"),locale);
   const geometry=await evaluate("(()=>{const nav=document.querySelector('.wss-nav').getBoundingClientRect(),main=document.querySelector('.wss-main').getBoundingClientRect();return {navRight:nav.right,mainLeft:main.left,mainWidth:main.width}})()");
   assert.ok(geometry.navRight<=geometry.mainLeft+1,JSON.stringify(geometry));assert.ok(geometry.mainWidth>500,JSON.stringify(geometry));
   await evaluate("Array.from(document.querySelectorAll('.wss-nav nav>button')).find(button=>/Appearance|外观|外觀/.test(button.textContent)).click()");await settled();
   assert.equal(await evaluate("!!document.querySelector('select option[value=zh-Hant]')"),true);
   await capture(`native-settings-${locale}`);await click('.wss-back');await ready("!!document.querySelector('.hs-field textarea')",'Returning from settings must preserve main chat');
+  assert.equal(await evaluate("Math.round(document.querySelector('.hs-scroll').scrollTop)"),250,'Returning from full-window Settings must retain the chat reading position');
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.model.getSnapshot().workspaceId"),'A');
   receipts.push({locale,settings:'independent RPC model; full-window layout; language selector; main chat scope retained'});
  }
