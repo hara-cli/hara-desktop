@@ -583,6 +583,7 @@ export const WORKSPACE_EXTRA_KEYS = [
   ["ws.settings.scopeNote", "Changing this leaves the main chat in its original workspace.", "切换后主聊天的空间保持不变。", "切換後主聊天的空間保持不變。"],
   ["ws.settings.savedHere", "Settings stay on this Mac. Workspace data stays in its own workspace.", "设置保存在这台 Mac；空间资料各自独立。", "設定保存在這台 Mac；空間資料各自獨立。"],
   ["ws.settings.connectionCount", "{n} connections", "{n} 个连接", "{n} 個連接"],
+  ["ws.settings.connectionOne", "{n} connection", "{n} 个连接", "{n} 個連接"],
   ["ws.settings.runtimeSummary", "Pi is built in. Add other runtimes when needed.", "Pi 已内置，其他运行时按需安装。", "Pi 已內建，其他執行環境按需安裝。"],
   ["ws.settings.manage", "Manage", "管理", "管理"],
   ["ws.settings.themeSummary", "System / Light / Dark", "跟随系统 / 浅色 / 深色", "跟隨系統 / 淺色 / 深色"],

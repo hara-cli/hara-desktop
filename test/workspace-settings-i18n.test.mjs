@@ -75,6 +75,23 @@ test("all settings pages, model connection states, runtimes and appearance rende
   }
 });
 
+test("settings overview uses singular English only for one active connection and preserves Chinese counts", () => {
+  for (const locale of locales) for (const count of [0, 1, 2]) {
+    const connections = [...Array.from({ length: count }, (_, index) => ({ ...workspace.connections.connections[0], id: `active-${index}` })),
+      { ...workspace.connections.connections[0], id: "inactive", status: "archived" }];
+    const value = { workspaceId: "A", workspace: { ...workspace, connections: { ...workspace.connections, connections } },
+      directory: { workspaces: [{ workspaceId: "A", label: workspace.label, active: true, kind: "personal", role: "owner" }] }, error: "" };
+    const model = { getSnapshot: () => value, subscribe: () => () => {} };
+    const html = render("SettingsContent", { model, mainModel: model, initialPage: "overview", root: "/synthetic", production: true,
+      theme, updater: updater(updateView()), versionInfo: info, onClose() {}, onCreateSkill() {} }, locale);
+    const expected = locale === "en" ? `${count} ${count === 1 ? "connection" : "connections"}`
+      : locale === "zh-Hans" ? `${count} 个连接` : `${count} 個連接`;
+    assert.ok(html.includes(`<p>${expected}</p>`), `${locale}: ${count} active connections; archived rows do not count`);
+    assert.equal(html.includes("<p>1 connections</p>"), false);
+    localized(html, locale);
+  }
+});
+
 test("every updater phase, notice and candidate page uses the current locale without touching updater operations", () => {
   for (const locale of locales) {
     const t = makeT(locale);

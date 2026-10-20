@@ -287,6 +287,9 @@ try{
  for(const theme of ['light','dark']) for(const [index,locale] of ['en','zh-Hans','zh-Hant'].entries()){
   const nextLocale=['en','zh-Hans','zh-Hant'][(index+1)%3], t=makeT(locale), next=makeT(nextLocale);
   await navigate({scenario:'native-settings',locale,theme});await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Settings i18n fixture must load');
+  const connectionSummary=await evaluate(`Array.from(document.querySelectorAll('.wss-overview button')).find(button=>button.querySelector('h2')?.textContent===${JSON.stringify(t('ws.settings.page.connections'))})?.querySelector('p')?.textContent`);
+  assert.equal(connectionSummary,t('ws.settings.connectionOne',{n:1}),'One active connection must use singular copy in the rendered settings overview');
+  await capture(`settings-overview-${theme}-${locale}`);
   await buttonText(t('ws.settings.page.connections'),'.wss-nav nav');
   await ready("!!document.querySelector('.wsd-legacy-import')",'Legacy metadata must settle without any import');
   await buttonText(t('ws.connections.import'));await ready("!!document.querySelector('.wss-content [role=dialog]')",'Import confirmation must open');
