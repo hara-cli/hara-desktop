@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.3 — 2026-10-20 — Pi-only signed packaging repair
+
+- Repair the formal sidecar source build for the approved Pi-only Core lock: require the pinned,
+  installed Pi dependency without downloading or reintroducing the retired Claude Agent SDK.
+- Bundle Core 1.0.2 at exact commit `4e507e7f1595e618527e5c95a1890ae9271615e7`.
+  Preserve legacy Workspace inheritance and the original source-data/credential protections.
+- Require complete Desktop regressions and native host tests on both real Intel and Apple Silicon
+  main CI runners, alongside Linux quality gates, before creating the next release tag.
+- Preserve all earlier release tags. Right-hand panel regression work is deferred to the next patch.
+- Both Mac architectures require Developer ID signing and Apple notarization. Windows installers
+  remain updater-signed, not Authenticode-signed; SmartScreen may show a warning.
+
 ## 1.0.2 — 2026-10-20 — Workspace migration and native release gates
 
 - Align Desktop and its exact Core sidecar to 1.0.2, retaining safe legacy Agent, schedule and model

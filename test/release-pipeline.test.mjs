@@ -1639,6 +1639,23 @@ test("main and pull requests run Desktop quality gates without release authority
   assert.doesNotMatch(workflow, /contents: write|environment:|GH_TOKEN|HARA_RELEASE/);
 });
 
+test("main CI runs complete Desktop regressions on Intel and ARM64 before a release tag", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+  const native = workflow.slice(workflow.indexOf("  native:"), workflow.indexOf("  native-windows:"));
+  assert.match(native, /fail-fast: false/);
+  assert.match(native, /os: macos-15\n\s+target: aarch64-apple-darwin/);
+  assert.match(native, /os: macos-15-intel\n\s+target: x86_64-apple-darwin/);
+  assert.match(native, /runs-on: \$\{\{ matrix\.os \}\}/);
+  assert.match(native, /node-version-file: "\.node-version"/);
+  for (const command of ["npm ci", "npm run check:release", "npm test", "npm run build",
+    "cargo test --manifest-path src-tauri/Cargo.toml --lib --locked"]) {
+    assert.ok(native.includes(command), `missing complete native gate: ${command}`);
+  }
+  assert.match(native, /binaries\/hara-\$\{\{ matrix\.target \}\}/);
+  assert.match(native, /binaries\/herdr-\$\{\{ matrix\.target \}\}/);
+  assert.doesNotMatch(native, /continue-on-error|--test-name-pattern|--test-skip-pattern|--ignored/);
+});
+
 test("draft validation executes repository code without a release token", () => {
   const workflow = readFileSync(join(root, ".github/workflows/build.yml"), "utf8");
   const validationStart = workflow.indexOf("Revalidate downloaded draft and source archive without a release token");
