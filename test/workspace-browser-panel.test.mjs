@@ -29,6 +29,7 @@ test("panel copy follows supported English, Simplified and Traditional forms wit
 test("panel-specific ink/theme overrides and boundary resizer do not change legacy surfaces",()=>{
   const css=read("src/workspace-settings.css"),dock=read("src/ExtensionDock.tsx");
   assert.match(css,/\.wsd-browser-extension \.extension-dock-identity strong\{color:var\(--wsd-ink\)\}/);
+  assert.match(css,/\.wsd-browser-extension>\.extension-dock:focus-within:not\(\.is-collapsed\)\{box-shadow:none\}/);
   assert.match(dock,/resizeContainerRef\?\.current \?\? asideRef\.current\?\.parentElement/);
   assert.match(dock,/onWidthChange\?\.\(width\)/);assert.match(dock,/\[width, onWidthChange\]/);
 });

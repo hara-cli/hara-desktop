@@ -5,7 +5,7 @@ import { build } from "esbuild";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -22,8 +22,9 @@ const server = createServer((req, res) => {
   const pathname = new URL(req.url, "http://127.0.0.1").pathname;
   if (pathname === "/fixture.js") { res.setHeader("content-type", "text/javascript"); res.end(js); }
   else if (pathname === "/fixture.css") { res.setHeader("content-type", "text/css"); res.end(css); }
+  else if (pathname === "/late-dock.css") { res.setHeader("content-type", "text/css"); res.end(readFileSync(join(root,"src/ExtensionDock.css"))); }
   else if (pathname === "/preview") res.end("<!doctype html><meta charset=utf-8><h1>Local synthetic preview</h1>");
-  else if (pathname === "/") res.end('<!doctype html><meta charset=utf-8><style>html,body{margin:0}body{overflow:hidden}</style><link rel=stylesheet href=/fixture.css><div id=root></div><script type=module src=/fixture.js></script>');
+  else if (pathname === "/") res.end('<!doctype html><meta charset=utf-8><style>html,body{margin:0}body{overflow:hidden}</style><link rel=stylesheet href=/fixture.css><link rel=stylesheet href=/late-dock.css><div id=root></div><script type=module src=/fixture.js></script>');
   else { res.statusCode = 404; res.end(); }
 });
 server.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -87,6 +88,7 @@ try {
     assert.equal(await evaluate("getComputedStyle(document.querySelector('.extension-dock-identity strong')).color===getComputedStyle(document.querySelector('.wsd-chat')).color"), true, "title uses readable workspace ink");
     await input(".wsd-browser-address input", `${base}/preview`); await click(".wsd-browser-address button");
     const loaded = await geometry(); assert(loaded.frame.height > 100 && loaded.frame.top >= loaded.toolbar.bottom - 1, "iframe below a compact toolbar");
+    assert.equal(await evaluate("getComputedStyle(document.querySelector('.extension-dock')).boxShadow"),"none","late generic dock CSS must not shade chat");
     assert.equal(await evaluate("document.querySelector('.wsd-browser-extension iframe').getAttribute('sandbox')"), "allow-scripts allow-forms allow-popups");
     await capture(`${locale}-${theme}-${width}-docked`);
     await click(".extension-dock-mode-action"); assert.equal((await geometry()).chat.visible, false, "explicit maximize only");
