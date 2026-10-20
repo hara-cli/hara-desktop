@@ -32,6 +32,20 @@ test("one colleague uses singular English in the sidebar and the explicit recipi
   assert.ok(render(h(LocalChannelRows, { view: one, t, search: "", selected: "room", onOpen() {} })).includes("You + 1 colleague"));
   const composer = render(h(LocalChannelComposer, { view: { ...view, recipientIds: ["person-0"] }, model: {}, colleagues, t, disconnected: false, hasConnection: true, configure() {} }));
   assert.ok(composer.includes("1 colleague replies")); assert.equal(composer.includes("1 colleagues"), false);
+  const onlyMember = { ...view, channel: { ...view.channel, channel: { ...channel, memberIds: ["person-0"] } } };
+  assert.ok(render(h(LocalChannelComposer, { view: onlyMember, model: {}, colleagues, t, disconnected: false, hasConnection: true, configure() {} })).includes("1 colleague replies"));
+});
+test("the reply summary gives the full selected count and empty channels can save a note without a model connection", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const t = makeT(locale), props = { model: {}, colleagues, t, disconnected: false, hasConnection: true, configure() {} };
+    const all = render(h(LocalChannelComposer, { ...props, view }));
+    assert.ok(all.includes(t("ws.channels.replyAll", { n: 13 })));
+    assert.equal((all.match(/type="checkbox"/g) ?? []).length, 13);
+    const empty = render(h(LocalChannelComposer, { ...props, hasConnection: false, view: { ...view, channel: { ...view.channel, channel: { ...channel, memberIds: [] } } } }));
+    assert.ok(empty.includes(t("ws.channels.notesOnly"))); assert.equal(empty.includes(t("ws.connection.configure")), false);
+    assert.ok(empty.includes(t("ws.channels.noRecipients"))); assert.equal(empty.includes(t("ws.channels.noColleagues")), false);
+    assert.equal(/class="hs-send"[^>]*disabled/.test(empty), false);
+  }
 });
 test("actual group transcript identifies each colleague, escapes content and preserves failed replies", () => {
   const t = makeT("zh-Hans");

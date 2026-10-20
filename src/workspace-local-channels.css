@@ -1,11 +1,20 @@
 .hs .hs-local-channel>.hico{color:var(--muted);flex:none}
 .hs .hs-channel-mark{display:grid;place-items:center;width:40px;height:40px;border:1px solid var(--line);border-radius:var(--r-lg);color:var(--brand-text);background:var(--brand-soft)}
-.hs .hs-channel-dialog{width:min(520px,calc(100vw - 32px))}
+.hs .hs-channel-dialog{width:min(520px,calc(100vw - 32px));display:flex;flex-direction:column;overflow:hidden}
+.hs .hs-channel-dialog-head,.hs .hs-channel-dialog-footer{flex:none}
+.hs .hs-channel-dialog-head>h2{font:500 24px/1.4 Georgia,"Songti TC","Songti SC",serif;margin:6px 28px 10px 0}
+.hs .hs-channel-dialog-head>p{font-size:12px;color:var(--muted)}
+.hs .hs-channel-dialog-body{min-height:0;overflow:auto;overscroll-behavior:contain}
+.hs .hs-channel-dialog-footer{padding-top:12px;border-top:1px solid var(--line)}
+.hs .hs-channel-dialog-footer .wsd-card-actions{margin-top:0}
+.hs .hs-channel-dialog-footer .hs-channel-local-note{margin:10px 0 0}
 .hs .hs-channel-picker{min-width:0;border:0;padding:0;margin:20px 0 12px}
 .hs .hs-channel-picker legend,.hs .hs-channel-recipients legend{font-weight:600;padding:0;margin-bottom:10px;color:var(--ink)}
-.hs .hs-channel-dialog .hs-channel-search{position:relative;display:flex;align-items:center;gap:8px}
+.hs .hs-channel-dialog .hs-channel-search,.hs .hs-channel-recipients .hs-channel-search{position:relative;display:flex;align-items:center;gap:8px}
 .hs .hs-channel-search .hico{color:var(--muted);flex:none}
 .hs .hs-channel-search input{min-width:0;flex:1}
+.hs .hs-channel-recipients .hs-channel-search input{width:100%;height:32px;padding:7px 10px;font:inherit;color:var(--ink);background:var(--field);border:1px solid var(--control);border-radius:var(--r-md)}
+.hs .hs-channel-search-empty{font-size:12px;color:var(--muted);line-height:1.6;padding:8px}
 .hs .hs-channel-picker-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}
 .hs .hs-channel-picker-actions>span{flex:1;font-size:12px;color:var(--muted)}
 .hs .hs-channel-choices{max-height:240px;overflow:auto;overscroll-behavior:contain;border-block:1px solid var(--line);padding:4px 0}
@@ -27,5 +36,9 @@
 .hs .hs-channel-recipient{display:flex;align-items:center;gap:10px;min-height:36px;font-size:13px;overflow-wrap:anywhere}
 .hs .hs-channel-compose .hs-field>textarea{min-width:40px}
 .hs .hs-channel-thread [data-channel-speaker]{display:flow-root}
-.hs .hs-channel-header-actions{display:flex;gap:4px;align-items:center}
+.hs .hs-chat:has(>.hs-head>.hs-channel-header-actions){container:channel-chat / inline-size}
+.hs .hs-channel-header-actions{display:flex;gap:4px;align-items:center;flex-shrink:0}
+.hs .hs-channel-header-actions .hs-ghost{white-space:nowrap;flex-shrink:0}
+@container channel-chat (max-width:700px){.hs .hs-channel-header-actions .hs-ghost{font-size:0;gap:0}}
+@container channel-chat (max-width:520px){.hs .hs-head>.hs-ghost{font-size:0;gap:0}}
 @media(max-width:900px){.hs .hs-channel-header-actions .hs-ghost{font-size:0;gap:0}.hs .hs-channel-header-actions .hico{font-size:initial}}

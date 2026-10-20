@@ -24,6 +24,7 @@ export function LocalChannelDialog({ mode, view, model, colleagues, t, onClose, 
   const [name, setName] = useState(mode === "members" ? view.channel?.channel.name ?? "" : "");
   const [memberIds, setMembers] = useState<string[]>(mode === "members" ? view.channel?.channel.memberIds ?? [] : []);
   const [search, setSearch] = useState("");
+  const matchingColleagues = colleagues.filter(row => `${row.identity.displayName} ${row.identity.title ?? ""}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const label = t(mode === "create" ? "ws.channels.new" : mode === "invite" ? "ws.channels.invite" : "ws.channels.members");
   const busy = view.saving || (mode === "create" && view.creationUnknown) || (mode === "members" && ["running", "draining"].includes(view.channel?.state ?? ""));
   const save = async () => {
@@ -33,24 +34,25 @@ export function LocalChannelDialog({ mode, view, model, colleagues, t, onClose, 
   const verify = async () => { const id = await model.verifyCreation(); if (id) { onClose(); onCreated(id); } };
   return <ShellDialog label={label} onClose={onClose} className="hs-channel-dialog">
     <button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={onClose}><XMarkIcon className="hico" /></button>
-    <span className="hs-channel-mark" aria-hidden="true"><HashtagIcon className="hico" /></span>
-    <h2>{mode === "invite" ? t("ws.channels.inviteTitle") : label}</h2>
-    <p>{t(mode === "invite" ? "ws.channels.inviteBody" : "ws.channels.createBody")}</p>
-    {mode !== "invite" ? <>
+    <header className="hs-channel-dialog-head"><span className="hs-channel-mark" aria-hidden="true"><HashtagIcon className="hico" /></span>
+      <h2>{mode === "invite" ? t("ws.channels.inviteTitle") : label}</h2>
+      <p>{t(mode === "invite" ? "ws.channels.inviteBody" : "ws.channels.createBody")}</p></header>
+    {mode !== "invite" ? <div className="hs-channel-dialog-body">
       <label>{t("ws.channels.name")}<input autoFocus aria-label={t("ws.channels.name")} placeholder={t("ws.channels.namePlaceholder")} value={name} maxLength={80} disabled={busy}
         onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim() && !busy) { event.preventDefault(); void save(); } }} /></label>
       <fieldset disabled={busy} className="hs-channel-picker"><legend>{t("ws.channels.selectMembers")}</legend>
         {colleagues.length ? <><label className="hs-channel-search"><MagnifyingGlassIcon className="hico" /><input type="search" aria-label={t("ws.channels.searchMembers")} placeholder={t("ws.channels.searchMembers")} value={search} onChange={event => setSearch(event.target.value)} /></label>
           <div className="hs-channel-picker-actions"><span>{channelMemberLabel(t, memberIds.length)}</span><button type="button" className="hs-btn sec" onClick={() => setMembers(colleagues.map(row => row.agentId))}>{t("ws.channels.all")}</button><button type="button" className="hs-btn sec" onClick={() => setMembers([])}>{t("ws.channels.none")}</button></div>
-          <div className="hs-channel-choices">{colleagues.filter(row => `${row.identity.displayName} ${row.identity.title ?? ""}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(row => <label key={row.agentId} className="hs-channel-choice">
+          <div className="hs-channel-choices">{matchingColleagues.map(row => <label key={row.agentId} className="hs-channel-choice">
             <input type="checkbox" checked={memberIds.includes(row.agentId)} onChange={event => setMembers(previous => event.target.checked ? [...previous, row.agentId] : previous.filter(id => id !== row.agentId))} />
-            <Avatar agent={row} /><span><strong>{row.identity.displayName}</strong><small>{row.identity.title ?? t("ws.role.colleague")}</small></span></label>)}</div></> : <p>{t("ws.channels.noColleagues")}</p>}
+            <Avatar agent={row} /><span><strong>{row.identity.displayName}</strong><small>{row.identity.title ?? t("ws.role.colleague")}</small></span></label>)}
+            {!matchingColleagues.length ? <p className="hs-channel-search-empty" role="status">{t("ws.search.empty")}</p> : null}</div></> : <p>{t("ws.channels.noColleagues")}</p>}
       </fieldset>
       {view.error ? <p className="wsd-notice is-error" role="alert">{t(view.error as Parameters<Translate>[0])}</p> : null}
-      <div className="wsd-card-actions">{mode === "create" && view.creationUnknown ? <button className="hs-btn sec" onClick={() => void verify()} disabled={view.saving}>{t("ws.composer.verify")}</button>
+    </div> : null}
+    <footer className="hs-channel-dialog-footer">{mode !== "invite" ? <div className="wsd-card-actions">{mode === "create" && view.creationUnknown ? <button className="hs-btn sec" onClick={() => void verify()} disabled={view.saving}>{t("ws.composer.verify")}</button>
         : <button className="hs-btn pri" onClick={() => void save()} disabled={busy || !name.trim()}>{t(mode === "create" ? "ws.channels.new" : "ws.channels.save")}</button>}</div>
-    </> : null}
-    <p className="hs-channel-local-note">{t("ws.channels.localNote")}</p>
+      : null}<p className="hs-channel-local-note">{t("ws.channels.localNote")}</p></footer>
   </ShellDialog>;
 }
 
@@ -88,19 +90,26 @@ export function LocalChannelThread({ view, colleagues, t, retry, transcript, app
 export function LocalChannelComposer({ view, model, colleagues, t, disconnected, hasConnection, configure }: { view: LocalChannelsView; model: WorkspaceLocalChannelsModel; colleagues: WorkspaceDevAgent[];
   t: Translate; disconnected: boolean; hasConnection: boolean; configure: () => void }) {
   const input = useRef<HTMLTextAreaElement>(null), channel = view.channel;
+  const [recipientSearch, setRecipientSearch] = useState("");
   const recipients = view.recipientIds ?? channel?.channel.memberIds ?? [];
   const setRecipients = (value: string[]) => model.setRecipients(value);
-  useEffect(() => { input.current?.focus(); }, [view.channelId]);
+  useEffect(() => { setRecipientSearch(""); input.current?.focus(); }, [view.channelId]);
   useLayoutEffect(() => { if (input.current) { input.current.style.height = "auto"; input.current.style.height = `${Math.min(160, Math.max(32, input.current.scrollHeight))}px`; } }, [view.draft, view.channelId]);
   if (!channel) return null;
   const busy = ["running", "draining"].includes(channel.state), needsConnection = recipients.length > 0 && !hasConnection;
   const canSend = !!view.draft.trim() && view.draft.trim().length <= 4000 && !view.pending && !busy && !disconnected && !needsConnection;
+  const colleaguesById = new Map(colleagues.map(row => [row.agentId, row]));
+  const matchingRecipients = channel.channel.memberIds.map(id => ({ id, agent: colleaguesById.get(id) })).filter(({ id, agent }) =>
+    `${agent?.identity.displayName ?? id} ${agent?.identity.title ?? ""}`.toLocaleLowerCase().includes(recipientSearch.trim().toLocaleLowerCase()));
   return <footer className="hs-compose hs-channel-compose">
     {needsConnection ? <p className="hs-channel-status">{t("ws.connection.body")} <button className="hs-btn sec" onClick={configure}>{t("ws.connection.configure")}</button></p> : null}
     {view.error ? <p className="wsd-notice is-error" role="alert">{t(view.error as Parameters<Translate>[0])}</p> : null}
-    <details className="hs-channel-recipients"><summary>{t(!recipients.length ? "ws.channels.notesOnly" : recipients.length === channel.channel.memberIds.length ? "ws.channels.replyAll" : recipients.length === 1 ? "ws.channels.replyOne" : "ws.channels.replyCount", { n: recipients.length })}</summary>
-      <fieldset disabled={busy || !!view.pending}><legend>{t("ws.channels.responders")}</legend><div className="hs-channel-picker-actions"><button className="hs-btn sec" onClick={() => setRecipients(channel.channel.memberIds)}>{t("ws.channels.all")}</button><button className="hs-btn sec" onClick={() => setRecipients([])}>{t("ws.channels.notesOnly")}</button></div>
-        {channel.channel.memberIds.map(id => <label className="hs-channel-recipient" key={id}><input type="checkbox" checked={recipients.includes(id)} onChange={event => setRecipients(event.target.checked ? [...recipients, id] : recipients.filter(value => value !== id))} />{colleagues.find(row => row.agentId === id)?.identity.displayName ?? id}</label>)}
+    <details className="hs-channel-recipients"><summary>{t(!recipients.length ? "ws.channels.notesOnly" : recipients.length === 1 ? "ws.channels.replyOne" : recipients.length === channel.channel.memberIds.length ? "ws.channels.replyAll" : "ws.channels.replyCount", { n: recipients.length })}</summary>
+      <fieldset disabled={busy || !!view.pending}><legend>{t("ws.channels.responders")}</legend>
+        {channel.channel.memberIds.length ? <label className="hs-channel-search"><MagnifyingGlassIcon className="hico" /><input type="search" aria-label={t("ws.channels.searchMembers")} placeholder={t("ws.channels.searchMembers")} value={recipientSearch} onChange={event => setRecipientSearch(event.target.value)} /></label> : null}
+        <div className="hs-channel-picker-actions"><button className="hs-btn sec" onClick={() => setRecipients(channel.channel.memberIds)}>{t("ws.channels.all")}</button><button className="hs-btn sec" onClick={() => setRecipients([])}>{t("ws.channels.notesOnly")}</button></div>
+        {matchingRecipients.map(({ id, agent }) => <label className="hs-channel-recipient" key={id}><input type="checkbox" checked={recipients.includes(id)} onChange={event => setRecipients(event.target.checked ? [...recipients, id] : recipients.filter(value => value !== id))} />{agent?.identity.displayName ?? id}</label>)}
+        {!matchingRecipients.length ? <p className="hs-channel-search-empty" role="status">{t(channel.channel.memberIds.length ? "ws.search.empty" : "ws.channels.noRecipients")}</p> : null}
       </fieldset></details>
     <div className="hs-field"><textarea ref={input} aria-label={t("ws.channels.placeholder", { name: channel.channel.name })} placeholder={t("ws.channels.placeholder", { name: channel.channel.name })} value={view.draft} rows={1} maxLength={4000} disabled={disconnected}
       onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.send(recipients); } }} />
