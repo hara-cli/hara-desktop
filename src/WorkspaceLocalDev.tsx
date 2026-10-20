@@ -15,7 +15,7 @@ import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePla
 import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
 import { captureWorkspaceReadingPosition } from "./workspace-chat-scroll";
 import { WorkspaceLocalChannelsModel } from "./workspace-local-channels";
-import { LocalChannelComposer, LocalChannelDialog, LocalChannelRows, LocalChannelThread } from "./WorkspaceLocalChannels";
+import { channelMemberLabel, LocalChannelComposer, LocalChannelDialog, LocalChannelRows, LocalChannelThread } from "./WorkspaceLocalChannels";
 import "./workspace-local-dev.css";
 import "./workspace-theme.css";
 import "./workspace-states.css";
@@ -236,7 +236,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     </aside>
     <main className="hs-chat wsd-chat" inert={modalOpen}>
       <header className="hs-head wsd-header">{inChannel ? <span className="hs-ava" aria-hidden="true"><HashtagIcon className="hico" /></span> : <Avatar agent={agent} />}<div className="hs-header-person"><strong>{inChannel ? selectedChannel?.name ?? t("ws.channels.local") : route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}</strong>
-        <small>{inChannel ? t("ws.channels.memberCount", { n: selectedChannel?.memberIds.length ?? 0 }) : agent ? t(agent.runtime.id === "pi" ? "ws.header.runtime" : "ws.header.otherRuntime", { role: agent.kind === "main" ? t("ws.main.tag") : agent.identity.title ?? t("ws.role.colleague"), runtime: agent.runtime.label }) : t("ws.welcome.title")}</small></div><span className="sp" />
+        <small>{inChannel ? channelMemberLabel(t, selectedChannel?.memberIds.length ?? 0) : agent ? t(agent.runtime.id === "pi" ? "ws.header.runtime" : "ws.header.otherRuntime", { role: agent.kind === "main" ? t("ws.main.tag") : agent.identity.title ?? t("ws.role.colleague"), runtime: agent.runtime.label }) : t("ws.welcome.title")}</small></div><span className="sp" />
         {inChannel ? <div className="hs-channel-header-actions"><button className="hs-ghost" aria-label={t("ws.channels.members")} onClick={() => setChannelDialog("members")} disabled={!selectedChannel || !!disconnected || ["running", "draining"].includes(channelView.channel?.state ?? "")}><UsersIcon className="hico" />{t("ws.channels.members")}</button>
           <button className="hs-ghost" aria-label={t("ws.channels.invite")} onClick={() => setChannelDialog("invite")}><UserPlusIcon className="hico" />{t("ws.channels.invite")}</button></div> : null}
         {<button className="hs-ghost" aria-label={t("ws.header.browser")} title={t("ws.header.browser")} aria-expanded={browser} aria-controls="workspace-browser-panel" onClick={() => { setBrowser(value => !value); onOpenBrowser?.(); }} disabled={!workspace}><GlobeAltIcon className="hico" />{t("ws.header.browser")}</button>}

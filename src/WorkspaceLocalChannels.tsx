@@ -7,6 +7,7 @@ import type { WorkspaceDevAgent, WorkspaceDevApproval, WorkspaceDevMessage } fro
 import type { LocalChannelsView, LocalChannelSnapshot, WorkspaceLocalChannelsModel } from "./workspace-local-channels";
 import "./workspace-local-channels.css";
 type Translate = ReturnType<typeof makeT>;
+export const channelMemberLabel = (t: Translate, count: number) => t(count === 1 ? "ws.channels.memberOne" : "ws.channels.memberCount", { n: count });
 
 export function LocalChannelRows({ view, t, search, selected, onOpen }: { view: LocalChannelsView; t: Translate; search: string; selected: string | null; onOpen: (id: string) => void }) {
   if (!view.supported) return <p className="hs-empty">{t("ws.channels.engineRequired")}</p>;
@@ -14,7 +15,7 @@ export function LocalChannelRows({ view, t, search, selected, onOpen }: { view: 
   if (!view.catalog.channels.length) return <div className="hs-empty"><b>{t("ws.channels.empty.title")}</b>{t("ws.channels.empty.body")}</div>;
   const rows = view.catalog.channels.filter(row => row.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   return <>{rows.map(row => <button key={row.id} className="hs-row hs-local-channel" data-channel-id={row.id} aria-current={selected === row.id ? "page" : undefined} onClick={() => onOpen(row.id)}>
-    <HashtagIcon className="hico" /><span className="hs-txt"><strong className="hs-name">{row.name}</strong><span className="pv">{t("ws.channels.memberCount", { n: row.memberIds.length })}</span></span>
+    <HashtagIcon className="hico" /><span className="hs-txt"><strong className="hs-name">{row.name}</strong><span className="pv">{channelMemberLabel(t, row.memberIds.length)}</span></span>
   </button>)}{!rows.length ? <p className="hs-empty">{t("ws.search.empty")}</p> : null}</>;
 }
 
@@ -40,7 +41,7 @@ export function LocalChannelDialog({ mode, view, model, colleagues, t, onClose, 
         onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim() && !busy) { event.preventDefault(); void save(); } }} /></label>
       <fieldset disabled={busy} className="hs-channel-picker"><legend>{t("ws.channels.selectMembers")}</legend>
         {colleagues.length ? <><label className="hs-channel-search"><MagnifyingGlassIcon className="hico" /><input type="search" aria-label={t("ws.channels.searchMembers")} placeholder={t("ws.channels.searchMembers")} value={search} onChange={event => setSearch(event.target.value)} /></label>
-          <div className="hs-channel-picker-actions"><span>{t("ws.channels.memberCount", { n: memberIds.length })}</span><button type="button" className="hs-btn sec" onClick={() => setMembers(colleagues.map(row => row.agentId))}>{t("ws.channels.all")}</button><button type="button" className="hs-btn sec" onClick={() => setMembers([])}>{t("ws.channels.none")}</button></div>
+          <div className="hs-channel-picker-actions"><span>{channelMemberLabel(t, memberIds.length)}</span><button type="button" className="hs-btn sec" onClick={() => setMembers(colleagues.map(row => row.agentId))}>{t("ws.channels.all")}</button><button type="button" className="hs-btn sec" onClick={() => setMembers([])}>{t("ws.channels.none")}</button></div>
           <div className="hs-channel-choices">{colleagues.filter(row => `${row.identity.displayName} ${row.identity.title ?? ""}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(row => <label key={row.agentId} className="hs-channel-choice">
             <input type="checkbox" checked={memberIds.includes(row.agentId)} onChange={event => setMembers(previous => event.target.checked ? [...previous, row.agentId] : previous.filter(id => id !== row.agentId))} />
             <Avatar agent={row} /><span><strong>{row.identity.displayName}</strong><small>{row.identity.title ?? t("ws.role.colleague")}</small></span></label>)}</div></> : <p>{t("ws.channels.noColleagues")}</p>}
@@ -97,7 +98,7 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
   return <footer className="hs-compose hs-channel-compose">
     {needsConnection ? <p className="hs-channel-status">{t("ws.connection.body")} <button className="hs-btn sec" onClick={configure}>{t("ws.connection.configure")}</button></p> : null}
     {view.error ? <p className="wsd-notice is-error" role="alert">{t(view.error as Parameters<Translate>[0])}</p> : null}
-    <details className="hs-channel-recipients"><summary>{t(!recipients.length ? "ws.channels.notesOnly" : recipients.length === channel.channel.memberIds.length ? "ws.channels.replyAll" : "ws.channels.replyCount", { n: recipients.length })}</summary>
+    <details className="hs-channel-recipients"><summary>{t(!recipients.length ? "ws.channels.notesOnly" : recipients.length === channel.channel.memberIds.length ? "ws.channels.replyAll" : recipients.length === 1 ? "ws.channels.replyOne" : "ws.channels.replyCount", { n: recipients.length })}</summary>
       <fieldset disabled={busy || !!view.pending}><legend>{t("ws.channels.responders")}</legend><div className="hs-channel-picker-actions"><button className="hs-btn sec" onClick={() => setRecipients(channel.channel.memberIds)}>{t("ws.channels.all")}</button><button className="hs-btn sec" onClick={() => setRecipients([])}>{t("ws.channels.notesOnly")}</button></div>
         {channel.channel.memberIds.map(id => <label className="hs-channel-recipient" key={id}><input type="checkbox" checked={recipients.includes(id)} onChange={event => setRecipients(event.target.checked ? [...recipients, id] : recipients.filter(value => value !== id))} />{colleagues.find(row => row.agentId === id)?.identity.displayName ?? id}</label>)}
       </fieldset></details>

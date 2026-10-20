@@ -27,6 +27,12 @@ test("real local channel controls expose all 13 members and complete English, Si
     assert.ok(invite.includes(t("ws.channels.inviteBody"))); assert.equal(/type="email"|href=|type="submit"/.test(invite), false);
   }
 });
+test("one colleague uses singular English in the sidebar and the explicit recipient choice", () => {
+  const t = makeT("en"), one = { ...view, catalog: { ...view.catalog, channels: [{ ...channel, memberIds: ["person-0"] }] } };
+  assert.ok(render(h(LocalChannelRows, { view: one, t, search: "", selected: "room", onOpen() {} })).includes("You + 1 colleague"));
+  const composer = render(h(LocalChannelComposer, { view: { ...view, recipientIds: ["person-0"] }, model: {}, colleagues, t, disconnected: false, hasConnection: true, configure() {} }));
+  assert.ok(composer.includes("1 colleague replies")); assert.equal(composer.includes("1 colleagues"), false);
+});
 test("actual group transcript identifies each colleague, escapes content and preserves failed replies", () => {
   const t = makeT("zh-Hans");
   const html = render(h(LocalChannelThread, { view, colleagues, t, retry() {}, transcript: (history, agent) => h(Transcript, { history, agent, t }), approval() {} }));
