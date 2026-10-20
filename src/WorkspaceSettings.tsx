@@ -1,7 +1,7 @@
 import { createElement, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useWorkspaceLocale, workspacePlatform } from "./workspace-shell-hooks";
 import { ArrowPathIcon, ChevronDownIcon, ClockIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon } from "@heroicons/react/24/outline";
-import { type Key } from "./i18n";
+import { type Key, type LocalePreference } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import HaraLogo from "./mark";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot } from "./workspace-dev-state";
@@ -42,7 +42,7 @@ export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
   return <SettingsContent {...props} model={session.model} />;
 }
 export function SettingsContent({ model, initialPage, root, production, theme, updater, versionInfo, onClose, onCreateSkill }: WorkspaceSettingsProps & { model: WorkspaceDevModel }) {
-  const { locale, t, changeLocale } = useWorkspaceLocale();
+  const { locale, preference, t, changeLocale } = useWorkspaceLocale();
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot), updates = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot);
   const [page, setPage] = useState<SettingsPage>(initialPage), [scopeOpen, setScopeOpen] = useState(false), [leaveNotice, setLeaveNotice] = useState<"" | Key>("");
   const scopeTrigger = useRef<HTMLButtonElement>(null), scopeMenu = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null);
@@ -103,7 +103,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
       {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.filter(id => id !== "members").map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}</h2><p>{id === "connections" ? t("ws.settings.connectionCount", { n: workspace?.connections.connections.filter(row => row.status === "active").length ?? 0 }) : id === "runtimes" ? t("ws.settings.runtimeSummary") : t(pages[id].detail)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
         <h3>{t("ws.settings.device")} · {t("ws.settings.allSpaces")}</h3><div className="wss-overview">{(["appearance", "updates"] as const).map(id => <button key={id} onClick={() => navigate(id)}><h2>{t(pages[id].name)}</h2><p>{id === "appearance" ? t("ws.settings.themeSummary") : ["available", "ready"].includes(updates.phase) ? t("ws.settings.updateAvailable", { version: updates.version ?? "" }) : t("ws.settings.updateSummary")}</p><span>{t("ws.settings.open")}</span></button>)}</div></> : null}
-      {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={locale} onChange={event => changeLocale(event.target.value as typeof locale)}><option value="en">English</option><option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option></select></label></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
+      {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option><option value="en">English</option><option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option></select></label></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
         : page === "overview" ? null : !workspace ? <p role="status">{t(view.loading ? "ws.settings.loading" : "ws.settings.createFirst")}</p> : <fieldset className="wss-content" key={key} disabled={Boolean(readonly)}>
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
           {page === "connections" ? production ? <WorkspaceConnections model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.connectionsLab")}</p> : null}

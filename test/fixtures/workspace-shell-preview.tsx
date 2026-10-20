@@ -7,7 +7,7 @@ if (!import.meta.env.DEV || !['127.0.0.1','localhost'].includes(location.hostnam
 const params = new URLSearchParams(location.search), scenario = params.get('scenario') ?? 'home';
 const productionFixture = scenario === 'native-settings';
 const locale = params.get('locale') ?? 'zh-Hant';
-localStorage.setItem('hara.locale', locale);
+if (locale === 'system') localStorage.removeItem('hara.locale'); else if (locale !== 'saved') localStorage.setItem('hara.locale', locale);
 if (params.get('reset') !== '0') { localStorage.removeItem('hara.sidebar.sections.A'); localStorage.removeItem('hara.sidebar.sections.B'); }
 const currentTime = Date.now(), stamp = (minutes: number) => new Date(currentTime - minutes*60000).toISOString();
 const agents = [
@@ -39,6 +39,17 @@ for (const workspaceId of ['A','B']) for (const [index,agent] of agents.entries(
 if(productionFixture) snapshots.get('A:main')!.conversation.history = Array.from({length:24},(_,index)=>index%2
   ? {role:'assistant' as const,text:`Native settings scroll reply ${index}`,tools:[],createdAt:stamp(24-index)}
   : {role:'user' as const,content:`Native settings scroll message ${index}`,createdAt:stamp(24-index)});
+if(scenario==='operations') snapshots.get('A:main')!.conversation.history = [
+  {role:'user',content:'Run three local checks.'},
+  ...['workspace_read','workspace_write','workspace_verify'].flatMap((name,index):WorkspaceDevSnapshot['conversation']['history']=>[
+    {role:'assistant',text:'',tools:[`operation-${index}`]},
+    {role:'tool',results:[{id:`operation-${index}`,name,content:`Local result ${index+1}`,isError:index===2}]}
+  ]),
+  {role:'assistant',text:'The three checks are finished.',tools:[]},
+  {role:'user',content:'Keep this separate operation visible.'},
+  {role:'assistant',text:'',tools:['separate-operation']},
+  {role:'tool',results:[{id:'separate-operation',name:'workspace_read',content:'Separate local result',isError:false}]}
+];
 if(scenario==='many') snapshots.get('A:person-1')!.approvals=Array.from({length:8},(_,index)=>makeCard(`fixture-${index}`,'person-1',index<5));
 if(scenario==='legacy') for(const snapshot of snapshots.values()) {delete snapshot.conversation.updatedAt;for(const message of snapshot.conversation.history)delete message.createdAt;}
 if(scenario==='tasks') location.hash='#tasks';

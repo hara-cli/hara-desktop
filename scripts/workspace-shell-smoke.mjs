@@ -15,13 +15,14 @@ const chromePath = [process.env.CHROME_PATH, "/Applications/Google Chrome.app/Co
   .find((value) => value && existsSync(value));
 if (!chromePath) throw new Error("Chrome/Chromium is required for the component browser gate");
 const profile = mkdtempSync(join(tmpdir(), "hara-shell-chrome-"));
-const chrome = spawn(chromePath, ["--headless=new", "--disable-background-mode", "--disable-background-networking", "--disable-component-update",
+const chrome = spawn(chromePath, ["--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-background-mode", "--disable-background-networking", "--disable-component-update",
   "--disable-default-apps", "--disable-extensions", "--disable-gpu", "--disable-sync", "--no-default-browser-check", "--no-first-run",
   "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
 let socket;
 const pending = new Map();
 let requestId = 0;
 let sessionId;
+let browserUserAgent;
 const errors = [];
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 async function connect() {
@@ -51,6 +52,7 @@ async function connect() {
   sessionId = attached.sessionId;
   await send("Runtime.enable"); await send("Page.enable");
   const version = await send("Browser.getVersion", {}, false);
+  browserUserAgent = version.userAgent;
   await send("Emulation.setUserAgentOverride", { userAgent: version.userAgent, platform: "MacIntel" });
 }
 async function send(method, params = {}, scoped = true) {
@@ -67,7 +69,14 @@ async function evaluate(expression) {
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
   return result.result?.value;
 }
-async function settled() { await evaluate("new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))"); }
+async function settled() { await evaluate(`(async()=>{
+ for(let frame=0;frame<4;frame++){
+  await new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)));
+  const active=document.getAnimations().filter(animation=>animation.playState==='running'&&Number.isFinite(animation.effect?.getComputedTiming().endTime));
+  if(!active.length)return;
+  await Promise.all(active.map(animation=>animation.finished.catch(()=>{})));
+ }
+})()`); }
 async function ready(expression, label) {
   for(let attempt=0;attempt<160;attempt++){if(await evaluate(expression))return;await pause(75);}
   const diagnostic=await evaluate('({url:location.href,text:document.body.innerText.slice(0,2500),fixture:!!window.__HARA_SHELL_FIXTURE__})');
@@ -81,13 +90,20 @@ async function navigate({width=1280,locale='zh-Hant',theme='light',scenario='hom
   await send('Page.navigate',{url:url.href});
   await ready("!!window.__HARA_SHELL_FIXTURE__ && !!document.querySelector('.hs-field textarea,[data-tasks-count]')",'Synthetic Workspace fixture must mount');
   await ready("document.querySelector('[data-nav-count]')?.textContent === (new URLSearchParams(location.search).get('scenario')==='many'?'10':new URLSearchParams(location.search).get('scenario')==='partial'?'2':'3')",'Overview must settle with the expected scoped count');
-  await settled();assert.equal(await evaluate('document.documentElement.dataset.theme'),theme);assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),locale);
+  await settled();assert.equal(await evaluate('document.documentElement.dataset.theme'),theme);
+  if(!['system','saved'].includes(locale))assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),locale);
 }
 async function click(selector){assert.ok(await evaluate(`!!document.querySelector(${JSON.stringify(selector)})`),`Missing ${selector}`);await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);await settled();}
 async function buttonText(text, scope='.wss-main'){
  await evaluate(`(()=>{const button=Array.from(document.querySelectorAll(${JSON.stringify(scope+' button')})).find(node=>node.textContent.trim()===${JSON.stringify(text)});if(!button)throw new Error('Missing button: '+${JSON.stringify(text)});button.click();})()`);await settled();
 }
 async function setLocale(locale){await evaluate(`localStorage.setItem('hara.locale',${JSON.stringify(locale)});window.dispatchEvent(new Event('hara:locale-changed'))`);await settled();}
+async function setSystemLanguage(language){
+ await send('Emulation.setUserAgentOverride',{userAgent:browserUserAgent,platform:'MacIntel',acceptLanguage:language});
+ await evaluate("window.dispatchEvent(new Event('languagechange'))");await settled();
+ assert.equal(await evaluate('navigator.language'),language);
+}
+async function selectValue(selector,value){await evaluate(`(()=>{const select=document.querySelector(${JSON.stringify(selector)});select.value=${JSON.stringify(value)};select.dispatchEvent(new Event('change',{bubbles:true}));})()`);await settled();}
 async function inputValue(selector,value){await evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);await settled();}
 async function settingsFits(){const size=await evaluate("(()=>{const main=document.querySelector('.wss-main');return {viewport:innerWidth,body:document.documentElement.scrollWidth,mainWidth:main.clientWidth,mainScroll:main.scrollWidth,badButtons:Array.from(main.querySelectorAll('button:not(.wss-switch)')).filter(node=>node.getBoundingClientRect().height<31.9).map(node=>node.textContent),badFields:Array.from(main.querySelectorAll('.wsd-connection-form input,.wsd-connection-form select')).filter(node=>node.getBoundingClientRect().height<35.9).map(node=>node.outerHTML.slice(0,160)),inlineLabels:Array.from(main.querySelectorAll('.wsd-connection-form>label')).filter(node=>getComputedStyle(node).display!=='grid').length}})()");assert.ok(size.body<=size.viewport&&size.mainScroll<=size.mainWidth+1,JSON.stringify(size));assert.deepEqual(size.badButtons,[]);assert.deepEqual(size.badFields,[]);assert.equal(size.inlineLabels,0);return size;}
 async function key(key,shift=false){const value={key,code:key,modifiers:shift?8:0,windowsVirtualKeyCode:{Enter:13,Tab:9,Escape:27}[key]??0};await send('Input.dispatchKeyEvent',{type:'keyDown',...value,...(key==='Enter'?{text:'\r'}:{})});await send('Input.dispatchKeyEvent',{type:'keyUp',...value});await settled();}
@@ -322,6 +338,42 @@ try{
   assert.equal(mutations.filter(row=>row.method==='workspace.runtime.approve'&&row.params.approved===false).length,1,'The sole runtime decision is an explicit rejection');
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.model.getSnapshot().workspaceId"),'A');
   receipts.push({theme,locale,nextLocale,settingsI18n:'open notices/cards retranslate; connection/skill/schedule drafts retained; no import/install/schedule/skill mutation; one failed edit; narrow layout',layout});
+ }
+ for(const [language,locale] of [['zh-CN','zh-Hans'],['zh-TW','zh-Hant'],['en-US','en']]){
+  await setSystemLanguage(language);await navigate({scenario:'native-settings',locale:'system'});
+  assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),locale);
+  assert.equal(await evaluate("localStorage.getItem('hara.locale')"),null,'A default system locale must not become a persisted manual choice');
+  await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'System-language settings must mount');
+  await buttonText(makeT(locale)('ws.settings.page.appearance'),'.wss-nav nav');
+  assert.equal(await evaluate("document.querySelector('.wss-page-card>label select').value"),'system');
+  await capture(`system-language-${locale}`);receipts.push({systemLanguage:language,resolvedLocale:locale,defaultPreference:'system'});
+ }
+ await selectValue('.wss-page-card>label select','zh-Hant');
+ await setSystemLanguage('zh-CN');assert.equal(await evaluate("document.querySelector('.wss-app').lang"),'zh-Hant','Manual choice ignores a system language change');
+ await navigate({scenario:'native-settings',locale:'saved'});
+ assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),'zh-Hant','Manual choice survives a reload');
+ await evaluate("window.__HARA_SHELL_FIXTURE__.model.setDraft('Language preference draft')");
+ await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Saved-language settings must mount');
+ await buttonText(makeT('zh-Hant')('ws.settings.page.appearance'),'.wss-nav nav');
+ assert.equal(await evaluate("document.querySelector('.wss-page-card>label select').value"),'zh-Hant');
+ await selectValue('.wss-page-card>label select','system');assert.equal(await evaluate("document.querySelector('.wss-app').lang"),'zh-Hans');
+ await setSystemLanguage('en-US');assert.equal(await evaluate("document.querySelector('.wss-app').lang"),'en','System mode reacts to a language change');
+ assert.equal(await evaluate("document.querySelector('.wss-page-card>label select').value"),'system');
+ await capture('system-language-manual-and-resume');await click('.wss-back');
+ assert.equal(await evaluate("document.querySelector('textarea').value"),'Language preference draft');
+ receipts.push({languagePreference:'manual persists across reload and system change; returning to system is reactive; draft retained'});
+ for(const theme of ['light','dark']) for(const locale of ['en','zh-Hans','zh-Hant']){
+  const t=makeT(locale);await navigate({theme,locale,scenario:'operations'});
+  const summaries=await evaluate("Array.from(document.querySelectorAll('.wsd-execution summary')).map(node=>node.textContent)");
+  assert.deepEqual(summaries,[`${t('ws.execution.count',{n:3})} · ${t('ws.execution.details')}`,`${t('ws.execution.one')} · ${t('ws.execution.details')}`]);
+  assert.equal(await evaluate("document.querySelectorAll('.wsd-execution[open]').length"),0);
+  await capture(`operations-${theme}-${locale}`);await click('.wsd-execution summary');
+  assert.equal(await evaluate("document.querySelectorAll('.wsd-execution[open] pre').length"),3);
+  assert.equal(await evaluate("document.querySelector('.wsd-execution[open] pre.is-error').textContent"),'Local result 3');
+  assert.equal(await evaluate("document.querySelectorAll('.wsd-execution[open]').length"),1,'A separate operation stays collapsed');
+  if(theme==='light'&&locale==='zh-Hans')await capture('operations-expanded-zh-Hans');
+  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.some(row=>row.method==='workspace.session.send'||row.method==='workspace.approval.respond')"),false);
+  receipts.push({theme,locale,operations:'three adjacent calls form one row; result order/error retained; next user turn stays separate'});
  }
  await navigate({scenario:'partial'});assert.equal(await evaluate("!!document.querySelector('.hs-overview-notice[role=status]')"),true);
  await click('.hs-dm');await ready("!!document.querySelector('[data-overview-incomplete]')",'Incomplete counts must remain visible in colleague conversations');

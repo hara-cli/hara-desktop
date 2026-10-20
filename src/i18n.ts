@@ -2025,20 +2025,38 @@ export function normalizeLocale(value: string | null | undefined): Locale | null
   if (value === "zh") return "zh-Hans";
   return value === "en" || value === "zh-Hans" || value === "zh-Hant" ? value : null;
 }
+export type LocalePreference = Locale | "system";
+export function detectLocalePreference(): LocalePreference {
+  try { return normalizeLocale(globalThis.localStorage?.getItem("hara.locale")) ?? "system"; } catch { return "system"; }
+}
+export function detectSystemLocale(): Locale {
+  const languages = globalThis.navigator?.languages;
+  return localeFromLanguages(languages?.length ? languages : [globalThis.navigator?.language ?? "en"]);
+}
+export function resolveLocale(preference: LocalePreference): Locale {
+  return preference === "system" ? detectSystemLocale() : preference;
+}
 export function detectLocale(): Locale {
-  try { const saved = normalizeLocale(globalThis.localStorage?.getItem("hara.locale")); if (saved) return saved; } catch { /* use system */ }
-  return localeFromSystem(globalThis.navigator?.language ?? "en");
+  return resolveLocale(detectLocalePreference());
+}
+export function localeFromLanguages(languages: readonly string[]): Locale {
+  for (const value of languages) if (/^(?:zh|en)(?:[-_]|$)/i.test(value.trim())) return localeFromSystem(value);
+  return "en";
 }
 export function localeFromSystem(value: string): Locale {
-  const language = value.toLowerCase();
-  if (/^zh(?:-|$)/.test(language)) return /(?:^|-)(?:tw|hk|mo|hant)(?:-|$)/.test(language) ? "zh-Hant" : "zh-Hans";
+  const language = value.trim().toLowerCase().replace(/_/g, "-");
+  if (/^zh(?:-|$)/.test(language)) {
+    if (/(?:^|-)hans(?:-|$)/.test(language)) return "zh-Hans";
+    if (/(?:^|-)hant(?:-|$)/.test(language)) return "zh-Hant";
+    return /(?:^|-)(?:tw|hk|mo)(?:-|$)/.test(language) ? "zh-Hant" : "zh-Hans";
+  }
   return "en";
 }
 export function detectLegacyLocale(): LegacyLocale { return detectLocale() === "en" ? "en" : "zh"; }
-export function saveLocale(locale: Locale | LegacyLocale): void {
-  const normalized = normalizeLocale(locale)!;
+export function saveLocale(locale: LocalePreference | LegacyLocale): void {
+  const normalized = locale === "system" ? "system" : normalizeLocale(locale)!;
   try { globalThis.localStorage?.setItem("hara.locale", normalized); } catch { /* current view still changes */ }
-  if (typeof window !== "undefined") window.dispatchEvent(new Event("hara:locale-changed"));
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("hara:locale-changed", { detail: normalized }));
 }
 export function makeT(locale: Locale | LegacyLocale) {
   const normalized = normalizeLocale(locale) ?? "en";

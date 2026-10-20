@@ -100,7 +100,7 @@ test("production keeps lab copy out of the sidebar; explicit Lab is a distinct a
 });
 test("real workspace screen retains colleague decisions, collapsed execution and verified task closure", () => {
   const html = renderScreen(view({ state:"blocked", approval: true }));
-  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /查看執行詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
+  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
   assert.match(renderScreen(view()), /已核驗結果/);
   assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
   assert.match(html,/還沒有頻道/); // Spec v1.3 intentionally keeps the future-channel empty state.

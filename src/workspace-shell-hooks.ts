@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { detectLocale, makeT, saveLocale, type Locale } from "./i18n";
+import { detectLocalePreference, makeT, normalizeLocale, resolveLocale, saveLocale, type LocalePreference } from "./i18n";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state";
 import { buildWorkspaceShell, loadSidebarSections, type SidebarSectionId } from "./workspace-shell-state";
 
@@ -8,14 +8,24 @@ export function workspacePlatform(): "macos" | "other" {
 }
 
 export function useWorkspaceLocale() {
-  const [locale, setLocale] = useState<Locale>(detectLocale);
+  const [choice, setChoice] = useState(() => { const preference = detectLocalePreference(); return { preference, locale: resolveLocale(preference) }; });
   useEffect(() => {
-    const update = () => setLocale(detectLocale());
-    const storage = (event: StorageEvent) => { if (event.key === "hara.locale") update(); };
-    window.addEventListener("hara:locale-changed", update); window.addEventListener("storage", storage);
-    return () => { window.removeEventListener("hara:locale-changed", update); window.removeEventListener("storage", storage); };
+    const apply = (preference: LocalePreference) => setChoice(current => {
+      const locale = resolveLocale(preference);
+      return current.preference === preference && current.locale === locale ? current : { preference, locale };
+    });
+    const update = () => apply(detectLocalePreference());
+    const changed = (event: Event) => {
+      const detail: unknown = (event as CustomEvent).detail;
+      const preference = detail === "system" ? "system" : typeof detail === "string" ? normalizeLocale(detail) : null;
+      if (preference) apply(preference); else update();
+    };
+    const storage = (event: StorageEvent) => { if (event.key === "hara.locale" || event.key === null) update(); };
+    const system = () => setChoice(current => current.preference === "system" ? { ...current, locale: resolveLocale("system") } : current);
+    window.addEventListener("hara:locale-changed", changed); window.addEventListener("storage", storage); window.addEventListener("languagechange", system);
+    return () => { window.removeEventListener("hara:locale-changed", changed); window.removeEventListener("storage", storage); window.removeEventListener("languagechange", system); };
   }, []);
-  return { locale, t: useMemo(() => makeT(locale), [locale]), changeLocale: (value: Locale) => { setLocale(value); saveLocale(value); } };
+  return { ...choice, t: useMemo(() => makeT(choice.locale), [choice.locale]), changeLocale: saveLocale };
 }
 export function useSectionState(workspaceId: string) {
   const loaded = useMemo(() => loadSidebarSections(workspaceId, key => localStorage.getItem(key)), [workspaceId]);

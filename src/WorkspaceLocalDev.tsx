@@ -4,7 +4,7 @@ import { ArrowUpRightIcon, ChatBubbleLeftRightIcon, CheckCircleIcon, ChevronRigh
   HashtagIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon, UserPlusIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import HaraLogo from "./mark";
-import { makeT, type Key, type Locale } from "./i18n";
+import { makeT, type Key, type LocalePreference } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import { WorkspaceDevConnectionClient, type WorkspaceDevConnection } from "./workspace-dev-rpc";
 import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval } from "./workspace-dev-state";
@@ -12,7 +12,7 @@ import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
 import { WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
 import { Avatar, AwaitBar, ColleaguesPage, ShellDialog, SidebarSection } from "./WorkspaceShell";
 import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
-import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, type AwaitItem } from "./workspace-shell-state";
+import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
 import { captureWorkspaceReadingPosition } from "./workspace-chat-scroll";
 import "./workspace-local-dev.css";
 import "./workspace-theme.css";
@@ -43,24 +43,27 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
 }
 export function Transcript({ history, agent, t, detailed = false }: { history: WorkspaceDevMessage[]; agent?: WorkspaceDevAgent; t: Translate; detailed?: boolean }) {
   let previous: WorkspaceDevMessage | undefined;
-  return <>{history.map((message, index) => {
-    if (message.role === "tool") { previous = undefined; return null; }
+  return <>{transcriptBlocks(history).map(item => {
+    if (item.kind === "execution") {
+      previous = undefined;
+      return <div className="wsd-message-group" key={`execution-${item.index}`}><details className="wsd-execution" open={detailed || undefined}>
+        <summary>{t(item.count === 1 ? "ws.execution.one" : "ws.execution.count", { n: item.count })}{" · "}<span>{t("ws.execution.details")}</span></summary>
+        <div className="wsd-execution-body">{item.results.map(({ key, result }) => <div key={key}><strong>{TOOL_LABELS[result.name] ? t(TOOL_LABELS[result.name]) : result.name}</strong>
+          <pre className={result.isError ? "is-error" : ""}>{result.content.slice(0, 5000)}</pre></div>)}</div></details></div>;
+    }
+    const { message, index } = item;
     const continuation = messageContinues(previous, message); previous = message;
     if (message.role === "user") return <div className={`hs-msg me wsd-message is-user ${continuation ? "cont" : ""}`} key={`user-${index}`}><div className="hs-bub wsd-bubble">{message.content}</div></div>;
-    const next = history[index + 1], results = next?.role === "tool" ? next.results : [];
     return <div className={`wsd-message-group ${continuation ? "cont" : ""}`} key={`assistant-${index}`}>
-      {message.text.trim() ? <>{!continuation ? <div className="hs-who">{agent?.identity.displayName ?? "Hara"}</div> : null}
-        <div className={`hs-msg wsd-message is-agent ${continuation ? "cont" : ""}`}><Avatar agent={agent} /><div className="hs-bub wsd-bubble">{message.text}</div></div></> : null}
-      {message.tools.length ? <details className="wsd-execution" open={detailed || undefined}><summary>{t("ws.execution.count", { n: message.tools.length })} <span>{t("ws.execution.details")}</span></summary>
-        <div className="wsd-execution-body">{results.map(result => <div key={result.id}><strong>{TOOL_LABELS[result.name] ? t(TOOL_LABELS[result.name]) : result.name}</strong>
-          <pre className={result.isError ? "is-error" : ""}>{result.content.slice(0, 5000)}</pre></div>)}</div></details> : null}
+      {!continuation ? <div className="hs-who">{agent?.identity.displayName ?? "Hara"}</div> : null}
+      <div className={`hs-msg wsd-message is-agent ${continuation ? "cont" : ""}`}><Avatar agent={agent} /><div className="hs-bub wsd-bubble">{message.text}</div></div>
     </div>;
   })}</>;
 }
 export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, onOpenBrowser }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string;
   mode: "workspace" | "lab"; onOpenBrowser?: () => void }) {
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
-  const { locale, t, changeLocale } = useWorkspaceLocale();
+  const { locale, preference, t, changeLocale } = useWorkspaceLocale();
   const [settings, setSettingsState] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState(() => t("ws.space.default"));
   const [feature, setFeature] = useState<"schedules" | "skills" | null>(null), [searching, setSearching] = useState(false), [search, setSearch] = useState("");
   const [route, setRoute] = useState(() => normalizeShellRoute(typeof location === "undefined" ? "" : location.hash));
@@ -248,7 +251,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     {settings ? <ShellDialog key={`settings:${view.workspaceId}`} label={t("ws.settings")} onClose={closeSettings} className="wsd-settings"><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={closeSettings}><XMarkIcon className="hico" /></button>
       <h2>{t("ws.settings")}</h2><p>{workspace?.label}</p><p>{t("ws.settings.description")}</p>
       <section aria-label={t("ws.settings.appearance")}><h3>{t("ws.settings.appearance")}</h3><WorkspaceThemeSettings theme={theme} locale={locale} />
-        <label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={locale} onChange={event => changeLocale(event.target.value as Locale)}><option value="en">{t("ws.locale.en")}</option><option value="zh-Hans">{t("ws.locale.hans")}</option><option value="zh-Hant">{t("ws.locale.hant")}</option></select></label></section>
+        <label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option><option value="en">{t("ws.locale.en")}</option><option value="zh-Hans">{t("ws.locale.hans")}</option><option value="zh-Hant">{t("ws.locale.hant")}</option></select></label></section>
       {workspace ? <>{production ? <WorkspaceConnections key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} />
         : !hasConnection ? <button className="hs-btn pri" onClick={() => void connect()}>{t(realKey ? "ws.connection.approved" : "ws.connection.synthetic")}</button> : null}
         <div className="wsd-card-actions"><button className="hs-btn sec" onClick={() => setFeature("schedules")}>{t("ws.settings.schedules")}</button><button className="hs-btn sec" onClick={() => setFeature("skills")}>{t("ws.settings.skills")}</button></div>

@@ -6,6 +6,27 @@ export type TaskStatus = "pending" | "reply" | "review" | "blocked" | "accepted"
 export interface ShellTask { id: string; agentId?: string; colleagueLabel?: string; title: string; status: TaskStatus; group: TaskGroup }
 export interface AwaitItem { id: string; agentId: string; kind: "approval" | "reply" | "review" | "blocked"; title: string; highPriority: boolean; approval?: WorkspaceDevApproval }
 export type TimelineItem = { kind: "message"; message: WorkspaceDevMessage; index: number } | { kind: "approval"; approval: WorkspaceDevApproval };
+type TranscriptResult = Extract<WorkspaceDevMessage, { role: "tool" }>["results"][number];
+interface ExecutionBlock { kind: "execution"; index: number; count: number; results: { key: string; result: TranscriptResult }[] }
+export type TranscriptBlock = { kind: "message"; index: number; message: Exclude<WorkspaceDevMessage, { role: "tool" }> } | ExecutionBlock;
+/** Group adjacent operation disclosures without crossing a visible message boundary. */
+export function transcriptBlocks(history: readonly WorkspaceDevMessage[]): TranscriptBlock[] {
+  const blocks: TranscriptBlock[] = [];
+  let execution: ExecutionBlock | undefined;
+  history.forEach((message, index) => {
+    if (message.role === "tool") return;
+    if (message.role === "user" || message.text.trim()) {
+      execution = undefined;
+      blocks.push({ kind: "message", index, message });
+    }
+    if (message.role !== "assistant" || !message.tools.length) return;
+    if (!execution) { execution = { kind: "execution", index, count: 0, results: [] }; blocks.push(execution); }
+    execution.count += message.tools.length;
+    const next = history[index + 1];
+    if (next?.role === "tool") execution.results.push(...next.results.map((result, resultIndex) => ({ key: `${index}:${resultIndex}`, result })));
+  });
+  return blocks;
+}
 const closed = new Set(["completed", "cancelled", "canceled", "withdrawn", "rejected", "expired"]);
 export function isClosedTask(state: string | null | undefined): boolean { return closed.has(state ?? ""); }
 export function taskStatus(state: string | null | undefined): TaskStatus {

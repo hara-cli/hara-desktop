@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { detectLocale, detectLegacyLocale, makeT, normalizeLocale } from '../src/i18n.ts';
+import { detectLocale, detectLocalePreference, detectLegacyLocale, localeFromLanguages, localeFromSystem, makeT, normalizeLocale, saveLocale } from '../src/i18n.ts';
 import { WORKSPACE_KEYS, WORKSPACE_EXTRA_KEYS } from '../src/workspace-i18n.ts';
 test('every canonical and additional shell key has all three locales and identical variables',()=>{
   const seen=new Set();
@@ -44,5 +44,29 @@ test('the workspace shell contains no hardcoded Chinese JSX text or UI string at
       ts.forEachChild(node,visit);
     }visit(ast); assert.deepEqual(violations,[],file);
     assert.equal(/[⚙↗⌄＋◎⌕↑▶]/u.test(source),false,file);
+  }
+});
+test('language defaults to the first supported system preference and manual choices remain explicit',()=>{
+  const before = Object.fromEntries(['localStorage','navigator','window'].map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
+  let saved=null;const events=new EventTarget(),changes=[];
+  try {
+    Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:()=>saved,setItem:(_key,value)=>{saved=value;}}});
+    Object.defineProperty(globalThis,'window',{configurable:true,value:events});
+    events.addEventListener('hara:locale-changed',event=>changes.push(event.detail));
+    const system=languages=>Object.defineProperty(globalThis,'navigator',{configurable:true,value:{language:languages[0],languages}});
+    system(['zh-Hans-CN','en-US']);assert.equal(detectLocalePreference(),'system');assert.equal(detectLocale(),'zh-Hans');assert.equal(saved,null,'reading the default must not pin the system language');
+    saveLocale('zh-Hant');system(['en-US']);assert.equal(detectLocalePreference(),'zh-Hant');assert.equal(detectLocale(),'zh-Hant');
+    saveLocale('system');assert.equal(detectLocalePreference(),'system');assert.equal(detectLocale(),'en');
+    system(['zh-CN']);assert.equal(detectLocale(),'zh-Hans');
+    assert.deepEqual(changes,['zh-Hant','system']);
+    assert.equal(localeFromLanguages(['fr-FR','zh-TW','en-US']),'zh-Hant');
+    assert.equal(localeFromLanguages(['en-CN','zh-Hans-CN']),'en');
+    assert.equal(localeFromLanguages(['fr-FR']),'en');
+    assert.equal(localeFromSystem('zh-Hans-HK'),'zh-Hans','the explicit script takes precedence over the region');
+    assert.equal(localeFromSystem('zh-Hant-CN'),'zh-Hant');assert.equal(localeFromSystem('zh_CN'),'zh-Hans');
+    Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:()=>null,setItem(){throw new Error('blocked');}}});
+    saveLocale('en');assert.equal(changes.at(-1),'en','an explicit choice is broadcast even if storage is unavailable');
+  } finally {
+    for(const key of ['localStorage','navigator','window']) {if(before[key])Object.defineProperty(globalThis,key,before[key]);else delete globalThis[key];}
   }
 });
