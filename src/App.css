@@ -6463,9 +6463,6 @@ button:focus-visible,
   padding: 0;
   font: 600 14px/1 "SF Mono", ui-monospace, monospace;
 }
-.module-dock-toggle {
-  min-width: 52px;
-}
 .settings-capability-list .plug {
   padding: 14px 18px;
   border: 0;

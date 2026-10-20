@@ -5,6 +5,7 @@ import { checkDesktopUpdate, DesktopUpdaterArchitectureError } from "./desktop-u
 import { WorkspaceUpdater, updateDefaults, UPDATE_SNOOZE_KEY } from "./workspace-updater-state";
 import type { Key } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
+import { ToggleSwitch } from "./ToggleSwitch";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
 
 export interface DesktopVersionInfo { desktop: string; engine: string; channel: string; arch: string; isolatedCandidate?: boolean }
@@ -61,8 +62,8 @@ export function WorkspaceSoftwareUpdate({ controller, info }: { controller: Work
         </div></div></article>
     {value.message ? <p role="status" className="wss-callout">{workspaceMessageText(t, value.message)}</p> : null}
     <div className="wss-setting-row"><div><strong>{t("ws.updates.auto")}</strong><p>{t("ws.updates.lastChecked", { time: value.preferences.lastChecked ? new Date(value.preferences.lastChecked).toLocaleString(locale) : t("ws.updates.neverChecked") })}</p></div>
-      <button role="switch" aria-label={t("ws.updates.auto")} aria-checked={value.preferences.autoCheck} onClick={() => void controller.setAutoCheck(!value.preferences.autoCheck)} className="wss-switch"><span /></button></div>
-    <div className="wss-setting-row"><div><strong>{t("ws.updates.preview")}</strong><p>{t("ws.updates.future")}</p></div><button role="switch" aria-label={t("ws.updates.previewFuture")} aria-checked="false" disabled className="wss-switch"><span /></button></div>
+      <ToggleSwitch label={t("ws.updates.auto")} checked={value.preferences.autoCheck} onCheckedChange={checked => void controller.setAutoCheck(checked)} /></div>
+    <div className="wss-setting-row"><div><strong>{t("ws.updates.preview")}</strong><p>{t("ws.updates.future")}</p></div><ToggleSwitch label={t("ws.updates.previewFuture")} checked={false} disabled /></div>
     <section className="wss-version"><h3>{t("ws.updates.version")}</h3><dl><dt>Desktop</dt><dd>{info?.desktop ?? "—"}</dd><dt>{t("ws.updates.engine")}</dt><dd>{info?.engine ?? "—"}</dd><dt>{t("ws.updates.channel")}</dt><dd>{info?.channel ?? "—"}</dd><dt>{t("ws.updates.arch")}</dt><dd>{info?.arch ?? "—"}</dd></dl>
       <button disabled={!info} onClick={() => { if (!info) return; void navigator.clipboard.writeText(`Hara Desktop ${info.desktop}\nCore ${info.engine}\n${info.channel} / ${info.arch}`).then(() => setCopied(true)).catch(() => setCopied(false)); }}>{t(copied ? "ws.updates.copied" : "ws.updates.copy")}</button></section>
   </section>;

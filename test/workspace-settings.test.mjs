@@ -22,7 +22,7 @@ function callback(name, bindings, file="src/WorkspaceSettingsPanels.tsx") {
  const result=ts.transpileModule(`return (${initializer});`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}});
  return new Function(...Object.keys(bindings),result.outputText)(...Object.values(bindings));
 }
-const bundle=await build({stdin:{contents:'export {WorkspaceConnections,WorkspaceFeaturePanel,WorkspaceThemeSettings} from "./src/WorkspaceSettingsPanels.tsx"; export {default as Runtime,WorkspaceConnectionForm} from "./src/WorkspaceRuntimeSettings.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],write:false});
+const bundle=await build({stdin:{contents:'export {WorkspaceConnections,WorkspaceFeaturePanel,WorkspaceThemeSettings} from "./src/WorkspaceSettingsPanels.tsx"; export {default as Runtime,WorkspaceConnectionForm} from "./src/WorkspaceRuntimeSettings.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],loader:{".css":"empty"},write:false});
 const module={exports:{}};new Function("require","module","exports",bundle.outputFiles[0].text)(require,module,module.exports);
 const {createElement}=require("react"),{renderToStaticMarkup}=require("react-dom/server");
 const render=(name,props)=>{

@@ -314,7 +314,7 @@ try{
   await setLocale(nextLocale);assert.equal(await evaluate("document.querySelector('.wss-content [role=dialog]').getAttribute('aria-label')"),next('ws.runtimes.confirmInstall'));
   await settingsFits();await buttonText(next('ws.runtimes.notNow'),'.wss-content [role=dialog]');
   await ready("!document.querySelector('.wss-content [role=dialog]')",'Runtime rejection must settle without downloading');
-  await buttonText(next('ws.settings.page.skills'),'.wss-nav nav');await ready("!!document.querySelector('.wsd-feature-panel input[role=switch]')",'Scoped skill version must load');
+  await buttonText(next('ws.settings.page.skills'),'.wss-nav nav');await ready("!!document.querySelector('.wsd-feature-panel [role=switch]')",'Scoped skill version must load');
   await buttonText(next('ws.skills.review'));await setLocale(locale);
   assert.equal(await evaluate("document.querySelector('.wss-content [role=dialog]').getAttribute('aria-label')"),t('ws.skills.confirmUpdate'));
   await buttonText(t('ws.cancel'),'.wss-content [role=dialog]');await buttonText(t('ws.skills.edit'));
@@ -323,7 +323,7 @@ try{
   assert.equal(await evaluate("document.querySelector('.wsd-feature-panel textarea').value"),draft);
   assert.equal(await evaluate("document.querySelector('.wsd-feature-panel textarea').getAttribute('aria-label')"),next('ws.skills.instructions'));
   await settingsFits();await capture(`settings-skill-draft-${theme}-${locale}`);await buttonText(next('ws.cancel'),'.wss-content [role=dialog]');
-  await buttonText(next('ws.settings.page.schedules'),'.wss-nav nav');await ready("!!document.querySelector('.wsd-feature-panel input[role=switch]')",'Scoped schedule metadata must load');
+  await buttonText(next('ws.settings.page.schedules'),'.wss-nav nav');await ready("!!document.querySelector('.wsd-feature-panel [role=switch]')",'Scoped schedule metadata must load');
   assert.ok(await evaluate(`document.querySelector('.wss-content').textContent.includes(${JSON.stringify(next('ws.tasks.status.completed'))})`));
   await buttonText(next('ws.schedules.add'));await ready("!!document.querySelector('.wsd-feature-panel form')",'Schedule draft must open');
   await inputValue('.wsd-feature-panel form input',draft);await setLocale(locale);

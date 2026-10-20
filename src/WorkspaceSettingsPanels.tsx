@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ToggleSwitch } from "./ToggleSwitch";
 import { WorkspaceConnectionForm } from "./WorkspaceRuntimeSettings";
 import type { LegacyConnectionPreview, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceFeatureView, WorkspaceModelConnection, WorkspacePreferenceView } from "./workspace-dev-state";
 import { bindThemePreference, loadThemePreference, saveThemePreference, type ThemePreference } from "./theme";
@@ -33,8 +34,8 @@ export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<ty
     <small>{t("ws.theme.note")}</small>
     <label>{t("ws.display.mode")}<select aria-label={t("ws.display.mode")} value={theme.settings?.executionDetails ?? "brief"} disabled={!theme.settings || theme.settings.readOnly}
       onChange={event => void theme.changeDetails(event.target.value as "brief" | "detailed", theme.settings?.collapseDetails !== false)}><option value="brief">{t("ws.display.brief")}</option><option value="detailed">{t("ws.display.detailed")}</option></select></label>
-    <div className="wss-setting-row"><span>{t("ws.display.collapse")}</span><button role="switch" aria-label={t("ws.display.collapse")} aria-checked={theme.settings?.collapseDetails !== false} className="wss-switch" disabled={!theme.settings || theme.settings.readOnly}
-      onClick={() => void theme.changeDetails(theme.settings?.executionDetails ?? "brief", theme.settings?.collapseDetails === false)}><span /></button></div>
+    <div className="wss-setting-row"><span>{t("ws.display.collapse")}</span><ToggleSwitch label={t("ws.display.collapse")} checked={theme.settings?.collapseDetails !== false} disabled={!theme.settings || theme.settings.readOnly}
+      onCheckedChange={checked => void theme.changeDetails(theme.settings?.executionDetails ?? "brief", checked)} /></div>
     {theme.notice ? <p role="status">{t(theme.notice)}</p> : null}</section>;
 }
 export function WorkspaceConnections({ model, workspace, onDirty }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onDirty?: (value: boolean) => void }) {
@@ -110,7 +111,7 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
       <p>{t("ws.skills.note")}</p>
       {!value.skills.length ? <p>{t("ws.skills.empty")}</p> : value.skills.map(row => <div className="wsd-connection" key={row.id}><strong>{row.id}</strong><p>{row.description}</p>
         <small>{t(row.source === "private" ? "ws.skills.private" : "ws.skills.global")} · {row.version.slice(0, 12)} · {t(row.locked ? "ws.skills.pinned" : "ws.skills.disabled")}</small>
-        <label><input type="checkbox" role="switch" disabled={pending} checked={row.enabled} onChange={event => void update(row.id, event.target.checked, row.version)} />{t("ws.skills.allow")}</label>
+        <label><ToggleSwitch label={t("ws.skills.allow")} disabled={pending} checked={row.enabled} onCheckedChange={checked => void update(row.id, checked, row.version)} />{t("ws.skills.allow")}</label>
         {row.locked ? <button disabled={pending} onClick={() => void editSkill(row.id)}>{t("ws.skills.edit")}</button> : null}
         {row.locked && row.source === "global" && row.availableVersion !== row.version ? <button disabled={pending} onClick={() => setUpgrade(row)}>{t("ws.skills.review")}</button> : null}</div>)}
       {upgrade ? <section className="wsd-approval" role="dialog" aria-label={t("ws.skills.confirmUpdate")}><h3>{t("ws.skills.updateTitle", { name: upgrade.id })}</h3><p>{t("ws.skills.updateNote", { from: upgrade.version.slice(0, 12), to: upgrade.availableVersion.slice(0, 12) })}</p>
@@ -123,7 +124,7 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
       {!value.schedules.length ? <p>{t("ws.schedules.empty")}</p> : value.schedules.map(row => { const status = value.scheduler?.schedules.find(item => item.id === row.id); return <div className="wsd-connection" key={row.id}><strong>{row.name}</strong><code>{row.schedule.expr ?? row.schedule.display}</code>
         <small>{status?.awaitingHandoff ? t("ws.schedules.handoff") : status?.lastRun ? t("ws.schedules.last", { state: settingsStateText(t, status.lastRun.state), reason: status.lastRun.reason ? ` · ${status.lastRun.reason}` : "" }) : t("ws.schedules.never")}</small>
         <small>{t("ws.schedules.next", { time: status?.nextRunAt ? new Date(status.nextRunAt).toLocaleString(locale) : "—" })}</small>
-        <label><input type="checkbox" role="switch" checked={row.enabled} disabled={pending} onChange={event => void update(row.id, event.target.checked)} />{t("ws.schedules.enabled")}</label>
+        <label><ToggleSwitch label={t("ws.schedules.enabled")} checked={row.enabled} disabled={pending} onCheckedChange={checked => void update(row.id, checked)} />{t("ws.schedules.enabled")}</label>
         <div className="wsd-card-actions"><button disabled={pending || status?.awaitingHandoff} onClick={() => { if (window.confirm(t("ws.schedules.runConfirm", { workspace: workspace.label, name: row.name }))) void scheduleAction("workspace.schedule.run", { id: row.id }); }}>{t("ws.schedules.run")}</button>
           <button disabled={pending} onClick={() => { if (window.confirm(t("ws.schedules.deleteConfirm", { workspace: workspace.label, name: row.name }))) void scheduleAction("workspace.schedule.delete", { id: row.id }); }}>{t("ws.connections.delete")}</button></div>
         {status?.lastRun ? <details><summary>{t("ws.schedules.history")}</summary><p>{new Date(status.lastRun.occurredAt).toLocaleString(locale)} · {settingsStateText(t, status.lastRun.state)}</p></details> : null}</div>; })}
