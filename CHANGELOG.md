@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.2 — 2026-10-20 — Workspace migration and native release gates
+
+- Align Desktop and its exact Core sidecar to 1.0.2, retaining safe legacy Agent, schedule and model
+  connection inheritance into the default personal Workspace without changing source permissions.
+- Reduce repeated private-index reads for inherited schedule batches. Require complete real ARM64,
+  Intel and Linux tests before tagging; ARM64 deadlines and every original safety assertion remain.
+- Keep Pi as the only preinstalled runtime. Preserve existing user coding-tool configurations and
+  the v1.0.0/v1.0.1 Core tags. Right-hand panel expansion work is deferred to 1.0.3.
+- macOS assets require Developer ID signing and Apple notarization on both architectures. Windows
+  installers remain updater-signed, not Authenticode-signed; SmartScreen may show a warning.
+
 ## 1.0.1 — 2026-10-20 — Cross-platform release repair
 
 - Align Desktop and its locked Core sidecar to 1.0.1. Core corrects two simulated Keychain test
