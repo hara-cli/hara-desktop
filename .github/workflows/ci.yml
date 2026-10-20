@@ -48,12 +48,38 @@ jobs:
         run: npm run build
 
   native:
-    runs-on: macos-15
+    name: Native (${{ matrix.os }}, ${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
           persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+
+      - name: Install locked Desktop dependencies
+        run: npm ci
+
+      - name: Validate release metadata
+        run: npm run check:release
+
+      - name: Run complete Desktop regressions
+        run: npm test
+
+      - name: Build the production renderer
+        run: npm run build
 
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
@@ -61,8 +87,8 @@ jobs:
 
       - name: Prepare the test-only sidecar fixture
         run: |
-          cp /usr/bin/true src-tauri/binaries/hara-aarch64-apple-darwin
-          cp /usr/bin/true src-tauri/binaries/herdr-aarch64-apple-darwin
+          cp /usr/bin/true src-tauri/binaries/hara-${{ matrix.target }}
+          cp /usr/bin/true src-tauri/binaries/herdr-${{ matrix.target }}
 
       - name: Run native host regressions
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked

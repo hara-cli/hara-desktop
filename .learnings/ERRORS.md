@@ -4159,3 +4159,22 @@ All corrected assertions pass in the real-component browser gate; Desktop full t
 - Reproducible: yes
 - Related Files: scripts/workspace-shell-smoke.mjs, test/workspace-settings.test.mjs, package-lock.json, docs/workspace-shell-redesign-1.1.0.md
 - Pattern-Key: frontend.shell_semantic_browser_acceptance
+
+
+## [ERR-20261020-REDESIGN-NATIVE-INTEGRATION] preserve source locks and inspect integration contracts
+
+**Logged**: 2026-10-20T18:15:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+Native redesign integration exposed fixture/API drift; keep the stable release policy intact.
+
+### Details
+Core 1.0.2's frozen lock references npmmirror; a fresh npm ci failed ECONNRESET. An independent APFS copy of the existing 1.0.3 release npm cache installed the exact same lock fully offline. Original cache/source and Core lock remained unchanged. Missing paths/globs during inspection were corrected to explicit repository paths; no sibling edits were made. Text merge exit codes count conflicts (not only exit 1); conflicts were resolved preserving v1.4 and native settings isolation. The first full Desktop gate had 18 failures: prerelease metadata rejected by the existing stable-only release fixtures, two new settings contracts, and Vite's shared dynamic-entry manifest key. Use prepared source version 1.1.0 with a distinct local candidate identifier/data root, rather than weakening stable-release policy; discover dynamic Workspace chunks by their entry identity rather than a filename key. Three-language support supersedes 1.0.3's zh-only fixture expectation. No test was skipped or timeout raised.
+
+### Metadata
+- Related Files: src/WorkspaceSettings.tsx, src/i18n.ts, test/v1-entry-surface.test.mjs, test/workspace-settings-shell.test.mjs
+- Evidence: /private/tmp/hara-redesign-native-20261020/
+- Pattern-Key: integration.preserve_frozen_lock_and_validate_dynamic_entry_identity

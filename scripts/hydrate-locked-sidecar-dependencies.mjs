@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 const OFFICIAL_NPM_REGISTRY = "https://registry.npmjs.org";
 const OFFICIAL_NPM_HOST = "registry.npmjs.org";
 const SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk";
+const PI_PACKAGE = "@earendil-works/pi-coding-agent";
 const TARGET_PACKAGES = Object.freeze({
   "aarch64-apple-darwin": "@anthropic-ai/claude-agent-sdk-darwin-arm64",
   "x86_64-apple-darwin": "@anthropic-ai/claude-agent-sdk-darwin-x64",
@@ -51,6 +52,23 @@ export function lockedPackageSpec(lockfile, packageName) {
     throw new Error(`package-lock.json has no single SHA-512 integrity for ${packageName}@${version}`);
   }
   return { packageName, version, integrity };
+}
+
+/** The reviewed Core lock is authoritative. Pi-only Core has no legacy SDK to repair; do not
+ * invent or reinstall it. Old source locks retain their exact target/integrity checks. */
+export function lockedSidecarSpecs(lockfile, target) {
+  const nativePackage = packageForTarget(target);
+  if (lockfile?.lockfileVersion !== 3 || !lockfile.packages || typeof lockfile.packages !== "object"
+    || Array.isArray(lockfile.packages)) throw new Error("invalid sidecar lockfile (package-lock.json)");
+  if (!Object.hasOwn(lockfile.packages, `node_modules/${SDK_PACKAGE}`)) {
+    const pi = lockedPackageSpec(lockfile, PI_PACKAGE);
+    if (lockfile.packages[""]?.dependencies?.[PI_PACKAGE] !== pi.version) throw new Error("Pi-only sidecar requires an exact root Pi lock");
+    if (Object.values(TARGET_PACKAGES).some(name => Object.hasOwn(lockfile.packages, `node_modules/${name}`))) {
+      throw new Error("orphan legacy SDK target in Pi-only sidecar lock");
+    }
+    return [];
+  }
+  return [SDK_PACKAGE, nativePackage].map(packageName => lockedPackageSpec(lockfile, packageName));
 }
 
 export function verifySha512(contents, integrity) {
@@ -163,8 +181,15 @@ function extractLockedPackage(cliRoot, spec, archivePath) {
 export function hydrateLockedSidecarDependencies(cliRoot, target) {
   const resolvedRoot = resolve(cliRoot);
   const lockfile = JSON.parse(readFileSync(join(resolvedRoot, "package-lock.json"), "utf8"));
-  const specs = [SDK_PACKAGE, packageForTarget(target)]
-    .map((packageName) => lockedPackageSpec(lockfile, packageName));
+  const specs = lockedSidecarSpecs(lockfile, target);
+  if (specs.length === 0) {
+    const pi = lockedPackageSpec(lockfile, PI_PACKAGE);
+    if (!verifyInstalledPackage(resolve(resolvedRoot, "node_modules", PI_PACKAGE), pi)) {
+      throw new Error("locked Pi dependency is not installed; repair npm ci before building");
+    }
+    process.stdout.write("✓ Pi-only sidecar lock: no legacy SDK download, extraction or cache required\n");
+    return;
+  }
   const cacheDirectory = resolve(
     process.env.HARA_LOCKED_TARBALL_CACHE || join(homedir(), ".cache", "hara-release", "npm"),
   );

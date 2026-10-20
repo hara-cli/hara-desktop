@@ -939,6 +939,19 @@ test("macOS Dock reopen restores or recreates the main window", () => {
   );
 });
 
+test("cold main-window restoration reapplies bounded native minimums at its actual display scale", () => {
+  const host = readFileSync(`${root}/src-tauri/src/lib.rs`, "utf8");
+  const recovery = host.slice(host.indexOf("fn recover_main_window_if_offscreen"), host.indexOf("fn should_track_window_state"));
+  assert.ok(recovery.includes("window.current_monitor()?") && recovery.includes("window.scale_factor()?"),
+    "the window's real current display/scale must beat overlapping mixed-DPI physical rectangles");
+  assert.ok(recovery.includes("window.set_min_size(Some(tauri::PhysicalSize::new("),
+    "native minimum size must be reapplied after the state plugin restores cached geometry");
+  assert.ok(recovery.includes("main_window_recovery(current, &work_areas, primary_work_area, current_work_area)"));
+  assert.ok(host.includes(".min_inner_size(f64::from(MIN_MAIN_WINDOW_WIDTH), f64::from(MIN_MAIN_WINDOW_HEIGHT))"));
+  assert.ok(host.includes("requested_width.clamp(minimum_width.min(target.rect.width), target.rect.width)"));
+  assert.ok(host.includes("requested_height.clamp(minimum_height.min(target.rect.height), target.rect.height)"));
+});
+
 test("provider settings keep credentials transient and support local no-key presets", () => {
   const providerSettings = readFileSync(`${root}/src/ProviderSettings.tsx`, "utf8");
   const modelCombobox = readFileSync(`${root}/src/ModelCombobox.tsx`, "utf8");

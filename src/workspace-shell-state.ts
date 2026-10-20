@@ -1,9 +1,9 @@
 // Presentation only. Core remains the authority for task state and every approval decision.
-import type { WorkspaceDevApproval, WorkspaceDevMessage, WorkspaceDevSnapshot } from "./workspace-dev-state.ts";
+import type { WorkspaceDevApproval, WorkspaceDevMessage, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state.ts";
 
 export type TaskGroup = "needsYou" | "working" | "waiting" | "closed";
 export type TaskStatus = "pending" | "reply" | "review" | "blocked" | "accepted" | "running" | "dispatched" | "queued" | "completed" | "cancelled" | "rejected" | "expired" | "paused" | "unknown";
-export interface ShellTask { id: string; agentId: string; title: string; status: TaskStatus; group: TaskGroup }
+export interface ShellTask { id: string; agentId?: string; colleagueLabel?: string; title: string; status: TaskStatus; group: TaskGroup }
 export interface AwaitItem { id: string; agentId: string; kind: "approval" | "reply" | "review" | "blocked"; title: string; highPriority: boolean; approval?: WorkspaceDevApproval }
 export type TimelineItem = { kind: "message"; message: WorkspaceDevMessage; index: number } | { kind: "approval"; approval: WorkspaceDevApproval };
 const closed = new Set(["completed", "cancelled", "canceled", "withdrawn", "rejected", "expired"]);
@@ -47,7 +47,7 @@ export function conversationTimeline(snapshots: readonly WorkspaceDevSnapshot[],
   return [...snapshot.conversation.history.map((message, index): TimelineItem => ({ kind: "message", message, index })),
     ...pendingApprovals(snapshot, now).map((approval): TimelineItem => ({ kind: "approval", approval }))];
 }
-export function buildWorkspaceShell(snapshots: readonly WorkspaceDevSnapshot[], now = Date.now()) {
+export function buildWorkspaceShell(snapshots: readonly WorkspaceDevSnapshot[], now = Date.now(), history: readonly WorkspaceTaskRecord[] = []) {
   const tasks: ShellTask[] = [], waiting: AwaitItem[] = [], seen = new Set<string>();
   for (const snapshot of snapshots) {
     const approvals = pendingApprovals(snapshot, now), conversation = snapshot.conversation;
@@ -62,6 +62,14 @@ export function buildWorkspaceShell(snapshots: readonly WorkspaceDevSnapshot[], 
     if (!approvals.length && conversation.taskId && ["reply", "review", "blocked"].includes(status)) {
       waiting.push({ id: conversation.taskId, agentId: snapshot.selectedAgentId, kind: status as "reply" | "review" | "blocked", title: conversation.objective, highPriority: false });
     }
+  }
+  const liveIds = new Set(tasks.map(task => task.id));
+  for (const record of history) {
+    if (liveIds.has(record.taskId)) continue;
+    liveIds.add(record.taskId);
+    const status = taskStatus(record.status);
+    // The history contract exposes a display name, not an agent identity. Do not guess an action target.
+    tasks.push({ id: record.taskId, title: record.objective, status, group: taskGroup(status), colleagueLabel: record.colleague });
   }
   waiting.sort((a, b) => Number(b.highPriority) - Number(a.highPriority)
     || (Date.parse(a.approval?.expiresAt ?? "") || Infinity) - (Date.parse(b.approval?.expiresAt ?? "") || Infinity)

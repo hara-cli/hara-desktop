@@ -84,7 +84,7 @@ export function ColleaguesPage({ shell, agents, tab, setTab, t, openAgent, openI
       {tab === "people" ? <><header className="hs-directory-head"><h2>{t("ws.colleagues.title")}</h2><button className="hs-btn pri" onClick={discuss}>{t("ws.colleagues.discuss")}</button></header>
         {!agents.length ? <p>{t("ws.dm.empty")}</p> : agents.map(agent => <button className="hs-row wsd-directory-person" key={agent.agentId} onClick={() => openAgent(agent.agentId)}><Avatar agent={agent} />
           <span className="hs-txt"><strong className="hs-name">{agent.identity.displayName}</strong><span className="pv">{agent.identity.title ?? t("ws.role.colleague")}</span></span><ChevronRightIcon className="hico" /></button>)}</>
-        : <><p className="hs-tasks-intro">{t("ws.tasks.intro")}</p><p className="hs-data-note">{t("ws.tasks.currentOnly")}</p>
+        : <><p className="hs-tasks-intro">{t("ws.tasks.intro")}</p><p className="hs-data-note">{t(shell.historyAvailable ? "ws.tasks.history" : "ws.tasks.currentOnly")}</p>
           {shell.loading ? <p role="status">{t("common.loading")}</p> : null}
           {shell.incomplete ? <p role="status">{t("ws.tasks.unavailable")} <button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></p> : null}
           {!shell.tasks.length && !shell.waiting.length && !shell.loading && !shell.incomplete ? <p>{t("ws.tasks.empty")}</p> : null}
@@ -96,8 +96,8 @@ export function ColleaguesPage({ shell, agents, tab, setTab, t, openAgent, openI
               {approvals.map(item => <article key={item.id} className="hs-task" data-approval-id={item.id}><span className="hs-st need">{t("ws.await.kind.approval")}</span><span className="t"><b>{t("ws.approval.summary", { name: item.title })}</b></span>
                 <button className="hs-btn sec" onClick={() => openItem(item)}>{t("ws.tasks.openConversation")}<ChevronRightIcon className="hico" /></button></article>)}
               {tasks.map(task => <article className="hs-task" key={task.id}><span className={`hs-st ${group === "needsYou" ? "need" : ""}`}>{t(`ws.tasks.status.${task.status}`)}</span>
-                <span className="t"><b>{task.title || t("ws.tasks.untitled")}</b><span>{shell.snapshots[0]?.agents.find(agent => agent.agentId === task.agentId)?.identity.displayName ?? t("ws.role.colleague")}</span></span>
-                <button className="hs-btn sec" onClick={() => openAgent(task.agentId)}>{t("ws.tasks.openConversation")}<ChevronRightIcon className="hico" /></button></article>)}</section>;
+                <span className="t"><b>{task.title || t("ws.tasks.untitled")}</b><span>{task.colleagueLabel ?? shell.snapshots[0]?.agents.find(agent => agent.agentId === task.agentId)?.identity.displayName ?? t("ws.role.colleague")}</span></span>
+                {task.agentId ? <button className="hs-btn sec" onClick={() => openAgent(task.agentId!)}>{t("ws.tasks.openConversation")}<ChevronRightIcon className="hico" /></button> : <span className="hs-data-note">{t("ws.tasks.record")}</span>}</article>)}</section>;
           })}</>}
     </div>
   </section>;

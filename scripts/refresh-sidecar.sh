@@ -158,8 +158,8 @@ if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
     cd "$BUILD_CLI"
     # npm's optional-package fetch may be blocked by a transparent corporate proxy even while the
     # official registry remains reachable through curl. Install the exact lockfile without running
-    # lifecycle scripts, hydrate only the two target SDK tarballs from registry.npmjs.org after
-    # checking their lockfile SHA-512, then restore dependency install scripts before compiling.
+    # lifecycle scripts. Pi-only locks require no legacy SDK hydration; older reviewed locks may
+    # repair only their already-locked SDK tarballs after SHA-512 checks. Then restore install scripts.
     HARA_NPM_CI_IGNORE_SCRIPTS=1 "$DESKTOP_ROOT/scripts/npm-ci-retry.sh" >/dev/null
     node "$DESKTOP_ROOT/scripts/hydrate-locked-sidecar-dependencies.mjs" "$PWD" "$TRIPLE"
     npm rebuild --no-audit --fund=false >/dev/null

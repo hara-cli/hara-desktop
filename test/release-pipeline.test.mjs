@@ -128,7 +128,7 @@ test("desktop updater uses the first-party signed channel before GitHub", () => 
 
   const native = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
   for (const endpoint of endpoints) assert.match(native, new RegExp(endpoint.replaceAll(".", "\\.")));
-  const context = native.indexOf("let context = tauri::generate_context!()");
+  const context = native.indexOf("let mut context = tauri::generate_context!()");
   const diagnostic = native.indexOf("release_updater_endpoints(context.config())", context);
   const build = native.indexOf(".build(context)", diagnostic);
   assert.ok(context >= 0 && diagnostic > context && build > diagnostic);
@@ -1637,6 +1637,23 @@ test("main and pull requests run Desktop quality gates without release authority
     assert.match(workflow, new RegExp(command.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.doesNotMatch(workflow, /contents: write|environment:|GH_TOKEN|HARA_RELEASE/);
+});
+
+test("main CI runs complete Desktop regressions on Intel and ARM64 before a release tag", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+  const native = workflow.slice(workflow.indexOf("  native:"), workflow.indexOf("  native-windows:"));
+  assert.match(native, /fail-fast: false/);
+  assert.match(native, /os: macos-15\n\s+target: aarch64-apple-darwin/);
+  assert.match(native, /os: macos-15-intel\n\s+target: x86_64-apple-darwin/);
+  assert.match(native, /runs-on: \$\{\{ matrix\.os \}\}/);
+  assert.match(native, /node-version-file: "\.node-version"/);
+  for (const command of ["npm ci", "npm run check:release", "npm test", "npm run build",
+    "cargo test --manifest-path src-tauri/Cargo.toml --lib --locked"]) {
+    assert.ok(native.includes(command), `missing complete native gate: ${command}`);
+  }
+  assert.match(native, /binaries\/hara-\$\{\{ matrix\.target \}\}/);
+  assert.match(native, /binaries\/herdr-\$\{\{ matrix\.target \}\}/);
+  assert.doesNotMatch(native, /continue-on-error|--test-name-pattern|--test-skip-pattern|--ignored/);
 });
 
 test("draft validation executes repository code without a release token", () => {

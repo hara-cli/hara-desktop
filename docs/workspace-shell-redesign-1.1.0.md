@@ -16,10 +16,13 @@ indicator is `#9b2c24` / `#f08e84`; the control/focus hairline is `#8c8579` /
 `workspace-shell-113.css` and previous v1.3 screenshots are historical references;
 114 is the current source of truth. Keyboard focus stays neutral.
 
-The frontend version and sidecar locks remain the main baseline (`0.1.188` and
-`0.187.1@d54f1b930ba58176b511bdecaaba5903d74521c9`). This is an implementation target,
-not a prepared or published 1.1.0 release. Integrate the intervening approved releases
-before making a release candidate.
+The native integration stage prepares Desktop **1.1.0**, with exact Core
+**1.0.2@4e507e7f1595e618527e5c95a1890ae9271615e7**. Approved native/settings/build
+changes are ported from Desktop `d933cea`; release branches are not merged. This is
+an unpublished local candidate, with identifier `com.nanhara.hara.redesign-candidate`.
+It requires sibling private Workspace/Home roots and a marked synthetic legacy
+source. Its discovery source stays private too. It cannot check/install public updates.
+Developer ID signing is queued until the separate 1.0.3 release completes.
 
 ## Data and authority
 
@@ -43,25 +46,27 @@ before making a release candidate.
 
 ## Baseline limitations
 
-The locked Core has no full task-history endpoint and does not project message
-timestamps, historical ordering, unread receipts or a colleague quota. The UI shows
-current tasks only, omits unknown times, uses newly observed activity for ordering,
-and counts new assistant messages observed locally. It does not label old messages
-as unread. Unknown quota displays only the colleague count. The old Core's
-`pastTaskCount` remains available in Settings; it is not expanded into invented rows.
+Core 1.0.2 supplies `workspace.tasks`: up to 256 recent records in the selected
+Workspace. The shell combines these with current snapshots and deduplicates task IDs.
+History supplies a colleague label but no agent ID, so historical rows remain read-only;
+labels never become execution targets or approval authority. When the history read is
+unavailable, current snapshots remain usable and the current-only note is shown.
+Core still does not project message timestamps, server unread receipts or colleague
+quotas. Unknown times are omitted, newly observed activity supplies local ordering,
+and unknown quota displays only the colleague count.
 
 Message grouping requires actual timestamps less than or equal to five minutes
 apart. Untimed history stays ungrouped. Future snapshots may provide the optional
 timestamp, unread and limit fields; they are presentation data, never authority.
 
-Main also lacks the later Workspace browser implementation. The shell exposes an
-optional `onOpenBrowser` callback and hides that button until an implementation is
-provided. Synthetic screenshot fixtures inject a callback for design review;
-browser functionality is not accepted by this branch. Merge and recheck the
-intervening 1.0.2 work before enabling it. Existing connection/Runtime/skills/schedule
-detail panels retain their baseline copy; new shell, boot and appearance/language
-controls have all three locales. Native rollback leaves explicitly retain their
-original bilingual `LegacyLocale` contract.
+The browser preview is a lazy third grid column, beside the live chat/composer.
+Expansion preserves at least 340px for chat; narrow windows use a compact sidebar and
+readable approval rows. Native expansion also invokes the existing bounded window-growth
+command. Workspace/generation changes destroy the preview. The prior explicit loopback
+HTTP(S), no-credentials and sandbox boundary is preserved. This does not implement the
+future Chrome pairing/control product. Existing detailed connection/Runtime/skills/schedule
+panels retain their baseline copy; new outer shell, Settings navigation and appearance/language
+controls use all three locales. Legacy rollback surfaces keep their bilingual contract.
 
 ## Verification
 
@@ -100,3 +105,17 @@ workspace expansion state, inert/keyboard behavior, reduced motion, approval
 reachability and confirmation, drafts, IME, unread activity, source names, and
 enabled/hover/pressed/disabled composer colors. These are component checks;
 native Tauri, real Core integration and tester acceptance remain separate gates.
+
+## Packaged native acceptance
+
+`scripts/workspace-native-smoke.mjs` launches the exact candidate executable with
+private HOME/Workspace/source roots. It checks parent PID, bundled Core hash, real
+protocol, approval, delegation, file verification and cold recovery using a loopback
+fake model. A throwaway Keychain belongs only to that private HOME; real default/search
+metadata must remain unchanged. It never uses the signing/updater Keychain. Its exact
+owned App/Core/Vault cleanup and optional UI-hold mode are separate from signing.
+Compile the two adjacent `workspace-native-*.swift` helpers into the task evidence
+parent directory. Native UI screenshots and interaction receipts remain distinct from
+headless component screenshots and the Model/RPC six-step driver. Intel runs on this
+Mini are recorded as Rosetta, never as physical Intel acceptance. Read the current
+phase report in the workspace inbox before running a retained candidate.

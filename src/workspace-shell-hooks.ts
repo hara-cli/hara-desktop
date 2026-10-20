@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectLocale, makeT, saveLocale, type Locale } from "./i18n";
-import type { WorkspaceDevModel, WorkspaceDevSnapshot } from "./workspace-dev-state";
+import type { WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state";
 import { buildWorkspaceShell, loadSidebarSections, type SidebarSectionId } from "./workspace-shell-state";
 
 export function useWorkspaceLocale() {
@@ -26,9 +26,17 @@ export function useSectionState(workspaceId: string) {
 }
 export function useWorkspaceOverview(model: WorkspaceDevModel, workspace: WorkspaceDevSnapshot | null) {
   const [overview, setOverview] = useState<{ scope: string; snapshots: WorkspaceDevSnapshot[]; incomplete: boolean } | null>(null);
+  const [history, setHistory] = useState<{ scope: string; rows: WorkspaceTaskRecord[] } | null>(null);
   const [revision, setRevision] = useState(0), [now, setNow] = useState(Date.now);
   const observations = useRef(new Map<string, { fingerprint: string; observedAt: number; unread: number }>());
   const scope = workspace ? JSON.stringify([workspace.workspaceId, workspace.resourceGeneration]) : "";
+  useEffect(() => {
+    if (!workspace || workspace.executionMode !== "workspace") return;
+    let active = true;
+    void model.workspaceRequest<WorkspaceTaskRecord[]>("workspace.tasks").then(rows => { if (active) setHistory({ scope, rows }); })
+      .catch(() => { if (active) setHistory(null); });
+    return () => { active = false; };
+  }, [model, workspace, scope, revision]);
   useEffect(() => {
     if (!workspace) return;
     let active = true;
@@ -54,7 +62,7 @@ export function useWorkspaceOverview(model: WorkspaceDevModel, workspace: Worksp
     }
     setActivity(result);
   }, [snapshots, scope, workspace?.selectedAgentId]);
-  return { ...useMemo(() => buildWorkspaceShell(snapshots, now), [snapshots, now]), snapshots, now, activity,
+  return { ...useMemo(() => buildWorkspaceShell(snapshots, now, history?.scope === scope ? history.rows : []), [snapshots, now, history, scope]), snapshots, now, activity, historyAvailable: history?.scope === scope,
     loading: Boolean(workspace && overview?.scope !== scope), incomplete: overview?.scope === scope && overview.incomplete,
     refresh: () => { setNow(Date.now()); setRevision(value => value + 1); void model.refresh(); } };
 }

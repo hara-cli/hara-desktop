@@ -130,7 +130,10 @@ test("actual Vite production graph keeps old App and feature modules outside the
   const asset = outputs.find(value => value.type === "asset" && value.fileName === ".vite/manifest.json"); assert.ok(asset);
   const manifest = JSON.parse(String(asset.source)), seen = new Set();
   const walk = key => { if (seen.has(key)) return; seen.add(key); for (const next of manifest[key].imports ?? []) walk(next); };
-  walk("index.html"); walk("src/WorkspaceLocalDev.tsx");
+  const workspaceKey = Object.keys(manifest).find(key => manifest[key].name === "WorkspaceLocalDev" && manifest[key].isDynamicEntry);
+  assert.ok(workspaceKey, "the native Workspace must remain a dynamic entry");
+  assert.ok(manifest["index.html"].dynamicImports.includes(workspaceKey));
+  walk("index.html"); walk(workspaceKey);
   const forbidden = new Set(["LegacyDesktopEntry", "App", "WorkspaceCollaboration", "MailboxSettings", "DeskUsersPanel", "DeskMailComposer", "AgentInboxList"]);
   for (const key of seen) assert.equal(forbidden.has(manifest[key].name), false, `old surface in v1 static closure: ${key}`);
   assert.ok(manifest["index.html"].dynamicImports.includes("src/LegacyDesktopEntry.tsx"));

@@ -2027,7 +2027,10 @@ export function normalizeLocale(value: string | null | undefined): Locale | null
 }
 export function detectLocale(): Locale {
   try { const saved = normalizeLocale(globalThis.localStorage?.getItem("hara.locale")); if (saved) return saved; } catch { /* use system */ }
-  const language = globalThis.navigator?.language?.toLowerCase() ?? "en";
+  return localeFromSystem(globalThis.navigator?.language ?? "en");
+}
+export function localeFromSystem(value: string): Locale {
+  const language = value.toLowerCase();
   if (/^zh(?:-|$)/.test(language)) return /(?:^|-)(?:tw|hk|mo|hant)(?:-|$)/.test(language) ? "zh-Hant" : "zh-Hans";
   return "en";
 }

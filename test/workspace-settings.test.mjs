@@ -28,7 +28,7 @@ const {createElement}=require("react"),{renderToStaticMarkup}=require("react-dom
 const render=(name,props)=>renderToStaticMarkup(createElement(module.exports[name],props));
 test("connection settings render safe metadata and editable blank-key semantics, never a saved key value",()=>{
  const html=render("WorkspaceConnections",{model:{},workspace:snapshot("A")});
- for(const marker of [/目前連接/,/Fixture/,/Key：已保存/,/新增連接/,/編輯/,/刪除/])assert.match(html,marker);
+ for(const marker of [/目前連接/,/Fixture/,/Key •••••••••••• · 已存入钥匙串/,/新增連接/,/編輯/,/刪除/])assert.ok(marker.test(html),`connection display contract: ${marker}`);
  assert.doesNotMatch(html,/type="password"/); // edit opens only on the user's action
  const form=render("WorkspaceConnectionForm",{model:{},existing:snapshot("A").connections.connections[0]});
  assert.match(form,/留空不修改/);assert.match(form,/type="password"[^>]*value=""/);assert.doesNotMatch(form,/type="password"[^>]*required/);
@@ -36,8 +36,19 @@ test("connection settings render safe metadata and editable blank-key semantics,
 test("pending connection migration is read-only without losing the space or displaying a damaged-data claim",()=>{
  const workspace=snapshot("A");workspace.connections={revision:0,defaultConnectionId:null,connections:[],readOnly:true,migrationPending:true,recovered:false};
  const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/連接升級待完成/);assert.match(html,/查看歷史與使用空間其他功能/);
+ assert.doesNotMatch(html,/未允許或不可用/); // A first-time prefill is not evidence that the OS denied access.
  assert.match(html,/我已確認系統憑據存儲，重試升級/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|資料損壞|設定為唯讀（較新版本/);
  const source=read("src/WorkspaceSettingsPanels.tsx");assert.match(source,/model\.workspaceRequest\("workspace\.connection\.migration\.retry", \{ expectedRevision: workspace\.connections\.revision, approved: true \}\)/);
+});
+test("invalid and pending credential statuses use the same fixed-length mask without key fragments",()=>{
+ for(const keyState of ["invalid","pending"]){const workspace=snapshot("A");workspace.connections.connections[0].keyState=keyState;workspace.connections.connections[0].keySaved=keyState!=="pending";
+  const html=render("WorkspaceConnections",{model:{},workspace});assert.equal(html.includes("••••••••••••"),true);assert.equal(html.includes(keyState==="invalid"?"Key 已失效，请更新":"待授权"),true);assert.equal(/last.?4|尾号|prefix/i.test(html),false);}
+});
+test("a keyless legacy preview is editable but cannot pretend a saved credential or keep a blank key",()=>{
+ const workspace=snapshot("A"),connection=workspace.connections.connections[0];connection.keySaved=false;connection.credentialRequired=true;connection.keyState="pending";
+ workspace.connections.activeConnectionId=connection.id;workspace.connections.defaultConnectionId=null;
+ const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原默认 · 待授权/);assert.match(html,/请编辑添加 Key/);assert.doesNotMatch(html,/已存入钥匙串|連接升級待完成/);
+ const form=render("WorkspaceConnectionForm",{model:{},existing:connection});assert.match(form,/type="password"[^>]*required/);assert.doesNotMatch(form,/API Key（留空不修改）/);
 });
 test("unavailable connections and backup-only recovery retain distinct non-destructive notices",()=>{
  for(const flags of [{unavailable:true},{recovered:true},{migrationPending:true,recovered:true}]){
@@ -89,7 +100,7 @@ test("stable theme RPC is independent of workspace selection, late save uses ser
  const f=fixture();f.handlers["workspace.preferences.get"]=()=>({theme:"dark",revision:3,readOnly:false,recovered:false});f.handlers["workspace.preferences.set"]=params=>({...params,revision:4,readOnly:false});
  assert.equal((await f.model.preferences()).theme,"dark");await f.model.savePreference("light",3);
  assert.deepEqual(f.calls[1],{method:"workspace.preferences.set",params:{theme:"light",expectedRevision:3}});
- const changes=[],busy={current:false};const change=callback("change",{settings:{revision:4,readOnly:false},busy,model:{async savePreference(theme,revision){assert.equal(revision,4);return {theme,revision:5};}},setSettings(){},setPreference:x=>changes.push(x),saveThemePreference:x=>changes.push(x),setNotice(){}});
+ const changes=[],busy={current:false};const change=callback("change",{settings:{revision:3,readOnly:false},busy,model:{async preferences(){return {revision:4};},async savePreference(theme,revision){assert.equal(revision,4);return {theme,revision:5};}},setSettings(){},setPreference:x=>changes.push(x),saveThemePreference:x=>changes.push(x),setNotice(){}});
  await change("dark");assert.deepEqual(changes,["dark","dark"]);assert.equal(busy.current,false);
 });
 test("both v1.4 cascaded palettes meet AA for text, primary states and control boundaries",()=>{

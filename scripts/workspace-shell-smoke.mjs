@@ -82,7 +82,7 @@ async function navigate({width=1280,locale='zh-Hant',theme='light',scenario='hom
 }
 async function click(selector){assert.ok(await evaluate(`!!document.querySelector(${JSON.stringify(selector)})`),`Missing ${selector}`);await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);await settled();}
 async function key(key,shift=false){const value={key,code:key,modifiers:shift?8:0,windowsVirtualKeyCode:{Enter:13,Tab:9,Escape:27}[key]??0};await send('Input.dispatchKeyEvent',{type:'keyDown',...value,...(key==='Enter'?{text:'\r'}:{})});await send('Input.dispatchKeyEvent',{type:'keyUp',...value});await settled();}
-async function capture(name){await pause(150);const result=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(result.data,'base64'),{mode:0o600});}
+async function capture(name){screenshots++;await pause(150);const result=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(result.data,'base64'),{mode:0o600});}
 async function geometry(){return evaluate(`(()=>{
  const rect=selector=>{const node=document.querySelector(selector);if(!node)return null;const r=node.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,bottom:r.bottom};};
  const palette=Object.fromEntries(['brand','brand-hover','brand-pressed','brand-soft','brand-text','indicator','text-red','field-ring','control'].map(key=>[key,getComputedStyle(document.querySelector('.wsd-app')).getPropertyValue('--'+key).trim()]));
@@ -108,6 +108,7 @@ async function contrast(){return evaluate(`(()=>{
  return {count:n,min,issues};})()`);}
 const receipts=[];
 let completed=false;
+let screenshots=0;
 try{
  await connect();
  for(const theme of ['light','dark'])for(const scenario of ['home','chat','tasks']){
@@ -197,6 +198,42 @@ try{
  assert.equal(await evaluate("document.querySelector('.hs-dm .hs-dot')?.getAttribute('aria-label')"),'1 則未讀');
  await click('.hs-dm');await ready("!document.querySelector('.hs-dm[aria-current=page] .hs-dot')",'Opening the conversation clears its local unread marker');
  receipts.push({composer:'draft retained across Settings; IME does not submit; new DM activity sorts; local unread clears'});
+ // The actual lazy browser surface must share horizontal space with chat in both themes.
+ for (const theme of ['light','dark']) for (const width of [1280,1100,900,720,700]) {
+  await navigate({theme,width});
+  await evaluate("window.__HARA_SHELL_FIXTURE__.model.setDraft('Right panel draft')");
+  await click('.hs-head .hs-ghost');await ready("!!document.querySelector('.hs-browser-address')",'Browser panel must mount');
+  const measurePanel=()=>evaluate("(()=>{const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom}};return {chat:box('.hs-chat'),panel:box('.hs-browser'),composer:box('.hs-field'),scrollWidth:document.documentElement.scrollWidth,viewport:innerWidth}})()");
+  for (const expanded of [false,true]) {
+   if (expanded) await click('.hs-browser-head [aria-pressed]');
+   const bounds=await measurePanel();assert.ok(bounds.chat.width>=339,JSON.stringify(bounds));assert.ok(bounds.panel.width>=259,JSON.stringify(bounds));
+   assert.ok(bounds.chat.right<=bounds.panel.left+1,JSON.stringify(bounds));assert.ok(bounds.panel.right<=width+1,JSON.stringify(bounds));
+   assert.ok(bounds.scrollWidth<=width,JSON.stringify(bounds));assert.ok(await evaluate("document.querySelector('.hs-ai .t').getBoundingClientRect().width>=80"),'Approval text must retain a readable width');assert.equal(await evaluate("document.querySelector('textarea').value"),'Right panel draft');
+   if ([1280,900,720].includes(width)&&!expanded) await capture(`browser-${width}-${theme}`);
+   if (width===1280&&expanded) await capture(`browser-expanded-${theme}`);
+  }
+  await evaluate("window.__HARA_SHELL_FIXTURE__.model.selectWorkspace('B')");await settled();assert.equal(await evaluate("!!document.querySelector('.hs-browser')"),false);
+  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.some(row=>row.method==='workspace.session.send'||row.method==='workspace.approval.respond')"),false);
+  receipts.push({theme,width,browser:'right-side sibling; expand keeps chat/composer visible; draft retained; scoped teardown; no execution'});
+ }
+ await navigate();await click('.hs-head .hs-ghost');await ready("!!document.querySelector('.hs-browser-address')",'Browser URL form must mount');
+ const preview=new URL('test/fixtures/browser-panel-preview.html',base).href;
+ await evaluate(`(()=>{const input=document.querySelector('.hs-browser-address input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(preview)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);await settled();
+ await click('.hs-browser-address [type=submit]');await ready("!!document.querySelector('.hs-browser iframe')",'Local preview iframe must load');
+ assert.equal(await evaluate("document.querySelector('.hs-browser iframe').getAttribute('sandbox')"),'allow-scripts allow-forms allow-popups');
+ await capture('browser-local-preview');await click('.hs-browser-head button:last-child');assert.equal(await evaluate("!!document.querySelector('.hs-browser')"),false);
+ receipts.push({browser:'explicit local iframe loads with opaque sandbox, close restores chat'});
+ for (const locale of ['en','zh-Hans','zh-Hant']) {
+  await navigate({scenario:'native-settings',locale});await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Independent settings must load');
+  assert.equal(await evaluate("document.querySelector('.wss-app').getAttribute('lang')"),locale);
+  const geometry=await evaluate("(()=>{const nav=document.querySelector('.wss-nav').getBoundingClientRect(),main=document.querySelector('.wss-main').getBoundingClientRect();return {navRight:nav.right,mainLeft:main.left,mainWidth:main.width}})()");
+  assert.ok(geometry.navRight<=geometry.mainLeft+1,JSON.stringify(geometry));assert.ok(geometry.mainWidth>500,JSON.stringify(geometry));
+  await evaluate("Array.from(document.querySelectorAll('.wss-nav nav>button')).find(button=>/Appearance|外观|外觀/.test(button.textContent)).click()");await settled();
+  assert.equal(await evaluate("!!document.querySelector('select option[value=zh-Hant]')"),true);
+  await capture(`native-settings-${locale}`);await click('.wss-back');await ready("!!document.querySelector('.hs-field textarea')",'Returning from settings must preserve main chat');
+  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.model.getSnapshot().workspaceId"),'A');
+  receipts.push({locale,settings:'independent RPC model; full-window layout; language selector; main chat scope retained'});
+ }
  await navigate({scenario:'partial'});assert.equal(await evaluate("!!document.querySelector('.hs-overview-notice[role=status]')"),true);
  await click('.hs-dm');await ready("!!document.querySelector('[data-overview-incomplete]')",'Incomplete counts must remain visible in colleague conversations');
  await navigate({scenario:'legacy'});await click('.hs-dm');assert.equal(await evaluate("document.querySelectorAll('.hs-msg.cont').length"),0);
@@ -206,7 +243,7 @@ try{
  await navigate({scenario:'tasks'});assert.equal(await evaluate('location.hash'),'#colleagues/tasks');
  assert.equal(errors.length,0,JSON.stringify(errors));completed=true;
  writeFileSync(join(output,'browser-report.json'),JSON.stringify({ok:true,receipts,errors},null,2)+'\n',{mode:0o600});
- process.stdout.write(JSON.stringify({ok:true,checks:receipts.length,screenshots:13,output})+'\n');
+ process.stdout.write(JSON.stringify({ok:true,checks:receipts.length,screenshots,output})+'\n');
 }catch(error){
  try{await capture('failure');writeFileSync(join(output,'failure.json'),JSON.stringify({error:String(error),errors,diagnostic:await evaluate('({url:location.href,active:document.activeElement?.outerHTML.slice(0,1500),text:document.body.innerText.slice(0,2000)})')},null,2)+'\n',{mode:0o600});}catch{}
  throw error;

@@ -5,12 +5,13 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(windows)]
 use tauri::Manager;
+use tauri_plugin_updater::UpdaterExt;
 
 #[cfg(test)]
 mod brand_asset_tests;
 mod command_line_probe;
+mod update_channel;
 #[cfg(windows)]
 mod windows_process;
 
@@ -148,6 +149,39 @@ fn macos_updater_target(os: &str, arch: &str) -> Option<&'static str> {
 fn desktop_updater_target() -> Option<&'static str> {
     macos_updater_target(std::env::consts::OS, std::env::consts::ARCH)
 }
+
+#[tauri::command]
+fn desktop_update_info() -> serde_json::Value {
+    serde_json::json!({ "desktop": env!("CARGO_PKG_VERSION"), "engine": BUNDLED_CLI_VERSION.trim(), "channel": if LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) { "local-candidate" } else { update_channel::channel() }, "arch": std::env::consts::ARCH, "isolatedCandidate": LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) })
+}
+
+fn effective_update_endpoints() -> Result<Vec<String>, String> {
+    #[cfg(debug_assertions)]
+    if let Ok(value) = std::env::var("HARA_DESKTOP_UPDATER_TEST_ENDPOINT") {
+        return Ok(vec![update_channel::test_endpoint(&value)?]);
+    }
+    update_channel::endpoints(update_channel::channel())
+}
+
+#[tauri::command]
+async fn desktop_check_update<R: tauri::Runtime>(webview: tauri::Webview<R>) -> Result<Option<serde_json::Value>, String> {
+    if LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) { return Err("Local candidate cannot install public updates".into()); }
+    let urls = effective_update_endpoints()?.into_iter().map(|value| tauri::Url::parse(&value).map_err(|_| "Invalid updater endpoint".to_string())).collect::<Result<Vec<_>, _>>()?;
+    let mut builder = webview.updater_builder().endpoints(urls).map_err(|_| "Hara update endpoint unavailable".to_string())?
+        .timeout(std::time::Duration::from_secs(20));
+    if let Some(target) = desktop_updater_target() { builder = builder.target(target); }
+    let updater = builder.build().map_err(|_| "Hara updater unavailable".to_string())?;
+    let update = updater.check().await.map_err(|_| "Hara update check failed; current version remains usable".to_string())?;
+    Ok(update.map(|update| {
+        let current_version = update.current_version.clone(); let version = update.version.clone();
+        let body = update.body.clone(); let date = update.date.map(|date| date.to_string()); let raw_json = update.raw_json.clone();
+        let rid = webview.resources_table().add(update);
+        serde_json::json!({ "rid": rid, "currentVersion": current_version, "version": version, "body": body, "date": date, "rawJson": raw_json })
+    }))
+}
+
+#[tauri::command]
+fn desktop_restart_for_update<R: tauri::Runtime>(app: tauri::AppHandle<R>) { app.restart(); }
 
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -493,8 +527,10 @@ fn offscreen_window_recovery(
     } else {
         (window.width, window.height)
     };
-    let width = requested_width.min(target.rect.width);
-    let height = requested_height.min(target.rect.height);
+    // Persisted dimensions may be zero, huge, or saved at a different display scale. Keep
+    // recovery within this display, including the case where its work area is below our minimum.
+    let width = requested_width.clamp(minimum_width.min(target.rect.width), target.rect.width);
+    let height = requested_height.clamp(minimum_height.min(target.rect.height), target.rect.height);
     let x = i64::from(target.rect.x) + i64::from(target.rect.width.saturating_sub(width) / 2);
     let y = i64::from(target.rect.y) + i64::from(target.rect.height.saturating_sub(height) / 2);
 
@@ -504,6 +540,21 @@ fn offscreen_window_recovery(
         width,
         height,
     })
+}
+
+/// Global physical coordinates from mixed-DPI monitors can overlap even when the native window
+/// is on a different display. Its actual current monitor/scale is authoritative, not an area tie.
+fn main_window_recovery(
+    window: WindowRect,
+    work_areas: &[DisplayWorkArea],
+    primary_work_area: Option<DisplayWorkArea>,
+    current_work_area: Option<DisplayWorkArea>,
+) -> Option<WindowRect> {
+    if let Some(current) = current_work_area.filter(|area| area.rect.has_area()) {
+        offscreen_window_recovery(window, &[current], Some(current))
+    } else {
+        offscreen_window_recovery(window, work_areas, primary_work_area)
+    }
 }
 
 /// Grow the main window for a side-by-side work object without covering the primary workbench.
@@ -619,7 +670,35 @@ fn recover_main_window_if_offscreen<R: tauri::Runtime>(
         }
     });
 
-    let Some(recovered) = offscreen_window_recovery(current, &work_areas, primary_work_area) else {
+    let current_scale = window.scale_factor()?;
+    let current_work_area = window.current_monitor()?.map(|monitor| {
+        let area = monitor.work_area();
+        DisplayWorkArea {
+            rect: WindowRect {
+                x: area.position.x,
+                y: area.position.y,
+                width: area.size.width,
+                height: area.size.height,
+            },
+            scale_factor: current_scale,
+        }
+    });
+    // Reapply native constraints AFTER the state plugin has restored its cached physical size.
+    // A constraint created on another display can otherwise keep the old scale. A genuinely small
+    // display remains usable: cap the minimum to its work area instead of forcing it off-screen.
+    if let Some(target) = current_work_area
+        .or(primary_work_area)
+        .or_else(|| work_areas.first().copied())
+        .filter(|area| area.rect.has_area())
+    {
+        window.set_min_size(Some(tauri::PhysicalSize::new(
+            logical_to_physical_dimension(MIN_MAIN_WINDOW_WIDTH, target.scale_factor)
+                .min(target.rect.width),
+            logical_to_physical_dimension(MIN_MAIN_WINDOW_HEIGHT, target.scale_factor)
+                .min(target.rect.height),
+        )))?;
+    }
+    let Some(recovered) = main_window_recovery(current, &work_areas, primary_work_area, current_work_area) else {
         return Ok(false);
     };
 
@@ -656,7 +735,8 @@ fn create_main_window<R: tauri::Runtime>(
         .cloned()
         .ok_or_else(|| "main window configuration is missing".to_string())?;
     let builder = tauri::WebviewWindowBuilder::from_config(app, &config)
-        .map_err(|error| format!("prepare main window: {error}"))?;
+        .map_err(|error| format!("prepare main window: {error}"))?
+        .min_inner_size(f64::from(MIN_MAIN_WINDOW_WIDTH), f64::from(MIN_MAIN_WINDOW_HEIGHT));
     #[cfg(windows)]
     let builder = if software_renderer {
         let data_directory = app
@@ -1248,6 +1328,63 @@ fn workspace_connection_at(root: &Path) -> Result<WorkspaceDevConnection, String
 }
 
 struct OwnedWorkspaceStartup { root: PathBuf, child: std::process::Child }
+
+// Read-only discovery roots belong to the OS account, not the data/SDK HOME or bundle identifier.
+// getpwuid_r is deliberate: NSHomeDirectory/os::homedir may reflect an isolated process HOME.
+#[cfg(unix)]
+fn os_account_identity() -> Result<(PathBuf, Option<std::ffi::OsString>), String> {
+    use std::os::unix::ffi::OsStrExt;
+    let mut record: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    let mut buffer = vec![0u8; 65536];
+    let code = unsafe { libc::getpwuid_r(libc::geteuid(), &mut record, buffer.as_mut_ptr().cast(), buffer.len(), &mut result) };
+    if code != 0 || result.is_null() || record.pw_dir.is_null() { return Err("OS account Home unavailable; no data-Home fallback".into()); }
+    let home = PathBuf::from(std::ffi::OsStr::from_bytes(unsafe { std::ffi::CStr::from_ptr(record.pw_dir) }.to_bytes()));
+    if !home.is_absolute() || home.parent().is_none() { return Err("Invalid OS account Home".into()); }
+    let shell = if record.pw_shell.is_null() { None } else { Some(std::ffi::OsStr::from_bytes(unsafe { std::ffi::CStr::from_ptr(record.pw_shell) }.to_bytes()).to_os_string()) };
+    Ok((home, shell))
+}
+#[cfg(not(unix))]
+fn os_account_identity() -> Result<(PathBuf, Option<std::ffi::OsString>), String> {
+    Ok((resolve_user_home(std::env::var_os("HOME").map(PathBuf::from), std::env::var_os("USERPROFILE").map(PathBuf::from), cfg!(windows))?, None))
+}
+static LOCAL_CANDIDATE_ISOLATION: AtomicBool = AtomicBool::new(false);
+const REDESIGN_CANDIDATE_IDENTIFIER: &str = "com.nanhara.hara.redesign-candidate";
+fn redesign_candidate_preflight(identifier: &str) -> Result<(), String> {
+    if identifier != REDESIGN_CANDIDATE_IDENTIFIER { return Ok(()); }
+    let root = std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").map(PathBuf::from)
+        .ok_or("Redesign candidate requires its explicit private Workspace root")?;
+    checked_workspace_dev_directory(&root)?;
+    let temporary = std::env::temp_dir().canonicalize().map_err(|_| "Cannot verify candidate temporary root")?;
+    let home = user_home()?;
+    checked_workspace_dev_directory(&home)?;
+    if !root.starts_with(&temporary) || !home.starts_with(&temporary) || root == home || root.parent() != home.parent() {
+        return Err("Redesign candidate must use its own temporary Workspace Home".into());
+    }
+    let (os_home, _) = os_account_identity()?;
+    legacy_source_home(&os_home, false, true, std::env::var_os("HARA_DESKTOP_LEGACY_SOURCE_HOME").map(PathBuf::from))?;
+    Ok(())
+}
+
+fn legacy_source_home(os_home: &Path, debug: bool, isolated_candidate: bool, requested: Option<PathBuf>) -> Result<PathBuf, String> {
+    // A release-format local candidate with an explicit fixture root must NEVER discover the
+    // real account's ~/.hara. Ordinary production builds still ignore arbitrary source overrides.
+    if isolated_candidate {
+        let source = requested.ok_or("Isolated candidate requires an explicit legacy fixture source")?;
+        checked_workspace_dev_directory(&source)?;
+        let temporary = std::env::temp_dir().canonicalize().map_err(|_| "Cannot verify candidate fixture root")?;
+        if source == os_home || !source.starts_with(&temporary) { return Err("Candidate legacy source must be a private temporary fixture".into()); }
+        let marker: serde_json::Value = serde_json::from_str(&read_private_native_document_at(&source.join(".hara/local-inheritance-fixture-v1.json"))?)
+            .map_err(|_| "Invalid candidate legacy source fixture marker")?;
+        if marker.get("schemaVersion").and_then(|v| v.as_u64()) != Some(1)
+            || marker.get("kind").and_then(|v| v.as_str()) != Some("synthetic-source") {
+            return Err("Candidate legacy source fixture marker required".into());
+        }
+        return Ok(source);
+    }
+    if debug { if let Some(source) = requested { checked_workspace_dev_directory(&source)?; return Ok(source); } }
+    Ok(os_home.to_path_buf())
+}
 // Outcome-unknown startup is retained. Retrying attachment must not spawn a second Core.
 static WORKSPACE_START_LOCK: std::sync::Mutex<Option<OwnedWorkspaceStartup>> = std::sync::Mutex::new(None);
 
@@ -1294,9 +1431,15 @@ fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
     let search_path = std::env::var_os("PATH"); let system_root = std::env::var_os("SystemRoot");
     command.env_clear().env("HOME", root.join("home")).env("USERPROFILE", root.join("home"))
         .env("HARA_UPDATE_CHECK", "0").env("NO_COLOR", "1");
-    // Host-only discovery/import origin. It is never an SDK HOME or a renderer-selected path.
+    // Writes remain in the selected stable data Home; the separate sources are read-only and are
+    // never renderer parameters. A debug fixture can supply a sanitized legacy-copy Home.
     command.env("HARA_WORKSPACE_HOST_HOME", user_home()?);
-    if let Some(shell) = std::env::var_os("SHELL") { command.env("HARA_WORKSPACE_HOST_SHELL", shell); }
+    let (os_home, shell) = os_account_identity()?;
+    let isolated = LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst);
+    let source = legacy_source_home(&os_home, cfg!(debug_assertions), isolated, std::env::var_os("HARA_DESKTOP_LEGACY_SOURCE_HOME").map(PathBuf::from))?;
+    command.env("HARA_WORKSPACE_DISCOVERY_HOME", if isolated { &source } else { &os_home });
+    command.env("HARA_WORKSPACE_LEGACY_SOURCE_HOME", source);
+    if let Some(shell) = shell { command.env("HARA_WORKSPACE_HOST_SHELL", shell); }
     if let Some(value) = search_path { command.env("PATH", value); }
     if let Some(value) = system_root { command.env("SystemRoot", value); }
     command.args(["workspace", "serve", "--root"]).arg(&root).args(["--port", "0"])
@@ -3471,7 +3614,18 @@ fn release_updater_endpoints(config: &tauri::utils::config::Config) -> Result<Ve
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let context = tauri::generate_context!();
+    let mut context = tauri::generate_context!();
+    // Development-only signed fixture: production ignores these variables and embeds the one
+    // existing public key. No private signing material is ever accepted by the native app.
+    #[cfg(debug_assertions)]
+    if std::env::var("HARA_DESKTOP_UPDATER_TEST_ENDPOINT").is_ok() {
+        if effective_update_endpoints().is_err() { eprintln!("Invalid local updater fixture"); return; }
+        let Ok(pubkey) = std::env::var("HARA_DESKTOP_UPDATER_TEST_PUBKEY") else { eprintln!("Missing fixture public key"); return; };
+        if let Some(value) = context.config_mut().plugins.0.get_mut("updater") {
+            value["pubkey"] = serde_json::json!(pubkey);
+            value["dangerousInsecureTransportProtocol"] = serde_json::json!(true);
+        }
+    }
     if workspace_lab_preflight(
         &context.config().identifier,
         cfg!(debug_assertions),
@@ -3487,22 +3641,30 @@ pub fn run() {
     // runtime config is architecture-safe; searching Mach-O/PE/ELF bytes is not, because linkers may
     // split or transform string data without changing the value Tauri reconstructs at runtime.
     if std::env::args_os().any(|arg| arg == UPDATER_ENDPOINT_SMOKE_ARG) {
-        let endpoints = release_updater_endpoints(context.config())
+        let configured = release_updater_endpoints(context.config())
             .expect("release updater endpoint diagnostics require valid generated configuration");
-        let expected = vec![
+        let expected_config = vec![
             FIRST_PARTY_UPDATER_ENDPOINT.to_string(),
             GITHUB_UPDATER_ENDPOINT.to_string(),
         ];
-        if endpoints != expected {
+        if configured != expected_config {
             eprintln!("generated updater endpoints do not match the release contract");
             std::process::exit(2);
         }
+        let endpoints = update_channel::endpoints(update_channel::channel()).expect("valid update channel");
         println!(
             "{}",
             serde_json::to_string(&endpoints)
                 .expect("release updater endpoints must serialize as JSON")
         );
         return;
+    }
+
+    // Keep the plugin's own check API on the same channel too. This is in-memory build-channel
+    // routing, not a new public key or a user-editable endpoint in production configuration.
+    let Ok(endpoints) = effective_update_endpoints() else { eprintln!("Invalid Hara update routing"); return; };
+    if let Some(updater) = context.config_mut().plugins.0.get_mut("updater") {
+        updater["endpoints"] = serde_json::json!(endpoints);
     }
 
     // Tauri's Windows updater intentionally persists its installer directory before exiting to let
@@ -3521,6 +3683,10 @@ pub fn run() {
                 cleanup.failed_entries, cleanup.scan_complete
             );
         }
+    }
+
+    if let Err(error) = redesign_candidate_preflight(&context.config().identifier) {
+        eprintln!("{error}; candidate was not started"); return;
     }
 
     tauri::Builder::default()
@@ -3546,6 +3712,8 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            LOCAL_CANDIDATE_ISOLATION.store((app.config().identifier == "com.nanhara.hara.workspace-v1-candidate" || app.config().identifier == REDESIGN_CANDIDATE_IDENTIFIER)
+                && std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").is_some(), Ordering::SeqCst);
             if let Err(error) = initialize_crash_tracking(app.handle()) {
                 eprintln!("Hara crash tracking could not start: {error}");
             }
@@ -3572,6 +3740,9 @@ pub fn run() {
             inspect_desktop_update_storage,
             clean_desktop_update_storage,
             desktop_updater_target,
+            desktop_update_info,
+            desktop_check_update,
+            desktop_restart_for_update,
             classify_attachment_paths,
             write_temp_image,
             read_presentation_image,
@@ -4145,6 +4316,29 @@ mod attachment_path_tests {
 #[cfg(test)]
 mod native_tests {
     use super::*;
+
+    #[test]
+    fn discovery_identity_and_legacy_copy_are_independent_of_writable_data_home() {
+        let (home, _) = os_account_identity().unwrap();
+        assert!(home.is_absolute()); assert!(home.parent().is_some());
+        // Release builds ignore a fixture copy; debug validates it before any source read.
+        assert_eq!(legacy_source_home(&home, false, false, Some(PathBuf::from("/missing-fixture"))).unwrap(), home);
+        assert!(legacy_source_home(&home, true, false, Some(PathBuf::from("/missing-fixture"))).is_err());
+        let source = std::env::temp_dir().canonicalize().unwrap().join(format!("hara-discovery-source-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir(&source).unwrap();
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).unwrap(); }
+        assert_eq!(legacy_source_home(&home, true, false, Some(source.clone())).unwrap(), source);
+        assert!(legacy_source_home(&home, false, true, None).is_err());
+        assert!(legacy_source_home(&home, false, true, Some(home.clone())).is_err());
+        assert!(legacy_source_home(&home, false, true, Some(source.clone())).is_err());
+        fs::create_dir(source.join(".hara")).unwrap();
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(source.join(".hara"), fs::Permissions::from_mode(0o700)).unwrap(); }
+        let marker = source.join(".hara/local-inheritance-fixture-v1.json");
+        fs::write(&marker, r#"{"schemaVersion":1,"kind":"synthetic-source"}"#).unwrap();
+        #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&marker, fs::Permissions::from_mode(0o600)).unwrap(); }
+        assert_eq!(legacy_source_home(&home, false, true, Some(source.clone())).unwrap(), source);
+        fs::remove_dir_all(source).unwrap();
+    }
 
     #[test]
     fn workspace_formal_entry_is_default_and_rollback_is_explicit() {
@@ -5346,6 +5540,55 @@ mod native_tests {
                 height: DEFAULT_MAIN_WINDOW_HEIGHT * 2,
             })
         );
+    }
+
+    #[test]
+    fn cold_restart_half_size_uses_the_native_current_monitor_not_false_overlap() {
+        let retina = DisplayWorkArea {
+            rect: WindowRect { x: 0, y: 48, width: 3840, height: 2112 },
+            scale_factor: 2.0,
+        };
+        let external = unscaled_work_area(WindowRect {
+            x: 1920, y: 30, width: 2560, height: 1050,
+        });
+        // Captured failing state: these physical values look valid on the 1x display, but
+        // the native window is actually 550x380 points on the Retina display.
+        let stale = WindowRect { x: 2650, y: 104, width: 1100, height: 760 };
+        assert_eq!(offscreen_window_recovery(stale, &[retina, external], Some(retina)), None);
+        let fixed = main_window_recovery(stale, &[retina, external], Some(retina), Some(retina)).unwrap();
+        assert_eq!((fixed.width, fixed.height), (2200, 1520));
+        assert!(fixed.width >= MIN_MAIN_WINDOW_WIDTH * 2 && fixed.height >= MIN_MAIN_WINDOW_HEIGHT * 2);
+        assert_eq!(main_window_recovery(fixed, &[retina, external], Some(retina), Some(retina)), None);
+    }
+
+    #[test]
+    fn native_current_display_preserves_valid_external_window_size() {
+        let retina = DisplayWorkArea {
+            rect: WindowRect { x: 0, y: 48, width: 3840, height: 2112 },
+            scale_factor: 2.0,
+        };
+        let external = unscaled_work_area(WindowRect { x: 1920, y: 30, width: 2560, height: 1050 });
+        let normal = WindowRect { x: 2650, y: 104, width: 1100, height: 760 };
+        assert_eq!(main_window_recovery(normal, &[retina, external], Some(retina), Some(external)), None);
+        assert_eq!(main_window_recovery(normal, &[retina, external], Some(retina), None), None);
+    }
+
+    #[test]
+    fn recovery_clamps_zero_and_extreme_dimensions_within_a_small_display() {
+        let small = unscaled_work_area(WindowRect { x: -640, y: 24, width: 640, height: 400 });
+        for (width, height) in [(0, 0), (u32::MAX, 1), (1, u32::MAX), (550, 380)] {
+            let fixed = main_window_recovery(WindowRect { x: i32::MAX, y: i32::MIN, width, height }, &[small], Some(small), Some(small)).unwrap();
+            assert_eq!(fixed, WindowRect { x: -640, y: 24, width: 640, height: 400 });
+        }
+        let invalid = DisplayWorkArea { rect: WindowRect { x: 0, y: 0, width: 0, height: 0 }, scale_factor: 2.0 };
+        assert!(main_window_recovery(WindowRect { x: 0, y: 0, width: 0, height: 0 }, &[], None, Some(invalid)).is_none());
+    }
+
+    #[test]
+    fn logical_minimum_conversion_rejects_nonfinite_or_nonpositive_scales() {
+        for scale in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(logical_to_physical_dimension(MIN_MAIN_WINDOW_WIDTH, scale), MIN_MAIN_WINDOW_WIDTH);
+        }
     }
 
     #[test]

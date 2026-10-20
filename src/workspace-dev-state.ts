@@ -1,8 +1,11 @@
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
 import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
+import type { UpdatePreferences } from "./workspace-updater-state";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T> }
+export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
+export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
-  workspaces: { workspaceId: string; label: string; role: string; active: boolean }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
+  workspaces: { workspaceId: string; label: string; role: string; active: boolean; kind?: "personal" | "team" }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
   identity: { displayName: string; title?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 export interface WorkspaceDevApproval { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
@@ -12,11 +15,12 @@ export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
 export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
   colleagueLimit?: number;
+  inheritance?: WorkspaceInheritanceView;
   agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
   runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string }[];
     operations: { id: string; runtimeId: string; state: string }[] };
   budget?: { maxTokens: number; maxRequests: number; requests: number; inputTokens: number; outputTokens: number; uncertainReservedTokens: number; paused: boolean };
-  connections: { revision: number; defaultConnectionId: string | null; readOnly?: boolean; recovered?: boolean; migrationPending?: boolean; unavailable?: boolean; connections: WorkspaceModelConnection[] };
+  connections: { revision: number; defaultConnectionId: string | null; activeConnectionId?: string | null; readOnly?: boolean; recovered?: boolean; migrationPending?: boolean; unavailable?: boolean; connections: WorkspaceModelConnection[] };
   approvals: WorkspaceDevApproval[]; conversation: { revision: number; state: string; sessionId: string; taskId: string | null; runId: string | null;
     taskState: string | null; objective: string; history: WorkspaceDevMessage[]; pastTaskCount: number; updatedAt?: string; unreadCount?: number;
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };
@@ -29,10 +33,11 @@ export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; wor
   workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string }
 export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
   maxBytes: number; expiresAt: string; target: { platform: string; arch: string }; workspaceId: string; resourceGeneration: string; viewEpoch: number }
-export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; cleanupPending?: boolean }
+export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
 export interface LegacyConnectionPreview { id: string; label: string; provider: "openai" | "anthropic"; baseURL: string; defaultModel: string; keySaved: boolean; source: string }
-export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean }
-export interface WorkspaceFeatureView { revision: number; workspaceId: string; schedules: { id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; enabled: boolean }[]; skills: { id: string; description: string; enabled: boolean; version: string; availableVersion: string; locked: boolean; source: "global" | "private" }[] }
+export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean; executionDetails?: "brief" | "detailed"; collapseDetails?: boolean; updates?: UpdatePreferences }
+export interface WorkspaceFeatureView { revision: number; workspaceId: string; schedules: { id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; enabled: boolean }[]; skills: { id: string; description: string; enabled: boolean; version: string; availableVersion: string; locked: boolean; source: "global" | "private" }[];
+  scheduler?: { schedules: { id: string; nextRunAt: number | null; awaitingHandoff: boolean; lastRun: { state: string; reason: string | null; occurredAt: number } | null }[] } }
 
 export class WorkspaceDevModel {
   private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "" };
@@ -48,11 +53,15 @@ export class WorkspaceDevModel {
   private readonly nonce: () => string;
   private readonly syntheticOnly: boolean;
   private readonly executionMode: string;
-  constructor(rpc: WorkspaceDevRpc, nonce: () => string = () => crypto.randomUUID(), syntheticOnly = true, executionMode = syntheticOnly ? "synthetic" : "ark-real-key") {
-    this.rpc = rpc; this.nonce = nonce; this.syntheticOnly = syntheticOnly; this.executionMode = executionMode;
+  private settingsFactory?: () => Promise<{ model: WorkspaceDevModel; close(): void }>;
+  private readonly settingsOnly: boolean;
+  constructor(rpc: WorkspaceDevRpc, nonce: () => string = () => crypto.randomUUID(), syntheticOnly = true, executionMode = syntheticOnly ? "synthetic" : "ark-real-key", settingsOnly = false) {
+    this.rpc = rpc; this.nonce = nonce; this.syntheticOnly = syntheticOnly; this.executionMode = executionMode; this.settingsOnly = settingsOnly;
   }
   getSnapshot = (): WorkspaceDevView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
+  setSettingsFactory(factory: () => Promise<{ model: WorkspaceDevModel; close(): void }>) { this.settingsFactory = factory; }
+  openSettingsSession() { if (!this.settingsFactory) return Promise.reject(new Error("独立设置连接尚未就绪")); return this.settingsFactory(); }
   private update(next: Partial<WorkspaceDevView>): void { this.view = { ...this.view, ...next }; for (const listener of this.listeners) listener(); }
   private key(snapshot = this.view.workspace): string { return snapshot ? JSON.stringify([snapshot.workspaceId, snapshot.resourceGeneration, snapshot.selectedAgentId]) : ""; }
   private valid(snapshot: WorkspaceDevSnapshot, workspaceId: string, agentId?: string): void {
@@ -64,7 +73,9 @@ export class WorkspaceDevModel {
     if (this.view.workspace && this.view.workspace.resourceGeneration !== snapshot.resourceGeneration) this.epoch++;
     const key = this.key(snapshot), pending = this.pending.get(key);
     this.update({ workspace: snapshot, workspaceId: snapshot.workspaceId, agentId: snapshot.selectedAgentId, roster: snapshot.agents,
-      draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "", syncNotice: "" });
+      draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "",
+      syncNotice: snapshot.inheritance?.state === "pending" ? "舊資料繼承尚未完成，原資料仍保留；舊定時任務沒有交給新版執行。請先檢查遷移狀態，不要重複匯入。"
+        : snapshot.inheritance?.state === "rolled_back" ? "已撤回本次舊資料繼承，原版資料仍保留；不會在重啟後自動重做。" : "" });
   }
   async loadDirectory(): Promise<void> {
     const epoch = this.epoch; const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
@@ -80,7 +91,7 @@ export class WorkspaceDevModel {
       if (directory.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && directory.executionMode !== this.executionMode)) throw new Error("Workspace 模型模式不符。");
       if (!directory.workspaces.some(row => row.workspaceId === workspaceId && row.active)) throw new Error("這個 Workspace 不可用。");
       this.update({ directory });
-      const snapshot = await this.rpc.request<WorkspaceDevSnapshot>("workspace.select", { workspaceId, expectedRevision: directory.revision });
+      const snapshot = await this.rpc.request<WorkspaceDevSnapshot>(this.settingsOnly ? "workspace.settings.select" : "workspace.select", { workspaceId, expectedRevision: directory.revision });
       if (epoch !== this.epoch) return; this.valid(snapshot, workspaceId); this.apply(snapshot);
     } catch (error) { if (epoch === this.epoch) this.update({ loading: false, error: String(error) }); }
   }
@@ -179,6 +190,15 @@ export class WorkspaceDevModel {
   }
   async preferences(): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.get", {}); }
   async savePreference(theme: string, expectedRevision: number): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.set", { theme, expectedRevision }); }
+  async saveDisplayPreference(executionDetails: "brief" | "detailed", collapseDetails: boolean): Promise<WorkspacePreferenceView> {
+    const current = await this.preferences(); return this.rpc.request("workspace.preferences.set", { theme: current.theme, expectedRevision: current.revision, executionDetails, collapseDetails });
+  }
+  async saveUpdatePreferences(updates: UpdatePreferences): Promise<void> {
+    const current = await this.preferences(); await this.rpc.request("workspace.preferences.set", { theme: current.theme, expectedRevision: current.revision, updates });
+  }
+  async activity(): Promise<{ running: number }> { return this.rpc.request("workspace.activity", {}); }
+  async prepareUpdate(): Promise<{ id: string }> { return this.rpc.request("workspace.update.prepare", { approved: true }); }
+  async releaseUpdate(id: string): Promise<void> { await this.rpc.request("workspace.update.release", { id }); }
   async proposeRuntime(runtimeId: string): Promise<RuntimeApprovalCard> {
     const workspace = this.view.workspace; if (!workspace) throw new Error("請先選工作空間"); const epoch = this.epoch;
     const card = await this.rpc.request<Omit<RuntimeApprovalCard, "workspaceId" | "resourceGeneration" | "viewEpoch">>("workspace.runtime.propose",
