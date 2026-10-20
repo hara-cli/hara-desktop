@@ -6,6 +6,7 @@ import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { makeT } from "../src/i18n.ts";
 const base = new URL(process.argv[2] ?? "http://127.0.0.1:54991/");
 if(base.protocol!=="http:" || base.hostname!=="127.0.0.1" || base.pathname!=="/" || base.username || base.password || base.search || base.hash)throw new Error("Use a task-owned IPv4 loopback Vite root");
 if(!process.argv[3])throw new Error("An explicit evidence directory is required");
@@ -81,6 +82,12 @@ async function navigate({width=1280,locale='zh-Hant',theme='light',scenario='hom
   await settled();assert.equal(await evaluate('document.documentElement.dataset.theme'),theme);assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),locale);
 }
 async function click(selector){assert.ok(await evaluate(`!!document.querySelector(${JSON.stringify(selector)})`),`Missing ${selector}`);await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);await settled();}
+async function buttonText(text, scope='.wss-main'){
+ await evaluate(`(()=>{const button=Array.from(document.querySelectorAll(${JSON.stringify(scope+' button')})).find(node=>node.textContent.trim()===${JSON.stringify(text)});if(!button)throw new Error('Missing button: '+${JSON.stringify(text)});button.click();})()`);await settled();
+}
+async function setLocale(locale){await evaluate(`localStorage.setItem('hara.locale',${JSON.stringify(locale)});window.dispatchEvent(new Event('hara:locale-changed'))`);await settled();}
+async function inputValue(selector,value){await evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);await settled();}
+async function settingsFits(){const size=await evaluate("(()=>{const main=document.querySelector('.wss-main');return {viewport:innerWidth,body:document.documentElement.scrollWidth,mainWidth:main.clientWidth,mainScroll:main.scrollWidth,badButtons:Array.from(main.querySelectorAll('button:not(.wss-switch)')).filter(node=>node.getBoundingClientRect().height<31.9).map(node=>node.textContent),badFields:Array.from(main.querySelectorAll('.wsd-connection-form input,.wsd-connection-form select')).filter(node=>node.getBoundingClientRect().height<35.9).map(node=>node.outerHTML.slice(0,160)),inlineLabels:Array.from(main.querySelectorAll('.wsd-connection-form>label')).filter(node=>getComputedStyle(node).display!=='grid').length}})()");assert.ok(size.body<=size.viewport&&size.mainScroll<=size.mainWidth+1,JSON.stringify(size));assert.deepEqual(size.badButtons,[]);assert.deepEqual(size.badFields,[]);assert.equal(size.inlineLabels,0);return size;}
 async function key(key,shift=false){const value={key,code:key,modifiers:shift?8:0,windowsVirtualKeyCode:{Enter:13,Tab:9,Escape:27}[key]??0};await send('Input.dispatchKeyEvent',{type:'keyDown',...value,...(key==='Enter'?{text:'\r'}:{})});await send('Input.dispatchKeyEvent',{type:'keyUp',...value});await settled();}
 async function capture(name){screenshots++;await pause(150);const result=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(result.data,'base64'),{mode:0o600});}
 async function geometry(){return evaluate(`(()=>{
@@ -237,6 +244,65 @@ try{
   assert.equal(await evaluate("Math.round(document.querySelector('.hs-scroll').scrollTop)"),250,'Returning from full-window Settings must retain the chat reading position');
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.model.getSnapshot().workspaceId"),'A');
   receipts.push({locale,settings:'independent RPC model; full-window layout; language selector; main chat scope retained'});
+ }
+ // Settings use the real renderer/model, with in-memory synthetic responses and failed writes only.
+ // Change locale while notices and confirmation cards are already open, preserving user drafts.
+ for(const theme of ['light','dark']) for(const [index,locale] of ['en','zh-Hans','zh-Hant'].entries()){
+  const nextLocale=['en','zh-Hans','zh-Hant'][(index+1)%3], t=makeT(locale), next=makeT(nextLocale);
+  await navigate({scenario:'native-settings',locale,theme});await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Settings i18n fixture must load');
+  await buttonText(t('ws.settings.page.connections'),'.wss-nav nav');
+  await ready("!!document.querySelector('.wsd-legacy-import')",'Legacy metadata must settle without any import');
+  await buttonText(t('ws.connections.import'));await ready("!!document.querySelector('.wss-content [role=dialog]')",'Import confirmation must open');
+  await setLocale(nextLocale);assert.equal(await evaluate("document.querySelector('.wss-content [role=dialog]').getAttribute('aria-label')"),next('ws.connections.confirmImport'));
+  await buttonText(next('ws.cancel'),'.wss-content [role=dialog]');await setLocale(locale);
+  await buttonText(t('ws.connections.edit'));await ready("!!document.querySelector('.wsd-connection-form')",'Blank-key edit form must open');
+  const draft='User draft · 資料与内容';await inputValue('.wsd-connection-form input',draft);
+  await evaluate("window.__HARA_SHELL_FIXTURE__.setFailure('workspace.connection.edit',true);document.querySelector('.wsd-connection-form').requestSubmit()");
+  await ready(`document.querySelector('.wss-main>p[role=alert]')?.textContent===${JSON.stringify(t('ws.connections.editUnknown'))}`,'A failed connection write must use the selected locale');
+  await setLocale(nextLocale);
+  assert.equal(await evaluate("document.querySelector('.wss-main>p[role=alert]').textContent"),next('ws.connections.editUnknown'));
+  assert.equal(await evaluate("document.querySelector('.wsd-connection-form input').value"),draft);
+  assert.equal(await evaluate("document.querySelector('input[type=password]').value"),'');
+  await buttonText(next('ws.settings.page.runtimes'),'.wss-nav nav');
+  await ready("!!document.querySelector('.wss-discard-dialog')",'Dirty settings must retain the leave guard');
+  assert.equal(await evaluate("document.querySelector('#wss-discard-title').textContent"),next('ws.settings.discard.title'));
+  await key('Escape');assert.equal(await evaluate("document.querySelector('.wsd-connection-form input').value"),draft);
+  await buttonText(next('ws.settings.page.runtimes'),'.wss-nav nav');await click('.wss-discard-dialog button:nth-child(2)');
+  await ready(`Array.from(document.querySelectorAll('.wss-content button')).some(node=>node.textContent===${JSON.stringify(next('ws.runtimes.useLocal'))})`,'Local runtime discovery must finish');
+  await buttonText(next('ws.runtimes.useLocal'));await setLocale(locale);
+  assert.equal(await evaluate("document.querySelector('.wss-content [role=dialog]').getAttribute('aria-label')"),t('ws.runtimes.confirmLocal'));
+  await buttonText(t('ws.cancel'),'.wss-content [role=dialog]');
+  await ready(`Array.from(document.querySelectorAll('.wss-content button')).some(node=>node.textContent===${JSON.stringify(t('ws.runtimes.install'))}&&!node.disabled)`,'Missing runtime can be proposed after discovery');
+  await buttonText(t('ws.runtimes.install'));await ready("!!document.querySelector('.wss-content [role=dialog]')",'Runtime installation proposal must open');
+  await setLocale(nextLocale);assert.equal(await evaluate("document.querySelector('.wss-content [role=dialog]').getAttribute('aria-label')"),next('ws.runtimes.confirmInstall'));
+  await settingsFits();await buttonText(next('ws.runtimes.notNow'),'.wss-content [role=dialog]');
+  await ready("!document.querySelector('.wss-content [role=dialog]')",'Runtime rejection must settle without downloading');
+  await buttonText(next('ws.settings.page.skills'),'.wss-nav nav');await ready("!!document.querySelector('.wsd-feature-panel input[role=switch]')",'Scoped skill version must load');
+  await buttonText(next('ws.skills.review'));await setLocale(locale);
+  assert.equal(await evaluate("document.querySelector('.wss-content [role=dialog]').getAttribute('aria-label')"),t('ws.skills.confirmUpdate'));
+  await buttonText(t('ws.cancel'),'.wss-content [role=dialog]');await buttonText(t('ws.skills.edit'));
+  await ready("!!document.querySelector('.wsd-feature-panel textarea')",'Private skill editor must load');
+  await inputValue('.wsd-feature-panel textarea',draft);await setLocale(nextLocale);
+  assert.equal(await evaluate("document.querySelector('.wsd-feature-panel textarea').value"),draft);
+  assert.equal(await evaluate("document.querySelector('.wsd-feature-panel textarea').getAttribute('aria-label')"),next('ws.skills.instructions'));
+  await settingsFits();await capture(`settings-skill-draft-${theme}-${locale}`);await buttonText(next('ws.cancel'),'.wss-content [role=dialog]');
+  await buttonText(next('ws.settings.page.schedules'),'.wss-nav nav');await ready("!!document.querySelector('.wsd-feature-panel input[role=switch]')",'Scoped schedule metadata must load');
+  assert.ok(await evaluate(`document.querySelector('.wss-content').textContent.includes(${JSON.stringify(next('ws.tasks.status.completed'))})`));
+  await buttonText(next('ws.schedules.add'));await ready("!!document.querySelector('.wsd-feature-panel form')",'Schedule draft must open');
+  await inputValue('.wsd-feature-panel form input',draft);await setLocale(locale);
+  assert.equal(await evaluate("document.querySelector('.wsd-feature-panel form input').value"),draft);
+  assert.equal(await evaluate("document.querySelector('.wsd-feature-panel form h3').textContent"),t('ws.schedules.createTitle',{workspace:'My workspace'}));
+  await send('Emulation.setDeviceMetricsOverride',{width:720,height:800,deviceScaleFactor:1,mobile:false});await settled();
+  const layout=await settingsFits();await evaluate("document.querySelector('.wss-main').scrollTo(0,document.querySelector('.wss-main').scrollHeight)");await settled();await capture(`settings-schedule-720-${theme}-${locale}`);
+  await buttonText(t('ws.settings.page.general'),'.wss-nav nav');await ready("!!document.querySelector('.wss-discard-dialog')",'Schedule draft is guarded before navigation');
+  await click('.wss-discard-dialog button:nth-child(2)');await buttonText(t('ws.settings.page.updates'),'.wss-nav nav');
+  await settingsFits();assert.equal(await evaluate("document.querySelector('.wss-updates').getAttribute('aria-label')"),t('ws.settings.page.updates'));
+  const mutations=await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>/workspace\\.(?:connection\\.(?:edit|import|delete|select)|skill\\.fork|schedule\\.(?:save|run|delete)|runtime\\.(?:approve|registerLocal))$/.test(row.method))");
+  assert.equal(mutations.length,2,JSON.stringify(mutations));
+  assert.equal(mutations.filter(row=>row.method==='workspace.connection.edit').length,1,'Failed edit was submitted once');
+  assert.equal(mutations.filter(row=>row.method==='workspace.runtime.approve'&&row.params.approved===false).length,1,'The sole runtime decision is an explicit rejection');
+  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.model.getSnapshot().workspaceId"),'A');
+  receipts.push({theme,locale,nextLocale,settingsI18n:'open notices/cards retranslate; connection/skill/schedule drafts retained; no import/install/schedule/skill mutation; one failed edit; narrow layout',layout});
  }
  await navigate({scenario:'partial'});assert.equal(await evaluate("!!document.querySelector('.hs-overview-notice[role=status]')"),true);
  await click('.hs-dm');await ready("!!document.querySelector('[data-overview-incomplete]')",'Incomplete counts must remain visible in colleague conversations');

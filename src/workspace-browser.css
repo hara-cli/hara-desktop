@@ -6,7 +6,7 @@
 .hs-browser-head .grow { flex:1; min-width:0; }
 .hs-browser-head strong,.hs-browser-head small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hs-browser-head small { margin-top:2px; color:var(--muted); font-size:11px; }
-.hs-browser-address { display:flex; gap:6px; align-items:center; padding:10px; border-bottom:1px solid var(--line); }
+.hs-browser-address { display:flex; flex:0 0 auto; gap:6px; align-items:center; padding:10px; border-bottom:1px solid var(--line); }
 .hs-browser-address input { width:100%; min-width:0; height:32px; padding:0 8px; border:1px solid var(--control); border-radius:var(--r-md); color:var(--ink); background:var(--field); font-size:12px; }
 .hs-browser-address .hs-btn { flex-shrink:0; }
 .hs-browser iframe { width:100%; flex:1; min-height:0; border:0; background:white; }

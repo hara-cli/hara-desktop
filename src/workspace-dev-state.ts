@@ -1,5 +1,5 @@
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
-import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
+import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T> }
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
@@ -61,25 +61,25 @@ export class WorkspaceDevModel {
   getSnapshot = (): WorkspaceDevView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   setSettingsFactory(factory: () => Promise<{ model: WorkspaceDevModel; close(): void }>) { this.settingsFactory = factory; }
-  openSettingsSession() { if (!this.settingsFactory) return Promise.reject(new Error("独立设置连接尚未就绪")); return this.settingsFactory(); }
+  openSettingsSession() { if (!this.settingsFactory) return Promise.reject(new WorkspaceViewError("ws.notice.settingsNotReady")); return this.settingsFactory(); }
   private update(next: Partial<WorkspaceDevView>): void { this.view = { ...this.view, ...next }; for (const listener of this.listeners) listener(); }
   private key(snapshot = this.view.workspace): string { return snapshot ? JSON.stringify([snapshot.workspaceId, snapshot.resourceGeneration, snapshot.selectedAgentId]) : ""; }
   private valid(snapshot: WorkspaceDevSnapshot, workspaceId: string, agentId?: string): void {
     if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== this.executionMode) || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
       || (agentId && snapshot.selectedAgentId !== agentId) || !Array.isArray(snapshot.agents)
-      || !Array.isArray(snapshot.conversation?.history)) throw new Error("Workspace 回應不符合原視圖，已拒絕顯示。");
+      || !Array.isArray(snapshot.conversation?.history)) throw new WorkspaceViewError("ws.notice.invalidView");
   }
   private apply(snapshot: WorkspaceDevSnapshot): void {
     if (this.view.workspace && this.view.workspace.resourceGeneration !== snapshot.resourceGeneration) this.epoch++;
     const key = this.key(snapshot), pending = this.pending.get(key);
     this.update({ workspace: snapshot, workspaceId: snapshot.workspaceId, agentId: snapshot.selectedAgentId, roster: snapshot.agents,
       draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "",
-      syncNotice: snapshot.inheritance?.state === "pending" ? "舊資料繼承尚未完成，原資料仍保留；舊定時任務沒有交給新版執行。請先檢查遷移狀態，不要重複匯入。"
-        : snapshot.inheritance?.state === "rolled_back" ? "已撤回本次舊資料繼承，原版資料仍保留；不會在重啟後自動重做。" : "" });
+      syncNotice: snapshot.inheritance?.state === "pending" ? "ws.notice.inheritancePending"
+        : snapshot.inheritance?.state === "rolled_back" ? "ws.notice.inheritanceRolledBack" : "" });
   }
   async loadDirectory(): Promise<void> {
     const epoch = this.epoch; const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
-    if (directory.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && directory.executionMode !== this.executionMode)) throw new Error("Workspace 模型模式不符；沒有改接其他引擎。");
+    if (directory.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && directory.executionMode !== this.executionMode)) throw new WorkspaceViewError("ws.notice.modeMismatch");
     if (epoch === this.epoch) this.update({ directory });
   }
   async selectWorkspace(workspaceId: string): Promise<void> {
@@ -88,8 +88,8 @@ export class WorkspaceDevModel {
     try {
       const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
       if (epoch !== this.epoch) return;
-      if (directory.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && directory.executionMode !== this.executionMode)) throw new Error("Workspace 模型模式不符。");
-      if (!directory.workspaces.some(row => row.workspaceId === workspaceId && row.active)) throw new Error("這個 Workspace 不可用。");
+      if (directory.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && directory.executionMode !== this.executionMode)) throw new WorkspaceViewError("ws.notice.modeMismatch");
+      if (!directory.workspaces.some(row => row.workspaceId === workspaceId && row.active)) throw new WorkspaceViewError("ws.notice.workspaceUnavailable");
       this.update({ directory });
       const snapshot = await this.rpc.request<WorkspaceDevSnapshot>(this.settingsOnly ? "workspace.settings.select" : "workspace.select", { workspaceId, expectedRevision: directory.revision });
       if (epoch !== this.epoch) return; this.valid(snapshot, workspaceId); this.apply(snapshot);
@@ -116,7 +116,7 @@ export class WorkspaceDevModel {
       const snapshot = await this.rpc.request<WorkspaceDevSnapshot>("workspace.snapshot", { workspaceId, agentId });
       if (epoch !== this.epoch) return; this.valid(snapshot, workspaceId, agentId); this.apply(snapshot);
     } catch (error) { if (epoch === this.epoch) this.update(error instanceof WorkspaceRpcWaitError
-      ? { syncNotice: "正在同步最新狀態；後台任務不會因此重送或被判為失敗。" } : { error: String(error) }); }
+      ? { syncNotice: "ws.notice.syncing" } : { error: String(error) }); }
     finally {
       refreshed();
       if (this.refreshEpoch === epoch) {
@@ -147,13 +147,13 @@ export class WorkspaceDevModel {
     try { await this.rpc.request("workspace.connection.add", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration,
       expectedRevision: workspace.connections.revision, input });
       if (epoch !== this.epoch) return false; await this.refresh(); return true;
-    } catch { if (epoch === this.epoch) this.update({ error: "連接未確認保存，請刷新後核對；不會將密鑰寫入瀏覽器儲存或錯誤記錄。" }); return false; }
+    } catch { if (epoch === this.epoch) this.update({ error: "ws.connections.saveUnknown" }); return false; }
   }
   async workspaceRequest<T>(method: string, extra: Record<string, unknown> = {}): Promise<T> {
     const workspace = this.view.workspace, epoch = this.epoch;
-    if (!workspace) throw new Error("請先選擇工作空間");
+    if (!workspace) throw new WorkspaceViewError("ws.notice.selectWorkspace");
     const value = await this.rpc.request<T>(method, { ...extra, workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration });
-    if (epoch !== this.epoch) throw new Error("原工作空間視圖已切換，未自動重送");
+    if (epoch !== this.epoch) throw new WorkspaceViewError("ws.notice.scopeChanged");
     return value;
   }
   async readOverview(snapshot: WorkspaceDevSnapshot): Promise<{ snapshots: WorkspaceDevSnapshot[]; incomplete: boolean }> {
@@ -172,7 +172,7 @@ export class WorkspaceDevModel {
   async editConnection(connectionId: string, input: Record<string, unknown>): Promise<boolean> {
     const epoch = this.epoch;
     try { await this.workspaceRequest("workspace.connection.edit", { connectionId, input, expectedRevision: this.view.workspace!.connections.revision }); await this.refresh(); return true; }
-    catch { if (epoch === this.epoch) this.update({ error: "連接修改未確認，請刷新核對；沒有自動重送或記錄密鑰。" }); return false; }
+    catch { if (epoch === this.epoch) this.update({ error: "ws.connections.editUnknown" }); return false; }
   }
   async changeConnection(connectionId: string, remove = false): Promise<void> {
     await this.workspaceRequest(remove ? "workspace.connection.delete" : "workspace.connection.select", {
@@ -185,7 +185,7 @@ export class WorkspaceDevModel {
   }
   async detectRuntimes(): Promise<void> { await this.workspaceRequest("workspace.runtime.detect"); await this.refresh(); }
   async registerLocalRuntime(runtimeId: string, fingerprint: string, workspaceId: string, generation: string): Promise<void> {
-    if (this.view.workspaceId !== workspaceId || this.view.workspace?.resourceGeneration !== generation) throw new Error("原本機安裝確認已失效");
+    if (this.view.workspaceId !== workspaceId || this.view.workspace?.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.localConfirmationExpired");
     await this.workspaceRequest("workspace.runtime.registerLocal", { runtimeId, fingerprint, approved: true }); await this.refresh();
   }
   async preferences(): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.get", {}); }
@@ -200,15 +200,15 @@ export class WorkspaceDevModel {
   async prepareUpdate(): Promise<{ id: string }> { return this.rpc.request("workspace.update.prepare", { approved: true }); }
   async releaseUpdate(id: string): Promise<void> { await this.rpc.request("workspace.update.release", { id }); }
   async proposeRuntime(runtimeId: string): Promise<RuntimeApprovalCard> {
-    const workspace = this.view.workspace; if (!workspace) throw new Error("請先選工作空間"); const epoch = this.epoch;
+    const workspace = this.view.workspace; if (!workspace) throw new WorkspaceViewError("ws.notice.selectWorkspace"); const epoch = this.epoch;
     const card = await this.rpc.request<Omit<RuntimeApprovalCard, "workspaceId" | "resourceGeneration" | "viewEpoch">>("workspace.runtime.propose",
       { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration, runtimeId });
-    if (epoch !== this.epoch) throw new Error("原安裝提案的視圖已切換");
+    if (epoch !== this.epoch) throw new WorkspaceViewError("ws.notice.installViewChanged");
     return { ...card, workspaceId: workspace.workspaceId, resourceGeneration: workspace.resourceGeneration, viewEpoch: epoch };
   }
   async approveRuntime(card: RuntimeApprovalCard, approved: boolean): Promise<void> {
     const workspace = this.view.workspace;
-    if (!workspace || workspace.workspaceId !== card.workspaceId || workspace.resourceGeneration !== card.resourceGeneration || card.viewEpoch !== this.epoch) throw new Error("安裝確認不屬於目前空間");
+    if (!workspace || workspace.workspaceId !== card.workspaceId || workspace.resourceGeneration !== card.resourceGeneration || card.viewEpoch !== this.epoch) throw new WorkspaceViewError("ws.notice.installScopeMismatch");
     await this.rpc.request("workspace.runtime.approve", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, proposalId: card.id, approved });
     await this.refresh();
   }
@@ -231,11 +231,11 @@ export class WorkspaceDevModel {
     if (!workspace || !key || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
     const retained = this.pending.get(key);
     if (retained?.state === "unknown" && !retryUnknown) return;
-    if (!workspace.connections.defaultConnectionId) { this.update({ error: this.syntheticOnly ? "請先在這個 Workspace 啟用合成連接。" : "請先在這個 Workspace 配置模型連接。" }); return; }
+    if (!workspace.connections.defaultConnectionId) { this.update({ error: this.syntheticOnly ? "ws.notice.syntheticRequired" : "ws.notice.connectionRequired" }); return; }
     const message = resume ? "/continue" : this.view.draft.trim(); if (!message) return;
     resume ||= message === "/continue";
     if (resume && workspace.conversation.resumeAdmission?.allowed === false) {
-      this.update({ error: "原任務的續跑預算不可用；沒有重跑、增加模型調用或改寫原聊天。請先檢查結果與預算原因。" }); return;
+      this.update({ error: "ws.notice.resumeBudget" }); return;
     }
     const pending: PendingMessage = {
       method: resume ? "workspace.session.resume" : "workspace.session.send", message, state: "sending",
@@ -258,7 +258,7 @@ export class WorkspaceDevModel {
       }
       const unknown: PendingMessage = { ...pending, state: "unknown" }; this.pending.set(key, unknown);
       if (this.key() === key) this.update({ sending: false, pendingUnknown: true, error: "",
-        syncNotice: "尚在確認原請求是否已接收；不會重新發送。" });
+        syncNotice: "ws.notice.acceptancePending" });
       if (error instanceof WorkspaceRpcWaitError) await this.checkReceipt(key, unknown);
     }
   }
@@ -273,20 +273,20 @@ export class WorkspaceDevModel {
         "workspace.session.receipt", { workspaceId, expectedGeneration, agentId, requestId });
       if (this.pending.get(key) !== pending) return;
       if (receipt.workspaceId !== workspaceId || receipt.agentId !== agentId || receipt.resourceGeneration !== expectedGeneration || receipt.requestId !== requestId
-        || !["accepted", "rejected", "unknown"].includes(receipt.state) || (receipt.state === "accepted" && !receipt.runId)) throw new Error("回執不符合原 Workspace／代次／同事／請求，已拒絕套用。");
+        || !["accepted", "rejected", "unknown"].includes(receipt.state) || (receipt.state === "accepted" && !receipt.runId)) throw new WorkspaceViewError("ws.notice.invalidReceipt");
       if (receipt.state === "unknown") {
-        if (this.key() === key) this.update({ syncNotice: "尚未找到可確認的原請求回執；保留原訊息，不自動重送。" }); return;
+        if (this.key() === key) this.update({ syncNotice: "ws.notice.receiptPending" }); return;
       }
       this.pending.delete(key);
       if (receipt.state === "accepted" && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
       if (this.key() === key) {
         this.update({ sending: false, pendingUnknown: false, draft: this.drafts.get(key) ?? "", error: "", syncNotice: "" });
         await this.refresh();
-        if (receipt.state === "rejected" && this.key() === key) this.update({ error: "原請求未獲接納；沒有新增模型調用。請檢查原任務的預算與狀態。" });
+        if (receipt.state === "rejected" && this.key() === key) this.update({ error: "ws.notice.requestRejected" });
       }
     } catch (error) {
       if (this.key() === key && this.pending.get(key) === pending) this.update({ error: error instanceof WorkspaceRpcWaitError ? "" : String(error),
-        syncNotice: "暫未取得原請求回執；訊息保留，不自動重送。" });
+        syncNotice: "ws.notice.receiptUnavailable" });
     }
   }
   async respond(card: WorkspaceDevApproval, approved: boolean): Promise<void> {
@@ -301,7 +301,7 @@ export class WorkspaceDevModel {
       if (epoch === this.epoch) await this.refresh();
     } catch (error) {
       if (epoch !== this.epoch) return;
-      if (error instanceof WorkspaceRpcWaitError) { this.update({ syncNotice: "正在只讀核對確認結果；不會重複提交。" }); await this.refresh(); }
+      if (error instanceof WorkspaceRpcWaitError) { this.update({ syncNotice: "ws.notice.approvalPending" }); await this.refresh(); }
       else this.update({ error: String(error) });
     } finally { this.approvalDecisions.delete(decisionKey); }
   }
@@ -311,7 +311,7 @@ export class WorkspaceDevModel {
       agentId: workspace.selectedAgentId, runId: workspace.conversation.runId }); if (epoch === this.epoch) await this.refresh();
     } catch (error) {
       if (epoch !== this.epoch) return;
-      if (error instanceof WorkspaceRpcWaitError) { this.update({ syncNotice: "正在只讀核對取消狀態；不會重新執行任務。" }); await this.refresh(); }
+      if (error instanceof WorkspaceRpcWaitError) { this.update({ syncNotice: "ws.notice.cancelPending" }); await this.refresh(); }
       else this.update({ error: String(error) });
     }
   }

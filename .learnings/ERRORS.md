@@ -4198,3 +4198,35 @@ Reproduced in the packaged ARM64 candidate dc6c74c / Core 1.0.2 through CUA. A r
 - Evidence: /private/tmp/hara-redesign-native-20261020/scroll-red.log, scroll-green.log
 - Feishu original: om_x100b624017b824accf4319d7816f8d7
 - Pattern-Key: ui.native_acceptance_preserve_scoped_scroll_and_check_readability
+
+
+## [ERR-20261020-REDESIGN-I18N-VERIFICATION] Verify localized state and actual controls
+
+**Logged**: 2026-10-20
+**Priority**: medium
+**Status**: resolved; 776 tests, production build and final 37-case browser gate passed
+**Area**: renderer / verification
+
+- An initial copy replacement overlapped a shorter Chinese action with a longer dialog label.
+  The helper asserted and stopped before writing that file; apply specific replacements first,
+  then use the TypeScript AST and three-language SSR/browser checks to reject residual literals.
+- Node 22 native TypeScript tests need explicit `.ts` extensions on new runtime dictionary imports.
+  A bundled Vite import resolving successfully does not establish native Node test resolution.
+- The first full suite, concurrent with headless Chrome, hit the existing 20ms proxy handshake
+  fixture: HTTP 408 rather than its expected 502. The unchanged targeted deadline test passed
+  after Chrome completed; keep the failure log and use a sequential full-suite gate. Do not
+  change proxy code, widen its timeout or weaken its assertion for this UI task.
+- Passing horizontal-overflow checks did not catch bare inline form fields. Inspect the rendered
+  screenshots, then verify field layout/minimum heights and buttons in both themes and all locales.
+- Removing unused browser overlay CSS exposed an old test that only inspected those dead selectors.
+  Repoint it to the live preview component's CSS, retaining vertical layout, fixed toolbar and flexing
+  iframe assertions. Add the explicit non-shrinking toolbar rule to the live component rather than
+  restoring the retired overlay. Keep test failure output bounded to match booleans.
+- Resolve cross-repo paths with `rg --files` before searching; do not retry guessed zsh globs.
+  Inspect a file's type before a text preview: the retained `screen-state` path is an executable.
+- Feishu's shared helper could not read its existing App Secret inside the filesystem sandbox;
+  the authorized host read succeeded with the same app and exact group. No account, scope,
+  signing lane or credential-store configuration was changed.
+
+Evidence: `/private/tmp/hara-redesign-i18n-20261020/`; final stage report in the Hara workspace inbox.
+Pattern-Key: ui.translate_at_render_and_inspect_form_geometry

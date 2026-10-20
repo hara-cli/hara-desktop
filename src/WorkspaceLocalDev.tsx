@@ -5,6 +5,7 @@ import { ArrowUpRightIcon, ChatBubbleLeftRightIcon, CheckCircleIcon, ChevronRigh
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import HaraLogo from "./mark";
 import { makeT, type Key, type Locale } from "./i18n";
+import { workspaceMessageText } from "./workspace-settings-copy";
 import { WorkspaceDevConnectionClient, type WorkspaceDevConnection } from "./workspace-dev-rpc";
 import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval } from "./workspace-dev-state";
 import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
@@ -205,8 +206,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         {<button className="hs-ghost" aria-label={t("ws.header.browser")} title={t("ws.header.browser")} aria-expanded={browser} aria-controls="workspace-browser-panel" onClick={() => { setBrowser(value => !value); onOpenBrowser?.(); }} disabled={!workspace}><GlobeAltIcon className="hico" />{t("ws.header.browser")}</button>}
         <button className="hs-icon" aria-label={t("ws.settings")} onClick={() => setSettings(true)}><Cog6ToothIcon className="hico" /></button></header>
       {disconnected ? <div className="wsd-notice" role="alert">{t("ws.disconnected")}<button className="hs-btn sec" onClick={onReconnect}>{t("ws.reconnect")}</button></div> : null}
-      {view.error ? <div className="wsd-notice is-error" role="alert">{view.error}</div> : null}
-      {view.syncNotice ? <div className="wsd-notice" role="status">{view.syncNotice}</div> : null}
+      {view.error ? <div className="wsd-notice is-error" role="alert">{workspaceMessageText(t, view.error)}</div> : null}
+      {view.syncNotice ? <div className="wsd-notice" role="status">{workspaceMessageText(t, view.syncNotice)}</div> : null}
       {shell.incomplete && agent?.kind !== "main" ? <div className="wsd-notice" role="status" data-overview-incomplete>{t("ws.tasks.unavailable")}<button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></div> : null}
       <div ref={scroll} className="hs-scroll wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
         {route.section === "colleagues" && workspace ? <ColleaguesPage shell={shell} agents={colleagues} tab={route.tab} setTab={tab => navigate("colleagues", tab)} t={t} openAgent={id => void openAgent(id)} openItem={item => openItem(item)} discuss={() => void discuss()} />

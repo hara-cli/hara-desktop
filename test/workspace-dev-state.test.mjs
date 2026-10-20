@@ -27,13 +27,13 @@ test("empty startup lists only; never selects the first Workspace", async () => 
 });
 test("pending inheritance is visible without claiming deletion, completion or retrying import",async()=>{
   const f=fixture();f.handlers["workspace.select"]=params=>({...snapshot(params.workspaceId),...(params.workspaceId==="A"?{inheritance:{state:"pending",handoff:false}}:{})});await f.ready();
-  assert.match(f.model.getSnapshot().syncNotice,/尚未完成/);assert.match(f.model.getSnapshot().syncNotice,/原資料仍保留/);
+  assert.equal(f.model.getSnapshot().syncNotice,"ws.notice.inheritancePending");
   assert.equal(f.model.getSnapshot().workspace.agents.length,2);assert.equal(f.calls.some(row=>/import|migration/.test(row.method)),false);
   await f.model.selectWorkspace("B");assert.equal(f.model.getSnapshot().workspace.workspaceId,"B");assert.equal(f.model.getSnapshot().syncNotice,"");
 });
 test("rolled-back inheritance explains why automatic restart will not repeat it",async()=>{
   const f=fixture();f.handlers["workspace.select"]=()=>({...snapshot(),inheritance:{state:"rolled_back",handoff:false}});await f.ready();
-  assert.match(f.model.getSnapshot().syncNotice,/撤回/);assert.match(f.model.getSnapshot().syncNotice,/不會/);
+  assert.equal(f.model.getSnapshot().syncNotice,"ws.notice.inheritanceRolledBack");
 });
 test("a delayed directory cannot dispatch a stale Workspace mutation", async () => {
   const f = fixture(), old = defer(); let count = 0;
@@ -120,18 +120,18 @@ test("stale or foreign approval cards never dispatch", async () => {
 test("read-only refresh never sends/resumes; missing connection refuses execution", async () => {
   const f = fixture(); await f.ready(); f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), connections: { revision: 0, defaultConnectionId: null, connections: [] } });
   await f.model.refresh(); f.model.setDraft("hello"); await f.model.send(); await f.model.send(true);
-  assert.equal(f.calls.some(call => call.method.startsWith("workspace.session.")), false); assert.ok(f.model.getSnapshot().error.includes("合成連接"));
+  assert.equal(f.calls.some(call => call.method.startsWith("workspace.session.")), false); assert.equal(f.model.getSnapshot().error,"ws.notice.syntheticRequired");
 });
 test("real mode is bound to native attachment and never accepts a synthetic directory or transcript", async () => {
   const calls = [], handlers = { "workspace.list": () => ({ revision: 1, activeWorkspaceId: null, workspaces: [], syntheticOnly: true }) };
   const rpc = { async request(method, params) { calls.push({ method, params }); return handlers[method](); } };
   const model = new WorkspaceDevModel(rpc, () => "nonce", false);
-  await assert.rejects(model.loadDirectory(), /模式不符/);
+  await assert.rejects(model.loadDirectory(), { messageKey: "ws.notice.modeMismatch" });
   assert.equal(model.getSnapshot().directory, null);
   handlers["workspace.list"] = () => ({ revision: 1, activeWorkspaceId: null, workspaces: [{ workspaceId: "A", active: true }], syntheticOnly: false, executionMode: "ark-real-key" });
   await model.loadDirectory(); handlers["workspace.select"] = () => snapshot();
   await model.selectWorkspace("A"); assert.equal(model.getSnapshot().workspace, null);
-  assert.ok(model.getSnapshot().error.includes("原視圖"));
+  assert.equal(model.getSnapshot().error,"ws.notice.invalidView");
 });
 test("transport ACK expiry reconciles an accepted background run with one read, not a failed task or resend", async () => {
   const f = fixture(); await f.ready(); f.model.setDraft("hello");
@@ -152,7 +152,7 @@ test("read-only refresh expiry retains known running state and uses a neutral sy
   f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "running" } }); await f.model.refresh();
   f.handlers["workspace.snapshot"] = () => { throw new WorkspaceRpcWaitError("workspace.snapshot"); }; await f.model.refresh();
   assert.equal(f.model.getSnapshot().workspace.conversation.state, "running"); assert.equal(f.model.getSnapshot().error, "");
-  assert.match(f.model.getSnapshot().syncNotice, /同步/); assert.equal(f.calls.some(c => c.method.startsWith("workspace.session.")), false);
+  assert.equal(f.model.getSnapshot().syncNotice, "ws.notice.syncing"); assert.equal(f.calls.some(c => c.method.startsWith("workspace.session.")), false);
   f.handlers["workspace.snapshot"] = () => snapshot(); await f.model.refresh(); assert.equal(f.model.getSnapshot().syncNotice, "");
 });
 test("unknown receipt and repeated verification never send or auto-resume again", async () => {
@@ -178,7 +178,7 @@ test("exhausted resume button/typed continue has no mutation and startup reads n
   f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked", resumeAdmission: { allowed: false, reason: "run_tokens" } } });
   await f.model.refresh(); await f.model.send(true); f.model.setDraft("/continue"); await f.model.send();
   assert.equal(f.calls.some(c => c.method.startsWith("workspace.session.")), false);
-  assert.match(f.model.getSnapshot().error, /預算/);
+  assert.equal(f.model.getSnapshot().error, "ws.notice.resumeBudget");
 });
 test("explicit server refusal is not marked unknown or retried", async () => {
   const f = fixture(); await f.ready(); f.model.setDraft("/continue");

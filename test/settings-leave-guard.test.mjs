@@ -41,9 +41,9 @@ test("saved or unchanged forms navigate immediately; store snapshots and subscri
   f.guard.request({ kind: "close" }); assert.equal(notices, 2); assert.equal(f.actions.length, 2);
 });
 test("browser extension stacks a non-stretching address toolbar above a flexing preview", () => {
-  const css = readFileSync(new URL("../src/workspace-settings.css", import.meta.url), "utf8");
-  assert.match(css, /\.wsd-browser-extension\s+\.extension-dock-body\s*\{[^}]*flex-direction:\s*column/);
-  assert.match(css, /\.wsd-browser-address\s*\{[^}]*flex:\s*0\s+0\s+auto/);
-  assert.match(css, /\.wsd-browser-address\s+button\s*\{[^}]*white-space:\s*nowrap/);
-  assert.match(css, /\.wsd-browser-extension\s+iframe\s*\{[^}]*min-height:\s*0/);
+  const css = readFileSync(new URL("../src/workspace-browser.css", import.meta.url), "utf8");
+  assert.equal(/\.hs-browser\s*\{[^}]*flex-direction:\s*column/.test(css), true, "preview uses a vertical flex container");
+  assert.equal(/\.hs-browser-address\s*\{[^}]*flex:\s*0\s+0\s+auto/.test(css), true, "address toolbar cannot stretch or shrink into the iframe");
+  assert.equal(/\.hs-browser-address\s+\.hs-btn\s*\{[^}]*flex-shrink:\s*0/.test(css), true, "address actions keep their click targets");
+  assert.equal(/\.hs-browser\s+iframe\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0/.test(css), true, "iframe uses the remaining panel height");
 });

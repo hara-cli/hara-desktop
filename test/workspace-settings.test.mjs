@@ -25,10 +25,15 @@ function callback(name, bindings, file="src/WorkspaceSettingsPanels.tsx") {
 const bundle=await build({stdin:{contents:'export {WorkspaceConnections,WorkspaceFeaturePanel,WorkspaceThemeSettings} from "./src/WorkspaceSettingsPanels.tsx"; export {default as Runtime,WorkspaceConnectionForm} from "./src/WorkspaceRuntimeSettings.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],write:false});
 const module={exports:{}};new Function("require","module","exports",bundle.outputFiles[0].text)(require,module,module.exports);
 const {createElement}=require("react"),{renderToStaticMarkup}=require("react-dom/server");
-const render=(name,props)=>renderToStaticMarkup(createElement(module.exports[name],props));
+const render=(name,props)=>{
+ const before=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
+ Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:key=>key==="hara.locale"?"zh-Hant":null}});
+ try{return renderToStaticMarkup(createElement(module.exports[name],props));}
+ finally{if(before)Object.defineProperty(globalThis,"localStorage",before);else delete globalThis.localStorage;}
+};
 test("connection settings render safe metadata and editable blank-key semantics, never a saved key value",()=>{
  const html=render("WorkspaceConnections",{model:{},workspace:snapshot("A")});
- for(const marker of [/目前連接/,/Fixture/,/Key •••••••••••• · 已存入钥匙串/,/新增連接/,/編輯/,/刪除/])assert.ok(marker.test(html),`connection display contract: ${marker}`);
+ for(const marker of [/目前連接/,/Fixture/,/Key •••••••••••• · 已存入鑰匙圈/,/新增連接/,/編輯/,/刪除/])assert.ok(marker.test(html),`connection display contract: ${marker}`);
  assert.doesNotMatch(html,/type="password"/); // edit opens only on the user's action
  const form=render("WorkspaceConnectionForm",{model:{},existing:snapshot("A").connections.connections[0]});
  assert.match(form,/留空不修改/);assert.match(form,/type="password"[^>]*value=""/);assert.doesNotMatch(form,/type="password"[^>]*required/);
@@ -37,17 +42,17 @@ test("pending connection migration is read-only without losing the space or disp
  const workspace=snapshot("A");workspace.connections={revision:0,defaultConnectionId:null,connections:[],readOnly:true,migrationPending:true,recovered:false};
  const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/連接升級待完成/);assert.match(html,/查看歷史與使用空間其他功能/);
  assert.doesNotMatch(html,/未允許或不可用/); // A first-time prefill is not evidence that the OS denied access.
- assert.match(html,/我已確認系統憑據存儲，重試升級/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|資料損壞|設定為唯讀（較新版本/);
+ assert.match(html,/我已確認系統憑據儲存，重試升級/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|資料損壞|設定為唯讀（較新版本/);
  const source=read("src/WorkspaceSettingsPanels.tsx");assert.match(source,/model\.workspaceRequest\("workspace\.connection\.migration\.retry", \{ expectedRevision: workspace\.connections\.revision, approved: true \}\)/);
 });
 test("invalid and pending credential statuses use the same fixed-length mask without key fragments",()=>{
  for(const keyState of ["invalid","pending"]){const workspace=snapshot("A");workspace.connections.connections[0].keyState=keyState;workspace.connections.connections[0].keySaved=keyState!=="pending";
-  const html=render("WorkspaceConnections",{model:{},workspace});assert.equal(html.includes("••••••••••••"),true);assert.equal(html.includes(keyState==="invalid"?"Key 已失效，请更新":"待授权"),true);assert.equal(/last.?4|尾号|prefix/i.test(html),false);}
+  const html=render("WorkspaceConnections",{model:{},workspace});assert.equal(html.includes("••••••••••••"),true);assert.equal(html.includes(keyState==="invalid"?"Key 已失效，請更新":"待授權"),true);assert.equal(/last.?4|尾号|prefix/i.test(html),false);}
 });
 test("a keyless legacy preview is editable but cannot pretend a saved credential or keep a blank key",()=>{
  const workspace=snapshot("A"),connection=workspace.connections.connections[0];connection.keySaved=false;connection.credentialRequired=true;connection.keyState="pending";
  workspace.connections.activeConnectionId=connection.id;workspace.connections.defaultConnectionId=null;
- const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原默认 · 待授权/);assert.match(html,/请编辑添加 Key/);assert.doesNotMatch(html,/已存入钥匙串|連接升級待完成/);
+ const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原預設 · 待授權/);assert.match(html,/請編輯新增 Key/);assert.doesNotMatch(html,/已存入鑰匙圈|連接升級待完成/);
  const form=render("WorkspaceConnectionForm",{model:{},existing:connection});assert.match(form,/type="password"[^>]*required/);assert.doesNotMatch(form,/API Key（留空不修改）/);
 });
 test("unavailable connections and backup-only recovery retain distinct non-destructive notices",()=>{
@@ -77,10 +82,10 @@ test("model mutations pin scope/revision, require explicit approval fields and d
 });
 test("late metadata and failed key writes cannot leak into a different workspace or auto-retry",async()=>{
  const f=fixture();await f.model.selectWorkspace("A");let finish;f.handlers["workspace.connection.legacy"]=()=>new Promise(resolve=>{finish=resolve;});
- const old=f.model.legacyConnections();await f.model.selectWorkspace("B");finish([{id:"old-A"}]);await assert.rejects(old,/原工作空間/);
+ const old=f.model.legacyConnections();await f.model.selectWorkspace("B");finish([{id:"old-A"}]);await assert.rejects(old,{messageKey:"ws.notice.scopeChanged"});
  f.handlers["workspace.connection.edit"]=()=>{throw new Error("fixture-secret-in-provider-error");};assert.equal(await f.model.editConnection("one",{apiKey:"fake"}),false);
  assert(!JSON.stringify(f.model.getSnapshot()).includes("fixture-secret"));assert.equal(f.calls.filter(row=>row.method==="workspace.connection.edit").length,1);
- await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A"),/已失效/);
+ await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A"),{messageKey:"ws.notice.localConfirmationExpired"});
  assert.equal(f.calls.some(row=>row.method==="workspace.runtime.registerLocal"),false);
 });
 test("actual confirmation action fences same-frame repeated clicks; cancellation remains a local card action",async()=>{

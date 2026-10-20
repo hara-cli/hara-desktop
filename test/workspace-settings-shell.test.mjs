@@ -56,7 +56,7 @@ test("system locales retain all three approved language variants", () => {
 test("unsaved edits require confirmation before scope/page/return; passwords never populate saved forms", () => {
   const source = readFileSync(new URL("../src/WorkspaceSettings.tsx", import.meta.url), "utf8"), form = readFileSync(new URL("../src/WorkspaceRuntimeSettings.tsx", import.meta.url), "utf8");
   assert.equal(source.includes("window.confirm"), false, "Native settings cannot rely on optional WebView host dialogs");
-  assert.equal(source.includes('role="alertdialog" aria-modal="true"'), true); assert.equal(source.includes("放弃未保存的修改？"), true);
+  assert.equal(source.includes('role="alertdialog" aria-modal="true"'), true); assert.equal(source.includes('t("ws.settings.discard.title")'), true);
   for (const kind of ["page", "scope", "close", "skill"]) assert.equal(source.includes(`requestLeave({ kind: "${kind}"`), true, kind);
   assert.equal(source.includes("onDirty={leaveGuard.setDirty}"), true); assert.equal(source.includes("leaveGuard.confirm()"), true);
   assert.equal(source.includes('event.key === "Escape"'), true); assert.equal(source.includes('event.key === "Tab"'), true);

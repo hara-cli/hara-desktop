@@ -1,3 +1,5 @@
+import { WORKSPACE_SETTINGS_KEYS } from "./workspace-settings-i18n.ts";
+
 // Canonical shell keys ported verbatim from Dora main-1020/i18n-keys.mjs (2026-10-20).
 export const WORKSPACE_KEYS = [
   [
@@ -388,6 +390,7 @@ export const WORKSPACE_KEYS = [
 
 // Additional live controls and recovery copy; the canonical keys above remain unchanged.
 export const WORKSPACE_EXTRA_KEYS = [
+  ...WORKSPACE_SETTINGS_KEYS,
   ['ws.locale.en', 'English', 'English', 'English'],
   ['ws.locale.hans', '简体中文', '简体中文', '简体中文'],
   ['ws.locale.hant', '繁體中文', '繁體中文', '繁體中文'],
@@ -559,4 +562,26 @@ export const WORKSPACE_EXTRA_KEYS = [
   ["ws.updates.arch", "Architecture", "架构", "架構"],
   ["ws.updates.copy", "Copy version information", "复制版本信息", "複製版本資訊"],
   ["ws.updates.copied", "Copied", "已复制", "已複製"],
+  ["ws.notice.settingsNotReady", "The separate settings connection is not ready yet.", "独立设置连接尚未就绪。", "獨立設定連接尚未就緒。"],
+  ["ws.notice.invalidView", "The workspace response does not match the original view and was not displayed.", "工作空间响应与原视图不符，已拒绝显示。", "工作空間回應與原檢視不符，已拒絕顯示。"],
+  ["ws.notice.inheritancePending", "Legacy data inheritance is incomplete. Original data is retained, and legacy schedules still use the original scheduler. Check migration status before importing again.", "旧资料继承尚未完成，原资料仍保留；旧定时任务没有交给新版执行。请先检查迁移状态，不要重复导入。", "舊資料繼承尚未完成，原資料仍保留；舊定時任務沒有交給新版執行。請先檢查遷移狀態，不要重複匯入。"],
+  ["ws.notice.inheritanceRolledBack", "This legacy data inheritance was rolled back. Original data is retained; restarting will not repeat it automatically.", "已撤回本次旧资料继承，原版资料仍保留；不会在重启后自动重做。", "已撤回本次舊資料繼承，原版資料仍保留；不會在重新啟動後自動重做。"],
+  ["ws.notice.modeMismatch", "The workspace mode does not match. No other engine was selected.", "工作空间模式不符，没有改接其他引擎。", "工作空間模式不符，沒有改接其他引擎。"],
+  ["ws.notice.workspaceUnavailable", "This workspace is unavailable.", "这个工作空间不可用。", "這個工作空間無法使用。"],
+  ["ws.notice.syncing", "Syncing the latest status. Background tasks will not be resent or marked as failed because of this wait.", "正在同步最新状态；后台任务不会因此重送或被判为失败。", "正在同步最新狀態；背景任務不會因此重送或被判為失敗。"],
+  ["ws.notice.selectWorkspace", "Select a workspace first.", "请先选择工作空间。", "請先選擇工作空間。"],
+  ["ws.notice.scopeChanged", "The original workspace view changed. The request was not resent automatically.", "原工作空间视图已切换，未自动重送。", "原工作空間檢視已切換，未自動重送。"],
+  ["ws.notice.localConfirmationExpired", "The original local installation confirmation expired.", "原本机安装确认已失效。", "原本機安裝確認已失效。"],
+  ["ws.notice.installViewChanged", "The original installation proposal’s view changed.", "原安装提案的视图已切换。", "原安裝提案的檢視已切換。"],
+  ["ws.notice.installScopeMismatch", "This installation confirmation does not belong to the current workspace.", "安装确认不属于当前空间。", "安裝確認不屬於目前空間。"],
+  ["ws.notice.syntheticRequired", "Enable a synthetic connection in this workspace first.", "请先在这个工作空间启用合成连接。", "請先在這個工作空間啟用合成連接。"],
+  ["ws.notice.connectionRequired", "Configure a model connection in this workspace first.", "请先在这个工作空间配置模型连接。", "請先在這個工作空間設定模型連接。"],
+  ["ws.notice.resumeBudget", "The original task’s continuation budget is unavailable. Nothing was rerun, no model call was added and the chat is unchanged. Check the outcome and budget reason first.", "原任务的续跑预算不可用；没有重跑、增加模型调用或改写原聊天。请先检查结果与预算原因。", "原任務的續跑預算無法使用；沒有重跑、增加模型呼叫或改寫原聊天。請先檢查結果與預算原因。"],
+  ["ws.notice.acceptancePending", "Checking whether the original request was received. It will not be resent.", "尚在确认原请求是否已接收；不会重新发送。", "尚在確認原請求是否已接收；不會重新傳送。"],
+  ["ws.notice.invalidReceipt", "The receipt does not match the original workspace, generation, colleague or request. It was not applied.", "回执与原工作空间、代次、同事或请求不符，已拒绝应用。", "回執與原工作空間、代次、同事或請求不符，已拒絕套用。"],
+  ["ws.notice.receiptPending", "No confirmed receipt for the original request yet. The message is retained and will not be resent automatically.", "尚未找到可确认的原请求回执；保留原消息，不自动重送。", "尚未找到可確認的原請求回執；保留原訊息，不自動重送。"],
+  ["ws.notice.requestRejected", "The original request was not accepted. No model call was added. Check the original task’s budget and status.", "原请求未获接纳；没有新增模型调用。请检查原任务的预算与状态。", "原請求未獲接納；沒有新增模型呼叫。請檢查原任務的預算與狀態。"],
+  ["ws.notice.receiptUnavailable", "The original request’s receipt is unavailable for now. The message is retained and will not be resent automatically.", "暂未取得原请求回执；消息保留，不自动重送。", "暫未取得原請求回執；訊息保留，不自動重送。"],
+  ["ws.notice.approvalPending", "Checking the confirmation result read-only. It will not be submitted again.", "正在只读核对确认结果；不会重复提交。", "正在唯讀核對確認結果；不會重複提交。"],
+  ["ws.notice.cancelPending", "Checking the cancellation status read-only. The task will not run again.", "正在只读核对取消状态；不会重新执行任务。", "正在唯讀核對取消狀態；不會重新執行任務。"],
 ] as const;
