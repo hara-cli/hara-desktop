@@ -4254,7 +4254,7 @@ Pattern-Key: ui.freeze_new_feedback_source_and_honor_native_review_boundary
 ## [ERR-20261020-NATIVE-SHORT-CHAT-READING] A follow threshold is not the saved reading position
 
 **Logged**: 2026-10-20
-**Status**: native54542a failure and pre-fix browser regression retained; fix pending native reacceptance
+**Status**: native54542a failure retained; native9fcf0b9 GUI reading/draft reacceptance passed; fixture cleanup separately failed
 **Area**: renderer / native verification
 
 - After Jeff explicitly approved opening the unsigned full-bleed candidate, actual CUA main/DM
@@ -4273,3 +4273,34 @@ Pattern-Key: ui.freeze_new_feedback_source_and_honor_native_review_boundary
 Evidence: `/private/tmp/hara-redesign-native-20261020/native-arm64-4/` and
 `/private/tmp/hara-redesign-native-scroll-20261020/before-browser.log`.
 Pattern-Key: ui.settings_resume_exact_viewport_not_follow_threshold
+
+## [ERR-20261020-NATIVE-VAULT-GLOBAL-STATE] A private HOME does not isolate the user Keychain domain
+
+**Logged**: 2026-10-20
+**Priority**: high
+**Status**: unsafe OS-vault fixture removed; offline adapter verified; packaged credential fixture disabled
+**Area**: test infrastructure / macOS credential isolation
+
+- Native ARM64 fixture5 completed the observed UI/protocol checks, then exited1: its final search-list
+  snapshot lacked the dedicated signing Keychain. Do not classify this as an external actor merely
+  because the helper passed a private HOME. The helper itself called user-domain default/search
+  setters, including empty setters during cleanup, followed by delete-keychain. Apple's command
+  implementation routes these to shared Keychain preference/storage APIs; deletion also updates
+  search-list metadata. No per-command snapshot trace exists to attribute the observed change to
+  one individual call. The whole unsafe setup/cleanup sequence is disallowed.
+- Removed all security subprocesses, OS Keychain creation/deletion, metadata reads/writes and
+  restoration. Do not repair Jeff's real global list. A signing-lane release is not permission to
+  reintroduce this fixture. The packaged1.0.2 CLI has no synthetic vault injection entry, so the
+  native credential driver must fail before directory creation, process/server or app launch.
+- The replacement is an independent in-memory CredentialVault adapter accepting only fixed fake
+  fixture values. Its actual pinned1.0.2 Host verification denies child processes and external
+  connections; Pi's internal loopback bridge is still needed. A sandbox EPERM on that bridge is
+  not a credential failure. The authorized host retry passed with zero forbidden attempts.
+- Make cleanup stages independent: one failure must not prevent the mock provider/adapter cleanup
+  or its receipts. Emit an explicit failed overall status without copying private diagnostics.
+- Keep native pixels, protocol behavior, owned cleanup and global configuration safety separate.
+  An in-process Host reopen with an injected memory adapter is not a packaged native cold restart.
+
+Evidence: Hara inbox `2026-10-20-codex-redesign-keychain-fixture-fix-to-hara-1.1.0.md`;
+private `/private/tmp/hara-redesign-offline-20261020/`.
+Pattern-Key: test.never_use_user_keychain_domains_for_synthetic_fixtures

@@ -6,7 +6,11 @@ import { createServer } from "node:http";
 import { spawn, spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { createPrivateTestVault } from "./workspace-native-vault.mjs";
+import { requirePackagedSyntheticCredentialAdapter } from "./workspace-native-vault.mjs";
+import { finishOwnedFixtureCleanup } from "./workspace-native-cleanup.mjs";
+// This gate is deliberately before filesystem changes, subprocesses, servers and app launch.
+// A signing-lane release alone cannot re-enable an unsafe Core credential composition.
+requirePackagedSyntheticCredentialAdapter();
 const [shell, evidence, hold] = process.argv.slice(2);
 const desktop = fileURLToPath(new URL("../", import.meta.url));
 assert.equal(process.platform, "darwin");
@@ -23,8 +27,6 @@ assert.deepEqual(fs.readdirSync(evidence), []);
 const root = join(evidence, "window-workspace"), caller = join(evidence, "app-home");
 for (const directory of [root, caller, join(evidence,"legacy-source"), join(evidence,"legacy-source/.hara")]) fs.mkdirSync(directory,{mode:0o700});
 fs.writeFileSync(join(evidence,"legacy-source/.hara/local-inheritance-fixture-v1.json"), JSON.stringify({schemaVersion:1,kind:"synthetic-source"}), {mode:0o600});
-const privateVault = createPrivateTestVault(caller);
-fs.writeFileSync(join(evidence,"private-test-vault.json"), JSON.stringify(privateVault.receipt), {mode:0o600});
 
 const discovery = join(root, "home/.hara/workspace-runtime/serve-v2.json");
 const hash = path => createHash("sha256").update(fs.readFileSync(path)).digest("hex");
@@ -92,9 +94,6 @@ async function start() {
   assert.equal(fs.realpathSync(shell), shell);
   const marker = JSON.parse(fs.readFileSync(join(evidence, "legacy-source/.hara/local-inheritance-fixture-v1.json")));
   assert.equal(marker.schemaVersion, 1); assert.equal(marker.kind, "synthetic-source");
-  const vault = JSON.parse(fs.readFileSync(join(evidence, "private-test-vault.json")));
-  assert.equal(vault.path, join(caller, "Library/Keychains/synthetic.keychain-db"));
-  assert.equal(vault.onlySyntheticCredentials, true); assert.equal(vault.realUserDefaultAndSearchUnchanged, true);
   app = spawn(shell, [], { env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", HOME: caller, USERPROFILE: caller, TMPDIR: "/private/tmp",
     HARA_DESKTOP_WORKSPACE_ROOT: root, HARA_DESKTOP_LEGACY_SOURCE_HOME: join(evidence, "legacy-source"), HARA_UPDATE_CHECK: "0", NO_COLOR: "1" }, stdio: ["ignore", "pipe", "pipe"] });
   const log = fs.openSync(join(evidence, `window-launch-${launches.length + 1}.log`), "a", 0o600);
@@ -168,7 +167,10 @@ try {
   model=new WorkspaceDevModel(client,undefined,false,"workspace");await model.loadDirectory();await model.selectWorkspace(id);
   assert.equal(hash(artifact),digest);write("native-reconnect.json",{passed:true,requests,artifactPreserved:true,noAutomaticResend:true});
 } finally {
-  fixtureError = undefined; await stop(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
-  write("private-vault-cleanup.json",privateVault.cleanup());
-  write("window-cleanup.json", { ownedWindowAndCoreStopped: !app && !info, mockProviderStopped: true, requests, paidRequests: 0, launches });
+  fixtureError = undefined;
+  await finishOwnedFixtureCleanup([
+    { name: "window-cleanup", run: async () => { await stop(); return { ownedWindowAndCoreStopped: !app && !info, launches }; } },
+    { name: "mock-provider-cleanup", run: async () => { server.closeAllConnections(); await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      return { mockProviderStopped: true, requests, paidRequests: 0 }; } },
+  ], write);
 }

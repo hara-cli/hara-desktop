@@ -1,38 +1,39 @@
-// Test-only OS vault in a fresh private HOME. Never use or enumerate credential items in login.
+// Test-only dependency injection for an in-process Core host. No OS vault or process execution.
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import { join, resolve } from "node:path";
-import { randomBytes } from "node:crypto";
-import { spawnSync } from "node:child_process";
-const SYSTEM_HOME = "/Users/zhujianbo";
-export function createPrivateTestVault(home, execute = spawnSync) {
-  assert(home === resolve(home) && /^\/private\/tmp\/hara-redesign-native-20261020\/native-(arm64|intel)(-[0-9]+)?\/app-home$/.test(home));
-  assert(fs.statSync(home).isDirectory() && !fs.lstatSync(home).isSymbolicLink());
-  const path = join(home, "Library/Keychains/synthetic.keychain-db");
-  const env = { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", HOME: home, USERPROFILE: home, TMPDIR: "/private/tmp" };
-  const call = (args, scoped = true, absent = false) => {
-    const result = execute("/usr/bin/security", args, { env: scoped ? env : { ...env, HOME: SYSTEM_HOME, USERPROFILE: SYSTEM_HOME }, encoding: "utf8", timeout: 10000, stdio: ["ignore", "pipe", "pipe"] });
-    if (absent) { assert.notEqual(result.status, 0, "private Home must have no existing default Keychain"); return ""; }
-    assert.equal(result.status, 0, "private test Keychain operation failed; stop, never use login fallback"); return String(result.stdout ?? "");
-  };
-  const metadata = () => ({ default: call(["default-keychain", "-d", "user"], false), search: call(["list-keychains", "-d", "user"], false) });
-  const before = metadata(); call(["default-keychain", "-d", "user"], true, true);
-  assert(!fs.existsSync(path)); fs.mkdirSync(join(home, "Library/Keychains"), { recursive: true, mode: 0o700 });
-  // security may report success setting the default but cannot persist/read it without this directory.
-  fs.mkdirSync(join(home, "Library/Preferences"), { recursive: true, mode: 0o700 });
-  // Random throwaway password stays in process memory only; no user/signing/updater secret is used.
-  const password = randomBytes(24).toString("hex");
-  call(["create-keychain", "-p", password, path]);
-  call(["set-keychain-settings", "-lut", "600", path]); call(["unlock-keychain", "-p", password, path]);
-  call(["default-keychain", "-d", "user", "-s", path]); call(["list-keychains", "-d", "user", "-s", path]);
-  assert.equal(call(["default-keychain", "-d", "user"]).trim().replaceAll('"', ""), path);
-  const entries = [...call(["list-keychains", "-d", "user"]).matchAll(/"([^"\n]+)"/g)].map(row => row[1]); assert.deepEqual(entries, [path]);
-  assert.deepEqual(metadata(), before, "STOP real user Keychain metadata changed");
-  const receipt = { path, privateHome: home, onlySyntheticCredentials: true, realUserDefaultAndSearchUnchanged: true };
-  return { receipt, cleanup() {
-    call(["lock-keychain", path]); call(["default-keychain", "-d", "user", "-s"]); call(["list-keychains", "-d", "user", "-s"]); call(["delete-keychain", path]);
-    assert(!fs.existsSync(path)); assert.deepEqual(metadata(), before, "STOP real user Keychain metadata changed");
-    return { onlyOwnedSyntheticVaultDeleted: true, realUserDefaultAndSearchUnchanged: true };
-  } };
 
+const SYNTHETIC_VALUES = new Set(["workspace-local-fake-key", "hara-synthetic-local-only"]);
+export const PINNED_CORE = "4e507e7f1595e618527e5c95a1890ae9271615e7";
+
+export function requirePackagedSyntheticCredentialAdapter() {
+  // Core 1.0.2 exposes CredentialVault injection only to its host constructor, not its CLI.
+  // Do not substitute HOME, a temporary OS Keychain, a plaintext file or a different Core.
+  throw new Error("Native credential smoke disabled: packaged Core 1.0.2 has no synthetic credential adapter entry. Stop before fixture creation or app launch; use the offline injected adapter. No OS Keychain operations are allowed.");
+}
+
+export function createSyntheticTestVault() {
+  const values = new Map();
+  let closed = false;
+  const active = () => assert.equal(closed, false, "Synthetic credential adapter is closed");
+  const entry = (ref, value) => {
+    active();
+    assert.equal(typeof ref === "string" && /^[a-zA-Z0-9_.:-]{1,240}$/.test(ref), true, "Invalid synthetic credential reference");
+    assert.equal(SYNTHETIC_VALUES.has(value), true, "Only the fixture's fixed synthetic credentials are accepted");
+  };
+  const adapter = Object.freeze({
+    get(ref) { active(); return values.get(ref); },
+    set(ref, value) { entry(ref, value); values.set(ref, value); },
+    setMany(entries) {
+      active();
+      // Validate the complete batch before changing anything.
+      for (const row of entries) entry(row.ref, row.key);
+      for (const row of entries) values.set(row.ref, row.key);
+    },
+    remove(ref) { active(); values.delete(ref); },
+  });
+  const receipt = Object.freeze({ adapter: "synthetic-memory-v1", onlySyntheticCredentials: true,
+    systemKeychainUsed: false, persistentCredentials: false, packagedCoreInjectionAvailable: false });
+  return Object.freeze({ adapter, receipt, cleanup() {
+    values.clear(); closed = true;
+    return { adapter: receipt.adapter, syntheticCredentialsCleared: true, systemKeychainUsed: false };
+  } });
 }
