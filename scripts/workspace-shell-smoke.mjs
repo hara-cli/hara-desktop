@@ -85,7 +85,10 @@ async function key(key,shift=false){const value={key,code:key,modifiers:shift?8:
 async function capture(name){await pause(150);const result=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(result.data,'base64'),{mode:0o600});}
 async function geometry(){return evaluate(`(()=>{
  const rect=selector=>{const node=document.querySelector(selector);if(!node)return null;const r=node.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,bottom:r.bottom};};
+ const palette=Object.fromEntries(['brand','brand-hover','brand-pressed','brand-soft','brand-text','indicator','text-red','field-ring','control'].map(key=>[key,getComputedStyle(document.querySelector('.wsd-app')).getPropertyValue('--'+key).trim()]));
+ const selected=document.querySelector('.hs-row[aria-current=page]');
  return {viewport:innerWidth,body:document.documentElement.scrollWidth,sidebar:rect('.hs-side'),chat:rect('.hs-chat'),composer:rect('.hs-field'),send:rect('.hs-send'),
+ palette,indicatorColor:selected?getComputedStyle(selected,'::before').backgroundColor:null,
  badTargets:Array.from(document.querySelectorAll('.hs-icon,.hs-sec-a,.hs-send,.hs-sec-t')).filter(node=>{const r=node.getBoundingClientRect();return r.width&&r.height&&(r.width<31.9||r.height<31.9);}).map(node=>node.className),
  dmCount:document.querySelectorAll('.hs-dm').length,focusColor:getComputedStyle(document.querySelector('.wsd-app')).getPropertyValue('--focus').trim()};})()`);}
 async function contrast(){return evaluate(`(()=>{
@@ -109,11 +112,13 @@ try{
  await connect();
  for(const theme of ['light','dark'])for(const scenario of ['home','chat','tasks']){
   await navigate({theme,scenario});const measured=await geometry();assert.ok(measured.body<=measured.viewport,JSON.stringify(measured));assert.deepEqual(measured.badTargets,[]);assert.equal(measured.dmCount,10);
+  assert.deepEqual(measured.palette,theme==='light'?{brand:'#9b2c24','brand-hover':'#85241d','brand-pressed':'#6f1e18','brand-soft':'#f3e2df','brand-text':'#7a2019',indicator:'#9b2c24','text-red':'#9b2c24','field-ring':'#8c8579',control:'#8c8579'}:{brand:'#c03a33','brand-hover':'#a8322c','brand-pressed':'#922b26','brand-soft':'#3a1e1e','brand-text':'#f2aaa3',indicator:'#f08e84','text-red':'#f08e84','field-ring':'#716b62',control:'#716b62'});
+  if(measured.indicatorColor)assert.equal(measured.indicatorColor,theme==='light'?'rgb(155, 44, 36)':'rgb(240, 142, 132)');
   const colors=await contrast();assert.deepEqual(colors.issues,[],`${theme}/${scenario} contrast`);receipts.push({theme,scenario,measured,colors});await capture(`${scenario}-${theme}`);
   if(scenario==='chat'){
    assert.equal(await evaluate("document.querySelectorAll('.hs-msg.cont').length"),1);
    const neutral=await evaluate("(()=>{const input=document.querySelector('.hs-field textarea');input.focus();return {outline:getComputedStyle(input).outlineStyle,shadow:getComputedStyle(input.closest('.hs-field')).boxShadow};})()");
-   assert.equal(neutral.outline,'none');assert.equal(/185, 59, 41|207, 64, 41/.test(neutral.shadow),false);await capture(`composer-focus-${theme}`);
+   assert.equal(neutral.outline,'none');assert.equal(/155, 44, 36|192, 58, 51|185, 59, 41|207, 64, 41/.test(neutral.shadow),false);await capture(`composer-focus-${theme}`);
   }
   if(scenario==='tasks')assert.equal(await evaluate("document.querySelector('.hs-tab-panel').textContent.includes('Archived fixture')"),true);
  }
@@ -124,13 +129,13 @@ try{
   await navigate({theme});await evaluate("window.__HARA_SHELL_FIXTURE__.idle()");await settled();
   await evaluate("window.__HARA_SHELL_FIXTURE__.model.setDraft('A synthetic message ready to send')");await settled();await pause(150);
   const enabled=await evaluate("(()=>{const button=document.querySelector('.hs-send'),s=getComputedStyle(button);return {disabled:button.disabled,background:s.backgroundColor,color:s.color};})()");
-  assert.equal(enabled.disabled,false);assert.equal(enabled.background,theme==='light'?'rgb(185, 59, 41)':'rgb(207, 64, 41)');assert.equal(enabled.color,'rgb(255, 255, 255)');
+  assert.equal(enabled.disabled,false);assert.equal(enabled.background,theme==='light'?'rgb(155, 44, 36)':'rgb(192, 58, 51)');assert.equal(enabled.color,'rgb(255, 255, 255)');
   await capture(`composer-enabled-${theme}`);
   const point=await evaluate("(()=>{const r=document.querySelector('.hs-send').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()");
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});await pause(150);
-  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).backgroundColor"),theme==='light'?'rgb(164, 50, 34)':'rgb(185, 54, 35)');
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).backgroundColor"),theme==='light'?'rgb(133, 36, 29)':'rgb(168, 50, 44)');
   await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,...point});await pause(150);
-  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).backgroundColor"),theme==='light'?'rgb(143, 43, 29)':'rgb(165, 50, 31)');
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).backgroundColor"),theme==='light'?'rgb(111, 30, 24)':'rgb(146, 43, 38)');
   await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,...point});await settled();
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.session.send').length"),1);
   receipts.push({theme,composer:'enabled, hover, pressed and single synthetic send checked'});

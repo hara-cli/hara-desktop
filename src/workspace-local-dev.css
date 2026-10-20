@@ -1,4 +1,4 @@
-/* Live shell structure and scoped recovery controls. Visual tokens and layers are Dora v1.3. */
+/* Live shell structure and scoped recovery controls. Visual tokens and layers follow Dora v1.4 (palette E). */
 .wsd-app { height:100dvh; width:100%; overflow:hidden; position:relative; }
 .wsd-app .hs-frame { width:100%; }
 .hs .grow { flex:1; min-width:0; }

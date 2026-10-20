@@ -1,12 +1,20 @@
-# Main shell v1.3 implementation for the 1.1.0 redesign
+# Main shell v1.4 implementation for the 1.1.0 redesign
 
 This local branch starts at Desktop main `baceda3`. It ports Dora's approved
-`main-1020/workspace-shell-113.css`, including all three layers, and the exact canonical
+`main-1020/workspace-shell-114.css`, including all layout layers and palette E, and the exact canonical
 `i18n-keys.mjs` entries. `workspace-theme.css` retains those layers with dark selectors
 bound to the existing resolved `data-theme`. `workspace-local-dev.css` adapts the live
 components, and `workspace-states.css` loads last. Neither optional `quiet-sec` nor
 `ink-indicator` is enabled. Icons are `@heroicons/react` **2.2.0**, MIT licensed. No
 Metronic source, assets or icons are used.
+
+Jeff's 2026-10-20 10:48 decision makes palette E (oxblood) authoritative. The
+v1.4 colour layer wins over historical values: light brand `#9b2c24`, dark brand
+`#c03a33`, with their matching hover/pressed/soft/text variants. The selected
+indicator is `#9b2c24` / `#f08e84`; the control/focus hairline is `#8c8579` /
+`#716b62`. Neutral ramps, typography, layout, icons and i18n are unchanged.
+`workspace-shell-113.css` and previous v1.3 screenshots are historical references;
+114 is the current source of truth. Keyboard focus stays neutral.
 
 The frontend version and sidecar locks remain the main baseline (`0.1.188` and
 `0.187.1@d54f1b930ba58176b511bdecaaba5903d74521c9`). This is an implementation target,

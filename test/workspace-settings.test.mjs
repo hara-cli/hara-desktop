@@ -92,7 +92,7 @@ test("stable theme RPC is independent of workspace selection, late save uses ser
  const changes=[],busy={current:false};const change=callback("change",{settings:{revision:4,readOnly:false},busy,model:{async savePreference(theme,revision){assert.equal(revision,4);return {theme,revision:5};}},setSettings(){},setPreference:x=>changes.push(x),saveThemePreference:x=>changes.push(x),setNotice(){}});
  await change("dark");assert.deepEqual(changes,["dark","dark"]);assert.equal(busy.current,false);
 });
-test("both v1.3 cascaded palettes meet AA for actual text pairs and neutral keyboard focus",()=>{
+test("both v1.4 cascaded palettes meet AA for text, primary states and control boundaries",()=>{
  const css=read("src/workspace-theme.css"), blocks=[{},{}];
  for(const match of css.replace(/\/\*[^]*?\*\//g,"").matchAll(/([^{}]+)\{([^{}]*)\}/g)){
    const selector=match[1].trim();if(selector!==".hs"&&selector!==':root[data-theme="dark"] .hs')continue;
@@ -103,6 +103,8 @@ test("both v1.3 cascaded palettes meet AA for actual text pairs and neutral keyb
  const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
  for(const colors of blocks){for(const bg of ["paper","surface","sidebar","row-selected"])for(const fg of ["ink","muted"])assert(contrast(colors[fg],colors[bg])>=4.5,`${fg}/${bg} AA`);
  for(const [fg,bg] of [["tag-ink","tag-bg"],["brand-text","brand-soft"],["bubble-ink","bubble"],["mine-ink","mine"],["on-brand","brand"]])assert(contrast(colors[fg],colors[bg])>=4.5,`${fg}/${bg} AA`);
+ for(const bg of ["brand-hover","brand-pressed"])assert(contrast(colors["on-brand"],colors[bg])>=4.5,`primary ${bg} AA`);
+ for(const [fg,bg] of [["field-ring","field-focus"],["control","field"],["indicator","row-selected"],["brand","sidebar"]])assert(contrast(colors[fg],colors[bg])>=3,`${fg}/${bg} control contrast`);
  assert(contrast(colors.focus,colors.surface)>=3);assert.notEqual(colors.focus,colors.brand);}
  const structure=read("src/workspace-local-dev.css")+css;
  for(const selector of ["hs-chat","wsd-settings","wsd-approval","wsd-feature-panel","hs-bub","wsd-modal","textarea"])assert(structure.includes(selector),selector);

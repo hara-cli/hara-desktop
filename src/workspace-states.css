@@ -1,4 +1,4 @@
-/* Load last: preserve v1.3's neutral keyboard/composer focus and red selected indicator. */
+/* Load last: preserve v1.4's neutral focus and palette E selected indicator. */
 .hs :is(button,a,input,select,summary):focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .hs :is(.hs-row,.hs-sec-t,.hs-ai):focus-visible { outline-offset:-2px; }
 .hs .hs-field textarea:focus,.hs .hs-field textarea:focus-visible { outline:none; }
