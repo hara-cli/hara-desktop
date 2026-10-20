@@ -1,0 +1,3 @@
+#!/bin/sh
+# Only the Tauri build subprocess receives this PATH entry. Always execute Apple's tool.
+exec node "$(dirname "$0")/../codesign-explicit-keychain.mjs" "$@"

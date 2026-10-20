@@ -18,9 +18,6 @@ CODESIGN_KEYCHAIN="${HARA_CODESIGN_KEYCHAIN:-$HOME/Library/Keychains/hara-ci-sig
 CODESIGN_PASSWORD_FILE="${HARA_CODESIGN_KEYCHAIN_PASSWORD_FILE:-$HOME/.tauri/hara-codesign-keychain.password}"
 CODESIGN_KEYCHAIN_UNLOCKED=0
 CODESIGN_PROBE_DIR=""
-KEYCHAIN_LIST_CHANGED=0
-ORIGINAL_KEYCHAINS=()
-ORIGINAL_KEYCHAIN_COUNT=0
 SIGNED_BUILD_COMPLETED=0
 TAURI_BUILD_LOG=""
 clear_signing_environment() {
@@ -34,10 +31,6 @@ clear_signing_environment() {
   if [ -n "$CODESIGN_PROBE_DIR" ]; then
     rm -rf "$CODESIGN_PROBE_DIR"
     CODESIGN_PROBE_DIR=""
-  fi
-  if [ "$KEYCHAIN_LIST_CHANGED" = "1" ] && [ "$ORIGINAL_KEYCHAIN_COUNT" -gt 0 ]; then
-    security list-keychains -d user -s "${ORIGINAL_KEYCHAINS[@]}" >/dev/null 2>&1 || true
-    KEYCHAIN_LIST_CHANGED=0
   fi
   if [ "$CODESIGN_KEYCHAIN_UNLOCKED" = "1" ]; then
     security lock-keychain "$CODESIGN_KEYCHAIN" >/dev/null 2>&1 || true
@@ -160,37 +153,8 @@ CODESIGN_PASSWORD="$(tr -d '\r\n' < "$CODESIGN_PASSWORD_FILE")"
 security unlock-keychain -p "$CODESIGN_PASSWORD" "$CODESIGN_KEYCHAIN"
 unset CODESIGN_PASSWORD HARA_CODESIGN_KEYCHAIN_PASSWORD
 CODESIGN_KEYCHAIN_UNLOCKED=1
-security set-keychain-settings -lut 21600 "$CODESIGN_KEYCHAIN"
-
-append_original_keychain() {
-  local candidate="$1"
-  [ -f "$candidate" ] || return 0
-  local existing index
-  for ((index = 0; index < ORIGINAL_KEYCHAIN_COUNT; index += 1)); do
-    existing="${ORIGINAL_KEYCHAINS[$index]}"
-    [ "$existing" = "$candidate" ] && return 0
-  done
-  ORIGINAL_KEYCHAINS[$ORIGINAL_KEYCHAIN_COUNT]="$candidate"
-  ORIGINAL_KEYCHAIN_COUNT=$((ORIGINAL_KEYCHAIN_COUNT + 1))
-}
-
-while IFS= read -r keychain; do
-  keychain="${keychain#*\"}"
-  keychain="${keychain%\"*}"
-  [ -n "$keychain" ] && append_original_keychain "$keychain"
-done < <(security list-keychains -d user)
-
-# Ignore malformed stale search-list entries and retain the normal local keychains when present.
-# This also repairs lists polluted by an earlier incorrectly quoted `security list-keychains -s` call.
-append_original_keychain "$HOME/Library/Keychains/login.keychain-db"
-append_original_keychain "$HOME/Library/Keychains/VIP.UserKeychain.1.0.0-503-db"
-SEARCH_KEYCHAINS=("$CODESIGN_KEYCHAIN")
-for ((index = 0; index < ORIGINAL_KEYCHAIN_COUNT; index += 1)); do
-  keychain="${ORIGINAL_KEYCHAINS[$index]}"
-  [ "$keychain" = "$CODESIGN_KEYCHAIN" ] || SEARCH_KEYCHAINS+=("$keychain")
-done
-security list-keychains -d user -s "${SEARCH_KEYCHAINS[@]}"
-KEYCHAIN_LIST_CHANGED=1
+# No search-list/default/ACL/partition/settings writes. Tauri's codesign subprocess receives
+# an explicit --keychain via the narrowly scoped PATH shim below, even when absent from the list.
 if ! IDENTITIES="$(security find-identity -v -p codesigning "$CODESIGN_KEYCHAIN" 2>&1)"; then
   echo "unable to inspect codesigning identities" >&2
   echo "$IDENTITIES" >&2
@@ -295,9 +259,11 @@ export APPLE_SIGNING_IDENTITY="$IDENTITY"
 export APPLE_API_KEY="$KEY_ID" APPLE_API_ISSUER="$ISSUER" APPLE_API_KEY_PATH="$P8"
 run_tauri_bundle_attempt() {
   if [ "$TARGET" = "x86_64-apple-darwin" ]; then
-    node scripts/with-updater-file.mjs npm run tauri build -- --target "$TARGET"
+    PATH="$PWD/scripts/codesign-bin:$PATH" HARA_CODESIGN_KEYCHAIN="$CODESIGN_KEYCHAIN" \
+      node scripts/with-updater-file.mjs npm run tauri build -- --target "$TARGET"
   else
-    node scripts/with-updater-file.mjs npm run tauri build
+    PATH="$PWD/scripts/codesign-bin:$PATH" HARA_CODESIGN_KEYCHAIN="$CODESIGN_KEYCHAIN" \
+      node scripts/with-updater-file.mjs npm run tauri build
   fi
 }
 
