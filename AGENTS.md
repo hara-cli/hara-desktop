@@ -36,6 +36,17 @@ temporary directory and return bounded summaries without losing the process comp
 
 ## Generated Output & Release Boundary
 
+Before creating or pushing any release tag, require a successful full candidate for the **exact
+final Desktop/Core source**: native Intel/ARM64 and supported platforms, real sidecars, formal
+installers including an actual Intel-runner DMG, Developer ID/updater signing, App/DMG notarization,
+staple, Gatekeeper, package smoke and upgrade verification. Unit/native checks with dummy sidecars,
+Rosetta or an older local candidate cannot substitute. Fail closed while this gate is unavailable.
+Candidate mode must share formal build/verification logic and disable publication only; it cannot
+fake tag/CI context, weaken source/signature/notary/integrity checks or use production write credentials.
+Check original updater-file access and Pi-only formal hydration before expensive builds.
+A release tag may only promote the same verified, digest/provenance-bound artifacts; changing a
+source/lock/toolchain/policy input invalidates their receipt. Do not rebuild different bytes after tag.
+
 Never hand-edit `dist/`, `src-tauri/target/`, packaged apps/installers, updater metadata, or ignored sidecar binaries. `scripts/refresh-sidecar.sh` is the development path for refreshing sidecars; commit the intended `SIDECAR_VERSION` and full `SIDECAR_COMMIT` locks, not ad-hoc binaries. Keep versions synchronized across `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
 
 A protected stable `vX.Y.Z` tag is a production release authorization. The tag workflow pins the exact tagged CLI sidecar, builds native packages, creates a hidden draft, and only the protected signing/notarization lane may promote it. Do not manually publish, replace signed assets, move/delete a release tag, or bypass the production environment. Verify the public release, updater metadata, signatures, and packaged sidecar before announcing it.
