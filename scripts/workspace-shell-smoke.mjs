@@ -50,6 +50,8 @@ async function connect() {
   const attached = await send("Target.attachToTarget", { targetId: target.targetId, flatten: true }, false);
   sessionId = attached.sessionId;
   await send("Runtime.enable"); await send("Page.enable");
+  const version = await send("Browser.getVersion", {}, false);
+  await send("Emulation.setUserAgentOverride", { userAgent: version.userAgent, platform: "MacIntel" });
 }
 async function send(method, params = {}, scoped = true) {
   const id = ++requestId;
@@ -91,13 +93,22 @@ async function settingsFits(){const size=await evaluate("(()=>{const main=docume
 async function key(key,shift=false){const value={key,code:key,modifiers:shift?8:0,windowsVirtualKeyCode:{Enter:13,Tab:9,Escape:27}[key]??0};await send('Input.dispatchKeyEvent',{type:'keyDown',...value,...(key==='Enter'?{text:'\r'}:{})});await send('Input.dispatchKeyEvent',{type:'keyUp',...value});await settled();}
 async function capture(name){screenshots++;await pause(150);const result=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(result.data,'base64'),{mode:0o600});}
 async function geometry(){return evaluate(`(()=>{
- const rect=selector=>{const node=document.querySelector(selector);if(!node)return null;const r=node.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,bottom:r.bottom};};
+ const rect=selector=>{const node=document.querySelector(selector);if(!node)return null;const r=node.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom};};
  const palette=Object.fromEntries(['brand','brand-hover','brand-pressed','brand-soft','brand-text','indicator','text-red','field-ring','control'].map(key=>[key,getComputedStyle(document.querySelector('.wsd-app')).getPropertyValue('--'+key).trim()]));
  const selected=document.querySelector('.hs-row[aria-current=page]');
- return {viewport:innerWidth,body:document.documentElement.scrollWidth,sidebar:rect('.hs-side'),chat:rect('.hs-chat'),composer:rect('.hs-field'),send:rect('.hs-send'),
+ const frame=getComputedStyle(document.querySelector('.hs-frame')),win=getComputedStyle(document.querySelector('.hs-win'));
+ return {viewport:innerWidth,viewportHeight:innerHeight,body:document.documentElement.scrollWidth,frame:rect('.hs-frame'),window:rect('.hs-win'),sidebar:rect('.hs-side'),chat:rect('.hs-chat'),composer:rect('.hs-field'),send:rect('.hs-send'),
+ framePadding:frame.padding,windowRadius:win.borderRadius,windowShadow:win.boxShadow,sidebarDivider:getComputedStyle(document.querySelector('.hs-side')).borderRightWidth,sidebarTop:rect('.hs-top'),dragRegion:rect('.hs-titlebar-drag'),
  palette,indicatorColor:selected?getComputedStyle(selected,'::before').backgroundColor:null,
  badTargets:Array.from(document.querySelectorAll('.hs-icon,.hs-sec-a,.hs-send,.hs-sec-t')).filter(node=>{const r=node.getBoundingClientRect();return r.width&&r.height&&(r.width<31.9||r.height<31.9);}).map(node=>node.className),
  dmCount:document.querySelectorAll('.hs-dm').length,focusColor:getComputedStyle(document.querySelector('.wsd-app')).getPropertyValue('--focus').trim()};})()`);}
+function fullBleed(measured){
+ for(const box of [measured.frame,measured.window])assert.deepEqual([box.left,box.top,box.right,box.bottom],[0,0,measured.viewport,measured.viewportHeight]);
+ assert.equal(measured.framePadding,'0px');assert.equal(measured.windowRadius,'0px');assert.equal(measured.windowShadow,'none');
+ assert.equal(measured.sidebar.left,0);assert.equal(measured.sidebar.top,0);assert.equal(measured.sidebar.bottom,measured.viewportHeight);assert.equal(measured.sidebarDivider,'1px');
+ assert.equal(measured.chat.left,measured.sidebar.right);assert.equal(measured.chat.top,0);assert.equal(measured.chat.bottom,measured.viewportHeight);
+ assert.ok(measured.sidebarTop.top>=44);assert.ok(measured.dragRegion.width>=80&&measured.dragRegion.height>=32,'macOS traffic lights have a reserved draggable area');
+}
 async function contrast(){return evaluate(`(()=>{
  const parse=text=>{const v=text.match(/[\\d.]+/g)?.map(Number)??[0,0,0,0];return [v[0]/255,v[1]/255,v[2]/255,v[3]??1];};
  const over=(a,b)=>[0,1,2].map(i=>a[i]*a[3]+b[i]*(1-a[3])).concat([1]);
@@ -119,7 +130,7 @@ let screenshots=0;
 try{
  await connect();
  for(const theme of ['light','dark'])for(const scenario of ['home','chat','tasks']){
-  await navigate({theme,scenario});const measured=await geometry();assert.ok(measured.body<=measured.viewport,JSON.stringify(measured));assert.deepEqual(measured.badTargets,[]);assert.equal(measured.dmCount,10);
+  await navigate({theme,scenario});const measured=await geometry();fullBleed(measured);assert.ok(measured.body<=measured.viewport,JSON.stringify(measured));assert.deepEqual(measured.badTargets,[]);assert.equal(measured.dmCount,10);
   assert.deepEqual(measured.palette,theme==='light'?{brand:'#9b2c24','brand-hover':'#85241d','brand-pressed':'#6f1e18','brand-soft':'#f3e2df','brand-text':'#7a2019',indicator:'#9b2c24','text-red':'#9b2c24','field-ring':'#8c8579',control:'#8c8579'}:{brand:'#c03a33','brand-hover':'#a8322c','brand-pressed':'#922b26','brand-soft':'#3a1e1e','brand-text':'#f2aaa3',indicator:'#f08e84','text-red':'#f08e84','field-ring':'#716b62',control:'#716b62'});
   if(measured.indicatorColor)assert.equal(measured.indicatorColor,theme==='light'?'rgb(155, 44, 36)':'rgb(240, 142, 132)');
   const colors=await contrast();assert.deepEqual(colors.issues,[],`${theme}/${scenario} contrast`);receipts.push({theme,scenario,measured,colors});await capture(`${scenario}-${theme}`);
@@ -149,7 +160,7 @@ try{
   receipts.push({theme,composer:'enabled, hover, pressed and single synthetic send checked'});
  }
  for(const width of [700,900,1100]){
-  await navigate({width});const measured=await geometry();assert.ok(measured.body<=width);assert.deepEqual(measured.badTargets,[]);assert.ok(measured.composer.width>250);receipts.push({width,measured});if(width===900)await capture('home-900');
+  await navigate({width});const measured=await geometry();fullBleed(measured);assert.ok(measured.body<=width);assert.deepEqual(measured.badTargets,[]);assert.ok(measured.composer.width>250);receipts.push({width,measured});if(width===900)await capture('home-900');
  }
  // Independent sections, immediate inertness, keyboard activation and per-workspace storage.
  await navigate();
@@ -213,6 +224,7 @@ try{
   const measurePanel=()=>evaluate("(()=>{const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom}};return {chat:box('.hs-chat'),panel:box('.hs-browser'),composer:box('.hs-field'),scrollWidth:document.documentElement.scrollWidth,viewport:innerWidth}})()");
   for (const expanded of [false,true]) {
    if (expanded) await click('.hs-browser-head [aria-pressed]');
+   fullBleed(await geometry());
    const bounds=await measurePanel();assert.ok(bounds.chat.width>=339,JSON.stringify(bounds));assert.ok(bounds.panel.width>=259,JSON.stringify(bounds));
    assert.ok(bounds.chat.right<=bounds.panel.left+1,JSON.stringify(bounds));assert.ok(bounds.panel.right<=width+1,JSON.stringify(bounds));
    assert.ok(bounds.scrollWidth<=width,JSON.stringify(bounds));assert.ok(await evaluate("document.querySelector('.hs-ai .t').getBoundingClientRect().width>=80"),'Approval text must retain a readable width');assert.equal(await evaluate("document.querySelector('textarea').value"),'Right panel draft');
@@ -236,8 +248,9 @@ try{
   assert.equal(await evaluate("Math.round(document.querySelector('.hs-scroll').scrollTop)"),250);
   await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Independent settings must load');
   assert.equal(await evaluate("document.querySelector('.wss-app').getAttribute('lang')"),locale);
-  const geometry=await evaluate("(()=>{const nav=document.querySelector('.wss-nav').getBoundingClientRect(),main=document.querySelector('.wss-main').getBoundingClientRect();return {navRight:nav.right,mainLeft:main.left,mainWidth:main.width}})()");
+  const geometry=await evaluate("(()=>{const nav=document.querySelector('.wss-nav').getBoundingClientRect(),main=document.querySelector('.wss-main').getBoundingClientRect(),back=document.querySelector('.wss-back').getBoundingClientRect();return {navRight:nav.right,mainLeft:main.left,mainWidth:main.width,navLeft:nav.left,navTop:nav.top,navBottom:nav.bottom,mainRight:main.right,backTop:back.top}})()");
   assert.ok(geometry.navRight<=geometry.mainLeft+1,JSON.stringify(geometry));assert.ok(geometry.mainWidth>500,JSON.stringify(geometry));
+  assert.deepEqual([geometry.navLeft,geometry.navTop,geometry.navBottom,geometry.mainRight],[0,0,800,1280]);assert.ok(geometry.backTop>=44);
   await evaluate("Array.from(document.querySelectorAll('.wss-nav nav>button')).find(button=>/Appearance|外观|外觀/.test(button.textContent)).click()");await settled();
   assert.equal(await evaluate("!!document.querySelector('select option[value=zh-Hant]')"),true);
   await capture(`native-settings-${locale}`);await click('.wss-back');await ready("!!document.querySelector('.hs-field textarea')",'Returning from settings must preserve main chat');

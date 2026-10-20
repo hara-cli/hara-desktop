@@ -15,7 +15,7 @@
 .hs-browser-empty p,.hs-browser-notice { font-size:12px; line-height:1.7; }
 .hs-browser-notice { padding:0 12px; color:var(--brand-text); }
 @media(max-width:1000px) {
-  .hs .hs-win.has-browser,.hs .hs-win.has-browser:has(> .hs-browser.is-expanded) { grid-template-columns:56px minmax(340px,1fr) minmax(260px,1fr); }
+  .hs .hs-win.has-browser,.hs .hs-win.has-browser:has(> .hs-browser.is-expanded) { grid-template-columns:var(--preview-rail-width,56px) minmax(340px,1fr) minmax(260px,1fr); }
   .hs .has-browser .hs-side { padding:12px 6px 8px; }
   .hs .has-browser .hs-top { padding:0; gap:0; }
   .hs .has-browser .hs-top>:not(.hs-space) { display:none; }

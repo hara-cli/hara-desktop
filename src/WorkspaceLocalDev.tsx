@@ -11,11 +11,12 @@ import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, ty
 import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
 import { WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
 import { Avatar, AwaitBar, ColleaguesPage, ShellDialog, SidebarSection } from "./WorkspaceShell";
-import { useSectionState, useWorkspaceLocale, useWorkspaceOverview } from "./workspace-shell-hooks";
+import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
 import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, type AwaitItem } from "./workspace-shell-state";
 import "./workspace-local-dev.css";
 import "./workspace-theme.css";
 import "./workspace-states.css";
+import "./workspace-shell-layout.css";
 import WorkspaceSettings, { type SettingsPage } from "./WorkspaceSettings";
 import { useWorkspaceUpdater, WorkspaceUpdateNotice } from "./WorkspaceSoftwareUpdate";
 const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
@@ -158,8 +159,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   };
   if (production && settings) return <WorkspaceSettings mainModel={model} initialPage={settingsPage} root={root} production theme={theme} updater={updates.controller} versionInfo={updates.info}
     onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} />;
-  return <div className="hs wsd-app" lang={locale} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : ""}`}>
-    <aside className="hs-side wsd-sidebar" inert={modalOpen}>
+  return <div className="hs wsd-app" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : ""}`}>
+    <aside className="hs-side wsd-sidebar" inert={modalOpen}><div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" />
       <div className="hs-top"><HaraLogo size={20} /><select className="hs-space" aria-label={t("ws.space.switch")} value={view.workspaceId ?? ""} disabled={view.loading || !view.directory?.workspaces.length}
         onChange={event => { closeSettings(); setSearch(""); setApprovalDialog(null); navigate("chat"); void model.selectWorkspace(event.target.value); }}>
         <option value="" disabled>{t("ws.space.choose")}</option>{view.directory?.workspaces.map(row => <option value={row.workspaceId} key={row.workspaceId} disabled={!row.active}>{row.label}</option>)}

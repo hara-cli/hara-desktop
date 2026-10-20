@@ -3,6 +3,10 @@ import { detectLocale, makeT, saveLocale, type Locale } from "./i18n";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state";
 import { buildWorkspaceShell, loadSidebarSections, type SidebarSectionId } from "./workspace-shell-state";
 
+export function workspacePlatform(): "macos" | "other" {
+  return /Mac/.test(globalThis.navigator?.platform ?? "") ? "macos" : "other";
+}
+
 export function useWorkspaceLocale() {
   const [locale, setLocale] = useState<Locale>(detectLocale);
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { createElement, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useWorkspaceLocale } from "./workspace-shell-hooks";
+import { useWorkspaceLocale, workspacePlatform } from "./workspace-shell-hooks";
 import { ArrowPathIcon, ChevronDownIcon, ClockIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon } from "@heroicons/react/24/outline";
 import { type Key } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
@@ -38,7 +38,7 @@ export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
     }).catch(() => { if (active) setError("ws.settings.sessionFailed"); });
     return () => { active = false; owned?.close(); };
   }, [props.mainModel]);
-  if (!session) return <div className="hs wsd-app wss-app" lang={locale}><aside className="wss-nav"><button onClick={props.onClose}>{t("ws.settings.back")}</button><h1>{t("ws.settings")}</h1></aside><main className="wss-main"><p role="status">{t(error || "ws.settings.opening")}</p></main></div>;
+  if (!session) return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}><aside className="wss-nav"><div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" /><button onClick={props.onClose}>{t("ws.settings.back")}</button><h1>{t("ws.settings")}</h1></aside><main className="wss-main"><p role="status">{t(error || "ws.settings.opening")}</p></main></div>;
   return <SettingsContent {...props} model={session.model} />;
 }
 export function SettingsContent({ model, initialPage, root, production, theme, updater, versionInfo, onClose, onCreateSkill }: WorkspaceSettingsProps & { model: WorkspaceDevModel }) {
@@ -89,8 +89,8 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
   const workspacePages: SettingsPage[] = ["connections", "runtimes", "schedules", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
   const navItem = (id: SettingsPage) => <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}><span aria-hidden>{createElement(pages[id].icon, { className: "hico" })}</span><span>{t(pages[id].name)}</span>{id === "updates" && hasUpdateAttention(updates) ? <i className="wss-update-dot" /> : null}</button>;
   const key = workspace ? `${workspace.workspaceId}:${workspace.resourceGeneration}:${page}` : "loading";
-  return <div className="hs wsd-app wss-app" lang={locale}>
-    <aside className="wss-nav" inert={Boolean(decision)}><button className="wss-back" onClick={close}>{t("ws.settings.back")}</button><h1>{t("ws.settings")}</h1><nav aria-label={t("ws.settings.navigation")}>
+  return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}>
+    <aside className="wss-nav" inert={Boolean(decision)}><div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" /><button className="wss-back" onClick={close}>{t("ws.settings.back")}</button><h1>{t("ws.settings")}</h1><nav aria-label={t("ws.settings.navigation")}>
       {navItem("overview")}<div className="wss-nav-group"><strong>{t("ws.settings.workspace")}</strong><small>{t("ws.settings.currentOnly")}</small></div>
       <div className="wss-scope"><button ref={scopeTrigger} aria-haspopup="menu" aria-expanded={scopeOpen} onClick={() => setScopeOpen(value => !value)} disabled={!view.directory?.workspaces.length}>
         <span className="wss-scope-mark">{selected?.label?.slice(0, 1) ?? "H"}</span><span><strong>{selected?.label ?? t("ws.settings.noSpace")}</strong><small>{t(selected?.kind === "team" ? "ws.settings.team" : "ws.settings.personal")} · {t(selected?.role === "owner" ? "ws.settings.owner" : selected?.role === "admin" ? "ws.settings.admin" : "ws.settings.member")}</small></span><ChevronDownIcon className="hico" /></button>

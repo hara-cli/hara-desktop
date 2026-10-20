@@ -737,6 +737,11 @@ fn create_main_window<R: tauri::Runtime>(
     let builder = tauri::WebviewWindowBuilder::from_config(app, &config)
         .map_err(|error| format!("prepare main window: {error}"))?
         .min_inner_size(f64::from(MIN_MAIN_WINDOW_WIDTH), f64::from(MIN_MAIN_WINDOW_HEIGHT));
+    #[cfg(target_os = "macos")]
+    let builder = if workspace_overlay_titlebar(&app.config().identifier, std::env::var("HARA_DESKTOP_LEGACY_ENTRY").ok().as_deref()) {
+        builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 16.0))
+    } else { builder };
     #[cfg(windows)]
     let builder = if software_renderer {
         let data_directory = app
@@ -1278,6 +1283,11 @@ fn workspace_entry_selection(identifier: &str, rollback: Option<&str>) -> Result
         Some("1") => Ok("legacy"),
         _ => Err("Invalid explicit legacy-entry switch".into()),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn workspace_overlay_titlebar(identifier: &str, rollback: Option<&str>) -> bool {
+    matches!(workspace_entry_selection(identifier, rollback), Ok("workspace" | "lab"))
 }
 
 #[tauri::command]
@@ -4347,6 +4357,16 @@ mod native_tests {
         assert_eq!(workspace_entry_selection("com.nanhara.hara", Some("1")).unwrap(), "legacy");
         assert!(workspace_entry_selection("com.nanhara.hara", Some("unexpected")).is_err());
         assert_eq!(workspace_entry_selection("com.nanhara.hara.workspace-lab", None).unwrap(), "lab");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn workspace_overlay_titlebar_preserves_legacy_recovery_chrome() {
+        assert!(workspace_overlay_titlebar("com.nanhara.hara", None));
+        assert!(workspace_overlay_titlebar("com.nanhara.hara.redesign-candidate", Some("0")));
+        assert!(workspace_overlay_titlebar("com.nanhara.hara.workspace-lab", None));
+        assert!(!workspace_overlay_titlebar("com.nanhara.hara", Some("1")));
+        assert!(!workspace_overlay_titlebar("com.nanhara.hara", Some("invalid")));
     }
 
     #[cfg(unix)]

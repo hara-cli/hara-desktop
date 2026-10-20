@@ -4230,3 +4230,23 @@ Reproduced in the packaged ARM64 candidate dc6c74c / Core 1.0.2 through CUA. A r
 
 Evidence: `/private/tmp/hara-redesign-i18n-20261020/`; final stage report in the Hara workspace inbox.
 Pattern-Key: ui.translate_at_render_and_inspect_form_geometry
+
+## [ERR-20261020-REDESIGN-FULLBLEED-NATIVE-REVIEW] Keep CLI and native acceptance separate
+
+**Logged**: 2026-10-20
+**Status**: CLI/layout checks passed; native UI acceptance remains pending
+**Area**: native verification
+
+- CUA auto-review rejected selecting the unsigned299ed28 candidate because that API can launch
+  unverified software and action-time confirmation was absent. No second selector, indirect UI
+  driver or unsigned relaunch was used to bypass it. The already-owned fixture was finished and
+  cleaned normally: 12 loopback requests,0paid,private vault deleted,real search/default unchanged.
+- Jeff then requested full-bleed layout after Intel rebuild completed. Preserve299ed28 as history;
+  new full-bleed binaries must be rebuilt from their own commit. Browser geometry/PNG and Rust
+  titlebar tests cannot stand in for native visual acceptance.
+- One full-bleed patch expected an incomplete sidebar class name. apply_patch rejected atomically;
+  re-read the exact preimage before applying. No partial patch or unrelated file changed.
+- A separate1.0.4 candidate owner reported it is preparing another signing job. Reconfirm exclusive
+  lane ownership before any dedicated Keychain use; an empty process snapshot is not a shared lock.
+
+Pattern-Key: ui.freeze_new_feedback_source_and_honor_native_review_boundary
