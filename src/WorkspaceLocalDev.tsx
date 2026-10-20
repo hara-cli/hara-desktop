@@ -13,6 +13,7 @@ import { WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, us
 import { Avatar, AwaitBar, ColleaguesPage, ShellDialog, SidebarSection } from "./WorkspaceShell";
 import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
 import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, type AwaitItem } from "./workspace-shell-state";
+import { captureWorkspaceReadingPosition } from "./workspace-chat-scroll";
 import "./workspace-local-dev.css";
 import "./workspace-theme.css";
 import "./workspace-states.css";
@@ -79,7 +80,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const updates = useWorkspaceUpdater(model, production);
   scrollContext.current = JSON.stringify([scope, view.agentId, route]);
   const setSettings = (open: boolean) => {
-    if (open && scroll.current) scrollResume.current = { key: scrollContext.current, top: scroll.current.scrollTop, atBottom: nearBottom.current };
+    if (open && scroll.current) scrollResume.current = { key: scrollContext.current, ...captureWorkspaceReadingPosition(scroll.current) };
     setSettingsState(open);
   };
   useLayoutEffect(() => {

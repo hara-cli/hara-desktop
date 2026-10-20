@@ -4234,7 +4234,7 @@ Pattern-Key: ui.translate_at_render_and_inspect_form_geometry
 ## [ERR-20261020-REDESIGN-FULLBLEED-NATIVE-REVIEW] Keep CLI and native acceptance separate
 
 **Logged**: 2026-10-20
-**Status**: CLI/layout checks passed; native UI acceptance remains pending
+**Status**: action-time approval received; native54542a acceptance found an independent reading-position regression
 **Area**: native verification
 
 - CUA auto-review rejected selecting the unsigned299ed28 candidate because that API can launch
@@ -4250,3 +4250,26 @@ Pattern-Key: ui.translate_at_render_and_inspect_form_geometry
   lane ownership before any dedicated Keychain use; an empty process snapshot is not a shared lock.
 
 Pattern-Key: ui.freeze_new_feedback_source_and_honor_native_review_boundary
+
+## [ERR-20261020-NATIVE-SHORT-CHAT-READING] A follow threshold is not the saved reading position
+
+**Logged**: 2026-10-20
+**Status**: native54542a failure and pre-fix browser regression retained; fix pending native reacceptance
+**Area**: renderer / native verification
+
+- After Jeff explicitly approved opening the unsigned full-bleed candidate, actual CUA main/DM
+  messages, settings isolation, task history and right-panel operations passed. Opening Settings
+  while reading the start of a short conversation still returned to the bottom; the draft survived.
+- Settings captured the 180px new-message follow flag as if it meant the viewport was literally
+  at the bottom. A short conversation can lie entirely inside that threshold. Preserve the exact
+  bounded scrollTop and measure actual bottom separately (1px fractional tolerance).
+- The previous 250px browser reading test was too far from the bottom to expose this. Add an
+  actual component round trip from100px above the bottom in all three locales. Before the fix,
+  it failed1084 vs984; retain the failure rather than weakening its assertion or deadline.
+- Verify native pixels and cleanup separately. CUA can transiently return a Stage Manager-like
+  thumbnail; only full-size settled captures support layout observations. A screen-sharing badge
+  over the traffic lights does not establish their pixel acceptance.
+
+Evidence: `/private/tmp/hara-redesign-native-20261020/native-arm64-4/` and
+`/private/tmp/hara-redesign-native-scroll-20261020/before-browser.log`.
+Pattern-Key: ui.settings_resume_exact_viewport_not_follow_threshold

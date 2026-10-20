@@ -256,7 +256,13 @@ try{
   await capture(`native-settings-${locale}`);await click('.wss-back');await ready("!!document.querySelector('.hs-field textarea')",'Returning from settings must preserve main chat');
   assert.equal(await evaluate("Math.round(document.querySelector('.hs-scroll').scrollTop)"),250,'Returning from full-window Settings must retain the chat reading position');
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.model.getSnapshot().workspaceId"),'A');
-  receipts.push({locale,settings:'independent RPC model; full-window layout; language selector; main chat scope retained'});
+  const readingTop=await evaluate("(()=>{const area=document.querySelector('.hs-scroll');area.scrollTop=area.scrollHeight-area.clientHeight-100;area.dispatchEvent(new Event('scroll',{bubbles:true}));return area.scrollTop;})()");await settled();
+  assert.equal(await evaluate("Math.round((()=>{const area=document.querySelector('.hs-scroll');return area.scrollHeight-area.clientHeight-area.scrollTop;})())"),100);
+  await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Settings must open from a near-bottom reading position');
+  await click('.wss-back');await ready("!!document.querySelector('.hs-field textarea')",'Main chat must return from settings');
+  assert.equal(await evaluate("document.querySelector('.hs-scroll').scrollTop"),readingTop,'Reading 100px above the bottom must not be mistaken for following the bottom');
+  await capture(`native-settings-reading-return-${locale}`);
+  receipts.push({locale,settings:'independent RPC model; full-window layout; language selector; main chat scope and exact reading positions retained'});
  }
  // Settings use the real renderer/model, with in-memory synthetic responses and failed writes only.
  // Change locale while notices and confirmation cards are already open, preserving user drafts.
