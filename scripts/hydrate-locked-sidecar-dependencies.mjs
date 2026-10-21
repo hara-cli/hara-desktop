@@ -57,7 +57,9 @@ export function lockedPackageSpec(lockfile, packageName) {
 /** The reviewed Core lock is authoritative. Pi-only Core has no legacy SDK to repair; do not
  * invent or reinstall it. Old source locks retain their exact target/integrity checks. */
 export function lockedSidecarSpecs(lockfile, target) {
-  const nativePackage = packageForTarget(target);
+  if (!["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"].includes(target)) {
+    throw new Error(`unsupported signed sidecar target: ${target}`);
+  }
   if (lockfile?.lockfileVersion !== 3 || !lockfile.packages || typeof lockfile.packages !== "object"
     || Array.isArray(lockfile.packages)) throw new Error("invalid sidecar lockfile (package-lock.json)");
   if (!Object.hasOwn(lockfile.packages, `node_modules/${SDK_PACKAGE}`)) {
@@ -68,7 +70,7 @@ export function lockedSidecarSpecs(lockfile, target) {
     }
     return [];
   }
-  return [SDK_PACKAGE, nativePackage].map(packageName => lockedPackageSpec(lockfile, packageName));
+  return [SDK_PACKAGE, packageForTarget(target)].map(packageName => lockedPackageSpec(lockfile, packageName));
 }
 
 export function verifySha512(contents, integrity) {
