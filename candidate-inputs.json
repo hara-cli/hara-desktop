@@ -16,13 +16,13 @@
     "waitSeconds": 240
   },
   "desktop": {
-    "commit": "448a6fca82ccc45d77fc42adc810ba7963e04458",
-    "tree": "13aafc9c65f9ef34b83cb919ef0885e84710566e",
+    "commit": "dce4dd570bfbbece5cc697cbfcbc8b3768a8d5d5",
+    "tree": "f0a29a043dffb0112e50f71df290d945d3f7dd45",
     "version": "1.1.0"
   },
   "core": {
-    "commit": "4cde6bd49ad7095bd9820677220d4650ed95bf5c",
-    "tree": "3e681924c13b28124af9d2420b12ea1a66a2e909",
+    "commit": "c43ca33a3d882ae50317fa817976802856c604b8",
+    "tree": "526cd55982ed362260039808b5d7c96cf54a1256",
     "version": "1.0.2"
   },
   "toolchain": {
@@ -34,7 +34,7 @@
     "npm": "b10e5011188e1f52cbd4ffc49d8a77f38ab9881b364e2f128359d364a3c48a7e",
     "cargo": "66fe91ea71cfcd43b7df1d65b787c88555c370d4d31295c8835422b3006db6f2",
     "coreNpm": "0713cc29af4205d12fd0f57969b09fe0db64a71f70626833e37797da9c0f3034",
-    "sidecar": "6ba14e60755c3a8ee841c53bb42cc2867caa4fdf9e7df459ba1fb0a1f896e420"
+    "sidecar": "4ad39f61fe2f683d6fd6df5992caa1a8e658ac6e3d1f557f8bb2fe683e0ce188"
   },
   "updaterPublicKeySha256": "7e6a1d9c22989adb5c6991bae0fcdcbe4991dfd2e9eb67f5c08af271be6768d0",
   "upgradeFrom": [
