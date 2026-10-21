@@ -333,11 +333,11 @@ export default function WorkspaceLocalDev({ mode = "workspace" }: { mode?: "work
       const info = await invoke<WorkspaceDevConnection>(mode === "lab" ? "workspace_dev_connection" : "workspace_connection"); if (!active) return;
       client = new WorkspaceDevConnectionClient(info, () => { if (active) setError("ws.disconnected"); });
       await client.initialize(info.token); if (!active) { client.close(); return; }
-      const next = new WorkspaceDevModel(client, undefined, info.syntheticOnly, info.executionMode); client.setChangedListener(id => { if (active && next.getSnapshot().workspaceId === id) void next.refresh(); });
+      const next = new WorkspaceDevModel(client, undefined, info.syntheticOnly, info.executionMode); client.setChangedListener((id, agentId) => { if (active) next.workspaceChanged(id, agentId); });
       next.setSettingsFactory(async () => {
         let live = true; const settingsClient = new WorkspaceDevConnectionClient(info, () => {});
         try { await settingsClient.initialize(info.token); const settingsModel = new WorkspaceDevModel(settingsClient, undefined, info.syntheticOnly, info.executionMode, true);
-          settingsClient.setChangedListener(id => { if (live && settingsModel.getSnapshot().workspaceId === id) void settingsModel.refresh(); });
+          settingsClient.setChangedListener((id, agentId) => { if (live) settingsModel.workspaceChanged(id, agentId); });
           return { model: settingsModel, close() { live = false; settingsClient.close(); } };
         } catch { settingsClient.close(); throw new Error("Settings connection unavailable"); }
       });

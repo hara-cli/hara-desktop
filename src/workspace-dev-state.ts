@@ -50,6 +50,11 @@ export class WorkspaceDevModel {
   private refreshEpoch: number | null = null;
   private refreshWait: Promise<void> | null = null;
   private refreshDirty = false;
+  private overviewEpoch = -1;
+  private overviewRoster = "";
+  private overviewCache = new Map<string, WorkspaceDevSnapshot>();
+  private overviewDirty = new Map<string, number>();
+  private overviewPending: { epoch: number; promise: Promise<void> } | null = null;
   private readonly rpc: WorkspaceDevRpc;
   private readonly nonce: () => string;
   private readonly syntheticOnly: boolean;
@@ -167,15 +172,50 @@ export class WorkspaceDevModel {
   async readOverview(snapshot: WorkspaceDevSnapshot): Promise<{ snapshots: WorkspaceDevSnapshot[]; incomplete: boolean }> {
     if (snapshot !== this.view.workspace) throw new Error("Overview view changed");
     const epoch = this.epoch;
-    const results = await Promise.allSettled(snapshot.agents.filter(agent => agent.agentId !== snapshot.selectedAgentId).map(async agent => {
-      const value = await this.rpc.request<WorkspaceDevSnapshot>("workspace.snapshot", { workspaceId: snapshot.workspaceId, agentId: agent.agentId });
-      this.valid(value, snapshot.workspaceId, agent.agentId);
-      if (value.resourceGeneration !== snapshot.resourceGeneration) throw new Error("Overview generation changed");
-      return value;
-    }));
+    const roster = JSON.stringify(snapshot.agents);
+    if (this.overviewEpoch !== epoch || this.overviewRoster !== roster) {
+      this.overviewEpoch = epoch; this.overviewRoster = roster;
+      this.overviewCache.clear(); this.overviewDirty.clear(); this.overviewPending = null;
+    }
+    this.overviewCache.set(snapshot.selectedAgentId, snapshot);
+    if (this.overviewPending?.epoch === epoch) {
+      await this.overviewPending.promise;
+      if (epoch !== this.epoch || !this.view.workspace) throw new Error("Overview view changed");
+      return this.readOverview(this.view.workspace);
+    }
+    const agents = snapshot.agents.filter(agent => agent.agentId !== snapshot.selectedAgentId
+      && (!this.overviewCache.has(agent.agentId) || this.overviewDirty.has(agent.agentId)));
+    const pending = { epoch, promise: Promise.resolve() };
+    this.overviewPending = pending;
+    pending.promise = (async () => {
+      let cursor = 0;
+      await Promise.all(Array.from({ length: Math.min(4, agents.length) }, async () => {
+        while (cursor < agents.length && epoch === this.epoch && this.overviewRoster === roster) {
+          const agent = agents[cursor++], revision = this.overviewDirty.get(agent.agentId);
+          try {
+            const value = await this.rpc.request<WorkspaceDevSnapshot>("workspace.snapshot", { workspaceId: snapshot.workspaceId, agentId: agent.agentId });
+            this.valid(value, snapshot.workspaceId, agent.agentId);
+            if (epoch !== this.epoch || this.overviewRoster !== roster || value.resourceGeneration !== snapshot.resourceGeneration) continue;
+            this.overviewCache.set(agent.agentId, value);
+            if (revision === this.overviewDirty.get(agent.agentId)) this.overviewDirty.delete(agent.agentId);
+          } catch { /* A missing snapshot stays visibly incomplete and can be retried. */ }
+        }
+      }));
+    })();
+    try { await pending.promise; }
+    finally { if (this.overviewPending === pending) this.overviewPending = null; }
     if (epoch !== this.epoch || this.view.workspace?.resourceGeneration !== snapshot.resourceGeneration) throw new Error("Overview view changed");
-    return { snapshots: [snapshot, ...results.flatMap(result => result.status === "fulfilled" ? [result.value] : [])],
-      incomplete: results.some(result => result.status === "rejected") };
+    const current = this.view.workspace;
+    return { snapshots: [current, ...current.agents.flatMap(agent => agent.agentId === current.selectedAgentId ? [] : this.overviewCache.get(agent.agentId) ?? [])],
+      incomplete: current.agents.some(agent => agent.agentId !== current.selectedAgentId && (!this.overviewCache.has(agent.agentId) || this.overviewDirty.has(agent.agentId))) };
+  }
+  workspaceChanged(workspaceId: string, agentId?: string): void {
+    if (workspaceId !== this.view.workspaceId) return;
+    if (agentId) this.overviewDirty.set(agentId, (this.overviewDirty.get(agentId) ?? 0) + 1);
+    void this.refresh();
+  }
+  invalidateOverview(): void {
+    for (const agent of this.view.workspace?.agents ?? []) this.overviewDirty.set(agent.agentId, (this.overviewDirty.get(agent.agentId) ?? 0) + 1);
   }
   async editConnection(connectionId: string, input: Record<string, unknown>): Promise<boolean> {
     const epoch = this.epoch;

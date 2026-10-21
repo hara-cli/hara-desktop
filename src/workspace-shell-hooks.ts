@@ -78,5 +78,5 @@ export function useWorkspaceOverview(model: WorkspaceDevModel, workspace: Worksp
   }, [snapshots, scope, workspace?.selectedAgentId]);
   return { ...useMemo(() => buildWorkspaceShell(snapshots, now, history?.scope === scope ? history.rows : []), [snapshots, now, history, scope]), snapshots, now, activity, historyAvailable: history?.scope === scope,
     loading: Boolean(workspace && overview?.scope !== scope), incomplete: overview?.scope === scope && overview.incomplete,
-    refresh: () => { setNow(Date.now()); setRevision(value => value + 1); void model.refresh(); } };
+    refresh: () => { model.invalidateOverview(); setNow(Date.now()); setRevision(value => value + 1); void model.refresh(); } };
 }
