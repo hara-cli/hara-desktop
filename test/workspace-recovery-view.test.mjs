@@ -32,8 +32,8 @@ test("old 404 snapshots get a repair card while transient and budget pauses reta
 });
 test("legacy 429 recovery inspects allowance evidence rather than rate-window quotas or appended hints", () => {
   const t = makeT("en"), props = { t, disabled: false, onContinue() {}, onRepair() {} };
-  for (const message of ["exceeded your requests per minute quota", "requests per minute quota exhausted", "You exceeded your current quota", "每分鐘請求配額耗盡"]) {
-    const conversation = { state: "blocked", blockReason: `[openai error] 429 ${message} — the provider reported this account allowance or balance is exhausted; select another authorized connection or wait for its reset` };
+  for (const message of ["exceeded your requests per minute quota", "requests per minute quota exhausted", "You exceeded your current quota", "每分鐘請求配額耗盡"]) for (const prefix of /per|每/.test(message) ? ["429 ", ""] : ["429 "]) {
+    const conversation = { state: "blocked", blockReason: `[openai error] ${prefix}${message} — the provider reported this account allowance or balance is exhausted; select another authorized connection or wait for its reset` };
     assert.equal(connectionRecoveryReason(conversation), null);
     assert.ok(render(h(WorkspaceTaskRecovery, { ...props, conversation })).includes(t("ws.resume.action")));
   }
