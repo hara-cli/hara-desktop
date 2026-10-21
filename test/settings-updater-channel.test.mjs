@@ -28,7 +28,8 @@ test("stable release guards and embedded public key remain unchanged; formal sig
   assert.equal(read("scripts/build-mac-signed.sh").includes('cat "$HOME/.tauri/hara-desktop.key"'), false);
   const helper = read("scripts/with-updater-keychain.sh"); assert.match(helper, /with-updater-file\.mjs/); assert.match(helper, /set \+x/);
   assert.doesNotMatch(helper, /find-generic-password|set-generic-password-partition-list/);
-  assert.match(read("scripts/build-mac-signed.sh"), /node scripts\/with-updater-file\.mjs npm run tauri build/);
+  // The approved file reader must remain OUTSIDE the shared DMG adapter, not be removed or bypassed.
+  assert.match(read("scripts/build-mac-signed.sh"), /node scripts\/with-updater-file\.mjs node scripts\/macos-dmg-detach\.mjs run npm run tauri build/);
   const native = read("src-tauri/src/lib.rs"); assert.match(native, /updater_builder\(\)\.endpoints\(urls\)/); assert.match(native, /#\[cfg\(debug_assertions\)\]/);
   assert.equal(JSON.parse(read("src-tauri/tauri.conf.json")).plugins.updater.endpoints.length, 2);
 });
