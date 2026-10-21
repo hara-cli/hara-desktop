@@ -25,20 +25,47 @@ export function sync(command, args, { cwd = ROOT, env = process.env, timeout = 1
   assert(r.status === 0 && !r.error, `candidate command failed: ${path.basename(command)} (${r.status ?? 'unknown'})`);
   return r.stdout.trim();
 }
-export async function run(label, command, args, { cwd = ROOT, env = process.env, timeout = 60 * 60000, capture = false } = {}) {
+export function redactDiagnosticOutput(text, env = {}) {
+  let safe = text;
+  for (const [key, value] of Object.entries(env)) {
+    if (/(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY|CREDENTIAL)/i.test(key) && typeof value === 'string' && value.length >= 4)
+      safe = safe.split(value).join('[REDACTED]');
+  }
+  return safe.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g, '[REDACTED PRIVATE KEY]')
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, '$1[REDACTED]')
+    .replace(/((?:api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}]+)/gi, '$1[REDACTED]');
+}
+export async function run(label, command, args, { cwd = ROOT, env = process.env, timeout = 60 * 60000, capture = false, logFile } = {}) {
+  assert(!logFile || (capture && path.isAbsolute(logFile)), 'diagnostic log requires captured output and an absolute private path');
+  let logFd;
+  if (logFile) { fs.mkdirSync(path.dirname(logFile), { recursive:true, mode:0o700 }); logFd=fs.openSync(logFile,'wx',0o600); }
   console.log(`candidate phase: ${label}`);
   const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
-  let output = '', failed = false;
+  const chunks=[]; let size=0, failureKind=null, spawnCode=null;
   const consume = bytes => {
-    if (capture) { output += bytes.toString(); if (output.length > 8 * 1024 * 1024) { failed = true; child.kill(); } }
+    if (capture) {
+      const remaining=8*1024*1024-size;
+      if (remaining>0) { const part=bytes.subarray(0,remaining); chunks.push(part); size+=part.length; }
+      if (bytes.length>remaining && !failureKind) { failureKind='output-limit'; child.kill(); }
+    }
     else process.stdout.write(bytes);
   };
   child.stdout.on('data', consume); child.stderr.on('data', capture ? consume : bytes => process.stderr.write(bytes));
-  const timer = setTimeout(() => { failed = true; child.kill('SIGKILL'); }, timeout);
+  const timer = setTimeout(() => { failureKind ??= 'timeout'; child.kill('SIGKILL'); }, timeout);
   const pulse = setInterval(() => console.log(`candidate phase still running: ${label}`), 30000);
-  const code = await new Promise(resolve => { child.once('error', () => { failed = true; }); child.once('close', resolve); });
+  const [code,signal] = await new Promise(resolve => { child.once('error', error => { failureKind ??= 'spawn'; spawnCode=error.code??null; }); child.once('close', (code,signal)=>resolve([code,signal])); });
   clearTimeout(timer); clearInterval(pulse);
-  assert(code === 0 && !failed, `candidate phase failed: ${label}`); return output;
+  const output=capture?Buffer.concat(chunks).toString('utf8'):'';
+  if (logFd!==undefined) {
+    // Do not persist a partial final line (which may be a partial credential) at the output bound.
+    const diagnostic=failureKind==='output-limit'?output.slice(0,output.lastIndexOf('\n')+1):output;
+    const safe=redactDiagnosticOutput(diagnostic,env);
+    try { fs.writeFileSync(logFd,safe); fs.fsyncSync(logFd); } finally { fs.closeSync(logFd); }
+    fs.writeFileSync(logFile+'.result.json',JSON.stringify({code,signal,spawnCode,failureKind,capturedBytes:size,complete:failureKind===null},null,2)+'\n',{flag:'wx',mode:0o600});
+    if (code!==0 || failureKind || signal) process.stderr.write(safe.slice(-8192)+'\n');
+  }
+  assert(code === 0 && !failureKind && !signal, `candidate phase failed: ${label} (exit=${code}, signal=${signal??'none'}, reason=${failureKind??'exit'}${spawnCode?', spawn='+spawnCode:''})`);
+  return output;
 }
 export function assertEvent(e) {
   assert.equal(e.GITHUB_ACTIONS, 'true'); assert.equal(e.GITHUB_REPOSITORY, 'hara-cli/hara-desktop');
