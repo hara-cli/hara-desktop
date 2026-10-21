@@ -7,7 +7,7 @@ import { checkRunMetadata } from '../scripts/candidate-run-verifier.mjs';
 function policy() {
   return [{id:INPUT.environmentId,name:INPUT.environment,can_admins_bypass:false,deployment_branch_policy:{protected_branches:false,custom_branch_policies:true},protection_rules:[{type:'required_reviewers',reviewers:[{type:'User',reviewer:{id:INPUT.approverId}}]},{type:'branch_policy'}]},
     {total_count:1,branch_policies:[{id:INPUT.branchPolicyId,type:'branch',name:INPUT.controlledRef.slice(11)}]},
-    {id:INPUT.rulesetId,enforcement:'active',target:'branch',bypass_actors:[{actor_id:INPUT.approverId,actor_type:'User',bypass_mode:'always'}],conditions:{ref_name:{include:[INPUT.controlledRef],exclude:[]}},rules:['creation','update','deletion','non_fast_forward'].map(type=>({type}))}];
+    {id:INPUT.rulesetId,enforcement:'active',target:'branch',source_type:'Repository',source:'hara-cli/hara-desktop',updated_at:'2026-10-21T02:45:13.435+08:00',bypass_actors:[{actor_id:INPUT.approverId,actor_type:'User',bypass_mode:'always'}],conditions:{ref_name:{include:[INPUT.controlledRef],exclude:[]}},rules:['creation','update','deletion','non_fast_forward'].map(type=>({type}))}];
 }
 test('live admission schema has exact environment/ref/reviewer and no admin bypass',()=>assert.match(validateAdmission(...policy()).sha256,/^[a-f0-9]{64}$/));
 for(const [name,change] of Object.entries({ bypass:p=>p[0].can_admins_bypass=true, foreignEnvironment:p=>p[0].id++, noReviewer:p=>p[0].protection_rules.shift(), extraReviewer:p=>p[0].protection_rules[0].reviewers.push({type:'User',reviewer:{id:1}}),

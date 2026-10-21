@@ -44,6 +44,10 @@ Rosetta or an older local candidate cannot substitute. Fail closed while this ga
 Candidate mode must share formal build/verification logic and disable publication only; it cannot
 fake tag/CI context, weaken source/signature/notary/integrity checks or use production write credentials.
 Check original updater-file access and Pi-only formal hydration before expensive builds.
+A redacted ruleset response is not proof that its bypass list is safe. Keep candidate Actions
+permissions read-only; plan A requires a local administrator's independently signed observation
+bound to the exact run/source and live policy version, plus Jeff's separate protected-environment
+approval. Follow `docs/CANDIDATE_GATE_A.md`; missing/expired proof fails before credential access.
 A release tag may only promote the same verified, digest/provenance-bound artifacts; changing a
 source/lock/toolchain/policy input invalidates their receipt. Do not rebuild different bytes after tag.
 

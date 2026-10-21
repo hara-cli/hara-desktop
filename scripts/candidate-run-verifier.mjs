@@ -68,7 +68,7 @@ export function checkVerifiedDirectory(directory, target, expected) {
 async function main() {
   const [runArg, sha, output] = process.argv.slice(2); assert.match(runArg??'',/^\d+$/); assert.match(sha??'',/^[a-f0-9]{40}$/); assert(path.isAbsolute(output));
   assert.equal(sync('git',['rev-parse','HEAD']),sha, 'run verifier must be the exact reviewed orchestration source');
-  const expected = { runId:Number(runArg), attempt:1, orchestration:sha }, admission = readAdmission();
+  const expected = { runId:Number(runArg), attempt:1, orchestration:sha }, admission = await readAdmission({expected});
   const run = api(`repos/hara-cli/hara-desktop/actions/runs/${expected.runId}`);
   const jobs=[]; for(let page=1;page<=10;page++) { const r=api(`repos/hara-cli/hara-desktop/actions/runs/${expected.runId}/attempts/1/jobs?per_page=100&page=${page}`); jobs.push(...r.jobs); if(r.jobs.length<100)break; assert(page<10); }
   const approvals=api(`repos/hara-cli/hara-desktop/actions/runs/${expected.runId}/approvals`);

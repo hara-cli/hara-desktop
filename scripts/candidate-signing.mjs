@@ -24,8 +24,9 @@ export function assertSigner(e, settings) {
   assert.equal(settings.agentId, INPUT.runnerId); assert.equal(settings.gitHubUrl, 'https://github.com/hara-cli');
   assert.equal(settings.poolId, INPUT.runnerGroupId); assert.equal(settings.poolName, INPUT.runnerGroup); assert.equal(settings.agentName, e.RUNNER_NAME);
 }
-function preconditions() {
-  readAdmission(); // Refuse missing/weakened live protection before opening any signing material.
+async function preconditions() {
+  assert(!fs.existsSync('/Users/zhujianbo/work/projects/hara/ops/.candidate-signing-ui-hold.json'),'candidate signing/UI hold is active; no Keychain or key access');
+  await readAdmission(); // Refuse missing/weakened live protection before opening any signing material.
   assert.equal(process.platform, 'darwin'); assert.equal(process.arch, 'arm64');
   const settings = JSON.parse(fs.readFileSync(path.join(realHome, '.hara-runners/hara-desktop-release/.runner'), 'utf8').replace(/^\uFEFF/, ''));
   assertSigner(process.env, settings);
@@ -35,7 +36,7 @@ function preconditions() {
   finally { bytes?.fill(0); }
 }
 async function withSigning(c, operation) {
-  preconditions();
+  await preconditions();
   const token = randomUUID();
   const rows = sync('/bin/ps', ['-axo', 'comm=']).split('\n');
   assert(!rows.some(r => /\/(?:codesign|notarytool|productsign)$/.test(r.trim())), 'another signing operation is active');
