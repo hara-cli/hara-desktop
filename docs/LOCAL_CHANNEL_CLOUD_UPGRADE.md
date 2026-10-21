@@ -14,6 +14,8 @@ The source includes only local Workspace/channel IDs, resource generation, catal
 
 Source changes invalidate in-flight results, including A→B→A navigation. Closing aborts pending adapter work and ignores late results. Running replies, saves and unknown receipts block continuation; the upgrade does not stop or resend them. Account and region are rechecked before preflight. Errors are mapped to a fixed safe code set, never displayed as raw remote error text. The upgrade handoff has no automatic retries or background timers.
 
+HTTP `409` and the stable conflict codes `IDEMPOTENCY_KEY_REUSED`, `UPGRADE_AUDIENCE_CHANGED`, `IMPORT_AUDIENCE_CHANGED`, `UPGRADE_ALREADY_COMMITTED` and `UPGRADE_NOT_PREPARED` map to `CONFLICT`. The dialog stops the current attempt and asks the user to check the original operation first; it offers no retry action. The stub has no operation-status endpoint. A real adapter must reconcile the original operation through Core before allowing a new attempt or a fresh audience confirmation, without replaying a mutation or creating a replacement channel.
+
 ## Local collaboration safeguards
 
 The existing collaboration model treats sync and history as inert remote display data. It copies only known message fields, marks records `origin: remote`, accepts human mention references, and renders bodies as escaped plain text. Forged local roles, tool calls, actions, colleague identifiers and instruction metadata are discarded. Unknown action event types are ignored; message text and mentions never feed a local composer, colleague session, task, tool or approval request.

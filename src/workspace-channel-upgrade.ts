@@ -9,7 +9,7 @@ export type CloudWorkspaceId = string & { readonly [workspaceBrand]: true };
 export type RealmId = string & { readonly [realmBrand]: true };
 export type AccountRegion = "CN" | "GLOBAL";
 export type ChannelUpgradeCode = "AUTH_REQUIRED" | "AUTH_CANCELLED" | "AUTH_EXPIRED" | "UNAVAILABLE" | "SOURCE_CHANGED"
-  | "LOCAL_CHANNEL_BUSY" | "OUTCOME_UNKNOWN" | "SCOPE_CHANGED" | "REGION_MISMATCH" | "REALM_MISMATCH" | "MEMBERSHIP_STALE" | "RATE_LIMITED";
+  | "LOCAL_CHANNEL_BUSY" | "OUTCOME_UNKNOWN" | "CONFLICT" | "SCOPE_CHANGED" | "REGION_MISMATCH" | "REALM_MISMATCH" | "MEMBERSHIP_STALE" | "RATE_LIMITED";
 export type ChannelUpgradeResult<T> = { ok: true; value: T } | { ok: false; error: { code: ChannelUpgradeCode } };
 export interface ChannelUpgradeSource {
   localWorkspaceId: string; resourceGeneration: string; localChannelId: string; catalogRevision: number; historyRevision: number;
@@ -45,8 +45,17 @@ export interface ChannelUpgradeBridge {
   checkUpgrade(input: ChannelUpgradeInput, signal: AbortSignal): Promise<ChannelUpgradeResult<never>>;
 }
 const refused = (code: ChannelUpgradeCode): ChannelUpgradeResult<never> => ({ ok: false, error: { code } });
-const safeCode = (code: unknown): ChannelUpgradeCode => typeof code === "string" && ["AUTH_REQUIRED", "AUTH_CANCELLED", "AUTH_EXPIRED", "UNAVAILABLE", "SOURCE_CHANGED",
-  "LOCAL_CHANNEL_BUSY", "OUTCOME_UNKNOWN", "SCOPE_CHANGED", "REGION_MISMATCH", "REALM_MISMATCH", "MEMBERSHIP_STALE", "RATE_LIMITED"].includes(code) ? code as ChannelUpgradeCode : "UNAVAILABLE";
+const conflictCodes = new Set<unknown>([409, "409", "CONFLICT", "IDEMPOTENCY_KEY_REUSED", "UPGRADE_AUDIENCE_CHANGED",
+  "IMPORT_AUDIENCE_CHANGED", "UPGRADE_ALREADY_COMMITTED", "UPGRADE_NOT_PREPARED"]);
+/** Normalize adapter/HTTP errors without reflecting remote messages, request details or private receipts. */
+export function channelUpgradeErrorCode(error: unknown, fallback: ChannelUpgradeCode = "UNAVAILABLE"): ChannelUpgradeCode {
+  const fields = error && typeof error === "object" ? error as { code?: unknown; status?: unknown } : null;
+  const code = fields ? fields.code : error;
+  if (fields?.status === 409 || conflictCodes.has(code)) return "CONFLICT";
+  return typeof code === "string" && ["AUTH_REQUIRED", "AUTH_CANCELLED", "AUTH_EXPIRED", "UNAVAILABLE", "SOURCE_CHANGED",
+    "LOCAL_CHANNEL_BUSY", "OUTCOME_UNKNOWN", "SCOPE_CHANGED", "REGION_MISMATCH", "REALM_MISMATCH", "MEMBERSHIP_STALE", "RATE_LIMITED"].includes(code)
+    ? code as ChannelUpgradeCode : fallback;
+}
 /** A local handoff only. It never discovers stored accounts, starts login, or calls Account/Collab. */
 export function createChannelUpgradeStub(): ChannelUpgradeBridge {
   return {
@@ -92,12 +101,15 @@ export class ChannelUpgradeModel {
   private stop() { ++this.epoch; this.controller?.abort(); this.controller = null; }
   cancel = () => { this.stop(); this.update({ phase: "preview", account: null, notice: null }); };
   private begin(phase: "checking" | "signing-in" | "preparing") {
-    if (!this.view.preview || this.view.preview.blocked || ["checking", "signing-in", "preparing"].includes(this.view.phase)) return null;
+    if (!this.view.preview || this.view.preview.blocked || ["checking", "signing-in", "preparing", "blocked"].includes(this.view.phase)) return null;
     this.stop(); const epoch = this.epoch, controller = new AbortController(); this.controller = controller;
     this.update({ phase, notice: null }); return { epoch, signal: controller.signal };
   }
   private applyAccount(result: ChannelUpgradeResult<UpgradeAccount>) {
-    if (!result.ok) { this.update({ phase: "sign-in", account: null, notice: safeCode(result.error?.code) }); return; }
+    if (!result.ok) {
+      const notice = channelUpgradeErrorCode(result.error);
+      this.update({ phase: notice === "CONFLICT" ? "blocked" : "sign-in", account: null, notice }); return;
+    }
     const { accountScope, region } = result.value;
     if (typeof accountScope !== "string" || !accountScope || !["CN", "GLOBAL"].includes(region)) {
       this.update({ phase: "sign-in", account: null, notice: "UNAVAILABLE" }); return;
@@ -107,13 +119,13 @@ export class ChannelUpgradeModel {
   async continue() {
     const request = this.begin("checking"); if (!request) return;
     try { const result = await this.bridge.account(request.signal); if (request.epoch === this.epoch) this.applyAccount(result); }
-    catch { if (request.epoch === this.epoch) this.applyAccount(refused("UNAVAILABLE")); }
+    catch (error) { if (request.epoch === this.epoch) this.applyAccount(refused(channelUpgradeErrorCode(error))); }
   }
   async signIn() {
     if (this.view.phase !== "sign-in") return;
     const request = this.begin("signing-in"); if (!request) return;
     try { const result = await this.bridge.signIn(request.signal); if (request.epoch === this.epoch) this.applyAccount(result); }
-    catch { if (request.epoch === this.epoch) this.applyAccount(refused("UNAVAILABLE")); }
+    catch (error) { if (request.epoch === this.epoch) this.applyAccount(refused(channelUpgradeErrorCode(error))); }
   }
   async prepare(confirmed: boolean) {
     const { account, preview } = this.view;
@@ -126,7 +138,9 @@ export class ChannelUpgradeModel {
         this.applyAccount(refused(current.value.region !== account.region ? "REGION_MISMATCH" : "SCOPE_CHANGED")); return;
       }
       const result = await this.bridge.checkUpgrade({ source: { ...preview.source }, account: { ...account }, mode: "future_only", target: "new_shared_workspace" }, request.signal);
-      if (request.epoch === this.epoch) this.update({ phase: "blocked", account: null, notice: result.ok ? "UNAVAILABLE" : safeCode(result.error?.code) });
-    } catch { if (request.epoch === this.epoch) this.update({ phase: "blocked", account: null, notice: "OUTCOME_UNKNOWN" }); }
+      if (request.epoch === this.epoch) this.update({ phase: "blocked", account: null, notice: result.ok ? "UNAVAILABLE" : channelUpgradeErrorCode(result.error) });
+    } catch (error) {
+      if (request.epoch === this.epoch) this.update({ phase: "blocked", account: null, notice: channelUpgradeErrorCode(error, "OUTCOME_UNKNOWN") });
+    }
   }
 }

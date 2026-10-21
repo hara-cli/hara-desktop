@@ -27,6 +27,7 @@ export const CHANNEL_UPGRADE_KEYS = [
   ["ws.channels.upgrade.notice.SOURCE_CHANGED", "The local channel changed. Review the current preview before continuing.", "本机频道已变化，请核对当前预览后继续。", "本機頻道已變更，請核對目前預覽後繼續。"],
   ["ws.channels.upgrade.notice.LOCAL_CHANNEL_BUSY", "Wait for the current reply or save to finish. No task was stopped for this upgrade.", "请等待当前回复或保存完成。没有为升级停止任务。", "請等待目前回覆或儲存完成。沒有為升級停止任務。"],
   ["ws.channels.upgrade.notice.OUTCOME_UNKNOWN", "The original request still needs checking. No upgrade or retry was started.", "原请求结果仍待核对，没有开始升级或重试。", "原請求結果仍待核對，沒有開始升級或重試。"],
+  ["ws.channels.upgrade.notice.CONFLICT", "This request conflicts with an earlier operation. Check the status of the original operation before continuing. Nothing was retried automatically.", "操作发生冲突。请先核对原来那次操作的状态，再决定下一步；没有自动重试。", "操作發生衝突。請先核對原來那次操作的狀態，再決定下一步；沒有自動重試。"],
   ["ws.channels.upgrade.notice.SCOPE_CHANGED", "The cloud account changed. Sign in again and review this channel.", "云端账号已变化，请重新登录并核对当前频道。", "雲端帳號已變更，請重新登入並核對目前頻道。"],
   ["ws.channels.upgrade.notice.REGION_MISMATCH", "The account data region changed. Cross-region upgrades are not allowed.", "账号数据区域发生变化，不能跨区域升级。", "帳號資料區域發生變更，不能跨區域升級。"],
   ["ws.channels.upgrade.notice.REALM_MISMATCH", "The shared space does not match the authorized space. Nothing was shared.", "共享空间与授权空间不一致，没有分享内容。", "共享空間與授權空間不一致，沒有分享內容。"],

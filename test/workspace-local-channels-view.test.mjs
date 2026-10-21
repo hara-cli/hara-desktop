@@ -44,9 +44,22 @@ test("cloud invite previews, sign-in guidance and explicit audience confirmation
       const confirmation = render(h(ChannelUpgradeDialogContent, { ...actions, view: confirming, t, confirmed }));
       assert.ok(confirmation.includes(t("ws.channels.upgrade.confirm")));assert.equal(confirmation.includes("private-scope-not-for-display"), false);
       assert.equal(/class="hs-btn pri"[^>]*disabled/.test(confirmation), !confirmed);
+      const labelId = confirmation.match(/<section class="hs-upgrade-confirm" aria-labelledby="([^"]+)"/)?.[1];
+      assert.ok(labelId, 'the region/audience confirmation section needs an accessible name');
+      assert.ok(confirmation.includes(`<h3 id="${labelId}">${t("ws.channels.upgrade.sharedSpace")}</h3>`));
     }
     const unavailable = render(h(ChannelUpgradeDialogContent, { ...actions, view: { ...preview, phase: "blocked", notice: "UNAVAILABLE" }, t, confirmed: false }));
     assert.ok(unavailable.includes(t("ws.channels.upgrade.notice.UNAVAILABLE")));assert.equal(unavailable.includes('class="hs-btn pri"'), false);
+  }
+});
+test("conflicts ask to check the original operation in all three languages and offer only a return to the local channel", () => {
+  const preview = new ChannelUpgradeModel(view).getSnapshot(), actions = { onConfirmed() {}, onClose() {}, onContinue() {}, onSignIn() {}, onUpgrade() {} };
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const t = makeT(locale), html = render(h(ChannelUpgradeDialogContent, { ...actions, view: { ...preview, phase: "blocked", notice: "CONFLICT" }, t, confirmed: false }));
+    assert.ok(html.includes(t("ws.channels.upgrade.notice.CONFLICT")));assert.ok(html.includes('role="status"'));
+    assert.ok(html.includes(t("ws.channels.upgrade.back")));assert.equal(html.includes('class="hs-btn pri"'), false);
+    assert.equal(html.includes(t("ws.channels.upgrade.signIn.action")), false);
+    assert.equal(html.includes(t("ws.channels.upgrade.action")), false);
   }
 });
 test("one colleague uses singular English in the sidebar and the explicit recipient choice", () => {

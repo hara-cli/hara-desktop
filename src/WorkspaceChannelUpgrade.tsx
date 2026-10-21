@@ -7,6 +7,7 @@ import { ChannelUpgradeModel, type ChannelUpgradeBridge, type ChannelUpgradeView
 type Translate = ReturnType<typeof makeT>;
 
 export function ChannelUpgradeDialog({ local, bridge, t, onClose }: { local: LocalChannelsView; bridge?: ChannelUpgradeBridge; t: Translate; onClose(): void }) {
+  // The bridge owns the model lifetime. Reconcile local changes with sync below to invalidate stale work without recreating the intent on every render.
   const model = useMemo(() => new ChannelUpgradeModel(local, bridge), [bridge]);
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   const [confirmed, setConfirmed] = useState(false);
@@ -42,7 +43,7 @@ export function ChannelUpgradeDialogContent({ view, t, confirmed, onConfirmed, o
       </dl>
       {signingIn ? <section className="hs-upgrade-sign-in" aria-labelledby="channel-upgrade-sign-in"><LockClosedIcon className="hico" aria-hidden="true" />
         <div><h3 id="channel-upgrade-sign-in">{t("ws.channels.upgrade.signIn.title")}</h3><p>{t("ws.channels.upgrade.signIn.body")}</p></div></section> : null}
-      {confirming ? <section className="hs-upgrade-confirm"><h3>{t("ws.channels.upgrade.sharedSpace")}</h3><p>{t("ws.channels.upgrade.region", { region: view.account?.region ?? "—" })}</p>
+      {confirming ? <section className="hs-upgrade-confirm" aria-labelledby="channel-upgrade-shared-space"><h3 id="channel-upgrade-shared-space">{t("ws.channels.upgrade.sharedSpace")}</h3><p>{t("ws.channels.upgrade.region", { region: view.account?.region ?? "—" })}</p>
         <label><input type="checkbox" checked={confirmed} disabled={busy} onChange={event => onConfirmed(event.currentTarget.checked)} /><span>{t("ws.channels.upgrade.confirm")}</span></label></section> : null}
       {notice ? <p className="wsd-notice" role="status">{t(`ws.channels.upgrade.notice.${notice}`)}</p> : !view.preview ? <p className="wsd-notice" role="status">{t("ws.channels.upgrade.noSource")}</p> : null}
     </div>

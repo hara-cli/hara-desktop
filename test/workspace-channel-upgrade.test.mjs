@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ChannelUpgradeModel, createChannelUpgradeStub, previewChannelUpgrade, channelScopeRefusal, CHANNEL_MEMBERSHIP_MAX_AGE_MS } from '../src/workspace-channel-upgrade.ts';
+import { ChannelUpgradeModel, createChannelUpgradeStub, previewChannelUpgrade, channelScopeRefusal, channelUpgradeErrorCode, CHANNEL_MEMBERSHIP_MAX_AGE_MS } from '../src/workspace-channel-upgrade.ts';
 
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const failure = code => ({ ok: false, error: { code } });
@@ -90,6 +90,52 @@ test('expired login, throttling and unknown outcomes have safe notices without a
     await new Promise(done => setImmediate(done));assert.equal(f.calls.filter(row => row.method === 'checkUpgrade').length, 1);
     assert.equal(f.model.getSnapshot().notice, code === 'remote-private-detail' ? 'UNAVAILABLE' : code);
   }
+});
+test('HTTP 409 and stable operation conflicts map to a safe conflict notice without reflecting remote details', () => {
+  for (const code of [409, '409', 'CONFLICT', 'IDEMPOTENCY_KEY_REUSED', 'UPGRADE_AUDIENCE_CHANGED', 'IMPORT_AUDIENCE_CHANGED', 'UPGRADE_ALREADY_COMMITTED', 'UPGRADE_NOT_PREPARED']) {
+    assert.equal(channelUpgradeErrorCode({ code, message: 'private request details', requestId: 'private-receipt' }), 'CONFLICT');
+  }
+  assert.equal(channelUpgradeErrorCode({ status: 409, code: 'unrecognized-server-code' }), 'CONFLICT');
+  assert.equal(channelUpgradeErrorCode({ status: 409, code: 'AUTH_REQUIRED' }), 'CONFLICT', 'HTTP conflict must not become a login/retry action');
+  assert.equal(channelUpgradeErrorCode(409), 'CONFLICT');
+  for (const error of [null, undefined, {}, 'private body mentioning 409', new Error('CONFLICT: private body'), { status: 500, code: 'private-detail' }]) {
+    assert.equal(channelUpgradeErrorCode(error), 'UNAVAILABLE');
+    assert.equal(channelUpgradeErrorCode(error, 'OUTCOME_UNKNOWN'), 'OUTCOME_UNKNOWN');
+  }
+  assert.equal(channelUpgradeErrorCode({ code: 'RATE_LIMITED' }), 'RATE_LIMITED');
+});
+for (const stage of ['account', 'signIn', 'recheck', 'checkUpgrade']) for (const thrown of [false, true]) {
+  test(`${stage} ${thrown ? 'thrown' : 'returned'} conflict blocks the attempt without login, preflight or mutation retries`, async () => {
+    const f = fixture(), original = structuredClone(f.source);
+    const conflict = () => {
+      const error = { ...(thrown ? { code: 'UPGRADE_ALREADY_COMMITTED' } : { status: 409, code: 'unrecognized-server-code' }),
+        message: 'private details', requestId: 'private-receipt' };
+      if (thrown) throw error;
+      return { ok: false, error };
+    };
+    if (stage === 'signIn') {
+      f.handlers.account = () => failure('AUTH_REQUIRED');await f.model.continue();
+      f.handlers.signIn = conflict;await f.model.signIn();
+    } else if (stage === 'account') {
+      f.handlers.account = conflict;await f.model.continue();
+    } else {
+      await f.model.continue();f.handlers[stage === 'recheck' ? 'account' : 'checkUpgrade'] = conflict;await f.model.prepare(true);
+    }
+    assert.equal(f.model.getSnapshot().phase, 'blocked');assert.equal(f.model.getSnapshot().notice, 'CONFLICT');
+    assert.equal(f.model.getSnapshot().account, null);
+    const calls = f.calls.length;
+    await new Promise(done => setImmediate(done));await f.model.continue();await f.model.signIn();await f.model.prepare(true);
+    assert.equal(f.calls.length, calls, 'the blocked attempt must not repeat the original operation');
+    assert.equal(f.calls.filter(row => row.method === 'checkUpgrade').length, stage === 'checkUpgrade' ? 1 : 0);
+    assert.deepEqual(f.source, original, 'conflict handling must preserve the local channel and draft');
+    assert.equal(/private details|private-receipt|UPGRADE_ALREADY_COMMITTED|unrecognized-server-code/.test(JSON.stringify(f.model.getSnapshot())), false);
+  });
+}
+test('an unclassified thrown preflight failure keeps the original outcome unknown and does not retry', async () => {
+  const f = fixture();await f.model.continue();f.handlers.checkUpgrade = () => { throw new Error('private transport failure'); };
+  await f.model.prepare(true);await f.model.continue();
+  assert.equal(f.model.getSnapshot().notice, 'OUTCOME_UNKNOWN');
+  assert.equal(f.calls.filter(row => row.method === 'checkUpgrade').length, 1);
 });
 test('foreign, removed or malformed local sources cannot start a cloud handoff', async () => {
   const source = local();
