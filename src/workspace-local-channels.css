@@ -8,6 +8,27 @@
 .hs .hs-channel-dialog-footer{padding-top:12px;border-top:1px solid var(--line)}
 .hs .hs-channel-dialog-footer .wsd-card-actions{margin-top:0}
 .hs .hs-channel-dialog-footer .hs-channel-local-note{margin:10px 0 0}
+.hs .hs-channel-upgrade{width:min(560px,calc(100vw - 32px))}
+.hs .hs-upgrade-steps{display:flex;align-items:center;gap:12px;list-style:none;margin:8px 0 20px;padding:0;color:var(--muted);font-size:12px;flex-wrap:wrap}
+.hs .hs-upgrade-steps>li{display:flex;align-items:center;gap:6px}
+.hs .hs-upgrade-steps>li>span{display:grid;place-items:center;width:22px;height:22px;border:1px solid var(--line);border-radius:50%}
+.hs .hs-upgrade-steps>li[aria-current=step]{color:var(--brand-text);font-weight:600}
+.hs .hs-upgrade-steps>li[aria-current=step]>span{border-color:var(--brand);background:var(--brand-soft)}
+.hs .hs-upgrade-steps .hico{width:14px;height:14px;color:var(--muted);margin-left:4px}
+.hs .hs-upgrade-source{display:flex;align-items:baseline;gap:10px;min-width:0;margin-bottom:8px}
+.hs .hs-upgrade-source strong{font-size:14px;overflow-wrap:anywhere}
+.hs .hs-upgrade-boundaries{margin:0 0 16px}
+.hs .hs-upgrade-boundaries>div{padding:12px 0;border-bottom:1px solid var(--line)}
+.hs .hs-upgrade-boundaries dt{font-size:13px;font-weight:600;margin-bottom:5px}
+.hs .hs-upgrade-boundaries dd{font-size:12px;color:var(--muted);line-height:1.7;margin:0}
+.hs .hs-upgrade-sign-in{display:flex;gap:10px;padding:14px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--brand-soft);margin-bottom:16px}
+.hs .hs-upgrade-sign-in>.hico{flex:none;color:var(--brand-text)}
+.hs .hs-upgrade-sign-in h3,.hs .hs-upgrade-confirm h3{font-size:14px;margin:0 0 6px}
+.hs .hs-upgrade-sign-in p,.hs .hs-upgrade-confirm p{font-size:12px;line-height:1.7;color:var(--muted);margin:0}
+.hs .hs-upgrade-confirm{margin-bottom:16px}
+.hs .hs-channel-dialog .hs-upgrade-confirm label{display:flex;align-items:flex-start;gap:10px;margin:12px 0 0;font-size:12px;line-height:1.7}
+.hs .hs-channel-dialog .hs-upgrade-confirm input{flex:none;width:18px;height:18px;min-height:18px;margin:2px 0 0;padding:0;accent-color:var(--brand)}
+.hs .hs-channel-upgrade .wsd-card-actions{flex-wrap:wrap;gap:8px;justify-content:space-between}
 .hs .hs-channel-picker{min-width:0;border:0;padding:0;margin:20px 0 12px}
 .hs .hs-channel-picker legend,.hs .hs-channel-recipients legend{font-weight:600;padding:0;margin-bottom:10px;color:var(--ink)}
 .hs .hs-channel-dialog .hs-channel-search,.hs .hs-channel-recipients .hs-channel-search{position:relative;display:flex;align-items:center;gap:8px}

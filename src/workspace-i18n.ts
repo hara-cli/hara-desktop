@@ -1,4 +1,5 @@
 import { WORKSPACE_SETTINGS_KEYS } from "./workspace-settings-i18n.ts";
+import { CHANNEL_UPGRADE_KEYS } from "./workspace-channel-upgrade-i18n.ts";
 
 // Shared shell keys in English, Simplified Chinese and Traditional Chinese.
 export const WORKSPACE_KEYS = [
@@ -412,8 +413,8 @@ export const WORKSPACE_EXTRA_KEYS = [
   ["ws.channels.history.range", "Records {from}–{to} of {total}", "第 {from}–{to} 条，共 {total} 条记录", "第 {from}–{to} 筆，共 {total} 筆記錄"],
   ["ws.channels.save", "Save changes", "保存更改", "儲存變更"],
   ["ws.channels.invite", "Invite other people", "邀请其他人", "邀請其他人"],
-  ["ws.channels.inviteTitle", "Invite people later", "稍后邀请其他人", "稍後邀請其他人"],
-  ["ws.channels.inviteBody", "Inviting other people will be available later. For now, chat with your local colleagues here.", "邀请其他人加入的功能后续开放。现在可以先和本机同事在这里聊。", "邀請其他人加入的功能後續開放。現在可以先和本機同事在這裡聊。"],
+  ["ws.channels.inviteTitle", "Bring this channel to the cloud", "邀请他人，一起在云端聊", "邀請他人，一起在雲端聊"],
+  ["ws.channels.inviteBody", "Review what will be shared, then sign in to invite people. Your local colleagues stay on this device.", "先核对分享范围，再登录并邀请其他人。本机同事仍留在这台设备。", "先核對分享範圍，再登入並邀請其他人。本機同事仍留在這台裝置。"],
   ["ws.channels.emptyConversation", "Start the conversation", "聊点什么吧", "聊點什麼吧"],
   ["ws.channels.emptyHint", "Send a message and choose which colleagues should reply. They respond once, in order.", "发送消息时可选择回复的同事，他们会依次回复。", "傳送訊息時可選擇回覆的同事，他們會依序回覆。"],
   ["ws.channels.placeholder", "Message #{name}", "发消息到 #{name}", "傳送訊息到 #{name}"],
@@ -436,6 +437,7 @@ export const WORKSPACE_EXTRA_KEYS = [
   ["ws.channels.approvalFailed", "Approval result is unconfirmed. Refresh to check the original card.", "审批结果尚未确认，请刷新核对原审批卡。", "審批結果尚未確認，請重新整理核對原審批卡。"],
   ["ws.channels.unavailable", "This local channel is unavailable in the current workspace.", "当前空间中没有这个本机频道。", "目前空間中沒有這個本機頻道。"],
   ...WORKSPACE_SETTINGS_KEYS,
+  ...CHANNEL_UPGRADE_KEYS,
   ['ws.locale.en', 'English', 'English', 'English'],
   ['ws.locale.system', 'Follow system', '跟随系统', '跟隨系統'],
   ['ws.locale.hans', '简体中文', '简体中文', '简体中文'],

@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { build } from "esbuild";
 import { makeT } from "../src/i18n.ts";
+import { ChannelUpgradeModel } from "../src/workspace-channel-upgrade.ts";
+import { CHANNEL_UPGRADE_KEYS } from "../src/workspace-channel-upgrade-i18n.ts";
 const require = createRequire(import.meta.url), root = new URL("../", import.meta.url).pathname;
-const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceLocalChannels.tsx"; export {Transcript} from "./src/WorkspaceLocalDev.tsx";', resolveDir: root, loader: "tsx" },
+const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceLocalChannels.tsx"; export * from "./src/WorkspaceChannelUpgrade.tsx"; export {Transcript} from "./src/WorkspaceLocalDev.tsx";', resolveDir: root, loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);
-const { LocalChannelRows, LocalChannelDialog, LocalChannelThread, LocalChannelComposer, Transcript, channelTranscriptGroups, channelHistoryRows } = module.exports;
+const { LocalChannelRows, LocalChannelDialog, LocalChannelThread, LocalChannelComposer, Transcript, channelTranscriptGroups, channelHistoryRows, ChannelUpgradeDialogContent } = module.exports;
 const { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
 const colleagues = Array.from({ length: 13 }, (_, index) => ({ agentId: `person-${index}`, kind: "colleague", state: "active", identity: { displayName: `Colleague ${index}` }, runtime: { id: "pi", label: "Pi", available: true } }));
 const channel = { id: "room", name: "Local <script> discussion", memberIds: colleagues.map(row => row.agentId), createdAt: "2026-10-20T00:00:00Z" };
@@ -25,6 +27,26 @@ test("real local channel controls expose all 13 members and complete English, Si
     assert.equal((dialog.match(/type="checkbox"/g) ?? []).length, 13); assert.ok(dialog.includes(t("ws.channels.new"))); assert.equal(/10 \/|coming soon|即将推出|即將推出/.test(dialog), false);
     const invite = render(h(LocalChannelDialog, { mode: "invite", view, model: {}, colleagues, t, onClose() {}, onCreated() {} }));
     assert.ok(invite.includes(t("ws.channels.inviteBody"))); assert.equal(/type="email"|href=|type="submit"/.test(invite), false);
+  }
+});
+test("cloud invite previews, sign-in guidance and explicit audience confirmation have complete three-language copy", () => {
+  const preview = new ChannelUpgradeModel(view).getSnapshot(), actions = { onConfirmed() {}, onClose() {}, onContinue() {}, onSignIn() {}, onUpgrade() {} };
+  for (const [index, locale] of ["en", "zh-Hans", "zh-Hant"].entries()) {
+    const t = makeT(locale);
+    for (const row of CHANNEL_UPGRADE_KEYS) assert.equal(t(row[0]), row[index + 1]);
+    const html = render(h(ChannelUpgradeDialogContent, { ...actions, view: preview, t, confirmed: false }));
+    assert.ok(html.includes(t("ws.channels.upgrade.newOnly.body")));assert.ok(html.includes(t("ws.channels.upgrade.staysLocal.body")));
+    assert.ok(html.includes('aria-current="step"'));assert.equal(html.includes('<script>'), false);
+    const signIn = render(h(ChannelUpgradeDialogContent, { ...actions, view: { ...preview, phase: "sign-in", notice: "AUTH_REQUIRED" }, t, confirmed: false }));
+    assert.ok(signIn.includes(t("ws.channels.upgrade.signIn.action")));assert.ok(signIn.includes(t("ws.channels.upgrade.back")));
+    const confirming = { ...preview, phase: "confirm", account: { accountScope: "private-scope-not-for-display", region: "CN" } };
+    for (const confirmed of [false, true]) {
+      const confirmation = render(h(ChannelUpgradeDialogContent, { ...actions, view: confirming, t, confirmed }));
+      assert.ok(confirmation.includes(t("ws.channels.upgrade.confirm")));assert.equal(confirmation.includes("private-scope-not-for-display"), false);
+      assert.equal(/class="hs-btn pri"[^>]*disabled/.test(confirmation), !confirmed);
+    }
+    const unavailable = render(h(ChannelUpgradeDialogContent, { ...actions, view: { ...preview, phase: "blocked", notice: "UNAVAILABLE" }, t, confirmed: false }));
+    assert.ok(unavailable.includes(t("ws.channels.upgrade.notice.UNAVAILABLE")));assert.equal(unavailable.includes('class="hs-btn pri"'), false);
   }
 });
 test("one colleague uses singular English in the sidebar and the explicit recipient choice", () => {
