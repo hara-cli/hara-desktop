@@ -30,6 +30,19 @@ test("old 404 snapshots get a repair card while transient and budget pauses reta
   }
   assert.equal(connectionRecoveryReason({ state: "blocked", blockReason: "Tool result: 404 file missing" }), null);
 });
+test("legacy 429 recovery inspects allowance evidence rather than rate-window quotas or appended hints", () => {
+  const t = makeT("en"), props = { t, disabled: false, onContinue() {}, onRepair() {} };
+  for (const message of ["exceeded your requests per minute quota", "requests per minute quota exhausted", "You exceeded your current quota", "每分鐘請求配額耗盡"]) {
+    const conversation = { state: "blocked", blockReason: `[openai error] 429 ${message} — the provider reported this account allowance or balance is exhausted; select another authorized connection or wait for its reset` };
+    assert.equal(connectionRecoveryReason(conversation), null);
+    assert.ok(render(h(WorkspaceTaskRecovery, { ...props, conversation })).includes(t("ws.resume.action")));
+  }
+  for (const message of ["insufficient quota", "account balance is exhausted", "账户额度已用尽", "帳戶配額已耗盡"]) {
+    assert.equal(connectionRecoveryReason({ state: "blocked", blockReason: `[openai error] 429 ${message}` }), "connection_quota_exhausted");
+  }
+  assert.equal(connectionRecoveryReason({ state: "blocked", blockReason: "[openai error] 429 rate limit", resumeAdmission: { allowed: false, reason: "connection_quota_exhausted" } }), "connection_quota_exhausted", "structured insufficient_quota evidence takes precedence");
+});
+
 test("boot shows a fixed diagnostic and attempt receipt, then disables reconnect during every in-flight phase", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     const t = makeT(locale);

@@ -130,7 +130,7 @@ async function contrast(){return evaluate(`(()=>{
  const over=(a,b)=>[0,1,2].map(i=>a[i]*a[3]+b[i]*(1-a[3])).concat([1]);
  const background=node=>{const chain=[];for(let current=node;current;current=current.parentElement)chain.push(parse(getComputedStyle(current).backgroundColor));return chain.reverse().reduce((bg,fg)=>over(fg,bg),[1,1,1,1]);};
  const lum=v=>v.slice(0,3).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((sum,x,i)=>sum+x*[.2126,.7152,.0722][i],0);
- const walk=document.createTreeWalker(document.querySelector('.wsd-app'),NodeFilter.SHOW_TEXT),issues=[];let min=Infinity,n=0,node;
+ const walk=document.createTreeWalker(document.querySelector('.wsd-app,.wsd-boot'),NodeFilter.SHOW_TEXT),issues=[];let min=Infinity,n=0,node;
  while(node=walk.nextNode()){
   if(!node.textContent.trim())continue;const element=node.parentElement,style=getComputedStyle(element);
   if(!element.getClientRects().length||style.visibility==='hidden'||element.closest('[inert],[disabled],option'))continue;
@@ -145,6 +145,28 @@ let completed=false;
 let screenshots=0;
 try{
  await connect();
+ // Startup must remain legible before the lazy shell defines every theme token.
+ for(const theme of ['light','dark']){
+  step=`boot-hover-fallback/${theme}`;
+  await send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});
+  const url=new URL('test/fixtures/workspace-boot-preview.html',base);url.search=new URLSearchParams({locale:'en',theme}).toString();
+  await send('Page.navigate',{url:url.href});
+  await ready("window.__HARA_BOOT_FIXTURE__?.model.getSnapshot().phase==='failed' && !!document.querySelector('.wsd-boot button')",'Startup failure fixture must settle');
+  await evaluate("document.querySelector('.wsd-boot button').style.setProperty('--row-hover','initial')");
+  const point=await evaluate("(()=>{const r=document.querySelector('.wsd-boot button').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()");
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});await settled();
+  assert.equal(await evaluate("document.querySelector('.wsd-boot button').matches(':hover')"),true);
+  const colors=await contrast();assert.deepEqual(colors.issues,[],`${theme} startup hover without row-hover token`);
+  const hover=await evaluate("getComputedStyle(document.querySelector('.wsd-boot button')).backgroundColor");
+  await capture(`boot-hover-fallback-${theme}`);
+  await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,...point});
+  await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,...point});await settled();
+  assert.equal(await evaluate("document.querySelector('.wsd-boot button').disabled"),true);
+  assert.notEqual(await evaluate("getComputedStyle(document.querySelector('.wsd-boot button')).backgroundColor"),hover,'Disabled reconnect must not retain its hover fill');
+  assert.equal(await evaluate("window.__HARA_BOOT_FIXTURE__.calls()"),2);
+  await capture(`boot-disabled-fallback-${theme}`);
+  receipts.push({theme,scenario:'boot-hover-fallback',rowHoverTokenAbsent:true,colors,disabledHoverExcluded:true,attachmentCalls:2});
+ }
  if(!channelsOnly){
  for(const theme of ['light','dark'])for(const scenario of ['home','chat','tasks']){
   await navigate({theme,scenario});const measured=await geometry();fullBleed(measured);assert.ok(measured.body<=measured.viewport,JSON.stringify(measured));assert.deepEqual(measured.badTargets,[]);assert.equal(measured.dmCount,10);

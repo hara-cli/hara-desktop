@@ -304,3 +304,15 @@ test("explicit server refusal is not marked unknown or retried", async () => {
   await f.model.send(); assert.equal(f.model.getSnapshot().pendingUnknown, false); assert.equal(f.model.getSnapshot().draft, "/continue");
   assert.equal(f.calls.filter(c => c.method === "workspace.session.resume").length, 1); assert.equal(f.calls.some(c => c.method === "workspace.session.receipt"), false);
 });
+
+test("rate-window quota errors allow one explicit resume instead of being mistaken for exhausted allowance", async () => {
+  for (const suffix of ["", " — the provider reported this account allowance or balance is exhausted; select another authorized connection or wait for its reset"]) {
+    const f = fixture();await f.ready();
+    f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked",
+      blockReason: `[openai error] 429 exceeded your requests per minute quota${suffix}`, resumeAdmission: { allowed: true, reason: null } } });
+    await f.model.refresh();assert.equal(f.calls.some(call => call.method.startsWith("workspace.session.")), false);
+    f.model.setDraft("/continue");await f.model.send();
+    assert.equal(f.calls.filter(call => call.method === "workspace.session.resume").length, 1);
+    assert.notEqual(f.model.getSnapshot().error, "ws.notice.resumeConnection");
+  }
+});
