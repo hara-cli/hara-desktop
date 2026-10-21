@@ -1,7 +1,7 @@
 // Tauri invokes `codesign` via PATH. Select the existing dedicated keychain explicitly;
 // never repair the user's search list, default keychain, ACL or partition configuration.
 import assert from "node:assert/strict";
-import { isAbsolute, normalize } from "node:path";
+import { posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 const IDENTITY = "Developer ID Application: Wuxi Nanhara Technologies Co., Ltd. (4GMBSXJ67T)";
@@ -10,7 +10,8 @@ export function explicitKeychainArgs(args, keychain) {
   if (!signIndexes.length && !args.some(arg => arg.startsWith("--sign=") || /^-s.+/.test(arg))) return [...args];
   assert.equal(signIndexes.length, 1, "Dedicated signing requires one explicit signing identity");
   assert.equal(args[signIndexes[0] + 1], IDENTITY, "Unexpected signing identity; no ad-hoc fallback");
-  assert(typeof keychain === "string" && isAbsolute(keychain) && normalize(keychain) === keychain
+  // This is a macOS codesign target path, including when tested on another host.
+  assert(typeof keychain === "string" && posix.isAbsolute(keychain) && posix.normalize(keychain) === keychain
     && !/[\r\n\0]/.test(keychain), "Dedicated keychain must be an absolute normalized path");
   assert(!args.some(arg => arg === "--keychain" || arg.startsWith("--keychain=")), "Conflicting keychain selection");
   return ["--keychain", keychain, ...args];

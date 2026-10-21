@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -27,7 +28,7 @@ test("packaged native fixture is disabled before filesystem, process or app work
   assert.throws(() => requirePackagedSyntheticCredentialAdapter(), /packaged Core 1\.0\.2 has no synthetic credential adapter/);
   const root = mkdtempSync(join(tmpdir(), "hara-native-gate-")), missing = join(root, "must-not-create");
   try {
-    const child = spawnSync(process.execPath, [new URL("../scripts/workspace-native-smoke.mjs", import.meta.url).pathname, join(missing, "shell"), missing],
+    const child = spawnSync(process.execPath, [fileURLToPath(new URL("../scripts/workspace-native-smoke.mjs", import.meta.url)), join(missing, "shell"), missing],
       { env: { PATH: "/usr/bin:/bin", HOME: root, HARA_NATIVE_SKIP_SCREENSHOTS: "1", HARA_SIGNING_LANE_RELEASED: "1" }, encoding: "utf8", timeout: 5000 });
     assert.equal(child.status, 1); assert.equal(child.stderr.includes("Native credential smoke disabled"), true);
     assert.equal(existsSync(missing), false); assert.deepEqual(readdirSync(root), []);

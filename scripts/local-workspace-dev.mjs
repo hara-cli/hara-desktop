@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const LAB_IDENTIFIER = "com.nanhara.hara.workspace-lab";
@@ -24,7 +24,7 @@ export function parseOptions(args) {
   return options;
 }
 export function isolatedEnvironment(source, home, native = false) {
-  const env = { PATH: `${dirname(process.execPath)}:${source.PATH ?? ""}`, HOME: home, USERPROFILE: home,
+  const env = { PATH: `${dirname(process.execPath)}${delimiter}${source.PATH ?? ""}`, HOME: home, USERPROFILE: home,
     NO_COLOR: "1", HARA_UPDATE_CHECK: "0", CARGO_NET_OFFLINE: "true" };
   for (const key of ["TMPDIR", "LANG", "LC_ALL", "USER", "LOGNAME", "SHELL"]) if (source[key]) env[key] = source[key];
   if (native) {

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -5,7 +6,7 @@ import { createRequire } from "node:module";
 import { build } from "esbuild";
 import ts from "typescript";
 import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
-const require = createRequire(import.meta.url), root = new URL("../", import.meta.url).pathname;
+const require = createRequire(import.meta.url), root = fileURLToPath(new URL("../", import.meta.url));
 const read = name => readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
 const snapshot = id => ({ workspaceId:id,resourceGeneration:`generation-${id}`,label:id,selectedAgentId:"main",syntheticOnly:false,executionMode:"workspace",
   agents:[{agentId:"main",kind:"main",state:"active",identity:{displayName:"Hara"},runtime:{id:"pi",label:"Pi",available:true}}],

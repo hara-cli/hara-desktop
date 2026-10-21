@@ -44,17 +44,21 @@ async function extract(c, directory, destination, phase) {
 export async function hydrate(c) {
   await bash('Install locked orchestration dependencies', [path.join(ROOT, 'scripts/npm-ci-retry.sh')], { cwd: ROOT, env: c.env });
   await bash('Install exact application dependencies', [path.join(ROOT, 'scripts/npm-ci-retry.sh')], { cwd: c.desktop, env: c.env });
-  await bash('Install exact Core dependencies without lifecycle scripts', [path.join(ROOT, 'scripts/npm-ci-retry.sh')], { cwd: c.core, env: { ...c.env, HARA_NPM_CI_IGNORE_SCRIPTS: '1' } });
-  await node('Pi-only locked hydration preflight', path.join(ROOT, 'scripts/hydrate-locked-sidecar-dependencies.mjs'), [c.core, c.target], { env: c.env });
-  await npm('Restore locked Core install scripts', ['rebuild', '--no-audit', '--fund=false'], { cwd: c.core, env: c.env });
+  await hydrateCore(c);
   assertSources(c.desktop, c.core);
   save(path.join(c.base, 'hydration.json'), receipt({ target: c.target, piOnlyLockVerified: true }));
+}
+export async function hydrateCore(c) {
+  await bash('Install exact Core dependencies without lifecycle scripts', [path.join(ROOT, 'scripts/npm-ci-retry.sh')], { cwd: c.core, env: { ...c.env, HARA_NPM_CI_IGNORE_SCRIPTS: '1' } });
+  await node('Pi-only locked hydration preflight', path.join(ROOT, 'scripts/hydrate-locked-sidecar-dependencies.mjs'), [c.core, c.target], { env: c.env });
+  // npm rebuild treats even an unsupported OPTIONAL install script as fatal. A normal locked
+  // install applies npm's optional-dependency semantics, while required lifecycle failures still fail.
+  await npm('Install locked Core with native optional-dependency semantics', ['ci', '--no-audit', '--fund=false'], { cwd: c.core, env: c.env });
 }
 export async function tests(c) {
   await bash('Original formal production dependency audit', [path.join(c.desktop, 'scripts/npm-audit-retry.sh')], { cwd: c.desktop, env: c.env });
   for (const [name, cwd] of [['Orchestration', ROOT], ['Desktop', c.desktop], ['Core', c.core]]) {
-    const output = await npm(`${name} original full suite`, ['test'], { cwd, env: c.env, capture: true });
-    fs.writeFileSync(path.join(c.base, `${name.toLowerCase()}-tests.log`), output, { mode: 0o600 });
+    const output = await npm(`${name} original full suite`, ['test'], { cwd, env: c.env, capture: true, logFile:path.join(c.base, `${name.toLowerCase()}-tests.log`) });
     const counts = testCounts(output); console.log(`${name} tests ${JSON.stringify(counts)}`);
     save(path.join(c.base, `${name.toLowerCase()}-tests.json`), receipt({ target: c.target, counts }));
   }

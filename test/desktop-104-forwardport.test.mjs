@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -7,7 +8,7 @@ import { makeT } from "../src/i18n.ts";
 
 const read = file => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 const require = createRequire(import.meta.url);
-const bundle = await build({ entryPoints: [new URL("../src/WorkspaceBrowserExtension.tsx", import.meta.url).pathname],
+const bundle = await build({ entryPoints: [fileURLToPath(new URL("../src/WorkspaceBrowserExtension.tsx", import.meta.url))],
   bundle: true, platform: "node", format: "cjs", jsx: "automatic", external: ["react"], loader: { ".css": "empty" }, write: false });
 const module = { exports: {} };
 new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);

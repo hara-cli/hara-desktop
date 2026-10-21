@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { after } from "node:test";
@@ -59,7 +60,7 @@ const bundle = await build({ stdin: { contents: `
   export const renderConnection=(options={})=>renderToStaticMarkup(createElement(Connection, {
     client,sessionId:"chat",personal:true,disabled:false,busy:false,locale:"zh",...options
   }));
-`, resolveDir: root.pathname, loader: "tsx" }, bundle: true, platform: "node", format: "cjs", jsx: "automatic", loader: {".css":"empty"}, write:false });
+`, resolveDir: fileURLToPath(root), loader: "tsx" }, bundle: true, platform: "node", format: "cjs", jsx: "automatic", loader: {".css":"empty"}, write:false });
 const compiled = join(fixture, "picker.cjs"); writeFileSync(compiled, bundle.outputFiles[0].contents);
 const { renderPicker, renderConnection } = createRequire(import.meta.url)(compiled);
 test("picker filters unsupported/private workers and does not guess a target from a title", testPureSelection);

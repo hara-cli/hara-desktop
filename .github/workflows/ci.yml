@@ -13,6 +13,10 @@ env:
   # Do not inherit a hosted runner's machine-level npm mirror.
   NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
   NPM_CONFIG_REPLACE_REGISTRY_HOST: always
+  # Match candidate checkout bytes without changing machine-level Git settings.
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: 'false'
 
 concurrency:
   group: hara-desktop-ci-${{ github.workflow }}-${{ github.ref }}
@@ -99,6 +103,53 @@ jobs:
       - name: Run native host regressions
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
 
+  core-native-install:
+    name: Core optional install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          path: desktop
+          persist-credentials: false
+      - id: core-lock
+        name: Read the exact committed Core lock
+        run: |
+          core_sha="$(tr -d '\r\n' < src-tauri/binaries/SIDECAR_COMMIT)"
+          test "${#core_sha}" = 40
+          test -z "$(printf '%s' "$core_sha" | tr -d '0-9a-f')"
+          echo "commit=$core_sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          repository: hara-cli/hara
+          ref: ${{ steps.core-lock.outputs.commit }}
+          path: core
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: desktop/.node-version
+      - name: Install locked Desktop tooling
+        run: npm ci
+      - name: Verify native Core optional install and search floor without models
+        run: node scripts/ci-core-platform.mjs "$GITHUB_WORKSPACE/core" "$RUNNER_TEMP/core-platform-smoke"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: core-platform-smoke-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/core-platform-smoke/search.log
+            ${{ runner.temp }}/core-platform-smoke/search.log.result.json
+          if-no-files-found: warn
+          retention-days: 7
+
   native-windows:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -120,3 +171,41 @@ jobs:
 
       - name: Compile-check the Windows-only native host
         run: cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --locked
+
+  regression-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .node-version
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
+          targets: x86_64-pc-windows-msvc
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: .bun-version
+          bun-download-url: https://github.com/oven-sh/bun/releases/download/bun-v1.3.9/bun-windows-x64-baseline.zip
+      - name: Verify exact Windows baseline compiler bytes
+        shell: bash
+        run: test "$(sha256sum "$(command -v bun)" | cut -d ' ' -f 1)" = 39f12024edc27d3706baa7b72a06156896b536af61472e0f9a6fe9c5e25b97cc
+      - name: Install locked Desktop dependencies
+        run: npm ci
+
+      - name: Run complete Windows regressions with durable failure diagnostics
+        shell: bash
+        run: node scripts/ci-regression.mjs "$RUNNER_TEMP/windows-regressions"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-regression-diagnostics
+          path: |
+            ${{ runner.temp }}/windows-regressions/tests.log
+            ${{ runner.temp }}/windows-regressions/tests.log.result.json
+          if-no-files-found: warn
+          retention-days: 7
