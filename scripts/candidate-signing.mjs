@@ -11,32 +11,35 @@ import { readUpdaterKey, withUpdaterFile } from './with-updater-file.mjs';
 import { validateTar, validateExtractedTree } from './candidate-archive.mjs';
 import { parseNotaryResponse } from './notarize-artifact.mjs';
 import { readAdmission } from './candidate-admission.mjs';
+import { candidateSigningConfiguration } from './candidate-operator-config.mjs';
 
 const IDENTITY = 'Developer ID Application: Wuxi Nanhara Technologies Co., Ltd. (4GMBSXJ67T)';
-const KEYCHAIN = path.join(realHome, 'Library/Keychains/hara-ci-signing.keychain-db');
-const NOTARY_KEY = path.join(realHome, '.tauri/asc-key-LPV3VLR842.p8');
-const NOTARY_ARGS = ['--key', NOTARY_KEY, '--key-id', 'LPV3VLR842', '--issuer', '69a6de87-a919-47e3-e053-5b8c7c11a4d1'];
-const LEASE = '/Users/zhujianbo/work/projects/hara/ops/.mac-signing-lease';
-const retained = path.join(realHome, '.hara-runners/hara-desktop-release/_candidate-notary', identity);
 const mac = target => target.endsWith('apple-darwin');
-export function assertSigner(e, settings) {
-  assert.equal(e.RUNNER_NAME, 'hara-desktop-release-Mac-mini-2');
+export function assertSigner(e, settings, configuredName) {
+  assert(typeof configuredName === 'string' && configuredName.length > 0, 'configured signer name required');
+  assert.equal(e.RUNNER_NAME, configuredName);
   assert.equal(settings.agentId, INPUT.runnerId); assert.equal(settings.gitHubUrl, 'https://github.com/hara-cli');
   assert.equal(settings.poolId, INPUT.runnerGroupId); assert.equal(settings.poolName, INPUT.runnerGroup); assert.equal(settings.agentName, e.RUNNER_NAME);
 }
 async function preconditions() {
-  assert(!fs.existsSync('/Users/zhujianbo/work/projects/hara/ops/.candidate-signing-ui-hold.json'),'candidate signing/UI hold is active; no Keychain or key access');
+  const config = candidateSigningConfiguration();
+  const operations = fs.lstatSync(config.operationsDirectory);
+  assert(operations.isDirectory() && !operations.isSymbolicLink() && operations.uid === process.getuid?.()
+    && (operations.mode & 0o022) === 0, 'candidate operations directory must be owned and non-writable by others');
+  assert(!fs.existsSync(path.join(config.operationsDirectory, '.candidate-signing-ui-hold.json')),'candidate signing/UI hold is active; no Keychain or key access');
   await readAdmission(); // Refuse missing/weakened live protection before opening any signing material.
   assert.equal(process.platform, 'darwin'); assert.equal(process.arch, 'arm64');
-  const settings = JSON.parse(fs.readFileSync(path.join(realHome, '.hara-runners/hara-desktop-release/.runner'), 'utf8').replace(/^\uFEFF/, ''));
-  assertSigner(process.env, settings);
-  assert(fs.statSync(KEYCHAIN).isFile()); assert(fs.statSync(NOTARY_KEY).isFile());
+  const settings = JSON.parse(fs.readFileSync(path.join(config.runnerDirectory, '.runner'), 'utf8').replace(/^\uFEFF/, ''));
+  assertSigner(process.env, settings, config.runnerName);
+  assert(fs.statSync(config.keychain).isFile()); assert(fs.statSync(config.notaryKeyFile).isFile());
   let bytes;
   try { bytes = readUpdaterKey(realHome); assert(bytes.toString('utf8').trim() && !bytes.includes(0)); }
   finally { bytes?.fill(0); }
+  return config;
 }
 async function withSigning(c, operation) {
-  await preconditions();
+  const config = await preconditions(), KEYCHAIN = config.keychain;
+  const LEASE = path.join(config.operationsDirectory, '.mac-signing-lease');
   const token = randomUUID();
   const rows = sync('/bin/ps', ['-axo', 'comm=']).split('\n');
   assert(!rows.some(r => /\/(?:codesign|notarytool|productsign)$/.test(r.trim())), 'another signing operation is active');
@@ -50,7 +53,7 @@ async function withSigning(c, operation) {
     mayNeedRelock = true;
     await run('Unlock only the existing dedicated signing Keychain', helper, [], { timeout: 30000, capture: true });
     assert(sync('/usr/bin/security', ['find-identity', '-v', '-p', 'codesigning', KEYCHAIN]).includes(IDENTITY));
-    await operation();
+    await operation(config);
   } finally {
     const errors = [];
     try { if (mayNeedRelock) sync('/usr/bin/security', ['lock-keychain', KEYCHAIN]); } catch (e) { errors.push(e); }
@@ -60,8 +63,10 @@ async function withSigning(c, operation) {
     if (errors.length) throw new AggregateError(errors, 'candidate signing cleanup failed; stop');
   }
 }
-export async function durableNotary(file, target, kind, output) {
+export async function durableNotary(file, target, kind, output, config = candidateSigningConfiguration()) {
   assert(mac(target)); assert(['app', 'dmg'].includes(kind));
+  const retained = path.join(config.runnerDirectory, '_candidate-notary', identity);
+  const NOTARY_ARGS = ['--key', config.notaryKeyFile, '--key-id', config.notaryKeyId, '--issuer', config.notaryIssuerId];
   const digest = fileHash(file), directory = path.join(retained, target, kind, digest);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const statePath = path.join(directory, 'notary.json'); let state;
@@ -119,9 +124,9 @@ export async function credentialPreflight(c) {
   // Build a cheap binary from the UNCHANGED formal streaming verifier, not the whole App.
   // No placeholder sidecar is needed just to discover a mismatched updater key.
   await run('Compile exact formal updater verifier for early key probe', 'cargo', ['build', '--locked', '--manifest-path', path.join(ROOT, 'scripts/candidate-updater-verifier/Cargo.toml'), '--target-dir', path.join(c.base, 'early-updater-verifier')], { env: c.env });
-  await withSigning(c, async () => {
+  await withSigning(c, async config => {
     const probe = path.join(c.base, 'developer-id-probe'); fs.copyFileSync('/usr/bin/true', probe, fs.constants.COPYFILE_EXCL);
-    await run('Background Developer ID signing probe', '/usr/bin/codesign', ['--force', '--options', 'runtime', '--timestamp', '--keychain', KEYCHAIN, '--sign', IDENTITY, probe], { timeout: 120000, capture: true });
+    await run('Background Developer ID signing probe', '/usr/bin/codesign', ['--force', '--options', 'runtime', '--timestamp', '--keychain', config.keychain, '--sign', IDENTITY, probe], { timeout: 120000, capture: true });
     sync('/usr/bin/codesign', ['--verify', '--strict', probe]);
     const payload = path.join(c.base, 'updater-key-probe.txt'); fs.writeFileSync(payload, 'Hara controlled candidate updater key probe\n', { flag: 'wx', mode: 0o600 });
     const code = await withUpdaterFile('bash', ['-c', 'exec npm run tauri -- signer sign "$1"', 'candidate-key-probe', payload], { env: { PATH:process.env.PATH, HOME:realHome, NO_COLOR:'1', NO_UPDATE_NOTIFIER:'1', npm_config_update_notifier:'false' } });
@@ -131,16 +136,16 @@ export async function credentialPreflight(c) {
   save(path.join(c.base, 'credential-preflight.json'), receipt({ originalUpdaterFileReadable: true, originalUpdaterKeyMatched: true, developerIdProbePassed: true, piOnlyLockVerified: true, productionWriteCredentialsProvided: false }));
 }
 export async function signApps(c) {
-  await withSigning(c, async () => {
+  await withSigning(c, async config => {
     for (const target of TARGETS.filter(mac)) {
       const directory = path.join(c.base, `app-input-${target}`); await importBundle(c, 'unsigned', target, directory);
       const app = path.join(directory, 'bundle/macos/Hara.app');
       for (const file of [...['hara', 'herdr', 'hara-desktop'].map(n => path.join(app, 'Contents/MacOS', n)), app])
-        await run('Sign exact native-built executable/App', '/usr/bin/codesign', ['--force', '--options', 'runtime', '--timestamp', '--keychain', KEYCHAIN, '--sign', IDENTITY, '--entitlements', path.join(c.desktop, 'src-tauri/Entitlements.plist'), file], { capture: true, timeout: 120000 });
+        await run('Sign exact native-built executable/App', '/usr/bin/codesign', ['--force', '--options', 'runtime', '--timestamp', '--keychain', config.keychain, '--sign', IDENTITY, '--entitlements', path.join(c.desktop, 'src-tauri/Entitlements.plist'), file], { capture: true, timeout: 120000 });
       await verifyApp(c, app, target);
       const out = path.join(c.base, `app-signed-output-${target}`); fs.mkdirSync(out, { mode: 0o700 });
       const upload = path.join(c.base, `notary-app-${target}.zip`); await run('Archive signed App submission', '/usr/bin/ditto', ['-c', '-k', '--keepParent', app, upload], { env: c.env });
-      const notary = await durableNotary(upload, target, 'app', path.join(out, 'app-notary.json'));
+      const notary = await durableNotary(upload, target, 'app', path.join(out, 'app-notary.json'), config);
       await run('Staple notarized App', '/usr/bin/xcrun', ['stapler', 'staple', app], { env: c.env });
       await run('Validate App staple', process.execPath, [path.join(c.desktop, 'scripts/stapler-validate.mjs'), app], { env: c.env });
       await run('Gatekeeper notarized App', '/usr/sbin/spctl', ['-a', '-vv', app], { env: c.env });
@@ -156,16 +161,16 @@ export async function signApps(c) {
 export async function signFinal(c) {
   const support = await downloadArtifact('unsigned', c.target, path.join(c.base, 'sign-final-compiler-input'));
   restoreBuildBinaries(c, support, readJson(path.join(support, 'receipt.json')));
-  await withSigning(c, async () => {
+  await withSigning(c, async config => {
     for (const target of TARGETS) {
       const directory = path.join(c.base, `final-input-${target}`);
       const prior = await importBundle(c, mac(target) ? 'dmg-native' : 'unsigned', target, directory);
       let signing;
       if (mac(target)) {
         const dmg = path.join(directory, 'bundle/dmg', `Hara_${INPUT.desktop.version}_${target.startsWith('aarch64') ? 'aarch64' : 'x64'}.dmg`);
-        await run('Sign native final DMG container', '/usr/bin/codesign', ['--force', '--timestamp', '--keychain', KEYCHAIN, '--sign', IDENTITY, dmg], { capture: true, timeout: 120000 });
+        await run('Sign native final DMG container', '/usr/bin/codesign', ['--force', '--timestamp', '--keychain', config.keychain, '--sign', IDENTITY, dmg], { capture: true, timeout: 120000 });
         sync('/usr/bin/codesign', ['--verify', '--strict', dmg]);
-        const notary = await durableNotary(dmg, target, 'dmg', path.join(directory, 'dmg-notary.json'));
+        const notary = await durableNotary(dmg, target, 'dmg', path.join(directory, 'dmg-notary.json'), config);
         await run('Staple notarized native DMG', '/usr/bin/xcrun', ['stapler', 'staple', dmg], { env: c.env });
         await run('Validate DMG staple', process.execPath, [path.join(c.desktop, 'scripts/stapler-validate.mjs'), dmg], { env: c.env });
         await run('Gatekeeper final DMG', '/usr/sbin/spctl', ['-a', '-t', 'open', '--context', 'context:primary-signature', '-vv', dmg], { env: c.env });

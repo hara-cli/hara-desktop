@@ -1,4 +1,10 @@
 interface ScrollMetrics { scrollTop: number; scrollHeight: number; clientHeight: number }
+/** Settings resume the exact reading position, independently of the new-message follow threshold. */
+export function captureWorkspaceReadingPosition(node: ScrollMetrics) {
+  const bottom = Math.max(0, node.scrollHeight - node.clientHeight);
+  const top = Math.max(0, Math.min(bottom, node.scrollTop));
+  return { top, atBottom: bottom - top <= 1 };
+}
 /** In-memory viewport intent only; no messages, credentials, timers or DOM ownership. */
 export class WorkspaceChatScroll {
   following = true;

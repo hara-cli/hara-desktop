@@ -22,9 +22,10 @@ for (const [key, values] of Object.entries({ GITHUB_ACTIONS:['false'], GITHUB_RE
   for (const value of values) test(`candidate rejects unapproved ${key}=${value}`, () => assert.throws(() => assertEvent({...event(),[key]:value})));
 }
 test('only the migrated organization signer is admitted', () => {
-  const e={RUNNER_NAME:'hara-desktop-release-Mac-mini-2'}, s={agentId:242,gitHubUrl:'https://github.com/hara-cli',poolId:3,poolName:INPUT.runnerGroup,agentName:e.RUNNER_NAME};
-  assertSigner(e,s);
-  for(const [key,value] of Object.entries({agentId:21,gitHubUrl:'https://github.com/hara-cli/hara-desktop',poolId:1,poolName:'Default',agentName:'unknown'})) assert.throws(()=>assertSigner(e,{...s,[key]:value}));
+  const configuredName='synthetic-candidate-signer', e={RUNNER_NAME:configuredName}, s={agentId:INPUT.runnerId,gitHubUrl:'https://github.com/hara-cli',poolId:INPUT.runnerGroupId,poolName:INPUT.runnerGroup,agentName:e.RUNNER_NAME};
+  assertSigner(e,s,configuredName);
+  assert.throws(()=>assertSigner(e,s)); assert.throws(()=>assertSigner(e,s,'different-signer'));
+  for(const [key,value] of Object.entries({agentId:21,gitHubUrl:'https://github.com/hara-cli/hara-desktop',poolId:1,poolName:'Default',agentName:'unknown'})) assert.throws(()=>assertSigner(e,{...s,[key]:value},configuredName));
 });
 test('all four target/package/update contracts are native and deterministic', () => {
   assert.equal(nativeTarget('darwin','x64'),TARGETS[1]); assert.equal(nativeTarget('darwin','arm64'),TARGETS[0]);

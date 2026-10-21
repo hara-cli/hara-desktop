@@ -11,7 +11,12 @@ const bundle = await build({ stdin: { contents: 'export {SettingsContent} from "
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
 const { createElement } = require("react"), { renderToStaticMarkup } = require("react-dom/server");
-const render = (name, props) => renderToStaticMarkup(createElement(module.exports[name], props));
+const render = (name, props) => {
+  const before = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: key => key === "hara.locale" ? "zh-Hans" : null } });
+  try { return renderToStaticMarkup(createElement(module.exports[name], props)); }
+  finally { if (before) Object.defineProperty(globalThis, "localStorage", before); else delete globalThis.localStorage; }
+};
 const snapshot = id => ({ workspaceId: id, resourceGeneration: "generation-" + id, label: id, selectedAgentId: "main", syntheticOnly: false, executionMode: "workspace",
   agents: [{ agentId: "main", kind: "main", state: "active", identity: { displayName: "Hara" }, runtime: { id: "pi", label: "Pi", available: true } }],
   connections: { revision: 1, defaultConnectionId: null, connections: [] }, approvals: [], conversation: { history: [], state: "idle", usage: { modelCalls: 0 }, runUsage: { modelCalls: 0 } } });
@@ -25,14 +30,14 @@ function settings(page, kind = "personal") {
 }
 test("full-window settings has two scopes, accessible navigation and no drawer/template or unapproved browser settings", () => {
   const html = settings("overview");
-  for (const value of ['aria-label="设置导航"', 'aria-current="page"', 'aria-haspopup="menu"', "返回 Hara", "仅当前空间", "所有空间", "连接", "运行时", "定时任务", "技能", "外观与语言", "软件更新"]) assert.equal(html.includes(value), true, value);
+  for (const value of ['aria-label="设置导航"', 'aria-current="page"', 'aria-haspopup="menu"', "返回 Hara", "仅本空间", "所有空间", "连接", "运行时", "定时任务", "技能", "外观与语言", "软件更新"]) assert.equal(html.includes(value), true, value);
   assert.equal(/wsd-settings|模板|浏览器扩展|>成员<|WORKSPACE LAB/.test(html), false);
   assert.equal(settings("overview", "team").includes(">成员<"), true);
 });
-test("workspace and device page scope chips are distinct; appearance has no unapproved language switch", () => {
-  assert.equal(settings("general").includes("■ 仅本空间"), true);
-  const appearance = settings("appearance"); assert.equal(appearance.includes("○ 这台 Mac · 所有空间"), true); assert.equal(appearance.includes("默认折叠执行详情"), true);
-  assert.equal(appearance.includes('aria-label="界面语言"'), false);
+test("workspace and device page scope chips are distinct; appearance preserves the approved three-language switch", () => {
+  assert.equal(settings("general").includes("仅本空间"), true);
+  const appearance = settings("appearance"); assert.equal(appearance.includes("这台 Mac · 所有空间"), true); assert.equal(appearance.includes('aria-label="语言"'), true); for (const locale of ["en", "zh-Hans", "zh-Hant"]) assert.ok(appearance.includes(`value="${locale}"`));
+
 });
 test("preview updates row is present but disabled/off, and version copy contains only safe build metadata", () => {
   const html = settings("updates"); assert.equal(html.includes("接收预览版，以后提供"), true); assert.equal(/aria-label="接收预览版，以后提供" aria-checked="false" disabled=""/.test(html), true);
@@ -45,13 +50,13 @@ test("settings-only model uses a separate view selection route, with no catalog 
   const model = new WorkspaceDevModel(rpc, () => "fixture", false, "workspace", true); await model.selectWorkspace("B");
   assert.equal(model.getSnapshot().workspaceId, "B"); assert.equal(calls.some(call => call.method === "workspace.select"), false); assert.equal(calls.filter(call => call.method === "workspace.settings.select").length, 1);
 });
-test("generic zh chooses Simplified Chinese without introducing a full language-selection flow", () => {
-  assert.equal(localeFromSystem("zh"), "zh"); assert.equal(makeT(localeFromSystem("zh"))("cancel"), "取消"); assert.equal(localeFromSystem("en-US"), "en");
+test("system locales retain all three approved language variants", () => {
+  assert.equal(localeFromSystem("zh"), "zh-Hans"); assert.equal(makeT(localeFromSystem("zh"))("cancel"), "取消"); assert.equal(localeFromSystem("en-US"), "en"); assert.equal(localeFromSystem("zh-TW"), "zh-Hant");
 });
 test("unsaved edits require confirmation before scope/page/return; passwords never populate saved forms", () => {
   const source = readFileSync(new URL("../src/WorkspaceSettings.tsx", import.meta.url), "utf8"), form = readFileSync(new URL("../src/WorkspaceRuntimeSettings.tsx", import.meta.url), "utf8");
   assert.equal(source.includes("window.confirm"), false, "Native settings cannot rely on optional WebView host dialogs");
-  assert.equal(source.includes('role="alertdialog" aria-modal="true"'), true); assert.equal(source.includes("放弃未保存的修改？"), true);
+  assert.equal(source.includes('role="alertdialog" aria-modal="true"'), true); assert.equal(source.includes('t("ws.settings.discard.title")'), true);
   for (const kind of ["page", "scope", "close", "skill"]) assert.equal(source.includes(`requestLeave({ kind: "${kind}"`), true, kind);
   assert.equal(source.includes("onDirty={leaveGuard.setDirty}"), true); assert.equal(source.includes("leaveGuard.confirm()"), true);
   assert.equal(source.includes('event.key === "Escape"'), true); assert.equal(source.includes('event.key === "Tab"'), true);

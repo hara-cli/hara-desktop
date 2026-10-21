@@ -55,8 +55,14 @@ export class RendererErrorBoundary extends React.Component<
 
   render() {
     if (!this.state.failed) return this.props.children;
-    const zh = navigator.language.toLowerCase().startsWith("zh");
-    return (
+    return <RendererRecoveryView />;
+  }
+}
+
+/** Pure recovery surface, also usable when the workspace module never loaded. */
+export function RendererRecoveryView() {
+  const zh = navigator.language.toLowerCase().startsWith("zh");
+  return (
       <main className="renderer-recovery" role="alert">
         <section className="renderer-recovery-card">
           <div className="renderer-recovery-mark" aria-hidden="true"><HaraLogo size={38} /></div>
@@ -72,6 +78,5 @@ export class RendererErrorBoundary extends React.Component<
           </button>
         </section>
       </main>
-    );
-  }
+  );
 }

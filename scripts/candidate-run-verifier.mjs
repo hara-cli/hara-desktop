@@ -7,8 +7,9 @@ import { pathToFileURL } from 'node:url';
 import { INPUT, ROOT, TARGETS, api, sync, assertReceipt, downloadArtifact, readJson, save, fileHash } from './candidate-common.mjs';
 import { candidateAssetNames } from './candidate-gate.mjs';
 import { readAdmission } from './candidate-admission.mjs';
+import { candidateRunnerName } from './candidate-operator-config.mjs';
 
-export function checkRunMetadata(run, jobs, approvals, expected) {
+export function checkRunMetadata(run, jobs, approvals, expected, configuredRunnerName = candidateRunnerName()) {
   assert.equal(run.id, expected.runId); assert.equal(run.run_attempt, expected.attempt);
   assert.equal(run.head_sha, expected.orchestration); assert.equal(run.repository.full_name, 'hara-cli/hara-desktop');
   assert.equal(run.head_repository.full_name, 'hara-cli/hara-desktop'); assert.equal(run.event, 'push');
@@ -19,7 +20,7 @@ export function checkRunMetadata(run, jobs, approvals, expected) {
   // GitHub review history is run-scoped, not an attempt-scoped authorization API. Until GitHub
   // exposes independent attempt linkage, refuse promotion proof for reruns rather than invent it.
   assert.equal(expected.attempt, 1, 'reruns need separate independently linked approval evidence');
-  assert(approvals.some(r => r.state === 'approved' && r.user.id === INPUT.approverId && r.environments.some(e => e.id === INPUT.environmentId && e.name === INPUT.environment)), 'Jeff approval missing');
+  assert(approvals.some(r => r.state === 'approved' && r.user.id === INPUT.approverId && r.environments.some(e => e.id === INPUT.environmentId && e.name === INPUT.environment)), 'designated reviewer approval missing');
   assert(!approvals.some(r => r.state === 'rejected'));
   const named = name => { const rows = jobs.filter(j => j.name === name); assert.equal(rows.length, 1); const j = rows[0];
     assert.equal(j.run_id, expected.runId); assert.equal(j.run_attempt, expected.attempt); assert.equal(j.head_sha, expected.orchestration);
@@ -27,7 +28,8 @@ export function checkRunMetadata(run, jobs, approvals, expected) {
   const step = (j, name) => { const rows = j.steps.filter(s => s.name === name); assert.equal(rows.length, 1); assert.equal(rows[0].status, 'completed'); assert.equal(rows[0].conclusion, 'success'); };
   for (const name of ['credential_preflight', 'sign_apps', 'sign_payloads']) {
     const j = named(name); assert.equal(j.runner_id, INPUT.runnerId); assert.equal(j.runner_group_id, INPUT.runnerGroupId);
-    assert.equal(j.runner_name, 'hara-desktop-release-Mac-mini-2');
+    assert(typeof configuredRunnerName === 'string' && configuredRunnerName.length > 0, 'configured signer name missing');
+    assert.equal(j.runner_name, configuredRunnerName);
   }
   step(named('credential_preflight'), 'Original updater-file and background Developer ID preflight');
   step(named('sign_apps'), 'Developer ID sign, notarize and staple exact native Apps');

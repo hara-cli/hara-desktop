@@ -2,8 +2,12 @@
 import Foundation
 import Security
 import Darwin
-let keychainPath = NSHomeDirectory() + "/Library/Keychains/hara-ci-signing.keychain-db"
-let passwordPath = NSHomeDirectory() + "/.tauri/hara-codesign-keychain.password"
+let environment = ProcessInfo.processInfo.environment
+guard let keychainPath = environment["HARA_CANDIDATE_SIGNING_KEYCHAIN"],
+  let passwordPath = environment["HARA_CANDIDATE_SIGNING_PASSWORD_FILE"],
+  keychainPath.hasPrefix("/"), passwordPath.hasPrefix("/"),
+  keychainPath.count < 4096, passwordPath.count < 4096,
+  keychainPath != passwordPath else { exit(1) }
 let fd = open(passwordPath, O_RDONLY | O_NOFOLLOW)
 guard fd >= 0 else { exit(1) }
 defer { close(fd) }

@@ -48,6 +48,16 @@ jobs:
   credential_preflight:
     needs: admission
     environment: hara-desktop-candidate
+    env:
+      HARA_CANDIDATE_RUNNER_NAME: ${{ vars.HARA_CANDIDATE_RUNNER_NAME }}
+      HARA_CANDIDATE_RUNNER_DIRECTORY: ${{ vars.HARA_CANDIDATE_RUNNER_DIRECTORY }}
+      HARA_CANDIDATE_OPS_DIRECTORY: ${{ vars.HARA_CANDIDATE_OPS_DIRECTORY }}
+      HARA_CANDIDATE_SIGNING_KEYCHAIN: ${{ vars.HARA_CANDIDATE_SIGNING_KEYCHAIN }}
+      HARA_CANDIDATE_SIGNING_PASSWORD_FILE: ${{ vars.HARA_CANDIDATE_SIGNING_PASSWORD_FILE }}
+      HARA_CANDIDATE_NOTARY_KEY_FILE: ${{ vars.HARA_CANDIDATE_NOTARY_KEY_FILE }}
+      HARA_CANDIDATE_NOTARY_KEY_ID: ${{ vars.HARA_CANDIDATE_NOTARY_KEY_ID }}
+      HARA_CANDIDATE_NOTARY_ISSUER_ID: ${{ vars.HARA_CANDIDATE_NOTARY_ISSUER_ID }}
+      HARA_CANDIDATE_TOOLCHAIN_PATH: ${{ vars.HARA_CANDIDATE_TOOLCHAIN_PATH }}
     runs-on:
       group: hara-desktop-candidate
       labels: [self-hosted, macOS, ARM64, hara-desktop-release]
@@ -71,9 +81,9 @@ jobs:
           persist-credentials: false
       - name: Select existing pinned local tools without global settings changes
         run: |
-          echo /Users/zhujianbo/.bun/bin >> "$GITHUB_PATH"
-          echo /Users/zhujianbo/.nvm/versions/node/v22.23.1/bin >> "$GITHUB_PATH"
-          echo /Users/zhujianbo/.rustup/toolchains/1.97.0-aarch64-apple-darwin/bin >> "$GITHUB_PATH"
+          test -n "$HARA_CANDIDATE_TOOLCHAIN_PATH"
+          export PATH="$HARA_CANDIDATE_TOOLCHAIN_PATH:$PATH"
+          node scripts/candidate-operator-config.mjs select-tools
       - name: Exact source and Pi-only formal hydration before expensive native builds
         run: node scripts/candidate-native.mjs hydrate
       - name: Original updater-file and background Developer ID preflight
@@ -156,6 +166,16 @@ jobs:
   sign_apps:
     needs: native_build
     environment: hara-desktop-candidate
+    env:
+      HARA_CANDIDATE_RUNNER_NAME: ${{ vars.HARA_CANDIDATE_RUNNER_NAME }}
+      HARA_CANDIDATE_RUNNER_DIRECTORY: ${{ vars.HARA_CANDIDATE_RUNNER_DIRECTORY }}
+      HARA_CANDIDATE_OPS_DIRECTORY: ${{ vars.HARA_CANDIDATE_OPS_DIRECTORY }}
+      HARA_CANDIDATE_SIGNING_KEYCHAIN: ${{ vars.HARA_CANDIDATE_SIGNING_KEYCHAIN }}
+      HARA_CANDIDATE_SIGNING_PASSWORD_FILE: ${{ vars.HARA_CANDIDATE_SIGNING_PASSWORD_FILE }}
+      HARA_CANDIDATE_NOTARY_KEY_FILE: ${{ vars.HARA_CANDIDATE_NOTARY_KEY_FILE }}
+      HARA_CANDIDATE_NOTARY_KEY_ID: ${{ vars.HARA_CANDIDATE_NOTARY_KEY_ID }}
+      HARA_CANDIDATE_NOTARY_ISSUER_ID: ${{ vars.HARA_CANDIDATE_NOTARY_ISSUER_ID }}
+      HARA_CANDIDATE_TOOLCHAIN_PATH: ${{ vars.HARA_CANDIDATE_TOOLCHAIN_PATH }}
     runs-on:
       group: hara-desktop-candidate
       labels: [self-hosted, macOS, ARM64, hara-desktop-release]
@@ -169,9 +189,9 @@ jobs:
         with: { repository: hara-cli/hara, path: core, ref: 4cde6bd49ad7095bd9820677220d4650ed95bf5c, persist-credentials: false }
       - name: Select pinned local tools
         run: |
-          echo /Users/zhujianbo/.bun/bin >> "$GITHUB_PATH"
-          echo /Users/zhujianbo/.nvm/versions/node/v22.23.1/bin >> "$GITHUB_PATH"
-          echo /Users/zhujianbo/.rustup/toolchains/1.97.0-aarch64-apple-darwin/bin >> "$GITHUB_PATH"
+          test -n "$HARA_CANDIDATE_TOOLCHAIN_PATH"
+          export PATH="$HARA_CANDIDATE_TOOLCHAIN_PATH:$PATH"
+          node scripts/candidate-operator-config.mjs select-tools
       - run: node scripts/candidate-native.mjs hydrate
       - name: Developer ID sign, notarize and staple exact native Apps
         run: node scripts/candidate-signing.mjs sign-apps
@@ -226,6 +246,16 @@ jobs:
   sign_payloads:
     needs: [native_build, native_dmg]
     environment: hara-desktop-candidate
+    env:
+      HARA_CANDIDATE_RUNNER_NAME: ${{ vars.HARA_CANDIDATE_RUNNER_NAME }}
+      HARA_CANDIDATE_RUNNER_DIRECTORY: ${{ vars.HARA_CANDIDATE_RUNNER_DIRECTORY }}
+      HARA_CANDIDATE_OPS_DIRECTORY: ${{ vars.HARA_CANDIDATE_OPS_DIRECTORY }}
+      HARA_CANDIDATE_SIGNING_KEYCHAIN: ${{ vars.HARA_CANDIDATE_SIGNING_KEYCHAIN }}
+      HARA_CANDIDATE_SIGNING_PASSWORD_FILE: ${{ vars.HARA_CANDIDATE_SIGNING_PASSWORD_FILE }}
+      HARA_CANDIDATE_NOTARY_KEY_FILE: ${{ vars.HARA_CANDIDATE_NOTARY_KEY_FILE }}
+      HARA_CANDIDATE_NOTARY_KEY_ID: ${{ vars.HARA_CANDIDATE_NOTARY_KEY_ID }}
+      HARA_CANDIDATE_NOTARY_ISSUER_ID: ${{ vars.HARA_CANDIDATE_NOTARY_ISSUER_ID }}
+      HARA_CANDIDATE_TOOLCHAIN_PATH: ${{ vars.HARA_CANDIDATE_TOOLCHAIN_PATH }}
     runs-on:
       group: hara-desktop-candidate
       labels: [self-hosted, macOS, ARM64, hara-desktop-release]
@@ -239,9 +269,9 @@ jobs:
         with: { repository: hara-cli/hara, path: core, ref: 4cde6bd49ad7095bd9820677220d4650ed95bf5c, persist-credentials: false }
       - name: Select pinned local tools
         run: |
-          echo /Users/zhujianbo/.bun/bin >> "$GITHUB_PATH"
-          echo /Users/zhujianbo/.nvm/versions/node/v22.23.1/bin >> "$GITHUB_PATH"
-          echo /Users/zhujianbo/.rustup/toolchains/1.97.0-aarch64-apple-darwin/bin >> "$GITHUB_PATH"
+          test -n "$HARA_CANDIDATE_TOOLCHAIN_PATH"
+          export PATH="$HARA_CANDIDATE_TOOLCHAIN_PATH:$PATH"
+          node scripts/candidate-operator-config.mjs select-tools
       - run: node scripts/candidate-native.mjs hydrate
       - name: Sign and notarize native DMGs; sign Linux/Windows updater payloads locally
         run: node scripts/candidate-signing.mjs sign-final

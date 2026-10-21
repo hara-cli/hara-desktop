@@ -54,6 +54,7 @@ const bundle = await build({
   format: "cjs",
   platform: "node",
   jsx: "automatic",
+  loader: { ".css": "empty" },
   write: false,
 });
 const compiled = join(fixture, "navigation.cjs");

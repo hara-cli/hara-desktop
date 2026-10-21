@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ConversationCodingLinkView, type ExternalSessionInfo, type HaraClient } from "./client";
 import { codingConnectionChoices, codingConnectionNeedsRecovery, codingConnectionRequest } from "./coding-connection-state";
 import { IconClose, IconSearch } from "./icons";
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 
 const SOURCES = ["codex", "claude", "runtime"] as const;
 type Source = typeof SOURCES[number];

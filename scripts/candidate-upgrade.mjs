@@ -29,7 +29,7 @@ export async function upgradeSmoke(c, assets) {
     res.setHeader('Cache-Control', 'no-store');
     if (req.method !== 'GET' || !['127.0.0.1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) { res.writeHead(403).end(); return; }
     if (req.url === '/latest.json') {
-      res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ version: INPUT.desktop.version, notes: 'Private candidate only', pub_date: '2026-10-21T00:00:00Z',
+      res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ version: INPUT.desktop.version, notes: 'Private candidate only', pub_date: '2025-01-02T03:04:05Z',
         platforms: { [target]: { signature, url: `http://127.0.0.1:${server.address().port}/payload` } } })); return;
     }
     if (req.url !== '/payload') { res.writeHead(404).end(); return; }

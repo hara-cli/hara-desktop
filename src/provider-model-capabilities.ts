@@ -1,4 +1,4 @@
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 
 const TOKEN_PLAN_AGENT_MODEL_CAPABILITIES: Readonly<Record<string, { zh: string; en: string }>> = Object.freeze({
   "qwen3.8-max": { zh: "视觉 · 推理 · 1M · 夜间 5 折", en: "vision · reasoning · 1M · 50% off at night" },

@@ -7,7 +7,7 @@ import type {
   HaraClient,
   LayaRuntimeState,
 } from "./client";
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 import { SettingsBadge, SettingsCard, SettingsItem, SettingsNotice } from "./SettingsUI";
 
 const copy = {

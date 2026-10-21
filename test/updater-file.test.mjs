@@ -73,7 +73,8 @@ test("file preflight has fixed non-secret output, and formal CI/source guards st
   const f=fixture();try{const r=spawnSync(process.execPath,["scripts/with-updater-file.mjs","--check"],{env:{PATH:process.env.PATH,HOME:f.home},encoding:"utf8"});assert.equal(r.status,0);assert(!r.stdout.includes(secret));assert.match(r.stdout,/no Keychain access/);
     const source=readFileSync(new URL("../scripts/build-mac-signed.sh",import.meta.url),"utf8"), workflow=readFileSync(new URL("../.github/workflows/build.yml",import.meta.url),"utf8");
     const check=source.indexOf("node scripts/with-updater-file.mjs --check");assert(check>source.indexOf("REMOTE_DESKTOP_COMMIT="));assert(check<source.indexOf("security unlock-keychain"));
-    assert(workflow.includes("Preflight approved updater file without Keychain authorization"));
+    // The unchanged workflow enters the formal script, which owns this preflight before unlock.
+    assert(workflow.includes("run: ./scripts/build-mac-signed.sh"));
     assert(source.includes('node scripts/with-updater-file.mjs node scripts/macos-dmg-detach.mjs run npm run tauri build -- --target "$TARGET"'));
   }finally{f.close();}
 });

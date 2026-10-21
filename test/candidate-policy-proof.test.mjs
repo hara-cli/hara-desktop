@@ -8,11 +8,11 @@ import { INPUT, ROOT } from '../scripts/candidate-common.mjs';
 import { validateAdmission, readAdmission } from '../scripts/candidate-admission.mjs';
 import { assertAttestationRun, assertLocalAdminEnvironment, initializeProofKey } from '../scripts/candidate-policy-admin.mjs';
 import { proofExpectation, encodeProof, decodeProof, digest, proofFromComments, PROOF_MARKER } from '../scripts/candidate-policy-proof.mjs';
-const now=1792548000;
+const now=1735787045;
 function policy() {
   return [{id:INPUT.environmentId,name:INPUT.environment,can_admins_bypass:false,deployment_branch_policy:{protected_branches:false,custom_branch_policies:true},protection_rules:[{type:'required_reviewers',prevent_self_review:false,reviewers:[{type:'User',reviewer:{id:INPUT.approverId}}]},{type:'branch_policy'}]},
     {total_count:1,branch_policies:[{id:INPUT.branchPolicyId,type:'branch',name:INPUT.controlledRef.slice(11)}]},
-    {id:INPUT.rulesetId,enforcement:'active',target:'branch',source_type:'Repository',source:'hara-cli/hara-desktop',updated_at:'2026-10-21T02:45:13.435+08:00',bypass_actors:[{actor_id:INPUT.approverId,actor_type:'User',bypass_mode:'always'}],conditions:{ref_name:{include:[INPUT.controlledRef],exclude:[]}},rules:['creation','update','deletion','non_fast_forward'].map(type=>({type}))}];
+    {id:INPUT.rulesetId,enforcement:'active',target:'branch',source_type:'Repository',source:'hara-cli/hara-desktop',updated_at:'2025-01-02T03:04:05Z',bypass_actors:[{actor_id:INPUT.approverId,actor_type:'User',bypass_mode:'always'}],conditions:{ref_name:{include:[INPUT.controlledRef],exclude:[]}},rules:['creation','update','deletion','non_fast_forward'].map(type=>({type}))}];
 }
 function fixture() {
   const keys=generateKeyPairSync('ed25519'), anchor=digest(keys.publicKey.export({format:'der',type:'spki'}));
@@ -41,7 +41,7 @@ for(const [name,change] of Object.entries({ runId:p=>p.runId++, attempt:p=>p.att
   test(`even a signed proof rejects ${name}`,()=>{const f=fixture();change(f.payload);assert.throws(()=>decodeProof(f.seal(f.payload),f.expected,f.snapshot,now,f.anchor));});
 }
 test('bypass-only server version change invalidates the old proof without revealing actors to Actions',()=>{
-  const f=fixture(); delete f.p[2].bypass_actors; f.p[2].updated_at='2026-10-21T02:45:14.435+08:00';
+  const f=fixture(); delete f.p[2].bypass_actors; f.p[2].updated_at='2025-01-02T03:04:06Z';
   const fresh=validateAdmission(...f.p,{requireBypass:false}); assert.throws(()=>decodeProof(f.envelope,f.expected,fresh,now,f.anchor));
 });
 for(const [name,change] of Object.entries({ otherAuthor:c=>c.user.id=999, bot:c=>c.user.type='Bot', foreignIssue:c=>c.issue_url='https://api.github.com/repos/hara-cli/hara-desktop/issues/2', badUrl:c=>c.html_url='https://example.invalid', oldComment:c=>c.created_at='2020-01-01T00:00:00Z', lateEdit:c=>c.updated_at=new Date((now+3600)*1000).toISOString(), invalidJson:c=>c.body=PROOF_MARKER+'garbage' })) {
@@ -103,6 +103,6 @@ test('candidate workflow only grants read scopes and cannot run the independent 
   assert.equal((workflow.match(/^\s*permissions:/gm)??[]).length,1);
   assert(!workflow.includes('candidate-policy-admin'));assert(!workflow.includes('write-all'));
   const signer=fs.readFileSync(path.join(ROOT,'scripts/candidate-signing.mjs'),'utf8');
-  const hold=signer.indexOf("assert(!fs.existsSync('/Users/zhujianbo/work/projects/hara/ops/.candidate-signing-ui-hold.json')");
+  const hold=signer.indexOf("assert(!fs.existsSync(path.join(config.operationsDirectory, '.candidate-signing-ui-hold.json'))");
   assert(hold>0 && hold<signer.indexOf('await readAdmission()') && hold<signer.indexOf('bytes = readUpdaterKey(realHome)'));
 });

@@ -48,7 +48,7 @@ export class WorkspaceUpdater {
   async start() {
     const owner = ++this.lifecycle; this.disposed = false; clearTimeout(this.first); clearInterval(this.timer);
     try { const preferences = await this.deps.load(); if (this.disposed || owner !== this.lifecycle) return; this.update({ preferences }); }
-    catch { if (this.disposed || owner !== this.lifecycle) return; this.update({ preferences: { ...updateDefaults(), autoCheck: false }, message: "更新偏好暂未读取；可以手动检查，不会改写原设置。" }); }
+    catch { if (this.disposed || owner !== this.lifecycle) return; this.update({ preferences: { ...updateDefaults(), autoCheck: false }, message: "ws.updates.preferencesUnread" }); }
     if (this.disposed || owner !== this.lifecycle) return;
     this.nextCheck = this.now() + 30000;
     this.first = setTimeout(() => { void this.wake(); }, 30000);
@@ -58,7 +58,7 @@ export class WorkspaceUpdater {
   private persist(patch: Partial<UpdatePreferences>) {
     const preferences = { ...this.value.preferences, ...patch }; this.update({ preferences });
     this.preferenceQueue = this.preferenceQueue.catch(() => {}).then(() => this.deps.save(preferences));
-    return this.preferenceQueue.catch(() => { this.update({ message: "更新偏好保存未确认，请重新打开设置核对；不会自动重送。" }); });
+    return this.preferenceQueue.catch(() => { this.update({ message: "ws.updates.preferencesUnknown" }); });
   }
   async setAutoCheck(value: boolean) { await this.persist({ autoCheck: value }); this.nextCheck = value ? this.now() + 30000 : Infinity; }
   async check(manual = true) {
@@ -83,7 +83,7 @@ export class WorkspaceUpdater {
     this.operation = true; const handle = this.handle; this.update({ phase: "downloading", downloaded: 0, total: null, notice: false, message: "" });
     try {
       const activity = await this.deps.activity();
-      if (activity.running) this.update({ message: "有同事正在工作。下载完成后会等待任务结束，再请你重启；不会打断同事。" });
+      if (activity.running) this.update({ message: "ws.updates.downloadBusy" });
       await handle.download(event => {
         if (this.disposed) return;
         if (event.event === "Started") this.update({ total: event.data.contentLength ?? null });
@@ -99,11 +99,11 @@ export class WorkspaceUpdater {
     if (this.operation || this.value.phase !== "ready" || !this.handle || this.disposed) return;
     this.operation = true; let lease: { id: string } | undefined;
     try {
-      if ((await this.deps.activity()).running) { this.update({ message: "有同事正在工作，请等待任务结束后再重启；当前任务不会被打断。" }); return; }
+      if ((await this.deps.activity()).running) { this.update({ message: "ws.updates.restartBusy" }); return; }
       // Host refuses new work between this atomic idle check and install/restart.
       lease = await this.deps.prepare(); this.update({ installing: true, notice: false, message: "" });
       await this.handle.install(); await this.deps.restart();
-    } catch (error) { this.update({ message: "尚未重启：同事可能正在工作，或安装结果未确认。请核对后再操作。", installing: false }); }
+    } catch (error) { this.update({ message: "ws.updates.restartUnknown", installing: false }); }
     finally { if (lease) await this.deps.release(lease.id).catch(() => {}); this.operation = false; }
   }
   hideNotice() { this.update({ notice: false }); }

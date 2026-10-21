@@ -17,7 +17,7 @@ import {
   type ProviderSettingsState,
   type VisionSettingsInput,
 } from "./client";
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 import { ModelCombobox } from "./ModelCombobox";
 import { IconPlus } from "./icons";
 import { focusedModelConnection } from "./model-connection-recovery";

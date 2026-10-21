@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import { shouldSuppressAppContextMenu } from "../src/context-menu.ts";
 
 const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -20,6 +21,41 @@ test("renderer watchdog is installed before the module entrypoint", () => {
   assert.match(index, /setTimeout\(recover, 9000\)/);
   assert.match(index, /textContent = zh \?/);
   assert.doesNotMatch(index, /error\.message|error\.stack|reason\.message/);
+});
+
+function bootWatchdog() {
+  const element = tag => ({ tag, children: [], style: {}, attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, appendChild(child) { this.children.push(child); },
+    set innerHTML(value) { assert.equal(value, ""); this.children.length = 0; } });
+  const root = element("root"), callbacks = new Map(), timers = [], cleared = new Set();
+  let reloads = 0;
+  const window = { location: { reload() { reloads++; } }, matchMedia: () => ({ matches: true }), setTimeout(callback) { timers.push(callback); return timers.length; },
+    clearTimeout(timer) { cleared.add(timer); }, addEventListener(name, callback) { callbacks.set(name, callback); } };
+  runInNewContext(index.match(/<script>([\s\S]*?)<\/script>/)[1], { window, navigator: { language: "zh-CN" }, document: {
+    documentElement: { getAttribute: () => "light" }, getElementById: () => root, createElement: element,
+  } });
+  return { root, window, callbacks, timers, cleared, reloads: () => reloads };
+}
+
+test("a boot failure creates one generic recovery view and only reloads on an explicit click", () => {
+  const fixture = bootWatchdog();
+  fixture.callbacks.get("error")({ message: "private provider payload" }); fixture.timers.at(-1)();
+  assert.equal(fixture.window.__HARA_RENDERER_STATE__, "recovery");
+  assert.equal(fixture.root.children.length, 1);
+  const shell = fixture.root.children[0], card = shell.children[0];
+  assert.equal(shell.attributes.role, "alert");
+  assert.equal(JSON.stringify(shell).includes("private provider payload"), false);
+  assert.equal(fixture.reloads(), 0);
+  card.children.at(-1).onclick(); assert.equal(fixture.reloads(), 1);
+  fixture.callbacks.get("unhandledrejection")({ reason: "private local path" }); fixture.timers.at(-1)();
+  assert.equal(fixture.root.children[0], shell, "a second failure must not replace the recovery surface");
+});
+
+test("a ready renderer cancels the watchdog and cannot be overwritten by a late failure", () => {
+  const fixture = bootWatchdog();
+  fixture.window.__HARA_RENDERER_STATE__ = "ready"; fixture.callbacks.get("hara-renderer-ready")();
+  assert.equal(fixture.cleared.has(1), true);
+  fixture.callbacks.get("error")(); fixture.timers.at(-1)();
+  assert.equal(fixture.root.children.length, 0); assert.equal(fixture.window.__HARA_RENDERER_STATE__, "ready");
 });
 
 test("React owns a generic recovery boundary and sends a native boot signal", () => {
