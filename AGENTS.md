@@ -64,3 +64,11 @@ The shared Feishu helper accepts `messages --preview-limit` values from 1 throug
 that bound and use `--output` when a complete redacted export is required.
 Before projecting any helper JSON with `jq`, inspect its top-level keys and value types; Feishu
 `messages --output` stores the message array under `.messages`, not at the top level.
+
+## 编码工具分工（Jeff 2026-10-21）
+
+- 代码执行一律用 Codex 和 OpenCode；每个项目单独开会话和 worktree，不同项目不要混用同一会话/目录。
+- Codex/OpenCode 可以派生子 agent 去执行；项目所属 bot（主 agent）主要负责派活、调度安排和验收，而不是自己动手干活。
+- Claude Code 只由 Elon 和 Linus 使用，用于 code review。
+- 合并和部署必须先经 Elon/Linus 审查，再由 Jeff 批准；Codex/OpenCode 永远不得自行合并或部署。
+- 非编码工作（文案、设计、财务等）流程不变；其中涉及代码的部分按本节执行。

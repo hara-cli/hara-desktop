@@ -14,7 +14,7 @@ const oldSurfaces = "群组 agents projects external deliverables WorkspaceColla
 async function entryBundle(dev) {
   const bundle = await build({ stdin: { contents: 'export { WorkspaceEntryView } from "./src/WorkspaceEntry.tsx"; export { loads } from "fixture:loads";', resolveDir: root, loader: "tsx" },
     bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react", "react-dom", "react-dom/server"],
-    define: { "import.meta.env.DEV": String(dev) }, write: false, plugins: [{ name: "local-entry-sentinels", setup(builder) {
+    define: { "import.meta.env.DEV": String(dev) }, loader: { ".css": "empty" }, write: false, plugins: [{ name: "local-entry-sentinels", setup(builder) {
       builder.onResolve({ filter: /^fixture:loads$/ }, () => ({ path: "loads", namespace: "fixture" }));
       builder.onLoad({ filter: /^loads$/, namespace: "fixture" }, () => ({ contents: "export const loads = [];", loader: "js" }));
       builder.onResolve({ filter: /^\.\/(?:App|WorkspaceLocalDev|ProviderSettingsPreview|WorkStarter|MailboxSettingsPreview|ConversationPreview|TalentMarket|AutomationPreview)$/ }, args => ({ path: args.path.slice(2), namespace: "leaf" }));
@@ -53,7 +53,8 @@ test("workspace and Lab never evaluate rollback leaves even with hostile preview
 test("unresolved or failed native entry decision cannot load either screen as a fallback", async () => {
   for (const failed of [false, true]) {
     const result = await renderEntry(null, { failed, dev: true, query: "?preview=mailbox&legacy=1" });
-    assert.deepEqual(result.loads, []); assert.match(result.html, failed ? /無法確認工作空間入口/ : /正在打開你的工作空間/);
+    assert.deepEqual(result.loads, []); assert.match(result.html, failed ? /Could not verify the workspace entry/ : /Opening your workspace/);
+    assert.match(result.html, failed ? /role="alert"/ : /role="status"/);
   }
 });
 test("explicit native rollback retains the old app including its legacy feature surface", async () => {
@@ -86,31 +87,38 @@ function view({ empty = false, state = "completed", approval = false, directory 
       conversation: { revision: 1, state, taskState: state === "completed" ? "completed" : "blocked", taskId: "task", runId: "run", sessionId: "S", objective: "Local fixture", pastTaskCount: 1, usage, runUsage: usage,
         completion: state === "completed" ? { state: "verified" } : null, history: [{ role: "assistant", text: "Local fixture reply", tools: ["workspace_verify"] }, { role: "tool", results: [{ id: "receipt", name: "workspace_verify", content: "verified", isError: false }] }] } } };
 }
-function renderScreen(value, mode = "workspace") {
-  return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {} }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} });
+function renderScreen(value, mode = "workspace", locale = "zh-Hant") {
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
+  Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:key=>key==="hara.locale"?locale:null}});
+  try { return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {} }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} }); }
+  finally { if(descriptor)Object.defineProperty(globalThis,"localStorage",descriptor);else delete globalThis.localStorage; }
 }
-test("production sidebar omits LAB even before directory arrival, while explicit Lab keeps it", () => {
+test("production keeps lab copy out of the sidebar; explicit Lab is a distinct annotated entry", () => {
   for (const value of [view(), view({ empty: true }), view({ empty: true, directory: false })]) {
-    assert.doesNotMatch(renderScreen(value), /WORKSPACE LAB|Workspace Lab/); assert.match(renderScreen(value, "lab"), /WORKSPACE LAB/);
+    assert.doesNotMatch(renderScreen(value), /WORKSPACE LAB|Workspace Lab/);
+    assert.match(renderScreen(value, "lab"), /data-workspace-mode="lab"/);
   }
 });
-test("real v1 screen retains Hara, colleague creation, collapsed execution and task closure without old feature entrypoints", () => {
-  const html = renderScreen(view({ approval: true }));
-  for (const marker of [/主 Hara/, /Coder/, /工作空间主导航/, /任务与工单/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /查看執行詳情/, /已核驗結果/, /⚙ 设置/, /浏览器扩展/, /發訊息給 Hara/]) assert.ok(marker.test(html), `v1 contract retained: ${marker}`);
-  assert.equal(html.includes("AI 同事"), false);
-  assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|頻道|频道|deliverables|WORKSPACE LAB/);
+test("real workspace screen retains colleague decisions, collapsed execution and verified task closure", () => {
+  const html = renderScreen(view({ state:"blocked", approval: true }));
+  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
+  assert.match(renderScreen(view()), /已核驗結果/);
+  assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
+  assert.equal(html.includes('aria-label="建立頻道"'), true);
+  assert.equal(/即將推出|即将推出|Channels for group work with several colleagues are coming/.test(html), false);
 });
-test("real v1 screen preserves explicit resume and never opens a legacy surface for blocked tasks", () => {
+test("real workspace screen preserves explicit resume and never opens a legacy surface for blocked tasks", () => {
   const html = renderScreen(view({ state: "blocked" })); assert.match(html, /上次任務尚未完成/); assert.match(html, /繼續原任務/);
   assert.doesNotMatch(html, /群组|MailboxSettings|WorkspaceCollaboration|WORKSPACE LAB/);
 });
-test("v1 keeps schedules and skills in full-window settings, not the sidebar or global legacy pages", () => {
-  const html = renderScreen(view());
-  assert.equal(/aria-label="工作空間功能"|>定時任務<\/button>|>技能<\/button>/.test(html), false);
+test("scoped schedules and skills remain reachable through Settings without legacy pages", () => {
+  const html = renderScreen(view());assert.match(html,/aria-label="設定"/);
+  assert.doesNotMatch(html,/wsd-feature-nav/);
   const source = read("src/WorkspaceLocalDev.tsx");
-  assert.equal(source.includes('setSettings("schedules")'), true); assert.equal(source.includes("<WorkspaceSettings"), true);
-  const settings = read("src/WorkspaceSettings.tsx"); assert.equal(settings.includes('kind={page}'), true); assert.equal(settings.includes('"schedules", "skills"'), true);
-  assert.equal(/AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/.test(source + settings), false);
+  assert.ok(/setFeature\("schedules"\)/.test(source)); assert.ok(/setFeature\("skills"\)/.test(source));
+  assert.ok(/<WorkspaceFeaturePanel key=\{`\$\{workspace\.workspaceId\}:\$\{workspace\.resourceGeneration\}:\$\{feature\}`\}/.test(source));
+  assert.ok(/\{settings \? <ShellDialog/.test(source));
+  assert.doesNotMatch(source, /AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/);
 });
 test("legacy feature code is retained instead of deleting its stored resources or backend contract", () => {
   const app = read("src/App.tsx"), mailbox = read("src/MailboxSettings.tsx");
@@ -124,7 +132,10 @@ test("actual Vite production graph keeps old App and feature modules outside the
   const asset = outputs.find(value => value.type === "asset" && value.fileName === ".vite/manifest.json"); assert.ok(asset);
   const manifest = JSON.parse(String(asset.source)), seen = new Set();
   const walk = key => { if (seen.has(key)) return; seen.add(key); for (const next of manifest[key].imports ?? []) walk(next); };
-  walk("index.html"); walk("src/WorkspaceLocalDev.tsx");
+  const workspaceKey = Object.keys(manifest).find(key => manifest[key].name === "WorkspaceLocalDev" && manifest[key].isDynamicEntry);
+  assert.ok(workspaceKey, "the native Workspace must remain a dynamic entry");
+  assert.ok(manifest["index.html"].dynamicImports.includes(workspaceKey));
+  walk("index.html"); walk(workspaceKey);
   const forbidden = new Set(["LegacyDesktopEntry", "App", "WorkspaceCollaboration", "MailboxSettings", "DeskUsersPanel", "DeskMailComposer", "AgentInboxList"]);
   for (const key of seen) assert.equal(forbidden.has(manifest[key].name), false, `old surface in v1 static closure: ${key}`);
   assert.ok(manifest["index.html"].dynamicImports.includes("src/LegacyDesktopEntry.tsx"));

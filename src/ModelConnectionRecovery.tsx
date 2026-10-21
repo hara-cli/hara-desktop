@@ -1,4 +1,4 @@
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 import type { ModelConnectionFailureKind } from "./turn-failure";
 
 /** Keep the pinned connection visible even though it is not an alternative transfer target. */

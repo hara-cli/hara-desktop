@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { supportsExternalDelegatedInteractions, type HaraClient, type ConversationCodingLinkView } from "./client";
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 import { codingConnectionRequest } from "./coding-connection-state";
 import "./CodingSessionPicker.css";
 

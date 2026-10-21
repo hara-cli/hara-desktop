@@ -1,0 +1,10 @@
+body{margin:0;padding:24px;background:var(--bg);color:var(--fg)}
+.fixture-heading{margin:0 0 20px}.fixture-heading h1{font-size:18px;margin:0 0 8px}.fixture-heading p{font-size:12px;color:var(--muted);margin:0}
+.fixture-matrices{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.fixture-matrix.hs.wss-app{height:auto;min-height:0;display:block;border-radius:14px}
+.fixture-matrix .wss-page-card,.fixture-consumer .wss-page-card{margin:0;padding:24px;border:1px solid var(--line);border-radius:14px;background:var(--surface-panel)}
+.fixture-matrix h2{font-size:16px;margin:0 0 20px}.fixture-state-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fixture-state-grid figure{margin:0;min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px}
+.fixture-state-grid figcaption{font:12px ui-monospace;color:var(--muted)}
+.fixture-consumer{max-width:1100px;margin:0 auto}.fixture-consumer.hs.wss-app{display:block;height:auto;min-height:0}
+.fixture-consumer .wss-content{background:var(--surface,var(--surface-panel))}.fixture-consumer label{display:flex;align-items:center;gap:12px}

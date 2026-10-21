@@ -4,7 +4,7 @@ import { ApprovalCard } from "./ConversationTimeline";
 import ExternalQuestionCard from "./ExternalQuestionCard";
 import { externalInteractionInConversation, readableDelegatedApproval, type DelegatedApprovalEntry } from "./external-interaction-state";
 import { readableExternalQuestion, type ExternalQuestionEntry } from "./external-question-state";
-import { makeT, type Locale } from "./i18n";
+import { makeT, type LegacyLocale as Locale } from "./i18n";
 
 function DelegatedApprovalCard({ entry, locale, disabled, onReply }: {
   entry: DelegatedApprovalEntry; locale: Locale; disabled: boolean;

@@ -54,6 +54,14 @@ test("malformed/foreign replies do not settle a request and scoped notifications
   f.socket.message({ method: "workspace.changed", params: { workspaceId: "A" } }); assert.deepEqual(changed, ["A"]);
   f.socket.reply(id, { expected: true }); assert.deepEqual(await request, { expected: true });
 });
+test('change notifications preserve an optional colleague identity without accepting malformed metadata', async () => {
+  const f=await setup(), changes=[];f.client.setChangedListener((workspaceId,agentId)=>changes.push([workspaceId,agentId]));
+  f.socket.message({method:'workspace.changed',params:{workspaceId:'A',agentId:'colleague-141'}});
+  f.socket.message({method:'workspace.changed',params:{workspaceId:'A',agentId:42}});
+  f.socket.message({method:'workspace.changed',params:{agentId:'colleague-141'}});
+  assert.deepEqual(changes,[['A','colleague-141'],['A',undefined]]);
+  assert.equal(f.socket.sent.length,1,'Notifications do not dispatch mutations');
+});
 test("disconnect rejects every pending request without automatic resend or reconnection", async () => {
   const f = await setup(), one = f.client.request("workspace.list", {}), two = f.client.request("workspace.snapshot", { workspaceId: "A" });
   const replies = Promise.allSettled([one, two]); f.socket.close(); assert.ok((await replies).every(row => row.status === "rejected"));
