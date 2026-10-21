@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makeT } from "../src/i18n.ts";
 import { waitForLayout } from "./browser-layout-wait.mjs";
+import { requestCdp } from "./browser-cdp-request.mjs";
 const base = new URL(process.argv[2] ?? "http://127.0.0.1:54991/");
 if(base.protocol!=="http:" || base.hostname!=="127.0.0.1" || base.pathname!=="/" || base.username || base.password || base.search || base.hash)throw new Error("Use a task-owned IPv4 loopback Vite root");
 if(!process.argv[3])throw new Error("An explicit evidence directory is required");
@@ -60,14 +61,8 @@ async function connect() {
   browserUserAgent = version.userAgent;
   await send("Emulation.setUserAgentOverride", { userAgent: version.userAgent, platform: "MacIntel" });
 }
-async function send(method, params = {}, scoped = true) {
-  const id = ++requestId;
-  const result = new Promise((done, fail) => {
-    const timer = setTimeout(() => { pending.delete(id); fail(new Error(`${method} timed out at ${step} (request ${id})`)); }, 15000);
-    pending.set(id, { done, fail, timer, method });
-  });
-  socket.send(JSON.stringify({ id, method, params, ...(scoped && sessionId ? { sessionId } : {}) }));
-  return result;
+function send(method, params = {}, scoped = true) {
+  return requestCdp(socket, pending, { id: ++requestId, method, params, sessionId: scoped ? sessionId : undefined, step });
 }
 async function evaluate(expression) {
   const result = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
@@ -148,10 +143,13 @@ try{
  // Startup must remain legible before the lazy shell defines every theme token.
  for(const theme of ['light','dark']){
   step=`boot-hover-fallback/${theme}`;
+  process.stdout.write(`Checking ${step}\n`);
   await send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});
+  await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:0,y:0});
   const url=new URL('test/fixtures/workspace-boot-preview.html',base);url.search=new URLSearchParams({locale:'en',theme}).toString();
   await send('Page.navigate',{url:url.href});
   await ready("window.__HARA_BOOT_FIXTURE__?.model.getSnapshot().phase==='failed' && !!document.querySelector('.wsd-boot button')",'Startup failure fixture must settle');
+  await settled();
   await evaluate("document.querySelector('.wsd-boot button').style.setProperty('--row-hover','initial')");
   const point=await evaluate("(()=>{const r=document.querySelector('.wsd-boot button').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()");
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});await settled();
@@ -549,6 +547,7 @@ try{
  writeFileSync(join(output,'browser-report.json'),JSON.stringify({ok:true,receipts,errors},null,2)+'\n',{mode:0o600});
  process.stdout.write(JSON.stringify({ok:true,checks:receipts.length,screenshots,output})+'\n');
 }catch(error){
+ console.error(JSON.stringify({step,error:String(error),runtimeErrors:errors,pending:[...pending.values()].map(request=>request.method)}));
  writeFileSync(join(output,'protocol-failure.json'),JSON.stringify({error:String(error),step,errors,pending:[...pending.values()].map(request=>request.method)},null,2)+'\n',{mode:0o600});
  try{await capture('failure');writeFileSync(join(output,'failure.json'),JSON.stringify({error:String(error),errors,diagnostic:await evaluate('({url:location.href,active:document.activeElement?.outerHTML.slice(0,1500),previewButtons:Array.from(document.querySelectorAll("#workspace-browser-panel button")).map(node=>({label:node.getAttribute("aria-label"),text:node.textContent})),text:document.body.innerText.slice(0,2000)})')},null,2)+'\n',{mode:0o600});}catch{}
  throw error;
