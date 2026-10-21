@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -23,7 +24,7 @@ const bundle = await build({
       mobile:t("setMobile"),lang:t("setLang")},onIntent(){},onSelect(){}};}
     export function render(input) {return renderToStaticMarkup(React.createElement(SettingsNavigation,input));}
     export function tree(input) {return SettingsNavigation(input);}
-  `, resolveDir: root.pathname, loader: "tsx" },
+  `, resolveDir: fileURLToPath(root), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", write: false,
 });
 const compiled = join(fixture, "navigation.cjs");

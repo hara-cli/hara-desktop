@@ -15,7 +15,7 @@ test("verify and detail operations do not require or access a keychain", () => {
 });
 test("dedicated codesign refuses ambiguous identities, keychains and ad-hoc fallback", () => {
   for (const args of [["--sign", "-", "fixture"], ["--sign=other", "fixture"], ["-sother", "fixture"], ["-s", identity, "--sign", identity, "fixture"], ["-s", identity, "--keychain", "other", "fixture"]]) assert.throws(() => explicitKeychainArgs(args, keychain));
-  for (const path of [undefined, "relative", "/private/../signing", "/private/signing\n"]) assert.throws(() => explicitKeychainArgs(["-s", identity, "fixture"], path));
+  for (const targetPath of [undefined, "relative", "C:/fixture/signing.keychain-db", "C:\\fixture\\signing.keychain-db", "/private/../signing", "/private/signing\n"]) assert.throws(() => explicitKeychainArgs(["-s", identity, "fixture"], targetPath));
 });
 test("formal signer no longer mutates global keychain configuration", () => {
   const source = readFileSync(new URL("../scripts/build-mac-signed.sh", import.meta.url), "utf8");

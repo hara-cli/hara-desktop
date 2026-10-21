@@ -1,8 +1,9 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 test("long task guidance scrolls with the transcript without displacing the composer", () => {
   const app = readFileSync(`${root}/src/App.tsx`, "utf8");

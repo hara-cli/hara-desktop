@@ -1,9 +1,10 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { HaraClient } from "../src/client.ts";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 test("Desktop negotiates every learning RPC and preserves typed user-dependency evidence", async (t) => {
   const originalWebSocket = globalThis.WebSocket;

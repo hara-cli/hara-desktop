@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -17,7 +18,7 @@ const bundle = await build({ stdin: { contents: `export {SettingsContent} from "
   export {WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings} from "./src/WorkspaceSettingsPanels.tsx";
   export {WorkspaceConnectionForm, default as Runtime} from "./src/WorkspaceRuntimeSettings.tsx";
   export {WorkspaceSoftwareUpdate, WorkspaceUpdateNotice} from "./src/WorkspaceSoftwareUpdate.tsx";`,
-  loader: "tsx", resolveDir: new URL("../", import.meta.url).pathname }, bundle: true, platform: "node", format: "cjs", jsx: "automatic",
+  loader: "tsx", resolveDir: fileURLToPath(new URL("../", import.meta.url)) }, bundle: true, platform: "node", format: "cjs", jsx: "automatic",
   external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
 const { createElement } = require("react"), { renderToStaticMarkup } = require("react-dom/server");

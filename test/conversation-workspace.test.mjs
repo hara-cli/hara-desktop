@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -25,7 +26,7 @@ const bundle = await build({
     export const composer = (busy, canSend) => render(h(ComposerInputRow,{inputRef:{current:null},value:"",busy,canSend,sendLabel:"Send",stopLabel:"Stop",onSend(){},onStop(){}}, h("textarea",{rows:1,defaultValue:"draft"})));
     export const inbox = (entries, locale) => render(h(AgentInboxList,{entries,locale,renderContact:({agent})=>h(AgentContact,{key:agent.ref,agent,locale,preview:"preview",working:false,unread:false,selected:false,onOpen(){},onDetails(){}})}));
     export const workspace = (directory, locale, switching=false) => render(h(SpaceSwitcher,{directory,locale,switching,onSelect(){}}));
-  `, resolveDir: root.pathname, loader: "tsx" },
+  `, resolveDir: fileURLToPath(root), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", loader: { ".css": "empty", ".svg": "dataurl" }, write: false,
 });
 const compiled = join(fixture, "components.cjs");

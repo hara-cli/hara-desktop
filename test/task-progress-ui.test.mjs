@@ -1,10 +1,11 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { taskProgressStopExplanation } from "../src/task-progress-presentation.ts";
 import { makeT } from "../src/i18n.ts";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 test("Desktop renders typed round, token, todo, and no-progress state from the Engine event", () => {
   const client = readFileSync(`${root}/src/client.ts`, "utf8");

@@ -282,9 +282,37 @@ test("exhausted resume button/typed continue has no mutation and startup reads n
   assert.equal(f.calls.some(c => c.method.startsWith("workspace.session.")), false);
   assert.equal(f.model.getSnapshot().error, "ws.notice.resumeBudget");
 });
+test("typed continuation and the resume action refuse connection failures without requests, nonces or draft loss", async () => {
+  for (const patch of [
+    { resumeAdmission: { allowed: false, reason: "connection_model_unavailable" } },
+    { resumeAdmission: { allowed: false, reason: "connection_auth_required" } },
+    { resumeAdmission: { allowed: false, reason: "connection_quota_exhausted" } },
+    { blockReason: "[openai error] 404 The requested model does not support the agent plan feature" },
+  ]) {
+    const f = fixture();await f.ready();
+    f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked", ...patch } });
+    await f.model.refresh();const history = structuredClone(f.model.getSnapshot().workspace.conversation.history);
+    await f.model.send(true);f.model.setDraft("/continue");await f.model.send();await f.model.send();
+    assert.equal(f.calls.some(c => c.method.startsWith("workspace.session.")), false);
+    assert.equal(f.model.getSnapshot().error, "ws.notice.resumeConnection");assert.equal(f.model.getSnapshot().draft, "/continue");
+    assert.deepEqual(f.model.getSnapshot().workspace.conversation.history, history);assert.equal(f.model.getSnapshot().pendingUnknown, false);
+  }
+});
 test("explicit server refusal is not marked unknown or retried", async () => {
   const f = fixture(); await f.ready(); f.model.setDraft("/continue");
   f.handlers["workspace.session.resume"] = () => { throw Object.assign(new Error("budget refused"), { code: -32602 }); };
   await f.model.send(); assert.equal(f.model.getSnapshot().pendingUnknown, false); assert.equal(f.model.getSnapshot().draft, "/continue");
   assert.equal(f.calls.filter(c => c.method === "workspace.session.resume").length, 1); assert.equal(f.calls.some(c => c.method === "workspace.session.receipt"), false);
+});
+
+test("rate-window quota errors allow one explicit resume instead of being mistaken for exhausted allowance", async () => {
+  for (const suffix of ["", " — the provider reported this account allowance or balance is exhausted; select another authorized connection or wait for its reset"]) {
+    const f = fixture();await f.ready();
+    f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked",
+      blockReason: `[openai error] 429 exceeded your requests per minute quota${suffix}`, resumeAdmission: { allowed: true, reason: null } } });
+    await f.model.refresh();assert.equal(f.calls.some(call => call.method.startsWith("workspace.session.")), false);
+    f.model.setDraft("/continue");await f.model.send();
+    assert.equal(f.calls.filter(call => call.method === "workspace.session.resume").length, 1);
+    assert.notEqual(f.model.getSnapshot().error, "ws.notice.resumeConnection");
+  }
 });

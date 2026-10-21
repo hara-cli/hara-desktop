@@ -98,3 +98,10 @@ test("a synchronous transport send failure cleans its timer without reconnecting
   const lookup = f.client.request("workspace.session.receipt", {}); f.socket.reply(f.socket.sent.at(-1).id, { state: "unknown" }); await lookup;
   assert.equal(Socket.instances.length, 1); assert.equal(f.socket.sent.some(row => row.method === "workspace.session.send"), false);
 });
+test("closing while waiting for a socket fails initialization immediately without a timer retry or business request", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const client = new WorkspaceDevConnectionClient(info(), () => {}), socket = Socket.instances.at(-1);
+  const first = assert.rejects(client.initialize(info().token), /無法連接/);socket.close();await first;
+  await assert.rejects(client.initialize(info().token), /已關閉/);t.mock.timers.tick(10000);
+  assert.deepEqual(socket.sent, []);assert.equal(Socket.instances.length, 1);
+});

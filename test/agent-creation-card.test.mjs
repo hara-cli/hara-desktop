@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -27,7 +28,7 @@ const bundle = await build({
         }));
       }
     `,
-    resolveDir: root.pathname,
+    resolveDir: fileURLToPath(root),
     loader: "tsx",
   },
   bundle: true,
