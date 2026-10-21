@@ -172,7 +172,7 @@ export class WorkspaceDevModel {
   async readOverview(snapshot: WorkspaceDevSnapshot, { reuseUnchanged = false } = {}): Promise<{ snapshots: WorkspaceDevSnapshot[]; incomplete: boolean }> {
     if (snapshot !== this.view.workspace) throw new Error("Overview view changed");
     const epoch = this.epoch;
-    const roster = JSON.stringify(snapshot.agents);
+    const roster = JSON.stringify(snapshot.agents.map(agent => agent.agentId));
     if (this.overviewEpoch !== epoch || this.overviewRoster !== roster) {
       this.overviewEpoch = epoch; this.overviewRoster = roster;
       this.overviewCache.clear(); this.overviewDirty.clear(); this.overviewPending = null;
@@ -216,6 +216,7 @@ export class WorkspaceDevModel {
   workspaceChanged(workspaceId: string, agentId?: string): void {
     if (workspaceId !== this.view.workspaceId) return;
     if (agentId) this.overviewDirty.set(agentId, (this.overviewDirty.get(agentId) ?? 0) + 1);
+    else this.invalidateOverview();
     void this.refresh();
   }
   invalidateOverview(): void {
