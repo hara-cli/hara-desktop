@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
 import { WorkspaceRpcWaitError } from "../src/workspace-dev-errors.ts";
+import { workspaceConversationReplying, workspaceRecoveryState } from "../src/workspace-resume.ts";
 
 const defer = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -21,6 +22,18 @@ function fixture() {
   const model = new WorkspaceDevModel(rpc, () => `nonce-${++serial}`);
   return { model, calls, handlers, ready: () => model.selectWorkspace("A") };
 }
+test("refresh replaces replying with a stopped task checkpoint even at the same transport revision, without resending", async () => {
+  const f=fixture();await f.ready();
+  for(const state of ["running","draining"]) {
+    f.handlers["workspace.snapshot"]=()=>({...snapshot(),conversation:{...snapshot().conversation,state,taskState:"running",revision:5}});
+    await f.model.refresh();assert.equal(workspaceConversationReplying(f.model.getSnapshot().workspace.conversation),true);
+    f.handlers["workspace.snapshot"]=()=>({...snapshot(),conversation:{...snapshot().conversation,state,taskState:"blocked",revision:5,blockReason:"Synthetic budget ceiling"}});
+    await f.model.refresh();const conversation=f.model.getSnapshot().workspace.conversation;
+    assert.equal(workspaceConversationReplying(conversation),false);assert.equal(workspaceRecoveryState(conversation),"blocked");
+    assert.equal(conversation.blockReason,"Synthetic budget ceiling");assert.equal(conversation.state,state,"physical draining must remain locked");
+  }
+  assert.equal(f.calls.some(call=>/\.send$|\.resume$/.test(call.method)),false);
+});
 test("empty startup lists only; never selects the first Workspace", async () => {
   const f = fixture(); await f.model.loadDirectory(); assert.equal(f.model.getSnapshot().workspaceId, null);
   await f.model.selectWorkspace("foreign"); assert.equal(f.calls.some(call => call.method === "workspace.select"), false);

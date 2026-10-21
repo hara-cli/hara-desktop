@@ -4,12 +4,39 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { makeT } from "../src/i18n.ts";
-import { CONNECTION_RECOVERY_REASONS, connectionRecoveryReason } from "../src/workspace-resume.ts";
+import { CONNECTION_RECOVERY_REASONS, connectionRecoveryReason, workspaceConversationReplying } from "../src/workspace-resume.ts";
 const require = createRequire(import.meta.url);
 const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceBoot.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} };new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);
-const { WorkspaceTaskRecovery, WorkspaceBoot } = module.exports, { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
+const { WorkspaceTaskRecovery, WorkspaceTaskActivity, WorkspaceBoot } = module.exports, { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
+test("blocked and error checkpoints replace replying even while a physical request is still running or draining", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const state of ["running", "draining", "blocked", "error", "failed"]) for (const taskState of ["blocked", "error", "failed"]) {
+    const t = makeT(locale), conversation = { state, taskState, blockReason: "Synthetic budget limit <exceeded>", resumeAdmission: { allowed: false, reason: "run_tokens" } };
+    assert.equal(workspaceConversationReplying(conversation), false);
+    assert.equal(render(h(WorkspaceTaskActivity, { conversation, name: "Hara", t })), "");
+    const card = render(h(WorkspaceTaskRecovery, { conversation, t, disabled: false, onContinue() {}, onRepair() {} }));
+    assert.ok(card.includes('role="alert"')); assert.ok(card.includes("Synthetic budget limit &lt;exceeded&gt;"));
+    assert.ok(card.includes(t("ws.resume.budget"))); assert.ok(/<button[^>]*disabled/.test(card));
+  }
+});
+test("only active work shows replying; completion, cancellation and a retained question stop it without dropping the transport lock", () => {
+  const t = makeT("zh-Hans");
+  for (const state of ["running", "draining"]) {
+    const active = { state, taskState: "running" };
+    assert.ok(render(h(WorkspaceTaskActivity, { conversation: active, name: "Hara", t })).includes(t(state === "draining" ? "ws.draining" : "ws.replying", { name: "Hara" })));
+    for (const taskState of ["paused", "awaiting_user", "awaiting_review", "completed", "cancelled", "interrupted"]) {
+      const stopped = { state, taskState };
+      assert.equal(render(h(WorkspaceTaskActivity, { conversation: stopped, name: "Hara", t })), "");
+      assert.equal(stopped.state, state, "rendering must not clear the host's physical-operation lock");
+    }
+  }
+  for (const state of ["error", "failed"]) {
+    const conversation = { state, taskState: null, blockReason: "Synthetic failure" };
+    assert.equal(render(h(WorkspaceTaskActivity, { conversation, name: "Hara", t })), "");
+    assert.ok(render(h(WorkspaceTaskRecovery, { conversation, t, disabled: false, onContinue() {}, onRepair() {} })).includes("Synthetic failure"));
+  }
+});
 test("all connection recovery reasons replace generic continuation with repair guidance in three languages", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const reason of CONNECTION_RECOVERY_REASONS) {
     const t = makeT(locale), conversation = { state: "blocked", resumeAdmission: { allowed: false, reason }, blockReason: "private raw provider body" };
