@@ -80,8 +80,15 @@ export async function sidecar(c) {
   assertSources(c.desktop, c.core);
 }
 export async function build(c) {
-  await npm('Formal native installer build (no keys or publication)', ['run', 'tauri', 'build', '--', '--target', c.target, '--bundles', packageKinds(c.target),
-    '--config', JSON.stringify({ bundle: { createUpdaterArtifacts: false } })], { cwd: c.desktop, env: { ...c.env, NO_STRIP: 'true' } });
+  const installerArgs = ['run', 'tauri', 'build', '--', '--target', c.target, '--bundles', packageKinds(c.target),
+    '--config', JSON.stringify({ bundle: { createUpdaterArtifacts: false } })];
+  const buildEnv = { ...c.env, NO_STRIP: 'true' };
+  if (c.target.endsWith('apple-darwin')) {
+    await node('Formal native installer build (no keys or publication)', path.join(ROOT, 'scripts/macos-dmg-detach.mjs'),
+      ['run', 'npm', ...installerArgs], { cwd: c.desktop, env: buildEnv });
+  } else {
+    await npm('Formal native installer build (no keys or publication)', installerArgs, { cwd: c.desktop, env: buildEnv });
+  }
   assertSources(c.desktop, c.core);
   if (process.platform === 'darwin') {
     const dmg = path.join(releaseBase(c), 'bundle/dmg', `Hara_${INPUT.desktop.version}_${c.target.startsWith('aarch64') ? 'aarch64' : 'x64'}.dmg`);
@@ -120,7 +127,7 @@ export async function nativeDmg(c) {
   // Same generated Tauri DMG program as the formal build; retain the signed App, no second app bundling.
   const stage = path.join(c.base, 'dmg-app-staging'); fs.mkdirSync(stage, { mode: 0o700 });
   await run('Stage exact stapled App outside DMG output', '/usr/bin/ditto', [app, path.join(stage, 'Hara.app')], { env: c.env });
-  await bash('Formal signed-App DMG build on the native target', ['-x', script, '--volname', `Hara-${INPUT.desktop.version}-${c.target}`, '--icon', 'Hara.app', '180', '170',
+  await node('Formal signed-App DMG build on the native target', path.join(ROOT, 'scripts/macos-dmg-detach.mjs'), ['script', script, '--volname', `Hara-${INPUT.desktop.version}-${c.target}`, '--icon', 'Hara.app', '180', '170',
     '--app-drop-link', '480', '170', '--window-size', '660', '400', '--hide-extension', 'Hara.app', '--volicon', path.join(generated, icons[0]), path.join(dmgFolder, dmgName), stage], { cwd: stage, env: c.env });
   for (const name of ['Hara.app.tar.gz', 'Hara.app.tar.gz.sig']) {
     assert.equal(fileHash(path.join(signed, name)), signedReceipt.files[name]); fs.copyFileSync(path.join(signed, name), path.join(macos, name));

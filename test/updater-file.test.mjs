@@ -73,6 +73,17 @@ test("file preflight has fixed non-secret output, and formal CI/source guards st
   const f=fixture();try{const r=spawnSync(process.execPath,["scripts/with-updater-file.mjs","--check"],{env:{PATH:process.env.PATH,HOME:f.home},encoding:"utf8"});assert.equal(r.status,0);assert(!r.stdout.includes(secret));assert.match(r.stdout,/no Keychain access/);
     const source=readFileSync(new URL("../scripts/build-mac-signed.sh",import.meta.url),"utf8"), workflow=readFileSync(new URL("../.github/workflows/build.yml",import.meta.url),"utf8");
     const check=source.indexOf("node scripts/with-updater-file.mjs --check");assert(check>source.indexOf("REMOTE_DESKTOP_COMMIT="));assert(check<source.indexOf("security unlock-keychain"));
-    assert(workflow.includes("Preflight approved updater file without Keychain authorization"));assert(source.includes('node scripts/with-updater-file.mjs npm run tauri build -- --target "$TARGET"'));
+    assert(workflow.includes("Preflight approved updater file without Keychain authorization"));
+    assert(source.includes('node scripts/with-updater-file.mjs node scripts/macos-dmg-detach.mjs run npm run tauri build -- --target "$TARGET"'));
+  }finally{f.close();}
+});
+test("the shared DMG adapter preserves outer updater redaction, memory-only key and failure status", {skip: !unix}, async () => {
+  const f=fixture();let output="",error="";
+  try {
+    const check="const k=process.env.TAURI_SIGNING_PRIVATE_KEY;if(!k||process.argv.some(x=>x.includes(k.trim())))process.exit(99);console.log(k);process.exit(23)";
+    const exit=await withUpdaterFile(process.execPath,["scripts/macos-dmg-detach.mjs","run",process.execPath,"-e",check],
+      {env:{PATH:process.env.PATH,HOME:f.home},stdout:{write(s){output+=s;}},stderr:{write(s){error+=s;}}});
+    assert.equal(exit,23);assert.match(output,/\[REDACTED\]/);assert(!output.includes(secret));assert(!error.includes(secret));
+    assert.equal(readFileSync(f.key,"utf8"),secret+"\n");
   }finally{f.close();}
 });

@@ -260,10 +260,10 @@ export APPLE_API_KEY="$KEY_ID" APPLE_API_ISSUER="$ISSUER" APPLE_API_KEY_PATH="$P
 run_tauri_bundle_attempt() {
   if [ "$TARGET" = "x86_64-apple-darwin" ]; then
     PATH="$PWD/scripts/codesign-bin:$PATH" HARA_CODESIGN_KEYCHAIN="$CODESIGN_KEYCHAIN" \
-      node scripts/with-updater-file.mjs npm run tauri build -- --target "$TARGET"
+      node scripts/with-updater-file.mjs node scripts/macos-dmg-detach.mjs run npm run tauri build -- --target "$TARGET"
   else
     PATH="$PWD/scripts/codesign-bin:$PATH" HARA_CODESIGN_KEYCHAIN="$CODESIGN_KEYCHAIN" \
-      node scripts/with-updater-file.mjs npm run tauri build
+      node scripts/with-updater-file.mjs node scripts/macos-dmg-detach.mjs run npm run tauri build
   fi
 }
 
