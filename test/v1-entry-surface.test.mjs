@@ -1,10 +1,11 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { PassThrough } from "node:stream";
-const root = new URL("../", import.meta.url).pathname;
+const root = fileURLToPath(new URL("../", import.meta.url));
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const require = createRequire(import.meta.url);
 const oldSurfaces = "群组 agents projects external deliverables WorkspaceCollaboration MailboxSettings DeskUsersPanel DeskMailComposer 组织工作台";

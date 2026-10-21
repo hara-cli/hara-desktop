@@ -1,8 +1,9 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 test("Feishu settings use capability-negotiated write-only Engine storage", () => {
   const component = readFileSync(`${root}/src/GatewaySettings.tsx`, "utf8");

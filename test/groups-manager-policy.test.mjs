@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -12,7 +13,7 @@ import {
   shouldAutoReadDeskBoard,
 } from "../src/groups-manager-policy.ts";
 
-const root = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+const root = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
 const agent = (overrides = {}) => ({
   id: "agent_hara",

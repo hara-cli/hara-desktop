@@ -1,9 +1,10 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { build } from "esbuild";
 const require = createRequire(import.meta.url);
-const bundle = await build({ entryPoints: [new URL("../src/ToggleSwitch.tsx", import.meta.url).pathname], bundle: true, platform: "node", format: "cjs", jsx: "automatic", external: ["react"], loader: { ".css": "empty" }, write: false });
+const bundle = await build({ entryPoints: [fileURLToPath(new URL("../src/ToggleSwitch.tsx", import.meta.url))], bundle: true, platform: "node", format: "cjs", jsx: "automatic", external: ["react"], loader: { ".css": "empty" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
 const { ToggleSwitch } = module.exports;
 test("switch keeps native button keyboard semantics, an accessible name and controlled checked state", () => {

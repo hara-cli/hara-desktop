@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { build } from "esbuild";
@@ -51,7 +52,7 @@ const bundle = await build({ stdin: { contents: `
     label:"tokenplan",provider:"token-plan",model:"qwen3.7-plus",locale:"zh",
     failure:"authentication",hasNativeImages:true,onManage(){},...options
   }));
-`, resolveDir: new URL("../", import.meta.url).pathname, loader: "tsx" }, bundle: true, platform: "node", format: "cjs", jsx: "automatic", write: false });
+`, resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" }, bundle: true, platform: "node", format: "cjs", jsx: "automatic", write: false });
 writeFileSync(join(fixture, "recovery.cjs"), bundle.outputFiles[0].contents);
 const { render } = createRequire(import.meta.url)(join(fixture, "recovery.cjs"));
 test.after(() => rmSync(fixture, { recursive: true, force: true }));

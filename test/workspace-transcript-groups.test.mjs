@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -23,7 +24,7 @@ test("visible assistant replies and user turns separate operations, including pe
   assert.deepEqual(blocks.filter(row => row.kind === "execution").map(row => row.count), [3, 1, 1]);
   assert.equal(blocks.at(-1).results.length, 0, "a pending operation still contributes to the count");
 });
-const require = createRequire(import.meta.url), root = new URL("../", import.meta.url).pathname;
+const require = createRequire(import.meta.url), root = fileURLToPath(new URL("../", import.meta.url));
 const bundled = await build({ stdin: { contents: 'export { Transcript } from "./src/WorkspaceLocalDev.tsx";', resolveDir: root, loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);

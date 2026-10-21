@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
@@ -12,7 +13,7 @@ const bundle = await build({ stdin: { contents: [
   'import WorkspaceMembers from "./src/WorkspaceMembers.tsx";',
   'export function render(props) { return renderToStaticMarkup(React.createElement(WorkspaceCollaborationView, props)); }',
   'export function renderMembers(props) { return renderToStaticMarkup(React.createElement(WorkspaceMembers, props)); }',
-].join("\n"), resolveDir: new URL("../", import.meta.url).pathname, loader: "tsx" },
+].join("\n"), resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} };
 new Function("require", "module", "exports", bundle.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);

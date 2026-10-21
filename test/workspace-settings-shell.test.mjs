@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -6,7 +7,7 @@ import { build } from "esbuild";
 import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
 import { WorkspaceUpdater, updateDefaults } from "../src/workspace-updater-state.ts";
 import { localeFromSystem, makeT } from "../src/i18n.ts";
-const require = createRequire(import.meta.url), root = new URL("../", import.meta.url).pathname;
+const require = createRequire(import.meta.url), root = fileURLToPath(new URL("../", import.meta.url));
 const bundle = await build({ stdin: { contents: 'export {SettingsContent} from "./src/WorkspaceSettings.tsx"; export {WorkspaceSoftwareUpdate} from "./src/WorkspaceSoftwareUpdate.tsx";', resolveDir: root, loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);

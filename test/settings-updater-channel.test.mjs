@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -5,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { requireStableTag } from "../scripts/release-policy.mjs";
-const root = new URL("../", import.meta.url).pathname, read = file => readFileSync(join(root, file), "utf8"), version = JSON.parse(read("package.json")).version;
+const root = fileURLToPath(new URL("../", import.meta.url)), read = file => readFileSync(join(root, file), "utf8"), version = JSON.parse(read("package.json")).version;
 // Public-key-ID-only fixture for manifest shape tests; cryptographic signing has a separate local gate.
 const publicText = Buffer.from(JSON.parse(read("src-tauri/tauri.conf.json")).plugins.updater.pubkey, "base64").toString("utf8");
 const packet = Buffer.from(publicText.split("\n").find(line => line && !line.startsWith("untrusted")), "base64");

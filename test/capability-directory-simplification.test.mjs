@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -15,7 +16,7 @@ const bundle = await build({
     import {renderToStaticMarkup} from "react-dom/server";
     import {CapabilityDirectory} from "./src/CapabilityDirectory.tsx";
     export function render(props) {return renderToStaticMarkup(React.createElement(CapabilityDirectory, props));}
-  `, resolveDir: root.pathname, loader: "tsx" },
+  `, resolveDir: fileURLToPath(root), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", loader: { ".css": "empty" }, write: false,
 });
 const compiled = join(fixture, "directory.cjs");

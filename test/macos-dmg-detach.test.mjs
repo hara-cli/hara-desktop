@@ -12,6 +12,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const original = fs.readFileSync(join(root, 'test/fixtures/tauri-2.11.4-bundle-dmg.sh'));
 const helper = join(root, 'scripts/macos-dmg-detach-retry.sh');
 const shell = fs.existsSync('/bin/bash') ? '/bin/bash' : 'bash';
+// Git Bash accepts drive-qualified forward-slash paths, unlike native backslashes.
+const shellPath = value => value.replaceAll('\\', '/');
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 function fixture(fn) {
   const dir = fs.mkdtempSync(join(os.tmpdir(), 'hdmg-'));
@@ -58,7 +60,7 @@ test('exact upstream hash and only the retry function change', () => {
 });
 test('environment hook is macOS-child-only and never masks an existing hook', () => {
   const value = packagingEnvironment({ PATH: 'fixture', TAURI_SIGNING_PRIVATE_KEY: 'synthetic-only' }, 'darwin');
-  assert(value.BASH_ENV.endsWith('/macos-dmg-detach-hook.sh')); assert.equal(value.TAURI_SIGNING_PRIVATE_KEY, 'synthetic-only');
+  assert.equal(value.BASH_ENV, join(root, 'scripts/macos-dmg-detach-hook.sh')); assert.equal(value.TAURI_SIGNING_PRIVATE_KEY, 'synthetic-only');
   assert.deepEqual(packagingEnvironment({ PATH: 'fixture' }, 'win32'), { PATH: 'fixture' });
   assert.throws(() => packagingEnvironment({ BASH_ENV: '/other-hook' }, 'darwin'));
 });
@@ -67,10 +69,10 @@ test('BASH_ENV intercepts only the generated Tauri path, not other shell command
   const script = join(dmg, 'bundle_dmg.sh'), unrelated = join(dir, 'ordinary.sh'), mock = join(dir, 'mock.mjs');
   fs.writeFileSync(script, 'echo UNINTERCEPTED'); fs.writeFileSync(unrelated, 'echo ORDINARY');
   fs.writeFileSync(mock, 'console.log(JSON.stringify(process.argv.slice(2)));');
-  const env = { PATH: process.env.PATH, BASH_ENV: join(root, 'scripts/macos-dmg-detach-hook.sh'), HARA_DMG_WRAPPER_NODE: process.execPath, HARA_DMG_WRAPPER_MODULE: mock };
-  const intercepted = spawnSync(shell, [script, 'with space', '--unchanged'], { env, encoding: 'utf8' });
-  assert.equal(intercepted.status, 0); assert.deepEqual(JSON.parse(intercepted.stdout), ['script', script, 'with space', '--unchanged']);
-  const ordinary = spawnSync(shell, [unrelated], { env, encoding: 'utf8' }); assert.equal(ordinary.stdout.trim(), 'ORDINARY');
+  const env = { PATH: process.env.PATH, BASH_ENV: shellPath(join(root, 'scripts/macos-dmg-detach-hook.sh')), HARA_DMG_WRAPPER_NODE: shellPath(process.execPath), HARA_DMG_WRAPPER_MODULE: shellPath(mock), MSYS2_ARG_CONV_EXCL: '*' };
+  const intercepted = spawnSync(shell, [shellPath(script), 'with space', '--unchanged'], { env, encoding: 'utf8' });
+  assert.equal(intercepted.status, 0, intercepted.stderr); assert.deepEqual(JSON.parse(intercepted.stdout), ['script', shellPath(script), 'with space', '--unchanged']);
+  const ordinary = spawnSync(shell, [shellPath(unrelated)], { env, encoding: 'utf8' }); assert.equal(ordinary.stdout.trim(), 'ORDINARY');
 }));
 test('diagnostics bind exact creator/image/device, never a reused or unrelated volume', () => {
   const images = [{ 'image-path': '/private/tmp/fixture/rw.1234.test.dmg', 'system-entities': [{ 'dev-entry': '/dev/disk99' }, { 'dev-entry': '/dev/disk99s1', 'mount-point': '/Volumes/dmg.example' }] }];

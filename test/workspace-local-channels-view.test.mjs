@@ -1,9 +1,10 @@
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { build } from "esbuild";
 import { makeT } from "../src/i18n.ts";
-const require = createRequire(import.meta.url), root = new URL("../", import.meta.url).pathname;
+const require = createRequire(import.meta.url), root = fileURLToPath(new URL("../", import.meta.url));
 const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceLocalChannels.tsx"; export {Transcript} from "./src/WorkspaceLocalDev.tsx";', resolveDir: root, loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);

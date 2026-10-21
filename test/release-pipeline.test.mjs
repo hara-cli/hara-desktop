@@ -46,6 +46,7 @@ import {
 } from "../scripts/updater-mirror-manifest.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+const bash = process.platform === "win32" ? "bash" : "/bin/bash";
 const node = process.execPath;
 const desktopCommit = "1".repeat(40);
 const targets = [
@@ -458,7 +459,7 @@ test("signed build cleanup preserves the original failure on macOS Bash 3.2", ()
     /local status="\$\?"[\s\S]*completed[\s\S]*trap - EXIT[\s\S]*completed.*status[\s\S]*exit "\$status"/,
   );
 
-  const preserved = run("/bin/bash", [
+  const preserved = run(bash, [
     "-c",
     [
       "set -euo pipefail",
@@ -471,9 +472,9 @@ test("signed build cleanup preserves the original failure on macOS Bash 3.2", ()
   assert.equal(preserved.status, 37, preserved.stderr);
   assert.match(preserved.stdout, /cleanup-ran/);
 
-  const bashMajor = run("/bin/bash", ["-c", 'printf "%s" "${BASH_VERSINFO[0]}"']);
+  const bashMajor = run(bash, ["-c", 'printf "%s" "${BASH_VERSINFO[0]}"']);
   if (bashMajor.stdout === "3") {
-    const nounsetFailure = run("/bin/bash", [
+    const nounsetFailure = run(bash, [
       "-c",
       [
         "set -euo pipefail",
