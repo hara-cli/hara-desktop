@@ -15,9 +15,21 @@
     "ttlSeconds": 7200,
     "waitSeconds": 240
   },
-  "desktop": { "commit": "d8d109be68e37a3eff636fe061526259db166bac", "tree": "3dd87912914e266cbef09902761b89b827ffd5a2", "version": "1.1.0" },
-  "core": { "commit": "4cde6bd49ad7095bd9820677220d4650ed95bf5c", "tree": "3e681924c13b28124af9d2420b12ea1a66a2e909", "version": "1.0.2" },
-  "toolchain": { "node": "22.23.1", "bun": "1.3.9", "rust": "1.97.0" },
+  "desktop": {
+    "commit": "448a6fca82ccc45d77fc42adc810ba7963e04458",
+    "tree": "13aafc9c65f9ef34b83cb919ef0885e84710566e",
+    "version": "1.1.0"
+  },
+  "core": {
+    "commit": "4cde6bd49ad7095bd9820677220d4650ed95bf5c",
+    "tree": "3e681924c13b28124af9d2420b12ea1a66a2e909",
+    "version": "1.0.2"
+  },
+  "toolchain": {
+    "node": "22.23.1",
+    "bun": "1.3.9",
+    "rust": "1.97.0"
+  },
   "locks": {
     "npm": "b10e5011188e1f52cbd4ffc49d8a77f38ab9881b364e2f128359d364a3c48a7e",
     "cargo": "66fe91ea71cfcd43b7df1d65b787c88555c370d4d31295c8835422b3006db6f2",
@@ -25,5 +37,8 @@
     "sidecar": "6ba14e60755c3a8ee841c53bb42cc2867caa4fdf9e7df459ba1fb0a1f896e420"
   },
   "updaterPublicKeySha256": "7e6a1d9c22989adb5c6991bae0fcdcbe4991dfd2e9eb67f5c08af271be6768d0",
-  "upgradeFrom": ["0.1.187", "1.0.3"]
+  "upgradeFrom": [
+    "0.1.187",
+    "1.0.3"
+  ]
 }
