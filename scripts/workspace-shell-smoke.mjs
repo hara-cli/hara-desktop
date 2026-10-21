@@ -2,13 +2,14 @@
 // Real Workspace React components, in a task-owned headless Chrome profile with synthetic RPC only.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makeT } from "../src/i18n.ts";
 import { waitForLayout } from "./browser-layout-wait.mjs";
 import { requestCdp } from "./browser-cdp-request.mjs";
+import { navigateCdp } from "./browser-cdp-navigation.mjs";
+import { readDevToolsAnnouncement, stopOwnedBrowser } from "./browser-process.mjs";
 const base = new URL(process.argv[2] ?? "http://127.0.0.1:54991/");
 if(base.protocol!=="http:" || base.hostname!=="127.0.0.1" || base.pathname!=="/" || base.username || base.password || base.search || base.hash)throw new Error("Use a task-owned IPv4 loopback Vite root");
 if(!process.argv[3])throw new Error("An explicit evidence directory is required");
@@ -27,6 +28,7 @@ let requestId = 0;
 let sessionId;
 let browserUserAgent;
 let step = 'connect';
+let browserStderrBytes = 0, browserReadySeen = false;
 const errors = [];
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 async function connect() {
@@ -34,9 +36,9 @@ async function connect() {
     let text = "";
     const timer = setTimeout(() => fail(new Error("Headless Chrome startup timed out")), 15000);
     chrome.stderr.on("data", (chunk) => {
-      text = (text + chunk.toString()).slice(-4000);
-      const match = /DevTools listening on (ws:\/\/\S+)/.exec(text);
-      if (match) { clearTimeout(timer); done(match[1]); }
+      browserStderrBytes += chunk.length;
+      const announcement = readDevToolsAnnouncement(text, chunk); text = announcement.tail;
+      if (announcement.url) { browserReadySeen = true; clearTimeout(timer); done(announcement.url); }
     });
     chrome.once("error", (error) => { clearTimeout(timer); fail(error); });
     chrome.once("exit", () => { clearTimeout(timer); fail(new Error("Headless Chrome exited before ready")); });
@@ -57,6 +59,7 @@ async function connect() {
   await send("Target.activateTarget", { targetId: target.targetId }, false);
   await send("Page.bringToFront");
   await send("Runtime.enable"); await send("Page.enable");
+  await send("Page.setLifecycleEventsEnabled", { enabled: true });
   const version = await send("Browser.getVersion", {}, false);
   browserUserAgent = version.userAgent;
   await send("Emulation.setUserAgentOverride", { userAgent: version.userAgent, platform: "MacIntel" });
@@ -82,7 +85,7 @@ async function navigate({width=1280,locale='zh-Hant',theme='light',scenario='hom
   await send('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:false});
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:0,y:0});
   const url=new URL('test/fixtures/workspace-shell-preview.html',base);url.search=new URLSearchParams({locale,theme,scenario,reset:reset?'1':'0'}).toString();
-  await send('Page.navigate',{url:url.href});
+  await navigateCdp(send, socket, {url:url.href, sessionId, step});
   await ready("!!window.__HARA_SHELL_FIXTURE__ && !!document.querySelector('.hs-field textarea,[data-tasks-count]')",'Synthetic Workspace fixture must mount');
   await ready("document.querySelector('[data-nav-count]')?.textContent === (new URLSearchParams(location.search).get('scenario')==='many'?'10':new URLSearchParams(location.search).get('scenario')==='partial'?'2':'3')",'Overview must settle with the expected scoped count');
   await settled();assert.equal(await evaluate('document.documentElement.dataset.theme'),theme);
@@ -147,7 +150,7 @@ try{
   await send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:0,y:0});
   const url=new URL('test/fixtures/workspace-boot-preview.html',base);url.search=new URLSearchParams({locale:'en',theme}).toString();
-  await send('Page.navigate',{url:url.href});
+  await navigateCdp(send, socket, {url:url.href, sessionId, step});
   await ready("window.__HARA_BOOT_FIXTURE__?.model.getSnapshot().phase==='failed' && !!document.querySelector('.wsd-boot button')",'Startup failure fixture must settle');
   await settled();
   await evaluate("document.querySelector('.wsd-boot button').style.setProperty('--row-hover','initial')");
@@ -554,14 +557,15 @@ try{
  writeFileSync(join(output,'browser-report.json'),JSON.stringify({ok:true,receipts,errors},null,2)+'\n',{mode:0o600});
  process.stdout.write(JSON.stringify({ok:true,checks:receipts.length,screenshots,output})+'\n');
 }catch(error){
- console.error(JSON.stringify({step,error:String(error),runtimeErrors:errors,pending:[...pending.values()].map(request=>request.method)}));
- writeFileSync(join(output,'protocol-failure.json'),JSON.stringify({error:String(error),step,errors,pending:[...pending.values()].map(request=>request.method)},null,2)+'\n',{mode:0o600});
+ const browser = {exitCode:chrome.exitCode,signalCode:chrome.signalCode,stderrBytes:browserStderrBytes,readySeen:browserReadySeen};
+ console.error(JSON.stringify({step,error:String(error),runtimeErrors:errors,browser,pending:[...pending.values()].map(request=>request.method)}));
+ writeFileSync(join(output,'protocol-failure.json'),JSON.stringify({error:String(error),step,errors,browser,pending:[...pending.values()].map(request=>request.method)},null,2)+'\n',{mode:0o600});
  try{await capture('failure');writeFileSync(join(output,'failure.json'),JSON.stringify({error:String(error),errors,diagnostic:await evaluate('({url:location.href,active:document.activeElement?.outerHTML.slice(0,1500),previewButtons:Array.from(document.querySelectorAll("#workspace-browser-panel button")).map(node=>({label:node.getAttribute("aria-label"),text:node.textContent})),text:document.body.innerText.slice(0,2000)})')},null,2)+'\n',{mode:0o600});}catch{}
  throw error;
 }finally{
  try{socket?.close();}catch{}
  for(const request of pending.values()){clearTimeout(request.timer);request.fail(new Error('Browser gate closed'));}pending.clear();
- if(chrome.exitCode===null){chrome.kill('SIGTERM');await Promise.race([once(chrome,'exit'),pause(4000)]);if(chrome.exitCode===null){chrome.kill('SIGKILL');await once(chrome,'exit');}}
+ await stopOwnedBrowser(chrome);
  let removed=false;for(let attempt=0;attempt<15;attempt++){try{rmSync(profile,{recursive:true,force:true});removed=true;break;}catch{await pause(100);}}
  writeFileSync(join(output,'cleanup.json'),JSON.stringify({completed,chromeExited:chrome.exitCode!==null||chrome.signalCode!==null,profileRemoved:removed,profile:removed?'removed':profile})+'\n',{mode:0o600});
  if(!removed)throw new Error(`Owned browser profile cleanup incomplete: ${profile}`);

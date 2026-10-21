@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { makeT } from "../src/i18n.ts";
 import { CONNECTION_RECOVERY_REASONS, connectionRecoveryReason } from "../src/workspace-resume.ts";
 const require = createRequire(import.meta.url);
-const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceBoot.tsx";', resolveDir: new URL("../", import.meta.url).pathname, loader: "tsx" },
+const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceBoot.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} };new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);
 const { WorkspaceTaskRecovery, WorkspaceBoot } = module.exports, { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
