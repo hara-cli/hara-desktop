@@ -6,7 +6,10 @@ import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import HaraLogo from "./mark";
 import { makeT, type Key, type LocalePreference } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
-import { WorkspaceDevConnectionClient, type WorkspaceDevConnection } from "./workspace-dev-rpc";
+import type { WorkspaceDevConnection } from "./workspace-dev-rpc";
+import { WorkspaceStartupModel } from "./workspace-startup";
+import { WorkspaceBoot } from "./WorkspaceBoot";
+import { WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
 import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval } from "./workspace-dev-state";
 import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
 import { WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
@@ -287,10 +290,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             <Transcript history={workspace.conversation.history} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false} />
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
             {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified"><CheckCircleIcon className="hico" />{t("ws.verified")} <span>{t("ws.verified.note")}</span></p> : null}
-            {["needs_recovery", "blocked", "cancelled", "interrupted"].includes(workspace.conversation.state) ? <section className="wsd-resume"><strong>{t(workspace.conversation.state === "cancelled" ? "ws.resume.cancelled" : "ws.resume.title")}</strong>
-              {workspace.conversation.blockReason ? <p role="alert">{workspace.conversation.blockReason}</p> : null}<p>{t("ws.resume.body")}</p>
-              {workspace.conversation.resumeAdmission?.allowed === false ? <p>{t("ws.resume.budget")}</p> : null}
-              <button className="hs-btn sec" onClick={() => void model.send(true)} disabled={Boolean(disconnected) || view.sending || view.pendingUnknown || !hasConnection || workspace.conversation.resumeAdmission?.allowed === false}>{t("ws.resume.action")}</button></section> : null}
+            <WorkspaceTaskRecovery conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.pendingUnknown}
+              continueDisabled={!hasConnection} onContinue={() => void model.send(true)} onRepair={() => { setSettingsPage("connections");setSettings(true); }} />
             {busy && !liveApprovals.length ? <div className="wsd-typing" role="status"><Avatar agent={agent} /><span>{t(workspace.conversation.state === "draining" ? "ws.draining" : "ws.replying", { name: agent?.identity.displayName ?? "Hara" })}</span><i /><i /><i /></div> : null}<div ref={end} />
           </div>}
       </div>
@@ -325,28 +326,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
 }
 export default function WorkspaceLocalDev({ mode = "workspace" }: { mode?: "workspace" | "lab" }) {
   const { t } = useWorkspaceLocale();
-  const [model, setModel] = useState<WorkspaceDevModel | null>(null), [error, setError] = useState<Key | null>(null), [root, setRoot] = useState(""), [reconnect, setReconnect] = useState(0);
-  useEffect(() => {
-    let active = true, client: WorkspaceDevConnectionClient | undefined;
-    setError(null); setModel(null);
-    void (async () => {
-      const info = await invoke<WorkspaceDevConnection>(mode === "lab" ? "workspace_dev_connection" : "workspace_connection"); if (!active) return;
-      client = new WorkspaceDevConnectionClient(info, () => { if (active) setError("ws.disconnected"); });
-      await client.initialize(info.token); if (!active) { client.close(); return; }
-      const next = new WorkspaceDevModel(client, undefined, info.syntheticOnly, info.executionMode); client.setChangedListener((id, agentId) => { if (active) next.workspaceChanged(id, agentId); });
-      next.setSettingsFactory(async () => {
-        let live = true; const settingsClient = new WorkspaceDevConnectionClient(info, () => {});
-        try { await settingsClient.initialize(info.token); const settingsModel = new WorkspaceDevModel(settingsClient, undefined, info.syntheticOnly, info.executionMode, true);
-          settingsClient.setChangedListener((id, agentId) => { if (live) settingsModel.workspaceChanged(id, agentId); });
-          return { model: settingsModel, close() { live = false; settingsClient.close(); } };
-        } catch { settingsClient.close(); throw new Error("Settings connection unavailable"); }
-      });
-      setRoot(info.root); setModel(next); await next.loadDirectory();
-      const directory = next.getSnapshot().directory;
-      if (active && directory?.activeWorkspaceId && directory.workspaces.some(row => row.workspaceId === directory.activeWorkspaceId && row.active)) await next.selectWorkspace(directory.activeWorkspaceId);
-    })().catch(() => { if (active) setError(mode === "lab" ? "ws.boot.labFailed" : "ws.boot.failed"); });
-    return () => { active = false; client?.close(); };
-  }, [reconnect, mode]);
-  if (!model) return <div className="hs wsd-boot"><HaraLogo size={48} /><h1>{mode === "lab" ? "Hara Workspace Lab" : "Hara"}</h1><p>{t(error ?? "ws.boot.connecting")}</p>{error ? <button className="hs-btn sec" onClick={() => setReconnect(value => value + 1)}>{t("ws.reconnect")}</button> : null}<small>{t(mode === "lab" ? "ws.lab.note" : "ws.boot.retained")}</small></div>;
-  return <WorkspaceScreen model={model} disconnected={error ? t(error) : ""} root={root} mode={mode} onReconnect={() => setReconnect(value => value + 1)} />;
+  const startup = useMemo(() => new WorkspaceStartupModel(() => invoke<WorkspaceDevConnection>(mode === "lab" ? "workspace_dev_connection" : "workspace_connection")), [mode]);
+  const view = useSyncExternalStore(startup.subscribe, startup.getSnapshot, startup.getSnapshot);
+  useEffect(() => { void startup.start();return () => startup.stop(); }, [startup]);
+  if (!view.model) return <WorkspaceBoot view={view} t={t} mode={mode} onReconnect={() => void startup.start()} />;
+  return <WorkspaceScreen model={view.model} disconnected={view.phase === "disconnected" ? t("ws.disconnected") : ""} root={view.root} mode={mode} onReconnect={() => void startup.start()} />;
 }

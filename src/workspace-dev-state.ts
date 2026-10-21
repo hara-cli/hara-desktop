@@ -1,5 +1,6 @@
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
 import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
+import { connectionRecoveryReason } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean }
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
@@ -287,6 +288,9 @@ export class WorkspaceDevModel {
     if (!workspace.connections.defaultConnectionId) { this.update({ error: this.syntheticOnly ? "ws.notice.syntheticRequired" : "ws.notice.connectionRequired" }); return; }
     const message = resume ? "/continue" : this.view.draft.trim(); if (!message) return;
     resume ||= message === "/continue";
+    if (resume && connectionRecoveryReason(workspace.conversation)) {
+      this.update({ error: "ws.notice.resumeConnection" }); return;
+    }
     if (resume && workspace.conversation.resumeAdmission?.allowed === false) {
       this.update({ error: "ws.notice.resumeBudget" }); return;
     }

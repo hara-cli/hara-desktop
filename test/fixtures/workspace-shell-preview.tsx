@@ -6,7 +6,7 @@ import { WorkspaceDevModel, type WorkspaceDevApproval, type WorkspaceDevSnapshot
 import type { LocalChannelCatalog, LocalChannelSnapshot } from '../../src/workspace-local-channels';
 if (!import.meta.env.DEV || !['127.0.0.1','localhost'].includes(location.hostname)) throw new Error('Synthetic localhost development fixture only');
 const params = new URLSearchParams(location.search), scenario = params.get('scenario') ?? 'home';
-const productionFixture = scenario === 'native-settings' || scenario === 'channels-many';
+const productionFixture = scenario === 'native-settings' || scenario === 'channels-many' || scenario === 'provider-repair';
 const locale = params.get('locale') ?? 'zh-Hant';
 if (locale === 'system') localStorage.removeItem('hara.locale'); else if (locale !== 'saved') localStorage.setItem('hara.locale', locale);
 if (params.get('reset') !== '0') { localStorage.removeItem('hara.sidebar.sections.A'); localStorage.removeItem('hara.sidebar.sections.B'); }
@@ -40,6 +40,12 @@ for (const workspaceId of ['A','B']) for (const [index,agent] of agents.entries(
 if(productionFixture) snapshots.get('A:main')!.conversation.history = Array.from({length:24},(_,index)=>index%2
   ? {role:'assistant' as const,text:`Native settings scroll reply ${index}`,tools:[],createdAt:stamp(24-index)}
   : {role:'user' as const,content:`Native settings scroll message ${index}`,createdAt:stamp(24-index)});
+if (scenario === 'provider-repair') {
+  const conversation = snapshots.get('A:main')!.conversation;
+  conversation.state = conversation.taskState = 'blocked';conversation.history = [{ role: 'user', content: 'Keep this task and its files.' }];
+  conversation.blockReason = '[openai error] 404 The requested model does not support the agent plan feature';
+  conversation.resumeAdmission = { allowed: false, reason: 'connection_model_unavailable' };
+}
 if(scenario==='operations') snapshots.get('A:main')!.conversation.history = [
   {role:'user',content:'Run three local checks.'},
   ...['workspace_read','workspace_write','workspace_verify'].flatMap((name,index):WorkspaceDevSnapshot['conversation']['history']=>[
