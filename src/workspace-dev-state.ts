@@ -169,7 +169,7 @@ export class WorkspaceDevModel {
     if (epoch !== this.epoch) throw new WorkspaceViewError("ws.notice.scopeChanged");
     return value;
   }
-  async readOverview(snapshot: WorkspaceDevSnapshot): Promise<{ snapshots: WorkspaceDevSnapshot[]; incomplete: boolean }> {
+  async readOverview(snapshot: WorkspaceDevSnapshot, { reuseUnchanged = false } = {}): Promise<{ snapshots: WorkspaceDevSnapshot[]; incomplete: boolean }> {
     if (snapshot !== this.view.workspace) throw new Error("Overview view changed");
     const epoch = this.epoch;
     const roster = JSON.stringify(snapshot.agents);
@@ -177,11 +177,12 @@ export class WorkspaceDevModel {
       this.overviewEpoch = epoch; this.overviewRoster = roster;
       this.overviewCache.clear(); this.overviewDirty.clear(); this.overviewPending = null;
     }
+    if (!reuseUnchanged) this.invalidateOverview();
     this.overviewCache.set(snapshot.selectedAgentId, snapshot);
     if (this.overviewPending?.epoch === epoch) {
       await this.overviewPending.promise;
       if (epoch !== this.epoch || !this.view.workspace) throw new Error("Overview view changed");
-      return this.readOverview(this.view.workspace);
+      return this.readOverview(this.view.workspace, { reuseUnchanged: true });
     }
     const agents = snapshot.agents.filter(agent => agent.agentId !== snapshot.selectedAgentId
       && (!this.overviewCache.has(agent.agentId) || this.overviewDirty.has(agent.agentId)));
@@ -195,10 +196,13 @@ export class WorkspaceDevModel {
           try {
             const value = await this.rpc.request<WorkspaceDevSnapshot>("workspace.snapshot", { workspaceId: snapshot.workspaceId, agentId: agent.agentId });
             this.valid(value, snapshot.workspaceId, agent.agentId);
-            if (epoch !== this.epoch || this.overviewRoster !== roster || value.resourceGeneration !== snapshot.resourceGeneration) continue;
+            if (epoch !== this.epoch || this.overviewRoster !== roster) continue;
+            if (value.resourceGeneration !== snapshot.resourceGeneration) throw new Error("Overview generation changed");
             this.overviewCache.set(agent.agentId, value);
             if (revision === this.overviewDirty.get(agent.agentId)) this.overviewDirty.delete(agent.agentId);
-          } catch { /* A missing snapshot stays visibly incomplete and can be retried. */ }
+          } catch {
+            if (epoch === this.epoch && this.overviewRoster === roster) this.overviewCache.delete(agent.agentId);
+          }
         }
       }));
     })();

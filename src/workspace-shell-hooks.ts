@@ -54,7 +54,7 @@ export function useWorkspaceOverview(model: WorkspaceDevModel, workspace: Worksp
   useEffect(() => {
     if (!workspace) return;
     let active = true;
-    void model.readOverview(workspace).then(value => { if (active) setOverview({ scope, ...value }); })
+    void model.readOverview(workspace, { reuseUnchanged: true }).then(value => { if (active) setOverview({ scope, ...value }); })
       .catch(() => { if (active) setOverview({ scope, snapshots: [], incomplete: true }); });
     return () => { active = false; };
   }, [model, workspace, scope, revision]);
