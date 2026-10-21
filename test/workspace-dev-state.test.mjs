@@ -118,18 +118,33 @@ function largeOverviewFixture() {
   f.handlers['workspace.snapshot'] = p => large(p.workspaceId,p.agentId);
   return {...f,large};
 }
-test('142-colleague overview bounds initial reads to four and reuses them for channel-only notifications', async () => {
+test('unscoped notifications refresh all 142 colleagues with at most four overview reads at once', async () => {
   const f = largeOverviewFixture(); await f.ready();
-  let active = 0, peak = 0, reads = 0;
-  f.handlers['workspace.snapshot'] = async p => {active++;peak=Math.max(peak,active);reads++;await tick();active--;return f.large(p.workspaceId,p.agentId);};
+  let active = 0, peak = 0, reads = 0, revision = 0;
+  const staleCard = {id:'obsolete',workspaceId:'A',resourceGeneration:'generation-1',agentId:'colleague-141'};
+  f.handlers['workspace.snapshot'] = async p => {
+    active++;peak=Math.max(peak,active);reads++;await tick();active--;
+    const value=f.large(p.workspaceId,p.agentId);
+    return {...value,approvals:revision===0&&p.agentId===staleCard.agentId?[staleCard]:[],
+      conversation:{...value.conversation,revision}};
+  };
   const initial = await f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
   assert.equal(initial.snapshots.length,143);assert.equal(initial.incomplete,false);assert.equal(reads,142);assert.equal(peak,4);
+  assert.deepEqual(initial.snapshots.find(row=>row.selectedAgentId===staleCard.agentId).approvals,[staleCard]);
+  f.model.workspaceChanged('foreign');await tick();
+  await f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
+  assert.equal(reads,142,'Foreign notifications cannot invalidate this Workspace');
+  revision=1;
   for(let i=0;i<200;i++)f.model.workspaceChanged('A');
   await f.model.refresh();await tick();
   const before=reads, latest=await f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
-  assert.equal(reads,before,'A room change must not reread every private conversation');
+  assert.equal(reads-before,142,'A notification without an agent ID must refresh every background colleague');
   assert.equal(latest.snapshots.length,143);assert.equal(latest.incomplete,false);
+  assert.ok(latest.snapshots.every(row=>row.conversation.revision===1&&row.approvals.length===0));
   assert.ok(before<=144,'The notification burst needs at most an active refresh and a trailing one');
+  assert.equal(peak,4);
+  const refreshed=reads;await f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
+  assert.equal(reads,refreshed,'A completed refresh clears the dirty rows');
   assert.equal(f.calls.some(row=>/\.send$|\.resume$|approval\.respond/.test(row.method)),false);
 });
 test('targeted background changes refresh only that colleague and retain urgent approval cards', async () => {
@@ -142,14 +157,39 @@ test('targeted background changes refresh only that colleague and retain urgent 
   assert.deepEqual(result.snapshots.find(row=>row.selectedAgentId===card.agentId).approvals,[card]);
   assert.equal(result.incomplete,false);
 });
-test('a change during a coalesced overview read is fetched again instead of being marked fresh', async () => {
+for (const agentId of [undefined,'coder']) test(`a ${agentId?'targeted':'Workspace-wide'} change during a coalesced overview read is fetched again`, async () => {
   const f=fixture();await f.ready();const wait=defer();let count=0;
   f.handlers['workspace.snapshot']=p=>p.agentId==='coder'&&++count===1?wait.promise:snapshot(p.workspaceId,p.agentId);
   const first=f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
-  f.model.workspaceChanged('A','coder');await f.model.refresh();await tick();
+  f.model.workspaceChanged('A',agentId);await f.model.refresh();await tick();
   const joined=f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
   wait.resolve({...snapshot('A','coder'),label:'outdated'});await first;
   const latest=await joined;assert.equal(count,2);assert.equal(latest.snapshots.find(row=>row.selectedAgentId==='coder').label,'A');assert.equal(latest.incomplete,false);
+});
+test('unchanged colleague IDs reuse overview reads while roster metadata remains current', async () => {
+  const f=largeOverviewFixture();await f.ready();await f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
+  const roster=f.large().agents.map(agent=>({...agent,state:'busy',identity:{displayName:`Updated ${agent.agentId}`,title:'Updated title'},
+    runtime:{...agent.runtime,label:'Updated runtime',available:false}}));
+  f.handlers['workspace.snapshot']=p=>({...f.large(p.workspaceId,p.agentId),agents:roster});
+  await f.model.refresh();const before=f.calls.length;
+  const result=await f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
+  assert.equal(f.calls.length,before,'Metadata changes must not reread all private conversations');
+  assert.deepEqual(f.model.getSnapshot().roster,roster);assert.deepEqual(result.snapshots[0].agents,roster);
+  assert.equal(result.snapshots.length,143);assert.equal(result.incomplete,false);
+});
+test('adding, reordering and removing colleague IDs invalidate the overview within the same generation', async () => {
+  const f=fixture();await f.ready();await f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
+  const extra={...agents[1],agentId:'ops'};
+  for(const [index,roster] of [[...agents,extra],[agents[0],extra,agents[1]],[agents[0],extra]].entries()) {
+    f.handlers['workspace.snapshot']=p=>{const value=snapshot(p.workspaceId,p.agentId);return {...value,agents:roster,conversation:{...value.conversation,revision:index+1}};};
+    await f.model.refresh();const before=f.calls.length;
+    const result=await f.model.readOverview(f.model.getSnapshot().workspace, {reuseUnchanged:true});
+    const expected=roster.filter(agent=>agent.agentId!=='main').map(agent=>agent.agentId);
+    assert.deepEqual(f.calls.slice(before).map(row=>row.params.agentId),expected);
+    assert.deepEqual(result.snapshots.map(row=>row.selectedAgentId),['main',...expected]);
+    assert.ok(result.snapshots.every(row=>row.resourceGeneration==='generation-1'&&row.conversation.revision===index+1));
+    assert.equal(result.incomplete,false);
+  }
 });
 test('switching Workspace stops queued overview reads and cannot cache late foreign snapshots', async () => {
   const f=largeOverviewFixture();await f.ready();const wait=defer();let readsA=0;
