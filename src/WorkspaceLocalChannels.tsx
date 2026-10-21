@@ -6,6 +6,8 @@ import { Avatar, ShellDialog } from "./WorkspaceShell";
 import type { WorkspaceDevAgent, WorkspaceDevApproval, WorkspaceDevMessage } from "./workspace-dev-state";
 import type { LocalChannelsView, LocalChannelSnapshot, WorkspaceLocalChannelsModel } from "./workspace-local-channels";
 import { channelHistoryPage } from "./workspace-channel-history";
+import { ChannelUpgradeDialog } from "./WorkspaceChannelUpgrade";
+import type { ChannelUpgradeBridge } from "./workspace-channel-upgrade";
 import "./workspace-local-channels.css";
 type Translate = ReturnType<typeof makeT>;
 export const channelMemberLabel = (t: Translate, count: number) => t(count === 1 ? "ws.channels.memberOne" : "ws.channels.memberCount", { n: count });
@@ -20,15 +22,20 @@ export function LocalChannelRows({ view, t, search, selected, onOpen }: { view: 
   </button>)}{!rows.length ? <p className="hs-empty">{t("ws.search.empty")}</p> : null}</>;
 }
 
-export function LocalChannelDialog({ mode, view, model, colleagues, t, onClose, onCreated }: { mode: "create" | "members" | "invite"; view: LocalChannelsView;
-  model: WorkspaceLocalChannelsModel; colleagues: WorkspaceDevAgent[]; t: Translate; onClose: () => void; onCreated: (id: string) => void }) {
+interface LocalChannelDialogProps { mode: "create" | "members" | "invite"; view: LocalChannelsView;
+  model: WorkspaceLocalChannelsModel; colleagues: WorkspaceDevAgent[]; t: Translate; onClose: () => void; onCreated: (id: string) => void; upgradeBridge?: ChannelUpgradeBridge }
+export function LocalChannelDialog(props: LocalChannelDialogProps) {
+  return props.mode === "invite" ? <ChannelUpgradeDialog local={props.view} bridge={props.upgradeBridge} t={props.t} onClose={props.onClose} />
+    : <LocalChannelMemberDialog {...props} mode={props.mode} />;
+}
+function LocalChannelMemberDialog({ mode, view, model, colleagues, t, onClose, onCreated }: Omit<LocalChannelDialogProps, "mode"> & { mode: "create" | "members" }) {
   const [name, setName] = useState(mode === "members" ? view.channel?.channel.name ?? "" : "");
   const [memberIds, setMembers] = useState<string[]>(mode === "members" ? view.channel?.channel.memberIds ?? [] : []);
   const [search, setSearch] = useState("");
   const query = search.trim().toLocaleLowerCase();
   const matchingColleagues = useMemo(() => colleagues.filter(row => `${row.identity.displayName} ${row.identity.title ?? ""}`.toLocaleLowerCase().includes(query)), [colleagues, query]);
   const selectedMembers = useMemo(() => new Set(memberIds), [memberIds]);
-  const label = t(mode === "create" ? "ws.channels.new" : mode === "invite" ? "ws.channels.invite" : "ws.channels.members");
+  const label = t(mode === "create" ? "ws.channels.new" : "ws.channels.members");
   const busy = view.saving || (mode === "create" && view.creationUnknown) || (mode === "members" && ["running", "draining"].includes(view.channel?.state ?? ""));
   const save = async () => {
     if (mode === "create") { const id = await model.create(name, memberIds); if (id) { onClose(); onCreated(id); } }
@@ -38,9 +45,8 @@ export function LocalChannelDialog({ mode, view, model, colleagues, t, onClose, 
   return <ShellDialog label={label} onClose={onClose} className="hs-channel-dialog">
     <button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={onClose}><XMarkIcon className="hico" /></button>
     <header className="hs-channel-dialog-head"><span className="hs-channel-mark" aria-hidden="true"><HashtagIcon className="hico" /></span>
-      <h2>{mode === "invite" ? t("ws.channels.inviteTitle") : label}</h2>
-      <p>{t(mode === "invite" ? "ws.channels.inviteBody" : "ws.channels.createBody")}</p></header>
-    {mode !== "invite" ? <div className="hs-channel-dialog-body">
+      <h2>{label}</h2><p>{t("ws.channels.createBody")}</p></header>
+    <div className="hs-channel-dialog-body">
       <label>{t("ws.channels.name")}<input autoFocus aria-label={t("ws.channels.name")} placeholder={t("ws.channels.namePlaceholder")} value={name} maxLength={80} disabled={busy}
         onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim() && !busy) { event.preventDefault(); void save(); } }} /></label>
       <fieldset disabled={busy} className="hs-channel-picker"><legend>{t("ws.channels.selectMembers")}</legend>
@@ -52,10 +58,10 @@ export function LocalChannelDialog({ mode, view, model, colleagues, t, onClose, 
             {!matchingColleagues.length ? <p className="hs-channel-search-empty" role="status">{t("ws.search.empty")}</p> : null}</div></> : <p>{t("ws.channels.noColleagues")}</p>}
       </fieldset>
       {view.error ? <p className="wsd-notice is-error" role="alert">{t(view.error as Parameters<Translate>[0])}</p> : null}
-    </div> : null}
-    <footer className="hs-channel-dialog-footer">{mode !== "invite" ? <div className="wsd-card-actions">{mode === "create" && view.creationUnknown ? <button className="hs-btn sec" onClick={() => void verify()} disabled={view.saving}>{t("ws.composer.verify")}</button>
+    </div>
+    <footer className="hs-channel-dialog-footer"><div className="wsd-card-actions">{mode === "create" && view.creationUnknown ? <button className="hs-btn sec" onClick={() => void verify()} disabled={view.saving}>{t("ws.composer.verify")}</button>
         : <button className="hs-btn pri" onClick={() => void save()} disabled={busy || !name.trim()}>{t(mode === "create" ? "ws.channels.new" : "ws.channels.save")}</button>}</div>
-      : null}<p className="hs-channel-local-note">{t("ws.channels.localNote")}</p></footer>
+      <p className="hs-channel-local-note">{t("ws.channels.localNote")}</p></footer>
   </ShellDialog>;
 }
 

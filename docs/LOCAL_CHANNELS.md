@@ -8,7 +8,7 @@ Member dialogs keep the save action and local-storage note visible while the for
 
 Names, membership and messages are saved by Core in the current Workspace's private local data. Private chats, other channels and other Workspaces use separate sessions. Removing a colleague preserves their messages. A restart reads saved replies without sending another model request. If acceptance is unclear, the composer retains the draft and checks the original request receipt; it never automatically resends.
 
-Invite other people is an explanatory placeholder. It does not create an invitation, require an account, synchronize messages or contact hara-collab. That integration remains a later step.
+Invite other people opens a local sharing preview, followed by a cloud sign-in handoff and an explicit audience confirmation. Local channels still work without an account. The default adapter is unavailable: it does not start login, create cloud channels or invitations, synchronize messages, or contact the cloud collaboration service. See the [cloud upgrade UI boundary](LOCAL_CHANNEL_CLOUD_UPGRADE.md) for the interface stub and required backend work.
 
 The renderer requires `workspace.local-channels.v1` from the real authenticated Core transport. An older engine shows an explicit engine-update state rather than an operational mock channel. Product data is not stored in browser localStorage; only the DEV-only component fixture uses synthetic browser storage to exercise reloads.
 

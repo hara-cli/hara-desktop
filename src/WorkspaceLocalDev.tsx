@@ -15,6 +15,7 @@ import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePla
 import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
 import { captureWorkspaceReadingPosition } from "./workspace-chat-scroll";
 import { WorkspaceLocalChannelsModel } from "./workspace-local-channels";
+import type { ChannelUpgradeBridge } from "./workspace-channel-upgrade";
 import { channelMemberLabel, LocalChannelComposer, LocalChannelDialog, LocalChannelRows, LocalChannelThread } from "./WorkspaceLocalChannels";
 import "./workspace-entry.css";
 import "./workspace-local-dev.css";
@@ -65,8 +66,8 @@ export function Transcript({ history, agent, t, detailed = false }: { history: W
     </div>;
   })}</>;
 }
-export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, onOpenBrowser }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string;
-  mode: "workspace" | "lab"; onOpenBrowser?: () => void }) {
+export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, onOpenBrowser, channelUpgradeBridge }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string;
+  mode: "workspace" | "lab"; onOpenBrowser?: () => void; channelUpgradeBridge?: ChannelUpgradeBridge }) {
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   const channels = useMemo(() => new WorkspaceLocalChannelsModel(model), [model]);
   const channelView = useSyncExternalStore(channels.subscribe, channels.getSnapshot, channels.getSnapshot);
@@ -307,7 +308,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     {creating ? <ShellDialog label={t("ws.space.new")} onClose={() => setCreating(false)}><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={() => setCreating(false)}><XMarkIcon className="hico" /></button>
       <h2>{t("ws.create.title")}</h2><p>{t("ws.create.body")}</p><label>{t("ws.create.name")}<input aria-label={t("ws.create.name")} value={name} maxLength={80} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim()) void create(); }} /></label>
       <button className="hs-btn pri" onClick={() => void create()} disabled={view.loading || !name.trim()}>{t("ws.space.new")}</button></ShellDialog> : null}
-    {channelDialog ? <LocalChannelDialog key={`${scope}:${channelDialog}:${channelView.channelId}`} mode={channelDialog} view={channelView} model={channels} colleagues={colleagues} t={t} onClose={() => setChannelDialog(null)} onCreated={openChannel} /> : null}
+    {channelDialog ? <LocalChannelDialog key={`${scope}:${channelDialog}:${channelView.channelId}`} mode={channelDialog} view={channelView} model={channels} colleagues={colleagues} t={t} onClose={() => setChannelDialog(null)} onCreated={openChannel} upgradeBridge={channelUpgradeBridge} /> : null}
     {approvalDialog?.scope === scope ? <ShellDialog label={t("ws.approval.label")} onClose={() => setApprovalDialog(null)} className="wsd-approval-dialog"><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={() => setApprovalDialog(null)}><XMarkIcon className="hico" /></button>
       {dialogCard ? <ApprovalCard card={dialogCard} model={model} t={t} inDialog disabled={Boolean(disconnected)} onSettled={() => setApprovalDialog(null)} /> : <p role="status">{t("ws.approval.stale")}</p>}</ShellDialog> : null}
     {settings ? <ShellDialog key={`settings:${view.workspaceId}`} label={t("ws.settings")} onClose={closeSettings} className="wsd-settings"><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={closeSettings}><XMarkIcon className="hico" /></button>

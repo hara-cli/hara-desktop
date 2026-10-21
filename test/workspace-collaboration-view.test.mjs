@@ -28,7 +28,7 @@ test("real channel view distinguishes preview limitations from availability in b
   for (const locale of ["en", "zh"]) {
     const html = render(ready, locale);
     assert.match(html, /Nanhara/);
-    assert.match(html, locale === "en" ? /Agent execution, files and key sharing are not enabled/ : /尚未啟用 Agent 執行/);
+    assert.match(html, locale === "en" ? /Remote messages are display-only and never instruct local colleagues/ : /遠端訊息僅供閱讀，不會成為本機同事的指令/);
     assert.match(html, locale === "en" ? /earlier history is not connected yet/ : /較早的歷史尚未接入/);
     assert.match(html, locale === "en" ? /Back to local Workspace/ : /返回本機工作空間/);
     assert.doesNotMatch(html, /private-account|Bearer|Codex|Claude|OpenCode|Pi runtime/);
@@ -55,11 +55,29 @@ test("unknown outcome is visible, freezes composer, and offers an explicit same-
   assert.match(html, /<textarea[^>]*disabled/); assert.match(html, /<button type="submit" disabled/);
 });
 test("signed-out, revoked and loading states cannot show an enabled composer", () => {
-  for (const error of ["AUTH_REQUIRED", "ACCESS_CHANGED", "SCOPE_CHANGED"]) {
+  for (const error of ["AUTH_REQUIRED", "ACCESS_CHANGED", "SCOPE_CHANGED", "MEMBERSHIP_STALE"]) {
     const html = render({ ...initial, phase: "error", error });
     assert.match(html, /role="alert"/); assert.match(html, /<textarea[^>]*disabled/); assert.doesNotMatch(html, /Nanhara|other message/);
   }
   assert.match(render({ ...initial, phase: "loading" }), /aria-busy="true"/);
+});
+test("the actual model hides cached cloud content and disables the composer at its membership deadline", async () => {
+  let now = 1_000;
+  const timed = new WorkspaceCollaborationModel({
+    async listCollaborationWorkspaces() { return { ok: true, value: { schemaVersion: 1, accountScope: "scope", accountRegion: "CN", nextCursor: null, workspaces: [{ workspaceId: "ws_a" }] } }; },
+    async bootstrapCollaborationWorkspace() { return { ok: true, value: { ...ready.bootstrap, cursor: "initial", membership: { ...ready.bootstrap.membership, epoch: 1 } } }; },
+    async syncCollaborationWorkspace() { return { ok: true, value: { workspaceId: "ws_a", cursor: "next", events: [{ id: "e", type: "message.created",
+      message: { id: "secret", channelId: "ch_a", senderPrincipalId: "member", body: "PRIVATE_CLOUD_BODY", createdAt: "2026-10-21T00:00:00Z", method: "workspace.session.send" } }], hasMore: false } }; },
+  }, undefined, { now: () => now, setTimeout() { return 1; }, clearTimeout() {} });
+  await timed.loadDirectory();await timed.selectWorkspace("ws_a");await timed.sync();timed.setDraft("PRIVATE_CLOUD_DRAFT");
+  assert.match(render(timed.getSnapshot()), /PRIVATE_CLOUD_BODY/);
+  now += 60_000;
+  for (const locale of ["en", "zh"]) {
+    const html = render(timed.getSnapshot(), locale);
+    assert.doesNotMatch(html, /PRIVATE_CLOUD_BODY|PRIVATE_CLOUD_DRAFT|Nanhara/);
+    assert.match(html, /60/);assert.match(html, /<textarea[^>]*disabled/);assert.match(html, /<button type="submit" disabled/);
+  }
+  timed.dispose();
 });
 test("a selected later-page Workspace remains explicitly selected in the real picker", () => {
   const html = render({ ...ready, directory: { ...ready.directory,
@@ -126,7 +144,7 @@ test("mention chips and references use escaped member labels, not text parsing o
       createdAt: "2026-10-16T00:00:00Z", mentions: [{ kind: "human", principalId: "person" }] }] };
   const html = render(view);
   assert.match(html, /Draft mentions/); assert.match(html, /Mention references/); assert.match(html, /@&lt;Hara&gt;/);
-  assert.match(html, /Choose mention targets from roster/); assert.match(html, /not notification delivery or Agent task acceptance/);
+  assert.match(html, /Choose mention targets from roster/); assert.match(html, /they never call local colleagues or create local tasks/);
   assert.doesNotMatch(html, /<Hara>|Task accepted|Notification delivered/);
   assert.doesNotMatch(render(ready), /Choose mention targets from roster/);
 });

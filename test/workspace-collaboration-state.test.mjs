@@ -55,7 +55,7 @@ test("sync deduplicates by message ID, ignores foreign channels and advances onl
     { id: "e1", type: "message", message }, { id: "e2", type: "message", message },
     { id: "e3", type: "message", message: { ...message, id: "foreign", channelId: "private-foreign" } },
   ] });
-  await f.model.sync(); assert.deepEqual(f.model.getSnapshot().messages, [message]); assert.equal(f.model.getSnapshot().hasMore, true);
+  await f.model.sync(); assert.deepEqual(f.model.getSnapshot().messages, [{ ...message, origin: "remote" }]); assert.equal(f.model.getSnapshot().hasMore, true);
   f.client.syncCollaborationWorkspace = async () => fail("UNAVAILABLE"); await f.model.sync();
   assert.equal(f.model.getSnapshot().bootstrap.cursor, "cursor-1");
 });
@@ -137,7 +137,7 @@ test("remote channel creation becomes visible before its message in the same syn
   const f = fixture(); await f.ready();
   f.client.syncCollaborationWorkspace = async () => ok({ workspaceId: A, cursor: "next", hasMore: false, events: [
     { id: "created", type: "channel.created", channel: { id: "remote", slug: "remote", displayName: "Remote" }, message: null },
-    { id: "sent", type: "message.created", message: { id: "remote-message", channelId: "remote", senderPrincipalId: "other", body: "new channel text" } },
+    { id: "sent", type: "message.created", message: { id: "remote-message", channelId: "remote", senderPrincipalId: "other", body: "new channel text", createdAt: "2026-10-15T01:00:00Z" } },
   ] });
   await f.model.sync(); f.model.selectChannel("remote");
   assert.equal(f.model.getSnapshot().channelId, "remote"); assert.equal(f.model.getSnapshot().messages[0].body, "new channel text");

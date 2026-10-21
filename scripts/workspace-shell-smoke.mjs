@@ -448,7 +448,32 @@ try{
   assert.equal(await evaluate("document.querySelector('.hs-channel-thread').textContent.includes('PRIVATE_DM_ONLY')"),false);
   await click(`.hs-channel-header-actions [aria-label=${JSON.stringify(t('ws.channels.invite'))}]`);
   assert.ok(await evaluate(`document.querySelector('[role=dialog]').textContent.includes(${JSON.stringify(t('ws.channels.inviteBody'))})`));
-  assert.equal(await evaluate("!!document.querySelector('[role=dialog] input,[role=dialog] a')"),false);await key('Escape');
+  assert.equal(await evaluate("!!document.querySelector('[role=dialog] input,[role=dialog] a')"),false);
+  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.upgradeCalls.length"),0,'Opening the preview cannot start login or contact cloud services');
+  const beforeUpgrade=await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>/workspace\\.channels\\.(send|create|update)|approval\\.respond/.test(row.method)).length");
+  assert.deepEqual((await contrast()).issues,[],`${theme}/${locale} invite preview contrast`);
+  await capture(`channel-invite-preview-${locale}-${theme}`);
+  await send('Emulation.setDeviceMetricsOverride',{width:1000,height:600,deviceScaleFactor:1,mobile:false});await settled();
+  const upgradeShort=await evaluate("(()=>{const d=document.querySelector('.hs-channel-upgrade'),f=d.querySelector('footer').getBoundingClientRect(),b=d.querySelector('.hs-channel-dialog-body');return {top:f.top,bottom:f.bottom,bodyScrollable:b.scrollHeight>b.clientHeight,outerScrollable:d.scrollHeight>d.clientHeight+1};})()");
+  assert.ok(upgradeShort.top>=0&&upgradeShort.bottom<=600&&upgradeShort.bodyScrollable&&!upgradeShort.outerScrollable,JSON.stringify(upgradeShort));
+  await capture(`channel-invite-short-${locale}-${theme}`);
+  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false});await settled();
+  await evaluate(`window.__HARA_SHELL_FIXTURE__.setUpgradeRegion(${JSON.stringify(theme==='light'?'CN':'GLOBAL')})`);
+  await buttonText(t('ws.channels.upgrade.continue'),'.hs-channel-upgrade');
+  assert.ok(await evaluate(`document.querySelector('.hs-upgrade-sign-in').textContent.includes(${JSON.stringify(t('ws.channels.upgrade.signIn.body'))})`));
+  assert.deepEqual((await contrast()).issues,[],`${theme}/${locale} sign-in guidance contrast`);
+  await capture(`channel-invite-sign-in-${locale}-${theme}`);
+  await buttonText(t('ws.channels.upgrade.signIn.action'),'.hs-channel-upgrade');
+  assert.equal(await evaluate("document.querySelector('.hs-channel-upgrade .hs-btn.pri').disabled"),true);
+  assert.deepEqual((await contrast()).issues,[],`${theme}/${locale} upgrade confirmation contrast`);
+  await capture(`channel-invite-confirm-${locale}-${theme}`);
+  await click('.hs-upgrade-confirm input');await buttonText(t('ws.channels.upgrade.action'),'.hs-channel-upgrade');
+  assert.ok(await evaluate(`document.querySelector('.hs-channel-upgrade [role=status]').textContent.includes(${JSON.stringify(t('ws.channels.upgrade.notice.UNAVAILABLE'))})`));
+  assert.equal(await evaluate("!!document.querySelector('.hs-channel-upgrade .hs-btn.pri')"),false);
+  await capture(`channel-invite-unavailable-${locale}-${theme}`);await key('Escape');
+  assert.equal(await evaluate("document.querySelector('.hs-channel-compose textarea').value"),'channel draft preserved');
+  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>/workspace\\.channels\\.(send|create|update)|approval\\.respond/.test(row.method)).length"),beforeUpgrade,'The invite flow cannot dispatch a local colleague command or alter channel membership');
+  assert.deepEqual(await evaluate("window.__HARA_SHELL_FIXTURE__.upgradeCalls.map(row=>row.method)"),['account','signIn','account','checkUpgrade']);
   if(locale==='zh-Hans'&&theme==='light'){
    await click('.hs-channel-recipients>summary');await buttonText(t('ws.channels.notesOnly'),'.hs-channel-recipients fieldset');await click('.hs-channel-recipient input');await click('.hs-channel-recipients>summary');
    await click('.hs-set');await key('Escape');
@@ -512,7 +537,7 @@ try{
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.send').at(-1).params.recipientIds.length"),0);
   await click(`[data-channel-id=${JSON.stringify(channelId)}]`);await ready("!!document.querySelector('.hs-channel-recipients input[type=search]')",'The original populated channel can be reopened');
   assert.equal(await evaluate("document.querySelector('.hs-channel-recipients input[type=search]').value"),'','A different channel does not inherit the recipient search');
-  receipts.push({theme,locale,channels:'create with 13 members; short-window footer; member/recipient searches preserve hidden selections; counted replies; side-by-side header; notes-only channel; drafts, DM isolation and invite placeholder verified',shortDialog,headerLayout,colors});
+  receipts.push({theme,locale,channels:'create with 13 members; short-window footer; member/recipient searches preserve hidden selections; counted replies; side-by-side header; notes-only channel; drafts and DM isolation; invite preview, sign-in, explicit confirmation and unavailable service without local execution',shortDialog,upgradeShort,headerLayout,colors});
  }
  if(!channelsOnly){
  await navigate({scenario:'partial'});assert.equal(await evaluate("!!document.querySelector('.hs-overview-notice[role=status]')"),true);

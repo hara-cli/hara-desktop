@@ -1,5 +1,6 @@
 /** Hosted collaboration DTOs. Local Agent/session/model authority never enters this state. */
-export type CollaborationCode = "AUTH_REQUIRED" | "SCOPE_CHANGED" | "ACCESS_CHANGED" | "PROJECTION_PENDING" | "DIRECTORY_STALE" | "HISTORY_STALE" | "MEMBERS_STALE" | "MENTION_TARGET_UNAVAILABLE" | "INVALID_INPUT" | "UNAVAILABLE" | "OUTCOME_UNKNOWN";
+import { collaborationClock, collaborationDisplayMessage, COLLABORATION_MEMBERSHIP_MAX_AGE_MS, type CollaborationClock, type CollaborationDisplayMessage } from "./workspace-collaboration-boundary.ts";
+export type CollaborationCode = "AUTH_REQUIRED" | "SCOPE_CHANGED" | "ACCESS_CHANGED" | "MEMBERSHIP_STALE" | "PROJECTION_PENDING" | "DIRECTORY_STALE" | "HISTORY_STALE" | "MEMBERS_STALE" | "MENTION_TARGET_UNAVAILABLE" | "INVALID_INPUT" | "UNAVAILABLE" | "OUTCOME_UNKNOWN";
 export type CollaborationResult<T> = { ok: true; value: T } | { ok: false; error: { code: CollaborationCode } };
 export interface CollaborationDirectory {
   schemaVersion: 1; accountScope: string; accountRegion: "CN" | "GLOBAL";
@@ -44,7 +45,7 @@ export interface CollaborationView {
   phase: "idle" | "loading" | "ready" | "error";
   error: CollaborationCode | null; channelId: string | null; draft: string;
   draftMentions: CollaborationMention[]; mentionsSupported: boolean;
-  messages: CollaborationMessage[]; pending: PendingCollaborationMessage | null;
+  messages: CollaborationDisplayMessage[]; pending: PendingCollaborationMessage | null;
   syncing: boolean; hasMore: boolean;
   workspaceNames: Record<string, string>;
   members: { phase: "unsupported" | "idle" | "loading" | "ready" | "error"; items: CollaborationMember[]; nextCursor: string | null; error: CollaborationCode | null; limited: boolean };
@@ -55,9 +56,10 @@ const empty = (): CollaborationView => ({ directory: null, directoryBusy: false,
   phase: "idle", error: null, channelId: null, draft: "", draftMentions: [], mentionsSupported: false, messages: [], pending: null, syncing: false, hasMore: false, creation: null,
   workspaceNames: {}, members: { phase: "unsupported", items: [], nextCursor: null, error: null, limited: false },
   history: { phase: "unsupported", nextBefore: null, error: null, limited: false } });
-const revoked = (code: CollaborationCode) => ["AUTH_REQUIRED", "SCOPE_CHANGED", "ACCESS_CHANGED"].includes(code);
-export function mergeCollaborationMessages(existing: CollaborationMessage[], incoming: CollaborationMessage[], older = false): CollaborationMessage[] {
-  const merged = [...new Map((older ? [...incoming, ...existing] : [...existing, ...incoming]).map(item => [item.id, item])).values()];
+const revoked = (code: CollaborationCode) => ["AUTH_REQUIRED", "SCOPE_CHANGED", "ACCESS_CHANGED", "MEMBERSHIP_STALE"].includes(code);
+export function mergeCollaborationMessages(existing: CollaborationMessage[], incoming: CollaborationMessage[], older = false): CollaborationDisplayMessage[] {
+  const display = (older ? [...incoming, ...existing] : [...existing, ...incoming]).flatMap(item => collaborationDisplayMessage(item) ?? []);
+  const merged = [...new Map(display.map(item => [item.id, item])).values()];
   if (merged.every(item => typeof item.sequence === "string" && /^[1-9][0-9]{0,18}$/.test(item.sequence))) {
     merged.sort((a, b) => BigInt(a.sequence!) < BigInt(b.sequence!) ? -1 : BigInt(a.sequence!) > BigInt(b.sequence!) ? 1 : 0);
   }
@@ -83,8 +85,14 @@ export class WorkspaceCollaborationModel {
   private disposed = false;
   private client: WorkspaceCollaborationTransport;
   private key: () => string;
-  constructor(client: WorkspaceCollaborationTransport, key: () => string = () => crypto.randomUUID()) { this.client = client; this.key = key; }
-  getSnapshot = (): CollaborationView => this.value;
+  private clock: CollaborationClock;
+  private access: { startedAt: number; expiresAt: number; wallStartedAt: number; wallExpiresAt: number } | null = null;
+  private accessTimer: unknown = null;
+  private readonly expiredView: CollaborationView = { ...empty(), phase: "error", error: "MEMBERSHIP_STALE" };
+  constructor(client: WorkspaceCollaborationTransport, key: () => string = () => crypto.randomUUID(), clock: CollaborationClock = collaborationClock) {
+    this.client = client; this.key = key; this.clock = clock;
+  }
+  getSnapshot = (): CollaborationView => this.access && !this.accessFresh() ? this.expiredView : this.value;
   hasUnresolvedMutations = (): boolean => this.pending.size > 0 || this.creations.size > 0;
   private historySupported() { return typeof this.client.readCollaborationHistory === "function" && (this.client.supportsCollaborationHistory?.() ?? true); }
   private membersSupported() { return typeof this.client.listCollaborationMembers === "function" && (this.client.supportsCollaborationMembers?.() ?? true); }
@@ -96,15 +104,53 @@ export class WorkspaceCollaborationModel {
   }
   private target(workspaceId = this.value.workspaceId, channelId = this.value.channelId): string { return JSON.stringify([workspaceId, channelId]); }
   private current(epoch: number, workspaceId: string) { return !this.disposed && this.epoch === epoch && this.value.workspaceId === workspaceId; }
+  private wallNow() { return this.clock.wallNow?.() ?? this.clock.now(); }
+  private accessFresh() {
+    const now = this.clock.now(), wall = this.wallNow();
+    // Bound both clocks: wall time covers sleep; monotonic time prevents clock rollback from extending access.
+    return !!this.access && Number.isFinite(now) && Number.isFinite(wall) && now >= this.access.startedAt && now < this.access.expiresAt
+      && wall >= this.access.wallStartedAt && wall < this.access.wallExpiresAt;
+  }
+  private clearAccess() {
+    if (this.accessTimer !== null) this.clock.clearTimeout(this.accessTimer);
+    this.accessTimer = null; this.access = null;
+  }
+  private expireAccess() {
+    this.clearAccess(); ++this.epoch; ++this.directoryEpoch; ++this.historyRequest; ++this.memberRequest; this.syncEpoch = null;
+    for (const [target, item] of this.pending) if (item.state === "sending") this.pending.set(target, { ...item, state: "unknown", code: "OUTCOME_UNKNOWN", outcomeUncertain: true });
+    for (const [target, item] of this.creations) if (item.state === "sending") this.creations.set(target, { ...item, state: "unknown", code: "OUTCOME_UNKNOWN" });
+    // Hide cached content; retain private retry identities until fresh authorization verifies the same identity.
+    this.update(this.expiredView);
+  }
+  private requireAccess() {
+    if (!this.disposed && this.accessFresh()) return true;
+    if (this.access) this.expireAccess();
+    return false;
+  }
+  private grantAccess(startedAt: number, wallStartedAt: number) {
+    this.clearAccess(); this.access = { startedAt, expiresAt: startedAt + COLLABORATION_MEMBERSHIP_MAX_AGE_MS,
+      wallStartedAt, wallExpiresAt: wallStartedAt + COLLABORATION_MEMBERSHIP_MAX_AGE_MS };
+    if (!this.requireAccess()) return false;
+    const epoch = this.epoch;
+    const schedule = () => { this.accessTimer = this.clock.setTimeout(() => {
+      this.accessTimer = null;
+      if (epoch !== this.epoch || !this.access) return;
+      if (this.requireAccess()) schedule();
+    }, Math.min(this.access!.expiresAt - this.clock.now(), this.access!.wallExpiresAt - this.wallNow())); };
+    schedule(); return true;
+  }
   private failure(code: CollaborationCode) {
+    if (code === "MEMBERSHIP_STALE") { this.expireAccess(); return; }
     if (revoked(code)) {
+      this.clearAccess();
       ++this.epoch; ++this.directoryEpoch;
       this.drafts.clear(); this.draftMentions.clear(); this.pending.clear(); this.identities.clear(); this.creations.clear();
       this.update({ ...empty(), error: code, phase: "error" });
     } else this.update({ error: code });
   }
-  dispose() { this.disposed = true; ++this.epoch; ++this.directoryEpoch; this.listeners.clear(); this.drafts.clear(); this.draftMentions.clear(); this.pending.clear(); this.identities.clear(); this.creations.clear(); this.value = empty(); }
+  dispose() { this.clearAccess(); this.disposed = true; ++this.epoch; ++this.directoryEpoch; this.listeners.clear(); this.drafts.clear(); this.draftMentions.clear(); this.pending.clear(); this.identities.clear(); this.creations.clear(); this.value = empty(); }
   async loadDirectory(more = false) {
+    if (this.access && !this.accessFresh()) this.expireAccess();
     if (this.value.directoryBusy || this.disposed) return;
     const cursor = more ? this.value.directory?.nextCursor : undefined;
     if (more && !cursor) return;
@@ -112,6 +158,7 @@ export class WorkspaceCollaborationModel {
     this.update({ directoryBusy: true, error: null });
     try {
       const result = await this.client.listCollaborationWorkspaces(cursor ?? undefined);
+      if (this.access && !this.accessFresh()) this.expireAccess();
       if (request !== this.directoryEpoch || this.disposed) return;
       if (!result.ok) {
         if (result.error.code === "DIRECTORY_STALE" && this.value.directory) {
@@ -120,8 +167,9 @@ export class WorkspaceCollaborationModel {
         this.failure(result.error.code); return;
       }
       const previous = this.value.directory;
-      if (more && previous?.accountScope !== result.value.accountScope) { this.failure("SCOPE_CHANGED"); return; }
-      if (previous && previous.accountScope !== result.value.accountScope) {
+      if (more && (previous?.accountScope !== result.value.accountScope || previous.accountRegion !== result.value.accountRegion)) { this.failure("SCOPE_CHANGED"); return; }
+      if (previous && (previous.accountScope !== result.value.accountScope || previous.accountRegion !== result.value.accountRegion)) {
+        this.clearAccess();
         ++this.epoch; this.drafts.clear(); this.draftMentions.clear(); this.pending.clear(); this.identities.clear(); this.creations.clear(); this.update(empty());
       }
       const workspaces = more && previous ? [...new Map([...previous.workspaces, ...result.value.workspaces].map(item => [item.workspaceId, item])).values()] : result.value.workspaces;
@@ -135,6 +183,7 @@ export class WorkspaceCollaborationModel {
     const directory = this.value.directory;
     if (!directory?.workspaces.some(item => item.workspaceId === workspaceId) || this.disposed) return;
     const epoch = ++this.epoch;
+    this.clearAccess();
     // Leaving a request does not cancel its remote effect. Retain the same identity as unknown; a
     // delayed response must not repaint a subsequent A visit or overwrite an explicitly retried request.
     for (const [target, item] of this.pending) if (item.state === "sending") this.pending.set(target, { ...item, state: "unknown", code: "OUTCOME_UNKNOWN", outcomeUncertain: true });
@@ -144,11 +193,15 @@ export class WorkspaceCollaborationModel {
     this.update({ workspaceId, bootstrap: null, phase: "loading", error: null, channelId: null, draft: "", draftMentions: [], mentionsSupported: this.mentionsSupported(), messages: [], pending: null, syncing: false, hasMore: false, creation: null,
       members: { phase: this.membersSupported() ? "idle" : "unsupported", items: [], nextCursor: null, error: null, limited: false } });
     try {
+      const checkedAt = this.clock.now(), checkedWallAt = this.wallNow();
       const result = await this.client.bootstrapCollaborationWorkspace(workspaceId, directory.accountScope);
       if (!this.current(epoch, workspaceId)) return;
       if (!result.ok) { this.failure(result.error.code); if (!revoked(result.error.code)) this.update({ phase: "error" }); return; }
       if (result.value.workspaceId !== workspaceId) { this.failure("SCOPE_CHANGED"); return; }
-      const identity = JSON.stringify([directory.accountScope, result.value.membership.principalId, result.value.membership.epoch]);
+      if (typeof result.value.membership?.principalId !== "string" || !result.value.membership.principalId || !["OWNER", "ADMIN", "MEMBER"].includes(result.value.membership.role)
+        || !Number.isSafeInteger(result.value.membership.epoch) || result.value.membership.epoch < 1) { this.failure("ACCESS_CHANGED"); return; }
+      if (!this.grantAccess(checkedAt, checkedWallAt)) return;
+      const identity = JSON.stringify([directory.accountScope, directory.accountRegion, result.value.membership.principalId, result.value.membership.epoch]);
       if (this.identities.has(workspaceId) && this.identities.get(workspaceId) !== identity) {
         for (const target of new Set([...this.drafts.keys(), ...this.draftMentions.keys(), ...this.pending.keys()])) if (JSON.parse(target)[0] === workspaceId) { this.drafts.delete(target); this.draftMentions.delete(target); this.pending.delete(target); }
         this.creations.delete(workspaceId);
@@ -162,13 +215,14 @@ export class WorkspaceCollaborationModel {
     } catch { if (this.current(epoch, workspaceId)) this.update({ phase: "error", error: "UNAVAILABLE" }); }
   }
   async loadMembers(more = false) {
+    if (!this.requireAccess()) return;
     const { workspaceId, directory, members } = this.value, epoch = this.epoch;
     if (!workspaceId || !directory || this.value.phase !== "ready" || !this.membersSupported() || members.phase === "loading") return;
     if (more && (!members.nextCursor || members.limited)) return;
     if (more && members.items.length >= 1000) { this.update({ members: { ...members, limited: true } }); return; }
     const cursor = more ? members.nextCursor! : undefined, request = ++this.memberRequest;
     this.update({ members: { ...members, phase: "loading", error: null } });
-    const current = () => this.current(epoch, workspaceId) && this.memberRequest === request;
+    const current = () => this.current(epoch, workspaceId) && this.memberRequest === request && this.requireAccess();
     try {
       const result = await this.client.listCollaborationMembers!({ workspaceId, accountScope: directory.accountScope, ...(cursor ? { cursor } : {}) });
       if (!current()) return;
@@ -186,6 +240,7 @@ export class WorkspaceCollaborationModel {
     } catch { if (current()) this.update({ members: { ...members, phase: "error", error: "UNAVAILABLE" } }); }
   }
   selectChannel(channelId: string) {
+    if (!this.requireAccess()) return;
     if (this.value.phase !== "ready" || !this.value.bootstrap?.channels.some(item => item.id === channelId)) return;
     const target = this.target(this.value.workspaceId, channelId);
     const changed = this.value.channelId !== channelId;
@@ -196,13 +251,14 @@ export class WorkspaceCollaborationModel {
     if (changed && this.historySupported()) void this.loadHistory();
   }
   async loadHistory(older = false) {
+    if (!this.requireAccess()) return;
     const { workspaceId, channelId, directory, history } = this.value, epoch = this.epoch, channelEpoch = this.channelEpoch;
     if (!workspaceId || !channelId || !directory || this.value.phase !== "ready" || !this.historySupported() || history.phase === "loading") return;
     if (older && (!history.nextBefore || history.limited)) return;
     if (older && this.value.messages.length >= 500) { this.update({ history: { ...history, limited: true } }); return; }
     const before = older ? history.nextBefore! : undefined, request = ++this.historyRequest;
     this.update({ history: { ...history, phase: "loading", error: null } });
-    const current = () => this.current(epoch, workspaceId) && this.channelEpoch === channelEpoch && this.value.channelId === channelId && this.historyRequest === request;
+    const current = () => this.current(epoch, workspaceId) && this.channelEpoch === channelEpoch && this.value.channelId === channelId && this.historyRequest === request && this.requireAccess();
     try {
       const result = await this.client.readCollaborationHistory!({ workspaceId, channelId, accountScope: directory.accountScope, ...(before ? { before } : {}) });
       if (!current()) return;
@@ -224,10 +280,12 @@ export class WorkspaceCollaborationModel {
     } catch { if (current()) this.update({ history: { ...history, phase: "error", error: "UNAVAILABLE" } }); }
   }
   setDraft(draft: string) {
+    if (!this.requireAccess()) return;
     if (!this.value.channelId || this.value.phase !== "ready" || this.value.pending?.state === "sending") return;
     this.drafts.set(this.target(), draft); this.update({ draft });
   }
   setMention(principalId: string, selected: boolean) {
+    if (!this.requireAccess()) return;
     if (this.value.phase !== "ready" || !this.value.channelId || this.value.pending || this.disposed) return;
     const target = this.target(), previous = this.draftMentions.get(target) ?? [];
     if (selected && (!this.mentionsSupported() || this.value.members.phase !== "ready"
@@ -238,6 +296,7 @@ export class WorkspaceCollaborationModel {
     this.draftMentions.set(target, next); this.update({ draftMentions: next });
   }
   returnMentionToDraft() {
+    if (!this.requireAccess()) return;
     const pending = this.value.pending;
     // Only a definite first rejection can be edited. A previous unknown outcome stays uncertain
     // even if a later retry receives a validation error or a feature becomes unavailable.
@@ -245,20 +304,21 @@ export class WorkspaceCollaborationModel {
     this.pending.delete(this.target()); this.update({ pending: null, error: null });
   }
   async sync() {
+    if (!this.requireAccess()) return;
     const { workspaceId, bootstrap, directory } = this.value, epoch = this.epoch;
     if (!workspaceId || !bootstrap || !directory || this.value.phase !== "ready" || this.syncEpoch === epoch) return;
     this.syncEpoch = epoch; this.update({ syncing: true });
     try {
       const result = await this.client.syncCollaborationWorkspace(workspaceId, bootstrap.cursor, directory.accountScope);
-      if (!this.current(epoch, workspaceId)) return;
+      if (!this.current(epoch, workspaceId) || !this.requireAccess()) return;
       if (!result.ok) { this.failure(result.error.code); return; }
       if (result.value.workspaceId !== workspaceId) { this.failure("SCOPE_CHANGED"); return; }
       const messages = new Map(this.value.messages.map(item => [item.id, item]));
       const channels = new Map(this.value.bootstrap!.channels.map(item => [item.id, item]));
       for (const event of result.value.events) {
         if (event.type === "channel.created" && event.channel) channels.set(event.channel.id, event.channel);
-        if (!event.message) continue;
-        const item = event.message;
+        if (!event.message || !["message.created", "message"].includes(event.type)) continue;
+        const item = collaborationDisplayMessage(event.message); if (!item) continue;
         if (!channels.has(item.channelId)) continue;
         if (this.historySupported() && item.channelId !== this.value.channelId) continue;
         messages.set(item.id, item);
@@ -271,6 +331,7 @@ export class WorkspaceCollaborationModel {
     finally { if (this.syncEpoch === epoch) this.syncEpoch = null; if (this.current(epoch, workspaceId)) this.update({ syncing: false }); }
   }
   async send(retry = false) {
+    if (!this.requireAccess()) return;
     const { workspaceId, channelId, bootstrap, directory, draft, draftMentions } = this.value, epoch = this.epoch;
     if (!workspaceId || !channelId || !bootstrap || !directory || this.value.phase !== "ready") return;
     const target = this.target(), existing = this.pending.get(target);
@@ -284,7 +345,7 @@ export class WorkspaceCollaborationModel {
       const { state: _state, code: _code, outcomeUncertain: _uncertain, mentions, ...request } = item;
       const result = mentions?.length ? await this.client.sendCollaborationMentionedMessage!({ ...request, mentions }) : await this.client.sendCollaborationMessage(request);
       // Preserve outcome in its frozen scope, but never let an A response repaint B or a later A visit.
-      if (this.disposed || this.pending.get(target) !== item || this.identities.get(workspaceId) !== JSON.stringify([item.accountScope, bootstrap.membership.principalId, bootstrap.membership.epoch])) return;
+      if (this.disposed || this.pending.get(target) !== item || this.identities.get(workspaceId) !== JSON.stringify([item.accountScope, directory.accountRegion, bootstrap.membership.principalId, bootstrap.membership.epoch])) return;
       if (!result.ok) {
         const uncertain = result.error.code === "OUTCOME_UNKNOWN" || item.outcomeUncertain;
         const failed: PendingCollaborationMessage = { ...item, state: uncertain ? "unknown" : "failed", code: uncertain ? "OUTCOME_UNKNOWN" : result.error.code,
@@ -301,7 +362,7 @@ export class WorkspaceCollaborationModel {
       this.pending.delete(target);
       // Do not erase a newer draft typed after navigation.
       if (this.drafts.get(target) === item.body) { this.drafts.delete(target); this.draftMentions.delete(target); }
-      if (!this.current(epoch, workspaceId)) return;
+      if (!this.current(epoch, workspaceId) || !this.requireAccess()) return;
       const sent = { id: result.value.messageId, channelId, senderPrincipalId: result.value.senderPrincipalId, body: item.body, createdAt: result.value.createdAt,
         ...(result.value.sequence ? { sequence: result.value.sequence } : {}), ...(item.mentions?.length ? { mentions: item.mentions } : {}) };
       const messages = this.historySupported() && this.value.channelId !== channelId ? this.value.messages : mergeCollaborationMessages(this.value.messages, [sent]);
@@ -315,6 +376,7 @@ export class WorkspaceCollaborationModel {
     }
   }
   async createChannel(slug: string, displayName: string, retry = false) {
+    if (!this.requireAccess()) return;
     const { workspaceId, bootstrap, directory, creation } = this.value, epoch = this.epoch;
     if (!workspaceId || !bootstrap || !directory || this.value.phase !== "ready" || !["OWNER", "ADMIN"].includes(bootstrap.membership.role)) return;
     if (creation?.state === "sending" || (creation && !retry) || (retry && !creation)) return;
@@ -324,7 +386,7 @@ export class WorkspaceCollaborationModel {
     this.update({ creation: item });
     try {
       const result = await this.client.createCollaborationChannel({ workspaceId, accountScope: directory.accountScope, slug: item.slug, displayName: item.displayName, idempotencyKey: item.idempotencyKey });
-      if (!this.current(epoch, workspaceId) || this.creations.get(workspaceId) !== item) return;
+      if (!this.current(epoch, workspaceId) || !this.requireAccess() || this.creations.get(workspaceId) !== item) return;
       if (!result.ok) {
         const failed = { ...item, state: result.error.code === "OUTCOME_UNKNOWN" ? "unknown" as const : "failed" as const, code: result.error.code };
         this.creations.set(workspaceId, failed); this.failure(result.error.code);

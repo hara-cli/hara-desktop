@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { WorkspaceScreen } from '../../src/WorkspaceLocalDev';
 import { WorkspaceDevModel, type WorkspaceDevApproval, type WorkspaceDevSnapshot } from '../../src/workspace-dev-state';
 import type { LocalChannelCatalog, LocalChannelSnapshot } from '../../src/workspace-local-channels';
+import type { ChannelUpgradeBridge, AccountRegion } from '../../src/workspace-channel-upgrade';
 if (!import.meta.env.DEV || !['127.0.0.1','localhost'].includes(location.hostname)) throw new Error('Synthetic localhost development fixture only');
 const params = new URLSearchParams(location.search), scenario = params.get('scenario') ?? 'home';
 const productionFixture = scenario === 'native-settings' || scenario === 'channels-many';
@@ -122,12 +123,19 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
   return result as T;
 }};
 const model=new WorkspaceDevModel(rpc,()=>crypto.randomUUID(),!productionFixture,productionFixture?'workspace':'synthetic');
+const upgradeCalls: {method:string;input?:unknown}[]=[];
+let upgradeSignedIn=false,upgradeRegion:AccountRegion='CN';
+const channelUpgradeBridge:ChannelUpgradeBridge={
+  async account(){upgradeCalls.push({method:'account'});return upgradeSignedIn?{ok:true,value:{accountScope:'synthetic-account',region:upgradeRegion}}:{ok:false,error:{code:'AUTH_REQUIRED'}};},
+  async signIn(){upgradeCalls.push({method:'signIn'});upgradeSignedIn=true;return {ok:true,value:{accountScope:'synthetic-account',region:upgradeRegion}};},
+  async checkUpgrade(input){upgradeCalls.push({method:'checkUpgrade',input});return {ok:false,error:{code:'UNAVAILABLE'}};},
+};
 await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat')await model.selectAgent('person-0');
-(window as any).__HARA_SHELL_FIXTURE__={model,calls,setFailure(method:string,enabled:boolean){if(enabled)failures.add(method);else failures.delete(method);},async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
+(window as any).__HARA_SHELL_FIXTURE__={model,calls,upgradeCalls,setUpgradeRegion(region:AccountRegion){upgradeRegion=region;},setFailure(method:string,enabled:boolean){if(enabled)failures.add(method);else failures.delete(method);},async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
   channelSlow(value:boolean){slowChannel=value;},channelLoseAck(){unknownChannelAck=true;},
   async channelHistory(id:string,turns:LocalChannelSnapshot['turns'],messages:LocalChannelSnapshot['messages']){const snapshot=channelData.snapshots[id];snapshot.turns=turns;snapshot.messages=messages;snapshot.state='completed';snapshot.revision++;persistChannels();await model.refresh();},
   async channelIncoming(id:string,text:string){const snapshot=channelData.snapshots[id],turnId=crypto.randomUUID();snapshot.turns.push({id:turnId,state:'completed',replies:[]});snapshot.messages.push({id:turnId,turnId,agentId:null,displayName:'',createdAt:new Date().toISOString(),message:{role:'user',content:text}});snapshot.revision++;persistChannels();await model.refresh();},
   async finishApprovals(){const snapshot=snapshots.get('A:person-1')!;snapshot.conversation.state='completed';snapshot.conversation.taskState='completed';await model.refresh();},
   async idle(){for(const snapshot of snapshots.values())if(snapshot.workspaceId==='A'&&snapshot.selectedAgentId!=='person-1') {snapshot.conversation.state='idle';snapshot.conversation.taskState=null;snapshot.conversation.taskId=null;}await model.refresh();}};
 model.setSettingsFactory(async () => ({ model: new WorkspaceDevModel(rpc, undefined, !productionFixture, productionFixture ? 'workspace' : 'synthetic', true), close() {} }));
-createRoot(document.getElementById('root')!).render(<React.StrictMode><WorkspaceScreen model={model} disconnected='' onReconnect={()=>{}} root='/synthetic/fixture' mode='lab' onOpenBrowser={()=>{}} /></React.StrictMode>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode><WorkspaceScreen model={model} disconnected='' onReconnect={()=>{}} root='/synthetic/fixture' mode='lab' onOpenBrowser={()=>{}} channelUpgradeBridge={channelUpgradeBridge} /></React.StrictMode>);

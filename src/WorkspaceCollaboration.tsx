@@ -10,6 +10,7 @@ const errors: Record<CollaborationCode, [string, string]> = {
   AUTH_REQUIRED: ["請先登入 Hara 帳號；登入過期時請重新授權。", "Sign in to Hara or renew the expired authorization."],
   SCOPE_CHANGED: ["登入身分已改變。請重新載入工作空間。", "Your sign-in changed. Reload Workspaces."],
   ACCESS_CHANGED: ["權限或內容已改變，請重新載入。舊空間內容已隱藏。", "Access or content changed. Reload; old Workspace content is hidden."],
+  MEMBERSHIP_STALE: ["成員授權需要重新核驗（最長 60 秒）。內容已隱藏並停止讀寫，請重新載入空間；沒有自動重送。", "Membership authorization needs verification (60 seconds maximum). Content is hidden and reads/writes are stopped. Reload Workspaces; nothing was automatically resent."],
   PROJECTION_PENDING: ["正在同步工作空間權限，稍後再重新整理。", "Workspace access is still synchronizing. Refresh shortly."],
   DIRECTORY_STALE: ["空間清單的分頁已失效，請重新載入清單。未確認的發送記錄仍保留。", "Workspace pagination expired or changed. Reload the directory; unconfirmed sends are retained."],
   HISTORY_STALE: ["歷史分頁已失效或權限版本已變更，請重新讀取頻道紀錄。待確認的發送仍保留。", "History pagination expired or its access version changed. Reload channel history; unconfirmed sends are retained."],
@@ -111,7 +112,7 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
         onRefresh={() => void model.loadMembers()} onMore={() => void model.loadMembers(true)}
         mentionSelection={view.mentionsSupported ? { ids: selectedMentionIds, disabled: view.phase !== "ready" || !selected || !!view.pending,
           onToggle: (id, checked) => model.setMention(id, checked) } : undefined} /> : null}</div>
-      <div className="workspace-collaboration-boundary">{copy("頻道協作預覽 · 尚未啟用 Agent 執行、檔案或金鑰共享", "Channel collaboration preview · Agent execution, files and key sharing are not enabled")}</div>
+      <div className="workspace-collaboration-boundary">{copy("遠端訊息僅供閱讀，不會成為本機同事的指令；不共享檔案或金鑰。", "Remote messages are display-only and never instruct local colleagues; files and keys are not shared.")}</div>
       {view.error ? <div className="workspace-collaboration-error" role="alert"><span>{errors[view.error][zh ? 0 : 1]}</span>
         {view.error === "AUTH_REQUIRED" ? <button type="button" onClick={onSignIn}>{copy("帳號授權", "Authorize account")}</button> : null}</div> : null}
       {creating && canCreate ? <form className="workspace-collaboration-create" aria-label={copy("新增頻道", "New channel")} onSubmit={event => { event.preventDefault(); if (formValid) void model.createChannel(slug, displayName); }}>
@@ -141,7 +142,7 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
         {messages.map(message => <article key={message.id} className={"workspace-collaboration-message" + (message.senderPrincipalId === membership?.principalId ? " is-own" : "")}>
           <span title={memberLabels.get(message.senderPrincipalId)}>{message.senderPrincipalId === membership?.principalId ? copy("你", "You")
             : memberLabel(message.senderPrincipalId)}</span>
-          <div>{message.body}</div>{mentionReferences(message.mentions)}<time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleTimeString(zh ? "zh-TW" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
+          <div data-message-origin="remote">{message.body}</div>{mentionReferences(message.mentions)}<time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleTimeString(zh ? "zh-TW" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
         </article>)}
         {view.pending ? <article className="workspace-collaboration-message is-own is-pending"><span>{copy("你", "You")}</span><div>{view.pending.body}</div>
           {mentionReferences(view.pending.mentions)}
@@ -159,7 +160,7 @@ export function WorkspaceCollaborationView({ view, model, locale, onClose, onSig
           {view.draftMentions.map(item => <li key={item.principalId}><span title={item.principalId}>@{memberLabel(item.principalId)}</span>
             <button type="button" disabled={!!view.pending} aria-label={copy("移除提及 ", "Remove mention ") + memberLabel(item.principalId)}
               onClick={() => model.setMention(item.principalId, false)}>×</button></li>)}
-        </ul><p className="workspace-collaboration-mention-note">{copy("提及只保存對象引用，尚不代表通知送達或 Agent 接單。", "Mentions save references, not notification delivery or Agent task acceptance.")}</p></> : null}
+        </ul><p className="workspace-collaboration-mention-note">{copy("提及只保存人類成員引用，不會呼叫本機同事或建立本機任務。", "Mentions save human member references; they never call local colleagues or create local tasks.")}</p></> : null}
         <textarea rows={2} value={view.draft} disabled={!selected || view.phase !== "ready" || !!view.pending}
           aria-label={copy("發送訊息", "Message")} placeholder={selected ? copy("發送訊息到 #", "Message #") + selected.displayName + "…" : copy("先選擇頻道", "Select a channel first")}
           onChange={event => model.setDraft(event.target.value)}
