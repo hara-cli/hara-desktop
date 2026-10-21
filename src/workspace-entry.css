@@ -25,7 +25,7 @@
 :root[data-theme="dark"] .wsd-boot p, :root[data-theme="dark"] .wsd-boot small { color: var(--muted, #b0a99e); }
 .wsd-boot .hs-btn.sec { background:var(--surface, #fffdf9); color:var(--ink, #272522); border:1px solid var(--input, #cfc8bb); min-height:32px; padding:0 14px; border-radius:var(--r-md, 9px); }
 .wsd-boot .hs-btn.sec:hover:not(:disabled) { background:var(--row-hover, #e8e6e1); }
-:root[data-theme="dark"] .wsd-boot .hs-btn.sec:hover:not(:disabled) { background:var(--row-hover, #211f1c); }
+:root[data-theme="dark"] .wsd-boot .hs-btn.sec:hover:not(:disabled) { background:var(--row-hover, #211f1c); color:var(--ink, #ece7df); }
 .wsd-boot .hs-btn.sec:focus-visible { outline:2px solid var(--focus, #9b2c24); outline-offset:3px; }
 .wsd-boot .hs-btn.sec:disabled { color:var(--muted, #666158); background:var(--surface, #fffdf9); opacity:1; cursor:progress; }
 .wsd-boot .wsd-boot-attempt { margin:0 0 16px; font-variant-numeric:tabular-nums; }

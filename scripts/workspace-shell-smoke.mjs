@@ -157,13 +157,20 @@ try{
   const colors=await contrast();assert.deepEqual(colors.issues,[],`${theme} startup hover without row-hover token`);
   const hover=await evaluate("getComputedStyle(document.querySelector('.wsd-boot button')).backgroundColor");
   await capture(`boot-hover-fallback-${theme}`);
+  let missingInkColors=null;
+  if(theme==='dark'){
+   await evaluate("document.querySelector('.wsd-boot button').style.setProperty('--ink','initial')");
+   missingInkColors=await contrast();assert.deepEqual(missingInkColors.issues,[],'Dark hover also needs readable fallback text before ink loads');
+   await capture('boot-hover-fallback-no-ink-dark');
+   await evaluate("document.querySelector('.wsd-boot button').style.removeProperty('--ink')");
+  }
   await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,...point});
   await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,...point});await settled();
   assert.equal(await evaluate("document.querySelector('.wsd-boot button').disabled"),true);
   assert.notEqual(await evaluate("getComputedStyle(document.querySelector('.wsd-boot button')).backgroundColor"),hover,'Disabled reconnect must not retain its hover fill');
   assert.equal(await evaluate("window.__HARA_BOOT_FIXTURE__.calls()"),2);
   await capture(`boot-disabled-fallback-${theme}`);
-  receipts.push({theme,scenario:'boot-hover-fallback',rowHoverTokenAbsent:true,colors,disabledHoverExcluded:true,attachmentCalls:2});
+  receipts.push({theme,scenario:'boot-hover-fallback',rowHoverTokenAbsent:true,colors,missingInkColors,disabledHoverExcluded:true,attachmentCalls:2});
  }
  if(!channelsOnly){
  for(const theme of ['light','dark'])for(const scenario of ['home','chat','tasks']){
