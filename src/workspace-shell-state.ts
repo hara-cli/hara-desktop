@@ -1,6 +1,12 @@
 // Presentation only. Core remains the authority for task state and every approval decision.
 import type { WorkspaceDevApproval, WorkspaceDevMessage, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state.ts";
 
+/** Channel and connection notifications do not change private-chat task history. */
+export function workspaceTaskHistoryKey(snapshots: readonly WorkspaceDevSnapshot[]): string {
+  return JSON.stringify(snapshots.map(row => [row.workspaceId, row.resourceGeneration, row.selectedAgentId,
+    row.conversation.revision, row.conversation.taskId, row.conversation.taskState, row.conversation.pastTaskCount]));
+}
+
 export type TaskGroup = "needsYou" | "working" | "waiting" | "closed";
 export type TaskStatus = "pending" | "reply" | "review" | "blocked" | "accepted" | "running" | "dispatched" | "queued" | "completed" | "cancelled" | "rejected" | "expired" | "paused" | "unknown";
 export interface ShellTask { id: string; agentId?: string; colleagueLabel?: string; title: string; status: TaskStatus; group: TaskGroup }

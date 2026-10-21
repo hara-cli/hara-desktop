@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectLocalePreference, makeT, normalizeLocale, resolveLocale, saveLocale, type LocalePreference } from "./i18n";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state";
-import { buildWorkspaceShell, loadSidebarSections, type SidebarSectionId } from "./workspace-shell-state";
+import { buildWorkspaceShell, loadSidebarSections, workspaceTaskHistoryKey, type SidebarSectionId } from "./workspace-shell-state";
 
 export function workspacePlatform(): "macos" | "other" {
   return /Mac/.test(globalThis.navigator?.platform ?? "") ? "macos" : "other";
@@ -45,13 +45,6 @@ export function useWorkspaceOverview(model: WorkspaceDevModel, workspace: Worksp
   const observations = useRef(new Map<string, { fingerprint: string; observedAt: number; unread: number }>());
   const scope = workspace ? JSON.stringify([workspace.workspaceId, workspace.resourceGeneration]) : "";
   useEffect(() => {
-    if (!workspace || workspace.executionMode !== "workspace") return;
-    let active = true;
-    void model.workspaceRequest<WorkspaceTaskRecord[]>("workspace.tasks").then(rows => { if (active) setHistory({ scope, rows }); })
-      .catch(() => { if (active) setHistory(null); });
-    return () => { active = false; };
-  }, [model, workspace, scope, revision]);
-  useEffect(() => {
     if (!workspace) return;
     let active = true;
     void model.readOverview(workspace, { reuseUnchanged: true }).then(value => { if (active) setOverview({ scope, ...value }); })
@@ -61,6 +54,14 @@ export function useWorkspaceOverview(model: WorkspaceDevModel, workspace: Worksp
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 15000); return () => clearInterval(timer); }, []);
   const snapshots = useMemo(() => workspace ? [workspace,
     ...(overview?.scope === scope ? overview.snapshots.filter(row => row.selectedAgentId !== workspace.selectedAgentId) : [])] : [], [workspace, overview, scope]);
+  const taskHistoryKey = workspaceTaskHistoryKey(snapshots), executionMode = workspace?.executionMode;
+  useEffect(() => {
+    if (!scope || executionMode !== "workspace") return;
+    let active = true;
+    void model.workspaceRequest<WorkspaceTaskRecord[]>("workspace.tasks").then(rows => { if (active) setHistory({ scope, rows }); })
+      .catch(() => { if (active) setHistory(null); });
+    return () => { active = false; };
+  }, [model, scope, executionMode, taskHistoryKey, revision]);
   const [activity, setActivity] = useState<Record<string, { observedAt: number; unread: number }>>({});
   useEffect(() => {
     const result: typeof activity = {};
