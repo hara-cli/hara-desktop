@@ -152,7 +152,7 @@ fn desktop_updater_target() -> Option<&'static str> {
 
 #[tauri::command]
 fn desktop_update_info() -> serde_json::Value {
-    serde_json::json!({ "desktop": env!("CARGO_PKG_VERSION"), "engine": BUNDLED_CLI_VERSION.trim(), "channel": update_channel::channel(), "arch": std::env::consts::ARCH })
+    serde_json::json!({ "desktop": env!("CARGO_PKG_VERSION"), "engine": BUNDLED_CLI_VERSION.trim(), "channel": if LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) { "local-candidate" } else { update_channel::channel() }, "arch": std::env::consts::ARCH, "isolatedCandidate": LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) })
 }
 
 fn effective_update_endpoints() -> Result<Vec<String>, String> {
@@ -165,6 +165,7 @@ fn effective_update_endpoints() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 async fn desktop_check_update<R: tauri::Runtime>(webview: tauri::Webview<R>) -> Result<Option<serde_json::Value>, String> {
+    if LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst) { return Err("Local candidate cannot install public updates".into()); }
     let urls = effective_update_endpoints()?.into_iter().map(|value| tauri::Url::parse(&value).map_err(|_| "Invalid updater endpoint".to_string())).collect::<Result<Vec<_>, _>>()?;
     let mut builder = webview.updater_builder().endpoints(urls).map_err(|_| "Hara update endpoint unavailable".to_string())?
         .timeout(std::time::Duration::from_secs(20));
@@ -736,6 +737,11 @@ fn create_main_window<R: tauri::Runtime>(
     let builder = tauri::WebviewWindowBuilder::from_config(app, &config)
         .map_err(|error| format!("prepare main window: {error}"))?
         .min_inner_size(f64::from(MIN_MAIN_WINDOW_WIDTH), f64::from(MIN_MAIN_WINDOW_HEIGHT));
+    #[cfg(target_os = "macos")]
+    let builder = if workspace_overlay_titlebar(&app.config().identifier, std::env::var("HARA_DESKTOP_LEGACY_ENTRY").ok().as_deref()) {
+        builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 16.0))
+    } else { builder };
     #[cfg(windows)]
     let builder = if software_renderer {
         let data_directory = app
@@ -1279,6 +1285,11 @@ fn workspace_entry_selection(identifier: &str, rollback: Option<&str>) -> Result
     }
 }
 
+#[cfg(target_os = "macos")]
+fn workspace_overlay_titlebar(identifier: &str, rollback: Option<&str>) -> bool {
+    matches!(workspace_entry_selection(identifier, rollback), Ok("workspace" | "lab"))
+}
+
 #[tauri::command]
 fn workspace_entry_mode(app: tauri::AppHandle) -> Result<String, String> {
     workspace_entry_selection(&app.config().identifier, std::env::var("HARA_DESKTOP_LEGACY_ENTRY").ok().as_deref()).map(str::to_string)
@@ -1348,6 +1359,23 @@ fn os_account_identity() -> Result<(PathBuf, Option<std::ffi::OsString>), String
     Ok((resolve_user_home(std::env::var_os("HOME").map(PathBuf::from), std::env::var_os("USERPROFILE").map(PathBuf::from), cfg!(windows))?, None))
 }
 static LOCAL_CANDIDATE_ISOLATION: AtomicBool = AtomicBool::new(false);
+const REDESIGN_CANDIDATE_IDENTIFIER: &str = "com.nanhara.hara.redesign-candidate";
+fn redesign_candidate_preflight(identifier: &str) -> Result<(), String> {
+    if identifier != REDESIGN_CANDIDATE_IDENTIFIER { return Ok(()); }
+    let root = std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").map(PathBuf::from)
+        .ok_or("Redesign candidate requires its explicit private Workspace root")?;
+    checked_workspace_dev_directory(&root)?;
+    let temporary = std::env::temp_dir().canonicalize().map_err(|_| "Cannot verify candidate temporary root")?;
+    let home = user_home()?;
+    checked_workspace_dev_directory(&home)?;
+    if !root.starts_with(&temporary) || !home.starts_with(&temporary) || root == home || root.parent() != home.parent() {
+        return Err("Redesign candidate must use its own temporary Workspace Home".into());
+    }
+    let (os_home, _) = os_account_identity()?;
+    legacy_source_home(&os_home, false, true, std::env::var_os("HARA_DESKTOP_LEGACY_SOURCE_HOME").map(PathBuf::from))?;
+    Ok(())
+}
+
 fn legacy_source_home(os_home: &Path, debug: bool, isolated_candidate: bool, requested: Option<PathBuf>) -> Result<PathBuf, String> {
     // A release-format local candidate with an explicit fixture root must NEVER discover the
     // real account's ~/.hara. Ordinary production builds still ignore arbitrary source overrides.
@@ -1417,8 +1445,10 @@ fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
     // never renderer parameters. A debug fixture can supply a sanitized legacy-copy Home.
     command.env("HARA_WORKSPACE_HOST_HOME", user_home()?);
     let (os_home, shell) = os_account_identity()?;
-    command.env("HARA_WORKSPACE_DISCOVERY_HOME", &os_home);
-    command.env("HARA_WORKSPACE_LEGACY_SOURCE_HOME", legacy_source_home(&os_home, cfg!(debug_assertions), LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst), std::env::var_os("HARA_DESKTOP_LEGACY_SOURCE_HOME").map(PathBuf::from))?);
+    let isolated = LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst);
+    let source = legacy_source_home(&os_home, cfg!(debug_assertions), isolated, std::env::var_os("HARA_DESKTOP_LEGACY_SOURCE_HOME").map(PathBuf::from))?;
+    command.env("HARA_WORKSPACE_DISCOVERY_HOME", if isolated { &source } else { &os_home });
+    command.env("HARA_WORKSPACE_LEGACY_SOURCE_HOME", source);
     if let Some(shell) = shell { command.env("HARA_WORKSPACE_HOST_SHELL", shell); }
     if let Some(value) = search_path { command.env("PATH", value); }
     if let Some(value) = system_root { command.env("SystemRoot", value); }
@@ -3665,6 +3695,10 @@ pub fn run() {
         }
     }
 
+    if let Err(error) = redesign_candidate_preflight(&context.config().identifier) {
+        eprintln!("{error}; candidate was not started"); return;
+    }
+
     tauri::Builder::default()
         .manage(OwnedPanels(std::sync::Mutex::new(Vec::new())))
         .manage(RendererBootState::default())
@@ -3688,7 +3722,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            LOCAL_CANDIDATE_ISOLATION.store(app.config().identifier == "com.nanhara.hara.workspace-v1-candidate"
+            LOCAL_CANDIDATE_ISOLATION.store((app.config().identifier == "com.nanhara.hara.workspace-v1-candidate" || app.config().identifier == REDESIGN_CANDIDATE_IDENTIFIER)
                 && std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").is_some(), Ordering::SeqCst);
             if let Err(error) = initialize_crash_tracking(app.handle()) {
                 eprintln!("Hara crash tracking could not start: {error}");
@@ -4323,6 +4357,16 @@ mod native_tests {
         assert_eq!(workspace_entry_selection("com.nanhara.hara", Some("1")).unwrap(), "legacy");
         assert!(workspace_entry_selection("com.nanhara.hara", Some("unexpected")).is_err());
         assert_eq!(workspace_entry_selection("com.nanhara.hara.workspace-lab", None).unwrap(), "lab");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn workspace_overlay_titlebar_preserves_legacy_recovery_chrome() {
+        assert!(workspace_overlay_titlebar("com.nanhara.hara", None));
+        assert!(workspace_overlay_titlebar("com.nanhara.hara.redesign-candidate", Some("0")));
+        assert!(workspace_overlay_titlebar("com.nanhara.hara.workspace-lab", None));
+        assert!(!workspace_overlay_titlebar("com.nanhara.hara", Some("1")));
+        assert!(!workspace_overlay_titlebar("com.nanhara.hara", Some("invalid")));
     }
 
     #[cfg(unix)]

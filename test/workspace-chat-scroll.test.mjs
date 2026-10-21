@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { WorkspaceChatScroll, submitsWorkspaceMessage } from "../src/workspace-chat-scroll.ts";
+import { WorkspaceChatScroll, captureWorkspaceReadingPosition, submitsWorkspaceMessage } from "../src/workspace-chat-scroll.ts";
+test("settings preserve a short transcript's reading position even inside the auto-follow threshold", () => {
+  const area = { scrollTop: 0, scrollHeight: 760, clientHeight: 640 };
+  assert.deepEqual(captureWorkspaceReadingPosition(area), { top: 0, atBottom: false });
+  area.scrollTop = 48.5;
+  assert.deepEqual(captureWorkspaceReadingPosition(area), { top: 48.5, atBottom: false });
+  area.scrollTop = 120;
+  assert.deepEqual(captureWorkspaceReadingPosition(area), { top: 120, atBottom: true });
+  area.scrollTop = -20;
+  assert.deepEqual(captureWorkspaceReadingPosition(area), { top: 0, atBottom: false });
+  area.scrollTop = 140;
+  assert.deepEqual(captureWorkspaceReadingPosition(area), { top: 120, atBottom: true });
+});
 test("chat follows new messages only while near the bottom", () => {
   const state = new WorkspaceChatScroll(), node = { scrollTop: 0, scrollHeight: 1000, clientHeight: 500 };
   state.layout(node, "A", "m1", null, false); assert.equal(node.scrollTop, 1000);

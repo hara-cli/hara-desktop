@@ -1,0 +1,41 @@
+/* The preview always occupies its own grid column. Expanding cannot hide or cover chat. */
+.hs .hs-win.has-browser { grid-template-columns:264px minmax(340px,1fr) minmax(260px,min(36%,560px,calc(100% - 604px))); }
+.hs .hs-win.has-browser:has(> .hs-browser.is-expanded) { grid-template-columns:264px minmax(340px,1fr) minmax(260px,min(48%,560px,calc(100% - 604px))); }
+.hs-browser { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--paper); border-left:1px solid var(--line); overflow:hidden; }
+.hs-browser-head { display:flex; align-items:center; gap:8px; min-height:64px; padding:10px 12px; border-bottom:1px solid var(--line); }
+.hs-browser-head .grow { flex:1; min-width:0; }
+.hs-browser-head strong,.hs-browser-head small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hs-browser-head small { margin-top:2px; color:var(--muted); font-size:11px; }
+.hs-browser-address { display:flex; flex:0 0 auto; gap:6px; align-items:center; padding:10px; border-bottom:1px solid var(--line); }
+.hs-browser-address input { width:100%; min-width:0; height:32px; padding:0 8px; border:1px solid var(--control); border-radius:var(--r-md); color:var(--ink); background:var(--field); font-size:12px; }
+.hs-browser-address .hs-btn { flex-shrink:0; }
+.hs-browser iframe { width:100%; flex:1; min-height:0; border:0; background:white; }
+.hs-browser-empty { padding:28px 20px; color:var(--muted); }
+.hs-browser-empty h2 { font-size:14px; color:var(--ink); }
+.hs-browser-empty p,.hs-browser-notice { font-size:12px; line-height:1.7; }
+.hs-browser-notice { padding:0 12px; color:var(--brand-text); }
+@media(max-width:1000px) {
+  .hs .hs-win.has-browser,.hs .hs-win.has-browser:has(> .hs-browser.is-expanded) { grid-template-columns:var(--preview-rail-width,56px) minmax(340px,1fr) minmax(260px,1fr); }
+  .hs .has-browser .hs-side { padding:12px 6px 8px; }
+  .hs .has-browser .hs-top { padding:0; gap:0; }
+  .hs .has-browser .hs-top>:not(.hs-space) { display:none; }
+  .hs .has-browser .hs-top>.hs-space { width:44px; font-size:11px; }
+  .hs .has-browser .hs-side .hs-row { padding:6px; gap:0; justify-content:center; min-height:44px; }
+  .hs .has-browser .hs-side .hs-row>:not(.hs-ava):not(.hico) { display:none; }
+  .hs .has-browser .hs-sec-h,.hs .has-browser .hs-side .hs-empty,.hs .has-browser .hs-side .hs-more,.hs .has-browser .hs-quota { display:none; }
+  .hs .has-browser .hs-sec { margin-top:8px; }
+  .hs .has-browser .hs-side .hs-add { font-size:0; }
+  .hs .has-browser .hs-me { display:block; padding:0!important; }
+  .hs .has-browser .hs-me>:not(.hs-set) { display:none!important; }
+  .hs .has-browser .hs-me .hs-set { display:flex!important; justify-content:center; width:44px; height:36px; font-size:0; }
+  .hs .has-browser .hs-header-person small,.hs .has-browser .hs-head .hs-ghost { font-size:0; }
+}
+
+/* Put urgent actions on a second row so the approval itself remains readable beside a preview. */
+.hs .has-browser .hs-ai:not(.go){display:grid;grid-template-columns:72px minmax(0,1fr);gap:8px;align-items:center}
+.hs .has-browser .hs-ai:not(.go)>.k{grid-column:1;grid-row:1;justify-self:start}
+.hs .has-browser .hs-ai:not(.go)>.t{grid-column:2;grid-row:1;min-width:0}
+.hs .has-browser .hs-ai:not(.go)>button{width:100%;justify-content:center}
+.hs .has-browser .hs-ai:not(.go)>button:nth-of-type(1){grid-column:1;grid-row:2}
+.hs .has-browser .hs-ai:not(.go)>button:nth-of-type(2){grid-column:2;grid-row:2}
+@media(max-width:1100px){.hs .has-browser .hs-head .hs-ghost{font-size:0}}

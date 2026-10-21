@@ -31,7 +31,7 @@ test("download and signature completion are separate from installation; work in 
   const f = fixture(); try {
     await f.controller.check(); f.busy(2); await Promise.all([f.controller.download(), f.controller.download()]);
     assert.equal(f.counts().downloads, 1); assert.equal(f.controller.getSnapshot().phase, "ready"); assert.equal(f.counts().installs, 0); assert.equal(f.counts().restarts, 0);
-    await f.controller.restart(); assert.equal(f.counts().prepares, 0); assert.equal(f.counts().installs, 0); assert.match(f.controller.getSnapshot().message, /同事正在工作/);
+    await f.controller.restart(); assert.equal(f.counts().prepares, 0); assert.equal(f.counts().installs, 0); assert.equal(f.controller.getSnapshot().message, "ws.updates.restartBusy");
     f.busy(0); await f.controller.restart(); assert.equal(f.counts().installs, 1); assert.equal(f.counts().restarts, 1); assert.equal(f.counts().prepares, 1);
   } finally { f.controller.dispose(); }
 });

@@ -1,4 +1,4 @@
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 
 const INTERRUPTED_TURN = /^(?:interrupted|\(interrupted\))$/iu;
 const AUTH_FAILURE = /(?:\b(?:401|403)\b|unauthori[sz]ed|forbidden|auth(?:entication)?|credential|api[ _-]?key|凭证|认证|密钥)/iu;

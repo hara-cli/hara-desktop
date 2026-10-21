@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { HaraClient, DeskSnapshot, BusTask } from "./client";
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 import { MailboxSettings } from "./MailboxSettings";
 import { SettingsPage } from "./SettingsUI";
 

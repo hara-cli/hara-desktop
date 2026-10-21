@@ -1,35 +1,332 @@
-/* One resolved data-theme from theme.ts covers welcome, chat, feature pages, dialogs and settings. */
-.wsd-app,.wsd-boot {
-  --wsd-paper:#faf9f6; --wsd-surface:#fffefa; --wsd-sidebar:#f2f1ed; --wsd-card:#f0efeb;
-  --wsd-ink:#292724; --wsd-muted:#666158; --wsd-line:#d3cec4; --wsd-red:#b93b29;
-  --wsd-user:#f3e3db; --wsd-primary-ink:#ffffff; --wsd-success:#356446; color-scheme:light;
-}
-:root[data-theme="dark"] .wsd-app,:root[data-theme="dark"] .wsd-boot {
-  --wsd-paper:#181b1f; --wsd-surface:#181b1f; --wsd-sidebar:#202327; --wsd-card:#292d32;
-  --wsd-ink:#eee9e2; --wsd-muted:#b9b2a6; --wsd-line:#50555d; --wsd-red:#f0826d;
-  --wsd-user:#49312d; --wsd-primary-ink:#1d2024; --wsd-success:#9acda6; color-scheme:dark;
-}
-.wsd-app .wsd-chat,.wsd-app .wsd-composer-wrap,.wsd-app .wsd-settings,.wsd-app .wsd-modal { background:var(--wsd-surface); color:var(--wsd-ink); }
-.wsd-app .wsd-sidebar { background:var(--wsd-sidebar); }
-.wsd-app button,.wsd-app input,.wsd-app select { background:var(--wsd-surface); color:var(--wsd-ink); border-color:var(--wsd-line); }
-.wsd-app button:hover:not(:disabled),.wsd-app .wsd-connection,.wsd-app .wsd-approval,.wsd-app .wsd-resume,.wsd-app .wsd-notice,.wsd-app .wsd-execution pre { background:var(--wsd-card); color:var(--wsd-ink); }
-.wsd-app .wsd-bubble { background:var(--wsd-card); color:var(--wsd-ink); }
-.wsd-app .is-user .wsd-bubble,.wsd-app .wsd-contact.is-selected { background:var(--wsd-user); color:var(--wsd-ink); }
-.wsd-app .wsd-contact { background:transparent; }.wsd-app .wsd-avatar:not(.is-main) { background:var(--wsd-card); color:var(--wsd-ink); }
-.wsd-app .wsd-primary,.wsd-app .wsd-send { background:var(--wsd-red); border-color:var(--wsd-red); color:var(--wsd-primary-ink); }
-.wsd-app .wsd-primary:hover:not(:disabled),.wsd-app .wsd-send:hover:not(:disabled) { background:var(--wsd-red); filter:brightness(.92); }
-.wsd-app .wsd-header,.wsd-app .wsd-settings,.wsd-app .wsd-composer { border-color:var(--wsd-line); }
-.wsd-app small,.wsd-app .wsd-sidebar-note,.wsd-app .wsd-welcome>small,.wsd-app .wsd-section-label,.wsd-app .wsd-composer-wrap>p,.wsd-app .wsd-composer-wrap>p span,
-.wsd-app .wsd-connection small,.wsd-app .wsd-connection strong,.wsd-app .wsd-execution,.wsd-app .wsd-execution summary span,.wsd-app .wsd-resume p,.wsd-app .wsd-approval details { color:var(--wsd-muted); }
-.wsd-app .wsd-verified { color:var(--wsd-success); }.wsd-app .wsd-verified span { color:var(--wsd-muted); }
-.wsd-app textarea { color:var(--wsd-ink); }.wsd-app textarea::placeholder { color:var(--wsd-muted); }
-.wsd-app .wsd-feature-nav { display:grid; gap:6px; margin:18px 8px; }.wsd-feature-panel { max-width:800px; margin:0 auto 30px; padding:20px; border:1px solid var(--wsd-line); border-radius:14px; background:var(--wsd-surface); }
-.wsd-app .wsd-root,.wsd-app code { overflow-wrap:anywhere; white-space:pre-wrap; }
-.wsd-app .wsd-card-actions { flex-wrap:wrap; gap:8px; }.wsd-settings select { max-width:100%; padding:8px; border:1px solid var(--wsd-line); border-radius:8px; margin:8px; }
-.wsd-feature-panel input[type="checkbox"] { width:auto; }.wsd-legacy-import code { font-size:11px; }
-.wsd-app .wsd-approval textarea { width:100%; min-height:220px; border:1px solid var(--wsd-line); border-radius:10px; background:var(--wsd-surface); padding:12px; resize:vertical; box-sizing:border-box; }
-.wsd-app input:focus-visible,.wsd-app select:focus-visible,.wsd-app button:focus-visible,.wsd-app textarea:focus-visible { outline:2px solid var(--wsd-red); outline-offset:2px; }
+/* Workspace shell tokens and layers. Dark mode follows the resolved data-theme. */
+/* Optional quiet-sec and ink-indicator styles are disabled by default. */
+/* Main shell surfaces and shared selection, hover, pressed and focus states. */
+.hs { --paper:#f6f5f1; --surface:#fffefa; --sidebar:#f1f0ec; --frame:#e7e4dd; --ink:#292724; --muted:#666158; --faint:#666158; --line:#e2ded6;
+  --row-hover:#e8e6e1; --row-selected:#e5dfd4; --row-pressed:#e2e0da; --indicator:#b93b29;
+  --brand:#b93b29; --brand-hover:#a43222; --brand-pressed:#8f2b1d; --on-brand:#fff; --brand-soft:#f4e3dc; --brand-text:#8f2b1d;
+  --tag-bg:#e7e3db; --tag-ink:#4f4a43; --bubble:#efede8; --bubble-ink:#292724; --mine:#292724; --mine-ink:#fdfcf9;
+  --field:#f1efea; --field-focus:#fffefa; --field-ring:#cfc8bb; --disabled-bg:#e7e4de; --disabled-ink:#7d776d; --focus:#b93b29;
+  --shadow:0 1px 2px rgba(41,39,36,.05),0 8px 24px rgba(41,39,36,.06); --ease:cubic-bezier(.2,0,0,1);
+  font:13px/1.55 -apple-system,"SF Pro Text","PingFang TC","PingFang SC",sans-serif; color:var(--ink); }
+:root[data-theme="dark"] .hs { --paper:#121417; --surface:#181b1f; --sidebar:#1e2125; --frame:#0e1012; --ink:#eee9e2; --muted:#b9b2a6; --faint:#b3aca1; --line:#2e3238;
+  --row-hover:#2b2e32; --row-selected:#34373c; --row-pressed:#26292d; --indicator:#f0826d;
+  --brand:#cf4029; --brand-hover:#b93623; --brand-pressed:#a5321f; --brand-soft:#3d2622; --brand-text:#f6b4a6;
+  --tag-bg:#30343a; --tag-ink:#cfc8bc; --bubble:#272a2f; --bubble-ink:#eee9e2; --mine:#eee9e2; --mine-ink:#181b1f;
+  --field:#24272c; --field-focus:#272b30; --field-ring:#4a4f57; --disabled-bg:#2b2e33; --disabled-ink:#8c877f; --focus:#f0826d;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35); }
+.hs *{box-sizing:border-box}:where(.hs button){font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
+.hs :focus{outline:none}.hs :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* window: one rounded card on a quiet frame (borrowed: large radius, white card) */
+.hs-frame{background:var(--frame);padding:10px;height:100%}
+.hs-win{display:grid;grid-template-columns:268px minmax(0,1fr);height:100%;border-radius:16px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+/* sidebar */
+.hs-side{background:var(--sidebar);display:flex;flex-direction:column;min-height:0;padding:14px 10px 10px}
+.hs-top{display:flex;align-items:center;gap:6px;padding:2px 4px 12px}
+.hs-space{flex:1;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;font-weight:600;font-size:13px}
+.hs-space:hover{background:var(--row-hover)}.hs-space .chev{margin-left:auto;color:var(--muted);font-size:11px}
+.hs-icon{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--muted);font-size:15px}.hs-icon:hover{background:var(--row-hover);color:var(--ink)}
+.hs-row{position:relative;display:flex;align-items:center;gap:10px;width:100%;text-align:left;border-radius:10px;padding:7px 8px;transition:background-color .12s var(--ease)}
+.hs-row:hover{background:var(--row-hover)}.hs-row:active{background:var(--row-pressed);transition-duration:0s}
+.hs-row[aria-current="page"]{background:var(--row-selected);font-weight:600}
+.hs-row[aria-current="page"]::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--indicator)}
+.hs-row[aria-current="page"] .pv{color:var(--ink)}
+.hs-row:focus-visible{outline-offset:-2px}
+.hs-main{padding:9px 8px;margin-bottom:6px}
+.hs-ava{flex:none;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-weight:650;font-size:14px;color:#fff}
+.hs-ava.lg{width:38px;height:38px;border-radius:12px}.hs-ava.hara{background:#f4ded6}.hs-ava img{display:block}
+.hs-txt{min-width:0;flex:1}.hs-name{display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;line-height:1.35;white-space:nowrap}
+.hs-name .nm{overflow:hidden;text-overflow:ellipsis}
+.hs-tag{flex:none;font-size:10.5px;font-weight:500;line-height:1;padding:3px 6px;border-radius:6px;background:var(--tag-bg);color:var(--tag-ink)}
+.hs-tag.brand{background:var(--brand-soft);color:var(--brand-text)}
+.pv{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.45;font-weight:400}
+.hs-meta{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px;align-self:flex-start;padding-top:2px}
+.hs-time{font-size:11px;color:var(--faint);font-weight:400}
+.hs-dot{width:7px;height:7px;border-radius:50%;background:var(--brand)}
+.hs-badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--brand);color:var(--on-brand);font-size:11px;font-weight:650;line-height:18px;text-align:center}
+.hs-nav{font-size:13px;padding:8px 10px}.hs-nav .ic{width:20px;text-align:center;color:var(--muted)}.hs-nav .grow{flex:1}
+.hs-label{display:flex;align-items:center;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.02em;padding:12px 10px 6px}.hs-label a{margin-left:auto;font-weight:500;color:var(--muted);text-decoration:none}
+/* the DM list is the ONLY flexible region: no fixed block can squeeze it into a half-row */
+.hs-dms{flex:1;min-height:0;overflow-y:auto;padding:2px 0 8px;scroll-padding:8px;
+  -webkit-mask-image:linear-gradient(#000 calc(100% - 18px),transparent);mask-image:linear-gradient(#000 calc(100% - 18px),transparent)}
+.hs-dms .hs-row{padding:7px 8px;min-height:50px}
+.hs-add{color:var(--muted);font-size:12px;padding:9px 10px}.hs-add .ic{width:20px;text-align:center}
+.hs-foot{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:1px}
+.hs-quota{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);padding:4px 10px 6px}.hs-quota i{flex:1;height:3px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}.hs-quota i b{position:absolute;inset:0 auto 0 0;background:var(--muted)}
+.hs-me{display:flex;align-items:center;gap:8px}.hs-me .hs-ava{width:24px;height:24px;border-radius:50%;font-size:11px;background:#55635a}
+/* chat */
+.hs-chat{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--surface)}
+.hs-head{display:flex;align-items:center;gap:10px;padding:12px 22px;border-bottom:1px solid var(--line);min-height:58px}
+.hs-head strong{font-size:14px;font-weight:650}.hs-head small{display:block;font-size:11.5px;color:var(--muted)}
+.hs-head .sp{flex:1}.hs-ghost{font-size:12px;color:var(--muted);padding:6px 10px;border-radius:9px}.hs-ghost:hover{background:var(--row-hover);color:var(--ink)}
+.hs-scroll{flex:1;min-height:0;overflow:auto;padding:18px 28px}
+.hs-col{max-width:720px;margin:0 auto}
+/* 等你处理 bar (the only shortcut into tasks) */
+.hs-await{border-radius:14px;background:var(--paper);box-shadow:inset 0 0 0 1px var(--line);padding:10px 12px;margin:2px 0 18px}
+.hs-await-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:650;margin-bottom:4px}.hs-await-h a{margin-left:auto;font-weight:500;color:var(--muted);text-decoration:none;font-size:12px}
+.hs-ai{display:flex;align-items:center;gap:10px;padding:7px 2px;border-top:1px solid var(--line)}.hs-ai:first-of-type{border-top:0}
+.hs-ai .k{flex:none;font-size:10.5px;font-weight:600;padding:3px 6px;border-radius:6px}.k.ap{background:var(--brand-soft);color:var(--brand-text)}.k.rv{background:var(--tag-bg);color:var(--tag-ink)}.k.rp{background:var(--tag-bg);color:var(--tag-ink)}
+.hs-ai .t{flex:1;min-width:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hs-ai .t span{color:var(--muted)}
+.hs-btn{font-size:12px;font-weight:600;border-radius:9px;padding:5px 11px;transition:background-color .12s var(--ease)}
+.hs-btn.pri{background:var(--brand);color:var(--on-brand)}.hs-btn.pri:hover{background:var(--brand-hover)}.hs-btn.pri:active{background:var(--brand-pressed);box-shadow:inset 0 1px 2px rgba(0,0,0,.22)}
+.hs-btn.sec{box-shadow:inset 0 0 0 1px var(--field-ring);color:var(--ink)}.hs-btn.sec:hover{background:var(--row-hover)}
+.hs-hello h2{font:500 24px/1.4 Georgia,"Songti TC","Songti SC",serif;margin:26px 0 6px}.hs-hello p{color:var(--muted);margin:0 0 14px;font-size:13px}
+.hs-chips{display:flex;gap:8px;flex-wrap:wrap}.hs-chip{font-size:12px;padding:6px 12px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--field-ring)}.hs-chip:hover{background:var(--row-hover)}
+/* messages (borrowed: grey bubble for them, ink bubble for you) */
+.hs-day{text-align:center;font-size:11px;color:var(--faint);margin:6px 0 12px}
+.hs-msg{display:flex;gap:10px;margin:0 0 12px;align-items:flex-end}.hs-msg .hs-ava{width:26px;height:26px;border-radius:8px;font-size:11px}
+.hs-bub{max-width:76%;padding:8px 12px;border-radius:16px;background:var(--bubble);color:var(--bubble-ink);font-size:13px;line-height:1.55}
+.hs-msg.me{justify-content:flex-end}.hs-msg.me .hs-bub{background:var(--mine);color:var(--mine-ink);border-bottom-right-radius:6px}.hs-msg:not(.me) .hs-bub{border-bottom-left-radius:6px}
+.hs-who{font-size:11px;color:var(--muted);margin:0 0 3px 36px}
+.hs-card{margin:4px 0 14px 36px;max-width:440px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),var(--shadow);padding:12px 14px}
+.hs-card .h{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--muted);margin-bottom:4px}.hs-card b{display:block;font-size:13.5px;margin-bottom:2px}.hs-card p{margin:0 0 10px;font-size:12px;color:var(--muted)}.hs-card .a{display:flex;gap:8px;justify-content:flex-end}
+/* composer: pill, no coloured border, subtle focus */
+.hs-compose{padding:8px 28px 14px}
+.hs-field{max-width:720px;margin:0 auto;display:flex;align-items:flex-end;gap:8px;background:var(--field);border-radius:22px;padding:7px 7px 7px 14px;transition:background-color .12s var(--ease),box-shadow .12s var(--ease)}
+.hs-field:focus-within,.hs-field.f{background:var(--field-focus);box-shadow:0 0 0 1px var(--field-ring),0 2px 10px rgba(41,39,36,.06)}
+.hs-field textarea{flex:1;resize:none;border:0;background:transparent;font:inherit;color:var(--ink);padding:6px 0;min-height:22px;max-height:160px;outline:none}
+.hs-field textarea::placeholder{color:var(--faint)}
+.hs-field .plus{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;color:var(--muted);font-size:17px;flex:none}
+.hs-conn{flex:none;font-size:11px;color:var(--muted);padding:0 4px 8px;white-space:nowrap}
+.hs-send{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:var(--on-brand);font-size:16px;font-weight:700;transition:background-color .12s var(--ease)}
+.hs-send:hover:not(:disabled),.hs-send.h{background:var(--brand-hover)}.hs-send:active:not(:disabled),.hs-send.p{background:var(--brand-pressed);box-shadow:inset 0 1px 2px rgba(0,0,0,.25)}
+.hs-send:disabled{background:var(--disabled-bg);color:var(--disabled-ink);cursor:default}
+.hs-stop{flex:none;height:32px;border-radius:16px;padding:0 12px;box-shadow:inset 0 0 0 1px var(--field-ring);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}.hs-stop i{width:9px;height:9px;border-radius:2px;background:var(--ink)}
+.hs-hint{max-width:720px;margin:6px auto 0;display:flex;justify-content:space-between;font-size:11px;color:var(--faint)}
+/* 同事 page with tabs */
+.hs-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);padding:0 22px}
+.hs-tab{position:relative;padding:12px 10px 11px;font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center}.hs-tab[aria-selected="true"]{color:var(--ink);font-weight:650}
+.hs-tab[aria-selected="true"]::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--ink)}
+.hs-grp{font-size:11px;font-weight:650;color:var(--muted);margin:16px 0 6px;display:flex;gap:6px;align-items:center}
+.hs-task{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;box-shadow:inset 0 0 0 1px var(--line);margin-bottom:6px;background:var(--surface)}
+.hs-task .t{flex:1;min-width:0}.hs-task .t b{display:block;font-size:13px;font-weight:600}.hs-task .t span{font-size:12px;color:var(--muted)}
+.hs-st{flex:none;font-size:11px;font-weight:600;padding:3px 7px;border-radius:6px;background:var(--tag-bg);color:var(--tag-ink)}.hs-st.need{background:var(--brand-soft);color:var(--brand-text)}
+@media (prefers-reduced-motion:reduce){.hs *{transition:none!important}}
+/* ---- v1.1 · collapsible sidebar sections (Slack-style, independent, not an exclusive accordion) ---- */
+.hs-sections{flex:1;min-height:0;overflow-y:auto;padding:0 0 8px;-webkit-mask-image:linear-gradient(#000 calc(100% - 16px),transparent);mask-image:linear-gradient(#000 calc(100% - 16px),transparent)}
+.hs-sec{margin-top:4px}
+.hs-sec-h{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:2px;background:var(--sidebar);padding:2px 0}
+.hs-sec-t{flex:1;display:flex;align-items:center;gap:6px;min-width:0;padding:6px 8px;border-radius:8px;font-size:12px;font-weight:650;color:var(--muted);text-align:left;transition:background-color .12s var(--ease)}
+.hs-sec-t:hover{background:var(--row-hover);color:var(--ink)}.hs-sec-t:active{background:var(--row-pressed)}.hs-sec-t:focus-visible{outline-offset:-2px}
+.hs-chev{width:12px;flex:none;display:inline-block;font-size:9px;transition:transform .12s var(--ease);transform:rotate(90deg)}
+.hs-sec-t[aria-expanded="false"] .hs-chev{transform:rotate(0)}
+.hs-sec-t[aria-expanded="false"]{color:var(--ink)}
+.hs-sec-n{margin-left:auto;font-size:11px;font-weight:650;min-width:18px;height:18px;line-height:18px;padding:0 5px;border-radius:9px;text-align:center;background:var(--tag-bg);color:var(--ink)}
+.hs-sec-a{flex:none;width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--muted);font-size:13px}.hs-sec-a:hover{background:var(--row-hover);color:var(--ink)}
+/* height animation: grid rows 1fr ⇄ 0fr, 120ms; content stays in the DOM but is inert/hidden when collapsed */
+.hs-sec-b{display:grid;grid-template-rows:1fr;transition:grid-template-rows .12s var(--ease)}
+.hs-sec-b>div{overflow:hidden;min-height:0}
+.hs-sec.closed .hs-sec-b{grid-template-rows:0fr}
+.hs-sec.closed .hs-sec-b>div{visibility:hidden;transition:visibility 0s .12s}
+.hs-empty{margin:2px 8px 6px;padding:10px 12px;border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);font-size:12px;color:var(--muted)}.hs-empty b{display:block;color:var(--ink);font-size:12.5px;margin-bottom:2px}
+.hs-mini{min-height:36px;padding:5px 8px}.hs-mini .hs-ava{width:24px;height:24px;border-radius:8px;font-size:11px}
+.hs-st-dot{width:7px;height:7px;border-radius:50%;flex:none}.hs-st-dot.work{background:#3f7d5a}.hs-st-dot.need{background:var(--brand)}.hs-st-dot.idle{background:transparent;box-shadow:inset 0 0 0 1.5px var(--faint)}
+.hs-dark .hs-st-dot.work,:root[data-theme="dark"] .hs .hs-st-dot.work{background:#7cc196}
+.hs-stx{font-size:11.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.hs-sec-b,.hs-chev{transition:none}}
+/* Icon tokens (Heroicons 2.2.0). */
+.hs { --icon-sm:16px; --icon:18px; --icon-row:20px; --icon-lg:24px; --hit:32px; --icon-stroke:1.75; --icon-ink:var(--muted); --icon-ink-active:var(--ink); }
+.hs .hico{flex:none;display:block;color:var(--icon-ink)}
+.hs .hico[stroke-width]{stroke-width:var(--icon-stroke)}
+.hs [aria-current="page"] .hico,.hs .hs-sec-t[aria-expanded="false"] .hico,.hs-sec-t:hover .hico,.hs-icon:hover .hico,.hs-sec-a:hover .hico,.hs-ghost:hover .hico{color:var(--icon-ink-active)}
+.hs-icon,.hs-sec-a{width:var(--hit);height:var(--hit);border-radius:9px}
+.hs-space .chev{display:grid;place-items:center}
+.hs-chev{width:var(--icon-sm);height:var(--icon-sm);font-size:0;display:grid;place-items:center}
+.hs-sec-t{min-height:var(--hit);font-size:12.5px;gap:6px}
+.hs-row .ic{width:var(--icon-row);display:grid;place-items:center}
+.hs-add{min-height:var(--hit);gap:10px}
+.hs-quota{min-height:var(--hit);padding:0 10px}
+.hs-me{min-height:40px}
+.hs-set{display:inline-flex;align-items:center;gap:6px;min-height:var(--hit);padding:0 10px}
+.hs-field .plus{width:var(--hit);height:var(--hit)}.hs-field .plus .hico{color:var(--muted)}
+.hs-send .hico,.hs-btn.pri .hico{color:currentColor}.hs-send:disabled .hico{color:var(--disabled-ink)}
+.hs-stop{min-height:var(--hit);gap:6px}.hs-stop .hico{color:var(--ink)}
+.hs-chip{display:inline-flex;align-items:center;gap:6px;min-height:var(--hit)}
+.hs-await-h .hico{color:var(--ink)}
+/* Card, menu and input geometry with neutral selection states. */
+.hs{ --radius:8px; --r-sm:4px; --r-md:6px; --r-lg:8px; --r-xl:12px;
+  --paper:#f7f6f3; --surface:#ffffff; --sidebar:#fbfaf8; --frame:#e9e7e2; --line:#ebe8e3; --input:#e0ddd6;
+  --row-hover:#f2f0ec; --row-selected:#efede8; --row-pressed:#e9e6e0;
+  --shadow-xs:0 1px 2px rgba(28,25,23,.05); --shadow:0 1px 2px rgba(28,25,23,.06),0 8px 24px rgba(28,25,23,.06);
+  --field:#ffffff; --field-focus:#ffffff; --field-ring:#d6d2ca; --ring-soft:rgba(185,59,41,.12); --bubble:#f3f2ef }
+:root[data-theme="dark"] .hs{ --paper:#111214; --surface:#151619; --sidebar:#131417; --frame:#0c0d0e; --line:#26282c; --input:#2e3035;
+  --row-hover:#1d1f23; --row-selected:#212328; --row-pressed:#25272c;
+  --shadow-xs:0 1px 2px rgba(0,0,0,.4); --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  --field:#1a1b1f; --field-focus:#1a1b1f; --field-ring:#3a3d43; --ring-soft:rgba(207,64,41,.18); --bubble:#1f2125 }
+.hs-win{border-radius:var(--r-xl);box-shadow:0 0 0 1px var(--line),var(--shadow)}
+.hs-side{border-right:1px solid var(--line);padding:12px 10px 10px}
+.hs-row{border-radius:var(--r-md);padding:6px 8px;min-height:36px}
+.hs-row[aria-current="page"]{background:var(--row-selected);box-shadow:none}
+.hs-row[aria-current="page"]::before{left:-10px;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0}
+.hs-sec-t{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;border-radius:var(--r-md);min-height:30px}
+.hs-sec-t[aria-expanded="false"]{color:var(--muted)}
+.hs-badge{height:20px;min-width:20px;line-height:20px;border-radius:var(--r-md);font-size:11px;padding:0 6px}
+.hs-sec-n{border-radius:var(--r-md)}
+.hs-tag{border-radius:var(--r-sm);font-size:10.5px;padding:0 5px;box-shadow:inset 0 0 0 1px var(--line);background:transparent}
+.hs-head{min-height:56px;padding:10px 22px}
+.hs-await,.hs-card,.hs-task,.hs-empty{border-radius:var(--r-xl);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),var(--shadow-xs)}
+.hs-await{padding:4px 14px}
+.hs-await-h{padding:10px 0 8px;border-bottom:1px solid var(--line);font-size:13px}
+.hs-btn{border-radius:var(--r-md);height:32px}
+.hs-btn:not(.pri){box-shadow:inset 0 0 0 1px var(--input),var(--shadow-xs);background:var(--surface)}
+.hs-chip{border-radius:var(--r-md);box-shadow:inset 0 0 0 1px var(--input),var(--shadow-xs);background:var(--surface)}
+.hs-bub{border-radius:var(--r-xl);font-size:13px}
+.hs-msg.me .hs-bub{border-bottom-right-radius:var(--r-sm)}.hs-msg:not(.me) .hs-bub{border-bottom-left-radius:var(--r-sm)}
+.hs-field{border-radius:var(--r-xl);background:var(--field);box-shadow:inset 0 0 0 1px var(--input),var(--shadow-xs);padding:8px 8px 8px 14px}
+.hs-field:focus-within,.hs-field.f{box-shadow:inset 0 0 0 1px var(--field-ring),0 0 0 3px var(--ring-soft)}
+.hs-send,.hs-field .plus{border-radius:var(--r-md)}
+.hs-tabs .hs-tab{border-radius:0}
+/* Warm paper and graphite surfaces, compact controls and accessible text contrast. */
 
-/* These retained non-default pages already consume shared tokens; bind them explicitly too. */
-:root[data-theme="light"] .workspace-collaboration,:root[data-theme="light"] .conversation-first { --bg:#fffefa; --bg2:#f2f1ed; --fg:#292724; --dim:#666158; --line:#d3cec4; }
-:root[data-theme="dark"] .workspace-collaboration,:root[data-theme="dark"] .conversation-first { --bg:#181b1f; --bg2:#202327; --fg:#eee9e2; --dim:#b9b2a6; --line:#50555d; }
+/* ---------- 1 · tokens ---------- */
+.hs{
+  /* radius scale: off the Tailwind 4/6/8/12 grid on purpose; concentric (field 16 − 6 padding = send 10) */
+  --r-sm:4px; --r-md:7px; --r-lg:10px; --r-xl:14px; --r-field:16px;
+  /* warm paper, halfway between v1.2 (#fffefa/#f1f0ec) and v1.3 (#fff/#fbfaf8) */
+  --frame:#e8e5df; --paper:#f8f6f1; --surface:#fffdf9; --sidebar:#f6f4ef;
+  --line:#e8e4dc; --input:#ddd8ce;
+  --ink:#272522; --muted:#625d55; --faint:#625d55;          /* muted on sidebar 6.0:1, on row-selected 5.2:1 */
+  --row-hover:#efece6; --row-selected:#e9e5dd; --row-pressed:#e4e0d7;
+  --tag-bg:#efebe4; --tag-ink:#57514a;                      /* 6.5:1 */
+  --brand-soft:#f6e6df; --brand-text:#8f2b1d;               /* 7.2:1 */
+  --bubble:#f2efe9; --bubble-ink:#272522; --mine:#272522; --mine-ink:#fdfbf7;
+  --field:#fffdf9; --field-focus:#fffdf9; --field-ring:#c9c2b5;
+  --ring-soft:rgba(39,37,34,.07);                           /* v1.3 used a RED ring here, see review §A1 */
+  --focus:#272522;                                          /* keyboard ring in ink, so red is not spent on focus (14:1) */
+  --shadow-xs:0 1px 2px rgba(39,37,34,.05);
+  --lift:0 1px 2px rgba(39,37,34,.04),0 6px 16px -4px rgba(39,37,34,.08);
+  --shadow:0 1px 2px rgba(39,37,34,.05),0 12px 32px -8px rgba(39,37,34,.12);
+}
+:root[data-theme="dark"] .hs{
+  /* warm graphite instead of v1.3's neutral zinc (#151619/#131417 = the stock shadcn dark) */
+  --frame:#0d0c0b; --paper:#141311; --surface:#1a1917; --sidebar:#151413;
+  --line:#2a2825; --input:#35322e;
+  --ink:#ece7df; --muted:#b0a99e; --faint:#b0a99e;          /* muted on row-selected 6.6:1 */
+  --row-hover:#211f1c; --row-selected:#282521; --row-pressed:#1d1b19;
+  --tag-bg:#2a2724; --tag-ink:#cdc5b8;
+  --brand-soft:#3a2420; --brand-text:#f4b2a3;
+  --bubble:#24221f; --bubble-ink:#ece7df;
+  --mine:#3b3630; --mine-ink:#f4efe7;                       /* no more glaring #eee9e2 slab in the dark, 11:1 */
+  --field:#1f1d1b; --field-focus:#211f1c; --field-ring:#4d4943; --ring-soft:rgba(236,231,223,.06);
+  --focus:#ece7df;
+  --shadow-xs:0 1px 2px rgba(0,0,0,.35);
+  --lift:inset 0 1px 0 rgba(255,255,255,.03),0 1px 2px rgba(0,0,0,.4);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -8px rgba(0,0,0,.55);
+}
+
+/* ---------- 2 · window + sidebar ---------- */
+.hs-win{grid-template-columns:264px minmax(0,1fr);border-radius:var(--r-xl);box-shadow:0 0 0 1px var(--line),var(--shadow)}
+.hs-side{background:var(--sidebar);border-right:1px solid var(--line);padding:12px 10px 10px}
+.hs-icon,.hs-sec-a{border-radius:var(--r-md)}
+.hs-space{border-radius:var(--r-md)}
+
+.hs-row{border-radius:var(--r-md)}
+/* FIX: v1.3 moved the indicator to left:-10px. Rows inside .hs-sections (overflow-y:auto) clip it, so in
+   chat-*-v13.png the selected 苏秦 CGO row has NO indicator, and only the pinned Hara card shows one.
+   Put it back inside the row so every row gets it. 3:1+ against row-selected in both themes. */
+.hs-row[aria-current="page"]::before{left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0}
+.hs-row[aria-current="page"]{background:var(--row-selected)}
+
+/* Hara card: a hairline under it, so the pinned card reads as "above" the sections even when not selected */
+.hs-main{margin-bottom:11px}
+.hs-main::after{content:"";position:absolute;left:8px;right:8px;bottom:-6px;height:1px;background:var(--line)}
+
+/* Section headings. text-transform:uppercase does nothing for 同事/頻道/私訊, and 11px CJK bold looks cramped.
+   12px, no tracking. Restores v1.2's "collapsed = ink" cue, which v1.3 removed. */
+.hs-sec-t{font-size:12px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--muted);min-height:30px;border-radius:var(--r-md)}
+.hs-sec-t[aria-expanded="false"]{color:var(--ink)}
+.hs-sec-h{background:var(--sidebar)}
+
+/* counts: round pills (macOS/Slack native), not kt-badge squares; tabular digits so 9→10 doesn't jump */
+.hs-badge,.hs-sec-n{height:18px;min-width:18px;line-height:18px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:650;font-variant-numeric:tabular-nums}
+/* tags: a filled warm chip. v1.3's 1px #ebe8e3 outline on white was 1.2:1, so the tag text floated */
+.hs-tag{border-radius:var(--r-sm);background:var(--tag-bg);color:var(--tag-ink);box-shadow:none;padding:2px 5px;line-height:1.25;font-size:10.5px}
+.hs-tag.brand{background:var(--brand-soft);color:var(--brand-text)}
+
+/* mini rows: the pending colleague's status text in ink + 600 (the red dot already marks it); working stays muted */
+.hs-mini .hs-st-dot.need{box-shadow:0 0 0 3px var(--brand-soft)}
+.hs-mini:has(.hs-st-dot.need) .hs-stx{color:var(--ink);font-weight:600}
+
+/* shorter bottom fade, so the last DM shows less of a half-cut line (see Mia in home-light-v13.png) */
+.hs-sections{-webkit-mask-image:linear-gradient(#000 calc(100% - 12px),transparent);mask-image:linear-gradient(#000 calc(100% - 12px),transparent)}
+
+/* ---------- 3 · header + home ---------- */
+.hs-head{min-height:56px;padding:10px 24px}
+/* 等你處理 = a paper TRAY holding white SLIPS (Hara-specific). v1.3 made it a white card + header divider + table rows,
+   which is the single most "admin template" element on the screen. */
+.hs-await{background:var(--paper);border-radius:var(--r-xl);box-shadow:inset 0 0 0 1px var(--line);padding:2px 6px 6px;margin:2px 0 22px}
+.hs-await-h{padding:9px 8px 7px;border-bottom:0;margin:0;font-size:13px;font-weight:650}
+.hs-await-h .hs-badge{background:var(--tag-bg);color:var(--ink)}  /* the sidebar 同事 badge already carries the red count */
+.hs-ai{min-height:46px;margin-top:4px;padding:7px 8px 7px 10px;gap:12px;border-top:0;border-radius:var(--r-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),var(--shadow-xs);transition:background-color .12s var(--ease)}
+.hs-ai .k{min-width:60px;text-align:center;border-radius:var(--r-sm)}
+.hs-ai .t{font-size:13px}
+/* only high-priority slips get buttons; every other slip is one click target ending in a chevron.
+   Markup: <a class="hs-ai go">…<svg class="hico chev-go">  (no more three identical 查看 buttons) */
+.hs-ai.go{cursor:pointer;color:inherit;text-decoration:none}
+.hs-ai.go:hover{background:var(--row-hover)}
+.hs-ai.go:active{background:var(--row-pressed)}
+.hs-ai.go .chev-go{color:var(--muted)}
+.hs-ai.go:hover .chev-go{color:var(--ink)}
+.hs-ai.go:focus-visible{outline-offset:-2px}
+
+.hs-hello h2{font:500 26px/1.35 Georgia,"Songti TC","Songti SC",serif;letter-spacing:.01em;margin:30px 0 6px}
+/* suggestions are pills again: conversational, so visibly different from command buttons (v1.3 made them identical) */
+.hs-chip{border-radius:999px;background:transparent;box-shadow:inset 0 0 0 1px var(--input);padding:0 14px}
+.hs-chip:hover{background:var(--row-hover)}
+/* the brand serif also on empty-state titles: one extra, controlled place for Hara's voice */
+.hs-empty b{font:600 13px/1.4 Georgia,"Songti TC","Songti SC",serif}
+.hs-empty{border-radius:var(--r-lg);background:transparent;box-shadow:inset 0 0 0 1px var(--line);border:0}
+
+/* ---------- 4 · buttons ---------- */
+.hs-btn{height:30px;padding:0 12px;border-radius:var(--r-md);display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+.hs-btn:not(.pri){background:var(--surface);box-shadow:inset 0 0 0 1px var(--input);color:var(--ink)}
+.hs-btn:not(.pri):hover{background:var(--row-hover)}
+.hs-btn.pri{box-shadow:inset 0 -1px 0 rgba(0,0,0,.14)}   /* a pressed-paper edge instead of a flat block */
+
+/* ---------- 5 · chat ---------- */
+.hs-bub{border-radius:14px;padding:8px 12px}
+.hs-msg.me .hs-bub{border-bottom-right-radius:5px}
+.hs-msg:not(.me) .hs-bub{border-bottom-left-radius:5px}
+/* grouping: consecutive messages from one sender. Add .cont to the 2nd+ message (markup change) */
+.hs-msg.cont{margin-top:-8px}
+.hs-msg.cont .hs-ava{visibility:hidden}
+.hs-msg.cont:not(.me) .hs-bub{border-top-left-radius:5px}
+.hs-card{border-radius:var(--r-xl);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),var(--lift)}
+
+/* ---------- 6 · composer ---------- */
+/* resting = a floating paper strip (lift), not a form input; focus = darker hairline + soft INK ring, never red */
+.hs-field{border-radius:var(--r-field);padding:6px 6px 6px 10px;background:var(--field);box-shadow:inset 0 0 0 1px var(--input),var(--lift)}
+.hs-field:focus-within,.hs-field.f{background:var(--field-focus);box-shadow:inset 0 0 0 1px var(--field-ring),0 0 0 3px var(--ring-soft),var(--lift)}
+.hs-send,.hs-field .plus{border-radius:var(--r-lg)}       /* 16 − 6 = 10, concentric */
+.hs-conn{padding-bottom:9px}
+
+/* ---------- 7 · tabs / tasks ---------- */
+.hs-task{border-radius:var(--r-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),var(--shadow-xs)}
+.hs-st{border-radius:var(--r-sm)}
+
+/* ---------- OPT-IN A · .hs.quiet-sec ----------
+   Section headers carry a chevron, an icon and a label, three leading glyphs on a 30px row. This option drops
+   the section icon and shows the chevron only when collapsed, or on hover/focus (Slack's behaviour). */
+.hs.quiet-sec .hs-sec-t .sec-ic{display:none}
+.hs.quiet-sec .hs-sec-t[aria-expanded="true"] .hs-chev{opacity:0;transition:opacity .12s var(--ease),transform .12s var(--ease)}
+.hs.quiet-sec .hs-sec-h:hover .hs-chev,.hs.quiet-sec .hs-sec-t:focus-visible .hs-chev{opacity:1}
+
+/* ---------- OPT-IN B · .hs.ink-indicator ----------
+   Takes the selected-row bar out of the red budget (it is not one of the four sanctioned uses). Needs design review
+   because it changes the selected-state tokens. Ink on row-selected: 11:1 light, 9:1 dark. */
+.hs.ink-indicator{--indicator:var(--ink)}
+
+@media (prefers-reduced-motion:reduce){.hs-ai,.hs.quiet-sec .hs-chev{transition:none}}
+
+/* Oxblood accent palette.
+   A's warm neutrals unchanged; only the red family changes. Contrast (WCAG 2.x):
+   light white/brand 7.56 · hover 9.26 · pressed 11.2 · brand text on surface 7.44 · brand-text on soft 8.18 · indicator vs row-selected 6.01
+   dark  white/brand 5.39 · hover 6.65 · pressed 8.09 · text-red #f08e84 on surface 7.45 · brand-text on soft 7.99 · badge vs sidebar 3.41
+   Control boundary (focus hairline) 3:1: light #8c8579 (3.6) · dark #716b62 (3.33). Hairlines (--line/--input) are decorative separators; controls are also identified by fill, label or placeholder. */
+.hs{ --brand:#9b2c24; --brand-hover:#85241d; --brand-pressed:#6f1e18; --on-brand:#ffffff;
+  --brand-soft:#f3e2df; --brand-text:#7a2019; --indicator:#9b2c24; --text-red:#9b2c24; --field-ring:#8c8579; --control:#8c8579 }
+:root[data-theme="dark"] .hs{ --brand:#c03a33; --brand-hover:#a8322c; --brand-pressed:#922b26; --on-brand:#ffffff;
+  --brand-soft:#3a1e1e; --brand-text:#f2aaa3; --indicator:#f08e84; --text-red:#f08e84; --field-ring:#716b62; --control:#716b62 }
+
+/* Bind the retained scoped Settings controls to the same v1.4 palette. */
+.hs { --wsd-paper:var(--paper); --wsd-surface:var(--surface); --wsd-sidebar:var(--sidebar); --wsd-card:var(--bubble); --wsd-ink:var(--ink); --wsd-muted:var(--muted); --wsd-line:var(--line); --wsd-red:var(--brand); --wsd-primary-ink:var(--on-brand); color-scheme:light; }
+:root[data-theme="dark"] .hs { color-scheme:dark; }
