@@ -10,7 +10,7 @@ import { ComposerInputRow } from "./ComposerInputRow";
 import { ConversationTimeline, type ConversationItem } from "./ConversationTimeline";
 import { DecisionCard } from "./DecisionCard";
 import ExtensionDock from "./ExtensionDock";
-import { makeT, type Locale } from "./i18n";
+import { makeT, type LegacyLocale as Locale } from "./i18n";
 import { agentDisplayName } from "./agent-visual";
 import { inboxMessagePreview } from "./workbench-inbox";
 import { isImeCompositionKey } from "./ime";

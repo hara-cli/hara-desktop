@@ -1,0 +1,25 @@
+/* Loaded with the entry, before the workspace's lazy stylesheet is available. */
+.wsd-boot {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 32px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  text-align: center;
+  background: var(--surface, #fffdf9);
+  color: var(--ink, #272522);
+  font: 13px/1.55 -apple-system, "SF Pro Text", "PingFang TC", "PingFang SC", sans-serif;
+}
+.wsd-boot h1 { font: 500 30px/1.5 Georgia, serif; margin: 18px 0 6px; }
+.wsd-boot p, .wsd-boot small { max-width: 480px; color: var(--muted, #625d55); overflow-wrap: anywhere; }
+.wsd-boot small { margin-top: 18px; }
+:root[data-theme="dark"] .wsd-boot { background: var(--surface, #1a1917); color: var(--ink, #ece7df); }
+:root[data-theme="dark"] .wsd-boot p, :root[data-theme="dark"] .wsd-boot small { color: var(--muted, #b0a99e); }

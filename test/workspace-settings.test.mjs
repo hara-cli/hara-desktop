@@ -22,13 +22,18 @@ function callback(name, bindings, file="src/WorkspaceSettingsPanels.tsx") {
  const result=ts.transpileModule(`return (${initializer});`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}});
  return new Function(...Object.keys(bindings),result.outputText)(...Object.values(bindings));
 }
-const bundle=await build({stdin:{contents:'export {WorkspaceConnections,WorkspaceFeaturePanel,WorkspaceThemeSettings} from "./src/WorkspaceSettingsPanels.tsx"; export {default as Runtime,WorkspaceConnectionForm} from "./src/WorkspaceRuntimeSettings.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],write:false});
+const bundle=await build({stdin:{contents:'export {WorkspaceConnections,WorkspaceFeaturePanel,WorkspaceThemeSettings} from "./src/WorkspaceSettingsPanels.tsx"; export {default as Runtime,WorkspaceConnectionForm} from "./src/WorkspaceRuntimeSettings.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],loader:{".css":"empty"},write:false});
 const module={exports:{}};new Function("require","module","exports",bundle.outputFiles[0].text)(require,module,module.exports);
 const {createElement}=require("react"),{renderToStaticMarkup}=require("react-dom/server");
-const render=(name,props)=>renderToStaticMarkup(createElement(module.exports[name],props));
+const render=(name,props)=>{
+ const before=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
+ Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:key=>key==="hara.locale"?"zh-Hant":null}});
+ try{return renderToStaticMarkup(createElement(module.exports[name],props));}
+ finally{if(before)Object.defineProperty(globalThis,"localStorage",before);else delete globalThis.localStorage;}
+};
 test("connection settings render safe metadata and editable blank-key semantics, never a saved key value",()=>{
  const html=render("WorkspaceConnections",{model:{},workspace:snapshot("A")});
- for(const marker of [/目前連接/,/Fixture/,/Key •••••••••••• · 已存入钥匙串/,/新增連接/,/編輯/,/刪除/])assert.ok(marker.test(html),`connection display contract: ${marker}`);
+ for(const marker of [/目前連接/,/Fixture/,/Key •••••••••••• · 已存入鑰匙圈/,/新增連接/,/編輯/,/刪除/])assert.ok(marker.test(html),`connection display contract: ${marker}`);
  assert.doesNotMatch(html,/type="password"/); // edit opens only on the user's action
  const form=render("WorkspaceConnectionForm",{model:{},existing:snapshot("A").connections.connections[0]});
  assert.match(form,/留空不修改/);assert.match(form,/type="password"[^>]*value=""/);assert.doesNotMatch(form,/type="password"[^>]*required/);
@@ -37,17 +42,17 @@ test("pending connection migration is read-only without losing the space or disp
  const workspace=snapshot("A");workspace.connections={revision:0,defaultConnectionId:null,connections:[],readOnly:true,migrationPending:true,recovered:false};
  const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/連接升級待完成/);assert.match(html,/查看歷史與使用空間其他功能/);
  assert.doesNotMatch(html,/未允許或不可用/); // A first-time prefill is not evidence that the OS denied access.
- assert.match(html,/我已確認系統憑據存儲，重試升級/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|資料損壞|設定為唯讀（較新版本/);
+ assert.match(html,/我已確認系統憑據儲存，重試升級/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|資料損壞|設定為唯讀（較新版本/);
  const source=read("src/WorkspaceSettingsPanels.tsx");assert.match(source,/model\.workspaceRequest\("workspace\.connection\.migration\.retry", \{ expectedRevision: workspace\.connections\.revision, approved: true \}\)/);
 });
 test("invalid and pending credential statuses use the same fixed-length mask without key fragments",()=>{
  for(const keyState of ["invalid","pending"]){const workspace=snapshot("A");workspace.connections.connections[0].keyState=keyState;workspace.connections.connections[0].keySaved=keyState!=="pending";
-  const html=render("WorkspaceConnections",{model:{},workspace});assert.equal(html.includes("••••••••••••"),true);assert.equal(html.includes(keyState==="invalid"?"Key 已失效，请更新":"待授权"),true);assert.equal(/last.?4|尾号|prefix/i.test(html),false);}
+  const html=render("WorkspaceConnections",{model:{},workspace});assert.equal(html.includes("••••••••••••"),true);assert.equal(html.includes(keyState==="invalid"?"Key 已失效，請更新":"待授權"),true);assert.equal(/last.?4|尾号|prefix/i.test(html),false);}
 });
 test("a keyless legacy preview is editable but cannot pretend a saved credential or keep a blank key",()=>{
  const workspace=snapshot("A"),connection=workspace.connections.connections[0];connection.keySaved=false;connection.credentialRequired=true;connection.keyState="pending";
  workspace.connections.activeConnectionId=connection.id;workspace.connections.defaultConnectionId=null;
- const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原默认 · 待授权/);assert.match(html,/请编辑添加 Key/);assert.doesNotMatch(html,/已存入钥匙串|連接升級待完成/);
+ const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原預設 · 待授權/);assert.match(html,/請編輯新增 Key/);assert.doesNotMatch(html,/已存入鑰匙圈|連接升級待完成/);
  const form=render("WorkspaceConnectionForm",{model:{},existing:connection});assert.match(form,/type="password"[^>]*required/);assert.doesNotMatch(form,/API Key（留空不修改）/);
 });
 test("unavailable connections and backup-only recovery retain distinct non-destructive notices",()=>{
@@ -77,10 +82,10 @@ test("model mutations pin scope/revision, require explicit approval fields and d
 });
 test("late metadata and failed key writes cannot leak into a different workspace or auto-retry",async()=>{
  const f=fixture();await f.model.selectWorkspace("A");let finish;f.handlers["workspace.connection.legacy"]=()=>new Promise(resolve=>{finish=resolve;});
- const old=f.model.legacyConnections();await f.model.selectWorkspace("B");finish([{id:"old-A"}]);await assert.rejects(old,/原工作空間/);
+ const old=f.model.legacyConnections();await f.model.selectWorkspace("B");finish([{id:"old-A"}]);await assert.rejects(old,{messageKey:"ws.notice.scopeChanged"});
  f.handlers["workspace.connection.edit"]=()=>{throw new Error("fixture-secret-in-provider-error");};assert.equal(await f.model.editConnection("one",{apiKey:"fake"}),false);
  assert(!JSON.stringify(f.model.getSnapshot()).includes("fixture-secret"));assert.equal(f.calls.filter(row=>row.method==="workspace.connection.edit").length,1);
- await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A"),/已失效/);
+ await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A"),{messageKey:"ws.notice.localConfirmationExpired"});
  assert.equal(f.calls.some(row=>row.method==="workspace.runtime.registerLocal"),false);
 });
 test("actual confirmation action fences same-frame repeated clicks; cancellation remains a local card action",async()=>{
@@ -103,13 +108,22 @@ test("stable theme RPC is independent of workspace selection, late save uses ser
  const changes=[],busy={current:false};const change=callback("change",{settings:{revision:3,readOnly:false},busy,model:{async preferences(){return {revision:4};},async savePreference(theme,revision){assert.equal(revision,4);return {theme,revision:5};}},setSettings(){},setPreference:x=>changes.push(x),saveThemePreference:x=>changes.push(x),setNotice(){}});
  await change("dark");assert.deepEqual(changes,["dark","dark"]);assert.equal(busy.current,false);
 });
-test("both v1 palettes meet AA normal-text contrast for chat, settings, cards, approvals and primary actions",()=>{
- const css=read("src/workspace-theme.css");const blocks=[...css.matchAll(/\{([^{}]+--wsd-paper:[^{}]+)\}/g)].map(m=>Object.fromEntries([...m[1].matchAll(/--wsd-([a-z-]+):\s*(#[a-f0-9]{6})/g)].map(m=>[m[1],m[2].slice(1)])));
- assert.equal(blocks.length,2);const luminance=hex=>hex.match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((total,x,i)=>total+x*[.2126,.7152,.0722][i],0);
+test("both v1.4 cascaded palettes meet AA for text, primary states and control boundaries",()=>{
+ const css=read("src/workspace-theme.css"), blocks=[{},{}];
+ for(const match of css.replace(/\/\*[^]*?\*\//g,"").matchAll(/([^{}]+)\{([^{}]*)\}/g)){
+   const selector=match[1].trim();if(selector!==".hs"&&selector!==':root[data-theme="dark"] .hs')continue;
+   const tokens=Object.fromEntries([...match[2].matchAll(/--([a-z-]+):\s*#([a-f0-9]{6}|[a-f0-9]{3})(?=[;\s])/g)].map(m=>[m[1],m[2].length===3?m[2].split("").map(x=>x+x).join(""):m[2]]));
+   for(const colors of selector===".hs"?blocks:[blocks[1]])Object.assign(colors,tokens);
+ }
+ const luminance=hex=>hex.match(/../g).map(x=>parseInt(x,16)/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((total,x,i)=>total+x*[.2126,.7152,.0722][i],0);
  const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
- for(const colors of blocks){for(const bg of ["paper","surface","sidebar","card","user"])for(const fg of ["ink","muted"])assert(contrast(colors[fg],colors[bg])>=4.5,`${fg}/${bg} AA`);
- assert(contrast(colors["primary-ink"],colors.red)>=4.5);assert(contrast(colors.success,colors.surface)>=4.5);}
- for(const selector of ["wsd-chat","wsd-settings","wsd-approval","wsd-feature-panel","wsd-bubble","wsd-modal","textarea"])assert(css.includes(selector));
+ for(const colors of blocks){for(const bg of ["paper","surface","sidebar","row-selected"])for(const fg of ["ink","muted"])assert(contrast(colors[fg],colors[bg])>=4.5,`${fg}/${bg} AA`);
+ for(const [fg,bg] of [["tag-ink","tag-bg"],["brand-text","brand-soft"],["bubble-ink","bubble"],["mine-ink","mine"],["on-brand","brand"]])assert(contrast(colors[fg],colors[bg])>=4.5,`${fg}/${bg} AA`);
+ for(const bg of ["brand-hover","brand-pressed"])assert(contrast(colors["on-brand"],colors[bg])>=4.5,`primary ${bg} AA`);
+ for(const [fg,bg] of [["field-ring","field-focus"],["control","field"],["indicator","row-selected"],["brand","sidebar"]])assert(contrast(colors[fg],colors[bg])>=3,`${fg}/${bg} control contrast`);
+ assert(contrast(colors.focus,colors.surface)>=3);assert.notEqual(colors.focus,colors.brand);}
+ const structure=read("src/workspace-local-dev.css")+css;
+ for(const selector of ["hs-chat","wsd-settings","wsd-approval","wsd-feature-panel","hs-bub","wsd-modal","textarea"])assert(structure.includes(selector),selector);
  assert.match(css,/data-theme="dark"/);assert.match(css,/color-scheme:dark/);
 });
 test("native host storage stays fixed across bundle IDs while SDK HOME remains isolated",()=>{

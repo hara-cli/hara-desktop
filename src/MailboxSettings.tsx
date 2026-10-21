@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { HaraClient, SpaceInfo, DeskSnapshot, BusProject, BusTask, BusTaskDetails, BusIdentity, BusMember, MailConnectionsState, MailConnectionState, MailRuntimeStatus } from "./client";
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 import { SettingsBadge, SettingsCard, SettingsItem, SettingsNotice } from "./SettingsUI";
 import { MailboxScopeGuard, MailboxRequestKeys } from "./mailbox-state";
 import { DeskUsersPanel } from "./DeskUsersPanel";

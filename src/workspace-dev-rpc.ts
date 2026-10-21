@@ -10,6 +10,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
   private readonly realKey: boolean;
   private readonly production: boolean;
   private onChanged: (workspaceId: string) => void = () => {};
+  private capabilities = new Set<string>();
   constructor(info: WorkspaceDevConnection, onDisconnect: () => void) {
     this.onDisconnect = onDisconnect;
     this.realKey = info.syntheticOnly === false && info.executionMode === "ark-real-key";
@@ -37,6 +38,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       const timer = setTimeout(failed, 10000); this.socket.addEventListener("open", opened, { once: true }); this.socket.addEventListener("error", failed, { once: true });
     });
     const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean; executionMode?: string }>("initialize", { token });
+    this.capabilities = new Set(Array.isArray(result.capabilities) ? result.capabilities : []);
     if (this.production ? !result.capabilities?.includes("workspace.v1") || result.syntheticOnly !== false || result.executionMode !== "workspace"
       : !result.capabilities?.includes("workspace.local-dev.v2") || (this.realKey
       ? result.syntheticOnly !== false || result.executionMode !== "ark-real-key" || !result.capabilities.includes("workspace.real-key-slice.v1")
@@ -44,6 +46,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       this.close(); throw new Error("引擎不支援這個獨立 Workspace Dev；沒有切換到舊連接。"); }
   }
   setChangedListener(listener: (workspaceId: string) => void): void { this.onChanged = listener; }
+  supportsCapability(capability: string): boolean { return this.capabilities.has(capability); }
   request<T>(method: string, params: Record<string, unknown>): Promise<T> {
     if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("Workspace 尚未連接"));
     return new Promise<T>((resolve, reject) => {

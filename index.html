@@ -23,9 +23,13 @@
           root.innerHTML = "";
           var shell = document.createElement("main");
           shell.setAttribute("role", "alert");
-          shell.style.cssText = "min-height:100vh;display:grid;place-items:center;padding:32px;box-sizing:border-box;background:#101012;color:#f3ece4;font-family:system-ui,-apple-system,Segoe UI,sans-serif";
+          shell.className = "hara-boot-recovery";
+          var theme = document.documentElement.getAttribute("data-theme");
+          var dark = theme === "dark" || (theme !== "light" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var colors = dark ? { surface: "#1a1917", ink: "#ece7df", muted: "#b0a99e", brand: "#c03a33" } : { surface: "#fffdf9", ink: "#272522", muted: "#625d55", brand: "#9b2c24" };
+          shell.style.cssText = "width:100%;min-height:100vh;min-height:100dvh;margin:0;display:grid;place-items:center;padding:32px;box-sizing:border-box;background:" + colors.surface + ";color:" + colors.ink + ";font-family:system-ui,-apple-system,Segoe UI,sans-serif";
           var card = document.createElement("section");
-          card.style.cssText = "width:min(440px,100%);padding:34px;box-sizing:border-box;border:1px solid #494043;border-radius:24px;background:#1f1d1e;box-shadow:0 24px 70px rgba(0,0,0,.34)";
+          card.style.cssText = "width:min(480px,100%);padding:0;box-sizing:border-box;border:0;border-radius:0;background:transparent;box-shadow:none";
           var mark = document.createElement("img");
           mark.src = "/hara-mark.svg";
           mark.alt = "";
@@ -37,11 +41,11 @@
           title.style.cssText = "margin:0 0 14px;font-size:28px;line-height:1.2";
           var body = document.createElement("p");
           body.textContent = zh ? "会话、项目和模型密钥都还在。请重新加载界面。" : "Your sessions, projects, and model keys are safe. Reload the interface to try again.";
-          body.style.cssText = "margin:0 0 24px;color:#bdb2aa;line-height:1.65";
+          body.style.cssText = "margin:0 0 24px;color:" + colors.muted + ";line-height:1.65;overflow-wrap:anywhere";
           var button = document.createElement("button");
           button.type = "button";
           button.textContent = zh ? "重新加载 Hara" : "Reload Hara";
-          button.style.cssText = "min-height:44px;padding:0 19px;border:0;border-radius:13px;color:white;background:#d94737;font:700 15px system-ui;cursor:pointer";
+          button.style.cssText = "min-height:44px;padding:0 19px;border:0;border-radius:10px;color:white;background:" + colors.brand + ";font:600 15px system-ui;cursor:pointer";
           button.onclick = function () { window.location.reload(); };
           card.appendChild(mark); card.appendChild(title); card.appendChild(body); card.appendChild(button); shell.appendChild(card); root.appendChild(shell);
         }

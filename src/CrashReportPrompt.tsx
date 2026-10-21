@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
-import { detectLocale } from "./i18n";
+import { detectLegacyLocale as detectLocale } from "./i18n";
 import "./crash-report-prompt.css";
 
 type CrashDraft = {

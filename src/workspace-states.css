@@ -1,0 +1,12 @@
+/* Load last: preserve v1.4's neutral focus and palette E selected indicator. */
+.hs :is(button,a,input,select,summary):focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.hs :is(.hs-row,.hs-sec-t,.hs-ai):focus-visible { outline-offset:-2px; }
+.hs .hs-field textarea:focus,.hs .hs-field textarea:focus-visible { outline:none; }
+.hs button:disabled { cursor:default; }
+.hs .hs-send:disabled { opacity:1; background:var(--disabled-bg); color:var(--disabled-ink); }
+.hs :is(.hs-btn.pri,.hs-send):disabled { box-shadow:none; background:var(--disabled-bg); color:var(--disabled-ink); }
+.hs .hs-row[aria-current="page"]::before { left:0; background:var(--indicator); }
+.hs .hs-sec-t { min-height:32px; }
+.hs[lang="zh-Hans"] { font-family:-apple-system,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif; }
+.hs[lang="zh-Hant"] { font-family:-apple-system,"SF Pro Text","PingFang TC","Microsoft JhengHei",sans-serif; }
+@media (prefers-reduced-motion:reduce) { .hs * { transition:none!important; animation:none!important; }.hs .hs-sec.closed .hs-sec-b>div { transition:none; } }

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { ExternalUserQuestionOutcome, ExternalUserQuestionReply } from "./client";
-import { makeT, type Key, type Locale } from "./i18n";
+import { makeT, type Key, type LegacyLocale as Locale } from "./i18n";
 import {
   prepareExternalQuestionAnswers, createExternalQuestionSubmission, externalQuestionPending,
   readableExternalQuestion, type ExternalQuestionDraft, type ExternalQuestionEntry,

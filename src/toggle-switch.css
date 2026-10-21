@@ -1,0 +1,15 @@
+/* The hit target stays transparent; only the capsule track paints a background. */
+button.hara-switch[role="switch"],.hs.wss-app button.hara-switch[role="switch"]{appearance:none;display:inline-flex;align-items:center;justify-content:center;flex:none;vertical-align:middle;box-sizing:border-box;width:37px;min-width:37px;max-width:37px;height:32px;min-height:32px;padding:0;margin:0;border:0;border-radius:999px;background:transparent;color:inherit;box-shadow:none;filter:none;cursor:pointer;line-height:1;opacity:1}
+button.hara-switch[role="switch"]:is(:hover,:active,:focus-visible,:disabled){background:transparent;box-shadow:none}
+.hara-switch>.hara-switch-track{display:block;position:relative;box-sizing:border-box;flex:none;width:37px;height:23px;border:1px solid var(--control,var(--line));border-radius:999px;background:var(--field,var(--bg));transition:background-color .15s,border-color .15s;pointer-events:none}
+.hara-switch-track>.hara-switch-thumb{position:absolute;display:block;box-sizing:border-box;width:17px;height:17px;left:2px;top:2px;border:0;border-radius:50%;background:var(--muted);transform:translateX(0);transition:transform .15s;pointer-events:none}
+.hara-switch[aria-checked="true"]>.hara-switch-track{background:var(--brand,var(--accent));border-color:var(--brand,var(--accent))}
+.hara-switch[aria-checked="true"] .hara-switch-thumb{background:var(--on-brand,var(--accent-ink,#fff));transform:translateX(14px)}
+.hara-switch:not(:disabled):hover>.hara-switch-track{background:var(--row-hover,var(--surface-hover,var(--bg3)));border-color:var(--ink,var(--fg))}
+.hara-switch[aria-checked="true"]:not(:disabled):hover>.hara-switch-track{background:var(--brand-hover,var(--accent-strong,var(--accent)));border-color:var(--brand-hover,var(--accent-strong,var(--accent)))}
+.hara-switch[aria-checked="true"]:not(:disabled):active>.hara-switch-track{background:var(--brand-pressed,var(--accent));border-color:var(--brand-pressed,var(--accent))}
+button.hara-switch[role="switch"]:focus-visible{outline:2px solid var(--focus,var(--accent));outline-offset:2px}
+button.hara-switch[role="switch"]:disabled{cursor:not-allowed}
+.hara-switch:disabled>.hara-switch-track{background:var(--disabled-bg,var(--surface-inset,var(--bg)));border-color:var(--control,var(--line))}
+.hara-switch:disabled .hara-switch-thumb{background:var(--disabled-ink,var(--ink-faint,var(--muted)))}
+@media(prefers-reduced-motion:reduce){.hara-switch>.hara-switch-track,.hara-switch-track>.hara-switch-thumb{transition:none}}

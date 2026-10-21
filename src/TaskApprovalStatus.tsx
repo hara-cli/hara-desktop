@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { TaskApprovalState, TaskApprovalToolFamily } from "./client";
-import { makeT, type Key, type Locale } from "./i18n";
+import { makeT, type Key, type LegacyLocale as Locale } from "./i18n";
 import { createTaskApprovalSubmission, taskApprovalActive, taskApprovalEstimatedExpired } from "./task-approval-state";
 
 const FAMILY_KEYS: Record<TaskApprovalToolFamily, Key> = { bash: "taskApprovalBash", python: "taskApprovalPython", "file-change": "taskApprovalFiles" };

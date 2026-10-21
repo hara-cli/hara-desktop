@@ -47,9 +47,9 @@ test("runtime approval remains pinned to the original scope and single explicit 
   const f = fixture(); await f.model.selectWorkspace("A");
   f.handlers["workspace.runtime.propose"] = () => ({ id: "card-id", runtimeId: "codex", label: "Codex", version: "1.2.3", sha256: "a".repeat(64), origin: "http://127.0.0.1:1234", maxBytes: 128, target: { platform: "darwin", arch: "arm64" } });
   const card = await f.model.proposeRuntime("codex"); assert.equal(f.calls.filter(row => row.method === "workspace.runtime.approve").length, 0);
-  await f.model.selectWorkspace("B"); await assert.rejects(f.model.approveRuntime(card, true), /目前空間/);
+  await f.model.selectWorkspace("B"); await assert.rejects(f.model.approveRuntime(card, true), { messageKey: "ws.notice.installScopeMismatch" });
   assert.equal(f.calls.filter(row => row.method === "workspace.runtime.approve").length, 0);
-  await f.model.selectWorkspace("A"); await assert.rejects(f.model.approveRuntime(card, true), /目前空間/);
+  await f.model.selectWorkspace("A"); await assert.rejects(f.model.approveRuntime(card, true), { messageKey: "ws.notice.installScopeMismatch" });
   const fresh = await f.model.proposeRuntime("codex"); await f.model.approveRuntime(fresh, false);
   const call = f.calls.find(row => row.method === "workspace.runtime.approve"); assert.deepEqual(call.params, { workspaceId: "A", expectedGeneration: "generation-A", proposalId: "card-id", approved: false });
   assert.equal(f.calls.filter(row => row.method === "workspace.runtime.approve").length, 1);

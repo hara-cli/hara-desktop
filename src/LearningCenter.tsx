@@ -8,7 +8,7 @@ import type {
   LearningStatus,
 } from "./client";
 import { SettingsBadge, SettingsNotice, SettingsPage } from "./SettingsUI";
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 import "./LearningCenter.css";
 
 interface LearningCenterProps {

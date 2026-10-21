@@ -1,4 +1,5 @@
 import { NavigationGlyph } from "./AppRail";
+import { ToggleSwitch } from "./ToggleSwitch";
 import {
   navigationIsVisible,
   orderedNavigation,
@@ -109,16 +110,8 @@ export function ModuleDockSettings({
                   ↓
                 </button>
                 {item.canHide ? (
-                  <button
-                    type="button"
-                    role="switch"
-                    className={visible ? "ghost module-dock-toggle" : "module-dock-toggle"}
-                    aria-checked={visible}
-                    aria-label={`${visible ? copy.hide : copy.show}: ${label.title}`}
-                    onClick={() => onVisibilityChange(item.id, !visible)}
-                  >
-                    {visible ? copy.hide : copy.show}
-                  </button>
+                  <ToggleSwitch checked={visible} label={`${visible ? copy.hide : copy.show}: ${label.title}`}
+                    onCheckedChange={checked => onVisibilityChange(item.id, checked)} />
                 ) : null}
               </span>
             </div>

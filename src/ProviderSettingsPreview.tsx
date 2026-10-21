@@ -9,7 +9,7 @@ import {
   type ProviderSettingsState,
   type VisionSettingsInput,
 } from "./client";
-import type { Locale } from "./i18n";
+import type { LegacyLocale as Locale } from "./i18n";
 import { ProviderSettings } from "./ProviderSettings";
 
 const previewAccounting = (provider: string): ProviderAccountingDescriptor => {
