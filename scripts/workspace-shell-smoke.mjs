@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makeT } from "../src/i18n.ts";
+import { waitForLayout } from "./browser-layout-wait.mjs";
 const base = new URL(process.argv[2] ?? "http://127.0.0.1:54991/");
 if(base.protocol!=="http:" || base.hostname!=="127.0.0.1" || base.pathname!=="/" || base.username || base.password || base.search || base.hash)throw new Error("Use a task-owned IPv4 loopback Vite root");
 if(!process.argv[3])throw new Error("An explicit evidence directory is required");
@@ -17,13 +18,14 @@ const chromePath = [process.env.CHROME_PATH, "/Applications/Google Chrome.app/Co
 if (!chromePath) throw new Error("Chrome/Chromium is required for the component browser gate");
 const profile = mkdtempSync(join(tmpdir(), "hara-shell-chrome-"));
 const chrome = spawn(chromePath, ["--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-background-mode", "--disable-background-networking", "--disable-component-update",
-  "--disable-default-apps", "--disable-extensions", "--disable-gpu", "--disable-sync", "--no-default-browser-check", "--no-first-run",
+  "--disable-default-apps", "--disable-extensions", "--disable-gpu", "--disable-sync", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--disable-background-timer-throttling", "--no-default-browser-check", "--no-first-run",
   "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
 let socket;
 const pending = new Map();
 let requestId = 0;
 let sessionId;
 let browserUserAgent;
+let step = 'connect';
 const errors = [];
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 async function connect() {
@@ -51,6 +53,8 @@ async function connect() {
   const target = await send("Target.createTarget", { url: "about:blank" }, false);
   const attached = await send("Target.attachToTarget", { targetId: target.targetId, flatten: true }, false);
   sessionId = attached.sessionId;
+  await send("Target.activateTarget", { targetId: target.targetId }, false);
+  await send("Page.bringToFront");
   await send("Runtime.enable"); await send("Page.enable");
   const version = await send("Browser.getVersion", {}, false);
   browserUserAgent = version.userAgent;
@@ -59,7 +63,7 @@ async function connect() {
 async function send(method, params = {}, scoped = true) {
   const id = ++requestId;
   const result = new Promise((done, fail) => {
-    const timer = setTimeout(() => { pending.delete(id); fail(new Error(`${method} timed out`)); }, 15000);
+    const timer = setTimeout(() => { pending.delete(id); fail(new Error(`${method} timed out at ${step} (request ${id})`)); }, 15000);
     pending.set(id, { done, fail, timer, method });
   });
   socket.send(JSON.stringify({ id, method, params, ...(scoped && sessionId ? { sessionId } : {}) }));
@@ -70,14 +74,7 @@ async function evaluate(expression) {
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
   return result.result?.value;
 }
-async function settled() { await evaluate(`(async()=>{
- for(let frame=0;frame<4;frame++){
-  await new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)));
-  const active=document.getAnimations().filter(animation=>animation.playState==='running'&&Number.isFinite(animation.effect?.getComputedTiming().endTime));
-  if(!active.length)return;
-  await Promise.all(active.map(animation=>animation.finished.catch(()=>{})));
- }
-})()`); }
+async function settled() { await waitForLayout(evaluate, {label:step}); }
 async function ready(expression, label) {
   for(let attempt=0;attempt<160;attempt++){if(await evaluate(expression))return;await pause(75);}
   const diagnostic=await evaluate('({url:location.href,text:document.body.innerText.slice(0,2500),fixture:!!window.__HARA_SHELL_FIXTURE__})');
@@ -85,6 +82,8 @@ async function ready(expression, label) {
   throw new Error(label);
 }
 async function navigate({width=1280,locale='zh-Hant',theme='light',scenario='home',reset=true}={}){
+  step = `${scenario}/${theme}/${locale}/${width}`;
+  process.stdout.write(`Checking ${step}\n`);
   await send('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:false});
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:0,y:0});
   const url=new URL('test/fixtures/workspace-shell-preview.html',base);url.search=new URLSearchParams({locale,theme,scenario,reset:reset?'1':'0'}).toString();
@@ -108,7 +107,7 @@ async function selectValue(selector,value){await evaluate(`(()=>{const select=do
 async function inputValue(selector,value){await evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);await settled();}
 async function settingsFits(){const size=await evaluate("(()=>{const main=document.querySelector('.wss-main');return {viewport:innerWidth,body:document.documentElement.scrollWidth,mainWidth:main.clientWidth,mainScroll:main.scrollWidth,badButtons:Array.from(main.querySelectorAll('button:not(.wss-switch)')).filter(node=>node.getBoundingClientRect().height<31.9).map(node=>node.textContent),badFields:Array.from(main.querySelectorAll('.wsd-connection-form input,.wsd-connection-form select')).filter(node=>node.getBoundingClientRect().height<35.9).map(node=>node.outerHTML.slice(0,160)),inlineLabels:Array.from(main.querySelectorAll('.wsd-connection-form>label')).filter(node=>getComputedStyle(node).display!=='grid').length}})()");assert.ok(size.body<=size.viewport&&size.mainScroll<=size.mainWidth+1,JSON.stringify(size));assert.deepEqual(size.badButtons,[]);assert.deepEqual(size.badFields,[]);assert.equal(size.inlineLabels,0);return size;}
 async function key(key,shift=false){const value={key,code:key,modifiers:shift?8:0,windowsVirtualKeyCode:{Enter:13,Tab:9,Escape:27}[key]??0};await send('Input.dispatchKeyEvent',{type:'keyDown',...value,...(key==='Enter'?{text:'\r'}:{})});await send('Input.dispatchKeyEvent',{type:'keyUp',...value});await settled();}
-async function capture(name){screenshots++;await pause(150);const result=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(result.data,'base64'),{mode:0o600});}
+async function capture(name){step=name;screenshots++;await pause(150);const result=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(result.data,'base64'),{mode:0o600});}
 async function geometry(){return evaluate(`(()=>{
  const rect=selector=>{const node=document.querySelector(selector);if(!node)return null;const r=node.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom};};
  const palette=Object.fromEntries(['brand','brand-hover','brand-pressed','brand-soft','brand-text','indicator','text-red','field-ring','control'].map(key=>[key,getComputedStyle(document.querySelector('.wsd-app')).getPropertyValue('--'+key).trim()]));
@@ -528,6 +527,7 @@ try{
  writeFileSync(join(output,'browser-report.json'),JSON.stringify({ok:true,receipts,errors},null,2)+'\n',{mode:0o600});
  process.stdout.write(JSON.stringify({ok:true,checks:receipts.length,screenshots,output})+'\n');
 }catch(error){
+ writeFileSync(join(output,'protocol-failure.json'),JSON.stringify({error:String(error),step,errors,pending:[...pending.values()].map(request=>request.method)},null,2)+'\n',{mode:0o600});
  try{await capture('failure');writeFileSync(join(output,'failure.json'),JSON.stringify({error:String(error),errors,diagnostic:await evaluate('({url:location.href,active:document.activeElement?.outerHTML.slice(0,1500),previewButtons:Array.from(document.querySelectorAll("#workspace-browser-panel button")).map(node=>({label:node.getAttribute("aria-label"),text:node.textContent})),text:document.body.innerText.slice(0,2000)})')},null,2)+'\n',{mode:0o600});}catch{}
  throw error;
 }finally{

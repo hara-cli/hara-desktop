@@ -23,7 +23,7 @@
 @media(min-width:1500px){.wss-overview{grid-template-columns:repeat(3,minmax(0,1fr))}.wss-main{padding-left:50px;padding-right:50px}}
 @media(max-width:850px){.wss-app{grid-template-columns:220px minmax(0,1fr)}.wss-main{padding:25px 22px}.wss-scope-chip{font-size:9px}.wss-heading{align-items:flex-start}.wss-overview{grid-template-columns:1fr}.wss-update-card{padding:18px;gap:12px}}
 
-/* Workspace settings share the approved v1.4 palette and a full-window grid. */
+/* Workspace settings share the shell palette and a full-window grid. */
 .hs.wss-app{display:grid;padding:0;gap:0;border-radius:0;background:var(--paper);color:var(--ink)}
 .hs.wss-app button,.hs.wss-app select{font:inherit;color:inherit;min-height:32px}
 .hs.wss-app button{border-radius:var(--r-md)}

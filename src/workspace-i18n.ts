@@ -1,6 +1,6 @@
 import { WORKSPACE_SETTINGS_KEYS } from "./workspace-settings-i18n.ts";
 
-// Canonical shell keys ported verbatim from Dora main-1020/i18n-keys.mjs (2026-10-20).
+// Shared shell keys in English, Simplified Chinese and Traditional Chinese.
 export const WORKSPACE_KEYS = [
   [
     "ws.space.current",

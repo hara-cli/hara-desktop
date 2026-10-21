@@ -1,28 +1,18 @@
-# Main shell v1.4 implementation for the 1.1.0 redesign
+# Workspace shell implementation
 
-This local branch starts at Desktop main `baceda3`. It ports Dora's approved
-`main-1020/workspace-shell-114.css`, including all layout layers and palette E, and the exact canonical
-`i18n-keys.mjs` entries. `workspace-theme.css` retains those layers with dark selectors
-bound to the existing resolved `data-theme`. `workspace-local-dev.css` adapts the live
-components, and `workspace-states.css` loads last. Neither optional `quiet-sec` nor
-`ink-indicator` is enabled. Icons are `@heroicons/react` **2.2.0**, MIT licensed. No
-Metronic source, assets or icons are used.
+The shell fills the native window. `workspace-theme.css` defines warm light and graphite dark
+surfaces, an oxblood accent and shared control tokens. `workspace-local-dev.css` adapts the live
+components, and `workspace-states.css` loads last. Dark selectors follow the resolved `data-theme`.
+Neither optional `quiet-sec` nor `ink-indicator` is enabled. Icons use `@heroicons/react` **2.2.0**
+under the MIT license.
 
-Jeff's 2026-10-20 10:48 decision makes palette E (oxblood) authoritative. The
-v1.4 colour layer wins over historical values: light brand `#9b2c24`, dark brand
-`#c03a33`, with their matching hover/pressed/soft/text variants. The selected
-indicator is `#9b2c24` / `#f08e84`; the control/focus hairline is `#8c8579` /
-`#716b62`. Neutral ramps, typography, layout, icons and i18n are unchanged.
-`workspace-shell-113.css` and previous v1.3 screenshots are historical references;
-114 is the current source of truth. Keyboard focus stays neutral.
+The light brand is `#9b2c24`; the dark brand is `#c03a33`, with matching hover, pressed, soft and
+text variants. Selected indicators use `#9b2c24` / `#f08e84`, and control/focus hairlines use
+`#8c8579` / `#716b62`. Keyboard focus stays neutral.
 
-The native integration stage prepares Desktop **1.1.0**, with exact Core
-**1.0.2@4e507e7f1595e618527e5c95a1890ae9271615e7**. Approved native/settings/build
-changes are ported from Desktop `d933cea`; release branches are not merged. This is
-an unpublished local candidate, with identifier `com.nanhara.hara.redesign-candidate`.
-It requires sibling private Workspace/Home roots and a marked synthetic legacy
-source. Its discovery source stays private too. It cannot check/install public updates.
-Developer ID signing is queued until the separate 1.0.3 release completes.
+The exact bundled engine source is recorded in `src-tauri/binaries/SIDECAR_COMMIT`. Optional
+native test builds use a separate application identifier, sibling private Workspace/Home roots
+and a marked synthetic legacy source. Discovery stays private and public updates are disabled.
 
 ## Data and authority
 

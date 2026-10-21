@@ -12,8 +12,8 @@ Invite other people is an explanatory placeholder. It does not create an invitat
 
 The renderer requires `workspace.local-channels.v1` from the real authenticated Core transport. An older engine shows an explicit engine-update state rather than an operational mock channel. Product data is not stored in browser localStorage; only the DEV-only component fixture uses synthetic browser storage to exercise reloads.
 
-This source pins the unpublished Core extension `4cde6bd49ad7095bd9820677220d4650ed95bf5c`, based on Core 1.0.2. `SIDECAR_VERSION` remains 1.0.2 for this local development slice, but its commit differs from the released tag. It is not the formal 1.0.4 Core pin and does not authorize a Core/Desktop release. The tag-to-lock release guard remains intact.
+The sidecar source is pinned by `src-tauri/binaries/SIDECAR_COMMIT`. The channel extension is based on Core 1.0.2; the version label alone does not establish channel capability. The authenticated capability handshake is authoritative, and the tag-to-lock release guard remains intact.
 
-The signed/notarized Desktop `09396d5` candidate includes local channels and is retained unchanged. Subsequent channel polish, capsule switches and connection-count grammar are prepared for the next candidate lane; packaging and acceptance for that new source remain pending. ARM64 and Intel/Rosetta acceptance evidence and the first Core command's HOME-isolation incident are documented in the workspace inbox. Tests use fresh task-owned data, an in-memory credential adapter and mock model responses; no real `~/.hara` or OS keychain fixture is needed. Always use the Core repository's `npm test` preload plus an outer task-owned HOME/USERPROFILE/TMPDIR; invoking its test files directly omits that isolation.
+Tests use fresh task-owned data, an in-memory credential adapter and synthetic model responses. They require no daily user data or OS keychain fixture. For Core tests, use its documented test preload and an outer task-owned HOME/USERPROFILE/TMPDIR; invoking test files directly can omit isolation.
 
-Release copy and precise unpublished-channel boundaries are in [RELEASE_NOTES_1.1.0_DRAFT.md](RELEASE_NOTES_1.1.0_DRAFT.md).
+User-visible changes are described in the [release notes draft](RELEASE_NOTES_1.1.0_DRAFT.md).

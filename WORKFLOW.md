@@ -91,8 +91,8 @@ produced the exact immutable stable Release; the downstream read-only hosted ver
 signed immutable-release attestation and the matching public asset bytes. Store a fine-grained token with repository
 `Administration: read` only as the environment secret `HARA_RELEASE_POLICY_TOKEN`; it is used solely
 to fail closed on the immutable-release policy immediately before publication. Assign the custom
-runner label only to the signing Mac whose dedicated `hara-ci-signing` keychain contains the
-Developer ID identity and whose `~/.tauri` contains the notarization/updater keys. A
+runner label only to the signing Mac provisioned with a dedicated Developer ID keychain and
+private notarization/updater credentials. Keep their machine-specific locations in private operator configuration. A
 GitHub-hosted preflight fails before signing unless the tag-scoped environment protection exists;
 GitHub's `runs-on` scheduler then requires the labelled signing runner to be online.
 The dmg bundling step (`bundle_dmg.sh`) is flaky when a previous Hara volume is mounted —
@@ -157,7 +157,8 @@ The fail-closed trust model, current evidence and required release choreography 
 
 - On the controlled macOS signer the formal `build-mac-signed.sh` entry uses
   `node scripts/with-updater-file.mjs <build command>` to read the **existing**
-  `~/.tauri/hara-desktop.key` read-only. It requires an owned, non-writable, non-symlink parent and
+  updater private-key file read-only. Keep its machine-specific location in private operator configuration.
+  It requires an owned, non-writable, non-symlink parent and
   a same-user regular 0600 file (no symlinks/hardlinks, bounded size, change detection).
   The key exists only in the signing child's memory/environment, never argv, copied plaintext files
   or logs. Output is bounded and redacted in memory before delivery, on success and failure.
@@ -167,15 +168,16 @@ The fail-closed trust model, current evidence and required release choreography 
   Developer ID and Apple notarization remain separate, mandatory gates with their existing dedicated
   signing identity; this does not bypass their authorization, source/tag or publication checks.
 - `HARA_TAURI_SIGNING_PRIVATE_KEY` (the `hara-desktop-production` environment secret, exposed to
-  Tauri only as `TAURI_SIGNING_PRIVATE_KEY` inside its build steps) = contents of
-  `~/.tauri/hara-desktop.key` — updater artifact signing. Keep it out of repository-level secrets so
+  Tauri only as `TAURI_SIGNING_PRIVATE_KEY` inside its build steps) contains the updater artifact
+  signing key from the operator-managed private file. Keep it out of repository-level secrets so
   only tag-scoped environment jobs can access it. **Never commit the key.**
 - Apple Developer ID Application cert is held on the controlled self-hosted release Mac; tag CI
   macOS artifacts stay unsigned and hidden until protected `build.yml` promotion invokes
   `scripts/build-mac-signed.sh` + `scripts/release-mac-assets.sh` to replace them with signed,
-  notarized, stapled assets. The runner uses the dedicated
-  `~/Library/Keychains/hara-ci-signing.keychain-db`; its random unlock password stays only in
-  `~/.tauri/hara-codesign-keychain.password` with mode `0600`. The signed-build script unlocks it,
+  notarized, stapled assets. The runner uses a dedicated operator-provisioned keychain;
+  its random unlock password stays only in a separate private file with mode `0600`.
+  Configure locations through `HARA_CODESIGN_KEYCHAIN` and `HARA_CODESIGN_KEYCHAIN_PASSWORD_FILE`;
+  retain the actual paths only in private operator configuration. The signed-build script unlocks it,
   performs an ephemeral Developer ID signing probe using that explicit keychain, and
   locks it again on every exit. It must not write, repair or restore the user's global search list,
   default keychain, ACL, partitions or keychain settings. Tauri's nested codesign calls receive the

@@ -1,4 +1,4 @@
-/* Jeff 2026-10-20: the app fills the native window; v1.4 colors remain authoritative. */
+/* The workspace fills the native window using the shared theme tokens. */
 .hs.wsd-app .hs-frame{padding:0;background:var(--surface)}
 .hs.wsd-app .hs-win{width:100%;height:100%;border:0;border-radius:0;box-shadow:none}
 .hs.wsd-app .hs-win .hs-side{position:relative;border-right:1px solid var(--line)}
