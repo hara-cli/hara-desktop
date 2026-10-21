@@ -32,10 +32,12 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
     });
   }
   async initialize(token: string): Promise<void> {
+    if (this.socket.readyState === WebSocket.CLOSED) throw new Error("本機 Workspace 連接已關閉");
     if (this.socket.readyState !== WebSocket.OPEN) await new Promise<void>((resolve, reject) => {
-      const opened = () => { clearTimeout(timer); this.socket.removeEventListener("error", failed); resolve(); };
-      const failed = () => { clearTimeout(timer); this.socket.removeEventListener("open", opened); this.socket.removeEventListener("error", failed); reject(new Error("本機 Workspace Dev 無法連接")); };
-      const timer = setTimeout(failed, 10000); this.socket.addEventListener("open", opened, { once: true }); this.socket.addEventListener("error", failed, { once: true });
+      const clean = () => { clearTimeout(timer);this.socket.removeEventListener("open", opened);this.socket.removeEventListener("error", failed);this.socket.removeEventListener("close", failed); };
+      const opened = () => { clean();resolve(); };
+      const failed = () => { clean();reject(new Error("本機 Workspace Dev 無法連接")); };
+      const timer = setTimeout(failed, 10000);this.socket.addEventListener("open", opened, { once: true });this.socket.addEventListener("error", failed, { once: true });this.socket.addEventListener("close", failed, { once: true });
     });
     const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean; executionMode?: string }>("initialize", { token });
     this.capabilities = new Set(Array.isArray(result.capabilities) ? result.capabilities : []);

@@ -282,6 +282,22 @@ test("exhausted resume button/typed continue has no mutation and startup reads n
   assert.equal(f.calls.some(c => c.method.startsWith("workspace.session.")), false);
   assert.equal(f.model.getSnapshot().error, "ws.notice.resumeBudget");
 });
+test("typed continuation and the resume action refuse connection failures without requests, nonces or draft loss", async () => {
+  for (const patch of [
+    { resumeAdmission: { allowed: false, reason: "connection_model_unavailable" } },
+    { resumeAdmission: { allowed: false, reason: "connection_auth_required" } },
+    { resumeAdmission: { allowed: false, reason: "connection_quota_exhausted" } },
+    { blockReason: "[openai error] 404 The requested model does not support the agent plan feature" },
+  ]) {
+    const f = fixture();await f.ready();
+    f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked", ...patch } });
+    await f.model.refresh();const history = structuredClone(f.model.getSnapshot().workspace.conversation.history);
+    await f.model.send(true);f.model.setDraft("/continue");await f.model.send();await f.model.send();
+    assert.equal(f.calls.some(c => c.method.startsWith("workspace.session.")), false);
+    assert.equal(f.model.getSnapshot().error, "ws.notice.resumeConnection");assert.equal(f.model.getSnapshot().draft, "/continue");
+    assert.deepEqual(f.model.getSnapshot().workspace.conversation.history, history);assert.equal(f.model.getSnapshot().pendingUnknown, false);
+  }
+});
 test("explicit server refusal is not marked unknown or retried", async () => {
   const f = fixture(); await f.ready(); f.model.setDraft("/continue");
   f.handlers["workspace.session.resume"] = () => { throw Object.assign(new Error("budget refused"), { code: -32602 }); };
