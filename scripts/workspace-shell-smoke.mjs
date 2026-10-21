@@ -498,13 +498,16 @@ try{
   await click('.hs-channel-recipients>summary');await inputValue('.hs-channel-recipients input[type=search]','QA');
   await click(`.hs-sec-a[aria-label=${JSON.stringify(t('ws.channels.new'))}]`);
   await inputValue(`.hs-channel-dialog input[aria-label=${JSON.stringify(t('ws.channels.name'))}]`,'Local notes');
-  await buttonText(t('ws.channels.new'),'.hs-channel-dialog');await ready("!!document.querySelector('.hs-channel-compose textarea')&&!document.querySelector('[role=dialog]')",'An empty personal channel can be created');
+  await buttonText(t('ws.channels.new'),'.hs-channel-dialog');
+  const notesChannelId=await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.create').at(-1).params.channelId");
+  assert.notEqual(notesChannelId,channelId);
+  await ready(`document.querySelector('[data-local-channel]')?.getAttribute('data-local-channel')===${JSON.stringify(notesChannelId)}&&!document.querySelector('[role=dialog]')`,'Creating from an existing channel must open the accepted new room and close its dialog');
   assert.equal(await evaluate("document.querySelector('.hs-channel-recipients>summary').textContent"),t('ws.channels.notesOnly'));
   await evaluate("document.querySelector('.hs-channel-recipients').open=true");await settled();
   assert.equal(await evaluate("document.querySelector('.hs-channel-recipients .hs-channel-search-empty').textContent"),t('ws.channels.noRecipients'));
   assert.equal(await evaluate("document.querySelectorAll('.hs-channel-recipient').length"),0);
   await capture(`channel-notes-only-${locale}-${theme}`);
-  await inputValue('.hs-channel-compose textarea','A local note with no AI recipient');await click('.hs-channel-compose .hs-send');
+  await inputValue('.hs-channel-compose textarea','A local note with no colleague recipient');await click('.hs-channel-compose .hs-send');
   await ready("document.querySelectorAll('[data-channel-speaker=user]').length===1",'The note is saved in its own channel');
   assert.equal(await evaluate("document.querySelectorAll('[data-channel-speaker]:not([data-channel-speaker=user])').length"),0);
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.send').at(-1).params.recipientIds.length"),0);

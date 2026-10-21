@@ -84,6 +84,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const scroll = useRef<HTMLDivElement>(null), scrollContext = useRef("");
   const scrollResume = useRef<{ key: string; top: number; atBottom: boolean } | null>(null);
   const routedScope = useRef<string | null>(null);
+  const channelRouteSelection = useRef<string | null>(null);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
   const colleagues = useMemo(() => agents.filter(row => row.kind === "colleague" && row.state !== "archived"), [agents]);
   const shell = useWorkspaceOverview(model, workspace), { sections, toggle } = useSectionState(view.workspaceId ?? "none");
@@ -115,7 +116,12 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         }
       }
     }
-    if (next.section === "channel" && next.channelId && channelView.catalog.channels.some(row => row.id === next.channelId) && channelView.channelId !== next.channelId) void channels.select(next.channelId);
+    if (next.section !== "channel" || !next.channelId || !channelView.catalog.channels.some(row => row.id === next.channelId)) { channelRouteSelection.current = null; return; }
+    const selection = JSON.stringify([scope, next.channelId]);
+    // Reconcile a route once. An accepted create may select its new room before onCreated updates the URL.
+    if (channelRouteSelection.current === selection) return;
+    channelRouteSelection.current = selection;
+    if (channelView.channelId !== next.channelId) void channels.select(next.channelId);
   }, [channels, scope, route, channelView.scope, channelView.catalog, channelView.channelId]);
   useEffect(() => { if (!["running", "draining"].includes(channelView.channel?.state ?? "")) return;
     const timer = setInterval(() => { void channels.refresh(); }, 1000); return () => clearInterval(timer);
