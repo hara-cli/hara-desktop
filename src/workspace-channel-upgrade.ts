@@ -1,4 +1,5 @@
 import type { LocalChannelsView } from "./workspace-local-channels";
+import { COLLABORATION_MEMBERSHIP_MAX_AGE_MS } from "./workspace-collaboration-boundary.ts";
 
 declare const organizationBrand: unique symbol;
 declare const workspaceBrand: unique symbol;
@@ -20,7 +21,7 @@ export interface CloudChannelScope extends UpgradeAccount {
   organizationId: OrganizationId; workspaceId: CloudWorkspaceId; realmId: RealmId;
   membership: { state: "ACTIVE" | "REMOVED"; checkedAt: number; expiresAt: number };
 }
-export const CHANNEL_MEMBERSHIP_MAX_AGE_MS = 60_000;
+export const CHANNEL_MEMBERSHIP_MAX_AGE_MS = COLLABORATION_MEMBERSHIP_MAX_AGE_MS;
 export function channelScopeRefusal(expected: CloudChannelScope, received: CloudChannelScope, now: number): ChannelUpgradeCode | null {
   if (!["CN", "GLOBAL"].includes(expected.region) || received.region !== expected.region) return "REGION_MISMATCH";
   if (!expected.accountScope || received.accountScope !== expected.accountScope) return "SCOPE_CHANGED";

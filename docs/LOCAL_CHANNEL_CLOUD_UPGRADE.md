@@ -12,7 +12,17 @@ The read-only `checkUpgrade` method must never be wired directly to the proposed
 
 The source includes only local Workspace/channel IDs, resource generation, catalog revision and history revision. Preview counts are computed locally; message bodies, drafts, colleague IDs, tool output, paths and credentials are not part of the preflight input. This is UI intent, not execution or ownership authority.
 
-Source changes invalidate in-flight results, including A→B→A navigation. Closing aborts pending adapter work and ignores late results. Running replies, saves and unknown receipts block continuation; the upgrade does not stop or resend them. Account and region are rechecked before preflight. Errors are mapped to a fixed safe code set, never displayed as raw remote error text. There are no automatic retries or background timers.
+Source changes invalidate in-flight results, including A→B→A navigation. Closing aborts pending adapter work and ignores late results. Running replies, saves and unknown receipts block continuation; the upgrade does not stop or resend them. Account and region are rechecked before preflight. Errors are mapped to a fixed safe code set, never displayed as raw remote error text. The upgrade handoff has no automatic retries or background timers.
+
+## Local collaboration safeguards
+
+The existing collaboration model treats sync and history as inert remote display data. It copies only known message fields, marks records `origin: remote`, accepts human mention references, and renders bodies as escaped plain text. Forged local roles, tool calls, actions, colleague identifiers and instruction metadata are discarded. Unknown action event types are ignored; message text and mentions never feed a local composer, colleague session, task, tool or approval request.
+
+A successful authenticated Workspace bootstrap grants the collaboration view at most **60 seconds** from the start of that request. The model checks access before each content read or write and before accepting incoming read results. A deadline timer hides cached messages, roster, drafts and controls; the snapshot getter also hides them if the event loop delayed the timer. Both wall and monotonic clocks bound access, covering machine sleep without allowing a clock rollback to extend it. A slow bootstrap cannot start a fresh minute on receipt. Sync, history, member reads and directory refreshes do not renew this grant.
+
+At expiry, fresh directory/bootstrap authorization is required before content access resumes. An explicit access rejection hides content immediately. Private unconfirmed request identities are hidden on expiry and retained for same-identity recovery; reauthorization itself never resends a mutation. Account, region or membership-epoch changes cannot restore another identity's private drafts or retry state. Disposing or switching the model clears its deadline timer.
+
+These checks protect the Desktop model and its cache. They do not prove that an upstream projection or bootstrap reply reflects a recent server-side removal; authoritative freshness and revocation must still be enforced by the services.
 
 ## Requirements before a real backend adapter
 
@@ -27,4 +37,4 @@ These are integration gates. The unavailable stub does **not** implement or prov
 - History import requires a later explicit selection and final preview, with key and path redaction before upload. This interface only accepts `future_only` and has no import method. Do not bypass that boundary by encoding messages, paths or credentials as another input field.
 - A real upgrade requires Core-owned durable intent/keys, source revision checks, a recoverable source fence, authoritative audience confirmation, commit/status/cancel receipts and atomic local binding. An unknown result must be reconciled against the original operation, not retried as a new channel. Login success alone does not satisfy these gates.
 
-Tests cover local-only preview, sign-in/cancellation/expiry, late results, confirmation, source/account/region changes, the unavailable stub, distinct identifier types and cross-space/realm/region counterexamples. Browser fixtures inject synthetic accounts only in the DEV-only localhost component fixture; they do not establish actual Account/Collab readiness.
+Tests cover local-only preview, sign-in/cancellation/expiry, late results, confirmation, source/account/region changes, the unavailable stub, distinct identifier types and cross-space/realm/region counterexamples. Collaboration regressions also cover forged remote instruction metadata, unknown action events, human mentions, the exact access deadline, suspended timers, sleep, clock rollback, delayed reads, explicit removal, private same-ID recovery and actual expired view rendering. Browser fixtures inject synthetic accounts only in the DEV-only localhost component fixture; they do not establish actual Account/Collab readiness.
