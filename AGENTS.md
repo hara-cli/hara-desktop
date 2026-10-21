@@ -46,7 +46,7 @@ fake tag/CI context, weaken source/signature/notary/integrity checks or use prod
 Check original updater-file access and Pi-only formal hydration before expensive builds.
 A redacted ruleset response is not proof that its bypass list is safe. Keep candidate Actions
 permissions read-only; plan A requires a local administrator's independently signed observation
-bound to the exact run/source and live policy version, plus Jeff's separate protected-environment
+bound to the exact run/source and live policy version, plus the designated reviewer's protected-environment
 approval. Follow `docs/CANDIDATE_GATE_A.md`; missing/expired proof fails before credential access.
 A release tag may only promote the same verified, digest/provenance-bound artifacts; changing a
 source/lock/toolchain/policy input invalidates their receipt. Do not rebuild different bytes after tag.
@@ -59,16 +59,8 @@ A protected stable `vX.Y.Z` tag is a production release authorization. The tag w
 
 Never commit updater private keys, Apple credentials, certificates, tokens, `.env` files, session data, or user project content. Do not weaken localhost origin/auth checks or move tool permissions into the renderer.
 
-The canonical intake and status channel is Feishu `hara 反馈群` (`oc_17590648f393135cde6a6b9cd6f1c710`). Pull the newest messages and relevant attachments before issue work. Report discovered bugs with Desktop and bundled CLI versions, reproduction/evidence, and expected versus actual behavior, always redacted. After a verified release, reply to each original fixed report with the fixed version and focused checks, then post the group-level version, concise changes, upgrade instructions, and verification request; mention any named tester.
+Use the project's privately configured feedback channel for intake and status. Pull the newest messages and relevant attachments before issue work. Report discovered bugs with Desktop and bundled CLI versions, reproduction/evidence, and expected versus actual behavior, always redacted. After a verified release, reply to each original fixed report with the fixed version and focused checks, then post the group-level version, concise changes, upgrade instructions, and verification request; mention any named tester. Keep channel identifiers and internal operator assignments outside the public repository.
 The shared Feishu helper accepts `messages --preview-limit` values from 1 through 100; keep previews within
 that bound and use `--output` when a complete redacted export is required.
 Before projecting any helper JSON with `jq`, inspect its top-level keys and value types; Feishu
 `messages --output` stores the message array under `.messages`, not at the top level.
-
-## 编码工具分工（Jeff 2026-10-21）
-
-- 代码执行一律用 Codex 和 OpenCode；每个项目单独开会话和 worktree，不同项目不要混用同一会话/目录。
-- Codex/OpenCode 可以派生子 agent 去执行；项目所属 bot（主 agent）主要负责派活、调度安排和验收，而不是自己动手干活。
-- Claude Code 只由 Elon 和 Linus 使用，用于 code review。
-- 合并和部署必须先经 Elon/Linus 审查，再由 Jeff 批准；Codex/OpenCode 永远不得自行合并或部署。
-- 非编码工作（文案、设计、财务等）流程不变；其中涉及代码的部分按本节执行。
