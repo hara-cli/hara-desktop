@@ -9,6 +9,7 @@ import { join, resolve } from "node:path";
 import { makeT } from "../src/i18n.ts";
 import { waitForLayout } from "./browser-layout-wait.mjs";
 import { requestCdp } from "./browser-cdp-request.mjs";
+import { navigateCdp } from "./browser-cdp-navigation.mjs";
 const base = new URL(process.argv[2] ?? "http://127.0.0.1:54991/");
 if(base.protocol!=="http:" || base.hostname!=="127.0.0.1" || base.pathname!=="/" || base.username || base.password || base.search || base.hash)throw new Error("Use a task-owned IPv4 loopback Vite root");
 if(!process.argv[3])throw new Error("An explicit evidence directory is required");
@@ -57,6 +58,7 @@ async function connect() {
   await send("Target.activateTarget", { targetId: target.targetId }, false);
   await send("Page.bringToFront");
   await send("Runtime.enable"); await send("Page.enable");
+  await send("Page.setLifecycleEventsEnabled", { enabled: true });
   const version = await send("Browser.getVersion", {}, false);
   browserUserAgent = version.userAgent;
   await send("Emulation.setUserAgentOverride", { userAgent: version.userAgent, platform: "MacIntel" });
@@ -82,7 +84,7 @@ async function navigate({width=1280,locale='zh-Hant',theme='light',scenario='hom
   await send('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:false});
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:0,y:0});
   const url=new URL('test/fixtures/workspace-shell-preview.html',base);url.search=new URLSearchParams({locale,theme,scenario,reset:reset?'1':'0'}).toString();
-  await send('Page.navigate',{url:url.href});
+  await navigateCdp(send, socket, {url:url.href, sessionId, step});
   await ready("!!window.__HARA_SHELL_FIXTURE__ && !!document.querySelector('.hs-field textarea,[data-tasks-count]')",'Synthetic Workspace fixture must mount');
   await ready("document.querySelector('[data-nav-count]')?.textContent === (new URLSearchParams(location.search).get('scenario')==='many'?'10':new URLSearchParams(location.search).get('scenario')==='partial'?'2':'3')",'Overview must settle with the expected scoped count');
   await settled();assert.equal(await evaluate('document.documentElement.dataset.theme'),theme);
@@ -147,7 +149,7 @@ try{
   await send('Emulation.setDeviceMetricsOverride',{width:900,height:700,deviceScaleFactor:1,mobile:false});
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:0,y:0});
   const url=new URL('test/fixtures/workspace-boot-preview.html',base);url.search=new URLSearchParams({locale:'en',theme}).toString();
-  await send('Page.navigate',{url:url.href});
+  await navigateCdp(send, socket, {url:url.href, sessionId, step});
   await ready("window.__HARA_BOOT_FIXTURE__?.model.getSnapshot().phase==='failed' && !!document.querySelector('.wsd-boot button')",'Startup failure fixture must settle');
   await settled();
   await evaluate("document.querySelector('.wsd-boot button').style.setProperty('--row-hover','initial')");
