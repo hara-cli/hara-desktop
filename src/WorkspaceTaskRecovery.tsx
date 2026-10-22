@@ -16,12 +16,16 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
   const state = workspaceRecoveryState(conversation);
   if (!["needs_recovery", "blocked", "cancelled", "interrupted"].includes(state)) return null;
   const reason = connectionRecoveryReason({ ...conversation, state });
+  const finishing = ["running", "draining"].includes(conversation.state);
+  const failed = [conversation.state, conversation.taskState].some(value => value === "error" || value === "failed");
+  const detail = typeof conversation.blockReason === "string" && conversation.blockReason.trim() ? conversation.blockReason : null;
   return <section className="wsd-resume" aria-labelledby="workspace-recovery-title" data-recovery={reason ? "connection" : "task"}>
     <strong id="workspace-recovery-title">{t(reason ? "ws.resume.repairTitle" : state === "cancelled" ? "ws.resume.cancelled" : "ws.resume.title")}</strong>
-    {reason ? <><p role="status">{t(`ws.resume.${reason}`)}</p><p>{t("ws.resume.repairBody")}</p>
+    {finishing ? <p role="status" data-recovery-finishing="true">{t("ws.resume.finishing")}</p> : null}
+    {reason ? <><p role={failed ? "alert" : "status"}>{t(`ws.resume.${reason}`)}</p><p>{t("ws.resume.repairBody")}</p>
       <button type="button" className="hs-btn sec" onClick={onRepair} disabled={disabled}>{t("ws.resume.repairAction")}</button></>
-      : <>{conversation.blockReason ? <p role="alert">{conversation.blockReason}</p> : null}<p>{t("ws.resume.body")}</p>
+      : <>{detail || failed ? <p role="alert">{detail ?? t("ws.resume.failureUnknown")}</p> : null}<p>{t("ws.resume.body")}</p>
         {conversation.resumeAdmission?.allowed === false ? <p>{t("ws.resume.budget")}</p> : null}
-        <button type="button" className="hs-btn sec" onClick={onContinue} disabled={disabled || continueDisabled || conversation.resumeAdmission?.allowed === false}>{t("ws.resume.action")}</button></>}
+        <button type="button" className="hs-btn sec" onClick={onContinue} disabled={disabled || continueDisabled || finishing || conversation.resumeAdmission?.allowed === false}>{t("ws.resume.action")}</button></>}
   </section>;
 }
