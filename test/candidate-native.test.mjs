@@ -6,7 +6,7 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { ROOT, INPUT, TARGETS, identity, assertEvent, nativeTarget, privateEnvironment, receipt, assertReceipt, artifactName, checkArchiveEntries, assertNoRosettaProbe } from '../scripts/candidate-common.mjs';
 import { assertSigner } from '../scripts/candidate-signing.mjs';
-import { testCounts, coreTestCommand, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
+import { testCounts, coreTestCommand, coreTestCoverage, assertStrictNativeCore, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
 import { updaterTarget, updaterPayload } from '../scripts/candidate-upgrade.mjs';
 import { validateTar, validateExtractedTree } from '../scripts/candidate-archive.mjs';
 import { lockedSidecarSpecs } from '../scripts/hydrate-locked-sidecar-dependencies.mjs';
@@ -63,15 +63,39 @@ test('complete native batches are aggregated and an earlier success cannot hide 
   assert.equal(testCounts((a+b).replace(/\n/g,'\r\n')).tests,11);
   for(const bad of [a+b.replace('fail 0','fail 1'),a+b.replace('cancelled 0','cancelled 1'),a+b.replace('# skipped 0\n',''),a+'not ok 1 - timed out file\n'+b,a+b+'# pass 7\n']) assert.throws(()=>testCounts(bad));
 });
-test('native Core uses the strict isolated full-suite entry, while Windows and Linux keep npm test', () => {
+test('Mac Core keeps strict full coverage; Windows shares ordinary CI contracts and receipts disclose the gap', () => {
   const core=path.resolve('synthetic-core');
   assert.deepEqual(coreTestCommand(core,'darwin'),{script:path.join(core,'scripts/native-ci-tests.mjs'),args:['--original-deadlines']});
-  assert.equal(coreTestCommand(core,'win32'),null);assert.equal(coreTestCommand(core,'linux'),null);
+  assert.deepEqual(coreTestCommand(core,'win32'),{script:path.join(core,'scripts/windows-ci-tests.mjs'),args:[]});
+  assert.equal(coreTestCommand(core,'linux'),null);assert.throws(()=>coreTestCommand(core,'unknown'));
+  assert.equal(coreTestCoverage('win32'),'windows-contract-subset-v1');
+  assert.equal(coreTestCoverage('darwin'),'full');assert.equal(coreTestCoverage('linux'),'full');
   const source=fs.readFileSync(path.join(ROOT,'scripts/candidate-native.mjs'),'utf8');
   assert(source.includes('runner.strictNativeTestBatches'));assert(!source.includes('HARA_INTEL_TEST_BUDGET ='));
+  assert(source.includes('target: c.target, coverage, counts'));
   const workflow=fs.readFileSync(path.join(ROOT,'.github/workflows/candidate.yml'),'utf8');
   assert(workflow.includes('candidate-test-diagnostics-'));assert(workflow.includes('if: ${{ always() }}'));
   assert(workflow.includes('/*-tests.log.result.json'));assert(!workflow.includes('/private-home/'));
+});
+test('Core capability code runs only in a scrubbed child and missing capability fails closed', async t => {
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'candidate-core-probe-')));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const core=path.join(root,'core'),base=path.join(root,'logs'),marker=path.join(root,'observed.json');
+  fs.mkdirSync(path.join(core,'scripts'),{recursive:true});
+  const script=path.join(core,'scripts/native-ci-tests.mjs');
+  fs.writeFileSync(script,'import fs from "node:fs";fs.writeFileSync(process.env.PROBE_FILE,JSON.stringify({pid:process.pid,sawCredential:!!process.env.HARA_TEST_API_KEY}));export function strictNativeTestBatches(){}');
+  const old=process.env.HARA_TEST_API_KEY;process.env.HARA_TEST_API_KEY='synthetic-parent-only';
+  const env=privateEnvironment(path.join(root,'home'));env.PROBE_FILE=marker;
+  try {
+    await assertStrictNativeCore({core,base,env});
+    const observed=JSON.parse(fs.readFileSync(marker));assert.notEqual(observed.pid,process.pid);assert.equal(observed.sawCredential,false);
+    fs.writeFileSync(script,'export const unrelated=true;');
+    await assert.rejects(()=>assertStrictNativeCore({core,base:path.join(root,'missing'),env}),/candidate phase failed/);
+    assert.match(fs.readFileSync(path.join(root,'missing/core-capability-tests.log'),'utf8'),/pinned Core must support strict/);
+  } finally {
+    fs.rmSync(env.TMPDIR,{recursive:true,force:true});
+    if(old===undefined)delete process.env.HARA_TEST_API_KEY;else process.env.HARA_TEST_API_KEY=old;
+  }
 });
 test('Pi-only formal hydration supports all native platforms without reintroducing SDK', () => {
   const p='@earendil-works/pi-coding-agent', lock={lockfileVersion:3,packages:{'':{dependencies:{[p]:'1.2.3'}},['node_modules/'+p]:{version:'1.2.3',integrity:'sha512-YWJjZA=='}}};
