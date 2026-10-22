@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { ROOT, INPUT, TARGETS, run, sync, save, receipt, fileHash, privateEnvironment, verifyUpdater } from './candidate-common.mjs';
 import { validateTar, validateExtractedTree } from './candidate-archive.mjs';
+import { runLocalTar } from './candidate-local-tar.mjs';
 
 export function updaterTarget(target) {
   assert(TARGETS.includes(target)); return target.startsWith('aarch64') ? 'darwin-aarch64' : target.endsWith('apple-darwin') ? 'darwin-x86_64'
@@ -57,7 +58,7 @@ export async function upgradeSmoke(c, assets) {
         const asset = response.assets.find(a => a.name === name); assert(asset); assert.match(asset.digest, /^sha256:[a-f0-9]{64}$/);
         originalArchive = path.join(directory, name); await downloadPublic(asset.browser_download_url, originalArchive, asset.size, asset.digest);
         await validateTar(originalArchive, 'Hara.app');
-        await run('Extract original signed old-App into private upgrade copy', 'tar', ['-xzf', originalArchive, '-C', directory], { env: c.env });
+        await runLocalTar('Extract original signed old-App into private upgrade copy', 'extract', originalArchive, directory, [], { env: c.env });
         const app = path.join(directory, 'Hara.app'); exe = path.join(app, 'Contents/MacOS/hara-desktop');
         validateExtractedTree(app);
         assert.equal(fs.realpathSync(exe), exe); assert.equal(sync('/usr/bin/plutil', ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', path.join(app, 'Contents/Info.plist')]), from);

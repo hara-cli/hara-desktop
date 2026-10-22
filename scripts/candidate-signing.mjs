@@ -9,6 +9,7 @@ import { ROOT, INPUT, TARGETS, identity, realHome, context, receipt, assertRecei
   sync, run, fileHash, downloadArtifact, verifyUpdater, restoreBuildBinaries } from './candidate-common.mjs';
 import { readUpdaterKey, withUpdaterFile } from './with-updater-file.mjs';
 import { validateTar, validateExtractedTree } from './candidate-archive.mjs';
+import { runLocalTar } from './candidate-local-tar.mjs';
 import { parseNotaryResponse } from './notarize-artifact.mjs';
 import { readAdmission } from './candidate-admission.mjs';
 import { candidateSigningConfiguration } from './candidate-operator-config.mjs';
@@ -101,7 +102,7 @@ async function importBundle(c, phase, target, directory) {
   const file = path.join(transport, 'bundle.tar.gz'); assert.equal(r.archive.name, 'bundle.tar.gz');
   assert.equal(fileHash(file), r.archive.sha256); assert.equal(fs.statSync(file).size, r.archive.size);
   await validateTar(file); fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  await run('Extract immutable native-built bundle', 'tar', ['-xzf', file, '-C', directory], { env: c.env });
+  await runLocalTar('Extract immutable native-built bundle', 'extract', file, directory, [], { env: c.env });
   validateExtractedTree(path.join(directory, 'bundle'));
   return r;
 }
@@ -151,7 +152,7 @@ export async function signApps(c) {
       await run('Gatekeeper notarized App', '/usr/sbin/spctl', ['-a', '-vv', app], { env: c.env });
       await verifyApp(c, app, target);
       const zip = path.join(out, 'Hara.app.zip'); await run('Archive exact stapled App transport', '/usr/bin/ditto', ['-c', '-k', '--keepParent', app, zip], { env: c.env });
-      const archive = path.join(out, 'Hara.app.tar.gz'); await run('Create canonical updater archive', 'tar', ['-czf', archive, '-C', path.dirname(app), 'Hara.app'], { env: c.env });
+      const archive = path.join(out, 'Hara.app.tar.gz'); await runLocalTar('Create canonical updater archive', 'create', archive, path.dirname(app), ['Hara.app'], { env: c.env });
       await signUpdater(c, archive);
       save(path.join(out, 'receipt.json'), receipt({ phase: 'app-signed', target, zipSha256: fileHash(zip), appNotary: notary,
         files: { 'Hara.app.tar.gz': fileHash(archive), 'Hara.app.tar.gz.sig': fileHash(archive + '.sig') } }));
@@ -183,7 +184,7 @@ export async function signFinal(c) {
         signing = { updaterSignaturesVerified: true, authenticode: false };
       }
       const out = path.join(c.base, `final-output-${target}`); fs.mkdirSync(out, { mode: 0o700 });
-      const archive = path.join(out, 'bundle.tar.gz'); await run('Archive immutable final package set', 'tar', ['-czf', archive, '-C', directory, 'bundle'], { env: c.env });
+      const archive = path.join(out, 'bundle.tar.gz'); await runLocalTar('Archive immutable final package set', 'create', archive, directory, ['bundle'], { env: c.env });
       save(path.join(out, 'receipt.json'), receipt({ phase: 'final', target, signing, archive: { name: 'bundle.tar.gz', size: fs.statSync(archive).size, sha256: fileHash(archive) } }));
     }
   });
