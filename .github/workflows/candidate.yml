@@ -71,7 +71,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           path: app
-          ref: d8d109be68e37a3eff636fe061526259db166bac
+          ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b
           persist-credentials: false
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -121,7 +121,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           path: app
-          ref: d8d109be68e37a3eff636fe061526259db166bac
+          ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b
           persist-credentials: false
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -195,7 +195,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: d8d109be68e37a3eff636fe061526259db166bac, persist-credentials: false }
+        with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: b11009bdcafd2367cd587a47c665dea260d69df4, persist-credentials: false }
       - name: Select pinned local tools
@@ -236,7 +236,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: d8d109be68e37a3eff636fe061526259db166bac, persist-credentials: false }
+        with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: b11009bdcafd2367cd587a47c665dea260d69df4, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
@@ -275,7 +275,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: d8d109be68e37a3eff636fe061526259db166bac, persist-credentials: false }
+        with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: b11009bdcafd2367cd587a47c665dea260d69df4, persist-credentials: false }
       - name: Select pinned local tools
@@ -332,7 +332,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: d8d109be68e37a3eff636fe061526259db166bac, persist-credentials: false }
+        with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: b11009bdcafd2367cd587a47c665dea260d69df4, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
