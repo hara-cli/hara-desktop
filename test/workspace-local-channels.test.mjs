@@ -6,12 +6,12 @@ import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
 import { normalizeShellRoute } from "../src/workspace-shell-state.ts";
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const member = `ag_${randomUUID()}`, otherMember = `ag_${randomUUID()}`;
-function fixture({ preferences, catalogs: savedCatalogs, messages: savedMessages } = {}) {
+function fixture({ preferences, catalogs: savedCatalogs, messages: savedMessages, userQuestions = false } = {}) {
   const calls = [], handlers = {}, catalogs = savedCatalogs ?? new Map(), messages = savedMessages ?? new Map();
   if (!savedCatalogs) for (const id of ["A", "B"]) catalogs.set(id, { workspaceId: id, resourceGeneration: `g-${id}`, revision: 0, channels: [] });
   const snapshot = (workspaceId, channelId) => ({ workspaceId, resourceGeneration: `g-${workspaceId}`, channel: catalogs.get(workspaceId).channels.find(row => row.id === channelId),
     revision: 1, state: "idle", messages: messages.get(channelId) ?? [], approvals: [], turns: [] });
-  const model = new WorkspaceLocalChannelsModel({ supportsLocalChannels: () => true, async localChannelRequest(method, params) {
+  const model = new WorkspaceLocalChannelsModel({ supportsUserQuestions: () => userQuestions, supportsLocalChannels: () => true, async localChannelRequest(method, params) {
     calls.push({ method, params: structuredClone(params) }); if (handlers[method]) return handlers[method](params);
     const catalog = catalogs.get(params.workspaceId);
     if (method === "workspace.channels.list") return structuredClone(catalog);
@@ -336,4 +336,23 @@ test("only an explicit own send returns a history window to latest; typing and r
   const f = fixture(); await f.model.bind("A", "g-A"); await create(f); f.model.setHistoryAnchor("older");
   f.model.setDraft("Own message"); await f.model.refresh(); assert.equal(f.model.getSnapshot().historyAnchor, "older");
   await f.model.send([]); assert.equal(f.model.getSnapshot().historyAnchor, null);
+});
+
+
+test("channel answers bind one colleague and original question without a normal send or draft loss", async () => {
+  const f = fixture({ userQuestions: true }); await f.model.bind("A", "g-A"); const id = await create(f);
+  const q = { id: randomUUID(), reason: "explicit", question: "Which target?", options: ["Beta"], taskId: "task", runId: "run" };
+  f.handlers["workspace.channels.snapshot"] = () => ({ ...f.snapshot("A", id), questions: [{ agentId: member, displayName: "Alpha", conversation: {
+    state: "awaiting_user", taskState: "paused", pendingQuestion: q, resumeAdmission: { allowed: true, reason: null } } }] });
+  f.handlers["workspace.channels.answer"] = params => ({ workspaceId: "A", resourceGeneration: "g-A", channelId: id, requestId: params.requestId, accepted: true });
+  await f.model.refresh(); f.model.setDraft("Keep this separate message");
+  await f.model.send([member]); assert.equal(f.calls.some(row => row.method === "workspace.channels.send"), false);
+  await f.model.answer(otherMember, q.id, "Beta"); assert.equal(f.calls.some(row => row.method === "workspace.channels.answer"), false);
+  await f.model.answer(member, q.id, "Beta");
+  const call = f.calls.find(row => row.method === "workspace.channels.answer");
+  assert.equal(call.params.channelId, id); assert.equal(call.params.agentId, member); assert.equal(call.params.questionId, q.id);
+  assert.equal(call.params.message, "Beta"); assert.equal(call.params.workspaceId, "A"); assert.equal(call.params.expectedGeneration, "g-A");
+  assert.equal(f.model.getSnapshot().draft, "Keep this separate message");
+  await f.model.bind("B", "g-B"); await f.model.answer(member, q.id, "Beta");
+  assert.equal(f.calls.filter(row => row.method === "workspace.channels.answer").length, 1);
 });

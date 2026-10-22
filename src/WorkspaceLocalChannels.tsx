@@ -1,3 +1,4 @@
+import { WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { HashtagIcon, MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
@@ -95,9 +96,9 @@ export function channelHistoryRows(snapshot: LocalChannelSnapshot): ChannelHisto
     ...turn.replies.filter(reply => ["failed", "interrupted"].includes(reply.state)).map(reply => ({ id: JSON.stringify([turn.id, "failure", reply.agentId]), turnId: turn.id, failedName: reply.displayName })),
   ]);
 }
-export function LocalChannelThread({ view, colleagues, t, retry, transcript, approval, model, scrollRoot, onFollowChange }: { view: LocalChannelsView; colleagues: WorkspaceDevAgent[]; t: Translate; retry: () => void;
+export function LocalChannelThread({ view, colleagues, t, retry, transcript, approval, model, scrollRoot, onFollowChange, onRepair, disabled = false }: { view: LocalChannelsView; colleagues: WorkspaceDevAgent[]; t: Translate; retry: () => void;
   transcript: (messages: WorkspaceDevMessage[], agent?: WorkspaceDevAgent) => ReactNode; approval: (card: WorkspaceDevApproval) => ReactNode;
-  model?: Pick<WorkspaceLocalChannelsModel, "setHistoryAnchor">; scrollRoot?: RefObject<HTMLDivElement | null>; onFollowChange?: (following: boolean) => void }) {
+  model?: Pick<WorkspaceLocalChannelsModel, "setHistoryAnchor"> & Partial<Pick<WorkspaceLocalChannelsModel, "answer" | "pauseQuestion" | "supportsUserQuestions">>; onRepair?: () => void; disabled?: boolean; scrollRoot?: RefObject<HTMLDivElement | null>; onFollowChange?: (following: boolean) => void }) {
   const channel = view.channel, rows = useMemo(() => channel ? channelHistoryRows(channel) : [], [channel]);
   const anchor = view.historyAnchor ?? null, page = useMemo(() => channelHistoryPage(rows, anchor), [rows, anchor]);
   const colleaguesById = useMemo(() => new Map(colleagues.map(row => [row.agentId, row])), [colleagues]);
@@ -145,6 +146,10 @@ export function LocalChannelThread({ view, colleagues, t, retry, transcript, app
       {page.hasNewer ? <button className="hs-btn sec" data-history-action="latest" onClick={() => navigate(null, "latest")}>{t("ws.channels.history.latest")}</button> : null}
     </nav> : null}
     {rendered}
+    {(channel.questions ?? []).map(row => <div key={row.conversation.pendingQuestion?.id} data-question-agent={row.agentId}><strong>{row.displayName}</strong>
+      <WorkspaceUserQuestion conversation={row.conversation} t={t} disabled={disabled || view.saving || Boolean(view.pending) || ["running", "draining"].includes(channel.state)}
+        supported={model?.supportsUserQuestions?.() === true} onAnswer={(questionId, answer) => void model?.answer?.(row.agentId, questionId, answer)} onPause={questionId => void model?.pauseQuestion?.(row.agentId, questionId)} onRepair={onRepair ?? (() => {})} />
+    </div>)}
     {page.hasNewer ? <nav className="hs-channel-history-nav" aria-label={t("ws.channels.history.label")}>
       <button className="hs-btn sec" data-history-action="newer" onClick={() => navigate(page.newer, page.newer === null ? "latest" : "start")}>{t("ws.channels.history.newer")}</button>
       <button className="hs-btn sec" data-history-action="latest" onClick={() => navigate(null, "latest")}>{t("ws.channels.history.latest")}</button>

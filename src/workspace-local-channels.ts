@@ -1,11 +1,12 @@
-import type { WorkspaceDevApproval, WorkspaceDevMessage, WorkspaceDevModel } from "./workspace-dev-state";
+import type { WorkspaceDevApproval, WorkspaceDevMessage, WorkspaceDevModel, WorkspaceQuestionConversation } from "./workspace-dev-state";
 import { createLocalChannelPreferencesStore, emptyChannelPreferences, type LocalChannelCreation, type LocalChannelPreferences, type LocalChannelPreferencesStore } from "./workspace-local-channel-preferences.ts";
 export interface LocalChannel { id: string; name: string; memberIds: string[]; createdAt: string }
 export interface LocalChannelCatalog { workspaceId: string; resourceGeneration: string; revision: number; channels: LocalChannel[] }
 export interface LocalChannelSnapshot { workspaceId: string; resourceGeneration: string; channel: LocalChannel; revision: number; state: string;
+  questions?: { agentId: string; displayName: string; conversation: WorkspaceQuestionConversation }[];
   messages: { id: string; turnId: string; agentId: string | null; displayName: string; createdAt: string; message: WorkspaceDevMessage }[];
   turns: { id: string; state: string; replies: { agentId: string; displayName: string; state: string }[] }[]; approvals: WorkspaceDevApproval[] }
-interface Pending { body: string; requestId: string; recipientIds: string[]; state: "sending" | "unknown" }
+interface Pending { body: string; requestId: string; recipientIds: string[]; isAnswer?: boolean; state: "sending" | "unknown" }
 type Creation = LocalChannelCreation;
 export interface LocalChannelsView { scope: string; supported: boolean; catalog: LocalChannelCatalog | null; channelId: string | null; channel: LocalChannelSnapshot | null;
   loading: boolean; saving: boolean; draft: string; recipientIds: string[]; pending: Pending | null; error: string; creationUnknown: boolean; historyAnchor: string | null }
@@ -30,14 +31,15 @@ export class WorkspaceLocalChannelsModel {
   private recipients = new Map<string, string[]>();
   private allRecipients = new Set<string>();
   private pending = new Map<string, Pending>();
+  private pausing = new Set<string>();
   private creation = new Map<string, Creation>();
   private approvals = new Set<string>();
   private refreshing: { promise: Promise<void>; dirty: boolean } | null = null;
   private saved = new Map<string, LocalChannelPreferences>();
-  private readonly model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels">;
+  private readonly model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions">>;
   private readonly nonce: () => string;
   private readonly preferences: LocalChannelPreferencesStore | null;
-  constructor(model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels">, nonce = () => crypto.randomUUID(),
+  constructor(model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions">>, nonce = () => crypto.randomUUID(),
     preferences: LocalChannelPreferencesStore | null = createLocalChannelPreferencesStore()) { this.model = model; this.nonce = nonce; this.preferences = preferences; }
   getSnapshot = () => this.view;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -201,16 +203,34 @@ export class WorkspaceLocalChannelsModel {
     } catch { if (epoch === this.epoch && selection === this.selection) { this.update({ saving: false, error: "ws.channels.saveFailed" }); await this.refresh(); } return false; }
     finally { if (epoch === this.epoch) this.update({ saving: false }); }
   }
-  async send(recipientIds: string[]) {
-    const { channelId, channel } = this.view, body = this.view.draft.trim();
-    if (!channelId || !channel || !body || this.pending.has(this.key()) || ["running", "draining"].includes(channel.state)) return;
+  supportsUserQuestions(): boolean { return this.model.supportsUserQuestions?.() === true; }
+  async pauseQuestion(agentId: string, questionId: string): Promise<void> {
+    if (!this.supportsUserQuestions() || this.view.pending || ["running", "draining"].includes(this.view.channel?.state ?? "")) return;
+    if (!this.view.channel?.questions?.some(row => row.agentId === agentId && row.conversation.pendingQuestion?.id === questionId)) return;
+    const key = this.key(); if (this.pausing.has(key)) return;
+    this.pausing.add(key); this.update({ saving: true });
+    try { await this.request("workspace.channels.pause-question", { channelId: this.view.channelId, agentId, questionId }); }
+    catch { if (this.key() === key) this.update({ error: "ws.question.pauseUnknown" }); }
+    finally { this.pausing.delete(key); if (this.key() === key) this.update({ saving: false }); await this.refresh(); }
+  }
+  async answer(agentId: string, questionId: string, body: string): Promise<void> {
+    if (!this.supportsUserQuestions()) { this.update({ error: "ws.question.unsupported" }); return; }
+    const pending = this.view.channel?.questions?.find(row => row.agentId === agentId && row.conversation.pendingQuestion?.id === questionId);
+    if (!pending || body.trim() === "/continue") { this.update({ error: "ws.question.stale" }); return; }
+    if (pending.conversation.resumeAdmission?.allowed === false) { this.update({ error: "ws.notice.resumeBudget" }); return; }
+    return this.send([agentId], { questionId, body });
+  }
+  async send(recipientIds: string[], answer?: { questionId: string; body: string }) {
+    const { channelId, channel } = this.view, body = answer ? answer.body.trim() : this.view.draft.trim();
+    if (!channelId || !channel || !body || this.pausing.has(this.key()) || this.pending.has(this.key()) || ["running", "draining"].includes(channel.state)) return;
+    if (!answer && channel.questions?.some(row => recipientIds.includes(row.agentId))) { this.update({ error: "ws.question.answerRequired" }); return; }
     const key = this.key(), workspaceId = this.workspaceId, generation = this.generation;
-    const item: Pending = { body, requestId: this.nonce(), recipientIds: [...recipientIds], state: "sending" };
+    const item: Pending = { body, requestId: this.nonce(), recipientIds: [...recipientIds], state: "sending", ...(answer ? { isAnswer: true } : {}) };
     this.historyAnchors.delete(key);
     this.pending.set(key, item); this.rememberPending(key, item); this.update({ pending: item, error: "", historyAnchor: null });
     try {
-      const value = await this.request<{ workspaceId: string; resourceGeneration: string; channelId: string; requestId: string; accepted: boolean }>("workspace.channels.send", {
-        channelId, message: body, requestId: item.requestId, recipientIds: item.recipientIds });
+      const value = await this.request<{ workspaceId: string; resourceGeneration: string; channelId: string; requestId: string; accepted: boolean }>(answer ? "workspace.channels.answer" : "workspace.channels.send", {
+        channelId, message: body, requestId: item.requestId, ...(answer ? { agentId: recipientIds[0], questionId: answer.questionId } : { recipientIds: item.recipientIds }) });
       if (value?.workspaceId !== workspaceId || value.resourceGeneration !== generation || value.channelId !== channelId || value.requestId !== item.requestId || value.accepted !== true) throw new Error("Invalid channel acceptance");
       this.settle(key, item); if (this.key() === key) await this.refresh();
     } catch (error) {
@@ -219,7 +239,7 @@ export class WorkspaceLocalChannelsModel {
     }
   }
   private settle(key: string, item: Pending) {
-    this.pending.delete(key); this.rememberPending(key, null); if (this.drafts.get(key)?.trim() === item.body) this.drafts.set(key, "");
+    this.pending.delete(key); this.rememberPending(key, null); if (!item.isAnswer && this.drafts.get(key)?.trim() === item.body) this.drafts.set(key, "");
     if (this.key() === key) this.update({ draft: this.drafts.get(key) ?? "", pending: null, error: "" });
   }
   async verifyPending() {
