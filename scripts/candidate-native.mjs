@@ -14,11 +14,38 @@ export function packageKinds(target) {
   assert(TARGETS.includes(target)); return target.endsWith('apple-darwin') ? 'app,dmg' : target.endsWith('linux-gnu') ? 'deb,rpm' : 'msi,nsis';
 }
 export function testCounts(output) {
-  const find = name => Number(output.match(new RegExp(`^# ${name} (\\d+)$`, 'm'))?.[1]);
-  const counts = { tests: find('tests'), pass: find('pass'), fail: find('fail'), cancelled: find('cancelled'), skipped: find('skipped') };
-  assert(Number.isSafeInteger(counts.tests) && counts.tests > 0 && counts.pass > 0);
-  assert.equal(counts.fail, 0); assert.equal(counts.cancelled, 0); assert.equal(counts.tests, counts.pass + counts.skipped);
-  return counts;
+  assert(!/^not ok /m.test(output), 'a failed file or case cannot be hidden by a later summary');
+  const summaries = [...output.matchAll(/^# tests (\d+)\r?$/gm)];
+  assert(summaries.length > 0, 'complete TAP accounting required');
+  const total = { tests: 0, pass: 0, fail: 0, cancelled: 0, skipped: 0 };
+  for (let i = 0; i < summaries.length; i++) {
+    const block = output.slice(summaries[i].index, summaries[i + 1]?.index);
+    const counts = Object.fromEntries(Object.keys(total).map(name => {
+      const found = [...block.matchAll(new RegExp(`^# ${name} (\\d+)\\r?$`, 'gm'))];
+      assert.equal(found.length, 1, `one complete ${name} count per test batch required`);
+      return [name, Number(found[0][1])];
+    }));
+    assert(Object.values(counts).every(Number.isSafeInteger) && counts.tests > 0 && counts.pass > 0);
+    assert.equal(counts.fail, 0); assert.equal(counts.cancelled, 0); assert.equal(counts.tests, counts.pass + counts.skipped);
+    for (const name of Object.keys(total)) { total[name] += counts[name]; assert(Number.isSafeInteger(total[name])); }
+  }
+  return total;
+}
+export function coreTestCommand(core, platform = process.platform) {
+  if (platform === 'darwin') return { script: path.join(core, 'scripts/native-ci-tests.mjs'), args: ['--original-deadlines'] };
+  if (platform === 'win32') return { script: path.join(core, 'scripts/windows-ci-tests.mjs'), args: [] };
+  assert.equal(platform, 'linux', 'unsupported candidate Core platform');
+  return null;
+}
+export function coreTestCoverage(platform = process.platform) {
+  return platform === 'win32' ? 'windows-contract-subset-v1' : 'full';
+}
+export async function assertStrictNativeCore(c) {
+  const command = coreTestCommand(c.core, 'darwin');
+  // Application code must not run in the credential-bearing orchestration process.
+  await run('Verify pinned Core strict native test capability', process.execPath, ['--input-type=module', '-e',
+    'const runner=await import(process.argv[1]);if(typeof runner.strictNativeTestBatches!=="function")throw Error("pinned Core must support strict original-deadline native full tests");console.log("strict native capability confirmed");',
+    pathToFileURL(command.script).href], { cwd: c.core, env: c.env, capture: true, logFile: path.join(c.base, 'core-capability-tests.log') });
 }
 const bash = (label, args, options) => run(label, 'bash', args, options);
 const npm = (label, args, options) => bash(label, ['-c', 'exec npm "$@"', 'candidate-npm', ...args], options);
@@ -58,9 +85,14 @@ export async function hydrateCore(c) {
 export async function tests(c) {
   await bash('Original formal production dependency audit', [path.join(c.desktop, 'scripts/npm-audit-retry.sh')], { cwd: c.desktop, env: c.env });
   for (const [name, cwd] of [['Orchestration', ROOT], ['Desktop', c.desktop], ['Core', c.core]]) {
-    const output = await npm(`${name} original full suite`, ['test'], { cwd, env: c.env, capture: true, logFile:path.join(c.base, `${name.toLowerCase()}-tests.log`) });
+    const options = { cwd, env: c.env, capture: true, logFile:path.join(c.base, `${name.toLowerCase()}-tests.log`) };
+    const command = name === 'Core' ? coreTestCommand(c.core) : null;
+    if (command && process.platform === 'darwin') await assertStrictNativeCore(c);
+    const coverage = name === 'Core' ? coreTestCoverage() : 'full';
+    const output = command ? await node(`${name} ${coverage} at original deadlines`, command.script, command.args, options)
+      : await npm(`${name} original full suite`, ['test'], options);
     const counts = testCounts(output); console.log(`${name} tests ${JSON.stringify(counts)}`);
-    save(path.join(c.base, `${name.toLowerCase()}-tests.json`), receipt({ target: c.target, counts }));
+    save(path.join(c.base, `${name.toLowerCase()}-tests.json`), receipt({ target: c.target, coverage, counts }));
   }
   await npm('Validate application release metadata', ['run', 'check:release'], { cwd: c.desktop, env: c.env });
   await npm('Build exact production renderer', ['run', 'build'], { cwd: c.desktop, env: c.env });
