@@ -35,6 +35,7 @@ function echoAfterEnd(socket, initial = Buffer.alloc(0)) {
 async function httpProxy(t, { status = 200, split = false, prefix = Buffer.alloc(0),
   hang = false, dropAfterSuccess = false, slow = false } = {}) {
   const requests = [];
+  const handshake = Promise.withResolvers();
   const server = net.createServer({ allowHalfOpen: true }, (socket) => {
     let buffer = Buffer.alloc(0);
     const onData = (chunk) => {
@@ -43,6 +44,7 @@ async function httpProxy(t, { status = 200, split = false, prefix = Buffer.alloc
       if (headerEnd === -1) return;
       socket.removeListener('data', onData);
       requests.push(buffer.subarray(0, headerEnd + 4).toString('latin1'));
+      handshake.resolve();
       if (hang) return;
       if (status !== 200) { socket.end(`HTTP/1.1 ${status} Unavailable\r\n\r\n`); return; }
       echoAfterEnd(socket, buffer.subarray(headerEnd + 4));
@@ -60,7 +62,7 @@ async function httpProxy(t, { status = 200, split = false, prefix = Buffer.alloc
     socket.on('data', onData);
   });
   const port = await listen(t, server);
-  return { url: `http://127.0.0.1:${port}`, port, requests };
+  return { url: `http://127.0.0.1:${port}`, port, requests, handshake: handshake.promise };
 }
 
 async function socksProxy(t, { replyType = 1, prefix = Buffer.alloc(0), method = 0 } = {}) {
@@ -585,11 +587,57 @@ test('non-200 primary falls back only before client success and preserves split-
 test('bounded handshake timeout permits fallback and a silent broker tunnel has no short idle deadline', { timeout: 5000 }, async (t) => {
   const primary = await httpProxy(t, { hang: true });
   const fallback = await httpProxy(t);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const server = createServer({ primaryProxy: primary.url, fallbackProxy: fallback.url, handshakeTimeoutMs: 35 });
   const port = await listen(t, server);
-  const response = await roundTrip(t, port, 'broker.actions.githubusercontent.com:443', { idleMs: 110 });
+  const client = await rawClient(t, port);
+  client.socket.write(requestBytes('broker.actions.githubusercontent.com:443'));
+  // Real sockets establish explicit readiness; only the deadline is virtual. Host load cannot
+  // consume the fallback's 35ms before its CONNECT request has even reached the fixture.
+  await primary.handshake;
+  t.mock.timers.tick(34);
+  assert.equal(server.getStats().fallbacks, 0);
+  assert.equal(fallback.requests.length, 0);
+  t.mock.timers.tick(1);
+  await fallback.handshake;
+  assert.match(await client.header, /^HTTP\/1\.1 200 /);
+  assert.equal(server.getStats().established, 1);
+  t.mock.timers.tick(110);
+  assert.equal(server.getStats().failed, 0);
+  // Also retain the real silent-socket integration check after successful handshakes. No mock
+  // can hide a short socket.setTimeout(), and the original 5000ms test deadline is unchanged.
+  t.mock.timers.reset();
+  await new Promise((resolve) => setTimeout(resolve, 110));
+  assert.equal(client.socket.destroyed, false);
+  client.socket.end(tlsBytes);
+  const response = await client.complete;
   assert.deepEqual(response.body, tlsBytes);
   assert.equal(server.getStats().fallbacks, 1);
+});
+
+test('each silent upstream gets exactly one bounded handshake before a 502, without direct bypass', { timeout: 5000 }, async (t) => {
+  const primary = await httpProxy(t, { hang: true });
+  const fallback = await httpProxy(t, { hang: true });
+  let directCalls = 0;
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const server = createServer({ primaryProxy: primary.url, fallbackProxy: fallback.url, handshakeTimeoutMs: 35,
+    dialDirect: () => { directCalls++; throw new Error('unexpected direct dial'); } });
+  const port = await listen(t, server);
+  const client = await rawClient(t, port);
+  client.socket.write(requestBytes('api.github.com:443'));
+  await primary.handshake;
+  t.mock.timers.tick(35);
+  await fallback.handshake;
+  t.mock.timers.tick(34);
+  assert.equal(server.getStats().failed, 0);
+  t.mock.timers.tick(1);
+  const response = await client.complete;
+  client.socket.end();
+  assert.match(response.header, /^HTTP\/1\.1 502 /);
+  assert.equal(response.body.length, 0);
+  assert.equal(server.getStats().fallbacks, 1);
+  assert.equal(server.getStats().established, 0);
+  assert.equal(directCalls, 0);
 });
 
 test('failed upstreams never bypass the allowlist route by dialing the destination directly', { timeout: 5000 }, async (t) => {
