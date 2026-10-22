@@ -13,6 +13,7 @@ export function WorkspaceTaskActivity({ conversation, name, t, children }: {
 export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisabled = false, onContinue, onRepair }: {
   conversation: WorkspaceDevSnapshot["conversation"]; t: ReturnType<typeof makeT>; disabled: boolean; continueDisabled?: boolean; onContinue(): void; onRepair(): void;
 }) {
+  if (conversation.pendingQuestion) return null;
   const state = workspaceRecoveryState(conversation);
   if (!["needs_recovery", "blocked", "cancelled", "interrupted"].includes(state)) return null;
   const reason = connectionRecoveryReason({ ...conversation, state });

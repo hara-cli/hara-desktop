@@ -4,7 +4,7 @@ const STOPPED_TASKS = new Set(["blocked", "error", "failed", "paused", "awaiting
 /** A physical request can still be draining after the task has stopped. Keep that transport lock,
  * but never describe its cleanup as a colleague still composing a reply. */
 export function workspaceConversationReplying(conversation: Conversation): boolean {
-  return ["running", "draining"].includes(conversation.state) && !STOPPED_TASKS.has(conversation.taskState ?? "");
+  return !conversation.pendingQuestion && ["running", "draining"].includes(conversation.state) && !STOPPED_TASKS.has(conversation.taskState ?? "");
 }
 export function workspaceRecoveryState(conversation: Conversation): string {
   if (["blocked", "error", "failed"].includes(conversation.taskState ?? "")) return "blocked";
@@ -23,7 +23,7 @@ function explicitQuotaExhaustion(message: string): boolean {
   if (requestWindowQuota(message)) return false;
   return /insufficient\s+(?:account\s+)?(?:quota|allowance)|(?:quota|allowance).{0,20}(?:exhausted|depleted|used up|run out)|(?:exhausted|depleted).{0,20}(?:quota|allowance)|(?:额度|額度|配额|配額).{0,12}(?:不足|耗尽|耗盡|用尽|用盡)/.test(message);
 }
-export function connectionRecoveryReason(conversation: WorkspaceDevSnapshot["conversation"]): ConnectionRecoveryReason | null {
+export function connectionRecoveryReason(conversation: Pick<WorkspaceDevSnapshot["conversation"], "resumeAdmission" | "blockReason" | "state">): ConnectionRecoveryReason | null {
   const reason = conversation.resumeAdmission?.reason;
   if (CONNECTION_RECOVERY_REASONS.includes(reason as ConnectionRecoveryReason)) return reason as ConnectionRecoveryReason;
   // Older engines have no typed provider admission reason. Only inspect their provider-error prefix.

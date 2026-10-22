@@ -2,6 +2,24 @@ import { WORKSPACE_SETTINGS_KEYS } from "./workspace-settings-i18n.ts";
 
 // Shared shell keys in English, Simplified Chinese and Traditional Chinese.
 export const WORKSPACE_KEYS = [
+  ["ws.question.step", "Saved step:", "当前卡点：", "目前卡點："],
+  ["ws.question.pause", "Keep paused for now", "先停在这里", "先停在這裡"],
+  ["ws.question.pauseUnknown", "Pause could not be confirmed. Refresh to check the saved task.", "尚未确认暂停结果，请刷新核对已保留的任务。", "尚未確認暫停結果，請重新整理核對已保留的任務。"],
+  ["ws.question.title", "Your colleague needs your input", "同事需要你补充", "同事需要你補充"],
+  ["ws.question.reason.lookup_missing", "Two lookups could not identify the target.", "两次查找仍未确认目标。", "兩次查找仍未確認目標。"],
+  ["ws.question.reason.lookup_ambiguous", "More than one match needs clarification.", "有多个可能对象，需要你确认。", "有多個可能對象，需要你確認。"],
+  ["ws.question.reason.tool_problem", "This step encountered a problem.", "当前步骤遇到了问题。", "目前步驟遇到了問題。"],
+  ["ws.question.reason.budget_warning", "The original task is near its budget limit.", "原任务快到预算上限。", "原任務快到預算上限。"],
+  ["ws.question.reason.explicit", "One answer is needed before work can continue.", "补充这项信息后，同事才能继续。", "補充這項資訊後，同事才能繼續。"],
+  ["ws.question.saved", "Progress is saved. Your answer continues this task from its checkpoint.", "进度已保留，回答后从当前卡点继续原任务。", "進度已保留，回答後從目前卡點繼續原任務。"],
+  ["ws.question.answer", "Your answer", "补充信息", "補充資訊"],
+  ["ws.question.choices", "Available answers", "可选回答", "可選回答"],
+  ["ws.question.continue", "Answer and continue", "回答并继续", "回答並繼續"],
+  ["ws.question.noDefault", "No reply means keep waiting. The original budget stays in effect.", "未回答会保持等待；不会默认接受或重置原预算。", "未回答會保持等待；不會預設接受或重設原預算。"],
+  ["ws.question.stale", "This question changed. Refresh before answering.", "问题已变化，请刷新后回答。", "問題已變更，請重新整理後回答。"],
+  ["ws.question.answerRequired", "Answer the current question card to continue this task.", "请回答当前问题卡，再继续原任务。", "請回答目前問題卡，再繼續原任務。"],
+  ["ws.question.unsupported", "This connected runtime cannot accept structured answers. Update it before continuing.", "当前连接的运行时不支持回答问题，请更新后继续。", "目前連線的執行階段不支援回答問題，請更新後繼續。"],
+
   [
     "ws.space.current",
     "Current workspace",
