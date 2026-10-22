@@ -7,6 +7,7 @@ import { ROOT, INPUT, TARGETS, identity, context, assertSources, receipt, assert
   save, readJson, fileHash, downloadArtifact, restoreBuildBinaries } from './candidate-common.mjs';
 import { upgradeSmoke } from './candidate-upgrade.mjs';
 import { validateTar, validateExtractedTree } from './candidate-archive.mjs';
+import { runLocalTar } from './candidate-local-tar.mjs';
 
 export const bunTarget = target => ({ 'aarch64-apple-darwin': 'bun-darwin-arm64', 'x86_64-apple-darwin': 'bun-darwin-x64-baseline',
   'x86_64-unknown-linux-gnu': 'bun-linux-x64-baseline', 'x86_64-pc-windows-msvc': '' }[target]);
@@ -54,7 +55,7 @@ const releaseBase = c => path.join(c.desktop, 'src-tauri/target', c.target, 'rel
 async function archive(c, phase, inputDirectory, extra = {}) {
   const out = path.join(c.base, phase + '-output'); assert(!fs.existsSync(out)); fs.mkdirSync(out, { mode: 0o700 });
   const file = path.join(out, 'bundle.tar.gz');
-  await run('Archive immutable native payload', 'tar', ['-czf', file, '-C', inputDirectory, 'bundle'], { env: c.env });
+  await runLocalTar('Archive immutable native payload', 'create', file, inputDirectory, ['bundle'], { env: c.env });
   save(path.join(out, 'receipt.json'), receipt({ phase, target: c.target, archive: { name: 'bundle.tar.gz', size: fs.statSync(file).size, sha256: fileHash(file) }, ...extra }));
   console.log(`CANDIDATE_OUTPUT=${out}`); return out;
 }
@@ -64,7 +65,7 @@ async function extract(c, directory, destination, phase) {
   assert.equal(fs.statSync(file).size, r.archive.size); assert.equal(fileHash(file), r.archive.sha256);
   await validateTar(file);
   assert(!fs.existsSync(path.join(destination, 'bundle'))); fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
-  await run('Extract source-bound native payload', 'tar', ['-xzf', file, '-C', destination], { env: c.env });
+  await runLocalTar('Extract source-bound native payload', 'extract', file, destination, [], { env: c.env });
   validateExtractedTree(path.join(destination, 'bundle'));
   return r;
 }
