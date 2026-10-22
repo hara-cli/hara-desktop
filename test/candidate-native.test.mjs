@@ -132,3 +132,25 @@ test('candidate workflow has exact non-main input and no publishing authority', 
   assert.equal((w.match(/os: macos-15-intel/g)??[]).length,3); assert(!/contents: write|packages: write|id-token: write|secrets\.|gh release|git push|ossutil|stable\/latest/.test(w));
   assert(w.includes('environment: hara-desktop-candidate')); assert(!w.includes('hara-desktop-production')); assert(w.includes('GIT_CONFIG_KEY_0: core.autocrlf'));
 });
+
+test('every candidate checkout phase pins the exact application and Core inputs', () => {
+  const workflow=fs.readFileSync(path.join(ROOT,'.github/workflows/candidate.yml'),'utf8');
+  function check(text) {
+    const checkouts=text.split(/^      - uses: /m).filter(step=>step.startsWith('actions/checkout@'));
+    for(const [dir,commit] of [['app',INPUT.desktop.commit],['core',INPUT.core.commit]]) {
+      const steps=checkouts.filter(step=>new RegExp(`\\bpath: ${dir}(?:[,\\s}])`).test(step));
+      assert.equal(steps.length,6,`${dir}: all six candidate phases must be pinned`);
+      for(const step of steps) assert.equal(step.match(/\bref: ([a-f0-9]{40})\b/)?.[1],commit,`${dir}: stale or indirect source ref`);
+    }
+  }
+  check(workflow);
+  for(const commit of [INPUT.desktop.commit,INPUT.core.commit]) {
+    const occurrences=[...workflow.matchAll(new RegExp(`ref: ${commit}`,'g'))];
+    assert.equal(occurrences.length,6);
+    for(const {index} of occurrences) {
+      const start=index+'ref: '.length;
+      const stale=workflow.slice(0,start)+'a'.repeat(40)+workflow.slice(start+40);
+      assert.throws(()=>check(stale),/stale or indirect source ref/);
+    }
+  }
+});
