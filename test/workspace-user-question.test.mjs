@@ -90,7 +90,10 @@ test("a timed-out answer is checked with its original receipt, never automatical
   await a.model.verifyPending(); await a.model.answer(q.id, "Beta");
   assert.equal(a.calls.filter(call => call.method === "workspace.session.answer").length, 1);
   const receipts = a.calls.filter(call => call.method === "workspace.session.receipt");
-  assert(receipts.length >= 1); assert(receipts.every(call => call.params.requestId === "nonce-1"));
+  assert(receipts.length >= 1);
+  for (const receipt of receipts) assert.deepEqual(receipt.params,
+    { workspaceId: "A", expectedGeneration: "gen-A", agentId: "main", requestId: "nonce-1" });
+  assert.equal(a.calls.some(call => /session\.(send|resume)$/.test(call.method)), false);
 });
 
 

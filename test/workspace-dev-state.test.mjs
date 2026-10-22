@@ -84,7 +84,7 @@ test("unknown outcome verifies the original nonce read-only, never retries a mut
   await f.model.send(); assert.equal(f.model.getSnapshot().pendingUnknown, true); f.model.setDraft("new draft"); await f.model.send();
   assert.equal(f.calls.filter(call => call.method === "workspace.session.send").length, 1);
   f.handlers["workspace.session.receipt"] = p => ({ ...p, resourceGeneration: p.expectedGeneration, state: "accepted", runId: "run", reason: null });
-  await f.model.send(false, true);
+  await f.model.verifyPending();
   const sends = f.calls.filter(call => call.method === "workspace.session.send"); assert.equal(sends.length, 1);
   assert.deepEqual(f.calls.find(call => call.method === "workspace.session.receipt").params,
     { workspaceId: "A", expectedGeneration: "generation-1", agentId: "main", requestId: sends[0].params.requestId });
