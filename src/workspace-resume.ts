@@ -1,4 +1,16 @@
 import type { WorkspaceDevSnapshot } from "./workspace-dev-state";
+type Conversation = WorkspaceDevSnapshot["conversation"];
+const STOPPED_TASKS = new Set(["blocked", "error", "failed", "paused", "awaiting_user", "awaiting_review", "completed", "cancelled", "interrupted"]);
+/** A physical request can still be draining after the task has stopped. Keep that transport lock,
+ * but never describe its cleanup as a colleague still composing a reply. */
+export function workspaceConversationReplying(conversation: Conversation): boolean {
+  return ["running", "draining"].includes(conversation.state) && !STOPPED_TASKS.has(conversation.taskState ?? "");
+}
+export function workspaceRecoveryState(conversation: Conversation): string {
+  if (["blocked", "error", "failed"].includes(conversation.taskState ?? "")) return "blocked";
+  if (conversation.taskState === "paused" && ["running", "draining"].includes(conversation.state)) return "blocked";
+  return ["error", "failed"].includes(conversation.state) ? "blocked" : conversation.state;
+}
 export const CONNECTION_RECOVERY_REASONS = ["connection_model_unavailable", "connection_auth_required", "connection_quota_exhausted", "connection_region_unavailable", "connection_recovery_unavailable"] as const;
 export type ConnectionRecoveryReason = typeof CONNECTION_RECOVERY_REASONS[number];
 

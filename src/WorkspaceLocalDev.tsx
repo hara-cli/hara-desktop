@@ -9,7 +9,7 @@ import { workspaceMessageText } from "./workspace-settings-copy";
 import type { WorkspaceDevConnection } from "./workspace-dev-rpc";
 import { WorkspaceStartupModel } from "./workspace-startup";
 import { WorkspaceBoot } from "./WorkspaceBoot";
-import { WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
+import { WorkspaceTaskActivity, WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
 import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval } from "./workspace-dev-state";
 import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
 import { WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
@@ -291,8 +291,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
             {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified"><CheckCircleIcon className="hico" />{t("ws.verified")} <span>{t("ws.verified.note")}</span></p> : null}
             <WorkspaceTaskRecovery conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.pendingUnknown}
-              continueDisabled={!hasConnection} onContinue={() => void model.send(true)} onRepair={() => { setSettingsPage("connections");setSettings(true); }} />
-            {busy && !liveApprovals.length ? <div className="wsd-typing" role="status"><Avatar agent={agent} /><span>{t(workspace.conversation.state === "draining" ? "ws.draining" : "ws.replying", { name: agent?.identity.displayName ?? "Hara" })}</span><i /><i /><i /></div> : null}<div ref={end} />
+              continueDisabled={!hasConnection || busy} onContinue={() => void model.send(true)} onRepair={() => { setSettingsPage("connections");setSettings(true); }} />
+            {!liveApprovals.length ? <WorkspaceTaskActivity conversation={workspace.conversation} name={agent?.identity.displayName ?? "Hara"} t={t}><Avatar agent={agent} /></WorkspaceTaskActivity> : null}<div ref={end} />
           </div>}
       </div>
       {workspace && inChannel ? <LocalChannelComposer key={`${scope}:${channelView.channelId}`} view={channelView} model={channels} colleagues={colleagues} t={t} disconnected={!!disconnected} hasConnection={hasConnection} configure={() => void connect()} /> : null}
