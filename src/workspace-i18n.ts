@@ -520,6 +520,8 @@ export const WORKSPACE_EXTRA_KEYS = [
   ['ws.resume.cancelled', 'This run was cancelled', '本次执行已取消', '本次執行已取消'],
   ['ws.resume.title', 'The previous task is unfinished', '上次任务尚未完成', '上次任務尚未完成'],
   ['ws.resume.body', 'History and files are retained. Check the result before explicitly continuing. Restarting does not rerun the task.', '历史与文件已保留。请先检查结果，再明确继续原任务；重启不会自动重跑。', '歷史與檔案已保留。請先檢查結果，再明確繼續原任務；重新啟動不會自動重跑。'],
+  ['ws.resume.finishing', 'Finishing the previous action. Continue stays unavailable while it is stopping. If this persists, check the execution details.', '正在收尾，确认原操作安全结束前无法继续。若一直停在这里，请先查看执行详情。', '正在收尾，確認原操作安全結束前無法繼續。若一直停在這裡，請先查看執行詳情。'],
+  ['ws.resume.failureUnknown', 'The run failed without an available reason. Check the execution details before continuing.', '本次执行失败，暂无可显示的原因。请先查看执行详情。', '本次執行失敗，暫無可顯示的原因。請先查看執行詳情。'],
   ['ws.resume.budget', 'The original run budget is unavailable. Check the result and budget first.', '原任务的续跑预算不可用，请先检查结果与预算。', '原任務的續跑預算不可用，請先檢查結果與預算。'],
   ['ws.resume.action', 'Continue the original task', '继续原任务', '繼續原任務'],
   ['ws.resume.repairTitle', 'Repair the model connection first', '请先修复模型连接', '請先修復模型連線'],

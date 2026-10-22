@@ -82,3 +82,45 @@ test("boot shows a fixed diagnostic and attempt receipt, then disables reconnect
     }
   }
 });
+
+test("a stopped task explains physical cleanup and keeps continuation locked until the next idle snapshot", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const state of ["running", "draining"]) {
+    const t = makeT(locale), conversation = { state, taskState: "blocked", blockReason: "Synthetic stop", resumeAdmission: { allowed: true, reason: null } };
+    const props = { t, disabled: false, continueDisabled: false, onContinue() { throw new Error("must not auto-continue"); }, onRepair() {} };
+    const busy = render(h(WorkspaceTaskRecovery, { ...props, conversation }));
+    assert.ok(busy.includes(t("ws.resume.finishing"))); assert.ok(/<button[^>]*disabled/.test(busy));
+    assert.equal(render(h(WorkspaceTaskActivity, { conversation, name: "Hara", t })), "");
+    const idle = render(h(WorkspaceTaskRecovery, { ...props, conversation: { ...conversation, state: "blocked" } }));
+    assert.equal(idle.includes(t("ws.resume.finishing")), false); assert.equal(/<button[^>]*disabled/.test(idle), false);
+  }
+});
+
+test("error and failed checkpoints always explain the failure, including a missing reason and typed connection repair", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const taskState of ["error", "failed"]) for (const state of ["blocked", "running", "draining", "error", "failed"]) {
+    const t = makeT(locale), props = { t, disabled: false, onContinue() {}, onRepair() {} };
+    for (const blockReason of [undefined, null, "", "   ", "Synthetic failure <details>"]) {
+      const conversation = { state, taskState, blockReason };
+      const html = render(h(WorkspaceTaskRecovery, { ...props, conversation }));
+      assert.ok(html.includes('role="alert"'));
+      assert.ok(html.includes(blockReason?.trim() ? "Synthetic failure &lt;details&gt;" : t("ws.resume.failureUnknown")));
+      assert.equal(html.includes("<details>"), false);
+    }
+    for (const reason of CONNECTION_RECOVERY_REASONS) {
+      const conversation = { state, taskState, blockReason: "SYNTHETIC_PRIVATE_PROVIDER_BODY", resumeAdmission: { allowed: false, reason } };
+      const html = render(h(WorkspaceTaskRecovery, { ...props, conversation }));
+      assert.ok(html.includes('role="alert"')); assert.ok(html.includes(t(`ws.resume.${reason}`)));
+      assert.ok(html.includes(t("ws.resume.repairAction"))); assert.equal(html.includes("SYNTHETIC_PRIVATE_PROVIDER_BODY"), false);
+      assert.equal(/<button[^>]*disabled/.test(html), false, "settings repair stays available while the old action finishes");
+    }
+  }
+});
+
+
+test("legacy failed conversation states without a task checkpoint still show an explicit fallback reason", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const state of ["error", "failed"]) {
+    const t = makeT(locale), conversation = { state, taskState: null, blockReason: null };
+    const html = render(h(WorkspaceTaskRecovery, { conversation, t, disabled: false, onContinue() {}, onRepair() {} }));
+    assert.ok(html.includes('role="alert"')); assert.ok(html.includes(t("ws.resume.failureUnknown")));
+    assert.equal(render(h(WorkspaceTaskActivity, { conversation, name: "Hara", t })), "");
+  }
+});
