@@ -150,8 +150,19 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 libarchive-tools
       - name: Exact source and Pi-only hydration
         run: node scripts/candidate-native.mjs hydrate
-      - name: Original complete Core and Desktop tests plus renderer
+      - name: Core native full suite or Windows CI contracts, complete Desktop tests and renderer
         run: node scripts/candidate-native.mjs tests
+      - name: Preserve complete redacted test diagnostics even when the suite fails
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-test-diagnostics-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/*-tests.log
+            ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/*-tests.log.result.json
+            ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/*-tests.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Native sidecar boundary smoke and locked Rust tests
         run: node scripts/candidate-native.mjs sidecar
       - name: Complete formal native installer build including Intel DMG
