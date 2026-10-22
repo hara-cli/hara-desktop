@@ -300,11 +300,10 @@ export class WorkspaceDevModel {
   }
   async answer(questionId: string, message: string): Promise<void> {
     if (this.view.workspace?.conversation.pendingQuestion?.id !== questionId) { this.update({ error: "ws.question.stale" }); return; }
-    return this.send(false, false, { questionId, message });
+    return this.send(false, { questionId, message });
   }
-  async send(resume = false, retryUnknown = false, answer?: { questionId: string; message: string }): Promise<void> {
+  async send(resume = false, answer?: { questionId: string; message: string }): Promise<void> {
     const workspace = this.view.workspace, key = this.key();
-    if (retryUnknown) { await this.verifyPending(); return; } // compatibility: verification is now READ-ONLY, never a resend
     if (!workspace || !key || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
     const retained = this.pending.get(key);
     if (retained || this.questionPauses.has(key)) return;
