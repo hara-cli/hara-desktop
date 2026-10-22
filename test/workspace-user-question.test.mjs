@@ -138,3 +138,17 @@ test("a late pause reply cannot clear another Workspace's in-flight message", as
   assert.equal(a.model.getSnapshot().workspace.workspaceId, "B"); assert.equal(a.model.getSnapshot().sending, true);
   finishSend({}); await pendingSend;
 });
+
+test("a pending pause remains busy after leaving and returning to the same Workspace", async () => {
+  const a = fixture(); await a.ready(); let finishPause;
+  const wait = new Promise(resolve => { finishPause = resolve; }), request = a.rpc.request;
+  a.rpc.request = (method, params) => method === "workspace.session.pause-question" ? wait : request(method, params);
+  const pending = a.model.pauseQuestion(q.id);
+  try {
+    await a.model.selectWorkspace("B"); await a.model.selectWorkspace("A");
+    assert.equal(a.model.getSnapshot().sending, true, "refresh must retain the scoped in-flight pause");
+    await a.model.answer(q.id, "Beta");
+    assert.equal(a.calls.some(call => call.method === "workspace.session.answer"), false);
+  } finally { finishPause({ state: "paused" }); await pending; }
+  assert.equal(a.model.getSnapshot().sending, false);
+});

@@ -356,3 +356,37 @@ test("channel answers bind one colleague and original question without a normal 
   await f.model.bind("B", "g-B"); await f.model.answer(member, q.id, "Beta");
   assert.equal(f.calls.filter(row => row.method === "workspace.channels.answer").length, 1);
 });
+
+test("a pending channel pause remains busy across a Workspace round trip", async () => {
+  const f = fixture({ userQuestions: true }); await f.model.bind("A", "g-A"); const id = await create(f);
+  const q = { id: randomUUID(), reason: "explicit", question: "Which target?", options: [], taskId: "task", runId: "run" };
+  f.handlers["workspace.channels.snapshot"] = () => ({ ...f.snapshot("A", id), questions: [{ agentId: member, displayName: "Alpha", conversation: {
+    state: "awaiting_user", taskState: "paused", pendingQuestion: q, resumeAdmission: { allowed: true, reason: null } } }] });
+  const wait = deferred(); f.handlers["workspace.channels.pause-question"] = () => wait.promise;
+  await f.model.refresh(); const pending = f.model.pauseQuestion(member, q.id);
+  try {
+    await f.model.bind("B", "g-B"); await f.model.bind("A", "g-A"); await f.model.select(id); await f.model.refresh();
+    assert.equal(f.model.getSnapshot().saving, true, "returning to the channel must retain its scoped pause");
+    await f.model.answer(member, q.id, "Beta");
+    assert.equal(f.calls.some(call => call.method === "workspace.channels.answer"), false);
+  } finally { wait.resolve({ state: "paused" }); await pending; }
+  assert.equal(f.model.getSnapshot().saving, false);
+});
+
+test("a pause in another channel neither blocks this channel nor clears its pending message", async () => {
+  const f = fixture({ userQuestions: true }); await f.model.bind("A", "g-A"); const first = await create(f), second = await create(f, "Second");
+  const q = { id: randomUUID(), reason: "explicit", question: "Which target?", options: [], taskId: "task", runId: "run" };
+  f.handlers["workspace.channels.snapshot"] = params => ({ ...f.snapshot("A", params.channelId), questions: params.channelId === first ? [{ agentId: member, displayName: "Alpha", conversation: {
+    state: "awaiting_user", taskState: "paused", pendingQuestion: q, resumeAdmission: { allowed: true, reason: null } } }] : [] });
+  const wait = deferred(), send = deferred();
+  f.handlers["workspace.channels.pause-question"] = () => wait.promise;
+  f.handlers["workspace.channels.send"] = async params => { await send.promise; return { workspaceId: "A", resourceGeneration: "g-A", channelId: second, requestId: params.requestId, accepted: true }; };
+  await f.model.select(first); await f.model.refresh(); const pausing = f.model.pauseQuestion(member, q.id);
+  await f.model.select(second); assert.equal(f.model.getSnapshot().saving, false);
+  f.model.setDraft("Independent channel work"); const sending = f.model.send([member]);
+  try {
+    assert.equal(f.model.getSnapshot().pending.state, "sending");
+    wait.resolve({ state: "paused" }); await pausing;
+    assert.equal(f.model.getSnapshot().channelId, second); assert.equal(f.model.getSnapshot().pending.state, "sending");
+  } finally { wait.resolve({ state: "paused" }); send.resolve(); await Promise.all([pausing, sending]); }
+});

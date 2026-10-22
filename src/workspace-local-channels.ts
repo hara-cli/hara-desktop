@@ -43,7 +43,13 @@ export class WorkspaceLocalChannelsModel {
     preferences: LocalChannelPreferencesStore | null = createLocalChannelPreferencesStore()) { this.model = model; this.nonce = nonce; this.preferences = preferences; }
   getSnapshot = () => this.view;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
-  private update(value: Partial<LocalChannelsView>) { this.view = { ...this.view, ...value }; for (const listener of this.listeners) listener(); }
+  private update(value: Partial<LocalChannelsView>) {
+    const previousKey = this.key(), wasPausing = this.pausing.has(previousKey);
+    this.view = { ...this.view, ...value };
+    if (this.pausing.has(this.key())) this.view.saving = true;
+    else if (wasPausing && previousKey !== this.key() && value.saving === undefined) this.view.saving = false;
+    for (const listener of this.listeners) listener();
+  }
   private key(channelId = this.view.channelId) { return JSON.stringify([this.workspaceId, this.generation, channelId]); }
   preferredChannelId() { return this.saved.get(this.view.scope)?.selectedChannelId ?? null; }
   private remember(scope: string, patch: Partial<LocalChannelPreferences>) {

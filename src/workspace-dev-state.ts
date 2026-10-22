@@ -80,7 +80,13 @@ export class WorkspaceDevModel {
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   setSettingsFactory(factory: () => Promise<{ model: WorkspaceDevModel; close(): void }>) { this.settingsFactory = factory; }
   openSettingsSession() { if (!this.settingsFactory) return Promise.reject(new WorkspaceViewError("ws.notice.settingsNotReady")); return this.settingsFactory(); }
-  private update(next: Partial<WorkspaceDevView>): void { this.view = { ...this.view, ...next }; for (const listener of this.listeners) listener(); }
+  private update(next: Partial<WorkspaceDevView>): void {
+    this.view = { ...this.view, ...next };
+    // Scoped pending records own the dispatch latch, including when returning to an earlier view.
+    const key = this.key();
+    if (this.questionPauses.has(key) || this.pending.get(key)?.state === "sending") this.view.sending = true;
+    for (const listener of this.listeners) listener();
+  }
   private key(snapshot = this.view.workspace): string { return snapshot ? JSON.stringify([snapshot.workspaceId, snapshot.resourceGeneration, snapshot.selectedAgentId]) : ""; }
   private valid(snapshot: WorkspaceDevSnapshot, workspaceId: string, agentId?: string): void {
     if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== this.executionMode) || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
@@ -287,7 +293,7 @@ export class WorkspaceDevModel {
   async pauseQuestion(questionId: string): Promise<void> {
     const w = this.view.workspace;
     if (!w || w.conversation.pendingQuestion?.id !== questionId || !this.supportsUserQuestions() || this.view.sending || this.view.pendingUnknown) return;
-    const key = this.key(); this.questionPauses.add(key); this.update({ sending: true, error: "" });
+    const key = this.key(); if (this.questionPauses.has(key)) return; this.questionPauses.add(key); this.update({ sending: true, error: "" });
     try { await this.rpc.request("workspace.session.pause-question", { workspaceId: w.workspaceId, expectedGeneration: w.resourceGeneration, agentId: w.selectedAgentId, questionId }); }
     catch { if (this.key() === key) this.update({ error: "ws.question.pauseUnknown" }); }
     finally { this.questionPauses.delete(key); if (this.key() === key) this.update({ sending: false }); await this.refresh(); }
@@ -301,7 +307,7 @@ export class WorkspaceDevModel {
     if (retryUnknown) { await this.verifyPending(); return; } // compatibility: verification is now READ-ONLY, never a resend
     if (!workspace || !key || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
     const retained = this.pending.get(key);
-    if (retained?.state === "unknown" && !retryUnknown) return;
+    if (retained || this.questionPauses.has(key)) return;
     if (!workspace.connections.defaultConnectionId) { this.update({ error: this.syntheticOnly ? "ws.notice.syntheticRequired" : "ws.notice.connectionRequired" }); return; }
     const question = workspace.conversation.pendingQuestion;
     if (question && (!answer || answer.questionId !== question.id)) { this.update({ error: "ws.question.answerRequired" }); return; }
