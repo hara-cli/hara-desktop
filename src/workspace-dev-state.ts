@@ -15,6 +15,9 @@ export interface WorkspaceDevApproval { id: string; workspaceId: string; resourc
   draft: { username: string; displayName: string; title: string; instructions: string; runtimeId: "pi" } }
 export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
+export type WorkspaceQuestionConversation = Pick<WorkspaceDevSnapshot["conversation"], "state" | "taskState" | "pendingQuestion" | "resumeAdmission" | "blockReason">;
+export interface WorkspaceDevQuestion { id: string; reason: "lookup_missing" | "lookup_ambiguous" | "tool_problem" | "budget_warning" | "explicit";
+  question: string; options: string[]; taskId: string; runId: string; step?: string }
 export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
   colleagueLimit?: number;
   inheritance?: WorkspaceInheritanceView;
@@ -26,9 +29,9 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
   approvals: WorkspaceDevApproval[]; conversation: { revision: number; state: string; sessionId: string; taskId: string | null; runId: string | null;
     taskState: string | null; objective: string; history: WorkspaceDevMessage[]; pastTaskCount: number; updatedAt?: string; unreadCount?: number;
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };
-    completion: { state: string; evidence?: string[] } | null; blockReason?: string | null;
+    completion: { state: string; evidence?: string[] } | null; blockReason?: string | null; pendingQuestion?: WorkspaceDevQuestion | null;
     resumeAdmission?: { allowed: boolean; reason: string | null } } }
-interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume"; payload: Record<string, unknown>;
+interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume" | "workspace.session.answer"; payload: Record<string, unknown>;
   message: string; state: "sending" | "unknown" }
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
   roster: WorkspaceDevAgent[];
@@ -46,6 +49,7 @@ export class WorkspaceDevModel {
   private readonly listeners = new Set<() => void>();
   private readonly drafts = new Map<string, string>();
   private readonly pending = new Map<string, PendingMessage>();
+  private readonly questionPauses = new Set<string>();
   private readonly approvalDecisions = new Set<string>();
   private epoch = 0;
   private refreshEpoch: number | null = null;
@@ -76,7 +80,13 @@ export class WorkspaceDevModel {
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   setSettingsFactory(factory: () => Promise<{ model: WorkspaceDevModel; close(): void }>) { this.settingsFactory = factory; }
   openSettingsSession() { if (!this.settingsFactory) return Promise.reject(new WorkspaceViewError("ws.notice.settingsNotReady")); return this.settingsFactory(); }
-  private update(next: Partial<WorkspaceDevView>): void { this.view = { ...this.view, ...next }; for (const listener of this.listeners) listener(); }
+  private update(next: Partial<WorkspaceDevView>): void {
+    this.view = { ...this.view, ...next };
+    // Scoped pending records own the dispatch latch, including when returning to an earlier view.
+    const key = this.key();
+    if (this.questionPauses.has(key) || this.pending.get(key)?.state === "sending") this.view.sending = true;
+    for (const listener of this.listeners) listener();
+  }
   private key(snapshot = this.view.workspace): string { return snapshot ? JSON.stringify([snapshot.workspaceId, snapshot.resourceGeneration, snapshot.selectedAgentId]) : ""; }
   private valid(snapshot: WorkspaceDevSnapshot, workspaceId: string, agentId?: string): void {
     if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== this.executionMode) || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
@@ -279,15 +289,32 @@ export class WorkspaceDevModel {
       if (epoch === this.epoch) await this.refresh();
     } catch (error) { if (epoch === this.epoch) this.update({ error: String(error) }); }
   }
-  async send(resume = false, retryUnknown = false): Promise<void> {
+  supportsUserQuestions(): boolean { return this.rpc.supportsCapability?.("workspace.user-interaction.v1") === true; }
+  async pauseQuestion(questionId: string): Promise<void> {
+    const w = this.view.workspace;
+    if (!w || w.conversation.pendingQuestion?.id !== questionId || !this.supportsUserQuestions() || this.view.sending || this.view.pendingUnknown) return;
+    const key = this.key(); if (this.questionPauses.has(key)) return; this.questionPauses.add(key); this.update({ sending: true, error: "" });
+    try { await this.rpc.request("workspace.session.pause-question", { workspaceId: w.workspaceId, expectedGeneration: w.resourceGeneration, agentId: w.selectedAgentId, questionId }); }
+    catch { if (this.key() === key) this.update({ error: "ws.question.pauseUnknown" }); }
+    finally { this.questionPauses.delete(key); if (this.key() === key) this.update({ sending: false }); await this.refresh(); }
+  }
+  async answer(questionId: string, message: string): Promise<void> {
+    if (this.view.workspace?.conversation.pendingQuestion?.id !== questionId) { this.update({ error: "ws.question.stale" }); return; }
+    return this.send(false, false, { questionId, message });
+  }
+  async send(resume = false, retryUnknown = false, answer?: { questionId: string; message: string }): Promise<void> {
     const workspace = this.view.workspace, key = this.key();
     if (retryUnknown) { await this.verifyPending(); return; } // compatibility: verification is now READ-ONLY, never a resend
     if (!workspace || !key || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
     const retained = this.pending.get(key);
-    if (retained?.state === "unknown" && !retryUnknown) return;
+    if (retained || this.questionPauses.has(key)) return;
     if (!workspace.connections.defaultConnectionId) { this.update({ error: this.syntheticOnly ? "ws.notice.syntheticRequired" : "ws.notice.connectionRequired" }); return; }
-    const message = resume ? "/continue" : this.view.draft.trim(); if (!message) return;
-    resume ||= message === "/continue";
+    const question = workspace.conversation.pendingQuestion;
+    if (question && (!answer || answer.questionId !== question.id)) { this.update({ error: "ws.question.answerRequired" }); return; }
+    if (answer && (!question || !this.supportsUserQuestions())) { this.update({ error: "ws.question.unsupported" }); return; }
+    const message = answer ? answer.message.trim() : resume ? "/continue" : this.view.draft.trim(); if (!message) return;
+    if (answer && message === "/continue") { this.update({ error: "ws.question.answerRequired" }); return; }
+    resume ||= message === "/continue" || Boolean(answer);
     if (resume && connectionRecoveryReason(workspace.conversation)) {
       this.update({ error: "ws.notice.resumeConnection" }); return;
     }
@@ -295,14 +322,14 @@ export class WorkspaceDevModel {
       this.update({ error: "ws.notice.resumeBudget" }); return;
     }
     const pending: PendingMessage = {
-      method: resume ? "workspace.session.resume" : "workspace.session.send", message, state: "sending",
+      method: answer ? "workspace.session.answer" : resume ? "workspace.session.resume" : "workspace.session.send", message, state: "sending",
       payload: { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration,
-        agentId: workspace.selectedAgentId, message, requestId: this.nonce(), source: "ui" } };
+        agentId: workspace.selectedAgentId, message, requestId: this.nonce(), ...(answer ? { questionId: answer.questionId } : { source: "ui" }) } };
     this.pending.set(key, pending); this.update({ sending: true, pendingUnknown: false, error: "" });
     try {
       await this.rpc.request(pending.method, pending.payload);
       if (this.pending.get(key) !== pending) return; this.pending.delete(key);
-      if (this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
+      if (pending.method !== "workspace.session.answer" && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
       // A→B→A may return to the exact same pending nonce. Settle its status without applying any
       // stale transcript; refresh starts a new read using the current view's epoch.
       if (this.key() === key) { this.update({ sending: false, pendingUnknown: false, draft: this.drafts.get(key) ?? "" }); await this.refresh(); }
@@ -335,7 +362,7 @@ export class WorkspaceDevModel {
         if (this.key() === key) this.update({ syncNotice: "ws.notice.receiptPending" }); return;
       }
       this.pending.delete(key);
-      if (receipt.state === "accepted" && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
+      if (receipt.state === "accepted" && pending.method !== "workspace.session.answer" && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
       if (this.key() === key) {
         this.update({ sending: false, pendingUnknown: false, draft: this.drafts.get(key) ?? "", error: "", syncNotice: "" });
         await this.refresh();
