@@ -1629,7 +1629,7 @@ test("main and pull requests run Desktop quality gates without release authority
   assert.match(workflow, /timeout-minutes: 20/);
   for (const command of [
     "npm ci",
-    "npm audit --omit=dev",
+    "./scripts/npm-audit-retry.sh",
     "npm run check:release",
     "npm test",
     "npm run build",
@@ -1751,7 +1751,10 @@ test("release installs and audits use finite official-registry retry helpers", (
   assert.doesNotMatch(lockedHydration, /registry\.npmmirror\.com|npmmirror/);
   assert.match(auditHelper, /MAX_ATTEMPTS="\$\{HARA_NPM_AUDIT_ATTEMPTS:-4\}"/);
   assert.match(auditHelper, /metadata\?\.vulnerabilities/);
-  assert.match(auditHelper, /audit endpoint returned an error/);
+  assert.match(auditHelper, /--package=npm@11/);
+  assert.match(auditHelper, /--fetch-retries=0/);
+  const ci = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+  assert.ok(/Audit production dependencies with transient-only retries[\s\S]*?shell:\s+bash[\s\S]*?\.\/scripts\/npm-audit-retry\.sh/.test(ci), "CI must use the shared audit gate under Bash");
   assert.match(auditHelper, /--registry https:\/\/registry\.npmjs\.org\//);
   assert.match(auditHelper, /--fetch-timeout=180000/);
   assert.doesNotMatch(auditHelper, /while true|registry\.npmmirror\.com|npmmirror/);
@@ -1828,6 +1831,7 @@ count=0
 [ ! -f "$HARA_TEST_AUDIT_COUNTER" ] || count="$(<"$HARA_TEST_AUDIT_COUNTER")"
 echo $((count + 1)) >"$HARA_TEST_AUDIT_COUNTER"
 if [ "$HARA_TEST_AUDIT_SCENARIO" = "transient" ] && [ "$count" -eq 0 ]; then
+  echo "npm error code ETIMEDOUT" >&2
   echo "npm error audit endpoint returned an error" >&2
   exit 1
 fi
