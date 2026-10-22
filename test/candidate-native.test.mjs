@@ -6,7 +6,7 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { ROOT, INPUT, TARGETS, identity, assertEvent, nativeTarget, privateEnvironment, receipt, assertReceipt, artifactName, checkArchiveEntries, assertNoRosettaProbe } from '../scripts/candidate-common.mjs';
 import { assertSigner } from '../scripts/candidate-signing.mjs';
-import { testCounts, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
+import { testCounts, coreTestCommand, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
 import { updaterTarget, updaterPayload } from '../scripts/candidate-upgrade.mjs';
 import { validateTar, validateExtractedTree } from '../scripts/candidate-archive.mjs';
 import { lockedSidecarSpecs } from '../scripts/hydrate-locked-sidecar-dependencies.mjs';
@@ -55,6 +55,23 @@ test('receipt rejects stale source, policy, run and attempt without trusting sel
 test('TAP accounting rejects failure, cancellation, missing or contradictory totals', () => {
   const text='# tests 4\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 1\n'; assert.equal(testCounts(text).tests,4);
   for(const bad of ['',text.replace('fail 0','fail 1'),text.replace('cancelled 0','cancelled 1'),text.replace('tests 4','tests 5')]) assert.throws(()=>testCounts(bad));
+});
+test('complete native batches are aggregated and an earlier success cannot hide any later failure', () => {
+  const a='# tests 4\n# pass 3\n# fail 0\n# cancelled 0\n# skipped 1\n';
+  const b='# tests 7\n# pass 7\n# fail 0\n# cancelled 0\n# skipped 0\n';
+  assert.deepEqual(testCounts(a+b),{tests:11,pass:10,fail:0,cancelled:0,skipped:1});
+  assert.equal(testCounts((a+b).replace(/\n/g,'\r\n')).tests,11);
+  for(const bad of [a+b.replace('fail 0','fail 1'),a+b.replace('cancelled 0','cancelled 1'),a+b.replace('# skipped 0\n',''),a+'not ok 1 - timed out file\n'+b,a+b+'# pass 7\n']) assert.throws(()=>testCounts(bad));
+});
+test('native Core uses the strict isolated full-suite entry, while Windows and Linux keep npm test', () => {
+  const core=path.resolve('synthetic-core');
+  assert.deepEqual(coreTestCommand(core,'darwin'),{script:path.join(core,'scripts/native-ci-tests.mjs'),args:['--original-deadlines']});
+  assert.equal(coreTestCommand(core,'win32'),null);assert.equal(coreTestCommand(core,'linux'),null);
+  const source=fs.readFileSync(path.join(ROOT,'scripts/candidate-native.mjs'),'utf8');
+  assert(source.includes('runner.strictNativeTestBatches'));assert(!source.includes('HARA_INTEL_TEST_BUDGET ='));
+  const workflow=fs.readFileSync(path.join(ROOT,'.github/workflows/candidate.yml'),'utf8');
+  assert(workflow.includes('candidate-test-diagnostics-'));assert(workflow.includes('if: ${{ always() }}'));
+  assert(workflow.includes('/*-tests.log.result.json'));assert(!workflow.includes('/private-home/'));
 });
 test('Pi-only formal hydration supports all native platforms without reintroducing SDK', () => {
   const p='@earendil-works/pi-coding-agent', lock={lockfileVersion:3,packages:{'':{dependencies:{[p]:'1.2.3'}},['node_modules/'+p]:{version:'1.2.3',integrity:'sha512-YWJjZA=='}}};
