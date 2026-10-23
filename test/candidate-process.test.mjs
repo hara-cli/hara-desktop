@@ -1,10 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import {run} from '../scripts/candidate-common.mjs';
-function fixture(t){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-process-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));return path.join(dir,'process.log');}
+import {run,candidateEvidence} from '../scripts/candidate-common.mjs';
+function fixture(){const scope=candidateEvidence(),dir=scope.fixture('candidate-process');return path.join(dir,'process.log');}
 test('captured failing test output and original exit are durable before the gate rejects',async t=>{
   const logFile=fixture(t);
   await assert.rejects(()=>run('synthetic failure',process.execPath,['-e','console.log("not ok 1 - original failing case");process.exitCode=7'],{capture:true,logFile}),/exit=7/);
@@ -27,5 +26,11 @@ test('spawn errors and bounded output failures remain failures with usable recei
 test('success retains original return data and refuses to overwrite diagnostic evidence',async t=>{
   const logFile=fixture(t),code=['-e','console.log("passed")'];
   assert.equal(await run('synthetic success',process.execPath,code,{capture:true,logFile}),'passed\n');
-  await assert.rejects(()=>run('synthetic overwrite',process.execPath,code,{capture:true,logFile}),/EEXIST/);
+  const before=fs.readFileSync(logFile),resultBefore=fs.readFileSync(logFile+'.result.json');
+  const marker=path.join(path.dirname(logFile),'must-not-run');
+  const replay=['-e',`require('node:fs').writeFileSync(${JSON.stringify(marker)},'replayed')`];
+  await assert.rejects(()=>run('synthetic overwrite',process.execPath,replay,{capture:true,logFile}),/diagnostic result already exists; refuse replay/);
+  assert.deepEqual(fs.readFileSync(logFile),before);
+  assert.deepEqual(fs.readFileSync(logFile+'.result.json'),resultBefore);
+  assert(!fs.existsSync(marker),'rejected replay must not start its child');
 });

@@ -1,16 +1,17 @@
-// Ordinary CI only: reproduce the original full suite in a private, credential-free HOME.
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
+// Ordinary CI only: reproduce the original full suite with explicit retained evidence.
 import path from 'node:path';
-import {ROOT,privateEnvironment,run,assertToolchain} from './candidate-common.mjs';
-const output=path.resolve(process.argv[2]??'');
-assert(process.argv[2] && path.isAbsolute(process.argv[2]) && !fs.existsSync(output),'fresh absolute CI evidence directory required');
-assertToolchain();
-fs.mkdirSync(output,{mode:0o700});
-const env=privateEnvironment(path.join(output,'private-home'));
-try {
-  await run('Ordinary CI original full suite','bash',['-c','exec npm test'],{cwd:ROOT,env,capture:true,logFile:path.join(output,'tests.log')});
-} finally {
-  // Retain evidence; only the short-lived temp created by privateEnvironment belongs to this call.
-  fs.rmSync(env.TMPDIR,{recursive:true,force:true});
+import { pathToFileURL } from 'node:url';
+import { ROOT, run, assertToolchain } from './candidate-common.mjs';
+import { provisionCiEvidence, withCiEnvironment } from './ci-evidence.mjs';
+
+export async function runRegression(options = {}, dependencies = {}) {
+  const c = provisionCiEvidence(options);
+  return withCiEnvironment(c, async () => {
+    (dependencies.assertToolchain ?? assertToolchain)();
+    await (dependencies.run ?? run)('Ordinary CI original full suite', 'bash', ['-c', 'exec npm test'],
+      { cwd: ROOT, env: c.env, capture: true, logFile: path.join(c.base, 'tests.log') });
+    return { evidenceRoot: c.evidenceRoot, output: c.base, cleanup: 'keep', deletionEnabled: false };
+  });
 }
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href)
+  await runRegression({ output: process.argv[2] ?? process.env.CANDIDATE_OUTPUT_DIR });

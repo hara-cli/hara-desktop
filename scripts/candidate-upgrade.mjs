@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:http';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { ROOT, INPUT, TARGETS, run, sync, save, receipt, fileHash, verifyUpdater } from './candidate-common.mjs';
 import { validateTar, validateExtractedTree } from './candidate-archive.mjs';
 import { runLocalTar } from './candidate-local-tar.mjs';
@@ -96,8 +96,8 @@ export function gateEvidence(evidenceRoot, { env = process.env, io = fs, paths =
   }
   function fixture(label) {
     assert(/^[a-z][a-z0-9-]{0,47}$/.test(label), 'safe fixture label required'); unchanged();
-    const value = io.mkdtempSync(paths.join(tmp, label + '-'));
-    checked(value, { directory: true }); anchors.set(value, directoryIdentity(value)); return value;
+    const value = paths.join(tmp, label + '-' + randomBytes(6).toString('base64url').slice(0, 6));
+    return mkdir(value); // Exclusive leaf, same six-character suffix budget, retained on every outcome.
   }
   function guardSync(value, operation) {
     assertEnvironment(value);
@@ -126,9 +126,9 @@ async function downloadPublic(url, file, size, digest, command) {
 }
 export async function upgradeSmoke(c, assets) {
   const scope = gateEvidence(c.evidenceRoot ?? c.env?.CANDIDATE_EVIDENCE_ROOT ?? c.env?.HARA_WRAPPER_EVIDENCE_ROOT, { env: c.env });
-  const env = scope.environment();
   scope.checked(c.base, { directory: true });
   scope.checked(assets, { directory: true });
+  const env = scope.environment({ CANDIDATE_OUTPUT_DIR: c.base });
   const command = (label, executable, args, options = {}) => scope.guard(env, () => run(label, executable, args, { ...options, env }));
   const synchronous = (executable, args, options = {}) => scope.guardSync(env, () => sync(executable, args, { ...options, env }));
   const root = scope.mkdir(path.join(c.base, 'private-upgrades'));
