@@ -1,15 +1,112 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
-import { ROOT, INPUT, TARGETS, identity, assertEvent, nativeTarget, privateEnvironment, receipt, assertReceipt, artifactName, checkArchiveEntries, assertNoRosettaProbe } from '../scripts/candidate-common.mjs';
+import { ROOT, INPUT, TARGETS, identity, assertEvent, nativeTarget, receipt, assertReceipt, artifactName, checkArchiveEntries, assertNoRosettaProbe } from '../scripts/candidate-common.mjs';
 import { assertSigner } from '../scripts/candidate-signing.mjs';
 import { testCounts, coreTestCommand, coreTestCoverage, assertStrictNativeCore, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
-import { updaterTarget, updaterPayload } from '../scripts/candidate-upgrade.mjs';
+import { updaterTarget, updaterPayload, gateEvidence, upgradeSmoke } from '../scripts/candidate-upgrade.mjs';
 import { validateTar, validateExtractedTree } from '../scripts/candidate-archive.mjs';
 import { lockedSidecarSpecs } from '../scripts/hydrate-locked-sidecar-dependencies.mjs';
+
+const evidence = () => gateEvidence(process.env.CANDIDATE_EVIDENCE_ROOT ?? process.env.HARA_WRAPPER_EVIDENCE_ROOT);
+function virtualEvidence({ paths = path.posix, root = '/evidence/run', accountHome = '/account' } = {}) {
+  const home = paths.join(root, 'synthetic-home'), tmp = paths.join(root, 'tmp');
+  let inode = 100n, calls = 0;
+  const rows = new Map(), writes = [];
+  const directory = value => rows.set(value, { dev: 1n, ino: inode++, uid: 7n, mode: 0o700n, nlink: 1n,
+    isDirectory: () => true, isFile: () => false, isSymbolicLink: () => false });
+  for (const value of [root, home, tmp]) directory(value);
+  const env = { CANDIDATE_EVIDENCE_ROOT: root, HOME: home, USERPROFILE: home, CFFIXED_USER_HOME: home,
+    HARA_HOME: paths.join(home, '.hara'), TMPDIR: tmp, TMP: tmp, TEMP: tmp };
+  const io = {
+    lstatSync(value) { calls++; if (!rows.has(value)) throw Object.assign(Error('missing fixture'), { code: 'ENOENT' }); return rows.get(value); },
+    realpathSync(value) { calls++; return rows.get(value)?.alias ?? value; },
+    mkdirSync(value) { writes.push(value); assert(!rows.has(value)); directory(value); },
+    mkdtempSync(prefix) { const value = prefix + String(inode); writes.push(value); directory(value); return value; }
+  };
+  return { root, home, tmp, env, io, rows, writes, paths, accountHome, calls: () => calls,
+    scope: (options = {}) => gateEvidence(root, { env, io, paths, accountHome, ownerUid: 7, ...options }) };
+}
+
+test('evidence binding rejects missing, conflicting and poisoned environment before any filesystem access', () => {
+  const v = virtualEvidence();
+  for (const env of [{}, { ...v.env, CANDIDATE_EVIDENCE_ROOT: '/other' },
+    { ...v.env, HARA_WRAPPER_EVIDENCE_ROOT: '/other' }, { ...v.env, TMPDIR: '/forbidden' }, { ...v.env, HOME: '/account' }])
+    assert.throws(() => v.scope({ env }), /binding|environment mismatch/);
+  assert.equal(v.calls(), 0); assert.deepEqual(v.writes, []);
+});
+test('forbidden temp, cache and real-user data roots are lexical negatives, never real probes', () => {
+  for (const root of ['/tmp', '/tmp/case', '/private/tmp/case', '/var/folders/case', '/private/var/folders/case',
+    '/account/Library/Caches/case', '/account/.hara/case', '/evidence/run/../other', 'relative']) {
+    const v = virtualEvidence({ root }); assert.throws(() => v.scope(), /forbidden|canonical/);
+    assert.equal(v.calls(), 0); assert.deepEqual(v.writes, []);
+  }
+});
+test('realpath aliases, symlink anchors, foreign owners and writable evidence roots fail closed', () => {
+  for (const mutate of [v => v.rows.get(v.root).alias = '/outside', v => v.rows.get(v.home).isSymbolicLink = () => true,
+    v => v.rows.get(v.root).uid = 8n, v => v.rows.get(v.tmp).mode = 0o777n]) {
+    const v = virtualEvidence(); mutate(v); assert.throws(() => v.scope()); assert.deepEqual(v.writes, []);
+  }
+});
+test('evidence whitelist checks parents before creation and never accepts prefix lookalikes or links', () => {
+  const v = virtualEvidence(), scope = v.scope();
+  for (const target of ['/evidence/run/tmp-other/new', '/evidence/run/other/new', '/evidence/run/tmp/../new', '/outside/new'])
+    assert.throws(() => scope.mkdir(target));
+  assert.deepEqual(v.writes, []);
+  const link = path.posix.join(v.tmp, 'link');
+  v.rows.set(link, { ...v.rows.get(v.tmp), isSymbolicLink: () => true });
+  assert.throws(() => scope.checked(path.posix.join(link, 'new'), { missing: true }), /symlink/);
+  assert.deepEqual(v.writes, []);
+});
+test('environment authority wins over extras, strips credentials and keeps only required HARA controls', () => {
+  const v = virtualEvidence(), scope = v.scope(), env = scope.environment({ HOME: '/poison', TMPDIR: '/poison',
+    npm_config_cache: '/poison', NPM_CONFIG_CACHE: '/poison', HARA_TEST_API_KEY: 'synthetic-only',
+    NODE_OPTIONS: '--require=/poison', HARA_UPDATE_CHECK: '1', HARA_NPM_CI_ATTEMPTS: '1', PROBE: 'kept' });
+  scope.assertEnvironment(env); assert.equal(env.HOME, v.home); assert.equal(env.TMPDIR, v.tmp);
+  assert.equal(env.NPM_CONFIG_CACHE, undefined); assert.equal(env.HARA_TEST_API_KEY, undefined);
+  assert.equal(env.NODE_OPTIONS, undefined); assert.equal(env.HARA_UPDATE_CHECK, undefined);
+  assert.equal(env.HARA_NPM_CI_ATTEMPTS, '1'); assert.equal(env.PROBE, 'kept'); assert(Object.isFrozen(env));
+  assert.deepEqual(Object.keys(env).slice(-2), ['HOME', 'TMPDIR']);
+});
+test('Windows evidence paths keep drive identity and reject cross-drive and real-home escapes', () => {
+  const v = virtualEvidence({ paths: path.win32, root: 'D:\\evidence\\run', accountHome: 'C:\\Users\\fixture' });
+  const scope = v.scope(), env = scope.environment(); scope.assertEnvironment(env);
+  assert.equal(env.TMPDIR, 'D:\\evidence\\run\\tmp');
+  for (const target of ['C:\\evidence\\run\\tmp\\new', 'D:\\evidence\\run\\tmp-other\\new', 'C:\\Users\\fixture\\.hara\\new'])
+    assert.throws(() => scope.checked(target, { missing: true }));
+  assert.deepEqual(v.writes, []);
+});
+test('a changed 64-bit directory identity is detected even beyond Number precision', () => {
+  const v = virtualEvidence(); v.rows.get(v.tmp).ino = 9007199254740992n;
+  const scope = v.scope(), env = scope.environment();
+  v.rows.get(v.tmp).ino += 1n;
+  assert.throws(() => scope.guardSync(env, () => assert.fail('must not spawn')), /identity changed/);
+});
+test('late parent environment contamination fails before fixture creation', () => {
+  const v = virtualEvidence(), scope = v.scope(), before = v.calls();
+  v.env.TMPDIR = '/forbidden';
+  assert.throws(() => scope.fixture('refused'), /environment mismatch/);
+  assert.equal(v.calls(), before); assert.deepEqual(v.writes, []);
+});
+test('keep-only evidence survives success, failure and cancellation; final checks cannot report success', async () => {
+  const v = virtualEvidence(), scope = v.scope(), env = scope.environment(), kept = scope.fixture('kept');
+  assert.equal(scope.cleanup, 'keep'); assert.equal(scope.deletionEnabled, false);
+  assert.equal(await scope.guard(env, async () => 'ok'), 'ok');
+  await assert.rejects(() => scope.guard(env, async () => { throw Error('synthetic failure'); }), /synthetic failure/);
+  await assert.rejects(() => scope.guard(env, async () => { throw Object.assign(Error('cancelled'), { name: 'AbortError' }); }), /cancelled/);
+  const mutable = { ...env };
+  await assert.rejects(() => scope.guard(mutable, async () => { mutable.TMPDIR = '/forbidden'; return 0; }), /environment mismatch/);
+  const changed = virtualEvidence(), other = changed.scope(), otherEnv = other.environment();
+  await assert.rejects(() => other.guard(otherEnv, async () => { changed.rows.get(changed.tmp).ino += 1n; return 0; }), /identity changed/);
+  assert(v.rows.has(kept)); assert(!Object.keys(v.io).some(name => /^(?:rm|unlink|rmdir)/.test(name)));
+  for (const cleanup of ['apply', 'dry-run', 'delete']) assert.throws(() => v.scope({ cleanup }), /retained/);
+});
+test('upgrade refuses the old context environment before output creation or any child command', async () => {
+  await assert.rejects(() => upgradeSmoke({ base: 'unreachable', env: {} }, 'unreachable'), /evidence path/);
+});
 
 const event = () => ({ GITHUB_ACTIONS:'true', GITHUB_REPOSITORY:'hara-cli/hara-desktop', GITHUB_EVENT_NAME:'push',
   GITHUB_REF: INPUT.controlledRef, GITHUB_REF_PROTECTED:'true', GITHUB_ACTOR_ID:String(INPUT.approverId),
@@ -41,11 +138,35 @@ test('real Intel missing-translation OID is native, translation or unknown probe
   assert.throws(()=>assertNoRosettaProbe({status:0,stdout:'1\n'})); assert.throws(()=>assertNoRosettaProbe({status:1,stderr:'operation not permitted'}));
   assert.throws(()=>assertNoRosettaProbe({status:null,stderr:''}));
 });
-test('private test environment strips credentials and isolates all HOME variants', t => {
-  const home=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-env-')); t.after(()=>fs.rmSync(home,{recursive:true,force:true}));
-  const old=process.env.HARA_TEST_API_KEY; process.env.HARA_TEST_API_KEY='fake-not-a-secret';
-  try { const e=privateEnvironment(home); assert.equal(e.HOME,home); assert.equal(e.USERPROFILE,home); assert.equal(e.CFFIXED_USER_HOME,home); assert.equal(e.HARA_TEST_API_KEY,undefined); assert.equal(e.HARA_HOME,path.join(home,'.hara')); assert.equal(e.HARA_UPDATE_CHECK,undefined); assert(e.TMPDIR.length < (process.platform === 'win32' ? 1024 : 32)); fs.rmSync(e.TMPDIR,{recursive:true,force:true}); }
-  finally { if(old===undefined)delete process.env.HARA_TEST_API_KEY;else process.env.HARA_TEST_API_KEY=old; }
+test('private test environment strips credentials and isolates all HOME variants', () => {
+  const scope = evidence(), root = scope.fixture('candidate-env');
+  const env = scope.environment({ HARA_TEST_API_KEY: 'fake-not-a-secret', HARA_UPDATE_CHECK: '1' });
+  assert.equal(env.HOME, scope.home); assert.equal(env.USERPROFILE, scope.home); assert.equal(env.CFFIXED_USER_HOME, scope.home);
+  assert.equal(env.HARA_TEST_API_KEY, undefined); assert.equal(env.HARA_HOME, path.join(scope.home, '.hara'));
+  assert.equal(env.HARA_UPDATE_CHECK, undefined); assert.equal(env.TMPDIR, scope.tmp);
+  const marker = scope.checked(path.join(root, 'retained.txt'), { missing: true });
+  fs.writeFileSync(marker, 'keep', { flag: 'wx', mode: 0o600 });
+  const child = scope.guardSync(env, () => spawnSync(process.execPath, ['--input-type=module', '-e',
+    'import os from "node:os"; console.log(JSON.stringify({home:process.env.HOME,tmp:process.env.TMPDIR,osTmp:os.tmpdir(),credential:process.env.HARA_TEST_API_KEY??null}));'],
+  { cwd: root, env, encoding: 'utf8' }));
+  assert.equal(child.status, 0, child.stderr);
+  assert.deepEqual(JSON.parse(child.stdout), { home: scope.home, tmp: scope.tmp, osTmp: scope.tmp, credential: null });
+  assert.equal(fs.readFileSync(marker, 'utf8'), 'keep');
+});
+test('a real child finalization failure remains nonzero and retains its private evidence', () => {
+  const scope = evidence(), root = scope.fixture('candidate-final-check'), marker = path.join(root, 'retained.txt');
+  const env = scope.environment({ PROBE_FILE: marker });
+  const module = new URL('../scripts/candidate-upgrade.mjs', import.meta.url).href;
+  const child = scope.guardSync(env, () => spawnSync(process.execPath, ['--input-type=module', '-e',
+    'import fs from "node:fs"; const {gateEvidence}=await import(process.argv[1]); const s=gateEvidence(process.env.CANDIDATE_EVIDENCE_ROOT); const e={...s.environment()}; await s.guard(e,async()=>{fs.writeFileSync(process.env.PROBE_FILE,"retained",{flag:"wx",mode:0o600});e.TMPDIR="/forbidden";return 0;}); console.log("UNEXPECTED_SUCCESS");', module],
+  { cwd: root, env, encoding: 'utf8' }));
+  assert.equal(child.status, 1); assert.match(child.stderr, /environment mismatch/);
+  assert(!child.stdout.includes('UNEXPECTED_SUCCESS')); assert.equal(fs.readFileSync(marker, 'utf8'), 'retained');
+});
+test('upgrade rejects output outside the whitelist before creating its upgrade directory', async () => {
+  const scope = evidence(), base = scope.fixture('candidate-upgrade-refusal'), env = scope.environment();
+  await assert.rejects(() => upgradeSmoke({ base, env }, path.join(scope.root, 'not-allowed')), /outside evidence whitelist/);
+  assert.equal(fs.existsSync(path.join(base, 'private-upgrades')), false); scope.assertEnvironment(env);
 });
 test('receipt rejects stale source, policy, run and attempt without trusting self-reported success', () => {
   const r=receipt(); assertReceipt(r);
@@ -78,24 +199,19 @@ test('Mac Core keeps strict full coverage; Windows shares ordinary CI contracts 
   assert(workflow.includes('/*-tests.log.result.json'));assert(!workflow.includes('/private-home/'));
 });
 test('Core capability code runs only in a scrubbed child and missing capability fails closed', async t => {
-  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'candidate-core-probe-')));
-  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const scope=evidence(),root=scope.fixture('candidate-core-probe');
   const core=path.join(root,'core'),base=path.join(root,'logs'),marker=path.join(root,'observed.json');
-  fs.mkdirSync(path.join(core,'scripts'),{recursive:true});
+  scope.mkdir(core);scope.mkdir(path.join(core,'scripts'));
   const script=path.join(core,'scripts/native-ci-tests.mjs');
   fs.writeFileSync(script,'import fs from "node:fs";fs.writeFileSync(process.env.PROBE_FILE,JSON.stringify({pid:process.pid,sawCredential:!!process.env.HARA_TEST_API_KEY}));export function strictNativeTestBatches(){}');
-  const old=process.env.HARA_TEST_API_KEY;process.env.HARA_TEST_API_KEY='synthetic-parent-only';
-  const env=privateEnvironment(path.join(root,'home'));env.PROBE_FILE=marker;
-  try {
-    await assertStrictNativeCore({core,base,env});
+  const env=scope.environment({HARA_TEST_API_KEY:'synthetic-parent-only',PROBE_FILE:marker});
+  await scope.guard(env, async () => {
+    await scope.guard(env,()=>assertStrictNativeCore({core,base,env}));
     const observed=JSON.parse(fs.readFileSync(marker));assert.notEqual(observed.pid,process.pid);assert.equal(observed.sawCredential,false);
     fs.writeFileSync(script,'export const unrelated=true;');
-    await assert.rejects(()=>assertStrictNativeCore({core,base:path.join(root,'missing'),env}),/candidate phase failed/);
+    await assert.rejects(()=>scope.guard(env,()=>assertStrictNativeCore({core,base:path.join(root,'missing'),env})),/candidate phase failed/);
     assert.match(fs.readFileSync(path.join(root,'missing/core-capability-tests.log'),'utf8'),/pinned Core must support strict/);
-  } finally {
-    fs.rmSync(env.TMPDIR,{recursive:true,force:true});
-    if(old===undefined)delete process.env.HARA_TEST_API_KEY;else process.env.HARA_TEST_API_KEY=old;
-  }
+  });
 });
 test('Pi-only formal hydration supports all native platforms without reintroducing SDK', () => {
   const p='@earendil-works/pi-coding-agent', lock={lockfileVersion:3,packages:{'':{dependencies:{[p]:'1.2.3'}},['node_modules/'+p]:{version:'1.2.3',integrity:'sha512-YWJjZA=='}}};
@@ -114,8 +230,9 @@ function tar(entries) {
   return gzipSync(Buffer.concat([...blocks,Buffer.alloc(1024)]));
 }
 async function fixture(t,entries,fn) {
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-tar-')); t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
-  const file=path.join(dir,'input.tar.gz'); fs.writeFileSync(file,tar(entries)); return fn(file,dir);
+  const scope=evidence(),dir=scope.fixture('candidate-tar'),env=scope.environment();
+  const file=scope.checked(path.join(dir,'input.tar.gz'),{missing:true});fs.writeFileSync(file,tar(entries),{flag:'wx',mode:0o600});
+  return scope.guard(env,()=>fn(file,dir));
 }
 test('tar validation accepts ordinary files, directories and contained framework links',t=>fixture(t,[{name:'bundle/',type:'5'},{name:'bundle/App',type:'5'},{name:'bundle/App/bin',body:'ok'},{name:'bundle/App/current',type:'2',link:'bin'}],async file=>assert.equal((await validateTar(file)).length,4)));
 for(const [name,rows] of Object.entries({ traversal:[{name:'bundle/../../outside'}], absolute:[{name:'/tmp/outside'}], wrongRoot:[{name:'other/file'}], windowsAds:[{name:'bundle/file:stream'}],
@@ -124,7 +241,7 @@ for(const [name,rows] of Object.entries({ traversal:[{name:'bundle/../../outside
   test(`tar rejects ${name} before extraction`,t=>fixture(t,rows,file=>assert.rejects(()=>validateTar(file))));
 }
 test('truncated archive fails closed', t=>fixture(t,[{name:'bundle/file',body:'data'}],async(file)=>{const b=fs.readFileSync(file);fs.writeFileSync(file,b.subarray(0,-12));await assert.rejects(()=>validateTar(file));}));
-test('post-extraction link validation is scoped to a private root', t=>fixture(t,[{name:'bundle/file'}],async(_file,dir)=>{const root=path.join(dir,'root');fs.mkdirSync(root);fs.writeFileSync(path.join(root,'file'),'ok');validateExtractedTree(root);fs.symlinkSync(os.tmpdir(),path.join(root,'bad'));assert.throws(()=>validateExtractedTree(root));}));
+test('post-extraction link validation is scoped to a private root', t=>fixture(t,[{name:'bundle/file'}],async(_file,dir)=>{const root=path.join(dir,'root'),outside=path.join(dir,'outside');fs.mkdirSync(root,{mode:0o700});fs.mkdirSync(outside,{mode:0o700});fs.writeFileSync(path.join(root,'file'),'ok');validateExtractedTree(root);fs.symlinkSync(outside,path.join(root,'bad'));assert.throws(()=>validateExtractedTree(root));}));
 test('outer artifact archive rejects traversal',()=>{for(const text of ['/absolute','a/../b','a\\b',''])assert.throws(()=>checkArchiveEntries(text));});
 test('candidate workflow has exact non-main input and no publishing authority', () => {
   const w=fs.readFileSync(path.join(ROOT,'.github/workflows/candidate.yml'),'utf8');

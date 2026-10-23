@@ -6,6 +6,7 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { gateEvidence } from './candidate-upgrade.mjs';
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const INPUT = JSON.parse(fs.readFileSync(path.join(ROOT, 'candidate-inputs.json')));
 export const TARGETS = ['aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'];
@@ -14,16 +15,42 @@ export const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const fileHash = file => hash(fs.readFileSync(file));
 export const readJson = file => JSON.parse(fs.readFileSync(file));
 export const identity = hash(JSON.stringify(INPUT));
+// Consume the caller's provisioned evidence binding; never allocate a system temp root.
+export function candidateEvidence(env = process.env) {
+  return gateEvidence(env?.CANDIDATE_EVIDENCE_ROOT ?? env?.HARA_WRAPPER_EVIDENCE_ROOT, { env });
+}
+function commandEvidence(source) {
+  const scope = candidateEvidence(source), env = scope.environment();
+  scope.assertEnvironment(env);
+  return { scope, env };
+}
+function ensureEvidenceDirectory(scope, directory) {
+  scope.checked(directory, { missing: true, directory: true });
+  if (!fs.existsSync(directory)) {
+    ensureEvidenceDirectory(scope, path.dirname(directory));
+    scope.mkdir(directory);
+  }
+  scope.checked(directory, { directory: true });
+  return directory;
+}
 export function save(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const next = file + '.next', fd = fs.openSync(next, 'w', 0o600);
-  try { fs.writeFileSync(fd, JSON.stringify(value, null, 2) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  fs.renameSync(next, file);
+  const { scope, env } = commandEvidence(process.env);
+  return scope.guardSync(env, () => {
+    scope.checked(file, { missing: true });
+    ensureEvidenceDirectory(scope, path.dirname(file));
+    const next = scope.checked(file + '.next', { missing: true }), fd = fs.openSync(next, 'wx', 0o600);
+    try { fs.writeFileSync(fd, JSON.stringify(value, null, 2) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    scope.checked(next); scope.checked(file, { missing: true });
+    fs.renameSync(next, file);
+  });
 }
 export function sync(command, args, { cwd = ROOT, env = process.env, timeout = 120000 } = {}) {
-  const r = spawnSync(command, args, { cwd, env, encoding: 'utf8', timeout, maxBuffer: 32 * 1024 * 1024 });
-  assert(r.status === 0 && !r.error, `candidate command failed: ${path.basename(command)} (${r.status ?? 'unknown'})`);
-  return r.stdout.trim();
+  const checked = commandEvidence(env);
+  return checked.scope.guardSync(checked.env, () => {
+    const r = spawnSync(command, args, { cwd, env: checked.env, encoding: 'utf8', timeout, maxBuffer: 32 * 1024 * 1024 });
+    assert(r.status === 0 && !r.error, `candidate command failed: ${path.basename(command)} (${r.status ?? 'unknown'})`);
+    return r.stdout.trim();
+  });
 }
 export function redactDiagnosticOutput(text, env = {}) {
   let safe = text;
@@ -36,11 +63,19 @@ export function redactDiagnosticOutput(text, env = {}) {
     .replace(/((?:api[_-]?key|access[_-]?token|password|secret)\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}]+)/gi, '$1[REDACTED]');
 }
 export async function run(label, command, args, { cwd = ROOT, env = process.env, timeout = 60 * 60000, capture = false, logFile } = {}) {
+  const checked = commandEvidence(env), { scope } = checked;
+  return scope.guard(checked.env, async () => {
   assert(!logFile || (capture && path.isAbsolute(logFile)), 'diagnostic log requires captured output and an absolute private path');
   let logFd;
-  if (logFile) { fs.mkdirSync(path.dirname(logFile), { recursive:true, mode:0o700 }); logFd=fs.openSync(logFile,'wx',0o600); }
+  if (logFile) {
+    scope.checked(logFile, { missing: true }); scope.checked(logFile + '.result.json', { missing: true });
+    assert(!fs.existsSync(logFile + '.result.json'), 'diagnostic result already exists; refuse replay');
+    ensureEvidenceDirectory(scope, path.dirname(logFile)); logFd=fs.openSync(logFile,'wx',0o600);
+  }
+  try {
   console.log(`candidate phase: ${label}`);
-  const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  scope.assertEnvironment(checked.env);
+  const child = spawn(command, args, { cwd, env: checked.env, stdio: ['ignore', 'pipe', 'pipe'] });
   const chunks=[]; let size=0, failureKind=null, spawnCode=null;
   const consume = bytes => {
     if (capture) {
@@ -56,16 +91,21 @@ export async function run(label, command, args, { cwd = ROOT, env = process.env,
   const [code,signal] = await new Promise(resolve => { child.once('error', error => { failureKind ??= 'spawn'; spawnCode=error.code??null; }); child.once('close', (code,signal)=>resolve([code,signal])); });
   clearTimeout(timer); clearInterval(pulse);
   const output=capture?Buffer.concat(chunks).toString('utf8'):'';
+  // Child success is not entry success when the environment or directory anchors changed.
+  scope.assertEnvironment(checked.env);
   if (logFd!==undefined) {
     // Do not persist a partial final line (which may be a partial credential) at the output bound.
     const diagnostic=failureKind==='output-limit'?output.slice(0,output.lastIndexOf('\n')+1):output;
     const safe=redactDiagnosticOutput(diagnostic,env);
-    try { fs.writeFileSync(logFd,safe); fs.fsyncSync(logFd); } finally { fs.closeSync(logFd); }
+    try { fs.writeFileSync(logFd,safe); fs.fsyncSync(logFd); } finally { fs.closeSync(logFd); logFd=undefined; }
+    scope.checked(logFile + '.result.json', { missing: true });
     fs.writeFileSync(logFile+'.result.json',JSON.stringify({code,signal,spawnCode,failureKind,capturedBytes:size,complete:failureKind===null},null,2)+'\n',{flag:'wx',mode:0o600});
     if (code!==0 || failureKind || signal) process.stderr.write(safe.slice(-8192)+'\n');
   }
   assert(code === 0 && !failureKind && !signal, `candidate phase failed: ${label} (exit=${code}, signal=${signal??'none'}, reason=${failureKind??'exit'}${spawnCode?', spawn='+spawnCode:''})`);
   return output;
+  } finally { if (logFd!==undefined) fs.closeSync(logFd); }
+  });
 }
 export function assertEvent(e) {
   assert.equal(e.GITHUB_ACTIONS, 'true'); assert.equal(e.GITHUB_REPOSITORY, 'hara-cli/hara-desktop');
@@ -82,23 +122,9 @@ export function nativeTarget(platform = process.platform, arch = process.arch) {
   assert(TARGETS.includes(t), 'candidate requires a supported native architecture'); return t;
 }
 export function privateEnvironment(home, extra = {}) {
-  assert(path.isAbsolute(home) && home !== realHome, 'private runtime HOME required');
-  fs.mkdirSync(home, { recursive: true, mode: 0o700 }); fs.mkdirSync(path.join(home, 'tmp'), { recursive: true, mode: 0o700 });
-  // Core's scoped Unix socket deliberately rejects paths over 100 bytes. Keep the private
-  // test temp short, even when RUNNER_TEMP/HOME are deeply nested, without relaxing that fence.
-  const temp = fs.realpathSync(fs.mkdtempSync(path.join(process.platform === 'darwin' ? '/private/tmp' : process.platform === 'linux' ? '/tmp' : os.tmpdir(), 'hc-')));
-  fs.chmodSync(temp, 0o700);
-  const env = { ...process.env, RUSTUP_HOME: process.env.RUSTUP_HOME ?? path.join(realHome, '.rustup'),
-    CARGO_HOME: process.env.CARGO_HOME ?? path.join(realHome, '.cargo'),
-    HOME: home, USERPROFILE: home, CFFIXED_USER_HOME: home, HARA_HOME: path.join(home, '.hara'),
-    TMPDIR: temp, TMP: temp, TEMP: temp,
-    XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local/share'),
-    NO_UPDATE_NOTIFIER: '1', npm_config_update_notifier: 'false', ...extra };
-  for (const key of Object.keys(env)) {
-    if (/(?:TOKEN|API_KEY|PASSWORD|PRIVATE_KEY|SECRET|CREDENTIAL|^APPLE_|^AWS_|^ALIYUN_)/i.test(key)) delete env[key];
-    if (/^HARA_/.test(key) && !['HARA_HOME', ...Object.keys(extra)].includes(key)) delete env[key];
-  }
-  return env;
+  const scope = candidateEvidence();
+  assert.equal(home, scope.home, 'HOME must be this evidence root synthetic-home');
+  return scope.environment(extra);
 }
 export function sourceDirectories() {
   const desktop = path.resolve(process.env.CANDIDATE_DESKTOP_DIR ?? path.join(ROOT, '../app'));
@@ -138,19 +164,29 @@ export function assertToolchain() {
   assert.equal(sync('bun', ['--version']), INPUT.toolchain.bun);
   assert.equal(sync('rustc', ['--version']).split(/\s+/)[1], INPUT.toolchain.rust);
   assert.equal(sync('rustc', ['-vV']).match(/^host: (.+)$/m)?.[1], nativeTarget());
-  if (process.platform === 'darwin' && process.arch === 'x64') assertNoRosettaProbe(spawnSync('/usr/sbin/sysctl', ['-n', 'sysctl.proc_translated'], { encoding:'utf8', timeout:10000 }));
+  if (process.platform === 'darwin' && process.arch === 'x64') {
+    const { scope, env } = commandEvidence(process.env);
+    scope.guardSync(env, () => assertNoRosettaProbe(spawnSync('/usr/sbin/sysctl', ['-n', 'sysctl.proc_translated'], { env, encoding:'utf8', timeout:10000 })));
+  }
 }
 export async function verifyUpdater(c, file, label) {
   // Use the exact application's verifier, in its private HOME, not the orchestration Cargo tree.
   const module = pathToFileURL(path.join(c.desktop, 'scripts/updater-signature.mjs')).href;
   await run(label, process.execPath, ['--input-type=module', '-e', 'const {verifyUpdaterArtifactSignature:v}=await import(process.argv[1]);v(process.argv[2],process.argv[2]+".sig",process.argv[3]);', module, file, label], { cwd: c.desktop, env: c.env, timeout: 15 * 60000 });
 }
+export function contextPaths(env = process.env) {
+  const scope = candidateEvidence(env);
+  assert(typeof env.CANDIDATE_OUTPUT_DIR === 'string' && env.CANDIDATE_OUTPUT_DIR.length > 0, 'explicit candidate output directory required');
+  const base = scope.checked(env.CANDIDATE_OUTPUT_DIR, { missing: true, directory: true });
+  return { scope, base, env: scope.environment(), evidenceRoot: scope.root, cleanup: 'keep', deletionEnabled: false };
+}
 export function context() {
+  // Reject bad bindings/paths before tool/source checks can spawn or create output.
+  const { scope, base, env, evidenceRoot, cleanup, deletionEnabled } = contextPaths();
   assertEvent(process.env); assertToolchain();
   const { desktop, core } = sourceDirectories(); assertSources(desktop, core);
-  const base = path.resolve(process.env.CANDIDATE_OUTPUT_DIR ?? path.join(process.env.RUNNER_TEMP, `hara-candidate-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`));
-  fs.mkdirSync(base, { recursive: true, mode: 0o700 });
-  return { desktop, core, base, target: nativeTarget(), env: privateEnvironment(path.join(base, 'private-home')) };
+  scope.guardSync(env, () => ensureEvidenceDirectory(scope, base));
+  return { desktop, core, base, target: nativeTarget(), env, evidenceRoot, cleanup, deletionEnabled };
 }
 export function receipt(extra = {}) {
   return { schema: 2, identity, application: INPUT.desktop.commit, core: INPUT.core.commit,
@@ -189,9 +225,12 @@ export function api(endpoint) {
   return JSON.parse(sync('gh', ['api', '--method', 'GET', endpoint]));
 }
 export async function downloadArtifact(phase, target, directory, e = { runId: Number(process.env.GITHUB_RUN_ID), attempt: Number(process.env.GITHUB_RUN_ATTEMPT), orchestration: process.env.GITHUB_SHA }) {
-  assert(!fs.existsSync(directory)); fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const { scope, env } = commandEvidence(process.env);
+  return scope.guard(env, async () => {
   assert(Number.isSafeInteger(e.runId) && e.runId > 0 && Number.isSafeInteger(e.attempt) && e.attempt > 0); assert.match(e.orchestration, /^[a-f0-9]{40}$/);
   const expectedName = artifactName(phase, target, e), rows = []; let page = 1;
+  scope.checked(directory, { missing: true, directory: true }); scope.checked(directory + '.zip', { missing: true });
+  assert(!fs.existsSync(directory)); ensureEvidenceDirectory(scope, directory);
   for (; page <= 20; page++) {
     const response = api(`repos/hara-cli/hara-desktop/actions/runs/${e.runId}/artifacts?per_page=100&page=${page}`);
     rows.push(...response.artifacts); if (response.artifacts.length < 100) break;
@@ -199,15 +238,17 @@ export async function downloadArtifact(phase, target, directory, e = { runId: Nu
   assert(page <= 20); const matches = rows.filter(r => r.name === expectedName); assert.equal(matches.length, 1);
   const a = matches[0]; assert.equal(a.expired, false); assert.equal(a.workflow_run.id, e.runId);
   assert.equal(a.workflow_run.head_sha, e.orchestration); assert.match(a.digest, /^sha256:[a-f0-9]{64}$/);
-  const zip = directory + '.zip', output = fs.createWriteStream(zip, { flags: 'wx', mode: 0o600 });
+  const zip = directory + '.zip', fd = fs.openSync(zip, 'wx', 0o600);
+  const output = fs.createWriteStream(zip, { fd, autoClose: true });
   const sha = createHash('sha256'); let size = 0;
-  const child = spawn('gh', ['api', '--method', 'GET', `repos/hara-cli/hara-desktop/actions/artifacts/${a.id}/zip`], { stdio: ['ignore', 'pipe', 'pipe'] });
+  scope.assertEnvironment(env);
+  const child = spawn('gh', ['api', '--method', 'GET', `repos/hara-cli/hara-desktop/actions/artifacts/${a.id}/zip`], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', b => { sha.update(b); size += b.length; }); child.stdout.pipe(output); child.stderr.resume();
   const closed = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', code => code === 0 ? resolve() : reject(new Error('artifact download failed'))); });
   const finished = new Promise((resolve, reject) => { output.once('finish', resolve); output.once('error', reject); });
   child.once('error', e => output.destroy(e)); output.once('error', () => child.kill('SIGKILL'));
   const timer = setTimeout(() => child.kill('SIGKILL'), 15 * 60000);
-  try { await Promise.all([closed, finished]); } finally { clearTimeout(timer); child.kill(); output.destroy(); }
+  try { await Promise.all([closed, finished]); } finally { clearTimeout(timer); child.kill(); output.destroy(); scope.assertEnvironment(env); }
   assert.equal(size, a.size_in_bytes); assert.equal(`sha256:${sha.digest('hex')}`, a.digest);
   // Outer ZIPs are upload-artifact's flat envelopes only; links cannot become extraction parents.
   const names = checkArchiveEntries(sync('unzip', ['-Z1', zip])); assert(names.every(n => /^[A-Za-z0-9_.-]+$/.test(n)), 'artifact envelope must be flat');
@@ -215,4 +256,5 @@ export async function downloadArtifact(phase, target, directory, e = { runId: Nu
   for (const name of names) { const st = fs.lstatSync(path.join(directory, name)); assert(st.isFile() && !st.isSymbolicLink() && st.nlink === 1, 'artifact envelope links forbidden'); }
   save(path.join(directory, 'transport-evidence.json'), { id: a.id, name: a.name, size, sha256: a.digest.slice(7), runId: e.runId, attempt: e.attempt });
   return directory;
+  });
 }
