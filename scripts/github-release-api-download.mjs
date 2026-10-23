@@ -2,17 +2,18 @@
 
 // Download only missing GitHub release assets through the REST asset endpoint after the bulk
 // `gh release download` path hits a transient CDN failure. Every completed file is accepted only
-// after its size and GitHub-declared SHA-256 match, then moved into place atomically.
+// after its size and GitHub-declared SHA-256 match, then copied into place exclusively.
+// Existing targets and partial downloads are retained for diagnosis; nothing is deleted.
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
   closeSync,
+  constants,
+  copyFileSync,
   existsSync,
   lstatSync,
   openSync,
   readFileSync,
-  renameSync,
-  rmSync,
   statSync,
 } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -139,27 +140,25 @@ function curlAuthenticationConfig(token) {
 function runAssetDownload(asset, root, { execute, timeoutMs, token }) {
   const target = join(root, asset.name);
   if (fileMatches(target, asset)) return Promise.resolve({ skipped: true });
-  rmSync(target, { force: true });
+  // lstat also finds dangling symlinks, which existsSync would treat as missing.
+  let missing = false;
+  try { lstatSync(target); }
+  catch (error) { if (error.code !== "ENOENT") throw error; missing = true; }
+  if (!missing) throw new Error(`release API asset target already exists; retained without overwrite: ${asset.name}`);
 
   const partial = join(root, `.${asset.name}.${process.pid}.${randomUUID()}.part`);
   closeSync(openSync(partial, "wx", 0o600));
-  let child;
-  try {
-    const curlEnvironment = { ...process.env };
-    delete curlEnvironment.GH_TOKEN;
-    delete curlEnvironment.GITHUB_TOKEN;
-    curlEnvironment.NO_PROXY = "";
-    curlEnvironment.no_proxy = "";
-    child = execute("/usr/bin/curl", releaseApiDownloadArguments(asset.apiUrl, partial), {
-      env: curlEnvironment,
-      stdio: ["pipe", "ignore", "inherit"],
-    });
-    child.stdin?.on?.("error", () => {});
-    child.stdin?.end(curlAuthenticationConfig(token));
-  } catch (error) {
-    rmSync(partial, { force: true });
-    throw error;
-  }
+  const curlEnvironment = { ...process.env };
+  delete curlEnvironment.GH_TOKEN;
+  delete curlEnvironment.GITHUB_TOKEN;
+  curlEnvironment.NO_PROXY = "";
+  curlEnvironment.no_proxy = "";
+  const child = execute("/usr/bin/curl", releaseApiDownloadArguments(asset.apiUrl, partial), {
+    env: curlEnvironment,
+    stdio: ["pipe", "ignore", "inherit"],
+  });
+  child.stdin?.on?.("error", () => {});
+  child.stdin?.end(curlAuthenticationConfig(token));
 
   return new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
@@ -177,19 +176,16 @@ function runAssetDownload(asset, root, { execute, timeoutMs, token }) {
 
     child.once("error", (error) =>
       finish(() => {
-        rmSync(partial, { force: true });
         rejectPromise(error);
       }),
     );
     child.once("close", (code, signal) =>
       finish(() => {
         if (timedOut) {
-          rmSync(partial, { force: true });
           rejectPromise(new Error(`i/o timeout: release API asset ${asset.name} exceeded ${timeoutMs / 1_000} seconds`));
           return;
         }
         if (code !== 0) {
-          rmSync(partial, { force: true });
           rejectPromise(
             new Error(
               `release API asset ${asset.name} stopped ${signal ? `by ${signal}` : `with exit code ${code ?? "unknown"}`}`,
@@ -197,13 +193,18 @@ function runAssetDownload(asset, root, { execute, timeoutMs, token }) {
           );
           return;
         }
-        if (!fileMatches(partial, asset)) {
-          rmSync(partial, { force: true });
-          rejectPromise(new Error(`release API asset digest mismatch: ${asset.name}`));
-          return;
+        try {
+          if (!fileMatches(partial, asset)) {
+            throw new Error(`release API asset digest mismatch: ${asset.name}`);
+          }
+          // COPYFILE_EXCL refuses a target created while the request was in flight.
+          // Keep the verified partial too, including when publication fails.
+          copyFileSync(partial, target, constants.COPYFILE_EXCL);
+          if (!fileMatches(target, asset)) throw new Error(`release API asset published digest mismatch: ${asset.name}`);
+          resolvePromise({ skipped: false });
+        } catch (error) {
+          rejectPromise(error);
         }
-        renameSync(partial, target);
-        resolvePromise({ skipped: false });
       }),
     );
   });

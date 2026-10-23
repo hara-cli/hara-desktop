@@ -32,7 +32,15 @@ async function preconditions() {
   assert.equal(process.platform, 'darwin'); assert.equal(process.arch, 'arm64');
   const settings = JSON.parse(fs.readFileSync(path.join(config.runnerDirectory, '.runner'), 'utf8').replace(/^\uFEFF/, ''));
   assertSigner(process.env, settings, config.runnerName);
-  assert(fs.statSync(config.keychain).isFile()); assert(fs.statSync(config.notaryKeyFile).isFile());
+  try {
+    const keychain = fs.lstatSync(config.keychain);
+    assert(keychain.isFile() && !keychain.isSymbolicLink() && keychain.nlink === 1
+      && fs.realpathSync(config.keychain) === config.keychain,
+    'dedicated signing keychain must be a canonical regular file without symlink/alias');
+  } catch (cause) {
+    throw new Error('dedicated signing keychain path refused: symlink/alias or unsafe file', { cause });
+  }
+  assert(fs.statSync(config.notaryKeyFile).isFile());
   let bytes;
   try { bytes = readUpdaterKey(realHome); assert(bytes.toString('utf8').trim() && !bytes.includes(0)); }
   finally { bytes?.fill(0); }
