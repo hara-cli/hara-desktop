@@ -39,8 +39,12 @@ search gates remain. Injection points are for offline contract tests; CLI entrie
 always select the actual implementations. No candidate authorization, source
 rebinding, signing or publication authority is created by this helper.
 
-Legacy workflows that still pass a system-temp output or run these evidence
-consumers without a root must be wired separately before real CI execution. This
-caller adaptation does not alter workflow permissions, candidate input pins or
-the candidate workflow, and local subset results do not establish native or
-multi-platform acceptance.
+The ordinary `ci.yml` now selects a workspace child per run/attempt/job and uses
+native `path.join` inside Node, including on Windows. Linux/macOS full regressions
+run the original `npm test` within the provisioned process environment; Windows
+and Core use their existing callers without injected gate overrides. Existing
+diagnostic artifact paths match the selected root's `tmp` outputs. The private
+environment ends with that Node process, leaving later build steps unchanged.
+This wiring does not alter permissions, candidate input pins or the candidate
+workflow. Offline contract results do not establish hosted CI, native or
+multi-platform acceptance; other workflow paths remain outside this change.

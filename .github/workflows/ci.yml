@@ -26,6 +26,8 @@ jobs:
   quality:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
+    env:
+      CI_EVIDENCE_LEAF: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}-quality
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
@@ -47,7 +49,17 @@ jobs:
         run: npm run check:release
 
       - name: Run regression tests
-        run: npm test
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { provisionCiEvidence, withCiEnvironment } from './scripts/ci-evidence.mjs';
+          import { ROOT, run } from './scripts/candidate-common.mjs';
+          const evidenceRoot = path.join(process.env.GITHUB_WORKSPACE, process.env.CI_EVIDENCE_LEAF);
+          const c = provisionCiEvidence({ evidenceRoot, output: path.join(evidenceRoot, 'tmp', 'regressions') });
+          await withCiEnvironment(c, () => run('Ordinary CI original full suite', 'bash', ['-c', 'exec npm test'],
+            { cwd: ROOT, env: c.env, capture: true, logFile: path.join(c.base, 'tests.log') }));
+          NODE
 
       - name: Build the production renderer
         run: npm run build
@@ -67,6 +79,8 @@ jobs:
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    env:
+      CI_EVIDENCE_LEAF: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}-native
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
@@ -84,7 +98,17 @@ jobs:
         run: npm run check:release
 
       - name: Run complete Desktop regressions
-        run: npm test
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { provisionCiEvidence, withCiEnvironment } from './scripts/ci-evidence.mjs';
+          import { ROOT, run } from './scripts/candidate-common.mjs';
+          const evidenceRoot = path.join(process.env.GITHUB_WORKSPACE, process.env.CI_EVIDENCE_LEAF);
+          const c = provisionCiEvidence({ evidenceRoot, output: path.join(evidenceRoot, 'tmp', 'regressions') });
+          await withCiEnvironment(c, () => run('Ordinary CI original full suite', 'bash', ['-c', 'exec npm test'],
+            { cwd: ROOT, env: c.env, capture: true, logFile: path.join(c.base, 'tests.log') }));
+          NODE
 
       - name: Build the production renderer
         run: npm run build
@@ -112,6 +136,8 @@ jobs:
         os: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    env:
+      CI_EVIDENCE_LEAF: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}-core
     defaults:
       run:
         shell: bash
@@ -140,14 +166,21 @@ jobs:
       - name: Install locked Desktop tooling
         run: npm ci
       - name: Verify native Core optional install and search floor without models
-        run: node scripts/ci-core-platform.mjs "$GITHUB_WORKSPACE/core" "$RUNNER_TEMP/core-platform-smoke"
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { corePlatformSmoke } from './scripts/ci-core-platform.mjs';
+          const evidenceRoot = path.join(process.env.GITHUB_WORKSPACE, process.env.CI_EVIDENCE_LEAF);
+          await corePlatformSmoke({ core: path.join(process.env.GITHUB_WORKSPACE, 'core'),
+            evidenceRoot, output: path.join(evidenceRoot, 'tmp', 'core-platform-smoke') });
+          NODE
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: core-platform-smoke-${{ matrix.os }}
           path: |
-            ${{ runner.temp }}/core-platform-smoke/search.log
-            ${{ runner.temp }}/core-platform-smoke/search.log.result.json
+            ${{ github.workspace }}/${{ env.CI_EVIDENCE_LEAF }}/tmp/core-platform-smoke/search.log
+            ${{ github.workspace }}/${{ env.CI_EVIDENCE_LEAF }}/tmp/core-platform-smoke/search.log.result.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -176,6 +209,8 @@ jobs:
   regression-windows:
     runs-on: windows-latest
     timeout-minutes: 20
+    env:
+      CI_EVIDENCE_LEAF: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}-windows
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -199,14 +234,20 @@ jobs:
 
       - name: Run complete Windows regressions with durable failure diagnostics
         shell: bash
-        run: node scripts/ci-regression.mjs "$RUNNER_TEMP/windows-regressions"
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { runRegression } from './scripts/ci-regression.mjs';
+          const evidenceRoot = path.join(process.env.GITHUB_WORKSPACE, process.env.CI_EVIDENCE_LEAF);
+          await runRegression({ evidenceRoot, output: path.join(evidenceRoot, 'tmp', 'windows-regressions') });
+          NODE
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: windows-regression-diagnostics
           path: |
-            ${{ runner.temp }}/windows-regressions/tests.log
-            ${{ runner.temp }}/windows-regressions/tests.log.result.json
+            ${{ github.workspace }}/${{ env.CI_EVIDENCE_LEAF }}/tmp/windows-regressions/tests.log
+            ${{ github.workspace }}/${{ env.CI_EVIDENCE_LEAF }}/tmp/windows-regressions/tests.log.result.json
           if-no-files-found: warn
           retention-days: 7
