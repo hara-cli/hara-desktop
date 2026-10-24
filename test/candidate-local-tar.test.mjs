@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { localTarInvocation, runLocalTar } from '../scripts/candidate-local-tar.mjs';
 import { validateTar, validateExtractedTree } from '../scripts/candidate-archive.mjs';
+import { candidateEvidence } from '../scripts/candidate-common.mjs';
 
 test('all platforms pass only a local archive basename to -f, including Windows cross-drive directories', () => {
   for (const operation of ['create', 'extract']) {
@@ -33,7 +33,7 @@ test('native, signing and upgrade paths share local tar handling without weakeni
   const counts = { native: 2, signing: 3, upgrade: 1 };
   for (const [name, count] of Object.entries(counts)) {
     const source = fs.readFileSync(new URL(`../scripts/candidate-${name}.mjs`, import.meta.url), 'utf8');
-    assert.equal((source.match(/await runLocalTar\(/g) ?? []).length, count);
+    assert.equal((source.match(/\brunLocalTar\(/g) ?? []).length, count);
     assert.equal(/(?:run|sync)\([^\n]*['"]tar['"]/.test(source), false, `${name} must not bypass local archive handling`);
     const extract = source.indexOf("'extract',");
     assert(extract > source.indexOf('await validateTar('), `${name} must validate before extraction`);
@@ -42,29 +42,26 @@ test('native, signing and upgrade paths share local tar handling without weakeni
 });
 
 test('real local tar round-trips spaces and package bytes with each installed Windows tar implementation', { timeout: 10000 }, async t => {
-  const output = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'candidate-tar-output-')));
-  // Hosted Windows HOME and RUNNER_TEMP may be on different drives. Exercise that real layout,
-  // in addition to the unconditional C:/D: operand contract above. No user configuration is read.
-  const sourceParent = process.platform === 'win32' ? os.homedir() : os.tmpdir();
-  const input = fs.realpathSync.native(fs.mkdtempSync(path.join(sourceParent, 'candidate-tar-source-')));
-  t.after(() => { fs.rmSync(output, { recursive: true, force: true }); fs.rmSync(input, { recursive: true, force: true }); });
-  fs.mkdirSync(path.join(input, 'release space/bundle/msi'), { recursive: true });
-  fs.mkdirSync(path.join(input, 'release space/bundle/nsis'), { recursive: true });
+  const scope = candidateEvidence(), output = scope.fixture('candidate-tar-output'), input = scope.fixture('candidate-tar-source');
+  // Keep real round-trips inside the retained evidence root. The unconditional C:/D:
+  // operand contract above covers cross-drive selection without allocating outside it.
+  const release = scope.mkdir(path.join(input, 'release space')), bundle = scope.mkdir(path.join(release, 'bundle'));
+  scope.mkdir(path.join(bundle, 'msi')); scope.mkdir(path.join(bundle, 'nsis'));
   const bytes = Buffer.from([0, 255, 128, 1, 17]);
-  fs.writeFileSync(path.join(input, 'release space/bundle/msi/Hara package.msi'), bytes);
-  fs.writeFileSync(path.join(input, 'release space/bundle/nsis/Hara setup.exe'), bytes);
-  const env = { PATH: process.env.PATH, ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}), COPYFILE_DISABLE: '1' };
+  fs.writeFileSync(scope.checked(path.join(bundle, 'msi/Hara package.msi'), { missing: true }), bytes, { flag: 'wx', mode: 0o600 });
+  fs.writeFileSync(scope.checked(path.join(bundle, 'nsis/Hara setup.exe'), { missing: true }), bytes, { flag: 'wx', mode: 0o600 });
+  const env = scope.environment({ COPYFILE_DISABLE: '1' });
   const archive = path.join(output, 'bundle package.tar.gz');
   await runLocalTar('Synthetic package archive', 'create', archive, path.join(input, 'release space'), ['bundle'], { env });
   await validateTar(archive);
-  const restored = path.join(output, 'restored space'); fs.mkdirSync(restored);
+  const restored = scope.mkdir(path.join(output, 'restored space'));
   await runLocalTar('Synthetic package restore', 'extract', archive, restored, [], { env });
   validateExtractedTree(path.join(restored, 'bundle'));
   assert.deepEqual(fs.readFileSync(path.join(restored, 'bundle/msi/Hara package.msi')), bytes);
 
   const implementations = new Set(['tar']);
   if (process.platform === 'win32') {
-    const found = spawnSync('where.exe', ['tar'], { encoding: 'utf8', timeout: 5000 });
+    const found = scope.guardSync(env, () => spawnSync('where.exe', ['tar'], { env, encoding: 'utf8', timeout: 5000 }));
     assert.equal(found.status, 0, 'Windows must expose its actual tar implementations');
     for (const file of found.stdout.trim().split(/\r?\n/)) if (fs.existsSync(file)) implementations.add(file);
     const gitTar = path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git/usr/bin/tar.exe');
@@ -73,15 +70,16 @@ test('real local tar round-trips spaces and package bytes with each installed Wi
   let index = 0;
   for (const command of implementations) {
     const file = path.join(output, `implementation-${index}.tar.gz`), destination = path.join(output, `implementation-${index++}`);
-    fs.mkdirSync(destination);
+    scope.mkdir(destination);
     for (const [operation, directory, entries] of [['create', path.join(input, 'release space'), ['bundle']], ['extract', destination, []]]) {
       const invocation = localTarInvocation(operation, file, directory, entries);
-      const result = spawnSync(command, invocation.args, { cwd: invocation.cwd, env, encoding: 'utf8', timeout: 5000 });
+      const result = scope.guardSync(env, () => spawnSync(command, invocation.args, { cwd: invocation.cwd, env, encoding: 'utf8', timeout: 5000 }));
       assert.equal(result.status, 0, `${path.basename(command)} ${operation}: ${result.stderr}`);
       if (operation === 'create') await validateTar(file);
     }
     validateExtractedTree(path.join(destination, 'bundle'));
     assert.deepEqual(fs.readFileSync(path.join(destination, 'bundle/nsis/Hara setup.exe')), bytes);
   }
+  scope.assertEnvironment(env); assert(fs.existsSync(input)); assert(fs.existsSync(output));
   t.diagnostic(`local tar implementations verified: ${implementations.size}; cross-drive=${path.parse(input).root !== path.parse(output).root}`);
 });

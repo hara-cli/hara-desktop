@@ -35,6 +35,8 @@ for (const [name, options] of [['POSIX', {}], ['Windows', { paths: path.win32, p
     assert.equal(c.evidenceRoot, v.root); assert.equal(c.base, v.output);
     assert.equal(c.env.HOME, v.paths.join(v.root, 'synthetic-home')); assert.equal(c.env.TMPDIR, v.paths.join(v.root, 'tmp'));
     assert.equal(c.env.CANDIDATE_OUTPUT_DIR, v.output); assert.equal(c.env.HARA_WRAPPER_EVIDENCE_ROOT, v.root);
+    assert.equal(c.env.RUSTUP_HOME, v.paths.join(v.options.accountHome, '.rustup'));
+    assert.equal(c.env.CARGO_HOME, v.paths.join(v.options.accountHome, '.cargo'));
     assert.equal(c.env.GH_TOKEN, undefined); assert.equal(c.env.NODE_OPTIONS, undefined);
     assert.equal(c.cleanup, 'keep'); assert.equal(c.deletionEnabled, false);
     assert.deepEqual(Object.keys(c.env).slice(-2), ['HOME', 'TMPDIR']);
@@ -42,6 +44,19 @@ for (const [name, options] of [['POSIX', {}], ['Windows', { paths: path.win32, p
     const fixture = c.scope.fixture('six-budget');
     assert.equal(v.paths.basename(fixture).length, 'six-budget-'.length + 6);
     assert(v.rows.has(fixture)); assert.equal(v.io.mkdtempSync, undefined);
+  });
+  test('CI ' + name + ' preserves explicit Rust homes as authority and rejects caller replacements', () => {
+    const v = virtual(options), rustup = v.paths.join(v.options.accountHome, 'configured-rustup'), cargo = v.paths.join(v.options.accountHome, 'configured-cargo');
+    const c = v.provision({ env: { ...v.options.env, RUSTUP_HOME: rustup, CARGO_HOME: cargo } });
+    const env = c.scope.environment({ RUSTUP_HOME: '/poison', CARGO_HOME: '/poison', rustup_home: '/poison', cargo_home: '/poison', HOME: '/poison' });
+    assert.equal(env.RUSTUP_HOME, rustup); assert.equal(env.CARGO_HOME, cargo);
+    assert.equal(env.rustup_home, undefined); assert.equal(env.cargo_home, undefined);
+    assert.equal(env.HOME, v.paths.join(v.root, 'synthetic-home')); c.scope.assertEnvironment(env);
+    for (const key of ['RUSTUP_HOME', 'CARGO_HOME']) {
+      let ran = false;
+      assert.throws(() => c.scope.guardSync({ ...env, [key]: '/poison' }, () => { ran = true; }), /authority changed/);
+      assert.equal(ran, false); assert(v.rows.has(c.base));
+    }
   });
 }
 test('both explicit root aliases and output environment binding work without a default directory', () => {
