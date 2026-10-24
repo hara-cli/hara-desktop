@@ -111,18 +111,32 @@ test('final directory identity failure is fatal and environment restoration stil
   await assert.rejects(() => withCiEnvironment(c, async () => { v.rows.get(v.root).ino++; return 'body succeeded'; }, target), /identity changed/);
   assert.deepEqual(target, { HOME: 'original' }); assert(v.rows.has(c.base));
 });
-function actualOptions() {
+function actualOptions(environment = process.env) {
   const root = candidateEvidence().fixture('ci-caller');
-  return { evidenceRoot: root, output: path.join(root, 'tmp', 'results'), env: { PATH: process.env.PATH, TEST_API_KEY: 'synthetic-not-a-key' } };
+  // withCiEnvironment replaces the parent env too; retain Windows Node's system runtime root.
+  const env = { PATH: environment.PATH, ...(environment.SystemRoot ? { SystemRoot: environment.SystemRoot } : {}),
+    TEST_API_KEY: 'synthetic-not-a-key' };
+  return { evidenceRoot: root, output: path.join(root, 'tmp', 'results'), env };
 }
+test('micro-child fixture retains Windows SystemRoot without inheriting user data or credentials', () => {
+  const systemRoot = 'C:\\Windows';
+  const options = actualOptions({ PATH: process.env.PATH, SystemRoot: systemRoot, HOME: '/caller-home', USERPROFILE: '/caller-profile',
+    TMPDIR: '/caller-tmp', TEST_API_KEY: 'caller-key', GH_TOKEN: 'caller-token', NODE_OPTIONS: '--invalid' });
+  assert.deepEqual(options.env, { PATH: process.env.PATH, SystemRoot: systemRoot, TEST_API_KEY: 'synthetic-not-a-key' });
+  const c = provisionCiEvidence(options);
+  assert.equal(c.env.SystemRoot, systemRoot); assert.equal(c.env.TEST_API_KEY, undefined); assert.equal(c.env.GH_TOKEN, undefined);
+  assert.equal(c.env.NODE_OPTIONS, undefined); assert.equal(c.env.HOME, path.join(options.evidenceRoot, 'synthetic-home'));
+  assert.equal(c.env.TMPDIR, path.join(options.evidenceRoot, 'tmp')); assert.equal(c.cleanup, 'keep'); assert.equal(c.deletionEnabled, false);
+});
 test('regression caller preserves the full npm command and records a real isolated micro-child result', async () => {
   const options = actualOptions(), previousHome = process.env.HOME; let tools = 0;
   const result = await runRegression(options, {
     assertToolchain() { tools++; assert.equal(process.env.HOME, path.join(options.evidenceRoot, 'synthetic-home')); assert.equal(process.env.TEST_API_KEY, undefined); },
     async run(label, command, args, execution) {
       assert.equal(label, 'Ordinary CI original full suite'); assert.equal(command, 'bash'); assert.deepEqual(args, ['-c', 'exec npm test']);
-      const out = await run('CI synthetic environment probe', process.execPath, ['-e', 'console.log(JSON.stringify({home:process.env.HOME,tmp:process.env.TMPDIR,key:process.env.TEST_API_KEY??null}))'], { ...execution, cwd: execution.env.HOME });
-      assert.deepEqual(JSON.parse(out), { home: execution.env.HOME, tmp: execution.env.TMPDIR, key: null });
+      const out = await run('CI synthetic environment probe', process.execPath, ['-e', 'console.log(JSON.stringify({home:process.env.HOME,tmp:process.env.TMPDIR,key:process.env.TEST_API_KEY??null,systemRoot:process.env.SystemRoot??null,randomBytes:require("node:crypto").randomBytes(32).length}))'], { ...execution, cwd: execution.env.HOME });
+      assert.deepEqual(JSON.parse(out), { home: execution.env.HOME, tmp: execution.env.TMPDIR, key: null,
+        systemRoot: options.env.SystemRoot ?? null, randomBytes: 32 });
     }
   });
   assert.equal(tools, 1); assert.equal(result.cleanup, 'keep'); assert.equal(process.env.HOME, previousHome);
