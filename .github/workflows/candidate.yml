@@ -42,6 +42,66 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version-file: orchestration/.node-version
+      - name: Provision retained job evidence
+        id: evidence
+        env:
+          CANDIDATE_EVIDENCE_ROOT: ${{ github.workspace }}/candidate-evidence/${{ github.run_id }}/${{ github.run_attempt }}/admission/controller
+          CANDIDATE_EVIDENCE_TARGET: controller
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import path from 'node:path';
+          const required = key => { const value = process.env[key]; assert(typeof value === 'string' && value.length > 0 && !/[\r\n\0]/.test(value), 'missing or invalid ' + key); return value; };
+          const accountHome = os.userInfo().homedir, uid = process.getuid?.();
+          const folded = value => value.replaceAll('\\', '/').toLowerCase();
+          const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
+          const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
+          const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
+          assert(/^[1-9][0-9]{0,19}$/.test(runId) && /^[1-9][0-9]{0,5}$/.test(attempt), 'invalid run or attempt');
+          assert(/^[a-z][a-z0-9_]{0,47}$/.test(job), 'invalid job');
+          assert(['controller', 'aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'].includes(target), 'invalid evidence target');
+          const commandFiles = ['GITHUB_ENV', 'GITHUB_OUTPUT'].map(key => { const file = required(key); assert(path.isAbsolute(file), 'absolute runner command file required'); return file; });
+          const identity = directory => {
+            const st = fs.lstatSync(directory, { bigint: true });
+            assert(st.isDirectory() && !st.isSymbolicLink(), 'plain evidence directory required');
+            if (uid !== undefined) assert(Number(st.uid) === uid && (Number(st.mode) & 0o022) === 0, 'unsafe evidence owner or mode');
+            assert.equal(fs.realpathSync(directory), directory, 'evidence alias refused');
+            return [st.dev, st.ino, st.uid].map(String).join(':');
+          };
+          assert.equal(fs.realpathSync(workspaceInput), workspaceInput, 'workspace alias refused');
+          identity(workspaceInput);
+          const parts = ['candidate-evidence', runId, attempt, job, target], root = path.join(workspaceInput, ...parts);
+          assert.equal(requested, root, 'evidence must match this exact workspace/run/attempt/job/target');
+          for (const file of commandFiles) {
+            const st = fs.lstatSync(file, { bigint: true });
+            assert(st.isFile() && !st.isSymbolicLink() && Number(st.nlink) === 1, 'plain runner command file required');
+            if (uid !== undefined) assert.equal(Number(st.uid), uid, 'foreign runner command file');
+          }
+          let directory = workspaceInput;
+          for (const part of parts.slice(0, -1)) {
+            directory = path.join(directory, part);
+            try { fs.mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+            identity(directory);
+          }
+          // An existing job/attempt leaf is retained and rejected; never reset or delete it.
+          fs.mkdirSync(root, { mode: 0o700 }); identity(root);
+          const home = path.join(root, 'synthetic-home'), tmp = path.join(root, 'tmp'), output = path.join(tmp, 'output');
+          for (const value of [home, tmp, output]) { fs.mkdirSync(value, { mode: 0o700 }); identity(value); }
+          const anchors = new Map([root, home, tmp, output].map(value => [value, identity(value)]));
+          const authority = { CANDIDATE_EVIDENCE_ROOT: root, HARA_WRAPPER_EVIDENCE_ROOT: root, CANDIDATE_OUTPUT_DIR: output,
+            USERPROFILE: home, CFFIXED_USER_HOME: home, HARA_HOME: path.join(home, '.hara'),
+            XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local', 'share'), XDG_CACHE_HOME: path.join(home, '.cache'),
+            npm_config_cache: path.join(home, '.npm'), npm_config_userconfig: path.join(home, '.npmrc'), npm_config_globalconfig: path.join(home, '.npmrc-global'),
+            npm_config_prefix: path.join(home, '.local'), NO_UPDATE_NOTIFIER: '1', npm_config_update_notifier: 'false', NODE_DISABLE_COMPILE_CACHE: '1',
+            TMP: tmp, TEMP: tmp, HOME: home, TMPDIR: tmp };
+          for (const [value, expected] of anchors) assert.equal(identity(value), expected, 'evidence identity changed before binding');
+          fs.appendFileSync(commandFiles[0], Object.entries(authority).map(([key, value]) => key + '=' + value + '\n').join(''));
+          fs.appendFileSync(commandFiles[1], 'root=' + root + '\nhome=' + home + '\ntmp=' + tmp + '\noutput=' + output + '\n');
+          NODE
       - name: Reject wrong actor, event, ref or workflow before signer admission
         run: node scripts/candidate-admission.mjs
 
@@ -71,7 +131,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           path: app
-          ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b
+          ref: 637d96b114fd32cb96736ed0982f009235e93f6d
           persist-credentials: false
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -79,6 +139,66 @@ jobs:
           path: core
           ref: b11009bdcafd2367cd587a47c665dea260d69df4
           persist-credentials: false
+      - name: Provision retained job evidence
+        id: evidence
+        env:
+          CANDIDATE_EVIDENCE_ROOT: ${{ github.workspace }}/candidate-evidence/${{ github.run_id }}/${{ github.run_attempt }}/credential_preflight/controller
+          CANDIDATE_EVIDENCE_TARGET: controller
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import path from 'node:path';
+          const required = key => { const value = process.env[key]; assert(typeof value === 'string' && value.length > 0 && !/[\r\n\0]/.test(value), 'missing or invalid ' + key); return value; };
+          const accountHome = os.userInfo().homedir, uid = process.getuid?.();
+          const folded = value => value.replaceAll('\\', '/').toLowerCase();
+          const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
+          const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
+          const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
+          assert(/^[1-9][0-9]{0,19}$/.test(runId) && /^[1-9][0-9]{0,5}$/.test(attempt), 'invalid run or attempt');
+          assert(/^[a-z][a-z0-9_]{0,47}$/.test(job), 'invalid job');
+          assert(['controller', 'aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'].includes(target), 'invalid evidence target');
+          const commandFiles = ['GITHUB_ENV', 'GITHUB_OUTPUT'].map(key => { const file = required(key); assert(path.isAbsolute(file), 'absolute runner command file required'); return file; });
+          const identity = directory => {
+            const st = fs.lstatSync(directory, { bigint: true });
+            assert(st.isDirectory() && !st.isSymbolicLink(), 'plain evidence directory required');
+            if (uid !== undefined) assert(Number(st.uid) === uid && (Number(st.mode) & 0o022) === 0, 'unsafe evidence owner or mode');
+            assert.equal(fs.realpathSync(directory), directory, 'evidence alias refused');
+            return [st.dev, st.ino, st.uid].map(String).join(':');
+          };
+          assert.equal(fs.realpathSync(workspaceInput), workspaceInput, 'workspace alias refused');
+          identity(workspaceInput);
+          const parts = ['candidate-evidence', runId, attempt, job, target], root = path.join(workspaceInput, ...parts);
+          assert.equal(requested, root, 'evidence must match this exact workspace/run/attempt/job/target');
+          for (const file of commandFiles) {
+            const st = fs.lstatSync(file, { bigint: true });
+            assert(st.isFile() && !st.isSymbolicLink() && Number(st.nlink) === 1, 'plain runner command file required');
+            if (uid !== undefined) assert.equal(Number(st.uid), uid, 'foreign runner command file');
+          }
+          let directory = workspaceInput;
+          for (const part of parts.slice(0, -1)) {
+            directory = path.join(directory, part);
+            try { fs.mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+            identity(directory);
+          }
+          // An existing job/attempt leaf is retained and rejected; never reset or delete it.
+          fs.mkdirSync(root, { mode: 0o700 }); identity(root);
+          const home = path.join(root, 'synthetic-home'), tmp = path.join(root, 'tmp'), output = path.join(tmp, 'output');
+          for (const value of [home, tmp, output]) { fs.mkdirSync(value, { mode: 0o700 }); identity(value); }
+          const anchors = new Map([root, home, tmp, output].map(value => [value, identity(value)]));
+          const authority = { CANDIDATE_EVIDENCE_ROOT: root, HARA_WRAPPER_EVIDENCE_ROOT: root, CANDIDATE_OUTPUT_DIR: output,
+            USERPROFILE: home, CFFIXED_USER_HOME: home, HARA_HOME: path.join(home, '.hara'),
+            XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local', 'share'), XDG_CACHE_HOME: path.join(home, '.cache'),
+            npm_config_cache: path.join(home, '.npm'), npm_config_userconfig: path.join(home, '.npmrc'), npm_config_globalconfig: path.join(home, '.npmrc-global'),
+            npm_config_prefix: path.join(home, '.local'), NO_UPDATE_NOTIFIER: '1', npm_config_update_notifier: 'false', NODE_DISABLE_COMPILE_CACHE: '1',
+            TMP: tmp, TEMP: tmp, HOME: home, TMPDIR: tmp };
+          for (const [value, expected] of anchors) assert.equal(identity(value), expected, 'evidence identity changed before binding');
+          fs.appendFileSync(commandFiles[0], Object.entries(authority).map(([key, value]) => key + '=' + value + '\n').join(''));
+          fs.appendFileSync(commandFiles[1], 'root=' + root + '\nhome=' + home + '\ntmp=' + tmp + '\noutput=' + output + '\n');
+          NODE
       - name: Select existing pinned local tools without global settings changes
         run: |
           test -n "$HARA_CANDIDATE_TOOLCHAIN_PATH"
@@ -91,7 +211,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-preflight-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/*-preflight.json
+          path: ${{ steps.evidence.outputs.output }}/*-preflight.json
           if-no-files-found: error
           retention-days: 7
 
@@ -121,7 +241,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           path: app
-          ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b
+          ref: 637d96b114fd32cb96736ed0982f009235e93f6d
           persist-credentials: false
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -148,6 +268,66 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 libarchive-tools
+      - name: Provision retained job evidence
+        id: evidence
+        env:
+          CANDIDATE_EVIDENCE_ROOT: ${{ github.workspace }}/candidate-evidence/${{ github.run_id }}/${{ github.run_attempt }}/native_build/${{ matrix.target }}
+          CANDIDATE_EVIDENCE_TARGET: ${{ matrix.target }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import path from 'node:path';
+          const required = key => { const value = process.env[key]; assert(typeof value === 'string' && value.length > 0 && !/[\r\n\0]/.test(value), 'missing or invalid ' + key); return value; };
+          const accountHome = os.userInfo().homedir, uid = process.getuid?.();
+          const folded = value => value.replaceAll('\\', '/').toLowerCase();
+          const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
+          const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
+          const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
+          assert(/^[1-9][0-9]{0,19}$/.test(runId) && /^[1-9][0-9]{0,5}$/.test(attempt), 'invalid run or attempt');
+          assert(/^[a-z][a-z0-9_]{0,47}$/.test(job), 'invalid job');
+          assert(['controller', 'aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'].includes(target), 'invalid evidence target');
+          const commandFiles = ['GITHUB_ENV', 'GITHUB_OUTPUT'].map(key => { const file = required(key); assert(path.isAbsolute(file), 'absolute runner command file required'); return file; });
+          const identity = directory => {
+            const st = fs.lstatSync(directory, { bigint: true });
+            assert(st.isDirectory() && !st.isSymbolicLink(), 'plain evidence directory required');
+            if (uid !== undefined) assert(Number(st.uid) === uid && (Number(st.mode) & 0o022) === 0, 'unsafe evidence owner or mode');
+            assert.equal(fs.realpathSync(directory), directory, 'evidence alias refused');
+            return [st.dev, st.ino, st.uid].map(String).join(':');
+          };
+          assert.equal(fs.realpathSync(workspaceInput), workspaceInput, 'workspace alias refused');
+          identity(workspaceInput);
+          const parts = ['candidate-evidence', runId, attempt, job, target], root = path.join(workspaceInput, ...parts);
+          assert.equal(requested, root, 'evidence must match this exact workspace/run/attempt/job/target');
+          for (const file of commandFiles) {
+            const st = fs.lstatSync(file, { bigint: true });
+            assert(st.isFile() && !st.isSymbolicLink() && Number(st.nlink) === 1, 'plain runner command file required');
+            if (uid !== undefined) assert.equal(Number(st.uid), uid, 'foreign runner command file');
+          }
+          let directory = workspaceInput;
+          for (const part of parts.slice(0, -1)) {
+            directory = path.join(directory, part);
+            try { fs.mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+            identity(directory);
+          }
+          // An existing job/attempt leaf is retained and rejected; never reset or delete it.
+          fs.mkdirSync(root, { mode: 0o700 }); identity(root);
+          const home = path.join(root, 'synthetic-home'), tmp = path.join(root, 'tmp'), output = path.join(tmp, 'output');
+          for (const value of [home, tmp, output]) { fs.mkdirSync(value, { mode: 0o700 }); identity(value); }
+          const anchors = new Map([root, home, tmp, output].map(value => [value, identity(value)]));
+          const authority = { CANDIDATE_EVIDENCE_ROOT: root, HARA_WRAPPER_EVIDENCE_ROOT: root, CANDIDATE_OUTPUT_DIR: output,
+            USERPROFILE: home, CFFIXED_USER_HOME: home, HARA_HOME: path.join(home, '.hara'),
+            XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local', 'share'), XDG_CACHE_HOME: path.join(home, '.cache'),
+            npm_config_cache: path.join(home, '.npm'), npm_config_userconfig: path.join(home, '.npmrc'), npm_config_globalconfig: path.join(home, '.npmrc-global'),
+            npm_config_prefix: path.join(home, '.local'), NO_UPDATE_NOTIFIER: '1', npm_config_update_notifier: 'false', NODE_DISABLE_COMPILE_CACHE: '1',
+            TMP: tmp, TEMP: tmp, HOME: home, TMPDIR: tmp };
+          for (const [value, expected] of anchors) assert.equal(identity(value), expected, 'evidence identity changed before binding');
+          fs.appendFileSync(commandFiles[0], Object.entries(authority).map(([key, value]) => key + '=' + value + '\n').join(''));
+          fs.appendFileSync(commandFiles[1], 'root=' + root + '\nhome=' + home + '\ntmp=' + tmp + '\noutput=' + output + '\n');
+          NODE
       - name: Exact source and Pi-only hydration
         run: node scripts/candidate-native.mjs hydrate
       - name: Core native full suite or Windows CI contracts, complete Desktop tests and renderer
@@ -158,9 +338,9 @@ jobs:
         with:
           name: candidate-test-diagnostics-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/*-tests.log
-            ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/*-tests.log.result.json
-            ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/*-tests.json
+            ${{ steps.evidence.outputs.output }}/*-tests.log
+            ${{ steps.evidence.outputs.output }}/*-tests.log.result.json
+            ${{ steps.evidence.outputs.output }}/*-tests.json
           if-no-files-found: warn
           retention-days: 7
       - name: Native sidecar boundary smoke and locked Rust tests
@@ -170,7 +350,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-unsigned-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/unsigned-output/*
+          path: ${{ steps.evidence.outputs.output }}/unsigned-output/*
           if-no-files-found: error
           retention-days: 7
 
@@ -195,9 +375,69 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
+        with: { path: app, ref: 637d96b114fd32cb96736ed0982f009235e93f6d, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: b11009bdcafd2367cd587a47c665dea260d69df4, persist-credentials: false }
+      - name: Provision retained job evidence
+        id: evidence
+        env:
+          CANDIDATE_EVIDENCE_ROOT: ${{ github.workspace }}/candidate-evidence/${{ github.run_id }}/${{ github.run_attempt }}/sign_apps/controller
+          CANDIDATE_EVIDENCE_TARGET: controller
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import path from 'node:path';
+          const required = key => { const value = process.env[key]; assert(typeof value === 'string' && value.length > 0 && !/[\r\n\0]/.test(value), 'missing or invalid ' + key); return value; };
+          const accountHome = os.userInfo().homedir, uid = process.getuid?.();
+          const folded = value => value.replaceAll('\\', '/').toLowerCase();
+          const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
+          const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
+          const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
+          assert(/^[1-9][0-9]{0,19}$/.test(runId) && /^[1-9][0-9]{0,5}$/.test(attempt), 'invalid run or attempt');
+          assert(/^[a-z][a-z0-9_]{0,47}$/.test(job), 'invalid job');
+          assert(['controller', 'aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'].includes(target), 'invalid evidence target');
+          const commandFiles = ['GITHUB_ENV', 'GITHUB_OUTPUT'].map(key => { const file = required(key); assert(path.isAbsolute(file), 'absolute runner command file required'); return file; });
+          const identity = directory => {
+            const st = fs.lstatSync(directory, { bigint: true });
+            assert(st.isDirectory() && !st.isSymbolicLink(), 'plain evidence directory required');
+            if (uid !== undefined) assert(Number(st.uid) === uid && (Number(st.mode) & 0o022) === 0, 'unsafe evidence owner or mode');
+            assert.equal(fs.realpathSync(directory), directory, 'evidence alias refused');
+            return [st.dev, st.ino, st.uid].map(String).join(':');
+          };
+          assert.equal(fs.realpathSync(workspaceInput), workspaceInput, 'workspace alias refused');
+          identity(workspaceInput);
+          const parts = ['candidate-evidence', runId, attempt, job, target], root = path.join(workspaceInput, ...parts);
+          assert.equal(requested, root, 'evidence must match this exact workspace/run/attempt/job/target');
+          for (const file of commandFiles) {
+            const st = fs.lstatSync(file, { bigint: true });
+            assert(st.isFile() && !st.isSymbolicLink() && Number(st.nlink) === 1, 'plain runner command file required');
+            if (uid !== undefined) assert.equal(Number(st.uid), uid, 'foreign runner command file');
+          }
+          let directory = workspaceInput;
+          for (const part of parts.slice(0, -1)) {
+            directory = path.join(directory, part);
+            try { fs.mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+            identity(directory);
+          }
+          // An existing job/attempt leaf is retained and rejected; never reset or delete it.
+          fs.mkdirSync(root, { mode: 0o700 }); identity(root);
+          const home = path.join(root, 'synthetic-home'), tmp = path.join(root, 'tmp'), output = path.join(tmp, 'output');
+          for (const value of [home, tmp, output]) { fs.mkdirSync(value, { mode: 0o700 }); identity(value); }
+          const anchors = new Map([root, home, tmp, output].map(value => [value, identity(value)]));
+          const authority = { CANDIDATE_EVIDENCE_ROOT: root, HARA_WRAPPER_EVIDENCE_ROOT: root, CANDIDATE_OUTPUT_DIR: output,
+            USERPROFILE: home, CFFIXED_USER_HOME: home, HARA_HOME: path.join(home, '.hara'),
+            XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local', 'share'), XDG_CACHE_HOME: path.join(home, '.cache'),
+            npm_config_cache: path.join(home, '.npm'), npm_config_userconfig: path.join(home, '.npmrc'), npm_config_globalconfig: path.join(home, '.npmrc-global'),
+            npm_config_prefix: path.join(home, '.local'), NO_UPDATE_NOTIFIER: '1', npm_config_update_notifier: 'false', NODE_DISABLE_COMPILE_CACHE: '1',
+            TMP: tmp, TEMP: tmp, HOME: home, TMPDIR: tmp };
+          for (const [value, expected] of anchors) assert.equal(identity(value), expected, 'evidence identity changed before binding');
+          fs.appendFileSync(commandFiles[0], Object.entries(authority).map(([key, value]) => key + '=' + value + '\n').join(''));
+          fs.appendFileSync(commandFiles[1], 'root=' + root + '\nhome=' + home + '\ntmp=' + tmp + '\noutput=' + output + '\n');
+          NODE
       - name: Select pinned local tools
         run: |
           test -n "$HARA_CANDIDATE_TOOLCHAIN_PATH"
@@ -209,13 +449,13 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-app-signed-aarch64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/app-signed-output-aarch64-apple-darwin/*
+          path: ${{ steps.evidence.outputs.output }}/app-signed-output-aarch64-apple-darwin/*
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-app-signed-x86_64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/app-signed-output-x86_64-apple-darwin/*
+          path: ${{ steps.evidence.outputs.output }}/app-signed-output-x86_64-apple-darwin/*
           if-no-files-found: error
           retention-days: 7
 
@@ -236,7 +476,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
+        with: { path: app, ref: 637d96b114fd32cb96736ed0982f009235e93f6d, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: b11009bdcafd2367cd587a47c665dea260d69df4, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
@@ -245,12 +485,72 @@ jobs:
         with: { toolchain: '1.97.0', targets: '${{ matrix.target }}' }
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with: { bun-version-file: orchestration/.bun-version }
+      - name: Provision retained job evidence
+        id: evidence
+        env:
+          CANDIDATE_EVIDENCE_ROOT: ${{ github.workspace }}/candidate-evidence/${{ github.run_id }}/${{ github.run_attempt }}/native_dmg/${{ matrix.target }}
+          CANDIDATE_EVIDENCE_TARGET: ${{ matrix.target }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import path from 'node:path';
+          const required = key => { const value = process.env[key]; assert(typeof value === 'string' && value.length > 0 && !/[\r\n\0]/.test(value), 'missing or invalid ' + key); return value; };
+          const accountHome = os.userInfo().homedir, uid = process.getuid?.();
+          const folded = value => value.replaceAll('\\', '/').toLowerCase();
+          const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
+          const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
+          const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
+          assert(/^[1-9][0-9]{0,19}$/.test(runId) && /^[1-9][0-9]{0,5}$/.test(attempt), 'invalid run or attempt');
+          assert(/^[a-z][a-z0-9_]{0,47}$/.test(job), 'invalid job');
+          assert(['controller', 'aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'].includes(target), 'invalid evidence target');
+          const commandFiles = ['GITHUB_ENV', 'GITHUB_OUTPUT'].map(key => { const file = required(key); assert(path.isAbsolute(file), 'absolute runner command file required'); return file; });
+          const identity = directory => {
+            const st = fs.lstatSync(directory, { bigint: true });
+            assert(st.isDirectory() && !st.isSymbolicLink(), 'plain evidence directory required');
+            if (uid !== undefined) assert(Number(st.uid) === uid && (Number(st.mode) & 0o022) === 0, 'unsafe evidence owner or mode');
+            assert.equal(fs.realpathSync(directory), directory, 'evidence alias refused');
+            return [st.dev, st.ino, st.uid].map(String).join(':');
+          };
+          assert.equal(fs.realpathSync(workspaceInput), workspaceInput, 'workspace alias refused');
+          identity(workspaceInput);
+          const parts = ['candidate-evidence', runId, attempt, job, target], root = path.join(workspaceInput, ...parts);
+          assert.equal(requested, root, 'evidence must match this exact workspace/run/attempt/job/target');
+          for (const file of commandFiles) {
+            const st = fs.lstatSync(file, { bigint: true });
+            assert(st.isFile() && !st.isSymbolicLink() && Number(st.nlink) === 1, 'plain runner command file required');
+            if (uid !== undefined) assert.equal(Number(st.uid), uid, 'foreign runner command file');
+          }
+          let directory = workspaceInput;
+          for (const part of parts.slice(0, -1)) {
+            directory = path.join(directory, part);
+            try { fs.mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+            identity(directory);
+          }
+          // An existing job/attempt leaf is retained and rejected; never reset or delete it.
+          fs.mkdirSync(root, { mode: 0o700 }); identity(root);
+          const home = path.join(root, 'synthetic-home'), tmp = path.join(root, 'tmp'), output = path.join(tmp, 'output');
+          for (const value of [home, tmp, output]) { fs.mkdirSync(value, { mode: 0o700 }); identity(value); }
+          const anchors = new Map([root, home, tmp, output].map(value => [value, identity(value)]));
+          const authority = { CANDIDATE_EVIDENCE_ROOT: root, HARA_WRAPPER_EVIDENCE_ROOT: root, CANDIDATE_OUTPUT_DIR: output,
+            USERPROFILE: home, CFFIXED_USER_HOME: home, HARA_HOME: path.join(home, '.hara'),
+            XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local', 'share'), XDG_CACHE_HOME: path.join(home, '.cache'),
+            npm_config_cache: path.join(home, '.npm'), npm_config_userconfig: path.join(home, '.npmrc'), npm_config_globalconfig: path.join(home, '.npmrc-global'),
+            npm_config_prefix: path.join(home, '.local'), NO_UPDATE_NOTIFIER: '1', npm_config_update_notifier: 'false', NODE_DISABLE_COMPILE_CACHE: '1',
+            TMP: tmp, TEMP: tmp, HOME: home, TMPDIR: tmp };
+          for (const [value, expected] of anchors) assert.equal(identity(value), expected, 'evidence identity changed before binding');
+          fs.appendFileSync(commandFiles[0], Object.entries(authority).map(([key, value]) => key + '=' + value + '\n').join(''));
+          fs.appendFileSync(commandFiles[1], 'root=' + root + '\nhome=' + home + '\ntmp=' + tmp + '\noutput=' + output + '\n');
+          NODE
       - name: Repackage the exact signed App into final DMG on its native CPU
         run: node scripts/candidate-native.mjs native-dmg
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-dmg-native-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/dmg-native-output/*
+          path: ${{ steps.evidence.outputs.output }}/dmg-native-output/*
           if-no-files-found: error
           retention-days: 7
 
@@ -275,9 +575,69 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
+        with: { path: app, ref: 637d96b114fd32cb96736ed0982f009235e93f6d, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: b11009bdcafd2367cd587a47c665dea260d69df4, persist-credentials: false }
+      - name: Provision retained job evidence
+        id: evidence
+        env:
+          CANDIDATE_EVIDENCE_ROOT: ${{ github.workspace }}/candidate-evidence/${{ github.run_id }}/${{ github.run_attempt }}/sign_payloads/controller
+          CANDIDATE_EVIDENCE_TARGET: controller
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import path from 'node:path';
+          const required = key => { const value = process.env[key]; assert(typeof value === 'string' && value.length > 0 && !/[\r\n\0]/.test(value), 'missing or invalid ' + key); return value; };
+          const accountHome = os.userInfo().homedir, uid = process.getuid?.();
+          const folded = value => value.replaceAll('\\', '/').toLowerCase();
+          const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
+          const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
+          const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
+          assert(/^[1-9][0-9]{0,19}$/.test(runId) && /^[1-9][0-9]{0,5}$/.test(attempt), 'invalid run or attempt');
+          assert(/^[a-z][a-z0-9_]{0,47}$/.test(job), 'invalid job');
+          assert(['controller', 'aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'].includes(target), 'invalid evidence target');
+          const commandFiles = ['GITHUB_ENV', 'GITHUB_OUTPUT'].map(key => { const file = required(key); assert(path.isAbsolute(file), 'absolute runner command file required'); return file; });
+          const identity = directory => {
+            const st = fs.lstatSync(directory, { bigint: true });
+            assert(st.isDirectory() && !st.isSymbolicLink(), 'plain evidence directory required');
+            if (uid !== undefined) assert(Number(st.uid) === uid && (Number(st.mode) & 0o022) === 0, 'unsafe evidence owner or mode');
+            assert.equal(fs.realpathSync(directory), directory, 'evidence alias refused');
+            return [st.dev, st.ino, st.uid].map(String).join(':');
+          };
+          assert.equal(fs.realpathSync(workspaceInput), workspaceInput, 'workspace alias refused');
+          identity(workspaceInput);
+          const parts = ['candidate-evidence', runId, attempt, job, target], root = path.join(workspaceInput, ...parts);
+          assert.equal(requested, root, 'evidence must match this exact workspace/run/attempt/job/target');
+          for (const file of commandFiles) {
+            const st = fs.lstatSync(file, { bigint: true });
+            assert(st.isFile() && !st.isSymbolicLink() && Number(st.nlink) === 1, 'plain runner command file required');
+            if (uid !== undefined) assert.equal(Number(st.uid), uid, 'foreign runner command file');
+          }
+          let directory = workspaceInput;
+          for (const part of parts.slice(0, -1)) {
+            directory = path.join(directory, part);
+            try { fs.mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+            identity(directory);
+          }
+          // An existing job/attempt leaf is retained and rejected; never reset or delete it.
+          fs.mkdirSync(root, { mode: 0o700 }); identity(root);
+          const home = path.join(root, 'synthetic-home'), tmp = path.join(root, 'tmp'), output = path.join(tmp, 'output');
+          for (const value of [home, tmp, output]) { fs.mkdirSync(value, { mode: 0o700 }); identity(value); }
+          const anchors = new Map([root, home, tmp, output].map(value => [value, identity(value)]));
+          const authority = { CANDIDATE_EVIDENCE_ROOT: root, HARA_WRAPPER_EVIDENCE_ROOT: root, CANDIDATE_OUTPUT_DIR: output,
+            USERPROFILE: home, CFFIXED_USER_HOME: home, HARA_HOME: path.join(home, '.hara'),
+            XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local', 'share'), XDG_CACHE_HOME: path.join(home, '.cache'),
+            npm_config_cache: path.join(home, '.npm'), npm_config_userconfig: path.join(home, '.npmrc'), npm_config_globalconfig: path.join(home, '.npmrc-global'),
+            npm_config_prefix: path.join(home, '.local'), NO_UPDATE_NOTIFIER: '1', npm_config_update_notifier: 'false', NODE_DISABLE_COMPILE_CACHE: '1',
+            TMP: tmp, TEMP: tmp, HOME: home, TMPDIR: tmp };
+          for (const [value, expected] of anchors) assert.equal(identity(value), expected, 'evidence identity changed before binding');
+          fs.appendFileSync(commandFiles[0], Object.entries(authority).map(([key, value]) => key + '=' + value + '\n').join(''));
+          fs.appendFileSync(commandFiles[1], 'root=' + root + '\nhome=' + home + '\ntmp=' + tmp + '\noutput=' + output + '\n');
+          NODE
       - name: Select pinned local tools
         run: |
           test -n "$HARA_CANDIDATE_TOOLCHAIN_PATH"
@@ -289,25 +649,25 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-final-aarch64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/final-output-aarch64-apple-darwin/*
+          path: ${{ steps.evidence.outputs.output }}/final-output-aarch64-apple-darwin/*
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-final-x86_64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/final-output-x86_64-apple-darwin/*
+          path: ${{ steps.evidence.outputs.output }}/final-output-x86_64-apple-darwin/*
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-final-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/final-output-x86_64-unknown-linux-gnu/*
+          path: ${{ steps.evidence.outputs.output }}/final-output-x86_64-unknown-linux-gnu/*
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-final-x86_64-pc-windows-msvc-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/final-output-x86_64-pc-windows-msvc/*
+          path: ${{ steps.evidence.outputs.output }}/final-output-x86_64-pc-windows-msvc/*
           if-no-files-found: error
           retention-days: 7
 
@@ -332,7 +692,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
+        with: { path: app, ref: 637d96b114fd32cb96736ed0982f009235e93f6d, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: b11009bdcafd2367cd587a47c665dea260d69df4, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
@@ -348,11 +708,71 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libarchive-tools
+      - name: Provision retained job evidence
+        id: evidence
+        env:
+          CANDIDATE_EVIDENCE_ROOT: ${{ github.workspace }}/candidate-evidence/${{ github.run_id }}/${{ github.run_attempt }}/native_verify/${{ matrix.target }}
+          CANDIDATE_EVIDENCE_TARGET: ${{ matrix.target }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import os from 'node:os';
+          import path from 'node:path';
+          const required = key => { const value = process.env[key]; assert(typeof value === 'string' && value.length > 0 && !/[\r\n\0]/.test(value), 'missing or invalid ' + key); return value; };
+          const accountHome = os.userInfo().homedir, uid = process.getuid?.();
+          const folded = value => value.replaceAll('\\', '/').toLowerCase();
+          const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
+          const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
+          const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
+          assert(/^[1-9][0-9]{0,19}$/.test(runId) && /^[1-9][0-9]{0,5}$/.test(attempt), 'invalid run or attempt');
+          assert(/^[a-z][a-z0-9_]{0,47}$/.test(job), 'invalid job');
+          assert(['controller', 'aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'].includes(target), 'invalid evidence target');
+          const commandFiles = ['GITHUB_ENV', 'GITHUB_OUTPUT'].map(key => { const file = required(key); assert(path.isAbsolute(file), 'absolute runner command file required'); return file; });
+          const identity = directory => {
+            const st = fs.lstatSync(directory, { bigint: true });
+            assert(st.isDirectory() && !st.isSymbolicLink(), 'plain evidence directory required');
+            if (uid !== undefined) assert(Number(st.uid) === uid && (Number(st.mode) & 0o022) === 0, 'unsafe evidence owner or mode');
+            assert.equal(fs.realpathSync(directory), directory, 'evidence alias refused');
+            return [st.dev, st.ino, st.uid].map(String).join(':');
+          };
+          assert.equal(fs.realpathSync(workspaceInput), workspaceInput, 'workspace alias refused');
+          identity(workspaceInput);
+          const parts = ['candidate-evidence', runId, attempt, job, target], root = path.join(workspaceInput, ...parts);
+          assert.equal(requested, root, 'evidence must match this exact workspace/run/attempt/job/target');
+          for (const file of commandFiles) {
+            const st = fs.lstatSync(file, { bigint: true });
+            assert(st.isFile() && !st.isSymbolicLink() && Number(st.nlink) === 1, 'plain runner command file required');
+            if (uid !== undefined) assert.equal(Number(st.uid), uid, 'foreign runner command file');
+          }
+          let directory = workspaceInput;
+          for (const part of parts.slice(0, -1)) {
+            directory = path.join(directory, part);
+            try { fs.mkdirSync(directory, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+            identity(directory);
+          }
+          // An existing job/attempt leaf is retained and rejected; never reset or delete it.
+          fs.mkdirSync(root, { mode: 0o700 }); identity(root);
+          const home = path.join(root, 'synthetic-home'), tmp = path.join(root, 'tmp'), output = path.join(tmp, 'output');
+          for (const value of [home, tmp, output]) { fs.mkdirSync(value, { mode: 0o700 }); identity(value); }
+          const anchors = new Map([root, home, tmp, output].map(value => [value, identity(value)]));
+          const authority = { CANDIDATE_EVIDENCE_ROOT: root, HARA_WRAPPER_EVIDENCE_ROOT: root, CANDIDATE_OUTPUT_DIR: output,
+            USERPROFILE: home, CFFIXED_USER_HOME: home, HARA_HOME: path.join(home, '.hara'),
+            XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local', 'share'), XDG_CACHE_HOME: path.join(home, '.cache'),
+            npm_config_cache: path.join(home, '.npm'), npm_config_userconfig: path.join(home, '.npmrc'), npm_config_globalconfig: path.join(home, '.npmrc-global'),
+            npm_config_prefix: path.join(home, '.local'), NO_UPDATE_NOTIFIER: '1', npm_config_update_notifier: 'false', NODE_DISABLE_COMPILE_CACHE: '1',
+            TMP: tmp, TEMP: tmp, HOME: home, TMPDIR: tmp };
+          for (const [value, expected] of anchors) assert.equal(identity(value), expected, 'evidence identity changed before binding');
+          fs.appendFileSync(commandFiles[0], Object.entries(authority).map(([key, value]) => key + '=' + value + '\n').join(''));
+          fs.appendFileSync(commandFiles[1], 'root=' + root + '\nhome=' + home + '\ntmp=' + tmp + '\noutput=' + output + '\n');
+          NODE
       - name: Native package smoke, signature verification and private old-version upgrade checks
         run: node scripts/candidate-native.mjs verify
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: candidate-verified-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/hara-candidate-${{ github.run_id }}-${{ github.run_attempt }}/verified-output/*
+          path: ${{ steps.evidence.outputs.output }}/verified-output/*
           if-no-files-found: error
           retention-days: 7
