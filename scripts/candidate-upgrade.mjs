@@ -33,6 +33,9 @@ export function gateEvidence(evidenceRoot, { env = process.env, io = fs, paths =
     XDG_CACHE_HOME: paths.join(home, '.cache'), npm_config_cache: paths.join(home, '.npm'),
     npm_config_userconfig: paths.join(home, '.npmrc'), npm_config_globalconfig: paths.join(home, '.npmrc-global'),
     npm_config_prefix: paths.join(home, '.local'), TMP: tmp, TEMP: tmp,
+    // Toolchain discovery uses the account, even when HOME is the evidence synthetic-home.
+    RUSTUP_HOME: env.RUSTUP_HOME ?? paths.join(accountHome, '.rustup'),
+    CARGO_HOME: env.CARGO_HOME ?? paths.join(accountHome, '.cargo'),
     CANDIDATE_EVIDENCE_ROOT: root, HARA_WRAPPER_EVIDENCE_ROOT: root, HOME: home, TMPDIR: tmp };
   function boundEnvironment(value) {
     assert(value && [value.CANDIDATE_EVIDENCE_ROOT, value.HARA_WRAPPER_EVIDENCE_ROOT].some(v => v === root), 'explicit evidence binding required');

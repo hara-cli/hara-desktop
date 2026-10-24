@@ -35,6 +35,8 @@ for (const [name, options] of [['POSIX', {}], ['Windows', { paths: path.win32, p
     assert.equal(c.evidenceRoot, v.root); assert.equal(c.base, v.output);
     assert.equal(c.env.HOME, v.paths.join(v.root, 'synthetic-home')); assert.equal(c.env.TMPDIR, v.paths.join(v.root, 'tmp'));
     assert.equal(c.env.CANDIDATE_OUTPUT_DIR, v.output); assert.equal(c.env.HARA_WRAPPER_EVIDENCE_ROOT, v.root);
+    assert.equal(c.env.RUSTUP_HOME, v.paths.join(v.options.accountHome, '.rustup'));
+    assert.equal(c.env.CARGO_HOME, v.paths.join(v.options.accountHome, '.cargo'));
     assert.equal(c.env.GH_TOKEN, undefined); assert.equal(c.env.NODE_OPTIONS, undefined);
     assert.equal(c.cleanup, 'keep'); assert.equal(c.deletionEnabled, false);
     assert.deepEqual(Object.keys(c.env).slice(-2), ['HOME', 'TMPDIR']);
@@ -42,6 +44,19 @@ for (const [name, options] of [['POSIX', {}], ['Windows', { paths: path.win32, p
     const fixture = c.scope.fixture('six-budget');
     assert.equal(v.paths.basename(fixture).length, 'six-budget-'.length + 6);
     assert(v.rows.has(fixture)); assert.equal(v.io.mkdtempSync, undefined);
+  });
+  test('CI ' + name + ' preserves explicit Rust homes as authority and rejects caller replacements', () => {
+    const v = virtual(options), rustup = v.paths.join(v.options.accountHome, 'configured-rustup'), cargo = v.paths.join(v.options.accountHome, 'configured-cargo');
+    const c = v.provision({ env: { ...v.options.env, RUSTUP_HOME: rustup, CARGO_HOME: cargo } });
+    const env = c.scope.environment({ RUSTUP_HOME: '/poison', CARGO_HOME: '/poison', rustup_home: '/poison', cargo_home: '/poison', HOME: '/poison' });
+    assert.equal(env.RUSTUP_HOME, rustup); assert.equal(env.CARGO_HOME, cargo);
+    assert.equal(env.rustup_home, undefined); assert.equal(env.cargo_home, undefined);
+    assert.equal(env.HOME, v.paths.join(v.root, 'synthetic-home')); c.scope.assertEnvironment(env);
+    for (const key of ['RUSTUP_HOME', 'CARGO_HOME']) {
+      let ran = false;
+      assert.throws(() => c.scope.guardSync({ ...env, [key]: '/poison' }, () => { ran = true; }), /authority changed/);
+      assert.equal(ran, false); assert(v.rows.has(c.base));
+    }
   });
 }
 test('both explicit root aliases and output environment binding work without a default directory', () => {
@@ -96,18 +111,32 @@ test('final directory identity failure is fatal and environment restoration stil
   await assert.rejects(() => withCiEnvironment(c, async () => { v.rows.get(v.root).ino++; return 'body succeeded'; }, target), /identity changed/);
   assert.deepEqual(target, { HOME: 'original' }); assert(v.rows.has(c.base));
 });
-function actualOptions() {
+function actualOptions(environment = process.env) {
   const root = candidateEvidence().fixture('ci-caller');
-  return { evidenceRoot: root, output: path.join(root, 'tmp', 'results'), env: { PATH: process.env.PATH, TEST_API_KEY: 'synthetic-not-a-key' } };
+  // withCiEnvironment replaces the parent env too; retain Windows Node's system runtime root.
+  const env = { PATH: environment.PATH, ...(environment.SystemRoot ? { SystemRoot: environment.SystemRoot } : {}),
+    TEST_API_KEY: 'synthetic-not-a-key' };
+  return { evidenceRoot: root, output: path.join(root, 'tmp', 'results'), env };
 }
+test('micro-child fixture retains Windows SystemRoot without inheriting user data or credentials', () => {
+  const systemRoot = 'C:\\Windows';
+  const options = actualOptions({ PATH: process.env.PATH, SystemRoot: systemRoot, HOME: '/caller-home', USERPROFILE: '/caller-profile',
+    TMPDIR: '/caller-tmp', TEST_API_KEY: 'caller-key', GH_TOKEN: 'caller-token', NODE_OPTIONS: '--invalid' });
+  assert.deepEqual(options.env, { PATH: process.env.PATH, SystemRoot: systemRoot, TEST_API_KEY: 'synthetic-not-a-key' });
+  const c = provisionCiEvidence(options);
+  assert.equal(c.env.SystemRoot, systemRoot); assert.equal(c.env.TEST_API_KEY, undefined); assert.equal(c.env.GH_TOKEN, undefined);
+  assert.equal(c.env.NODE_OPTIONS, undefined); assert.equal(c.env.HOME, path.join(options.evidenceRoot, 'synthetic-home'));
+  assert.equal(c.env.TMPDIR, path.join(options.evidenceRoot, 'tmp')); assert.equal(c.cleanup, 'keep'); assert.equal(c.deletionEnabled, false);
+});
 test('regression caller preserves the full npm command and records a real isolated micro-child result', async () => {
   const options = actualOptions(), previousHome = process.env.HOME; let tools = 0;
   const result = await runRegression(options, {
     assertToolchain() { tools++; assert.equal(process.env.HOME, path.join(options.evidenceRoot, 'synthetic-home')); assert.equal(process.env.TEST_API_KEY, undefined); },
     async run(label, command, args, execution) {
       assert.equal(label, 'Ordinary CI original full suite'); assert.equal(command, 'bash'); assert.deepEqual(args, ['-c', 'exec npm test']);
-      const out = await run('CI synthetic environment probe', process.execPath, ['-e', 'console.log(JSON.stringify({home:process.env.HOME,tmp:process.env.TMPDIR,key:process.env.TEST_API_KEY??null}))'], { ...execution, cwd: execution.env.HOME });
-      assert.deepEqual(JSON.parse(out), { home: execution.env.HOME, tmp: execution.env.TMPDIR, key: null });
+      const out = await run('CI synthetic environment probe', process.execPath, ['-e', 'console.log(JSON.stringify({home:process.env.HOME,tmp:process.env.TMPDIR,key:process.env.TEST_API_KEY??null,systemRoot:process.env.SystemRoot??null,randomBytes:require("node:crypto").randomBytes(32).length}))'], { ...execution, cwd: execution.env.HOME });
+      assert.deepEqual(JSON.parse(out), { home: execution.env.HOME, tmp: execution.env.TMPDIR, key: null,
+        systemRoot: options.env.SystemRoot ?? null, randomBytes: 32 });
     }
   });
   assert.equal(tools, 1); assert.equal(result.cleanup, 'keep'); assert.equal(process.env.HOME, previousHome);
