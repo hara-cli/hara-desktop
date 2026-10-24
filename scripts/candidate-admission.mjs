@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { INPUT, sync, assertEvent } from './candidate-common.mjs';
+import { INPUT, ROOT, candidateEvidence, assertEvent } from './candidate-common.mjs';
 import { digest, proofExpectation, proofFromComments } from './candidate-policy-proof.mjs';
 
 export function validateAdmission(environment, policies, ruleset, { requireBypass = true } = {}) {
@@ -26,9 +27,31 @@ export function validateAdmission(environment, policies, ruleset, { requireBypas
   const publicSha256=digest(publicProjection);
   return { environmentId:environment.id, rulesetId:ruleset.id, policyId:policy.id, updatedAt:new Date(updated).toISOString(), publicSha256, sha256:publicSha256 };
 }
+// This capability is only for policyGet's fixed read-only admission requests.
+// Generic sync/run/upgrade children keep the globally stripped environment.
+export function admissionGhEnvironment(parentEnv = process.env) {
+  const scope = candidateEvidence(parentEnv), clean = { ...scope.environment() };
+  const token = parentEnv.GH_TOKEN || parentEnv.GITHUB_TOKEN;
+  assert(typeof token === 'string' && token.length > 0 && token.length <= 4096 && !/[\s\0]/.test(token),
+    'candidate admission GitHub token required');
+  // Caller gh routing/config must not redirect this credential outside GitHub/private HOME.
+  for (const key of Object.keys(clean)) if (/^GH_(?:HOST|CONFIG_DIR)$/i.test(key)) delete clean[key];
+  const env = Object.freeze({ ...clean, GH_TOKEN: token, GH_HOST: 'github.com',
+    GH_CONFIG_DIR: path.join(clean.XDG_CONFIG_HOME, 'gh') });
+  scope.assertEnvironment(env);
+  return env;
+}
 export const policyGet = endpoint => {
   assert(/^(?:environments\/hara-desktop-candidate(?:\/deployment-branch-policies)?|rulesets\/\d+|issues\/1\/comments\?[^\s]+)$/.test(endpoint));
-  return JSON.parse(sync('gh',['api','--method','GET',`repos/hara-cli/hara-desktop/${endpoint}`]));
+  const scope = candidateEvidence(process.env), env = admissionGhEnvironment(process.env);
+  return scope.guardSync(env, () => {
+    const result = spawnSync('gh', ['api','--method','GET',`repos/hara-cli/hara-desktop/${endpoint}`],
+      { cwd: ROOT, env, encoding: 'utf8', timeout: 120000, maxBuffer: 32 * 1024 * 1024 });
+    assert(result.status === 0 && !result.error && !result.signal,
+      `candidate admission GitHub GET failed (${result.status ?? 'unknown'})`);
+    try { return JSON.parse(result.stdout); }
+    catch { throw Error('candidate admission: invalid GitHub policy response'); }
+  });
 };
 export function readPolicySnapshot(get = policyGet) {
   return {environment:get(`environments/${INPUT.environment}`),policies:get(`environments/${INPUT.environment}/deployment-branch-policies`),ruleset:get(`rulesets/${INPUT.rulesetId}`)};
