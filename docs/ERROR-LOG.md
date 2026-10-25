@@ -1,5 +1,13 @@
 # Error log
 
+## R1 / O12 preparation pointer · 2026-10-25
+
+Hara 同事：O¹² preparation follows local dispatch
+`2026-10-25-candidate-live-admission-admin-proof-p2-r1-o12-prepare-dispatch.md`
+(SHA256 `14d863a63ccba7fbb1a5bd6b87428d12c97dd8eafa8df9c1214578ce95a259a3`).
+The dispatch records preceding live7 run 40187061590 as completed/failure at admission; no late proof or rerun.
+Retain input/public anchor, the admission human-proof gate and waitSeconds=240. Future Jeff-only publish must occur while the exact new run remains in_progress. Live8 requires fresh exact wiring PASS and a local MATCH check under a separate dispatch.
+
 ## R1 / O11 preparation pointer · 2026-10-25
 
 Hara 同事：O¹¹ preparation follows local dispatch
