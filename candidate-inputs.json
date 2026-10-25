@@ -11,7 +11,7 @@
   "approverId": 23243740,
   "adminProof": {
     "pullRequest": 1,
-    "publicKeySha256": "37500d93e145d6c2bdc3aeebda84bc0ec783b041fc698d96b9b9ecd4244f87db",
+    "publicKeySha256": "6331eb23f80b77a169d04432dbc4efa33335f8015da2be51971c42d3590976f2",
     "ttlSeconds": 7200,
     "waitSeconds": 240
   },
