@@ -1,5 +1,13 @@
 # Error log
 
+## R1 / O15 preparation pointer · 2026-10-25
+
+Hara 同事：O¹⁵ preparation follows local dispatch
+`2026-10-25-candidate-live-admission-admin-proof-p2-r1-o15-prepare-dispatch.md`
+(SHA256 `6847d3cca567fd9877520f10b36bd7264ea2a5902eea3eb821a03063c01f12b3`).
+Sole parent: O¹⁴ 9d8408db165726b4d8a4c47c89f79a98e865d3ad. The prior live10 receipt b9a9f234b18adaa52773861bf83cb9b345cd9fa40e675d22f73a061b7db7967b is retained at its recorded handoff time. This dispatch provides the later observation that run 40197343779 completed/failure after the independent human-proof window timed out; no late proof or rerun.
+Keep input/public anchor, admission human-proof gate and waitSeconds=240 unchanged. Future Jeff-only publish must occur while the exact new run remains in_progress within the existing window. Live11 needs fresh exact wiring PASS, local MATCH and a separate dispatch.
+
 ## R1 / O14 preparation pointer · 2026-10-25
 
 Hara 同事：O¹⁴ preparation follows local dispatch
