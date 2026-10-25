@@ -1,5 +1,13 @@
 # Error log
 
+## R1 / O11 preparation pointer · 2026-10-25
+
+Hara 同事：O¹¹ preparation follows local dispatch
+`2026-10-25-candidate-live-admission-admin-proof-p2-r1-o11-prepare-dispatch.md`
+(SHA256 `9e63a5f6b6161d98e69451faa0704639891a459a91bedb2c5b4905e66f530efb`).
+The dispatch records preceding live6 run 40184726876 as completed/failure after the independent admin-proof wait; no late proof or rerun.
+Retain input/public anchor, the admission human-proof gate and waitSeconds=240. Future Jeff-only publish must occur while the exact new run remains in_progress. Live7 requires fresh exact wiring PASS and Jeff explicit screen-ready under a separate dispatch.
+
 ## R1 / O10 preparation pointer · 2026-10-25
 
 Hara 同事：O¹⁰ preparation follows local dispatch
