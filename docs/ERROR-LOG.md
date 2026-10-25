@@ -1,5 +1,13 @@
 # Error log
 
+## R1 / O14 preparation pointer · 2026-10-25
+
+Hara 同事：O¹⁴ preparation follows local dispatch
+`2026-10-25-candidate-live-admission-admin-proof-p2-r1-o14-prepare-dispatch.md`
+(SHA256 `f709e5d0b5916bb47deb7055a5cd994c7de43fea11a10db9bf218a57797bcdd5`).
+Sole parent: O¹³ 46c89f3cfe72076ec4b4d8833f55a6d7b47eda05. Live9 final receipt 620e5d851eb89162b7e9460293cf9fd2bc5d991238f346347bdc127b2e455db0 records run 40194716398 completed/failure; the dispatch attributes it to the independent human-proof window timeout. No late proof or rerun.
+Keep input/public anchor, the admission human-proof gate and waitSeconds=240 unchanged. Future Jeff-only publish must occur while the exact new run remains in_progress within the existing window. Live10 needs fresh exact wiring PASS, a local MATCH check and a separate dispatch.
+
 ## R1 / O13 preparation pointer · 2026-10-25
 
 Hara 同事：O¹³ preparation follows revised local dispatch
