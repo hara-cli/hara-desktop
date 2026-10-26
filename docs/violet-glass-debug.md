@@ -45,3 +45,11 @@ model keys into an account page. Migrating that function needs its own API/UI sl
 Visual authority: Violet Glass DS v1.0, approved dark + Daylight screens, three-column
 main shell and centered Settings with a left rail. The exact logo fill is `#7C3AED`;
 the editable mark and deterministic asset command are documented in `brand/README.md`.
+
+The approved soft-dark refinement uses charcoal surfaces, soft-white text and
+muted grey-violet conversation bubbles. Chat fill tokens are separate from the
+fixed identity/action violet, so long transcripts do not repeat saturated button
+fills. Conversation text is 14px with 1.75 line height. Daylight keeps its light
+surfaces and uses a light grey-violet outgoing bubble with dark text. This is a
+local visual refinement; it does not claim a measured reduction in eye fatigue.
+The upstream design pack remains read-only.

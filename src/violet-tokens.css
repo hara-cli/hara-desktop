@@ -2,6 +2,7 @@
  * Source: Jeff brief t264u · 2026-10-26
  * Brand primary fixed #7C3AED (does not change across themes)
  * Engineering pickup: Steve §23 / Jeff t707s3293; source pack remains read-only
+ * Soft-dark revision: neutral reading surfaces; identity violet remains fixed.
  */
 
 :root {
@@ -77,46 +78,50 @@
   --hara-font-size-body: 13.5px;
   --hara-font-size-title: 22px;
 
-  /* Default theme = Violet Glass (dark) */
-  --hara-bg-base: #0D0915;
-  --hara-bg-sidebar: #130D20;
-  --hara-bg-content: #171022;
-  --hara-bg-surface: #211631;
-  --hara-bg-elevated: #2A1B40;
-  --hara-bg-hover: #33214D;
-  --hara-bg-selected: #402762;
+  /* Default theme = Violet Glass (soft dark) */
+  --hara-bg-base: #141318;
+  --hara-bg-sidebar: #19181F;
+  --hara-bg-content: #1D1C23;
+  --hara-bg-surface: #24232B;
+  --hara-bg-elevated: #2B2A34;
+  --hara-bg-hover: #302F39;
+  --hara-bg-selected: #35303F;
 
-  --hara-text-primary: #F5F3FF;
-  --hara-text-secondary: #C4B8D8;
-  --hara-text-tertiary: #A99ABD;
-  --hara-text-disabled: #796B8E;
-  --hara-text-link: #B794F6;
+  --hara-text-primary: #DFDCE5;
+  --hara-text-secondary: #B4B0BF;
+  --hara-text-tertiary: #9F9BA8;
+  --hara-text-disabled: #73707C;
+  --hara-text-link: #BDA4F5;
 
-  --hara-border-default: rgba(167, 139, 250, 0.16);
-  --hara-border-active: rgba(167, 139, 250, 0.48);
-  --hara-border-subtle: rgba(167, 139, 250, 0.10);
+  /* Conversation surfaces have their own colors, independent of action buttons. */
+  --hara-chat-mine: #3A314A;
+  --hara-chat-mine-ink: #E2DDEB;
 
-  --hara-scrim: rgba(5, 2, 16, 0.55);
-  --hara-glow: rgba(124, 58, 237, 0.08);
+  --hara-border-default: rgba(195, 187, 209, 0.10);
+  --hara-border-active: rgba(167, 139, 250, 0.38);
+  --hara-border-subtle: rgba(195, 187, 209, 0.06);
+
+  --hara-scrim: rgba(10, 9, 13, 0.50);
+  --hara-glow: rgba(124, 58, 237, 0.04);
 
   /* Glass A — light glass (nav / toolbar) */
-  --hara-glass-a-bg: rgba(33, 22, 49, 0.78);
+  --hara-glass-a-bg: rgba(28, 27, 34, 0.88);
   --hara-glass-a-blur: 12px;
-  --hara-glass-a-border: rgba(167, 139, 250, 0.12);
+  --hara-glass-a-border: rgba(195, 187, 209, 0.08);
 
   /* Glass B — standard (dialogs / agent detail / command) */
-  --hara-glass-b-bg: rgba(42, 27, 64, 0.88);
+  --hara-glass-b-bg: rgba(39, 38, 47, 0.94);
   --hara-glass-b-blur: 24px;
-  --hara-glass-b-border: rgba(167, 139, 250, 0.28);
-  --hara-glass-b-shadow: 0 16px 48px rgba(0, 0, 0, 0.32), 0 0 24px rgba(124, 58, 237, 0.08);
+  --hara-glass-b-border: rgba(195, 187, 209, 0.16);
+  --hara-glass-b-shadow: 0 16px 48px rgba(0, 0, 0, 0.28), 0 0 24px rgba(124, 58, 237, 0.03);
 
   /* Glass C — emphasis (max one per view) */
-  --hara-glass-c-bg: rgba(64, 39, 98, 0.92);
+  --hara-glass-c-bg: rgba(53, 48, 63, 0.94);
   --hara-glass-c-blur: 28px;
-  --hara-glass-c-border: rgba(167, 139, 250, 0.55);
-  --hara-glass-c-shadow: 0 20px 56px rgba(0, 0, 0, 0.4), 0 0 40px rgba(124, 58, 237, 0.28);
+  --hara-glass-c-border: rgba(167, 139, 250, 0.38);
+  --hara-glass-c-shadow: 0 20px 56px rgba(0, 0, 0, 0.32), 0 0 40px rgba(124, 58, 237, 0.08);
 
-  --hara-bg-grad: radial-gradient(100% 70% at 80% 8%, #2A1B40 0%, #171022 42%, #0D0915 100%);
+  --hara-bg-grad: radial-gradient(100% 70% at 80% 8%, #29262F 0%, #1D1C23 42%, #141318 100%);
 }
 
 /* Theme: Violet Glass (default — alias of :root) */
@@ -141,6 +146,8 @@
   --hara-text-tertiary: #71717A;
   --hara-text-disabled: #52525B;
   --hara-text-link: #A78BFA;
+  --hara-chat-mine: #34313E;
+  --hara-chat-mine-ink: #E2DFE8;
   --hara-border-default: rgba(255, 255, 255, 0.08);
   --hara-border-active: rgba(167, 139, 250, 0.40);
   --hara-border-subtle: rgba(255, 255, 255, 0.05);
@@ -172,6 +179,8 @@
   --hara-text-tertiary: #796B8E;
   --hara-text-disabled: #A99ABD;
   --hara-text-link: #6D28D9;
+  --hara-chat-mine: #E6DFF2;
+  --hara-chat-mine-ink: #392F4B;
   --hara-border-default: rgba(91, 86, 117, 0.16);
   --hara-border-active: rgba(124, 58, 237, 0.48);
   --hara-border-subtle: rgba(91, 86, 117, 0.10);
@@ -198,9 +207,9 @@
   --hara-glass-c-blur: 0px;
 }
 [data-transparency="enhanced"] {
-  --hara-glass-a-bg: rgba(33, 22, 49, 0.55);
+  --hara-glass-a-bg: rgba(28, 27, 34, 0.68);
   --hara-glass-a-blur: 18px;
-  --hara-glass-b-bg: rgba(42, 27, 64, 0.72);
+  --hara-glass-b-bg: rgba(39, 38, 47, 0.80);
   --hara-glass-b-blur: 32px;
 }
 
