@@ -4,7 +4,7 @@ import { ArrowUpRightIcon, ChatBubbleLeftRightIcon, CheckCircleIcon, ChevronRigh
   HashtagIcon, HomeIcon, ClipboardDocumentCheckIcon, ViewColumnsIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon, UserPlusIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import HaraLogo from "./mark";
-import { makeT, type Key, type LocalePreference } from "./i18n";
+import { makeT, type Key } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import type { WorkspaceDevConnection } from "./workspace-dev-rpc";
 import { WorkspaceStartupModel } from "./workspace-startup";
@@ -12,8 +12,7 @@ import { WorkspaceBoot } from "./WorkspaceBoot";
 import { WorkspaceTaskActivity, WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
 import { WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
 import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval } from "./workspace-dev-state";
-import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
-import { WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
+import { useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
 import { Avatar, AwaitBar, ColleaguesPage, ShellDialog, SidebarSection } from "./WorkspaceShell";
 import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
 import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
@@ -80,9 +79,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const [channelDialog, setChannelDialog] = useState<"create" | "members" | "invite" | null>(null);
   const channelApprovalActions = useMemo(() => ({ respond: (card: WorkspaceDevApproval, approved: boolean) => channels.respond(card, approved),
     getSnapshot: () => ({ workspace: { approvals: channels.getSnapshot().channel?.approvals ?? [] } }) }), [channels]);
-  const { locale, preference, t, changeLocale } = useWorkspaceLocale();
+  const { locale, t } = useWorkspaceLocale();
   const [settings, setSettingsState] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState(() => t("ws.space.default"));
-  const [feature, setFeature] = useState<"schedules" | "skills" | null>(null), [searching, setSearching] = useState(false), [search, setSearch] = useState("");
+  const [searching, setSearching] = useState(false), [search, setSearch] = useState("");
   const [route, setRoute] = useState(() => normalizeShellRoute(typeof location === "undefined" ? "" : location.hash));
   const [approvalDialog, setApprovalDialog] = useState<{ id: string; scope: string } | null>(null), [focusApproval, setFocusApproval] = useState<string | null>(null);
   const theme = useStableWorkspaceTheme(model);
@@ -211,7 +210,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     return { agent: row, preview: last?.role === "user" ? last.content : last?.role === "assistant" ? last.text : row.identity.title ?? t("ws.role.colleague"), timestamp,
       order: Date.parse(timestamp ?? "") || shell.activity[row.agentId]?.observedAt || 0 };
   }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity, t]);
-  const closeSettings = () => { setSettings(false); setFeature(null); };
+  const closeSettings = () => { setSettings(false); };
   const modalOpen = settings || creating || !!channelDialog || approvalDialog?.scope === scope;
   const draftSkill = async (workspaceId: string) => {
     if (model.getSnapshot().workspaceId !== workspaceId) await model.selectWorkspace(workspaceId);
@@ -222,8 +221,6 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     if (model.getSnapshot().workspaceId !== workspaceId) return;
     closeSettings(); navigate("chat"); model.setDraft(t("skillCreationPrompt"));
   };
-  if (production && settings) return <WorkspaceSettings mainModel={model} initialPage={settingsPage} root={root} production theme={theme} updater={updates.controller} versionInfo={updates.info}
-    onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} />;
   return <div className="hs wsd-app vg-app" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : inspector ? " has-inspector" : ""}`}>
     <aside className="hs-side wsd-sidebar" inert={modalOpen}><div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" />
       <div className="hs-top"><HaraLogo size={20} /><select className="hs-space" aria-label={t("ws.space.switch")} value={view.workspaceId ?? ""} disabled={view.loading || !view.directory?.workspaces.length}
@@ -329,17 +326,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     {channelDialog ? <LocalChannelDialog key={`${scope}:${channelDialog}:${channelView.channelId}`} mode={channelDialog} view={channelView} model={channels} colleagues={colleagues} t={t} onClose={() => setChannelDialog(null)} onCreated={openChannel} /> : null}
     {approvalDialog?.scope === scope ? <ShellDialog label={t("ws.approval.label")} onClose={() => setApprovalDialog(null)} className="wsd-approval-dialog"><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={() => setApprovalDialog(null)}><XMarkIcon className="hico" /></button>
       {dialogCard ? <ApprovalCard card={dialogCard} model={model} t={t} inDialog disabled={Boolean(disconnected)} onSettled={() => setApprovalDialog(null)} /> : <p role="status">{t("ws.approval.stale")}</p>}</ShellDialog> : null}
-    {settings ? <ShellDialog key={`settings:${view.workspaceId}`} label={t("ws.settings")} onClose={closeSettings} className="wsd-settings"><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={closeSettings}><XMarkIcon className="hico" /></button>
-      <h2>{t("ws.settings")}</h2><p>{workspace?.label}</p><p>{t("ws.settings.description")}</p>
-      <section aria-label={t("ws.settings.appearance")}><h3>{t("ws.settings.appearance")}</h3><WorkspaceThemeSettings theme={theme} locale={locale} />
-        <label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option><option value="en">{t("ws.locale.en")}</option><option value="zh-Hans">{t("ws.locale.hans")}</option><option value="zh-Hant">{t("ws.locale.hant")}</option></select></label></section>
-      {workspace ? <>{production ? <WorkspaceConnections key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} />
-        : !hasConnection ? <button className="hs-btn pri" onClick={() => void connect()}>{t(realKey ? "ws.connection.approved" : "ws.connection.synthetic")}</button> : null}
-        <div className="wsd-card-actions"><button className="hs-btn sec" onClick={() => setFeature("schedules")}>{t("ws.settings.schedules")}</button><button className="hs-btn sec" onClick={() => setFeature("skills")}>{t("ws.settings.skills")}</button></div>
-        {feature ? <WorkspaceFeaturePanel key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${feature}`} model={model} workspace={workspace} kind={feature} onClose={() => setFeature(null)} /> : null}
-        {production ? <WorkspaceRuntimeSettings key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} /> : <section><h3>{t("ws.settings.runtime")}</h3><p>{t("ws.settings.runtimeLab")}</p></section>}
-        <details><summary>{t("ws.settings.localData")}</summary><p className="wsd-root">{root}</p><p>{t("ws.settings.usage", { n: workspace.conversation.pastTaskCount, calls: workspace.conversation.usage.modelCalls })}</p></details></> : <p>{t("ws.space.note")}</p>}
-    </ShellDialog> : null}
+    {settings ? <WorkspaceSettings key={`settings:${view.workspaceId}`} mainModel={model} initialPage={settingsPage} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
+      onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} /> : null}
   </div></div></div>;
 }
 export default function WorkspaceLocalDev({ mode = "workspace" }: { mode?: "workspace" | "lab" }) {
