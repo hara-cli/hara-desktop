@@ -1,5 +1,13 @@
 # Error log
 
+## R1 / O23 preparation pointer · 2026-10-26
+
+Hara 同事：按派单3a92e6ad…与Jeff via Elon t2347s9111，仅建立新O²³ docs-only子提交；唯一父O²² 558263bed45eba38a55200e18db1d26517757cc2／tree 245b4df937cd8fa3a00cf099339ac1a4f9170f6b。
+live18 run40293452339已completed/failure：Provision retained job evidence成功、actor/event/ref/workflow已过；黄窗≤240秒缺独立administrator proof。根因是S2e冻结CONTRACT.workflowSha256仍482aa91a…而磁盘workflow已aa027885…，导致api-or-ref且看不见新run；不是forbidden-prefix回归。复审SHA2f423ea93f1dd465b4fb706db1cc3b28df1ef9572c37576b927777afdd942d2b。
+定案A S2e修复回执SHA4e4333c954ca053c7adff7e0521c29af200cea8d365553deb73e22358eacf6c9：耐久脚本CONTRACT重钉aa027885579ab40598828859ae1bd31aecfe221b6183cebceb6b31ebe2d9ff2a，pid66750。本片只读核近期JSONL api-or-ref=0，不修改或重启S2e、不触ENABLE/KEYDIR/PEM。
+本片workflow/input/A/Core/锚/identity/wait240保持；严禁复用0863bcde…/c5c29d22…/88acb6f6…/1b449df4…及更旧digest、tip O²²或O²² purpose作新authority。永久禁补签/重跑40293452339、40279517278、40265916698、40262667750及更早。
+仅本地tip+最小私有装绑+本轮实测闸→pendingElonReview；不push/live19/run/publish/env代批/PEM/钥匙串/真实~/.hara/正式tag/force。请求≠PASS，PASS≠kick；live19仍须新wiring与Jeff另明文。
+
 ## R1 / O22 preparation pointer · 2026-10-26
 
 Hara 同事：按本地派单1d4ba4e0…与Jeff t691s3201定案A，纳入已审本地fix `6e202316deff7d4840f2d8fb0f25cb6b4733e741`，新WORKFLOW_SHA `aa027885579ab40598828859ae1bd31aecfe221b6183cebceb6b31ebe2d9ff2a`。
