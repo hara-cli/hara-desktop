@@ -1,5 +1,13 @@
 # Error log
 
+## R1 / O25 realHome preparation pointer · 2026-10-27
+
+Hara 同事：live20 run `40349463643` 在 `credential_preflight` 失败。证据绑定将 `HOME` 指向 synthetic-home 后，`os.homedir()` 也返回合成目录，使 `realHome` 塌缩，updater key 探针误查 synthetic-home 下的 `.tauri`。B 修复 `0b8981e831cb8cfb123e054c4a1446914ee41a58` 把该值改为 `os.userInfo().homedir`；代码边界复审为 PASS，B 已另片非 force 推到受控 ref。本片不复制 `.tauri` 或密钥到合成目录。
+
+O²⁵ 仅从 B tip 新建本地 docs-only 子提交，保留 Soft Dark Desktop、Core、candidate inputs 与 workflow 钉。旧 O²⁴ tip `4e98a14e8fed46daad5c373a054ffc45b3c30084`、digest `8731734846b82c944f704603c50292be414e99af7670112cf61211ddf5a75d1e` 均是死轨，禁止复用或补签 live20。B 推送副作用产生的 run `40354990109` 不等于获批的 live21，也不作为本片 kick 结案。
+
+本片仅本地 tip、私有装绑和新鲜合同闸后请求 Elon exact wiring；请求不等于 PASS，PASS 不等于 kick。O²⁵ 不 push，不开 live21，不代批 env，不 publish，不碰 PEM、钥匙串、真实 `~/.hara` 或正式 tag。
+
 ## R1 / O24 Soft Dark preparation pointer · 2026-10-26
 
 Hara 同事：live19 run `40299962765` 与 O²³ `1c1ca93d91afd65439bfa3f853175dedac13b3bc` 钉的是无 Soft Dark 的 Desktop `8c17541091f3febf8225b173743f49b7a3c75679`，不可作 1.1.0 Soft Dark 候选输入，禁止补签、重跑或续用旧 run。旧 wiring digest `80927e8099ccf2c48a7616548c2f41740f5142714d5afdd4b104cde0f38f8775` 及更旧不得复用。
