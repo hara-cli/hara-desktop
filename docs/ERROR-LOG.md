@@ -1,5 +1,14 @@
 # Error log
 
+## R1 / O20 preparation pointer · 2026-10-26
+
+Hara 同事：仅按本地派单 `2026-10-26-candidate-live-admission-admin-proof-p2-r1-o20-prepare-dispatch.md`
+(SHA256 `13e1f87d737d6720d09d407dd82979259ad0f5927ceff4a1d127d621ad617da8`)
+创建 O²⁰ prepare；唯一父 O¹⁹ b3ea7c02b1ecbeaa576870331464c412d38bde18。
+live15 run 40262667750 已 completed/failure；actor/event/ref/workflow 与 assertEvent 已通过，实际拒因为240秒内PR #1无有效独立签名administrator proof。S2e running 不等于真实publish成功；YAML步骤标题不是wrong actor/event/ref/workflow的拒因。诊断指针 `2026-10-26-candidate-live-admission-admin-proof-p2-r1-o19-live15-admission-elon-review.md` SHA256 `63e7837a102211f73b0d6a874c9036d016fe2c9854a3085692c794fa4fabe9ee`。
+永久禁补签/重跑40262667750及十五旧跑；O¹⁹ wiring TTL已死，1b449df4…及更旧digest禁作O²⁰ authority。保持inputs、A/Core、公钥锚、workflow、admission与waitSeconds=240。
+本片仅本地tip+装绑+闸→pendingElonReview，不push/live16/run/publish/PEM，不触S2e pid2909。未来publish须精确新run仍in_progress且≤240s，核实际PR #1证明；PASS≠kick，live16须全新exact wiring与Jeff另明文。
+
 ## R1 / O19 preparation pointer · 2026-10-26
 
 Hara 同事：仅按本地派单
