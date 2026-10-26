@@ -10,7 +10,7 @@ import { gateEvidence } from './candidate-upgrade.mjs';
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const INPUT = JSON.parse(fs.readFileSync(path.join(ROOT, 'candidate-inputs.json')));
 export const TARGETS = ['aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'];
-export const realHome = os.homedir();
+export const realHome = os.userInfo().homedir;
 export const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const fileHash = file => hash(fs.readFileSync(file));
 export const readJson = file => JSON.parse(fs.readFileSync(file));
