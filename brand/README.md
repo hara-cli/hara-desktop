@@ -1,12 +1,14 @@
 # Hara Desktop brand assets
 
-`hara-mark.svg` is an exact generated copy of the canonical Hara vector at
-`../hara-web/brand/hara-logo-v3-imagegen/source/hara-mark.svg` in the shared workspace.
-Do not edit this copy or generated icon files by hand.
+`hara-mark.svg` is the Desktop master. Its gateway geometry comes from
+`hara-web/brand/hara-logo-v3-imagegen/source/hara-mark.svg` in the shared workspace;
+its Desktop fill is **Violet `#7C3AED`**, locked by the Violet Glass DS v1 and
+approved for engineering pickup on 2026-10-26. Preserve the gateway geometry.
+Do not hand-edit generated runtime marks or platform icons.
 
-Run the central installer from `hara-web/brand/hara-logo-v3-imagegen` to synchronize all
-products, or run `bash scripts/generate-brand-assets.sh` after this local master has
-been synchronized. The script copies the SVG into the Vite bundle, creates the
+Run `bash scripts/generate-brand-assets.sh` to regenerate Desktop assets from the
+local master. A future cross-product sync must preserve this approved violet fill;
+do not restore the legacy coral palette. The script copies the SVG into the Vite bundle, creates the
 transparent rounded Desktop icon source, and lets Tauri generate macOS, Windows,
 Linux, Android, and iOS derivatives.
 
@@ -20,5 +22,5 @@ Regenerate rather than editing either PNG or the ICNS by hand.
 The generator also canonicalizes ICNS entry order without changing pixels, so
 repeated exports have identical bytes even when Tauri emits frames in a different order.
 
-The mark uses Hara Coral `#FF6B5C`; the Desktop icon surface uses Hara Ink `#131316`
+The mark uses Hara Violet `#7C3AED`; the Desktop icon surface uses Hara Ink `#131316`
 with a subtle `#2A2A30` edge. Platform output files are committed release resources.
