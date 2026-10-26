@@ -1,5 +1,14 @@
 # Error log
 
+## R1 / O21 preparation pointer · 2026-10-26
+
+Hara 同事：仅按本地派单 `2026-10-26-candidate-live-admission-admin-proof-p2-r1-o21-prepare-dispatch.md`
+(SHA256 `708cd5a6c4bb38715e81a17f08a88368e79f160f9f7b41e8fda5ec6ddcd5898c`)
+创建 O²¹ prepare；唯一父 O²⁰ ed68c40d8deef3ed51bbb186aa181205e5e40005。
+live16 run40265916698已completed/failure；assertEvent及actor/event/ref/workflow已通过，240秒内PR #1没有有效独立管理员证明；步骤标题不是wrong actor拒因。复审45617b49…记S2e当时api-or-ref；S2e路径修复回执b0102706…已DONE（本片不修改合成树/hosts/ENABLE，不重启或卸载pid2909）。
+永久禁补签/重跑40265916698、40262667750及更早；O²⁰仅作父，不复用旧tip/purpose或88acb6f6…及更旧digest作新authority。inputs、A/Core、公钥锚、workflow、admission、waitSeconds=240均保持。
+本片仅本地tip+三文件装绑+新鲜闸→pendingElonReview，不push/live17/run/publish/PEM。未来新run须in_progress≤240s内真实publish并核PR #1，S2e已修不等于未来出证已成功；Jeff可用已核candidate-publish.sh后备，PASS≠kick，live17另须新exact wiring及Jeff明文。
+
 ## R1 / O20 preparation pointer · 2026-10-26
 
 Hara 同事：仅按本地派单 `2026-10-26-candidate-live-admission-admin-proof-p2-r1-o20-prepare-dispatch.md`
