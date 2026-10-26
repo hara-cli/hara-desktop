@@ -38,7 +38,7 @@ export default function WorkspaceInspector({ workspace, agent, shell, t, inert, 
     {workspace && agent ? <><section className="vg-context-card"><div className="vg-context-person"><Avatar agent={agent} large /><strong>{agent.identity.displayName}</strong></div>
       <span className={`vg-status ${waiting.length ? "approval" : state === "running" || state === "accepted" ? "running" : "idle"}`}>
         {state === "completed" ? <CheckCircleIcon className="hico" /> : <ClockIcon className="hico" />}
-        {t(waiting.length ? "vg.approval" : `ws.tasks.status.${state}`)}</span>
+        {t(waiting.length ? "vg.approval" : !conversation?.taskId && conversation?.state === "idle" ? "vg.idle" : `ws.tasks.status.${state}`)}</span>
       {conversation?.objective ? <p>{conversation.objective}</p> : null}
       <h3>{t("vg.tools")}</h3>{tools.length ? <div className="vg-tool-tags">{tools.map(tool => <span key={tool}><CommandLineIcon className="hico" />{tool}</span>)}</div> : <p className="vg-muted">{t("vg.tools.empty")}</p>}
       <h3>{t("vg.usage")}</h3><strong className="vg-token-count">{((usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)).toLocaleString()}</strong>

@@ -19,6 +19,7 @@
 .hs.vg-app .hs-head{padding:16px 24px;min-height:72px;background:var(--hara-glass-a-bg);border-bottom:1px solid var(--line)}
 .hs.vg-app .hs-top{gap:10px;min-height:48px;margin-bottom:16px}
 .hs.vg-app .hs-top>img{width:28px;height:28px}
+.hs.vg-app .hs-ava.hara{background:var(--hara-bg-selected)}
 .hs.vg-app .hs-space{font-size:14px}
 .hs.vg-app .hs-icon{min-width:32px;min-height:32px}
 .hs.vg-app .hs-hello h2{font:600 24px/1.4 var(--hara-font-display);letter-spacing:-.02em}
@@ -77,6 +78,8 @@
 .wss-overlay .wss-description{line-height:1.6;color:var(--hara-text-secondary);margin-bottom:24px}
 .wss-overlay .wss-page-card,.wss-overlay .wss-overview>button{background:var(--hara-bg-surface);border-color:var(--hara-border-default);border-radius:12px}
 .wss-overlay .wss-overview>button{box-shadow:none}.wss-overlay .wss-page-card:has(.vg-theme-options){background:transparent;border:0;padding:0}
+.wss-overlay .hs.wss-app .wss-page-card>section[aria-label]{display:block}
+.wss-overlay .vg-material-pref{margin:20px 0}.wss-overlay .vg-material-pref h3{margin:0 0 8px}.wss-overlay .vg-brand-note{margin:20px 0}
 .wss-overlay .wss-scope>button{background:var(--hara-bg-surface);border-color:var(--hara-border-default)}
 .wss-overlay .wss-scope [role="menu"]{background:var(--hara-bg-elevated);border-color:var(--hara-border-default);box-shadow:var(--hara-glass-b-shadow)}
 .wss-overlay .wss-discard-backdrop{position:absolute;z-index:2;border-radius:20px;background:var(--hara-scrim)}

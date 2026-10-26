@@ -30,10 +30,9 @@ export interface WorkspaceSettingsProps { mainModel: WorkspaceDevModel; initialP
 /** Keep the live shell mounted/inert below the modal. Escape belongs to SettingsLeaveGuard. */
 export function SettingsOverlay({ children, ready, onClose }: { children: ReactNode; ready: boolean; onClose(): void }) {
   const panel = useRef<HTMLDivElement>(null);
+  const previous = useRef(typeof document === "undefined" ? null : document.activeElement as HTMLElement | null);
   const { t } = useWorkspaceLocale();
-  useEffect(() => { const previous = document.activeElement as HTMLElement | null;
-    return () => { if (previous?.isConnected) previous.focus(); };
-  }, []);
+  useEffect(() => () => { const target = previous.current; queueMicrotask(() => { if (target?.isConnected) target.focus(); }); }, []);
   useLayoutEffect(() => { (panel.current?.querySelector<HTMLElement>("button:not(:disabled)") ?? panel.current)?.focus(); }, [ready]);
   return <div className="wss-overlay"><div ref={panel} className="wss-dialog" role="dialog" aria-modal="true" aria-label={t("ws.settings")} tabIndex={-1}
     onKeyDown={event => {

@@ -116,9 +116,13 @@ test("scoped schedules and skills remain reachable through Settings without lega
   const html = renderScreen(view());assert.match(html,/aria-label="設定"/);
   assert.doesNotMatch(html,/wsd-feature-nav/);
   const source = read("src/WorkspaceLocalDev.tsx");
-  assert.ok(/setFeature\("schedules"\)/.test(source)); assert.ok(/setFeature\("skills"\)/.test(source));
-  assert.ok(/<WorkspaceFeaturePanel key=\{`\$\{workspace\.workspaceId\}:\$\{workspace\.resourceGeneration\}:\$\{feature\}`\}/.test(source));
-  assert.ok(/\{settings \? <ShellDialog/.test(source));
+  // The modal's scoped list/toggle interactions are exercised by violet-workspace-smoke.
+  // Both production and Lab enter the same Settings surface; the old right drawer is gone.
+  assert.match(source, /\{settings \? <WorkspaceSettings/);
+  assert.doesNotMatch(source, /className="wsd-settings"|setFeature/);
+  const settings = read("src/WorkspaceSettings.tsx");
+  assert.match(settings, /"schedules", "skills"/);
+  assert.match(settings, /<WorkspaceFeaturePanel model=\{model\} workspace=\{workspace\} kind=\{page\}/);
   assert.doesNotMatch(source, /AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/);
 });
 test("legacy feature code is retained instead of deleting its stored resources or backend contract", () => {
