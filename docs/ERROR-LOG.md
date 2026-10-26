@@ -1,5 +1,12 @@
 # Error log
 
+## R1 / O22 preparation pointer · 2026-10-26
+
+Hara 同事：按本地派单1d4ba4e0…与Jeff t691s3201定案A，纳入已审本地fix `6e202316deff7d4840f2d8fb0f25cb6b4733e741`，新WORKFLOW_SHA `aa027885579ab40598828859ae1bd31aecfe221b6183cebceb6b31ebe2d9ff2a`。
+live17 run40279517278 admission成功，人证/S2e已通且环境闸已过；credential_preflight在Provision retained job evidence报forbidden evidence prefix：裸startsWith误伤真实runner兄弟目录`~/.hara-runners`。定案A仅修路径边界，真实`~/.hara`及其子目录、Caches、临时目录仍拒绝；不回退人证叙事或放宽waitSeconds=240。
+authority父仅O21 `c9920c4ce74085c1eb5d886fc5360e267f74a859`／tree `3b12aa5e58600d8c0b5756e3bdba329a9e6a3c13`；保留fix提交后追加本pointer，完整实际Git父链另写请求。禁把O21作新tip，禁复用O21 purpose与digest c5c29d22…／88acb6f6…／1b449df4…及更旧。
+永久禁补签/重跑40279517278、40265916698、40262667750及更早。本片仅本地tip+私有装绑+本轮实测闸→pendingElonReview；不push/live18/run/publish/PEM/钥匙串/真实~/.hara/S2e2909。INPUT/A/Core/公钥锚保持；请求≠PASS，PASS≠kick；live18另须新wiring与Jeff明文。
+
 ## R1 / O21 preparation pointer · 2026-10-26
 
 Hara 同事：仅按本地派单 `2026-10-26-candidate-live-admission-admin-proof-p2-r1-o21-prepare-dispatch.md`
