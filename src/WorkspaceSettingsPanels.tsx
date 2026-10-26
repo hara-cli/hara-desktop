@@ -6,18 +6,21 @@ import { bindThemePreference, loadThemePreference, saveThemePreference, type The
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { settingsStateText } from "./workspace-settings-copy";
 import { makeT, type Key, type Locale } from "./i18n";
+import { applyAppearance, loadAppearance, saveAppearance, type VioletAppearance } from "./violet-appearance";
 
 export function useStableWorkspaceTheme(model: WorkspaceDevModel) {
   const [preference, setPreference] = useState<ThemePreference>(loadThemePreference);
+  const [appearance, setAppearance] = useState(loadAppearance);
+  useEffect(() => applyAppearance(appearance), [appearance]);
   const [settings, setSettings] = useState<WorkspacePreferenceView | null>(null), [notice, setNotice] = useState<"" | Key>("");
   const busy = useRef(false);
   useEffect(() => { let active = true; void model.preferences().then(value => { if (active) { setSettings(value); setPreference(value.theme); saveThemePreference(value.theme); } })
     .catch(() => { if (active) setNotice("ws.theme.loadFailed"); }); return () => { active = false; }; }, [model]);
   useEffect(() => bindThemePreference(preference), [preference]);
   const change = async (value: ThemePreference) => {
-    if (!settings || settings.readOnly || busy.current) return; busy.current = true;
-    try { const current = await model.preferences(); const saved = await model.savePreference(value, current.revision); setSettings(saved); setPreference(saved.theme); saveThemePreference(saved.theme); setNotice(""); }
-    catch { setNotice("ws.theme.saveUnknown"); }
+    if (!settings || settings.readOnly || busy.current) return false; busy.current = true;
+    try { const current = await model.preferences(); const saved = await model.savePreference(value, current.revision); setSettings(saved); setPreference(saved.theme); saveThemePreference(saved.theme); setNotice(""); return true; }
+    catch { setNotice("ws.theme.saveUnknown"); return false; }
     finally { busy.current = false; }
   };
   const changeDetails = async (executionDetails: "brief" | "detailed", collapseDetails: boolean) => {
@@ -25,13 +28,26 @@ export function useStableWorkspaceTheme(model: WorkspaceDevModel) {
     try { const saved = await model.saveDisplayPreference(executionDetails, collapseDetails); setSettings(saved); setNotice(""); }
     catch { setNotice("ws.theme.displayUnknown"); } finally { busy.current = false; }
   };
-  return { preference, settings, notice, change, changeDetails };
+  const changeAppearance = (next: Partial<VioletAppearance>) => {
+    setAppearance(current => { const value = { ...current, ...next }; saveAppearance(value); return value; });
+  };
+  const chooseTheme = async (value: "violet-glass" | "obsidian" | "daylight") => {
+    if (await change(value === "daylight" ? "light" : "dark")) changeAppearance({ darkTheme: value === "obsidian" ? "obsidian" : "violet-glass" });
+  };
+  return { preference, settings, notice, change, changeDetails, appearance, changeAppearance, chooseTheme };
 }
 export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<typeof useStableWorkspaceTheme>; locale?: Locale }) {
   const current = useWorkspaceLocale(), t = locale ? makeT(locale) : current.t;
-  return <section aria-label={t("ws.settings.appearance")}><label>{t("ws.theme.title")}<select aria-label={t("ws.theme.title")} value={theme.preference} disabled={!theme.settings || theme.settings.readOnly}
+  const appearance = theme.appearance ?? loadAppearance();
+  const currentTheme = theme.preference === "light" ? "daylight" : appearance.darkTheme;
+  return <section aria-label={t("ws.settings.appearance")}>
+    <div className="vg-theme-options" role="group" aria-label={t("vg.appearance")}>{(["violet-glass", "obsidian", "daylight"] as const).map(value => <button type="button" key={value} className={`vg-theme-card ${value}`} aria-pressed={theme.preference !== "system" && currentTheme === value}
+      disabled={!theme.settings || theme.settings.readOnly} onClick={() => void theme.chooseTheme(value)}><span className="vg-theme-swatch" aria-hidden /><strong>{value === "violet-glass" ? "Violet Glass" : value === "obsidian" ? "Obsidian" : "Daylight"}</strong><small>{t(value === "violet-glass" ? "vg.theme.violet" : value === "obsidian" ? "vg.theme.obsidian" : "vg.theme.daylight")}</small></button>)}</div>
+    <label>{t("ws.theme.title")}<select aria-label={t("ws.theme.title")} value={theme.preference} disabled={!theme.settings || theme.settings.readOnly}
     onChange={event => void theme.change(event.target.value as ThemePreference)}><option value="system">{t("ws.theme.system")}</option><option value="light">{t("ws.theme.light")}</option><option value="dark">{t("ws.theme.dark")}</option></select></label>
     <small>{t("ws.theme.note")}</small>
+    {(["transparency", "motion"] as const).map(kind => <div className="vg-material-pref" key={kind}><h3>{t(kind === "motion" ? "vg.motion" : "vg.transparency")}</h3><div role="group" aria-label={t(kind === "motion" ? "vg.motion" : "vg.transparency")}>{(kind === "motion" ? ["off", "reduced", "standard"] as const : ["off", "standard", "enhanced"] as const).map(value => <button key={value} type="button" aria-pressed={appearance[kind] === value} onClick={() => theme.changeAppearance({ [kind]: value })}>{t(`vg.${value}`)}</button>)}</div></div>)}
+    <p className="vg-brand-note"><span aria-hidden />{t("vg.brand")} · #7C3AED</p>
     <label>{t("ws.display.mode")}<select aria-label={t("ws.display.mode")} value={theme.settings?.executionDetails ?? "brief"} disabled={!theme.settings || theme.settings.readOnly}
       onChange={event => void theme.changeDetails(event.target.value as "brief" | "detailed", theme.settings?.collapseDetails !== false)}><option value="brief">{t("ws.display.brief")}</option><option value="detailed">{t("ws.display.detailed")}</option></select></label>
     <div className="wss-setting-row"><span>{t("ws.display.collapse")}</span><ToggleSwitch label={t("ws.display.collapse")} checked={theme.settings?.collapseDetails !== false} disabled={!theme.settings || theme.settings.readOnly}

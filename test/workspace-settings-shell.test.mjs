@@ -29,9 +29,9 @@ function settings(page, kind = "personal") {
   return render("SettingsContent", { model, mainModel: model, initialPage: page, root: "/private/fixture", production: true, updater: controller(), versionInfo: info, onClose() {}, onCreateSkill() {},
     theme: { preference: "system", settings: { readOnly: false }, notice: "", change() {}, changeDetails() {} } });
 }
-test("full-window settings has two scopes, accessible navigation and no drawer/template or unapproved browser settings", () => {
+test("settings left rail has two scopes, an accessible close action and no drawer/template or unapproved browser settings", () => {
   const html = settings("overview");
-  for (const value of ['aria-label="设置导航"', 'aria-current="page"', 'aria-haspopup="menu"', "返回 Hara", "仅本空间", "所有空间", "连接", "运行时", "定时任务", "技能", "外观与语言", "软件更新"]) assert.equal(html.includes(value), true, value);
+  for (const value of ['aria-label="设置导航"', 'aria-current="page"', 'aria-haspopup="menu"', 'aria-label="关闭设置"', "仅本空间", "所有空间", "连接", "运行时", "定时任务", "技能", "外观与语言", "软件更新"]) assert.equal(html.includes(value), true, value);
   assert.equal(/wsd-settings|模板|浏览器扩展|>成员<|WORKSPACE LAB/.test(html), false);
   assert.equal(settings("overview", "team").includes(">成员<"), true);
 });

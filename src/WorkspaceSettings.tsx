@@ -1,6 +1,6 @@
-import { createElement, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useWorkspaceLocale, workspacePlatform } from "./workspace-shell-hooks";
-import { ArrowPathIcon, ChevronDownIcon, ClockIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ChevronDownIcon, ClockIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { type Key, type LocalePreference } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import HaraLogo from "./mark";
@@ -27,19 +27,39 @@ const pages: Record<SettingsPage, { name: Key; icon: typeof HomeIcon; detail: Ke
 export interface WorkspaceSettingsProps { mainModel: WorkspaceDevModel; initialPage: SettingsPage; root: string; production: boolean;
   theme: ReturnType<typeof useStableWorkspaceTheme>; updater: WorkspaceUpdater; versionInfo: DesktopVersionInfo | null;
   onClose(): void; onCreateSkill(workspaceId: string): void }
+/** Keep the live shell mounted/inert below the modal. Escape belongs to SettingsLeaveGuard. */
+export function SettingsOverlay({ children, ready, onClose }: { children: ReactNode; ready: boolean; onClose(): void }) {
+  const panel = useRef<HTMLDivElement>(null);
+  const previous = useRef(typeof document === "undefined" ? null : document.activeElement as HTMLElement | null);
+  const { t } = useWorkspaceLocale();
+  useEffect(() => () => { const target = previous.current; queueMicrotask(() => { if (target?.isConnected) target.focus(); }); }, []);
+  useLayoutEffect(() => { (panel.current?.querySelector<HTMLElement>("button:not(:disabled)") ?? panel.current)?.focus(); }, [ready]);
+  return <div className="wss-overlay"><div ref={panel} className="wss-dialog" role="dialog" aria-modal="true" aria-label={t("ws.settings")} tabIndex={-1}
+    onKeyDown={event => {
+      if (!ready && event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key !== "Tab" || panel.current?.querySelector('[role="alertdialog"]')) return;
+      const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),summary,[tabindex="0"]'))
+        .filter(node => !node.closest("[inert]") && node.getClientRects().length > 0);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!first) event.preventDefault();
+      else if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }}>{children}</div></div>;
+}
 export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
   const { locale, t } = useWorkspaceLocale();
   const [session, setSession] = useState<{ model: WorkspaceDevModel; close(): void } | null>(null), [error, setError] = useState<"" | Key>("");
   const initialWorkspace = useRef(props.mainModel.getSnapshot().workspaceId);
-  useEffect(() => { let active = true, owned: { model: WorkspaceDevModel; close(): void } | undefined;
+  useEffect(() => { if (!props.production) return; let active = true, owned: { model: WorkspaceDevModel; close(): void } | undefined;
     void props.mainModel.openSettingsSession().then(async value => { owned = value; if (!active) { value.close(); return; }
       await value.model.loadDirectory(); if (initialWorkspace.current) await value.model.selectWorkspace(initialWorkspace.current);
       if (active) setSession(value); else value.close();
     }).catch(() => { if (active) setError("ws.settings.sessionFailed"); });
     return () => { active = false; owned?.close(); };
-  }, [props.mainModel]);
-  if (!session) return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}><aside className="wss-nav"><div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" /><button onClick={props.onClose}>{t("ws.settings.back")}</button><h1>{t("ws.settings")}</h1></aside><main className="wss-main"><p role="status">{t(error || "ws.settings.opening")}</p></main></div>;
-  return <SettingsContent {...props} model={session.model} />;
+  }, [props.mainModel, props.production]);
+  const ready = !props.production || Boolean(session);
+  return <SettingsOverlay ready={ready} onClose={props.onClose}>{ready ? <SettingsContent {...props} model={session?.model ?? props.mainModel} />
+    : <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}><aside className="wss-nav"><button className="wss-close" aria-label={t("vg.closeSettings")} onClick={props.onClose}><XMarkIcon className="hico" /></button><h1>{t("ws.settings")}</h1></aside><main className="wss-main"><p role="status">{t(error || "ws.settings.opening")}</p></main></div>}</SettingsOverlay>;
 }
 export function SettingsContent({ model, initialPage, root, production, theme, updater, versionInfo, onClose, onCreateSkill }: WorkspaceSettingsProps & { model: WorkspaceDevModel }) {
   const { locale, preference, t, changeLocale } = useWorkspaceLocale();
@@ -78,7 +98,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
       else if (event.metaKey && event.key === ",") event.preventDefault();
       return;
     }
-    if (event.metaKey && event.key === "," || event.key === "Escape" && !scopeOpen) { event.preventDefault(); close(); }
+    if ((event.metaKey || event.ctrlKey) && event.key === "," || event.key === "Escape" && !scopeOpen) { event.preventDefault(); close(); }
     if (event.key === "Escape" && scopeOpen) { setScopeOpen(false); scopeTrigger.current?.focus(); } };
     window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
   }, [decision, keepEditing, requestLeave, scopeOpen]);
@@ -91,7 +111,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
   const navItem = (id: SettingsPage) => <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}><span aria-hidden>{createElement(pages[id].icon, { className: "hico" })}</span><span>{t(pages[id].name)}</span>{id === "updates" && hasUpdateAttention(updates) ? <i className="wss-update-dot" /> : null}</button>;
   const key = workspace ? `${workspace.workspaceId}:${workspace.resourceGeneration}:${page}` : "loading";
   return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}>
-    <aside className="wss-nav" inert={Boolean(decision)}><div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" /><button className="wss-back" onClick={close}>{t("ws.settings.back")}</button><h1>{t("ws.settings")}</h1><nav aria-label={t("ws.settings.navigation")}>
+    <aside className="wss-nav" inert={Boolean(decision)}><button className="wss-close" aria-label={t("vg.closeSettings")} onClick={close}><XMarkIcon className="hico" /></button><h1>{t("ws.settings")}</h1><nav aria-label={t("ws.settings.navigation")}>
       {navItem("overview")}<div className="wss-nav-group"><strong>{t("ws.settings.workspace")}</strong><small>{t("ws.settings.currentOnly")}</small></div>
       <div className="wss-scope"><button ref={scopeTrigger} aria-haspopup="menu" aria-expanded={scopeOpen} onClick={() => setScopeOpen(value => !value)} disabled={!view.directory?.workspaces.length}>
         <span className="wss-scope-mark">{selected?.label?.slice(0, 1) ?? "H"}</span><span><strong>{selected?.label ?? t("ws.settings.noSpace")}</strong><small>{t(selected?.kind === "team" ? "ws.settings.team" : "ws.settings.personal")} · {t(selected?.role === "owner" ? "ws.settings.owner" : selected?.role === "admin" ? "ws.settings.admin" : "ws.settings.member")}</small></span><ChevronDownIcon className="hico" /></button>

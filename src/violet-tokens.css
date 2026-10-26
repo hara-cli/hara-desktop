@@ -1,0 +1,255 @@
+/* Hara Violet Glass Design System v1.0 — semantic tokens
+ * Source: Jeff brief t264u · 2026-10-26
+ * Brand primary fixed #7C3AED (does not change across themes)
+ * Engineering pickup: Steve §23 / Jeff t707s3293; source pack remains read-only
+ * Soft-dark revision: neutral reading surfaces; identity violet remains fixed.
+ */
+
+:root {
+  /* Brand violet scale (identity — fixed across themes) */
+  --hara-violet-50: #F5F3FF;
+  --hara-violet-100: #EDE9FE;
+  --hara-violet-200: #DDD6FE;
+  --hara-violet-300: #C4B5FD;
+  --hara-violet-400: #A78BFA;
+  --hara-violet-500: #8B5CF6;
+  --hara-violet-600: #7C3AED; /* Hara brand primary */
+  --hara-violet-700: #6D28D9;
+  --hara-violet-800: #5B21B6;
+  --hara-violet-900: #4C1D95;
+
+  --hara-brand-primary: #7C3AED;
+  --hara-brand-hover: #8B5CF6;
+  --hara-brand-pressed: #6D28D9;
+  --hara-brand-deep: #5B21B6;
+
+  /* Status */
+  --hara-status-idle: #796B8E;
+  --hara-status-planning: #8B5CF6;
+  --hara-status-running: #3B82F6;
+  --hara-status-waiting: #EAB308;
+  --hara-status-approval: #F97316;
+  --hara-status-completed: #22C55E;
+  --hara-status-failed: #EF4444;
+
+  /* Radius */
+  --hara-radius-sm: 8px;
+  --hara-radius-md: 12px;
+  --hara-radius-lg: 20px;
+  --hara-radius-pill: 999px;
+
+  /* Space (4px grid) */
+  --hara-space-1: 4px;
+  --hara-space-2: 8px;
+  --hara-space-3: 12px;
+  --hara-space-4: 16px;
+  --hara-space-5: 20px;
+  --hara-space-6: 24px;
+  --hara-space-8: 32px;
+  --hara-space-12: 48px;
+  --hara-space-16: 64px;
+
+  /* Component heights */
+  --hara-btn-sm: 32px;
+  --hara-btn-md: 36px;
+  --hara-btn-lg: 40px;
+  --hara-input-md: 36px;
+  --hara-input-lg: 40px;
+  --hara-sidebar-item: 36px;
+  --hara-status-badge: 20px;
+  --hara-tabs: 36px;
+  --hara-avatar-sm: 32px;
+  --hara-avatar-md: 40px;
+  --hara-avatar-lg: 48px;
+
+  /* Motion */
+  --hara-dur-hover: 120ms;
+  --hara-dur-press: 100ms;
+  --hara-dur-tab: 160ms;
+  --hara-dur-dialog: 220ms;
+  --hara-dur-sidebar: 200ms;
+  --hara-dur-toast: 180ms;
+  --hara-dur-thinking: 1600ms;
+
+  /* Typography stacks */
+  --hara-font-ui: -apple-system, "SF Pro Text", "PingFang SC", "PingFang TC", "Noto Sans CJK SC", "Segoe UI", sans-serif;
+  --hara-font-display: "SF Pro Display", -apple-system, "PingFang SC", sans-serif;
+  --hara-font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --hara-font-size-body: 13.5px;
+  --hara-font-size-title: 22px;
+
+  /* Default theme = Violet Glass (soft dark) */
+  --hara-bg-base: #141318;
+  --hara-bg-sidebar: #19181F;
+  --hara-bg-content: #1D1C23;
+  --hara-bg-surface: #24232B;
+  --hara-bg-elevated: #2B2A34;
+  --hara-bg-hover: #302F39;
+  --hara-bg-selected: #35303F;
+
+  --hara-text-primary: #DFDCE5;
+  --hara-text-secondary: #B4B0BF;
+  --hara-text-tertiary: #9F9BA8;
+  --hara-text-disabled: #73707C;
+  --hara-text-link: #BDA4F5;
+
+  /* Conversation surfaces have their own colors, independent of action buttons. */
+  --hara-chat-mine: #3A314A;
+  --hara-chat-mine-ink: #E2DDEB;
+
+  --hara-border-default: rgba(195, 187, 209, 0.10);
+  --hara-border-active: rgba(167, 139, 250, 0.38);
+  --hara-border-subtle: rgba(195, 187, 209, 0.06);
+
+  --hara-scrim: rgba(10, 9, 13, 0.50);
+  --hara-glow: rgba(124, 58, 237, 0.04);
+
+  /* Glass A — light glass (nav / toolbar) */
+  --hara-glass-a-bg: rgba(28, 27, 34, 0.88);
+  --hara-glass-a-blur: 12px;
+  --hara-glass-a-border: rgba(195, 187, 209, 0.08);
+
+  /* Glass B — standard (dialogs / agent detail / command) */
+  --hara-glass-b-bg: rgba(39, 38, 47, 0.94);
+  --hara-glass-b-blur: 24px;
+  --hara-glass-b-border: rgba(195, 187, 209, 0.16);
+  --hara-glass-b-shadow: 0 16px 48px rgba(0, 0, 0, 0.28), 0 0 24px rgba(124, 58, 237, 0.03);
+
+  /* Glass C — emphasis (max one per view) */
+  --hara-glass-c-bg: rgba(53, 48, 63, 0.94);
+  --hara-glass-c-blur: 28px;
+  --hara-glass-c-border: rgba(167, 139, 250, 0.38);
+  --hara-glass-c-shadow: 0 20px 56px rgba(0, 0, 0, 0.32), 0 0 40px rgba(124, 58, 237, 0.08);
+
+  --hara-bg-grad: radial-gradient(100% 70% at 80% 8%, #29262F 0%, #1D1C23 42%, #141318 100%);
+}
+
+/* Theme: Violet Glass (default — alias of :root) */
+:root:not([data-theme="light"]),
+.theme-violet-glass {
+  color-scheme: dark;
+}
+
+/* Theme: Obsidian — minimal professional, less violet fill */
+:root[data-visual-theme="obsidian"]:not([data-theme="light"]),
+.theme-obsidian {
+  color-scheme: dark;
+  --hara-bg-base: #0A0A0C;
+  --hara-bg-sidebar: #111114;
+  --hara-bg-content: #16161A;
+  --hara-bg-surface: #1C1C22;
+  --hara-bg-elevated: #24242C;
+  --hara-bg-hover: #2C2C36;
+  --hara-bg-selected: #32284A;
+  --hara-text-primary: #F4F4F5;
+  --hara-text-secondary: #A1A1AA;
+  --hara-text-tertiary: #71717A;
+  --hara-text-disabled: #52525B;
+  --hara-text-link: #A78BFA;
+  --hara-chat-mine: #34313E;
+  --hara-chat-mine-ink: #E2DFE8;
+  --hara-border-default: rgba(255, 255, 255, 0.08);
+  --hara-border-active: rgba(167, 139, 250, 0.40);
+  --hara-border-subtle: rgba(255, 255, 255, 0.05);
+  --hara-scrim: rgba(0, 0, 0, 0.55);
+  --hara-glow: rgba(124, 58, 237, 0.04);
+  --hara-glass-a-bg: rgba(28, 28, 34, 0.82);
+  --hara-glass-a-border: rgba(255, 255, 255, 0.08);
+  --hara-glass-b-bg: rgba(36, 36, 44, 0.92);
+  --hara-glass-b-border: rgba(167, 139, 250, 0.18);
+  --hara-glass-b-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 0 16px rgba(124, 58, 237, 0.04);
+  --hara-glass-c-bg: rgba(50, 40, 74, 0.94);
+  --hara-glass-c-border: rgba(167, 139, 250, 0.42);
+  --hara-bg-grad: radial-gradient(100% 70% at 80% 8%, #1C1C22 0%, #16161A 45%, #0A0A0C 100%);
+}
+
+/* Theme: Daylight — light office */
+:root[data-theme="light"],
+.theme-daylight {
+  color-scheme: light;
+  --hara-bg-base: #F5F3FF;
+  --hara-bg-sidebar: #EDE9FE;
+  --hara-bg-content: #FAFAFF;
+  --hara-bg-surface: #FFFFFF;
+  --hara-bg-elevated: #FFFFFF;
+  --hara-bg-hover: #EDE9FE;
+  --hara-bg-selected: #DDD6FE;
+  --hara-text-primary: #1A1530;
+  --hara-text-secondary: #5B5675;
+  --hara-text-tertiary: #796B8E;
+  --hara-text-disabled: #A99ABD;
+  --hara-text-link: #6D28D9;
+  --hara-chat-mine: #E6DFF2;
+  --hara-chat-mine-ink: #392F4B;
+  --hara-border-default: rgba(91, 86, 117, 0.16);
+  --hara-border-active: rgba(124, 58, 237, 0.48);
+  --hara-border-subtle: rgba(91, 86, 117, 0.10);
+  --hara-scrim: rgba(26, 21, 48, 0.32);
+  --hara-glow: rgba(124, 58, 237, 0.12);
+  --hara-glass-a-bg: rgba(255, 255, 255, 0.72);
+  --hara-glass-a-border: rgba(124, 58, 237, 0.12);
+  --hara-glass-b-bg: rgba(255, 255, 255, 0.88);
+  --hara-glass-b-border: rgba(124, 58, 237, 0.22);
+  --hara-glass-b-shadow: 0 16px 48px rgba(76, 29, 149, 0.18), 0 2px 8px rgba(26, 21, 48, 0.06);
+  --hara-glass-c-bg: rgba(237, 233, 254, 0.95);
+  --hara-glass-c-border: rgba(124, 58, 237, 0.40);
+  --hara-glass-c-shadow: 0 20px 56px rgba(76, 29, 149, 0.22), 0 0 32px rgba(124, 58, 237, 0.18);
+  --hara-bg-grad: radial-gradient(120% 80% at 10% 0%, #E9E5FF 0%, #F7F5FF 45%, #EEF0FF 100%);
+}
+
+/* Transparency preference overrides (applied on top of theme) */
+[data-transparency="off"] {
+  --hara-glass-a-bg: var(--hara-bg-sidebar);
+  --hara-glass-a-blur: 0px;
+  --hara-glass-b-bg: var(--hara-bg-elevated);
+  --hara-glass-b-blur: 0px;
+  --hara-glass-c-bg: var(--hara-bg-selected);
+  --hara-glass-c-blur: 0px;
+}
+[data-transparency="enhanced"] {
+  --hara-glass-a-bg: rgba(28, 27, 34, 0.68);
+  --hara-glass-a-blur: 18px;
+  --hara-glass-b-bg: rgba(39, 38, 47, 0.80);
+  --hara-glass-b-blur: 32px;
+}
+
+/* Motion preference */
+[data-motion="off"] *,
+[data-motion="off"] *::before,
+[data-motion="off"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+[data-motion="reduced"] {
+  --hara-dur-hover: 0ms;
+  --hara-dur-press: 0ms;
+  --hara-dur-tab: 80ms;
+  --hara-dur-dialog: 100ms;
+  --hara-dur-sidebar: 100ms;
+  --hara-dur-toast: 100ms;
+  --hara-dur-thinking: 0ms;
+}
+
+/* Utility classes */
+.glass-a {
+  background: var(--hara-glass-a-bg);
+  backdrop-filter: blur(var(--hara-glass-a-blur));
+  -webkit-backdrop-filter: blur(var(--hara-glass-a-blur));
+  border: 1px solid var(--hara-glass-a-border);
+}
+.glass-b {
+  background: var(--hara-glass-b-bg);
+  backdrop-filter: blur(var(--hara-glass-b-blur));
+  -webkit-backdrop-filter: blur(var(--hara-glass-b-blur));
+  border: 1px solid var(--hara-glass-b-border);
+  box-shadow: var(--hara-glass-b-shadow);
+  border-radius: var(--hara-radius-lg);
+}
+.glass-c {
+  background: var(--hara-glass-c-bg);
+  backdrop-filter: blur(var(--hara-glass-c-blur));
+  -webkit-backdrop-filter: blur(var(--hara-glass-c-blur));
+  border: 1px solid var(--hara-glass-c-border);
+  box-shadow: var(--hara-glass-c-shadow);
+  border-radius: var(--hara-radius-lg);
+}
