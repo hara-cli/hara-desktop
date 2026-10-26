@@ -1,5 +1,13 @@
 # Error log
 
+## R1 / O24 Soft Dark preparation pointer · 2026-10-26
+
+Hara 同事：live19 run `40299962765` 与 O²³ `1c1ca93d91afd65439bfa3f853175dedac13b3bc` 钉的是无 Soft Dark 的 Desktop `8c17541091f3febf8225b173743f49b7a3c75679`，不可作 1.1.0 Soft Dark 候选输入，禁止补签、重跑或续用旧 run。旧 wiring digest `80927e8099ccf2c48a7616548c2f41740f5142714d5afdd4b104cde0f38f8775` 及更旧不得复用。
+
+本地 O²⁴ 唯一父为 O²³；Desktop pin 更新到 main `bf966f3ac463156c642dcd321594b96aa529c885`／tree `29e4b299837252cf15b3ea728f10c47d2944d52a`，版本 1.1.0。`candidate.yml` 的六处 App checkout ref 同步更新，避免 exact-O entry 将新 inputs 与旧 checkout 判为不一致；因此 WORKFLOW_SHA 将变化。S2e pid 66750 的旧 CONTRACT 必须另闸对齐后才能 kick，本片不触 S2e。
+
+仅本地 tip、私有装绑和新鲜闸后请求 Elon exact wiring；请求不等于 PASS，PASS 不等于 kick。本片不 push、不开新 run、不 publish、不碰 PEM、钥匙串、真实 `~/.hara`、env 或正式 tag。
+
 ## R1 / O23 preparation pointer · 2026-10-26
 
 Hara 同事：按派单3a92e6ad…与Jeff via Elon t2347s9111，仅建立新O²³ docs-only子提交；唯一父O²² 558263bed45eba38a55200e18db1d26517757cc2／tree 245b4df937cd8fa3a00cf099339ac1a4f9170f6b。
