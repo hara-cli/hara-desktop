@@ -1,7 +1,9 @@
 import { WORKSPACE_SETTINGS_KEYS } from "./workspace-settings-i18n.ts";
+import { VIOLET_KEYS } from "./violet-i18n.ts";
 
 // Shared shell keys in English, Simplified Chinese and Traditional Chinese.
 export const WORKSPACE_KEYS = [
+  ...VIOLET_KEYS,
   ["ws.question.step", "Saved step:", "当前卡点：", "目前卡點："],
   ["ws.question.pause", "Keep paused for now", "先停在这里", "先停在這裡"],
   ["ws.question.pauseUnknown", "Pause could not be confirmed. Refresh to check the saved task.", "尚未确认暂停结果，请刷新核对已保留的任务。", "尚未確認暫停結果，請重新整理核對已保留的任務。"],

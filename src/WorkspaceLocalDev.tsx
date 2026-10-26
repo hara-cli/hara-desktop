@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowUpRightIcon, ChatBubbleLeftRightIcon, CheckCircleIcon, ChevronRightIcon, Cog6ToothIcon, GlobeAltIcon,
-  HashtagIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon, UserPlusIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
+  HashtagIcon, HomeIcon, ClipboardDocumentCheckIcon, ViewColumnsIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon, UserPlusIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import HaraLogo from "./mark";
 import { makeT, type Key, type LocalePreference } from "./i18n";
@@ -25,6 +25,9 @@ import "./workspace-local-dev.css";
 import "./workspace-theme.css";
 import "./workspace-states.css";
 import "./workspace-shell-layout.css";
+import WorkspaceInspector, { WorkspaceOverview } from "./WorkspaceInspector";
+import "./violet-tokens.css";
+import "./violet-workspace.css";
 import WorkspaceSettings, { type SettingsPage } from "./WorkspaceSettings";
 import { useWorkspaceUpdater, WorkspaceUpdateNotice } from "./WorkspaceSoftwareUpdate";
 const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
@@ -84,6 +87,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const [approvalDialog, setApprovalDialog] = useState<{ id: string; scope: string } | null>(null), [focusApproval, setFocusApproval] = useState<string | null>(null);
   const theme = useStableWorkspaceTheme(model);
   const [settingsPage, setSettingsPage] = useState<SettingsPage>("overview"), [browser, setBrowser] = useState(false);
+  const [inspector, setInspector] = useState(true);
   const input = useRef<HTMLTextAreaElement>(null), end = useRef<HTMLDivElement>(null), nearBottom = useRef(true), selectedRow = useRef<HTMLButtonElement>(null);
   const scroll = useRef<HTMLDivElement>(null), scrollContext = useRef("");
   const scrollResume = useRef<{ key: string; top: number; atBottom: boolean } | null>(null);
@@ -144,10 +148,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   useEffect(() => { setBrowser(false); }, [scope]);
   const connect = () => production ? (setSettingsPage("connections"), setSettings(true)) : realKey ? model.addApprovedConnection() : model.addSynthetic();
   const canSend = Boolean(workspace && hasConnection && view.draft.trim() && !view.sending && !busy && !view.pendingUnknown && !disconnected);
-  const navigate = (section: "chat" | "colleagues", tab: "people" | "tasks" = "people") => {
+  const navigate = (section: "chat" | "workspace" | "colleagues", tab: "people" | "tasks" = "people") => {
     channels.clearSelection();
     setRoute({ section, tab });
-    const hash = section === "chat" ? "" : tab === "tasks" ? "#colleagues/tasks" : "#colleagues";
+    const hash = section === "chat" ? "" : section === "workspace" ? "#workspace" : tab === "tasks" ? "#colleagues/tasks" : "#colleagues";
     history.replaceState(null, "", `${location.pathname}${location.search}${hash}`);
   };
   const openChannel = (channelId: string) => {
@@ -220,7 +224,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   };
   if (production && settings) return <WorkspaceSettings mainModel={model} initialPage={settingsPage} root={root} production theme={theme} updater={updates.controller} versionInfo={updates.info}
     onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} />;
-  return <div className="hs wsd-app" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : ""}`}>
+  return <div className="hs wsd-app vg-app" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : inspector ? " has-inspector" : ""}`}>
     <aside className="hs-side wsd-sidebar" inert={modalOpen}><div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" />
       <div className="hs-top"><HaraLogo size={20} /><select className="hs-space" aria-label={t("ws.space.switch")} value={view.workspaceId ?? ""} disabled={view.loading || !view.directory?.workspaces.length}
         onChange={event => { closeSettings(); setSearch(""); setApprovalDialog(null); navigate("chat"); void model.selectWorkspace(event.target.value); }}>
@@ -228,6 +232,12 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       </select><button className="hs-icon" aria-label={t("ws.search")} aria-expanded={searching} onClick={() => setSearching(value => !value)}><MagnifyingGlassIcon className="hico" /></button>
         <button className="hs-icon" aria-label={t("ws.space.new")} onClick={() => { setName(t("ws.space.default")); setCreating(true); }}><PlusIcon className="hico" /></button></div>
       {searching ? <input className="hs-search" type="search" aria-label={t("ws.search")} placeholder={t("ws.search.placeholder")} value={search} onChange={event => setSearch(event.target.value)} autoFocus /> : null}
+      <nav className="vg-product-nav" aria-label={t("ws.nav.aria")}>
+        <button aria-current={route.section === "workspace" ? "page" : undefined} onClick={() => navigate("workspace")}><HomeIcon className="hico" />{t("vg.workspace")}</button>
+        <button aria-current={route.section === "chat" || inChannel ? "page" : undefined} onClick={() => navigate("chat")}><ChatBubbleLeftRightIcon className="hico" />{t("vg.chat")}</button>
+        <button aria-current={route.section === "colleagues" && route.tab === "people" ? "page" : undefined} onClick={() => navigate("colleagues")}><UsersIcon className="hico" />{t("vg.colleagues")}</button>
+        <button aria-current={route.section === "colleagues" && route.tab === "tasks" ? "page" : undefined} onClick={() => navigate("colleagues", "tasks")}><ClipboardDocumentCheckIcon className="hico" />{t("vg.tasks")}{shell.navBadge ? <span className="hs-badge">{shell.navBadge}</span> : null}</button>
+      </nav>
       {view.workspaceId && agents.length ? <>
         {agents.filter(row => row.kind === "main").map(row => <button key={row.agentId} disabled={view.loading} className="hs-row hs-main wsd-contact is-main" aria-label={row.identity.displayName} title={row.identity.displayName} aria-current={route.section === "chat" && row.agentId === view.agentId ? "page" : undefined}
           onClick={() => void openAgent(row.agentId)}><Avatar agent={row} large /><span className="hs-txt"><strong className="hs-name"><span className="nm">{row.identity.displayName}</span><span className="hs-tag brand">{t("ws.main.tag")}</span></strong>
@@ -265,18 +275,20 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         <div className="hs-row hs-me"><span className="hs-ava" aria-hidden="true">{t("ws.me").slice(0, 1)}</span><span className="grow">{t("ws.me")}</span><button className="hs-set" aria-label={t("ws.settings")} onClick={() => setSettings(true)}><Cog6ToothIcon className="hico" />{t("ws.settings")}</button></div></footer>
     </aside>
     <main className="hs-chat wsd-chat" inert={modalOpen}>
-      <header className="hs-head wsd-header">{inChannel ? <span className="hs-ava" aria-hidden="true"><HashtagIcon className="hico" /></span> : <Avatar agent={agent} />}<div className="hs-header-person"><strong>{inChannel ? selectedChannel?.name ?? t("ws.channels.local") : route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}</strong>
+      <header className="hs-head wsd-header">{inChannel ? <span className="hs-ava" aria-hidden="true"><HashtagIcon className="hico" /></span> : <Avatar agent={agent} />}<div className="hs-header-person"><strong>{route.section === "workspace" ? t("vg.workspace") : inChannel ? selectedChannel?.name ?? t("ws.channels.local") : route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}</strong>
         <small>{inChannel ? channelMemberLabel(t, selectedChannel?.memberIds.length ?? 0) : agent ? t(agent.runtime.id === "pi" ? "ws.header.runtime" : "ws.header.otherRuntime", { role: agent.kind === "main" ? t("ws.main.tag") : agent.identity.title ?? t("ws.role.colleague"), runtime: agent.runtime.label }) : t("ws.welcome.title")}</small></div><span className="sp" />
         {inChannel ? <div className="hs-channel-header-actions"><button className="hs-ghost" aria-label={t("ws.channels.members")} onClick={() => setChannelDialog("members")} disabled={!selectedChannel || !!disconnected || ["running", "draining"].includes(channelView.channel?.state ?? "")}><UsersIcon className="hico" />{t("ws.channels.members")}</button>
           <button className="hs-ghost" aria-label={t("ws.channels.invite")} onClick={() => setChannelDialog("invite")}><UserPlusIcon className="hico" />{t("ws.channels.invite")}</button></div> : null}
         {<button className="hs-ghost" aria-label={t("ws.header.browser")} title={t("ws.header.browser")} aria-expanded={browser} aria-controls="workspace-browser-panel" onClick={() => { setBrowser(value => !value); onOpenBrowser?.(); }} disabled={!workspace}><GlobeAltIcon className="hico" />{t("ws.header.browser")}</button>}
+        <button className="hs-icon" aria-label={t(inspector && !browser ? "vg.inspector.close" : "vg.inspector.open")} aria-expanded={inspector && !browser} aria-controls="workspace-inspector" onClick={() => { setBrowser(false); setInspector(value => !value); }}><ViewColumnsIcon className="hico" /></button>
         <button className="hs-icon" aria-label={t("ws.settings")} onClick={() => setSettings(true)}><Cog6ToothIcon className="hico" /></button></header>
       {disconnected ? <div className="wsd-notice" role="alert">{t("ws.disconnected")}<button className="hs-btn sec" onClick={onReconnect}>{t("ws.reconnect")}</button></div> : null}
       {view.error ? <div className="wsd-notice is-error" role="alert">{workspaceMessageText(t, view.error)}</div> : null}
       {view.syncNotice ? <div className="wsd-notice" role="status">{workspaceMessageText(t, view.syncNotice)}</div> : null}
       {shell.incomplete && agent?.kind !== "main" && !inChannel ? <div className="wsd-notice" role="status" data-overview-incomplete>{t("ws.tasks.unavailable")}<button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></div> : null}
       <div ref={scroll} className="hs-scroll wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
-        {inChannel && workspace ? <LocalChannelThread key={`${scope}:${channelView.channelId}`} view={channelView} colleagues={agents} t={t} retry={() => { if (route.channelId) void channels.select(route.channelId); }}
+        {route.section === "workspace" && workspace ? <WorkspaceOverview shell={shell} agents={colleagues} t={t} onOpen={id => void openAgent(id)} />
+          : inChannel && workspace ? <LocalChannelThread key={`${scope}:${channelView.channelId}`} view={channelView} colleagues={agents} t={t} retry={() => { if (route.channelId) void channels.select(route.channelId); }}
           transcript={renderChannelTranscript} model={channels} disabled={Boolean(disconnected)} scrollRoot={scroll} onFollowChange={channelFollowing} onRepair={() => { setSettingsPage("connections"); setSettings(true); }}
           approval={card => <ApprovalCard card={card} model={channelApprovalActions} t={t} disabled={!!disconnected} />} />
           : route.section === "colleagues" && workspace ? <ColleaguesPage shell={shell} agents={colleagues} tab={route.tab} setTab={tab => navigate("colleagues", tab)} t={t} openAgent={id => void openAgent(id)} openItem={item => openItem(item)} discuss={() => void discuss()} />
@@ -307,7 +319,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           : view.pendingUnknown ? <button className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={Boolean(disconnected)}>{t("ws.composer.verify")}</button> : <button className="hs-send wsd-send" onClick={() => void model.send()} disabled={!canSend} aria-label={t("ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>}</div>
         <p className="hs-hint"><span>{t(production ? "ws.composer.hint.local" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</span><span>{t("ws.composer.hint.keys")}</span></p></footer> : null}
     </main>
+    {inspector && !browser ? <WorkspaceInspector workspace={inChannel ? null : workspace} agent={inChannel ? undefined : agent} shell={shell} t={t} inert={Boolean(modalOpen)} onClose={() => setInspector(false)} onAttention={() => navigate("colleagues", "tasks")} /> : null}
     {browser && workspace ? <Suspense fallback={<aside id="workspace-browser-panel" className="hs-browser" role="status">{t("common.loading")}</aside>}><BrowserExtension key={scope} label={workspace.label} locale={locale} inert={Boolean(modalOpen)} onClose={() => setBrowser(false)} /></Suspense> : null}
+    <footer className="vg-statusbar" inert={Boolean(modalOpen)}><span className={`vg-connection-dot${disconnected ? " offline" : ""}`} aria-hidden />{t(disconnected ? "vg.disconnected" : "vg.connected")}<span>·</span>{workspace?.label ?? t("vg.workspace")}<span>·</span>{shell.waiting.length} {t("vg.pending")}</footer>
     {production ? <WorkspaceUpdateNotice controller={updates.controller} onView={() => { setSettingsPage("updates"); setSettings(true); }} /> : null}
     {creating ? <ShellDialog label={t("ws.space.new")} onClose={() => setCreating(false)}><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={() => setCreating(false)}><XMarkIcon className="hico" /></button>
       <h2>{t("ws.create.title")}</h2><p>{t("ws.create.body")}</p><label>{t("ws.create.name")}<input aria-label={t("ws.create.name")} value={name} maxLength={80} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim()) void create(); }} /></label>
