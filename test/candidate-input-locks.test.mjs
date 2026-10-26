@@ -162,12 +162,19 @@ for (const key of ['CANDIDATE_EVIDENCE_ROOT', 'GITHUB_WORKSPACE', 'GITHUB_RUN_ID
     assert.equal(v.calls(), 0); assert.equal(v.writes.length, 0); assert.equal(v.appended.size, 0);
   });
 }
-for (const root of ['/tmp/run', '/private/tmp/run', '/var/folders/run', '/private/var/folders/run', '/account/Library/Caches/run', '/account/.hara/run', 'relative', '/workspace/repo/../elsewhere']) {
+for (const root of ['/tmp/run', '/private/tmp/run', '/var/folders/run', '/private/var/folders/run', '/account/Library/Caches/run', '/account/.hara', '/account/.hara/run', 'relative', '/workspace/repo/../elsewhere']) {
   test('forbidden root ' + root + ' is lexical only', () => {
     const v = virtualJob(); v.env.CANDIDATE_EVIDENCE_ROOT = root; assert.throws(v.execute, /forbidden|absolute evidence/);
     assert.equal(v.calls(), 0); assert.equal(v.writes.length, 0); assert.equal(v.appended.size, 0);
   });
 }
+test('workspace under account .hara-runners is not a forbidden evidence prefix false positive', () => {
+  const workspace = '/account/.hara-runners/hara-desktop-release/_work/hara-desktop/hara-desktop';
+  const v = virtualJob({ workspace });
+  v.execute();
+  assert.equal(v.exported().CANDIDATE_EVIDENCE_ROOT, v.root);
+  assert(v.root.startsWith(workspace + '/'));
+});
 for (const [key, value] of [['GITHUB_RUN_ID', '0'], ['GITHUB_RUN_ATTEMPT', '0'], ['GITHUB_JOB', '../job'], ['CANDIDATE_EVIDENCE_TARGET', 'other']]) {
   test('invalid identity ' + key + ' is rejected before filesystem access', () => {
     const v = virtualJob(); v.env[key] = value; assert.throws(v.execute, /invalid/);

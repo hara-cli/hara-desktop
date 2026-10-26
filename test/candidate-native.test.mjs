@@ -40,10 +40,17 @@ test('evidence binding rejects missing, conflicting and poisoned environment bef
 });
 test('forbidden temp, cache and real-user data roots are lexical negatives, never real probes', () => {
   for (const root of ['/tmp', '/tmp/case', '/private/tmp/case', '/var/folders/case', '/private/var/folders/case',
-    '/account/Library/Caches/case', '/account/.hara/case', '/evidence/run/../other', 'relative']) {
+    '/account/Library/Caches/case', '/account/.hara', '/account/.hara/case', '/evidence/run/../other', 'relative']) {
     const v = virtualEvidence({ root }); assert.throws(() => v.scope(), /forbidden|canonical/);
     assert.equal(v.calls(), 0); assert.deepEqual(v.writes, []);
   }
+});
+test('sibling home directory names like .hara-runners are not false-positive forbidden prefixes', () => {
+  const root = '/account/.hara-runners/hara-desktop-release/_work/hara-desktop/hara-desktop/candidate-evidence/1/1/credential_preflight/controller';
+  const v = virtualEvidence({ root });
+  const scope = v.scope();
+  assert.equal(scope.environment().CANDIDATE_EVIDENCE_ROOT, root);
+  assert.deepEqual(v.writes, []);
 });
 test('realpath aliases, symlink anchors, foreign owners and writable evidence roots fail closed', () => {
   for (const mutate of [v => v.rows.get(v.root).alias = '/outside', v => v.rows.get(v.home).isSymbolicLink = () => true,

@@ -14,7 +14,7 @@ export function provisionCiEvidence({ evidenceRoot, output, env = process.env, i
   function lexical(value) {
     assert(typeof value === 'string' && paths.isAbsolute(value) && !/[\0\r\n]/.test(value)
       && !value.split(/[\\/]/).includes('..') && paths.normalize(value) === value, 'explicit canonical CI evidence path required');
-    assert(!forbidden.some(prefix => folded(value).startsWith(prefix)), 'forbidden CI evidence prefix');
+    assert(!forbidden.some(prefix => { const f = folded(value); return f === prefix || f.startsWith(prefix + '/'); }), 'forbidden CI evidence prefix');
     return value;
   }
   const root = lexical(evidenceRoot ?? env.CANDIDATE_EVIDENCE_ROOT ?? env.HARA_WRAPPER_EVIDENCE_ROOT);

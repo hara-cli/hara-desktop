@@ -20,7 +20,7 @@ export function gateEvidence(evidenceRoot, { env = process.env, io = fs, paths =
   function lexical(value) {
     assert(typeof value === 'string' && paths.isAbsolute(value) && !value.includes('\0')
       && !value.split(/[\\/]/).includes('..') && paths.normalize(value) === value, 'explicit canonical evidence path required');
-    assert(!denied.some(prefix => folded(value).startsWith(prefix)), 'forbidden evidence prefix');
+    assert(!denied.some(prefix => { const f = folded(value); return f === prefix || f.startsWith(prefix + '/'); }), 'forbidden evidence prefix');
     return value;
   }
   const root = lexical(evidenceRoot), home = paths.join(root, 'synthetic-home'), tmp = paths.join(root, 'tmp');

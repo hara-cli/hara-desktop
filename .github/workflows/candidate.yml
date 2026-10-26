@@ -57,7 +57,7 @@ jobs:
           const accountHome = os.userInfo().homedir, uid = process.getuid?.();
           const folded = value => value.replaceAll('\\', '/').toLowerCase();
           const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
-          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => { const f = folded(normalized); return f === prefix || f.startsWith(prefix + '/'); }), 'forbidden evidence prefix'); return normalized; };
           const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
           const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
           const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
@@ -154,7 +154,7 @@ jobs:
           const accountHome = os.userInfo().homedir, uid = process.getuid?.();
           const folded = value => value.replaceAll('\\', '/').toLowerCase();
           const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
-          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => { const f = folded(normalized); return f === prefix || f.startsWith(prefix + '/'); }), 'forbidden evidence prefix'); return normalized; };
           const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
           const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
           const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
@@ -283,7 +283,7 @@ jobs:
           const accountHome = os.userInfo().homedir, uid = process.getuid?.();
           const folded = value => value.replaceAll('\\', '/').toLowerCase();
           const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
-          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => { const f = folded(normalized); return f === prefix || f.startsWith(prefix + '/'); }), 'forbidden evidence prefix'); return normalized; };
           const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
           const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
           const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
@@ -393,7 +393,7 @@ jobs:
           const accountHome = os.userInfo().homedir, uid = process.getuid?.();
           const folded = value => value.replaceAll('\\', '/').toLowerCase();
           const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
-          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => { const f = folded(normalized); return f === prefix || f.startsWith(prefix + '/'); }), 'forbidden evidence prefix'); return normalized; };
           const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
           const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
           const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
@@ -500,7 +500,7 @@ jobs:
           const accountHome = os.userInfo().homedir, uid = process.getuid?.();
           const folded = value => value.replaceAll('\\', '/').toLowerCase();
           const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
-          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => { const f = folded(normalized); return f === prefix || f.startsWith(prefix + '/'); }), 'forbidden evidence prefix'); return normalized; };
           const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
           const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
           const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
@@ -593,7 +593,7 @@ jobs:
           const accountHome = os.userInfo().homedir, uid = process.getuid?.();
           const folded = value => value.replaceAll('\\', '/').toLowerCase();
           const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
-          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => { const f = folded(normalized); return f === prefix || f.startsWith(prefix + '/'); }), 'forbidden evidence prefix'); return normalized; };
           const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
           const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
           const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
@@ -723,7 +723,7 @@ jobs:
           const accountHome = os.userInfo().homedir, uid = process.getuid?.();
           const folded = value => value.replaceAll('\\', '/').toLowerCase();
           const forbidden = ['/tmp', '/private/tmp', '/var/folders', '/private/var/folders', path.join(accountHome, 'Library', 'Caches'), path.join(accountHome, '.hara')].map(folded);
-          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => folded(normalized).startsWith(prefix)), 'forbidden evidence prefix'); return normalized; };
+          const canonicalInput = value => { assert(path.isAbsolute(value) && !value.split(/[\\/]/).includes('..'), 'absolute evidence path without traversal required'); const normalized = path.normalize(value); assert(!forbidden.some(prefix => { const f = folded(normalized); return f === prefix || f.startsWith(prefix + '/'); }), 'forbidden evidence prefix'); return normalized; };
           const requested = canonicalInput(required('CANDIDATE_EVIDENCE_ROOT'));
           const workspaceInput = canonicalInput(required('GITHUB_WORKSPACE'));
           const runId = required('GITHUB_RUN_ID'), attempt = required('GITHUB_RUN_ATTEMPT'), job = required('GITHUB_JOB'), target = required('CANDIDATE_EVIDENCE_TARGET');
