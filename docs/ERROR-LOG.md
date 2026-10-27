@@ -1,5 +1,11 @@
 # Error log
 
+## R1 / O28 post-C2 fresh wiring preparation pointer · 2026-10-27
+
+Hara 同事：live23 run `40476137051` 已 completed/failure 于 `credential_preflight` Unlock dedicated signing Keychain；admission 已过。根因是 `scripts/candidate-upgrade.mjs` 的 `gateEvidence.environment()` 在派 unlock 前 scrub 环境时，把路径引用 `HARA_CANDIDATE_SIGNING_KEYCHAIN` 与 `HARA_CANDIDATE_SIGNING_PASSWORD_FILE`（非口令明文）一并剥掉。C2 companion `ba3517bb977e2fe88f2c310ff7801f36e0167532` 已非 force 进入受控 ref，保留上述路径键并继续剥真实 PASSWORD／其它 SECRET／非白名单 `HARA_*`。旧 run 禁补签或重跑；合推完成不等于新 wiring 或 kick。
+
+O²⁷ wiring tip `3b76be4e89defa6322b85f0fbdd86fad913c4763` 不能覆盖已推进的 C2 tip，旧 digest `967efaf8d578c240db74df0961ad126462f6aba441b1cd01cf1a1425719169da` 及 O²⁶ `1ca82ef8…`／更旧均禁复用。本片只从 C2 建本地 O²⁸ docs-only 子提交、装绑全新 purpose 并重新验闸，请求 Elon 只读 wiring 审查；请求／PASS 均不等于 kick live24。保持 Soft Dark、Core、INPUT_SHA、WORKFLOW_SHA 与 S2e 现有合同不变，不推 O²⁸、不代批 env、不碰钥匙串、`.p12`、PEM 或真实 `~/.hara`。
+
 ## live23 credential strip drops signing path env · 2026-10-27
 
 Hara 同事：live23 run `40476137051` admission 已 success，随后 `credential_preflight` 在 Unlock dedicated signing Keychain 处以 exit=1 失败（0 artifact）。根因不是口令再漂或 partition：本机 rebuild A 后钥匙串／password 文件仍可解锁；`gateEvidence.environment()` 在 scrub 时因 `HARA_` 前缀与 `PASSWORD` 正则删掉了 `HARA_CANDIDATE_SIGNING_KEYCHAIN`／`HARA_CANDIDATE_SIGNING_PASSWORD_FILE`（二者值为路径，非口令明文），`candidate-unlock.swift` 读不到路径即 exit(1)。companion 修复：allowlist-first 保留上述两路径键，仍剥离任何真实口令／SECRET／其它 HARA_；单测与本机 `environment()`→unlock 冒烟 exit=0。禁补签 live23；本地绿≠正式 candidate；新 tip 须 O²⁸+ wiring，禁复用 O²⁷ digest `967efaf8…`／更旧。PASS≠kick live24；不碰 PEM／钥匙串／.p12／正式 tag。
