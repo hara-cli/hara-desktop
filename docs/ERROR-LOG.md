@@ -1,5 +1,11 @@
 # Error log
 
+## R1 / O27 post-C1 fresh wiring preparation pointer · 2026-10-27
+
+Hara 同事：live22 run `40432601918` 已 completed/failure 于 `credential_preflight`，当时 synthetic HOME 下的用户钥匙串 metadata 查询先于 unlock 失败；随后 C1 companion `2de79f8584b65fa43d9614922e3e4598f51202dc` 已非 force 进入受控 ref，专用串口令失配亦经独立 rebuild A 与本机 S1–S5 冒烟恢复。旧 run 禁补签或重跑；本地钥匙串冒烟不等于正式 candidate 通过。
+
+O²⁶ wiring tip `abbdbf512df898f28880d499e3afd7028524a7f2` 不能覆盖已推进的 C1 tip，旧 digest `1ca82ef8ab7aa0b53aaf7773914d4e5926f37e073f7658aaf91266d19a736397` 已过 TTL，连同 O²⁵ digest `38bdbc3d…` 及更旧均禁复用。本片只从 C1 建本地 O²⁷ docs-only 子提交、装绑全新 purpose 并重新验闸，请求 Elon 只读 wiring 审查；请求／PASS 均不等于 kick live23。保持 Soft Dark、Core、INPUT_SHA、WORKFLOW_SHA 与 S2e 现有合同不变，不推 O²⁷、不代批 env、不碰钥匙串、`.p12`、PEM 或真实 `~/.hara`。
+
 ## live22 synthetic HOME keychain metadata · 2026-10-27
 
 Hara 同事：run `40432601918` 已在 admission 后、`credential_preflight` 的 `withSigning` → `metadata()` 处失败；`security list-keychains/default-keychain -d user` 从 evidence synthetic HOME 查询用户域，返回 exit 1，尚未进入 unlock。仅对两次只读 metadata 查询使用 `/usr/bin/env HOME=<realHome> /usr/bin/security … -d user`；`commandEvidence` 的 process/guard HOME 仍为 synthetic HOME，前后仍断言 metadata unchanged。不改 user search/default、不重建或解锁钥匙串；该 run 禁补签或重跑。companion 修复和无签名冒烟不等于新 wiring 审查或 live kick。
