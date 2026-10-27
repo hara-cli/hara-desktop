@@ -131,7 +131,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           path: app
-          ref: 0731ae1416ffa3c506791d8f454ed850a5079873
+          ref: 18f9bc1259a4054d9f2c6c06cc767bfd112a8d51
           persist-credentials: false
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -241,7 +241,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           path: app
-          ref: 0731ae1416ffa3c506791d8f454ed850a5079873
+          ref: 18f9bc1259a4054d9f2c6c06cc767bfd112a8d51
           persist-credentials: false
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
@@ -375,7 +375,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: 0731ae1416ffa3c506791d8f454ed850a5079873, persist-credentials: false }
+        with: { path: app, ref: 18f9bc1259a4054d9f2c6c06cc767bfd112a8d51, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1, persist-credentials: false }
       - name: Provision retained job evidence
@@ -476,7 +476,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: 0731ae1416ffa3c506791d8f454ed850a5079873, persist-credentials: false }
+        with: { path: app, ref: 18f9bc1259a4054d9f2c6c06cc767bfd112a8d51, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
@@ -575,7 +575,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: 0731ae1416ffa3c506791d8f454ed850a5079873, persist-credentials: false }
+        with: { path: app, ref: 18f9bc1259a4054d9f2c6c06cc767bfd112a8d51, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1, persist-credentials: false }
       - name: Provision retained job evidence
@@ -692,7 +692,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: orchestration, ref: '${{ github.sha }}', persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { path: app, ref: 0731ae1416ffa3c506791d8f454ed850a5079873, persist-credentials: false }
+        with: { path: app, ref: 18f9bc1259a4054d9f2c6c06cc767bfd112a8d51, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { repository: hara-cli/hara, path: core, ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444

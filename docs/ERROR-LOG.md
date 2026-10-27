@@ -1,5 +1,9 @@
 # Error log
 
+## R1 / O30 Soft Dark candidate-inputs sync pin · 2026-10-27
+
+Hara 同事：live25 run `40500125939` 已 completed/failure 于 O²⁹ tip `50a6db6f…`／digest `1ca1bd84…`（已消耗，禁复用）。根因是 Soft Dark `candidate-inputs.json` 仍钉旧 Core `b11009bd`（SIDECAR pin 未同步输入锁）。Soft Dark tip `18f9bc1259a4054d9f2c6c06cc767bfd112a8d51`（tree `baef7122…`）经 PR #21 合入 main `937e606a…`（Jeff t818s3963 跳过审）。本片从 O²⁹ 建 O³⁰ tip：desktop／workflow 六处 App／APPROVED_APP 重钉到 `18f9bc1`；core 保持 `282101fc`。自检 MATCH 后踢 live26。禁复用 O²⁹ digest `1ca1bd84…`／补签 live23／live25；禁正式 tag／PEM／force main。
+
 ## R1 / O29 Core private-socket pin + Soft Dark SIDECAR · 2026-10-27
 
 Hara 同事：live24 run `40488820744` 已 completed/failure 于 O²⁸ tip `9bf9147c…`／digest `cfa8dbe7…`（已消耗，禁复用）。根因是 LegacyScopedCli common socket 路径超 100B；Core tip `282101fc7ea9fc6c7cf360f97859702df2c8a8c1`（tree `df751058…`）已合入 `hara` main（PR #12／merge `1f21e14`），Elon PASS_WITH_NOTES companion。Soft Dark `SIDECAR_COMMIT` 重钉到同一 Core（app tip `0731ae1416ffa3c506791d8f454ed850a5079873`／tree `b616740f…`，PR #20）。本片从 O²⁸ 建 O²⁹ tip：candidate-inputs／candidate.yml 六处 App+Core／locks／orch SIDECAR 同步新钉，装绑全新 purpose，请求／自检 MATCH 后踢 live25。禁复用 O²⁸ digest `cfa8dbe7…`／补签 live23／live24；禁正式 tag／PEM／force main；Host prepareCli wiring 仍 follow-up。
