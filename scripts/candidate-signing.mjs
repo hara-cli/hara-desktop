@@ -16,6 +16,11 @@ import { candidateSigningConfiguration } from './candidate-operator-config.mjs';
 
 const IDENTITY = 'Developer ID Application: Wuxi Nanhara Technologies Co., Ltd. (4GMBSXJ67T)';
 const mac = target => target.endsWith('apple-darwin');
+export function userKeychainMetadata() {
+  // Keep commandEvidence's HOME synthetic; only security's user-domain lookup uses the account HOME.
+  const userSecurity = args => sync('/usr/bin/env', [`HOME=${realHome}`, '/usr/bin/security', ...args]);
+  return { search: userSecurity(['list-keychains', '-d', 'user']), default: userSecurity(['default-keychain', '-d', 'user']) };
+}
 export function assertSigner(e, settings, configuredName) {
   assert(typeof configuredName === 'string' && configuredName.length > 0, 'configured signer name required');
   assert.equal(e.RUNNER_NAME, configuredName);
@@ -53,7 +58,7 @@ async function withSigning(c, operation) {
   const rows = sync('/bin/ps', ['-axo', 'comm=']).split('\n');
   assert(!rows.some(r => /\/(?:codesign|notarytool|productsign)$/.test(r.trim())), 'another signing operation is active');
   fs.writeFileSync(LEASE, JSON.stringify(receipt({ owner: 'candidate-lane', token, pid: process.pid })), { flag: 'wx', mode: 0o600 });
-  const metadata = () => ({ search: sync('/usr/bin/security', ['list-keychains', '-d', 'user']), default: sync('/usr/bin/security', ['default-keychain', '-d', 'user']) });
+  const metadata = userKeychainMetadata;
   let before, mayNeedRelock = false;
   try {
     before = metadata();

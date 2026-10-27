@@ -176,3 +176,16 @@ test('canonical single-link keychain reaches only the synthetic updater stop', a
   const h = signingFixture(); await assert.rejects(() => h.preconditions(), /virtual updater missing/);
   assert.equal(h.trace.updater, 1); assert.equal(h.trace.keyReads, 0);
 });
+test('user keychain metadata reads real account domain without changing evidence HOME', () => {
+  const calls = [], process = {env: {HOME: '/evidence/synthetic-home'}};
+  const {userKeychainMetadata} = loadFunctions('candidate-signing.mjs', {
+    realHome: '/account', process,
+    sync(command, args, options) {calls.push({command, args, options}); return args[2];},
+  }, ['userKeychainMetadata'], '\nif (process.argv[1]');
+  assert.deepEqual({...userKeychainMetadata()}, {search: 'list-keychains', default: 'default-keychain'});
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    {command: '/usr/bin/env', args: ['HOME=/account', '/usr/bin/security', 'list-keychains', '-d', 'user']},
+    {command: '/usr/bin/env', args: ['HOME=/account', '/usr/bin/security', 'default-keychain', '-d', 'user']},
+  ]);
+  assert.equal(process.env.HOME, '/evidence/synthetic-home');
+});

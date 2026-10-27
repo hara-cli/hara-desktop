@@ -1,5 +1,9 @@
 # Error log
 
+## live22 synthetic HOME keychain metadata · 2026-10-27
+
+Hara 同事：run `40432601918` 已在 admission 后、`credential_preflight` 的 `withSigning` → `metadata()` 处失败；`security list-keychains/default-keychain -d user` 从 evidence synthetic HOME 查询用户域，返回 exit 1，尚未进入 unlock。仅对两次只读 metadata 查询使用 `/usr/bin/env HOME=<realHome> /usr/bin/security … -d user`；`commandEvidence` 的 process/guard HOME 仍为 synthetic HOME，前后仍断言 metadata unchanged。不改 user search/default、不重建或解锁钥匙串；该 run 禁补签或重跑。companion 修复和无签名冒烟不等于新 wiring 审查或 live kick。
+
 ## R1 / O26 stale wiring preparation pointer · 2026-10-27
 
 Hara 同事：live21 run `40363627829` 的 admission 通过，Jeff 于 05:37 Asia/Taipei 批准环境后，`credential_preflight` 在 `readAdmission` 报 `valid administrator proof missing/stale/policy-changed; no credential access`，正式构建、签名、DMG 与验证 job 均未开始。派单将根因钉为 O²⁵ wiring TTL 已于 02:18:33 Asia/Taipei 过期，环境审批发生在过期之后；旧 wiring digest `38bdbc3df500e5862ef2a6238d8e383d9b246fe8e2dbd2448f58f49bc3b8b8a8` 作废，不补签或重跑该 run。
