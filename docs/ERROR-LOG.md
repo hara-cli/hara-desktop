@@ -1,5 +1,13 @@
 # Error log
 
+## R1 / O26 stale wiring preparation pointer · 2026-10-27
+
+Hara 同事：live21 run `40363627829` 的 admission 通过，Jeff 于 05:37 Asia/Taipei 批准环境后，`credential_preflight` 在 `readAdmission` 报 `valid administrator proof missing/stale/policy-changed; no credential access`，正式构建、签名、DMG 与验证 job 均未开始。派单将根因钉为 O²⁵ wiring TTL 已于 02:18:33 Asia/Taipei 过期，环境审批发生在过期之后；旧 wiring digest `38bdbc3df500e5862ef2a6238d8e383d9b246fe8e2dbd2448f58f49bc3b8b8a8` 作废，不补签或重跑该 run。
+
+O²⁶ 仅从 O²⁵ `e476053284c5f95e05f944ff8c363153a6bc8b06` 新建本地 docs-only 子提交，保留 Soft Dark Desktop、Core、inputs、workflow 与 S2e 已对齐的 INPUT/WORKFLOW SHA。O²⁵ 仅作本轮父提交，不作新 wiring tip；更旧 digest `87317348…` 亦禁复用。新 tip 与新 purpose 经本轮私有装绑及合同闸后只请求 Elon 审查；请求不等于 PASS，PASS 不等于 kick live22。
+
+本片不 push O²⁶、不开 live22、不代批 env、不 publish，不碰 S2e 进程／CONTRACT／ENABLE、PEM、钥匙串、真实 `~/.hara`、正式 tag 或公证。
+
 ## R1 / O25 realHome preparation pointer · 2026-10-27
 
 Hara 同事：live20 run `40349463643` 在 `credential_preflight` 失败。证据绑定将 `HOME` 指向 synthetic-home 后，`os.homedir()` 也返回合成目录，使 `realHome` 塌缩，updater key 探针误查 synthetic-home 下的 `.tauri`。B 修复 `0b8981e831cb8cfb123e054c4a1446914ee41a58` 把该值改为 `os.userInfo().homedir`；代码边界复审为 PASS，B 已另片非 force 推到受控 ref。本片不复制 `.tauri` 或密钥到合成目录。
