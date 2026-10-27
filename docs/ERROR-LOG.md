@@ -1,5 +1,9 @@
 # Error log
 
+## R1 / O32 Core live27 Win EXDEV pin + Soft Dark SIDECAR · 2026-10-28
+
+Hara 同事：live27 run `40532130904` 已于 O³¹ tip `6834a238…`／digest `1d3096ec…`（已消耗，禁复用）。根因 Win EXDEV（短 worktree rename 跨卷）。Core tip `29ecc4ac39f929aa627147461b2d1637f775abcb`（tree `6e348d4c…`；仅测改）已合入 `hara` main（PR #14／merge `091d8135…`），Jeff t842s4085 跳过 Elon 审。Soft Dark tip `9b4311a239360f30b10a1379e3fdbd3aacaa426f`（tree `2eeef453…`）经 PR #23 合入 main `6cde7267…`。本片从 O³¹ 建 O³² tip：candidate-inputs／candidate.yml 六处 App+Core／locks／orch SIDECAR 同步新钉，装绑全新 purpose，自检 MATCH 后踢 live28。禁复用 O³¹ digest `1d3096ec…`／O³⁰ `1e12be02…`／O²⁹ `1ca1bd84…`／补签 live27；禁正式 tag／PEM／force main；禁代批 env。Intel timeout 仍 HOLD。
+
 ## R1 / O31 Core live26 三刀 pin + Soft Dark SIDECAR · 2026-10-27
 
 Hara 同事：live26 run `40506201909` 已于 O³⁰ tip `8362537587…`／digest `1e12be02…`（已消耗，禁复用）。Core tip `92b8983c8c8b6f0f32de0605bba14af2d8e13a5d`（tree `1bf230fd…`）已合入 `hara` main（PR #13／merge `f33be22…`），Elon PASS_WITH_NOTES（Intel=拆测＋可观测，Pi 根因未修）。Soft Dark tip `4f47f70fd4170964d0bef4978758bee38e3e2f3c`（tree `c5d218d4…`）经 PR #22 合入 main `7782c6b1…`（Jeff t822s4014 合推＋O³¹＋踢 live27）。本片从 O³⁰ 建 O³¹ tip：candidate-inputs／candidate.yml 六处 App+Core／locks／orch SIDECAR 同步新钉，装绑全新 purpose，自检 MATCH 后踢 live27。禁复用 O³⁰ digest `1e12be02…`／O²⁹ `1ca1bd84…`／O²⁸ `cfa8dbe7…`／补签 live25／live26；禁正式 tag／PEM／force main；禁代批 env。
