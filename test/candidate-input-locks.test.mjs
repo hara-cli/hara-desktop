@@ -35,8 +35,8 @@ test('candidate versions and updater public-key identity stay bound without read
   assert.equal(config.version, INPUT.desktop.version);
 });
 
-const APPROVED_APP = { commit: '18f9bc1259a4054d9f2c6c06cc767bfd112a8d51', tree: 'baef7122373d7414663dfc0b7d6e0f0b3002fc17', version: '1.1.0' };
-const APPROVED_CORE = { commit: '282101fc7ea9fc6c7cf360f97859702df2c8a8c1', tree: 'df751058638421284858b3c2e0f02f4624983960', version: '1.0.2' };
+const APPROVED_APP = { commit: '4f47f70fd4170964d0bef4978758bee38e3e2f3c', tree: 'c5d218d4dea9e868c11f03b4ea344d4e375f9049', version: '1.1.0' };
+const APPROVED_CORE = { commit: '92b8983c8c8b6f0f32de0605bba14af2d8e13a5d', tree: '1bf230fd61d32350f9956ca5414cc91c6d2398d2', version: '1.0.2' };
 const JOBS = ['admission', 'credential_preflight', 'native_build', 'sign_apps', 'native_dmg', 'sign_payloads', 'native_verify'];
 const MATRIX_JOBS = ['native_build', 'native_dmg', 'native_verify'];
 const workflowText = () => read('.github/workflows/candidate.yml').toString('utf8');
@@ -65,7 +65,7 @@ function checkSources(text) {
 }
 test('orchestration binds exact reviewed application and Core without a self pin', () => {
   assert.deepEqual(INPUT.desktop, APPROVED_APP); assert.deepEqual(INPUT.core, APPROVED_CORE);
-  assert(!/5d670cc268b6eef6491ca2f2ad47a93ab92efe4b|000f0ae41f29945daa07176af0b035ba5f2809e7|86e3d21e4df3bc0845d74db027094a4bdfa978ee|96eb3d18a2ff7c0e6d9150c4037ccfaedcdd26b5|f9825bb629521d84aa947bedf5cdf267a950989c|9f70796c6bf1cafb109b6280acb43f02d82922a8|0731ae1416ffa3c506791d8f454ed850a5079873|b616740f8b8e2951cff8009ffeccdccecf972221/.test(read('candidate-inputs.json')));
+  assert(!/5d670cc268b6eef6491ca2f2ad47a93ab92efe4b|000f0ae41f29945daa07176af0b035ba5f2809e7|86e3d21e4df3bc0845d74db027094a4bdfa978ee|96eb3d18a2ff7c0e6d9150c4037ccfaedcdd26b5|f9825bb629521d84aa947bedf5cdf267a950989c|9f70796c6bf1cafb109b6280acb43f02d82922a8|0731ae1416ffa3c506791d8f454ed850a5079873|b616740f8b8e2951cff8009ffeccdccecf972221|18f9bc1259a4054d9f2c6c06cc767bfd112a8d51|baef7122373d7414663dfc0b7d6e0f0b3002fc17|282101fc7ea9fc6c7cf360f97859702df2c8a8c1|df751058638421284858b3c2e0f02f4624983960/.test(read('candidate-inputs.json')));
   checkSources(workflowText());
 });
 for (const commit of [APPROVED_APP.commit, APPROVED_CORE.commit]) {
@@ -78,7 +78,7 @@ for (const commit of [APPROVED_APP.commit, APPROVED_CORE.commit]) {
     });
   }
 }
-for (const retired of ['5d670cc268b6eef6491ca2f2ad47a93ab92efe4b', '86e3d21e4df3bc0845d74db027094a4bdfa978ee', 'f9825bb629521d84aa947bedf5cdf267a950989c', '0731ae1416ffa3c506791d8f454ed850a5079873']) {
+for (const retired of ['5d670cc268b6eef6491ca2f2ad47a93ab92efe4b', '86e3d21e4df3bc0845d74db027094a4bdfa978ee', 'f9825bb629521d84aa947bedf5cdf267a950989c', '0731ae1416ffa3c506791d8f454ed850a5079873', '18f9bc1259a4054d9f2c6c06cc767bfd112a8d51']) {
   test('retired application checkout cannot authorize the new source: ' + retired, () => {
     const changed = workflowText().replaceAll('ref: ' + APPROVED_APP.commit, 'ref: ' + retired);
     assert.throws(() => checkSources(changed), /stale checkout/);

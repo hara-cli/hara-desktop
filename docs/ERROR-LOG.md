@@ -1,5 +1,9 @@
 # Error log
 
+## R1 / O31 Core live26 三刀 pin + Soft Dark SIDECAR · 2026-10-27
+
+Hara 同事：live26 run `40506201909` 已于 O³⁰ tip `8362537587…`／digest `1e12be02…`（已消耗，禁复用）。Core tip `92b8983c8c8b6f0f32de0605bba14af2d8e13a5d`（tree `1bf230fd…`）已合入 `hara` main（PR #13／merge `f33be22…`），Elon PASS_WITH_NOTES（Intel=拆测＋可观测，Pi 根因未修）。Soft Dark tip `4f47f70fd4170964d0bef4978758bee38e3e2f3c`（tree `c5d218d4…`）经 PR #22 合入 main `7782c6b1…`（Jeff t822s4014 合推＋O³¹＋踢 live27）。本片从 O³⁰ 建 O³¹ tip：candidate-inputs／candidate.yml 六处 App+Core／locks／orch SIDECAR 同步新钉，装绑全新 purpose，自检 MATCH 后踢 live27。禁复用 O³⁰ digest `1e12be02…`／O²⁹ `1ca1bd84…`／O²⁸ `cfa8dbe7…`／补签 live25／live26；禁正式 tag／PEM／force main；禁代批 env。
+
 ## R1 / O30 Soft Dark candidate-inputs sync pin · 2026-10-27
 
 Hara 同事：live25 run `40500125939` 已 completed/failure 于 O²⁹ tip `50a6db6f…`／digest `1ca1bd84…`（已消耗，禁复用）。根因是 Soft Dark `candidate-inputs.json` 仍钉旧 Core `b11009bd`（SIDECAR pin 未同步输入锁）。Soft Dark tip `18f9bc1259a4054d9f2c6c06cc767bfd112a8d51`（tree `baef7122…`）经 PR #21 合入 main `937e606a…`（Jeff t818s3963 跳过审）。本片从 O²⁹ 建 O³⁰ tip：desktop／workflow 六处 App／APPROVED_APP 重钉到 `18f9bc1`；core 保持 `282101fc`。自检 MATCH 后踢 live26。禁复用 O²⁹ digest `1ca1bd84…`／补签 live23／live25；禁正式 tag／PEM／force main。
