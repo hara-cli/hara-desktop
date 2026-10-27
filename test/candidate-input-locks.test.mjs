@@ -35,8 +35,8 @@ test('candidate versions and updater public-key identity stay bound without read
   assert.equal(config.version, INPUT.desktop.version);
 });
 
-const APPROVED_APP = { commit: 'bf966f3ac463156c642dcd321594b96aa529c885', tree: '29e4b299837252cf15b3ea728f10c47d2944d52a', version: '1.1.0' };
-const APPROVED_CORE = { commit: 'b11009bdcafd2367cd587a47c665dea260d69df4', tree: '302e8a288218ab0a4ec52d8ce8d88a43522cb9fb', version: '1.0.2' };
+const APPROVED_APP = { commit: '0731ae1416ffa3c506791d8f454ed850a5079873', tree: 'b616740f8b8e2951cff8009ffeccdccecf972221', version: '1.1.0' };
+const APPROVED_CORE = { commit: '282101fc7ea9fc6c7cf360f97859702df2c8a8c1', tree: 'df751058638421284858b3c2e0f02f4624983960', version: '1.0.2' };
 const JOBS = ['admission', 'credential_preflight', 'native_build', 'sign_apps', 'native_dmg', 'sign_payloads', 'native_verify'];
 const MATRIX_JOBS = ['native_build', 'native_dmg', 'native_verify'];
 const workflowText = () => read('.github/workflows/candidate.yml').toString('utf8');
