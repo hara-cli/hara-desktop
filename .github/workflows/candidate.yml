@@ -77,7 +77,7 @@ jobs:
         with:
           repository: hara-cli/hara
           path: core
-          ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1
+          ref: 92b8983c8c8b6f0f32de0605bba14af2d8e13a5d
           persist-credentials: false
       - name: Select existing pinned local tools without global settings changes
         run: |
@@ -127,7 +127,7 @@ jobs:
         with:
           repository: hara-cli/hara
           path: core
-          ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1
+          ref: 92b8983c8c8b6f0f32de0605bba14af2d8e13a5d
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
@@ -197,7 +197,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { repository: hara-cli/hara, path: core, ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1, persist-credentials: false }
+        with: { repository: hara-cli/hara, path: core, ref: 92b8983c8c8b6f0f32de0605bba14af2d8e13a5d, persist-credentials: false }
       - name: Select pinned local tools
         run: |
           test -n "$HARA_CANDIDATE_TOOLCHAIN_PATH"
@@ -238,7 +238,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { repository: hara-cli/hara, path: core, ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1, persist-credentials: false }
+        with: { repository: hara-cli/hara, path: core, ref: 92b8983c8c8b6f0f32de0605bba14af2d8e13a5d, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with: { node-version-file: orchestration/.node-version }
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
@@ -277,7 +277,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { repository: hara-cli/hara, path: core, ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1, persist-credentials: false }
+        with: { repository: hara-cli/hara, path: core, ref: 92b8983c8c8b6f0f32de0605bba14af2d8e13a5d, persist-credentials: false }
       - name: Select pinned local tools
         run: |
           test -n "$HARA_CANDIDATE_TOOLCHAIN_PATH"
@@ -334,7 +334,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: app, ref: 5d670cc268b6eef6491ca2f2ad47a93ab92efe4b, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { repository: hara-cli/hara, path: core, ref: 282101fc7ea9fc6c7cf360f97859702df2c8a8c1, persist-credentials: false }
+        with: { repository: hara-cli/hara, path: core, ref: 92b8983c8c8b6f0f32de0605bba14af2d8e13a5d, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with: { node-version-file: orchestration/.node-version }
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
