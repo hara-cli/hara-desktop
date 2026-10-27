@@ -1,5 +1,9 @@
 # Error log
 
+## live23 credential strip drops signing path env · 2026-10-27
+
+Hara 同事：live23 run `40476137051` admission 已 success，随后 `credential_preflight` 在 Unlock dedicated signing Keychain 处以 exit=1 失败（0 artifact）。根因不是口令再漂或 partition：本机 rebuild A 后钥匙串／password 文件仍可解锁；`gateEvidence.environment()` 在 scrub 时因 `HARA_` 前缀与 `PASSWORD` 正则删掉了 `HARA_CANDIDATE_SIGNING_KEYCHAIN`／`HARA_CANDIDATE_SIGNING_PASSWORD_FILE`（二者值为路径，非口令明文），`candidate-unlock.swift` 读不到路径即 exit(1)。companion 修复：allowlist-first 保留上述两路径键，仍剥离任何真实口令／SECRET／其它 HARA_；单测与本机 `environment()`→unlock 冒烟 exit=0。禁补签 live23；本地绿≠正式 candidate；新 tip 须 O²⁸+ wiring，禁复用 O²⁷ digest `967efaf8…`／更旧。PASS≠kick live24；不碰 PEM／钥匙串／.p12／正式 tag。
+
 ## R1 / O27 post-C1 fresh wiring preparation pointer · 2026-10-27
 
 Hara 同事：live22 run `40432601918` 已 completed/failure 于 `credential_preflight`，当时 synthetic HOME 下的用户钥匙串 metadata 查询先于 unlock 失败；随后 C1 companion `2de79f8584b65fa43d9614922e3e4598f51202dc` 已非 force 进入受控 ref，专用串口令失配亦经独立 rebuild A 与本机 S1–S5 冒烟恢复。旧 run 禁补签或重跑；本地钥匙串冒烟不等于正式 candidate 通过。

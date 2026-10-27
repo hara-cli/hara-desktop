@@ -72,13 +72,20 @@ test('environment authority wins over extras, strips credentials and keeps only 
   const v = virtualEvidence(), scope = v.scope(), env = scope.environment({ HOME: '/poison', TMPDIR: '/poison',
     RUSTUP_HOME: '/poison', CARGO_HOME: '/poison', rustup_home: '/poison', cargo_home: '/poison',
     npm_config_cache: '/poison', NPM_CONFIG_CACHE: '/poison', HARA_TEST_API_KEY: 'synthetic-only',
-    NODE_OPTIONS: '--require=/poison', HARA_UPDATE_CHECK: '1', HARA_NPM_CI_ATTEMPTS: '1', PROBE: 'kept' });
+    NODE_OPTIONS: '--require=/poison', HARA_UPDATE_CHECK: '1', HARA_NPM_CI_ATTEMPTS: '1', PROBE: 'kept',
+    HARA_CANDIDATE_SIGNING_KEYCHAIN: '/Users/fixture/Library/Keychains/hara-ci-signing.keychain-db',
+    HARA_CANDIDATE_SIGNING_PASSWORD_FILE: '/Users/fixture/.tauri/hara-codesign-keychain.password',
+    HARA_CANDIDATE_SIGNING_PASSWORD: 'must-strip-secret-value', HARA_OTHER_PASSWORD_FILE: '/tmp/not-allowlisted' });
   scope.assertEnvironment(env); assert.equal(env.HOME, v.home); assert.equal(env.TMPDIR, v.tmp);
   assert.equal(env.NPM_CONFIG_CACHE, undefined); assert.equal(env.HARA_TEST_API_KEY, undefined);
   assert.equal(env.RUSTUP_HOME, path.posix.join(v.accountHome, '.rustup')); assert.equal(env.CARGO_HOME, path.posix.join(v.accountHome, '.cargo'));
   assert.equal(env.rustup_home, undefined); assert.equal(env.cargo_home, undefined);
   assert.equal(env.NODE_OPTIONS, undefined); assert.equal(env.HARA_UPDATE_CHECK, undefined);
   assert.equal(env.HARA_NPM_CI_ATTEMPTS, '1'); assert.equal(env.PROBE, 'kept'); assert(Object.isFrozen(env));
+  assert.equal(env.HARA_CANDIDATE_SIGNING_KEYCHAIN, '/Users/fixture/Library/Keychains/hara-ci-signing.keychain-db');
+  assert.equal(env.HARA_CANDIDATE_SIGNING_PASSWORD_FILE, '/Users/fixture/.tauri/hara-codesign-keychain.password');
+  assert.equal(env.HARA_CANDIDATE_SIGNING_PASSWORD, undefined);
+  assert.equal(env.HARA_OTHER_PASSWORD_FILE, undefined);
   assert.deepEqual(Object.keys(env).slice(-2), ['HOME', 'TMPDIR']);
 });
 test('Windows evidence paths keep drive identity and reject cross-drive and real-home escapes', () => {

@@ -83,11 +83,16 @@ export function gateEvidence(evidenceRoot, { env = process.env, io = fs, paths =
   }
   function environment(extra = {}) {
     unchanged();
+    // Path refs only (never secret values). Unlock helper needs these after credential strip;
+    // PASSWORD in SIGNING_PASSWORD_FILE would otherwise match the generic scrub below.
+    const preservedHara = new Set(['HARA_NPM_CI_ATTEMPTS', 'HARA_NPM_CI_IGNORE_SCRIPTS',
+      'HARA_CANDIDATE_SIGNING_KEYCHAIN', 'HARA_CANDIDATE_SIGNING_PASSWORD_FILE']);
     const value = { ...env, ...extra }, keys = new Set(Object.keys(authority).map(key => key.toLowerCase()));
     for (const key of Object.keys(value)) {
+      if (preservedHara.has(key)) continue;
       if (keys.has(key.toLowerCase()) || /TOKEN|API_KEY|PASSWORD|PRIVATE_KEY|SECRET|CREDENTIAL|^APPLE_|^AWS_|^ALIYUN_|^npm_config_.*auth/i.test(key)
         || /^(?:NODE_OPTIONS|NODE_PATH|NODE_COMPILE_CACHE|BASH_ENV|ENV|LD_PRELOAD|DYLD_.*|SSH_AUTH_SOCK|SSH_AGENT_PID|GIT_ASKPASS)$/i.test(key)
-        || (/^HARA_/i.test(key) && !['HARA_NPM_CI_ATTEMPTS', 'HARA_NPM_CI_IGNORE_SCRIPTS'].includes(key))) delete value[key];
+        || /^HARA_/i.test(key)) delete value[key];
     }
     // Private authority is assigned only after all inherited/caller-controlled entries.
     return Object.freeze({ ...value, NO_UPDATE_NOTIFIER: '1', npm_config_update_notifier: 'false', NODE_DISABLE_COMPILE_CACHE: '1', ...authority });
