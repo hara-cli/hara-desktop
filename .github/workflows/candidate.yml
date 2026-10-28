@@ -137,7 +137,7 @@ jobs:
         with:
           repository: hara-cli/hara
           path: core
-          ref: 29ecc4ac39f929aa627147461b2d1637f775abcb
+          ref: 77f22322fae14916ffd136394c1ab0798b145573
           persist-credentials: false
       - name: Provision retained job evidence
         id: evidence
@@ -247,7 +247,7 @@ jobs:
         with:
           repository: hara-cli/hara
           path: core
-          ref: 29ecc4ac39f929aa627147461b2d1637f775abcb
+          ref: 77f22322fae14916ffd136394c1ab0798b145573
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
@@ -377,7 +377,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: app, ref: 9b4311a239360f30b10a1379e3fdbd3aacaa426f, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { repository: hara-cli/hara, path: core, ref: 29ecc4ac39f929aa627147461b2d1637f775abcb, persist-credentials: false }
+        with: { repository: hara-cli/hara, path: core, ref: 77f22322fae14916ffd136394c1ab0798b145573, persist-credentials: false }
       - name: Provision retained job evidence
         id: evidence
         env:
@@ -478,7 +478,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: app, ref: 9b4311a239360f30b10a1379e3fdbd3aacaa426f, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { repository: hara-cli/hara, path: core, ref: 29ecc4ac39f929aa627147461b2d1637f775abcb, persist-credentials: false }
+        with: { repository: hara-cli/hara, path: core, ref: 77f22322fae14916ffd136394c1ab0798b145573, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with: { node-version-file: orchestration/.node-version }
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
@@ -577,7 +577,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: app, ref: 9b4311a239360f30b10a1379e3fdbd3aacaa426f, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { repository: hara-cli/hara, path: core, ref: 29ecc4ac39f929aa627147461b2d1637f775abcb, persist-credentials: false }
+        with: { repository: hara-cli/hara, path: core, ref: 77f22322fae14916ffd136394c1ab0798b145573, persist-credentials: false }
       - name: Provision retained job evidence
         id: evidence
         env:
@@ -694,7 +694,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with: { path: app, ref: 9b4311a239360f30b10a1379e3fdbd3aacaa426f, persist-credentials: false }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with: { repository: hara-cli/hara, path: core, ref: 29ecc4ac39f929aa627147461b2d1637f775abcb, persist-credentials: false }
+        with: { repository: hara-cli/hara, path: core, ref: 77f22322fae14916ffd136394c1ab0798b145573, persist-credentials: false }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with: { node-version-file: orchestration/.node-version }
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30

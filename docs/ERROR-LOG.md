@@ -1,5 +1,12 @@
 # Error log
 
+
+## 2026-10-28 · live36 Core pin 77f22322 (live35 suite flake)
+
+- **Symptom**: live35 Core native full suite red on linux／Intel／Win; aarch64 green. linux＝config-read-contention fsync count; Intel＝workspace-local-server RPC 5s; Win＝preflight/proof fixture modes (Desktop tip f327bb43).
+- **Fix**: Core tip `77f22322` (PR hara#15 → main `11abe345`) test-only; Desktop pin bump Core+SIDECAR_COMMIT／locks.sidecar／candidate.yml 6× core refs／APPROVED_CORE. Soft Dark desktop tip unchanged (`9b4311a`).
+- **Bans**: no resign live33–35／PEM／tag／env proxy-approve.
+
 ## live35 Core suite Win platformization · 2026-10-28
 
 live35 run `40659315800`＠tip `88ffde6a`：Win Orchestration hung 2 tests that live34's POSIX platformization left behind.
