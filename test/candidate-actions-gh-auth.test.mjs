@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {syncBuiltinESMExports} from 'node:module';
+import {crc32} from 'node:zlib';
 import test, {mock} from 'node:test';
 import {api, candidateEvidence, downloadArtifact, githubReadEnvironment, run, sync} from '../scripts/candidate-common.mjs';
 
@@ -60,6 +61,22 @@ function fakeGh({syncResult, zip} = {}) {
   return {calls, restore() { for (const m of mocks) m.mock.restore(); syncBuiltinESMExports(); }};
 }
 const tokens = parent => [parent.GH_TOKEN, parent.GITHUB_TOKEN];
+// Flat single-entry stored ZIP (upload-artifact envelope shape) without a host `zip`, which
+// Windows runners lack; production still lists/extracts it with the real `unzip`.
+function storedZip(name, data) {
+  const file = Buffer.from(name), crc = crc32(data), header = (signature, size) => {
+    const b = Buffer.alloc(size); b.writeUInt32LE(signature, 0); return b;
+  };
+  const local = header(0x04034b50, 30);
+  local.writeUInt16LE(20, 4); local.writeUInt32LE(crc, 14); local.writeUInt32LE(data.length, 18);
+  local.writeUInt32LE(data.length, 22); local.writeUInt16LE(file.length, 26);
+  const central = header(0x02014b50, 46);
+  central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt32LE(crc, 16);
+  central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24); central.writeUInt16LE(file.length, 28);
+  const entries = Buffer.concat([local, file, data]), directory = Buffer.concat([central, file]), end = header(0x06054b50, 22);
+  end.writeUInt16LE(1, 8); end.writeUInt16LE(1, 10); end.writeUInt32LE(directory.length, 12); end.writeUInt32LE(entries.length, 16);
+  return Buffer.concat([entries, directory, end]);
+}
 
 test('candidate-actions-gh-auth: api/downloadArtifact reinject only GH_TOKEN; generic children stay stripped', async t => {
   const {scope, parent} = parentFixture(), initialParent = JSON.stringify(parent);
@@ -108,10 +125,8 @@ test('candidate-actions-gh-auth: api/downloadArtifact reinject only GH_TOKEN; ge
   });
 
   await t.test('downloadArtifact list and zip children both receive GH_TOKEN only', async () => {
-    const work = scope.fixture('actions-gh-zip'), payload = path.join(work, 'payload.txt');
-    fs.writeFileSync(payload, 'synthetic artifact\n');
-    const zip = path.join(work, 'envelope.zip');
-    assert.equal(realSpawnSync('zip', ['-q', '-j', zip, payload], {env: scope.environment()}).status, 0);
+    const work = scope.fixture('actions-gh-zip'), zip = path.join(work, 'envelope.zip');
+    fs.writeFileSync(zip, storedZip('payload.txt', Buffer.from('synthetic artifact\n')));
     const bytes = fs.readFileSync(zip), orchestration = 'a'.repeat(40);
     const artifact = {id: 42, name: 'candidate-unsigned-x86_64-apple-darwin-7-1', expired: false, size_in_bytes: bytes.length,
       digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`, workflow_run: {id: 7, head_sha: orchestration}};
