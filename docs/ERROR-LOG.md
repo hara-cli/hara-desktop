@@ -1,5 +1,9 @@
 # Error log
 
+## Candidate kicks found aarch64 failures only on hosted runs · local preflight gate · 2026-10-28
+
+Hara 同事：live27–live31 多次在 hosted run 里才暴露测例／构建失败，每次都要消耗一个 O＋proof＋kick。缺口：kick（raw `git push` 受控 ref）与 Gate A `publish`／`prepare` 之前没有本机验证，且 `candidate-native.mjs` 的 `context()` 硬要求 Actions 事件，本机无法直接跑（禁伪造 CI context）。修法（分支 `feat/local-aarch64-preflight-gate-20261028`）：新增 `scripts/candidate-local-aarch64-preflight.mjs run|check`，在 Apple Silicon 本机经 `provisionCiEvidence` 私有证据根复用 hydrate→tests→sidecar→build，全绿才写 0600 receipt，绑定 HEAD／tree／inputs／pins，有效期 12h；`candidate-policy-admin.mjs` `publish`／`prepare` 在任何 gh 调用之前校验 receipt，拒绝时打印原因；新增 `scripts/candidate-controlled-ref-push.mjs`（`--confirm-kick`＋FF-only，禁 force／tags）作为唯一 kick 路径；umbrella `candidate-publish.sh` 先跑 `check`。`candidate.yml` 四平台不变；签名／notary／env／admission 加密不变。教训：kick 前先本机 aarch64 全绿；receipt 只是本机闸门，不是授权。
+
 ## live31 Win orch suite · actions-gh-auth fixture needs host `zip` · 2026-10-28
 
 Hara 同事：live31 run `40618804244`＠tip `902a080c…` 的 Windows job `122593947310`「Orchestration original full suite」exit=1，`# fail 2`＝父子 TAP：`downloadArtifact list and zip children both receive GH_TOKEN only`（`test/candidate-actions-gh-auth.test.mjs` 用 `realSpawnSync('zip',…)` 造 envelope，status null≠0）＋父 subtestsFailed。根因：Windows runner 无 `zip` CLI，测例造夹具时依赖它，失败发生在 `downloadArtifact` 运行之前；生产路径（`githubReadEnvironment`／`api`／`downloadArtifact`／`unzip`）无故障，Linux 同 tip 全绿。修法（分支 `fix/live31-win-actions-gh-zip-20261028`，仅测改）：测内纯 Node `storedZip`（stored、单条 `payload.txt`、`zlib.crc32`＋中央目录）替代 host `zip`，生产仍用真实 `unzip -Z1`／`-q -d` 校验扁平 envelope；GH_TOKEN 回注断言不变，不跳过 win32，不放宽 scrub、不加 TOKEN 进 `preservedHara`。**非**回滚 live30 窄通道。教训：测试夹具不得依赖 runner 未保证的 CLI（`zip` 不在 Windows 镜像）；本机可用 PATH 去掉 `zip` 复现。同 run rerun 带不上新 tip。诊断 SHA `130c3dcf…`，问题记录 `inbox/2026-10-28-live31-win-actions-gh-zip-problem-record.md`。
