@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { ROOT, INPUT, TARGETS, identity, assertEvent, nativeTarget, receipt, assertReceipt, artifactName, checkArchiveEntries, assertNoRosettaProbe } from '../scripts/candidate-common.mjs';
 import { assertSigner } from '../scripts/candidate-signing.mjs';
-import { testCounts, coreTestCommand, coreTestCoverage, assertStrictNativeCore, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
+import { testCounts, coreTestCommand, coreTestCoverage, coreTestDeadlines, assertStrictNativeCore, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
 import { updaterTarget, updaterPayload, gateEvidence, upgradeSmoke } from '../scripts/candidate-upgrade.mjs';
 import { validateTar, validateExtractedTree } from '../scripts/candidate-archive.mjs';
 import { lockedSidecarSpecs } from '../scripts/hydrate-locked-sidecar-dependencies.mjs';
@@ -203,14 +203,17 @@ test('complete native batches are aggregated and an earlier success cannot hide 
 });
 test('Mac Core keeps strict full coverage; Windows shares ordinary CI contracts and receipts disclose the gap', () => {
   const core=path.resolve('synthetic-core');
-  assert.deepEqual(coreTestCommand(core,'darwin'),{script:path.join(core,'scripts/native-ci-tests.mjs'),args:['--original-deadlines']});
+  assert.deepEqual(coreTestCommand(core,'darwin','arm64'),{script:path.join(core,'scripts/native-ci-tests.mjs'),args:['--original-deadlines']});
+  assert.deepEqual(coreTestCommand(core,'darwin','x64'),{script:path.join(ROOT,'scripts/candidate-core-native-tests.mjs'),args:[]});
+  assert.equal(coreTestDeadlines('darwin','arm64'),'original');assert.equal(coreTestDeadlines('linux','x64'),'original');
+  assert.equal(coreTestDeadlines('win32','x64'),'original');assert.equal(coreTestDeadlines('darwin','x64'),'intel-slow-file-300s-v1');
   assert.deepEqual(coreTestCommand(core,'win32'),{script:path.join(core,'scripts/windows-ci-tests.mjs'),args:[]});
   assert.equal(coreTestCommand(core,'linux'),null);assert.throws(()=>coreTestCommand(core,'unknown'));
   assert.equal(coreTestCoverage('win32'),'windows-contract-subset-v1');
   assert.equal(coreTestCoverage('darwin'),'full');assert.equal(coreTestCoverage('linux'),'full');
   const source=fs.readFileSync(path.join(ROOT,'scripts/candidate-native.mjs'),'utf8');
   assert(source.includes('runner.strictNativeTestBatches'));assert(!source.includes('HARA_INTEL_TEST_BUDGET ='));
-  assert(source.includes('target: c.target, coverage, counts'));
+  assert(source.includes('target: c.target, coverage, deadlines, counts'));
   const workflow=fs.readFileSync(path.join(ROOT,'.github/workflows/candidate.yml'),'utf8');
   assert(workflow.includes('candidate-test-diagnostics-'));assert(workflow.includes('if: ${{ always() }}'));
   assert(workflow.includes('/*-tests.log.result.json'));assert(!workflow.includes('/private-home/'));
