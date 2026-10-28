@@ -84,6 +84,8 @@ export class WorkspaceDevModel {
   }
   getSnapshot = (): WorkspaceDevView => this.view;
   supportsLocalChannels(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.v1") === true; }
+  /** Core peer collaboration: @mention widening, channel_peer_wake and channel_sync. */
+  supportsLocalChannelPeers(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.peer.v1") === true; }
   async localChannelRequest<T>(method: string, params: Record<string, unknown>): Promise<T> {
     const workspace = this.view.workspace;
     if (!workspace || workspace.workspaceId !== params.workspaceId || workspace.resourceGeneration !== params.expectedGeneration

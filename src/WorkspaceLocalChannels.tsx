@@ -5,7 +5,7 @@ import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import type { makeT } from "./i18n";
 import { Avatar, ShellDialog } from "./WorkspaceShell";
 import type { WorkspaceDevAgent, WorkspaceDevApproval, WorkspaceDevMessage } from "./workspace-dev-state";
-import type { LocalChannelsView, LocalChannelSnapshot, WorkspaceLocalChannelsModel } from "./workspace-local-channels";
+import { channelMentionQuery, insertChannelMention, type LocalChannelsView, type LocalChannelSnapshot, type WorkspaceLocalChannelsModel } from "./workspace-local-channels";
 import { channelHistoryPage } from "./workspace-channel-history";
 import "./workspace-local-channels.css";
 type Translate = ReturnType<typeof makeT>;
@@ -89,12 +89,22 @@ export function channelTranscriptTurns(snapshot: LocalChannelSnapshot) {
   });
 }
 export const channelTranscriptGroups = (snapshot: LocalChannelSnapshot) => channelTranscriptTurns(snapshot).flatMap(turn => turn.groups);
-interface ChannelHistoryRow { id: string; turnId: string; group?: ChannelTranscriptGroup; failedName?: string }
+interface ChannelHistoryRow { id: string; turnId: string; group?: ChannelTranscriptGroup; failedName?: string; woken?: { name: string; by: string; queued: boolean } }
+/** A peer-woken reply gets a status line right before its messages, or after the turn while it is still queued. */
 export function channelHistoryRows(snapshot: LocalChannelSnapshot): ChannelHistoryRow[] {
-  return channelTranscriptTurns(snapshot).flatMap(({ turn, groups }) => [
-    ...groups.map(group => ({ id: JSON.stringify([turn.id, "message", group.id]), turnId: turn.id, group })),
-    ...turn.replies.filter(reply => ["failed", "interrupted"].includes(reply.state)).map(reply => ({ id: JSON.stringify([turn.id, "failure", reply.agentId]), turnId: turn.id, failedName: reply.displayName })),
-  ]);
+  return channelTranscriptTurns(snapshot).flatMap(({ turn, groups }) => {
+    const woken = (reply: LocalChannelSnapshot["turns"][number]["replies"][number]): ChannelHistoryRow => ({ id: JSON.stringify([turn.id, "woken", reply.agentId]), turnId: turn.id,
+      woken: { name: reply.displayName, by: turn.replies.find(row => row.agentId === reply.wokenBy)?.displayName ?? reply.wokenBy!, queued: reply.state === "queued" } });
+    const spoken = new Set(groups.map(group => group.agentId));
+    return [
+      ...groups.flatMap(group => {
+        const reply = group.agentId ? turn.replies.find(row => row.agentId === group.agentId && row.wokenBy) : undefined;
+        return [...(reply ? [woken(reply)] : []), { id: JSON.stringify([turn.id, "message", group.id]), turnId: turn.id, group }];
+      }),
+      ...turn.replies.filter(reply => reply.wokenBy && !spoken.has(reply.agentId) && ["queued", "running"].includes(reply.state)).map(woken),
+      ...turn.replies.filter(reply => ["failed", "interrupted"].includes(reply.state)).map(reply => ({ id: JSON.stringify([turn.id, "failure", reply.agentId]), turnId: turn.id, failedName: reply.displayName })),
+    ];
+  });
 }
 export function LocalChannelThread({ view, colleagues, t, retry, transcript, approval, model, scrollRoot, onFollowChange, onRepair, disabled = false }: { view: LocalChannelsView; colleagues: WorkspaceDevAgent[]; t: Translate; retry: () => void;
   transcript: (messages: WorkspaceDevMessage[], agent?: WorkspaceDevAgent) => ReactNode; approval: (card: WorkspaceDevApproval) => ReactNode;
@@ -127,6 +137,8 @@ export function LocalChannelThread({ view, colleagues, t, retry, transcript, app
     for (const row of page.rows) { const group = visible.get(row.turnId); if (group) group.push(row); else visible.set(row.turnId, [row]); }
     return [...visible].map(([turnId, items]) => <section className="hs-channel-turn" key={turnId} aria-label={t("ws.channels.local")}>
       {items.map(row => {
+        if (row.woken) return <p key={row.id} className="hs-channel-status" role="status" data-channel-woken={row.woken.queued ? "queued" : "started"}>
+          {t(row.woken.queued ? "ws.channels.peerQueued" : "ws.channels.peerWoken", { name: row.woken.name, by: row.woken.by })}</p>;
         if (!row.group) return <p key={row.id} className="hs-channel-status" role="status">{t("ws.channels.failedReply", { name: row.failedName ?? "" })}</p>;
         const group = row.group, current = group.agentId ? colleaguesById.get(group.agentId) : undefined;
         const agent = current ? { ...current, identity: { ...current.identity, displayName: group.displayName } } : group.agentId ? {
@@ -171,6 +183,10 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
   const matchingRecipients = useMemo(() => (members ?? []).map(id => ({ id, agent: colleaguesById.get(id) })).filter(({ id, agent }) =>
     `${agent?.identity.displayName ?? id} ${agent?.identity.title ?? ""}`.toLocaleLowerCase().includes(query)), [members, colleaguesById, query]);
   const setRecipients = (value: string[]) => model.setRecipients(value);
+  const mention = model.supportsPeers?.() ? channelMentionQuery(view.draft) : null;
+  const mentionMatches = useMemo(() => mention === null ? [] : (members ?? []).map(id => ({ id, name: colleaguesById.get(id)?.identity.displayName ?? id }))
+    .filter(row => row.name.toLocaleLowerCase().includes(mention)).slice(0, 8), [mention, members, colleaguesById]);
+  const pickMention = (name: string) => { model.setDraft(insertChannelMention(view.draft, name)); input.current?.focus(); };
   useEffect(() => { setRecipientSearch(""); input.current?.focus(); }, [view.channelId]);
   useLayoutEffect(() => { if (input.current) { input.current.style.height = "auto"; input.current.style.height = `${Math.min(160, Math.max(32, input.current.scrollHeight))}px`; } }, [view.draft, view.channelId]);
   if (!channel) return null;
@@ -186,6 +202,10 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
         {matchingRecipients.map(({ id, agent }) => <label className="hs-channel-recipient" key={id}><input type="checkbox" checked={selectedRecipients.has(id)} onChange={event => setRecipients(event.target.checked ? [...recipients, id] : recipients.filter(value => value !== id))} />{agent?.identity.displayName ?? id}</label>)}
         {!matchingRecipients.length ? <p className="hs-channel-search-empty" role="status">{t(channel.channel.memberIds.length ? "ws.search.empty" : "ws.channels.noRecipients")}</p> : null}
       </fieldset></details>
+    {mentionMatches.length ? <div className="hs-channel-mentions" role="listbox" aria-label={t("ws.channels.mention")}>
+      {mentionMatches.map(row => <button key={row.id} type="button" role="option" aria-selected={false} className="hs-btn sec" data-mention-id={row.id}
+        onMouseDown={event => event.preventDefault()} onClick={() => pickMention(row.name)}>@{row.name}</button>)}
+      <small>{t(recipients.length ? "ws.channels.mentionHint" : "ws.channels.mentionNotesOnly")}</small></div> : null}
     <div className="hs-field"><textarea ref={input} aria-label={t("ws.channels.placeholder", { name: channel.channel.name })} placeholder={t("ws.channels.placeholder", { name: channel.channel.name })} value={view.draft} rows={1} maxLength={4000} disabled={disconnected}
       onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.send(recipients); } }} />
       {busy ? <button className="hs-stop" onClick={() => void model.cancel()} disabled={disconnected || channel.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button>
