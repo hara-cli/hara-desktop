@@ -98,3 +98,52 @@ test('ordinary provision retains hosted matrices, permissions, timing and isolat
   assert.match(workflow, /permissions:\n  contents: read/);
   assert(!/self-hosted|environment:|secrets\.|contents: write|workflow_dispatch|GITHUB_ENV|candidate-ready|candidate-rebind|--dry-run/.test(workflow));
 });
+
+// Tag release jobs run the same original suite under the same retained evidence boundary.
+const release = fs.readFileSync(new URL('../.github/workflows/build.yml', import.meta.url), 'utf8');
+const releaseBlocks = new Map([...release.matchAll(/^  ([a-z][a-z0-9_]*):\n([\s\S]*?)(?=^  [a-z][a-z0-9_]*:\n|$(?![\s\S]))/gm)]
+  .map(match => [match[1], match[0]]));
+for (const [job, label, suffix] of [['prepare_release', 'Release prepare original full suite', 'prepare'],
+  ['sign_and_promote', 'Release signing-host original full suite', 'signing']]) {
+  test(job + ' runs the original suite inside provisioned retained evidence', async () => {
+    const block = releaseBlocks.get(job);
+    assert(block, 'expected release job');
+    assert(!/run:\s*npm test\s*$/m.test(block), job + ' must not run the suite without evidence');
+    assert(!/--test-name-pattern|--test-skip-pattern/.test(block));
+    const match = block.match(/CI_EVIDENCE_LEAF: (.+)/);
+    assert.equal(match?.[1], 'release-evidence-${{ github.run_id }}-${{ github.run_attempt }}-' + suffix);
+    const scripts = [...block.matchAll(/          node --input-type=module <<'NODE'\n([\s\S]*?)          NODE(?:\n|$)/g)]
+      .filter(script => script[1].includes('provisionCiEvidence'));
+    assert.equal(scripts.length, 1);
+    const source = scripts[0][1].split('\n').map(line => line.startsWith('          ') ? line.slice(10) : line).join('\n');
+    assert([...source.matchAll(/^import .+;$/gm)].every(line =>
+      /^import .+ from '(?:node:path|\.\/scripts\/(?:ci-evidence|candidate-common)\.mjs)';$/.test(line[0])));
+    const workspace = '/runner/work/hara-desktop/hara-desktop';
+    const leaf = match[1].replaceAll('${{ github.run_id }}', '123456789').replaceAll('${{ github.run_attempt }}', '1');
+    const root = path.posix.join(workspace, leaf), output = path.posix.join(root, 'tmp', 'regressions');
+    const privateEnv = { HOME: path.posix.join(root, 'synthetic-home'), TMPDIR: path.posix.join(root, 'tmp') };
+    const context = { evidenceRoot: root, base: output, env: privateEnv };
+    let guarded = false, commands = 0;
+    const provision = options => { assert.deepEqual(options, { evidenceRoot: root, output }); return context; };
+    const guard = async (c, body) => { assert.equal(c, context); guarded = true; try { return await body(); } finally { guarded = false; } };
+    const full = async (name, command, args, options) => {
+      commands++; assert(guarded); assert.equal(name, label); assert.equal(command, 'bash'); assert.deepEqual(args, ['-c', 'exec npm test']);
+      assert.deepEqual(options, { cwd: '/repo', env: privateEnv, capture: true, logFile: path.posix.join(output, 'tests.log') });
+    };
+    await new AsyncFunction('path', 'process', 'provisionCiEvidence', 'withCiEnvironment', 'ROOT', 'run',
+      source.replace(/^import .+;\n/gm, ''))(path.posix, { env: { GITHUB_WORKSPACE: workspace, CI_EVIDENCE_LEAF: leaf } },
+      provision, guard, '/repo', full);
+    assert.equal(commands, 1);
+  });
+}
+
+test('prepare_release evidence is ignored by Git and signing evidence stays outside the source checkout', () => {
+  const ignore = fs.readFileSync(new URL('../.gitignore', import.meta.url), 'utf8');
+  assert.match(ignore, /^\/release-evidence-\*\/$/m);
+  const prepare = releaseBlocks.get('prepare_release');
+  assert(prepare.indexOf("'Release prepare original full suite'") < prepare.indexOf('[ -z "$(git status --porcelain)" ]'),
+    'the clean-tree gate must still run after the suite');
+  const sign = releaseBlocks.get('sign_and_promote');
+  assert.match(sign, /HARA_RELEASE_SOURCE_ROOT: \$\{\{ github\.workspace \}\}\/source-/);
+  assert(!/source-\$\{\{ github\.run_id \}\}.*\/release-evidence/.test(sign));
+});

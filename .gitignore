@@ -26,3 +26,6 @@ src-tauri/target
 src-tauri/binaries/*
 !src-tauri/binaries/SIDECAR_VERSION
 !src-tauri/binaries/SIDECAR_COMMIT
+
+# Retained release-workflow test evidence (build.yml prepare_release); never source.
+/release-evidence-*/

@@ -1701,7 +1701,7 @@ test("prepare-release installs locked Desktop dependencies before repository reg
     const sourceGate = prepare.indexOf("Verify event source before executing repository code");
     const metadata = prepare.indexOf("run: node scripts/check-release-metadata.mjs");
     const install = prepare.indexOf(installStep);
-    const regressionTests = prepare.indexOf("run: npm test");
+    const regressionTests = prepare.indexOf("'Release prepare original full suite', 'bash', ['-c', 'exec npm test']");
     const sourcePin = prepare.indexOf("Pin exact Desktop and CLI source commits");
     assert.ok(
       sourceGate >= 0 && metadata > sourceGate && install > metadata
