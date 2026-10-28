@@ -149,6 +149,15 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   useEffect(() => { setBrowser(false); }, [scope]);
   const connect = () => production ? (setSettingsPage("connections"), setSettings(true)) : realKey ? model.addApprovedConnection() : model.addSynthetic();
   const canSend = Boolean(workspace && hasConnection && view.draft.trim() && !view.sending && !busy && !view.pendingUnknown && !disconnected);
+  // One composer: a pending sync question takes the draft as its answer; a lone async ask takes it while the run continues.
+  const question = workspace?.conversation.pendingQuestion ?? null;
+  const asyncAsks = workspace && model.supportsAsyncQuestions?.() === true ? workspaceAsyncAsks(workspace.conversation) : [];
+  const asyncTarget = busy && asyncAsks.length === 1 ? asyncAsks[0] : null;
+  const canAnswerAsync = Boolean(asyncTarget && view.draft.trim() && !disconnected);
+  const submitComposer = () => {
+    if (asyncTarget) { if (canAnswerAsync) void model.answerAsync(asyncTarget.requestId, view.draft, true); }
+    else if (canSend) void (question ? model.answerDraft() : model.send());
+  };
   const navigate = (section: "chat" | "workspace" | "colleagues", tab: "people" | "tasks" = "people") => {
     channels.clearSelection();
     setRoute({ section, tab });
@@ -166,7 +175,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     if (/^#\/?tasks$/.test(location.hash)) history.replaceState(null, "", `${location.pathname}${location.search}#colleagues/tasks`);
     return () => window.removeEventListener("hashchange", update);
   }, [channels]);
-  useEffect(() => { if (nearBottom.current && route.section === "chat") end.current?.scrollIntoView({ block: "end", behavior: "auto" }); }, [workspace?.conversation.history.length, workspace?.approvals.length, busy, route.section]);
+  useEffect(() => { if (nearBottom.current && route.section === "chat") end.current?.scrollIntoView({ block: "end", behavior: "auto" }); }, [workspace?.conversation.history.length, workspace?.approvals.length, workspace?.conversation.pendingQuestion?.id, busy, route.section]);
   useEffect(() => { if (nearBottom.current && inChannel && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }, [channelView.channel?.messages.length, channelView.channel?.approvals.length, channelView.channel?.state, inChannel]);
   useEffect(() => { if (inChannel) { nearBottom.current = true; if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; } }, [channelView.channelId, inChannel]);
   useEffect(() => { if (!busy) return; const timer = setInterval(() => { void model.refresh(); }, 1000); return () => clearInterval(timer); }, [model, busy]);
@@ -278,6 +287,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         <small>{inChannel ? channelMemberLabel(t, selectedChannel?.memberIds.length ?? 0) : agent ? t(agent.runtime.id === "pi" ? "ws.header.runtime" : "ws.header.otherRuntime", { role: agent.kind === "main" ? t("ws.main.tag") : agent.identity.title ?? t("ws.role.colleague"), runtime: agent.runtime.label }) : t("ws.welcome.title")}</small></div><span className="sp" />
         {inChannel ? <div className="hs-channel-header-actions"><button className="hs-ghost" aria-label={t("ws.channels.members")} onClick={() => setChannelDialog("members")} disabled={!selectedChannel || !!disconnected || ["running", "draining"].includes(channelView.channel?.state ?? "")}><UsersIcon className="hico" />{t("ws.channels.members")}</button>
           <button className="hs-ghost" aria-label={t("ws.channels.invite")} onClick={() => setChannelDialog("invite")}><UserPlusIcon className="hico" />{t("ws.channels.invite")}</button></div> : null}
+        {!inChannel && workspace && route.section === "chat" ? <button className="hs-ghost" aria-label={t("ws.resume.dismiss")} title={t("ws.resume.dismiss")} data-clear-chat="true" onClick={() => model.clearConversationResume()} disabled={Boolean(disconnected) || view.sending || busy}>{t("ws.resume.dismiss")}</button> : null}
         {<button className="hs-ghost" aria-label={t("ws.header.browser")} title={t("ws.header.browser")} aria-expanded={browser} aria-controls="workspace-browser-panel" onClick={() => { setBrowser(value => !value); onOpenBrowser?.(); }} disabled={!workspace}><GlobeAltIcon className="hico" />{t("ws.header.browser")}</button>}
         <button className="hs-icon" aria-label={t(inspector && !browser ? "vg.inspector.close" : "vg.inspector.open")} aria-expanded={inspector && !browser} aria-controls="workspace-inspector" onClick={() => { if (browser) { setBrowser(false); setInspector(true); } else setInspector(value => !value); }}><ViewColumnsIcon className="hico" /></button>
         <button className="hs-icon" aria-label={t("ws.settings")} onClick={() => setSettings(true)}><Cog6ToothIcon className="hico" /></button></header>
@@ -303,23 +313,24 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
             {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified"><CheckCircleIcon className="hico" />{t("ws.verified")} <span>{t("ws.verified.note")}</span></p> : null}
             <WorkspaceTaskRecovery conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.pendingUnknown}
-              continueDisabled={!hasConnection || busy} onContinue={() => void model.send(true)} onRepair={() => { setSettingsPage("connections");setSettings(true); }} />
+              continueDisabled={!hasConnection || busy} dismissedIdentity={view.dismissedRecoveryIdentity}
+              onContinue={() => void model.send(true)} onRepair={() => { setSettingsPage("connections");setSettings(true); }}
+              onDismiss={() => model.dismissRecovery()} />
+            {question ? <WorkspaceUserQuestion key={`${scope}:${question.id}`} conversation={workspace.conversation} t={t}
+              disabled={Boolean(disconnected) || view.sending || view.pendingUnknown} supported={model.supportsUserQuestions?.() === true}
+              onAnswer={(questionId, answer) => void model.answer(questionId, answer)} onPause={questionId => void model.pauseQuestion(questionId)} onRepair={() => { setSettingsPage("connections"); setSettings(true); }} /> : null}
             {!liveApprovals.length ? <WorkspaceTaskActivity conversation={workspace.conversation} name={agent?.identity.displayName ?? "Hara"} t={t}><Avatar agent={agent} /></WorkspaceTaskActivity> : null}<div ref={end} />
           </div>}
       </div>
       {workspace && inChannel ? <LocalChannelComposer key={`${scope}:${channelView.channelId}`} view={channelView} model={channels} colleagues={colleagues} t={t} disconnected={!!disconnected} hasConnection={hasConnection} configure={() => void connect()} /> : null}
-      {workspace && route.section === "chat" && workspace.conversation.pendingQuestion ? <footer className="hs-compose wsd-composer-wrap is-question" data-composer="question">
-        <WorkspaceUserQuestion key={`${scope}:${workspace.conversation.pendingQuestion.id}`} conversation={workspace.conversation} t={t} placement="composer"
-          disabled={Boolean(disconnected) || view.sending || view.pendingUnknown} supported={model.supportsUserQuestions?.() === true}
-          onAnswer={(questionId, answer) => void model.answer(questionId, answer)} onPause={questionId => void model.pauseQuestion(questionId)} onRepair={() => { setSettingsPage("connections"); setSettings(true); }} />
-        <p className="hs-hint"><span>{t("ws.question.composerLocked")}</span></p></footer>
-      : workspace && route.section === "chat" ? <footer className="hs-compose wsd-composer-wrap"><WorkspaceAsyncQuestions asks={model.supportsAsyncQuestions?.() === true ? workspaceAsyncAsks(workspace.conversation) : []} t={t}
+      {workspace && route.section === "chat" ? <footer className="hs-compose wsd-composer-wrap" data-composer={question ? "question" : undefined}><WorkspaceAsyncQuestions asks={asyncAsks} t={t}
           disabled={Boolean(disconnected)} onAnswer={(questionId, answer) => void model.answerAsync(questionId, answer)} /><div className="hs-field wsd-composer"><textarea ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
-        placeholder={hasConnection ? t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" }) : t("ws.composer.noConnection")} disabled={!hasConnection || Boolean(disconnected)} rows={1}
-        onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.send(); } }} />
+        placeholder={!hasConnection ? t("ws.composer.noConnection") : t(question ? "ws.question.composerPlaceholder" : "ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} disabled={!hasConnection || Boolean(disconnected)} rows={1}
+        onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submitComposer(); } }} />
         <span className="hs-conn">{t("ws.composer.connection")}</span>{busy ? <button className="hs-stop" onClick={() => void model.cancel()} disabled={Boolean(disconnected) || workspace.conversation.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button>
-          : view.pendingUnknown ? <button className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={Boolean(disconnected)}>{t("ws.composer.verify")}</button> : <button className="hs-send wsd-send" onClick={() => void model.send()} disabled={!canSend} aria-label={t("ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>}</div>
-        <p className="hs-hint"><span>{t(production ? "ws.composer.hint.local" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</span><span>{t("ws.composer.hint.keys")}</span></p></footer> : null}
+          : view.pendingUnknown ? <button className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={Boolean(disconnected)}>{t("ws.composer.verify")}</button> : <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canSend} aria-label={t("ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>}
+          {asyncTarget ? <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canAnswerAsync} aria-label={t("ws.question.async.send")}><PaperAirplaneIcon className="hico" /></button> : null}</div>
+        <p className="hs-hint"><span>{question ? t("ws.question.composerHint") : t(production ? "ws.composer.hint.local" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</span><span>{t("ws.composer.hint.keys")}</span></p></footer> : null}
     </main>
     {inspector && !browser ? <WorkspaceInspector workspace={inChannel ? null : workspace} agent={inChannel ? undefined : agent} shell={shell} t={t} inert={Boolean(modalOpen)} onClose={() => setInspector(false)} onAttention={() => navigate("colleagues", "tasks")} /> : null}
     {browser && workspace ? <Suspense fallback={<aside id="workspace-browser-panel" className="hs-browser" role="status">{t("common.loading")}</aside>}><BrowserExtension key={scope} label={workspace.label} locale={locale} inert={Boolean(modalOpen)} onClose={() => setBrowser(false)} /></Suspense> : null}

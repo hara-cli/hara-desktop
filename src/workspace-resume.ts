@@ -37,3 +37,28 @@ export function connectionRecoveryReason(conversation: Pick<WorkspaceDevSnapshot
   if (/^404\b|model.{0,60}(?:does not support|not supported|not found|unsupported)/i.test(error)) return "connection_model_unavailable";
   return null;
 }
+
+/** Stable identity for one unfinished run so dismiss/clear can suppress its resume card. */
+export function workspaceRecoveryIdentity(conversation: Pick<Conversation, "runId" | "taskId" | "sessionId">): string | null {
+  if (typeof conversation.runId === "string" && conversation.runId) return `run:${conversation.runId}`;
+  if (typeof conversation.taskId === "string" && conversation.taskId) return `task:${conversation.taskId}`;
+  if (typeof conversation.sessionId === "string" && conversation.sessionId) return `session:${conversation.sessionId}`;
+  return null;
+}
+
+/**
+ * Soft Dark must not force "continue the original task" after clear / new chat / explicit dismiss.
+ * Empty history = cleared or fresh context; a matching dismissed identity = user chose not to resume.
+ */
+export function workspaceRecoveryPromptVisible(
+  conversation: Conversation,
+  dismissedIdentity: string | null | undefined = null,
+): boolean {
+  if (conversation.pendingQuestion) return false;
+  const state = workspaceRecoveryState(conversation);
+  if (!["needs_recovery", "blocked", "cancelled", "interrupted"].includes(state)) return false;
+  if (Array.isArray(conversation.history) && conversation.history.length === 0) return false;
+  const identity = workspaceRecoveryIdentity(conversation);
+  if (identity && dismissedIdentity === identity) return false;
+  return true;
+}

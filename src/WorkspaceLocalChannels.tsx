@@ -190,6 +190,7 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
   useEffect(() => { setRecipientSearch(""); input.current?.focus(); }, [view.channelId]);
   useLayoutEffect(() => { if (input.current) { input.current.style.height = "auto"; input.current.style.height = `${Math.min(160, Math.max(32, input.current.scrollHeight))}px`; } }, [view.draft, view.channelId]);
   if (!channel) return null;
+  const answering = (channel.questions ?? []).some(row => recipients.includes(row.agentId));
   const busy = ["running", "draining"].includes(channel.state), needsConnection = recipients.length > 0 && !hasConnection;
   const canSend = !!view.draft.trim() && view.draft.trim().length <= 4000 && !view.pending && !busy && !disconnected && !needsConnection;
   return <footer className="hs-compose hs-channel-compose">
@@ -207,10 +208,10 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
         onMouseDown={event => event.preventDefault()} onClick={() => pickMention(row.name)}>@{row.name}</button>)}
       <small>{t(recipients.length ? "ws.channels.mentionHint" : "ws.channels.mentionNotesOnly")}</small></div> : null}
     <div className="hs-field"><textarea ref={input} aria-label={t("ws.channels.placeholder", { name: channel.channel.name })} placeholder={t("ws.channels.placeholder", { name: channel.channel.name })} value={view.draft} rows={1} maxLength={4000} disabled={disconnected}
-      onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.send(recipients); } }} />
+      onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.submitDraft(recipients); } }} />
       {busy ? <button className="hs-stop" onClick={() => void model.cancel()} disabled={disconnected || channel.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button>
         : view.pending?.state === "unknown" ? <button className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={disconnected}>{t("ws.composer.verify")}</button>
-          : <button className="hs-send" aria-label={t("ws.composer.send")} disabled={!canSend} onClick={() => void model.send(recipients)}><PaperAirplaneIcon className="hico" /></button>}
-    </div><p className="hs-hint"><span>{t("ws.channels.localNote")}</span><span>{t("ws.composer.hint.keys")}</span></p>
+          : <button className="hs-send" aria-label={t("ws.composer.send")} disabled={!canSend} onClick={() => void model.submitDraft(recipients)}><PaperAirplaneIcon className="hico" /></button>}
+    </div><p className="hs-hint"><span>{t(answering ? "ws.question.composerHint" : "ws.channels.localNote")}</span><span>{t("ws.composer.hint.keys")}</span></p>
   </footer>;
 }

@@ -39,7 +39,8 @@ function fixture({ supported = true, unknown = false, budget = true } = {}) {
 test("question cards show the saved checkpoint and escaped options in all three languages", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     const t = makeT(locale), html = render(h(WorkspaceUserQuestion, { conversation, t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
-    for (const key of ["ws.question.title", "ws.question.saved", "ws.question.continue", "ws.question.noDefault"]) assert(html.includes(t(key)));
+    for (const key of ["ws.question.title", "ws.question.saved", "ws.question.composerHint", "ws.question.noDefault"]) assert(html.includes(t(key)));
+    assert.equal(html.includes("wsd-ask-form"), false); assert.equal(/<(textarea|input)\b/.test(html), false, "the card has no second text input");
     assert(html.includes("Which &lt;colleague&gt; &amp; item?")); assert(html.includes("Alpha &lt;script&gt;")); assert.equal(html.includes("<script>"), false);
     assert(html.includes('data-task-state="awaiting_user"'));
     assert.equal(render(h(WorkspaceTaskRecovery, { conversation, t, disabled: false, onContinue() {}, onRepair() {} })), "");
@@ -159,24 +160,39 @@ test("a pending pause remains busy after leaving and returning to the same Works
 test("the pending question reads as one layered answer card, not a resume dialog", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     const t = makeT(locale), stepped = { ...conversation, pendingQuestion: { ...q, step: "Rename the coding colleague" } };
-    const html = render(h(WorkspaceUserQuestion, { conversation: stepped, t, disabled: false, supported: true, placement: "composer", onAnswer() {}, onRepair() {} }));
+    const html = render(h(WorkspaceUserQuestion, { conversation: stepped, t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
     assert.equal(html.includes("wsd-resume"), false); assert(html.includes("wsd-ask"));
-    const head = html.indexOf("wsd-ask-head"), body = html.indexOf("wsd-user-question-text"), step = html.indexOf("wsd-ask-step"), form = html.indexOf("wsd-ask-form");
-    assert(head >= 0 && head < body && body < step && step < form);
+    const head = html.indexOf("wsd-ask-head"), body = html.indexOf("wsd-user-question-text"), step = html.indexOf("wsd-ask-step"), foot = html.indexOf("wsd-ask-foot");
+    assert(head >= 0 && head < body && body < step && step < foot);
     assert(html.includes(`id="question-${q.id}"`) && /<p id="question-question-1" class="wsd-user-question-text">/.test(html));
-    assert(html.includes(t("ws.question.minimize"))); assert.equal((html.match(/<textarea/g) ?? []).length, 1);
+    assert.equal((html.match(/<textarea/g) ?? []).length, 0);
     assert.equal(/补充|補充|needs your input/.test(t("ws.question.title")), false);
   }
 });
 
-test("chat replaces the composer with the question card while a question is pending", async () => {
+test("chat keeps one composer and shows the pending question in the message stream", async () => {
   const { readFileSync } = await import("node:fs");
   const source = readFileSync(new URL("../src/WorkspaceLocalDev.tsx", import.meta.url), "utf8");
-  const slot = source.indexOf('route.section === "chat" && workspace.conversation.pendingQuestion ? <footer');
-  const composer = source.indexOf('<div className="hs-field wsd-composer"><textarea');
-  assert(slot >= 0 && slot < composer);
-  assert(source.slice(slot, composer).includes('placement="composer"'));
-  assert.equal(source.slice(source.indexOf('<div className="hs-col wsd-thread">'), slot).includes("<WorkspaceUserQuestion"), false);
+  const thread = source.indexOf('<div className="hs-col wsd-thread">'), card = source.indexOf("<WorkspaceUserQuestion", thread), end = source.indexOf("<div ref={end} />", thread);
+  assert(thread >= 0 && thread < card && card < end, "the sync card renders at the end of the thread");
+  assert.equal(source.includes('placement="composer"'), false);
+  assert.equal(source.includes("workspace.conversation.pendingQuestion ? <footer"), false, "the composer slot is never replaced");
+  assert(/question \? model\.answerDraft\(\) : model\.send\(\)/.test(source), "a pending question takes the composer draft as its answer");
+});
+
+test("the composer draft answers the pending question once and clears; /continue never counts as an answer", async () => {
+  const a = fixture(); await a.ready(); a.model.setDraft("/continue"); await a.model.answerDraft();
+  assert.equal(a.calls.some(call => call.method === "workspace.session.answer"), false);
+  a.model.setDraft("  Beta  "); await a.model.answerDraft();
+  const sent = a.calls.filter(call => call.method === "workspace.session.answer");
+  assert.equal(sent.length, 1); assert.equal(sent[0].params.questionId, q.id); assert.equal(sent[0].params.message, "Beta");
+  assert.equal(a.model.getSnapshot().draft, "");
+});
+
+test("Core's built-in English question template is shown in the viewer's Chinese", () => {
+  const en = "Two lookups did not identify the target. Which colleague or item do you mean? Please provide its name, former name or location.";
+  const t = makeT("zh-Hans"), html = render(h(WorkspaceUserQuestion, { conversation: { ...conversation, pendingQuestion: { ...q, question: en } }, t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
+  assert.equal(html.includes("Two lookups"), false); assert(html.includes(t("ws.question.template.lookup_missing")));
 });
 
 // Unified Core interaction (workspace.interaction.v2): async asks never replace or lock the composer.
@@ -209,7 +225,7 @@ test("only async ask_user_question interactions are treated as non-blocking card
   assert.deepEqual(workspaceAsyncAsks(null), []);
 });
 
-test("async cards render escaped question and options with their own answer field, not the composer's", () => {
+test("async cards render escaped question and options without a second answer field", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     const t = makeT(locale), html = render(h(WorkspaceAsyncQuestions, { asks: [asyncAsk], t, disabled: false, onAnswer() {} }));
     assert(html.includes('data-delivery="async"')); assert(html.includes("Which &lt;format&gt; for the report?")); assert(html.includes("Report format"));
@@ -241,10 +257,9 @@ test("the sync card shows a model header and the rename-target intent instead of
   assert.equal(html.includes(t("ws.question.reason.lookup_ambiguous")), false);
 });
 
-test("async cards sit inside the normal composer footer; only a sync question replaces the composer", async () => {
+test("async cards sit inside the normal composer footer above the textarea", async () => {
   const { readFileSync } = await import("node:fs");
   const source = readFileSync(new URL("../src/WorkspaceLocalDev.tsx", import.meta.url), "utf8");
-  const slot = source.indexOf('route.section === "chat" && workspace.conversation.pendingQuestion ? <footer');
   const asyncCards = source.indexOf("<WorkspaceAsyncQuestions"), composer = source.indexOf('<div className="hs-field wsd-composer"><textarea');
-  assert(slot >= 0 && slot < asyncCards && asyncCards < composer, "async cards render in the composer branch, above the still-enabled textarea");
+  assert(asyncCards >= 0 && asyncCards < composer, "async cards render in the composer footer, above the still-enabled textarea");
 });
