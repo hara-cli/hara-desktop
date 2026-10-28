@@ -329,3 +329,40 @@ test("rate-window quota errors allow one explicit resume instead of being mistak
     assert.notEqual(f.model.getSnapshot().error, "ws.notice.resumeConnection");
   }
 });
+
+test("dismissRecovery / clearConversationResume suppress Soft Dark resume for the current run only", async () => {
+  const f = fixture();
+  f.handlers["workspace.select"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked", taskState: "blocked",
+    runId: "run-old", taskId: "task-old", history: [{ role: "user", content: "hi" }], resumeAdmission: { allowed: true, reason: null }, blockReason: "stop" } });
+  await f.ready();
+  assert.equal(f.model.getSnapshot().dismissedRecoveryIdentity, null);
+  f.model.dismissRecovery();
+  assert.equal(f.model.getSnapshot().dismissedRecoveryIdentity, "run:run-old");
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked", taskState: "blocked",
+    runId: "run-old", taskId: "task-old", history: [{ role: "user", content: "hi" }], resumeAdmission: { allowed: true, reason: null }, blockReason: "stop" } });
+  await f.model.refresh();
+  assert.equal(f.model.getSnapshot().dismissedRecoveryIdentity, "run:run-old");
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked", taskState: "blocked",
+    runId: "run-new", taskId: "task-new", history: [{ role: "user", content: "next" }], resumeAdmission: { allowed: true, reason: null }, blockReason: "stop" } });
+  await f.model.refresh();
+  assert.equal(f.model.getSnapshot().dismissedRecoveryIdentity, null);
+  f.model.clearConversationResume();
+  assert.equal(f.model.getSnapshot().dismissedRecoveryIdentity, "run:run-new");
+});
+
+test("a non-resume send dismisses the unfinished run so Soft Dark does not keep forcing continue", async () => {
+  const f = fixture();
+  f.handlers["workspace.select"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "blocked", taskState: "blocked",
+    runId: "run-blocked", taskId: "task-blocked", history: [{ role: "user", content: "hi" }], resumeAdmission: { allowed: false, reason: "run_tokens" }, blockReason: "budget" } });
+  await f.ready();
+  f.model.setDraft("start fresh");
+  const wait = defer();
+  f.handlers["workspace.session.send"] = () => wait.promise;
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, state: "running", taskState: "running",
+    runId: "run-fresh", history: [{ role: "user", content: "start fresh" }] } });
+  const send = f.model.send(false);
+  assert.equal(f.model.getSnapshot().dismissedRecoveryIdentity, "run:run-blocked");
+  wait.resolve({ runId: "run-fresh" });
+  await send;
+  assert.equal(f.model.getSnapshot().workspace.conversation.runId, "run-fresh");
+});

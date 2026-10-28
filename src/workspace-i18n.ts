@@ -561,6 +561,7 @@ export const WORKSPACE_EXTRA_KEYS = [
   ['ws.resume.failureUnknown', 'The run failed without an available reason. Check the execution details before continuing.', '本次执行失败，暂无可显示的原因。请先查看执行详情。', '本次執行失敗，暫無可顯示的原因。請先查看執行詳情。'],
   ['ws.resume.budget', 'The original run budget is unavailable. Check the result and budget first.', '原任务的续跑预算不可用，请先检查结果与预算。', '原任務的續跑預算不可用，請先檢查結果與預算。'],
   ['ws.resume.action', 'Continue the original task', '继续原任务', '繼續原任務'],
+  ['ws.resume.dismiss', 'Start a new chat', '开始新对话', '開始新對話'],
   ['ws.resume.repairTitle', 'Repair the model connection first', '请先修复模型连接', '請先修復模型連線'],
   ['ws.resume.repairAction', 'Repair connection', '修复连接', '修復連線'],
   ['ws.resume.repairBody', 'The original task, history and files are retained. Repair the connection or choose a compatible model in Settings, then explicitly start a new task. The old run is never rebound or resent automatically.', '原任务、历史与文件已保留。请到设置修复连接或选择兼容模型，再明确开始新任务。不会替换旧任务的冻结配置或自动重发。', '原任務、歷史與檔案已保留。請到設定修復連線或選擇相容模型，再明確開始新任務。不會替換舊任務的凍結設定或自動重送。'],

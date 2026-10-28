@@ -1,6 +1,6 @@
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
 import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
-import { connectionRecoveryReason } from "./workspace-resume.ts";
+import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean }
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
@@ -47,7 +47,7 @@ interface PendingMessage { method: "workspace.session.send" | "workspace.session
   message: string; state: "sending" | "unknown"; fromDraft?: boolean }
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
   roster: WorkspaceDevAgent[];
-  workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string }
+  workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string; dismissedRecoveryIdentity: string | null }
 export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
   maxBytes: number; expiresAt: string; target: { platform: string; arch: string }; workspaceId: string; resourceGeneration: string; viewEpoch: number }
 export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
@@ -57,9 +57,11 @@ export interface WorkspaceFeatureView { revision: number; workspaceId: string; s
   scheduler?: { schedules: { id: string; nextRunAt: number | null; awaitingHandoff: boolean; lastRun: { state: string; reason: string | null; occurredAt: number } | null }[] } }
 
 export class WorkspaceDevModel {
-  private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "" };
+  private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "", dismissedRecoveryIdentity: null };
   private readonly listeners = new Set<() => void>();
   private readonly drafts = new Map<string, string>();
+  /** Per-agent suppress of the Soft Dark resume card after clear / new chat / explicit dismiss. */
+  private readonly dismissedRecovery = new Map<string, string>();
   private readonly pending = new Map<string, PendingMessage>();
   private readonly questionPauses = new Set<string>();
   private readonly asyncAnswers = new Set<string>();
@@ -111,8 +113,13 @@ export class WorkspaceDevModel {
   private apply(snapshot: WorkspaceDevSnapshot): void {
     if (this.view.workspace && this.view.workspace.resourceGeneration !== snapshot.resourceGeneration) this.epoch++;
     const key = this.key(snapshot), pending = this.pending.get(key);
+    const identity = workspaceRecoveryIdentity(snapshot.conversation);
+    // A newer run replaces a prior dismiss; keep suppress only while the identity still matches.
+    const dismissed = identity && this.dismissedRecovery.get(key) === identity ? identity : null;
+    if (identity && this.dismissedRecovery.get(key) && this.dismissedRecovery.get(key) !== identity) this.dismissedRecovery.delete(key);
     this.update({ workspace: snapshot, workspaceId: snapshot.workspaceId, agentId: snapshot.selectedAgentId, roster: snapshot.agents,
       draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "",
+      dismissedRecoveryIdentity: dismissed,
       syncNotice: snapshot.inheritance?.state === "pending" ? "ws.notice.inheritancePending"
         : snapshot.inheritance?.state === "rolled_back" ? "ws.notice.inheritanceRolledBack" : "" });
   }
@@ -336,6 +343,20 @@ export class WorkspaceDevModel {
     const question = this.view.workspace?.conversation.pendingQuestion; if (!question) return;
     return this.send(false, { questionId: question.id, message: this.view.draft, fromDraft: true });
   }
+
+  /** User cleared chat / started new / explicitly declined resume: hide the Soft Dark resume card for this run. */
+  dismissRecovery(): void {
+    const workspace = this.view.workspace, key = this.key();
+    if (!workspace || !key) return;
+    const identity = workspaceRecoveryIdentity(workspace.conversation);
+    if (!identity) return;
+    this.dismissedRecovery.set(key, identity);
+    this.update({ dismissedRecoveryIdentity: identity });
+  }
+
+  /** Soft Dark clear / new-context: suppress pending resume for the current unfinished run. History stays Core-owned. */
+  clearConversationResume(): void { this.dismissRecovery(); }
+
   async send(resume = false, answer?: { questionId: string; message: string; fromDraft?: boolean }): Promise<void> {
     const workspace = this.view.workspace, key = this.key();
     if (!workspace || !key || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
@@ -358,7 +379,13 @@ export class WorkspaceDevModel {
       method: answer ? "workspace.session.answer" : resume ? "workspace.session.resume" : "workspace.session.send", message, state: "sending", ...(answer?.fromDraft ? { fromDraft: true } : {}),
       payload: { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration,
         agentId: workspace.selectedAgentId, message, requestId: this.nonce(), ...(answer ? { questionId: answer.questionId } : { source: "ui" }) } };
-    this.pending.set(key, pending); this.update({ sending: true, pendingUnknown: false, error: "" });
+    // A normal send archives the old task in Core; suppress its resume card so clear/new work is not forced back.
+    if (!resume && !answer) {
+      const identity = workspaceRecoveryIdentity(workspace.conversation);
+      if (identity) { this.dismissedRecovery.set(key, identity); }
+    }
+    this.pending.set(key, pending); this.update({ sending: true, pendingUnknown: false, error: "",
+      dismissedRecoveryIdentity: (!resume && !answer) ? (workspaceRecoveryIdentity(workspace.conversation) ?? this.view.dismissedRecoveryIdentity) : this.view.dismissedRecoveryIdentity });
     try {
       await this.rpc.request(pending.method, pending.payload);
       if (this.pending.get(key) !== pending) return; this.pending.delete(key);

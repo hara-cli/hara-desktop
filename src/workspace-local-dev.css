@@ -87,6 +87,8 @@
 @keyframes wsd-dot { 0%,70%,100% { opacity:.35; } 35% { opacity:1; } }
 .hs .wsd-resume,.hs .wsd-connect-card { border:1px solid var(--line); border-radius:var(--r-xl); background:var(--paper); padding:16px; margin:12px 0 24px; }
 .hs .wsd-resume p,.hs .wsd-connect-card p { font-size:12px; color:var(--muted); }
+.hs .wsd-resume-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; align-items:center; }
+.hs .wsd-resume-actions .hs-btn.ghost { border:1px solid var(--line); background:transparent; color:var(--ink); }
 /* Pending question: options card in the message stream; free text uses the one bottom composer. */
 .hs .wsd-ask { display:flex; flex-direction:column; gap:10px; border:1px solid var(--line); border-radius:var(--r-xl); background:var(--paper); padding:14px 16px; margin:12px 0; color:var(--ink); }
 .hs .wsd-ask-head { display:flex; align-items:center; gap:8px; min-height:24px; }

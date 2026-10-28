@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { makeT } from "../src/i18n.ts";
-import { CONNECTION_RECOVERY_REASONS, connectionRecoveryReason, workspaceConversationReplying } from "../src/workspace-resume.ts";
+import { CONNECTION_RECOVERY_REASONS, connectionRecoveryReason, workspaceConversationReplying, workspaceRecoveryIdentity, workspaceRecoveryPromptVisible } from "../src/workspace-resume.ts";
 const require = createRequire(import.meta.url);
 const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceBoot.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
@@ -123,4 +123,41 @@ test("legacy failed conversation states without a task checkpoint still show an 
     assert.ok(html.includes('role="alert"')); assert.ok(html.includes(t("ws.resume.failureUnknown")));
     assert.equal(render(h(WorkspaceTaskActivity, { conversation, name: "Hara", t })), "");
   }
+});
+
+
+test("cleared history hides the Soft Dark resume card even when Core still reports a blocked attempt", () => {
+  const t = makeT("zh-Hans"), props = { t, disabled: false, onContinue() {}, onRepair() {} };
+  const conversation = { state: "blocked", taskState: "blocked", runId: "run-1", taskId: "task-1", sessionId: "session-1",
+    history: [], resumeAdmission: { allowed: true, reason: null }, blockReason: "Synthetic stop" };
+  assert.equal(workspaceRecoveryPromptVisible(conversation), false);
+  assert.equal(render(h(WorkspaceTaskRecovery, { ...props, conversation })), "");
+});
+
+test("explicit dismiss / new chat suppresses the resume card for that run identity only", () => {
+  const t = makeT("zh-Hans"), props = { t, disabled: false, onContinue() { throw new Error("must not continue"); }, onRepair() {} };
+  const conversation = { state: "blocked", taskState: "blocked", runId: "run-keep", taskId: "task-keep", sessionId: "session-1",
+    history: [{ role: "user", content: "hi" }], resumeAdmission: { allowed: true, reason: null }, blockReason: "Synthetic stop" };
+  assert.equal(workspaceRecoveryIdentity(conversation), "run:run-keep");
+  assert.ok(workspaceRecoveryPromptVisible(conversation, null));
+  const shown = render(h(WorkspaceTaskRecovery, { ...props, conversation, onDismiss() {} }));
+  assert.ok(shown.includes(t("ws.resume.action")));
+  assert.ok(shown.includes(t("ws.resume.dismiss")));
+  assert.ok(shown.includes('data-recovery-dismiss="true"'));
+  assert.equal(workspaceRecoveryPromptVisible(conversation, "run:run-keep"), false);
+  assert.equal(render(h(WorkspaceTaskRecovery, { ...props, conversation, dismissedIdentity: "run:run-keep", onDismiss() {} })), "");
+  const newer = { ...conversation, runId: "run-next" };
+  assert.ok(workspaceRecoveryPromptVisible(newer, "run:run-keep"));
+  assert.ok(render(h(WorkspaceTaskRecovery, { ...props, conversation: newer, dismissedIdentity: "run:run-keep", onDismiss() {} })).includes(t("ws.resume.action")));
+});
+
+test("connection repair cards also expose start-new-chat dismiss without auto-resume", () => {
+  const t = makeT("zh-Hans");
+  const conversation = { state: "blocked", resumeAdmission: { allowed: false, reason: "connection_quota_exhausted" },
+    history: [{ role: "user", content: "hi" }], runId: "run-quota" };
+  const html = render(h(WorkspaceTaskRecovery, { conversation, t, disabled: false, onContinue() { throw new Error("no"); },
+    onRepair() {}, onDismiss() {} }));
+  assert.ok(html.includes(t("ws.resume.repairAction")));
+  assert.ok(html.includes(t("ws.resume.dismiss")));
+  assert.equal(html.includes(t("ws.resume.action")), false);
 });
