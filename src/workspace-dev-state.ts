@@ -17,7 +17,18 @@ export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
 export type WorkspaceQuestionConversation = Pick<WorkspaceDevSnapshot["conversation"], "state" | "taskState" | "pendingQuestion" | "resumeAdmission" | "blockReason">;
 export interface WorkspaceDevQuestion { id: string; reason: "lookup_missing" | "lookup_ambiguous" | "tool_problem" | "budget_warning" | "explicit";
-  question: string; options: string[]; taskId: string; runId: string; step?: string }
+  question: string; options: string[]; taskId: string; runId: string; step?: string; header?: string; intent?: "rename_target" }
+/** Core unified interaction (workspace.interaction.v2). pendingQuestion remains the sync legacy shape. */
+export type WorkspaceDevInteraction =
+  | { requestId: string; kind: "ask_user_question"; delivery: "sync" | "async"; questions: { question: string; header?: string; options: string[] }[];
+    metadata: { reason: WorkspaceDevQuestion["reason"]; intent?: "rename_target"; taskId: string; runId: string } }
+  | { requestId: string; kind: "permission"; delivery: "sync"; action: string; summary: string; metadata: { runId: string } }
+  | { requestId: string; kind: "plan_review"; delivery: "sync"; plan: string; metadata: { taskId: string; runId: string } };
+export type WorkspaceDevAsyncAsk = Extract<WorkspaceDevInteraction, { kind: "ask_user_question" }>;
+/** Non-blocking asks only. They never replace or lock the composer; an older Core simply sends none. */
+export function workspaceAsyncAsks(conversation: { pendingInteractions?: WorkspaceDevInteraction[] } | null | undefined): WorkspaceDevAsyncAsk[] {
+  return (conversation?.pendingInteractions ?? []).filter((row): row is WorkspaceDevAsyncAsk => row.kind === "ask_user_question" && row.delivery === "async");
+}
 export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
   colleagueLimit?: number;
   inheritance?: WorkspaceInheritanceView;
@@ -30,6 +41,7 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     taskState: string | null; objective: string; history: WorkspaceDevMessage[]; pastTaskCount: number; updatedAt?: string; unreadCount?: number;
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };
     completion: { state: string; evidence?: string[] } | null; blockReason?: string | null; pendingQuestion?: WorkspaceDevQuestion | null;
+    pendingInteractions?: WorkspaceDevInteraction[];
     resumeAdmission?: { allowed: boolean; reason: string | null } } }
 interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume" | "workspace.session.answer"; payload: Record<string, unknown>;
   message: string; state: "sending" | "unknown" }
@@ -50,6 +62,7 @@ export class WorkspaceDevModel {
   private readonly drafts = new Map<string, string>();
   private readonly pending = new Map<string, PendingMessage>();
   private readonly questionPauses = new Set<string>();
+  private readonly asyncAnswers = new Set<string>();
   private readonly approvalDecisions = new Set<string>();
   private epoch = 0;
   private refreshEpoch: number | null = null;
@@ -297,6 +310,17 @@ export class WorkspaceDevModel {
     try { await this.rpc.request("workspace.session.pause-question", { workspaceId: w.workspaceId, expectedGeneration: w.resourceGeneration, agentId: w.selectedAgentId, questionId }); }
     catch { if (this.key() === key) this.update({ error: "ws.question.pauseUnknown" }); }
     finally { this.questionPauses.delete(key); if (this.key() === key) this.update({ sending: false }); await this.refresh(); }
+  }
+  supportsAsyncQuestions(): boolean { return this.rpc.supportsCapability?.("workspace.interaction.v2") === true; }
+  /** Answer one open async card of the running task. It is a scoped state write, never a new message/task. */
+  async answerAsync(questionId: string, message: string): Promise<void> {
+    const w = this.view.workspace, key = this.key(), text = message.trim();
+    if (!w || !key || !text || text === "/continue" || !this.supportsAsyncQuestions()) return;
+    if (!workspaceAsyncAsks(w.conversation).some(row => row.requestId === questionId)) { this.update({ error: "ws.question.stale" }); return; }
+    const flight = `${key}:${questionId}`; if (this.asyncAnswers.has(flight)) return; this.asyncAnswers.add(flight);
+    try { await this.rpc.request("workspace.session.answer-async", { workspaceId: w.workspaceId, expectedGeneration: w.resourceGeneration, agentId: w.selectedAgentId, questionId, message: text }); }
+    catch { if (this.key() === key) this.update({ error: "ws.question.async.unknown" }); }
+    finally { this.asyncAnswers.delete(flight); if (this.key() === key) await this.refresh(); }
   }
   async answer(questionId: string, message: string): Promise<void> {
     if (this.view.workspace?.conversation.pendingQuestion?.id !== questionId) { this.update({ error: "ws.question.stale" }); return; }

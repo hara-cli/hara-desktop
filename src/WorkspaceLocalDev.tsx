@@ -11,8 +11,8 @@ import type { WorkspaceDevConnection } from "./workspace-dev-rpc";
 import { WorkspaceStartupModel } from "./workspace-startup";
 import { WorkspaceBoot } from "./WorkspaceBoot";
 import { WorkspaceTaskActivity, WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
-import { WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
-import { WorkspaceDevModel, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval } from "./workspace-dev-state";
+import { WorkspaceAsyncQuestions, WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
+import { WorkspaceDevModel, workspaceAsyncAsks, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval } from "./workspace-dev-state";
 import { useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
 import { Avatar, AwaitBar, ColleaguesPage, ShellDialog, SidebarSection } from "./WorkspaceShell";
 import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
@@ -313,7 +313,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           disabled={Boolean(disconnected) || view.sending || view.pendingUnknown} supported={model.supportsUserQuestions?.() === true}
           onAnswer={(questionId, answer) => void model.answer(questionId, answer)} onPause={questionId => void model.pauseQuestion(questionId)} onRepair={() => { setSettingsPage("connections"); setSettings(true); }} />
         <p className="hs-hint"><span>{t("ws.question.composerLocked")}</span></p></footer>
-      : workspace && route.section === "chat" ? <footer className="hs-compose wsd-composer-wrap"><div className="hs-field wsd-composer"><textarea ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
+      : workspace && route.section === "chat" ? <footer className="hs-compose wsd-composer-wrap"><WorkspaceAsyncQuestions asks={model.supportsAsyncQuestions?.() === true ? workspaceAsyncAsks(workspace.conversation) : []} t={t}
+          disabled={Boolean(disconnected)} onAnswer={(questionId, answer) => void model.answerAsync(questionId, answer)} /><div className="hs-field wsd-composer"><textarea ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
         placeholder={hasConnection ? t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" }) : t("ws.composer.noConnection")} disabled={!hasConnection || Boolean(disconnected)} rows={1}
         onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.send(); } }} />
         <span className="hs-conn">{t("ws.composer.connection")}</span>{busy ? <button className="hs-stop" onClick={() => void model.cancel()} disabled={Boolean(disconnected) || workspace.conversation.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button>
