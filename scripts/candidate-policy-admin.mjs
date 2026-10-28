@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { INPUT, sync, save } from './candidate-common.mjs';
 import { validateAdmission, readPolicySnapshot } from './candidate-admission.mjs';
 import { canonical, digest, encodeProof, proofExpectation, decodeProof, PROOF_MARKER } from './candidate-policy-proof.mjs';
+import { assertLocalPreflight, orchestrationHead, LocalPreflightRefusal } from './candidate-local-aarch64-preflight.mjs';
 
 export function assertLocalAdminEnvironment(e) {
   assert(e.GITHUB_ACTIONS!=='true' && !e.ACTIONS_RUNTIME_TOKEN && !e.GITHUB_RUN_ID,'administrator attestation cannot run in Actions');
@@ -39,8 +40,11 @@ function get(endpoint) {
 }
 export async function attestRun(runId,directory,{publish=false}={}) {
   assertLocalAdminEnvironment(process.env); privateDirectory(directory); assert(Number.isSafeInteger(runId)&&runId>0);
+  // Kick order: a green tip-bound local aarch64 receipt precedes every gh read or proof side effect.
+  const local=orchestrationHead(); assertLocalPreflight({root:process.env.CANDIDATE_LOCAL_PREFLIGHT_ROOT,sha:local.sha,tree:local.tree});
   assert.equal(get('user').id,INPUT.approverId,'local administrator identity mismatch');
   const sha=sync('git',['rev-parse','HEAD']); assert.equal(sync('git',['status','--porcelain']),'','attestor must use clean reviewed orchestration checkout');
+  assert.equal(sha,local.sha,'orchestration HEAD changed after local preflight check');
   const run=get(`repos/hara-cli/hara-desktop/actions/runs/${runId}`); assertAttestationRun(run,sha);
   const getPolicy=endpoint=>get(`repos/hara-cli/hara-desktop/${endpoint}`);
   const before=readPolicySnapshot(getPolicy), policy=validateAdmission(before.environment,before.policies,before.ruleset);
@@ -75,5 +79,8 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1]
     if(operation==='init') console.log(JSON.stringify(initializeProofKey(path.resolve(first))));
     else if(operation==='publish'||operation==='prepare') console.log(JSON.stringify(await attestRun(Number(first),path.resolve(second),{publish:operation==='publish'})));
     else throw Error('unknown administrator operation');
-  } catch { console.error('Local candidate administrator attestation failed; no credential contents logged. Inspect retained private evidence.'); process.exitCode=1; }
+  } catch(error) {
+    if(error instanceof LocalPreflightRefusal) console.error(error.message);
+    console.error('Local candidate administrator attestation failed; no credential contents logged. Inspect retained private evidence.'); process.exitCode=1;
+  }
 }
