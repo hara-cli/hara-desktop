@@ -21,7 +21,7 @@ test('saveRetainedNotary writes under runner _candidate-notary outside evidence 
   const statePath = path.join(runner, '_candidate-notary', 'identity', 'aarch64-apple-darwin', 'app', 'digest', 'notary.json');
   saveRetainedNotary(statePath, { status: 'submission-starting-outcome-unknown', inputSha256: 'abc' }, runner);
   assert.equal(readJson(statePath).status, 'submission-starting-outcome-unknown');
-  assert.equal(fs.statSync(statePath).mode & 0o777, 0o600);
+  if (process.getuid) assert.equal(fs.statSync(statePath).mode & 0o777, 0o600);
   saveRetainedNotary(statePath, { status: 'In Progress', submissionId: '01234567-0123-0123-0123-0123456789ab' }, runner);
   assert.equal(readJson(statePath).status, 'In Progress');
   assert.throws(() => save(statePath, { should: 'fail' }), /outside evidence whitelist|forbidden evidence prefix/);

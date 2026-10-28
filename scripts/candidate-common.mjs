@@ -55,8 +55,10 @@ function assertRetainedNotaryPath(file, runnerDirectory) {
   assert.equal(runner, runnerDirectory, 'runnerDirectory must be a realpath-canonical directory');
   const runnerStat = fs.lstatSync(runner);
   assert(runnerStat.isDirectory() && !runnerStat.isSymbolicLink(), 'runnerDirectory must be a real directory');
-  if (process.getuid) assert.equal(Number(runnerStat.uid), process.getuid());
-  assert((Number(runnerStat.mode) & 0o022) === 0, 'runnerDirectory must not be group/other-writable');
+  if (process.getuid) {
+    assert.equal(Number(runnerStat.uid), process.getuid());
+    assert((Number(runnerStat.mode) & 0o022) === 0, 'runnerDirectory must not be group/other-writable');
+  }
   const retainedRoot = path.join(runner, '_candidate-notary');
   const relative = path.relative(retainedRoot, file);
   assert(relative !== '' && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep),
@@ -67,8 +69,10 @@ function ensureRetainedNotaryDirectory(directory, retainedRoot) {
   if (fs.existsSync(directory)) {
     const st = fs.lstatSync(directory);
     assert(st.isDirectory() && !st.isSymbolicLink(), 'retained notary parent must be a directory');
-    if (process.getuid) assert.equal(Number(st.uid), process.getuid());
-    assert((Number(st.mode) & 0o022) === 0, 'retained notary directory must not be group/other-writable');
+    if (process.getuid) {
+      assert.equal(Number(st.uid), process.getuid());
+      assert((Number(st.mode) & 0o022) === 0, 'retained notary directory must not be group/other-writable');
+    }
     assert.equal(fs.realpathSync(directory), directory, 'retained notary path alias refused');
     const relative = path.relative(retainedRoot, directory);
     assert(relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep)),

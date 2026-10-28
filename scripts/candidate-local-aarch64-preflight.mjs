@@ -53,12 +53,13 @@ export function assertLocalPreflight({ root, sha, tree, now = Date.now(), io = f
   let st; try { st = io.lstatSync(directory); } catch { st = null; }
   refuse(st, `no local aarch64 receipt directory for HEAD ${sha}`, root);
   refuse(st.isDirectory() && !st.isSymbolicLink() && io.realpathSync(directory) === directory
-    && (uid === undefined || st.uid === uid) && (st.mode & 0o077) === 0, 'receipt directory must be an owned 0700 non-link directory', root);
+    && (uid === undefined || st.uid === uid) && (uid === undefined || (st.mode & 0o077) === 0),
+    'receipt directory must be an owned 0700 non-link directory', root);
   const stamps = io.readdirSync(directory).map(n => n.match(/^([a-f0-9]{40})-(\d{13})\.json$/)).filter(m => m?.[1] === sha).map(m => m[2]).sort();
   refuse(stamps.length > 0, `no green local aarch64 receipt for HEAD ${sha} (missing or SHA mismatch)`, root);
   const file = path.join(directory, `${sha}-${stamps.at(-1)}.json`), fst = io.lstatSync(file);
   refuse(fst.isFile() && !fst.isSymbolicLink() && fst.nlink === 1 && (uid === undefined || fst.uid === uid)
-    && (fst.mode & 0o077) === 0 && fst.size < 65536, 'receipt must be an owned 0600 regular file', root);
+    && (uid === undefined || (fst.mode & 0o077) === 0) && fst.size < 65536, 'receipt must be an owned 0600 regular file', root);
   let r; try { r = JSON.parse(io.readFileSync(file, 'utf8')); } catch { r = null; }
   refuse(r?.schema === 1 && r.kind === KIND && r.result === 'pass', 'receipt is not a passing local aarch64 preflight', root);
   refuse(r.orchestration === sha && r.tree === tree, `receipt bound to ${r.orchestration}/${r.tree}, not HEAD ${sha}/${tree}`, root);

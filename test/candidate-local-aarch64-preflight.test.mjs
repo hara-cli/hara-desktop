@@ -22,7 +22,24 @@ function receipt(root, overrides = {}, {name, mode = 0o600} = {}) {
   const file = path.join(directory, name ?? `${r.orchestration}-${Date.parse(finishedAt)}.json`);
   fs.writeFileSync(file, JSON.stringify(r), {mode}); fs.chmodSync(file, mode); return file;
 }
-const bareEnv = () => { const e = {...process.env}; delete e.CANDIDATE_EVIDENCE_ROOT; delete e.HARA_WRAPPER_EVIDENCE_ROOT; return e; };
+// Unit fixtures must not inherit host Actions markers; assertNotActions / attestRun refuse those keys.
+const ACTIONS_ENV_KEYS = ['GITHUB_ACTIONS', 'ACTIONS_RUNTIME_TOKEN', 'GITHUB_RUN_ID'];
+const bareEnv = () => {
+  const e = {...process.env};
+  delete e.CANDIDATE_EVIDENCE_ROOT; delete e.HARA_WRAPPER_EVIDENCE_ROOT;
+  for (const k of ACTIONS_ENV_KEYS) delete e[k];
+  return e;
+};
+const withClearedActionsEnv = async (operation) => {
+  const saved = Object.fromEntries(ACTIONS_ENV_KEYS.map(k => [k, process.env[k]]));
+  for (const k of ACTIONS_ENV_KEYS) delete process.env[k];
+  try { return await operation(); }
+  finally {
+    for (const k of ACTIONS_ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+    }
+  }
+};
 
 test('receipt check binds exact HEAD/tree, inputs, stages, host, mode and freshness', () => {
   const root = scope.fixture('preflight-check');
@@ -34,7 +51,10 @@ test('receipt check binds exact HEAD/tree, inputs, stages, host, mode and freshn
   assert.equal(assertLocalPreflight({root, sha, tree}).file, good);
   assert.throws(() => assertLocalPreflight({root, sha, tree: other}), refusal(/not HEAD/));
   assert.throws(() => assertLocalPreflight({root, sha, tree, now: Date.now() + MAX_AGE_MS + 60000}), refusal(/stale/));
-  fs.chmodSync(good, 0o644); assert.throws(() => assertLocalPreflight({root, sha, tree}), refusal(/0600/)); fs.chmodSync(good, 0o600);
+  // POSIX ownership/mode bits are meaningful only when getuid exists (skip on win32).
+  if (process.getuid) {
+    fs.chmodSync(good, 0o644); assert.throws(() => assertLocalPreflight({root, sha, tree}), refusal(/0600/)); fs.chmodSync(good, 0o600);
+  }
   const t = Date.now() + 1000;
   for (const [overrides, pattern] of [[{stages: STAGES.slice(0, 3).map(n => ({name: n, status: 'pass'}))}, /passing stages/],
     [{stages: STAGES.map(n => ({name: n, status: n === 'build' ? 'fail' : 'pass'}))}, /passing stages/],
@@ -43,8 +63,10 @@ test('receipt check binds exact HEAD/tree, inputs, stages, host, mode and freshn
     const file = receipt(root, {finishedAt: new Date(t).toISOString(), ...overrides}, {name: `${sha}-${t}.json`});
     assert.throws(() => assertLocalPreflight({root, sha, tree, now: t}), refusal(pattern)); fs.rmSync(file);
   }
-  fs.chmodSync(receiptDirectory(root), 0o755);
-  assert.throws(() => assertLocalPreflight({root, sha, tree}), refusal(/0700/));
+  if (process.getuid) {
+    fs.chmodSync(receiptDirectory(root), 0o755);
+    assert.throws(() => assertLocalPreflight({root, sha, tree}), refusal(/0700/));
+  }
 });
 
 test('runPreflight runs hydrate → tests → sidecar → build and writes a receipt only when all pass', async () => {
@@ -86,20 +108,22 @@ test('Gate A publish/prepare refuse before any gh call without a tip-bound recei
   }); syncBuiltinESMExports();
   const previous = process.env.CANDIDATE_LOCAL_PREFLIGHT_ROOT;
   try {
-    for (const publish of [true, false]) {
-      delete process.env.CANDIDATE_LOCAL_PREFLIGHT_ROOT;
-      await assert.rejects(attestRun(7, proofDir, {publish}), refusal(/CANDIDATE_LOCAL_PREFLIGHT_ROOT/));
-      const root = scope.fixture('preflight-admin'); process.env.CANDIDATE_LOCAL_PREFLIGHT_ROOT = root;
-      await assert.rejects(attestRun(7, proofDir, {publish}), refusal(/no local aarch64 receipt/));
-      assert.equal(gh.length, 0, 'refusal precedes every gh read');
-      const head = orchestrationHead(); receipt(root, {orchestration: head.sha, tree: head.tree});
-      await assert.rejects(attestRun(7, proofDir, {publish}), /local administrator identity mismatch/);
-      assert.deepEqual(gh.splice(0), [['api', '--method', 'GET', 'user']], 'green receipt proceeds to existing attestation');
-    }
-    process.env.GITHUB_ACTIONS = 'true';
-    await assert.rejects(attestRun(7, proofDir, {publish: true}), /cannot run in Actions/);
+    await withClearedActionsEnv(async () => {
+      for (const publish of [true, false]) {
+        delete process.env.CANDIDATE_LOCAL_PREFLIGHT_ROOT;
+        await assert.rejects(attestRun(7, proofDir, {publish}), refusal(/CANDIDATE_LOCAL_PREFLIGHT_ROOT/));
+        const root = scope.fixture('preflight-admin'); process.env.CANDIDATE_LOCAL_PREFLIGHT_ROOT = root;
+        await assert.rejects(attestRun(7, proofDir, {publish}), refusal(/no local aarch64 receipt/));
+        assert.equal(gh.length, 0, 'refusal precedes every gh read');
+        const head = orchestrationHead(); receipt(root, {orchestration: head.sha, tree: head.tree});
+        await assert.rejects(attestRun(7, proofDir, {publish}), /local administrator identity mismatch/);
+        assert.deepEqual(gh.splice(0), [['api', '--method', 'GET', 'user']], 'green receipt proceeds to existing attestation');
+      }
+      process.env.GITHUB_ACTIONS = 'true';
+      await assert.rejects(attestRun(7, proofDir, {publish: true}), /cannot run in Actions/);
+      delete process.env.GITHUB_ACTIONS;
+    });
   } finally {
-    delete process.env.GITHUB_ACTIONS;
     if (previous === undefined) delete process.env.CANDIDATE_LOCAL_PREFLIGHT_ROOT; else process.env.CANDIDATE_LOCAL_PREFLIGHT_ROOT = previous;
     m.mock.restore(); syncBuiltinESMExports();
   }

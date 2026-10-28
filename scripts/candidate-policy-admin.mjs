@@ -15,7 +15,9 @@ export function assertLocalAdminEnvironment(e) {
 }
 export function privateDirectory(directory) {
   assert(path.isAbsolute(directory) && fs.realpathSync(directory)===directory);
-  const st=fs.lstatSync(directory); assert(st.isDirectory() && !st.isSymbolicLink() && st.uid===process.getuid?.() && (st.mode&0o077)===0,'owned0700 private evidence directory required');
+  const st=fs.lstatSync(directory), uid=process.getuid?.();
+  assert(st.isDirectory() && !st.isSymbolicLink() && (uid===undefined || st.uid===uid) && (uid===undefined || (st.mode&0o077)===0),
+    'owned0700 private evidence directory required');
 }
 export function initializeProofKey(directory) {
   assertLocalAdminEnvironment(process.env); privateDirectory(directory);
