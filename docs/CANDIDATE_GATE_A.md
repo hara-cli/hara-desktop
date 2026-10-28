@@ -56,6 +56,25 @@ is private evidence only, not admission. No workflow invokes this writer.
 
 Every signing phase rechecks live policy/proof before key access. If the lifetime
 expires, independently re-observe the same active run/attempt; do not blindly rerun.
+
+### Proof lifetime and environment approval
+
+The proof lifetime (`adminProof.ttlSeconds`, at most two hours) starts at `publish`
+and must still be running when `credential_preflight` reads it, so:
+
+1. Approve the protected environment **within the proof lifetime**. Before approving,
+   compare the `expiresAt` printed by `publish` with the current time; if too little
+   remains for the queued jobs to reach preflight, do not approve yet.
+2. If the environment cannot be approved in time, **re-publish** an observation for the
+   same still-active run/attempt, or start a new O / `gh run rerun` attempt and publish
+   for that attempt. Never reuse or edit an expired comment, never attest a completed
+   run, and never lengthen the lifetime to cover a late approval.
+3. Preflight reports `administrator proof EXPIRED (TTL elapsed)` with `issuedAt`,
+   `expiresAt`, `now` and the seconds overdue when the newest signed, fully bound
+   observation only aged out. That is not policy drift and not a codesign PEM, Keychain,
+   updater-file or Developer ID problem; do not touch signing material. A wider
+   read-only comment lookback is used solely to name such an expired observation and
+   never authorizes a run. `policy-changed` and `missing` are reported separately.
 Keep the operator-configured UI/signing hold in place while screen-dependent work
 is unavailable. Release it only under the operator's explicit handoff. Never
 auto-approve an environment, click a security prompt or change global Keychain

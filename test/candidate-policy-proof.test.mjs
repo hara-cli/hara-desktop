@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { generateKeyPairSync } from 'node:crypto';
 import { INPUT, ROOT } from '../scripts/candidate-common.mjs';
-import { validateAdmission, readAdmission } from '../scripts/candidate-admission.mjs';
+import { validateAdmission, readAdmission, PROOF_DIAGNOSTIC_LOOKBACK_SECONDS } from '../scripts/candidate-admission.mjs';
 import { assertAttestationRun, assertLocalAdminEnvironment, initializeProofKey } from '../scripts/candidate-policy-admin.mjs';
-import { proofExpectation, encodeProof, decodeProof, digest, proofFromComments, PROOF_MARKER } from '../scripts/candidate-policy-proof.mjs';
+import { proofExpectation, encodeProof, decodeProof, digest, proofFromComments, proofFailureMessage, PROOF_MARKER } from '../scripts/candidate-policy-proof.mjs';
 const now=1735787045;
 function policy() {
   return [{id:INPUT.environmentId,name:INPUT.environment,can_admins_bypass:false,deployment_branch_policy:{protected_branches:false,custom_branch_policies:true},protection_rules:[{type:'required_reviewers',prevent_self_review:false,reviewers:[{type:'User',reviewer:{id:INPUT.approverId}}]},{type:'branch_policy'}]},
@@ -85,6 +85,39 @@ test('missing proof reaches a finite deadline and never accepts the public snaps
   const get=e=>e.startsWith('issues/')?[]:e.startsWith('rulesets/')?f.p[2]:e.endsWith('deployment-branch-policies')?f.p[1]:f.p[0];
   await assert.rejects(()=>readAdmission({expected:f.expected,get,now:()=>clock,waitForProof:true,wait:async()=>{clock+=15;waits++;}}),/valid administrator proof missing/);
   assert.equal(waits,INPUT.adminProof.waitSeconds/15);
+});
+// live28 STALE_PROOF_TTL_RACE: env approved hours after the bound proof's TTL elapsed.
+const expiredMessage=/administrator proof EXPIRED[\s\S]*issuedAt=1735787045 [\s\S]*expiresAt=1735794245 [\s\S]*overdue=3600s[\s\S]*NOT policy-changed[\s\S]*NOT a codesign PEM\/Keychain\/updater-file\/Developer ID[\s\S]*Re-publish[\s\S]*never reuse the expired comment; no credential access$/;
+test('expired but correctly bound proof is reported as TTL expiry, never authorizes',()=>{
+  const f=fixture(), late=now+7200+3600;
+  assert.throws(()=>decodeProof(f.envelope,f.expected,f.snapshot,late,f.anchor),/expired\/stale/);
+  let caught; try { proofFromComments([f.comment],f.expected,f.snapshot,late,f.anchor); } catch(error) { caught=error; }
+  assert(caught); assert.deepEqual(caught.diagnosis,{stale:[{commentId:123,url:f.comment.html_url,issuedAt:now,expiresAt:now+7200,now:late,overdueSeconds:3600}],policyChanged:0,otherBinding:0});
+  assert.match(proofFailureMessage(caught.diagnosis),expiredMessage);
+});
+test('expiry wording requires a verified signature and full binding',()=>{
+  const late=now+7200+3600, cases={ forged:f=>f.envelope.signature='A'.repeat(88), otherAttempt:f=>{f.payload.attempt++;f.envelope=f.seal(f.payload);},
+    policyChanged:f=>{f.payload.policy.policyId++;f.envelope=f.seal(f.payload);}, otherAuthor:f=>f.comment.user.id=999 };
+  const expectWording={forged:/proof missing \(no signed/,otherAttempt:/missing for this run\/attempt\/source/,policyChanged:/proof policy-changed/,otherAuthor:/proof missing \(no signed/};
+  for(const [name,change] of Object.entries(cases)) {
+    const f=fixture(); change(f); f.comment.body=PROOF_MARKER+JSON.stringify(f.envelope);
+    let caught; try { proofFromComments([f.comment],f.expected,f.snapshot,late,f.anchor); } catch(error) { caught=error; }
+    assert(caught,name); assert.equal(caught.diagnosis.stale.length,0,name);
+    const message=proofFailureMessage(caught.diagnosis); assert.match(message,expectWording[name],name); assert.doesNotMatch(message,/EXPIRED/,name);
+  }
+});
+test('wait-disabled preflight names an overnight-expired proof outside the authorizing window',async()=>{
+  const f=fixture();delete f.p[2].bypass_actors;const late=now+7200+3600,windows=[];
+  const get=e=>{ if(!e.startsWith('issues/')) return e.startsWith('rulesets/')?f.p[2]:e.endsWith('deployment-branch-policies')?f.p[1]:f.p[0];
+    const since=Date.parse(decodeURIComponent(e.match(/since=([^&]+)/)[1]))/1000; windows.push(late-since);
+    return Date.parse(f.comment.updated_at)/1000>=since?[f.comment]:[]; };
+  await assert.rejects(()=>readAdmission({expected:f.expected,get,now:()=>late,anchor:f.anchor}),expiredMessage);
+  assert.deepEqual(windows,[INPUT.adminProof.ttlSeconds+120,PROOF_DIAGNOSTIC_LOOKBACK_SECONDS]);
+});
+test('failed or overflowing diagnostic lookback stays fail-closed with the missing wording',async()=>{
+  const f=fixture();let reads=0;
+  const get=e=>e.startsWith('issues/')?(++reads===1?[]:Array(100).fill({})):e.startsWith('rulesets/')?f.p[2]:e.endsWith('deployment-branch-policies')?f.p[1]:f.p[0];
+  await assert.rejects(()=>readAdmission({expected:f.expected,get,now:()=>now,anchor:f.anchor}),/valid administrator proof missing \(no signed[\s\S]*no credential access$/);
 });
 test('unbounded comment history is rejected rather than searched or silently truncated',async()=>{
   const f=fixture();let pages=0;

@@ -3,7 +3,9 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { INPUT, ROOT, candidateEvidence, assertEvent } from './candidate-common.mjs';
-import { digest, proofExpectation, proofFromComments } from './candidate-policy-proof.mjs';
+import { digest, proofExpectation, proofFromComments, proofFailureMessage } from './candidate-policy-proof.mjs';
+// Diagnosis-only lookback: long enough to name an overnight-expired proof; never used to authorize.
+export const PROOF_DIAGNOSTIC_LOOKBACK_SECONDS = 86400;
 
 export function validateAdmission(environment, policies, ruleset, { requireBypass = true } = {}) {
   assert.equal(environment.id, INPUT.environmentId); assert.equal(environment.name, INPUT.environment); assert.equal(environment.can_admins_bypass, false);
@@ -63,12 +65,23 @@ export async function readAdmission({expected = {runId:Number(process.env.GITHUB
   const bound=proofExpectation(expected), deadline=now()+(waitForProof ? INPUT.adminProof.waitSeconds : 0);
   while(true) {
     const snapshot=readPolicySnapshot(get), policy=validateAdmission(snapshot.environment,snapshot.policies,snapshot.ruleset,{requireBypass:false});
-    const comments=[];
-    const since=encodeURIComponent(new Date((now()-INPUT.adminProof.ttlSeconds-120)*1000).toISOString());
-    for(let page=1;page<=10;page++){const rows=get(`issues/${INPUT.adminProof.pullRequest}/comments?since=${since}&per_page=100&page=${page}`);assert(Array.isArray(rows));comments.push(...rows);if(rows.length<100)break;assert(page<10,'proof comment window overflow');}
+    const readComments=lookback=>{
+      const comments=[], since=encodeURIComponent(new Date((now()-lookback)*1000).toISOString());
+      for(let page=1;page<=10;page++){const rows=get(`issues/${INPUT.adminProof.pullRequest}/comments?since=${since}&per_page=100&page=${page}`);assert(Array.isArray(rows));comments.push(...rows);if(rows.length<100)break;assert(page<10,'proof comment window overflow');}
+      return comments;
+    };
+    const comments=readComments(INPUT.adminProof.ttlSeconds+120);
+    let diagnosis;
     try { const proof=proofFromComments(comments,bound,policy,now(),anchor); return {...policy,administratorProof:{commentId:proof.commentId,url:proof.url,proofSha256:proof.proofSha256,
       issuedAt:proof.payload.issuedAt,expiresAt:proof.payload.expiresAt,fullRulesetSha256:proof.payload.policy.fullRulesetSha256}}; }
-    catch { assert(waitForProof && now()<deadline,'candidate admission: valid administrator proof missing/stale/policy-changed; no credential access'); }
+    catch(error) { diagnosis=error?.diagnosis; }
+    if(!(waitForProof && now()<deadline)) {
+      const known=diagnosis && (diagnosis.stale.length || diagnosis.policyChanged || diagnosis.otherBinding);
+      // An aged-out comment falls outside the authorizing window; re-read wider only to name it.
+      if(!known) try { proofFromComments(readComments(PROOF_DIAGNOSTIC_LOOKBACK_SECONDS),bound,policy,now(),anchor); }
+        catch(error) { diagnosis=error?.diagnosis ?? diagnosis; }
+      assert.fail(proofFailureMessage(diagnosis));
+    }
     console.log('Waiting for independently signed administrator proof (no token escalation)'); await wait(15000);
   }
 }

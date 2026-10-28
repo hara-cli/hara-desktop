@@ -1,5 +1,9 @@
 # Error log
 
+## live28 STALE_PROOF_TTL_RACE · admission proof expired before env approval · 2026-10-28
+
+Hara 同事：live28 run `40550200133`＠O³² tip `d789c85e…` 的 `credential_preflight` 在 `readAdmission(waitForProof=false)` 报 `valid administrator proof missing/stale/policy-changed; no credential access`。根因：proof comment `6448747000` 绑定正确，但 TTL 01:24→03:24 Asia/Taipei，env 07:39 才批、preflight 07:41 时已过期；且该 comment 已在授权 `since` 窗外，旧文案把 missing／stale／policy-changed 捆在一起，易误导到 PEM／DevID。**同类复发**（live21 O²⁵ wiring TTL 同因）。修法（分支 `fix/orch-stale-proof-ttl-race-20261028`）：`verifyProof` 把新鲜度放到签名／绑定／policy 之后单独判定；`proofFromComments` 附带诊断；`readAdmission` 最终失败时仅为诊断做 24h 只读回看，输出 `administrator proof EXPIRED (TTL elapsed)` 含 issuedAt／expiresAt／now／overdue 与「re-publish／新 O 或 rerun；非 policy-changed、非 PEM／Keychain／updater-file／DevID」；policy-changed 与 missing 分开报。不加长 TTL、不放宽签名／绑定／policy、仍 fail-closed。教训：env 必须在 proof TTL 内批；超时重新 publish 或新 attempt，禁复用过期 comment、禁对 completed run 补签（见 `docs/CANDIDATE_GATE_A.md`「Proof lifetime and environment approval」）。问题记录 SHA `7a57a9d7…`，诊断 SHA `f918dcd5…`。
+
 ## R1 / O32 Core live27 Win EXDEV pin + Soft Dark SIDECAR · 2026-10-28
 
 Hara 同事：live27 run `40532130904` 已于 O³¹ tip `6834a238…`／digest `1d3096ec…`（已消耗，禁复用）。根因 Win EXDEV（短 worktree rename 跨卷）。Core tip `29ecc4ac39f929aa627147461b2d1637f775abcb`（tree `6e348d4c…`；仅测改）已合入 `hara` main（PR #14／merge `091d8135…`），Jeff t842s4085 跳过 Elon 审。Soft Dark tip `9b4311a239360f30b10a1379e3fdbd3aacaa426f`（tree `2eeef453…`）经 PR #23 合入 main `6cde7267…`。本片从 O³¹ 建 O³² tip：candidate-inputs／candidate.yml 六处 App+Core／locks／orch SIDECAR 同步新钉，装绑全新 purpose，自检 MATCH 后踢 live28。禁复用 O³¹ digest `1d3096ec…`／O³⁰ `1e12be02…`／O²⁹ `1ca1bd84…`／补签 live27；禁正式 tag／PEM／force main；禁代批 env。Intel timeout 仍 HOLD。
