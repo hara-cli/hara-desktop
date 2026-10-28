@@ -35,7 +35,7 @@ test('candidate versions and updater public-key identity stay bound without read
   assert.equal(config.version, INPUT.desktop.version);
 });
 
-const APPROVED_APP = { commit: '9b4311a239360f30b10a1379e3fdbd3aacaa426f', tree: '2eeef45328b12809e81f1956fea194ce2cae74b2', version: '1.1.0' };
+const APPROVED_APP = { commit: '5d246014781f05a0e86ac06f1de3d499ed85d012', tree: 'bf3ab648c5159a38567aa3fa36979fd9279b0fef', version: '1.1.0' };
 const APPROVED_CORE = { commit: '77f22322fae14916ffd136394c1ab0798b145573', tree: '77ffddfddb578ddd809a8be89c99c20cfea41ad7', version: '1.0.2' };
 const JOBS = ['admission', 'credential_preflight', 'native_build', 'sign_apps', 'native_dmg', 'sign_payloads', 'native_verify'];
 const MATRIX_JOBS = ['native_build', 'native_dmg', 'native_verify'];
@@ -65,7 +65,7 @@ function checkSources(text) {
 }
 test('orchestration binds exact reviewed application and Core without a self pin', () => {
   assert.deepEqual(INPUT.desktop, APPROVED_APP); assert.deepEqual(INPUT.core, APPROVED_CORE);
-  assert(!/5d670cc268b6eef6491ca2f2ad47a93ab92efe4b|000f0ae41f29945daa07176af0b035ba5f2809e7|86e3d21e4df3bc0845d74db027094a4bdfa978ee|96eb3d18a2ff7c0e6d9150c4037ccfaedcdd26b5|f9825bb629521d84aa947bedf5cdf267a950989c|9f70796c6bf1cafb109b6280acb43f02d82922a8|0731ae1416ffa3c506791d8f454ed850a5079873|b616740f8b8e2951cff8009ffeccdccecf972221|18f9bc1259a4054d9f2c6c06cc767bfd112a8d51|baef7122373d7414663dfc0b7d6e0f0b3002fc17|282101fc7ea9fc6c7cf360f97859702df2c8a8c1|df751058638421284858b3c2e0f02f4624983960|4f47f70fd4170964d0bef4978758bee38e3e2f3c|c5d218d4dea9e868c11f03b4ea344d4e375f9049|92b8983c8c8b6f0f32de0605bba14af2d8e13a5d|1bf230fd61d32350f9956ca5414cc91c6d2398d2|29ecc4ac39f929aa627147461b2d1637f775abcb|6e348d4c7a61a393d25f51109cb9e11d95c93097/.test(read('candidate-inputs.json')));
+  assert(!/5d670cc268b6eef6491ca2f2ad47a93ab92efe4b|000f0ae41f29945daa07176af0b035ba5f2809e7|86e3d21e4df3bc0845d74db027094a4bdfa978ee|96eb3d18a2ff7c0e6d9150c4037ccfaedcdd26b5|f9825bb629521d84aa947bedf5cdf267a950989c|9f70796c6bf1cafb109b6280acb43f02d82922a8|0731ae1416ffa3c506791d8f454ed850a5079873|b616740f8b8e2951cff8009ffeccdccecf972221|18f9bc1259a4054d9f2c6c06cc767bfd112a8d51|baef7122373d7414663dfc0b7d6e0f0b3002fc17|282101fc7ea9fc6c7cf360f97859702df2c8a8c1|df751058638421284858b3c2e0f02f4624983960|4f47f70fd4170964d0bef4978758bee38e3e2f3c|c5d218d4dea9e868c11f03b4ea344d4e375f9049|92b8983c8c8b6f0f32de0605bba14af2d8e13a5d|1bf230fd61d32350f9956ca5414cc91c6d2398d2|29ecc4ac39f929aa627147461b2d1637f775abcb|6e348d4c7a61a393d25f51109cb9e11d95c93097|9b4311a239360f30b10a1379e3fdbd3aacaa426f|2eeef45328b12809e81f1956fea194ce2cae74b2/.test(read('candidate-inputs.json')));
   checkSources(workflowText());
 });
 for (const commit of [APPROVED_APP.commit, APPROVED_CORE.commit]) {

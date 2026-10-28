@@ -1,6 +1,12 @@
 # Error log
 
 
+
+## 2026-10-28 · O39 Soft Dark SIDECAR pin 5d246014 (Core 77f22322)
+
+- Soft Dark tip `5d246014` / tree `bf3ab648` (PR #26 → main `9c93431`); SIDECAR_COMMIT → `77f22322`
+- Orchestration pin: desktop + 6× app refs; core already `77f22322` (tip `6c15103e` parent)
+- Jeff t952s4619 pin bump; bans: no resign live33–35 / tag / PEM / env approve
 ## 2026-10-28 · live36 Core pin 77f22322 (live35 suite flake)
 
 - **Symptom**: live35 Core native full suite red on linux／Intel／Win; aarch64 green. linux＝config-read-contention fsync count; Intel＝workspace-local-server RPC 5s; Win＝preflight/proof fixture modes (Desktop tip f327bb43).
