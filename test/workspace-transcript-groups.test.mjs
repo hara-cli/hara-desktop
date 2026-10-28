@@ -39,3 +39,23 @@ test("the actual transcript renders one localized disclosure and preserves escap
     assert.equal(render(true).includes('open=""'), true);
   }
 });
+// Node has no DOM for DOMPurify, so Md would fall back to plain text; a pass-through stub isolates the marked wiring.
+const purifyStub = { name: "purify-stub", setup(b) { b.onResolve({ filter: /^dompurify$/ }, () => ({ path: "dompurify", namespace: "stub" }));
+  b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ contents: "export default { sanitize: html => html };", loader: "js" })); } };
+const mdBundle = await build({ stdin: { contents: 'export { Transcript } from "./src/WorkspaceLocalDev.tsx";', resolveDir: root, loader: "tsx" }, plugins: [purifyStub],
+  bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
+const mdModule = { exports: {} }; new Function("require", "module", "exports", mdBundle.outputFiles[0].text)(require, mdModule, mdModule.exports);
+test("assistant bubbles render Markdown while user bubbles stay plain text", () => {
+  const reply = "我是 **Hara 同事**。\n\n- 写代码\n- 查资料\n\n| 能力 | 状态 |\n|---|---|\n| 对话 | 可用 |";
+  const html = renderToStaticMarkup(createElement(mdModule.exports.Transcript, { history: [{ role: "user", content: "**hi**" }, assistant([], reply)], t: makeT("zh-Hans") }));
+  const agentBubble = html.slice(html.indexOf("is-agent"));
+  assert.match(agentBubble, /<div class="md">/); assert.match(agentBubble, /<strong>Hara 同事<\/strong>/);
+  assert.match(agentBubble, /<ul>\s*<li>写代码<\/li>/); assert.match(agentBubble, /<table>[\s\S]*<th>能力<\/th>[\s\S]*<td>可用<\/td>/);
+  assert.equal(agentBubble.includes("**"), false); assert.equal(agentBubble.includes("|---|"), false);
+  assert.match(html, /<div class="hs-bub wsd-bubble">\*\*hi\*\*<\/div>/, "user input is not interpreted as Markdown");
+});
+test("Soft Dark bubble CSS resets pre-wrap and styles Markdown without App.css", async () => {
+  const { readFile } = await import("node:fs/promises"), css = await readFile(new URL("../src/workspace-local-dev.css", import.meta.url), "utf8");
+  assert.match(css, /\.hs \.hs-bub \.md \{ white-space:normal; \}/);
+  for (const selector of ["ul", "table", "th", "pre", "code", "blockquote", "a"]) assert.match(css, new RegExp(`\\.hs \\.hs-bub \\.md ${selector}\\b`));
+});
