@@ -132,3 +132,35 @@ test("history windows retain failed reply records and keep live approval authori
     assert.ok(html.includes(historyAnchor ? "同事 0" : "同事 141"));
   }
 });
+
+test("peer-woken replies show who woke them, queued until they start, in every locale", () => {
+  const turns = [{ id: "turn", state: "running", replies: [
+    { agentId: "person-0", displayName: "Colleague 0", state: "completed" },
+    { agentId: "person-1", displayName: "Colleague 1", state: "completed", wokenBy: "person-0" },
+    { agentId: "person-2", displayName: "Colleague 2", state: "queued", wokenBy: "person-1" }] }];
+  const snapshot = { ...view.channel, state: "running", turns }, rows = channelHistoryRows(snapshot);
+  assert.deepEqual(rows.map(row => row.woken ? `woken:${row.woken.name}<${row.woken.by}:${row.woken.queued}` : row.group?.agentId ?? "user"),
+    ["user", "person-0", "woken:Colleague 1<Colleague 0:false", "person-1", "woken:Colleague 2<Colleague 1:true"]);
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const t = makeT(locale), html = render(h(LocalChannelThread, { view: { ...view, channel: snapshot }, colleagues, t, retry() {}, transcript: history => h("p", null, history[0].text ?? history[0].content), approval() {} }));
+    assert.ok(html.includes(t("ws.channels.peerWoken", { name: "Colleague 1", by: "Colleague 0" })));
+    assert.ok(html.includes(t("ws.channels.peerQueued", { name: "Colleague 2", by: "Colleague 1" })));
+    assert.notEqual(t("ws.channels.peerQueued", { name: "a", by: "b" }), "ws.channels.peerQueued");
+  }
+});
+
+test("the composer offers @mention members only when Core advertises peer collaboration", () => {
+  const t = makeT("en"), props = { colleagues, t, disconnected: false, hasConnection: true, configure() {} };
+  const typing = { ...view, draft: "please @colleague 1", recipientIds: ["person-0"] };
+  const old = render(h(LocalChannelComposer, { ...props, view: typing, model: {} }));
+  assert.equal(old.includes("data-mention-id"), false, "an older engine shows no mention picker");
+  const peers = render(h(LocalChannelComposer, { ...props, view: { ...typing, draft: "please @colleague" }, model: { supportsPeers: () => true } }));
+  assert.equal((peers.match(/data-mention-id=/g) ?? []).length, 8, "the picker is bounded");
+  assert.ok(peers.includes(t("ws.channels.mentionHint")));
+  const narrowed = render(h(LocalChannelComposer, { ...props, view: { ...typing, draft: "please @colleague1" }, model: { supportsPeers: () => true } }));
+  assert.equal(narrowed.includes("data-mention-id"), false, "no member name contains the query");
+  const notes = render(h(LocalChannelComposer, { ...props, view: { ...typing, draft: "@Coll", recipientIds: [] }, model: { supportsPeers: () => true } }));
+  assert.ok(notes.includes(t("ws.channels.mentionNotesOnly")), "with nobody selected a mention only saves the note");
+  const email = render(h(LocalChannelComposer, { ...props, view: { ...typing, draft: "mail a@colleague" }, model: { supportsPeers: () => true } }));
+  assert.equal(email.includes("data-mention-id"), false);
+});

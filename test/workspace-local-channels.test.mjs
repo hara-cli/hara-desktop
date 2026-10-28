@@ -1,8 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { WorkspaceLocalChannelsModel } from "../src/workspace-local-channels.ts";
+import { channelMentionQuery, insertChannelMention, WorkspaceLocalChannelsModel } from "../src/workspace-local-channels.ts";
 import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
+
+test("peer collaboration follows the Core capability and @mention editing keeps exact member names", () => {
+  const rpc = capabilities => ({ supportsCapability: name => capabilities.includes(name) });
+  assert.equal(new WorkspaceDevModel(rpc(["workspace.local-channels.v1"])).supportsLocalChannelPeers(), false);
+  assert.equal(new WorkspaceDevModel(rpc(["workspace.local-channels.v1", "workspace.local-channels.peer.v1"])).supportsLocalChannelPeers(), true);
+  assert.equal(new WorkspaceLocalChannelsModel({ supportsLocalChannels: () => true, localChannelRequest() {} }, undefined, null).supportsPeers(), false);
+  assert.equal(new WorkspaceLocalChannelsModel({ supportsLocalChannels: () => true, supportsLocalChannelPeers: () => true, localChannelRequest() {} }, undefined, null).supportsPeers(), true);
+  assert.equal(channelMentionQuery("hi @Ann"), "ann"); assert.equal(channelMentionQuery("@"), ""); assert.equal(channelMentionQuery("@小"), "小");
+  assert.equal(channelMentionQuery("mail a@b"), null); assert.equal(channelMentionQuery("@Ann done"), null);
+  assert.equal(insertChannelMention("hi @an", "Ann Lee"), "hi @Ann Lee "); assert.equal(insertChannelMention("no mention", "Ann"), "no mention");
+});
 import { normalizeShellRoute } from "../src/workspace-shell-state.ts";
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const member = `ag_${randomUUID()}`, otherMember = `ag_${randomUUID()}`;

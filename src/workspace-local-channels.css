@@ -36,6 +36,8 @@
 .hs .hs-channel-recipients>summary:hover{background:var(--row-hover);color:var(--ink)}
 .hs .hs-channel-recipients>fieldset{position:absolute;bottom:calc(100% + 4px);left:0;z-index:3;max-height:260px;overflow:auto;min-width:min(300px,100%);max-width:100%;margin:0;padding:14px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--lift)}
 .hs .hs-channel-recipient{display:flex;align-items:center;gap:10px;min-height:36px;font-size:13px;overflow-wrap:anywhere}
+.hs .hs-channel-mentions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 6px;font-size:13px}
+.hs .hs-channel-mentions>small{flex-basis:100%;color:var(--muted)}
 .hs .hs-channel-compose .hs-field>textarea{min-width:40px}
 .hs .hs-channel-thread [data-channel-speaker]{display:flow-root}
 .hs .hs-chat:has(>.hs-head>.hs-channel-header-actions){container:channel-chat / inline-size}

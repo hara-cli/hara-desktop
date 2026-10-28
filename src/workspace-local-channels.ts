@@ -5,7 +5,8 @@ export interface LocalChannelCatalog { workspaceId: string; resourceGeneration: 
 export interface LocalChannelSnapshot { workspaceId: string; resourceGeneration: string; channel: LocalChannel; revision: number; state: string;
   questions?: { agentId: string; displayName: string; conversation: WorkspaceQuestionConversation }[];
   messages: { id: string; turnId: string; agentId: string | null; displayName: string; createdAt: string; message: WorkspaceDevMessage }[];
-  turns: { id: string; state: string; replies: { agentId: string; displayName: string; state: string }[] }[]; approvals: WorkspaceDevApproval[] }
+  /** `wokenBy` is the member whose reply queued this one (`workspace.local-channels.peer.v1`). */
+  turns: { id: string; state: string; replies: { agentId: string; displayName: string; state: string; wokenBy?: string }[] }[]; approvals: WorkspaceDevApproval[] }
 interface Pending { body: string; requestId: string; recipientIds: string[]; isAnswer?: boolean; state: "sending" | "unknown" }
 type Creation = LocalChannelCreation;
 export interface LocalChannelsView { scope: string; supported: boolean; catalog: LocalChannelCatalog | null; channelId: string | null; channel: LocalChannelSnapshot | null;
@@ -17,6 +18,15 @@ const sameMembers = (left: string[], right: string[]) => {
   return left.length === right.length && ids.size === right.length && new Set(left).size === left.length && left.every(id => ids.has(id));
 };
 const matchesCreation = (row: LocalChannel, item: Creation) => row.id === item.id && row.name === item.name && sameMembers(row.memberIds, item.memberIds);
+/** The `@query` being typed at the end of the draft, or null. An `@` inside a word (an e-mail address) is not a mention. */
+export function channelMentionQuery(draft: string): string | null {
+  const match = /(?:^|[^\p{L}\p{N}_.])@([^\s@]{0,40})$/u.exec(draft);
+  return match ? match[1]!.toLocaleLowerCase() : null;
+}
+/** Replace the trailing `@query` with `@displayName ` so Core's mention parser sees the exact member name. */
+export function insertChannelMention(draft: string, displayName: string): string {
+  return channelMentionQuery(draft) === null ? draft : draft.replace(/@[^\s@]{0,40}$/u, `@${displayName} `);
+}
 
 /** The renderer selects intent; Core owns membership, sessions, persistence and execution. */
 export class WorkspaceLocalChannelsModel {
@@ -36,10 +46,10 @@ export class WorkspaceLocalChannelsModel {
   private approvals = new Set<string>();
   private refreshing: { promise: Promise<void>; dirty: boolean } | null = null;
   private saved = new Map<string, LocalChannelPreferences>();
-  private readonly model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions">>;
+  private readonly model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions" | "supportsLocalChannelPeers">>;
   private readonly nonce: () => string;
   private readonly preferences: LocalChannelPreferencesStore | null;
-  constructor(model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions">>, nonce = () => crypto.randomUUID(),
+  constructor(model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions" | "supportsLocalChannelPeers">>, nonce = () => crypto.randomUUID(),
     preferences: LocalChannelPreferencesStore | null = createLocalChannelPreferencesStore()) { this.model = model; this.nonce = nonce; this.preferences = preferences; }
   getSnapshot = () => this.view;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -210,6 +220,7 @@ export class WorkspaceLocalChannelsModel {
     finally { if (epoch === this.epoch) this.update({ saving: false }); }
   }
   supportsUserQuestions(): boolean { return this.model.supportsUserQuestions?.() === true; }
+  supportsPeers(): boolean { return this.model.supportsLocalChannelPeers?.() === true; }
   async pauseQuestion(agentId: string, questionId: string): Promise<void> {
     if (!this.supportsUserQuestions() || this.view.pending || ["running", "draining"].includes(this.view.channel?.state ?? "")) return;
     if (!this.view.channel?.questions?.some(row => row.agentId === agentId && row.conversation.pendingQuestion?.id === questionId)) return;
