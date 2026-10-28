@@ -57,9 +57,9 @@ test('ephemeral proof key is private, never overwritten, and distinct from produ
   const envKeys=['GITHUB_ACTIONS','ACTIONS_RUNTIME_TOKEN','GITHUB_RUN_ID'],saved=Object.fromEntries(envKeys.map(k=>[k,process.env[k]]));
   for(const k of envKeys)delete process.env[k]; t.after(()=>{for(const k of envKeys){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}});
   const directory=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'candidate-proof-key-')));fs.chmodSync(directory,0o700);t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
-  if(!process.getuid){assert.throws(()=>initializeProofKey(directory));assert(!fs.existsSync(path.join(directory,'policy-proof-key.pem')));return;}
+  // uid-less hosts (Windows): privateDirectory skips POSIX mode bits; key init must still succeed once and refuse overwrite.
   const result=initializeProofKey(directory); assert.match(result.publicKeySha256,/^[a-f0-9]{64}$/); assert.equal(Object.keys(result).length,1);
-  const file=path.join(directory,'policy-proof-key.pem'); assert.equal(fs.statSync(file).mode&0o777,0o600); const before=digest(fs.readFileSync(file));
+  const file=path.join(directory,'policy-proof-key.pem'); if(process.getuid) assert.equal(fs.statSync(file).mode&0o777,0o600); const before=digest(fs.readFileSync(file));
   assert.throws(()=>initializeProofKey(directory));assert.equal(digest(fs.readFileSync(file)),before);
 });
 test('public snapshot with no signed proof fails before any credentials, including wait-disabled invocation',async()=>{

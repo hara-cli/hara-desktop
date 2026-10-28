@@ -93,7 +93,7 @@ test('runPreflight runs hydrate → tests → sidecar → build and writes a rec
   assert.deepEqual(calls.map(c => c[0]), STAGES);
   assert(calls.every(c => c[1] === 'aarch64-apple-darwin' && c[2] === '/d' && c[3] === path.join(root, 'synthetic-home')));
   assert.equal(JSON.stringify(process.env), before, 'operator environment restored');
-  assert.equal(fs.statSync(result.file).mode & 0o777, 0o600);
+  if (process.getuid) assert.equal(fs.statSync(result.file).mode & 0o777, 0o600);
   assert.equal(assertLocalPreflight({root, sha, tree}).file, result.file);
   assert.equal(result.publicationAuthorized, false);
   let n = 0;

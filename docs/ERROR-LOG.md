@@ -1,5 +1,13 @@
 # Error log
 
+## live35 Core suite Win platformization · 2026-10-28
+
+live35 run `40659315800`＠tip `88ffde6a`：Win Orchestration hung 2 tests that live34's POSIX platformization left behind.
+1. `runPreflight…receipt` still asserted receipt mode `0o600` unconditionally (`438!==384` on Windows).
+2. `ephemeral proof key…` still expected `initializeProofKey` to throw on uid-less hosts, but `privateDirectory` now allows them.
+
+Fix: gate mode asserts on `process.getuid`; uid-less hosts init once and still refuse overwrite. No production Gate A / assertNotActions relaxation. Core linux/Intel flakes are a separate Core tip (directory-fsync count + RPC timeout).
+
 ## live34 Core suite · Actions env leak into local-only preflight/Gate A fixtures · 2026-10-28
 
 Hara 同事：live34 run `40649151587` attempt2＠tip `31eb2d25…` 四平台 Core native full suite 全挂：共同 `# fail 2`＝`test/candidate-local-aarch64-preflight.test.mjs` 的 `runPreflight…` 与 `Gate A publish/prepare…`；Win 另 +4（POSIX 0700／0600 断言＋`saveRetainedNotary` runnerDirectory 可写位）。根因：① `bareEnv()` 只剥 evidence 根，未剥宿主 `GITHUB_ACTIONS`／`ACTIONS_RUNTIME_TOKEN`／`GITHUB_RUN_ID`，Actions 上 `assertNotActions`／`attestRun` 误拒；② Gate A 测例直接读写真实 `process.env`，未像 `candidate-policy-proof.test.mjs` 那样清／还 Actions 标记；③ 0700／mode 断言在 win32 无 `getuid` 时无意义且 chmod 不稳。修法（分支 `fix/live34-core-suite-test-env-20261028`）：`bareEnv`＋`withClearedActionsEnv` 清上述三键；Gate A 绿路径包在 cleared env 内，仅测拒绝时再设 `GITHUB_ACTIONS`；`assertLocalPreflight`／`privateDirectory`／`saveRetainedNotary` 路径的 mode／owner 检查对齐既有 `getuid` 平台化；测内 0600／0700／notary mode 断言仅在 POSIX 执行。**未**合 harden／未放宽 Gate A 生产拒绝／未动 tag／PEM。教训：本地-only 闸的测例不得继承宿主 Actions 标记；POSIX mode 断言必须平台化。
