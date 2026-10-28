@@ -2088,6 +2088,61 @@ test("sidecar smoke bounds retries for transient Windows cleanup locks", () => {
   );
 });
 
+test("sidecar capability smoke gives Windows a bounded cold-start initialize budget", () => {
+  const smoke = readFileSync(join(root, "scripts/sidecar-smoke.mjs"), "utf8");
+  assert.match(smoke, /SERVE_DISCOVERY_TIMEOUT_MS = WINDOWS_HOST \? 45_000 : 15_000;/);
+  assert.match(smoke, /SERVE_INITIALIZE_TIMEOUT_MS = WINDOWS_HOST \? 45_000 : 10_000;/);
+  assert.match(smoke, /SERVE_CAPABILITY_COMMAND_TIMEOUT_MS = WINDOWS_HOST \? 150_000 : COMMAND_TIMEOUT_MS;/);
+  assert.match(smoke, /rpcCall\(socket, 1, "initialize", \{ token: record\.token \}, SERVE_INITIALIZE_TIMEOUT_MS\)/);
+  assert.match(smoke, /smokeHome,\s*SERVE_CAPABILITY_COMMAND_TIMEOUT_MS,\s*\)/);
+});
+
+test("sidecar capability smoke reports phase and Serve output when initialize gets no reply", {
+  skip: process.platform === "win32" ? "fake Serve is a shebang script" : false,
+}, () => {
+  const temp = mkdtempSync(join(tmpdir(), "hara-serve-capability-"));
+  try {
+    const fake = join(temp, "fake-serve.mjs");
+    // Minimal Serve stand-in: publishes discovery, accepts the WebSocket upgrade, then dies on the
+    // first frame without replying, the way a crashed or wedged initialize looks to the smoke.
+    writeFileSync(fake, `#!${process.execPath}
+import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { join } from "node:path";
+const port = Number(process.argv[process.argv.indexOf("--port") + 1]);
+const server = createServer();
+server.on("upgrade", (req, socket) => {
+  const accept = createHash("sha1").update(req.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
+  socket.write("HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: " + accept + "\\r\\n\\r\\n");
+  socket.once("data", () => {
+    process.stderr.write("FAKE_SERVE_INITIALIZE_WEDGED\\n", () => setTimeout(() => socket.destroy(), 100));
+  });
+});
+server.listen(port, "127.0.0.1", () => {
+  const dir = join(process.env.HOME, ".hara");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "serve.json"), JSON.stringify({ version: "9.9.9", port, pid: process.pid, token: "t".repeat(32) }));
+});
+`);
+    chmodSync(fake, 0o755);
+    const startedAt = Date.now();
+    const result = spawnSync(process.execPath, [join(root, "scripts/sidecar-smoke.mjs"), "--serve-capabilities", fake, "9.9.9"], {
+      cwd: temp,
+      env: { ...process.env, HOME: temp },
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    assert.notEqual(result.status, 0);
+    assert.ok(Date.now() - startedAt < 9_000, "a closed socket must not wait out the initialize budget");
+    assert.match(result.stderr, /Serve WebSocket closed before initialize response/);
+    assert.match(result.stderr, /phase=initialize elapsedMs=\d+/);
+    assert.match(result.stderr, /FAKE_SERVE_INITIALIZE_WEDGED/);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test("sidecar refresh accepts both normal repositories and linked Git worktrees", () => {
   const refresh = readFileSync(join(root, "scripts/refresh-sidecar.sh"), "utf8");
   assert.match(refresh, /git -C "\$CLI" rev-parse --is-inside-work-tree/);
