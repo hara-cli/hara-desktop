@@ -4,6 +4,7 @@ import { ArrowUpRightIcon, ChatBubbleLeftRightIcon, CheckCircleIcon, ChevronRigh
   HashtagIcon, HomeIcon, ClipboardDocumentCheckIcon, ViewColumnsIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon, UserPlusIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import HaraLogo from "./mark";
+import { Md } from "./markdown";
 import { makeT, type Key } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import type { WorkspaceDevConnection } from "./workspace-dev-rpc";
@@ -67,7 +68,8 @@ export function Transcript({ history, agent, t, detailed = false }: { history: W
     if (message.role === "user") return <div className={`hs-msg me wsd-message is-user ${continuation ? "cont" : ""}`} key={`user-${index}`}><div className="hs-bub wsd-bubble">{message.content}</div></div>;
     return <div className={`wsd-message-group ${continuation ? "cont" : ""}`} key={`assistant-${index}`}>
       {!continuation ? <div className="hs-who">{agent?.identity.displayName ?? "Hara"}</div> : null}
-      <div className={`hs-msg wsd-message is-agent ${continuation ? "cont" : ""}`}><Avatar agent={agent} /><div className="hs-bub wsd-bubble">{message.text}</div></div>
+      <div className={`hs-msg wsd-message is-agent ${continuation ? "cont" : ""}`}><Avatar agent={agent} /><div className="hs-bub wsd-bubble"><Md text={message.text}
+        copyCodeLabel={t("copyCode")} copiedLabel={t("taskCopied")} copyFailedLabel={t("copyFailed")} /></div></div>
     </div>;
   })}</>;
 }

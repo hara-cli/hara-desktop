@@ -46,6 +46,26 @@
 .hs .wsd-message-group { margin-top:18px; }
 .hs .wsd-message-group.cont { margin-top:0; }
 .hs .hs-bub { white-space:pre-wrap; overflow-wrap:anywhere; }
+.hs .hs-bub .md { white-space:normal; }
+.hs .hs-bub .md p, .hs .hs-bub .md ul, .hs .hs-bub .md ol, .hs .hs-bub .md pre, .hs .hs-bub .md blockquote, .hs .hs-bub .md table { margin:0 0 8px; }
+.hs .hs-bub .md > :last-child { margin-bottom:0; }
+.hs .hs-bub .md h1, .hs .hs-bub .md h2, .hs .hs-bub .md h3, .hs .hs-bub .md h4 { margin:10px 0 6px; font-size:1.05em; }
+.hs .hs-bub .md ul, .hs .hs-bub .md ol { padding-left:20px; }
+.hs .hs-bub .md li { margin:2px 0; }
+.hs .hs-bub .md strong { font-weight:650; }
+.hs .hs-bub .md code { padding:1px 5px; border-radius:4px; background:var(--paper); font:0.92em ui-monospace,SFMono-Regular,Menlo,monospace; }
+.hs .hs-bub .md pre { position:relative; padding:10px 12px; border:1px solid var(--line); border-radius:var(--r-md); background:var(--paper); }
+.hs .hs-bub .md pre.has-code-copy { padding-top:34px; }
+.hs .hs-bub .md pre code { padding:0; background:none; }
+.hs .hs-bub .md-code-copy { position:absolute; top:6px; right:7px; padding:2px 7px; border:1px solid var(--line); border-radius:6px; color:var(--muted); background:var(--surface); font:500 10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; }
+.hs .hs-bub .md-code-copy:hover, .hs .hs-bub .md-code-copy:focus-visible { color:var(--ink); }
+.hs .hs-bub .md blockquote { padding:2px 10px; border-left:3px solid var(--line); color:var(--muted); }
+.hs .hs-bub .md a { color:var(--brand-text); text-decoration:none; }
+.hs .hs-bub .md a:hover { text-decoration:underline; }
+.hs .hs-bub .md table { display:block; max-width:100%; overflow-x:auto; border-collapse:collapse; }
+.hs .hs-bub .md th, .hs .hs-bub .md td { padding:4px 9px; border:1px solid var(--line); text-align:left; }
+.hs .hs-bub .md th { font-weight:650; }
+.hs .hs-bub .md hr { margin:10px 0; border:0; border-top:1px solid var(--line); }
 .hs .hs-who { font-size:11px; }
 .hs .hs-card { max-width:540px; margin:12px 0 18px 36px; }
 .hs .wsd-approval h3 { margin:6px 0; font-size:14px; }
