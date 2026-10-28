@@ -1,29 +1,36 @@
-import { useState } from "react";
 import type { makeT } from "./i18n";
-import type { WorkspaceDevAsyncAsk, WorkspaceQuestionConversation } from "./workspace-dev-state";
+import type { WorkspaceDevAsyncAsk, WorkspaceDevQuestion, WorkspaceQuestionConversation } from "./workspace-dev-state";
 import { connectionRecoveryReason } from "./workspace-resume";
 
+type Translate = ReturnType<typeof makeT>;
+// Core's built-in question copy is fixed when the question is created, in the session's language. Show the
+// viewer's language for those exact templates; any other model-written question stays verbatim.
+const CORE_QUESTION_TEMPLATES: Record<WorkspaceDevQuestion["reason"], string[]> = {
+  lookup_missing: ["Two lookups did not identify the target. Which colleague or item do you mean? Please provide its name, former name or location.", "两次查找仍未确认目标。你指的是哪位同事或哪项内容？请补充名字、原名或位置。"],
+  lookup_ambiguous: ["Several evidenced matches remain. Which one do you mean?", "找到了多个可能的对象。你指的是哪一个？"],
+  tool_problem: ["This step failed twice. Progress is saved. What should be corrected or clarified before continuing?", "当前步骤连续遇到问题，进度已保留。你希望先处理哪个卡点，或补充什么信息？"],
+  budget_warning: ["This task is near its budget limit. Continue from the saved point within the original remaining allowance? Your answer will not reset the budget.", "本次任务快到预算上限，已保留当前位置。是否在原剩余额度内继续？回答不会重置预算。"],
+  explicit: ["Please provide the information needed to continue this step.", "请补充继续当前步骤所需的信息。"],
+};
+export function workspaceQuestionText(t: Translate, question: Pick<WorkspaceDevQuestion, "reason" | "question">): string {
+  return CORE_QUESTION_TEMPLATES[question.reason]?.includes(question.question.trim()) ? t(`ws.question.template.${question.reason}`) : question.question;
+}
+
 /** A question is scoped server state. No default, timeout answer, retry timer or browser storage.
- * In the chat slot it replaces the composer: the card's own answer field is the only input while
- * a question is pending. Minimizing only folds the display; it never answers or dismisses. */
-export function WorkspaceUserQuestion({ conversation, t, disabled, supported, onAnswer, onRepair, onPause, placement = "thread" }: {
-  conversation: WorkspaceQuestionConversation; t: ReturnType<typeof makeT>; disabled: boolean; supported: boolean;
+ * The card sits in the message stream and offers only choices; free text goes through the one chat
+ * composer below, which answers this question while it is pending. */
+export function WorkspaceUserQuestion({ conversation, t, disabled, supported, onAnswer, onRepair, onPause }: {
+  conversation: WorkspaceQuestionConversation; t: Translate; disabled: boolean; supported: boolean;
   onAnswer(questionId: string, answer: string): void; onRepair(): void; onPause?(questionId: string): void;
-  placement?: "thread" | "composer";
 }) {
-  const [answer, setAnswer] = useState("");
-  const [minimized, setMinimized] = useState(false);
   const question = conversation.pendingQuestion; if (!question) return null;
   const finishing = ["running", "draining"].includes(conversation.state);
   const connection = connectionRecoveryReason(conversation);
   const blocked = disabled || !supported || finishing || Boolean(connection) || conversation.resumeAdmission?.allowed === false;
   const titleId = `question-${question.id}`;
-  if (placement === "composer" && minimized) return <button type="button" className="wsd-ask wsd-ask-min" data-task-state="awaiting_user"
-    aria-label={t("ws.question.restore")} onClick={() => setMinimized(false)}><strong>{t("ws.question.title")}</strong><span>{question.question}</span></button>;
-  return <section className={`wsd-ask wsd-user-question is-${placement}`} aria-labelledby={titleId} data-task-state="awaiting_user">
-    <header className="wsd-ask-head"><span className="wsd-ask-title">{question.header ?? t("ws.question.title")}</span><span className="wsd-ask-reason" role="status">{t(question.intent ? `ws.question.intent.${question.intent}` : `ws.question.reason.${question.reason}`)}</span>
-      {placement === "composer" ? <button type="button" className="wsd-ask-fold" aria-label={t("ws.question.minimize")} onClick={() => setMinimized(true)}>−</button> : null}</header>
-    <p id={titleId} className="wsd-user-question-text">{question.question}</p>
+  return <section className="wsd-ask wsd-user-question is-thread" aria-labelledby={titleId} data-task-state="awaiting_user">
+    <header className="wsd-ask-head"><span className="wsd-ask-title">{question.header ?? t("ws.question.title")}</span><span className="wsd-ask-reason" role="status">{t(question.intent ? `ws.question.intent.${question.intent}` : `ws.question.reason.${question.reason}`)}</span></header>
+    <p id={titleId} className="wsd-user-question-text">{workspaceQuestionText(t, question)}</p>
     {question.step ? <p className="wsd-ask-step"><strong>{t("ws.question.step")}</strong> {question.step}</p> : null}
     {finishing ? <p role="status">{t("ws.resume.finishing")}</p> : null}
     {!supported ? <p role="alert">{t("ws.question.unsupported")}</p> : null}
@@ -31,36 +38,28 @@ export function WorkspaceUserQuestion({ conversation, t, disabled, supported, on
     {connection ? <><p role="alert">{t(`ws.resume.${connection}`)}</p><button type="button" className="hs-btn sec" onClick={onRepair} disabled={disabled}>{t("ws.resume.repairAction")}</button></> : null}
     {question.options.length ? <div className="wsd-ask-options" role="group" aria-label={t("ws.question.choices")}>{question.options.map((option, index) =>
       <button type="button" className="hs-btn sec" key={`${question.id}:${index}`} disabled={blocked} onClick={() => onAnswer(question.id, option)}>{option}</button>)}</div> : null}
-    <form className="wsd-ask-form" onSubmit={event => { event.preventDefault(); if (!blocked && answer.trim()) onAnswer(question.id, answer); }}>
-      <textarea aria-label={t("ws.question.answer")} placeholder={t("ws.question.answer")} value={answer} maxLength={4000} rows={2} disabled={blocked} onChange={event => setAnswer(event.target.value)}
-        onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!blocked && answer.trim()) onAnswer(question.id, answer); } }} />
-      <button type="submit" className="hs-btn pri" disabled={blocked || !answer.trim()}>{t("ws.question.continue")}</button>
-    </form>
-    <footer className="wsd-ask-foot"><small>{t("ws.question.saved")} {t("ws.question.noDefault")}</small>{onPause ? <button type="button" className="hs-btn sec" data-question-action="pause" disabled={disabled || !supported || finishing} onClick={() => onPause(question.id)}>{t("ws.question.pause")}</button> : null}</footer>
+    <footer className="wsd-ask-foot"><small>{t("ws.question.composerHint")} {t("ws.question.saved")} {t("ws.question.noDefault")}</small>{onPause ? <button type="button" className="hs-btn sec" data-question-action="pause" disabled={disabled || !supported || finishing} onClick={() => onPause(question.id)}>{t("ws.question.pause")}</button> : null}</footer>
   </section>;
 }
 
 /** Non-blocking (async) asks posted while the task keeps working. They sit above the normal composer
- * and never replace or lock it. No default answer; an unanswered card closes when the run ends. */
+ * and never replace or lock it; cards offer only choices. With exactly one open ask the composer
+ * answers it, so free text never needs a second input. No default answer; an unanswered card closes
+ * when the run ends. */
 export function WorkspaceAsyncQuestions({ asks, t, disabled, onAnswer }: {
-  asks: WorkspaceDevAsyncAsk[]; t: ReturnType<typeof makeT>; disabled: boolean; onAnswer(questionId: string, answer: string): void;
+  asks: WorkspaceDevAsyncAsk[]; t: Translate; disabled: boolean; onAnswer(questionId: string, answer: string): void;
 }) {
   if (!asks.length) return null;
-  return <div className="wsd-ask-async-list" data-composer="async-questions">{asks.map(ask => <WorkspaceAsyncQuestion key={ask.requestId} ask={ask} t={t} disabled={disabled} onAnswer={onAnswer} />)}</div>;
+  return <div className="wsd-ask-async-list" data-composer="async-questions">{asks.map(ask => <WorkspaceAsyncQuestion key={ask.requestId} ask={ask} t={t} disabled={disabled} onAnswer={onAnswer} viaComposer={asks.length === 1} />)}</div>;
 }
-function WorkspaceAsyncQuestion({ ask, t, disabled, onAnswer }: { ask: WorkspaceDevAsyncAsk; t: ReturnType<typeof makeT>; disabled: boolean; onAnswer(questionId: string, answer: string): void }) {
-  const [answer, setAnswer] = useState("");
+function WorkspaceAsyncQuestion({ ask, t, disabled, onAnswer, viaComposer }: { ask: WorkspaceDevAsyncAsk; t: Translate; disabled: boolean; onAnswer(questionId: string, answer: string): void; viaComposer: boolean }) {
   const item = ask.questions[0]; if (!item) return null;
-  const titleId = `async-question-${ask.requestId}`, submit = () => { if (!disabled && answer.trim()) onAnswer(ask.requestId, answer); };
+  const titleId = `async-question-${ask.requestId}`;
   return <section className="wsd-ask is-async" aria-labelledby={titleId} data-delivery="async">
     <header className="wsd-ask-head"><span className="wsd-ask-title">{item.header ?? t("ws.question.async.title")}</span></header>
     <p id={titleId} className="wsd-user-question-text">{item.question}</p>
     {item.options.length ? <div className="wsd-ask-options" role="group" aria-label={t("ws.question.choices")}>{item.options.map((option, index) =>
       <button type="button" className="hs-btn sec" key={`${ask.requestId}:${index}`} disabled={disabled} onClick={() => onAnswer(ask.requestId, option)}>{option}</button>)}</div> : null}
-    <form className="wsd-ask-form" onSubmit={event => { event.preventDefault(); submit(); }}>
-      <input aria-label={t("ws.question.answer")} placeholder={t("ws.question.answer")} value={answer} maxLength={2000} disabled={disabled} onChange={event => setAnswer(event.target.value)} />
-      <button type="submit" className="hs-btn pri" disabled={disabled || !answer.trim()}>{t("ws.question.async.send")}</button>
-    </form>
-    <footer className="wsd-ask-foot"><small>{t("ws.question.async.note")}</small></footer>
+    <footer className="wsd-ask-foot"><small>{viaComposer ? `${t("ws.question.async.composerHint")} ` : ""}{t("ws.question.async.note")}</small></footer>
   </section>;
 }

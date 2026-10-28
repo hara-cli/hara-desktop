@@ -7,7 +7,7 @@ export interface LocalChannelSnapshot { workspaceId: string; resourceGeneration:
   messages: { id: string; turnId: string; agentId: string | null; displayName: string; createdAt: string; message: WorkspaceDevMessage }[];
   /** `wokenBy` is the member whose reply queued this one (`workspace.local-channels.peer.v1`). */
   turns: { id: string; state: string; replies: { agentId: string; displayName: string; state: string; wokenBy?: string }[] }[]; approvals: WorkspaceDevApproval[] }
-interface Pending { body: string; requestId: string; recipientIds: string[]; isAnswer?: boolean; state: "sending" | "unknown" }
+interface Pending { body: string; requestId: string; recipientIds: string[]; isAnswer?: boolean; fromDraft?: boolean; state: "sending" | "unknown" }
 type Creation = LocalChannelCreation;
 export interface LocalChannelsView { scope: string; supported: boolean; catalog: LocalChannelCatalog | null; channelId: string | null; channel: LocalChannelSnapshot | null;
   loading: boolean; saving: boolean; draft: string; recipientIds: string[]; pending: Pending | null; error: string; creationUnknown: boolean; historyAnchor: string | null }
@@ -237,12 +237,25 @@ export class WorkspaceLocalChannelsModel {
     if (pending.conversation.resumeAdmission?.allowed === false) { this.update({ error: "ws.notice.resumeBudget" }); return; }
     return this.send([agentId], { questionId, body });
   }
-  async send(recipientIds: string[], answer?: { questionId: string; body: string }) {
+  /** The channel composer is the only free-text input. Its draft answers the one pending question among
+   * the chosen responders; with several such colleagues it refuses, so the user picks an option on a card
+   * or narrows the responders to one. Without a pending responder it is an ordinary channel message. */
+  async submitDraft(recipientIds: string[]) {
+    const waiting = (this.view.channel?.questions ?? []).filter(row => recipientIds.includes(row.agentId) && row.conversation.pendingQuestion);
+    if (!waiting.length) return this.send(recipientIds);
+    if (waiting.length > 1) { this.update({ error: "ws.question.channelPickOne" }); return; }
+    const [row] = waiting, questionId = row.conversation.pendingQuestion!.id, body = this.view.draft;
+    if (!this.supportsUserQuestions()) { this.update({ error: "ws.question.unsupported" }); return; }
+    if (body.trim() === "/continue") { this.update({ error: "ws.question.answerRequired" }); return; }
+    if (row.conversation.resumeAdmission?.allowed === false) { this.update({ error: "ws.notice.resumeBudget" }); return; }
+    return this.send([row.agentId], { questionId, body, fromDraft: true });
+  }
+  async send(recipientIds: string[], answer?: { questionId: string; body: string; fromDraft?: boolean }) {
     const { channelId, channel } = this.view, body = answer ? answer.body.trim() : this.view.draft.trim();
     if (!channelId || !channel || !body || this.pausing.has(this.key()) || this.pending.has(this.key()) || ["running", "draining"].includes(channel.state)) return;
     if (!answer && channel.questions?.some(row => recipientIds.includes(row.agentId))) { this.update({ error: "ws.question.answerRequired" }); return; }
     const key = this.key(), workspaceId = this.workspaceId, generation = this.generation;
-    const item: Pending = { body, requestId: this.nonce(), recipientIds: [...recipientIds], state: "sending", ...(answer ? { isAnswer: true } : {}) };
+    const item: Pending = { body, requestId: this.nonce(), recipientIds: [...recipientIds], state: "sending", ...(answer ? { isAnswer: true } : {}), ...(answer?.fromDraft ? { fromDraft: true } : {}) };
     this.historyAnchors.delete(key);
     this.pending.set(key, item); this.rememberPending(key, item); this.update({ pending: item, error: "", historyAnchor: null });
     try {
@@ -256,7 +269,7 @@ export class WorkspaceLocalChannelsModel {
     }
   }
   private settle(key: string, item: Pending) {
-    this.pending.delete(key); this.rememberPending(key, null); if (!item.isAnswer && this.drafts.get(key)?.trim() === item.body) this.drafts.set(key, "");
+    this.pending.delete(key); this.rememberPending(key, null); if ((!item.isAnswer || item.fromDraft) && this.drafts.get(key)?.trim() === item.body) this.drafts.set(key, "");
     if (this.key() === key) this.update({ draft: this.drafts.get(key) ?? "", pending: null, error: "" });
   }
   async verifyPending() {

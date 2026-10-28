@@ -44,7 +44,7 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     pendingInteractions?: WorkspaceDevInteraction[];
     resumeAdmission?: { allowed: boolean; reason: string | null } } }
 interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume" | "workspace.session.answer"; payload: Record<string, unknown>;
-  message: string; state: "sending" | "unknown" }
+  message: string; state: "sending" | "unknown"; fromDraft?: boolean }
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
   roster: WorkspaceDevAgent[];
   workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string }
@@ -315,20 +315,28 @@ export class WorkspaceDevModel {
   }
   supportsAsyncQuestions(): boolean { return this.rpc.supportsCapability?.("workspace.interaction.v2") === true; }
   /** Answer one open async card of the running task. It is a scoped state write, never a new message/task. */
-  async answerAsync(questionId: string, message: string): Promise<void> {
+  async answerAsync(questionId: string, message: string, fromDraft = false): Promise<void> {
     const w = this.view.workspace, key = this.key(), text = message.trim();
     if (!w || !key || !text || text === "/continue" || !this.supportsAsyncQuestions()) return;
     if (!workspaceAsyncAsks(w.conversation).some(row => row.requestId === questionId)) { this.update({ error: "ws.question.stale" }); return; }
     const flight = `${key}:${questionId}`; if (this.asyncAnswers.has(flight)) return; this.asyncAnswers.add(flight);
-    try { await this.rpc.request("workspace.session.answer-async", { workspaceId: w.workspaceId, expectedGeneration: w.resourceGeneration, agentId: w.selectedAgentId, questionId, message: text }); }
-    catch { if (this.key() === key) this.update({ error: "ws.question.async.unknown" }); }
+    try {
+      await this.rpc.request("workspace.session.answer-async", { workspaceId: w.workspaceId, expectedGeneration: w.resourceGeneration, agentId: w.selectedAgentId, questionId, message: text });
+      if (fromDraft && this.drafts.get(key)?.trim() === text) { this.drafts.set(key, ""); if (this.key() === key) this.update({ draft: "" }); }
+    } catch { if (this.key() === key) this.update({ error: "ws.question.async.unknown" }); }
     finally { this.asyncAnswers.delete(flight); if (this.key() === key) await this.refresh(); }
   }
   async answer(questionId: string, message: string): Promise<void> {
     if (this.view.workspace?.conversation.pendingQuestion?.id !== questionId) { this.update({ error: "ws.question.stale" }); return; }
     return this.send(false, { questionId, message });
   }
-  async send(resume = false, answer?: { questionId: string; message: string }): Promise<void> {
+  /** The chat composer is the only free-text input: while a sync question is pending, its draft answers
+   * that displayed question through the same scoped answer path, and the draft clears once accepted. */
+  async answerDraft(): Promise<void> {
+    const question = this.view.workspace?.conversation.pendingQuestion; if (!question) return;
+    return this.send(false, { questionId: question.id, message: this.view.draft, fromDraft: true });
+  }
+  async send(resume = false, answer?: { questionId: string; message: string; fromDraft?: boolean }): Promise<void> {
     const workspace = this.view.workspace, key = this.key();
     if (!workspace || !key || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
     const retained = this.pending.get(key);
@@ -347,14 +355,14 @@ export class WorkspaceDevModel {
       this.update({ error: "ws.notice.resumeBudget" }); return;
     }
     const pending: PendingMessage = {
-      method: answer ? "workspace.session.answer" : resume ? "workspace.session.resume" : "workspace.session.send", message, state: "sending",
+      method: answer ? "workspace.session.answer" : resume ? "workspace.session.resume" : "workspace.session.send", message, state: "sending", ...(answer?.fromDraft ? { fromDraft: true } : {}),
       payload: { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration,
         agentId: workspace.selectedAgentId, message, requestId: this.nonce(), ...(answer ? { questionId: answer.questionId } : { source: "ui" }) } };
     this.pending.set(key, pending); this.update({ sending: true, pendingUnknown: false, error: "" });
     try {
       await this.rpc.request(pending.method, pending.payload);
       if (this.pending.get(key) !== pending) return; this.pending.delete(key);
-      if (pending.method !== "workspace.session.answer" && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
+      if ((pending.method !== "workspace.session.answer" || pending.fromDraft) && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
       // A→B→A may return to the exact same pending nonce. Settle its status without applying any
       // stale transcript; refresh starts a new read using the current view's epoch.
       if (this.key() === key) { this.update({ sending: false, pendingUnknown: false, draft: this.drafts.get(key) ?? "" }); await this.refresh(); }
@@ -387,7 +395,7 @@ export class WorkspaceDevModel {
         if (this.key() === key) this.update({ syncNotice: "ws.notice.receiptPending" }); return;
       }
       this.pending.delete(key);
-      if (receipt.state === "accepted" && pending.method !== "workspace.session.answer" && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
+      if (receipt.state === "accepted" && (pending.method !== "workspace.session.answer" || pending.fromDraft) && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
       if (this.key() === key) {
         this.update({ sending: false, pendingUnknown: false, draft: this.drafts.get(key) ?? "", error: "", syncNotice: "" });
         await this.refresh();
