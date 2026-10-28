@@ -220,9 +220,29 @@ export function artifactName(phase, target, e = { runId: process.env.GITHUB_RUN_
   assert(/^[a-z][a-z-]{0,40}$/.test(phase)); assert(target === 'all' || TARGETS.includes(target));
   return `candidate-${phase}-${target}-${e.runId}-${e.attempt}`;
 }
+// This capability is only for fixed read-only GitHub GETs (Actions api/downloadArtifact, admission policyGet).
+// Generic sync/run/upgrade children keep the globally stripped environment.
+export function githubReadEnvironment(parentEnv = process.env, label = 'candidate Actions') {
+  const scope = candidateEvidence(parentEnv), clean = { ...scope.environment() };
+  const token = parentEnv.GH_TOKEN || parentEnv.GITHUB_TOKEN;
+  assert(typeof token === 'string' && token.length > 0 && token.length <= 4096 && !/[\s\0]/.test(token),
+    `${label} GitHub token required`);
+  // Caller gh routing/config must not redirect this credential outside GitHub/private HOME.
+  for (const key of Object.keys(clean)) if (/^GH_(?:HOST|CONFIG_DIR)$/i.test(key)) delete clean[key];
+  const env = Object.freeze({ ...clean, GH_TOKEN: token, GH_HOST: 'github.com',
+    GH_CONFIG_DIR: path.join(clean.XDG_CONFIG_HOME, 'gh') });
+  scope.assertEnvironment(env);
+  return env;
+}
 export function api(endpoint) {
-  assert(/^repos\/hara-cli\/hara-desktop\/actions\/(?:runs|artifacts)\//.test(endpoint), 'candidate API is read-only and Actions-scoped');
-  return JSON.parse(sync('gh', ['api', '--method', 'GET', endpoint]));
+  assert(typeof endpoint === 'string' && /^repos\/hara-cli\/hara-desktop\/actions\/(?:runs|artifacts)\/[^\s]+$/.test(endpoint), 'candidate API is read-only and Actions-scoped');
+  const scope = candidateEvidence(process.env), env = githubReadEnvironment(process.env);
+  return scope.guardSync(env, () => {
+    const r = spawnSync('gh', ['api', '--method', 'GET', endpoint], { cwd: ROOT, env, encoding: 'utf8', timeout: 120000, maxBuffer: 32 * 1024 * 1024 });
+    assert(r.status === 0 && !r.error && !r.signal, `candidate command failed: gh (${r.status ?? 'unknown'})`);
+    try { return JSON.parse(r.stdout); }
+    catch { throw Error('candidate Actions API: invalid GitHub response'); }
+  });
 }
 export async function downloadArtifact(phase, target, directory, e = { runId: Number(process.env.GITHUB_RUN_ID), attempt: Number(process.env.GITHUB_RUN_ATTEMPT), orchestration: process.env.GITHUB_SHA }) {
   const { scope, env } = commandEvidence(process.env);
@@ -241,8 +261,9 @@ export async function downloadArtifact(phase, target, directory, e = { runId: Nu
   const zip = directory + '.zip', fd = fs.openSync(zip, 'wx', 0o600);
   const output = fs.createWriteStream(zip, { fd, autoClose: true });
   const sha = createHash('sha256'); let size = 0;
-  scope.assertEnvironment(env);
-  const child = spawn('gh', ['api', '--method', 'GET', `repos/hara-cli/hara-desktop/actions/artifacts/${a.id}/zip`], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  assert(Number.isSafeInteger(a.id) && a.id > 0); const ghEnv = githubReadEnvironment(process.env);
+  scope.assertEnvironment(env); scope.assertEnvironment(ghEnv);
+  const child = spawn('gh', ['api', '--method', 'GET', `repos/hara-cli/hara-desktop/actions/artifacts/${a.id}/zip`], { cwd: ROOT, env: ghEnv, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', b => { sha.update(b); size += b.length; }); child.stdout.pipe(output); child.stderr.resume();
   const closed = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', code => code === 0 ? resolve() : reject(new Error('artifact download failed'))); });
   const finished = new Promise((resolve, reject) => { output.once('finish', resolve); output.once('error', reject); });

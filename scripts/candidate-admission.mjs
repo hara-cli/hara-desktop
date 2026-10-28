@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { INPUT, ROOT, candidateEvidence, assertEvent } from './candidate-common.mjs';
+import { INPUT, ROOT, candidateEvidence, assertEvent, githubReadEnvironment } from './candidate-common.mjs';
 import { digest, proofExpectation, proofFromComments, proofFailureMessage } from './candidate-policy-proof.mjs';
 // Diagnosis-only lookback: long enough to name an overnight-expired proof; never used to authorize.
 export const PROOF_DIAGNOSTIC_LOOKBACK_SECONDS = 86400;
@@ -29,19 +29,9 @@ export function validateAdmission(environment, policies, ruleset, { requireBypas
   const publicSha256=digest(publicProjection);
   return { environmentId:environment.id, rulesetId:ruleset.id, policyId:policy.id, updatedAt:new Date(updated).toISOString(), publicSha256, sha256:publicSha256 };
 }
-// This capability is only for policyGet's fixed read-only admission requests.
-// Generic sync/run/upgrade children keep the globally stripped environment.
+// Same fixed read-only GitHub GET capability as Actions api(); only the refusal label differs.
 export function admissionGhEnvironment(parentEnv = process.env) {
-  const scope = candidateEvidence(parentEnv), clean = { ...scope.environment() };
-  const token = parentEnv.GH_TOKEN || parentEnv.GITHUB_TOKEN;
-  assert(typeof token === 'string' && token.length > 0 && token.length <= 4096 && !/[\s\0]/.test(token),
-    'candidate admission GitHub token required');
-  // Caller gh routing/config must not redirect this credential outside GitHub/private HOME.
-  for (const key of Object.keys(clean)) if (/^GH_(?:HOST|CONFIG_DIR)$/i.test(key)) delete clean[key];
-  const env = Object.freeze({ ...clean, GH_TOKEN: token, GH_HOST: 'github.com',
-    GH_CONFIG_DIR: path.join(clean.XDG_CONFIG_HOME, 'gh') });
-  scope.assertEnvironment(env);
-  return env;
+  return githubReadEnvironment(parentEnv, 'candidate admission');
 }
 export const policyGet = endpoint => {
   assert(/^(?:environments\/hara-desktop-candidate(?:\/deployment-branch-policies)?|rulesets\/\d+|issues\/1\/comments\?[^\s]+)$/.test(endpoint));
