@@ -104,10 +104,16 @@ export async function tests(c) {
   await npm('Build exact production renderer', ['run', 'build'], { cwd: c.desktop, env: c.env });
   assertSources(c.desktop, c.core);
 }
+// A reused local Core checkout (C5 preflight) keeps the previous run's ignored dist/bin output.
+// Remove only that exact file so the sidecar is always rebuilt; a directory or other entry still fails closed.
+export function clearCandidateSidecar(filename) {
+  fs.rmSync(filename, { force: true });
+  assert(!fs.existsSync(filename), 'stale candidate sidecar must be rebuilt, never reused');
+}
 export async function sidecar(c) {
   await npm('Compile exact Core', ['run', 'build'], { cwd: c.core, env: c.env });
   const filename = path.join(c.core, 'dist/bin/hara-candidate') + (process.platform === 'win32' ? '.exe' : '');
-  assert(!fs.existsSync(filename));
+  clearCandidateSidecar(filename);
   await run('Compile Pi-only standalone sidecar', 'bun', ['scripts/build-binary.ts', 'dist/bin/hara-candidate', bunTarget(c.target), 'dist/cli.js', 'desktop-sidecar'], { cwd: c.core, env: c.env });
   if (process.platform === 'darwin') {
     try { sync('/usr/bin/codesign', ['--verify', filename]); }

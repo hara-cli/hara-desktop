@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { ROOT, INPUT, TARGETS, identity, assertEvent, nativeTarget, receipt, assertReceipt, artifactName, checkArchiveEntries, assertNoRosettaProbe } from '../scripts/candidate-common.mjs';
 import { assertSigner } from '../scripts/candidate-signing.mjs';
-import { testCounts, coreTestCommand, coreTestCoverage, coreTestDeadlines, assertStrictNativeCore, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
+import { testCounts, coreTestCommand, coreTestCoverage, coreTestDeadlines, assertStrictNativeCore, packageKinds, bunTarget, clearCandidateSidecar } from '../scripts/candidate-native.mjs';
 import { updaterTarget, updaterPayload, gateEvidence, upgradeSmoke } from '../scripts/candidate-upgrade.mjs';
 import { validateTar, validateExtractedTree } from '../scripts/candidate-archive.mjs';
 import { lockedSidecarSpecs } from '../scripts/hydrate-locked-sidecar-dependencies.mjs';
@@ -290,4 +290,15 @@ test('every candidate checkout phase pins the exact application and Core inputs'
       assert.throws(()=>check(stale),/stale or indirect source ref/);
     }
   }
+});
+
+test('sidecar stage removes a stale reused-checkout binary before the fresh-build assert', () => {
+  const scope = evidence(), root = scope.fixture('candidate-sidecar-leftover'), filename = path.join(root, 'hara-candidate');
+  fs.writeFileSync(filename, 'previous C5 build'); clearCandidateSidecar(filename);
+  assert.equal(fs.existsSync(filename), false);
+  clearCandidateSidecar(filename); // a fresh checkout has nothing to clear
+  fs.mkdirSync(filename); assert.throws(() => clearCandidateSidecar(filename)); assert(fs.statSync(filename).isDirectory());
+  const source = fs.readFileSync(path.join(ROOT, 'scripts/candidate-native.mjs'), 'utf8');
+  const stage = source.slice(source.indexOf('export async function sidecar'));
+  assert(stage.indexOf('clearCandidateSidecar(filename)') < stage.indexOf("'Compile Pi-only standalone sidecar'"), 'clear precedes the Bun build');
 });
