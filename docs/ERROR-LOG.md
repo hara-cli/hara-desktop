@@ -1,5 +1,11 @@
 # Error log
 
+## 2026-10-28 · live37 Core pin 49ee589 (live36 config-read-contention)
+
+- **Symptom**: live36 linux Core original full suite red @ tip `e3932b6`；`config-read-contention.test.mjs` not ok 508（count=0；fence skipped）。create+unlink 只 bump mtime/ctime，overlayfs/lazytime Linux 上二者相等 → `uncontendedConfigAbsence` 误判。
+- **Fix**: Core tip `49ee589` (PR hara-core#16 → main `c21a5fa`) test-only：absent→changed 路径改 `chmod 0701`（permission-repair）强制 durable writer lock acquire/release。Desktop pin bump Core+SIDECAR_COMMIT／locks.sidecar／candidate.yml 6× core refs／APPROVED_CORE。Soft Dark desktop tip 下一步 pin `bd08ba7`。
+- **Bans**: no resign live33–36／PEM／tag／env proxy-approve／force。
+
 
 
 ## 2026-10-28 · O39 Soft Dark SIDECAR pin 5d246014 (Core 77f22322)
