@@ -1,5 +1,11 @@
 # Error log
 
+## 2026-10-28 · O40 Soft Dark SIDECAR pin bd08ba7 (Core 49ee589)
+
+- Soft Dark tip `bd08ba7` / tree `3c8cb42` (PR #27 → main `e6565bf`); SIDECAR_COMMIT → `49ee589`
+- Orchestration pin: desktop + 6× app refs; core already `49ee589` (tip `cea8773` parent)
+- Jeff t956s4667 pin bump; bans: no resign live33–36 / tag / PEM / env approve
+
 ## 2026-10-28 · live37 Core pin 49ee589 (live36 config-read-contention)
 
 - **Symptom**: live36 linux Core original full suite red @ tip `e3932b6`；`config-read-contention.test.mjs` not ok 508（count=0；fence skipped）。create+unlink 只 bump mtime/ctime，overlayfs/lazytime Linux 上二者相等 → `uncontendedConfigAbsence` 误判。
