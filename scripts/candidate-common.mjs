@@ -44,6 +44,66 @@ export function save(file, value) {
     fs.renameSync(next, file);
   });
 }
+// Cross-job retained notary intent lives under runnerDirectory/_candidate-notary (not evidence).
+// Public app-notary.json / dmg-notary.json still use save() inside the evidence whitelist.
+function assertRetainedNotaryPath(file, runnerDirectory) {
+  assert(typeof runnerDirectory === 'string' && path.isAbsolute(runnerDirectory) && path.normalize(runnerDirectory) === runnerDirectory
+    && !runnerDirectory.includes('\0') && !runnerDirectory.split(/[\\/]/).includes('..'), 'absolute canonical runnerDirectory required');
+  assert(typeof file === 'string' && path.isAbsolute(file) && path.normalize(file) === file
+    && !file.includes('\0') && !file.split(/[\\/]/).includes('..'), 'absolute canonical retained notary path required');
+  const runner = fs.realpathSync(runnerDirectory);
+  assert.equal(runner, runnerDirectory, 'runnerDirectory must be a realpath-canonical directory');
+  const runnerStat = fs.lstatSync(runner);
+  assert(runnerStat.isDirectory() && !runnerStat.isSymbolicLink(), 'runnerDirectory must be a real directory');
+  if (process.getuid) assert.equal(Number(runnerStat.uid), process.getuid());
+  assert((Number(runnerStat.mode) & 0o022) === 0, 'runnerDirectory must not be group/other-writable');
+  const retainedRoot = path.join(runner, '_candidate-notary');
+  const relative = path.relative(retainedRoot, file);
+  assert(relative !== '' && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep),
+    'retained notary path must stay under runnerDirectory/_candidate-notary');
+  return { runner, retainedRoot };
+}
+function ensureRetainedNotaryDirectory(directory, retainedRoot) {
+  if (fs.existsSync(directory)) {
+    const st = fs.lstatSync(directory);
+    assert(st.isDirectory() && !st.isSymbolicLink(), 'retained notary parent must be a directory');
+    if (process.getuid) assert.equal(Number(st.uid), process.getuid());
+    assert((Number(st.mode) & 0o022) === 0, 'retained notary directory must not be group/other-writable');
+    assert.equal(fs.realpathSync(directory), directory, 'retained notary path alias refused');
+    const relative = path.relative(retainedRoot, directory);
+    assert(relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep)),
+      'retained notary directory escaped _candidate-notary');
+    return directory;
+  }
+  assert(directory.startsWith(retainedRoot + path.sep) || directory === retainedRoot, 'retained notary mkdir escaped root');
+  ensureRetainedNotaryDirectory(path.dirname(directory), retainedRoot);
+  fs.mkdirSync(directory, { mode: 0o700 });
+  return ensureRetainedNotaryDirectory(directory, retainedRoot);
+}
+export function saveRetainedNotary(file, value, runnerDirectory) {
+  const { retainedRoot } = assertRetainedNotaryPath(file, runnerDirectory);
+  if (!fs.existsSync(retainedRoot)) {
+    fs.mkdirSync(retainedRoot, { mode: 0o700 });
+  }
+  ensureRetainedNotaryDirectory(path.dirname(file), retainedRoot);
+  if (fs.existsSync(file)) {
+    const existing = fs.lstatSync(file);
+    assert(existing.isFile() && !existing.isSymbolicLink() && Number(existing.nlink) === 1, 'retained notary state must be a unique regular file');
+    assert.equal(fs.realpathSync(file), file, 'retained notary path alias refused');
+  }
+  const next = file + '.next';
+  assert(!fs.existsSync(next), 'retained notary staging file already exists');
+  const fd = fs.openSync(next, 'wx', 0o600);
+  try { fs.writeFileSync(fd, JSON.stringify(value, null, 2) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  const staged = fs.lstatSync(next);
+  assert(staged.isFile() && !staged.isSymbolicLink() && Number(staged.nlink) === 1, 'retained notary staging must be a unique regular file');
+  assert.equal(fs.realpathSync(next), next, 'retained notary staging alias refused');
+  fs.renameSync(next, file);
+  const finalStat = fs.lstatSync(file);
+  assert(finalStat.isFile() && !finalStat.isSymbolicLink() && Number(finalStat.nlink) === 1, 'retained notary state must be a unique regular file');
+  assert.equal(fs.realpathSync(file), file, 'retained notary path alias refused');
+  return file;
+}
 export function sync(command, args, { cwd = ROOT, env = process.env, timeout = 120000 } = {}) {
   const checked = commandEvidence(env);
   return checked.scope.guardSync(checked.env, () => {
