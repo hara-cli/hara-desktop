@@ -155,3 +155,26 @@ test("a pending pause remains busy after leaving and returning to the same Works
   } finally { finishPause({ state: "paused" }); await pending; }
   assert.equal(a.model.getSnapshot().sending, false);
 });
+
+test("the pending question reads as one layered answer card, not a resume dialog", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const t = makeT(locale), stepped = { ...conversation, pendingQuestion: { ...q, step: "Rename the coding colleague" } };
+    const html = render(h(WorkspaceUserQuestion, { conversation: stepped, t, disabled: false, supported: true, placement: "composer", onAnswer() {}, onRepair() {} }));
+    assert.equal(html.includes("wsd-resume"), false); assert(html.includes("wsd-ask"));
+    const head = html.indexOf("wsd-ask-head"), body = html.indexOf("wsd-user-question-text"), step = html.indexOf("wsd-ask-step"), form = html.indexOf("wsd-ask-form");
+    assert(head >= 0 && head < body && body < step && step < form);
+    assert(html.includes(`id="question-${q.id}"`) && /<p id="question-question-1" class="wsd-user-question-text">/.test(html));
+    assert(html.includes(t("ws.question.minimize"))); assert.equal((html.match(/<textarea/g) ?? []).length, 1);
+    assert.equal(/补充|補充|needs your input/.test(t("ws.question.title")), false);
+  }
+});
+
+test("chat replaces the composer with the question card while a question is pending", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../src/WorkspaceLocalDev.tsx", import.meta.url), "utf8");
+  const slot = source.indexOf('route.section === "chat" && workspace.conversation.pendingQuestion ? <footer');
+  const composer = source.indexOf('<div className="hs-field wsd-composer"><textarea');
+  assert(slot >= 0 && slot < composer);
+  assert(source.slice(slot, composer).includes('placement="composer"'));
+  assert.equal(source.slice(source.indexOf('<div className="hs-col wsd-thread">'), slot).includes("<WorkspaceUserQuestion"), false);
+});
