@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
+import { WorkspaceDevModel, workspaceAsyncAsks } from "../src/workspace-dev-state.ts";
 import { WorkspaceRpcWaitError } from "../src/workspace-dev-errors.ts";
 import { workspaceConversationReplying } from "../src/workspace-resume.ts";
 import { makeT } from "../src/i18n.ts";
@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceUserQuestion.tsx";export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceLocalChannels.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);
-const { WorkspaceUserQuestion, WorkspaceTaskActivity, WorkspaceTaskRecovery, LocalChannelThread } = module.exports;
+const { WorkspaceUserQuestion, WorkspaceAsyncQuestions, WorkspaceTaskActivity, WorkspaceTaskRecovery, LocalChannelThread } = module.exports;
 const { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
 const q = { id: "question-1", reason: "lookup_missing", question: "Which <colleague> & item?", options: ["Alpha <script>", "Beta"], taskId: "task-1", runId: "run-1" };
 const conversation = { state: "awaiting_user", taskState: "paused", pendingQuestion: q, resumeAdmission: { allowed: true, reason: null } };
@@ -177,4 +177,74 @@ test("chat replaces the composer with the question card while a question is pend
   assert(slot >= 0 && slot < composer);
   assert(source.slice(slot, composer).includes('placement="composer"'));
   assert.equal(source.slice(source.indexOf('<div className="hs-col wsd-thread">'), slot).includes("<WorkspaceUserQuestion"), false);
+});
+
+// Unified Core interaction (workspace.interaction.v2): async asks never replace or lock the composer.
+const asyncAsk = { requestId: "async-1", kind: "ask_user_question", delivery: "async",
+  questions: [{ question: "Which <format> for the report?", header: "Report format", options: ["PDF", "Markdown"] }],
+  metadata: { reason: "explicit", taskId: "task-1", runId: "run-1" } };
+const syncAsk = { ...asyncAsk, requestId: q.id, delivery: "sync" };
+const permission = { requestId: "approval-1", kind: "permission", delivery: "sync", action: "agent_create", summary: "agent_create: Alpha", metadata: { runId: "run-1" } };
+function asyncFixture({ v2 = true } = {}) {
+  const calls = [];
+  const running = { state: "running", taskState: "running", sessionId: "A-main", revision: 1, taskId: "task-1", runId: "run-1", objective: "Synthetic", history: [], pastTaskCount: 0,
+    usage: { modelCalls: 1, inputTokens: 10, outputTokens: 5 }, runUsage: { modelCalls: 1, inputTokens: 10, outputTokens: 5 }, completion: null,
+    pendingQuestion: null, pendingInteractions: [permission, asyncAsk], resumeAdmission: { allowed: true, reason: null } };
+  const rpc = { supportsCapability: capability => capability === "workspace.user-interaction.v1" || (v2 && capability === "workspace.interaction.v2"),
+    async request(method, params) {
+      calls.push({ method, params });
+      if (method === "workspace.list") return { revision: 1, activeWorkspaceId: "A", syntheticOnly: true, workspaces: [{ workspaceId: "A", label: "A", role: "owner", active: true }] };
+      if (["workspace.select", "workspace.snapshot", "workspace.agent.select"].includes(method)) return { workspaceId: "A", resourceGeneration: "gen-A", label: "A", selectedAgentId: "main", syntheticOnly: true,
+        agents: [{ agentId: "main", kind: "main", state: "active", identity: { displayName: "Hara" }, runtime: { id: "pi", available: true } }],
+        connections: { revision: 1, defaultConnectionId: "synthetic", connections: [] }, approvals: [], conversation: running };
+      return { accepted: true };
+    } };
+  const model = new WorkspaceDevModel(rpc, () => "nonce");
+  return { model, calls, ready: () => model.selectWorkspace("A") };
+}
+
+test("only async ask_user_question interactions are treated as non-blocking cards", () => {
+  assert.deepEqual(workspaceAsyncAsks({ pendingInteractions: [permission, syncAsk, asyncAsk] }).map(row => row.requestId), ["async-1"]);
+  assert.deepEqual(workspaceAsyncAsks({}), [], "an older Core without pendingInteractions shows no async cards");
+  assert.deepEqual(workspaceAsyncAsks(null), []);
+});
+
+test("async cards render escaped question and options with their own answer field, not the composer's", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const t = makeT(locale), html = render(h(WorkspaceAsyncQuestions, { asks: [asyncAsk], t, disabled: false, onAnswer() {} }));
+    assert(html.includes('data-delivery="async"')); assert(html.includes("Which &lt;format&gt; for the report?")); assert(html.includes("Report format"));
+    assert(html.includes(t("ws.question.async.note"))); assert.equal((html.match(/<textarea/g) ?? []).length, 0, "the composer textarea is never duplicated");
+    assert.equal(html.includes('data-task-state="awaiting_user"'), false, "async does not mark the task as awaiting the user");
+  }
+  assert.equal(render(h(WorkspaceAsyncQuestions, { asks: [], t: makeT("en"), disabled: false, onAnswer() {} })), "");
+  const off = render(h(WorkspaceAsyncQuestions, { asks: [asyncAsk], t: makeT("en"), disabled: true, onAnswer() {} }));
+  assert.equal((off.match(/<button[^>]*>/g) ?? []).every(button => button.includes("disabled")), true);
+});
+
+test("async answers send only the scoped async state write, never a session message or resume", async () => {
+  const a = asyncFixture(); await a.ready(); a.model.setDraft("Unrelated draft");
+  await a.model.answerAsync("async-1", "  PDF  ");
+  const sent = a.calls.filter(call => call.method === "workspace.session.answer-async");
+  assert.deepEqual(sent.map(call => call.params), [{ workspaceId: "A", expectedGeneration: "gen-A", agentId: "main", questionId: "async-1", message: "PDF" }]);
+  assert.equal(a.model.getSnapshot().draft, "Unrelated draft");
+  await a.model.answerAsync("stale", "PDF"); await a.model.answerAsync("async-1", " "); await a.model.answerAsync("async-1", "/continue");
+  assert.equal(a.calls.filter(call => call.method === "workspace.session.answer-async").length, 1);
+  assert.equal(a.calls.some(call => /session\.(send|resume|answer)$/.test(call.method)), false);
+  const old = asyncFixture({ v2: false }); await old.ready(); await old.model.answerAsync("async-1", "PDF");
+  assert.equal(old.calls.some(call => call.method === "workspace.session.answer-async"), false, "an older Core without the v2 capability is never sent the new method");
+});
+
+test("the sync card shows a model header and the rename-target intent instead of the generic reason", () => {
+  const t = makeT("zh-Hans"), renamed = { ...conversation, pendingQuestion: { ...q, reason: "lookup_ambiguous", intent: "rename_target", header: "改名确认" } };
+  const html = render(h(WorkspaceUserQuestion, { conversation: renamed, t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
+  assert(html.includes("改名确认")); assert(html.includes(t("ws.question.intent.rename_target")));
+  assert.equal(html.includes(t("ws.question.reason.lookup_ambiguous")), false);
+});
+
+test("async cards sit inside the normal composer footer; only a sync question replaces the composer", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../src/WorkspaceLocalDev.tsx", import.meta.url), "utf8");
+  const slot = source.indexOf('route.section === "chat" && workspace.conversation.pendingQuestion ? <footer');
+  const asyncCards = source.indexOf("<WorkspaceAsyncQuestions"), composer = source.indexOf('<div className="hs-field wsd-composer"><textarea');
+  assert(slot >= 0 && slot < asyncCards && asyncCards < composer, "async cards render in the composer branch, above the still-enabled textarea");
 });
