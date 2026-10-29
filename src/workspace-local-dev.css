@@ -73,6 +73,8 @@
 .hs .wsd-approval details p { white-space:pre-wrap; overflow-wrap:anywhere; }
 .hs .wsd-card-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:16px; }
 .hs .wsd-kicker { font-size:11px; color:var(--muted); }
+.hs .wsd-approval-settled { opacity:.92; }
+.hs .wsd-approval-settled p { margin:8px 0 0; font-size:13px; line-height:1.45; }
 .hs .wsd-execution { margin:2px 0 18px 36px; max-width:600px; font-size:12px; color:var(--muted); }
 .hs .wsd-execution summary { min-height:32px; cursor:pointer; }
 .hs .wsd-execution-body { padding:10px 14px; border:1px solid var(--line); border-radius:var(--r-lg); }

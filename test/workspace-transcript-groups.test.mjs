@@ -52,6 +52,33 @@ test("brief hides successful operation groups while detailed mode retains an ope
     assert.match(detailed, /safe receipt/);
   }
 });
+
+test("brief shows a read-only settled approval card for declined/expired/aborted agent_create", () => {
+  const settle = (state) => ({ role: "tool", results: [{ id: `create-${state}`, name: "agent_create",
+    content: JSON.stringify({ created: false, humanConfirmed: false, approvalState: state, displayName: "Coder" }), isError: false }] });
+  for (const [locale, declinedNeedle, expiredNeedle, abortedNeedle] of [
+    ["en", "Invite for Coder was declined", "Invite for Coder expired", "Invite for Coder was interrupted"],
+    ["zh-Hans", "已取消邀请 Coder", "邀请 Coder 已过期", "邀请 Coder 已中断"],
+    ["zh-Hant", "已取消邀請 Coder", "邀請 Coder 已過期", "邀請 Coder 已中斷"],
+  ]) {
+    const t = makeT(locale);
+    for (const [state, needle] of [["declined", declinedNeedle], ["expired", expiredNeedle], ["aborted", abortedNeedle]]) {
+      const history = [{ role: "user", content: "Create" }, assistant(["agent_create"]), settle(state)];
+      const brief = renderToStaticMarkup(createElement(module.exports.Transcript, { history, t, detailed: false }));
+      assert.match(brief, /wsd-approval-settled/);
+      assert.match(brief, new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      assert.equal(brief.includes("wsd-card-actions"), false, "settled card has no confirm/decline buttons");
+      assert.equal(brief.includes("wsd-execution"), false, "brief does not bury settle inside ops disclosure");
+      assert.equal(brief.includes('"approvalState"'), false, "raw JSON stays out of brief settle card");
+    }
+    const created = [{ role: "user", content: "Create" }, assistant(["agent_create"]),
+      { role: "tool", results: [{ id: "ok", name: "agent_create",
+        content: JSON.stringify({ created: true, humanConfirmed: true, approvalState: "consumed", agent: { profile: { displayName: "Coder" } } }), isError: false }] }];
+    const okBrief = renderToStaticMarkup(createElement(module.exports.Transcript, { history: created, t, detailed: false }));
+    assert.equal(okBrief.includes("wsd-approval-settled"), false);
+    assert.equal(okBrief.includes("wsd-execution"), false);
+  }
+});
 // Node has no DOM for DOMPurify, so Md would fall back to plain text; a pass-through stub isolates the marked wiring.
 const purifyStub = { name: "purify-stub", setup(b) { b.onResolve({ filter: /^dompurify$/ }, () => ({ path: "dompurify", namespace: "stub" }));
   b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ contents: "export default { sanitize: html => html };", loader: "js" })); } };
