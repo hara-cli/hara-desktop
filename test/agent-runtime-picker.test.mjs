@@ -90,3 +90,11 @@ test("an unavailable Runtime produces no request, even if a UI event supplies it
   const f = bindings({ catalog: {} }); await saveCallback(f.scope)("pi");
   assert.equal(f.calls.length, 0); assert.equal(f.updates.length, 0);
 });
+
+test("Antigravity appears as a pending Hara colleague runtime", () => {
+  const pending = [...options, { id: "agy", available: false, reason: "general_agent_adapter_pending" }];
+  assert.equal(agentRuntimeLabel("agy", "zh"), "Antigravity");
+  const html = renderToStaticMarkup(React.createElement(picker(), { agent, options: pending, locale: "zh", onApply() {} }));
+  assert.match(html, /Antigravity · 暂不可用/);
+  assert.equal(agentRuntimeSelection(agent, "agy", pending), null);
+});

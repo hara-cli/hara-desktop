@@ -204,13 +204,13 @@ interface ExternalSessionCenterProps {
 }
 
 const sourceMark = (sourceId: ExternalSessionInfo["sourceId"]): string => (
-  sourceId === "runtime" ? "HR" : sourceId === "codex" ? "CX" : sourceId === "opencode" ? "OC" : "CL"
+  sourceId === "runtime" ? "HR" : sourceId === "codex" ? "CX" : sourceId === "opencode" ? "OC" : sourceId === "agy" ? "AG" : "CL"
 );
 
 const sourceDisplayName = (session: ExternalSessionInfo): string => (
   session.sourceId === "runtime"
     ? `Hara Live · ${session.agentKind === "claude" ? "Claude Code" : "Codex"}`
-    : session.sourceId === "codex" ? "Codex" : session.sourceId === "opencode" ? "OpenCode" : "Claude Code"
+    : session.sourceId === "codex" ? "Codex" : session.sourceId === "opencode" ? "OpenCode" : session.sourceId === "agy" ? "Antigravity" : "Claude Code"
 );
 
 const roleLabel = (role: ExternalSessionMessage["role"], copy: ExternalSessionCenterCopy): string => (
