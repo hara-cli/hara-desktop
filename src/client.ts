@@ -62,7 +62,7 @@ export interface CreatedSessionInfo {
   agentRef?: string;
 }
 
-export type ExternalSessionSourceId = "runtime" | "codex" | "claude" | "opencode";
+export type ExternalSessionSourceId = "runtime" | "codex" | "claude" | "opencode" | "agy";
 export type ExternalRuntimeAgentKind = "codex" | "claude";
 export type ExternalRuntimeEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type ExternalRuntimeClaudePermissionMode = "manual" | "acceptEdits" | "plan" | "auto" | "dontAsk";
@@ -234,7 +234,7 @@ export type ExternalTerminalEvent =
       handoffId: string;
     };
 
-export type AgentRuntimeId = "hara" | "pi" | "opencode" | "codex" | "claude";
+export type AgentRuntimeId = "hara" | "pi" | "opencode" | "codex" | "claude" | "agy";
 export interface AgentRuntimeOption {
   id: AgentRuntimeId;
   label: string;
