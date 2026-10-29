@@ -39,6 +39,19 @@ test("the actual transcript renders one localized disclosure and preserves escap
     assert.equal(render(true).includes('open=""'), true);
   }
 });
+test("brief hides successful operation groups while detailed mode retains an open disclosure", () => {
+  const success = [{ role: "user", content: "Check" }, assistant(["read"]), result("read", "safe receipt")];
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const props = { history: success, t: makeT(locale) };
+    const brief = renderToStaticMarkup(createElement(module.exports.Transcript, { ...props, detailed: false }));
+    assert.equal(brief.includes("wsd-execution"), false);
+    assert.equal(brief.includes("safe receipt"), false);
+    assert.equal(brief.includes(makeT(locale)("ws.execution.details")), false);
+    const detailed = renderToStaticMarkup(createElement(module.exports.Transcript, { ...props, detailed: true }));
+    assert.match(detailed, /<details class="wsd-execution" open="">/);
+    assert.match(detailed, /safe receipt/);
+  }
+});
 // Node has no DOM for DOMPurify, so Md would fall back to plain text; a pass-through stub isolates the marked wiring.
 const purifyStub = { name: "purify-stub", setup(b) { b.onResolve({ filter: /^dompurify$/ }, () => ({ path: "dompurify", namespace: "stub" }));
   b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ contents: "export default { sanitize: html => html };", loader: "js" })); } };

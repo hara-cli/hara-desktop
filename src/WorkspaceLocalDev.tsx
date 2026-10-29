@@ -59,6 +59,7 @@ export function Transcript({ history, agent, t, detailed = false }: { history: W
   return <>{transcriptBlocks(history).map(item => {
     if (item.kind === "execution") {
       previous = undefined;
+      if (!detailed && !item.results.some(({ result }) => result.isError)) return null;
       return <div className="wsd-message-group" key={`execution-${item.index}`}><details className="wsd-execution" open={detailed || undefined}>
         <summary>{t(item.count === 1 ? "ws.execution.one" : "ws.execution.count", { n: item.count })}{" · "}<span>{t("ws.execution.details")}</span></summary>
         <div className="wsd-execution-body">{item.results.map(({ key, result }) => <div key={key}><strong>{TOOL_LABELS[result.name] ? t(TOOL_LABELS[result.name]) : result.name}</strong>
