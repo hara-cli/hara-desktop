@@ -37,6 +37,10 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     operations: { id: string; runtimeId: string; state: string }[] };
   budget?: { maxTokens: number; maxRequests: number; requests: number; inputTokens: number; outputTokens: number; uncertainReservedTokens: number; paused: boolean };
   connections: { revision: number; defaultConnectionId: string | null; activeConnectionId?: string | null; readOnly?: boolean; recovered?: boolean; migrationPending?: boolean; unavailable?: boolean; connections: WorkspaceModelConnection[] };
+  /** Account-native, read-only projection from Core. Absent on older Core means unknown. */
+  accountUsage?: { agentId: string; state: "ok" | "limit_reached" | "parse_unavailable";
+    view: { runtimeId: string; connectionId: string | null; scope: string; authority: string | null;
+      availability: "available" | "exhausted" | "unknown"; fresh: boolean; fetchedAt: string | null; resetAt: string | null } }[];
   approvals: WorkspaceDevApproval[]; conversation: { revision: number; state: string; sessionId: string; taskId: string | null; runId: string | null;
     taskState: string | null; objective: string; history: WorkspaceDevMessage[]; pastTaskCount: number; updatedAt?: string; unreadCount?: number;
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };

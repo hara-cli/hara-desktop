@@ -18,6 +18,7 @@ import { Avatar, AwaitBar, ColleaguesPage, ShellDialog, SidebarSection } from ".
 import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
 import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
 import { captureWorkspaceReadingPosition } from "./workspace-chat-scroll";
+import { colleagueUsageView } from "./workspace-account-usage";
 import { WorkspaceLocalChannelsModel } from "./workspace-local-channels";
 import { channelMemberLabel, LocalChannelComposer, LocalChannelDialog, LocalChannelRows, LocalChannelThread } from "./WorkspaceLocalChannels";
 import "./workspace-entry.css";
@@ -101,6 +102,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const busy = Boolean(workspace && ["running", "draining"].includes(workspace.conversation.state));
   const hasConnection = Boolean(workspace?.connections.defaultConnectionId), realKey = view.directory?.executionMode === "ark-real-key", production = view.directory?.executionMode === "workspace";
   const colleagueLimit = Number.isSafeInteger(workspace?.colleagueLimit) && workspace!.colleagueLimit! > 0 ? workspace!.colleagueLimit : undefined;
+  const accountUsage = new Map((workspace?.accountUsage ?? []).map(row => [row.agentId, row]));
+  const selectedUsage = colleagueUsageView(accountUsage.get(view.agentId ?? ""));
   const updates = useWorkspaceUpdater(model, production);
   const inChannel = route.section === "channel";
   const selectedChannel = inChannel ? channelView.channel?.channel : undefined;
@@ -272,6 +275,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {dmRows.filter(row => !search || `${row.agent.identity.displayName} ${row.agent.identity.title ?? ""}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(row => <button className="hs-row hs-dm wsd-contact" aria-label={row.agent.identity.displayName} title={row.agent.identity.displayName} disabled={view.loading} key={row.agent.agentId}
               ref={row.agent.agentId === view.agentId ? selectedRow : undefined} aria-current={route.section === "chat" && row.agent.agentId === view.agentId ? "page" : undefined} onClick={() => void openAgent(row.agent.agentId)}>
               <Avatar agent={row.agent} /><span className="hs-txt"><strong className="hs-name"><span className="nm">{row.agent.identity.displayName}</span>{row.agent.identity.title ? <span className="hs-tag">{row.agent.identity.title}</span> : null}</strong><span className="pv">{row.preview}</span></span>
+              <span className={`hs-usage-chip ${colleagueUsageView(accountUsage.get(row.agent.agentId)).state}`}
+                title={colleagueUsageView(accountUsage.get(row.agent.agentId)).label}>
+                {colleagueUsageView(accountUsage.get(row.agent.agentId)).label}
+              </span>
               <span className="hs-meta">{row.timestamp && Number.isFinite(Date.parse(row.timestamp)) ? <time className="hs-time" dateTime={row.timestamp}>{new Date(row.timestamp).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time> : null}
                 {(shell.activity[row.agent.agentId]?.unread ?? 0) > 0 ? <span className="hs-dot" role="img" aria-label={t("ws.unread", { n: shell.activity[row.agent.agentId].unread })} /> : null}</span></button>)}
             {!colleagues.length ? <p className="hs-empty">{t("ws.dm.empty")}</p> : searching && search && !dmRows.some(row => `${row.agent.identity.displayName} ${row.agent.identity.title ?? ""}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())) ? <p className="hs-empty">{t("ws.search.empty")}</p> : null}
@@ -294,6 +301,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       {disconnected ? <div className="wsd-notice" role="alert">{t("ws.disconnected")}<button className="hs-btn sec" onClick={onReconnect}>{t("ws.reconnect")}</button></div> : null}
       {view.error ? <div className="wsd-notice is-error" role="alert">{workspaceMessageText(t, view.error)}</div> : null}
       {view.syncNotice ? <div className="wsd-notice" role="status">{workspaceMessageText(t, view.syncNotice)}</div> : null}
+      {agent?.kind === "colleague" && !inChannel && selectedUsage.notice ? <div className="wsd-notice hs-usage-attention" role="status">{selectedUsage.notice}</div> : null}
       {shell.incomplete && agent?.kind !== "main" && !inChannel ? <div className="wsd-notice" role="status" data-overview-incomplete>{t("ws.tasks.unavailable")}<button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></div> : null}
       <div ref={scroll} className="hs-scroll wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
         {route.section === "workspace" && workspace ? <WorkspaceOverview shell={shell} agents={colleagues} t={t} onOpen={id => void openAgent(id)} />

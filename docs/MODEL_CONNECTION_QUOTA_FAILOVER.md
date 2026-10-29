@@ -1,5 +1,7 @@
 # Model connection usage, entitlement, and failover design
 
+Hara 同事与 runtime 账号窗的分账边界见 [USAGE_RUNTIME_QUOTA_CONTRACT.md](USAGE_RUNTIME_QUOTA_CONTRACT.md)。
+
 > Corrected 2026-09-06. Hara may normalize presentation, but it never normalizes different providers'
 > subscription formulas into one Token or currency calculation.
 
