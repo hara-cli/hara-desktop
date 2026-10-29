@@ -54,13 +54,43 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
       <button className="hs-btn pri" onClick={() => void decide(true)} disabled={pending || disabled}>{t("ws.approval.confirm")}</button></div>
   </section>;
 }
+type ApprovalSettleState = "declined" | "expired" | "aborted";
+function parseAgentCreateSettle(content: string): { state: ApprovalSettleState; name?: string } | null {
+  try {
+    const value = JSON.parse(content) as { created?: unknown; approvalState?: unknown; agent?: { profile?: { displayName?: unknown } }; draft?: { displayName?: unknown }; displayName?: unknown };
+    if (value?.created !== false) return null;
+    const state = value.approvalState;
+    if (state !== "declined" && state !== "expired" && state !== "aborted") return null;
+    const name = [value.agent?.profile?.displayName, value.draft?.displayName, value.displayName].find(row => typeof row === "string" && row.trim()) as string | undefined;
+    return { state, name };
+  } catch { return null; }
+}
+function SettledApprovalCard({ state, name, t }: { state: ApprovalSettleState; name?: string; t: Translate }) {
+  const label = name?.trim() || t("ws.approval.label");
+  const copy = state === "declined" ? "ws.approval.settledDeclined" : state === "expired" ? "ws.approval.settledExpired" : "ws.approval.settledAborted";
+  return <section className="hs-card wsd-approval wsd-approval-settled" role="status" aria-label={t("ws.approval.settledKicker")}>
+    <div className="wsd-kicker">{t("ws.approval.settledKicker")}</div>
+    <p>{t(copy, { name: label })}</p>
+  </section>;
+}
 export function Transcript({ history, agent, t, detailed = false }: { history: WorkspaceDevMessage[]; agent?: WorkspaceDevAgent; t: Translate; detailed?: boolean }) {
   let previous: WorkspaceDevMessage | undefined;
   return <>{transcriptBlocks(history).map(item => {
     if (item.kind === "execution") {
       previous = undefined;
-      if (!detailed && !item.results.some(({ result }) => result.isError)) return null;
-      return <div className="wsd-message-group" key={`execution-${item.index}`}><details className="wsd-execution" open={detailed || undefined}>
+      const settled = item.results.flatMap(({ key, result }) => {
+        if (result.name !== "agent_create" || result.isError) return [];
+        const parsed = parseAgentCreateSettle(result.content);
+        return parsed ? [{ key, ...parsed }] : [];
+      });
+      // Settled approval cards stay visible in brief mode (do not hide inside ops disclosure).
+      const settledCards = settled.map(row => <div className="wsd-message-group" key={`settled-${row.key}`}><SettledApprovalCard state={row.state} name={row.name} t={t} /></div>);
+      if (!detailed && !item.results.some(({ result }) => result.isError)) {
+        return settledCards.length ? <div key={`settled-batch-${item.index}`}>{settledCards}</div> : null;
+      }
+      return <div className="wsd-message-group" key={`execution-${item.index}`}>
+        {settledCards}
+        <details className="wsd-execution" open={detailed || undefined}>
         <summary>{t(item.count === 1 ? "ws.execution.one" : "ws.execution.count", { n: item.count })}{" · "}<span>{t("ws.execution.details")}</span></summary>
         <div className="wsd-execution-body">{item.results.map(({ key, result }) => <div key={key}><strong>{TOOL_LABELS[result.name] ? t(TOOL_LABELS[result.name]) : result.name}</strong>
           <pre className={result.isError ? "is-error" : ""}>{result.content.slice(0, 5000)}</pre></div>)}</div></details></div>;
