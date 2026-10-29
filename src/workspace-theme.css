@@ -119,6 +119,10 @@
 .hs-sec.closed .hs-sec-b>div{visibility:hidden;transition:visibility 0s .12s}
 .hs-empty{margin:2px 8px 6px;padding:10px 12px;border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);font-size:12px;color:var(--muted)}.hs-empty b{display:block;color:var(--ink);font-size:12.5px;margin-bottom:2px}
 .hs-mini{min-height:36px;padding:5px 8px}.hs-mini .hs-ava{width:24px;height:24px;border-radius:8px;font-size:11px}
+.hs-usage-chip{flex:none;max-width:96px;padding:2px 5px;border-radius:5px;font-size:10px;line-height:1.4;color:var(--muted);background:var(--field);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hs-usage-chip.limit_reached{color:#b36a49;background:rgba(179,106,73,.12)}
+.hs-usage-chip.ok{color:#3f7d5a;background:rgba(63,125,90,.12)}
+.hs-usage-attention{border-color:rgba(179,106,73,.3);background:rgba(179,106,73,.08)}
 .hs-st-dot{width:7px;height:7px;border-radius:50%;flex:none}.hs-st-dot.work{background:#3f7d5a}.hs-st-dot.need{background:var(--brand)}.hs-st-dot.idle{background:transparent;box-shadow:inset 0 0 0 1.5px var(--faint)}
 .hs-dark .hs-st-dot.work,:root[data-theme="dark"] .hs .hs-st-dot.work{background:#7cc196}
 .hs-stx{font-size:11.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
