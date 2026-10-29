@@ -5,6 +5,12 @@ import { VIOLET_KEYS } from "./violet-i18n.ts";
 export const WORKSPACE_KEYS = [
   ...VIOLET_KEYS,
   ["ws.question.step", "Saved step:", "当前卡点：", "目前卡點："],
+  ["ws.question.step.applyDecision", "Apply your confirmed decision", "按你已确认的决定继续", "按你已確認的決定繼續"],
+  ["ws.question.step.continueWithAnswer", "Continue the original task with your answer", "用你刚给的回答继续原任务", "用你剛給的回答繼續原任務"],
+  ["ws.question.step.reviewStrategy", "Review the stalled approach", "复核卡住的推进方式", "複核卡住的推進方式"],
+  ["ws.question.step.completeTask", "Complete the accepted task", "完成已接受的任务", "完成已接受的任務"],
+  ["ws.question.step.verifyCompletion", "Verify the accepted completion checks", "核对已接受的完成检查", "核對已接受的完成檢查"],
+  ["ws.question.step.completeStep", "Complete the current task step", "完成当前任务步骤", "完成目前任務步驟"],
   ["ws.question.pause", "Keep paused for now", "先停在这里", "先停在這裡"],
   ["ws.question.pauseUnknown", "Pause could not be confirmed. Refresh to check the saved task.", "尚未确认暂停结果，请刷新核对已保留的任务。", "尚未確認暫停結果，請重新整理核對已保留的任務。"],
   ["ws.question.title", "Waiting for your answer", "待你回答", "待你回答"],

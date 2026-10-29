@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceUserQuestion.tsx";export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceLocalChannels.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);
-const { WorkspaceUserQuestion, WorkspaceAsyncQuestions, WorkspaceTaskActivity, WorkspaceTaskRecovery, LocalChannelThread } = module.exports;
+const { WorkspaceUserQuestion, WorkspaceAsyncQuestions, WorkspaceTaskActivity, WorkspaceTaskRecovery, LocalChannelThread, workspaceQuestionStep } = module.exports;
 const { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
 const q = { id: "question-1", reason: "lookup_missing", question: "Which <colleague> & item?", options: ["Alpha <script>", "Beta"], taskId: "task-1", runId: "run-1" };
 const conversation = { state: "awaiting_user", taskState: "paused", pendingQuestion: q, resumeAdmission: { allowed: true, reason: null } };
@@ -159,7 +159,7 @@ test("a pending pause remains busy after leaving and returning to the same Works
 
 test("the pending question reads as one layered answer card, not a resume dialog", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
-    const t = makeT(locale), stepped = { ...conversation, pendingQuestion: { ...q, step: "Rename the coding colleague" } };
+    const t = makeT(locale), stepped = { ...conversation, pendingQuestion: { ...q, step: "apply the retained user decision" } };
     const html = render(h(WorkspaceUserQuestion, { conversation: stepped, t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
     assert.equal(html.includes("wsd-resume"), false); assert(html.includes("wsd-ask"));
     const head = html.indexOf("wsd-ask-head"), body = html.indexOf("wsd-user-question-text"), step = html.indexOf("wsd-ask-step"), foot = html.indexOf("wsd-ask-foot");
@@ -167,6 +167,34 @@ test("the pending question reads as one layered answer card, not a resume dialog
     assert(html.includes(`id="question-${q.id}"`) && /<p id="question-question-1" class="wsd-user-question-text">/.test(html));
     assert.equal((html.match(/<textarea/g) ?? []).length, 0);
     assert.equal(/补充|補充|needs your input/.test(t("ws.question.title")), false);
+  }
+});
+
+test("known Core checkpoint steps use the viewer language and unknown steps are hidden", () => {
+  const phrases = [
+    ["apply the retained user decision", "applyDecision"],
+    ["continue the original task with the retained answer", "continueWithAnswer"],
+    ["review the stalled strategy", "reviewStrategy"],
+    ["complete the accepted task", "completeTask"],
+    ["verify the accepted completion checks", "verifyCompletion"],
+    ["complete the current task step", "completeStep"],
+  ];
+  for (const locale of ["zh-Hans", "zh-Hant"]) {
+    const t = makeT(locale);
+    for (const [english, key] of phrases) {
+      const html = render(h(WorkspaceUserQuestion, { conversation: { ...conversation, pendingQuestion: { ...q, step: english } },
+        t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
+      assert.equal(html.includes(english), false);
+      assert(html.includes(t("ws.question.step")));
+      assert(html.includes(t(`ws.question.step.${key}`)));
+      assert.equal(workspaceQuestionStep(t, english), t(`ws.question.step.${key}`));
+    }
+    const unknown = "Rename the coding colleague";
+    const html = render(h(WorkspaceUserQuestion, { conversation: { ...conversation, pendingQuestion: { ...q, step: unknown } },
+      t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
+    assert.equal(html.includes(unknown), false);
+    assert.equal(html.includes("wsd-ask-step"), false);
+    assert.equal(workspaceQuestionStep(t, unknown), null);
   }
 });
 
