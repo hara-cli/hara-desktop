@@ -368,6 +368,27 @@ test("channel answers bind one colleague and original question without a normal 
   assert.equal(f.calls.filter(row => row.method === "workspace.channels.answer").length, 1);
 });
 
+test("the channel composer answers the one pending responder and refuses an ambiguous free-text answer", async () => {
+  const f = fixture({ userQuestions: true }); await f.model.bind("A", "g-A"); const id = await create(f);
+  const ask = agentId => ({ agentId, displayName: agentId, conversation: { state: "awaiting_user", taskState: "paused",
+    pendingQuestion: { id: `q-${agentId}`, reason: "explicit", question: "Which target?", options: ["Beta"], taskId: "task", runId: "run" }, resumeAdmission: { allowed: true, reason: null } } });
+  let questions = [ask(member), ask(otherMember)];
+  f.handlers["workspace.channels.snapshot"] = () => ({ ...f.snapshot("A", id), questions });
+  f.handlers["workspace.channels.answer"] = params => ({ workspaceId: "A", resourceGeneration: "g-A", channelId: id, requestId: params.requestId, accepted: true });
+  await f.model.refresh(); f.model.setDraft("Use the second one");
+  await f.model.submitDraft([member, otherMember]);
+  assert.equal(f.model.getSnapshot().error, "ws.question.channelPickOne");
+  assert.equal(f.calls.some(row => /workspace\.channels\.(send|answer)$/.test(row.method)), false);
+  f.model.setDraft("/continue"); await f.model.submitDraft([member]);
+  assert.equal(f.calls.some(row => row.method === "workspace.channels.answer"), false);
+  f.model.setDraft("Use the second one"); await f.model.submitDraft([member]);
+  const call = f.calls.find(row => row.method === "workspace.channels.answer");
+  assert.equal(call.params.agentId, member); assert.equal(call.params.questionId, `q-${member}`); assert.equal(call.params.message, "Use the second one");
+  assert.equal(f.model.getSnapshot().draft, "", "an accepted composer answer clears its draft");
+  questions = []; await f.model.refresh(); f.model.setDraft("Ordinary note"); await f.model.submitDraft([member]);
+  assert(f.calls.some(row => row.method === "workspace.channels.send"), "without a pending responder the composer sends normally");
+});
+
 test("a pending channel pause remains busy across a Workspace round trip", async () => {
   const f = fixture({ userQuestions: true }); await f.model.bind("A", "g-A"); const id = await create(f);
   const q = { id: randomUUID(), reason: "explicit", question: "Which target?", options: [], taskId: "task", runId: "run" };
