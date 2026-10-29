@@ -79,14 +79,14 @@ new Function("require", "module", "exports", screenBundle.outputFiles[0].text)(r
 const agents = [ { agentId: "main", kind: "main", state: "active", identity: { displayName: "Hara" }, runtime: { id: "pi", label: "Pi", available: true } },
   { agentId: "coder", kind: "colleague", state: "active", identity: { displayName: "Coder", title: "Coding colleague" }, runtime: { id: "pi", label: "Pi", available: true } } ];
 const usage = { modelCalls: 0, inputTokens: 0, outputTokens: 0 };
-function view({ empty = false, state = "completed", approval = false, directory = true } = {}) {
+function view({ empty = false, state = "completed", approval = false, directory = true, error = false } = {}) {
   return { directory: directory ? { revision: 1, activeWorkspaceId: "A", workspaces: [{ workspaceId: "A", label: "My Workspace", role: "owner", active: true }], syntheticOnly: false, executionMode: "workspace" } : null,
     workspaceId: empty ? null : "A", agentId: empty ? null : "main", roster: empty ? [] : agents, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "",
     workspace: empty ? null : { workspaceId: "A", resourceGeneration: "generation-A", label: "My Workspace", selectedAgentId: "main", agents, syntheticOnly: false, executionMode: "workspace",
       connections: { revision: 1, defaultConnectionId: "local", connections: [{ id: "local", label: "Local fake", status: "active", defaultModel: "fake" }] },
       approvals: approval ? [{ id: "card", workspaceId: "A", resourceGeneration: "generation-A", agentId: "main", expiresAt: "2099-01-01T00:00:00Z", draft: { username: "reviewer", displayName: "Reviewer", title: "Local reviewer", instructions: "Only this Workspace", runtimeId: "pi" } }] : [],
       conversation: { revision: 1, state, taskState: state === "completed" ? "completed" : "blocked", taskId: "task", runId: "run", sessionId: "S", objective: "Local fixture", pastTaskCount: 1, usage, runUsage: usage,
-        completion: state === "completed" ? { state: "verified" } : null, history: [{ role: "assistant", text: "Local fixture reply", tools: ["workspace_verify"] }, { role: "tool", results: [{ id: "receipt", name: "workspace_verify", content: "verified", isError: false }] }] } } };
+        completion: state === "completed" ? { state: "verified" } : null, history: [{ role: "assistant", text: "Local fixture reply", tools: ["workspace_verify"] }, { role: "tool", results: [{ id: "receipt", name: "workspace_verify", content: error ? "verification failed" : "verified", isError: error }] }] } } };
 }
 function renderScreen(value, mode = "workspace", locale = "zh-Hant") {
   const descriptor=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
@@ -101,9 +101,11 @@ test("production keeps lab copy out of the sidebar; explicit Lab is a distinct a
   }
 });
 test("real workspace screen retains colleague decisions, collapsed execution and verified task closure", () => {
-  const html = renderScreen(view({ state:"blocked", approval: true }));
+  const html = renderScreen(view({ state:"blocked", approval: true, error: true }));
   for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
-  assert.match(renderScreen(view()), /已核驗結果/);
+  const success = renderScreen(view());
+  assert.match(success, /已核驗結果/);
+  assert.doesNotMatch(success, /wsd-execution|1 個操作 · <span>查看詳情/);
   assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
   assert.equal(html.includes('aria-label="建立頻道"'), true);
   assert.equal(/即將推出|即将推出|Channels for group work with several colleagues are coming/.test(html), false);
