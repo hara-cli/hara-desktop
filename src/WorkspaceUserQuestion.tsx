@@ -1,4 +1,4 @@
-import type { makeT } from "./i18n";
+import type { Key, makeT } from "./i18n";
 import type { WorkspaceDevAsyncAsk, WorkspaceDevQuestion, WorkspaceQuestionConversation } from "./workspace-dev-state";
 import { connectionRecoveryReason } from "./workspace-resume";
 
@@ -16,6 +16,21 @@ export function workspaceQuestionText(t: Translate, question: Pick<WorkspaceDevQ
   return CORE_QUESTION_TEMPLATES[question.reason]?.includes(question.question.trim()) ? t(`ws.question.template.${question.reason}`) : question.question;
 }
 
+const CORE_STEP_KEYS: Readonly<Record<string, Key>> = {
+  "apply the retained user decision": "ws.question.step.applyDecision",
+  "continue the original task with the retained answer": "ws.question.step.continueWithAnswer",
+  "review the stalled strategy": "ws.question.step.reviewStrategy",
+  "complete the accepted task": "ws.question.step.completeTask",
+  "verify the accepted completion checks": "ws.question.step.verifyCompletion",
+  "complete the current task step": "ws.question.step.completeStep",
+};
+
+/** Core checkpoint steps are internal text. Only exact built-in phrases are safe to show in a viewer locale. */
+export function workspaceQuestionStep(t: Translate, step: string | undefined): string | null {
+  const key = step && CORE_STEP_KEYS[step.trim()];
+  return key ? t(key) : null;
+}
+
 /** A question is scoped server state. No default, timeout answer, retry timer or browser storage.
  * The card sits in the message stream and offers only choices; free text goes through the one chat
  * composer below, which answers this question while it is pending. */
@@ -28,10 +43,11 @@ export function WorkspaceUserQuestion({ conversation, t, disabled, supported, on
   const connection = connectionRecoveryReason(conversation);
   const blocked = disabled || !supported || finishing || Boolean(connection) || conversation.resumeAdmission?.allowed === false;
   const titleId = `question-${question.id}`;
+  const step = workspaceQuestionStep(t, question.step);
   return <section className="wsd-ask wsd-user-question is-thread" aria-labelledby={titleId} data-task-state="awaiting_user">
     <header className="wsd-ask-head"><span className="wsd-ask-title">{question.header ?? t("ws.question.title")}</span><span className="wsd-ask-reason" role="status">{t(question.intent ? `ws.question.intent.${question.intent}` : `ws.question.reason.${question.reason}`)}</span></header>
     <p id={titleId} className="wsd-user-question-text">{workspaceQuestionText(t, question)}</p>
-    {question.step ? <p className="wsd-ask-step"><strong>{t("ws.question.step")}</strong> {question.step}</p> : null}
+    {step ? <p className="wsd-ask-step"><strong>{t("ws.question.step")}</strong> {step}</p> : null}
     {finishing ? <p role="status">{t("ws.resume.finishing")}</p> : null}
     {!supported ? <p role="alert">{t("ws.question.unsupported")}</p> : null}
     {conversation.resumeAdmission?.allowed === false ? <p role="alert">{t("ws.resume.budget")}</p> : null}
