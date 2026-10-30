@@ -408,15 +408,15 @@ export const WORKSPACE_KEYS = [
   ],
   [
     "ws.channels.empty.title",
-    "No channels yet",
-    "还没有频道",
-    "還沒有頻道"
+    "No groups yet",
+    "还没有群",
+    "還沒有群"
   ],
   [
     "ws.channels.empty.body",
-    "Create a local channel and bring your colleagues together.",
-    "新建本机频道，和多位同事一起聊。",
-    "建立本機頻道，和多位同事一起聊。"
+    "Create a group and bring your colleagues together.",
+    "新建群，和多位同事一起聊。",
+    "建立群，和多位同事一起聊。"
   ],
   [
     "common.loading",
@@ -428,22 +428,22 @@ export const WORKSPACE_KEYS = [
 
 // Additional live controls and recovery copy; the canonical keys above remain unchanged.
 export const WORKSPACE_EXTRA_KEYS = [
-  ["ws.channels.new", "New channel", "新建频道", "建立頻道"],
-  ["ws.channels.name", "Channel name", "频道名称", "頻道名稱"],
+  ["ws.channels.new", "New group", "新建群", "建立群"],
+  ["ws.channels.name", "Group name", "群名称", "群名稱"],
   ["ws.channels.namePlaceholder", "e.g. Product planning", "例如：产品讨论", "例如：產品討論"],
   ["ws.channels.createBody", "Start a conversation with colleagues in this workspace. No cloud login needed.", "和本空间的同事一起讨论，无需登录云端。", "和本空間的同事一起討論，無需登入雲端。"],
-  ["ws.channels.local", "Local channel", "本机频道", "本機頻道"],
-  ["ws.channels.members", "Channel members", "频道成员", "頻道成員"],
+  ["ws.channels.local", "Local group", "本机群", "本機群"],
+  ["ws.channels.members", "Group members", "群成员", "群成員"],
   ["ws.channels.memberCount", "You + {n} colleagues", "你和 {n} 位同事", "你和 {n} 位同事"],
   ["ws.channels.memberOne", "You + 1 colleague", "你和 1 位同事", "你和 1 位同事"],
   ["ws.channels.selectMembers", "Choose colleagues", "选择同事", "選擇同事"],
   ["ws.channels.searchMembers", "Find a colleague", "搜索同事", "搜尋同事"],
   ["ws.channels.all", "Select all", "全选", "全選"],
   ["ws.channels.none", "Clear selection", "取消全选", "取消全選"],
-  ["ws.channels.noColleagues", "No colleagues in this workspace yet. You can create the channel now and add them later.", "本空间还没有同事。可以先建频道，之后再添加。", "本空間還沒有同事。可以先建頻道，之後再加入。"],
-  ["ws.channels.noRecipients", "This channel has no colleagues yet. Add them in Channel members, or save a note.", "这个频道还没有同事。可以在“频道成员”中添加，也可以先保存笔记。", "這個頻道還沒有同事。可以在「頻道成員」中加入，也可以先儲存筆記。"],
+  ["ws.channels.noColleagues", "No colleagues in this workspace yet. You can create the group now and add them later.", "本空间还没有同事。可以先建群，之后再添加。", "本空間還沒有同事。可以先建群，之後再加入。"],
+  ["ws.channels.noRecipients", "This group has no colleagues yet. Add them in Group members, or save a note.", "这个群还没有同事。可以在“群成员”中添加，也可以先保存笔记。", "這個群還沒有同事。可以在「群成員」中加入，也可以先儲存筆記。"],
   ["ws.channels.localNote", "Stored on this device in the current workspace.", "记录保存在本机当前工作空间。", "記錄保存在本機目前工作空間。"],
-  ["ws.channels.history.label", "Channel history", "频道记录", "頻道記錄"],
+  ["ws.channels.history.label", "Group history", "群记录", "群記錄"],
   ["ws.channels.history.older", "Earlier records", "较早记录", "較早記錄"],
   ["ws.channels.history.newer", "Newer records", "较新记录", "較新記錄"],
   ["ws.channels.history.latest", "Back to latest", "回到最新", "回到最新"],
@@ -454,7 +454,7 @@ export const WORKSPACE_EXTRA_KEYS = [
   ["ws.channels.inviteBody", "Inviting other people will be available later. For now, chat with your local colleagues here.", "邀请其他人加入的功能后续开放。现在可以先和本机同事在这里聊。", "邀請其他人加入的功能後續開放。現在可以先和本機同事在這裡聊。"],
   ["ws.channels.emptyConversation", "Start the conversation", "聊点什么吧", "聊點什麼吧"],
   ["ws.channels.emptyHint", "Send a message and choose which colleagues should reply. They respond once, in order.", "发送消息时可选择回复的同事，他们会依次回复。", "傳送訊息時可選擇回覆的同事，他們會依序回覆。"],
-  ["ws.channels.placeholder", "Message #{name}", "发消息到 #{name}", "傳送訊息到 #{name}"],
+  ["ws.channels.placeholder", "Message {name}", "发消息到 {name}", "傳送訊息到 {name}"],
   ["ws.channels.responders", "Choose who replies", "选择回复的同事", "選擇回覆的同事"],
   ["ws.channels.replyAll", "All {n} colleagues reply", "全部 {n} 位同事回复", "全部 {n} 位同事回覆"],
   ["ws.channels.replyCount", "{n} colleagues reply", "{n} 位同事回复", "{n} 位同事回覆"],

@@ -11,6 +11,10 @@ const module = { exports: {} };
 new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
 const { createElement } = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
+const groupBundle = await build({ entryPoints: [fileURLToPath(new URL("../src/WorkspaceGroupInspector.tsx", import.meta.url))],
+  bundle: true, platform: "node", format: "cjs", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "empty" }, write: false });
+const groupModule = { exports: {} };
+new Function("require", "module", "exports", groupBundle.outputFiles[0].text)(require, groupModule, groupModule.exports);
 
 test("right inspector renders only schedules owned by the selected colleague", () => {
   const agent = { agentId: "dora", kind: "colleague", state: "idle", identity: { displayName: "Dora", title: "Design" }, runtime: { id: "pi", label: "Pi", available: true } };
@@ -18,10 +22,34 @@ test("right inspector renders only schedules owned by the selected colleague", (
     { id: "dora-9", agentId: "dora", name: "Visual summary", enabled: true, schedule: { kind: "cron", expr: "0 9 * * 1-5" }, tz: "Asia/Taipei", task: "Summarize visuals" },
     { id: "elon-8", agentId: "elon", name: "Private other colleague schedule", enabled: true, schedule: { kind: "cron", expr: "0 8 * * *" }, task: "Another task" },
   ], scheduler: { schedules: [] } };
-  const html = renderToStaticMarkup(createElement(module.exports.default, { agent, features, locale: "zh-Hans", error: "", inert: false, supported: true,
-    onClose() {}, onRefresh() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
-  assert.match(html, /Dora · 同事管理/);
+  const workspace = { connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "sonnet" }] } };
+  const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features, locale: "zh-Hans", error: "", inert: false, supported: true,
+    onClose() {}, onRefresh() {}, onRuntime() {}, onModel() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
+  assert.match(html, /Dora · 管理/);
+  assert.match(html, /Runtime.*P0|P0.*Runtime/s);
+  assert.match(html, /sonnet/);
   assert.match(html, /Visual summary/);
   assert.doesNotMatch(html, /Private other colleague schedule|Another task/);
   assert.match(html, /本同事|定时/);
+});
+
+test("main Hara shares the Runtime and model entry without colleague schedules", () => {
+  const agent = { agentId: "hara", kind: "main", state: "idle", identity: { displayName: "Hara" }, runtime: { id: "pi", label: "Pi", available: true } };
+  const workspace = { connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "gpt-6" }] } };
+  const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: true,
+    onClose() {}, onRefresh() {}, onRuntime() {}, onModel() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
+  assert.match(html, /Hara management/);
+  assert.match(html, /Open Runtime settings/);
+  assert.match(html, /Open model settings/);
+  assert.match(html, /gpt-6/);
+  assert.doesNotMatch(html, /Create in chat; manage only this colleague here/);
+});
+
+test("selected group inspector shows its members without colleague runtime controls", () => {
+  const agents = [{ agentId: "dora", kind: "colleague", identity: { displayName: "Dora", title: "Design" }, runtime: { id: "pi", label: "Pi", available: true } }];
+  const html = renderToStaticMarkup(createElement(groupModule.exports.default, { name: "Design review", memberIds: ["dora"], agents, locale: "en", inert: false, onClose() {}, onMembers() {} }));
+  assert.match(html, /Manage group Design review/);
+  assert.match(html, /Dora/);
+  assert.match(html, /Manage members/);
+  assert.doesNotMatch(html, /Open Runtime settings|Open model settings/);
 });

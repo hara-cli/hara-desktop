@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import type { WorkspaceDevAgent, WorkspaceFeatureView } from "./workspace-dev-state";
+import WorkspaceRuntimeAccess from "./WorkspaceRuntimeAccess";
+import type { WorkspaceDevSnapshot } from "./workspace-dev-state";
 
 type Schedule = WorkspaceFeatureView["schedules"][number];
 
-export default function WorkspaceColleagueInspector({ agent, features, locale, error, inert, supported, onClose, onRefresh, onToggle, onSave, onDelete }: {
+export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, onClose, onRefresh, onToggle, onSave, onDelete, onRuntime, onModel }: {
   agent: WorkspaceDevAgent;
+  workspace: WorkspaceDevSnapshot;
   features: WorkspaceFeatureView | null;
   locale: "en" | "zh-Hans" | "zh-Hant";
   error: string;
@@ -16,6 +19,8 @@ export default function WorkspaceColleagueInspector({ agent, features, locale, e
   onToggle(schedule: Schedule): Promise<void>;
   onSave(schedule: Schedule, values: { name: string; cron: string; tz: string; task: string }): Promise<void>;
   onDelete(schedule: Schedule): Promise<void>;
+  onRuntime(): void;
+  onModel(): void;
 }) {
   const zh = locale !== "en";
   const schedules = features?.schedules.filter((row) => row.agentId === agent.agentId) ?? [];
@@ -33,11 +38,12 @@ export default function WorkspaceColleagueInspector({ agent, features, locale, e
     setValues({ name: schedule.name, cron: schedule.schedule.expr ?? "", tz: schedule.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone, task: schedule.task ?? "" });
     setLocalError("");
   };
-  return <aside id="workspace-inspector" className="vg-inspector vg-colleague-manage" aria-label={zh ? `${agent.identity.displayName} · 同事管理` : `Manage ${agent.identity.displayName}`} inert={inert}>
-    <header><h2>{zh ? "该同事 · 内部管理" : "Colleague management"}</h2><button className="hs-icon" aria-label={zh ? "关闭同事管理" : "Close colleague management"} onClick={onClose}><XMarkIcon className="hico" /></button></header>
+  return <aside id="workspace-inspector" className="vg-inspector vg-colleague-manage" aria-label={zh ? `${agent.identity.displayName} · 管理` : `Manage ${agent.identity.displayName}`} inert={inert}>
+    <header><h2>{agent.kind === "main" ? (zh ? "Hara · 管理" : "Hara management") : (zh ? "该同事 · 内部管理" : "Colleague management")}</h2><button className="hs-icon" aria-label={zh ? "关闭管理栏" : "Close management"} onClick={onClose}><XMarkIcon className="hico" /></button></header>
     <div className="vg-colleague-identity"><strong>{agent.identity.displayName}</strong><span>{agent.identity.title || (zh ? "Hara 同事" : "Hara colleague")}</span></div>
+    <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} onRuntime={onRuntime} onModel={onModel} />
     <section className="vg-context-card"><h3>{zh ? "基本信息" : "Profile"}</h3><dl><dt>{zh ? "显示名" : "Display name"}</dt><dd>{agent.identity.displayName}</dd><dt>{zh ? "职责" : "Role"}</dt><dd>{agent.identity.title || "—"}</dd><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{agent.runtime.label}</dd></dl></section>
-    <section className="vg-context-card vg-colleague-schedules"><h3>{zh ? "定时" : "Schedules"}<span>{schedules.length}</span></h3>
+    {agent.kind === "colleague" ? <section className="vg-context-card vg-colleague-schedules"><h3>{zh ? "定时" : "Schedules"}<span>{schedules.length}</span></h3>
       {!supported ? <p className="vg-muted" role="status">{zh ? "更新 Hara 引擎后可管理同事定时。" : "Update Hara Core to manage colleague schedules."}</p>
         : !features ? <p className="vg-muted" role="status">{zh ? "正在读取本同事定时…" : "Loading colleague schedules…"}</p>
         : schedules.length === 0 ? <p className="vg-muted">{zh ? `还没有挂在 ${agent.identity.displayName} 上的定时。在聊天里说“每天 09:00 …”，确认后会出现在这里。` : `No schedules for ${agent.identity.displayName}. Ask in chat for a daily schedule and confirm it there.`}</p>
@@ -55,6 +61,6 @@ export default function WorkspaceColleagueInspector({ agent, features, locale, e
           </article>)}
       <p className="vg-muted">{zh ? "在聊天里创建；这里只管理这位同事的定时。" : "Create in chat; manage only this colleague here."}</p>
       {error || localError ? <p role="alert" className="vg-colleague-error">{error || localError} <button onClick={onRefresh}>{zh ? "重试" : "Retry"}</button></p> : null}
-    </section>
+    </section> : null}
   </aside>;
 }
