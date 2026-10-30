@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { runtimeOperationText } from "./workspace-settings-copy";
 import { type Key } from "./i18n";
-import type { RuntimeApprovalCard, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceModelConnection } from "./workspace-dev-state";
+import type { RuntimeApprovalCard, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceModelConnection, WorkspaceRuntimeModels } from "./workspace-dev-state";
 
 export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, onDirty }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void }) {
   const { t } = useWorkspaceLocale();
@@ -27,16 +27,21 @@ export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, on
   </form>;
 }
 
-export default function WorkspaceRuntimeSettings({ model, workspace, onOpenModels }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onOpenModels?: () => void }) {
+export default function WorkspaceRuntimeSettings({ model, workspace }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onOpenModels?: () => void }) {
   const { t } = useWorkspaceLocale();
   const [card, setCard] = useState<RuntimeApprovalCard | null>(null), [pending, setPending] = useState(false), [notice, setNotice] = useState<"" | Key>("");
   const [detecting, setDetecting] = useState(true), [checked, setChecked] = useState(false);
   const [local, setLocal] = useState<NonNullable<WorkspaceDevSnapshot["runtimes"]>["options"][number] | null>(null);
   const [bound, setBound] = useState<{ runtimeId: string; label: string; path: string } | null>(null);
-  const [selectedConnection, setSelectedConnection] = useState("");
+  const [runtimeModels, setRuntimeModels] = useState<WorkspaceRuntimeModels | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState("");
+  const [modelLoading, setModelLoading] = useState(false), [modelError, setModelError] = useState(false);
   const saveFence = useRef(false);
-  const connections = workspace.connections.connections.filter(row => row.status === "active" && !row.credentialRequired);
-  useEffect(() => { setLocal(null); setBound(null); setSelectedConnection(""); }, [workspace.workspaceId, workspace.resourceGeneration]);
+  useEffect(() => { setLocal(null); setBound(null); setRuntimeModels(null); setSelectedModelId(""); setModelError(false); }, [workspace.workspaceId, workspace.resourceGeneration]);
+  useEffect(() => { if (!bound) return; let active = true; setModelLoading(true); setModelError(false); setRuntimeModels(null); setSelectedModelId("");
+    void model.listRuntimeModels(bound.runtimeId).then(result => { if (active) { setRuntimeModels(result); setSelectedModelId(result.selectedModelId ?? ""); } })
+      .catch(() => { if (active) setModelError(true); }).finally(() => { if (active) setModelLoading(false); });
+    return () => { active = false; }; }, [model, bound, workspace.workspaceId, workspace.resourceGeneration]);
   useEffect(() => { let active = true; void model.detectRuntimes().then(() => { if (active) setChecked(true); })
     .catch(() => { if (active) setNotice("ws.runtimes.detectFailed"); }).finally(() => { if (active) setDetecting(false); }); return () => { active = false; }; }, [model, workspace.workspaceId, workspace.resourceGeneration]);
   const downloading = workspace.runtimes?.operations.some(row => row.state === "downloading") ?? false;
@@ -46,10 +51,10 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onOpenModel
   const decide = async (approved: boolean) => { if (!card || pending) return; setPending(true);
     try { await model.approveRuntime(card, approved); setCard(null); setNotice(approved ? "ws.runtimes.accepted" : "ws.runtimes.cancelledNotice"); }
     catch { setCard(null); setNotice("ws.runtimes.unknown"); } finally { setPending(false); } };
-  const selectModel = async () => { if (!bound || !selectedConnection || saveFence.current || !connections.some(row => row.id === selectedConnection)) return;
+  const selectModel = async () => { if (!bound || !runtimeModels || !selectedModelId || saveFence.current || !runtimeModels.models.some(row => row.id === selectedModelId)) return;
     saveFence.current = true; setPending(true); setNotice("");
-    try { await model.changeConnection(selectedConnection); setBound(null); setNotice("ws.runtimes.modelSelected"); }
-    catch { setNotice("ws.runtimes.modelUnknown"); }
+    try { await model.selectRuntimeModel(bound.runtimeId, selectedModelId, runtimeModels.revision); setBound(null); setNotice("ws.runtimes.modelSelected"); }
+    catch { setModelError(true); setRuntimeModels(null); setNotice("ws.runtimes.modelUnknown"); }
     finally { saveFence.current = false; setPending(false); }
   };
   return <section className="wsd-runtime-settings" aria-label={t("ws.runtimes.title")}><h3>{t("ws.settings.page.runtimes")}</h3><p>{t("ws.runtimes.note")}</p>
@@ -73,12 +78,12 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onOpenModel
     {bound ? <section className="wsd-runtime-model-step" aria-label={t("ws.runtimes.selectModelTitle", { name: bound.label })}>
       <h3>{t("ws.runtimes.selectModelTitle", { name: bound.label })}</h3><p role="status">{t("ws.runtimes.boundBanner", { name: bound.label })}</p><code className="wsd-root">{bound.path}</code>
       <p>{t("ws.runtimes.modelScope")}</p>
-      {connections.length ? <div className="wsd-runtime-model-options">{connections.map(row => <label key={row.id} className={selectedConnection === row.id ? "selected" : ""}>
-        <input type="radio" name="runtime-model-connection" value={row.id} checked={selectedConnection === row.id} onChange={() => setSelectedConnection(row.id)} />
-        <span><strong>{row.defaultModel}</strong><small>{row.label}</small></span></label>)}</div> : <p>{t("ws.runtimes.noModels")}</p>}
+      {modelLoading ? <p role="status">{t("ws.runtimes.loadingModels")}</p> : modelError ? <p role="alert">{t("ws.runtimes.modelUnknown")}</p>
+        : runtimeModels?.models.length ? <div className="wsd-runtime-model-options">{runtimeModels.models.map(row => <label key={row.id} className={selectedModelId === row.id ? "selected" : ""}>
+        <input type="radio" name="runtime-model" value={row.id} checked={selectedModelId === row.id} onChange={() => setSelectedModelId(row.id)} />
+        <span><strong>{row.label}</strong>{row.description ? <small>{row.description}</small> : null}</span></label>)}</div> : <p>{t("ws.runtimes.noModels")}</p>}
       <div className="wsd-card-actions"><button disabled={pending} onClick={() => setBound(null)}>{t("ws.runtimes.later")}</button>
-        {connections.length ? <button className="wsd-primary" disabled={pending || !selectedConnection} onClick={() => void selectModel()}>{t("ws.runtimes.useModel")}</button>
-          : onOpenModels ? <button className="wsd-primary" onClick={onOpenModels}>{t("ws.runtimes.openModels")}</button> : null}</div>
+        <button className="wsd-primary" disabled={pending || modelLoading || modelError || !runtimeModels?.models.some(row => row.id === selectedModelId)} onClick={() => void selectModel()}>{t("ws.runtimes.useModel")}</button></div>
     </section> : null}
     {card ? <section className="wsd-approval" role="dialog" aria-label={t("ws.runtimes.confirmInstall")}><div className="wsd-kicker">{t("ws.approval.kicker")}</div>
       <h3>{t("ws.runtimes.installTitle", { name: card.label, version: card.version })}</h3><p>{card.origin} · {card.target.platform}/{card.target.arch} · {t("ws.runtimes.maxSize", { n: Math.ceil(card.maxBytes / 1024 / 1024) })}</p>

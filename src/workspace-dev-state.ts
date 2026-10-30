@@ -54,6 +54,8 @@ export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; wor
   workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string; dismissedRecoveryIdentity: string | null }
 export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
   maxBytes: number; expiresAt: string; target: { platform: string; arch: string }; workspaceId: string; resourceGeneration: string; viewEpoch: number }
+export interface WorkspaceRuntimeModels { runtimeId: string; revision: number; selectedModelId: string | null;
+  models: { id: string; label: string; description?: string; recommended?: boolean }[] }
 export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
 export interface LegacyConnectionPreview { id: string; label: string; provider: "openai" | "anthropic"; baseURL: string; defaultModel: string; keySaved: boolean; source: string }
 export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean; executionDetails?: "brief" | "detailed"; collapseDetails?: boolean; updates?: UpdatePreferences }
@@ -278,6 +280,16 @@ export class WorkspaceDevModel {
   async registerLocalRuntime(runtimeId: string, fingerprint: string, workspaceId: string, generation: string): Promise<void> {
     if (this.view.workspaceId !== workspaceId || this.view.workspace?.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.localConfirmationExpired");
     await this.workspaceRequest("workspace.runtime.registerLocal", { runtimeId, fingerprint, approved: true }); await this.refresh();
+  }
+  async listRuntimeModels(runtimeId: string): Promise<WorkspaceRuntimeModels> {
+    const result = await this.workspaceRequest<WorkspaceRuntimeModels>("workspace.runtime.listModels", { runtimeId });
+    if (result.runtimeId !== runtimeId || !Number.isSafeInteger(result.revision) || !Array.isArray(result.models)
+      || result.models.some(row => typeof row.id !== "string" || typeof row.label !== "string")) throw new WorkspaceViewError("ws.notice.invalidView");
+    return result;
+  }
+  async selectRuntimeModel(runtimeId: string, modelId: string, expectedRevision: number): Promise<void> {
+    await this.workspaceRequest("workspace.runtime.selectModel", { runtimeId, modelId, expectedRevision });
+    await this.refresh();
   }
   async preferences(): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.get", {}); }
   async savePreference(theme: string, expectedRevision: number): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.set", { theme, expectedRevision }); }
