@@ -496,7 +496,7 @@ function renderAutomationSurface(overrides = {}) {
   };
 }
 
-test("the Settings surface retains all four views, compact navigation, and schedule controls", () => {
+test("the Settings surface retains all four read-only views and compact navigation", () => {
   for (const view of ["tasks", "attention", "paused", "runs"]) {
     const surface = renderAutomationSurface({ autoView: view });
     assert.equal(surface.pages.length, 1);
@@ -506,12 +506,9 @@ test("the Settings surface retains all four views, compact navigation, and sched
     assert.equal(surface.pages[0].view, view);
     assert.equal(surface.pages[0].jobs, surface.bindings.auto.jobs);
     assert.equal(surface.pages[0].sessions, surface.bindings.auto.sessions);
-    for (const [prop, binding] of [
-      ["add", "addAutomationDraft"], ["update", "updateAutomationDraft"], ["run", "runAutomationNow"],
-      ["toggle", "toggleAutomation"], ["delete", "deleteAutomation"], ["install", "installAutomationScheduler"],
-      ["openReplay", "openAutomationReplay"],
-    ]) assert.equal(surface.pages[0][prop], surface.bindings[binding]);
-    assert.equal(surface.pages[0].onManage, undefined);
+    for (const prop of ["add", "update", "run", "toggle", "delete", "install", "onManage"])
+      assert.equal(surface.pages[0][prop], undefined, `${prop} is unavailable in the read-only Settings view`);
+    assert.equal(surface.pages[0].openReplay, surface.bindings.openAutomationReplay);
   }
 });
 
@@ -608,8 +605,8 @@ test("Settings and an optional task shortcut share their result renderer and rou
   assert.match(app, /zone === "auto" \? \([\s\S]*?<main className="chat board automation-board">\s*\{automationContent\}/);
   assert.match(app, /e\.key === "3"[\s\S]*?apiRef\.current\.openAutomations\(\)/);
   assert.match(app, /if \(place === "auto"\)[\s\S]*?openAutomations\("runs"\)[\s\S]*?openReplay\(session\)/);
-  assert.match(app, /id === "core\.tasks"[\s\S]*?openAutomations\(\)/);
-  assert.match(app, /automationNotice=\{activeSpaceId === "personal"[\s\S]*?openAutomations\("runs"\)/);
+  assert.match(app, /const railContributions = availableNavigation\(navigationContributions, \{[\s\S]*?\}\)\.filter\(\(item\) => item\.id !== "core\.tasks"\)/);
+  assert.match(app, /automationNotice=\{undefined\}/);
 });
 
 test("sidebar customization stays inside advanced Appearance controls with a recovery path", () => {
