@@ -373,12 +373,12 @@ test("automation is one guided control console with local-only status refresh", 
   assert.doesNotMatch(app, /jobForm|className="jobtable"/, "the legacy duplicate task editor and table are gone");
   assert.match(
     app,
-    /const automationContent[\s\S]*?<AutomationsPage[\s\S]*?add=\{settingsAutomationOpen \? addAutomationDraft : undefined\}[\s\S]*?update=\{settingsAutomationOpen \? updateAutomationDraft : undefined\}[\s\S]*?toggle=\{settingsAutomationOpen \? toggleAutomation : undefined\}[\s\S]*?delete=\{settingsAutomationOpen \? deleteAutomation : undefined\}[\s\S]*?install=\{settingsAutomationOpen \? installAutomationScheduler : undefined\}/,
-    "one shared surface enables schedule management only in Settings",
+    /const automationContent[\s\S]*?<AutomationsPage[\s\S]*?add=\{undefined\}[\s\S]*?update=\{undefined\}[\s\S]*?toggle=\{undefined\}[\s\S]*?delete=\{undefined\}[\s\S]*?install=\{undefined\}/,
+    "cross-colleague automation view stays read-only; colleague management owns edits",
   );
   assert.match(
     app,
-    /const automationContent[\s\S]*?run=\{runAutomationNow\}[\s\S]*?openReplay=\{openAutomationReplay\}[\s\S]*?onManage=\{settingsAutomationOpen \? undefined : \(\) => \{ openAutomations\(autoView\); \}\}/,
+    /const automationContent[\s\S]*?run=\{undefined\}[\s\S]*?openReplay=\{openAutomationReplay\}[\s\S]*?onManage=\{settingsAutomationOpen \? undefined : \(\) => \{ openAutomations\(autoView\); \}\}/,
     "the optional pinned monitor shares results and routes management to Settings",
   );
   assert.match(app, /className="automation-settings-surface">\{automationContent\}/);
@@ -502,6 +502,18 @@ test("automation is one guided control console with local-only status refresh", 
     /return job\.deliver;/,
     "a stored webhook or channel target is never rendered back into the task list",
   );
+});
+
+test("colleague chat keeps its inspector and opens app settings above the live shell", () => {
+  const app = readFileSync(`${root}/src/App.tsx`, "utf8");
+  const shell = readFileSync(`${root}/src/SoftDarkShell.css`, "utf8");
+  assert.match(app, /items=\{railItems\.filter\(\(item\) => item\.id !== "core\.tasks"\)\}/);
+  assert.match(app, /\{colleagueManagePanel\}[\s\S]*?\{settingsOpen && \(/);
+  assert.match(app, /className="soft-dark-settings-dialog" role="dialog" aria-modal="true"/);
+  assert.match(app, /if \(z === "settings"\)[\s\S]*?setSettingsOpen\(true\);[\s\S]*?return true;/);
+  assert.match(shell, /--bg:#0d0915/);
+  assert.match(shell, /--bg:#f5f3ff/);
+  assert.match(shell, /\.conversation-first \.colleague-manage/);
 });
 
 test("typed task lifecycle drives status while conversation and execution inputs stay separate", () => {

@@ -68,7 +68,7 @@ export default function ColleagueManagePanel({ agent, jobs, scheduleSupported, l
         {editable ? <button type="button" className="colleague-manage-save" disabled={busy || !name.trim()} onClick={() => void perform(() => onSaveProfile(name.trim(), bio.trim()))}>{zh ? "保存资料" : "Save profile"}</button> : null}
       </section>
       <section className="colleague-manage-card" aria-label={zh ? "本同事定时" : "This colleague's schedules"}>
-        <h3>{zh ? "定时" : "Schedules"}<small>{zh ? "本 bot" : "This colleague"} · {jobs?.length ?? 0}</small></h3>
+        <h3>{zh ? "定时" : "Schedules"}<small>{zh ? "本同事" : "This colleague"} · {jobs?.length ?? 0}</small></h3>
         {!scheduleSupported ? <p className="colleague-manage-empty">{zh ? "需更新 Hara 引擎才能管理同事定时。" : "Update the Hara engine to manage colleague schedules."}</p> : jobs === null ? <p className="colleague-manage-empty">{zh ? "正在读取定时…" : "Loading schedules…"}</p> : jobs.length === 0 ? <p className="colleague-manage-empty">{zh ? `还没有挂在 ${name} 上的定时。直接在聊天里说“每天…”或“每周…”，确认后会出现在这里。` : `No schedules for ${name} yet. Ask in chat for a daily or weekly schedule and confirm it there.`}</p> : jobs.map((job) => <article className="colleague-manage-job" key={job.id}>
           <div className="colleague-manage-job-top"><input type="checkbox" aria-label={(zh ? "启用 " : "Enable ") + job.name} checked={job.enabled} disabled={busy} onChange={(event) => void perform(() => onToggle(job, event.target.checked))} /><strong>{job.name}</strong></div>
           <p>{job.schedule || job.scheduleSpec} {job.tz ? `· ${job.tz}` : ""}</p>

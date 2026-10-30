@@ -111,6 +111,8 @@ export const WORKSPACE_SETTINGS_KEYS = [
   ["ws.schedules.add", "New schedule", "新建定时任务", "新增定時任務"],
   ["ws.schedules.empty", "No schedules in this workspace yet. Create one, or discuss the work with Hara.", "本空间还没有定时任务。可以新建，或与 Hara 讨论要做的事。", "本空間還沒有定時任務。可以新增，或與 Hara 討論要做的事。"],
   ["ws.schedules.enabled", "Enabled", "已启用", "已啟用"],
+  ["ws.schedules.off", "Off", "停用", "停用"],
+  ["ws.schedules.colleagueNote", "This workspace-wide schedule view is read-only. Create schedules in a colleague chat and manage them in that colleague's panel.", "跨同事定时总览仅供查看。请在同事聊天中创建，并在该同事右栏管理。", "跨同事定時總覽僅供查看。請在同事聊天中建立，並在該同事右欄管理。"],
   ["ws.schedules.run", "Run now", "立即运行", "立即執行"],
   ["ws.schedules.history", "Run history", "运行记录", "執行記錄"],
   ["ws.schedules.name", "Name", "名称", "名稱"],
