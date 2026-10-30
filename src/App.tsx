@@ -16,6 +16,9 @@ import {
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import CommandLineDiagnostics from "./CommandLineDiagnostics";
+import ColleagueManagePanel from "./ColleagueManagePanel";
+import ColleagueScheduleCard from "./ColleagueScheduleCard";
+import { parseColleagueScheduleRequest, type ColleagueScheduleDraft } from "./colleague-schedule.js";
 import { SettingsNavigation, type SettingsSection } from "./SettingsNavigation";
 import type { CommandLineHaraStatus } from "./command-line-status";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -38,7 +41,6 @@ import {
   type SkillInfo,
   type PanelSpec,
   type ProjectPanel,
-  type AutomationDraftInput,
   type AutomationListResult,
   type CtxInfo,
   type ProviderSettingsState,
@@ -136,7 +138,6 @@ import {
 } from "./WorkStarter";
 import type { PresentationTemplate } from "./OfficeHome";
 import type {
-  AutomationDraft,
   AutomationRun,
   AutomationViewId,
 } from "./Automations";
@@ -625,32 +626,6 @@ const fmtTime = (iso: string): string => {
   return `${yr}${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 const isAutomated = (s: SessionInfo): boolean => s.source === "cron" || s.source === "gateway";
-const automationDraftInput = (
-  draft: AutomationDraft,
-  fallbackCwd?: string,
-): AutomationDraftInput => {
-  // Empty `tz` is an intentional, serializable clear request. Falling back with `||` would silently
-  // restore the old saved timezone because JSON cannot represent `undefined`.
-  const timezone = draft.tz !== undefined ? draft.tz : draft.timezone;
-  const timezoneApplies =
-    draft.scheduleKind === "daily"
-    || draft.scheduleKind === "weekly"
-    || draft.scheduleKind === "custom";
-  return {
-    name: draft.name,
-    schedule: draft.schedule,
-    task: draft.task,
-    ...(draft.cwd || fallbackCwd ? { cwd: draft.cwd || fallbackCwd } : {}),
-    ...(timezone !== undefined && timezoneApplies ? { tz: timezone } : {}),
-    ...(draft.mode === "print" || draft.mode === "org" || draft.mode === "command"
-      ? { mode: draft.mode }
-      : {}),
-    ...(draft.deliver ? { deliver: draft.deliver } : {}),
-    ...(draft.deliverMode ? { deliverMode: draft.deliverMode } : {}),
-    ...(draft.clearDeliver ? { clearDeliver: true } : {}),
-    ...(draft.alertAfter ? { alertAfter: draft.alertAfter } : {}),
-  };
-};
 /** gateway idle-rotation forks share an id prefix (`wechat-<chat>-<tag>[-N]`) — fold to one thread */
 const forkBase = (id: string): string => id.replace(/-\d+$/, "");
 const BUNDLED_ENGINE_VERSION = bundledEngineVersionText.trim();
@@ -911,6 +886,12 @@ export default function App() {
     setReadOnlySessions(next);
   }, []);
   const [composerDrafts, setComposerDrafts] = useState<Record<string, ComposerDraft>>({});
+  const [pendingColleagueSchedule, setPendingColleagueSchedule] = useState<{
+    sessionId: string; agentRef: string; draft: ColleagueScheduleDraft;
+  } | null>(null);
+  const [colleagueScheduleBusy, setColleagueScheduleBusy] = useState(false);
+  const [colleagueScheduleError, setColleagueScheduleError] = useState("");
+  const [colleagueScheduleNotice, setColleagueScheduleNotice] = useState<{ sessionId: string; name: string } | null>(null);
   const activeDraft = active
     ? composerDrafts[active] ?? emptyComposerDraft()
     : emptyComposerDraft();
@@ -1086,7 +1067,8 @@ export default function App() {
     useState<NavigationPreferences>(() =>
       parseNavigationPreferences(localStorage.getItem(NAVIGATION_PREFERENCES_KEY)));
   const [zone, setZoneRaw] = useState<Zone>(() =>
-    initialAppPlace(localStorage.getItem("hara.zone"), navigationPreferences));
+    localStorage.getItem("hara.zone") === "auto" ? "chat"
+      : initialAppPlace(localStorage.getItem("hara.zone"), navigationPreferences));
   const zoneRef = useRef<Zone>(zone);
   const workbenchPlaceRef = useRef<"chat" | "projects">(
     localStorage.getItem("hara.workbench.place") === "projects" || zone === "projects"
@@ -3799,9 +3781,9 @@ export default function App() {
             localStorage.getItem(NAVIGATION_PREFERENCES_KEY),
           ),
         );
-        zoneRef.current = preferredPlace;
+        zoneRef.current = preferredPlace === "auto" ? "chat" : preferredPlace;
         sessionOpenRequestRef.current += 1;
-        setZoneRaw(preferredPlace);
+        setZoneRaw(zoneRef.current);
       }
       void refreshModelInfo().catch(() => {});
       void refreshAgentCatalog({ cwd: info.cwd }).catch(() => {});
@@ -4970,56 +4952,6 @@ export default function App() {
       if (replayIsCurrent()) setErr(String(error?.message ?? error));
     }
   }, []);
-  const pickAutomationDirectory = useCallback(async (current?: string): Promise<string | null> => {
-    const defaultPath = current?.trim() || (home ? `${home}/.hara/workspace` : undefined);
-    const selected = await openDialog({
-      directory: true,
-      multiple: false,
-      title: locale === "zh" ? "选择自动任务的工作目录" : "Choose the automation workspace",
-      ...(defaultPath ? { defaultPath } : {}),
-    });
-    return typeof selected === "string" ? selected : null;
-  }, [home, locale]);
-  const addAutomationDraft = useCallback(async (draft: AutomationDraft): Promise<void> => {
-    const client = clientRef.current;
-    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
-    const input = automationDraftInput(draft, home ? `${home}/.hara/workspace` : undefined);
-    await client.validateAutomationSchedule(input.schedule, input.tz);
-    await client.addAutomationDraft(input);
-    await refreshAuto();
-  }, [home, locale, refreshAuto]);
-  const updateAutomationDraft = useCallback(async (jobId: string, draft: AutomationDraft): Promise<void> => {
-    const client = clientRef.current;
-    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
-    const input = automationDraftInput(draft, home ? `${home}/.hara/workspace` : undefined);
-    await client.validateAutomationSchedule(input.schedule, input.tz, jobId);
-    await client.updateAutomation(jobId, input);
-    await refreshAuto();
-  }, [home, locale, refreshAuto]);
-  const runAutomationNow = useCallback(async (jobId: string): Promise<void> => {
-    const client = clientRef.current;
-    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
-    await client.runAutomation(jobId);
-    await refreshAuto();
-  }, [locale, refreshAuto]);
-  const toggleAutomation = useCallback(async (jobId: string, enabled: boolean): Promise<void> => {
-    const client = clientRef.current;
-    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
-    await client.toggleAutomation(jobId, enabled);
-    await refreshAuto();
-  }, [locale, refreshAuto]);
-  const deleteAutomation = useCallback(async (jobId: string): Promise<void> => {
-    const client = clientRef.current;
-    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
-    await client.deleteAutomation(jobId);
-    await refreshAuto();
-  }, [locale, refreshAuto]);
-  const installAutomationScheduler = useCallback(async (): Promise<void> => {
-    const client = clientRef.current;
-    if (!client) throw new Error(locale === "zh" ? "Hara 引擎尚未连接。" : "Hara engine is not connected.");
-    await client.installAutomationScheduler();
-    await refreshAuto();
-  }, [locale, refreshAuto]);
   const openAutomationReplay = useCallback(async (run: AutomationRun): Promise<void> => {
     if (!auto || auto === "old-server") return;
     const session = auto.sessions.find((candidate) => candidate.id === run.id);
@@ -6030,6 +5962,20 @@ export default function App() {
     }
     const sessionId = active;
     const attachments = pendingAttachments;
+    const selected = sessionsRef.current.find((session) => session.id === sessionId);
+    const scheduleDraft = attachments.length === 0 && zoneRef.current === "chat" && selected?.agentRef
+      ? parseColleagueScheduleRequest(text)
+      : null;
+    if (scheduleDraft && selected?.agentRef) {
+      if (!clientRef.current?.supportsFeature("automations.colleague-owner.v1")) {
+        setErr(locale === "zh" ? "请先更新 Hara 引擎，以确保定时真正挂在这位同事上。" : "Update the Hara engine to bind schedules to this colleague.");
+        return;
+      }
+      setPendingColleagueSchedule({ sessionId, agentRef: selected.agentRef, draft: scheduleDraft });
+      setColleagueScheduleError("");
+      updateComposerDraft(sessionId, () => emptyComposerDraft());
+      return;
+    }
     updateComposerDraft(sessionId, () => emptyComposerDraft());
     setAc((a) => ({ ...a, open: false }));
     setAttachmentMenuOpen(false);
@@ -6069,6 +6015,30 @@ export default function App() {
         attachments: appendComposerAttachments(attachments, draft.attachments),
       }));
       setErr(String(error?.message ?? error));
+    }
+  };
+
+  const confirmColleagueSchedule = async () => {
+    const pending = pendingColleagueSchedule;
+    const client = clientRef.current;
+    if (!pending || !client || colleagueScheduleBusy) return;
+    if (!client.supportsFeature("automations.colleague-owner.v1")
+      || sessionsRef.current.find((session) => session.id === pending.sessionId)?.agentRef !== pending.agentRef) {
+      setColleagueScheduleError(locale === "zh" ? "同事会话已改变，请重新发起定时。" : "The colleague conversation changed. Start again.");
+      return;
+    }
+    setColleagueScheduleBusy(true);
+    setColleagueScheduleError("");
+    try {
+      await client.validateAutomationSchedule(pending.draft.schedule, pending.draft.tz);
+      await client.addAutomationDraft({ ...pending.draft, mode: "print", ownerBotId: pending.agentRef, sessionId: pending.sessionId });
+      await refreshAuto();
+      setColleagueScheduleNotice({ sessionId: pending.sessionId, name: pending.draft.name });
+      setPendingColleagueSchedule(null);
+    } catch (cause) {
+      setColleagueScheduleError(String(cause instanceof Error ? cause.message : cause).slice(0, 240));
+    } finally {
+      setColleagueScheduleBusy(false);
     }
   };
 
@@ -7861,6 +7831,21 @@ export default function App() {
             onDecision={timelineDecision}
             interactionCards={delegatedInteractionSurface}
           />
+          {temperament === "im" && pendingColleagueSchedule?.sessionId === active && (
+            <ColleagueScheduleCard draft={pendingColleagueSchedule.draft}
+              colleagueName={activeAgent ? agentDisplayName(activeAgent) : pendingColleagueSchedule.agentRef}
+              locale={locale} busy={colleagueScheduleBusy} error={colleagueScheduleError}
+              onChange={(draft) => setPendingColleagueSchedule((current) => current?.sessionId === active ? { ...current, draft } : current)}
+              onConfirm={() => void confirmColleagueSchedule()}
+              onCancel={() => {
+                setInput(pendingColleagueSchedule.draft.task);
+                setPendingColleagueSchedule(null);
+                setColleagueScheduleError("");
+              }} />
+          )}
+          {temperament === "im" && colleagueScheduleNotice?.sessionId === active && !pendingColleagueSchedule && (
+            <p className="colleague-schedule-result" role="status">{locale === "zh" ? `已为这位同事创建定时：${colleagueScheduleNotice.name}。右侧列表可管理。` : `Created for this colleague: ${colleagueScheduleNotice.name}. Manage it on the right.`}</p>
+          )}
           {(queue[active!] ?? []).length > 0 && (
             <div className="steerq">
               {(queue[active!] ?? []).map((queued, i) => (
@@ -8512,7 +8497,7 @@ export default function App() {
   const hasOrganizationWorkspace = Boolean(organizationRoutes?.connections.length);
   const railContributions = availableNavigation(navigationContributions, {
     hasOrganizationWorkspace,
-  });
+  }).filter((item) => item.id !== "core.tasks");
   const localResourceIsolationNotice = locale === "zh"
     ? "公司空间暂不显示本机全局的自动化与交付物；请切换到个人空间使用，避免跨公司混用。"
     : "Company Spaces do not expose machine-global automations or deliverables yet. Switch to Personal to keep company data isolated.";
@@ -8604,18 +8589,67 @@ export default function App() {
         copy={locale === "en" ? AUTOMATION_COPY_EN : undefined}
         jobs={auto?.jobs ?? null} sessions={auto?.sessions ?? null} scheduler={auto?.scheduler}
         view={autoView}
-        add={settingsAutomationOpen ? addAutomationDraft : undefined}
-        update={settingsAutomationOpen ? updateAutomationDraft : undefined}
-        run={runAutomationNow}
-        toggle={settingsAutomationOpen ? toggleAutomation : undefined}
-        delete={settingsAutomationOpen ? deleteAutomation : undefined}
-        install={settingsAutomationOpen ? installAutomationScheduler : undefined}
+        // Workspace Automations is a cross-colleague diagnostic view. The colleague panel owns edits.
+        add={undefined}
+        update={undefined}
+        run={undefined}
+        toggle={undefined}
+        delete={undefined}
+        install={undefined}
         openReplay={openAutomationReplay}
-        pickDirectory={pickAutomationDirectory}
         onManage={settingsAutomationOpen ? undefined : () => { openAutomations(autoView); }}
       />
     </Suspense>
   );
+  const colleagueManagePanel = zone === "chat" && workbenchInboxMode === "agents"
+    && activeAgent && !isRootAgent(activeAgent) && activeSession?.agentRef === activeAgent.ref
+    && activeSpaceId === "personal" && !contactDirectoryOpen ? (
+    <ColleagueManagePanel key={activeAgent.ref} agent={activeAgent} locale={locale}
+      scheduleSupported={clientRef.current?.supportsFeature("automations.colleague-owner.v1") === true}
+      jobs={auto && auto !== "old-server" ? auto.jobs.filter((job) => job.ownerBotId === activeAgent.ref) : null}
+      onOpenProfile={() => openAgentProfile(activeAgent.ref)}
+      onSaveProfile={async (name, bio) => {
+        const client = clientRef.current;
+        if (!client || !activeAgent.revision) throw new Error(locale === "zh" ? "同事资料不可编辑" : "Profile is not editable");
+        const identity = activeAgent.identity;
+        const result = await client.updateAgentProfile({
+          ref: activeAgent.ref, expectedRevision: activeAgent.revision,
+          profile: { displayName: name, bio,
+            ...(identity?.title ? { title: identity.title } : {}),
+            ...(identity?.traits ? { traits: identity.traits } : {}),
+            ...(identity?.emoji ? { emoji: identity.emoji } : {}),
+            ...(identity?.avatar ? { avatar: identity.avatar } : {}),
+            ...(identity?.theme ? { theme: identity.theme } : {}),
+            ...(identity?.accent ? { accent: identity.accent } : {}),
+            ...(identity?.character ? { character: identity.character } : {}),
+          },
+          ...(active ? { sessionId: active } : { cwd: activeAgent.home || server?.cwd }),
+        });
+        setAgentCatalog(result.catalog);
+      }}
+      onToggle={async (job, enabled) => {
+        if (job.ownerBotId !== activeAgent.ref) throw new Error("Schedule owner changed");
+        const client = clientRef.current;
+        if (!client) throw new Error("Hara engine is not connected");
+        await client.toggleAutomation(job.id, enabled, activeAgent.ref);
+        await refreshAuto();
+      }}
+      onUpdate={async (job, name, schedule, task, tz) => {
+        if (job.ownerBotId !== activeAgent.ref) throw new Error("Schedule owner changed");
+        const client = clientRef.current;
+        if (!client) throw new Error("Hara engine is not connected");
+        await client.validateAutomationSchedule(schedule, tz, job.id);
+        await client.updateAutomation(job.id, { name, schedule, task, mode: "print", cwd: job.cwd, tz, ownerBotId: activeAgent.ref });
+        await refreshAuto();
+      }}
+      onDelete={async (job) => {
+        if (job.ownerBotId !== activeAgent.ref) throw new Error("Schedule owner changed");
+        const client = clientRef.current;
+        if (!client) throw new Error("Hara engine is not connected");
+        await client.deleteAutomation(job.id, activeAgent.ref);
+        await refreshAuto();
+      }} />
+  ) : null;
   const railItems: AppRailItem[] = visibleNavigation(
     railContributions,
     navigationPreferences,
@@ -8660,12 +8694,7 @@ export default function App() {
         updateAvailable: t("updateAvail"),
       }}
       updateAvailable={updAvail}
-      automationNotice={activeSpaceId === "personal" && autoUnread > 0
-        && !railItems.some((item) => item.id === "core.tasks") ? {
-          label: `${t("zoneAuto")} · ${autoUnread} ${t("autoRuns")}`,
-          count: autoUnread,
-          onOpen: () => { openAutomations("runs"); },
-        } : undefined}
+      automationNotice={undefined}
       onSelect={(id) => {
         const contribution = CORE_NAVIGATION_CONTRIBUTIONS.find(
           (item) => item.id === id,
@@ -10947,7 +10976,10 @@ export default function App() {
           </Suspense>
         </div>
       ) : (
-        conversation(zone === "chat" ? "im" : "ide")
+        <>
+          {conversation(zone === "chat" ? "im" : "ide")}
+          {colleagueManagePanel}
+        </>
       )}
 
       {talentMarketOpen && agentBlueprintFeatureReady ? (
