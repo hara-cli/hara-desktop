@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChatBubbleLeftRightIcon, CheckCircleIcon, Cog6ToothIcon, GlobeAltIcon,
-  HashtagIcon, ViewColumnsIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon, UserPlusIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { CheckCircleIcon, Cog6ToothIcon, GlobeAltIcon,
+  ViewColumnsIcon, MagnifyingGlassIcon, PlusIcon, UserPlusIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import HaraLogo from "./mark";
 import { Md } from "./markdown";
@@ -15,13 +15,13 @@ import { WorkspaceAsyncQuestions, WorkspaceUserQuestion } from "./WorkspaceUserQ
 import { WorkspaceDevModel, workspaceAsyncAsks, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval, type WorkspaceFeatureView } from "./workspace-dev-state";
 import { parseColleagueScheduleRequest, type ColleagueScheduleDraft } from "./colleague-schedule.js";
 import { useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
-import { Avatar, AwaitBar, ColleaguesPage, ShellDialog, SidebarSection } from "./WorkspaceShell";
-import { useSectionState, useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
+import { Avatar, AwaitBar, ColleaguesPage, ShellDialog } from "./WorkspaceShell";
+import { useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
 import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
 import { captureWorkspaceReadingPosition } from "./workspace-chat-scroll";
 import { colleagueUsageView } from "./workspace-account-usage";
 import { WorkspaceLocalChannelsModel } from "./workspace-local-channels";
-import { channelMemberLabel, LocalChannelComposer, LocalChannelDialog, LocalChannelRows, LocalChannelThread } from "./WorkspaceLocalChannels";
+import { channelMemberLabel, LocalChannelComposer, LocalChannelDialog, LocalChannelThread } from "./WorkspaceLocalChannels";
 import "./workspace-entry.css";
 import "./workspace-local-dev.css";
 import "./workspace-theme.css";
@@ -29,6 +29,8 @@ import "./workspace-states.css";
 import "./workspace-shell-layout.css";
 import WorkspaceInspector, { WorkspaceOverview } from "./WorkspaceInspector";
 import WorkspaceColleagueInspector from "./WorkspaceColleagueInspector";
+import WorkspaceGroupInspector from "./WorkspaceGroupInspector";
+import WorkspaceRuntimeAccess from "./WorkspaceRuntimeAccess";
 import "./violet-tokens.css";
 import "./violet-workspace.css";
 import WorkspaceSettings, { type SettingsPage } from "./WorkspaceSettings";
@@ -130,7 +132,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const channelRouteSelection = useRef<string | null>(null);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
   const colleagues = useMemo(() => agents.filter(row => row.kind === "colleague" && row.state !== "archived"), [agents]);
-  const shell = useWorkspaceOverview(model, workspace), { sections, toggle } = useSectionState(view.workspaceId ?? "none");
+  const shell = useWorkspaceOverview(model, workspace);
   const scope = workspace ? JSON.stringify([workspace.workspaceId, workspace.resourceGeneration]) : "";
   const scheduleSupported = model.supportsColleagueSchedules?.() === true;
   const [features, setScheduleFeatures] = useState<WorkspaceFeatureView | null>(null);
@@ -151,9 +153,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const selectedUsage = colleagueUsageView(accountUsage.get(view.agentId ?? ""));
   const updates = useWorkspaceUpdater(model, production);
   const inChannel = route.section === "channel";
-  const showColleagueInspector = inspector && !browser && route.section === "chat" && agent?.kind === "colleague";
-  const showContextInspector = inspector && !browser && route.section !== "chat";
-  const selectedChannel = inChannel ? channelView.channel?.channel : undefined;
+  const showColleagueInspector = inspector && !browser && route.section === "chat" && !!agent && (agent.kind === "colleague" || agent.kind === "main");
+  const showGroupInspector = inspector && !browser && inChannel;
+  const showContextInspector = inspector && !browser && route.section !== "chat" && !inChannel;
+  const selectedChannel = inChannel ? channelView.channel?.channel ?? channelView.catalog?.channels.find(row => row.id === route.channelId) : undefined;
   const detailedChannel = theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false;
   const renderChannelTranscript = useCallback((messages: WorkspaceDevMessage[], author?: WorkspaceDevAgent) => <Transcript history={messages} agent={author} t={t} detailed={detailedChannel} />, [t, detailedChannel]);
   const channelFollowing = useCallback((following: boolean) => { nearBottom.current = following; }, []);
@@ -264,9 +267,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   useEffect(() => { if (inChannel) { nearBottom.current = true; if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; } }, [channelView.channelId, inChannel]);
   useEffect(() => { if (!busy) return; const timer = setInterval(() => { void model.refresh(); }, 1000); return () => clearInterval(timer); }, [model, busy]);
   useEffect(() => { nearBottom.current = true; if (workspace?.selectedAgentId && route.section === "chat") input.current?.focus(); }, [workspace?.selectedAgentId, route.section]);
-  useEffect(() => { if (agent?.kind === "colleague" && route.section === "chat") setInspector(true); }, [agent?.agentId, agent?.kind, route.section]);
+  useEffect(() => { if ((route.section === "chat" && (agent?.kind === "colleague" || agent?.kind === "main")) || route.section === "channel") setInspector(true); }, [agent?.agentId, agent?.kind, route.section, route.channelId]);
   useLayoutEffect(() => { const node = input.current; if (!node) return; node.style.height = "auto"; node.style.height = `${Math.min(160, Math.max(32, node.scrollHeight))}px`; }, [view.draft, workspace?.selectedAgentId, route.section, workspace?.conversation.pendingQuestion?.id]);
-  useEffect(() => { selectedRow.current?.scrollIntoView({ block: "nearest" }); }, [view.agentId, view.workspaceId, sections.dms, route.section]);
+  useEffect(() => { selectedRow.current?.scrollIntoView({ block: "nearest" }); }, [view.agentId, view.workspaceId, route.section]);
   useEffect(() => {
     if (!focusApproval || !workspace) return;
     const node = document.getElementById(`approval-${focusApproval}`);
@@ -298,7 +301,6 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const timeline = workspace ? conversationTimeline([workspace], workspace.selectedAgentId, shell.now) : [];
   const liveApprovals = timeline.flatMap(item => item.kind === "approval" ? [item.approval] : []);
   const dialogCard = approvalDialog?.scope === scope ? liveApprovals.find(card => card.id === approvalDialog.id) : undefined;
-  const unread = colleagues.reduce((sum, row) => sum + (shell.activity[row.agentId]?.unread ?? 0), 0);
   const dmRows = useMemo(() => colleagues.map(row => {
     const snapshot = shell.snapshots.find(value => value.selectedAgentId === row.agentId);
     const last = snapshot ? [...snapshot.conversation.history].reverse().find(message => message.role !== "tool") : undefined;
@@ -307,6 +309,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       order: Date.parse(timestamp ?? "") || shell.activity[row.agentId]?.observedAt || 0 };
   }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity, t]);
   const closeSettings = () => { setSettings(false); };
+  const openSettingsPage = (page: SettingsPage) => { setSettingsPage(page); setSettings(true); };
   const modalOpen = settings || creating || !!channelDialog || approvalDialog?.scope === scope;
   const draftSkill = async (workspaceId: string) => {
     if (model.getSnapshot().workspaceId !== workspaceId) await model.selectWorkspace(workspaceId);
@@ -317,7 +320,11 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     if (model.getSnapshot().workspaceId !== workspaceId) return;
     closeSettings(); navigate("chat"); model.setDraft(t("skillCreationPrompt"));
   };
-  return <div className="hs wsd-app vg-app" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : showColleagueInspector || showContextInspector ? " has-inspector" : ""}`}>
+  const rosterRows = [
+    ...dmRows.map(row => ({ kind: "colleague" as const, order: row.order, row })),
+    ...(channelView.catalog?.channels ?? []).map(row => ({ kind: "group" as const, order: Date.parse(channelView.channel?.channel.id === row.id ? channelView.channel.messages[channelView.channel.messages.length - 1]?.message.createdAt ?? row.createdAt : row.createdAt) || 0, row })),
+  ].sort((a, b) => b.order - a.order);
+  return <div className="hs wsd-app vg-app" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : showColleagueInspector || showGroupInspector || showContextInspector ? " has-inspector" : ""}`}>
     <aside className="hs-side wsd-sidebar" inert={modalOpen}><div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" />
       <div className="hs-top"><HaraLogo size={20} /><select className="hs-space" aria-label={t("ws.space.switch")} value={view.workspaceId ?? ""} disabled={view.loading || !view.directory?.workspaces.length}
         onChange={event => { closeSettings(); setSearch(""); setApprovalDialog(null); navigate("chat"); void model.selectWorkspace(event.target.value); }}>
@@ -330,45 +337,38 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         {agents.filter(row => row.kind === "main").map(row => <button key={row.agentId} disabled={view.loading} className="hs-row hs-main wsd-contact is-main" aria-label={row.identity.displayName} title={row.identity.displayName} aria-current={route.section === "chat" && row.agentId === view.agentId ? "page" : undefined}
           onClick={() => void openAgent(row.agentId)}><Avatar agent={row} large /><span className="hs-txt"><strong className="hs-name"><span className="nm">{row.identity.displayName}</span><span className="hs-tag brand">{t("ws.main.tag")}</span></strong>
             <span className="pv">{t("ws.main.subtitle")}</span></span></button>)}
-        <nav className="hs-sections" aria-label={t("ws.nav.aria")}>
-          <SidebarSection id="dms" title={locale !== "en" ? "同事名册" : "Colleague roster"} expanded={sections.dms} onToggle={() => toggle("dms")} t={t} badge={unread} pending={shell.waiting.some(item => colleagues.some(row => row.agentId === item.agentId))}
-            badgeLabel={t("ws.sec.unread", { n: unread })} icon={<ChatBubbleLeftRightIcon className="hico sec-ic" />}
-            action={<button className="hs-sec-a" aria-label={t("ws.sec.newDm")} onClick={() => navigate("colleagues")} disabled={view.loading}><PencilSquareIcon className="hico" /></button>}>
-            {dmRows.filter(row => !search || `${row.agent.identity.displayName} ${row.agent.identity.title ?? ""}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(row => <button className="hs-row hs-dm wsd-contact" aria-label={row.agent.identity.displayName} title={row.agent.identity.displayName} disabled={view.loading} key={row.agent.agentId}
-              ref={row.agent.agentId === view.agentId ? selectedRow : undefined} aria-current={route.section === "chat" && row.agent.agentId === view.agentId ? "page" : undefined} onClick={() => void openAgent(row.agent.agentId)}>
-              <Avatar agent={row.agent} /><span className="hs-txt"><strong className="hs-name"><span className="nm">{row.agent.identity.displayName}</span>{row.agent.identity.title ? <span className="hs-tag">{row.agent.identity.title}</span> : null}</strong><span className="pv">{row.preview}</span></span>
-              <span className={`hs-usage-chip ${colleagueUsageView(accountUsage.get(row.agent.agentId)).state}`}
-                title={colleagueUsageView(accountUsage.get(row.agent.agentId)).label}>
-                {colleagueUsageView(accountUsage.get(row.agent.agentId)).label}
-              </span>
-              <span className="hs-meta">{row.timestamp && Number.isFinite(Date.parse(row.timestamp)) ? <time className="hs-time" dateTime={row.timestamp}>{new Date(row.timestamp).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time> : null}
-                {(shell.activity[row.agent.agentId]?.unread ?? 0) > 0 ? <span className="hs-dot" role="img" aria-label={t("ws.unread", { n: shell.activity[row.agent.agentId].unread })} /> : null}</span></button>)}
-            {!colleagues.length ? <p className="hs-empty">{t("ws.dm.empty")}</p> : searching && search && !dmRows.some(row => `${row.agent.identity.displayName} ${row.agent.identity.title ?? ""}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())) ? <p className="hs-empty">{t("ws.search.empty")}</p> : null}
-            <button className="hs-row hs-add" aria-label={t("ws.colleagues.discuss")} disabled={view.loading} onClick={() => void discuss()}><UserPlusIcon className="hico" />{t("ws.colleagues.discuss")}</button>
-          </SidebarSection>
-          <SidebarSection id="channels" title={t("ws.sec.channels")} expanded={sections.channels} onToggle={() => toggle("channels")} t={t} icon={<HashtagIcon className="hico sec-ic" />}
-            action={<button className="hs-sec-a" aria-label={t("ws.channels.new")} disabled={!channelView.supported || view.loading || !!disconnected} onClick={() => setChannelDialog("create")}><PlusIcon className="hico" /></button>}>
-            <LocalChannelRows view={channelView} t={t} search={search} selected={inChannel ? channelView.channelId : null} onOpen={openChannel} />
-            {channelView.supported && !channelView.catalog?.channels.length ? <button className="hs-row hs-add" onClick={() => setChannelDialog("create")} disabled={view.loading || !!disconnected}><PlusIcon className="hico" />{t("ws.channels.new")}</button> : null}
-          </SidebarSection>
-
+        <nav className="hs-sections vg-unified-roster" aria-label={locale !== "en" ? "同事与群" : "Colleagues and groups"}>
+          <div className="vg-roster-heading"><span>{locale !== "en" ? "对话 · 同事与群" : "Conversations · colleagues and groups"}</span>
+            <button className="hs-sec-a" aria-label={t("ws.channels.new")} disabled={!channelView.supported || view.loading || !!disconnected} onClick={() => setChannelDialog("create")}><PlusIcon className="hico" />{locale !== "en" ? "新建群" : "New group"}</button></div>
+          {rosterRows.filter(item => !search || (item.kind === "colleague" ? `${item.row.agent.identity.displayName} ${item.row.agent.identity.title ?? ""}` : item.row.name).toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(item => item.kind === "colleague" ? <button className="hs-row hs-dm wsd-contact" aria-label={item.row.agent.identity.displayName} title={item.row.agent.identity.displayName} disabled={view.loading} key={`colleague:${item.row.agent.agentId}`}
+            ref={item.row.agent.agentId === view.agentId ? selectedRow : undefined} aria-current={route.section === "chat" && item.row.agent.agentId === view.agentId ? "page" : undefined} onClick={() => void openAgent(item.row.agent.agentId)}>
+            <Avatar agent={item.row.agent} /><span className="hs-txt"><strong className="hs-name"><span className="nm">{item.row.agent.identity.displayName}</span></strong><span className="pv">{item.row.preview}</span></span>
+            {colleagueUsageView(accountUsage.get(item.row.agent.agentId)).state !== "parse_unavailable" ? <span className={`hs-usage-chip ${colleagueUsageView(accountUsage.get(item.row.agent.agentId)).state}`}>{colleagueUsageView(accountUsage.get(item.row.agent.agentId)).label}</span> : null}
+            <span className="hs-meta">{item.row.timestamp && Number.isFinite(Date.parse(item.row.timestamp)) ? <time className="hs-time" dateTime={item.row.timestamp}>{new Date(item.row.timestamp).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time> : null}
+              {(shell.activity[item.row.agent.agentId]?.unread ?? 0) > 0 ? <span className="hs-dot" role="img" aria-label={t("ws.unread", { n: shell.activity[item.row.agent.agentId].unread })} /> : null}</span></button>
+            : <button className="hs-row hs-dm wsd-contact vg-group-row" key={`group:${item.row.id}`} data-group-id={item.row.id} aria-label={item.row.name} title={item.row.name} aria-current={inChannel && channelView.channelId === item.row.id ? "page" : undefined} onClick={() => openChannel(item.row.id)}>
+              <span className="hs-ava vg-group-avatar" aria-hidden="true"><UsersIcon className="hico" /></span><span className="hs-txt"><strong className="hs-name"><span className="nm">{item.row.name}</span></strong><span className="pv">{channelMemberLabel(t, item.row.memberIds.length)}</span></span><span className="vg-group-badge">{locale !== "en" ? "群" : "Group"}</span></button>)}
+          {search && !rosterRows.some(item => (item.kind === "colleague" ? `${item.row.agent.identity.displayName} ${item.row.agent.identity.title ?? ""}` : item.row.name).toLocaleLowerCase().includes(search.toLocaleLowerCase())) ? <p className="hs-empty">{t("ws.search.empty")}</p> : null}
+          {!rosterRows.length ? <p className="hs-empty">{t("ws.dm.empty")}</p> : null}
+          <button className="hs-row hs-add" aria-label={t("ws.colleagues.discuss")} disabled={view.loading} onClick={() => void discuss()}><UserPlusIcon className="hico" />{t("ws.colleagues.discuss")}</button>
         </nav>
       </> : <p className="wsd-sidebar-note">{t("ws.space.note")}</p>}
       <footer className="hs-foot"><div className="hs-quota" title={t("ws.quota.note")}><UsersIcon className="hico" /><span>{colleagueLimit ? t("ws.quota.count", { n: colleagues.length, max: colleagueLimit }) : t("ws.quota.current", { n: colleagues.length })}</span>{colleagueLimit ? <i aria-hidden="true"><b style={{ width: `${Math.min(100, colleagues.length / colleagueLimit * 100)}%` }} /></i> : null}</div>
         <div className="hs-row hs-me"><span className="hs-ava" aria-hidden="true">{t("ws.me").slice(0, 1)}</span><span className="grow">{t("ws.me")}</span><button className="hs-set" aria-label={t("ws.settings")} onClick={() => setSettings(true)}><Cog6ToothIcon className="hico" />{t("ws.settings")}</button></div></footer>
     </aside>
     <main className="hs-chat wsd-chat" inert={modalOpen}>
-      <header className="hs-head wsd-header">{inChannel ? <span className="hs-ava" aria-hidden="true"><HashtagIcon className="hico" /></span> : <Avatar agent={agent} />}<div className="hs-header-person"><strong>{route.section === "workspace" ? t("vg.workspace") : inChannel ? selectedChannel?.name ?? t("ws.channels.local") : route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}</strong>
+      <header className="hs-head wsd-header">{inChannel ? <span className="hs-ava" aria-hidden="true"><UsersIcon className="hico" /></span> : <Avatar agent={agent} />}<div className="hs-header-person"><strong>{route.section === "workspace" ? t("vg.workspace") : inChannel ? selectedChannel?.name ?? t("ws.channels.local") : route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}</strong>
         <small>{inChannel ? channelMemberLabel(t, selectedChannel?.memberIds.length ?? 0) : agent ? t(agent.runtime.id === "pi" ? "ws.header.runtime" : "ws.header.otherRuntime", { role: agent.kind === "main" ? t("ws.main.tag") : agent.identity.title ?? t("ws.role.colleague"), runtime: agent.runtime.label }) : t("ws.welcome.title")}</small></div><span className="sp" />
         {inChannel ? <div className="hs-channel-header-actions"><button className="hs-ghost" aria-label={t("ws.channels.members")} onClick={() => setChannelDialog("members")} disabled={!selectedChannel || !!disconnected || ["running", "draining"].includes(channelView.channel?.state ?? "")}><UsersIcon className="hico" />{t("ws.channels.members")}</button>
           <button className="hs-ghost" aria-label={t("ws.channels.invite")} onClick={() => setChannelDialog("invite")}><UserPlusIcon className="hico" />{t("ws.channels.invite")}</button></div> : null}
         {!inChannel && workspace && route.section === "chat" ? <button className="hs-ghost" aria-label={t("ws.resume.dismiss")} title={t("ws.resume.dismiss")} data-clear-chat="true" onClick={() => model.clearConversationResume()} disabled={Boolean(disconnected) || view.sending || busy}>{t("ws.resume.dismiss")}</button> : null}
         {<button className="hs-ghost" aria-label={t("ws.header.browser")} title={t("ws.header.browser")} aria-expanded={browser} aria-controls="workspace-browser-panel" onClick={() => { setBrowser(value => !value); onOpenBrowser?.(); }} disabled={!workspace}><GlobeAltIcon className="hico" />{t("ws.header.browser")}</button>}
-        {agent?.kind === "colleague" || route.section !== "chat" ? <button className="hs-icon" aria-label={t(inspector && !browser ? "vg.inspector.close" : "vg.inspector.open")} aria-expanded={inspector && !browser} aria-controls="workspace-inspector" onClick={() => { if (browser) { setBrowser(false); setInspector(true); } else setInspector(value => !value); }}><ViewColumnsIcon className="hico" /></button> : null}
+        {workspace ? <button className="hs-icon" aria-label={t(inspector && !browser ? "vg.inspector.close" : "vg.inspector.open")} aria-expanded={inspector && !browser} aria-controls="workspace-inspector" onClick={() => { if (browser) { setBrowser(false); setInspector(true); } else setInspector(value => !value); }}><ViewColumnsIcon className="hico" /></button> : null}
         <button className="hs-icon" aria-label={t("ws.settings")} onClick={() => setSettings(true)}><Cog6ToothIcon className="hico" /></button></header>
       {disconnected ? <div className="wsd-notice" role="alert">{t("ws.disconnected")}<button className="hs-btn sec" onClick={onReconnect}>{t("ws.reconnect")}</button></div> : null}
       {view.error ? <div className="wsd-notice is-error" role="alert">{workspaceMessageText(t, view.error)}</div> : null}
       {view.syncNotice ? <div className="wsd-notice" role="status">{workspaceMessageText(t, view.syncNotice)}</div> : null}
+      {workspace && agent && route.section === "chat" && inspector ? <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} compact onRuntime={() => openSettingsPage("runtimes")} onModel={() => openSettingsPage("connections")} /> : null}
       {agent?.kind === "colleague" && !inChannel && selectedUsage.notice ? <div className="wsd-notice hs-usage-attention" role="status">{selectedUsage.notice}</div> : null}
       {shell.incomplete && agent?.kind !== "main" && !inChannel ? <div className="wsd-notice" role="status" data-overview-incomplete>{t("ws.tasks.unavailable")}<button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></div> : null}
       <div ref={scroll} className="hs-scroll wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
@@ -418,11 +418,13 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           {asyncTarget ? <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canAnswerAsync} aria-label={t("ws.question.async.send")}><PaperAirplaneIcon className="hico" /></button> : null}</div>
         <p className="hs-hint"><span>{question ? t("ws.question.composerHint") : t(production ? "ws.composer.hint.local" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</span><span>{t("ws.composer.hint.keys")}</span></p></footer> : null}
     </main>
-    {showColleagueInspector && agent ? <WorkspaceColleagueInspector key={agent.agentId} agent={agent} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => setInspector(false)} onRefresh={() => void refreshFeatures()}
+    {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => setInspector(false)} onRefresh={() => void refreshFeatures()}
+      onRuntime={() => openSettingsPage("runtimes")} onModel={() => openSettingsPage("connections")}
       onToggle={(schedule) => updateColleagueSchedule("workspace.features.update", { kind: "schedule", id: schedule.id, enabled: !schedule.enabled }, schedule.agentId)}
       onSave={(schedule, values) => updateColleagueSchedule("workspace.schedule.save", { input: { id: schedule.id, name: values.name.trim(), schedule: { kind: "cron", expr: values.cron.trim() }, tz: values.tz.trim(), task: values.task.trim(), agentId: agent.agentId, enabled: schedule.enabled }, approved: true }, schedule.agentId)}
       onDelete={(schedule) => updateColleagueSchedule("workspace.schedule.delete", { id: schedule.id, approved: true }, schedule.agentId)} />
-      : showContextInspector ? <WorkspaceInspector workspace={inChannel ? null : workspace} agent={inChannel ? undefined : agent} shell={shell} t={t} inert={Boolean(modalOpen)} onClose={() => setInspector(false)} onAttention={() => { if (shell.waiting[0]) openItem(shell.waiting[0]); }} /> : null}
+      : showGroupInspector && selectedChannel ? <WorkspaceGroupInspector name={selectedChannel.name} memberIds={selectedChannel.memberIds} agents={agents} locale={locale} inert={Boolean(modalOpen)} onClose={() => setInspector(false)} onMembers={() => setChannelDialog("members")} />
+      : showContextInspector ? <WorkspaceInspector workspace={workspace} agent={agent} shell={shell} t={t} inert={Boolean(modalOpen)} onClose={() => setInspector(false)} onAttention={() => { if (shell.waiting[0]) openItem(shell.waiting[0]); }} /> : null}
     {browser && workspace ? <Suspense fallback={<aside id="workspace-browser-panel" className="hs-browser" role="status">{t("common.loading")}</aside>}><BrowserExtension key={scope} label={workspace.label} locale={locale} inert={Boolean(modalOpen)} onClose={() => setBrowser(false)} /></Suspense> : null}
     <footer className="vg-statusbar" inert={Boolean(modalOpen)}><span className={`vg-connection-dot${disconnected ? " offline" : ""}`} aria-hidden />{t(disconnected ? "vg.disconnected" : "vg.connected")}<span>·</span>{workspace?.label ?? t("vg.workspace")}<span>·</span>{shell.waiting.length} {t("vg.pending")}</footer>
     {production ? <WorkspaceUpdateNotice controller={updates.controller} onView={() => { setSettingsPage("updates"); setSettings(true); }} /> : null}

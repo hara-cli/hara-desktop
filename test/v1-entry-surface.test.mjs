@@ -107,7 +107,7 @@ test("real workspace screen retains colleague decisions, collapsed execution and
   assert.match(success, /已核驗結果/);
   assert.doesNotMatch(success, /wsd-execution|1 個操作 · <span>查看詳情/);
   assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
-  assert.equal(html.includes('aria-label="建立頻道"'), true);
+  assert.equal(html.includes('aria-label="建立群"'), true);
   assert.equal(/即將推出|即将推出|Channels for group work with several colleagues are coming/.test(html), false);
 });
 test("real workspace screen preserves explicit resume and never opens a legacy surface for blocked tasks", () => {
