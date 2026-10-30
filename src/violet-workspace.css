@@ -30,12 +30,41 @@
 .hs.vg-app .hs-send,.hs.vg-app .hs-btn.pri{background:var(--brand);color:#fff}
 .hs.vg-app .hs-main::after{display:none}
 .vg-product-nav{display:grid;gap:4px;margin:0 0 16px}
+.vg-roster-label{padding:6px 12px 10px;color:var(--hara-text-tertiary);font-size:11px;font-weight:650;letter-spacing:.04em}
 .vg-product-nav button{position:relative;display:flex;align-items:center;gap:12px;min-height:36px;padding:8px 12px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;text-align:left;cursor:pointer}
 .vg-product-nav button[aria-current="page"]{background:var(--row-selected);color:var(--ink);font-weight:600}
 .vg-product-nav button[aria-current="page"]::before{content:"";position:absolute;inset:8px auto 8px 0;width:3px;background:var(--brand);border-radius:2px}
 .vg-product-nav button:hover{background:var(--row-hover)}
 .vg-product-nav .hs-badge{margin-left:auto}
 .vg-inspector{grid-column:3;grid-row:1;min-height:0;overflow:auto;border-left:1px solid var(--line);padding:20px 16px;background:var(--hara-bg-sidebar)}
+.vg-colleague-manage{background:var(--hara-bg-sidebar)}
+.vg-colleague-identity{display:grid;gap:4px;padding:4px 2px 18px;border-bottom:1px solid var(--hara-border-default);margin-bottom:16px}
+.vg-colleague-identity strong{font:600 22px/1.3 var(--hara-font-display)}
+.vg-colleague-identity span{font-size:12px;color:var(--hara-text-secondary)}
+.vg-colleague-manage .vg-context-card h3{margin:0 0 14px;font-size:13px;font-weight:600;color:var(--hara-text-primary)}
+.vg-colleague-manage .vg-context-card dl{margin:0}
+.vg-colleague-manage .vg-context-card dd{font-size:13px;color:var(--hara-text-primary)}
+.vg-colleague-schedules h3{display:flex;justify-content:space-between}
+.vg-colleague-schedules h3 span{color:var(--hara-text-secondary);font-weight:400}
+.vg-colleague-job{padding:14px 0;border-top:1px solid var(--hara-border-default)}
+.vg-colleague-job-head{display:flex;align-items:center;gap:9px}
+.vg-colleague-job-head input{accent-color:var(--hara-brand-primary)}
+.vg-colleague-job-head strong{font-size:13px;overflow-wrap:anywhere}
+.vg-colleague-job p{font-size:12px;color:var(--hara-text-secondary);margin:6px 0}
+.vg-colleague-job small{font-size:11px;color:var(--hara-text-tertiary)}
+.vg-colleague-actions,.vg-colleague-edit>div{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.vg-colleague-actions button,.vg-colleague-edit button,.vg-colleague-error button{padding:5px 9px;border:1px solid var(--hara-border-default);border-radius:7px;background:var(--hara-bg-elevated);color:var(--hara-text-primary);font:inherit;font-size:11px}
+.vg-colleague-edit{display:grid;gap:10px;margin-top:12px}
+.vg-colleague-edit label{display:grid;gap:4px;font-size:11px;color:var(--hara-text-secondary)}
+.vg-colleague-edit input,.vg-colleague-edit textarea{width:100%;min-width:0;padding:8px;border:1px solid var(--hara-border-default);border-radius:8px;background:var(--hara-bg-content);color:var(--hara-text-primary);font:inherit;font-size:12px}
+.vg-colleague-error{color:var(--hara-status-failed);font-size:12px}
+.vg-chat-schedule-card{margin:18px 0;padding:18px;border:1px solid var(--hara-border-active);border-radius:14px;background:var(--hara-bg-surface);box-shadow:var(--hara-glass-b-shadow)}
+.vg-chat-schedule-card header{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}
+.vg-chat-schedule-card header strong{font-size:14px}.vg-chat-schedule-card header small{font-size:11px;color:var(--hara-text-link)}
+.vg-chat-schedule-card label{display:grid;gap:5px;margin:9px 0;color:var(--hara-text-secondary);font-size:11px}
+.vg-chat-schedule-card input,.vg-chat-schedule-card textarea{width:100%;padding:8px 10px;border:1px solid var(--hara-border-default);border-radius:8px;background:var(--hara-bg-content);color:var(--hara-text-primary);font:inherit;font-size:13px}
+.vg-chat-schedule-actions{display:flex;gap:8px;margin-top:14px}.vg-chat-schedule-actions button{background:var(--hara-brand-primary);color:#fff;padding:8px 12px}.vg-chat-schedule-actions button+button{background:var(--hara-bg-elevated);color:var(--hara-text-primary)}
+.vg-schedule-notice{padding:10px 12px;border:1px solid var(--hara-border-default);border-radius:10px;background:var(--hara-bg-surface);color:var(--hara-text-link);font-size:12px}
 .vg-inspector>header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .vg-inspector h2{font-size:13px;font-weight:500;color:var(--muted);margin:0}
 .vg-inspector h3{font-size:12px;font-weight:500;color:var(--muted);margin:24px 0 10px}

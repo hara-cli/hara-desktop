@@ -132,9 +132,9 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
         <textarea aria-label={t("ws.skills.instructions")} value={editor.content} maxLength={64000} onChange={event => setEditor(current => current ? { ...current, content: event.target.value } : null)} />
         <button disabled={pending} onClick={() => setEditor(null)}>{t("ws.cancel")}</button><button disabled={pending} onClick={() => void saveSkill()}>{t("ws.skills.save")}</button></section> : null}</> : <>
       <p className="wss-callout">{t("ws.schedules.legacyNote")}</p>
-      <p className="wss-callout">{locale !== "en" ? "旧工作空间定时只供排障查看。新定时请在同事聊天里创建，并在该同事右栏管理。" : "Legacy workspace schedules are shown for diagnostics only. Create schedules in a colleague chat and manage them in that colleague's panel."}</p>
+      <p className="wss-callout">{t("ws.schedules.colleagueNote")}</p>
       {!value.schedules.length ? <p>{t("ws.schedules.empty")}</p> : value.schedules.map(row => { const status = value.scheduler?.schedules.find(item => item.id === row.id); return <div className="wsd-connection" key={row.id}><strong>{row.name}</strong><code>{row.schedule.expr ?? row.schedule.display}</code>
-        <small>{row.enabled ? (locale !== "en" ? "启用" : "On") : (locale !== "en" ? "停用" : "Off")}</small>
+        <small>{t(row.enabled ? "ws.schedules.enabled" : "ws.schedules.off")}</small>
         <small>{status?.awaitingHandoff ? t("ws.schedules.handoff") : status?.lastRun ? t("ws.schedules.last", { state: settingsStateText(t, status.lastRun.state), reason: status.lastRun.reason ? ` · ${status.lastRun.reason}` : "" }) : t("ws.schedules.never")}</small>
         <small>{t("ws.schedules.next", { time: status?.nextRunAt ? new Date(status.nextRunAt).toLocaleString(locale) : "—" })}</small>
         {status?.lastRun ? <details><summary>{t("ws.schedules.history")}</summary><p>{new Date(status.lastRun.occurredAt).toLocaleString(locale)} · {settingsStateText(t, status.lastRun.state)}</p></details> : null}</div>; })}</>}

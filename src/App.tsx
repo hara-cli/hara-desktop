@@ -338,6 +338,7 @@ import ExternalSessionCenter, {
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
 import "./App.css";
 import "./ConversationWorkspace.css";
+import "./SoftDarkShell.css";
 import "./WorkspaceCollaboration.css";
 
 type SecuritySettingsAnchor = "settings-computer-use" | "settings-jev-api-key";
@@ -1067,8 +1068,16 @@ export default function App() {
     useState<NavigationPreferences>(() =>
       parseNavigationPreferences(localStorage.getItem(NAVIGATION_PREFERENCES_KEY)));
   const [zone, setZoneRaw] = useState<Zone>(() =>
-    localStorage.getItem("hara.zone") === "auto" ? "chat"
+    ["auto", "settings"].includes(localStorage.getItem("hara.zone") ?? "") ? "chat"
       : initialAppPlace(localStorage.getItem("hara.zone"), navigationPreferences));
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsDialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    settingsDialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, [settingsOpen]);
   const zoneRef = useRef<Zone>(zone);
   const workbenchPlaceRef = useRef<"chat" | "projects">(
     localStorage.getItem("hara.workbench.place") === "projects" || zone === "projects"
@@ -2202,12 +2211,28 @@ export default function App() {
 
   const setZone = (z: Zone): boolean => {
     const previousZone = zoneRef.current;
-    const capabilitySkillCwd = z === "settings"
-      ? sessionsRef.current.find((session) => session.id === activeRef.current)?.cwd
-      : undefined;
+    if (z === "settings") {
+      if (!discardCurrentExtensionDraft()) return false;
+      preloadSettingsSection(setSec);
+      const settingsClient = clientRef.current;
+      if (settingsClient) {
+        const requestId = ++capabilityCatalogRequestRef.current;
+        capabilitySkillsCwdRef.current = sessionsRef.current.find((session) => session.id === activeRef.current)?.cwd;
+        setSkills(null);
+        void Promise.all([settingsClient.listPlugins(), settingsClient.listSkills(capabilitySkillsCwdRef.current)]).then(([pl, sk]) => {
+          if (clientRef.current !== settingsClient || capabilityCatalogRequestRef.current !== requestId) return;
+          pluginsRef.current = pl.plugins;
+          setPlugins(pl.plugins);
+          setSkills(sk.skills);
+        }).catch(() => {});
+        void refreshGroupsDirectory();
+      }
+      setSettingsOpen(true);
+      return true;
+    }
     if (z !== previousZone && !discardCurrentExtensionDraft()) return false;
+    setSettingsOpen(false);
     preloadPlace(z);
-    if (z === "settings") preloadSettingsSection(setSec);
     if ((previousZone === "chat" || previousZone === "projects") && activeRef.current) {
       const current = sessionsRef.current.find((candidate) => candidate.id === activeRef.current);
       if (current && sessionPlace(current) === previousZone) {
@@ -2237,21 +2262,7 @@ export default function App() {
       setActive(null);
     }
     if (z === "office") void refreshArtifacts();
-    const settingsClient = z === "settings" ? clientRef.current : null;
-    if (settingsClient) {
-      const requestId = ++capabilityCatalogRequestRef.current;
-      capabilitySkillsCwdRef.current = capabilitySkillCwd;
-      setSkills(null);
-      void Promise.all([settingsClient.listPlugins(), settingsClient.listSkills(capabilitySkillCwd)]).then(([pl, sk]) => {
-        if (clientRef.current !== settingsClient || capabilityCatalogRequestRef.current !== requestId) return;
-        pluginsRef.current = pl.plugins;
-        setPlugins(pl.plugins);
-        setSkills(sk.skills);
-      }).catch(() => {});
-      void refreshGroupsDirectory();
-    } else {
-      capabilityCatalogRequestRef.current += 1;
-    }
+    capabilityCatalogRequestRef.current += 1;
     if (z === "auto" && clientRef.current) {
       void refreshAuto();
       if (autoView === "runs") markAutoSeen();
@@ -3962,13 +3973,13 @@ export default function App() {
       return;
     }
     const seen = localStorage.getItem("hara.autoSeen") ?? "";
-    if (zone === "settings" && setSec === "automations" && autoView === "runs") {
+    if (settingsOpen && setSec === "automations" && autoView === "runs") {
       localStorage.setItem("hara.autoSeen", new Date().toISOString());
       setAutoUnread(0);
       return;
     }
     setAutoUnread(auto.sessions.filter((s) => s.updatedAt > seen).length);
-  }, [auto, autoView, setSec, zone]);
+  }, [auto, autoView, setSec, settingsOpen]);
   const markAutoSeen = () => {
     localStorage.setItem("hara.autoSeen", new Date().toISOString());
     setAutoUnread(0);
@@ -5580,8 +5591,8 @@ export default function App() {
   const [modelConnectionPickerMode, setModelConnectionPickerMode] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
   useEffect(() => {
-    if (zone !== "settings" || setSec !== "providers") setProviderSettingsConnectionFocus(undefined);
-  }, [zone, setSec]);
+    if (!settingsOpen || setSec !== "providers") setProviderSettingsConnectionFocus(undefined);
+  }, [settingsOpen, setSec]);
   const openModelConnections = (profileId?: string): boolean => {
     if (!setZone("settings")) return false;
     setSetSec("providers");
@@ -8540,7 +8551,7 @@ export default function App() {
       />
     </details>
   );
-  const settingsAutomationOpen = zone === "settings" && setSec === "automations";
+  const settingsAutomationOpen = settingsOpen && setSec === "automations";
   const automationReplaySurface = autoReplay ? (
     <div className="automation-replay-surface">
       <div className="anchor">
@@ -8686,8 +8697,8 @@ export default function App() {
   });
   const rail = (
     <AppRail
-      activePlace={zone}
-      items={railItems}
+      activePlace={settingsOpen ? "settings" : zone}
+      items={railItems.filter((item) => item.id !== "core.tasks")}
       labels={{
         mainNavigation: t("mainNavigation"),
         settings: t("zoneSettings"),
@@ -9388,7 +9399,7 @@ export default function App() {
   const showUpdateNotice =
     updateNoticeVisible &&
     (Boolean(updateNoticeVersion) || updating || updateReady || updateTone === "error") &&
-    !(zone === "settings" && setSec === "engine");
+    !(settingsOpen && setSec === "engine");
   const externalSessionCenterSurface = (
     <ExternalSessionCenter
       key={`${activeSpaceId}:${spaceSwitchRequestRef.current}:${server?.pid ?? "none"}`}
@@ -9772,7 +9783,7 @@ export default function App() {
                   type="button"
                   className="inbox-agent-profile"
                   title={locale === "zh" ? "同事详情与历史" : "Colleague details and history"}
-                  aria-label={locale === "zh" ? "Agent 名片" : "Agent profile"}
+                  aria-label={locale === "zh" ? "同事名片" : "Colleague profile"}
                   onClick={() => openAgentDetails(selectedInboxAgent.ref)}
                 >
                   <IconEdit size={15} />
@@ -9790,7 +9801,7 @@ export default function App() {
                   <IconBack size={14} /> {t("codingRecoveryBack")}
                 </button>
               ) : (
-                <span title={locale === "zh" ? "已雇佣 Agent 数；Hara 主调度不计入" : "Hired Agents; Hara's root coordinator is not counted"}>{visibleHiredAgentCount}</span>
+                <span title={locale === "zh" ? "同事人数；Hara 主理同事不计入" : "Colleague count; Hara's coordinator is not counted"}>{visibleHiredAgentCount}</span>
               )}
             </div>
             </>
@@ -10188,9 +10199,226 @@ export default function App() {
         </Suspense>
       ) : null}
 
-      {zone === "settings" && (
-        <aside className="sidebar">
+      {/* ── main area ── */}
+      {zone === "groups" ? (
+        <Suspense
+          fallback={(
+            <main className="groups-stage">
+              <div className="groups-stage-shell">
+                <span className="groups-eyebrow">
+                  {t("groupsEyebrow")}
+                </span>
+                <p className="dim">{t("loading")}</p>
+              </div>
+            </main>
+          )}
+        >
+          <GroupsStage
+            copy={groupsCopy}
+            directory={groupsDirectory}
+            state={groupsState}
+            switchingProfileId={groupsSwitchingProfileId || undefined}
+            onSelectOrganization={selectGroupsOrganization}
+            onRetryDirectory={() => void refreshGroupsDirectory()}
+            onManageOrganizations={() => {
+              setZone("settings");
+              setSetSec("providers");
+            }}
+            onJoinOrganization={openOrganizationEnrollment}
+            canManage={groupsCanManage}
+            onReadBoard={(profileId, taskState) => void readGroupsBoard(profileId, taskState)}
+            onOpenTask={(profileId, taskId) => void openGroupsTask(profileId, taskId)}
+            onCloseTask={() => dispatchGroups({ type: "closeTask" })}
+            onCreateTask={createGroupsTask}
+            onClaimTask={claimGroupsTask}
+            onAckTask={ackGroupsTask}
+            onTransitionTask={transitionGroupsTask}
+            onCompleteTask={completeGroupsTask}
+            onCancelTask={cancelGroupsTask}
+            onCommentTask={commentGroupsTask}
+            onManageModules={openSidebarSettings}
+            onHide={() => {
+              saveNavigationPreferences((current) =>
+                withNavigationVisibility(
+                  navigationContributions,
+                  current,
+                  "core.groups",
+                  false,
+                ));
+              openSidebarSettings();
+            }}
+          />
+        </Suspense>
+      ) : zone === "auto" ? (
+        // 🤖 the orchestration place — console density: job table on top, run timeline below;
+        // a run opens as a READ-ONLY replay (fork is the only way to continue — automated
+        // sessions never become live conversations here)
+        <main className="chat board automation-board">
+          {automationContent}
+        </main>
+      ) : zone === "office" ? (
+        <div className={`extension-work office-extension-work${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && contextExtensionDock?.mode === "maximized" ? " is-extension-maximized" : ""}`}>
+          {!contextExtensionScreenVisible && (
+            <div className="extension-primary">{officeHomeSurface}</div>
+          )}
+          {officeExtension && (
+            <Suspense fallback={<aside className="extension-dock is-stage" aria-busy="true" />}>
+              <ExtensionDock
+                kind={officeExtension.surfaceKind}
+                kindLabel={extensionKindLabel(officeExtension.surfaceKind)}
+                title={officeExtension.title}
+                source={t("extensionLocalCapability")}
+                context={(officeExtension.type === "artifact" || officeExtension.type === "presentation-browser")
+                  ? officeExtension.owner.revisionId.slice(-8).toUpperCase()
+                  : "Office"}
+                detail={activeArtifact?.artifact.dataResidency ?? "local"}
+                mode={officeExtension.mode}
+                placement="stage"
+                loading={artifactBusy === "open" || (officeExtension.type === "presentation-browser"
+                  ? !presentationBrowserSurface
+                  : Boolean(activePresentation && !presentationPreviewHtml))}
+                tabs={dockTabs}
+                activeTabId={officeExtension.id}
+                collapsed={!contextExtensionScreenVisible}
+                copy={extensionCopy}
+                onTabSelect={selectExtensionTab}
+                onTabClose={closeDockTab}
+                onModeChange={(mode) => setExtensionMode(officeExtension.id, mode)}
+                onClose={() => setCurrentExtensionScreenVisible(false)}
+              >
+                {officeExtensionSurface}
+              </ExtensionDock>
+            </Suspense>
+          )}
+        </div>
+      ) : (zone === "chat" || zone === "projects") && workbenchInboxMode === "external" ? (
+        externalSessionCenterSurface
+      ) : (zone === "chat" || zone === "projects") && contextExtensionDock ? (
+        <div className={`extension-work${zone === "chat" ? " conversation-extension-work" : ""}${pendingApprovalVisible ? " has-pending-approval" : ""}${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && effectiveConversationDockMode === "maximized" ? " is-extension-maximized" : ""}`}>
+          <div className="extension-primary">{conversation(zone === "chat" ? "im" : "ide")}</div>
+          <Suspense fallback={<aside className="extension-dock is-docked" aria-busy="true" />}>
+            <ExtensionDock
+              kind={contextExtensionDock.surfaceKind}
+              kindLabel={extensionKindLabel(contextExtensionDock.surfaceKind)}
+              title={contextExtensionDock.title}
+              source={panelExtension?.plugin ?? (webPreviewExtension ? "Node · localhost" : t("extensionLocalCapability"))}
+              context={contextExtensionDock.owner.place === "office" ? "Office" : basename(contextExtensionDock.owner.cwd)}
+              detail={panelExtension || webPreviewExtension
+                ? publicPanelOrigin((panelExtension ?? webPreviewExtension)!.url) ?? t("extensionLocalCapability")
+                : (sessionArtifactExtension ?? presentationBrowserExtension)?.owner.revisionId.slice(-8).toUpperCase()}
+              mode={effectiveConversationDockMode}
+              loading={contextExtensionDock.type === "artifact" || contextExtensionDock.type === "presentation-browser"
+                ? artifactBusy === "open" || activeArtifact?.artifact.artifactId !== contextExtensionDock.owner.artifactId
+                  || (contextExtensionDock.type === "presentation-browser" && !presentationBrowserSurface)
+                : contextExtensionDock.type === "legacy-panel" || contextExtensionDock.type === "web-preview"
+                  ? extensionLoading
+                  : false}
+              tabs={dockTabs}
+              activeTabId={contextExtensionDock.id}
+              collapsed={!contextExtensionScreenVisible}
+              addItems={extensionAddItems}
+              copy={{ ...extensionCopy, backToChat: zone === "chat" ? (locale === "zh" ? "返回聊天" : "Back to chat") : undefined }}
+              onTabSelect={selectExtensionTab}
+              onTabClose={closeDockTab}
+              onAddItem={openExtensionItem}
+              onModeChange={(mode) => setExtensionMode(contextExtensionDock.id, mode)}
+              onPopOut={panelExtension || webPreviewExtension
+                ? () => popOutVisualExtension((panelExtension ?? webPreviewExtension)!)
+                : undefined}
+              onClose={() => setCurrentExtensionScreenVisible(false)}
+            >
+              {contextExtensionScreenVisible && effectiveConversationDockMode === "maximized" ? taskApprovalStatusSurface : null}
+              {panelExtension && (
+                <iframe
+                  src={panelExtension.url}
+                  title={panelExtension.title}
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setExtensionLoading(false)}
+                />
+              )}
+              {webPreviewExtension && (
+                <iframe
+                  src={webPreviewExtension.url}
+                  title={webPreviewExtension.title}
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"
+                  allow="clipboard-read; clipboard-write; fullscreen"
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setExtensionLoading(false)}
+                />
+              )}
+              {sessionArtifactExtension
+                && activeArtifact?.artifact.artifactId === sessionArtifactExtension.owner.artifactId
+                && artifactWorkbenchSurface}
+              {presentationBrowserExtension && presentationBrowserSurface}
+              {workbenchToolExtension?.tool === "agents" && (
+                <AgentCollaborationSurface
+                  item={workbenchToolExtension}
+                  client={clientRef.current}
+                  agents={availableAgents}
+                  locale={locale}
+                  onOpenRuntimeSession={(sessionId) => {
+                    setWorkbenchInboxMode("external");
+                    setExternalSessionSourceId("runtime");
+                    setWorkbenchInboxTarget({ kind: "external", id: sessionId });
+                    setExternalTranscript(null);
+                    setQ("");
+                    refreshExternalSessions();
+                  }}
+                />
+              )}
+              {((workbenchToolExtension && workbenchToolExtension.tool !== "agents") || reviewExtension) && (
+                <WorkbenchToolSurface
+                  item={(workbenchToolExtension ?? reviewExtension)!}
+                  client={clientRef.current}
+                  items={transcripts[(workbenchToolExtension ?? reviewExtension)!.owner.sessionId] ?? []}
+                  taskState={taskStates[(workbenchToolExtension ?? reviewExtension)!.owner.sessionId]}
+                  onOpenBrowser={openBrowserFromTool}
+                  onCompose={composeFromExtension}
+                  onRunCommand={runCommandFromExtension}
+                  copy={{
+                    terminal: t("extensionTerminal"),
+                    terminalHint: t("extensionTerminalHint"),
+                    terminalEmpty: t("extensionTerminalEmpty"),
+                    terminalCommand: t("extensionTerminalCommand"),
+                    terminalSend: t("extensionTerminalSend"),
+                    browser: t("extensionBrowser"),
+                    browserHint: t("extensionBrowserHint"),
+                    browserAddress: t("extensionBrowserAddress"),
+                    browserOpen: t("extensionBrowserOpen"),
+                    browserInvalid: t("extensionBrowserInvalid"),
+                    files: t("extensionFiles"),
+                    filesHint: t("extensionFilesHint"),
+                    filesSearch: t("extensionFilesSearch"),
+                    filesEmpty: t("extensionFilesEmpty"),
+                    filesUse: t("extensionFilesUse"),
+                    review: t("extensionReview"),
+                    reviewHint: t("extensionReviewHint"),
+                    reviewEmpty: t("extensionReviewEmpty"),
+                    running: t("extensionRunning"),
+                    ready: t("extensionReady"),
+                  }}
+                />
+              )}
+            </ExtensionDock>
+          </Suspense>
+        </div>
+      ) : conversation(zone === "chat" ? "im" : "ide")}
+      {colleagueManagePanel}
+
+      {settingsOpen && (
+        <div className="soft-dark-settings-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }}>
+          <div ref={settingsDialogRef} className="soft-dark-settings-dialog" role="dialog" aria-modal="true" aria-label={t("zoneSettings")} onKeyDown={(event) => {
+            if (event.key === "Escape") { event.stopPropagation(); setSettingsOpen(false); }
+            if (event.key !== "Tab") return;
+            const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')).filter((node) => node.getClientRects().length > 0);
+            const first = controls[0], last = controls[controls.length - 1];
+            if (!first) { event.preventDefault(); return; }
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+          }}>
+        <aside className="sidebar soft-dark-settings-nav">
           {brandBar}
+          <button type="button" className="soft-dark-settings-close" aria-label={locale === "zh" ? "关闭设置" : "Close settings"} onClick={() => setSettingsOpen(false)}>×</button>
           <SettingsNavigation key={zone} section={setSec} label={t("settingsNavigation")}
             groupLabels={{ work: t("settingsGroupWork"), app: t("settingsGroupApp") }}
             labels={{ providers: t("setProviders"), connections: t("setConnections"),
@@ -10205,12 +10433,7 @@ export default function App() {
             }} />
           {footBar}
         </aside>
-      )}
-
-      {/* ── main area ── */}
-      {zone === "settings" ? (
-        // ⚙ configure place — context column picked a group, the stage renders its forms
-        <div className="chat board automation-board">
+        <div className="chat board automation-board soft-dark-settings-stage">
           <div className="scroll boardpad setstage">
             {setSec === "providers" && (
               <SettingsPage
@@ -10773,213 +10996,8 @@ export default function App() {
             )}
           </div>
         </div>
-      ) : zone === "groups" ? (
-        <Suspense
-          fallback={(
-            <main className="groups-stage">
-              <div className="groups-stage-shell">
-                <span className="groups-eyebrow">
-                  {t("groupsEyebrow")}
-                </span>
-                <p className="dim">{t("loading")}</p>
-              </div>
-            </main>
-          )}
-        >
-          <GroupsStage
-            copy={groupsCopy}
-            directory={groupsDirectory}
-            state={groupsState}
-            switchingProfileId={groupsSwitchingProfileId || undefined}
-            onSelectOrganization={selectGroupsOrganization}
-            onRetryDirectory={() => void refreshGroupsDirectory()}
-            onManageOrganizations={() => {
-              setZone("settings");
-              setSetSec("providers");
-            }}
-            onJoinOrganization={openOrganizationEnrollment}
-            canManage={groupsCanManage}
-            onReadBoard={(profileId, taskState) => void readGroupsBoard(profileId, taskState)}
-            onOpenTask={(profileId, taskId) => void openGroupsTask(profileId, taskId)}
-            onCloseTask={() => dispatchGroups({ type: "closeTask" })}
-            onCreateTask={createGroupsTask}
-            onClaimTask={claimGroupsTask}
-            onAckTask={ackGroupsTask}
-            onTransitionTask={transitionGroupsTask}
-            onCompleteTask={completeGroupsTask}
-            onCancelTask={cancelGroupsTask}
-            onCommentTask={commentGroupsTask}
-            onManageModules={openSidebarSettings}
-            onHide={() => {
-              saveNavigationPreferences((current) =>
-                withNavigationVisibility(
-                  navigationContributions,
-                  current,
-                  "core.groups",
-                  false,
-                ));
-              openSidebarSettings();
-            }}
-          />
-        </Suspense>
-      ) : zone === "auto" ? (
-        // 🤖 the orchestration place — console density: job table on top, run timeline below;
-        // a run opens as a READ-ONLY replay (fork is the only way to continue — automated
-        // sessions never become live conversations here)
-        <main className="chat board automation-board">
-          {automationContent}
-        </main>
-      ) : zone === "office" ? (
-        <div className={`extension-work office-extension-work${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && contextExtensionDock?.mode === "maximized" ? " is-extension-maximized" : ""}`}>
-          {!contextExtensionScreenVisible && (
-            <div className="extension-primary">{officeHomeSurface}</div>
-          )}
-          {officeExtension && (
-            <Suspense fallback={<aside className="extension-dock is-stage" aria-busy="true" />}>
-              <ExtensionDock
-                kind={officeExtension.surfaceKind}
-                kindLabel={extensionKindLabel(officeExtension.surfaceKind)}
-                title={officeExtension.title}
-                source={t("extensionLocalCapability")}
-                context={(officeExtension.type === "artifact" || officeExtension.type === "presentation-browser")
-                  ? officeExtension.owner.revisionId.slice(-8).toUpperCase()
-                  : "Office"}
-                detail={activeArtifact?.artifact.dataResidency ?? "local"}
-                mode={officeExtension.mode}
-                placement="stage"
-                loading={artifactBusy === "open" || (officeExtension.type === "presentation-browser"
-                  ? !presentationBrowserSurface
-                  : Boolean(activePresentation && !presentationPreviewHtml))}
-                tabs={dockTabs}
-                activeTabId={officeExtension.id}
-                collapsed={!contextExtensionScreenVisible}
-                copy={extensionCopy}
-                onTabSelect={selectExtensionTab}
-                onTabClose={closeDockTab}
-                onModeChange={(mode) => setExtensionMode(officeExtension.id, mode)}
-                onClose={() => setCurrentExtensionScreenVisible(false)}
-              >
-                {officeExtensionSurface}
-              </ExtensionDock>
-            </Suspense>
-          )}
+          </div>
         </div>
-      ) : (zone === "chat" || zone === "projects") && workbenchInboxMode === "external" ? (
-        externalSessionCenterSurface
-      ) : (zone === "chat" || zone === "projects") && contextExtensionDock ? (
-        <div className={`extension-work${zone === "chat" ? " conversation-extension-work" : ""}${pendingApprovalVisible ? " has-pending-approval" : ""}${contextExtensionScreenVisible ? " has-visible-extension" : ""}${contextExtensionScreenVisible && effectiveConversationDockMode === "maximized" ? " is-extension-maximized" : ""}`}>
-          <div className="extension-primary">{conversation(zone === "chat" ? "im" : "ide")}</div>
-          <Suspense fallback={<aside className="extension-dock is-docked" aria-busy="true" />}>
-            <ExtensionDock
-              kind={contextExtensionDock.surfaceKind}
-              kindLabel={extensionKindLabel(contextExtensionDock.surfaceKind)}
-              title={contextExtensionDock.title}
-              source={panelExtension?.plugin ?? (webPreviewExtension ? "Node · localhost" : t("extensionLocalCapability"))}
-              context={contextExtensionDock.owner.place === "office" ? "Office" : basename(contextExtensionDock.owner.cwd)}
-              detail={panelExtension || webPreviewExtension
-                ? publicPanelOrigin((panelExtension ?? webPreviewExtension)!.url) ?? t("extensionLocalCapability")
-                : (sessionArtifactExtension ?? presentationBrowserExtension)?.owner.revisionId.slice(-8).toUpperCase()}
-              mode={effectiveConversationDockMode}
-              loading={contextExtensionDock.type === "artifact" || contextExtensionDock.type === "presentation-browser"
-                ? artifactBusy === "open" || activeArtifact?.artifact.artifactId !== contextExtensionDock.owner.artifactId
-                  || (contextExtensionDock.type === "presentation-browser" && !presentationBrowserSurface)
-                : contextExtensionDock.type === "legacy-panel" || contextExtensionDock.type === "web-preview"
-                  ? extensionLoading
-                  : false}
-              tabs={dockTabs}
-              activeTabId={contextExtensionDock.id}
-              collapsed={!contextExtensionScreenVisible}
-              addItems={extensionAddItems}
-              copy={{ ...extensionCopy, backToChat: zone === "chat" ? (locale === "zh" ? "返回聊天" : "Back to chat") : undefined }}
-              onTabSelect={selectExtensionTab}
-              onTabClose={closeDockTab}
-              onAddItem={openExtensionItem}
-              onModeChange={(mode) => setExtensionMode(contextExtensionDock.id, mode)}
-              onPopOut={panelExtension || webPreviewExtension
-                ? () => popOutVisualExtension((panelExtension ?? webPreviewExtension)!)
-                : undefined}
-              onClose={() => setCurrentExtensionScreenVisible(false)}
-            >
-              {contextExtensionScreenVisible && effectiveConversationDockMode === "maximized" ? taskApprovalStatusSurface : null}
-              {panelExtension && (
-                <iframe
-                  src={panelExtension.url}
-                  title={panelExtension.title}
-                  referrerPolicy="no-referrer"
-                  onLoad={() => setExtensionLoading(false)}
-                />
-              )}
-              {webPreviewExtension && (
-                <iframe
-                  src={webPreviewExtension.url}
-                  title={webPreviewExtension.title}
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"
-                  allow="clipboard-read; clipboard-write; fullscreen"
-                  referrerPolicy="no-referrer"
-                  onLoad={() => setExtensionLoading(false)}
-                />
-              )}
-              {sessionArtifactExtension
-                && activeArtifact?.artifact.artifactId === sessionArtifactExtension.owner.artifactId
-                && artifactWorkbenchSurface}
-              {presentationBrowserExtension && presentationBrowserSurface}
-              {workbenchToolExtension?.tool === "agents" && (
-                <AgentCollaborationSurface
-                  item={workbenchToolExtension}
-                  client={clientRef.current}
-                  agents={availableAgents}
-                  locale={locale}
-                  onOpenRuntimeSession={(sessionId) => {
-                    setWorkbenchInboxMode("external");
-                    setExternalSessionSourceId("runtime");
-                    setWorkbenchInboxTarget({ kind: "external", id: sessionId });
-                    setExternalTranscript(null);
-                    setQ("");
-                    refreshExternalSessions();
-                  }}
-                />
-              )}
-              {((workbenchToolExtension && workbenchToolExtension.tool !== "agents") || reviewExtension) && (
-                <WorkbenchToolSurface
-                  item={(workbenchToolExtension ?? reviewExtension)!}
-                  client={clientRef.current}
-                  items={transcripts[(workbenchToolExtension ?? reviewExtension)!.owner.sessionId] ?? []}
-                  taskState={taskStates[(workbenchToolExtension ?? reviewExtension)!.owner.sessionId]}
-                  onOpenBrowser={openBrowserFromTool}
-                  onCompose={composeFromExtension}
-                  onRunCommand={runCommandFromExtension}
-                  copy={{
-                    terminal: t("extensionTerminal"),
-                    terminalHint: t("extensionTerminalHint"),
-                    terminalEmpty: t("extensionTerminalEmpty"),
-                    terminalCommand: t("extensionTerminalCommand"),
-                    terminalSend: t("extensionTerminalSend"),
-                    browser: t("extensionBrowser"),
-                    browserHint: t("extensionBrowserHint"),
-                    browserAddress: t("extensionBrowserAddress"),
-                    browserOpen: t("extensionBrowserOpen"),
-                    browserInvalid: t("extensionBrowserInvalid"),
-                    files: t("extensionFiles"),
-                    filesHint: t("extensionFilesHint"),
-                    filesSearch: t("extensionFilesSearch"),
-                    filesEmpty: t("extensionFilesEmpty"),
-                    filesUse: t("extensionFilesUse"),
-                    review: t("extensionReview"),
-                    reviewHint: t("extensionReviewHint"),
-                    reviewEmpty: t("extensionReviewEmpty"),
-                    running: t("extensionRunning"),
-                    ready: t("extensionReady"),
-                  }}
-                />
-              )}
-            </ExtensionDock>
-          </Suspense>
-        </div>
-      ) : (
-        <>
-          {conversation(zone === "chat" ? "im" : "ide")}
-          {colleagueManagePanel}
-        </>
       )}
 
       {talentMarketOpen && agentBlueprintFeatureReady ? (
