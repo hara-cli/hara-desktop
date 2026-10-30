@@ -1293,7 +1293,7 @@ function TaskRow({
   scheduler?: AutomationScheduler | null;
   copy: AutomationCopy;
   onOpen: (job: AutomationJob) => void;
-  onOpenMenu: (event: ReactMouseEvent, job: AutomationJob, contextMenu?: boolean) => void;
+  onOpenMenu?: (event: ReactMouseEvent, job: AutomationJob, contextMenu?: boolean) => void;
 }) {
   const state = getAutomationState(job, scheduler);
   const next = getNextRun(job);
@@ -1306,7 +1306,7 @@ function TaskRow({
       event.preventDefault();
       onOpen(job);
     }
-    if (event.key === "F10" && event.shiftKey) {
+    if (onOpenMenu && event.key === "F10" && event.shiftKey) {
       event.preventDefault();
       const rectangle = event.currentTarget.getBoundingClientRect();
       onOpenMenu(
@@ -1332,7 +1332,7 @@ function TaskRow({
       onClick={(event) => {
         if (!(event.target as HTMLElement).closest("button")) onOpen(job);
       }}
-      onContextMenu={(event) => onOpenMenu(event, job, true)}
+      onContextMenu={onOpenMenu ? (event) => onOpenMenu(event, job, true) : undefined}
     >
       <div className="hara-automation-task-main">
         <StatusBadge state={state} copy={copy} compact />
@@ -1367,7 +1367,7 @@ function TaskRow({
             : stateHelp(state, copy)}
         </small>
       </div>
-      <button
+      {onOpenMenu ? <button
         type="button"
         className="hara-automation-more-button"
         aria-label={`${job.name} · ${copy.moreActions}`}
@@ -1375,7 +1375,7 @@ function TaskRow({
         onClick={(event) => onOpenMenu(event, job)}
       >
         <Icon name="more" size={19} />
-      </button>
+      </button> : null}
     </article>
   );
 }
@@ -2931,7 +2931,7 @@ export function AutomationsPage({
                     scheduler={scheduler}
                     copy={copy}
                     onOpen={(selected) => setSelectedJobId(selected.id)}
-                    onOpenMenu={openMenu}
+                    onOpenMenu={add || update || run || toggle || deleteAutomation ? openMenu : undefined}
                   />
                 ))}
               </div>

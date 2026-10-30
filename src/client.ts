@@ -441,6 +441,8 @@ export interface AutomationDeliverySummary {
 
 export interface CronJobInfo {
   id: string;
+  /** Qualified colleague identity; absent on legacy workspace jobs. */
+  ownerBotId?: string;
   name: string;
   mode: string;
   cwd: string;
@@ -498,6 +500,8 @@ export interface AutomationDraftInput {
   name: string;
   schedule: string;
   task: string;
+  ownerBotId?: string;
+  sessionId?: string;
   cwd?: string;
   tz?: string;
   mode?: "print" | "org" | "command";
@@ -3358,11 +3362,11 @@ export class HaraClient {
     if (!result.ok) throw new Error(result.error || "Automation run failed.");
     return result;
   }
-  toggleAutomation(idJob: string, enabled: boolean) {
-    return this.call("automation.toggle", { id: idJob, enabled });
+  toggleAutomation(idJob: string, enabled: boolean, ownerBotId?: string) {
+    return this.call("automation.toggle", { id: idJob, enabled, ...(ownerBotId ? { ownerBotId } : {}) });
   }
-  deleteAutomation(idJob: string) {
-    return this.call("automation.delete", { id: idJob });
+  deleteAutomation(idJob: string, ownerBotId?: string) {
+    return this.call("automation.delete", { id: idJob, ...(ownerBotId ? { ownerBotId } : {}) });
   }
   installAutomationScheduler() {
     return this.call<{ scheduler: AutomationSchedulerInfo }>("automation.scheduler.install", {});
