@@ -62,11 +62,15 @@ test("unavailable connections and backup-only recovery retain distinct non-destr
   const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原檔|原設定/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|我已確認系統憑據存儲，重試升級/);
  }
 });
-test("local discovery is visible before install, includes version/path and asks confirmation instead of downloading",()=>{
+test("detected runtimes offer workspace binding and missing runtimes alone offer installation",()=>{
  const workspace={...snapshot("A"),runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"detected",version:"1.2.3",path:"/fixture/nvm/bin/codex"}],operations:[]}};
- const html=render("Runtime",{model:{},workspace});assert.match(html,/1\.2\.3 · 本機已安裝/);assert.match(html,/fixture\/nvm\/bin\/codex/);assert.match(html,/使用本機安裝/);assert.doesNotMatch(html,/>按需安裝<\/button>/);
+ const html=render("Runtime",{model:{},workspace});assert.match(html,/1\.2\.3 · 本機已安裝/);assert.match(html,/fixture\/nvm\/bin\/codex/);assert.match(html,/綁定到此空間/);assert.doesNotMatch(html,/使用本機安裝|確認登記本機安裝|>按需安裝<\/button>/);
  const missing=render("Runtime",{model:{},workspace:{...workspace,runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"not_installed"}],operations:[]}}});
  assert.match(missing,/正在確認本機安裝/);assert.match(missing,/<button disabled="">按需安裝<\/button>/);
+ const failed=render("Runtime",{model:{},workspace:{...workspace,runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"integrity_failed"}],operations:[]}}});
+ assert.doesNotMatch(failed,/>按需安裝<\/button>|綁定到此空間/);
+ const source=read("src/WorkspaceRuntimeSettings.tsx");assert.match(source,/setBound\(\{ runtimeId: local\.runtimeId/);assert.match(source,/model\.changeConnection\(selectedConnection\)/);
+ assert.match(source,/connections\.some\(row => row\.id === selectedConnection\)/);
 });
 test("three-way appearance setting and scoped features are actual rendered controls",()=>{
  const html=render("WorkspaceThemeSettings",{theme:{preference:"system",settings:{readOnly:false},notice:"",change(){}}});

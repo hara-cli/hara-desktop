@@ -52,3 +52,21 @@
 .hs.wss-app :is(.wss-content,.wss-updates,.wss-discard-dialog) button.wsd-primary:not(:disabled):hover{background:var(--brand-hover);border-color:var(--brand-hover)}
 .hs.wss-app :is(.wss-content,.wss-updates,.wss-discard-dialog) button.wsd-primary:not(:disabled):active{background:var(--brand-pressed);border-color:var(--brand-pressed)}
 .hs.wss-app :is(.wss-content,.wss-updates,.wss-discard-dialog) button:not(.wss-switch):disabled{background:var(--disabled-bg);color:var(--disabled-ink)}
+
+/* Runtime binding follows the Violet Glass settings palette in both appearances. */
+.hs.wss-app .wsd-runtime-list{display:grid;gap:18px;margin:18px 0}
+.hs.wss-app .wss-content .wsd-runtime-list .wsd-runtime-row{margin:0;padding:18px;gap:18px}
+.hs.wss-app .wsd-runtime-row .wsd-root{display:block;margin-top:8px;overflow-wrap:anywhere}
+.hs.wss-app .wsd-runtime-bind-dialog{margin-top:18px;padding:20px}
+.hs.wss-app .wsd-runtime-bind-dialog h3{margin:0 0 12px}
+.hs.wss-app .wsd-runtime-proof{display:grid;gap:8px;margin:16px 0 22px;padding:14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--field)}
+.hs.wss-app .wsd-runtime-proof code{overflow-wrap:anywhere}
+.hs.wss-app .wsd-runtime-bind-dialog .wsd-card-actions{padding-top:16px;border-top:1px solid var(--line)}
+.hs.wss-app .wsd-runtime-model-step{margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface)}
+.hs.wss-app .wsd-runtime-model-step .wsd-root{display:block;overflow-wrap:anywhere}
+.hs.wss-app .wsd-runtime-model-options{display:grid;gap:10px;margin:18px 0}
+.hs.wss-app .wsd-runtime-model-options label{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-md);cursor:pointer}
+.hs.wss-app .wsd-runtime-model-options label.selected{border-color:var(--brand);background:var(--brand-soft)}
+.hs.wss-app .wsd-runtime-model-options input{accent-color:var(--brand)}
+.hs.wss-app .wsd-runtime-model-options :is(strong,small){display:block}
+@media (max-width:700px){.hs.wss-app .wss-content .wsd-runtime-list .wsd-runtime-row{grid-template-columns:1fr}.hs.wss-app .wsd-runtime-row>button{justify-self:start}}
