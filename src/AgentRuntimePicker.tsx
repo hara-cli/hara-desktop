@@ -14,7 +14,10 @@ export function WorkspaceAgentRuntimePicker({ agent, options, locale, saving, on
   return <div className="agent-profile-runtime-controls">
     <label><span>Runtime</span><select aria-label="Runtime" value={selected} disabled={saving} onChange={event => setSelected(event.target.value as AgentRuntimeId)}>
       {!options.some(option => option.id === agent.runtime.id) ? <option value={agent.runtime.id} disabled>{agent.runtime.label}</option> : null}
-      {options.map(option => <option key={option.id} value={option.id} disabled={!option.available}>{agentRuntimeLabel(option.id, locale)}{!option.available ? ` · ${option.reason ?? "unavailable"}` : ""}</option>)}
+      {options.map(option => <option key={option.id} value={option.id} disabled={!option.available}>{agentRuntimeLabel(option.id, locale)}{!option.available
+        ? option.reason === "not_installed" ? (locale === "zh" ? " · 未安装" : " · not installed")
+          : option.reason === "not_registered" ? (locale === "zh" ? " · 登记后可绑定" : " · register before binding")
+          : (locale === "zh" ? " · 暂不可用" : " · unavailable") : ""}</option>)}
     </select></label>
         <button type="button" disabled={saving || !agent.configRevision || !agent.agentEpoch || !available || selected === agent.runtime.id} onClick={() => onApply(selected)}>{locale === "zh" ? "应用 Runtime" : "Apply Runtime"}</button>
   </div>;

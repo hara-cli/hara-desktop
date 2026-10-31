@@ -2,13 +2,13 @@ import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import type { WorkspaceDevAgent, WorkspaceFeatureView } from "./workspace-dev-state";
 import WorkspaceRuntimeAccess from "./WorkspaceRuntimeAccess";
-import type { WorkspaceDevSnapshot, WorkspaceRuntimeModels } from "./workspace-dev-state";
+import type { WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceSessionRestart } from "./workspace-dev-state";
 import type { AgentRuntimeId } from "./client";
 import { WorkspaceAgentProfileSheet } from "./AgentProfileEditor";
 
 type Schedule = WorkspaceFeatureView["schedules"][number];
 
-export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, initialProfileOpen = false, onClose, onRefresh, onToggle, onSave, onDelete, listModels, onApplyRuntime, onApplyModel, onRuntimeDirectory, onSaveProfile }: {
+export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, initialProfileOpen = false, onClose, onRefresh, onToggle, onSave, onDelete, listModels, onApplyRuntime, onApplyModel, onRescan, onRegisterRuntime, onRuntimeDirectory, onSaveProfile }: {
   agent: WorkspaceDevAgent;
   workspace: WorkspaceDevSnapshot;
   features: WorkspaceFeatureView | null;
@@ -23,8 +23,10 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   onSave(schedule: Schedule, values: { name: string; cron: string; tz: string; task: string }): Promise<void>;
   onDelete(schedule: Schedule): Promise<void>;
   listModels(runtimeId: string): Promise<WorkspaceRuntimeModels>;
-  onApplyRuntime(runtimeId: AgentRuntimeId): Promise<void>;
+  onApplyRuntime(runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart): Promise<void>;
   onApplyModel(runtimeId: string, modelId: string, revision: number): Promise<void>;
+  onRescan(): Promise<void>;
+  onRegisterRuntime(runtimeId: string, fingerprint: string): Promise<void>;
   onRuntimeDirectory(): void;
   onSaveProfile(profile: { displayName: string; title: string; emoji: string; avatar: string }): Promise<void>;
 }) {
@@ -48,7 +50,7 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   return <aside id="workspace-inspector" className="vg-inspector vg-colleague-manage" aria-label={zh ? `${agent.identity.displayName} · 管理` : `Manage ${agent.identity.displayName}`} inert={inert}>
     <header><h2>{agent.kind === "main" ? (zh ? "Hara · 管理" : "Hara management") : (zh ? "该同事 · 内部管理" : "Colleague management")}</h2><button className="hs-icon" aria-label={zh ? "关闭管理栏" : "Close management"} onClick={onClose}><XMarkIcon className="hico" /></button></header>
     <div className="vg-colleague-identity"><strong>{agent.identity.displayName}</strong><span>{agent.identity.title || (zh ? "Hara 同事" : "Hara colleague")}</span></div>
-    <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} listModels={listModels} onApplyRuntime={onApplyRuntime} onApplyModel={onApplyModel} onRuntimeDirectory={onRuntimeDirectory} />
+    <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} listModels={listModels} onApplyRuntime={onApplyRuntime} onApplyModel={onApplyModel} onRescan={onRescan} onRegisterRuntime={onRegisterRuntime} onRuntimeDirectory={onRuntimeDirectory} />
     <section className="vg-context-card"><h3>{zh ? "基本信息" : "Profile"}</h3><dl><dt>{zh ? "显示名" : "Display name"}</dt><dd>{agent.identity.displayName}</dd><dt>{zh ? "职责" : "Role"}</dt><dd>{agent.identity.title || "—"}</dd><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{agent.runtime.label}</dd></dl><button onClick={() => setProfileOpen(true)}>{zh ? "编辑此 bot 名片" : "Edit this bot's profile"}</button></section>
     {profileOpen ? <WorkspaceAgentProfileSheet agent={agent} locale={zh ? "zh" : "en"} onClose={() => setProfileOpen(false)} onSave={onSaveProfile} /> : null}
     {agent.kind === "colleague" ? <section className="vg-context-card vg-colleague-schedules"><h3>{zh ? "定时" : "Schedules"}<span>{schedules.length}</span></h3>

@@ -52,7 +52,9 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     resumeAdmission?: { allowed: boolean; reason: string | null } } }
 interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume" | "workspace.session.answer"; payload: Record<string, unknown>;
   message: string; state: "sending" | "unknown"; fromDraft?: boolean }
+export type WorkspaceSessionRestart = "keep" | "fresh";
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
+  localHistoryStart: number; runtimeChanging: boolean;
   roster: WorkspaceDevAgent[];
   workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string; dismissedRecoveryIdentity: string | null }
 export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
@@ -66,9 +68,11 @@ export interface WorkspaceFeatureView { revision: number; workspaceId: string; s
   scheduler?: { schedules: { id: string; nextRunAt: number | null; awaitingHandoff: boolean; lastRun: { state: string; reason: string | null; occurredAt: number } | null }[] } }
 
 export class WorkspaceDevModel {
-  private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "", dismissedRecoveryIdentity: null };
+  private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, localHistoryStart: 0, runtimeChanging: false, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "", dismissedRecoveryIdentity: null };
   private readonly listeners = new Set<() => void>();
   private readonly drafts = new Map<string, string>();
+  private readonly localHistoryStarts = new Map<string, { sessionId: string; offset: number; boundary: string }>();
+  private readonly runtimeChanges = new Set<string>();
   /** Per-agent suppress of the Soft Dark resume card after clear / new chat / explicit dismiss. */
   private readonly dismissedRecovery = new Map<string, string>();
   private readonly pending = new Map<string, PendingMessage>();
@@ -111,6 +115,7 @@ export class WorkspaceDevModel {
     this.view = { ...this.view, ...next };
     // Scoped pending records own the dispatch latch, including when returning to an earlier view.
     const key = this.key();
+    this.view.runtimeChanging = this.runtimeChanges.has(key);
     if (this.questionPauses.has(key) || this.pending.get(key)?.state === "sending") this.view.sending = true;
     for (const listener of this.listeners) listener();
   }
@@ -127,7 +132,11 @@ export class WorkspaceDevModel {
     // A newer run replaces a prior dismiss; keep suppress only while the identity still matches.
     const dismissed = identity && this.dismissedRecovery.get(key) === identity ? identity : null;
     if (identity && this.dismissedRecovery.get(key) && this.dismissedRecovery.get(key) !== identity) this.dismissedRecovery.delete(key);
+    const localStart = this.localHistoryStarts.get(key);
     this.update({ workspace: snapshot, workspaceId: snapshot.workspaceId, agentId: snapshot.selectedAgentId, roster: snapshot.agents,
+      localHistoryStart: localStart && localStart.sessionId === snapshot.conversation.sessionId
+        && (localStart.offset === 0 || JSON.stringify(snapshot.conversation.history[localStart.offset - 1]) === localStart.boundary)
+        ? localStart.offset : 0,
       draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "",
       dismissedRecoveryIdentity: dismissed,
       syncNotice: snapshot.inheritance?.state === "pending" ? "ws.notice.inheritancePending"
@@ -181,7 +190,7 @@ export class WorkspaceDevModel {
       }
     }
   }
-  setDraft(draft: string): void { const key = this.key(); if (key) this.drafts.set(key, draft); this.update({ draft }); }
+  setDraft(draft: string): void { const key = this.key(); if (this.runtimeChanges.has(key)) return; if (key) this.drafts.set(key, draft); this.update({ draft }); }
   async createWorkspace(label: string): Promise<void> {
     if (!label.trim() || this.view.loading) return; const epoch = this.epoch; this.update({ loading: true, error: "" });
     try {
@@ -294,10 +303,33 @@ export class WorkspaceDevModel {
     await this.workspaceRequest("workspace.runtime.selectModel", { runtimeId, modelId, expectedRevision });
     await this.refresh();
   }
-  async setAgentRuntime(agent: WorkspaceDevAgent, runtimeId: AgentRuntimeId): Promise<void> {
+  async setAgentRuntime(agent: WorkspaceDevAgent, runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart = "keep"): Promise<void> {
     if (!agent.configRevision || !agent.agentEpoch) throw new WorkspaceViewError("ws.notice.invalidView");
-    await this.workspaceRequest("workspace.agents.setRuntime", { agentId: agent.agentId, runtimeId, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
-    await this.refresh();
+    const workspace = this.view.workspace, key = this.key(), epoch = this.epoch;
+    if (!workspace || (sessionRestart !== "keep" && sessionRestart !== "fresh")
+      || (sessionRestart === "fresh" && (workspace.selectedAgentId !== agent.agentId || this.pending.has(key) || this.view.sending || this.view.pendingUnknown
+        || ["running", "draining"].includes(workspace.conversation.state) || workspace.conversation.pendingQuestion
+        || workspace.conversation.pendingInteractions?.length))) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    const targetKey = JSON.stringify([workspace.workspaceId, workspace.resourceGeneration, agent.agentId]);
+    if (this.runtimeChanges.has(targetKey)) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    this.runtimeChanges.add(targetKey); this.update({});
+    try {
+      await this.workspaceRequest("workspace.agents.setRuntime", { agentId: agent.agentId, runtimeId, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
+      // Desk-only reset: never claim or send an engine-session restart. Keep Core history and task bindings.
+      if (sessionRestart === "fresh") {
+        this.drafts.delete(key);
+        this.localHistoryStarts.set(key, { sessionId: workspace.conversation.sessionId, offset: workspace.conversation.history.length,
+          boundary: JSON.stringify(workspace.conversation.history[workspace.conversation.history.length - 1]) ?? "" });
+        const identity = workspaceRecoveryIdentity(workspace.conversation);
+        if (identity) this.dismissedRecovery.set(key, identity);
+        this.overviewCache.delete(agent.agentId);
+        if (epoch === this.epoch && key === this.key()) this.update({ draft: "", localHistoryStart: workspace.conversation.history.length, dismissedRecoveryIdentity: identity });
+      }
+      if (epoch !== this.epoch || key !== this.key()) return;
+      await this.refresh();
+      if (epoch === this.epoch && this.view.workspace?.agents.find(row => row.agentId === agent.agentId)?.runtime.id !== runtimeId)
+        throw new WorkspaceViewError("ws.notice.invalidView");
+    } finally { this.runtimeChanges.delete(targetKey); this.update({}); }
   }
   async updateAgentPersona(agent: WorkspaceDevAgent, profile: { displayName: string; title?: string; emoji?: string; avatar?: string }): Promise<void> {
     if (!agent.configRevision || !agent.agentEpoch) throw new WorkspaceViewError("ws.notice.invalidView");
@@ -389,7 +421,7 @@ export class WorkspaceDevModel {
 
   async send(resume = false, answer?: { questionId: string; message: string; fromDraft?: boolean }): Promise<void> {
     const workspace = this.view.workspace, key = this.key();
-    if (!workspace || !key || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
+    if (!workspace || !key || this.runtimeChanges.has(key) || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
     const retained = this.pending.get(key);
     if (retained || this.questionPauses.has(key)) return;
     if (!workspace.connections.defaultConnectionId) { this.update({ error: this.syntheticOnly ? "ws.notice.syntheticRequired" : "ws.notice.connectionRequired" }); return; }

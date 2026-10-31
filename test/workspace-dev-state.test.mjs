@@ -25,6 +25,7 @@ function fixture() {
 test("this bot's runtime and model actions use Workspace RPC with the exact agent fence", async () => {
   const f=fixture();await f.ready();
   const agent={...agents[1],configRevision:4,agentEpoch:2};
+  f.handlers["workspace.snapshot"]=()=>({...snapshot(),agents:agents.map(row=>row.agentId===agent.agentId?{...agent,runtime:{id:"codex",label:"Codex",available:true}}:row)});
   f.handlers["workspace.runtime.listModels"]=()=>({runtimeId:"codex",revision:7,selectedModelId:null,models:[{id:"gpt-6",label:"GPT-6"}]});
   assert.equal((await f.model.listRuntimeModels("codex")).models[0].id,"gpt-6");
   await f.model.setAgentRuntime(agent,"codex");
@@ -379,4 +380,80 @@ test("a non-resume send dismisses the unfinished run so Soft Dark does not keep 
   wait.resolve({ runId: "run-fresh" });
   await send;
   assert.equal(f.model.getSnapshot().workspace.conversation.runId, "run-fresh");
+});
+
+for (const selectedAgentId of ["main", "coder"]) for (const restart of ["keep", "fresh"]) test("Desk-only " + restart + " isolates local state for " + selectedAgentId + " without a Core restart", async () => {
+  const f = fixture();
+  let rows = agents.map(row => ({ ...row, configRevision: 4, agentEpoch: 2 }));
+  let history = [{ role: "user", content: "retained history" }, { role: "assistant", text: "old reply", tools: [] }];
+  const current = agentId => ({ ...snapshot("A", agentId), agents: rows,
+    conversation: { ...snapshot("A", agentId).conversation, state: "blocked", taskId: "task-old", runId: "run-old", history } });
+  f.handlers["workspace.select"] = () => current(selectedAgentId);
+  f.handlers["workspace.agent.select"] = ({ agentId }) => current(agentId);
+  f.handlers["workspace.snapshot"] = ({ agentId }) => current(agentId);
+  f.handlers["workspace.agents.setRuntime"] = ({ agentId, runtimeId }) => {
+    rows = rows.map(row => row.agentId === agentId ? { ...row, configRevision: 5, runtime: { id: runtimeId, label: runtimeId, available: true } } : row);
+    return {};
+  };
+  await f.ready();
+  f.model.setDraft("target draft");
+  const otherId = selectedAgentId === "main" ? "coder" : "main";
+  await f.model.selectAgent(otherId); f.model.setDraft("other draft"); await f.model.selectAgent(selectedAgentId);
+  await f.model.setAgentRuntime(rows.find(row => row.agentId === selectedAgentId), "codex", restart);
+  const view = f.model.getSnapshot();
+  assert.equal(view.draft, restart === "fresh" ? "" : "target draft");
+  assert.equal(view.localHistoryStart, restart === "fresh" ? 2 : 0);
+  assert.deepEqual(view.workspace.conversation.history, history, "Core history is untouched");
+  assert.equal(view.workspace.conversation.sessionId, "A-" + selectedAgentId);
+  assert.equal(view.dismissedRecoveryIdentity, restart === "fresh" ? "run:run-old" : null);
+  await f.model.selectAgent(otherId); assert.equal(f.model.getSnapshot().draft, "other draft"); assert.equal(f.model.getSnapshot().localHistoryStart, 0);
+  await f.model.selectAgent(selectedAgentId);
+  assert.equal(f.model.getSnapshot().draft, restart === "fresh" ? "" : "target draft");
+  assert.equal(f.model.getSnapshot().localHistoryStart, restart === "fresh" ? 2 : 0);
+  history = [...history, { role: "user", content: "new task" }];
+  await f.model.refresh();
+  assert.equal(f.model.getSnapshot().workspace.conversation.history.slice(f.model.getSnapshot().localHistoryStart).at(-1).content, "new task");
+  history = [{ role: "user", content: "replacement conversation" }];
+  await f.model.refresh(); assert.equal(f.model.getSnapshot().localHistoryStart, 0, "a replaced transcript is not hidden by an old offset");
+  const writes = f.calls.filter(row => row.method === "workspace.agents.setRuntime");
+  assert.equal(writes.length, 1);
+  assert.deepEqual(Object.keys(writes[0].params).sort(), ["agentEpoch", "agentId", "configRevision", "expectedGeneration", "runtimeId", "workspaceId"]);
+  assert.equal(f.calls.some(row => /restart|workspace\.session\.(send|resume)|connection\.select/.test(row.method)), false);
+});
+
+test("failed or stale runtime mutation preserves local conversation and draft", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("keep me");
+  f.handlers["workspace.agents.setRuntime"] = () => { throw new Error("binding refused"); };
+  await assert.rejects(f.model.setAgentRuntime({ ...agents[0], configRevision: 2, agentEpoch: 1 }, "codex", "fresh"), /binding refused/);
+  assert.equal(f.model.getSnapshot().draft, "keep me"); assert.equal(f.model.getSnapshot().localHistoryStart, 0);
+  const wait = defer(); f.handlers["workspace.agents.setRuntime"] = () => wait.promise;
+  const changed = f.model.setAgentRuntime({ ...agents[0], configRevision: 2, agentEpoch: 1 }, "codex", "fresh");
+  await f.model.selectAgent("coder"); f.model.setDraft("other draft");
+  wait.resolve({}); await assert.rejects(changed, /scopeChanged/);
+  assert.equal(f.model.getSnapshot().draft, "other draft"); assert.equal(f.model.getSnapshot().localHistoryStart, 0);
+});
+
+test("fresh refuses active work and pending interaction before submitting a binding", async () => {
+  for (const extra of [{ state: "running" }, { state: "draining" }, { pendingQuestion: { id: "question" } }, { pendingInteractions: [{ requestId: "ask" }] }]) {
+    const f = fixture();
+    f.handlers["workspace.select"] = () => ({ ...snapshot(), conversation: { ...snapshot().conversation, ...extra } });
+    await f.ready(); f.model.setDraft("retain");
+    await assert.rejects(f.model.setAgentRuntime({ ...agents[0], configRevision: 2, agentEpoch: 1 }, "codex", "fresh"), /scopeChanged/);
+    assert.equal(f.calls.some(row => row.method === "workspace.agents.setRuntime"), false);
+    assert.equal(f.model.getSnapshot().draft, "retain");
+  }
+});
+
+test("binding in flight fences sends and composer edits without locking another colleague", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("confirmed draft");
+  const wait = defer(); f.handlers["workspace.agents.setRuntime"] = () => wait.promise;
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), agents: [{ ...agents[0], runtime: { id: "codex", label: "Codex", available: true } }, agents[1]] });
+  const applying = f.model.setAgentRuntime({ ...agents[0], configRevision: 2, agentEpoch: 1 }, "codex", "fresh");
+  assert.equal(f.model.getSnapshot().runtimeChanging, true);
+  f.model.setDraft("too late"); await f.model.send();
+  assert.equal(f.model.getSnapshot().draft, "confirmed draft");
+  assert.equal(f.calls.some(row => row.method === "workspace.session.send"), false);
+  await assert.rejects(f.model.setAgentRuntime({ ...agents[0], configRevision: 2, agentEpoch: 1 }, "codex", "keep"), /scopeChanged/);
+  wait.resolve({}); await applying;
+  assert.equal(f.model.getSnapshot().runtimeChanging, false); assert.equal(f.model.getSnapshot().draft, "");
 });
