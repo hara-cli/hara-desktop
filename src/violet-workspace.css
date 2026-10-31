@@ -48,6 +48,10 @@
 .vg-runtime-access .vg-p0-card p{margin:0 0 12px;overflow-wrap:anywhere}
 .vg-runtime-access button,.vg-manage-link{width:100%;padding:9px 10px;border:1px solid var(--hara-border-default);border-radius:8px;background:var(--hara-bg-content);color:var(--hara-text-primary);font:inherit;font-size:12px;text-align:left;cursor:pointer}
 .vg-runtime-access button:hover,.vg-manage-link:hover{border-color:var(--hara-border-active)}
+.vg-runtime-access>.wsd-modal-backdrop{position:fixed;z-index:80}
+.hs .wsd-runtime-change-dialog input[type="radio"]{display:inline-block;width:auto;margin:0 8px 0 0;padding:0;accent-color:var(--hara-text-link)}
+.hs .wsd-runtime-change-dialog p{font-size:13px;line-height:1.65;overflow-wrap:anywhere}
+.vg-runtime-access .wsd-runtime-change-dialog .wsd-card-actions button{width:auto}
 .vg-group-members{display:grid;gap:0;margin:8px 0 14px}
 .vg-group-members>div{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--hara-border-default)}
 .vg-group-members>div>span:last-child{display:grid;gap:2px}.vg-group-members strong{font-size:12px}.vg-group-members small{color:var(--hara-text-secondary);font-size:11px}

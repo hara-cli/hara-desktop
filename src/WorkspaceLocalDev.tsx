@@ -220,7 +220,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
 
   useEffect(() => { setBrowser(false); }, [scope]);
   const connect = () => production ? (setSettingsPage("connections"), setSettings(true)) : realKey ? model.addApprovedConnection() : model.addSynthetic();
-  const canSend = Boolean(workspace && hasConnection && view.draft.trim() && !view.sending && !busy && !view.pendingUnknown && !disconnected);
+  const canSend = Boolean(workspace && hasConnection && view.draft.trim() && !view.sending && !view.runtimeChanging && !busy && !view.pendingUnknown && !disconnected);
   // One composer: a pending sync question takes the draft as its answer; a lone async ask takes it while the run continues.
   const question = workspace?.conversation.pendingQuestion ?? null;
   const asyncAsks = workspace && model.supportsAsyncQuestions?.() === true ? workspaceAsyncAsks(workspace.conversation) : [];
@@ -421,7 +421,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
               <button className="hs-btn pri" onClick={() => void connect()}>{t(production ? "ws.connection.configure" : realKey ? "ws.connection.approved" : "ws.connection.synthetic")}</button></section> : null}
             {hasConnection && !workspace.conversation.history.length ? <div className="hs-hello"><h2>{t("ws.home.title")}</h2><p>{t("ws.home.hint")}</p><div className="hs-chips"><button className="hs-chip" onClick={() => void discuss()}><UserPlusIcon className="hico" />{t("ws.home.chip.colleague")}</button>
               <button className="hs-chip" onClick={() => model.setDraft(t("ws.home.chip.tasks"))}>{t("ws.home.chip.tasks")}</button></div></div> : null}
-            <Transcript history={workspace.conversation.history} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false} />
+            <Transcript history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false} />
             {pendingSchedule?.scope === scope && pendingSchedule.agentId === agent?.agentId ? <section className="vg-chat-schedule-card" aria-label={locale !== "en" ? "确认定时" : "Confirm schedule"}>
               <header><strong>{locale !== "en" ? "确认定时" : "Confirm schedule"}</strong><small>{locale !== "en" ? "挂接同事" : "Colleague"} · {agent.identity.displayName}</small></header>
               <label>{locale !== "en" ? "名称" : "Name"}<input maxLength={60} value={pendingSchedule.draft.name} disabled={scheduleBusy} onChange={(event) => setPendingSchedule({ ...pendingSchedule, draft: { ...pendingSchedule.draft, name: event.target.value } })} /></label>
@@ -434,7 +434,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {scheduleNotice?.scope === scope && scheduleNotice.agentId === agent?.agentId && !pendingSchedule ? <p className="vg-schedule-notice" role="status">{locale !== "en" ? `已为这位同事创建定时：${scheduleNotice.name}。右侧可管理。` : `Created for this colleague: ${scheduleNotice.name}. Manage it on the right.`}</p> : null}
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
             {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified"><CheckCircleIcon className="hico" />{t("ws.verified")} <span>{t("ws.verified.note")}</span></p> : null}
-            <WorkspaceTaskRecovery conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.pendingUnknown}
+            <WorkspaceTaskRecovery conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
               continueDisabled={!hasConnection || busy} dismissedIdentity={view.dismissedRecoveryIdentity}
               onContinue={() => void model.send(true)} onRepair={() => { setSettingsPage("connections");setSettings(true); }}
               onDismiss={() => model.dismissRecovery()} />
@@ -447,16 +447,17 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       {workspace && inChannel ? <LocalChannelComposer key={`${scope}:${channelView.channelId}`} view={channelView} model={channels} colleagues={colleagues} t={t} disconnected={!!disconnected} hasConnection={hasConnection} configure={() => void connect()} /> : null}
       {workspace && route.section === "chat" ? <footer className="hs-compose wsd-composer-wrap" data-composer={question ? "question" : undefined}><WorkspaceAsyncQuestions asks={asyncAsks} t={t}
           disabled={Boolean(disconnected)} onAnswer={(questionId, answer) => void model.answerAsync(questionId, answer)} /><div className="hs-field wsd-composer"><textarea ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
-        placeholder={!hasConnection ? t("ws.composer.noConnection") : t(question ? "ws.question.composerPlaceholder" : "ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} disabled={!hasConnection || Boolean(disconnected)} rows={1}
+        placeholder={!hasConnection ? t("ws.composer.noConnection") : t(question ? "ws.question.composerPlaceholder" : "ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} disabled={!hasConnection || view.runtimeChanging || Boolean(disconnected)} rows={1}
         onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submitComposer(); } }} />
         <span className="hs-conn">{t("ws.composer.connection")}</span>{busy ? <button className="hs-stop" onClick={() => void model.cancel()} disabled={Boolean(disconnected) || workspace.conversation.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button>
           : view.pendingUnknown ? <button className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={Boolean(disconnected)}>{t("ws.composer.verify")}</button> : <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canSend} aria-label={t("ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>}
           {asyncTarget ? <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canAnswerAsync} aria-label={t("ws.question.async.send")}><PaperAirplaneIcon className="hico" /></button> : null}</div>
         <p className="hs-hint"><span>{question ? t("ws.question.composerHint") : t(production ? "ws.composer.hint.local" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</span><span>{t("ws.composer.hint.keys")}</span></p></footer> : null}
     </main>
-    {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} initialProfileOpen={renameAgentId === agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); }} onRefresh={() => void refreshFeatures()}
-      listModels={listBotModels} onApplyRuntime={runtimeId => model.setAgentRuntime(agent, runtimeId)}
+    {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} initialProfileOpen={renameAgentId === agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); }} onRefresh={() => void refreshFeatures()}
+      listModels={listBotModels} onApplyRuntime={(runtimeId, sessionRestart) => model.setAgentRuntime(agent, runtimeId, sessionRestart)}
       onApplyModel={(runtimeId, modelId, revision) => model.selectRuntimeModel(runtimeId, modelId, revision)}
+      onRescan={() => model.detectRuntimes()} onRegisterRuntime={(runtimeId, fingerprint) => model.registerLocalRuntime(runtimeId, fingerprint, workspace.workspaceId, workspace.resourceGeneration)}
       onRuntimeDirectory={() => openSettingsPage("runtimes")} onSaveProfile={profile => model.updateAgentPersona(agent, profile)}
       onToggle={(schedule) => updateColleagueSchedule("workspace.features.update", { kind: "schedule", id: schedule.id, enabled: !schedule.enabled }, schedule.agentId)}
       onSave={(schedule, values) => updateColleagueSchedule("workspace.schedule.save", { input: { id: schedule.id, name: values.name.trim(), schedule: { kind: "cron", expr: values.cron.trim() }, tz: values.tz.trim(), task: values.task.trim(), agentId: agent.agentId, enabled: schedule.enabled }, approved: true }, schedule.agentId)}
