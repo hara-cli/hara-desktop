@@ -87,7 +87,7 @@ async function navigate({width=1280,locale='zh-Hant',theme='light',scenario='hom
   const url=new URL('test/fixtures/workspace-shell-preview.html',base);url.search=new URLSearchParams({locale,theme,scenario,reset:reset?'1':'0'}).toString();
   await navigateCdp(send, socket, {url:url.href, sessionId, step});
   await ready("!!window.__HARA_SHELL_FIXTURE__ && !!document.querySelector('.hs-field textarea,[data-tasks-count]')",'Synthetic Workspace fixture must mount');
-  await ready("document.querySelector('[data-nav-count]')?.textContent === (new URLSearchParams(location.search).get('scenario')==='many'?'10':new URLSearchParams(location.search).get('scenario')==='partial'?'2':'3')",'Overview must settle with the expected scoped count');
+  await ready("document.querySelector('[data-await-count]')?.textContent === (new URLSearchParams(location.search).get('scenario')==='many'?'10':new URLSearchParams(location.search).get('scenario')==='partial'?'2':'3')",'Overview must settle with the expected scoped count');
   await settled();assert.equal(await evaluate('document.documentElement.dataset.theme'),theme);
   if(!['system','saved'].includes(locale))assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),locale);
 }
@@ -472,7 +472,7 @@ try{
   await inputValue('.hs-channel-compose textarea','channel draft preserved');await click('.hs-set');await key('Escape');
   assert.equal(await evaluate("document.querySelector('.hs-channel-compose textarea').value"),'channel draft preserved');
   await click('.hs-main');await ready("!!document.querySelector('.wsd-composer textarea')",'Main chat must remain separate');
-  await inputValue('.wsd-composer textarea','PRIVATE_DM_ONLY');await click(`[data-channel-id=${JSON.stringify(channelId)}]`);
+  await inputValue('.wsd-composer textarea','PRIVATE_DM_ONLY');await click(`[data-group-id=${JSON.stringify(channelId)}]`);
   await ready("!!document.querySelector('.hs-channel-compose textarea')",'Channel must reopen after main chat');
   assert.equal(await evaluate("document.querySelector('.hs-channel-compose textarea').value"),'channel draft preserved');
   assert.equal(await evaluate("document.querySelector('.hs-channel-thread').textContent.includes('PRIVATE_DM_ONLY')"),false);
@@ -507,9 +507,9 @@ try{
    await ready("!!document.querySelector('.hs-channel-compose .hs-stop')",'Active channel must offer stop');await click('.hs-channel-compose .hs-stop');
    await ready("!!document.querySelector('.hs-channel-compose .hs-send')&&!document.querySelector('.hs-channel-thread .wsd-typing')",'Stopping a channel must finish without queued replies');
    await evaluate("window.__HARA_SHELL_FIXTURE__.channelSlow(false)");
-   await selectValue('.hs-space','B');await ready("document.querySelector('.hs-space').value==='B'&&!document.querySelector('[data-channel-id]')",'Other Workspace cannot show original channels');
-   await selectValue('.hs-space','A');await ready(`!!document.querySelector('[data-channel-id="${channelId}"]')`,'Original channel catalog must recover');
-   await click(`[data-channel-id=${JSON.stringify(channelId)}]`);await ready("!!document.querySelector('.hs-channel-compose textarea')",'Original channel must open');
+   await selectValue('.hs-space','B');await ready("document.querySelector('.hs-space').value==='B'&&!document.querySelector('[data-group-id]')",'Other Workspace cannot show original channels');
+   await selectValue('.hs-space','A');await ready(`!!document.querySelector('[data-group-id="${channelId}"]')`,'Original channel catalog must recover');
+   await click(`[data-group-id=${JSON.stringify(channelId)}]`);await ready("!!document.querySelector('.hs-channel-compose textarea')",'Original channel must open');
    const messageCount=await evaluate("document.querySelectorAll('[data-channel-speaker]').length");
    await evaluate("(()=>{const u=new URL(location.href);u.searchParams.set('reset','0');history.replaceState(null,'',u.href);window.__HARA_RELOAD_MARKER__=true;})()");await send('Page.reload');
    await ready(`!window.__HARA_RELOAD_MARKER__&&!!document.querySelector('.hs-channel-compose textarea')&&document.querySelectorAll('[data-channel-speaker]').length===${messageCount}`,'Local channel history must survive fixture reload in a new document');
@@ -540,7 +540,7 @@ try{
   await ready("document.querySelectorAll('[data-channel-speaker=user]').length===1",'The note is saved in its own channel');
   assert.equal(await evaluate("document.querySelectorAll('[data-channel-speaker]:not([data-channel-speaker=user])').length"),0);
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.send').at(-1).params.recipientIds.length"),0);
-  await click(`[data-channel-id=${JSON.stringify(channelId)}]`);await ready("!!document.querySelector('.hs-channel-recipients input[type=search]')",'The original populated channel can be reopened');
+  await click(`[data-group-id=${JSON.stringify(channelId)}]`);await ready("!!document.querySelector('.hs-channel-recipients input[type=search]')",'The original populated channel can be reopened');
   assert.equal(await evaluate("document.querySelector('.hs-channel-recipients input[type=search]').value"),'','A different channel does not inherit the recipient search');
   receipts.push({theme,locale,channels:'create with 13 members; short-window footer; member/recipient searches preserve hidden selections; counted replies; side-by-side header; notes-only channel; drafts, DM isolation and invite placeholder verified',shortDialog,headerLayout,colors});
  }
