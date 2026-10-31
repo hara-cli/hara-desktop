@@ -444,7 +444,7 @@ test("Groups is a native organization work surface with no renderer-owned transp
   assert.match(app, /if \(phase !== "ready" \|\| zone !== "groups"\) return;/);
   assert.match(
     app,
-    /const preferredPlace = initialAppPlace\([\s\S]*setZoneRaw\(preferredPlace\)/,
+    /const preferredPlace = initialAppPlace\([\s\S]*zoneRef\.current = preferredPlace === "auto" \? "chat" : preferredPlace;[\s\S]*setZoneRaw\(zoneRef\.current\)/,
   );
 });
 
