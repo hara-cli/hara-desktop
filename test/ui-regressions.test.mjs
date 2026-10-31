@@ -391,7 +391,7 @@ test("automation is one guided control console with local-only status refresh", 
   for (const method of ["automation.validate", "automation.update", "automation.run", "automation.scheduler.install"]) {
     assert.match(client, new RegExp(method.replace(".", "\\.")));
   }
-  assert.match(automation, /onContextMenu=\{\(event\) => onOpenMenu\(event, job, true\)\}/);
+  assert.match(automation, /onContextMenu=\{onOpenMenu \? \(event\) => onOpenMenu\(event, job, true\) : undefined\}/);
   assert.match(automation, /export function automationMenuPosition/);
   assert.match(automation, /useLayoutEffect\(\(\) => \{[\s\S]*repositionMenu\(\)/,
     "the rendered menu is measured before paint instead of trusting a fixed estimated height");
@@ -448,18 +448,17 @@ test("automation is one guided control console with local-only status refresh", 
     /const savedTimezone = state\.kind === "edit"[\s\S]*const timezoneInput = timezone \|\| \(timezoneApplies && savedTimezone \? "" : undefined\)/,
     "clearing an existing cron timezone produces an explicit empty-string update",
   );
-  assert.match(app, /const timezone = draft\.tz !== undefined \? draft\.tz : draft\.timezone/);
-  assert.match(app, /timezone !== undefined && timezoneApplies \? \{ tz: timezone \} : \{\}/);
+  assert.match(automation, /timezone: timezone \|\| undefined,[\s\S]*tz: timezoneInput/);
   assert.match(client, /tz !== undefined \? \{ tz \} : \{\}/);
   assert.match(
     app,
-    /await client\.validateAutomationSchedule\(input\.schedule, input\.tz\);\s*await client\.addAutomationDraft\(input\)/,
-    "new tasks are engine-validated before they are persisted",
+    /await client\.validateAutomationSchedule\(pending\.draft\.schedule, pending\.draft\.tz\);\s*await client\.addAutomationDraft\(\{ \.\.\.pending\.draft, mode: "print", ownerBotId: pending\.agentRef, sessionId: pending\.sessionId \}\)/,
+    "colleague schedules are engine-validated before they are persisted with their owner",
   );
   assert.match(
     app,
-    /await client\.validateAutomationSchedule\(input\.schedule, input\.tz, jobId\);\s*await client\.updateAutomation\(jobId, input\)/,
-    "edits are engine-validated against their existing task before they are persisted",
+    /await client\.validateAutomationSchedule\(schedule, tz, job\.id\);\s*await client\.updateAutomation\(job\.id, \{ name, schedule, task, mode: "print", cwd: job\.cwd, tz, ownerBotId: activeAgent\.ref \}\)/,
+    "colleague schedule edits are engine-validated against their existing task and owner",
   );
   assert.match(
     automation,
@@ -476,7 +475,8 @@ test("automation is one guided control console with local-only status refresh", 
     /className="hara-automation-form-error" role="alert"/,
     "the Engine's delivery-contract error is visible inside the task editor",
   );
-  assert.match(app, /draft\.clearDeliver \? \{ clearDeliver: true \}/);
+  assert.match(automation, /if \(hasSavedDelivery\) draft\.clearDeliver = true/);
+  assert.match(client, /updateAutomation\(idJob: string, input: AutomationDraftInput\)[\s\S]*?"automation\.update", \{[\s\S]*?\.\.\.input/);
   assert.match(client, /if \(!result\.ok\) throw new Error/);
   assert.match(client, /nextRunDeferred\?: boolean/);
   assert.match(client, /interface AutomationRunInfo[\s\S]*status\?: CronJobStatus[\s\S]*error\?: string/);

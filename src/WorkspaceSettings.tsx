@@ -128,7 +128,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
         : page === "overview" ? null : !workspace ? <p role="status">{t(view.loading ? "ws.settings.loading" : "ws.settings.createFirst")}</p> : <fieldset className="wss-content" key={key} disabled={Boolean(readonly)}>
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
           {page === "connections" ? production ? <WorkspaceConnections model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.connectionsLab")}</p> : null}
-          {page === "runtimes" ? production ? <WorkspaceRuntimeSettings model={model} workspace={workspace} onOpenModels={() => navigate("connections")} /> : <p>{t("ws.settings.runtimeLab")}</p> : null}
+          {page === "runtimes" ? production ? <WorkspaceRuntimeSettings model={model} workspace={workspace} /> : <p>{t("ws.settings.runtimeLab")}</p> : null}
           {page === "schedules" || page === "skills" ? <WorkspaceFeaturePanel model={model} workspace={workspace} kind={page} onDirty={leaveGuard.setDirty} onCreateSkill={() => requestLeave({ kind: "skill", workspaceId: workspace.workspaceId })} /> : null}
           {page === "general" ? <General workspace={workspace} root={root} role={selected?.role ?? "owner"} kind={selected?.kind ?? "personal"} /> : null}
           {page === "members" ? <p>{t("ws.settings.membersUnavailable")}</p> : null}

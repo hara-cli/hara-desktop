@@ -27,7 +27,7 @@ export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, on
   </form>;
 }
 
-export default function WorkspaceRuntimeSettings({ model, workspace }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onOpenModels?: () => void }) {
+export default function WorkspaceRuntimeSettings({ model, workspace }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot }) {
   const { t } = useWorkspaceLocale();
   const [card, setCard] = useState<RuntimeApprovalCard | null>(null), [pending, setPending] = useState(false), [notice, setNotice] = useState<"" | Key>("");
   const [detecting, setDetecting] = useState(true), [checked, setChecked] = useState(false);
