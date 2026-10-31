@@ -22,12 +22,15 @@ test("right inspector renders only schedules owned by the selected colleague", (
     { id: "dora-9", agentId: "dora", name: "Visual summary", enabled: true, schedule: { kind: "cron", expr: "0 9 * * 1-5" }, tz: "Asia/Taipei", task: "Summarize visuals" },
     { id: "elon-8", agentId: "elon", name: "Private other colleague schedule", enabled: true, schedule: { kind: "cron", expr: "0 8 * * *" }, task: "Another task" },
   ], scheduler: { schedules: [] } };
-  const workspace = { connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "sonnet" }] } };
+  const workspace = { runtimeOptions: [{ id: "pi", label: "Pi", available: true, recommended: true }, { id: "opencode", label: "OpenCode", available: false, reason: "adapter_pending_p05", recommended: false }],
+    connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "sonnet" }] } };
   const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features, locale: "zh-Hans", error: "", inert: false, supported: true,
-    onClose() {}, onRefresh() {}, onRuntime() {}, onModel() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
+    onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] }),
+    async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
   assert.match(html, /Dora · 管理/);
-  assert.match(html, /Runtime.*P0|P0.*Runtime/s);
-  assert.match(html, /sonnet/);
+  assert.match(html, /Runtime/);
+  assert.match(html, /Apply Runtime|应用 Runtime/);
+  assert.doesNotMatch(html, /sonnet|Open Runtime settings|Open model settings|管理本机引擎/);
   assert.match(html, /Visual summary/);
   assert.doesNotMatch(html, /Private other colleague schedule|Another task/);
   assert.match(html, /本同事|定时/);
@@ -35,14 +38,28 @@ test("right inspector renders only schedules owned by the selected colleague", (
 
 test("main Hara shares the Runtime and model entry without colleague schedules", () => {
   const agent = { agentId: "hara", kind: "main", state: "idle", identity: { displayName: "Hara" }, runtime: { id: "pi", label: "Pi", available: true } };
-  const workspace = { connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "gpt-6" }] } };
+  const workspace = { runtimeOptions: [{ id: "pi", label: "Pi", available: true, recommended: true }],
+    connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "gpt-6" }] } };
   const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: true,
-    onClose() {}, onRefresh() {}, onRuntime() {}, onModel() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
+    onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] }),
+    async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
   assert.match(html, /Hara management/);
-  assert.match(html, /Open Runtime settings/);
-  assert.match(html, /Open model settings/);
-  assert.match(html, /gpt-6/);
+  assert.match(html, /Apply Runtime/);
+  assert.match(html, /This bot.*model/);
+  assert.doesNotMatch(html, /Open Runtime settings|Open model settings|gpt-6/);
   assert.doesNotMatch(html, /Create in chat; manage only this colleague here/);
+});
+
+test("only an unavailable registered runtime offers one directory deep link", () => {
+  const agent = { agentId: "dora", kind: "colleague", state: "active", identity: { displayName: "Dora" },
+    runtime: { id: "codex", label: "Codex", available: false } };
+  const workspace = { runtimeOptions: [{ id: "codex", label: "Codex", available: false, reason: "not_registered", recommended: false }],
+    connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "not-this-bot" }] } };
+  const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: false,
+    onClose() {}, onRefresh() {}, listModels: async () => { throw new Error("must not read unbound models"); },
+    async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
+  assert.equal((html.match(/Manage local runtimes/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /not-this-bot|Open model settings/);
 });
 
 test("selected group inspector shows its members without colleague runtime controls", () => {

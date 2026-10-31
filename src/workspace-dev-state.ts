@@ -2,13 +2,15 @@
 import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
 import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
+import type { AgentRuntimeId, AgentRuntimeOption } from "./client";
 export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean }
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
 export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
   workspaces: { workspaceId: string; label: string; role: string; active: boolean; kind?: "personal" | "team" }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
-  identity: { displayName: string; title?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
+  configRevision?: number; agentEpoch?: number; description?: string;
+  identity: { displayName: string; title?: string; emoji?: string; avatar?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 export interface WorkspaceDevApproval { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
   channelId?: string;
   status?: "pending" | "approved" | "rejected" | "expired"; risk?: "high" | "normal"; paid?: boolean; externalSend?: boolean; destructive?: boolean;
@@ -30,6 +32,7 @@ export function workspaceAsyncAsks(conversation: { pendingInteractions?: Workspa
   return (conversation?.pendingInteractions ?? []).filter((row): row is WorkspaceDevAsyncAsk => row.kind === "ask_user_question" && row.delivery === "async");
 }
 export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
+  runtimeOptions?: AgentRuntimeOption[];
   colleagueLimit?: number;
   inheritance?: WorkspaceInheritanceView;
   agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
@@ -289,6 +292,16 @@ export class WorkspaceDevModel {
   }
   async selectRuntimeModel(runtimeId: string, modelId: string, expectedRevision: number): Promise<void> {
     await this.workspaceRequest("workspace.runtime.selectModel", { runtimeId, modelId, expectedRevision });
+    await this.refresh();
+  }
+  async setAgentRuntime(agent: WorkspaceDevAgent, runtimeId: AgentRuntimeId): Promise<void> {
+    if (!agent.configRevision || !agent.agentEpoch) throw new WorkspaceViewError("ws.notice.invalidView");
+    await this.workspaceRequest("workspace.agents.setRuntime", { agentId: agent.agentId, runtimeId, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
+    await this.refresh();
+  }
+  async updateAgentPersona(agent: WorkspaceDevAgent, profile: { displayName: string; title?: string; emoji?: string; avatar?: string }): Promise<void> {
+    if (!agent.configRevision || !agent.agentEpoch) throw new WorkspaceViewError("ws.notice.invalidView");
+    await this.workspaceRequest("workspace.agents.updatePersona", { agentId: agent.agentId, input: { profile }, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
     await this.refresh();
   }
   async preferences(): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.get", {}); }

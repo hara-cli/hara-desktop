@@ -5,6 +5,45 @@ import { AgentPortrait } from "./AgentPortrait";
 import { MAX_AGENT_AVATAR_BYTES } from "./agent-visual";
 import { IconClose } from "./icons";
 import "./AgentProfileEditor.css";
+import type { WorkspaceDevAgent } from "./workspace-dev-state";
+
+export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
+  agent: WorkspaceDevAgent; locale: "en" | "zh"; onClose(): void;
+  onSave(profile: { displayName: string; title: string; emoji: string; avatar: string }): Promise<void>;
+}) {
+  const [displayName, setDisplayName] = useState(agent.identity.displayName);
+  const [title, setTitle] = useState(agent.identity.title ?? "");
+  const [emoji, setEmoji] = useState(agent.identity.emoji ?? "");
+  const [avatar, setAvatar] = useState(agent.identity.avatar ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const zh = locale === "zh";
+  const save = async () => {
+    setBusy(true); setError("");
+    try { await onSave({ displayName: displayName.trim(), title: title.trim(), emoji: emoji.trim(), avatar }); onClose(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
+  };
+  return <div className="agent-profile-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <section className="agent-profile-editor" role="dialog" aria-modal="true" aria-label={zh ? "此 bot 的名片" : "This bot's profile"}>
+      <header><h2>{zh ? "此 bot 的名片" : "This bot's profile"}</h2><button type="button" disabled={busy} onClick={onClose}>{zh ? "关闭" : "Close"}</button></header>
+      <div className="agent-profile-form">
+        <label>{zh ? "显示名" : "Display name"}<input value={displayName} maxLength={64} onChange={event => setDisplayName(event.target.value)} /></label>
+        <label>{zh ? "职责" : "Role"}<input value={title} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
+        <label>{zh ? "表情头像" : "Emoji"}<input value={emoji} maxLength={24} onChange={event => setEmoji(event.target.value)} /></label>
+        <label>{zh ? "图片头像" : "Image avatar"}<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => {
+          const file = event.target.files?.[0]; if (!file) return;
+          if (file.size > MAX_AGENT_AVATAR_BYTES) { setError(zh ? "头像需小于 128 KB。" : "Avatar must be 128 KB or smaller."); return; }
+          const reader = new FileReader(); reader.onload = () => setAvatar(typeof reader.result === "string" ? reader.result : "");
+          reader.onerror = () => setError(zh ? "头像读取失败" : "Could not read avatar"); reader.readAsDataURL(file);
+        }} /></label>
+        {avatar ? <button type="button" disabled={busy} onClick={() => setAvatar("")}>{zh ? "移除图片头像" : "Remove image avatar"}</button> : null}
+        {error ? <p role="alert">{error}</p> : null}
+        <button type="button" disabled={busy || !displayName.trim()} onClick={() => void save()}>{busy ? (zh ? "保存中…" : "Saving…") : (zh ? "保存" : "Save")}</button>
+      </div>
+    </section>
+  </div>;
+}
 
 type EditableIdentity = Omit<AgentPublicIdentity, "version" | "source">;
 

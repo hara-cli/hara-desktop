@@ -22,6 +22,20 @@ function fixture() {
   const model = new WorkspaceDevModel(rpc, () => `nonce-${++serial}`);
   return { model, calls, handlers, ready: () => model.selectWorkspace("A") };
 }
+test("this bot's runtime and model actions use Workspace RPC with the exact agent fence", async () => {
+  const f=fixture();await f.ready();
+  const agent={...agents[1],configRevision:4,agentEpoch:2};
+  f.handlers["workspace.runtime.listModels"]=()=>({runtimeId:"codex",revision:7,selectedModelId:null,models:[{id:"gpt-6",label:"GPT-6"}]});
+  assert.equal((await f.model.listRuntimeModels("codex")).models[0].id,"gpt-6");
+  await f.model.setAgentRuntime(agent,"codex");
+  await f.model.selectRuntimeModel("codex","gpt-6",7);
+  await f.model.updateAgentPersona(agent,{displayName:"Coder",avatar:""});
+  assert.deepEqual(f.calls.filter(row=>["workspace.agents.setRuntime","workspace.runtime.selectModel","workspace.agents.updatePersona"].includes(row.method)).map(row=>[row.method,row.params]),[
+    ["workspace.agents.setRuntime",{workspaceId:"A",expectedGeneration:"generation-1",agentId:"coder",runtimeId:"codex",configRevision:4,agentEpoch:2}],
+    ["workspace.runtime.selectModel",{workspaceId:"A",expectedGeneration:"generation-1",runtimeId:"codex",modelId:"gpt-6",expectedRevision:7}],
+    ["workspace.agents.updatePersona",{workspaceId:"A",expectedGeneration:"generation-1",agentId:"coder",input:{profile:{displayName:"Coder",avatar:""}},configRevision:4,agentEpoch:2}],
+  ]);
+});
 test("refresh replaces replying with a stopped task checkpoint even at the same transport revision, without resending", async () => {
   const f=fixture();await f.ready();
   for(const state of ["running","draining"]) {

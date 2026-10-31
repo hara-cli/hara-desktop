@@ -1,6 +1,24 @@
 import { useEffect, useId, useState } from "react";
 import type { AgentInfo, AgentRuntimeId, AgentRuntimeOption } from "./client";
 import { agentRuntimeLabel, agentRuntimeSelection } from "./agent-runtime-selection";
+import type { WorkspaceDevAgent } from "./workspace-dev-state";
+
+/** Soft Dark uses the same Registry options, with the Workspace agent's revision fence. */
+export function WorkspaceAgentRuntimePicker({ agent, options, locale, saving, onApply }: {
+  agent: WorkspaceDevAgent; options: AgentRuntimeOption[]; locale: "en" | "zh"; saving: boolean;
+  onApply(id: AgentRuntimeId): void;
+}) {
+  const [selected, setSelected] = useState<AgentRuntimeId>(agent.runtime.id as AgentRuntimeId);
+  useEffect(() => setSelected(agent.runtime.id as AgentRuntimeId), [agent.agentId, agent.runtime.id, agent.configRevision]);
+  const available = options.some(option => option.id === selected && option.available);
+  return <div className="agent-profile-runtime-controls">
+    <label><span>Runtime</span><select aria-label="Runtime" value={selected} disabled={saving} onChange={event => setSelected(event.target.value as AgentRuntimeId)}>
+      {!options.some(option => option.id === agent.runtime.id) ? <option value={agent.runtime.id} disabled>{agent.runtime.label}</option> : null}
+      {options.map(option => <option key={option.id} value={option.id} disabled={!option.available}>{agentRuntimeLabel(option.id, locale)}{!option.available ? ` · ${option.reason ?? "unavailable"}` : ""}</option>)}
+    </select></label>
+        <button type="button" disabled={saving || !agent.configRevision || !agent.agentEpoch || !available || selected === agent.runtime.id} onClick={() => onApply(selected)}>{locale === "zh" ? "应用 Runtime" : "Apply Runtime"}</button>
+  </div>;
+}
 
 export default function AgentRuntimePicker({ agent, options = [], locale, saving, onApply }: {
   agent: AgentInfo;

@@ -2,11 +2,13 @@ import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import type { WorkspaceDevAgent, WorkspaceFeatureView } from "./workspace-dev-state";
 import WorkspaceRuntimeAccess from "./WorkspaceRuntimeAccess";
-import type { WorkspaceDevSnapshot } from "./workspace-dev-state";
+import type { WorkspaceDevSnapshot, WorkspaceRuntimeModels } from "./workspace-dev-state";
+import type { AgentRuntimeId } from "./client";
+import { WorkspaceAgentProfileSheet } from "./AgentProfileEditor";
 
 type Schedule = WorkspaceFeatureView["schedules"][number];
 
-export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, onClose, onRefresh, onToggle, onSave, onDelete, onRuntime, onModel }: {
+export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, onClose, onRefresh, onToggle, onSave, onDelete, listModels, onApplyRuntime, onApplyModel, onRuntimeDirectory, onSaveProfile }: {
   agent: WorkspaceDevAgent;
   workspace: WorkspaceDevSnapshot;
   features: WorkspaceFeatureView | null;
@@ -19,8 +21,11 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   onToggle(schedule: Schedule): Promise<void>;
   onSave(schedule: Schedule, values: { name: string; cron: string; tz: string; task: string }): Promise<void>;
   onDelete(schedule: Schedule): Promise<void>;
-  onRuntime(): void;
-  onModel(): void;
+  listModels(runtimeId: string): Promise<WorkspaceRuntimeModels>;
+  onApplyRuntime(runtimeId: AgentRuntimeId): Promise<void>;
+  onApplyModel(runtimeId: string, modelId: string, revision: number): Promise<void>;
+  onRuntimeDirectory(): void;
+  onSaveProfile(profile: { displayName: string; title: string; emoji: string; avatar: string }): Promise<void>;
 }) {
   const zh = locale !== "en";
   const schedules = features?.schedules.filter((row) => row.agentId === agent.agentId) ?? [];
@@ -28,6 +33,7 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   const [values, setValues] = useState({ name: "", cron: "", tz: "", task: "" });
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
   const run = async (action: () => Promise<void>) => {
     setBusy(true); setLocalError("");
     try { await action(); } catch (cause) { setLocalError(cause instanceof Error ? cause.message : String(cause)); }
@@ -41,8 +47,9 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   return <aside id="workspace-inspector" className="vg-inspector vg-colleague-manage" aria-label={zh ? `${agent.identity.displayName} · 管理` : `Manage ${agent.identity.displayName}`} inert={inert}>
     <header><h2>{agent.kind === "main" ? (zh ? "Hara · 管理" : "Hara management") : (zh ? "该同事 · 内部管理" : "Colleague management")}</h2><button className="hs-icon" aria-label={zh ? "关闭管理栏" : "Close management"} onClick={onClose}><XMarkIcon className="hico" /></button></header>
     <div className="vg-colleague-identity"><strong>{agent.identity.displayName}</strong><span>{agent.identity.title || (zh ? "Hara 同事" : "Hara colleague")}</span></div>
-    <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} onRuntime={onRuntime} onModel={onModel} />
-    <section className="vg-context-card"><h3>{zh ? "基本信息" : "Profile"}</h3><dl><dt>{zh ? "显示名" : "Display name"}</dt><dd>{agent.identity.displayName}</dd><dt>{zh ? "职责" : "Role"}</dt><dd>{agent.identity.title || "—"}</dd><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{agent.runtime.label}</dd></dl></section>
+    <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} listModels={listModels} onApplyRuntime={onApplyRuntime} onApplyModel={onApplyModel} onRuntimeDirectory={onRuntimeDirectory} />
+    <section className="vg-context-card"><h3>{zh ? "基本信息" : "Profile"}</h3><dl><dt>{zh ? "显示名" : "Display name"}</dt><dd>{agent.identity.displayName}</dd><dt>{zh ? "职责" : "Role"}</dt><dd>{agent.identity.title || "—"}</dd><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{agent.runtime.label}</dd></dl><button onClick={() => setProfileOpen(true)}>{zh ? "编辑此 bot 名片" : "Edit this bot's profile"}</button></section>
+    {profileOpen ? <WorkspaceAgentProfileSheet agent={agent} locale={zh ? "zh" : "en"} onClose={() => setProfileOpen(false)} onSave={onSaveProfile} /> : null}
     {agent.kind === "colleague" ? <section className="vg-context-card vg-colleague-schedules"><h3>{zh ? "定时" : "Schedules"}<span>{schedules.length}</span></h3>
       {!supported ? <p className="vg-muted" role="status">{zh ? "更新 Hara 引擎后可管理同事定时。" : "Update Hara Core to manage colleague schedules."}</p>
         : !features ? <p className="vg-muted" role="status">{zh ? "正在读取本同事定时…" : "Loading colleague schedules…"}</p>

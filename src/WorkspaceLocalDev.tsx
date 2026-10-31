@@ -30,7 +30,6 @@ import "./workspace-shell-layout.css";
 import WorkspaceInspector, { WorkspaceOverview } from "./WorkspaceInspector";
 import WorkspaceColleagueInspector from "./WorkspaceColleagueInspector";
 import WorkspaceGroupInspector from "./WorkspaceGroupInspector";
-import WorkspaceRuntimeAccess from "./WorkspaceRuntimeAccess";
 import "./violet-tokens.css";
 import "./violet-workspace.css";
 import WorkspaceSettings, { type SettingsPage } from "./WorkspaceSettings";
@@ -131,6 +130,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const routedScope = useRef<string | null>(null);
   const channelRouteSelection = useRef<string | null>(null);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
+  const listBotModels = useCallback((runtimeId: string) => model.listRuntimeModels(runtimeId), [model]);
   const colleagues = useMemo(() => agents.filter(row => row.kind === "colleague" && row.state !== "archived"), [agents]);
   const shell = useWorkspaceOverview(model, workspace);
   const scope = workspace ? JSON.stringify([workspace.workspaceId, workspace.resourceGeneration]) : "";
@@ -368,7 +368,6 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       {disconnected ? <div className="wsd-notice" role="alert">{t("ws.disconnected")}<button className="hs-btn sec" onClick={onReconnect}>{t("ws.reconnect")}</button></div> : null}
       {view.error ? <div className="wsd-notice is-error" role="alert">{workspaceMessageText(t, view.error)}</div> : null}
       {view.syncNotice ? <div className="wsd-notice" role="status">{workspaceMessageText(t, view.syncNotice)}</div> : null}
-      {workspace && agent && route.section === "chat" && inspector ? <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} compact onRuntime={() => openSettingsPage("runtimes")} onModel={() => openSettingsPage("connections")} /> : null}
       {agent?.kind === "colleague" && !inChannel && selectedUsage.notice ? <div className="wsd-notice hs-usage-attention" role="status">{selectedUsage.notice}</div> : null}
       {shell.incomplete && agent?.kind !== "main" && !inChannel ? <div className="wsd-notice" role="status" data-overview-incomplete>{t("ws.tasks.unavailable")}<button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></div> : null}
       <div ref={scroll} className="hs-scroll wsd-scroll" onScroll={event => { const area = event.currentTarget; nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 180; }}>
@@ -419,7 +418,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         <p className="hs-hint"><span>{question ? t("ws.question.composerHint") : t(production ? "ws.composer.hint.local" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</span><span>{t("ws.composer.hint.keys")}</span></p></footer> : null}
     </main>
     {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => setInspector(false)} onRefresh={() => void refreshFeatures()}
-      onRuntime={() => openSettingsPage("runtimes")} onModel={() => openSettingsPage("connections")}
+      listModels={listBotModels} onApplyRuntime={runtimeId => model.setAgentRuntime(agent, runtimeId)}
+      onApplyModel={(runtimeId, modelId, revision) => model.selectRuntimeModel(runtimeId, modelId, revision)}
+      onRuntimeDirectory={() => openSettingsPage("runtimes")} onSaveProfile={profile => model.updateAgentPersona(agent, profile)}
       onToggle={(schedule) => updateColleagueSchedule("workspace.features.update", { kind: "schedule", id: schedule.id, enabled: !schedule.enabled }, schedule.agentId)}
       onSave={(schedule, values) => updateColleagueSchedule("workspace.schedule.save", { input: { id: schedule.id, name: values.name.trim(), schedule: { kind: "cron", expr: values.cron.trim() }, tz: values.tz.trim(), task: values.task.trim(), agentId: agent.agentId, enabled: schedule.enabled }, approved: true }, schedule.agentId)}
       onDelete={(schedule) => updateColleagueSchedule("workspace.schedule.delete", { id: schedule.id, approved: true }, schedule.agentId)} />
