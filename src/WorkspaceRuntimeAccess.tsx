@@ -18,7 +18,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   const [error, setError] = useState("");
   const [directoryOpened, setDirectoryOpened] = useState(false);
   const option = workspace.runtimeOptions?.find(row => row.id === agent.runtime.id);
-  const directoryNeeded = option?.reason === "not_registered" || option?.reason === "not_installed" || option?.reason === "integrity_failed";
+  const directoryNeeded = option?.reason === "not_registered" || option?.reason === "not_installed";
   useEffect(() => {
     let active = true;
     setModels(null); setSelected(""); setError("");

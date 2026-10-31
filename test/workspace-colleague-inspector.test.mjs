@@ -62,6 +62,17 @@ test("only an unavailable registered runtime offers one directory deep link", ()
   assert.doesNotMatch(html, /not-this-bot|Open model settings/);
 });
 
+test("directory deep link is limited to not_registered and not_installed", () => {
+  const agent = { agentId: "dora", kind: "colleague", state: "active", identity: { displayName: "Dora" }, runtime: { id: "codex", label: "Codex", available: false } };
+  for (const reason of ["not_registered", "not_installed", "integrity_failed", "adapter_pending_p05", "unknown"]) {
+    const workspace = { runtimeOptions: [{ id: "codex", label: "Codex", available: false, reason }], connections: { defaultConnectionId: null, connections: [] } };
+    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: false,
+      onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "codex", revision: 1, selectedModelId: null, models: [] }),
+      async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
+    assert.equal(html.includes("Manage local runtimes"), reason === "not_registered" || reason === "not_installed", reason);
+  }
+});
+
 test("selected group inspector shows its members without colleague runtime controls", () => {
   const agents = [{ agentId: "dora", kind: "colleague", identity: { displayName: "Dora", title: "Design" }, runtime: { id: "pi", label: "Pi", available: true } }];
   const html = renderToStaticMarkup(createElement(groupModule.exports.default, { name: "Design review", memberIds: ["dora"], agents, locale: "en", inert: false, onClose() {}, onMembers() {} }));

@@ -1,6 +1,6 @@
 import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useWorkspaceLocale, workspacePlatform } from "./workspace-shell-hooks";
-import { ArrowPathIcon, ChevronDownIcon, ClockIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ChevronDownIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { type Key, type LocalePreference } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import HaraLogo from "./mark";
@@ -12,12 +12,11 @@ import { hasUpdateAttention, type WorkspaceUpdater } from "./workspace-updater-s
 import { SettingsLeaveGuard, type SettingsLeaveAction } from "./settings-leave-guard";
 import "./workspace-settings.css";
 
-export type SettingsPage = "overview" | "connections" | "runtimes" | "schedules" | "skills" | "members" | "general" | "appearance" | "updates";
+export type SettingsPage = "overview" | "connections" | "runtimes" | "skills" | "members" | "general" | "appearance" | "updates";
 const pages: Record<SettingsPage, { name: Key; icon: typeof HomeIcon; detail: Key }> = {
   overview: { name: "ws.settings.page.overview", icon: HomeIcon, detail: "ws.settings.detail.overview" },
   connections: { name: "ws.settings.page.connections", icon: LinkIcon, detail: "ws.settings.detail.connections" },
   runtimes: { name: "ws.settings.page.runtimes", icon: ComputerDesktopIcon, detail: "ws.settings.detail.runtimes" },
-  schedules: { name: "ws.settings.page.schedules", icon: ClockIcon, detail: "ws.settings.detail.schedules" },
   skills: { name: "ws.settings.page.skills", icon: SparklesIcon, detail: "ws.settings.detail.skills" },
   members: { name: "ws.settings.page.members", icon: UsersIcon, detail: "ws.settings.detail.members" },
   general: { name: "ws.settings.page.general", icon: Cog6ToothIcon, detail: "ws.settings.detail.general" },
@@ -107,7 +106,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
     document.addEventListener("pointerdown", outside); return () => document.removeEventListener("pointerdown", outside);
   }, [scopeOpen]);
   const switchScope = (workspaceId: string) => { if (workspaceId !== view.workspaceId) requestLeave({ kind: "scope", workspaceId }); else setScopeOpen(false); };
-  const workspacePages: SettingsPage[] = ["connections", "runtimes", "schedules", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
+  const workspacePages: SettingsPage[] = ["connections", "runtimes", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
   const navItem = (id: SettingsPage) => <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}><span aria-hidden>{createElement(pages[id].icon, { className: "hico" })}</span><span>{t(pages[id].name)}</span>{id === "updates" && hasUpdateAttention(updates) ? <i className="wss-update-dot" /> : null}</button>;
   const key = workspace ? `${workspace.workspaceId}:${workspace.resourceGeneration}:${page}` : "loading";
   return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}>
@@ -129,7 +128,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
           {page === "connections" ? production ? <WorkspaceConnections model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.connectionsLab")}</p> : null}
           {page === "runtimes" ? production ? <WorkspaceRuntimeSettings model={model} workspace={workspace} /> : <p>{t("ws.settings.runtimeLab")}</p> : null}
-          {page === "schedules" || page === "skills" ? <WorkspaceFeaturePanel model={model} workspace={workspace} kind={page} onDirty={leaveGuard.setDirty} onCreateSkill={() => requestLeave({ kind: "skill", workspaceId: workspace.workspaceId })} /> : null}
+          {page === "skills" ? <WorkspaceFeaturePanel model={model} workspace={workspace} kind={page} onDirty={leaveGuard.setDirty} onCreateSkill={() => requestLeave({ kind: "skill", workspaceId: workspace.workspaceId })} /> : null}
           {page === "general" ? <General workspace={workspace} root={root} role={selected?.role ?? "owner"} kind={selected?.kind ?? "personal"} /> : null}
           {page === "members" ? <p>{t("ws.settings.membersUnavailable")}</p> : null}
         </fieldset>}

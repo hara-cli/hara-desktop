@@ -66,8 +66,9 @@ export function AwaitBar({ shell, t, onOpen, onApprove, onAll }: { shell: ShellO
       <span className={`k ${item.kind === "approval" ? "ap" : "rv"}`}>{kindLabel(item)}</span><span className="t">{title(item)}</span><ChevronRightIcon className="hico chev-go" /></button>)}
   </section>;
 }
-export function ColleaguesPage({ shell, agents, tab, setTab, t, openAgent, openItem, discuss }: { shell: ShellOverview; agents: WorkspaceDevAgent[]; tab: "people" | "tasks";
-  setTab: (value: "people" | "tasks") => void; t: Translate; openAgent: (id: string) => void; openItem: (item: AwaitItem) => void; discuss: () => void }) {
+export function ColleaguesPage({ shell, agents, tab, setTab, t, openAgent, openItem, discuss, onContextMenu }: { shell: ShellOverview; agents: WorkspaceDevAgent[]; tab: "people" | "tasks";
+  setTab: (value: "people" | "tasks") => void; t: Translate; openAgent: (id: string) => void; openItem: (item: AwaitItem) => void; discuss: () => void;
+  onContextMenu?: (event: React.MouseEvent, agent: WorkspaceDevAgent) => void }) {
   const groups: TaskGroup[] = ["needsYou", "working", "waiting", "closed"];
   return <section className="wsd-directory">
     <div className="hs-tabs" role="tablist" aria-label={t("ws.nav.colleagues")} onKeyDown={event => {
@@ -82,7 +83,7 @@ export function ColleaguesPage({ shell, agents, tab, setTab, t, openAgent, openI
     </div>
     <div role="tabpanel" id={`ws-panel-${tab}`} aria-labelledby={`ws-tab-${tab}`} tabIndex={0} className="hs-tab-panel">
       {tab === "people" ? <><header className="hs-directory-head"><h2>{t("ws.colleagues.title")}</h2><button className="hs-btn pri" onClick={discuss}>{t("ws.colleagues.discuss")}</button></header>
-        {!agents.length ? <p>{t("ws.dm.empty")}</p> : agents.map(agent => <button className="hs-row wsd-directory-person" key={agent.agentId} onClick={() => openAgent(agent.agentId)}><Avatar agent={agent} />
+        {!agents.length ? <p>{t("ws.dm.empty")}</p> : agents.map(agent => <button className="hs-row wsd-directory-person" key={agent.agentId} onContextMenu={event => onContextMenu?.(event, agent)} onClick={() => openAgent(agent.agentId)}><Avatar agent={agent} />
           <span className="hs-txt"><strong className="hs-name">{agent.identity.displayName}</strong><span className="pv">{agent.identity.title ?? t("ws.role.colleague")}</span></span><ChevronRightIcon className="hico" /></button>)}</>
         : <><p className="hs-tasks-intro">{t("ws.tasks.intro")}</p><p className="hs-data-note">{t(shell.historyAvailable ? "ws.tasks.history" : "ws.tasks.currentOnly")}</p>
           {shell.loading ? <p role="status">{t("common.loading")}</p> : null}

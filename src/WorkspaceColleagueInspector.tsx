@@ -8,7 +8,7 @@ import { WorkspaceAgentProfileSheet } from "./AgentProfileEditor";
 
 type Schedule = WorkspaceFeatureView["schedules"][number];
 
-export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, onClose, onRefresh, onToggle, onSave, onDelete, listModels, onApplyRuntime, onApplyModel, onRuntimeDirectory, onSaveProfile }: {
+export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, initialProfileOpen = false, onClose, onRefresh, onToggle, onSave, onDelete, listModels, onApplyRuntime, onApplyModel, onRuntimeDirectory, onSaveProfile }: {
   agent: WorkspaceDevAgent;
   workspace: WorkspaceDevSnapshot;
   features: WorkspaceFeatureView | null;
@@ -16,6 +16,7 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   error: string;
   inert: boolean;
   supported: boolean;
+  initialProfileOpen?: boolean;
   onClose(): void;
   onRefresh(): void;
   onToggle(schedule: Schedule): Promise<void>;
@@ -33,7 +34,7 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   const [values, setValues] = useState({ name: "", cron: "", tz: "", task: "" });
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState("");
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(initialProfileOpen);
   const run = async (action: () => Promise<void>) => {
     setBusy(true); setLocalError("");
     try { await action(); } catch (cause) { setLocalError(cause instanceof Error ? cause.message : String(cause)); }

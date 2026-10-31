@@ -64,13 +64,13 @@ test("unavailable connections and backup-only recovery retain distinct non-destr
 });
 test("detected runtimes offer workspace binding and missing runtimes alone offer installation",()=>{
  const workspace={...snapshot("A"),runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"detected",version:"1.2.3",path:"/fixture/nvm/bin/codex"}],operations:[]}};
- const html=render("Runtime",{model:{},workspace});assert.match(html,/1\.2\.3 · 本機已安裝/);assert.match(html,/fixture\/nvm\/bin\/codex/);assert.match(html,/綁定到此空間/);assert.doesNotMatch(html,/使用本機安裝|確認登記本機安裝|>按需安裝<\/button>/);
+ const html=render("Runtime",{model:{},workspace});assert.match(html,/1\.2\.3 · 本機已安裝/);assert.match(html,/fixture\/nvm\/bin\/codex/);assert.match(html,/登記本機引擎/);assert.doesNotMatch(html,/使用本機安裝|>按需安裝<\/button>/);
  const missing=render("Runtime",{model:{},workspace:{...workspace,runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"not_installed"}],operations:[]}}});
  assert.match(missing,/正在確認本機安裝/);assert.match(missing,/<button disabled="">按需安裝<\/button>/);
  const failed=render("Runtime",{model:{},workspace:{...workspace,runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"integrity_failed"}],operations:[]}}});
- assert.doesNotMatch(failed,/>按需安裝<\/button>|綁定到此空間/);
- const source=read("src/WorkspaceRuntimeSettings.tsx");assert.match(source,/setBound\(\{ runtimeId: local\.runtimeId/);assert.match(source,/model\.listRuntimeModels\(bound\.runtimeId\)/);
- assert.match(source,/model\.selectRuntimeModel\(bound\.runtimeId, selectedModelId, runtimeModels\.revision\)/);
+ assert.doesNotMatch(failed,/>按需安裝<\/button>|登記本機引擎/);
+ const source=read("src/WorkspaceRuntimeSettings.tsx");assert.match(source,/model\.registerLocalRuntime\(local\.runtimeId/);
+ assert.doesNotMatch(source,/model\.listRuntimeModels|model\.selectRuntimeModel|wsd-runtime-model-step/);
  assert.doesNotMatch(source,/model\.changeConnection|selectedConnection|runtime-model-connection/);
 });
 test("bound runtime lists and selects its own model with workspace generation and runtime revision",async()=>{
@@ -95,8 +95,7 @@ test("empty, invalid and stale runtime model results never fall back to connecti
  f.handlers["workspace.runtime.listModels"]=()=>{throw new Error("Runtime not bound in this workspace");};
  await assert.rejects(f.model.listRuntimeModels("codex"),/Runtime not bound/);
  assert.equal(f.calls.some(row=>row.method==="workspace.connection.select"),false);
- const source=read("src/WorkspaceRuntimeSettings.tsx");assert.match(source,/modelError \? <p role="alert">/);
- assert.match(source,/runtimeModels\?\.models\.length/);assert.match(source,/runtimeModels\.models\.some\(row => row\.id === selectedModelId\)/);
+ const source=read("src/WorkspaceRuntimeSettings.tsx");assert.doesNotMatch(source,/modelError|runtimeModels|selectedModelId/);
 });
 test("three-way appearance setting and scoped features are actual rendered controls",()=>{
  const html=render("WorkspaceThemeSettings",{theme:{preference:"system",settings:{readOnly:false},notice:"",change(){}}});

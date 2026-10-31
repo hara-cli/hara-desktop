@@ -135,5 +135,15 @@
 .hs .wsd-feature-panel { border-top:1px solid var(--line); margin-top:16px; padding-top:16px; }
 .hs .wsd-approval-dialog { padding:40px 20px 16px; width:min(580px,100%); }
 .hs .wsd-approval-dialog .hs-card { margin:0; max-width:none; box-shadow:none; padding:0; }
+.vg-roster-menu { position:fixed; z-index:70; width:250px; padding:7px; border:1px solid var(--vg-border, #36383d); border-radius:14px; background:var(--vg-surface, #25272d); box-shadow:0 18px 45px #0007; }
+.vg-roster-menu button { display:block; width:100%; padding:9px 12px; border:0; border-radius:8px; color:inherit; background:transparent; text-align:left; cursor:pointer; }
+.vg-roster-menu button:hover, .vg-roster-menu button:focus-visible { background:#ffffff16; }
+.vg-roster-menu button:disabled { opacity:.45; cursor:default; }
+.vg-roster-menu button.danger, .wsd-roster-dialog .danger { color:#ef5555; }
+.vg-roster-menu hr { border:0; border-top:1px solid #ffffff20; margin:5px 6px; }
+.vg-roster-section { padding:12px 12px 4px; color:var(--vg-muted, #9a9da5); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+.hs .wsd-roster-dialog { width:min(460px,100%); padding:24px; }
+.hs .wsd-roster-dialog .hs-card { margin:0; padding:0; border:0; box-shadow:none; }
+.hs .wsd-roster-dialog .danger { border:1px solid #b64646; background:#9a3030; color:#fff; }
 @media (max-width:900px) { .hs .hs-win { grid-template-columns:236px minmax(0,1fr); }.hs .hs-scroll { padding:16px 20px; }.hs .hs-compose { padding:8px 20px 14px; }.hs .hs-conn { display:none; }.hs .hs-hint>span:last-child { display:none; }.hs .hs-header-person small { max-width:240px; } }
 @media (max-width:700px) { .hs .hs-frame { padding:0; }.hs .hs-win { grid-template-columns:204px minmax(0,1fr); border-radius:0; }.hs .hs-side { padding-left:6px; padding-right:6px; }.hs .hs-head { padding:10px 12px; }.hs .hs-scroll { padding:12px; }.hs .hs-compose { padding:8px 12px 12px; }.hs .hs-name .hs-tag { display:none; }.hs .hs-await-h { flex-wrap:wrap; }.hs .hs-await-all { flex-basis:100%; margin-left:0; text-align:left; }.hs .hs-ai { gap:6px; flex-wrap:wrap; }.hs .hs-ai>.t { flex-basis:calc(100% - 80px); }.hs .hs-ai>.hs-btn { margin-left:auto; }.hs .hs-ai>.hs-btn+.hs-btn { margin-left:0; }.hs .hs-header-person small { max-width:150px; }.hs .hs-task .hs-btn { margin-left:0; } }

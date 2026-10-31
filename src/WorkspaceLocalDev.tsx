@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CheckCircleIcon, Cog6ToothIcon, GlobeAltIcon,
   ViewColumnsIcon, MagnifyingGlassIcon, PlusIcon, UserPlusIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -29,6 +29,7 @@ import "./workspace-states.css";
 import "./workspace-shell-layout.css";
 import WorkspaceInspector, { WorkspaceOverview } from "./WorkspaceInspector";
 import WorkspaceColleagueInspector from "./WorkspaceColleagueInspector";
+import { WorkspaceRosterMenu } from "./WorkspaceRosterMenu";
 import WorkspaceGroupInspector from "./WorkspaceGroupInspector";
 import "./violet-tokens.css";
 import "./violet-workspace.css";
@@ -124,6 +125,12 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const theme = useStableWorkspaceTheme(model);
   const [settingsPage, setSettingsPage] = useState<SettingsPage>("overview"), [browser, setBrowser] = useState(false);
   const [inspector, setInspector] = useState(true);
+  const [rosterMenu, setRosterMenu] = useState<{ workspaceId: string; agentId: string; x: number; y: number } | null>(null);
+  const [rosterPrefs, setRosterPrefs] = useState<Record<string, { pinned?: boolean; hidden?: boolean; unread?: boolean; section?: string }>>({});
+  const [rosterPrefsWorkspaceId, setRosterPrefsWorkspaceId] = useState<string | null>(null);
+  const [rosterMove, setRosterMove] = useState<WorkspaceDevAgent | null>(null), [sectionName, setSectionName] = useState("");
+  const [rosterDelete, setRosterDelete] = useState<WorkspaceDevAgent | null>(null);
+  const [renameAgentId, setRenameAgentId] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null), end = useRef<HTMLDivElement>(null), nearBottom = useRef(true), selectedRow = useRef<HTMLButtonElement>(null);
   const scroll = useRef<HTMLDivElement>(null), scrollContext = useRef("");
   const scrollResume = useRef<{ key: string; top: number; atBottom: boolean } | null>(null);
@@ -134,6 +141,18 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const colleagues = useMemo(() => agents.filter(row => row.kind === "colleague" && row.state !== "archived"), [agents]);
   const shell = useWorkspaceOverview(model, workspace);
   const scope = workspace ? JSON.stringify([workspace.workspaceId, workspace.resourceGeneration]) : "";
+  const activeRosterPrefs = rosterPrefsWorkspaceId === workspace?.workspaceId ? rosterPrefs : {};
+  useEffect(() => { setRosterMenu(null); setRosterDelete(null); setRosterMove(null);
+    try { const saved: unknown = JSON.parse(localStorage.getItem(`hara.roster.${workspace?.workspaceId}`) || "{}");
+      setRosterPrefs(saved && typeof saved === "object" && !Array.isArray(saved) ? saved as typeof rosterPrefs : {});
+    } catch { setRosterPrefs({}); }
+    setRosterPrefsWorkspaceId(workspace?.workspaceId ?? null);
+  }, [workspace?.workspaceId]);
+  const updateRosterPref = (agentId: string, change: { pinned?: boolean; hidden?: boolean; unread?: boolean; section?: string }) => {
+    const next = { ...activeRosterPrefs, [agentId]: { ...activeRosterPrefs[agentId], ...change } }; setRosterPrefs(next);
+    setRosterPrefsWorkspaceId(workspace?.workspaceId ?? null);
+    try { if (workspace) localStorage.setItem(`hara.roster.${workspace.workspaceId}`, JSON.stringify(next)); } catch { /* view preference only */ }
+  };
   const scheduleSupported = model.supportsColleagueSchedules?.() === true;
   const [features, setScheduleFeatures] = useState<WorkspaceFeatureView | null>(null);
   const [featuresError, setScheduleLoadError] = useState("");
@@ -310,7 +329,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity, t]);
   const closeSettings = () => { setSettings(false); };
   const openSettingsPage = (page: SettingsPage) => { setSettingsPage(page); setSettings(true); };
-  const modalOpen = settings || creating || !!channelDialog || approvalDialog?.scope === scope;
+  const modalOpen = settings || creating || !!channelDialog || !!rosterMove || !!rosterDelete || approvalDialog?.scope === scope;
   const draftSkill = async (workspaceId: string) => {
     if (model.getSnapshot().workspaceId !== workspaceId) await model.selectWorkspace(workspaceId);
     const current = model.getSnapshot().workspace;
@@ -321,9 +340,22 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     closeSettings(); navigate("chat"); model.setDraft(t("skillCreationPrompt"));
   };
   const rosterRows = [
-    ...dmRows.map(row => ({ kind: "colleague" as const, order: row.order, row })),
+    ...dmRows.filter(row => !activeRosterPrefs[row.agent.agentId]?.hidden).map(row => ({ kind: "colleague" as const, order: row.order, row })),
     ...(channelView.catalog?.channels ?? []).map(row => ({ kind: "group" as const, order: Date.parse(channelView.channel?.channel.id === row.id ? channelView.channel.messages[channelView.channel.messages.length - 1]?.message.createdAt ?? row.createdAt : row.createdAt) || 0, row })),
-  ].sort((a, b) => b.order - a.order);
+  ].sort((a, b) => {
+    const ap = a.kind === "colleague" && activeRosterPrefs[a.row.agent.agentId]?.pinned ? 1 : 0;
+    const bp = b.kind === "colleague" && activeRosterPrefs[b.row.agent.agentId]?.pinned ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    const as = a.kind === "colleague" ? activeRosterPrefs[a.row.agent.agentId]?.section ?? "" : "";
+    const bs = b.kind === "colleague" ? activeRosterPrefs[b.row.agent.agentId]?.section ?? "" : "";
+    return as.localeCompare(bs) || b.order - a.order;
+  });
+  const menuAgent = workspace && rosterMenu?.workspaceId === workspace.workspaceId ? agents.find(row => row.agentId === rosterMenu?.agentId) : undefined;
+  const rosterSectionOf = (item: (typeof rosterRows)[number] | undefined) => item?.kind === "colleague" ? activeRosterPrefs[item.row.agent.agentId]?.section : undefined;
+  const manageRosterAgent = async (target: WorkspaceDevAgent, rename = false) => {
+    await openAgent(target.agentId);
+    if (model.getSnapshot().workspace?.selectedAgentId === target.agentId) { setBrowser(false); setInspector(true); setRenameAgentId(rename ? target.agentId : null); }
+  };
   return <div className="hs wsd-app vg-app" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : showColleagueInspector || showGroupInspector || showContextInspector ? " has-inspector" : ""}`}>
     <aside className="hs-side wsd-sidebar" inert={modalOpen}><div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" />
       <div className="hs-top"><HaraLogo size={20} /><select className="hs-space" aria-label={t("ws.space.switch")} value={view.workspaceId ?? ""} disabled={view.loading || !view.directory?.workspaces.length}
@@ -335,17 +367,21 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       <div className="vg-roster-label">{locale !== "en" ? "Hara 同事" : "Hara colleagues"}</div>
       {view.workspaceId && agents.length ? <>
         {agents.filter(row => row.kind === "main").map(row => <button key={row.agentId} disabled={view.loading} className="hs-row hs-main wsd-contact is-main" aria-label={row.identity.displayName} title={row.identity.displayName} aria-current={route.section === "chat" && row.agentId === view.agentId ? "page" : undefined}
+          onContextMenu={event => { event.preventDefault(); if (workspace) setRosterMenu({ workspaceId: workspace.workspaceId, agentId: row.agentId, x: event.clientX, y: event.clientY }); }}
           onClick={() => void openAgent(row.agentId)}><Avatar agent={row} large /><span className="hs-txt"><strong className="hs-name"><span className="nm">{row.identity.displayName}</span><span className="hs-tag brand">{t("ws.main.tag")}</span></strong>
             <span className="pv">{t("ws.main.subtitle")}</span></span></button>)}
         <nav className="hs-sections vg-unified-roster" aria-label={locale !== "en" ? "同事与群" : "Colleagues and groups"}>
           <div className="vg-roster-heading"><span>{locale !== "en" ? "对话 · 同事与群" : "Conversations · colleagues and groups"}</span>
             <button className="hs-sec-a" aria-label={t("ws.channels.new")} disabled={!channelView.supported || view.loading || !!disconnected} onClick={() => setChannelDialog("create")}><PlusIcon className="hico" />{locale !== "en" ? "新建群" : "New group"}</button></div>
-          {rosterRows.filter(item => !search || (item.kind === "colleague" ? `${item.row.agent.identity.displayName} ${item.row.agent.identity.title ?? ""}` : item.row.name).toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(item => item.kind === "colleague" ? <button className="hs-row hs-dm wsd-contact" aria-label={item.row.agent.identity.displayName} title={item.row.agent.identity.displayName} disabled={view.loading} key={`colleague:${item.row.agent.agentId}`}
-            ref={item.row.agent.agentId === view.agentId ? selectedRow : undefined} aria-current={route.section === "chat" && item.row.agent.agentId === view.agentId ? "page" : undefined} onClick={() => void openAgent(item.row.agent.agentId)}>
+          {rosterRows.filter(item => !search || (item.kind === "colleague" ? `${item.row.agent.identity.displayName} ${item.row.agent.identity.title ?? ""}` : item.row.name).toLocaleLowerCase().includes(search.toLocaleLowerCase())).map((item, index, visible) => item.kind === "colleague" ? <Fragment key={`colleague:${item.row.agent.agentId}`}>
+            {rosterSectionOf(item) && rosterSectionOf(visible[index - 1]) !== rosterSectionOf(item) ? <div className="vg-roster-section">{rosterSectionOf(item)}</div> : null}
+            <button className="hs-row hs-dm wsd-contact" aria-label={item.row.agent.identity.displayName} title={item.row.agent.identity.displayName} disabled={view.loading}
+            onContextMenu={event => { event.preventDefault(); if (workspace) setRosterMenu({ workspaceId: workspace.workspaceId, agentId: item.row.agent.agentId, x: event.clientX, y: event.clientY }); }}
+            ref={item.row.agent.agentId === view.agentId ? selectedRow : undefined} aria-current={route.section === "chat" && item.row.agent.agentId === view.agentId ? "page" : undefined} onClick={() => { updateRosterPref(item.row.agent.agentId, { unread: false }); void openAgent(item.row.agent.agentId); }}>
             <Avatar agent={item.row.agent} /><span className="hs-txt"><strong className="hs-name"><span className="nm">{item.row.agent.identity.displayName}</span></strong><span className="pv">{item.row.preview}</span></span>
             {colleagueUsageView(accountUsage.get(item.row.agent.agentId)).state !== "parse_unavailable" ? <span className={`hs-usage-chip ${colleagueUsageView(accountUsage.get(item.row.agent.agentId)).state}`}>{colleagueUsageView(accountUsage.get(item.row.agent.agentId)).label}</span> : null}
             <span className="hs-meta">{item.row.timestamp && Number.isFinite(Date.parse(item.row.timestamp)) ? <time className="hs-time" dateTime={item.row.timestamp}>{new Date(item.row.timestamp).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time> : null}
-              {(shell.activity[item.row.agent.agentId]?.unread ?? 0) > 0 ? <span className="hs-dot" role="img" aria-label={t("ws.unread", { n: shell.activity[item.row.agent.agentId].unread })} /> : null}</span></button>
+              {(shell.activity[item.row.agent.agentId]?.unread ?? 0) > 0 || activeRosterPrefs[item.row.agent.agentId]?.unread ? <span className="hs-dot" role="img" aria-label={t("ws.unread", { n: Math.max(1, shell.activity[item.row.agent.agentId]?.unread ?? 0) })} /> : null}</span></button></Fragment>
             : <button className="hs-row hs-dm wsd-contact vg-group-row" key={`group:${item.row.id}`} data-group-id={item.row.id} aria-label={item.row.name} title={item.row.name} aria-current={inChannel && channelView.channelId === item.row.id ? "page" : undefined} onClick={() => openChannel(item.row.id)}>
               <span className="hs-ava vg-group-avatar" aria-hidden="true"><UsersIcon className="hico" /></span><span className="hs-txt"><strong className="hs-name"><span className="nm">{item.row.name}</span></strong><span className="pv">{channelMemberLabel(t, item.row.memberIds.length)}</span></span><span className="vg-group-badge">{locale !== "en" ? "群" : "Group"}</span></button>)}
           {search && !rosterRows.some(item => (item.kind === "colleague" ? `${item.row.agent.identity.displayName} ${item.row.agent.identity.title ?? ""}` : item.row.name).toLocaleLowerCase().includes(search.toLocaleLowerCase())) ? <p className="hs-empty">{t("ws.search.empty")}</p> : null}
@@ -375,7 +411,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           : inChannel && workspace ? <LocalChannelThread key={`${scope}:${channelView.channelId}`} view={channelView} colleagues={agents} t={t} retry={() => { if (route.channelId) void channels.select(route.channelId); }}
           transcript={renderChannelTranscript} model={channels} disabled={Boolean(disconnected)} scrollRoot={scroll} onFollowChange={channelFollowing} onRepair={() => { setSettingsPage("connections"); setSettings(true); }}
           approval={card => <ApprovalCard card={card} model={channelApprovalActions} t={t} disabled={!!disconnected} />} />
-          : route.section === "colleagues" && workspace ? <ColleaguesPage shell={shell} agents={colleagues} tab={route.tab} setTab={tab => navigate("colleagues", tab)} t={t} openAgent={id => void openAgent(id)} openItem={item => openItem(item)} discuss={() => void discuss()} />
+          : route.section === "colleagues" && workspace ? <ColleaguesPage shell={shell} agents={colleagues} tab={route.tab} setTab={tab => navigate("colleagues", tab)} t={t} openAgent={id => void openAgent(id)} openItem={item => openItem(item)} discuss={() => void discuss()}
+            onContextMenu={(event, target) => { event.preventDefault(); setRosterMenu({ workspaceId: workspace.workspaceId, agentId: target.agentId, x: event.clientX, y: event.clientY }); }} />
           : !workspace && view.loading && view.workspaceId ? <p role="status">{t("common.loading")}</p> : !workspace ? <section className="wsd-welcome"><HaraLogo size={48} /><h1>{t("ws.welcome.title")}</h1><p>{t("ws.welcome.body")}</p>
             <button className="hs-btn pri" onClick={() => setCreating(true)} disabled={view.loading}>{t("ws.welcome.create")}</button><small>{t(production ? "ws.welcome.note" : "ws.lab.note")}</small></section>
           : <div className="hs-col wsd-thread">
@@ -417,7 +454,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           {asyncTarget ? <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canAnswerAsync} aria-label={t("ws.question.async.send")}><PaperAirplaneIcon className="hico" /></button> : null}</div>
         <p className="hs-hint"><span>{question ? t("ws.question.composerHint") : t(production ? "ws.composer.hint.local" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</span><span>{t("ws.composer.hint.keys")}</span></p></footer> : null}
     </main>
-    {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => setInspector(false)} onRefresh={() => void refreshFeatures()}
+    {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} initialProfileOpen={renameAgentId === agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); }} onRefresh={() => void refreshFeatures()}
       listModels={listBotModels} onApplyRuntime={runtimeId => model.setAgentRuntime(agent, runtimeId)}
       onApplyModel={(runtimeId, modelId, revision) => model.selectRuntimeModel(runtimeId, modelId, revision)}
       onRuntimeDirectory={() => openSettingsPage("runtimes")} onSaveProfile={profile => model.updateAgentPersona(agent, profile)}
@@ -435,6 +472,26 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     {channelDialog ? <LocalChannelDialog key={`${scope}:${channelDialog}:${channelView.channelId}`} mode={channelDialog} view={channelView} model={channels} colleagues={colleagues} t={t} onClose={() => setChannelDialog(null)} onCreated={openChannel} /> : null}
     {approvalDialog?.scope === scope ? <ShellDialog label={t("ws.approval.label")} onClose={() => setApprovalDialog(null)} className="wsd-approval-dialog"><button className="hs-icon wsd-close" aria-label={t("ws.close")} onClick={() => setApprovalDialog(null)}><XMarkIcon className="hico" /></button>
       {dialogCard ? <ApprovalCard card={dialogCard} model={model} t={t} inDialog disabled={Boolean(disconnected)} onSettled={() => setApprovalDialog(null)} /> : <p role="status">{t("ws.approval.stale")}</p>}</ShellDialog> : null}
+    {rosterMenu && menuAgent ? <WorkspaceRosterMenu agent={menuAgent} x={rosterMenu.x} y={rosterMenu.y} locale={locale} pinned={Boolean(activeRosterPrefs[menuAgent.agentId]?.pinned)} hidden={Boolean(activeRosterPrefs[menuAgent.agentId]?.hidden)}
+      conversationId={shell.snapshots.find(row => row.selectedAgentId === menuAgent.agentId)?.conversation.sessionId}
+      onClose={() => setRosterMenu(null)} onManage={() => void manageRosterAgent(menuAgent)}
+      onPin={() => updateRosterPref(menuAgent.agentId, { pinned: !activeRosterPrefs[menuAgent.agentId]?.pinned })}
+      onMove={() => { setSectionName(""); setRosterMove(menuAgent); }} onUnread={() => updateRosterPref(menuAgent.agentId, { unread: true })}
+      onRename={() => void manageRosterAgent(menuAgent, true)}
+      onCopyId={() => { const id = shell.snapshots.find(row => row.selectedAgentId === menuAgent.agentId)?.conversation.sessionId; if (id) void navigator.clipboard.writeText(id); }}
+      onHide={() => updateRosterPref(menuAgent.agentId, { hidden: !activeRosterPrefs[menuAgent.agentId]?.hidden })}
+      onDelete={() => setRosterDelete(menuAgent)} /> : null}
+    {rosterMove ? <ShellDialog label={locale !== "en" ? "移至新分组" : "Move to new section"} onClose={() => setRosterMove(null)} className="wsd-roster-dialog">
+      <h2>{locale !== "en" ? "移至新分组" : "Move to new section"}</h2><label>{locale !== "en" ? "分组名称" : "Section name"}<input value={sectionName} maxLength={60} onChange={event => setSectionName(event.target.value)} /></label>
+      <div className="wsd-card-actions"><button onClick={() => setRosterMove(null)}>{t("ws.cancel")}</button><button className="hs-btn pri" disabled={!sectionName.trim()} onClick={() => { updateRosterPref(rosterMove.agentId, { section: sectionName.trim() }); setRosterMove(null); }}>{locale !== "en" ? "移动" : "Move"}</button></div>
+    </ShellDialog> : null}
+    {rosterDelete ? <ShellDialog label={locale !== "en" ? `删除「${rosterDelete.identity.displayName}」？` : `Delete “${rosterDelete.identity.displayName}”?`} onClose={() => setRosterDelete(null)} className="wsd-roster-dialog">
+      <section className="hs-card wsd-approval"><div className="wsd-kicker">{locale !== "en" ? "确认删除" : "Confirm deletion"}</div>
+        <h2>{locale !== "en" ? `删除「${rosterDelete.identity.displayName}」？` : `Delete “${rosterDelete.identity.displayName}”?`}</h2>
+        <p>{locale !== "en" ? "该 bot 会从 Hara 团队目录移除；外部角色文件和历史对话保留，以后可重新雇佣。" : "This bot will leave Hara's active directory. External role files and conversation history stay untouched, and you can re-hire it later."}</p>
+        <p role="status">{locale !== "en" ? "删除暂不可用：当前 Hara Core 未开放 Soft Dark bot 归档接口。" : "Delete is unavailable: this Hara Core does not expose the Soft Dark bot archive action."}</p>
+        <div className="wsd-card-actions"><button onClick={() => setRosterDelete(null)}>{t("ws.cancel")}</button><button className="hs-btn danger" disabled>{locale !== "en" ? "删除" : "Delete"}</button></div>
+      </section></ShellDialog> : null}
     {settings ? <WorkspaceSettings key={`settings:${view.workspaceId}`} mainModel={model} initialPage={settingsPage} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
       onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} /> : null}
   </div></div></div>;
