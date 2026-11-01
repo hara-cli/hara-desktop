@@ -45,7 +45,7 @@ test("main Hara shares the Runtime and model entry without colleague schedules",
     async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
   assert.match(html, /Hara management/);
   assert.match(html, /Apply Runtime/);
-  assert.match(html, /This bot.*model/);
+  assert.match(html, /This colleague.*model/);
   assert.doesNotMatch(html, /Open Runtime settings|Open model settings|gpt-6/);
   assert.doesNotMatch(html, /Create in chat; manage only this colleague here/);
 });

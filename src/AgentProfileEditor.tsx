@@ -25,8 +25,8 @@ export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
     finally { setBusy(false); }
   };
   return <div className="agent-profile-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <section className="agent-profile-editor" role="dialog" aria-modal="true" aria-label={zh ? "此 bot 的名片" : "This bot's profile"}>
-      <header><h2>{zh ? "此 bot 的名片" : "This bot's profile"}</h2><button type="button" disabled={busy} onClick={onClose}>{zh ? "关闭" : "Close"}</button></header>
+    <section className="agent-profile-editor" role="dialog" aria-modal="true" aria-label={zh ? "此同事的名片" : "This colleague's profile"}>
+      <header><h2>{zh ? "此同事的名片" : "This colleague's profile"}</h2><button type="button" disabled={busy} onClick={onClose}>{zh ? "关闭" : "Close"}</button></header>
       <div className="agent-profile-form">
         <label>{zh ? "显示名" : "Display name"}<input value={displayName} maxLength={64} onChange={event => setDisplayName(event.target.value)} /></label>
         <label>{zh ? "职责" : "Role"}<input value={title} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>

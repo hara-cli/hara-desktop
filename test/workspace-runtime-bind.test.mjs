@@ -176,3 +176,32 @@ test("Settings directory link remains one-shot and only for the A-prime reasons"
   f.button("Manage local runtimes… ↗").props.onClick(); f.render();
   assert.equal(opens, 1); assert.equal(f.text().includes("Manage local runtimes"), false);
 });
+
+test("available binding hides detected discovery cards; listModels failures surface the error", async () => {
+  const f = mount({ workspace: { workspaceId: "fixture", resourceGeneration: "g1",
+    runtimeOptions: [{ id: "codex", label: "Codex", available: true }],
+    conversation: { state: "completed" }, runtimes: { options: [
+      { runtimeId: "claude", label: "Claude Code", state: "detected", registered: false, fingerprint: "fixture-claude", path: "/fixture/claude" },
+      { runtimeId: "agy", label: "Antigravity", state: "detected", registered: false, fingerprint: "fixture-agy", path: "/fixture/agy" },
+    ] } }, agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" },
+      runtime: { id: "codex", label: "Codex", available: true } } });
+  await f.flush();
+  assert.equal(f.text().includes("Claude Code detected"), false);
+  assert.equal(f.text().includes("Antigravity detected"), false);
+  assert.equal(f.text().includes("Register for binding"), false);
+  assert.ok(f.text().includes("This colleague's model"));
+  assert.equal(f.text().includes("This bot's model"), false);
+  const heading = node => {
+    if (Array.isArray(node)) return node.map(heading).join("");
+    if (typeof node === "string" || typeof node === "number") return String(node);
+    return node?.props ? heading(node.props.children) : "";
+  };
+  assert.equal(f.all().some(node => node.type === "h3" && heading(node) === "Runtime"), false);
+
+  const fail = mount({ listModels: async () => { throw new Error("codex model inventory failed"); } });
+  await fail.flush();
+  assert.ok(fail.text().includes("Model list unavailable"));
+  assert.ok(fail.text().includes("codex model inventory failed"));
+  const alert = fail.all().find(node => node.type === "p" && node.props?.role === "alert");
+  assert.ok(alert); assert.ok(fail.text().includes("codex model inventory failed"));
+});

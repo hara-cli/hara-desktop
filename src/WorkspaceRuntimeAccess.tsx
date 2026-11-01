@@ -34,6 +34,8 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   const [local, setLocal] = useState<{ scope: string; runtimeId: string; label: string; fingerprint: string; path?: string } | null>(null);
   const directoryNeeded = workspace.runtimeOptions?.some(row => row.reason === "not_registered" || row.reason === "not_installed");
   const detected = workspace.runtimes?.options.filter(row => row.state === "detected" && !row.registered) ?? [];
+  // When this colleague already has an available binding, keep discovery CTAs in Settings — do not pave every detected card here.
+  const showDetectedCards = !option?.available;
   const missing = workspace.runtimes?.options.filter(row => row.state === "not_installed") ?? [];
   const conversation = workspace.conversation;
   const freshBlocked = !conversation || ["running", "draining"].includes(conversation.state)
@@ -59,19 +61,19 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     finally { saveFence.current = false; setBusy(false); }
   };
   const target = change?.scope === scope ? workspace.runtimeOptions?.find(row => row.id === change.runtimeId) : null;
-  if (compact) return <div className="vg-runtime-strip" aria-label={zh ? "本 bot 运行配置" : "This bot runtime"}>
+  if (compact) return <div className="vg-runtime-strip" aria-label={zh ? "本同事运行配置" : "This colleague runtime"}>
     <span>Runtime <strong>{agent.runtime.label}</strong></span><span>{zh ? "模型" : "Model"} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? "—"}</strong></span>
   </div>;
   return <div className="vg-runtime-access">
-    <section className="vg-context-card vg-p0-card"><h3>Runtime</h3>
+    <section className="vg-context-card vg-p0-card">
       <p>{t("ws.runtimeAccess.bound", { name: agent.identity.displayName, runtime: agent.runtime.label })}</p>
       {workspace.runtimeOptions ? <WorkspaceAgentRuntimePicker agent={agent} options={workspace.runtimeOptions} locale={zh ? "zh" : "en"} saving={busy}
         onApply={runtimeId => { setRestart("keep"); setError(""); setChange({ scope, runtimeId }); }} /> : null}
       {!workspace.runtimeOptions?.some(row => row.available) ? <p role="status">{t("ws.runtimeAccess.empty")}</p> : null}
       {!option?.available && !detected.some(row => row.runtimeId === agent.runtime.id) && !missing.some(row => row.runtimeId === agent.runtime.id)
         ? <p role="status">{t("ws.runtimeAccess.unavailable", { runtime: agent.runtime.label })}</p> : null}
-      {detected.map(row => <div key={row.runtimeId}><p>{t("ws.runtimeAccess.detected", { runtime: row.label })}</p>
-        <button disabled={busy || !row.fingerprint} onClick={() => { setError(""); setLocal({ scope, runtimeId: row.runtimeId, label: row.label, fingerprint: row.fingerprint!, path: row.path }); }}>{t("ws.runtimeAccess.register")}</button></div>)}
+      {showDetectedCards ? detected.map(row => <div key={row.runtimeId}><p>{t("ws.runtimeAccess.detected", { runtime: row.label })}</p>
+        <button disabled={busy || !row.fingerprint} onClick={() => { setError(""); setLocal({ scope, runtimeId: row.runtimeId, label: row.label, fingerprint: row.fingerprint!, path: row.path }); }}>{t("ws.runtimeAccess.register")}</button></div>) : null}
       {missing.map(row => <p key={row.runtimeId}>{t("ws.runtimeAccess.missing", { runtime: row.label })}</p>)}
       <button disabled={busy} onClick={() => void run(async () => {
         setScanning(true);
@@ -79,9 +81,9 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
       })}>{t(scanning ? "ws.runtimeAccess.scanning" : "ws.runtimeAccess.rescan")}</button>
       {directoryNeeded && directoryOwner !== owner ? <button disabled={busy} onClick={() => { setDirectoryOwner(owner); onRuntimeDirectory(); }}>{zh ? "管理本机引擎…" : "Manage local runtimes…"} ↗</button> : null}
     </section>
-    <section className="vg-context-card vg-p0-card"><h3>{zh ? "此 bot 的模型" : "This bot's model"}</h3>
+    <section className="vg-context-card vg-p0-card"><h3>{zh ? "此同事的模型" : "This colleague's model"}</h3>
       {loading ? <p role="status">{zh ? "读取模型…" : "Loading models…"}</p> : models ? <>
-        <label>{zh ? "模型" : "Model"}<select aria-label={zh ? "此 bot 的模型" : "This bot's model"} value={selected} disabled={busy} onChange={event => setSelected(event.target.value)}>
+        <label>{zh ? "模型" : "Model"}<select aria-label={zh ? "此同事的模型" : "This colleague's model"} value={selected} disabled={busy} onChange={event => setSelected(event.target.value)}>
           <option value="">{zh ? "选择模型" : "Choose a model"}</option>{models.models.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
         </select></label>
         <button disabled={busy || !selected || selected === models.selectedModelId || !models.models.some(row => row.id === selected)}
@@ -90,8 +92,12 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
             await onApplyModel(agent.runtime.id, selected, models.revision);
             if (liveScope.current === scope) setReload(value => value + 1);
           })}>{zh ? "应用模型" : "Apply model"}</button>
-      </> : <p>{option?.available ? (zh ? "模型目录暂不可用" : "Model list unavailable") : (zh ? "请先绑定可用引擎" : "Bind an available runtime first")}</p>}
-      {error ? <p role="alert">{workspaceMessageText(t, error)}</p> : null}
+      </> : <p role={error && option?.available ? "alert" : undefined}>{option?.available
+        ? (error
+          ? <>{zh ? "模型目录暂不可用" : "Model list unavailable"} · {workspaceMessageText(t, error)}</>
+          : (zh ? "模型目录暂不可用" : "Model list unavailable"))
+        : (zh ? "请先绑定可用引擎" : "Bind an available runtime first")}</p>}
+      {error && (models || !option?.available) ? <p role="alert">{workspaceMessageText(t, error)}</p> : null}
     </section>
     {target && change ? <ShellDialog label={t("ws.runtimeAccess.confirm")} onClose={() => { if (!saveFence.current) setChange(null); }} className="wsd-approval-dialog wsd-runtime-change-dialog">
       <section className="hs-card wsd-approval"><div className="wsd-kicker">{t("ws.runtimeAccess.confirm")}</div>
