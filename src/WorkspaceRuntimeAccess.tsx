@@ -91,7 +91,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
         {directoryNeeded && directoryOwner !== owner ? <button type="button" className="vg-runtime-install" disabled={busy} onClick={() => { setDirectoryOwner(owner); onRuntimeDirectory(); }}>{t("ws.runtimeAccess.install")} <span aria-hidden="true">↗</span></button> : null}
       </div>
     </section>
-    <section className="vg-context-card vg-p0-card"><h3>{zh ? "此同事的模型" : "This colleague's model"}</h3>
+    <section className="vg-context-card vg-p0-card vg-runtime-model-card"><h3>{zh ? "此同事的模型" : "This colleague's model"}</h3>
       {loading || scanning ? <p role="status">{zh ? "读取模型…" : "Loading models…"}</p> : !models || !models.models.length ? <p role={option?.available ? "alert" : undefined}>{option?.available
         ? (modelError
           ? <>{zh ? "模型目录暂不可用" : "Model list unavailable"} · {workspaceMessageText(t, modelError)}</>
