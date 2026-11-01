@@ -309,6 +309,11 @@ export class WorkspaceDevModel {
       throw cause;
     }
   }
+  async codexLoginInstructions(): Promise<{ runtimeId: "codex"; shell: "posix" | "powershell"; command: string }> {
+    const result = await this.workspaceRequest<{ runtimeId: "codex"; shell: "posix" | "powershell"; command: string }>("workspace.runtime.loginInstructions", { runtimeId: "codex" });
+    if (result.runtimeId !== "codex" || !["posix", "powershell"].includes(result.shell) || typeof result.command !== "string" || !result.command.trim() || result.command.length > 32_768 || /[\r\n\0]/.test(result.command)) throw new Error("Invalid private Codex login guidance");
+    return result;
+  }
   async registerLocalRuntime(runtimeId: string, fingerprint: string, workspaceId: string, generation: string): Promise<void> {
     if (this.view.workspaceId !== workspaceId || this.view.workspace?.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.localConfirmationExpired");
     await this.workspaceRequest("workspace.runtime.registerLocal", { runtimeId, fingerprint, approved: true }); await this.refresh();

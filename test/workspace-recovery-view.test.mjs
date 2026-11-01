@@ -6,10 +6,10 @@ import { build } from "esbuild";
 import { makeT } from "../src/i18n.ts";
 import { CONNECTION_RECOVERY_REASONS, connectionRecoveryReason, workspaceConversationReplying, workspaceRecoveryIdentity, workspaceRecoveryPromptVisible } from "../src/workspace-resume.ts";
 const require = createRequire(import.meta.url);
-const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceBoot.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
+const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceBoot.tsx";export {default as WorkspaceRuntimeSettings} from "./src/WorkspaceRuntimeSettings.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} };new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);
-const { WorkspaceTaskRecovery, WorkspaceTaskActivity, WorkspaceBoot } = module.exports, { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
+const { WorkspaceTaskRecovery, WorkspaceTaskActivity, WorkspaceBoot, WorkspaceRuntimeSettings } = module.exports, { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
 test("blocked and error checkpoints replace replying even while a physical request is still running or draining", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const state of ["running", "draining", "blocked", "error", "failed"]) for (const taskState of ["blocked", "error", "failed"]) {
     const t = makeT(locale), conversation = { state, taskState, blockReason: "Synthetic budget limit <exceeded>", resumeAdmission: { allowed: false, reason: "run_tokens" } };
@@ -160,4 +160,56 @@ test("connection repair cards also expose start-new-chat dismiss without auto-re
   assert.ok(html.includes(t("ws.resume.repairAction")));
   assert.ok(html.includes(t("ws.resume.dismiss")));
   assert.equal(html.includes(t("ws.resume.action")), false);
+});
+
+test("native turn failures expose localized causes, explicit Retry and only relevant secondary actions", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const kind of ["project_not_trusted", "runtime_auth_required", "command_failed", "spawn_failed", "timeout", "runtime_unavailable"]) {
+    const t = makeT(locale), code = kind === "runtime_unavailable" ? "command_not_found" : kind;
+    const conversation = { state: "blocked", taskState: "blocked", blockReason: `codex Runtime failed (${code}); no fallback was selected`, history: [{ role: "user", content: "finish the original task" }], resumeAdmission: { allowed: true } };
+    const events = [], props = { conversation, t, disabled: false, runtimeId: "codex", onContinue() { events.push("retry"); }, onRepair() { events.push("repair"); }, onLogin() { events.push("login"); }, onRescan() { events.push("rescan"); }, onRuntimeSettings() { events.push("settings"); } };
+    const html = render(h(WorkspaceTaskRecovery, props));
+    assert.ok(html.includes(`data-failure-kind="${kind}"`));
+    assert.ok(html.includes(t(`ws.resume.runtime.${kind}.title`)));
+    assert.ok(html.includes(t(`ws.resume.runtime.${kind}.body`)));
+    assert.ok(html.includes(t("ws.resume.body"))); assert.ok(html.includes(t("ws.resume.retry")));
+    assert.equal(html.includes("no fallback was selected"), false); assert.equal(/Raft/i.test(html), false);
+    assert.equal(html.includes(t("ws.resume.codexLogin")), kind === "runtime_auth_required");
+    assert.equal(html.includes(t("ws.runtimeAccess.install")), kind === "runtime_unavailable");
+    assert.equal(html.includes(t("ws.runtimeAccess.rescan")), kind === "runtime_unavailable");
+    const buttons = [];
+    const walk = node => { if (Array.isArray(node)) return node.forEach(walk); if (!node?.props) return; if (node.type === "button") buttons.push(node); walk(node.props.children); };
+    walk(WorkspaceTaskRecovery(props));
+    assert.deepEqual(events, [], "rendering never runs a retry or login");
+    const retry = buttons.find(button => button.props["data-recovery-retry"] === "true");
+    assert.equal(retry.props.disabled, false); retry.props.onClick(); assert.deepEqual(events, ["retry"]);
+    assert.equal(conversation.blockReason.includes(code), true, "the original checkpoint is retained");
+    if (kind === "runtime_auth_required") { buttons[1].props.onClick(); assert.deepEqual(events, ["retry", "login"]); }
+    for (const lock of [{ disabled: true }, { continueDisabled: true }, { conversation: { ...conversation, state: "draining" } }, { conversation: { ...conversation, resumeAdmission: { allowed: false, reason: "run_tokens" } } }]) {
+      assert.match(render(h(WorkspaceTaskRecovery, { ...props, ...lock })), /data-recovery-retry="true"[^>]*disabled/);
+    }
+  }
+});
+
+test("legacy Codex diagnostics map to safe categories without echoing raw stderr or guessing a generic failure", () => {
+  const t = makeT("en");
+  for (const [blockReason, kind] of [["Not inside a trusted directory and --skip-git-repo-check was not specified. PRIVATE_PATH", "project_not_trusted"], ["websocket 401 Unauthorized PRIVATE_ACCOUNT", "runtime_auth_required"], ["codex Runtime failed (command_failed); no fallback was selected PRIVATE_ACCOUNT", "command_failed"]]) {
+    const html = render(h(WorkspaceTaskRecovery, { conversation: { state: "blocked", blockReason }, runtimeId: "codex", t, disabled: false, onContinue() {}, onRepair() {} }));
+    assert.ok(html.includes(`data-failure-kind="${kind}"`)); assert.equal(html.includes("PRIVATE_"), false);
+    if (kind === "command_failed") { assert.ok(html.includes("cannot be determined")); assert.equal(html.includes(t("ws.resume.runtime.project_not_trusted.title")), false); }
+  }
+});
+
+
+test("registered Codex exposes separate private-login guidance in all three languages without starting login", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: () => locale } });
+    try {
+      const t = makeT(locale), workspace = { workspaceId: "fixture", resourceGeneration: "one", runtimes: { options: [{ runtimeId: "codex", label: "Codex", registered: true, generalAgentDriverAvailable: true }], operations: [] } };
+      const html = render(h(WorkspaceRuntimeSettings, { workspace, model: { codexLoginInstructions() { throw new Error("must await an explicit click"); } } }));
+      assert.ok(html.includes(t("ws.resume.codexLogin"))); assert.ok(html.includes(t("ws.resume.loginGuide")));
+      assert.ok(html.includes(t("ws.resume.loginCommand"))); assert.equal(html.includes("CODEX_HOME="), false);
+      assert.equal(/ws\.resume\.|Raft/.test(html), false);
+    } finally { if (previous) Object.defineProperty(globalThis, "localStorage", previous); else delete globalThis.localStorage; }
+  }
 });

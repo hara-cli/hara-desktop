@@ -34,6 +34,10 @@ export default function WorkspaceRuntimeSettings({ model, workspace }: { model: 
   const [local, setLocal] = useState<NonNullable<WorkspaceDevSnapshot["runtimes"]>["options"][number] | null>(null);
   const saveFence = useRef(false);
   useEffect(() => { setLocal(null); }, [workspace.workspaceId, workspace.resourceGeneration]);
+  const [login, setLogin] = useState<{ shell: string; command: string } | null>(null), [loginBusy, setLoginBusy] = useState(false), [loginFailed, setLoginFailed] = useState(false);
+  const loginScope = `${workspace.workspaceId}:${workspace.resourceGeneration}`, liveLoginScope = useRef(loginScope);
+  liveLoginScope.current = loginScope;
+  useEffect(() => { liveLoginScope.current = loginScope; setLogin(null); setLoginBusy(false); setLoginFailed(false); return () => { liveLoginScope.current = ""; }; }, [loginScope]);
   useEffect(() => { let active = true; void model.detectRuntimes().then(() => { if (active) setChecked(true); })
     .catch(() => { if (active) setNotice("ws.runtimes.detectFailed"); }).finally(() => { if (active) setDetecting(false); }); return () => { active = false; }; }, [model, workspace.workspaceId, workspace.resourceGeneration]);
   const downloading = workspace.runtimes?.operations.some(row => row.state === "downloading") ?? false;
@@ -53,6 +57,15 @@ export default function WorkspaceRuntimeSettings({ model, workspace }: { model: 
       {runtime.state === "detected" ? <button className="wsd-primary" disabled={pending || detecting} onClick={() => setLocal(runtime)}>{t("ws.runtimes.useLocal")}</button>
         : runtime.state === "not_installed" && !runtime.path ? <button disabled={pending || downloading || detecting || !checked} onClick={() => void propose(runtime.runtimeId)}>{t("ws.runtimes.install")}</button> : null}
     </div>)}</div>
+    {workspace.runtimes?.options.some(runtime => runtime.runtimeId === "codex" && runtime.registered) ? <section className="wsd-codex-login" aria-label={t("ws.resume.codexLogin")}>
+      <h4>{t("ws.resume.codexLogin")}</h4><p>{t("ws.resume.loginGuide")}</p>
+      <button type="button" disabled={loginBusy} onClick={() => { if (loginBusy) return; setLoginBusy(true); setLoginFailed(false);
+        void model.codexLoginInstructions().then(value => { if (liveLoginScope.current === loginScope) setLogin(value); })
+          .catch(() => { if (liveLoginScope.current === loginScope) setLoginFailed(true); }).finally(() => { if (liveLoginScope.current === loginScope) setLoginBusy(false); });
+      }}>{t(loginBusy ? "common.loading" : "ws.resume.loginCommand")}</button>
+      {login ? <><p>{t(login.shell === "powershell" ? "ws.resume.loginPowerShell" : "ws.resume.loginTerminal")}</p><code className="wsd-root">{login.command}</code><p>{t("ws.resume.loginThenRetry")}</p></> : null}
+      {loginFailed ? <p role="alert">{t("ws.resume.loginUnavailable")}</p> : null}
+    </section> : null}
     {workspace.runtimes?.operations.map(operation => <div className="wsd-runtime-operation" key={operation.id}><span>{operation.runtimeId} · {runtimeOperationText(t, operation.state)}</span>
       {operation.state === "downloading" ? <button onClick={() => void model.cancelRuntime(operation.id)}>{t("ws.runtimes.cancelInstall")}</button> : null}</div>)}
     {notice ? <p role="status">{t(notice)}</p> : null}

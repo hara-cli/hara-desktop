@@ -534,3 +534,30 @@ test("binding in flight fences sends and composer edits without locking another 
   wait.resolve({}); await applying;
   assert.equal(f.model.getSnapshot().runtimeChanging, false); assert.equal(f.model.getSnapshot().draft, "");
 });
+
+test("Retry of a native failure keeps the original task, colleague, runtime and draft without rebinding", async () => {
+  for (const agentId of ["main", "coder"]) for (const code of ["project_not_trusted", "runtime_auth_required", "command_failed", "timeout"]) {
+    const f = fixture(); await f.ready(); if (agentId !== "main") await f.model.selectAgent(agentId);
+    const original = { ...snapshot("A", agentId), agents: agents.map(agent => ({ ...agent, runtime: { id: "codex", label: "Codex", available: true } })), runtimeOptions: [{ id: "codex", available: true }],
+      conversation: { ...snapshot("A", agentId).conversation, state: "blocked", taskState: "blocked", taskId: "unfinished", runId: "original-run", history: [{ role: "user", content: "finish the work" }], blockReason: `codex Runtime failed (${code}); no fallback was selected`, resumeAdmission: { allowed: true } } };
+    f.handlers["workspace.snapshot"] = () => original; await f.model.refresh(); f.model.setDraft("Keep this next message");
+    const before = f.calls.length; await f.model.send(true);
+    const writes = f.calls.slice(before).filter(call => call.method !== "workspace.snapshot");
+    assert.deepEqual(writes.map(call => call.method), ["workspace.session.resume"]);
+    assert.equal(writes[0].params.agentId, agentId); assert.equal(writes[0].params.message, "/continue");
+    assert.equal(f.model.getSnapshot().draft, "Keep this next message");
+    assert.equal(f.model.getSnapshot().workspace.conversation.taskId, "unfinished");
+    assert.equal(f.model.getSnapshot().workspace.agents.find(agent => agent.agentId === agentId).runtime.id, "codex");
+  }
+});
+
+test("private Codex login guidance is a scoped read, rejects stale replies and never starts a login or task", async () => {
+  const f = fixture(); await f.ready();
+  f.handlers["workspace.runtime.loginInstructions"] = () => ({ runtimeId: "codex", shell: "posix", command: "env CODEX_HOME='/private/fixture' '/registered/codex' login" });
+  const before = f.calls.length; const result = await f.model.codexLoginInstructions();
+  assert.ok(result.command.endsWith(" login"));
+  assert.deepEqual(f.calls.slice(before), [{ method: "workspace.runtime.loginInstructions", params: { workspaceId: "A", expectedGeneration: "generation-1", runtimeId: "codex" } }]);
+  const pending = defer(); f.handlers["workspace.runtime.loginInstructions"] = () => pending.promise;
+  const request = f.model.codexLoginInstructions(); await f.model.selectWorkspace("B");
+  pending.resolve(result); await assert.rejects(request, /scopeChanged/);
+});

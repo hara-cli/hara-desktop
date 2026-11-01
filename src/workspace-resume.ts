@@ -14,6 +14,25 @@ export function workspaceRecoveryState(conversation: Conversation): string {
 export const CONNECTION_RECOVERY_REASONS = ["connection_model_unavailable", "connection_auth_required", "connection_quota_exhausted", "connection_region_unavailable", "connection_recovery_unavailable"] as const;
 export type ConnectionRecoveryReason = typeof CONNECTION_RECOVERY_REASONS[number];
 
+export type RuntimeTurnFailure = "project_not_trusted" | "runtime_auth_required" | "command_failed" | "spawn_failed" | "timeout" | "runtime_unavailable";
+/** New Core supplies allowlisted codes. Legacy native errors are mapped without displaying stderr. */
+export function runtimeTurnFailure(blockReason: string | null | undefined, runtimeId?: string): { kind: RuntimeTurnFailure; runtimeId: string } | null {
+  const text = blockReason?.trim() ?? "";
+  const native = /^(codex|claude) Runtime failed \(([a-z0-9_]+)\)/i.exec(text);
+  const id = native?.[1]?.toLowerCase() ?? runtimeId;
+  if (id !== "codex" && id !== "claude") return null;
+  const code = native?.[2]?.toLowerCase();
+  let kind: RuntimeTurnFailure;
+  if (code === "project_not_trusted" || /not inside a trusted directory|--skip-git-repo-check was not specified|not a git repository/i.test(text)) kind = "project_not_trusted";
+  else if (["runtime_auth_required", "authentication_required", "auth_required", "not_logged_in", "unauthorized"].includes(code ?? "") || /\b401\b|\bunauthorized\b|not logged in|authentication (?:required|failed)/i.test(text)) kind = "runtime_auth_required";
+  else if (code === "command_not_found" || code === "not_installed" || code === "not_registered") kind = "runtime_unavailable";
+  else if (code === "spawn_failed") kind = "spawn_failed";
+  else if (code === "timeout" || code === "timed_out") kind = "timeout";
+  else if (native) kind = "command_failed";
+  else return null;
+  return { kind, runtimeId: id };
+}
+
 function requestWindowQuota(message: string): boolean {
   return /\b(?:requests?|tokens?).{0,50}\b(?:per|minute|hour|day|second|quota|limit)\b|\b(?:rpm|tpm|rpd|tpd)\b|(?:每.{0,8}(?:秒|分钟|分鐘|小时|小時|天)|请求速率|請求速率)/.test(message);
 }
