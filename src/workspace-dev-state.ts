@@ -120,8 +120,9 @@ export class WorkspaceDevModel {
     const key = this.key();
     this.view.runtimeChanging = this.runtimeChanges.has(key);
     const workspace = this.view.workspace, agent = workspace?.agents.find(row => row.agentId === workspace.selectedAgentId);
-    this.view.runtimeBlocked = Boolean(agent && (!agent.runtime.available
-      || workspace?.runtimeOptions && !workspace.runtimeOptions.some(row => row.id === agent.runtime.id && row.available)
+    const runtime = agent?.runtime;
+    this.view.runtimeBlocked = Boolean(runtime && (runtime.available === false
+      || workspace?.runtimeOptions && !workspace.runtimeOptions.some(row => row.id === runtime.id && row.available)
       || this.runtimeModelFailures.has(this.runtimeBindingKey())));
     if (this.questionPauses.has(key) || this.pending.get(key)?.state === "sending") this.view.sending = true;
     for (const listener of this.listeners) listener();
@@ -129,7 +130,7 @@ export class WorkspaceDevModel {
   private key(snapshot = this.view.workspace): string { return snapshot ? JSON.stringify([snapshot.workspaceId, snapshot.resourceGeneration, snapshot.selectedAgentId]) : ""; }
   private runtimeBindingKey(): string {
     const workspace = this.view.workspace, agent = workspace?.agents.find(row => row.agentId === workspace.selectedAgentId);
-    return agent ? JSON.stringify([this.key(), agent.runtime.id, agent.configRevision, agent.agentEpoch]) : "";
+    return agent?.runtime ? JSON.stringify([this.key(), agent.runtime.id, agent.configRevision, agent.agentEpoch]) : "";
   }
   private valid(snapshot: WorkspaceDevSnapshot, workspaceId: string, agentId?: string): void {
     if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== this.executionMode) || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
@@ -314,7 +315,7 @@ export class WorkspaceDevModel {
   }
   async listRuntimeModels(runtimeId: string): Promise<WorkspaceRuntimeModels> {
     const workspace = this.view.workspace, epoch = this.epoch, key = this.runtimeBindingKey();
-    const bound = workspace?.agents.find(row => row.agentId === workspace.selectedAgentId)?.runtime.id === runtimeId;
+    const bound = workspace?.agents.find(row => row.agentId === workspace.selectedAgentId)?.runtime?.id === runtimeId;
     const request = ++this.runtimeModelRequest;
     if (bound) this.runtimeModelRequests.set(key, request);
     const current = () => bound && epoch === this.epoch && key === this.runtimeBindingKey() && this.runtimeModelRequests.get(key) === request;
