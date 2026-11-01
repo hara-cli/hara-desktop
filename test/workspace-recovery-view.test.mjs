@@ -171,7 +171,7 @@ test("native turn failures expose localized causes, explicit Retry and only rele
     assert.ok(html.includes(`data-failure-kind="${kind}"`));
     assert.ok(html.includes(t(`ws.resume.runtime.${kind}.title`)));
     assert.ok(html.includes(t(`ws.resume.runtime.${kind}.body`)));
-    assert.ok(html.includes(t("ws.resume.body"))); assert.ok(html.includes(t("ws.resume.retry")));
+    assert.ok(html.includes(t("ws.resume.runtime.body"))); assert.ok(html.includes(t("ws.resume.retry")));
     assert.equal(html.includes("no fallback was selected"), false); assert.equal(/Raft/i.test(html), false);
     assert.equal(html.includes(t("ws.resume.codexLogin")), kind === "runtime_auth_required");
     assert.equal(html.includes(t("ws.runtimeAccess.install")), kind === "runtime_unavailable");
@@ -211,5 +211,13 @@ test("registered Codex exposes separate private-login guidance in all three lang
       assert.ok(html.includes(t("ws.resume.loginCommand"))); assert.equal(html.includes("CODEX_HOME="), false);
       assert.equal(/ws\.resume\.|Raft/.test(html), false);
     } finally { if (previous) Object.defineProperty(globalThis, "localStorage", previous); else delete globalThis.localStorage; }
+  }
+});
+
+
+test("one-shot continuation wording stays scoped to native failures and preserves generic task recovery", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const t = makeT(locale), html = render(h(WorkspaceTaskRecovery, { conversation: { state: "blocked", blockReason: "Synthetic task checkpoint" }, runtimeId: "pi", t, disabled: false, onContinue() {}, onRepair() {} }));
+    assert.ok(html.includes(t("ws.resume.body"))); assert.equal(html.includes(t("ws.resume.runtime.body")), false);
   }
 });

@@ -28,7 +28,7 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
     {finishing ? <p role="status" data-recovery-finishing="true">{t("ws.resume.finishing")}</p> : null}
     {reason ? <><p role={failed ? "alert" : "status"}>{t(`ws.resume.${reason}`)}</p><p>{t("ws.resume.repairBody")}</p>
       <div className="wsd-resume-actions"><button type="button" className="hs-btn sec" onClick={onRepair} disabled={disabled}>{t("ws.resume.repairAction")}</button>{dismiss}</div></>
-      : <>{runtime || detail || failed ? <p role="alert">{runtime ? t(`ws.resume.runtime.${runtime.kind}.body`) : detail ?? t("ws.resume.failureUnknown")}</p> : null}<p>{t("ws.resume.body")}</p>
+      : <>{runtime || detail || failed ? <p role="alert">{runtime ? t(`ws.resume.runtime.${runtime.kind}.body`) : detail ?? t("ws.resume.failureUnknown")}</p> : null}<p>{t(runtime ? "ws.resume.runtime.body" : "ws.resume.body")}</p>
         {runtime ? <p>{t("ws.resume.runtime.explicit")}</p> : null}
         {conversation.resumeAdmission?.allowed === false ? <p>{t("ws.resume.budget")}</p> : null}
         <div className="wsd-resume-actions">
