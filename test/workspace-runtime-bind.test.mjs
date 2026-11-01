@@ -116,7 +116,9 @@ for (const restart of ["keep", "fresh"]) test("confirmation " + restart + " refr
 
 test("empty, detected and missing have different guidance; rescan does not install or bind", async () => {
   let scans = 0;
-  const f = mount({ workspace: { workspaceId: "fixture", resourceGeneration: "g1", runtimeOptions: [],
+  const f = mount({ agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" },
+    runtime: { id: "claude", label: "Claude Code", available: false } },
+    workspace: { workspaceId: "fixture", resourceGeneration: "g1", runtimeOptions: [{ id: "claude", label: "Claude Code", available: false, reason: "not_installed" }],
     conversation: { state: "completed" }, runtimes: { options: [
       { runtimeId: "codex", label: "Codex", state: "detected", registered: false, fingerprint: "fixture-fingerprint", path: "/fixture/codex" },
       { runtimeId: "claude", label: "Claude Code", state: "not_installed" },
@@ -173,8 +175,8 @@ test("Settings directory link remains one-shot and only for the A-prime reasons"
   let opens = 0;
   const f = mount({ onRuntimeDirectory() { opens++; } });
   f.render({ workspace: { ...f.props().workspace, runtimeOptions: [{ id: "pi", label: "Pi", available: false, reason: "not_registered" }] } });
-  f.button("Manage local runtimes… ↗").props.onClick(); f.render();
-  assert.equal(opens, 1); assert.equal(f.text().includes("Manage local runtimes"), false);
+  f.button("Install in Settings… ↗").props.onClick(); f.render();
+  assert.equal(opens, 1); assert.equal(f.text().includes("Install in Settings"), false);
 });
 
 test("available binding hides detected discovery cards; listModels failures surface the error", async () => {
@@ -204,4 +206,83 @@ test("available binding hides detected discovery cards; listModels failures surf
   assert.ok(fail.text().includes("codex model inventory failed"));
   const alert = fail.all().find(node => node.type === "p" && node.props?.role === "alert");
   assert.ok(alert); assert.ok(fail.text().includes("codex model inventory failed"));
+});
+
+test("applying the current runtime never opens a keep/fresh confirmation", async () => {
+  const f = mount(); await f.flush();
+  f.picker().props.onApply("pi"); f.render();
+  assert.equal(f.dialog(), undefined); assert.deepEqual(f.changes, []);
+});
+
+for (const kind of ["main", "colleague"]) test(kind + " inventory failure keeps the same disabled model controls and rescan repairs them", async () => {
+  let broken = true, scans = 0;
+  const f = mount({ listModels: async runtimeId => {
+    if (broken) throw new Error("fixture inventory unavailable");
+    return { runtimeId, revision: 4, selectedModelId: "one", models: [{ id: "one", label: "Recovered model" }] };
+  }, onRescan: async () => { scans++; broken = false; } });
+  f.render({ agent: { ...f.props().agent, kind }, workspace: { ...f.props().workspace,
+    runtimeOptions: [...f.props().workspace.runtimeOptions, { id: "claude", label: "Claude Code", available: false, reason: "not_installed" }],
+    runtimes: { options: [{ runtimeId: "claude", label: "Claude Code", state: "detected", registered: false, fingerprint: "fixture" }] } } });
+  await f.flush();
+  assert.ok(f.text().includes("fixture inventory unavailable"));
+  assert.equal(f.all().find(node => node.type === "select").props.disabled, true);
+  assert.equal(f.button("Apply model").props.disabled, true);
+  assert.equal(f.text().includes("Register for binding"), false);
+  assert.equal(f.text().includes("Install in Settings"), false);
+  const rescan = f.button("Rescan local runtimes");
+  assert.equal(rescan.props.className, "vg-runtime-rescan");
+  rescan.props.onClick(); await f.flush();
+  assert.equal(scans, 1);
+  assert.equal(f.all().find(node => node.type === "select").props.disabled, false);
+  assert.ok(f.text().includes("Recovered model"));
+  assert.equal(f.text().includes("Register for binding"), false);
+  assert.equal(f.text().includes("Install in Settings"), false);
+  assert.ok(f.picker()); assert.equal(f.button("Rescan local runtimes").props.className, rescan.props.className);
+});
+
+test("failure recovery links only the current missing installation, never integrity or inventory", async () => {
+  for (const reason of ["not_registered", "not_installed", "integrity_failed", "inventory_failed", "adapter_pending_p05"]) {
+    const f = mount();
+    f.render({ workspace: { ...f.props().workspace,
+      runtimeOptions: [{ id: "pi", label: "Pi", available: false, reason }, { id: "claude", label: "Claude Code", available: false, reason: "not_installed" }],
+      runtimes: { options: [{ runtimeId: "pi", label: "Pi", state: "detected", registered: false, fingerprint: "fixture" }] } } });
+    await f.flush();
+    const missing = reason === "not_registered" || reason === "not_installed";
+    assert.equal(f.text().includes("Install in Settings"), missing, reason);
+    assert.equal(f.text().includes("Register for binding"), missing, reason);
+    assert.equal(f.all().find(node => node.type === "select").props.disabled, true, reason);
+    const actions = f.all().find(node => node.props?.className === "vg-runtime-recovery-actions");
+    const buttons = actions.props.children.flat().filter(Boolean);
+    assert.equal(buttons[0].props.className, "vg-runtime-rescan");
+    if (missing) assert.equal(buttons[1].props.className, "vg-runtime-install");
+  }
+});
+
+test("a missing local installation without registry options still offers the install escape", async () => {
+  const f = mount({ agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" },
+    runtime: { id: "agy", label: "Antigravity", available: false } }, workspace: { workspaceId: "fixture", resourceGeneration: "g1", runtimeOptions: [],
+    runtimes: { options: [{ runtimeId: "agy", label: "Antigravity", state: "not_installed", registered: false }] } } });
+  await f.flush();
+  assert.ok(f.text().includes("Antigravity · No usable installation found"));
+  assert.ok(f.text().includes("Install in Settings"));
+  assert.deepEqual(f.requests, []);
+});
+
+test("recovery actions use a full-width brand primary over a text secondary with a 10px gap", () => {
+  const css = readFileSync(new URL("../src/violet-workspace.css", import.meta.url), "utf8");
+  assert.match(css, /\.vg-runtime-recovery-actions\{display:grid;grid-template-columns:minmax\(0,1fr\);gap:10px\}/);
+  assert.match(css, /\.vg-runtime-access \.vg-runtime-rescan\{width:100%;background:#7C3AED;border-color:#7C3AED;color:#fff/);
+  assert.match(css, /\.vg-runtime-access \.vg-runtime-install\{[^}]*background:transparent/);
+  assert.match(css, /\.vg-runtime-access button:disabled\{[^}]*opacity:\.45/);
+});
+
+test("rescan invalidates an older inventory response even if the rescan fails", async () => {
+  const pending = deferred();
+  const f = mount({ listModels: () => pending.promise, onRescan: async () => { throw new Error("fixture rescan failed"); } });
+  f.button("Rescan local runtimes").props.onClick(); await f.flush();
+  pending.resolve({ runtimeId: "pi", revision: 1, selectedModelId: "old", models: [{ id: "old", label: "Stale model" }] });
+  await f.flush();
+  assert.equal(f.all().find(node => node.type === "select").props.disabled, true);
+  assert.ok(f.text().includes("fixture rescan failed"));
+  assert.equal(f.text().includes("Stale model"), false);
 });

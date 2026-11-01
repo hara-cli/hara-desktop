@@ -70,6 +70,21 @@ test("answers bind the displayed question, scope and nonce, and leave an unrelat
   assert.equal(a.calls.some(call => /session\.(send|resume)$/.test(call.method)), false);
 });
 
+test("inventory failure blocks new runs while preserving the existing question answer path", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("Keep this draft");
+  const request = f.rpc.request;
+  f.rpc.request = async (method, params) => {
+    if (method === "workspace.runtime.listModels") throw new Error("fixture inventory failed");
+    return request(method, params);
+  };
+  await assert.rejects(f.model.listRuntimeModels("pi"), /fixture inventory failed/);
+  assert.equal(f.model.getSnapshot().runtimeBlocked, true);
+  await f.model.answer(q.id, "Beta");
+  assert.equal(f.calls.filter(row => row.method === "workspace.session.answer").length, 1);
+  assert.equal(f.calls.some(row => /session\.(send|resume)$/.test(row.method)), false);
+  assert.equal(f.model.getSnapshot().draft, "Keep this draft");
+});
+
 test("ordinary send, empty answers, continue commands and stale questions never dispatch", async () => {
   const a = fixture(); await a.ready(); a.model.setDraft("Guess");
   await a.model.send(); await a.model.send(true); await a.model.answer(q.id, " "); await a.model.answer(q.id, "/continue");

@@ -58,7 +58,9 @@ test("only an unavailable registered runtime offers one directory deep link", ()
   const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: false,
     onClose() {}, onRefresh() {}, listModels: async () => { throw new Error("must not read unbound models"); },
     async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
-  assert.equal((html.match(/Manage local runtimes/g) ?? []).length, 1);
+  assert.equal((html.match(/Install in Settings/g) ?? []).length, 1);
+  assert.match(html, /<aside[^>]*id="workspace-inspector"[\s\S]*class="vg-runtime-recovery-actions"/);
+  assert.match(html, /class="vg-runtime-rescan"[\s\S]*class="vg-runtime-install"/);
   assert.doesNotMatch(html, /not-this-bot|Open model settings/);
 });
 
@@ -69,7 +71,24 @@ test("directory deep link is limited to not_registered and not_installed", () =>
     const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: false,
       onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "codex", revision: 1, selectedModelId: null, models: [] }),
       async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
-    assert.equal(html.includes("Manage local runtimes"), reason === "not_registered" || reason === "not_installed", reason);
+    assert.equal(html.includes("Install in Settings"), reason === "not_registered" || reason === "not_installed", reason);
+  }
+});
+
+test("main and colleague inspectors retain identical visible, disabled same-value Apply controls", () => {
+  for (const kind of ["main", "colleague"]) {
+    const agent = { agentId: kind, kind, state: "active", configRevision: 2, agentEpoch: 1,
+      identity: { displayName: kind === "main" ? "Hara" : "Dora" }, runtime: { id: "codex", label: "Codex", available: true } };
+    const workspace = { runtimeOptions: [{ id: "codex", label: "Codex", available: true }, { id: "agy", label: "Antigravity", available: false, reason: "not_installed" }],
+      connections: { defaultConnectionId: null, connections: [] }, runtimes: { options: [{ runtimeId: "agy", label: "Antigravity", state: "detected", registered: false }] } };
+    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: false,
+      onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "codex", revision: 1, selectedModelId: null, models: [] }),
+      async onApplyRuntime() {}, async onApplyModel() {}, async onRescan() {}, async onRegisterRuntime() {}, onRuntimeDirectory() {}, async onSaveProfile() {} }));
+    assert.match(html, /<select[^>]*aria-label="Runtime"/);
+    assert.match(html, /<button[^>]*disabled=""[^>]*>Apply Runtime<\/button>/);
+    assert.match(html, /Rescan local runtimes/);
+    assert.match(html, /<select[^>]*aria-label="This colleague&#x27;s model"[^>]*disabled=""/);
+    assert.doesNotMatch(html, /Install in Settings|Register for binding|Antigravity detected/);
   }
 });
 

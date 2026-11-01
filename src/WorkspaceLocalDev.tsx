@@ -220,7 +220,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
 
   useEffect(() => { setBrowser(false); }, [scope]);
   const connect = () => production ? (setSettingsPage("connections"), setSettings(true)) : realKey ? model.addApprovedConnection() : model.addSynthetic();
-  const canSend = Boolean(workspace && hasConnection && view.draft.trim() && !view.sending && !view.runtimeChanging && !busy && !view.pendingUnknown && !disconnected);
+  const canSend = Boolean(workspace && hasConnection && (!view.runtimeBlocked || workspace.conversation.pendingQuestion) && view.draft.trim() && !view.sending && !view.runtimeChanging && !busy && !view.pendingUnknown && !disconnected);
   // One composer: a pending sync question takes the draft as its answer; a lone async ask takes it while the run continues.
   const question = workspace?.conversation.pendingQuestion ?? null;
   const asyncAsks = workspace && model.supportsAsyncQuestions?.() === true ? workspaceAsyncAsks(workspace.conversation) : [];
@@ -435,7 +435,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
             {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified"><CheckCircleIcon className="hico" />{t("ws.verified")} <span>{t("ws.verified.note")}</span></p> : null}
             <WorkspaceTaskRecovery conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
-              continueDisabled={!hasConnection || busy} dismissedIdentity={view.dismissedRecoveryIdentity}
+              continueDisabled={!hasConnection || view.runtimeBlocked || busy} dismissedIdentity={view.dismissedRecoveryIdentity}
               onContinue={() => void model.send(true)} onRepair={() => { setSettingsPage("connections");setSettings(true); }}
               onDismiss={() => model.dismissRecovery()} />
             {question ? <WorkspaceUserQuestion key={`${scope}:${question.id}`} conversation={workspace.conversation} t={t}
@@ -452,6 +452,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         <span className="hs-conn">{t("ws.composer.connection")}</span>{busy ? <button className="hs-stop" onClick={() => void model.cancel()} disabled={Boolean(disconnected) || workspace.conversation.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button>
           : view.pendingUnknown ? <button className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={Boolean(disconnected)}>{t("ws.composer.verify")}</button> : <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canSend} aria-label={t("ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>}
           {asyncTarget ? <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canAnswerAsync} aria-label={t("ws.question.async.send")}><PaperAirplaneIcon className="hico" /></button> : null}</div>
+        {view.runtimeBlocked && !question && !busy ? <p role="status">{t("ws.runtimeAccess.runBlocked")} <button type="button" className="hs-btn sec" onClick={() => setInspector(true)}>{t("ws.runtimeAccess.openInspector")}</button></p> : null}
         <p className="hs-hint"><span>{question ? t("ws.question.composerHint") : t(production ? "ws.composer.hint.local" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</span><span>{t("ws.composer.hint.keys")}</span></p></footer> : null}
     </main>
     {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} initialProfileOpen={renameAgentId === agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); }} onRefresh={() => void refreshFeatures()}

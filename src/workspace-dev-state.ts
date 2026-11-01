@@ -54,7 +54,7 @@ interface PendingMessage { method: "workspace.session.send" | "workspace.session
   message: string; state: "sending" | "unknown"; fromDraft?: boolean }
 export type WorkspaceSessionRestart = "keep" | "fresh";
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
-  localHistoryStart: number; runtimeChanging: boolean;
+  localHistoryStart: number; runtimeChanging: boolean; runtimeBlocked: boolean;
   roster: WorkspaceDevAgent[];
   workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string; dismissedRecoveryIdentity: string | null }
 export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
@@ -68,11 +68,14 @@ export interface WorkspaceFeatureView { revision: number; workspaceId: string; s
   scheduler?: { schedules: { id: string; nextRunAt: number | null; awaitingHandoff: boolean; lastRun: { state: string; reason: string | null; occurredAt: number } | null }[] } }
 
 export class WorkspaceDevModel {
-  private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, localHistoryStart: 0, runtimeChanging: false, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "", dismissedRecoveryIdentity: null };
+  private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, localHistoryStart: 0, runtimeChanging: false, runtimeBlocked: false, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "", dismissedRecoveryIdentity: null };
   private readonly listeners = new Set<() => void>();
   private readonly drafts = new Map<string, string>();
   private readonly localHistoryStarts = new Map<string, { sessionId: string; offset: number; boundary: string }>();
   private readonly runtimeChanges = new Set<string>();
+  private readonly runtimeModelFailures = new Set<string>();
+  private readonly runtimeModelRequests = new Map<string, number>();
+  private runtimeModelRequest = 0;
   /** Per-agent suppress of the Soft Dark resume card after clear / new chat / explicit dismiss. */
   private readonly dismissedRecovery = new Map<string, string>();
   private readonly pending = new Map<string, PendingMessage>();
@@ -116,10 +119,18 @@ export class WorkspaceDevModel {
     // Scoped pending records own the dispatch latch, including when returning to an earlier view.
     const key = this.key();
     this.view.runtimeChanging = this.runtimeChanges.has(key);
+    const workspace = this.view.workspace, agent = workspace?.agents.find(row => row.agentId === workspace.selectedAgentId);
+    this.view.runtimeBlocked = Boolean(agent && (!agent.runtime.available
+      || workspace?.runtimeOptions && !workspace.runtimeOptions.some(row => row.id === agent.runtime.id && row.available)
+      || this.runtimeModelFailures.has(this.runtimeBindingKey())));
     if (this.questionPauses.has(key) || this.pending.get(key)?.state === "sending") this.view.sending = true;
     for (const listener of this.listeners) listener();
   }
   private key(snapshot = this.view.workspace): string { return snapshot ? JSON.stringify([snapshot.workspaceId, snapshot.resourceGeneration, snapshot.selectedAgentId]) : ""; }
+  private runtimeBindingKey(): string {
+    const workspace = this.view.workspace, agent = workspace?.agents.find(row => row.agentId === workspace.selectedAgentId);
+    return agent ? JSON.stringify([this.key(), agent.runtime.id, agent.configRevision, agent.agentEpoch]) : "";
+  }
   private valid(snapshot: WorkspaceDevSnapshot, workspaceId: string, agentId?: string): void {
     if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== this.executionMode) || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
       || (agentId && snapshot.selectedAgentId !== agentId) || !Array.isArray(snapshot.agents)
@@ -288,16 +299,38 @@ export class WorkspaceDevModel {
   async importConnection(sourceId: string): Promise<void> {
     await this.workspaceRequest("workspace.connection.import", { sourceId, approved: true, expectedRevision: this.view.workspace!.connections.revision }); await this.refresh();
   }
-  async detectRuntimes(): Promise<void> { await this.workspaceRequest("workspace.runtime.detect"); await this.refresh(); }
+  async detectRuntimes(): Promise<void> {
+    const key = this.runtimeBindingKey(), epoch = this.epoch;
+    this.runtimeModelRequests.set(key, ++this.runtimeModelRequest);
+    try { await this.workspaceRequest("workspace.runtime.detect"); await this.refresh(); }
+    catch (cause) {
+      if (epoch === this.epoch && key === this.runtimeBindingKey()) { this.runtimeModelFailures.add(key); this.update({}); }
+      throw cause;
+    }
+  }
   async registerLocalRuntime(runtimeId: string, fingerprint: string, workspaceId: string, generation: string): Promise<void> {
     if (this.view.workspaceId !== workspaceId || this.view.workspace?.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.localConfirmationExpired");
     await this.workspaceRequest("workspace.runtime.registerLocal", { runtimeId, fingerprint, approved: true }); await this.refresh();
   }
   async listRuntimeModels(runtimeId: string): Promise<WorkspaceRuntimeModels> {
-    const result = await this.workspaceRequest<WorkspaceRuntimeModels>("workspace.runtime.listModels", { runtimeId });
-    if (result.runtimeId !== runtimeId || !Number.isSafeInteger(result.revision) || !Array.isArray(result.models)
-      || result.models.some(row => typeof row.id !== "string" || typeof row.label !== "string")) throw new WorkspaceViewError("ws.notice.invalidView");
-    return result;
+    const workspace = this.view.workspace, epoch = this.epoch, key = this.runtimeBindingKey();
+    const bound = workspace?.agents.find(row => row.agentId === workspace.selectedAgentId)?.runtime.id === runtimeId;
+    const request = ++this.runtimeModelRequest;
+    if (bound) this.runtimeModelRequests.set(key, request);
+    const current = () => bound && epoch === this.epoch && key === this.runtimeBindingKey() && this.runtimeModelRequests.get(key) === request;
+    try {
+      const result = await this.workspaceRequest<WorkspaceRuntimeModels>("workspace.runtime.listModels", { runtimeId });
+      if (result.runtimeId !== runtimeId || !Number.isSafeInteger(result.revision) || !Array.isArray(result.models)
+        || result.models.some(row => typeof row.id !== "string" || typeof row.label !== "string")) throw new WorkspaceViewError("ws.notice.invalidView");
+      if (current()) {
+        if (result.models.length) this.runtimeModelFailures.delete(key); else this.runtimeModelFailures.add(key);
+        this.update({});
+      }
+      return result;
+    } catch (cause) {
+      if (current()) { this.runtimeModelFailures.add(key); this.update({}); }
+      throw cause;
+    }
   }
   async selectRuntimeModel(runtimeId: string, modelId: string, expectedRevision: number): Promise<void> {
     await this.workspaceRequest("workspace.runtime.selectModel", { runtimeId, modelId, expectedRevision });
@@ -424,6 +457,8 @@ export class WorkspaceDevModel {
     if (!workspace || !key || this.runtimeChanges.has(key) || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
     const retained = this.pending.get(key);
     if (retained || this.questionPauses.has(key)) return;
+    // Desk preflight: retain drafts and pending questions; Core still owns run admission.
+    if (!answer && this.view.runtimeBlocked) { this.update({ error: "ws.runtimeAccess.runBlocked" }); return; }
     if (!workspace.connections.defaultConnectionId) { this.update({ error: this.syntheticOnly ? "ws.notice.syntheticRequired" : "ws.notice.connectionRequired" }); return; }
     const question = workspace.conversation.pendingQuestion;
     if (question && (!answer || answer.questionId !== question.id)) { this.update({ error: "ws.question.answerRequired" }); return; }

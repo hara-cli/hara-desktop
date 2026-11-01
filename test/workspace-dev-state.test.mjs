@@ -22,6 +22,83 @@ function fixture() {
   const model = new WorkspaceDevModel(rpc, () => `nonce-${++serial}`);
   return { model, calls, handlers, ready: () => model.selectWorkspace("A") };
 }
+
+for (const agentId of ["main", "coder"]) test(agentId + " inventory failure softly blocks start/resume, preserves drafts and recovers after a successful retry", async () => {
+  const f = fixture(); await f.ready();
+  if (agentId !== "main") await f.model.selectAgent(agentId);
+  f.model.setDraft("Keep this draft");
+  f.handlers["workspace.runtime.listModels"] = () => { throw new Error("fixture inventory failed"); };
+  await assert.rejects(f.model.listRuntimeModels("pi"), /fixture inventory failed/);
+  await f.model.refresh();
+  assert.equal(f.model.getSnapshot().runtimeBlocked, true);
+  await f.model.send(); await f.model.send(true);
+  assert.equal(f.calls.some(row => /workspace\.session\.(send|resume)$/.test(row.method)), false);
+  assert.equal(f.model.getSnapshot().draft, "Keep this draft");
+  assert.equal(f.model.getSnapshot().error, "ws.runtimeAccess.runBlocked");
+  f.handlers["workspace.runtime.listModels"] = () => ({ runtimeId: "pi", revision: 1, selectedModelId: "ready", models: [{ id: "ready", label: "Ready" }] });
+  await f.model.listRuntimeModels("pi");
+  assert.equal(f.model.getSnapshot().runtimeBlocked, false);
+  await f.model.send();
+  assert.equal(f.calls.find(row => row.method === "workspace.session.send").params.agentId, agentId);
+});
+
+test("an unavailable binding blocks starts without requiring a model-inventory request", async () => {
+  const f = fixture(); await f.ready();
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), runtimeOptions: [{ id: "pi", available: false, reason: "integrity_failed" }] });
+  await f.model.refresh(); f.model.setDraft("Keep for repair"); await f.model.send();
+  assert.equal(f.model.getSnapshot().runtimeBlocked, true);
+  assert.equal(f.calls.some(row => row.method === "workspace.session.send"), false);
+  assert.equal(f.model.getSnapshot().draft, "Keep for repair");
+});
+
+test("late inventory failures cannot block another colleague, workspace or runtime binding", async () => {
+  for (const change of ["colleague", "workspace", "runtime"]) {
+    const f = fixture(), pending = defer(); await f.ready();
+    f.handlers["workspace.runtime.listModels"] = () => pending.promise;
+    const old = assert.rejects(f.model.listRuntimeModels("pi"), /old inventory/);
+    if (change === "colleague") await f.model.selectAgent("coder");
+    else if (change === "workspace") await f.model.selectWorkspace("B");
+    else {
+      f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), agents: agents.map(row => row.agentId === "main"
+        ? { ...row, configRevision: 3, runtime: { id: "codex", label: "Codex", available: true } } : row) });
+      await f.model.refresh();
+    }
+    pending.reject(new Error("old inventory")); await old;
+    assert.equal(f.model.getSnapshot().runtimeBlocked, false, change);
+  }
+});
+
+test("empty model catalogs block starts and the newest retry owns recovery", async () => {
+  const f = fixture(); await f.ready();
+  f.handlers["workspace.runtime.listModels"] = () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] });
+  await f.model.listRuntimeModels("pi"); assert.equal(f.model.getSnapshot().runtimeBlocked, true);
+  const old = defer(); f.handlers["workspace.runtime.listModels"] = () => old.promise;
+  const oldRequest = assert.rejects(f.model.listRuntimeModels("pi"), /stale failure/);
+  f.handlers["workspace.runtime.listModels"] = () => ({ runtimeId: "pi", revision: 2, selectedModelId: "ready", models: [{ id: "ready", label: "Ready" }] });
+  await f.model.listRuntimeModels("pi");
+  old.reject(new Error("stale failure")); await oldRequest;
+  assert.equal(f.model.getSnapshot().runtimeBlocked, false);
+});
+
+test("a failed rescan keeps drafts blocked until model inventory recovers", async () => {
+  const f = fixture(); await f.ready(); f.model.setDraft("Keep during rescan");
+  f.handlers["workspace.runtime.detect"] = () => { throw new Error("fixture detection failed"); };
+  await assert.rejects(f.model.detectRuntimes(), /fixture detection failed/);
+  assert.equal(f.model.getSnapshot().runtimeBlocked, true);
+  await f.model.send(); assert.equal(f.model.getSnapshot().draft, "Keep during rescan");
+  assert.equal(f.calls.some(row => row.method === "workspace.session.send"), false);
+});
+
+test("a failed rescan cannot be cleared by an earlier inventory success", async () => {
+  const f = fixture(), pending = defer(); await f.ready();
+  f.handlers["workspace.runtime.listModels"] = () => pending.promise;
+  const old = f.model.listRuntimeModels("pi");
+  f.handlers["workspace.runtime.detect"] = () => { throw new Error("fixture scan failed"); };
+  await assert.rejects(f.model.detectRuntimes(), /fixture scan failed/);
+  pending.resolve({ runtimeId: "pi", revision: 1, selectedModelId: "old", models: [{ id: "old", label: "Old inventory" }] });
+  await old;
+  assert.equal(f.model.getSnapshot().runtimeBlocked, true);
+});
 test("this bot's runtime and model actions use Workspace RPC with the exact agent fence", async () => {
   const f=fixture();await f.ready();
   const agent={...agents[1],configRevision:4,agentEpoch:2};
