@@ -22,7 +22,7 @@ export function parseRuntimeFailure(error: string | null | undefined, runtimeId?
   const index = error.indexOf(RUNTIME_FAILURE_MARKER);
   if (index < 0 || error.indexOf(RUNTIME_FAILURE_MARKER, index + RUNTIME_FAILURE_MARKER.length) >= 0) return null;
   const match = /^\{[^{}\r\n]{1,1024}\}/.exec(error.slice(index + RUNTIME_FAILURE_MARKER.length));
-  if (!match || (match[0].match(/"[^"\\]*"\s*:/g)?.length ?? 0) !== FIELDS.length) return null;
+  if (!match || match[0].includes("\\") || (match[0].match(/"[^"\\]*"\s*:/g)?.length ?? 0) !== FIELDS.length) return null;
   let row: Record<string, unknown>;
   try { row = JSON.parse(match[0]); } catch { return null; }
   if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).length !== FIELDS.length || !FIELDS.every(field => Object.prototype.hasOwnProperty.call(row, field))) return null;

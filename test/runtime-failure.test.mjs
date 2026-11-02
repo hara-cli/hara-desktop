@@ -124,3 +124,10 @@ test("far-future cooldown records safely fall back while expired history stays u
     assert.match(body, locale === "en" ? /uninstalled or not registered/ : locale === "zh-Hans" ? /尚未安装或尚未注册/ : /尚未安裝或尚未註冊/);
   }
 });
+
+test("escaped duplicate protocol keys cannot evade the closed diagnostic shape", () => {
+  const source = "hara_runtime_failure_v1=" + JSON.stringify({ runtime: "codex", kind: "runtime_failed", version: null,
+    loginSource: "unknown", homeMatchesAccount: null, elapsedMs: 0, retryAtMs: 0, consecutiveFailures: 0 });
+  const duplicate = source.replace('"runtime":"codex"', '"runtime":"claude","\\u0072untime":"codex"');
+  assert.equal(parseRuntimeFailure(duplicate, "codex"), null);
+});
