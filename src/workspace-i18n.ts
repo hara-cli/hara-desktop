@@ -665,6 +665,7 @@ export const WORKSPACE_EXTRA_KEYS = [
   ["ws.connectionModels.connectFirst", "Connect a model in this workspace first", "请先在本空间添加模型连接", "請先在本空間加入模型連接"],
   ["ws.connectionModels.upgrade", "Update Hara Core to list connection models", "更新 Hara 引擎后可列出连接模型", "更新 Hara 引擎後可列出連接模型"],
   ["ws.connectionModels.documented", "Documented list, not live", "文档列表，非实时", "文件列表，非即時"],
+  ["ws.connectionModels.unavailable", "Model list unavailable", "模型目录暂不可用", "模型目錄暫不可用"],
   ["ws.settings.detail.runtimes", "Review local runtimes and approve installations when needed.", "查看本机执行环境，按需批准安装。", "查看本機執行環境，按需批准安裝。"],
   ["ws.settings.detail.schedules", "Schedule work for Hara or a colleague. Results stay in this workspace.", "按时间交给 Hara 或同事执行；结果留在本空间对话。", "按時間交給 Hara 或同事執行；結果留在本空間對話。"],
   ["ws.settings.detail.skills", "Reviewed skill versions stay pinned to this workspace.", "启用的已审阅技能版本固定在本空间。", "啟用的已審閱技能版本固定在本空間。"],

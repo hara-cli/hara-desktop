@@ -110,8 +110,8 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     <section className="vg-context-card vg-p0-card vg-runtime-model-card"><h3>{t("ws.runtimeAccess.modelTitle")}</h3>
       {loading || scanning ? <p role="status">{t("ws.connectionModels.loading")}</p> : !models || !models.models.length ? <p role={option?.available ? "alert" : undefined}>{option?.available
         ? (modelError
-          ? <>{zh ? "模型目录暂不可用" : "Model list unavailable"} · {workspaceMessageText(t, modelError)}</>
-          : pi && !connection ? t("ws.connectionModels.connectFirst") : pi && !connectionModelSupported ? t("ws.connectionModels.upgrade") : (zh ? "模型目录暂不可用" : "Model list unavailable"))
+          ? <>{t("ws.connectionModels.unavailable")} · {workspaceMessageText(t, modelError)}</>
+          : pi && !connection ? t("ws.connectionModels.connectFirst") : pi && !connectionModelSupported ? t("ws.connectionModels.upgrade") : t("ws.connectionModels.unavailable"))
         : (zh ? "请先绑定可用引擎" : "Bind an available runtime first")}</p> : null}
       {models?.source === "documented" ? <p role="status" className="vg-muted">{t("ws.connectionModels.documented")}</p> : null}
       <label>{t("ws.runtimeAccess.model")}<select aria-label={t("ws.runtimeAccess.modelTitle")} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => { setSelected(event.target.value); setEffort(event.target.value === models?.selectedModelId ? models?.selectedEffort ?? "" : ""); }}>
