@@ -13,7 +13,7 @@ const snapshot = id => ({ workspaceId:id,resourceGeneration:`generation-${id}`,l
   approvals:[],connections:{revision:3,defaultConnectionId:"one",connections:[{id:"one",label:"Fixture",status:"active",provider:"openai",baseURL:"https://example.invalid/v1",defaultModel:"fake",keySaved:true}]},
   conversation:{history:[],state:"idle",usage:{modelCalls:0},runUsage:{modelCalls:0}} });
 function fixture() {
- const calls=[],handlers={}; const model=new WorkspaceDevModel({async request(method,params){calls.push({method,params});if(handlers[method])return handlers[method](params);
+ const calls=[],handlers={}; const model=new WorkspaceDevModel({supportsCapability: capability => capability === "workspace.connection-models.v1", async request(method,params){calls.push({method,params});if(handlers[method])return handlers[method](params);
  if(method==="workspace.list")return {revision:1,syntheticOnly:false,executionMode:"workspace",workspaces:["A","B"].map(workspaceId=>({workspaceId,active:true}))};return snapshot(params.workspaceId);}},()=>"fake-request",false,"workspace");
  return {model,calls,handlers};
 }
@@ -91,6 +91,22 @@ test("bound runtime lists and selects its own model with workspace generation an
   {method:"workspace.runtime.listModels",params:{workspaceId:"A",expectedGeneration:"generation-A",runtimeId:"codex"}},
   {method:"workspace.runtime.selectModel",params:{workspaceId:"A",expectedGeneration:"generation-A",runtimeId:"codex",modelId:"o3",expectedRevision:7}}]);
  assert.equal(f.calls.some(row=>row.method==="workspace.connection.select"),false);
+});
+test("Pi connection model list and selection use the same scoped connection route without a key",async()=>{
+ const f=fixture();await f.model.selectWorkspace("A");
+ f.handlers["workspace.connection.listModels"]=()=>({connectionId:"one",revision:3,source:"documented",selectedModelId:"fake",selectedEffort:null,
+   models:[{id:"qwen3.7-plus",label:"qwen3.7-plus",supportedReasoningEfforts:["off","high"]}]});
+ const listed=await f.model.listConnectionModels("main","one");
+ assert.equal(listed.source,"documented");assert.deepEqual(listed.models.map(row=>row.id),["qwen3.7-plus"]);
+ f.handlers["workspace.connection.select"]=()=>({selected:true});
+ await f.model.selectConnectionModel("one","qwen3.7-plus",listed.revision,"high");
+ assert.deepEqual(f.calls.filter(row=>row.method.startsWith("workspace.connection.")),[
+  {method:"workspace.connection.listModels",params:{workspaceId:"A",expectedGeneration:"generation-A",agentId:"main",connectionId:"one"}},
+  {method:"workspace.connection.select",params:{workspaceId:"A",expectedGeneration:"generation-A",connectionId:"one",modelId:"qwen3.7-plus",effort:"high",expectedRevision:3}}]);
+ assert(!JSON.stringify(f.calls).includes("apiKey"));
+ const source=read("src/WorkspaceRuntimeAccess.tsx");
+ assert.match(source,/listConnectionModels\(agent\.agentId, connection!\.id\)/);
+ assert.match(source,/onApplyConnectionModel\(models\.connectionId, selected, models\.revision/);
 });
 test("empty, invalid and stale runtime model results never fall back to connection selection",async()=>{
  const f=fixture();await f.model.selectWorkspace("A");

@@ -4,24 +4,31 @@ import { makeT } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import { WorkspaceAgentRuntimePicker } from "./AgentRuntimePicker";
 import { ShellDialog } from "./WorkspaceShell";
-import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceSessionRestart, RuntimeLoginSource } from "./workspace-dev-state";
+import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceConnectionModels, WorkspaceSessionRestart, RuntimeLoginSource } from "./workspace-dev-state";
 
-export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, onApplyRuntime, onApplyModel, onRescan, onRegisterRuntime, onRuntimeDirectory }: {
+type ModelCard = WorkspaceRuntimeModels & { source?: "live" | "documented"; connectionId?: string };
+
+export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory }: {
   agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; locale: "en" | "zh-Hans" | "zh-Hant"; compact?: boolean;
   listModels(runtimeId: string): Promise<WorkspaceRuntimeModels>;
+  listConnectionModels(agentId: string, connectionId: string): Promise<WorkspaceConnectionModels>;
+  connectionModelSupported: boolean;
   onApplyRuntime(runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart): Promise<void>;
   onApplyModel(runtimeId: string, modelId: string, revision: number, effort: string | null): Promise<void>;
+  onApplyConnectionModel(connectionId: string, modelId: string, revision: number, effort: string | null): Promise<void>;
   onRescan(): Promise<void>;
   onRegisterRuntime(runtimeId: string, fingerprint: string, loginSource: RuntimeLoginSource): Promise<void>;
   onRuntimeDirectory(): void;
 }) {
   const zh = locale !== "en", t = makeT(locale);
+  const pi = agent.runtime.id === "pi";
+  const connection = workspace.connections?.connections.find(row => row.id === (workspace.connections.activeConnectionId ?? workspace.connections.defaultConnectionId) && row.status === "active");
   const owner = JSON.stringify([workspace.workspaceId, workspace.resourceGeneration, agent.agentId]);
-  const scope = JSON.stringify([owner, agent.runtime.id, agent.configRevision, agent.agentEpoch]);
+  const scope = JSON.stringify([owner, agent.runtime.id, agent.configRevision, agent.agentEpoch, pi ? connection?.id : null, pi ? workspace.connections?.revision : null]);
   const liveScope = useRef(scope); liveScope.current = scope;
   const liveOptions = useRef(workspace.runtimeOptions); liveOptions.current = workspace.runtimeOptions;
   const option = workspace.runtimeOptions?.find(row => row.id === agent.runtime.id);
-  const [modelView, setModelView] = useState<{ scope: string; data: WorkspaceRuntimeModels } | null>(null);
+  const [modelView, setModelView] = useState<{ scope: string; data: ModelCard } | null>(null);
   const models = option?.available && modelView?.scope === scope && modelView.data.runtimeId === agent.runtime.id ? modelView.data : null;
   const [selected, setSelected] = useState("");
   const [effort, setEffort] = useState("");
@@ -52,17 +59,18 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     const request = ++modelRequest.current;
     const current = () => active && liveScope.current === scope && modelRequest.current === request;
     setModelView(null); setSelected(""); setEffort(""); setError(""); setInventoryError(""); setLoading(false);
-    if (!option?.available) return () => { active = false; };
+    if (!option?.available || pi && (!connection || !connectionModelSupported)) return () => { active = false; };
     setLoading(true);
     // Only the current binding supplies model authority. Picker drafts never query models.
-    void listModels(agent.runtime.id).then(result => {
+    const inventory = pi ? listConnectionModels(agent.agentId, connection!.id).then(result => ({ ...result, runtimeId: "pi" })) : listModels(agent.runtime.id);
+    void inventory.then(result => {
       if (!current()) return;
       if (result.runtimeId !== agent.runtime.id) throw new Error("ws.runtimeAccess.modelMismatch");
       setModelView({ scope, data: result }); setSelected(result.selectedModelId ?? ""); setEffort(result.selectedEffort ?? "");
     }).catch(cause => { if (current()) setInventoryError(cause instanceof Error ? cause.message : String(cause)); })
       .finally(() => { if (current()) setLoading(false); });
     return () => { active = false; };
-  }, [scope, option?.available, listModels, reload, locale]);
+  }, [scope, option?.available, listModels, listConnectionModels, connectionModelSupported, reload, locale]);
   const run = async (action: () => Promise<void>) => {
     if (saveFence.current) return;
     saveFence.current = true; setBusy(true); setError("");
@@ -75,13 +83,13 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   const effortLevels = selectedModel?.supportedReasoningEfforts ?? [];
   const currentLoginSource = installation?.loginSource ?? "isolated";
   if (compact) return <div className="vg-runtime-strip" aria-label={zh ? "本同事运行配置" : "This colleague runtime"}>
-    <span>Runtime <strong>{agent.runtime.label}</strong></span><span>{t("ws.runtimeAccess.model")} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? "—"}</strong></span>
+    <span>Runtime <strong>{agent.runtime.label}</strong></span><span>{t("ws.runtimeAccess.model")} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</strong></span>
     <span>{t("ws.runtimeAccess.effort")} <strong>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</strong></span><span>{t("ws.runtimeAccess.loginSource")} <strong>{t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</strong></span>
   </div>;
   return <div className="vg-runtime-access">
     <section className="vg-context-card vg-p0-card">
       <p>{t("ws.runtimeAccess.bound", { name: agent.identity.displayName, runtime: agent.runtime.label })}</p>
-      <dl className="vg-runtime-summary"><dt>{t("ws.runtimeAccess.model")}</dt><dd>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? "—"}</dd><dt>{t("ws.runtimeAccess.effort")}</dt><dd>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</dd><dt>{t("ws.runtimeAccess.loginSource")}</dt><dd>{agent.runtime.id === "pi" ? "—" : t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</dd></dl>
+      <dl className="vg-runtime-summary"><dt>{t("ws.runtimeAccess.model")}</dt><dd>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</dd><dt>{t("ws.runtimeAccess.effort")}</dt><dd>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</dd><dt>{t("ws.runtimeAccess.loginSource")}</dt><dd>{agent.runtime.id === "pi" ? "—" : t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</dd></dl>
       {installation?.registered && installation.loginSource === "isolated" && installation.fingerprint && installation.runtimeId !== "agy" ? <button disabled={busy} onClick={() => { setLoginSource("host"); setLocal({ scope, runtimeId: installation.runtimeId, label: installation.label, fingerprint: installation.fingerprint!, path: installation.path }); }}>{t("ws.runtimeAccess.switchHost")}</button> : null}
       {workspace.runtimeOptions ? <WorkspaceAgentRuntimePicker agent={agent} options={workspace.runtimeOptions} locale={zh ? "zh" : "en"} saving={busy}
         onApply={runtimeId => { if (runtimeId === agent.runtime.id) return; setRestart("keep"); setError(""); setChange({ scope, runtimeId }); }} /> : null}
@@ -100,11 +108,12 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
       </div>
     </section>
     <section className="vg-context-card vg-p0-card vg-runtime-model-card"><h3>{t("ws.runtimeAccess.modelTitle")}</h3>
-      {loading || scanning ? <p role="status">{zh ? "读取模型…" : "Loading models…"}</p> : !models || !models.models.length ? <p role={option?.available ? "alert" : undefined}>{option?.available
+      {loading || scanning ? <p role="status">{t("ws.connectionModels.loading")}</p> : !models || !models.models.length ? <p role={option?.available ? "alert" : undefined}>{option?.available
         ? (modelError
           ? <>{zh ? "模型目录暂不可用" : "Model list unavailable"} · {workspaceMessageText(t, modelError)}</>
-          : (zh ? "模型目录暂不可用" : "Model list unavailable"))
+          : pi && !connection ? t("ws.connectionModels.connectFirst") : pi && !connectionModelSupported ? t("ws.connectionModels.upgrade") : (zh ? "模型目录暂不可用" : "Model list unavailable"))
         : (zh ? "请先绑定可用引擎" : "Bind an available runtime first")}</p> : null}
+      {models?.source === "documented" ? <p role="status" className="vg-muted">{t("ws.connectionModels.documented")}</p> : null}
       <label>{t("ws.runtimeAccess.model")}<select aria-label={t("ws.runtimeAccess.modelTitle")} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => { setSelected(event.target.value); setEffort(event.target.value === models?.selectedModelId ? models?.selectedEffort ?? "" : ""); }}>
         <option value="">{zh ? "选择模型" : "Choose a model"}</option>{models?.models.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
       </select></label>
@@ -112,7 +121,10 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
       <button disabled={busy || loading || scanning || !models || !selected || (selected === models.selectedModelId && effort === (models.selectedEffort ?? "")) || !models.models.some(row => row.id === selected)}
           onClick={() => void run(async () => {
             if (!models || liveScope.current !== scope || models.runtimeId !== agent.runtime.id) throw new Error("ws.runtimeAccess.stale");
-            await onApplyModel(agent.runtime.id, selected, models.revision, effort || null);
+            if (pi) {
+              if (!models.connectionId || models.connectionId !== connection?.id) throw new Error("ws.runtimeAccess.stale");
+              await onApplyConnectionModel(models.connectionId, selected, models.revision, effort || null);
+            } else await onApplyModel(agent.runtime.id, selected, models.revision, effort || null);
             if (liveScope.current === scope) setReload(value => value + 1);
           })}>{zh ? "应用模型" : "Apply model"}</button>
       {modelError && (models || !option?.available) ? <p role="alert">{workspaceMessageText(t, modelError)}</p> : null}

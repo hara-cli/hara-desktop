@@ -62,7 +62,8 @@ export interface RuntimeApprovalCard { id: string; runtimeId: string; label: str
   maxBytes: number; expiresAt: string; target: { platform: string; arch: string }; workspaceId: string; resourceGeneration: string; viewEpoch: number }
 export interface WorkspaceRuntimeModels { runtimeId: string; revision: number; selectedModelId: string | null; selectedEffort?: string | null;
   models: { id: string; label: string; description?: string; recommended?: boolean; supportedReasoningEfforts?: string[]; defaultReasoningEffort?: string }[] }
-export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
+export interface WorkspaceConnectionModels extends Omit<WorkspaceRuntimeModels, "runtimeId"> { connectionId: string; source: "live" | "documented" }
+export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; defaultReasoning?: string | null; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
 export interface LegacyConnectionPreview { id: string; label: string; provider: "openai" | "anthropic"; baseURL: string; defaultModel: string; keySaved: boolean; source: string }
 export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean; executionDetails?: "brief" | "detailed"; collapseDetails?: boolean; updates?: UpdatePreferences }
 export interface WorkspaceFeatureView { revision: number; workspaceId: string; schedules: { id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; enabled: boolean; agentId?: string; task?: string; tz?: string }[]; skills: { id: string; description: string; enabled: boolean; version: string; availableVersion: string; locked: boolean; source: "global" | "private" }[];
@@ -104,6 +105,7 @@ export class WorkspaceDevModel {
   getSnapshot = (): WorkspaceDevView => this.view;
   supportsLocalChannels(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.v1") === true; }
   supportsColleagueSchedules(): boolean { return this.rpc.supportsCapability?.("workspace.colleague-schedules.v1") === true; }
+  supportsConnectionModels(): boolean { return this.rpc.supportsCapability?.("workspace.connection-models.v1") === true; }
   /** Core peer collaboration: @mention widening, channel_peer_wake and channel_sync. */
   supportsLocalChannelPeers(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.peer.v1") === true; }
   async localChannelRequest<T>(method: string, params: Record<string, unknown>): Promise<T> {
@@ -295,6 +297,20 @@ export class WorkspaceDevModel {
   async changeConnection(connectionId: string, remove = false): Promise<void> {
     await this.workspaceRequest(remove ? "workspace.connection.delete" : "workspace.connection.select", {
       connectionId, expectedRevision: this.view.workspace!.connections.revision, ...(remove ? { approved: true } : {}) });
+    await this.refresh();
+  }
+  async listConnectionModels(agentId: string, connectionId: string): Promise<WorkspaceConnectionModels> {
+    if (!this.supportsConnectionModels()) throw new WorkspaceViewError("ws.connectionModels.upgrade");
+    const result = await this.workspaceRequest<WorkspaceConnectionModels>("workspace.connection.listModels", { agentId, connectionId });
+    if (result.connectionId !== connectionId || !["live", "documented"].includes(result.source)
+      || !Number.isSafeInteger(result.revision) || !Array.isArray(result.models)
+      || result.models.some(row => typeof row.id !== "string" || typeof row.label !== "string"
+        || row.supportedReasoningEfforts !== undefined && (!Array.isArray(row.supportedReasoningEfforts)
+          || row.supportedReasoningEfforts.some(level => typeof level !== "string")))) throw new WorkspaceViewError("ws.notice.invalidView");
+    return result;
+  }
+  async selectConnectionModel(connectionId: string, modelId: string, expectedRevision: number, effort: string | null): Promise<void> {
+    await this.workspaceRequest("workspace.connection.select", { connectionId, modelId, effort, expectedRevision });
     await this.refresh();
   }
   async legacyConnections(): Promise<LegacyConnectionPreview[]> { return this.workspaceRequest("workspace.connection.legacy"); }

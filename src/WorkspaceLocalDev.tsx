@@ -138,6 +138,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const channelRouteSelection = useRef<string | null>(null);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
   const listBotModels = useCallback((runtimeId: string) => model.listRuntimeModels(runtimeId), [model]);
+  const listConnectionModels = useCallback((agentId: string, connectionId: string) => model.listConnectionModels(agentId, connectionId), [model]);
   const colleagues = useMemo(() => agents.filter(row => row.kind === "colleague" && row.state !== "archived"), [agents]);
   const shell = useWorkspaceOverview(model, workspace);
   const scope = workspace ? JSON.stringify([workspace.workspaceId, workspace.resourceGeneration]) : "";
@@ -458,8 +459,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         <p className="hs-hint"><span>{question ? t("ws.question.composerHint") : t(production ? "ws.composer.hint.local" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</span><span>{t("ws.composer.hint.keys")}</span></p></footer> : null}
     </main>
     {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} initialProfileOpen={renameAgentId === agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); }} onRefresh={() => void refreshFeatures()}
-      listModels={listBotModels} onApplyRuntime={(runtimeId, sessionRestart) => model.setAgentRuntime(agent, runtimeId, sessionRestart)}
+      listModels={listBotModels} listConnectionModels={listConnectionModels} connectionModelSupported={model.supportsConnectionModels?.() === true} onApplyRuntime={(runtimeId, sessionRestart) => model.setAgentRuntime(agent, runtimeId, sessionRestart)}
       onApplyModel={(runtimeId, modelId, revision, effort) => model.selectRuntimeModel(runtimeId, modelId, revision, effort)}
+      onApplyConnectionModel={(connectionId, modelId, revision, effort) => model.selectConnectionModel(connectionId, modelId, revision, effort)}
       onRescan={() => model.detectRuntimes()} onRegisterRuntime={(runtimeId, fingerprint, loginSource) => model.registerLocalRuntime(runtimeId, fingerprint, workspace.workspaceId, workspace.resourceGeneration, loginSource)}
       onRuntimeDirectory={() => openSettingsPage("runtimes")} onSaveProfile={profile => model.updateAgentPersona(agent, profile)}
       onToggle={(schedule) => updateColleagueSchedule("workspace.features.update", { kind: "schedule", id: schedule.id, enabled: !schedule.enabled }, schedule.agentId)}
