@@ -1,3 +1,4 @@
+import { runtimeVersionFor } from "./runtime-version-drift";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CheckCircleIcon, Cog6ToothIcon, GlobeAltIcon,
@@ -451,6 +452,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
             {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified"><CheckCircleIcon className="hico" />{t("ws.verified")} <span>{t("ws.verified.note")}</span></p> : null}
             <WorkspaceTaskRecovery conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
+              runtimeVersion={runtimeVersionFor(workspace.runtimes?.options, agent?.runtime.id)}
               runtimeId={agent?.runtime.id} loginSource={workspace.runtimes?.options.find(row => row.runtimeId === agent?.runtime.id)?.loginSource} onLogin={() => openSettingsPage("runtimes")} onRescan={() => void model.detectRuntimes().catch(() => {})}
               onRuntimeSettings={() => openSettingsPage("runtimes")}
               continueDisabled={!hasConnection || view.runtimeBlocked || busy} dismissedIdentity={view.dismissedRecoveryIdentity}

@@ -1,9 +1,11 @@
+import { RUNTIME_VERSION_KEYS } from "./runtime-version-i18n.ts";
 import { RUNTIME_STAGE_KEYS } from "./runtime-stage-i18n.ts";
 import { WORKSPACE_SETTINGS_KEYS } from "./workspace-settings-i18n.ts";
 import { VIOLET_KEYS } from "./violet-i18n.ts";
 
 // Shared shell keys in English, Simplified Chinese and Traditional Chinese.
 export const WORKSPACE_KEYS = [
+  ...RUNTIME_VERSION_KEYS,
   ...RUNTIME_STAGE_KEYS,
   ...VIOLET_KEYS,
   ["ws.question.step", "Saved step:", "当前卡点：", "目前卡點："],
