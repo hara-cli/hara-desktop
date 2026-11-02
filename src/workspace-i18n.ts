@@ -660,7 +660,7 @@ export const WORKSPACE_EXTRA_KEYS = [
   ["ws.settings.page.appearance", "Appearance & language", "外观与语言", "外觀與語言"],
   ["ws.settings.page.updates", "Software updates", "软件更新", "軟體更新"],
   ["ws.settings.detail.overview", "Each workspace is independent. Appearance and updates belong to this Mac.", "每个工作空间独立；外观与软件更新由这台 Mac 的所有空间共用。", "每個工作空間獨立；外觀與軟體更新由這台 Mac 的所有空間共用。"],
-  ["ws.settings.detail.connections", "Workspace connection catalog. Manage this bot's model in its Manage panel; running tasks keep their original connection.", "空间连接目录。本 bot 的模型请在「管理」栏选择；运行中的任务保留原连接。", "空間連接目錄。本 bot 的模型請在「管理」欄選擇；執行中的任務保留原連接。"],
+  ["ws.settings.detail.connections", "Workspace connection catalog. Choose Hara's or a colleague's model in its Manage panel; running tasks keep their original connection.", "空间连接目录。主 Hara 或同事的模型请在各自「管理」栏选择；运行中的任务保留原连接。", "空間連接目錄。主 Hara 或同事的模型請在各自「管理」欄選擇；執行中的任務保留原連接。"],
   ["ws.connectionModels.loading", "Loading models…", "读取模型…", "讀取模型…"],
   ["ws.connectionModels.connectFirst", "Connect a model in this workspace first", "请先在本空间添加模型连接", "請先在本空間加入模型連接"],
   ["ws.connectionModels.upgrade", "Update Hara Core to list connection models", "更新 Hara 引擎后可列出连接模型", "更新 Hara 引擎後可列出連接模型"],
