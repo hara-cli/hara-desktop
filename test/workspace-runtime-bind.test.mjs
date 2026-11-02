@@ -115,6 +115,23 @@ test("Pi connection catalog marks documented results and applies model with its 
   assert.deepEqual(f.models, [["primary", "pi-two", 7, "high"]]);
 });
 
+test("OpenCode model card omits effort and its registration card offers host login only", async () => {
+  const f = mount({ agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1,
+    identity: { displayName: "Hara" }, runtime: { id: "opencode", label: "OpenCode", available: false } },
+    workspace: { workspaceId: "fixture", resourceGeneration: "generation-1", conversation: { state: "completed", history: [] },
+      runtimeOptions: [{ id: "opencode", label: "OpenCode", available: false, reason: "not_registered" }],
+      runtimes: { options: [{ runtimeId: "opencode", label: "OpenCode", state: "detected", registered: false,
+        installed: true, fingerprint: "fixture", path: "/fixture/opencode", loginSource: "isolated" }] } } });
+  await f.flush();
+  f.button("Register for binding").props.onClick(); f.render();
+  const radios = f.all().filter(node => node.type === "input" && node.props.type === "radio" && node.props.name === "inspector-login-source");
+  assert.equal(radios.length, 1);
+  assert.equal(radios[0].props.checked, true);
+  assert.equal(f.text().includes("Reasoning effort"), false);
+  f.button("Confirm registration").props.onClick(); await f.flush();
+  assert.deepEqual(f.registrations, [["opencode", "fixture", "host"]]);
+});
+
 for (const restart of ["keep", "fresh"]) test("confirmation " + restart + " refreshes only the successfully bound runtime's models", async () => {
   const f = mount(); await f.flush();
   f.picker().props.onApply("codex"); f.render();
