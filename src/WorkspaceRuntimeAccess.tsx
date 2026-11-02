@@ -7,6 +7,13 @@ import { ShellDialog } from "./WorkspaceShell";
 import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceConnectionModels, WorkspaceSessionRestart, RuntimeLoginSource } from "./workspace-dev-state";
 
 type ModelCard = WorkspaceRuntimeModels & { source?: "live" | "documented"; connectionId?: string };
+const DEFAULT_EFFORT_ORDER = ["off", "minimal", "low", "medium"] as const;
+function defaultEffort(levels: readonly string[] | undefined): string {
+  for (let index = DEFAULT_EFFORT_ORDER.length - 1; index >= 0; index--) {
+    if (levels?.includes(DEFAULT_EFFORT_ORDER[index])) return DEFAULT_EFFORT_ORDER[index];
+  }
+  return "";
+}
 
 export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory }: {
   agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; locale: "en" | "zh-Hans" | "zh-Hant"; compact?: boolean;
@@ -114,10 +121,10 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
           : pi && !connection ? t("ws.connectionModels.connectFirst") : pi && !connectionModelSupported ? t("ws.connectionModels.upgrade") : (zh ? "模型目录暂不可用" : "Model list unavailable"))
         : (zh ? "请先绑定可用引擎" : "Bind an available runtime first")}</p> : null}
       {models?.source === "documented" ? <p role="status" className="vg-muted">{t("ws.connectionModels.documented")}</p> : null}
-      <label>{t("ws.runtimeAccess.model")}<select aria-label={t("ws.runtimeAccess.modelTitle")} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => { setSelected(event.target.value); setEffort(event.target.value === models?.selectedModelId ? models?.selectedEffort ?? "" : ""); }}>
+      <label>{t("ws.runtimeAccess.model")}<select aria-label={t("ws.runtimeAccess.modelTitle")} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => { setSelected(event.target.value); setEffort(event.target.value === models?.selectedModelId ? models?.selectedEffort ?? "" : agent.runtime.id === "opencode" ? "" : defaultEffort(models?.models.find(row => row.id === event.target.value)?.supportedReasoningEfforts)); }}>
         <option value="">{zh ? "选择模型" : "Choose a model"}</option>{models?.models.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
       </select></label>
-      {selected && agent.runtime.id !== "opencode" && (effortLevels.length ? <label>{t("ws.runtimeAccess.effort")}<select aria-label={t("ws.runtimeAccess.effort")} value={effort} disabled={busy || loading || scanning} onChange={event => setEffort(event.target.value)}><option value="">{t("ws.runtimeAccess.auto")}</option>{effortLevels.map(level => <option key={level} value={level}>{level}</option>)}</select></label> : <p>{t("ws.runtimeAccess.effortUnknown")}</p>)}
+      {selected && agent.runtime.id !== "opencode" && (effortLevels.length ? <label>{t("ws.runtimeAccess.effort")}<select aria-label={t("ws.runtimeAccess.effort")} value={effort} disabled={busy || loading || scanning} onChange={event => setEffort(event.target.value)}><option value="">{t("ws.runtimeAccess.auto")}</option>{effortLevels.map(level => <option key={level} value={level}>{level}</option>)}</select><small>{t("ws.runtimeAccess.effortSlow")}</small></label> : <p>{t("ws.runtimeAccess.effortUnknown")}</p>)}
       <button disabled={busy || loading || scanning || !models || !selected || (selected === models.selectedModelId && effort === (models.selectedEffort ?? "")) || !models.models.some(row => row.id === selected)}
           onClick={() => void run(async () => {
             if (!models || liveScope.current !== scope || models.runtimeId !== agent.runtime.id) throw new Error("ws.runtimeAccess.stale");

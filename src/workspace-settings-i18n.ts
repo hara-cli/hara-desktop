@@ -3,6 +3,7 @@ export const WORKSPACE_SETTINGS_KEYS = [
   ["ws.runtimeAccess.model", "Model", "模型", "模型"],
   ["ws.runtimeAccess.modelTitle", "This Hara colleague's model", "这位 Hara 同事的模型", "這位 Hara 同事的模型"],
   ["ws.runtimeAccess.effort", "Reasoning effort", "推理强度", "推理強度"],
+  ["ws.runtimeAccess.effortSlow", "Higher effort takes longer", "强度越高，回复越慢", "強度越高，回覆越慢"],
   ["ws.runtimeAccess.auto", "Automatic", "自动", "自動"],
   ["ws.runtimeAccess.effortUnknown", "This model does not report reasoning effort; the automatic level will be used.", "此模型未报告推理强度；将使用自动强度。", "此模型未報告推理強度；將使用自動強度。"],
   ["ws.runtimeAccess.loginSource", "Login source", "登录来源", "登入來源"],

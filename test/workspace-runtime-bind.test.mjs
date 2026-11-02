@@ -115,6 +115,23 @@ test("Pi connection catalog marks documented results and applies model with its 
   assert.deepEqual(f.models, [["primary", "pi-two", 7, "high"]]);
 });
 
+for (const [levels, expected] of [
+  [["low", "medium", "high", "max"], "medium"],
+  [["off", "low", "high"], "low"],
+]) test(`a new Codex model defaults to ${expected} when supported`, async () => {
+  const f = mount({ agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1,
+    identity: { displayName: "Hara" }, runtime: { id: "codex", label: "Codex", available: true } },
+  listModels: async () => ({ runtimeId: "codex", revision: 1, selectedModelId: "codex-one", selectedEffort: null,
+    models: [{ id: "codex-one", label: "Codex one" }, { id: "codex-two", label: "Codex two", supportedReasoningEfforts: levels }] }) });
+  await f.flush();
+  f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model")
+    .props.onChange({ target: { value: "codex-two" } }); f.render();
+  assert.ok(f.text().includes("Higher effort takes longer"));
+  assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "Reasoning effort").props.value, expected);
+  f.button("Apply model").props.onClick(); await f.flush();
+  assert.deepEqual(f.models, [["codex", "codex-two", 1, expected]]);
+});
+
 test("OpenCode model card omits effort and its registration card offers host login only", async () => {
   const f = mount({ agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1,
     identity: { displayName: "Hara" }, runtime: { id: "opencode", label: "OpenCode", available: false } },
