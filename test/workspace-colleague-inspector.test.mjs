@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +17,7 @@ const groupBundle = await build({ entryPoints: [fileURLToPath(new URL("../src/Wo
 const groupModule = { exports: {} };
 new Function("require", "module", "exports", groupBundle.outputFiles[0].text)(require, groupModule, groupModule.exports);
 
-test("right inspector renders only schedules owned by the selected colleague", () => {
+test("selected colleague inspector owns schedule management in all three locales", () => {
   const agent = { agentId: "dora", kind: "colleague", state: "idle", identity: { displayName: "Dora", title: "Design" }, runtime: { id: "pi", label: "Pi", available: true } };
   const features = { revision: 2, workspaceId: "fixture", skills: [], schedules: [
     { id: "dora-9", agentId: "dora", name: "Visual summary", enabled: true, schedule: { kind: "cron", expr: "0 9 * * 1-5" }, tz: "Asia/Taipei", task: "Summarize visuals" },
@@ -24,16 +25,27 @@ test("right inspector renders only schedules owned by the selected colleague", (
   ], scheduler: { schedules: [] } };
   const workspace = { runtimeOptions: [{ id: "pi", label: "Pi", available: true, recommended: true }, { id: "opencode", label: "OpenCode", available: false, reason: "adapter_pending_p05", recommended: false }],
     connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "sonnet" }] } };
-  const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features, locale: "zh-Hans", error: "", inert: false, supported: true,
-    onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] }),
-    async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
-  assert.match(html, /Dora · 管理/);
-  assert.match(html, /Runtime/);
-  assert.match(html, /Apply Runtime|应用 Runtime/);
-  assert.doesNotMatch(html, /sonnet|Open Runtime settings|Open model settings|管理本机引擎/);
-  assert.match(html, /Visual summary/);
-  assert.doesNotMatch(html, /Private other colleague schedule|Another task/);
-  assert.match(html, /本同事|定时/);
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features, locale, error: "", inert: false, supported: true,
+      onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] }),
+      async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
+    assert.match(html, locale === "en" ? /Manage Dora/ : /Dora · 管理/);
+    assert.match(html, /Runtime/);
+    assert.match(html, /Apply Runtime|应用 Runtime/);
+    assert.doesNotMatch(html, /sonnet|Open Runtime settings|Open model settings|管理本机引擎/);
+    assert.match(html, /Visual summary/);
+    assert.doesNotMatch(html, /Private other colleague schedule|Another task/);
+    for (const label of (locale === "en" ? ["Schedules", "Edit", "Pause", "Delete", "Create in chat; manage only this colleague here."]
+      : ["定时", "编辑", "停用", "删除", "在聊天里创建；这里只管理这位同事的定时。"])) assert.ok(html.includes(label), `${locale}: ${label}`);
+  }
+});
+
+test("workspace selected-colleague route retains schedule actions outside Settings", () => {
+  const shell = readFileSync(new URL("../src/WorkspaceLocalDev.tsx", import.meta.url), "utf8");
+  assert.match(shell, /showColleagueInspector && agent && workspace \? <WorkspaceColleagueInspector/);
+  for (const action of ["workspace.features.update", "workspace.schedule.save", "workspace.schedule.delete"]) {
+    assert.ok(shell.includes(action), `selected colleague schedule action: ${action}`);
+  }
 });
 
 test("main Hara shares the Runtime and model entry without colleague schedules", () => {

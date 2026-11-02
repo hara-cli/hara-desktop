@@ -114,7 +114,7 @@ test("real workspace screen preserves explicit resume and never opens a legacy s
   const html = renderScreen(view({ state: "blocked" })); assert.match(html, /上次任務尚未完成/); assert.match(html, /繼續原任務/);
   assert.doesNotMatch(html, /群组|MailboxSettings|WorkspaceCollaboration|WORKSPACE LAB/);
 });
-test("scoped schedules and skills remain reachable through Settings without legacy pages", () => {
+test("scoped skills remain reachable through Settings without legacy pages", () => {
   const html = renderScreen(view());assert.match(html,/aria-label="設定"/);
   assert.doesNotMatch(html,/wsd-feature-nav/);
   const source = read("src/WorkspaceLocalDev.tsx");
@@ -123,7 +123,8 @@ test("scoped schedules and skills remain reachable through Settings without lega
   assert.match(source, /\{settings \? <WorkspaceSettings/);
   assert.doesNotMatch(source, /className="wsd-settings"|setFeature/);
   const settings = read("src/WorkspaceSettings.tsx");
-  assert.match(settings, /"schedules", "skills"/);
+  assert.match(settings, /"connections", "runtimes", "skills"/);
+  assert.doesNotMatch(settings, /"schedules"/);
   assert.match(settings, /<WorkspaceFeaturePanel model=\{model\} workspace=\{workspace\} kind=\{page\}/);
   assert.doesNotMatch(source, /AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/);
 });

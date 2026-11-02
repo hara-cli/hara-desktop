@@ -47,7 +47,7 @@ test("all settings pages, model connection states, runtimes and appearance rende
   for (const locale of locales) {
     const t = makeT(locale), value = { workspaceId: "A", workspace, directory: { workspaces: [{ workspaceId: "A", label: workspace.label, active: true, kind: "team", role: "admin" }] }, error: "ws.connections.saveUnknown" };
     const model = { getSnapshot: () => value, subscribe: () => () => {} };
-    for (const page of ["overview", "connections", "runtimes", "schedules", "skills", "members", "general", "appearance", "updates"]) {
+    for (const page of ["overview", "connections", "runtimes", "skills", "members", "general", "appearance", "updates"]) {
       const html = render("SettingsContent", { model, mainModel: model, initialPage: page, root: "/synthetic", production: true,
         theme, updater: updater(updateView()), versionInfo: info, onClose() {}, onCreateSkill() {} }, locale);
       assert.ok(html.includes(escape(t(`ws.settings.page.${page}`))), `${locale} ${page}`);
