@@ -131,3 +131,13 @@ test("escaped duplicate protocol keys cannot evade the closed diagnostic shape",
   const duplicate = source.replace('"runtime":"codex"', '"runtime":"claude","\\u0072untime":"codex"');
   assert.equal(parseRuntimeFailure(duplicate, "codex"), null);
 });
+
+test("legacy auth-required records do not assert the host is signed out", () => {
+  const legacy = "codex Runtime failed (runtime_auth_required); 401 PRIVATE_ACCOUNT";
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const t = makeT(locale), html = render(h(WorkspaceTaskRecovery, props(legacy, locale)));
+    assert.ok(html.includes(t("ws.resume.runtime.runtime_auth_required.title")));
+    assert.match(html, locale === "en" ? /does not show whether login is missing or was rejected/ : locale === "zh-Hans" ? /无法确定是未登录还是认证被拒/ : /無法確定是未登入還是驗證遭拒/);
+    assert.doesNotMatch(html, /PRIVATE_ACCOUNT|reported that login is missing|报告尚未登录|回報尚未登入/);
+  }
+});
