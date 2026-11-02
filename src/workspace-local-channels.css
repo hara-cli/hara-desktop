@@ -46,3 +46,18 @@
 @container channel-chat (max-width:700px){.hs .hs-channel-header-actions .hs-ghost{font-size:0;gap:0}}
 @container channel-chat (max-width:520px){.hs .hs-head>.hs-ghost{font-size:0;gap:0}}
 @media(max-width:900px){.hs .hs-channel-header-actions .hs-ghost{font-size:0;gap:0}.hs .hs-channel-header-actions .hico{font-size:initial}}
+
+.hs .hs-channel-passed{margin:12px 0 20px;color:var(--muted);font-size:12px;line-height:1.6}
+.hs .hs-channel-passed>summary{width:fit-content;min-height:32px;padding:6px 8px;border-radius:var(--r-md);cursor:pointer}
+.hs .hs-channel-passed>summary:hover{background:var(--row-hover);color:var(--ink)}
+.hs .hs-channel-passed>ul{list-style:none;padding:4px 8px;margin:0;border-left:1px solid var(--line)}
+.hs .hs-channel-passed li{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:7px 0}
+.hs .hs-channel-passed li>span{display:grid;min-width:0;overflow-wrap:anywhere}
+.hs .hs-channel-passed strong{color:var(--ink);font-weight:500}
+.hs .hs-channel-passed small{font-size:12px}
+.hs .hs-channel-queue{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;max-width:720px;margin:0 auto 10px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-md);color:var(--muted);font-size:12px;line-height:1.6}
+.hs .hs-channel-queue strong{font-weight:500;color:var(--ink);margin-right:12px}
+.hs .hs-channel-queue p{margin:3px 0}
+.hs .hs-channel-queue small{font-size:11px}
+.hs .hs-channel-queue-actions{display:flex;gap:8px;flex-wrap:wrap}
+.hs .hs-channel-compose .hs-send:has(>span){width:auto;gap:6px;padding-inline:10px;flex:none}
