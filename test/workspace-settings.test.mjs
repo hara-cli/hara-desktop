@@ -73,6 +73,14 @@ test("detected runtimes offer workspace binding and missing runtimes alone offer
  assert.doesNotMatch(source,/model\.listRuntimeModels|model\.selectRuntimeModel|wsd-runtime-model-step/);
  assert.doesNotMatch(source,/model\.changeConnection|selectedConnection|runtime-model-connection/);
 });
+test("host-login Codex hides isolated sign-in guidance",()=>{
+ const base=snapshot("A");
+ const row={runtimeId:"codex",label:"Codex",registered:true,state:"local_registered",version:"1.2.3",fingerprint:"fixture",loginSource:"host"};
+ const host=render("Runtime",{model:{},workspace:{...base,runtimes:{options:[row],operations:[]}}});
+ assert.doesNotMatch(host,/查看獨立登入|Codex 獨立登入|codex login/);
+ const isolated=render("Runtime",{model:{},workspace:{...base,runtimes:{options:[{...row,loginSource:"isolated"}],operations:[]}}});
+ assert.notEqual(host,isolated);
+});
 test("bound runtime lists and selects its own model with workspace generation and runtime revision",async()=>{
  const f=fixture();await f.model.selectWorkspace("A");
  f.handlers["workspace.runtime.listModels"]=()=>({runtimeId:"codex",revision:7,selectedModelId:null,models:[{id:"o3",label:"o3"}]});
@@ -96,6 +104,12 @@ test("empty, invalid and stale runtime model results never fall back to connecti
  await assert.rejects(f.model.listRuntimeModels("codex"),/Runtime not bound/);
  assert.equal(f.calls.some(row=>row.method==="workspace.connection.select"),false);
  const source=read("src/WorkspaceRuntimeSettings.tsx");assert.doesNotMatch(source,/modelError|runtimeModels|selectedModelId/);
+});
+test("malformed reasoning capability cannot reach the Desktop effort picker",async()=>{
+ const f=fixture(); await f.model.selectWorkspace("A");
+ f.handlers["workspace.runtime.listModels"]=()=>({runtimeId:"codex",revision:1,selectedModelId:"o3",selectedEffort:null,
+  models:[{id:"o3",label:"o3",supportedReasoningEfforts:"high"}]});
+ await assert.rejects(f.model.listRuntimeModels("codex"),{messageKey:"ws.notice.invalidView"});
 });
 test("three-way appearance setting and scoped features are actual rendered controls",()=>{
  const html=render("WorkspaceThemeSettings",{theme:{preference:"system",settings:{readOnly:false},notice:"",change(){}}});

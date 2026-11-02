@@ -2,7 +2,7 @@ import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import type { WorkspaceDevAgent, WorkspaceFeatureView } from "./workspace-dev-state";
 import WorkspaceRuntimeAccess from "./WorkspaceRuntimeAccess";
-import type { WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceSessionRestart } from "./workspace-dev-state";
+import type { WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceSessionRestart, RuntimeLoginSource } from "./workspace-dev-state";
 import type { AgentRuntimeId } from "./client";
 import { WorkspaceAgentProfileSheet } from "./AgentProfileEditor";
 
@@ -24,9 +24,9 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   onDelete(schedule: Schedule): Promise<void>;
   listModels(runtimeId: string): Promise<WorkspaceRuntimeModels>;
   onApplyRuntime(runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart): Promise<void>;
-  onApplyModel(runtimeId: string, modelId: string, revision: number): Promise<void>;
+  onApplyModel(runtimeId: string, modelId: string, revision: number, effort: string | null): Promise<void>;
   onRescan(): Promise<void>;
-  onRegisterRuntime(runtimeId: string, fingerprint: string): Promise<void>;
+  onRegisterRuntime(runtimeId: string, fingerprint: string, loginSource: RuntimeLoginSource): Promise<void>;
   onRuntimeDirectory(): void;
   onSaveProfile(profile: { displayName: string; title: string; emoji: string; avatar: string }): Promise<void>;
 }) {

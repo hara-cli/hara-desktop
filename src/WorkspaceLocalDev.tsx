@@ -459,8 +459,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     </main>
     {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} initialProfileOpen={renameAgentId === agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); }} onRefresh={() => void refreshFeatures()}
       listModels={listBotModels} onApplyRuntime={(runtimeId, sessionRestart) => model.setAgentRuntime(agent, runtimeId, sessionRestart)}
-      onApplyModel={(runtimeId, modelId, revision) => model.selectRuntimeModel(runtimeId, modelId, revision)}
-      onRescan={() => model.detectRuntimes()} onRegisterRuntime={(runtimeId, fingerprint) => model.registerLocalRuntime(runtimeId, fingerprint, workspace.workspaceId, workspace.resourceGeneration)}
+      onApplyModel={(runtimeId, modelId, revision, effort) => model.selectRuntimeModel(runtimeId, modelId, revision, effort)}
+      onRescan={() => model.detectRuntimes()} onRegisterRuntime={(runtimeId, fingerprint, loginSource) => model.registerLocalRuntime(runtimeId, fingerprint, workspace.workspaceId, workspace.resourceGeneration, loginSource)}
       onRuntimeDirectory={() => openSettingsPage("runtimes")} onSaveProfile={profile => model.updateAgentPersona(agent, profile)}
       onToggle={(schedule) => updateColleagueSchedule("workspace.features.update", { kind: "schedule", id: schedule.id, enabled: !schedule.enabled }, schedule.agentId)}
       onSave={(schedule, values) => updateColleagueSchedule("workspace.schedule.save", { input: { id: schedule.id, name: values.name.trim(), schedule: { kind: "cron", expr: values.cron.trim() }, tz: values.tz.trim(), task: values.task.trim(), agentId: agent.agentId, enabled: schedule.enabled }, approved: true }, schedule.agentId)}

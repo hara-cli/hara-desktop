@@ -36,7 +36,7 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
   colleagueLimit?: number;
   inheritance?: WorkspaceInheritanceView;
   agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
-  runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string }[];
+  runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string; loginSource?: RuntimeLoginSource }[];
     operations: { id: string; runtimeId: string; state: string }[] };
   budget?: { maxTokens: number; maxRequests: number; requests: number; inputTokens: number; outputTokens: number; uncertainReservedTokens: number; paused: boolean };
   connections: { revision: number; defaultConnectionId: string | null; activeConnectionId?: string | null; readOnly?: boolean; recovered?: boolean; migrationPending?: boolean; unavailable?: boolean; connections: WorkspaceModelConnection[] };
@@ -53,14 +53,15 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
 interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume" | "workspace.session.answer"; payload: Record<string, unknown>;
   message: string; state: "sending" | "unknown"; fromDraft?: boolean }
 export type WorkspaceSessionRestart = "keep" | "fresh";
+export type RuntimeLoginSource = "host" | "isolated";
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
   localHistoryStart: number; runtimeChanging: boolean; runtimeBlocked: boolean;
   roster: WorkspaceDevAgent[];
   workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string; dismissedRecoveryIdentity: string | null }
 export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
   maxBytes: number; expiresAt: string; target: { platform: string; arch: string }; workspaceId: string; resourceGeneration: string; viewEpoch: number }
-export interface WorkspaceRuntimeModels { runtimeId: string; revision: number; selectedModelId: string | null;
-  models: { id: string; label: string; description?: string; recommended?: boolean }[] }
+export interface WorkspaceRuntimeModels { runtimeId: string; revision: number; selectedModelId: string | null; selectedEffort?: string | null;
+  models: { id: string; label: string; description?: string; recommended?: boolean; supportedReasoningEfforts?: string[]; defaultReasoningEffort?: string }[] }
 export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
 export interface LegacyConnectionPreview { id: string; label: string; provider: "openai" | "anthropic"; baseURL: string; defaultModel: string; keySaved: boolean; source: string }
 export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean; executionDetails?: "brief" | "detailed"; collapseDetails?: boolean; updates?: UpdatePreferences }
@@ -314,9 +315,9 @@ export class WorkspaceDevModel {
     if (result.runtimeId !== "codex" || !["posix", "powershell"].includes(result.shell) || typeof result.command !== "string" || !result.command.trim() || result.command.length > 32_768 || /[\r\n\0]/.test(result.command)) throw new Error("Invalid private Codex login guidance");
     return result;
   }
-  async registerLocalRuntime(runtimeId: string, fingerprint: string, workspaceId: string, generation: string): Promise<void> {
+  async registerLocalRuntime(runtimeId: string, fingerprint: string, workspaceId: string, generation: string, loginSource: RuntimeLoginSource = "host"): Promise<void> {
     if (this.view.workspaceId !== workspaceId || this.view.workspace?.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.localConfirmationExpired");
-    await this.workspaceRequest("workspace.runtime.registerLocal", { runtimeId, fingerprint, approved: true }); await this.refresh();
+    await this.workspaceRequest("workspace.runtime.registerLocal", { runtimeId, fingerprint, approved: true, loginSource }); await this.refresh();
   }
   async listRuntimeModels(runtimeId: string): Promise<WorkspaceRuntimeModels> {
     const workspace = this.view.workspace, epoch = this.epoch, key = this.runtimeBindingKey();
@@ -327,7 +328,11 @@ export class WorkspaceDevModel {
     try {
       const result = await this.workspaceRequest<WorkspaceRuntimeModels>("workspace.runtime.listModels", { runtimeId });
       if (result.runtimeId !== runtimeId || !Number.isSafeInteger(result.revision) || !Array.isArray(result.models)
-        || result.models.some(row => typeof row.id !== "string" || typeof row.label !== "string")) throw new WorkspaceViewError("ws.notice.invalidView");
+        || result.selectedEffort !== undefined && result.selectedEffort !== null && typeof result.selectedEffort !== "string"
+        || result.models.some(row => typeof row.id !== "string" || typeof row.label !== "string"
+          || row.supportedReasoningEfforts !== undefined && (!Array.isArray(row.supportedReasoningEfforts)
+            || row.supportedReasoningEfforts.some(level => typeof level !== "string"))
+          || row.defaultReasoningEffort !== undefined && typeof row.defaultReasoningEffort !== "string")) throw new WorkspaceViewError("ws.notice.invalidView");
       if (current()) {
         if (result.models.length) this.runtimeModelFailures.delete(key); else this.runtimeModelFailures.add(key);
         this.update({});
@@ -338,8 +343,8 @@ export class WorkspaceDevModel {
       throw cause;
     }
   }
-  async selectRuntimeModel(runtimeId: string, modelId: string, expectedRevision: number): Promise<void> {
-    await this.workspaceRequest("workspace.runtime.selectModel", { runtimeId, modelId, expectedRevision });
+  async selectRuntimeModel(runtimeId: string, modelId: string, expectedRevision: number, effort?: string | null): Promise<void> {
+    await this.workspaceRequest("workspace.runtime.selectModel", { runtimeId, modelId, expectedRevision, ...(effort !== undefined ? { effort } : {}) });
     await this.refresh();
   }
   async setAgentRuntime(agent: WorkspaceDevAgent, runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart = "keep"): Promise<void> {
@@ -393,10 +398,10 @@ export class WorkspaceDevModel {
     if (epoch !== this.epoch) throw new WorkspaceViewError("ws.notice.installViewChanged");
     return { ...card, workspaceId: workspace.workspaceId, resourceGeneration: workspace.resourceGeneration, viewEpoch: epoch };
   }
-  async approveRuntime(card: RuntimeApprovalCard, approved: boolean): Promise<void> {
+  async approveRuntime(card: RuntimeApprovalCard, approved: boolean, loginSource: RuntimeLoginSource = "host"): Promise<void> {
     const workspace = this.view.workspace;
     if (!workspace || workspace.workspaceId !== card.workspaceId || workspace.resourceGeneration !== card.resourceGeneration || card.viewEpoch !== this.epoch) throw new WorkspaceViewError("ws.notice.installScopeMismatch");
-    await this.rpc.request("workspace.runtime.approve", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, proposalId: card.id, approved });
+    await this.rpc.request("workspace.runtime.approve", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, proposalId: card.id, approved, loginSource });
     await this.refresh();
   }
   async cancelRuntime(operationId: string): Promise<void> {

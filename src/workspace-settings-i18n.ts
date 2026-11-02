@@ -1,5 +1,16 @@
 // Workspace settings copy. Keep notices as keys so an open page can change language.
 export const WORKSPACE_SETTINGS_KEYS = [
+  ["ws.runtimeAccess.model", "Model", "模型", "模型"],
+  ["ws.runtimeAccess.modelTitle", "This Hara colleague's model", "这位 Hara 同事的模型", "這位 Hara 同事的模型"],
+  ["ws.runtimeAccess.effort", "Reasoning effort", "推理强度", "推理強度"],
+  ["ws.runtimeAccess.auto", "Automatic", "自动", "自動"],
+  ["ws.runtimeAccess.effortUnknown", "This model does not report reasoning effort; the automatic level will be used.", "此模型未报告推理强度；将使用自动强度。", "此模型未報告推理強度；將使用自動強度。"],
+  ["ws.runtimeAccess.loginSource", "Login source", "登录来源", "登入來源"],
+  ["ws.runtimeAccess.host", "This Mac's login", "本机登录", "本機登入"],
+  ["ws.runtimeAccess.hostRecommended", "Use the Codex login on this Mac (recommended)", "使用本机已登录的 Codex（推荐）", "使用本機已登入的 Codex（建議）"],
+  ["ws.runtimeAccess.hostRecommendedRuntime", "Use the {runtime} login on this Mac (recommended)", "使用本机已登录的 {runtime}（推荐）", "使用本機已登入的 {runtime}（建議）"],
+  ["ws.runtimeAccess.isolated", "Separate login", "独立登录", "獨立登入"],
+  ["ws.runtimeAccess.switchHost", "Use this Mac's login", "改用本机登录", "改用本機登入"],
   ["ws.runtimeAccess.bound", "{name} · Bound to {runtime}", "{name} · 已绑定 {runtime}", "{name} · 已綁定 {runtime}"],
   ["ws.runtimeAccess.empty", "No usable runtime is listed. Install a supported local CLI, then rescan here.", "尚无可用引擎。请安装支持的本机 CLI，然后在这里重扫。", "尚無可用引擎。請安裝支援的本機 CLI，然後在這裡重新掃描。"],
   ["ws.runtimeAccess.detected", "{runtime} detected · Register it here, then bind this Hara colleague.", "已发现 {runtime} · 在此登记后，可绑定给这位 Hara 同事。", "已發現 {runtime} · 在此登記後，可綁定給這位 Hara 同事。"],

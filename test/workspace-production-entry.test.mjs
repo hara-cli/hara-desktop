@@ -51,7 +51,7 @@ test("runtime approval remains pinned to the original scope and single explicit 
   assert.equal(f.calls.filter(row => row.method === "workspace.runtime.approve").length, 0);
   await f.model.selectWorkspace("A"); await assert.rejects(f.model.approveRuntime(card, true), { messageKey: "ws.notice.installScopeMismatch" });
   const fresh = await f.model.proposeRuntime("codex"); await f.model.approveRuntime(fresh, false);
-  const call = f.calls.find(row => row.method === "workspace.runtime.approve"); assert.deepEqual(call.params, { workspaceId: "A", expectedGeneration: "generation-A", proposalId: "card-id", approved: false });
+  const call = f.calls.find(row => row.method === "workspace.runtime.approve"); assert.deepEqual(call.params, { workspaceId: "A", expectedGeneration: "generation-A", proposalId: "card-id", approved: false, loginSource: "host" });
   assert.equal(f.calls.filter(row => row.method === "workspace.runtime.approve").length, 1);
 });
 test("Pi-only package gate rejects obsolete native tools, optional dependency folders and false manifests", () => {

@@ -110,7 +110,7 @@ for (const restart of ["keep", "fresh"]) test("confirmation " + restart + " refr
   assert.equal(f.all().some(node => node.type === "option" && node.props.value === "pi-two"), false);
   f.all().find(node => node.type === "select").props.onChange({ target: { value: "codex-two" } }); f.render();
   f.button("Apply model").props.onClick(); await f.flush();
-  assert.deepEqual(f.models, [["codex", "codex-two", 3]]);
+  assert.deepEqual(f.models, [["codex", "codex-two", 3, null]]);
   assert.equal(f.requests.at(-1), "codex");
 });
 
@@ -133,7 +133,7 @@ test("empty, detected and missing have different guidance; rescan does not insta
   f.button("Register for binding").props.onClick(); f.render();
   assert.equal(f.registrations.length, 0); assert.ok(f.dialog());
   f.button("Confirm registration").props.onClick(); await f.flush();
-  assert.deepEqual(f.registrations, [["codex", "fixture-fingerprint"]]); assert.deepEqual(f.changes, []);
+  assert.deepEqual(f.registrations, [["codex", "fixture-fingerprint", "host"]]); assert.deepEqual(f.changes, []);
 });
 
 test("models arriving after a binding change cannot overwrite the new runtime", async () => {
@@ -191,7 +191,7 @@ test("available binding hides detected discovery cards; listModels failures surf
   assert.equal(f.text().includes("Claude Code detected"), false);
   assert.equal(f.text().includes("Antigravity detected"), false);
   assert.equal(f.text().includes("Register for binding"), false);
-  assert.ok(f.text().includes("This colleague's model"));
+  assert.ok(f.text().includes("This Hara colleague's model"));
   assert.equal(f.text().includes("This bot's model"), false);
   const heading = node => {
     if (Array.isArray(node)) return node.map(heading).join("");
@@ -285,4 +285,31 @@ test("rescan invalidates an older inventory response even if the rescan fails", 
   assert.equal(f.all().find(node => node.type === "select").props.disabled, true);
   assert.ok(f.text().includes("fixture rescan failed"));
   assert.equal(f.text().includes("Stale model"), false);
+});
+
+test("a selected model exposes only declared effort levels and applies model plus effort once", async () => {
+  const f = mount({ agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" }, runtime: { id: "codex", label: "Codex", available: true } },
+    listModels: async runtimeId => ({ runtimeId, revision: 7, selectedModelId: "known", selectedEffort: null,
+      models: [{ id: "known", label: "Known", supportedReasoningEfforts: ["low", "high"] }, { id: "unknown", label: "Unknown" }] }) });
+  await f.flush();
+  const effortPicker = () => f.all().find(node => node.type === "select" && node.props["aria-label"] === "Reasoning effort");
+  assert.ok(effortPicker());
+  assert.deepEqual(f.all().filter(node => node.type === "option" && ["low", "high"].includes(node.props.value)).map(node => node.props.value), ["low", "high"]);
+  effortPicker().props.onChange({ target: { value: "high" } }); f.render();
+  f.button("Apply model").props.onClick(); await f.flush();
+  assert.deepEqual(f.models, [["codex", "known", 7, "high"]]);
+  f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.onChange({ target: { value: "unknown" } }); f.render();
+  assert.equal(effortPicker(), undefined);
+  assert.ok(f.text().includes("does not report reasoning effort"));
+});
+
+test("an old isolated Codex binding offers an explicit host-login confirmation", async () => {
+  const f = mount({ agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" }, runtime: { id: "codex", label: "Codex", available: true } },
+    workspace: { workspaceId: "fixture", resourceGeneration: "g1", runtimeOptions: [{ id: "codex", label: "Codex", available: true }], conversation: { state: "completed", history: [] },
+      runtimes: { options: [{ runtimeId: "codex", label: "Codex", registered: true, state: "local_registered", fingerprint: "fixture-fingerprint", path: "/fixture/codex", loginSource: "isolated" }] } } });
+  await f.flush();
+  f.button("Use this Mac's login").props.onClick(); f.render();
+  assert.ok(f.dialog()); assert.ok(f.text().includes("Use the Codex login on this Mac (recommended)"));
+  f.button("Confirm registration").props.onClick(); await f.flush();
+  assert.deepEqual(f.registrations, [["codex", "fixture-fingerprint", "host"]]);
 });
