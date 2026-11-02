@@ -1,5 +1,6 @@
 import type { makeT } from "./i18n";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { copyRuntimeDiagnostic, RUNTIME_FAILURE_MARKER, retryRuntimeFailure, runtimeCooldownRemaining, runtimeDiagnosticSummary, runtimeLoginCommand, type RuntimeFailureDiagnostic } from "./runtime-failure";
 import type { WorkspaceDevSnapshot } from "./workspace-dev-state";
 import { connectionRecoveryReason, runtimeTurnFailure, workspaceConversationReplying, workspaceRecoveryPromptVisible, workspaceRecoveryState } from "./workspace-resume";
 
@@ -8,6 +9,34 @@ export function WorkspaceTaskActivity({ conversation, name, t, children }: {
 }) {
   if (!workspaceConversationReplying(conversation)) return null;
   return <div className="wsd-typing" role="status">{children}<span>{t(conversation.state === "draining" ? "ws.draining" : "ws.replying", { name })}</span><i /><i /><i /></div>;
+}
+
+function RuntimeFailureDetails({ diagnostic, t }: { diagnostic: RuntimeFailureDiagnostic; t: ReturnType<typeof makeT> }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "copyFailed">("idle");
+  const summary = runtimeDiagnosticSummary(diagnostic, t);
+  return <details className="wsd-runtime-diagnostic" data-runtime-diagnostic="true">
+    <summary>{t("ws.runtimeDiagnostic.title")}</summary>
+    <pre tabIndex={0}>{summary}</pre>
+    <button type="button" className="hs-btn sec" onClick={async () => {
+      const clipboard = globalThis.navigator?.clipboard;
+      setCopyState(await copyRuntimeDiagnostic(summary, clipboard ? value => clipboard.writeText(value) : undefined));
+    }}>{t("ws.runtimeDiagnostic.copy")}</button>
+    {copyState !== "idle" ? <p role="status">{t(`ws.runtimeDiagnostic.${copyState}`)}</p> : null}
+  </details>;
+}
+
+function RuntimeFailureRetry({ diagnostic, disabled, t, onContinue }: {
+  diagnostic: RuntimeFailureDiagnostic; disabled: boolean; t: ReturnType<typeof makeT>; onContinue(): void;
+}) {
+  const [now, setNow] = useState(Date.now);
+  const remaining = runtimeCooldownRemaining(diagnostic, now);
+  useEffect(() => {
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.min(remaining, 1000));
+    return () => clearTimeout(timer);
+  }, [diagnostic.retryAtMs, remaining, now]);
+  return <>{remaining > 0 ? <p role="status" data-runtime-cooldown="true">{t("ws.runtimeDiagnostic.cooldown", { seconds: Math.ceil(remaining / 1000) })}</p> : null}
+    <button type="button" className="hs-btn pri" data-recovery-retry="true" onClick={() => retryRuntimeFailure(diagnostic, disabled, onContinue)} disabled={disabled || remaining > 0}>{t("ws.resume.retry")}</button></>;
 }
 
 export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisabled = false, dismissedIdentity = null, runtimeId, loginSource, onContinue, onRepair, onDismiss, onLogin, onRescan, onRuntimeSettings }: {
@@ -21,7 +50,13 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
   const runtime = reason ? null : runtimeTurnFailure(conversation.blockReason, runtimeId);
   const finishing = ["running", "draining"].includes(conversation.state);
   const failed = [conversation.state, conversation.taskState].some(value => value === "error" || value === "failed");
-  const detail = typeof conversation.blockReason === "string" && conversation.blockReason.trim() ? conversation.blockReason : null;
+  const diagnostic = runtime?.diagnostic;
+  const scope = `${conversation.sessionId ?? ""}:${conversation.taskId ?? ""}:${conversation.runId ?? ""}:${runtimeId ?? ""}:${JSON.stringify(diagnostic)}`;
+  const detail = typeof conversation.blockReason === "string" && conversation.blockReason.trim() && !conversation.blockReason.includes(RUNTIME_FAILURE_MARKER) ? conversation.blockReason : null;
+  const retryDisabled = disabled || continueDisabled || finishing || conversation.resumeAdmission?.allowed === false;
+  const authFailure = runtime?.kind === "runtime_auth_required" || runtime?.kind === "runtime_auth_rejected";
+  const unavailable = runtime?.kind === "runtime_unavailable" || runtime?.kind === "not_installed";
+  const source = diagnostic?.loginSource ?? loginSource;
   const dismiss = onDismiss ? <button type="button" className="hs-btn ghost" data-recovery-dismiss="true" onClick={onDismiss} disabled={disabled || finishing}>{t("ws.resume.dismiss")}</button> : null;
   return <section className="wsd-resume" aria-labelledby="workspace-recovery-title" data-recovery={reason ? "connection" : runtime ? "runtime" : "task"} data-failure-kind={runtime?.kind}>
     <strong id="workspace-recovery-title">{t(reason ? "ws.resume.repairTitle" : runtime ? `ws.resume.runtime.${runtime.kind}.title` : state === "cancelled" ? "ws.resume.cancelled" : "ws.resume.title")}</strong>
@@ -30,12 +65,17 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
       <div className="wsd-resume-actions"><button type="button" className="hs-btn sec" onClick={onRepair} disabled={disabled}>{t("ws.resume.repairAction")}</button>{dismiss}</div></>
       : <>{runtime || detail || failed ? <p role="alert">{runtime ? t(`ws.resume.runtime.${runtime.kind}.body`) : detail ?? t("ws.resume.failureUnknown")}</p> : null}<p>{t(runtime ? "ws.resume.runtime.body" : "ws.resume.body")}</p>
         {runtime ? <p>{t("ws.resume.runtime.explicit")}</p> : null}
+        {diagnostic?.homeMatchesAccount === false ? <p>{t("ws.runtimeDiagnostic.homeMismatch")}</p> : null}
+        {diagnostic && authFailure ? <p data-runtime-login-guidance="true">{t(source === "host" ? "ws.runtimeDiagnostic.hostLogin" : source === "isolated" ? "ws.runtimeDiagnostic.privateLogin" : "ws.runtimeDiagnostic.unknownLogin", { command: runtimeLoginCommand(diagnostic.runtime) })}</p> : null}
+        {diagnostic ? <RuntimeFailureDetails key={scope} diagnostic={diagnostic} t={t} /> : null}
         {conversation.resumeAdmission?.allowed === false ? <p>{t("ws.resume.budget")}</p> : null}
         <div className="wsd-resume-actions">
-          <button type="button" className={runtime ? "hs-btn pri" : "hs-btn sec"} data-recovery-retry={runtime ? "true" : undefined} onClick={onContinue} disabled={disabled || continueDisabled || finishing || conversation.resumeAdmission?.allowed === false}>{t(runtime ? "ws.resume.retry" : "ws.resume.action")}</button>
-          {runtime?.kind === "runtime_auth_required" && loginSource !== "host" ? <button type="button" className="hs-btn sec" onClick={onLogin ?? onRepair} disabled={disabled}>{t(runtime.runtimeId === "codex" ? "ws.resume.codexLogin" : "ws.resume.runtimeLogin")}</button> : null}
-          {runtime?.kind === "runtime_unavailable" ? <>{onRescan ? <button type="button" className="hs-btn sec" onClick={onRescan} disabled={disabled || finishing}>{t("ws.runtimeAccess.rescan")}</button> : null}
+          {diagnostic ? <RuntimeFailureRetry key={scope} diagnostic={diagnostic} t={t} disabled={retryDisabled} onContinue={onContinue} />
+            : <button type="button" className={runtime ? "hs-btn pri" : "hs-btn sec"} data-recovery-retry={runtime ? "true" : undefined} onClick={onContinue} disabled={retryDisabled}>{t(runtime ? "ws.resume.retry" : "ws.resume.action")}</button>}
+          {authFailure && source !== "host" && (!diagnostic || source === "isolated") ? <button type="button" className="hs-btn sec" onClick={onLogin ?? onRepair} disabled={disabled}>{t(runtime?.runtimeId === "codex" ? "ws.resume.codexLogin" : "ws.resume.runtimeLogin")}</button> : null}
+          {unavailable ? <>{onRescan ? <button type="button" className="hs-btn sec" onClick={onRescan} disabled={disabled || finishing}>{t("ws.runtimeAccess.rescan")}</button> : null}
             {onRuntimeSettings ? <button type="button" className="hs-btn ghost" onClick={onRuntimeSettings} disabled={disabled}>{t("ws.runtimeAccess.install")}</button> : null}</> : null}
+          {diagnostic && !unavailable && onRuntimeSettings ? <button type="button" className="hs-btn ghost" onClick={onRuntimeSettings} disabled={disabled}>{t("ws.runtimeDiagnostic.settings")}</button> : null}
           {dismiss}
         </div></>}
   </section>;
