@@ -111,6 +111,14 @@ test("malformed reasoning capability cannot reach the Desktop effort picker",asy
   models:[{id:"o3",label:"o3",supportedReasoningEfforts:"high"}]});
  await assert.rejects(f.model.listRuntimeModels("codex"),{messageKey:"ws.notice.invalidView"});
 });
+test("local runtime registration requires and forwards an explicit login source",async()=>{
+ const f=fixture(); await f.model.selectWorkspace("A");
+ await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A"),{messageKey:"ws.notice.invalidView"});
+ assert.equal(f.calls.some(row=>row.method==="workspace.runtime.registerLocal"),false);
+ await f.model.registerLocalRuntime("codex","fingerprint","A","generation-A","isolated");
+ const call=f.calls.find(row=>row.method==="workspace.runtime.registerLocal");
+ assert.equal(call.params.loginSource,"isolated");assert.equal(call.params.approved,true);
+});
 test("three-way appearance setting and scoped features are actual rendered controls",()=>{
  const html=render("WorkspaceThemeSettings",{theme:{preference:"system",settings:{readOnly:false},notice:"",change(){}}});
  for(const value of ["system","light","dark"])assert.match(html,new RegExp(`value="${value}"`));assert.match(html,/跟隨系統/);
@@ -129,7 +137,7 @@ test("late metadata and failed key writes cannot leak into a different workspace
  const old=f.model.legacyConnections();await f.model.selectWorkspace("B");finish([{id:"old-A"}]);await assert.rejects(old,{messageKey:"ws.notice.scopeChanged"});
  f.handlers["workspace.connection.edit"]=()=>{throw new Error("fixture-secret-in-provider-error");};assert.equal(await f.model.editConnection("one",{apiKey:"fake"}),false);
  assert(!JSON.stringify(f.model.getSnapshot()).includes("fixture-secret"));assert.equal(f.calls.filter(row=>row.method==="workspace.connection.edit").length,1);
- await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A"),{messageKey:"ws.notice.localConfirmationExpired"});
+ await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A","host"),{messageKey:"ws.notice.localConfirmationExpired"});
  assert.equal(f.calls.some(row=>row.method==="workspace.runtime.registerLocal"),false);
 });
 test("actual confirmation action fences same-frame repeated clicks; cancellation remains a local card action",async()=>{

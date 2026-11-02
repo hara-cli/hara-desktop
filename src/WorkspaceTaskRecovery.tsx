@@ -10,9 +10,9 @@ export function WorkspaceTaskActivity({ conversation, name, t, children }: {
   return <div className="wsd-typing" role="status">{children}<span>{t(conversation.state === "draining" ? "ws.draining" : "ws.replying", { name })}</span><i /><i /><i /></div>;
 }
 
-export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisabled = false, dismissedIdentity = null, runtimeId, onContinue, onRepair, onDismiss, onLogin, onRescan, onRuntimeSettings }: {
+export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisabled = false, dismissedIdentity = null, runtimeId, loginSource, onContinue, onRepair, onDismiss, onLogin, onRescan, onRuntimeSettings }: {
   conversation: WorkspaceDevSnapshot["conversation"]; t: ReturnType<typeof makeT>; disabled: boolean; continueDisabled?: boolean;
-  dismissedIdentity?: string | null; runtimeId?: string; onContinue(): void; onRepair(): void; onDismiss?(): void;
+  dismissedIdentity?: string | null; runtimeId?: string; loginSource?: "host" | "isolated"; onContinue(): void; onRepair(): void; onDismiss?(): void;
   onLogin?(): void; onRescan?(): void; onRuntimeSettings?(): void;
 }) {
   if (!workspaceRecoveryPromptVisible(conversation, dismissedIdentity)) return null;
@@ -33,7 +33,7 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
         {conversation.resumeAdmission?.allowed === false ? <p>{t("ws.resume.budget")}</p> : null}
         <div className="wsd-resume-actions">
           <button type="button" className={runtime ? "hs-btn pri" : "hs-btn sec"} data-recovery-retry={runtime ? "true" : undefined} onClick={onContinue} disabled={disabled || continueDisabled || finishing || conversation.resumeAdmission?.allowed === false}>{t(runtime ? "ws.resume.retry" : "ws.resume.action")}</button>
-          {runtime?.kind === "runtime_auth_required" ? <button type="button" className="hs-btn sec" onClick={onLogin ?? onRepair} disabled={disabled}>{t(runtime.runtimeId === "codex" ? "ws.resume.codexLogin" : "ws.resume.runtimeLogin")}</button> : null}
+          {runtime?.kind === "runtime_auth_required" && loginSource !== "host" ? <button type="button" className="hs-btn sec" onClick={onLogin ?? onRepair} disabled={disabled}>{t(runtime.runtimeId === "codex" ? "ws.resume.codexLogin" : "ws.resume.runtimeLogin")}</button> : null}
           {runtime?.kind === "runtime_unavailable" ? <>{onRescan ? <button type="button" className="hs-btn sec" onClick={onRescan} disabled={disabled || finishing}>{t("ws.runtimeAccess.rescan")}</button> : null}
             {onRuntimeSettings ? <button type="button" className="hs-btn ghost" onClick={onRuntimeSettings} disabled={disabled}>{t("ws.runtimeAccess.install")}</button> : null}</> : null}
           {dismiss}

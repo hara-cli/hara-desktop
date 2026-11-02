@@ -315,7 +315,8 @@ export class WorkspaceDevModel {
     if (result.runtimeId !== "codex" || !["posix", "powershell"].includes(result.shell) || typeof result.command !== "string" || !result.command.trim() || result.command.length > 32_768 || /[\r\n\0]/.test(result.command)) throw new Error("Invalid private Codex login guidance");
     return result;
   }
-  async registerLocalRuntime(runtimeId: string, fingerprint: string, workspaceId: string, generation: string, loginSource: RuntimeLoginSource = "host"): Promise<void> {
+  async registerLocalRuntime(runtimeId: string, fingerprint: string, workspaceId: string, generation: string, loginSource: RuntimeLoginSource): Promise<void> {
+    if (loginSource !== "host" && loginSource !== "isolated") throw new WorkspaceViewError("ws.notice.invalidView");
     if (this.view.workspaceId !== workspaceId || this.view.workspace?.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.localConfirmationExpired");
     await this.workspaceRequest("workspace.runtime.registerLocal", { runtimeId, fingerprint, approved: true, loginSource }); await this.refresh();
   }
@@ -398,7 +399,8 @@ export class WorkspaceDevModel {
     if (epoch !== this.epoch) throw new WorkspaceViewError("ws.notice.installViewChanged");
     return { ...card, workspaceId: workspace.workspaceId, resourceGeneration: workspace.resourceGeneration, viewEpoch: epoch };
   }
-  async approveRuntime(card: RuntimeApprovalCard, approved: boolean, loginSource: RuntimeLoginSource = "host"): Promise<void> {
+  async approveRuntime(card: RuntimeApprovalCard, approved: boolean, loginSource: RuntimeLoginSource): Promise<void> {
+    if (loginSource !== "host" && loginSource !== "isolated") throw new WorkspaceViewError("ws.notice.invalidView");
     const workspace = this.view.workspace;
     if (!workspace || workspace.workspaceId !== card.workspaceId || workspace.resourceGeneration !== card.resourceGeneration || card.viewEpoch !== this.epoch) throw new WorkspaceViewError("ws.notice.installScopeMismatch");
     await this.rpc.request("workspace.runtime.approve", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, proposalId: card.id, approved, loginSource });
