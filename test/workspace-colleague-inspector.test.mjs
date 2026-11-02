@@ -62,6 +62,20 @@ test("main Hara shares the Runtime and model entry without colleague schedules",
   assert.doesNotMatch(html, /Create in chat; manage only this colleague here/);
 });
 
+test("main Hara and a Pi colleague display the same active connection model card", () => {
+  const workspace = { workspaceId: "fixture", resourceGeneration: "generation", runtimeOptions: [{ id: "pi", label: "Pi", available: true }],
+    connections: { revision: 2, defaultConnectionId: "primary", activeConnectionId: "primary", connections: [{ id: "primary", status: "active", defaultModel: "qwen3.7-plus" }] } };
+  for (const kind of ["main", "colleague"]) {
+    const agent = { agentId: kind, kind, state: "active", identity: { displayName: kind === "main" ? "Hara" : "Dora" }, runtime: { id: "pi", label: "Pi", available: true } };
+    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "zh-Hans", error: "", inert: false, supported: false,
+      connectionModelSupported: true, listConnectionModels: async () => ({ connectionId: "primary", revision: 2, source: "documented", selectedModelId: "qwen3.7-plus", models: [] }),
+      onApplyConnectionModel: async () => {}, onClose() {}, onRefresh() {}, listModels: async () => { throw Error("Pi must use connection model catalog"); },
+      async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
+    assert.match(html, /qwen3\.7-plus/);
+    assert.match(html, /vg-runtime-model-card/);
+  }
+});
+
 test("only an unavailable registered runtime offers one directory deep link", () => {
   const agent = { agentId: "dora", kind: "colleague", state: "active", identity: { displayName: "Dora" },
     runtime: { id: "codex", label: "Codex", available: false } };

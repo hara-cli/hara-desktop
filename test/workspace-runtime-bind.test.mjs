@@ -45,12 +45,18 @@ function mount(patch = {}) {
     runtime: { id: "pi", label: "Pi", available: true } };
   props = { agent, workspace: { workspaceId: "fixture", resourceGeneration: "generation-1",
     runtimeOptions: [{ id: "pi", label: "Pi", available: true }, { id: "codex", label: "Codex", available: true }],
+    connections: { revision: 1, activeConnectionId: "primary", defaultConnectionId: "primary",
+      connections: [{ id: "primary", status: "active", defaultModel: "pi-one" }] },
     conversation: { state: "completed", history: [] } }, locale: "en",
+    connectionModelSupported: true,
     listModels: async runtimeId => { requests.push(runtimeId); return { runtimeId, revision: 3, selectedModelId: runtimeId + "-one",
       models: [{ id: runtimeId + "-one", label: runtimeId + " model" }, { id: runtimeId + "-two", label: runtimeId + " second" }] }; },
+    listConnectionModels: async (_agentId, connectionId) => { const result = await props.listModels("pi");
+      if (result.runtimeId !== "pi") throw Error("model catalog does not match current binding");
+      return { ...result, connectionId, source: "live" }; },
     onApplyRuntime: async (id, restart) => { changes.push([id, restart]); props = { ...props, agent: { ...props.agent,
       configRevision: props.agent.configRevision + 1, runtime: { id, label: id, available: true } } }; },
-    onApplyModel: async (...args) => models.push(args), onRescan: async () => {},
+    onApplyModel: async (...args) => models.push(args), onApplyConnectionModel: async (...args) => models.push(args), onRescan: async () => {},
     onRegisterRuntime: async (...args) => registrations.push(args), onRuntimeDirectory() {}, ...patch };
   function render(next = {}) {
     props = { ...props, ...next }; dirty = false; cursor = 0;
@@ -95,6 +101,18 @@ test("Apply opens a named confirmation before any binding RPC; cancel is read-on
   assert.ok(f.text().includes("Neither choice transfers an engine session"));
   f.button("Cancel").props.onClick(); f.render();
   assert.equal(f.dialog(), undefined); assert.deepEqual(f.changes, []);
+});
+
+test("Pi connection catalog marks documented results and applies model with its connection revision", async () => {
+  const f = mount({ listConnectionModels: async (_agentId, connectionId) => ({ connectionId, revision: 7,
+    source: "documented", selectedModelId: "pi-one", selectedEffort: null,
+    models: [{ id: "pi-one", label: "Pi one" }, { id: "pi-two", label: "Pi two", supportedReasoningEfforts: ["off", "high"] }] }) });
+  await f.flush();
+  assert.ok(f.text().includes("Documented list, not live"));
+  f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.onChange({ target: { value: "pi-two" } }); f.render();
+  f.all().find(node => node.type === "select" && node.props["aria-label"] === "Reasoning effort").props.onChange({ target: { value: "high" } }); f.render();
+  f.button("Apply model").props.onClick(); await f.flush();
+  assert.deepEqual(f.models, [["primary", "pi-two", 7, "high"]]);
 });
 
 for (const restart of ["keep", "fresh"]) test("confirmation " + restart + " refreshes only the successfully bound runtime's models", async () => {
