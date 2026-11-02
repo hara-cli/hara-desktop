@@ -30,7 +30,7 @@ export function LocalChannelDialog({ mode, view, model, colleagues, t, onClose, 
   const matchingColleagues = useMemo(() => colleagues.filter(row => `${row.identity.displayName} ${row.identity.title ?? ""}`.toLocaleLowerCase().includes(query)), [colleagues, query]);
   const selectedMembers = useMemo(() => new Set(memberIds), [memberIds]);
   const label = t(mode === "create" ? "ws.channels.new" : mode === "invite" ? "ws.channels.invite" : "ws.channels.members");
-  const busy = view.saving || (mode === "create" && view.creationUnknown) || (mode === "members" && ["running", "draining"].includes(view.channel?.state ?? ""));
+  const busy = view.saving || (mode === "members" && (view.autonomySaving || view.autonomyUnknown)) || (mode === "create" && view.creationUnknown) || (mode === "members" && ["running", "draining"].includes(view.channel?.state ?? ""));
   const save = async () => {
     if (mode === "create") { const id = await model.create(name, memberIds); if (id) { onClose(); onCreated(id); } }
     else if (await model.updateMembers(name, memberIds)) onClose();
@@ -90,7 +90,7 @@ export function channelTranscriptTurns(snapshot: LocalChannelSnapshot) {
   });
 }
 export const channelTranscriptGroups = (snapshot: LocalChannelSnapshot) => channelTranscriptTurns(snapshot).flatMap(turn => turn.groups);
-interface ChannelHistoryRow { id: string; turnId: string; group?: ChannelTranscriptGroup; failedName?: string; queuedTurn?: number;
+interface ChannelHistoryRow { id: string; turnId: string; group?: ChannelTranscriptGroup; failedName?: string; queuedTurn?: number; proactive?: boolean;
   passed?: LocalChannelSnapshot["turns"][number]["replies"]; woken?: { name: string; by: string; queued: boolean } }
 /** A peer-woken reply gets a status line right before its messages, or after the turn while it is still queued. */
 export function channelHistoryRows(snapshot: LocalChannelSnapshot): ChannelHistoryRow[] {
@@ -102,8 +102,9 @@ export function channelHistoryRows(snapshot: LocalChannelSnapshot): ChannelHisto
     const spoken = new Set(groups.map(group => group.agentId));
     return [
       ...groups.flatMap(group => {
-        const reply = group.agentId ? turn.replies.find(row => row.agentId === group.agentId && row.wokenBy) : undefined;
-        return [...(reply ? [woken(reply)] : []), { id: JSON.stringify([turn.id, "message", group.id]), turnId: turn.id, group }];
+        const reply = group.agentId ? turn.replies.find(row => row.agentId === group.agentId) : undefined;
+        return [...(reply?.wokenBy ? [woken(reply)] : []), { id: JSON.stringify([turn.id, "message", group.id]), turnId: turn.id, group,
+          proactive: turn.origin === "autonomy" && reply?.depth === 1 && !reply.wokenBy }];
       }),
       ...turn.replies.filter(reply => reply.wokenBy && !spoken.has(reply.agentId) && ["queued", "running"].includes(reply.state)).map(woken),
       ...turn.replies.filter(reply => ["failed", "interrupted"].includes(reply.state)).map(reply => ({ id: JSON.stringify([turn.id, "failure", reply.agentId]), turnId: turn.id, failedName: reply.displayName })),
@@ -114,7 +115,7 @@ export function channelHistoryRows(snapshot: LocalChannelSnapshot): ChannelHisto
 }
 export function LocalChannelThread({ view, colleagues, t, retry, transcript, approval, model, scrollRoot, onFollowChange, onRepair, disabled = false }: { view: LocalChannelsView; colleagues: WorkspaceDevAgent[]; t: Translate; retry: () => void;
   transcript: (messages: WorkspaceDevMessage[], agent?: WorkspaceDevAgent) => ReactNode; approval: (card: WorkspaceDevApproval) => ReactNode;
-  model?: Pick<WorkspaceLocalChannelsModel, "setHistoryAnchor"> & Partial<Pick<WorkspaceLocalChannelsModel, "answer" | "pauseQuestion" | "supportsUserQuestions" | "supportsPass" | "supportsQueue" | "speakPassed">>; onRepair?: () => void; disabled?: boolean; scrollRoot?: RefObject<HTMLDivElement | null>; onFollowChange?: (following: boolean) => void }) {
+  model?: Pick<WorkspaceLocalChannelsModel, "setHistoryAnchor"> & Partial<Pick<WorkspaceLocalChannelsModel, "answer" | "pauseQuestion" | "supportsUserQuestions" | "supportsPass" | "supportsQueue" | "supportsAutonomy" | "speakPassed">>; onRepair?: () => void; disabled?: boolean; scrollRoot?: RefObject<HTMLDivElement | null>; onFollowChange?: (following: boolean) => void }) {
   const channel = view.channel, rows = useMemo(() => channel ? channelHistoryRows(channel) : [], [channel]);
   const anchor = view.historyAnchor ?? null, page = useMemo(() => channelHistoryPage(rows, anchor), [rows, anchor]);
   const colleaguesById = useMemo(() => new Map(colleagues.map(row => [row.agentId, row])), [colleagues]);
@@ -138,6 +139,7 @@ export function LocalChannelThread({ view, colleagues, t, retry, transcript, app
     };
     node.addEventListener("scroll", observe, { passive: true }); return () => node.removeEventListener("scroll", observe);
   }, [scrollRoot, model, page, onFollowChange]);
+  const autonomySupported = model?.supportsAutonomy?.() === true;
   const passSupported = model?.supportsPass?.() === true, queueSupported = model?.supportsQueue?.() === true && channel?.pendingCount !== undefined && typeof channel.queueNeedsResume === "boolean";
   const actionLocked = disabled || view.saving || Boolean(view.pending) || Boolean(view.queueAction) || view.queueUnknown === true
     || (!queueSupported && ["running", "draining"].includes(channel?.state ?? "")) || (queueSupported && (channel?.pendingCount ?? 0) >= 5);
@@ -162,10 +164,10 @@ export function LocalChannelThread({ view, colleagues, t, retry, transcript, app
         const agent = current ? { ...current, identity: { ...current.identity, displayName: group.displayName } } : group.agentId ? {
           agentId: group.agentId, kind: "colleague" as const, state: "archived", identity: { displayName: group.displayName }, runtime: { id: "pi", label: "Pi", available: false },
         } : undefined;
-        return <div key={row.id} data-channel-speaker={group.agentId ?? "user"} data-channel-history-id={row.id}>{transcript(group.history, agent)}</div>;
+        return <div key={row.id} data-channel-speaker={group.agentId ?? "user"} data-channel-history-id={row.id}>{autonomySupported && row.proactive ? <span className="hs-channel-proactive" data-channel-proactive="true">{t("ws.channels.proactive")}</span> : null}{transcript(group.history, agent)}</div>;
       })}
     </section>);
-  }, [page, colleaguesById, transcript, t, passSupported, actionLocked, model, channel, view.scope, view.historyAnchor]);
+  }, [page, colleaguesById, transcript, t, autonomySupported, passSupported, actionLocked, model, channel, view.scope, view.historyAnchor]);
   if (!channel) return <section className="hs-col hs-channel-empty"><HashtagIcon className="hico" /><p role="status">{t(view.loading ? "common.loading" : view.error ? "ws.channels.loadFailed" : "ws.channels.unavailable")}</p>
     <button className="hs-btn sec" onClick={retry}>{t("ws.tasks.retry")}</button></section>;
   return <div ref={container} className="hs-col wsd-thread hs-channel-thread" data-local-channel={channel.channel.id} tabIndex={-1} role="region" aria-label={t("ws.channels.history.label")}>
@@ -188,6 +190,37 @@ export function LocalChannelThread({ view, colleagues, t, retry, transcript, app
     {channel.state === "interrupted" || channel.state === "cancelled" ? <p className="hs-channel-status" role="status">{t(channel.state === "interrupted" ? "ws.channels.interrupted" : queueSupported ? "ws.channels.currentStopped" : "ws.channels.cancelled")}</p> : null}
     {["running", "draining"].includes(channel.state) ? <p className="wsd-typing" role="status">{t(channel.state === "draining" ? "ws.draining" : "ws.channels.replying")}</p> : null}
   </div>;
+}
+
+export function LocalChannelAutonomyControls({ view, model, colleagues, t, disabled = false, now = Date.now() }: { view: LocalChannelsView;
+  model: Partial<Pick<WorkspaceLocalChannelsModel, "supportsAutonomy" | "updateAutonomy" | "verifyAutonomy">>; colleagues: WorkspaceDevAgent[]; t: Translate; disabled?: boolean; now?: number }) {
+  const colleaguesById = useMemo(() => new Map(colleagues.map(row => [row.agentId, row])), [colleagues]);
+  const channel = view.channel?.channel, autonomy = channel?.autonomy;
+  if (model.supportsAutonomy?.() !== true || !channel || !autonomy) return null;
+  const unavailable = autonomy.mode === "ambient", paused = Boolean(autonomy.pausedUntil && Date.parse(autonomy.pausedUntil) > now);
+  const locked = disabled || view.saving || Boolean(view.pending) || Boolean(view.queueAction) || view.queueUnknown === true || view.autonomySaving === true || view.autonomyUnknown === true || unavailable;
+  const expected = { scope: view.scope, channelId: channel.id }, muted = new Set(autonomy.mutedAgentIds);
+  return <details className="hs-channel-autonomy" data-channel-autonomy={unavailable ? "off" : autonomy.mode}>
+    <summary>{t("ws.channels.autonomy")} · {t(unavailable || autonomy.mode === "off" ? "ws.channels.autonomyOff" : paused ? "ws.channels.autonomyPaused" : "ws.channels.autonomyMentionDefault")}</summary>
+    <div><p className="hs-channel-autonomy-note">{t(unavailable ? "ws.channels.autonomyAmbientOff" : "ws.channels.autonomyFuture")}</p>
+      <p className="hs-channel-autonomy-note">{t("ws.channels.autonomyExplicitUnaffected")}</p>
+      <fieldset disabled={locked}><legend>{t("ws.channels.autonomyPreferences")}</legend>
+        <label className="hs-channel-autonomy-mode">{t("ws.channels.autonomyMode")}<select aria-label={t("ws.channels.autonomyMode")} value={unavailable ? "off" : autonomy.mode}
+          onChange={event => { const mode = event.currentTarget.value; if (mode === "off" || mode === "mention") void model.updateAutonomy?.({ mode }, expected); }}>
+          <option value="off">{t("ws.channels.autonomyOff")}</option><option value="mention">{t("ws.channels.autonomyMentionDefault")}</option>
+        </select></label>
+        <p className="hs-channel-autonomy-note">{t("ws.channels.autonomyAmbientUnavailable")}</p>
+        <button className="hs-btn sec" onClick={() => void model.updateAutonomy?.({ pausedUntil: paused ? null : new Date(Date.now() + 30 * 60_000).toISOString() }, expected)}>{t(paused ? "ws.channels.autonomyResume" : "ws.channels.autonomyPause30")}</button>
+        <div className="hs-channel-autonomy-members">{channel.memberIds.map(agentId => {
+          const name = colleaguesById.get(agentId)?.identity.displayName ?? agentId;
+          return <label key={agentId}><input type="checkbox" checked={muted.has(agentId)} aria-label={t("ws.channels.autonomyMuteNamed", { name })}
+            onChange={event => void model.updateAutonomy?.({ mutedAgentIds: event.currentTarget.checked ? [...autonomy.mutedAgentIds, agentId] : autonomy.mutedAgentIds.filter(id => id !== agentId) }, expected)} />
+            <span>{name}<small>{t("ws.channels.autonomyMute")}</small></span></label>;
+        })}</div>
+      </fieldset>
+      {view.autonomySaving ? <p role="status" className="hs-channel-autonomy-note">{t("ws.channels.autonomySaving")}</p> : null}
+      {view.autonomyUnknown ? <div className="hs-channel-autonomy-verify"><p role="status">{t("ws.channels.autonomyUnknown")}</p><button className="hs-btn sec" disabled={disabled || view.saving || view.autonomyChecking} onClick={() => void model.verifyAutonomy?.()}>{t(view.autonomyChecking ? "ws.channels.autonomyChecking" : "ws.channels.autonomyVerify")}</button></div> : null}
+    </div></details>;
 }
 
 export function LocalChannelComposer({ view, model, colleagues, t, disconnected, hasConnection, configure }: { view: LocalChannelsView; model: WorkspaceLocalChannelsModel; colleagues: WorkspaceDevAgent[];
@@ -225,6 +258,7 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
           <button className="hs-btn sec" disabled={actionLocked || !pendingCount} title={t("ws.channels.queueClearHint")} onClick={() => void model.clearQueue()}>{t(view.queueAction === "clear" ? "ws.channels.queueClearing" : "ws.channels.queueClear")}</button></>}</div>
     </div> : null}
     {queueSupported && pendingCount >= 5 ? <p className="hs-channel-status" role="status">{t("ws.channels.queueFull")}</p> : null}
+    <LocalChannelAutonomyControls view={view} model={model} colleagues={colleagues} t={t} disabled={disconnected} />
     <details className="hs-channel-recipients"><summary>{t(!recipients.length ? "ws.channels.notesOnly" : recipients.length === 1 ? "ws.channels.replyOne" : recipients.length === channel.channel.memberIds.length ? "ws.channels.replyAll" : "ws.channels.replyCount", { n: recipients.length })}</summary>
       <fieldset disabled={actionLocked || (busy && !queueSupported)}><legend>{t("ws.channels.responders")}</legend>
         {channel.channel.memberIds.length ? <label className="hs-channel-search"><MagnifyingGlassIcon className="hico" /><input type="search" aria-label={t("ws.channels.searchMembers")} placeholder={t("ws.channels.searchMembers")} value={recipientSearch} onChange={event => setRecipientSearch(event.target.value)} /></label> : null}

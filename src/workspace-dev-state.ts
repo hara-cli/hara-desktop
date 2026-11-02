@@ -110,6 +110,7 @@ export class WorkspaceDevModel {
   supportsLocalChannelPeers(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.peer.v1") === true; }
   supportsLocalChannelPass(): boolean { return this.rpc.supportsCapability?.("workspace.channel-pass.v1") === true; }
   supportsLocalChannelQueue(): boolean { return this.rpc.supportsCapability?.("workspace.channel-queue.v1") === true; }
+  supportsLocalChannelAutonomy(): boolean { return this.rpc.supportsCapability?.("workspace.channel-autonomy.v1") === true; }
   async localChannelRequest<T>(method: string, params: Record<string, unknown>): Promise<T> {
     const workspace = this.view.workspace;
     if (!workspace || workspace.workspaceId !== params.workspaceId || workspace.resourceGeneration !== params.expectedGeneration

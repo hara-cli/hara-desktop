@@ -1,24 +1,38 @@
 import type { WorkspaceDevApproval, WorkspaceDevMessage, WorkspaceDevModel, WorkspaceQuestionConversation } from "./workspace-dev-state";
 import { createLocalChannelPreferencesStore, emptyChannelPreferences, type LocalChannelCreation, type LocalChannelPreferences, type LocalChannelPreferencesStore } from "./workspace-local-channel-preferences.ts";
-export interface LocalChannel { id: string; name: string; memberIds: string[]; createdAt: string }
+export interface LocalChannelAutonomy { schemaVersion: 1; mode: "off" | "mention" | "ambient"; mutedAgentIds: string[]; pausedUntil?: string; cooldownMs: 600000 }
+export interface LocalChannelAutonomyPatch { mode?: "off" | "mention"; mutedAgentIds?: string[]; pausedUntil?: string | null }
+export interface LocalChannel { id: string; name: string; memberIds: string[]; createdAt: string; autonomy?: LocalChannelAutonomy }
 export interface LocalChannelCatalog { workspaceId: string; resourceGeneration: string; revision: number; channels: LocalChannel[] }
 export interface LocalChannelSnapshot { workspaceId: string; resourceGeneration: string; channel: LocalChannel; revision: number; state: string;
   pendingCount?: number; queueNeedsResume?: boolean;
   questions?: { agentId: string; displayName: string; conversation: WorkspaceQuestionConversation }[];
   messages: { id: string; turnId: string; agentId: string | null; displayName: string; createdAt: string; message: WorkspaceDevMessage }[];
   /** `wokenBy` is the member whose reply queued this one (`workspace.local-channels.peer.v1`). */
-  turns: { id: string; state: string; replies: { agentId: string; displayName: string; state: string; wokenBy?: string; passedBy?: "prefilter"; passReason?: "role_unrelated" }[] }[]; approvals: WorkspaceDevApproval[] }
+  turns: { id: string; state: string; origin?: "user" | "autonomy"; rootTurnId?: string; replies: { agentId: string; displayName: string; state: string; wokenBy?: string; depth?: 0 | 1; passedBy?: "prefilter"; passReason?: "role_unrelated" }[] }[]; approvals: WorkspaceDevApproval[] }
 interface Pending { body: string; requestId: string; recipientIds: string[]; isAnswer?: boolean; fromDraft?: boolean; preserveDraft?: boolean; state: "sending" | "unknown" }
 type Creation = LocalChannelCreation;
 export interface LocalChannelsView { scope: string; supported: boolean; catalog: LocalChannelCatalog | null; channelId: string | null; channel: LocalChannelSnapshot | null;
-  loading: boolean; saving: boolean; draft: string; recipientIds: string[]; pending: Pending | null; error: string; creationUnknown: boolean; historyAnchor: string | null; queuedPosition?: number | null; queueAction?: "resume" | "clear" | null; queueUnknown?: boolean }
-const empty: LocalChannelsView = { scope: "", supported: false, catalog: null, channelId: null, channel: null, loading: false, saving: false, draft: "", recipientIds: [], pending: null, error: "", creationUnknown: false, historyAnchor: null, queuedPosition: null, queueAction: null, queueUnknown: false };
+  loading: boolean; saving: boolean; draft: string; recipientIds: string[]; pending: Pending | null; error: string; creationUnknown: boolean; historyAnchor: string | null; queuedPosition?: number | null; queueAction?: "resume" | "clear" | null; queueUnknown?: boolean; autonomySaving?: boolean; autonomyUnknown?: boolean; autonomyChecking?: boolean }
+const empty: LocalChannelsView = { scope: "", supported: false, catalog: null, channelId: null, channel: null, loading: false, saving: false, draft: "", recipientIds: [], pending: null, error: "", creationUnknown: false, historyAnchor: null, queuedPosition: null, queueAction: null, queueUnknown: false, autonomySaving: false, autonomyUnknown: false, autonomyChecking: false };
 const explicitRefusal = (error: unknown) => !!error && typeof error === "object" && "code" in error && typeof error.code === "number";
 const sameMembers = (left: string[], right: string[]) => {
   const ids = new Set(right);
   return left.length === right.length && ids.size === right.length && new Set(left).size === left.length && left.every(id => ids.has(id));
 };
 const matchesCreation = (row: LocalChannel, item: Creation) => row.id === item.id && row.name === item.name && sameMembers(row.memberIds, item.memberIds);
+const isoTime = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u.test(value) && Number.isFinite(Date.parse(value));
+function validAutonomy(value: unknown, members: string[]): value is LocalChannelAutonomy {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return Object.keys(row).every(field => ["schemaVersion", "mode", "mutedAgentIds", "pausedUntil", "cooldownMs"].includes(field)) && row.schemaVersion === 1 && ["off", "mention", "ambient"].includes(row.mode as string) && row.cooldownMs === 600000
+    && Array.isArray(row.mutedAgentIds) && row.mutedAgentIds.every(id => typeof id === "string" && members.includes(id))
+    && new Set(row.mutedAgentIds).size === row.mutedAgentIds.length && (row.pausedUntil === undefined || isoTime(row.pausedUntil));
+}
+const sameAutonomy = (left: LocalChannelAutonomy, right: LocalChannelAutonomy) => left.schemaVersion === right.schemaVersion && left.mode === right.mode
+  && left.cooldownMs === right.cooldownMs && left.pausedUntil === right.pausedUntil && sameMembers(left.mutedAgentIds, right.mutedAgentIds);
+interface AutonomyWrite { value: LocalChannelAutonomy; state: "saving" | "unknown" | "checking" }
+
 /** The `@query` being typed at the end of the draft, or null. An `@` inside a word (an e-mail address) is not a mention. */
 export function channelMentionQuery(draft: string): string | null {
   const match = /(?:^|[^\p{L}\p{N}_.])@([^\s@]{0,40})$/u.exec(draft);
@@ -47,12 +61,13 @@ export class WorkspaceLocalChannelsModel {
   private approvals = new Set<string>();
   private queueActions = new Map<string, { action: "resume" | "clear"; state: "sending" | "unknown" }>();
   private queued = new Map<string, { requestId: string; position: number }>();
+  private autonomyWrites = new Map<string, AutonomyWrite>();
   private refreshing: { promise: Promise<void>; dirty: boolean } | null = null;
   private saved = new Map<string, LocalChannelPreferences>();
-  private readonly model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions" | "supportsLocalChannelPeers" | "supportsLocalChannelPass" | "supportsLocalChannelQueue">>;
+  private readonly model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions" | "supportsLocalChannelPeers" | "supportsLocalChannelPass" | "supportsLocalChannelQueue" | "supportsLocalChannelAutonomy">>;
   private readonly nonce: () => string;
   private readonly preferences: LocalChannelPreferencesStore | null;
-  constructor(model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions" | "supportsLocalChannelPeers" | "supportsLocalChannelPass" | "supportsLocalChannelQueue">>, nonce = () => crypto.randomUUID(),
+  constructor(model: Pick<WorkspaceDevModel, "localChannelRequest" | "supportsLocalChannels"> & Partial<Pick<WorkspaceDevModel, "supportsUserQuestions" | "supportsLocalChannelPeers" | "supportsLocalChannelPass" | "supportsLocalChannelQueue" | "supportsLocalChannelAutonomy">>, nonce = () => crypto.randomUUID(),
     preferences: LocalChannelPreferencesStore | null = createLocalChannelPreferencesStore()) { this.model = model; this.nonce = nonce; this.preferences = preferences; }
   getSnapshot = () => this.view;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -63,6 +78,10 @@ export class WorkspaceLocalChannelsModel {
     this.view.queueAction = queueAction?.state === "sending" ? queueAction.action : null;
     this.view.queueUnknown = queueAction?.state === "unknown";
     this.view.queuedPosition = this.queued.get(this.key())?.position ?? null;
+    const autonomyWrite = this.autonomyWrites.get(this.key());
+    this.view.autonomySaving = autonomyWrite?.state === "saving";
+    this.view.autonomyUnknown = autonomyWrite?.state === "unknown" || autonomyWrite?.state === "checking";
+    this.view.autonomyChecking = autonomyWrite?.state === "checking";
     if (this.pausing.has(this.key())) this.view.saving = true;
     else if (wasPausing && previousKey !== this.key() && value.saving === undefined) this.view.saving = false;
     for (const listener of this.listeners) listener();
@@ -95,7 +114,8 @@ export class WorkspaceLocalChannelsModel {
   }
   private applyCatalog(value: LocalChannelCatalog) {
     this.valid(value);
-    if (!Number.isSafeInteger(value.revision) || value.revision < 0 || !Array.isArray(value.channels)) throw new Error("Invalid channel catalog");
+    if (!Number.isSafeInteger(value.revision) || value.revision < 0 || !Array.isArray(value.channels)
+      || value.channels.some(row => row.autonomy !== undefined && !validAutonomy(row.autonomy, row.memberIds))) throw new Error("Invalid channel catalog");
     // A list request may have started before a successful create or member edit.
     if (this.view.catalog && value.revision < this.view.catalog.revision) return;
     this.update({ catalog: value, error: this.view.error === "ws.channels.loadFailed" ? "" : this.view.error });
@@ -145,10 +165,16 @@ export class WorkspaceLocalChannelsModel {
     this.valid(value);
     if (value.channel?.id !== channelId || !Number.isSafeInteger(value.revision) || value.revision < 0 || !Array.isArray(value.messages) || !Array.isArray(value.approvals) || !Array.isArray(value.turns)
       || value.approvals.some(card => card.workspaceId !== this.workspaceId || card.resourceGeneration !== this.generation || card.channelId !== channelId)) throw new Error("Invalid channel conversation");
+    if (value.channel.autonomy !== undefined && !validAutonomy(value.channel.autonomy, value.channel.memberIds)) throw new Error("Invalid channel autonomy");
     if ((value.pendingCount !== undefined && (!Number.isSafeInteger(value.pendingCount) || value.pendingCount < 0 || value.pendingCount > 5))
       || (value.queueNeedsResume !== undefined && typeof value.queueNeedsResume !== "boolean")
-      || value.turns.some(turn => !turn || typeof turn.id !== "string" || !Array.isArray(turn.replies) || turn.replies.some(reply => !reply
+      || value.turns.some(turn => !turn || typeof turn.id !== "string" || !Array.isArray(turn.replies)
+        || turn.origin !== undefined && turn.origin !== "user" && turn.origin !== "autonomy"
+        || turn.rootTurnId !== undefined && (typeof turn.rootTurnId !== "string" || !turn.rootTurnId)
+        || turn.replies.some(reply => !reply
         || typeof reply.agentId !== "string" || typeof reply.displayName !== "string" || typeof reply.state !== "string"
+        || reply.depth !== undefined && reply.depth !== 0 && reply.depth !== 1
+        || reply.depth === 1 && (turn.origin !== "autonomy" || Boolean(reply.wokenBy))
         || (reply.state === "passed" && (reply.passedBy !== "prefilter" || reply.passReason !== "role_unrelated"))))) throw new Error("Invalid channel interjection state");
     if (this.view.channel?.channel.id === channelId && value.revision < this.view.channel.revision) return;
     const queued = this.queued.get(this.key(channelId));
@@ -224,7 +250,7 @@ export class WorkspaceLocalChannelsModel {
     return epoch === this.epoch && selected === this.selection && this.view.channelId === item.id ? item.id : null;
   }
   async updateMembers(name: string, memberIds: string[]): Promise<boolean> {
-    const { catalog, channelId } = this.view; if (!catalog || !channelId || this.view.saving || !name.trim()) return false;
+    const { catalog, channelId } = this.view; if (!catalog || !channelId || this.view.saving || this.autonomyWrites.has(this.key()) || ["running", "draining"].includes(this.view.channel?.state ?? "") || !name.trim()) return false;
     const epoch = this.epoch, selection = this.selection; this.update({ saving: true, error: "" });
     try {
       const value = await this.request<LocalChannelCatalog>("workspace.channels.update", { channelId, name: name.trim(), memberIds, expectedRevision: catalog.revision });
@@ -235,6 +261,56 @@ export class WorkspaceLocalChannelsModel {
       return epoch === this.epoch && savedSelection === this.selection && this.view.channelId === channelId;
     } catch { if (epoch === this.epoch && selection === this.selection) { this.update({ saving: false, error: "ws.channels.saveFailed" }); await this.refresh(); } return false; }
     finally { if (epoch === this.epoch) this.update({ saving: false }); }
+  }
+  supportsAutonomy(): boolean { return this.model.supportsLocalChannelAutonomy?.() === true; }
+  /** Only preferences are sent here. Runtime lineage, counters and budgets remain owned by Core. */
+  async updateAutonomy(patch: LocalChannelAutonomyPatch, expected: { scope: string; channelId: string }): Promise<boolean> {
+    const { catalog, channelId, channel } = this.view, key = this.key();
+    if (expected.scope !== this.view.scope || expected.channelId !== channelId || !this.supportsAutonomy() || !catalog || !channelId || !channel
+      || !channel.channel.autonomy || this.view.saving || this.view.pending || this.queueActions.has(key) || this.autonomyWrites.has(key)) return false;
+    const current = catalog.channels.find(row => row.id === channelId), previous = current?.autonomy;
+    if (!current || !previous || !validAutonomy(previous, current.memberIds) || !patch || typeof patch !== "object" || Array.isArray(patch)
+      || patch.mutedAgentIds !== undefined && !Array.isArray(patch.mutedAgentIds)
+      || Object.keys(patch).some(field => !["mode", "mutedAgentIds", "pausedUntil"].includes(field))
+      || patch.mode !== undefined && patch.mode !== "off" && patch.mode !== "mention") return false;
+    const value: LocalChannelAutonomy = { schemaVersion: 1, mode: patch.mode ?? previous.mode, mutedAgentIds: patch.mutedAgentIds ? [...patch.mutedAgentIds] : [...previous.mutedAgentIds], cooldownMs: 600000,
+      ...(previous.pausedUntil ? { pausedUntil: previous.pausedUntil } : {}) };
+    if (patch.pausedUntil === null) delete value.pausedUntil; else if (patch.pausedUntil !== undefined) value.pausedUntil = patch.pausedUntil;
+    if (value.mode === "ambient" || !validAutonomy(value, current.memberIds)) return false;
+    if (sameAutonomy(value, previous)) return true;
+    const epoch = this.epoch, selection = this.selection, workspaceId = this.workspaceId, generation = this.generation;
+    const item: AutonomyWrite = { value, state: "saving" }; this.autonomyWrites.set(key, item); this.update({ error: "" });
+    try {
+      const receipt = await this.request<LocalChannelCatalog>("workspace.channels.update", { channelId, name: current.name, memberIds: [...current.memberIds], expectedRevision: catalog.revision, autonomy: value });
+      const row = receipt?.channels?.find(member => member.id === channelId);
+      if (receipt?.workspaceId !== workspaceId || receipt.resourceGeneration !== generation || !Number.isSafeInteger(receipt.revision) || receipt.revision < catalog.revision
+        || receipt.channels.some(member => member.autonomy !== undefined && !validAutonomy(member.autonomy, member.memberIds))
+        || !row || row.name !== current.name || !sameMembers(row.memberIds, current.memberIds) || !validAutonomy(row.autonomy, row.memberIds) || !sameAutonomy(row.autonomy, value)) throw new Error("Invalid autonomy receipt");
+      if (this.autonomyWrites.get(key) !== item) return false;
+      this.autonomyWrites.delete(key);
+      if (epoch !== this.epoch || selection !== this.selection || this.key() !== key) return false;
+      this.applyCatalog(receipt); this.update({ channel: { ...this.view.channel!, channel: row }, error: "" });
+      // Invalidate any read captured before the successful metadata change.
+      ++this.selection; this.refreshing = null; await this.refresh();
+      return true;
+    } catch (error) {
+      if (this.autonomyWrites.get(key) !== item) return false;
+      if (explicitRefusal(error)) this.autonomyWrites.delete(key); else item.state = "unknown";
+      if (epoch === this.epoch && selection === this.selection && this.key() === key) this.update({ error: explicitRefusal(error) ? "ws.channels.autonomyFailed" : "ws.channels.autonomyUnknown" });
+      return false;
+    } finally { if (this.key() === key) this.update({}); }
+  }
+  async verifyAutonomy() {
+    const channelId = this.view.channelId, key = this.key(), item = this.autonomyWrites.get(key), epoch = this.epoch, selection = this.selection;
+    if (!channelId || item?.state !== "unknown") return;
+    item.state = "checking"; this.update({});
+    try {
+      const [catalog, snapshot] = await Promise.all([this.request<LocalChannelCatalog>("workspace.channels.list"), this.request<LocalChannelSnapshot>("workspace.channels.snapshot", { channelId })]);
+      if (epoch !== this.epoch || selection !== this.selection || this.key() !== key || this.autonomyWrites.get(key) !== item) { item.state = "unknown"; return; }
+      if (!snapshot.channel.autonomy) throw new Error("Autonomy metadata missing");
+      this.applyCatalog(catalog); this.apply(snapshot, channelId); this.autonomyWrites.delete(key); this.update({ error: "" });
+    } catch { item.state = "unknown"; if (epoch === this.epoch && selection === this.selection && this.key() === key) this.update({ error: "ws.channels.autonomyUnknown" }); }
+    finally { if (this.key() === key) this.update({}); }
   }
   supportsUserQuestions(): boolean { return this.model.supportsUserQuestions?.() === true; }
   supportsPeers(): boolean { return this.model.supportsLocalChannelPeers?.() === true; }
