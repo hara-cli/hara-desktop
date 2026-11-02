@@ -29,7 +29,7 @@ const duration = (value: unknown): value is number | null => value === null || i
 const member = <T extends string>(value: unknown, values: readonly T[]): value is T => typeof value === "string" && values.includes(value as T);
 const failure = (value: unknown): value is RuntimeStageFailure | null => value === null || member(value, RUNTIME_STAGE_FAILURES);
 function model(value: unknown): value is string | null {
-  return value === null || typeof value === "string" && value.length <= 160 && /^[A-Za-z0-9][A-Za-z0-9._:+/-]*$/.test(value)
+  return value === null || typeof value === "string" && value === value.trim() && value.length <= 160 && /^[A-Za-z0-9][A-Za-z0-9._:+/-]*$/.test(value)
     && !/^(?:https?:|[A-Za-z]:[\\/]|sk[-_]|gh[pousr]_|github_pat_|xox[baprs]-|bearer)/i.test(value)
     && !/(?:^|\/)(?:Users|home|credentials?|secrets?)(?:\/|$)/i.test(value) && !/^[a-f0-9]{32,}$/i.test(value);
 }
@@ -37,7 +37,7 @@ function parseEvent(value: unknown): RuntimeStageEvent | null {
   if (!record(value) || !exact(value, ["seq", "kind", "phase", "offsetMs", "durationMs", "call", "toolName", "outcome", "source", "errorKind"])
     || !integer(value.seq, 1_000_000, 1) || !member(value.kind, RUNTIME_STAGE_KINDS) || !member(value.phase, ["start", "end", "mark"])
     || !integer(value.offsetMs, 86_400_000) || !duration(value.durationMs) || !(value.call === null || integer(value.call, 1_000_000, 1))
-    || !(value.toolName === null || typeof value.toolName === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(value.toolName))
+    || !(value.toolName === null || typeof value.toolName === "string" && value.toolName === value.toolName.trim() && /^[a-z][a-z0-9_]{0,63}$/.test(value.toolName))
     || !(value.outcome === null || member(value.outcome, ["completed", "error", "cancelled"]))
     || !member(value.source, ["host", "provider_stream", "native_event"]) || !failure(value.errorKind)) return null;
   if (value.durationMs !== null && value.durationMs > value.offsetMs) return null;
@@ -66,7 +66,7 @@ export function parseRuntimeStageReport(value: unknown): RuntimeStageReport | nu
     || !exact(value.runtime, ["id", "version", "loginSource", "model", "effort"])) return null;
   const runtime = value.runtime;
   if (!member(runtime.id, ["hara", "pi", "opencode", "codex", "claude", "agy"])
-    || !(runtime.version === null || typeof runtime.version === "string" && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(runtime.version))
+    || !(runtime.version === null || typeof runtime.version === "string" && runtime.version === runtime.version.trim() && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(runtime.version))
     || !member(runtime.loginSource, ["host", "isolated", "unknown"]) || !model(runtime.model)
     || !(runtime.effort === null || member(runtime.effort, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]))) return null;
   const events: RuntimeStageEvent[] = []; let seq = 0, offset = 0;

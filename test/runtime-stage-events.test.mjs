@@ -194,3 +194,11 @@ test("a successful local receipt appears only after the export request resolves"
   assert.ok(f.text().includes(makeT("en")("ws.stages.saved")));
   assert.ok(f.text().includes(receipt().path)); assert.ok(f.text().includes(receipt().sha256));
 });
+
+test("metadata parser rejects trailing control whitespace in versions, models and tool names", () => {
+  for (const suffix of ["\n", "\r", "\t", " "]) {
+    for (const runtime of [{ ...report().runtime, version: "1.2.3" + suffix }, { ...report().runtime, model: "provider/model" + suffix }])
+      assert.equal(stages.parseRuntimeStageReport(report({ runtime })), null);
+    assert.equal(stages.parseRuntimeStageReport(report({ events: report().events.map((row, index) => index === 0 ? { ...row, toolName: "workspace_read" + suffix } : row) })), null);
+  }
+});
