@@ -251,6 +251,12 @@ export const WORKSPACE_KEYS = [
     "Pi · 本空間預設連接"
   ],
   [
+    "ws.composer.boundRuntime",
+    "{runtime} · bound runtime",
+    "{runtime} · 已绑定引擎",
+    "{runtime} · 已綁定引擎"
+  ],
+  [
     "ws.composer.attach",
     "Add files",
     "添加文件",
