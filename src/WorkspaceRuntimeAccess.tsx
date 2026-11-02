@@ -4,15 +4,15 @@ import { makeT } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import { WorkspaceAgentRuntimePicker } from "./AgentRuntimePicker";
 import { ShellDialog } from "./WorkspaceShell";
-import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceSessionRestart } from "./workspace-dev-state";
+import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceSessionRestart, RuntimeLoginSource } from "./workspace-dev-state";
 
 export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, onApplyRuntime, onApplyModel, onRescan, onRegisterRuntime, onRuntimeDirectory }: {
   agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; locale: "en" | "zh-Hans" | "zh-Hant"; compact?: boolean;
   listModels(runtimeId: string): Promise<WorkspaceRuntimeModels>;
   onApplyRuntime(runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart): Promise<void>;
-  onApplyModel(runtimeId: string, modelId: string, revision: number): Promise<void>;
+  onApplyModel(runtimeId: string, modelId: string, revision: number, effort: string | null): Promise<void>;
   onRescan(): Promise<void>;
-  onRegisterRuntime(runtimeId: string, fingerprint: string): Promise<void>;
+  onRegisterRuntime(runtimeId: string, fingerprint: string, loginSource: RuntimeLoginSource): Promise<void>;
   onRuntimeDirectory(): void;
 }) {
   const zh = locale !== "en", t = makeT(locale);
@@ -24,6 +24,8 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   const [modelView, setModelView] = useState<{ scope: string; data: WorkspaceRuntimeModels } | null>(null);
   const models = option?.available && modelView?.scope === scope && modelView.data.runtimeId === agent.runtime.id ? modelView.data : null;
   const [selected, setSelected] = useState("");
+  const [effort, setEffort] = useState("");
+  const [loginSource, setLoginSource] = useState<RuntimeLoginSource>("host");
   const [loading, setLoading] = useState(false), [busy, setBusy] = useState(false), [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
   const [inventoryError, setInventoryError] = useState("");
@@ -49,14 +51,14 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     let active = true;
     const request = ++modelRequest.current;
     const current = () => active && liveScope.current === scope && modelRequest.current === request;
-    setModelView(null); setSelected(""); setError(""); setInventoryError(""); setLoading(false);
+    setModelView(null); setSelected(""); setEffort(""); setError(""); setInventoryError(""); setLoading(false);
     if (!option?.available) return () => { active = false; };
     setLoading(true);
     // Only the current binding supplies model authority. Picker drafts never query models.
     void listModels(agent.runtime.id).then(result => {
       if (!current()) return;
       if (result.runtimeId !== agent.runtime.id) throw new Error("ws.runtimeAccess.modelMismatch");
-      setModelView({ scope, data: result }); setSelected(result.selectedModelId ?? "");
+      setModelView({ scope, data: result }); setSelected(result.selectedModelId ?? ""); setEffort(result.selectedEffort ?? "");
     }).catch(cause => { if (current()) setInventoryError(cause instanceof Error ? cause.message : String(cause)); })
       .finally(() => { if (current()) setLoading(false); });
     return () => { active = false; };
@@ -69,19 +71,25 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   };
   const target = change?.scope === scope ? workspace.runtimeOptions?.find(row => row.id === change.runtimeId) : null;
   const modelError = inventoryError || error;
+  const selectedModel = models?.models.find(row => row.id === selected);
+  const effortLevels = selectedModel?.supportedReasoningEfforts ?? [];
+  const currentLoginSource = installation?.loginSource ?? "isolated";
   if (compact) return <div className="vg-runtime-strip" aria-label={zh ? "本同事运行配置" : "This colleague runtime"}>
-    <span>Runtime <strong>{agent.runtime.label}</strong></span><span>{zh ? "模型" : "Model"} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? "—"}</strong></span>
+    <span>Runtime <strong>{agent.runtime.label}</strong></span><span>{t("ws.runtimeAccess.model")} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? "—"}</strong></span>
+    <span>{t("ws.runtimeAccess.effort")} <strong>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</strong></span><span>{t("ws.runtimeAccess.loginSource")} <strong>{t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</strong></span>
   </div>;
   return <div className="vg-runtime-access">
     <section className="vg-context-card vg-p0-card">
       <p>{t("ws.runtimeAccess.bound", { name: agent.identity.displayName, runtime: agent.runtime.label })}</p>
+      <dl className="vg-runtime-summary"><dt>{t("ws.runtimeAccess.model")}</dt><dd>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? "—"}</dd><dt>{t("ws.runtimeAccess.effort")}</dt><dd>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</dd><dt>{t("ws.runtimeAccess.loginSource")}</dt><dd>{agent.runtime.id === "pi" ? "—" : t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</dd></dl>
+      {installation?.registered && installation.loginSource === "isolated" && installation.fingerprint && installation.runtimeId !== "agy" ? <button disabled={busy} onClick={() => { setLoginSource("host"); setLocal({ scope, runtimeId: installation.runtimeId, label: installation.label, fingerprint: installation.fingerprint!, path: installation.path }); }}>{t("ws.runtimeAccess.switchHost")}</button> : null}
       {workspace.runtimeOptions ? <WorkspaceAgentRuntimePicker agent={agent} options={workspace.runtimeOptions} locale={zh ? "zh" : "en"} saving={busy}
         onApply={runtimeId => { if (runtimeId === agent.runtime.id) return; setRestart("keep"); setError(""); setChange({ scope, runtimeId }); }} /> : null}
       {directoryNeeded && !workspace.runtimeOptions?.some(row => row.available) ? <p role="status">{t("ws.runtimeAccess.empty")}</p> : null}
       {!option?.available && (!showDetectedCards || !detected.some(row => row.runtimeId === agent.runtime.id)) && !missing.some(row => row.runtimeId === agent.runtime.id)
         ? <p role="alert">{t("ws.runtimeAccess.unavailable", { runtime: agent.runtime.label })}</p> : null}
       {showDetectedCards ? detected.map(row => <div key={row.runtimeId}><p>{t("ws.runtimeAccess.detected", { runtime: row.label })}</p>
-        <button disabled={busy || !row.fingerprint} onClick={() => { setError(""); setLocal({ scope, runtimeId: row.runtimeId, label: row.label, fingerprint: row.fingerprint!, path: row.path }); }}>{t("ws.runtimeAccess.register")}</button></div>) : null}
+        <button disabled={busy || !row.fingerprint} onClick={() => { setError(""); setLoginSource(row.runtimeId === "agy" ? "isolated" : "host"); setLocal({ scope, runtimeId: row.runtimeId, label: row.label, fingerprint: row.fingerprint!, path: row.path }); }}>{t("ws.runtimeAccess.register")}</button></div>) : null}
       {missing.map(row => <p key={row.runtimeId}>{t("ws.runtimeAccess.missing", { runtime: row.label })}</p>)}
       <div className="vg-runtime-recovery-actions">
         <button type="button" className="vg-runtime-rescan" disabled={busy} onClick={() => void run(async () => {
@@ -91,19 +99,20 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
         {directoryNeeded && directoryOwner !== owner ? <button type="button" className="vg-runtime-install" disabled={busy} onClick={() => { setDirectoryOwner(owner); onRuntimeDirectory(); }}>{t("ws.runtimeAccess.install")} <span aria-hidden="true">↗</span></button> : null}
       </div>
     </section>
-    <section className="vg-context-card vg-p0-card vg-runtime-model-card"><h3>{zh ? "此同事的模型" : "This colleague's model"}</h3>
+    <section className="vg-context-card vg-p0-card vg-runtime-model-card"><h3>{t("ws.runtimeAccess.modelTitle")}</h3>
       {loading || scanning ? <p role="status">{zh ? "读取模型…" : "Loading models…"}</p> : !models || !models.models.length ? <p role={option?.available ? "alert" : undefined}>{option?.available
         ? (modelError
           ? <>{zh ? "模型目录暂不可用" : "Model list unavailable"} · {workspaceMessageText(t, modelError)}</>
           : (zh ? "模型目录暂不可用" : "Model list unavailable"))
         : (zh ? "请先绑定可用引擎" : "Bind an available runtime first")}</p> : null}
-      <label>{zh ? "模型" : "Model"}<select aria-label={zh ? "此同事的模型" : "This colleague's model"} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => setSelected(event.target.value)}>
+      <label>{t("ws.runtimeAccess.model")}<select aria-label={t("ws.runtimeAccess.modelTitle")} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => { setSelected(event.target.value); setEffort(event.target.value === models?.selectedModelId ? models?.selectedEffort ?? "" : ""); }}>
         <option value="">{zh ? "选择模型" : "Choose a model"}</option>{models?.models.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
       </select></label>
-      <button disabled={busy || loading || scanning || !models || !selected || selected === models.selectedModelId || !models.models.some(row => row.id === selected)}
+      {selected && (effortLevels.length ? <label>{t("ws.runtimeAccess.effort")}<select aria-label={t("ws.runtimeAccess.effort")} value={effort} disabled={busy || loading || scanning} onChange={event => setEffort(event.target.value)}><option value="">{t("ws.runtimeAccess.auto")}</option>{effortLevels.map(level => <option key={level} value={level}>{level}</option>)}</select></label> : <p>{t("ws.runtimeAccess.effortUnknown")}</p>)}
+      <button disabled={busy || loading || scanning || !models || !selected || (selected === models.selectedModelId && effort === (models.selectedEffort ?? "")) || !models.models.some(row => row.id === selected)}
           onClick={() => void run(async () => {
             if (!models || liveScope.current !== scope || models.runtimeId !== agent.runtime.id) throw new Error("ws.runtimeAccess.stale");
-            await onApplyModel(agent.runtime.id, selected, models.revision);
+            await onApplyModel(agent.runtime.id, selected, models.revision, effort || null);
             if (liveScope.current === scope) setReload(value => value + 1);
           })}>{zh ? "应用模型" : "Apply model"}</button>
       {modelError && (models || !option?.available) ? <p role="alert">{workspaceMessageText(t, modelError)}</p> : null}
@@ -128,11 +137,12 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     {local?.scope === scope ? <ShellDialog label={t("ws.runtimes.confirmLocal")} onClose={() => { if (!saveFence.current) setLocal(null); }} className="wsd-approval-dialog wsd-runtime-change-dialog">
       <section className="hs-card wsd-approval"><h3>{t("ws.runtimes.registerTitle", { name: local.label })}</h3><p>{t("ws.runtimes.bindLead")}</p>
         <code className="wsd-root">{local.path}</code><p>{t("ws.runtimes.registerNote")}</p>
+        <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="inspector-login-source" checked={loginSource === "host"} disabled={busy || local.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: local.label })}</label><label><input type="radio" name="inspector-login-source" checked={loginSource === "isolated"} disabled={busy} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label></fieldset>
         {error ? <p role="alert">{workspaceMessageText(t, error)}</p> : null}
         <div className="wsd-card-actions"><button disabled={busy} onClick={() => setLocal(null)}>{t("ws.cancel")}</button>
           <button className="wsd-primary" disabled={busy} onClick={() => void run(async () => {
             if (liveScope.current !== local.scope) throw new Error("ws.runtimeAccess.stale");
-            await onRegisterRuntime(local.runtimeId, local.fingerprint); setLocal(null); setReload(value => value + 1);
+            await onRegisterRuntime(local.runtimeId, local.fingerprint, loginSource); setLocal(null); setReload(value => value + 1);
           })}>{t("ws.runtimes.register")}</button></div>
       </section></ShellDialog> : null}
   </div>;

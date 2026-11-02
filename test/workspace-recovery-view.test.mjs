@@ -200,6 +200,20 @@ test("legacy Codex diagnostics map to safe categories without echoing raw stderr
 });
 
 
+test("host Codex hides login CTAs in recovery and Runtime Settings", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const t=makeT(locale), conversation={state:"blocked",taskState:"blocked",blockReason:"codex Runtime failed (runtime_auth_required); no fallback was selected",history:[{role:"user",content:"hi"}],resumeAdmission:{allowed:true}};
+    const card=render(h(WorkspaceTaskRecovery,{conversation,t,disabled:false,runtimeId:"codex",loginSource:"host",onContinue(){},onRepair(){},onLogin(){throw Error("host login CTA must stay hidden");}}));
+    assert.ok(card.includes(t("ws.resume.retry")));assert.equal(card.includes(t("ws.resume.codexLogin")),false);
+    const before=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
+    Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:()=>locale}});
+    try {
+      const workspace={workspaceId:"fixture",resourceGeneration:"one",runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:true,loginSource:"host",generalAgentDriverAvailable:true}],operations:[]}};
+      const settings=render(h(WorkspaceRuntimeSettings,{workspace,model:{codexLoginInstructions(){throw Error("host guidance unavailable");}}}));
+      assert.equal(settings.includes(t("ws.resume.loginCommand")),false);
+    } finally {if(before)Object.defineProperty(globalThis,"localStorage",before);else delete globalThis.localStorage;}
+  }
+});
 test("registered Codex exposes separate private-login guidance in all three languages without starting login", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");

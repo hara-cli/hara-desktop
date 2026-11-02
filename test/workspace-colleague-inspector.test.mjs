@@ -57,7 +57,7 @@ test("main Hara shares the Runtime and model entry without colleague schedules",
     async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
   assert.match(html, /Hara management/);
   assert.match(html, /Apply Runtime/);
-  assert.match(html, /This colleague.*model/);
+  assert.match(html, /This Hara colleague.*model/);
   assert.doesNotMatch(html, /Open Runtime settings|Open model settings|gpt-6/);
   assert.doesNotMatch(html, /Create in chat; manage only this colleague here/);
 });
@@ -99,7 +99,7 @@ test("main and colleague inspectors retain identical visible, disabled same-valu
     assert.match(html, /<select[^>]*aria-label="Runtime"/);
     assert.match(html, /<button[^>]*disabled=""[^>]*>Apply Runtime<\/button>/);
     assert.match(html, /Rescan local runtimes/);
-    assert.match(html, /<select[^>]*aria-label="This colleague&#x27;s model"[^>]*disabled=""/);
+    assert.match(html, /<select[^>]*aria-label="This Hara colleague&#x27;s model"[^>]*disabled=""/);
     assert.doesNotMatch(html, /Install in Settings|Register for binding|Antigravity detected/);
   }
 });
