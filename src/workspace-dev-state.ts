@@ -1,3 +1,4 @@
+import { parseRuntimeDiagnosticReceipt, parseRuntimeStageReports, sameRuntimeStageIdentity, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events.ts";
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
 import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
 import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
@@ -49,6 +50,7 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };
     completion: { state: string; evidence?: string[] } | null; blockReason?: string | null; pendingQuestion?: WorkspaceDevQuestion | null;
     pendingInteractions?: WorkspaceDevInteraction[];
+    runtimeStages?: RuntimeStageReport[];
     resumeAdmission?: { allowed: boolean; reason: string | null } } }
 interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume" | "workspace.session.answer"; payload: Record<string, unknown>;
   message: string; state: "sending" | "unknown"; fromDraft?: boolean }
@@ -103,6 +105,34 @@ export class WorkspaceDevModel {
     this.rpc = rpc; this.nonce = nonce; this.syntheticOnly = syntheticOnly; this.executionMode = executionMode; this.settingsOnly = settingsOnly;
   }
   getSnapshot = (): WorkspaceDevView => this.view;
+  supportsRuntimeStages(): boolean { return this.rpc.supportsCapability?.("workspace.runtime-stage-events.v1") === true; }
+  runtimeStageReports(): RuntimeStageReport[] {
+    const workspace = this.view.workspace;
+    if (!workspace || !this.supportsRuntimeStages()) return [];
+    return parseRuntimeStageReports(workspace.conversation.runtimeStages, { workspaceId: workspace.workspaceId,
+      resourceGeneration: workspace.resourceGeneration, agentId: workspace.selectedAgentId,
+      sessionId: workspace.conversation.sessionId, history: workspace.conversation.history });
+  }
+  /** The renderer supplies only an existing, current attempt identity, never a report body or output path. */
+  async exportRuntimeDiagnostic(report: RuntimeStageReport): Promise<RuntimeDiagnosticReceipt> {
+    if (!this.supportsRuntimeStages()) throw new WorkspaceViewError("ws.stages.unsupported");
+    const workspace = this.view.workspace, epoch = this.epoch;
+    const original = this.runtimeStageReports().find(row => sameRuntimeStageIdentity(row, report));
+    if (!workspace || !original) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    let value: unknown;
+    try { value = await this.rpc.request("workspace.runtime.diagnostics.export", { workspaceId: workspace.workspaceId,
+      expectedGeneration: workspace.resourceGeneration, agentId: workspace.selectedAgentId,
+      sessionId: original.sessionId, runId: original.runId, attemptId: original.attemptId }); }
+    catch { throw new WorkspaceViewError("ws.stages.exportFailed"); }
+    const current = this.view.workspace;
+    if (epoch !== this.epoch || !current || current.workspaceId !== workspace.workspaceId
+      || current.resourceGeneration !== workspace.resourceGeneration || current.selectedAgentId !== workspace.selectedAgentId
+      || current.conversation.sessionId !== original.sessionId
+      || !this.runtimeStageReports().some(row => sameRuntimeStageIdentity(row, original))) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    const receipt = parseRuntimeDiagnosticReceipt(value);
+    if (!receipt) throw new WorkspaceViewError("ws.stages.exportFailed");
+    return receipt;
+  }
   supportsLocalChannels(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.v1") === true; }
   supportsColleagueSchedules(): boolean { return this.rpc.supportsCapability?.("workspace.colleague-schedules.v1") === true; }
   supportsConnectionModels(): boolean { return this.rpc.supportsCapability?.("workspace.connection-models.v1") === true; }
