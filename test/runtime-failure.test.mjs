@@ -106,3 +106,21 @@ test("OpenCode legacy fixed failures and registered native errors receive safe r
   assert.equal(runtimeTurnFailure("runtime_network", "opencode")?.kind, "runtime_network");
   assert.equal(runtimeTurnFailure("opencode Runtime failed (command_not_found); private", "opencode")?.kind, "runtime_unavailable");
 });
+
+
+test("far-future cooldown records safely fall back while expired history stays usable", () => {
+  const now = Date.now();
+  assert.ok(parseRuntimeFailure(envelope({ retryAtMs: now + 30_000 }), "codex"));
+  assert.ok(parseRuntimeFailure(envelope({ retryAtMs: 1 }), "codex"), "old history must not start a fresh cooldown");
+  for (const retryAtMs of [now + 32_000, 8_640_000_000_000_000]) {
+    const error = envelope({ retryAtMs });
+    assert.equal(parseRuntimeFailure(error, "codex"), null);
+    assert.equal(runtimeTurnFailure(error, "codex")?.kind, "runtime_failed");
+    const html = render(h(WorkspaceTaskRecovery, props(error)));
+    assert.doesNotMatch(html, /data-runtime-cooldown|data-runtime-diagnostic|hara_runtime_failure_v1|data-recovery-retry="true"[^>]*disabled/);
+  }
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const body = makeT(locale)("ws.resume.runtime.not_installed.body");
+    assert.match(body, locale === "en" ? /uninstalled or not registered/ : locale === "zh-Hans" ? /尚未安装或尚未注册/ : /尚未安裝或尚未註冊/);
+  }
+});

@@ -33,6 +33,9 @@ export function parseRuntimeFailure(error: string | null | undefined, runtimeId?
     || !["host", "isolated", "unknown"].includes(String(row.loginSource))
     || !(row.homeMatchesAccount === null || typeof row.homeMatchesAccount === "boolean")
     || !integer(row.elapsedMs, 600_000) || !integer(row.retryAtMs, 8_640_000_000_000_000) || !integer(row.consecutiveFailures, 1000)) return null;
+  // Core permits at most 30s. Allow 1s clock skew, but never keep a malformed record ticking forever.
+  // Expired history remains valid and does not impose another cooldown.
+  if (row.retryAtMs > Date.now() + 31_000) return null;
   return { runtime: row.runtime, kind: row.kind as RuntimeFailureKind, version: row.version as string | null,
     loginSource: row.loginSource as RuntimeFailureDiagnostic["loginSource"], homeMatchesAccount: row.homeMatchesAccount as boolean | null,
     elapsedMs: row.elapsedMs, retryAtMs: row.retryAtMs, consecutiveFailures: row.consecutiveFailures };

@@ -598,7 +598,7 @@ export const WORKSPACE_EXTRA_KEYS = [
   ["ws.runtimeDiagnostic.unknownLogin", "Check the selected login source in Settings before signing in or retrying.", "请先到设置核对所选登录来源，再登录或重试。", "請先到設定核對所選登入來源，再登入或重試。"],
   ["ws.runtimeDiagnostic.settings", "Open runtime settings", "打开引擎设置", "開啟引擎設定"],
   ["ws.resume.runtime.not_installed.title", "The bound runtime is unavailable", "已绑定的引擎暂不可用", "已綁定的引擎暫不可用"],
-  ["ws.resume.runtime.not_installed.body", "The bound executable was not found. Rescan or register its installation in Settings, then retry the Hara colleague’s task.", "未找到已绑定的引擎程序。请重新扫描或到设置注册安装，再重试 Hara 同事的原任务。", "找不到已綁定的引擎程式。請重新掃描或到設定註冊安裝，再重試 Hara 同事的原任務。"],
+  ["ws.resume.runtime.not_installed.body", "The bound runtime may be uninstalled or not registered. Rescan or register its installation in Settings, then retry the Hara colleague’s task.", "已绑定的引擎可能尚未安装或尚未注册。请重新扫描或到设置注册安装，再重试 Hara 同事的原任务。", "已綁定的引擎可能尚未安裝或尚未註冊。請重新掃描或到設定註冊安裝，再重試 Hara 同事的原任務。"],
   ["ws.resume.runtime.version_incompatible.title", "The runtime version is incompatible", "引擎版本不兼容", "引擎版本不相容"],
   ["ws.resume.runtime.version_incompatible.body", "The runtime rejected a required feature or version. Update to a compatible version and register it again before retrying.", "引擎不支持所需功能或版本。请更新到兼容版本并重新注册后重试。", "引擎不支援所需功能或版本。請更新至相容版本並重新註冊後重試。"],
   ["ws.resume.runtime.runtime_auth_rejected.title", "Runtime authentication was rejected", "引擎认证被拒绝", "引擎驗證遭拒"],
