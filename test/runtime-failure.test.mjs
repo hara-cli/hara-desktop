@@ -153,3 +153,30 @@ test("Pi diagnostics use Hara connection repair and never offer a native or priv
     assert.equal(html.includes(makeT(locale)("ws.runtimeDiagnostic.privateLogin")),false);
   }
 });
+for (const runtime of ["copilot", "cursor", "grok"]) test(runtime + " retains host binding and never offers re-login in any recovery source", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const loginSource of ["host", "isolated", "unknown"]) for (const kind of ["runtime_auth_required", "runtime_auth_rejected"]) {
+    const t = makeT(locale), html = render(h(WorkspaceTaskRecovery, props(envelope({ runtime, kind, loginSource }), locale, runtime)));
+    assert.ok(html.includes(t("ws.runtimeExpansion.loginReuseFailed")));
+    assert.equal(html.includes(t("ws.resume.runtime.runtime_auth_required.body")), false);
+    assert.equal((html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).some(button => button.replace(/<[^>]*>/g, "") === t("ws.resume.runtimeLogin")), false);
+    assert.doesNotMatch(html, /onLogin|data-runtime-login-guidance|ws\.runtimeExpansion\.|PRIVATE/);
+  }
+});
+
+test("inherited extension diagnostics remain closed, backward compatible and localized", () => {
+  for (const runtime of ["copilot", "cursor", "grok"]) {
+    const error = envelope({ runtime, extensionsIsolation: "inherited" });
+    assert.equal(parseRuntimeFailure(error, runtime).extensionsIsolation, "inherited");
+    assert.equal(Object.hasOwn(parseRuntimeFailure(envelope({ runtime }), runtime), "extensionsIsolation"), false);
+    for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+      const html = render(h(WorkspaceTaskRecovery, props(error, locale, runtime)));
+      assert.ok(html.includes(makeT(locale)("ws.runtimeDiagnostic.extensionsIsolation")));
+      assert.ok(html.includes("inherited"));
+    }
+  }
+  for (const overrides of [{ runtime: "codex", extensionsIsolation: "inherited" }, { runtime: "claude", extensionsIsolation: "inherited" },
+    { runtime: "cursor", extensionsIsolation: "isolated" }, { runtime: "cursor", extensionsIsolation: "PRIVATE" }, { runtime: "cursor", extensionsIsolation: null },
+    { runtime: "cursor", extensionsIsolation: "inherited", token: "PRIVATE" }]) assert.equal(parseRuntimeFailure(envelope(overrides)), null);
+  const duplicate = envelope({ runtime: "cursor", extensionsIsolation: "inherited" }).replace('"extensionsIsolation":"inherited"', '"extensionsIsolation":"inherited","extensionsIsolation":"inherited"');
+  assert.equal(parseRuntimeFailure(duplicate), null);
+});

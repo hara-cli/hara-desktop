@@ -1,3 +1,4 @@
+import * as runtimeExpansion from "../src/runtime-expansion.ts";
 import * as runtimeVersion from "../src/runtime-version-drift.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -42,7 +43,7 @@ function mount(patch = {}) {
   new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks }
     : name === "./i18n" ? { makeT } : name === "./AgentRuntimePicker" ? { WorkspaceAgentRuntimePicker: Picker }
     : name === "./runtime-version-drift" ? runtimeVersion : name === "./WorkspaceRuntimeVersion" ? { WorkspaceRuntimeVersion: () => null }
-    : name === "./WorkspaceShell" ? { ShellDialog: Dialog } : name === "./workspace-settings-copy" ? { workspaceMessageText } : require(name), exports);
+    : name === "./WorkspaceShell" ? { ShellDialog: Dialog } : name === "./workspace-settings-copy" ? { workspaceMessageText } : name === "./runtime-expansion" ? runtimeExpansion : require(name), exports);
   const agent = { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" },
     runtime: { id: "pi", label: "Pi", available: true } };
   props = { agent, workspace: { workspaceId: "fixture", resourceGeneration: "generation-1",
@@ -366,4 +367,47 @@ test("an old isolated Codex binding offers an explicit host-login confirmation",
   assert.ok(f.dialog()); assert.ok(f.text().includes("Use the Codex login on this Mac (recommended)"));
   f.button("Confirm registration").props.onClick(); await f.flush();
   assert.deepEqual(f.registrations, [["codex", "fixture-fingerprint", "host"]]);
+});
+
+for (const [runtimeId, levels] of [["copilot", []], ["copilot", ["low", "high"]], ["cursor", []], ["grok", []]]) test(runtimeId + " real runtime card labels inventory source and hides unsupported effort " + levels.length, async () => {
+  const source = runtimeId === "cursor" ? "live" : "documented";
+  const f = mount({
+    agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" }, runtime: { id: runtimeId, label: runtimeId, available: true } },
+    workspace: { workspaceId: "fixture", resourceGeneration: "g-one", runtimeOptions: [{ id: runtimeId, label: runtimeId, available: true }],
+      runtimes: { options: [{ runtimeId, registered: true, loginSource: "host", state: "local_registered" }] }, conversation: { state: "completed", history: [] } },
+    listModels: async id => ({ runtimeId: id, source, revision: 1, selectedModelId: "fixture", selectedEffort: null, models: [{ id: "fixture", label: "Fixture", supportedReasoningEfforts: levels }] }),
+  });
+  await f.flush();
+  assert.ok(f.text().includes(source === "live" ? "Live CLI model list" : "Documented list, not live"));
+  const controls = f.all().filter(node => node.type === "select" && node.props["aria-label"] === "Reasoning effort");
+  assert.equal(controls.length, levels.length ? 1 : 0);
+  if (!levels.length) assert.equal(f.text().includes("Reasoning effort"), false);
+});
+for (const runtimeId of ["copilot", "cursor", "grok"]) test(runtimeId + " registration offers only reuse of the host login", async () => {
+  const f = mount({
+    agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" }, runtime: { id: runtimeId, label: runtimeId, available: false } },
+    workspace: { workspaceId: "fixture", resourceGeneration: "g-one", runtimeOptions: [{ id: runtimeId, label: runtimeId, available: false, reason: "not_registered" }],
+      runtimes: { options: [{ runtimeId, label: runtimeId, registered: false, state: "detected", fingerprint: "fixture-fingerprint", path: "/fixture/runtime" }] }, conversation: { state: "completed", history: [] } },
+  });
+  await f.flush();
+  f.button(makeT("en")("ws.runtimeAccess.register")).props.onClick(); f.render();
+  assert.equal(f.all().filter(node => node.type === "input" && node.props.name === "inspector-login-source").length, 1);
+  f.button(makeT("en")("ws.runtimes.register")).props.onClick(); await f.flush();
+  assert.equal(f.registrations[0][2], "host");
+});
+
+test("binding and runtime-switch confirmations disclose inherited extensions for every expanded runtime and locale", async () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const id of ["copilot", "cursor", "grok"]) {
+    const t = makeT(locale), f = mount({ locale, workspace: { runtimeOptions: [{ id, label: id, available: true }],
+      runtimes: { options: [{ runtimeId: id, label: id, fingerprint: "fixture-fp", state: "detected", registered: false }] } } });
+    f.all().find(node => node.type === Picker).props.onApply(id); f.render();
+    assert.ok(f.text().includes(t("ws.runtimeExpansion.extensionsInherited")));
+    assert.deepEqual(f.changes, [], "a visible warning is not an automatic bind");
+    const g = mount({ locale, agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" }, runtime: { id, label: id, available: false } },
+      workspace: { workspaceId: "fixture", resourceGeneration: "g-one", runtimeOptions: [{ id, label: id, available: false, reason: "not_registered" }],
+        runtimes: { options: [{ runtimeId: id, label: id, fingerprint: "fixture-fp", state: "detected", registered: false }] }, conversation: { state: "completed", history: [] } } });
+    g.button(t("ws.runtimeAccess.register")).props.onClick(); g.render();
+    assert.ok(g.text().includes(t("ws.runtimeExpansion.extensionsInherited")));
+    assert.equal(g.all().filter(node => node.type === "input" && node.props.name === "inspector-login-source").length, 1);
+  }
 });

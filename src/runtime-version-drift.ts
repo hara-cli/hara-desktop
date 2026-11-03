@@ -7,7 +7,7 @@ export interface RuntimeVersionStatus {
 }
 /** Present-but-invalid metadata has status null; absent older-Core metadata has no binding. */
 export interface RuntimeVersionBinding { runtimeId: string; status: RuntimeVersionStatus | null }
-const IDS = ["hara", "pi", "opencode", "codex", "claude", "agy", "gemini", "kimi"];
+const IDS = ["hara", "pi", "opencode", "codex", "claude", "agy", "gemini", "kimi", "copilot", "cursor", "grok"];
 export const knownRuntimeVersionId = (value: unknown): value is string => typeof value === "string" && IDS.includes(value);
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const has = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);

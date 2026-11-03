@@ -234,7 +234,7 @@ export type ExternalTerminalEvent =
       handoffId: string;
     };
 
-export type AgentRuntimeId = "hara" | "pi" | "opencode" | "codex" | "claude" | "agy" | "gemini" | "kimi";
+export type AgentRuntimeId = "hara" | "pi" | "opencode" | "codex" | "claude" | "agy" | "gemini" | "kimi" | "copilot" | "cursor" | "grok";
 export interface AgentRuntimeOption {
   id: AgentRuntimeId;
   label: string;

@@ -60,7 +60,8 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
   const authFailure = runtime?.kind === "runtime_auth_required" || runtime?.kind === "runtime_auth_rejected";
   const unavailable = runtime?.kind === "runtime_unavailable" || runtime?.kind === "not_installed";
   const source = diagnostic?.loginSource ?? loginSource;
-  const versionFailureRuntime = /^(hara|pi|opencode|codex|claude|agy) Runtime failed\b/i.exec(detail ?? "")?.[1].toLowerCase();
+  const hostOnly = ["kimi", "copilot", "cursor", "grok"].includes(runtime?.runtimeId ?? runtimeId ?? "");
+  const versionFailureRuntime = /^(hara|pi|opencode|codex|claude|agy|copilot|cursor|grok) Runtime failed\b/i.exec(detail ?? "")?.[1].toLowerCase();
   const showRuntimeVersion = Boolean(runtime || failed || versionFailureRuntime) && (!runtime || runtime.runtimeId === runtimeId)
     && (!versionFailureRuntime || versionFailureRuntime === runtimeId);
   const dismiss = onDismiss ? <button type="button" className="hs-btn ghost" data-recovery-dismiss="true" onClick={onDismiss} disabled={disabled || finishing}>{t("ws.resume.dismiss")}</button> : null;
@@ -69,17 +70,17 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
     {finishing ? <p role="status" data-recovery-finishing="true">{t("ws.resume.finishing")}</p> : null}
     {reason ? <><p role={failed ? "alert" : "status"}>{t(`ws.resume.${reason}`)}</p><p>{t("ws.resume.repairBody")}</p>
       <div className="wsd-resume-actions"><button type="button" className="hs-btn sec" onClick={onRepair} disabled={disabled}>{t("ws.resume.repairAction")}</button>{dismiss}</div></>
-      : <>{runtime || detail || failed ? <p role="alert">{runtime ? t(piConnection && authFailure ? "ws.runtimeDiagnostic.piConnectionAuth" : `ws.resume.runtime.${runtime.kind}.body`) : detail ?? t("ws.resume.failureUnknown")}</p> : null}<p>{t(runtime ? "ws.resume.runtime.body" : "ws.resume.body")}</p>
+      : <>{runtime || detail || failed ? <p role="alert">{runtime ? t(piConnection && authFailure ? "ws.runtimeDiagnostic.piConnectionAuth" : hostOnly && authFailure ? "ws.runtimeExpansion.loginReuseFailed" : `ws.resume.runtime.${runtime.kind}.body`) : detail ?? t("ws.resume.failureUnknown")}</p> : null}<p>{t(runtime ? "ws.resume.runtime.body" : "ws.resume.body")}</p>
         {runtime ? <p>{t("ws.resume.runtime.explicit")}</p> : null}
         {diagnostic?.homeMatchesAccount === false && !piConnection ? <p>{t("ws.runtimeDiagnostic.homeMismatch")}</p> : null}
-        {diagnostic && authFailure ? piConnection ? <p data-runtime-connection-guidance="true">{t("ws.runtimeDiagnostic.piConnection")}</p> : <p data-runtime-login-guidance="true">{t(source === "host" ? "ws.runtimeDiagnostic.hostLogin" : source === "isolated" ? "ws.runtimeDiagnostic.privateLogin" : "ws.runtimeDiagnostic.unknownLogin", { command: runtimeLoginCommand(diagnostic.runtime) })}</p> : null}
+        {diagnostic && authFailure ? piConnection ? <p data-runtime-connection-guidance="true">{t("ws.runtimeDiagnostic.piConnection")}</p> : !hostOnly ? <p data-runtime-login-guidance="true">{t(source === "host" ? "ws.runtimeDiagnostic.hostLogin" : source === "isolated" ? "ws.runtimeDiagnostic.privateLogin" : "ws.runtimeDiagnostic.unknownLogin", { command: runtimeLoginCommand(diagnostic.runtime) })}</p> : null : null}
         {diagnostic ? <RuntimeFailureDetails key={scope} diagnostic={diagnostic} t={t} /> : null}
         {showRuntimeVersion ? <WorkspaceRuntimeVersion runtimeId={runtimeId} binding={runtimeVersion} t={t} /> : null}
         {conversation.resumeAdmission?.allowed === false ? <p>{t("ws.resume.budget")}</p> : null}
         <div className="wsd-resume-actions">
           {diagnostic ? <RuntimeFailureRetry key={scope} diagnostic={diagnostic} t={t} disabled={retryDisabled} onContinue={onContinue} />
             : <button type="button" className={runtime ? "hs-btn pri" : "hs-btn sec"} data-recovery-retry={runtime ? "true" : undefined} onClick={onContinue} disabled={retryDisabled}>{t(runtime ? "ws.resume.retry" : "ws.resume.action")}</button>}
-          {authFailure && piConnection ? <button type="button" className="hs-btn sec" onClick={onRepair} disabled={disabled}>{t("ws.resume.repairAction")}</button> : authFailure && source !== "host" && (!diagnostic || source === "isolated") ? <button type="button" className="hs-btn sec" onClick={onLogin ?? onRepair} disabled={disabled}>{t(runtime?.runtimeId === "codex" ? "ws.resume.codexLogin" : "ws.resume.runtimeLogin")}</button> : null}
+          {authFailure && piConnection ? <button type="button" className="hs-btn sec" onClick={onRepair} disabled={disabled}>{t("ws.resume.repairAction")}</button> : authFailure && !hostOnly && source !== "host" && (!diagnostic || source === "isolated") ? <button type="button" className="hs-btn sec" onClick={onLogin ?? onRepair} disabled={disabled}>{t(runtime?.runtimeId === "codex" ? "ws.resume.codexLogin" : "ws.resume.runtimeLogin")}</button> : null}
           {unavailable ? <>{onRescan ? <button type="button" className="hs-btn sec" onClick={onRescan} disabled={disabled || finishing}>{t("ws.runtimeAccess.rescan")}</button> : null}
             {onRuntimeSettings ? <button type="button" className="hs-btn ghost" onClick={onRuntimeSettings} disabled={disabled}>{t("ws.runtimeAccess.install")}</button> : null}</> : null}
           {diagnostic && !unavailable && onRuntimeSettings ? <button type="button" className="hs-btn ghost" onClick={onRuntimeSettings} disabled={disabled}>{t("ws.runtimeDiagnostic.settings")}</button> : null}

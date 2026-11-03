@@ -6,6 +6,13 @@ import { VIOLET_KEYS } from "./violet-i18n.ts";
 // Shared shell keys in English, Simplified Chinese and Traditional Chinese.
 export const WORKSPACE_KEYS = [
   ...RUNTIME_VERSION_KEYS,
+  ["ws.runtimeExpansion.manualInstall", "Install this CLI using its official instructions, then rescan.", "请按官方说明安装 CLI，然后重新扫描。", "請依官方說明安裝 CLI，然後重新掃描。"],
+  ["ws.runtimeExpansion.instructions", "Installation instructions", "安装说明", "安裝說明"],
+  ["ws.runtimeExpansion.hostLogin", "Reuses your local login. Hara does not start a new login.", "直接复用本机登录，Hara 不会要求重新登录。", "直接沿用本機登入，Hara 不會要求重新登入。"],
+  ["ws.runtimeExpansion.extensionsInherited", "This runtime will load your local personal extensions (plugins, hooks and MCP).", "会带上你本机的个人扩展（插件／hooks／MCP）。", "會帶上你本機的個人擴充（外掛／hooks／MCP）。"],
+  ["ws.runtimeDiagnostic.extensionsIsolation", "Personal extensions", "个人扩展", "個人擴充"],
+  ["ws.runtimeExpansion.loginReuseFailed", "The runtime could not reuse the local login. Keep this binding and task while its credential access is diagnosed; no new login is required.", "引擎未能复用本机登录。保留当前绑定与任务，排查其凭据访问；无需重新登录。", "引擎未能沿用本機登入。保留目前綁定與任務，排查其憑據存取；無需重新登入。"],
+  ["ws.runtimeExpansion.modelsLive", "Live CLI model list", "CLI 实时模型列表", "CLI 即時模型列表"],
   ...RUNTIME_STAGE_KEYS,
   ...VIOLET_KEYS,
   ["ws.question.step", "Saved step:", "当前卡点：", "目前卡點："],

@@ -1,3 +1,4 @@
+import { HOST_LOGIN_ONLY_RUNTIMES, inheritsPersonalExtensions, manualRuntimeInstallUrl, runtimeEffortVisible } from "./runtime-expansion";
 import { WorkspaceRuntimeVersion } from "./WorkspaceRuntimeVersion";
 import { runtimeVersionFor } from "./runtime-version-drift";
 import { useEffect, useRef, useState } from "react";
@@ -92,7 +93,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   const modelError = inventoryError || error;
   const selectedModel = models?.models.find(row => row.id === selected);
   const effortLevels = selectedModel?.supportedReasoningEfforts ?? [];
-  const showEffort = !["opencode", "gemini", "kimi"].includes(agent.runtime.id);
+  const showEffort = runtimeEffortVisible(agent.runtime.id, effortLevels);
   const currentLoginSource = installation?.loginSource ?? "isolated";
   if (compact) return <div className="vg-runtime-strip" aria-label={zh ? "本同事运行配置" : "This colleague runtime"}>
     {agent.runtime.id === "kimi" ? <span role="note">{t("ws.runtimes.extensionsInherited")}</span> : null}
@@ -131,12 +132,15 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
         {directoryNeeded && directoryOwner !== owner ? <button type="button" className="vg-runtime-install" disabled={busy} onClick={() => { setDirectoryOwner(owner); onRuntimeDirectory(); }}>{t("ws.runtimeAccess.install")} <span aria-hidden="true">↗</span></button> : null}
       </div>
     </section>
+    {!option?.available && manualRuntimeInstallUrl(agent.runtime.id) ? <p role="status">{t("ws.runtimeExpansion.manualInstall")} <a href={manualRuntimeInstallUrl(agent.runtime.id)!} target="_blank" rel="noopener noreferrer">{t("ws.runtimeExpansion.instructions")}</a></p> : null}
+    {inheritsPersonalExtensions(agent.runtime.id) ? <p role="status" data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}
     <section className="vg-context-card vg-p0-card vg-runtime-model-card"><h3>{t("ws.runtimeAccess.modelTitle")}</h3>
       {loading || scanning ? <p role="status">{t("ws.connectionModels.loading")}</p> : !models || !models.models.length ? <p role={option?.available ? "alert" : undefined}>{option?.available
         ? (modelError
           ? <>{zh ? "模型目录暂不可用" : "Model list unavailable"} · {workspaceMessageText(t, modelError)}</>
           : pi && !connection ? t("ws.connectionModels.connectFirst") : pi && !connectionModelSupported ? t("ws.connectionModels.upgrade") : (zh ? "模型目录暂不可用" : "Model list unavailable"))
         : (zh ? "请先绑定可用引擎" : "Bind an available runtime first")}</p> : null}
+      {models?.source === "live" ? <p role="status" className="vg-muted">{t("ws.runtimeExpansion.modelsLive")}</p> : null}
       {models?.source === "documented" ? <p role="status" className="vg-muted">{t(pi ? "ws.connectionModels.documented" : "ws.runtimes.documentedModels")}</p> : null}
       <label>{t("ws.runtimeAccess.model")}<select aria-label={t("ws.runtimeAccess.modelTitle")} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => { setSelected(event.target.value); setEffort(event.target.value === models?.selectedModelId ? models?.selectedEffort ?? "" : agent.runtime.id === "opencode" ? "" : defaultEffort(models?.models.find(row => row.id === event.target.value)?.supportedReasoningEfforts)); }}>
         <option value="">{zh ? "选择模型" : "Choose a model"}</option>{models?.models.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
@@ -156,7 +160,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     {target && change ? <ShellDialog label={t("ws.runtimeAccess.confirm")} onClose={() => { if (!saveFence.current) setChange(null); }} className="wsd-approval-dialog wsd-runtime-change-dialog">
       <section className="hs-card wsd-approval"><div className="wsd-kicker">{t("ws.runtimeAccess.confirm")}</div>
         <h3>{t("ws.runtimeAccess.target", { name: agent.identity.displayName, runtime: target.label })}</h3>
-        {target.id === "kimi" ? <p role="note">{t("ws.runtimes.extensionsInherited")}</p> : null}
+        {inheritsPersonalExtensions(target.id) ? <p data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}
         <label><input type="radio" name="runtime-restart" checked={restart === "keep"} disabled={busy} onChange={() => setRestart("keep")} />{t("ws.runtimeAccess.keep")}</label>
         <p>{t("ws.runtimeAccess.keepNote", { runtime: target.label })}</p>
         <label><input type="radio" name="runtime-restart" checked={restart === "fresh"} disabled={busy || freshBlocked} onChange={() => setRestart("fresh")} />{t("ws.runtimeAccess.fresh")}</label>
@@ -175,7 +179,8 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
       <section className="hs-card wsd-approval"><h3>{t("ws.runtimes.registerTitle", { name: local.label })}</h3><p>{t("ws.runtimes.bindLead")}</p>
         {local.runtimeId === "kimi" ? <p role="note">{t("ws.runtimes.extensionsInherited")}</p> : null}
         <code className="wsd-root">{local.path}</code><p>{t("ws.runtimes.registerNote")}</p>
-        <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="inspector-login-source" checked={loginSource === "host"} disabled={busy || local.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: local.label })}</label>{!["opencode", "gemini", "kimi"].includes(local.runtimeId) ? <label><input type="radio" name="inspector-login-source" checked={loginSource === "isolated"} disabled={busy} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
+        {inheritsPersonalExtensions(local.runtimeId) ? <p data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}
+        <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="inspector-login-source" checked={loginSource === "host"} disabled={busy || local.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: local.label })}</label>{!HOST_LOGIN_ONLY_RUNTIMES.includes(local.runtimeId) ? <label><input type="radio" name="inspector-login-source" checked={loginSource === "isolated"} disabled={busy} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
         {error ? <p role="alert">{workspaceMessageText(t, error)}</p> : null}
         <div className="wsd-card-actions"><button disabled={busy} onClick={() => setLocal(null)}>{t("ws.cancel")}</button>
           <button className="wsd-primary" disabled={busy} onClick={() => void run(async () => {

@@ -4,7 +4,7 @@ export const RUNTIME_FAILURE_MARKER = "hara_runtime_failure_v1=";
 export const RUNTIME_FAILURE_KINDS = ["not_installed", "version_incompatible", "runtime_auth_required", "runtime_auth_rejected", "runtime_network", "runtime_proxy", "invalid_model", "runtime_quota", "runtime_rate_limit", "runtime_permission_denied", "runtime_crashed", "project_not_trusted", "timeout", "spawn_failed", "runtime_failed"] as const;
 export type RuntimeFailureKind = typeof RUNTIME_FAILURE_KINDS[number];
 export interface RuntimeFailureDiagnostic {
-  runtime: "pi" | "codex" | "claude" | "opencode" | "gemini" | "kimi";
+  runtime: "pi" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "copilot" | "cursor" | "grok";
   kind: RuntimeFailureKind;
   version: string | null;
   loginSource: "host" | "isolated" | "unknown";
@@ -31,9 +31,10 @@ export function parseRuntimeFailure(error: string | null | undefined, runtimeId?
   if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).length !== fieldCount
     || !FIELDS.every(field => Object.prototype.hasOwnProperty.call(row, field))
     || Object.keys(row).some(field => !FIELDS.includes(field) && field !== "extensionsIsolation")) return null;
-  if (Object.prototype.hasOwnProperty.call(row, "extensionsIsolation") && (row.runtime !== "kimi" || row.extensionsIsolation !== "inherited")) return null;
-  if (row.runtime !== "pi" && row.runtime !== "codex" && row.runtime !== "claude" && row.runtime !== "opencode" && row.runtime !== "gemini" && row.runtime !== "kimi") return null;
+  if (Object.prototype.hasOwnProperty.call(row, "extensionsIsolation") && (!["kimi", "copilot", "cursor", "grok"].includes(String(row.runtime)) || row.extensionsIsolation !== "inherited")) return null;
+  if (row.runtime !== "pi" && row.runtime !== "codex" && row.runtime !== "claude" && row.runtime !== "opencode" && row.runtime !== "gemini" && row.runtime !== "kimi" && row.runtime !== "copilot" && row.runtime !== "cursor" && row.runtime !== "grok") return null;
   if (runtimeId !== undefined && row.runtime !== runtimeId) return null;
+  if (Object.prototype.hasOwnProperty.call(row, "extensionsIsolation") && (row.extensionsIsolation !== "inherited" || !["kimi", "copilot", "cursor", "grok"].includes(row.runtime))) return null;
   if (!RUNTIME_FAILURE_KINDS.includes(row.kind as RuntimeFailureKind)
     || !(row.version === null || typeof row.version === "string" && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(row.version))
     || !["host", "isolated", "unknown"].includes(String(row.loginSource))
@@ -52,12 +53,13 @@ export function runtimeCooldownRemaining(diagnostic: Pick<RuntimeFailureDiagnost
 }
 
 export function runtimeLoginCommand(runtime: RuntimeFailureDiagnostic["runtime"]): string {
-  return runtime === "pi" ? "" : runtime === "codex" ? "codex login" : runtime === "claude" ? "claude" : runtime === "gemini" ? "gemini" : runtime === "kimi" ? "kimi login" : "opencode auth login";
+  return runtime === "pi" ? "" : runtime === "codex" ? "codex login" : runtime === "claude" ? "claude" : runtime === "gemini" ? "gemini" : runtime === "kimi" ? "kimi login" : runtime === "opencode" ? "opencode auth login" : "";
 }
 
 export function runtimeDiagnosticSummary(diagnostic: RuntimeFailureDiagnostic, t: ReturnType<typeof makeT>): string {
   return [
     `${t("ws.runtimeDiagnostic.runtime")}: ${diagnostic.runtime}`,
+    ...(diagnostic.extensionsIsolation ? [`${t("ws.runtimeDiagnostic.extensionsIsolation")}: ${diagnostic.extensionsIsolation}`] : []),
     `${t("ws.runtimeDiagnostic.kind")}: ${t(`ws.resume.runtime.${diagnostic.kind}.title`)}`,
     `${t("ws.runtimeDiagnostic.version")}: ${diagnostic.version ?? t("ws.runtimeDiagnostic.unknown")}`,
     ...(diagnostic.extensionsIsolation === "inherited" ? ["extensionsIsolation: inherited", t("ws.runtimes.extensionsInherited")] : []),

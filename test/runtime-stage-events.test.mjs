@@ -202,3 +202,12 @@ test("metadata parser rejects trailing control whitespace in versions, models an
     assert.equal(stages.parseRuntimeStageReport(report({ events: report().events.map((row, index) => index === 0 ? { ...row, toolName: "workspace_read" + suffix } : row) })), null);
   }
 });
+
+test("stage reports retain inherited mode only for the approved expanded runtimes", () => {
+  for (const id of ["copilot", "cursor", "grok"]) {
+    const value = report({ runtime: { ...report().runtime, id, extensionsIsolation: "inherited" } });
+    assert.deepEqual(stages.parseRuntimeStageReport(value), value);
+    assert.equal(stages.parseRuntimeStageReport(report({ runtime: { ...value.runtime, extensionsIsolation: "PRIVATE" } })), null);
+  }
+  for (const id of ["pi", "claude", "codex", "opencode"]) assert.equal(stages.parseRuntimeStageReport(report({ runtime: { ...report().runtime, id, extensionsIsolation: "inherited" } })), null);
+});
