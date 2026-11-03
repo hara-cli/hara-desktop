@@ -124,7 +124,9 @@ test("scoped skills remain reachable through Settings without legacy pages", () 
   assert.doesNotMatch(source, /className="wsd-settings"|setFeature/);
   const settings = read("src/WorkspaceSettings.tsx");
   assert.match(settings, /"connections", "runtimes", "schedules", "plugins", "skills"/);
-  assert.doesNotMatch(settings, /"schedules"/);
+  // Jeff chat-scheduling authorization adds scoped Settings management; legacy Automations stays out.
+  assert.match(settings, /page === "schedules" \|\| page === "skills"/);
+  assert.doesNotMatch(settings, /<AutomationsPage|workspace\.collaboration/);
   assert.match(settings, /<WorkspaceFeaturePanel model=\{model\} workspace=\{workspace\} kind=\{page\}/);
   assert.doesNotMatch(source, /AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/);
 });
