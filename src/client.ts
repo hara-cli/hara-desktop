@@ -1579,7 +1579,7 @@ export interface SessionTurnResult {
   taskId: string;
   turnId: string;
   status?: "paused";
-  stopReason?: "deadline" | "task_round_budget" | "max_rounds" | "strategy_stall" | "no_progress" | "repeat_loop" | "completion_verification";
+  stopReason?: "deadline" | "task_round_budget" | "max_rounds" | "strategy_stall" | "no_progress" | "repeat_loop" | "completion_verification" | "native_context_limit";
 }
 
 export type SessionSubmitResult =

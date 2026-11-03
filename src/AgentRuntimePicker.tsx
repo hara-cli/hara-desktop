@@ -53,7 +53,6 @@ export default function AgentRuntimePicker({ agent, options = [], locale, saving
     <p id={noteId}>{locale === "zh"
       ? "决定这位 Agent 用什么引擎执行，不是模型或工具授权。切换只影响新任务；旧任务和历史保留原绑定。"
       : "Selects this Agent's execution engine, not its model or tool permissions. Changes affect new tasks; existing work keeps its binding."}</p>
-    {extensionsNotice ? <p role="note">{extensionsNotice}</p> : null}
     {agent.runtime && options.length ? <>
       <div className="agent-profile-runtime-controls">
         <label><span>{locale === "zh" ? "执行 Runtime" : "Execution Runtime"}</span>
