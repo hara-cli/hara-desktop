@@ -19,7 +19,7 @@ const expanded = scenario === "expanded" && Object.hasOwn(runtimeLabels, request
 const initialRuntime = expanded ? requestedRuntime : "codex";
 function Preview() {
   const [agent, setAgent] = useState<WorkspaceDevAgent>({ agentId: main ? "main" : "dora", kind: main ? "main" : "colleague", state: "active", configRevision: 1,
-    agentEpoch: 1, identity: { displayName: main ? "Hara" : "Dora", title: "Hara 同事" }, runtime: { id: initialRuntime, label: runtimeLabels[initialRuntime] ?? "Codex", available: scenario !== "missing" && scenario !== "integrity" } });
+    agentEpoch: 1, permissionTier: "full-protected", identity: { displayName: main ? "Hara" : "Dora", title: "Hara 同事" }, runtime: { id: initialRuntime, label: runtimeLabels[initialRuntime] ?? "Codex", available: scenario !== "missing" && scenario !== "integrity" } });
   const [registered, setRegistered] = useState(scenario !== "missing"), [detected, setDetected] = useState(false);
   const [inventoryFailed, setInventoryFailed] = useState(scenario === "inventory");
   const [integrityFailed, setIntegrityFailed] = useState(scenario === "integrity");
@@ -47,7 +47,8 @@ function Preview() {
     <div style={{ maxWidth: 1000, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 24px 340px" }}>
       <main><h1>Soft Dark · {scenario}</h1><p>仅供合成 fixture 验证；无真实引擎、凭据或任务。</p><pre style={{ whiteSpace: "pre-wrap" }}>{events.join("\n")}</pre></main>
       <WorkspaceColleagueInspector agent={agent} workspace={workspace} locale={locale} listModels={listModels}
-        features={null} error="" inert={false} supported={false} onClose={() => record("close inspector")}
+        features={null} error="" inert={false} supported={false} permissionSupported={true}
+        onApplyPermissionTier={async tier => { record("setPermissionTier(" + tier + ")"); setAgent(old => ({ ...old, permissionTier: tier, configRevision: old.configRevision! + 1 })); }} onClose={() => record("close inspector")}
         onRefresh={() => record("refresh inspector")} onToggle={async () => {}} onSave={async () => {}} onDelete={async () => {}} onSaveProfile={async () => {}}
         onApplyRuntime={async (id, restart) => { record("setRuntime(" + id + ", " + restart + ")");
           setAgent(old => ({ ...old, configRevision: old.configRevision! + 1, runtime: { id, label: runtimeLabels[id] ?? (id === "codex" ? "Codex" : "Pi"), available: true } })); }}

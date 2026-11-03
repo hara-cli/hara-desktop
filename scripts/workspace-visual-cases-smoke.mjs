@@ -74,7 +74,12 @@ async function exercise(row, checked, capture) {
     await check(`Boolean(document.querySelector('[data-personal-extensions=inherited]'))===${runtime!=="gemini"}`,"Only the approved runtime inherits personal extensions");
     await check(`!document.querySelector('select[aria-label=${JSON.stringify(t("ws.runtimeAccess.effort"))}]')`,"No unsupported effort selection is offered");
     await check(`document.body.textContent.includes(${JSON.stringify(t(runtime==="cursor"?"ws.runtimeExpansion.modelsLive":"ws.runtimes.documentedModels"))})`,"Model inventory provenance is visible");
+    await check("document.querySelector('.vg-permission-tier select').value==='full-protected' && !document.querySelector('.vg-permission-tier select').disabled","The current Core fixture exposes the bound full permission tier");
+    await check("!document.body.textContent.includes(" + JSON.stringify(t("ws.permissions.upgrade")) + ")","The current Core fixture does not masquerade as an unsupported older Core");
     await capture("registered-host");
+    await evaluate("document.querySelector('.vg-runtime-model-card').scrollIntoView({block:'center',behavior:'instant'})");
+    await check("document.querySelector('.vg-runtime-model-card').getBoundingClientRect().top>=0 && document.querySelector('.vg-runtime-model-card').getBoundingClientRect().bottom<=window.innerHeight","The model catalog is visible within the captured viewport");
+    await capture("model-inventory");
     return;
   }
   if (row.id === "error-diagnostic-summary") {
