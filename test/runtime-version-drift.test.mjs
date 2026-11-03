@@ -86,7 +86,7 @@ test('failure card version context matches both the current runtime and the repo
 });
 test('actual WorkspaceScreen passes only current snapshot version data down to the failure card',()=>{
   const ws=workspace(),value={directory:{revision:1,activeWorkspaceId:'fixture',workspaces:[{workspaceId:'fixture',label:'Synthetic',role:'owner',active:true}],syntheticOnly:false,executionMode:'workspace'},workspaceId:'fixture',agentId:'main',roster:ws.agents,draft:'',loading:false,sending:false,pendingUnknown:false,error:'',syncNotice:'',localHistoryStart:0,runtimeChanging:false,runtimeBlocked:false,workspace:ws};
-  const model={getSnapshot:()=>value,subscribe:()=>()=>{},runtimeStageReports:()=>[]};
+  const model={getSnapshot:()=>value,subscribe:()=>()=>{},runtimeStageReports:()=>[],supportsNativeSessions:()=>false};
   const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>key==='hara.locale'?'en':null}});
   try {const html=render(WorkspaceScreen,{model,disconnected:'',root:'/synthetic',mode:'workspace',onReconnect(){}});assert.ok(html.includes('CLI upgraded from 1.2.3 to 1.3.0.'));assert.equal(html.includes('9.0.0'),false);}
   finally{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;}

@@ -378,7 +378,7 @@ for (const [runtimeId, levels] of [["copilot", []], ["copilot", ["low", "high"]]
     listModels: async id => ({ runtimeId: id, source, revision: 1, selectedModelId: "fixture", selectedEffort: null, models: [{ id: "fixture", label: "Fixture", supportedReasoningEfforts: levels }] }),
   });
   await f.flush();
-  assert.ok(f.text().includes(source === "live" ? "Live CLI model list" : "Documented list, not live"));
+  assert.ok(f.text().includes(makeT("en")(source === "live" ? "ws.runtimeExpansion.modelsLive" : "ws.runtimes.documentedModels")));
   const controls = f.all().filter(node => node.type === "select" && node.props["aria-label"] === "Reasoning effort");
   assert.equal(controls.length, levels.length ? 1 : 0);
   if (!levels.length) assert.equal(f.text().includes("Reasoning effort"), false);

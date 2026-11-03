@@ -31,7 +31,7 @@ test("selected colleague inspector owns schedule management in all three locales
       async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
     assert.match(html, locale === "en" ? /Manage Dora/ : /Dora · 管理/);
     assert.match(html, /Runtime/);
-    assert.match(html, /Apply Runtime|应用 Runtime/);
+    assert.ok(html.includes(locale === "en" ? "Apply Runtime" : locale === "zh-Hant" ? "套用 Runtime" : "应用 Runtime"));
     assert.doesNotMatch(html, /sonnet|Open Runtime settings|Open model settings|管理本机引擎/);
     assert.match(html, /Visual summary/);
     assert.doesNotMatch(html, /Private other colleague schedule|Another task/);
