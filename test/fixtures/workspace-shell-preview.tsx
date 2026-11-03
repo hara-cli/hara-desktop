@@ -69,7 +69,7 @@ const channelData: {catalogs:Record<string,LocalChannelCatalog>;snapshots:Record
 const persistChannels=()=>localStorage.setItem(channelStorageKey,JSON.stringify(channelData));
 const channelTimers=new Map<string,ReturnType<typeof setTimeout>>();
 let slowChannel=false,unknownChannelAck=false;
-const rpc={supportsCapability:(capability:string)=>capability==='workspace.local-channels.v1',async request<T>(method:string, values:Record<string,unknown>):Promise<T>{
+const rpc={supportsCapability:(capability:string)=>capability==='workspace.local-channels.v1'||scenario==='channels'&&['workspace.local-channels.peer.v1','workspace.channel-pass.v1'].includes(capability),async request<T>(method:string, values:Record<string,unknown>):Promise<T>{
   calls.push({method,params:values});const workspaceId=String(values.workspaceId??'A'), agentId=String(values.agentId??'main');
   if(failures.has(method))throw new Error('Synthetic read/write failure');
   let result:unknown;

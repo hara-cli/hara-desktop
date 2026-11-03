@@ -81,7 +81,7 @@ async function exercise(row, checked, capture) {
     await ready("!!document.querySelector('[data-runtime-diagnostic=true] summary')");
     await click('[data-runtime-diagnostic=true] summary');
     await check("document.querySelector('[data-runtime-diagnostic=true]').open","The actual diagnostic details expand");
-    await check("document.querySelector('[data-runtime-diagnostic=true] pre').textContent.includes('codex') && document.querySelector('[data-runtime-diagnostic=true] pre').textContent.includes('runtime_auth_rejected')","Safe fields match the synthetic receipt");
+    await check("document.querySelector('[data-runtime-diagnostic=true] pre').textContent.includes('codex') && document.querySelector('[data-runtime-diagnostic=true] pre').textContent.includes(" + JSON.stringify(t("ws.resume.runtime.runtime_auth_rejected.title")) + ") && document.querySelector('[data-runtime-diagnostic=true] pre').textContent.includes('0.163.0') && document.querySelector('[data-runtime-diagnostic=true] pre').textContent.includes('812 ms')","Safe fields match the synthetic receipt");
     await check("!document.body.textContent.includes('PRIVATE_BODY_SHOULD_NEVER_RENDER')","Raw private failure body is absent");
     await check("document.querySelector('output').textContent===''","Inspection triggers no retry, login or model call");
     await capture("diagnostic-summary");return;
@@ -95,9 +95,9 @@ async function exercise(row, checked, capture) {
     await evaluate("[...document.querySelectorAll('.hs-channel-choices input[type=checkbox]')].slice(0,3).forEach(n=>n.click())");
     await button(t("ws.channels.new"),".hs-channel-dialog");await ready("!!document.querySelector('[data-local-channel]')");
     await evaluate(`(async()=>{const f=window.__HARA_SHELL_FIXTURE__,id=document.querySelector('[data-local-channel]').dataset.localChannel,turnId='10000000-0000-4000-8000-000000000001',at='2026-11-04T00:00:00Z';
-      const replies=[{agentId:'person-0',displayName:'Original speaker',state:'completed'},{agentId:'person-1',displayName:'Passed colleague',state:'passed',passedBy:'prefilter',passReason:'role_unrelated'},{agentId:'person-2',displayName:'Invited colleague',state:'completed',wokenBy:'person-0',depth:1}];
+      const replies=[{agentId:'person-0',displayName:'Original speaker',state:'completed'},{agentId:'person-1',displayName:'Passed colleague',state:'passed',passedBy:'prefilter',passReason:'role_unrelated'},{agentId:'person-2',displayName:'Invited colleague',state:'completed',wokenBy:'person-0',depth:0}];
       const messages=[{id:'user',turnId,agentId:null,displayName:'',createdAt:at,message:{role:'user',content:'Original group question'}},{id:'reply',turnId,agentId:'person-0',displayName:'Original speaker',createdAt:at,message:{role:'assistant',text:'Scoped original reply',tools:[]}},{id:'interjection',turnId,agentId:'person-2',displayName:'Invited colleague',createdAt:at,message:{role:'assistant',text:'Scoped interjection reply',tools:[]}}];
-      await f.channelHistory(id,[{id:turnId,state:'completed',replies}],messages);})()`);
+      await f.channelHistory(id,[{id:turnId,origin:'user',state:'completed',replies}],messages);})()`);
     await ready("!!document.querySelector('details[data-channel-passed]')");
     await check("!document.querySelector('details[data-channel-passed]').open","Unrelated decisions start folded");
     await check("document.querySelector('[data-channel-woken=started]')!==null && document.querySelectorAll('.hs-channel-turn').length===1","The invited reply stays in the original turn");
