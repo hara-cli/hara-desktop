@@ -235,3 +235,17 @@ test("one-shot continuation wording stays scoped to native failures and preserve
     assert.ok(html.includes(t("ws.resume.body"))); assert.equal(html.includes(t("ws.resume.runtime.body")), false);
   }
 });
+
+test("native context and restore failure have a three-language new-session exit without generic failure or retry", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const full of [true, false]) {
+    const t = makeT(locale), conversation = { state: "blocked", taskState: full ? "paused" : "blocked", history: [{ role: "user", content: "retained" }],
+      blockReason: full ? "Native context limit reached. Open a new session to continue." : "codex Runtime failed (codex_resume_failed_history_preserved)",
+      nativeSession: { status: full ? "new_session_required" : "recovery_needed" } };
+    const html = render(h(WorkspaceTaskRecovery, { conversation, t, disabled: false, runtimeId: "codex", onContinue() {}, onRepair() {}, onNewSession() {} }));
+    assert.ok(html.includes(t("ws.native.new"))); assert.ok(html.includes(t(full ? "ws.native.limitBody" : "ws.native.recoveryBody")));
+    assert.ok(html.includes('role="status"')); assert.equal(html.includes('role="alert"'), false); assert.equal(html.includes("data-recovery-retry"), false);
+    assert.equal(html.includes("codex_resume_failed_history_preserved"), false);
+    const busy = render(h(WorkspaceTaskRecovery, { conversation: { ...conversation, state: "draining" }, t, disabled: false, onContinue() {}, onRepair() {}, onNewSession() {} }));
+    assert.ok(/<button[^>]*disabled/.test(busy));
+  }
+});

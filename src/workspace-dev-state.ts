@@ -49,6 +49,8 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     usage: { modelCalls: number; inputTokens: number; outputTokens: number }; runUsage: { modelCalls: number; inputTokens: number; outputTokens: number };
     completion: { state: string; evidence?: string[] } | null; blockReason?: string | null; pendingQuestion?: WorkspaceDevQuestion | null;
     pendingInteractions?: WorkspaceDevInteraction[];
+    nativeSession?: { runtimeId: "codex"; revision: number; status: "empty" | "ready" | "recovery_needed" | "new_session_required";
+      contextTokens: number | null; contextLimit: number; lastAttempt: { input: number; output: number; cachedInput: number }; lastResetRequestId: string | null };
     resumeAdmission?: { allowed: boolean; reason: string | null } } }
 interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume" | "workspace.session.answer"; payload: Record<string, unknown>;
   message: string; state: "sending" | "unknown"; fromDraft?: boolean }
@@ -81,6 +83,7 @@ export class WorkspaceDevModel {
   /** Per-agent suppress of the Soft Dark resume card after clear / new chat / explicit dismiss. */
   private readonly dismissedRecovery = new Map<string, string>();
   private readonly pending = new Map<string, PendingMessage>();
+  private readonly nativeResets = new Map<string, { requestId: string; state: "sending" | "unknown" }>();
   private readonly questionPauses = new Set<string>();
   private readonly asyncAnswers = new Set<string>();
   private readonly approvalDecisions = new Set<string>();
@@ -106,6 +109,7 @@ export class WorkspaceDevModel {
   supportsLocalChannels(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.v1") === true; }
   supportsColleagueSchedules(): boolean { return this.rpc.supportsCapability?.("workspace.colleague-schedules.v1") === true; }
   supportsConnectionModels(): boolean { return this.rpc.supportsCapability?.("workspace.connection-models.v1") === true; }
+  supportsNativeSessions(): boolean { return this.rpc.supportsCapability?.("workspace.native-session.v1") === true; }
   /** Core peer collaboration: @mention widening, channel_peer_wake and channel_sync. */
   supportsLocalChannelPeers(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.peer.v1") === true; }
   async localChannelRequest<T>(method: string, params: Record<string, unknown>): Promise<T> {
@@ -128,6 +132,8 @@ export class WorkspaceDevModel {
       || workspace?.runtimeOptions && !workspace.runtimeOptions.some(row => row.id === runtime.id && row.available)
       || this.runtimeModelFailures.has(this.runtimeBindingKey())));
     if (this.questionPauses.has(key) || this.pending.get(key)?.state === "sending") this.view.sending = true;
+    const nativeReset = this.nativeResets.get(key);
+    if (nativeReset) { this.view.sending = nativeReset.state === "sending"; this.view.pendingUnknown = nativeReset.state === "unknown"; }
     for (const listener of this.listeners) listener();
   }
   private key(snapshot = this.view.workspace): string { return snapshot ? JSON.stringify([snapshot.workspaceId, snapshot.resourceGeneration, snapshot.selectedAgentId]) : ""; }
@@ -144,6 +150,8 @@ export class WorkspaceDevModel {
     if (this.view.workspace && this.view.workspace.resourceGeneration !== snapshot.resourceGeneration) this.epoch++;
     const key = this.key(snapshot), pending = this.pending.get(key);
     const identity = workspaceRecoveryIdentity(snapshot.conversation);
+    const reset = this.nativeResets.get(key), resetVerified = Boolean(reset && snapshot.conversation.nativeSession?.lastResetRequestId === reset.requestId);
+    if (resetVerified) { this.nativeResets.delete(key); if (identity) this.dismissedRecovery.set(key, identity); }
     // A newer run replaces a prior dismiss; keep suppress only while the identity still matches.
     const dismissed = identity && this.dismissedRecovery.get(key) === identity ? identity : null;
     if (identity && this.dismissedRecovery.get(key) && this.dismissedRecovery.get(key) !== identity) this.dismissedRecovery.delete(key);
@@ -155,7 +163,8 @@ export class WorkspaceDevModel {
       draft: this.drafts.get(key) ?? "", pendingUnknown: pending?.state === "unknown", sending: pending?.state === "sending", loading: false, error: "",
       dismissedRecoveryIdentity: dismissed,
       syncNotice: snapshot.inheritance?.state === "pending" ? "ws.notice.inheritancePending"
-        : snapshot.inheritance?.state === "rolled_back" ? "ws.notice.inheritanceRolledBack" : "" });
+        : snapshot.inheritance?.state === "rolled_back" ? "ws.notice.inheritanceRolledBack"
+        : resetVerified ? "ws.native.newReady" : reset?.state === "unknown" ? "ws.native.resetUnknown" : "" });
   }
   async loadDirectory(): Promise<void> {
     const epoch = this.epoch; const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
@@ -367,7 +376,7 @@ export class WorkspaceDevModel {
   async setAgentRuntime(agent: WorkspaceDevAgent, runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart = "keep"): Promise<void> {
     if (!agent.configRevision || !agent.agentEpoch) throw new WorkspaceViewError("ws.notice.invalidView");
     const workspace = this.view.workspace, key = this.key(), epoch = this.epoch;
-    if (!workspace || (sessionRestart !== "keep" && sessionRestart !== "fresh")
+    if (!workspace || this.nativeResets.has(key) || (sessionRestart !== "keep" && sessionRestart !== "fresh")
       || (sessionRestart === "fresh" && (workspace.selectedAgentId !== agent.agentId || this.pending.has(key) || this.view.sending || this.view.pendingUnknown
         || ["running", "draining"].includes(workspace.conversation.state) || workspace.conversation.pendingQuestion
         || workspace.conversation.pendingInteractions?.length))) throw new WorkspaceViewError("ws.notice.scopeChanged");
@@ -481,9 +490,45 @@ export class WorkspaceDevModel {
   /** Soft Dark clear / new-context: suppress pending resume for the current unfinished run. History stays Core-owned. */
   clearConversationResume(): void { this.dismissRecovery(); }
 
+  /** The user explicitly retires this native thread. No send, resume, model call or local history
+   * rewrite accompanies the reset. Unknown transport outcomes stay latched until a scoped readback. */
+  async newNativeSession(): Promise<void> {
+    const w = this.view.workspace, key = this.key(), native = w?.conversation.nativeSession;
+    if (!w || !key || !native || !this.supportsNativeSessions() || native.runtimeId !== "codex"
+      || w.agents.find(row => row.agentId === w.selectedAgentId)?.runtime.id !== "codex"
+      || this.view.sending || this.view.pendingUnknown || this.runtimeChanges.has(key) || this.pending.has(key) || this.nativeResets.has(key)
+      || ["running", "draining"].includes(w.conversation.state) || w.conversation.pendingQuestion || w.conversation.pendingInteractions?.length) return;
+    const epoch = this.epoch, reset = { requestId: this.nonce(), state: "sending" as "sending" | "unknown" };
+    this.nativeResets.set(key, reset); this.update({ sending: true, error: "", syncNotice: "" });
+    try {
+      const receipt = await this.rpc.request<{ requestId: string; revision: number }>("workspace.session.new", {
+        workspaceId: w.workspaceId, expectedGeneration: w.resourceGeneration, agentId: w.selectedAgentId,
+        expectedRevision: w.conversation.revision, expectedNativeRevision: native.revision, requestId: reset.requestId, approved: true });
+      if (receipt.requestId !== reset.requestId || !Number.isSafeInteger(receipt.revision) || receipt.revision <= native.revision) throw new WorkspaceViewError("ws.notice.invalidReceipt");
+      this.nativeResets.delete(key);
+      const identity = workspaceRecoveryIdentity(w.conversation); if (identity) this.dismissedRecovery.set(key, identity);
+      if (epoch === this.epoch && this.key() === key) {
+        this.update({ sending: false, pendingUnknown: false }); await this.refresh();
+        if (epoch === this.epoch && this.key() === key) this.update({ syncNotice: "ws.native.newReady" });
+      }
+    } catch (error) {
+      if (this.nativeResets.get(key) !== reset) return; // a scoped snapshot already verified this nonce
+      if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "number") {
+        this.nativeResets.delete(key);
+        if (this.key() === key) this.update({ sending: false, pendingUnknown: false, error: "ws.native.resetRejected" });
+      } else {
+        reset.state = "unknown";
+        if (this.key() === key) {
+          this.update({ sending: false, pendingUnknown: true, syncNotice: "ws.native.resetUnknown" });
+          await this.refresh();
+        }
+      }
+    } finally { this.update({}); }
+  }
+
   async send(resume = false, answer?: { questionId: string; message: string; fromDraft?: boolean }): Promise<void> {
     const workspace = this.view.workspace, key = this.key();
-    if (!workspace || !key || this.runtimeChanges.has(key) || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
+    if (!workspace || !key || this.runtimeChanges.has(key) || this.nativeResets.has(key) || this.view.sending || ["running", "draining"].includes(workspace.conversation.state)) return;
     const retained = this.pending.get(key);
     if (retained || this.questionPauses.has(key)) return;
     // Desk preflight: retain drafts and pending questions; Core still owns run admission.
@@ -534,6 +579,7 @@ export class WorkspaceDevModel {
   }
   async verifyPending(): Promise<void> {
     const key = this.key(), pending = this.pending.get(key);
+    if (this.nativeResets.get(key)?.state === "unknown") { await this.refresh(); return; }
     if (pending?.state === "unknown") await this.checkReceipt(key, pending);
   }
   private async checkReceipt(key: string, pending: PendingMessage): Promise<void> {
