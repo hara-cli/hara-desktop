@@ -62,7 +62,7 @@ test("Pi-only package gate rejects obsolete native tools, optional dependency fo
     for (const name of ["opencode", "codex.exe", "claude", "hara-code-runtime", "opencode-darwin-arm64", "claude-agent-sdk"]) {
       const path = join(root, name); mkdirSync(path); assert.throws(() => assertNoOptionalRuntimeFiles(root), /unexpectedly/); rmSync(path, { recursive: true });
     }
-    const manifest = { schemaVersion: 1, preinstalled: ["pi"], piSdkVersion: "1.1.0", optional: ["opencode", "codex", "claude"] }; assertPiRuntimeManifest(JSON.stringify(manifest));
+    const manifest = { schemaVersion: 1, preinstalled: ["pi"], piSdkVersion: "1.5.0", optional: ["opencode", "codex", "claude"] }; assertPiRuntimeManifest(JSON.stringify(manifest));
     assert.throws(() => assertPiRuntimeManifest(JSON.stringify({ ...manifest, preinstalled: ["pi", "opencode"] })));
     assert.throws(() => assertPiOnlyConfiguration({ bundle: { externalBin: ["binaries/hara", "binaries/herdr", "binaries/hara-code-runtime"] } }));
   } finally { rmSync(root, { recursive: true, force: true }); }
