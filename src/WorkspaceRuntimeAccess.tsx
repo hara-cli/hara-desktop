@@ -1,3 +1,5 @@
+import { WorkspaceRuntimeVersion } from "./WorkspaceRuntimeVersion";
+import { runtimeVersionFor } from "./runtime-version-drift";
 import { useEffect, useRef, useState } from "react";
 import type { AgentRuntimeId } from "./client";
 import { makeT } from "./i18n";
@@ -97,6 +99,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     <section className="vg-context-card vg-p0-card">
       <p>{t("ws.runtimeAccess.bound", { name: agent.identity.displayName, runtime: agent.runtime.label })}</p>
       <dl className="vg-runtime-summary"><dt>{t("ws.runtimeAccess.model")}</dt><dd>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</dd>{agent.runtime.id !== "opencode" ? <><dt>{t("ws.runtimeAccess.effort")}</dt><dd>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</dd></> : null}<dt>{t("ws.runtimeAccess.loginSource")}</dt><dd>{agent.runtime.id === "pi" ? "—" : t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</dd></dl>
+      <WorkspaceRuntimeVersion runtimeId={agent.runtime.id} binding={runtimeVersionFor(workspace.runtimes?.options, agent.runtime.id)} t={t} />
       {installation?.registered && installation.loginSource === "isolated" && installation.fingerprint && installation.runtimeId !== "agy" ? <button disabled={busy} onClick={() => { setLoginSource("host"); setLocal({ scope, runtimeId: installation.runtimeId, label: installation.label, fingerprint: installation.fingerprint!, path: installation.path }); }}>{t("ws.runtimeAccess.switchHost")}</button> : null}
       {workspace.runtimeOptions ? <WorkspaceAgentRuntimePicker agent={agent} options={workspace.runtimeOptions} locale={zh ? "zh" : "en"} saving={busy}
         onApply={runtimeId => { if (runtimeId === agent.runtime.id) return; setRestart("keep"); setError(""); setChange({ scope, runtimeId }); }} /> : null}

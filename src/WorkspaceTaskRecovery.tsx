@@ -1,3 +1,5 @@
+import { WorkspaceRuntimeVersion } from "./WorkspaceRuntimeVersion";
+import type { RuntimeVersionBinding } from "./runtime-version-drift";
 import type { makeT } from "./i18n";
 import { useEffect, useState, type ReactNode } from "react";
 import { copyRuntimeDiagnostic, RUNTIME_FAILURE_MARKER, retryRuntimeFailure, runtimeCooldownRemaining, runtimeDiagnosticSummary, runtimeLoginCommand, type RuntimeFailureDiagnostic } from "./runtime-failure";
@@ -39,10 +41,10 @@ function RuntimeFailureRetry({ diagnostic, disabled, t, onContinue }: {
     <button type="button" className="hs-btn pri" data-recovery-retry="true" onClick={() => retryRuntimeFailure(diagnostic, disabled, onContinue)} disabled={disabled || remaining > 0}>{t("ws.resume.retry")}</button></>;
 }
 
-export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisabled = false, dismissedIdentity = null, runtimeId, loginSource, onContinue, onRepair, onDismiss, onLogin, onRescan, onRuntimeSettings }: {
+export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisabled = false, dismissedIdentity = null, runtimeId, loginSource, runtimeVersion, onContinue, onRepair, onDismiss, onLogin, onRescan, onRuntimeSettings }: {
   conversation: WorkspaceDevSnapshot["conversation"]; t: ReturnType<typeof makeT>; disabled: boolean; continueDisabled?: boolean;
   dismissedIdentity?: string | null; runtimeId?: string; loginSource?: "host" | "isolated"; onContinue(): void; onRepair(): void; onDismiss?(): void;
-  onLogin?(): void; onRescan?(): void; onRuntimeSettings?(): void;
+  runtimeVersion?: RuntimeVersionBinding | null; onLogin?(): void; onRescan?(): void; onRuntimeSettings?(): void;
 }) {
   if (!workspaceRecoveryPromptVisible(conversation, dismissedIdentity)) return null;
   const state = workspaceRecoveryState(conversation);
@@ -57,6 +59,9 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
   const authFailure = runtime?.kind === "runtime_auth_required" || runtime?.kind === "runtime_auth_rejected";
   const unavailable = runtime?.kind === "runtime_unavailable" || runtime?.kind === "not_installed";
   const source = diagnostic?.loginSource ?? loginSource;
+  const versionFailureRuntime = /^(hara|pi|opencode|codex|claude|agy) Runtime failed\b/i.exec(detail ?? "")?.[1].toLowerCase();
+  const showRuntimeVersion = Boolean(runtime || failed || versionFailureRuntime) && (!runtime || runtime.runtimeId === runtimeId)
+    && (!versionFailureRuntime || versionFailureRuntime === runtimeId);
   const dismiss = onDismiss ? <button type="button" className="hs-btn ghost" data-recovery-dismiss="true" onClick={onDismiss} disabled={disabled || finishing}>{t("ws.resume.dismiss")}</button> : null;
   return <section className="wsd-resume" aria-labelledby="workspace-recovery-title" data-recovery={reason ? "connection" : runtime ? "runtime" : "task"} data-failure-kind={runtime?.kind}>
     <strong id="workspace-recovery-title">{t(reason ? "ws.resume.repairTitle" : runtime ? `ws.resume.runtime.${runtime.kind}.title` : state === "cancelled" ? "ws.resume.cancelled" : "ws.resume.title")}</strong>
@@ -68,6 +73,7 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
         {diagnostic?.homeMatchesAccount === false ? <p>{t("ws.runtimeDiagnostic.homeMismatch")}</p> : null}
         {diagnostic && authFailure ? <p data-runtime-login-guidance="true">{t(source === "host" ? "ws.runtimeDiagnostic.hostLogin" : source === "isolated" ? "ws.runtimeDiagnostic.privateLogin" : "ws.runtimeDiagnostic.unknownLogin", { command: runtimeLoginCommand(diagnostic.runtime) })}</p> : null}
         {diagnostic ? <RuntimeFailureDetails key={scope} diagnostic={diagnostic} t={t} /> : null}
+        {showRuntimeVersion ? <WorkspaceRuntimeVersion runtimeId={runtimeId} binding={runtimeVersion} t={t} /> : null}
         {conversation.resumeAdmission?.allowed === false ? <p>{t("ws.resume.budget")}</p> : null}
         <div className="wsd-resume-actions">
           {diagnostic ? <RuntimeFailureRetry key={scope} diagnostic={diagnostic} t={t} disabled={retryDisabled} onContinue={onContinue} />

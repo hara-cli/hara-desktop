@@ -91,7 +91,7 @@ function view({ empty = false, state = "completed", approval = false, directory 
 function renderScreen(value, mode = "workspace", locale = "zh-Hant") {
   const descriptor=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
   Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:key=>key==="hara.locale"?locale:null}});
-  try { return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {} }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} }); }
+  try { return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {}, runtimeStageReports: () => [] }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} }); }
   finally { if(descriptor)Object.defineProperty(globalThis,"localStorage",descriptor);else delete globalThis.localStorage; }
 }
 test("production keeps lab copy out of the sidebar; explicit Lab is a distinct annotated entry", () => {

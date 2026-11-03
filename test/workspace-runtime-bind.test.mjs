@@ -1,3 +1,4 @@
+import * as runtimeVersion from "../src/runtime-version-drift.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -40,6 +41,7 @@ function mount(patch = {}) {
   const exports = {};
   new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks }
     : name === "./i18n" ? { makeT } : name === "./AgentRuntimePicker" ? { WorkspaceAgentRuntimePicker: Picker }
+    : name === "./runtime-version-drift" ? runtimeVersion : name === "./WorkspaceRuntimeVersion" ? { WorkspaceRuntimeVersion: () => null }
     : name === "./WorkspaceShell" ? { ShellDialog: Dialog } : name === "./workspace-settings-copy" ? { workspaceMessageText } : require(name), exports);
   const agent = { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" },
     runtime: { id: "pi", label: "Pi", available: true } };

@@ -1,3 +1,4 @@
+import { runtimeVersionFor } from "./runtime-version-drift";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CheckCircleIcon, Cog6ToothIcon, GlobeAltIcon,
@@ -11,6 +12,8 @@ import type { WorkspaceDevConnection } from "./workspace-dev-rpc";
 import { WorkspaceStartupModel } from "./workspace-startup";
 import { WorkspaceBoot } from "./WorkspaceBoot";
 import { WorkspaceTaskActivity, WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
+import { WorkspaceRuntimeStages } from "./WorkspaceRuntimeStages";
+import { runtimeStagesBefore, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events";
 import { WorkspaceAsyncQuestions, WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
 import { WorkspaceDevModel, workspaceAsyncAsks, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval, type WorkspaceFeatureView } from "./workspace-dev-state";
 import { parseColleagueScheduleRequest, type ColleagueScheduleDraft } from "./colleague-schedule.js";
@@ -77,9 +80,15 @@ function SettledApprovalCard({ state, name, t }: { state: ApprovalSettleState; n
     <p>{t(copy, { name: label })}</p>
   </section>;
 }
-export function Transcript({ history, agent, t, detailed = false }: { history: WorkspaceDevMessage[]; agent?: WorkspaceDevAgent; t: Translate; detailed?: boolean }) {
+export function Transcript({ history, agent, t, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false }: {
+  history: WorkspaceDevMessage[]; agent?: WorkspaceDevAgent; t: Translate; detailed?: boolean; stages?: RuntimeStageReport[];
+  historyOffset?: number; onExportStage?: (report: RuntimeStageReport) => Promise<RuntimeDiagnosticReceipt>; stageDisabled?: boolean;
+}) {
   let previous: WorkspaceDevMessage | undefined;
-  return <>{transcriptBlocks(history).map(item => {
+  const stageBoundaries = runtimeStagesBefore(stages, history, historyOffset);
+  const renderStages = (boundary: number) => (stageBoundaries.get(boundary) ?? []).map(report => <WorkspaceRuntimeStages
+    key={report.attemptId} report={report} t={t} onExport={onExportStage} disabled={stageDisabled} />);
+  const renderItem = (item: ReturnType<typeof transcriptBlocks>[number]) => {
     if (item.kind === "execution") {
       previous = undefined;
       const settled = item.results.flatMap(({ key, result }) => {
@@ -107,7 +116,11 @@ export function Transcript({ history, agent, t, detailed = false }: { history: W
       <div className={`hs-msg wsd-message is-agent ${continuation ? "cont" : ""}`}><Avatar agent={agent} /><div className="hs-bub wsd-bubble"><Md text={message.text}
         copyCodeLabel={t("copyCode")} copiedLabel={t("taskCopied")} copyFailedLabel={t("copyFailed")} /></div></div>
     </div>;
-  })}</>;
+  };
+  return <>{transcriptBlocks(history).map(item => <Fragment key={`${item.kind}-${item.index}`}>
+    {item.kind === "message" && item.message.role === "user" ? renderStages(item.index + historyOffset) : null}
+    {renderItem(item)}
+  </Fragment>)}{renderStages(historyOffset + history.length)}</>;
 }
 export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, onOpenBrowser }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string;
   mode: "workspace" | "lab"; onOpenBrowser?: () => void }) {
@@ -137,6 +150,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const routedScope = useRef<string | null>(null);
   const channelRouteSelection = useRef<string | null>(null);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
+  const stageReports = useMemo(() => model.runtimeStageReports(), [model, workspace]);
+  const exportStageReport = useCallback((report: RuntimeStageReport) => model.exportRuntimeDiagnostic(report), [model]);
   const listBotModels = useCallback((runtimeId: string) => model.listRuntimeModels(runtimeId), [model]);
   const listConnectionModels = useCallback((agentId: string, connectionId: string) => model.listConnectionModels(agentId, connectionId), [model]);
   const colleagues = useMemo(() => agents.filter(row => row.kind === "colleague" && row.state !== "archived"), [agents]);
@@ -422,7 +437,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
               <button className="hs-btn pri" onClick={() => void connect()}>{t(production ? "ws.connection.configure" : realKey ? "ws.connection.approved" : "ws.connection.synthetic")}</button></section> : null}
             {hasConnection && !workspace.conversation.history.length ? <div className="hs-hello"><h2>{t("ws.home.title")}</h2><p>{t("ws.home.hint")}</p><div className="hs-chips"><button className="hs-chip" onClick={() => void discuss()}><UserPlusIcon className="hico" />{t("ws.home.chip.colleague")}</button>
               <button className="hs-chip" onClick={() => model.setDraft(t("ws.home.chip.tasks"))}>{t("ws.home.chip.tasks")}</button></div></div> : null}
-            <Transcript history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false} />
+            <Transcript history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false}
+              stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
             {pendingSchedule?.scope === scope && pendingSchedule.agentId === agent?.agentId ? <section className="vg-chat-schedule-card" aria-label={locale !== "en" ? "确认定时" : "Confirm schedule"}>
               <header><strong>{locale !== "en" ? "确认定时" : "Confirm schedule"}</strong><small>{locale !== "en" ? "挂接同事" : "Colleague"} · {agent.identity.displayName}</small></header>
               <label>{locale !== "en" ? "名称" : "Name"}<input maxLength={60} value={pendingSchedule.draft.name} disabled={scheduleBusy} onChange={(event) => setPendingSchedule({ ...pendingSchedule, draft: { ...pendingSchedule.draft, name: event.target.value } })} /></label>
@@ -436,6 +452,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
             {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified"><CheckCircleIcon className="hico" />{t("ws.verified")} <span>{t("ws.verified.note")}</span></p> : null}
             <WorkspaceTaskRecovery conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
+              runtimeVersion={runtimeVersionFor(workspace.runtimes?.options, agent?.runtime.id)}
               runtimeId={agent?.runtime.id} loginSource={workspace.runtimes?.options.find(row => row.runtimeId === agent?.runtime.id)?.loginSource} onLogin={() => openSettingsPage("runtimes")} onRescan={() => void model.detectRuntimes().catch(() => {})}
               onRuntimeSettings={() => openSettingsPage("runtimes")}
               continueDisabled={!hasConnection || view.runtimeBlocked || busy} dismissedIdentity={view.dismissedRecoveryIdentity}
