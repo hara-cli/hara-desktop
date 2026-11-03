@@ -10,7 +10,7 @@ import { runtimeTurnFailure, connectionRecoveryReason } from "../src/workspace-r
 const sample = (overrides = {}) => ({ runtime: "codex", kind: "runtime_auth_rejected", version: "0.163.0", loginSource: "host", homeMatchesAccount: false, elapsedMs: 812, retryAtMs: 0, consecutiveFailures: 2, ...overrides });
 const envelope = (overrides) => `[registered-codex error] ${RUNTIME_FAILURE_MARKER}${JSON.stringify(sample(overrides))} — check existing results`;
 const require = createRequire(import.meta.url);
-const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceTaskRecovery.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" }, bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], write: false });
+const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceTaskRecovery.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" }, bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);
 const { WorkspaceTaskRecovery } = module.exports, { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
 const conversation = error => ({ state: "blocked", taskState: "blocked", sessionId: "original-session", taskId: "original-task", runId: "original-run", blockReason: error, history: [{ role: "user", content: "original request" }], resumeAdmission: { allowed: true } });
