@@ -10,6 +10,7 @@ export const WORKSPACE_KEYS = [
   ["ws.runtimeExpansion.instructions", "Installation instructions", "安装说明", "安裝說明"],
   ["ws.runtimeExpansion.hostLogin", "Reuses your local login. Hara does not start a new login.", "直接复用本机登录，Hara 不会要求重新登录。", "直接沿用本機登入，Hara 不會要求重新登入。"],
   ["ws.runtimeExpansion.isolationPending", "Execution is pending verification of native scheduling and global extension isolation.", "执行暂未开放：原生定时工具与全局扩展隔离待验收。", "執行暫未開放：原生排程工具與全域擴充隔離待驗收。"],
+  ["ws.runtimeExpansion.loginReuseFailed", "The runtime could not reuse the local login. Keep this binding and task while its credential access is diagnosed; no new login is required.", "引擎未能复用本机登录。保留当前绑定与任务，排查其凭据访问；无需重新登录。", "引擎未能沿用本機登入。保留目前綁定與任務，排查其憑據存取；無需重新登入。"],
   ["ws.runtimeExpansion.modelsLive", "Live CLI model list", "CLI 实时模型列表", "CLI 即時模型列表"],
   ...RUNTIME_STAGE_KEYS,
   ...VIOLET_KEYS,

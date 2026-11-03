@@ -141,3 +141,13 @@ test("legacy auth-required records do not assert the host is signed out", () => 
     assert.doesNotMatch(html, /PRIVATE_ACCOUNT|reported that login is missing|报告尚未登录|回報尚未登入/);
   }
 });
+
+for (const runtime of ["copilot", "cursor", "grok"]) test(runtime + " retains host binding and never offers re-login in any recovery source", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const loginSource of ["host", "isolated", "unknown"]) for (const kind of ["runtime_auth_required", "runtime_auth_rejected"]) {
+    const t = makeT(locale), html = render(h(WorkspaceTaskRecovery, props(envelope({ runtime, kind, loginSource }), locale, runtime)));
+    assert.ok(html.includes(t("ws.runtimeExpansion.loginReuseFailed")));
+    assert.equal(html.includes(t("ws.resume.runtime.runtime_auth_required.body")), false);
+    assert.equal((html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).some(button => button.replace(/<[^>]*>/g, "") === t("ws.resume.runtimeLogin")), false);
+    assert.doesNotMatch(html, /onLogin|data-runtime-login-guidance|ws\.runtimeExpansion\.|PRIVATE/);
+  }
+});
