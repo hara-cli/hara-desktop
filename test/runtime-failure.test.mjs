@@ -16,7 +16,7 @@ const { WorkspaceTaskRecovery } = module.exports, { createElement: h } = require
 const conversation = error => ({ state: "blocked", taskState: "blocked", sessionId: "original-session", taskId: "original-task", runId: "original-run", blockReason: error, history: [{ role: "user", content: "original request" }], resumeAdmission: { allowed: true } });
 const props = (error, locale = "en", runtimeId = "codex") => ({ conversation: conversation(error), t: makeT(locale), runtimeId, disabled: false, onContinue() { throw Error("render must not retry"); }, onRepair() {}, onLogin() {}, onRuntimeSettings() {}, onRescan() {} });
 
-for (const runtime of ["codex", "claude", "opencode"]) for (const kind of RUNTIME_FAILURE_KINDS) test(`${runtime} ${kind} diagnostic retains only closed fields`, () => {
+for (const runtime of ["pi", "codex", "claude", "opencode"]) for (const kind of RUNTIME_FAILURE_KINDS) test(`${runtime} ${kind} diagnostic retains only closed fields`, () => {
   const parsed = parseRuntimeFailure(envelope({ runtime, kind }), runtime);
   assert.deepEqual(parsed, sample({ runtime, kind }));
   assert.equal(runtimeTurnFailure(envelope({ runtime, kind }), runtime)?.kind, kind);
@@ -42,7 +42,7 @@ test("malformed, private, cross-runtime and oversized diagnostics cannot reach t
 });
 
 test("all categories render distinct localized explanations and summaries without upstream error or translation keys", () => {
-  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const runtime of ["codex", "claude", "opencode"]) for (const kind of RUNTIME_FAILURE_KINDS) {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const runtime of ["pi", "codex", "claude", "opencode"]) for (const kind of RUNTIME_FAILURE_KINDS) {
     const t = makeT(locale), html = render(h(WorkspaceTaskRecovery, props("PRIVATE " + envelope({ runtime, kind }) + " PRIVATE", locale, runtime)));
     assert.ok(html.includes(`data-failure-kind="${kind}"`));
     assert.ok(html.includes(t(`ws.resume.runtime.${kind}.title`).replace(/'/g, "&#x27;")));
@@ -139,5 +139,17 @@ test("legacy auth-required records do not assert the host is signed out", () => 
     assert.ok(html.includes(t("ws.resume.runtime.runtime_auth_required.title")));
     assert.match(html, locale === "en" ? /does not show whether login is missing or was rejected/ : locale === "zh-Hans" ? /无法确定是未登录还是认证被拒/ : /無法確定是未登入還是驗證遭拒/);
     assert.doesNotMatch(html, /PRIVATE_ACCOUNT|reported that login is missing|报告尚未登录|回報尚未登入/);
+  }
+});
+
+
+test("Pi diagnostics use Hara connection repair and never offer a native or private login", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const html=render(h(WorkspaceTaskRecovery,props(envelope({runtime:"pi",version:"1.5.0",loginSource:"isolated"}),locale,"pi")));
+    assert.match(html,/data-runtime-diagnostic="true"/);assert.match(html,/data-runtime-connection-guidance="true"/);
+    assert.equal(html.includes(makeT(locale)("ws.runtimeDiagnostic.piConnection")),true);
+    assert.equal(html.includes(makeT(locale)("ws.runtimeDiagnostic.homeMismatch")),false);
+    assert.doesNotMatch(html,/data-runtime-login-guidance|codex login|opencode auth login|pi login/);
+    assert.equal(html.includes(makeT(locale)("ws.runtimeDiagnostic.privateLogin")),false);
   }
 });

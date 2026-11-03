@@ -22,13 +22,13 @@ export function runtimeTurnFailure(blockReason: string | null | undefined, runti
   if (text.includes(RUNTIME_FAILURE_MARKER)) {
     const diagnostic = parseRuntimeFailure(text, runtimeId);
     return diagnostic ? { kind: diagnostic.kind, runtimeId: diagnostic.runtime, diagnostic }
-      : runtimeId === "codex" || runtimeId === "claude" || runtimeId === "opencode" ? { kind: "runtime_failed", runtimeId } : null;
+      : runtimeId === "pi" || runtimeId === "codex" || runtimeId === "claude" || runtimeId === "opencode" ? { kind: "runtime_failed", runtimeId } : null;
   }
-  if ((runtimeId === "codex" || runtimeId === "claude" || runtimeId === "opencode") && RUNTIME_FAILURE_KINDS.includes(text as RuntimeFailureKind)) return { kind: text as RuntimeFailureKind, runtimeId };
-  const native = /^(codex|claude|opencode|registered) Runtime failed \(([a-z0-9_]+)\)/i.exec(text);
+  if ((runtimeId === "pi" || runtimeId === "codex" || runtimeId === "claude" || runtimeId === "opencode") && RUNTIME_FAILURE_KINDS.includes(text as RuntimeFailureKind)) return { kind: text as RuntimeFailureKind, runtimeId };
+  const native = /^(pi|codex|claude|opencode|registered) Runtime failed \(([a-z0-9_]+)\)/i.exec(text);
   const detected = native?.[1]?.toLowerCase();
   const id = detected === "registered" ? runtimeId : detected ?? runtimeId;
-  if (id !== "codex" && id !== "claude" && id !== "opencode") return null;
+  if (id !== "pi" && id !== "codex" && id !== "claude" && id !== "opencode") return null;
   const code = native?.[2]?.toLowerCase();
   let kind: RuntimeTurnFailure;
   if (code === "project_not_trusted" || /not inside a trusted directory|--skip-git-repo-check was not specified|not a git repository/i.test(text)) kind = "project_not_trusted";
