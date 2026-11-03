@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createServer } from "vite";
+import { createServer as createPortProbe } from "node:net";
 import { makeT } from "../src/i18n.ts";
 import { readDevToolsAnnouncement, stopOwnedBrowser } from "./browser-process.mjs";
 import { requestCdp } from "./browser-cdp-request.mjs";
@@ -27,6 +28,13 @@ let requestId = 0, currentCase = "startup", exceptionCount = 0;
 const pending = new Map(), t = makeT("en");
 const pause = ms => new Promise(done => setTimeout(done, ms));
 const send = (method, params = {}, scoped = true) => requestCdp(socket, pending, { id: ++requestId, method, params, sessionId: scoped ? sessionId : undefined, step: currentCase });
+async function availableLoopbackPort() {
+  const probe = createPortProbe();
+  await new Promise((done, fail) => { probe.once("error", fail); probe.listen(0, "127.0.0.1", done); });
+  const port = probe.address().port;
+  await new Promise((done, fail) => probe.close(error => error ? fail(error) : done()));
+  return port; // strictPort below rejects a race; it never attaches to another server.
+}
 async function evaluate(expression) {
   const result = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
   if (result.exceptionDetails) throw new Error("Fixture evaluation failed");
@@ -124,7 +132,7 @@ async function exercise(row, checked, capture) {
 try {
   // The host and browser are owned by this run; no existing service is attached.
   server = await createServer({ configFile: false, root: repoRoot, cacheDir: join(working, "vite-cache"), appType: "mpa",
-    server: { host: "127.0.0.1", port: 0, strictPort: true }, logLevel: "error" });
+    server: { host: "127.0.0.1", port: await availableLoopbackPort(), strictPort: true }, logLevel: "error" });
   await server.listen();
   serverPort = server.httpServer.address().port;
   const base = new URL(`http://127.0.0.1:${serverPort}/`);
