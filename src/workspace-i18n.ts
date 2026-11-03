@@ -639,6 +639,8 @@ export const WORKSPACE_EXTRA_KEYS = [
   ["ws.runtimeDiagnostic.copyFailed", "Copy failed. Select and copy the summary below.", "复制失败，请选中下方摘要手动复制。", "複製失敗，請選取下方摘要手動複製。"],
   ["ws.runtimeDiagnostic.cooldown", "Startup failed repeatedly. Retry is available in {seconds}s; no request will run automatically.", "启动连续失败，{seconds} 秒后可重试；不会自动执行请求。", "啟動連續失敗，{seconds} 秒後可重試；不會自動執行請求。"],
   ["ws.runtimeDiagnostic.homeMismatch", "The runtime used a HOME different from the account home. This can affect login discovery; check the selected login source before retrying.", "引擎使用的 HOME 与真实用户目录不同，可能影响登录读取。请核对所选登录来源后再重试。", "引擎使用的 HOME 與真實使用者目錄不同，可能影響登入讀取。請核對所選登入來源後再重試。"],
+  ["ws.runtimeDiagnostic.piConnectionAuth", "The selected Hara connection rejected this request. Check the connection before retrying.", "所选 Hara 连接拒绝了本次请求，请检查连接后重试。", "所選 Hara 連線拒絕了本次請求，請檢查連線後重試。"],
+  ["ws.runtimeDiagnostic.piConnection", "Pi uses the connection selected in Hara. Check it in Settings, then retry this task.", "Pi 使用 Hara 中所选的连接。请到设置检查连接，再重试原任务。", "Pi 使用 Hara 中所選的連線。請到設定檢查連線，再重試原任務。"],
   ["ws.runtimeDiagnostic.hostLogin", "Check host login in a terminal with {command}, then return to this task and retry.", "在终端运行 {command} 检查本机登录，然后回到原任务重试。", "在終端執行 {command} 檢查本機登入，再回到原任務重試。"],
   ["ws.runtimeDiagnostic.privateLogin", "Complete this workspace’s private runtime login in Settings, then return to this task and retry.", "到设置完成本工作区的引擎私有登录，再回到原任务重试。", "到設定完成本工作區的引擎私有登入，再回到原任務重試。"],
   ["ws.runtimeDiagnostic.unknownLogin", "Check the selected login source in Settings before signing in or retrying.", "请先到设置核对所选登录来源，再登录或重试。", "請先到設定核對所選登入來源，再登入或重試。"],
