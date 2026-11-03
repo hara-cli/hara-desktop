@@ -11,8 +11,9 @@ export interface WorkspaceTaskRecord { taskId: string; objective: string; status
 export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
   workspaces: { workspaceId: string; label: string; role: string; active: boolean; kind?: "personal" | "team" }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
+export type RuntimePermissionTier = "full-protected" | "controlled";
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
-  configRevision?: number; agentEpoch?: number; description?: string;
+  configRevision?: number; agentEpoch?: number; description?: string; permissionTier?: RuntimePermissionTier;
   identity: { displayName: string; title?: string; emoji?: string; avatar?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 export interface WorkspaceDevApproval { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
   channelId?: string;
@@ -53,6 +54,8 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     completion: { state: string; evidence?: string[] } | null; blockReason?: string | null; pendingQuestion?: WorkspaceDevQuestion | null;
     pendingInteractions?: WorkspaceDevInteraction[];
     runtimeStages?: RuntimeStageReport[];
+    permissionTier?: RuntimePermissionTier;
+    nativeRisks?: { id: string; runId: string; kind: "outside-workspace-delete" | "external-publish"; state: "observed"; at: string }[];
     resumeAdmission?: { allowed: boolean; reason: string | null } } }
 interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume" | "workspace.session.answer"; payload: Record<string, unknown>;
   message: string; state: "sending" | "unknown"; fromDraft?: boolean }
@@ -107,6 +110,7 @@ export class WorkspaceDevModel {
     this.rpc = rpc; this.nonce = nonce; this.syntheticOnly = syntheticOnly; this.executionMode = executionMode; this.settingsOnly = settingsOnly;
   }
   getSnapshot = (): WorkspaceDevView => this.view;
+  supportsRuntimePermissions(): boolean { return this.rpc.supportsCapability?.("workspace.runtime-permissions.v1") === true; }
   supportsRuntimeStages(): boolean { return this.rpc.supportsCapability?.("workspace.runtime-stage-events.v1") === true; }
   runtimeStageReports(): RuntimeStageReport[] {
     const workspace = this.view.workspace;
@@ -412,6 +416,23 @@ export class WorkspaceDevModel {
   async selectRuntimeModel(runtimeId: string, modelId: string, expectedRevision: number, effort?: string | null): Promise<void> {
     await this.workspaceRequest("workspace.runtime.selectModel", { runtimeId, modelId, expectedRevision, ...(effort !== undefined ? { effort } : {}) });
     await this.refresh();
+  }
+  async setAgentPermissionTier(agent: WorkspaceDevAgent, permissionTier: RuntimePermissionTier): Promise<void> {
+    if (!this.supportsRuntimePermissions()) throw new WorkspaceViewError("ws.permissions.upgrade");
+    if (!agent.configRevision || !agent.agentEpoch || !["full-protected", "controlled"].includes(permissionTier)) throw new WorkspaceViewError("ws.notice.invalidView");
+    const workspace = this.view.workspace, epoch = this.epoch, key = this.key();
+    if (!workspace || !workspace.agents.some(row => row.agentId === agent.agentId && row.configRevision === agent.configRevision && row.agentEpoch === agent.agentEpoch)
+      || ["running", "draining"].includes(workspace.conversation.state) || this.view.sending || this.view.pendingUnknown) throw new WorkspaceViewError("ws.permissions.busy");
+    const targetKey = JSON.stringify([workspace.workspaceId, workspace.resourceGeneration, agent.agentId]);
+    if (this.runtimeChanges.has(targetKey)) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    this.runtimeChanges.add(targetKey); this.update({});
+    try {
+      await this.workspaceRequest("workspace.agents.setPermissionTier", { agentId: agent.agentId, permissionTier, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
+      this.overviewCache.delete(agent.agentId);
+      if (epoch !== this.epoch || key !== this.key()) return;
+      await this.refresh();
+      if (epoch === this.epoch && this.view.workspace?.agents.find(row => row.agentId === agent.agentId)?.permissionTier !== permissionTier) throw new WorkspaceViewError("ws.notice.invalidView");
+    } finally { this.runtimeChanges.delete(targetKey); this.update({}); }
   }
   async setAgentRuntime(agent: WorkspaceDevAgent, runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart = "keep"): Promise<void> {
     if (!agent.configRevision || !agent.agentEpoch) throw new WorkspaceViewError("ws.notice.invalidView");
