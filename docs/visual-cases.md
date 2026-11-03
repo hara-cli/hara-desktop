@@ -72,3 +72,6 @@ actions must use real components and bounded checks. Integrate reviewed source
 before implementing the diagnostic-summary and interjection-fold cases; do not
 mock an absent product feature into passing. Add focused provenance/negative
 tests when changing the evidence contract.
+
+
+Wave2 adds real-component fixtures for the safe diagnostic summary and the channel passed-decision fold/interjection entry, plus registered host choices for Gemini, Kimi, Copilot, Cursor and Grok. The actual fold contains unrelated decisions; an invited reply remains in its original turn. This does not invent folding of reply text. The collector verifies toggling without another send, safe diagnostics without raw failure text, model provenance and inherited-extension guidance. These remain fixture-browser evidence; native/Core/human lanes need their own receipts.

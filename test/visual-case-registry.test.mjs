@@ -15,10 +15,11 @@ function fixture(t, overrides = {}) {
   const input = { sourceSha: sha, captureMethod: checks.captureMethod, checks: "passed", screenshots: ["shot.png"], checkArtifact: "checks.json", coreSha: checks.coreSha, packageSha256: checks.packageSha256 };
   return { root, input, checks };
 }
-test("registry covers all four areas and names unavailable features as pending", () => {
+test("registry covers all four areas and the integrated diagnostic, channel and five runtime fixtures", () => {
   assert.deepEqual([...new Set(cases.map(value => value.area))].sort(), ["errors", "groups", "login", "runtime"]);
-  assert.equal(cases.length, 9);
-  assert.deepEqual(cases.filter(value => !value.fixture).map(value => value.id), ["error-diagnostic-summary", "group-interjection-fold"]);
+  assert.equal(cases.length, 14);
+  assert.deepEqual(cases.filter(value => !value.fixture).map(value => value.id), []);
+  assert.deepEqual(cases.filter(value=>value.id.startsWith("runtime-expanded-")).map(value=>value.id),["gemini","kimi","copilot","cursor","grok"].map(id=>"runtime-expanded-"+id));
   for (const value of cases) assert.ok(value.scenario && value.expectations.length);
 });
 test("registry rejects duplicate IDs, unsafe fixture routes, unknown areas and undocumented gaps", () => {
@@ -83,7 +84,7 @@ test("check identity, source, method and status are independently validated", t 
   assert.throws(() => saveEvidence(row, { ...f.input, captureMethod: "native-core" }, f.root), /provenance/);
 });
 test("unavailable or locked capture has no last verified SHA or successful artifacts", t => {
-  const f = fixture(t), pendingCase = cases.find(value => value.id === "group-interjection-fold");
+  const f = fixture(t), pendingCase = { ...row, fixture: null, pendingReason: "A deliberately unavailable test-only fixture" };
   assert.throws(() => saveEvidence(pendingCase, f.input, f.root), /no fixture/);
   saveEvidence(row, { sourceSha: sha, captureMethod: "fixture-browser", checks: "pending", reason: "Screen locked; capture not attempted." }, f.root);
   const evidence = buildReport(cases, f.root, { sourceSha: sha, dirty: false }).cases[0].evidence["fixture-browser"];

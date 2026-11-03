@@ -11,8 +11,9 @@ import "../../src/workspace-theme.css";
 import "../../src/violet-tokens.css";
 import "../../src/violet-workspace.css";
 if (!import.meta.env.DEV || !["localhost", "127.0.0.1"].includes(location.hostname)) throw Error("Synthetic localhost fixture only");
+const params = new URLSearchParams(location.search);
 function Preview() {
-  const [locale, setLocale] = useState<Locale>("zh-Hans"), [runtime, setRuntime] = useState<RuntimeFailureDiagnostic["runtime"]>("codex");
+  const [locale, setLocale] = useState<Locale>(params.get("locale") === "en" ? "en" : params.get("locale") === "zh-Hant" ? "zh-Hant" : "zh-Hans"), [runtime, setRuntime] = useState<RuntimeFailureDiagnostic["runtime"]>("codex");
   const [kind, setKind] = useState<RuntimeFailureKind>("runtime_auth_rejected"), [source, setSource] = useState<RuntimeFailureDiagnostic["loginSource"]>("host");
   const [retryAtMs, setRetryAt] = useState(0), [events, setEvents] = useState<string[]>([]);
   const diagnostic: RuntimeFailureDiagnostic = { runtime, kind, version: "0.163.0", loginSource: source, homeMatchesAccount: false, elapsedMs: 812, consecutiveFailures: 2, retryAtMs };

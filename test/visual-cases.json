@@ -107,8 +107,12 @@
       "id": "error-diagnostic-summary",
       "area": "errors",
       "scenario": "Inspect the safe diagnostic summary and its source without exposing credentials.",
-      "fixture": null,
-      "pendingReason": "The diagnostic-summary feature is outside baseline a890891; integrate its reviewed source before adding a fixture.",
+      "fixture": {
+        "entry": "runtime-failure-preview",
+        "query": {
+          "locale": "en"
+        }
+      },
       "expectations": [
         "Summary and failure kind match the Core receipt.",
         "Credentials and private task content are absent."
@@ -135,12 +139,109 @@
     {
       "id": "group-interjection-fold",
       "area": "groups",
-      "scenario": "Inspect folded and expanded interjections within their original group turn.",
-      "fixture": null,
-      "pendingReason": "Interjection folding is outside baseline a890891; it must be verified after reviewed integration, not simulated as implemented.",
+      "scenario": "Inspect folded unrelated decisions, original-turn interjection attribution and the explicit invitation entry.",
+      "fixture": {
+        "entry": "workspace-shell-preview",
+        "query": {
+          "scenario": "channels",
+          "locale": "en",
+          "theme": "dark",
+          "reset": "1"
+        }
+      },
       "expectations": [
-        "Interjections start folded and expand without losing speaker or turn identity.",
-        "Toggling does not resend, change recipients or expose a DM."
+        "Unrelated colleague decisions start folded; the interjection stays attributed to the original turn.",
+        "Expanding and collapsing preserves speakers, recipients and the group-only transcript without resending."
+      ]
+    },
+    {
+      "id": "runtime-expanded-gemini",
+      "area": "runtime",
+      "scenario": "Inspect the explicitly registered synthetic host binding for gemini.",
+      "fixture": {
+        "entry": "workspace-runtime-bind-preview",
+        "query": {
+          "scenario": "expanded",
+          "runtime": "gemini",
+          "agent": "colleague",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "The advertised runtime is selected with its real component model/source view.",
+        "Inherited extension guidance appears only for approved runtimes; unsupported effort controls stay hidden."
+      ]
+    },
+    {
+      "id": "runtime-expanded-kimi",
+      "area": "runtime",
+      "scenario": "Inspect the explicitly registered synthetic host binding for kimi.",
+      "fixture": {
+        "entry": "workspace-runtime-bind-preview",
+        "query": {
+          "scenario": "expanded",
+          "runtime": "kimi",
+          "agent": "colleague",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "The advertised runtime is selected with its real component model/source view.",
+        "Inherited extension guidance appears only for approved runtimes; unsupported effort controls stay hidden."
+      ]
+    },
+    {
+      "id": "runtime-expanded-copilot",
+      "area": "runtime",
+      "scenario": "Inspect the explicitly registered synthetic host binding for copilot.",
+      "fixture": {
+        "entry": "workspace-runtime-bind-preview",
+        "query": {
+          "scenario": "expanded",
+          "runtime": "copilot",
+          "agent": "colleague",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "The advertised runtime is selected with its real component model/source view.",
+        "Inherited extension guidance appears only for approved runtimes; unsupported effort controls stay hidden."
+      ]
+    },
+    {
+      "id": "runtime-expanded-cursor",
+      "area": "runtime",
+      "scenario": "Inspect the explicitly registered synthetic host binding for cursor.",
+      "fixture": {
+        "entry": "workspace-runtime-bind-preview",
+        "query": {
+          "scenario": "expanded",
+          "runtime": "cursor",
+          "agent": "colleague",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "The advertised runtime is selected with its real component model/source view.",
+        "Inherited extension guidance appears only for approved runtimes; unsupported effort controls stay hidden."
+      ]
+    },
+    {
+      "id": "runtime-expanded-grok",
+      "area": "runtime",
+      "scenario": "Inspect the explicitly registered synthetic host binding for grok.",
+      "fixture": {
+        "entry": "workspace-runtime-bind-preview",
+        "query": {
+          "scenario": "expanded",
+          "runtime": "grok",
+          "agent": "colleague",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "The advertised runtime is selected with its real component model/source view.",
+        "Inherited extension guidance appears only for approved runtimes; unsupported effort controls stay hidden."
       ]
     }
   ]

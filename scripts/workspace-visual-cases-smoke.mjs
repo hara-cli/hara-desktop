@@ -66,6 +66,48 @@ async function screenshot(directory, name) {
 }
 async function exercise(row, checked, capture) {
   const check = async (expression, label) => { assert.equal(await evaluate(expression), true, label); checked.push(label); };
+  if (row.id.startsWith("runtime-expanded-")) {
+    const runtime=row.id.slice("runtime-expanded-".length), labels={gemini:"Gemini CLI",kimi:"Kimi CLI",copilot:"GitHub Copilot",cursor:"Cursor",grok:"Grok Build"};
+    await ready("document.querySelector('.vg-runtime-model-card select')?.options.length===3");
+    await check(`document.querySelector('select[aria-label=Runtime]').value===${JSON.stringify(runtime)}`,"The synthetic registered host runtime is selected");
+    await check(`document.querySelector('select[aria-label=Runtime] option:checked').textContent.includes(${JSON.stringify(labels[runtime])})`,"The production runtime label is rendered");
+    await check(`Boolean(document.querySelector('[data-personal-extensions=inherited]'))===${runtime!=="gemini"}`,"Only the approved runtime inherits personal extensions");
+    await check(`!document.querySelector('select[aria-label=${JSON.stringify(t("ws.runtimeAccess.effort"))}]')`,"No unsupported effort selection is offered");
+    await check(`document.body.textContent.includes(${JSON.stringify(t(runtime==="cursor"?"ws.runtimeExpansion.modelsLive":"ws.runtimes.documentedModels"))})`,"Model inventory provenance is visible");
+    await capture("registered-host");
+    return;
+  }
+  if (row.id === "error-diagnostic-summary") {
+    await ready("!!document.querySelector('[data-runtime-diagnostic=true] summary')");
+    await click('[data-runtime-diagnostic=true] summary');
+    await check("document.querySelector('[data-runtime-diagnostic=true]').open","The actual diagnostic details expand");
+    await check("document.querySelector('[data-runtime-diagnostic=true] pre').textContent.includes('codex') && document.querySelector('[data-runtime-diagnostic=true] pre').textContent.includes('runtime_auth_rejected')","Safe fields match the synthetic receipt");
+    await check("!document.body.textContent.includes('PRIVATE_BODY_SHOULD_NEVER_RENDER')","Raw private failure body is absent");
+    await check("document.querySelector('output').textContent===''","Inspection triggers no retry, login or model call");
+    await capture("diagnostic-summary");return;
+  }
+  if (row.id === "group-interjection-fold") {
+    await ready("!!window.__HARA_SHELL_FIXTURE__");
+    await click(`.hs-sec-a[aria-label=${JSON.stringify(t("ws.channels.new"))}]`);
+    await ready("document.querySelectorAll('.hs-channel-choices input[type=checkbox]').length===13");
+    await evaluate(`(()=>{const n=document.querySelector('.hs-channel-dialog input[aria-label=${JSON.stringify(t("ws.channels.name"))}]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(n,'Scoped visual thread');n.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await button(t("ws.channels.none"),".hs-channel-dialog");
+    await evaluate("[...document.querySelectorAll('.hs-channel-choices input[type=checkbox]')].slice(0,3).forEach(n=>n.click())");
+    await button(t("ws.channels.new"),".hs-channel-dialog");await ready("!!document.querySelector('[data-local-channel]')");
+    await evaluate(`(async()=>{const f=window.__HARA_SHELL_FIXTURE__,id=document.querySelector('[data-local-channel]').dataset.localChannel,turnId='10000000-0000-4000-8000-000000000001',at='2026-11-04T00:00:00Z';
+      const replies=[{agentId:'person-0',displayName:'Original speaker',state:'completed'},{agentId:'person-1',displayName:'Passed colleague',state:'passed',passedBy:'prefilter',passReason:'role_unrelated'},{agentId:'person-2',displayName:'Invited colleague',state:'completed',wokenBy:'person-0',depth:1}];
+      const messages=[{id:'user',turnId,agentId:null,displayName:'',createdAt:at,message:{role:'user',content:'Original group question'}},{id:'reply',turnId,agentId:'person-0',displayName:'Original speaker',createdAt:at,message:{role:'assistant',text:'Scoped original reply',tools:[]}},{id:'interjection',turnId,agentId:'person-2',displayName:'Invited colleague',createdAt:at,message:{role:'assistant',text:'Scoped interjection reply',tools:[]}}];
+      await f.channelHistory(id,[{id:turnId,state:'completed',replies}],messages);})()`);
+    await ready("!!document.querySelector('details[data-channel-passed]')");
+    await check("!document.querySelector('details[data-channel-passed]').open","Unrelated decisions start folded");
+    await check("document.querySelector('[data-channel-woken=started]')!==null && document.querySelectorAll('.hs-channel-turn').length===1","The invited reply stays in the original turn");
+    await capture("folded");await click('details[data-channel-passed] summary');
+    await check("document.querySelector('details[data-channel-passed]').open && document.querySelector('details[data-channel-passed]').textContent.includes('Passed colleague')","Expansion preserves the colleague identity");
+    await check("window.__HARA_SHELL_FIXTURE__.calls.filter(x=>x.method==='workspace.channels.send'||x.method==='workspace.channels.speakPassed').length===0","Toggle does not send or invite again");
+    await check("!document.querySelector('.hs-channel-thread').textContent.includes('Please check the redesigned workspace shell.')","DM content does not enter the group transcript");
+    await capture("expanded");await click('details[data-channel-passed] summary');
+    await check("!document.querySelector('details[data-channel-passed]').open && document.querySelectorAll('[data-channel-speaker=user]').length===1","Collapsing preserves the original user turn");return;
+  }
   if (row.id.startsWith("runtime-") || row.id === "error-model-inventory") {
     await ready("!!document.querySelector('.vg-runtime-access select[aria-label=Runtime]')");
     if (row.id === "runtime-selection") {
