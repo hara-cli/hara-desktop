@@ -123,7 +123,7 @@ test("scoped skills remain reachable through Settings without legacy pages", () 
   assert.match(source, /\{settings \? <WorkspaceSettings/);
   assert.doesNotMatch(source, /className="wsd-settings"|setFeature/);
   const settings = read("src/WorkspaceSettings.tsx");
-  assert.match(settings, /"connections", "runtimes", "skills"/);
+  assert.match(settings, /"connections", "runtimes", "schedules", "plugins", "skills"/);
   assert.doesNotMatch(settings, /"schedules"/);
   assert.match(settings, /<WorkspaceFeaturePanel model=\{model\} workspace=\{workspace\} kind=\{page\}/);
   assert.doesNotMatch(source, /AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/);
