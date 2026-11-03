@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { WorkspaceRuntimeProxy } from "./WorkspaceRuntimeProxy";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { runtimeOperationText } from "./workspace-settings-copy";
 import { type Key } from "./i18n";
@@ -27,7 +28,7 @@ export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, on
   </form>;
 }
 
-export default function WorkspaceRuntimeSettings({ model, workspace }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot }) {
+export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onDirty?: (value: boolean) => void }) {
   const { t } = useWorkspaceLocale();
   const [loginSource, setLoginSource] = useState<RuntimeLoginSource>("host");
   const [card, setCard] = useState<RuntimeApprovalCard | null>(null), [pending, setPending] = useState(false), [notice, setNotice] = useState<"" | Key>("");
@@ -49,6 +50,7 @@ export default function WorkspaceRuntimeSettings({ model, workspace }: { model: 
     try { await model.approveRuntime(card, approved, loginSource); setCard(null); setNotice(approved ? "ws.runtimes.accepted" : "ws.runtimes.cancelledNotice"); }
     catch { setCard(null); setNotice("ws.runtimes.unknown"); } finally { setPending(false); } };
   return <section className="wsd-runtime-settings" aria-label={t("ws.runtimes.title")}><h3>{t("ws.settings.page.runtimes")}</h3><p>{t("ws.runtimes.note")}</p>
+    <WorkspaceRuntimeProxy key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} onDirty={onDirty} />
     <button disabled={detecting || pending} onClick={() => { setDetecting(true); setChecked(false); setNotice(""); void model.detectRuntimes().then(() => setChecked(true)).catch(() => setNotice("ws.runtimes.detectFailed")).finally(() => setDetecting(false)); }}>{t(detecting ? "ws.runtimes.detecting" : "ws.runtimes.detect")}</button>
     <div className="wsd-runtime-list"><div className="wsd-connection wsd-runtime-row"><div><strong>Pi</strong><small>{t("ws.runtimes.builtIn")}</small><small>{t("ws.runtimes.piNote")}</small></div></div>
     {workspace.runtimes?.options.map(runtime => <div className="wsd-connection wsd-runtime-row" key={runtime.runtimeId}>

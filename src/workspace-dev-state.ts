@@ -1,4 +1,5 @@
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
+import { runtimeProxyView, type WorkspaceRuntimeProxyView } from "./workspace-runtime-proxy.ts";
 import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
 import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
@@ -316,6 +317,20 @@ export class WorkspaceDevModel {
   async legacyConnections(): Promise<LegacyConnectionPreview[]> { return this.workspaceRequest("workspace.connection.legacy"); }
   async importConnection(sourceId: string): Promise<void> {
     await this.workspaceRequest("workspace.connection.import", { sourceId, approved: true, expectedRevision: this.view.workspace!.connections.revision }); await this.refresh();
+  }
+  private assertRuntimeProxyScope(workspaceId: string, generation: string): void {
+    const workspace = this.view.workspace;
+    if (workspace?.workspaceId !== workspaceId || workspace.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.scopeChanged");
+  }
+  async runtimeProxy(workspaceId: string, generation: string): Promise<WorkspaceRuntimeProxyView> {
+    this.assertRuntimeProxyScope(workspaceId, generation);
+    const value = await this.workspaceRequest<unknown>("workspace.runtime.proxy.get");
+    return runtimeProxyView(value, workspaceId, generation);
+  }
+  async saveRuntimeProxy(proxyUrl: string | null, expectedRevision: number, workspaceId: string, generation: string): Promise<WorkspaceRuntimeProxyView> {
+    this.assertRuntimeProxyScope(workspaceId, generation);
+    const value = await this.workspaceRequest<unknown>("workspace.runtime.proxy.set", { proxyUrl, expectedRevision });
+    return runtimeProxyView(value, workspaceId, generation);
   }
   async detectRuntimes(): Promise<void> {
     const key = this.runtimeBindingKey(), epoch = this.epoch;
