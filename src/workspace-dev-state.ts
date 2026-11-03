@@ -16,10 +16,11 @@ export type RuntimePermissionTier = "full-protected" | "controlled";
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
   configRevision?: number; agentEpoch?: number; description?: string; permissionTier?: RuntimePermissionTier;
   identity: { displayName: string; title?: string; emoji?: string; avatar?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
-export interface WorkspaceDevApproval { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
+export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
   channelId?: string;
   status?: "pending" | "approved" | "rejected" | "expired"; risk?: "high" | "normal"; paid?: boolean; externalSend?: boolean; destructive?: boolean;
-  draft: { username: string; displayName: string; title: string; instructions: string; runtimeId: "pi" } }
+} & ({ kind?: "agent_create"; draft: { username: string; displayName: string; title: string; instructions: string; runtimeId: "pi" } }
+  | { kind: "schedule_create"; draft: { title: string; task: string; timing: string; tz: string } });
 export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
 export type WorkspaceQuestionConversation = Pick<WorkspaceDevSnapshot["conversation"], "state" | "taskState" | "pendingQuestion" | "resumeAdmission" | "blockReason">;
@@ -76,7 +77,7 @@ export interface WorkspaceConnectionModels extends Omit<WorkspaceRuntimeModels, 
 export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; defaultReasoning?: string | null; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
 export interface LegacyConnectionPreview { id: string; label: string; provider: "openai" | "anthropic"; baseURL: string; defaultModel: string; keySaved: boolean; source: string }
 export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean; executionDetails?: "brief" | "detailed"; collapseDetails?: boolean; updates?: UpdatePreferences }
-export interface WorkspaceFeatureView { revision: number; workspaceId: string; schedules: { id: string; name: string; schedule: { kind: string; expr?: string; display?: string }; enabled: boolean; agentId?: string; task?: string; tz?: string }[]; skills: { id: string; description: string; enabled: boolean; version: string; availableVersion: string; locked: boolean; source: "global" | "private" }[];
+export interface WorkspaceFeatureView { revision: number; workspaceId: string; schedules: { id: string; name: string; source?: string; anchor?: { conversationId: string; messageId: string; agentId: string }; schedule: { kind: string; expr?: string; display?: string; runAt?: number; everyMs?: number }; enabled: boolean; agentId?: string; task?: string; tz?: string }[]; skills: { id: string; description: string; enabled: boolean; version: string; availableVersion: string; locked: boolean; source: "global" | "private" }[];
   scheduler?: { schedules: { id: string; nextRunAt: number | null; awaitingHandoff: boolean; lastRun: { state: string; reason: string | null; occurredAt: number } | null }[] } }
 
 export class WorkspaceDevModel {
