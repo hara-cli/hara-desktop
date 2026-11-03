@@ -13,7 +13,7 @@ export interface RuntimeStageEvent {
 }
 export interface RuntimeStageReport {
   schemaVersion: 1; workspaceId: string; resourceGeneration: string; agentId: string; sessionId: string; runId: string; attemptId: string;
-  historyStart: number; runtime: { id: "hara" | "pi" | "opencode" | "codex" | "claude" | "agy"; version: string | null;
+  historyStart: number; runtime: { id: "hara" | "pi" | "opencode" | "codex" | "claude" | "agy" | "gemini" | "kimi"; version: string | null;
     loginSource: "host" | "isolated" | "unknown"; model: string | null; effort: string | null };
   state: RuntimeStageState; durationMs: number | null; errorKind: RuntimeStageFailure | null; events: RuntimeStageEvent[]; droppedEvents: number;
 }
@@ -65,7 +65,7 @@ export function parseRuntimeStageReport(value: unknown): RuntimeStageReport | nu
     || !Array.isArray(value.events) || value.events.length > 256 || !record(value.runtime)
     || !exact(value.runtime, ["id", "version", "loginSource", "model", "effort"])) return null;
   const runtime = value.runtime;
-  if (!member(runtime.id, ["hara", "pi", "opencode", "codex", "claude", "agy"])
+  if (!member(runtime.id, ["hara", "pi", "opencode", "codex", "claude", "agy", "gemini", "kimi"])
     || !(runtime.version === null || typeof runtime.version === "string" && runtime.version === runtime.version.trim() && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(runtime.version))
     || !member(runtime.loginSource, ["host", "isolated", "unknown"]) || !model(runtime.model)
     || !(runtime.effort === null || member(runtime.effort, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]))) return null;

@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
-import { agentRuntimeLabel } from "../src/agent-runtime-selection.ts";
+import { agentRuntimeLabel, runtimePersonalExtensionsNotice } from "../src/agent-runtime-selection.ts";
 import * as talent from "../src/talent-blueprint.ts";
 import { HARA_CURATED_BLUEPRINTS } from "../src/talent-blueprints.ts";
 
@@ -21,7 +21,7 @@ function dialog(chosen) {
   new Function("require", "exports", outputText)((name) => {
     if (name === "react") return hooks;
     if (name.endsWith(".css")) return {};
-    if (name === "./agent-runtime-selection") return { agentRuntimeLabel };
+    if (name === "./agent-runtime-selection") return { agentRuntimeLabel, runtimePersonalExtensionsNotice };
     if (name === "./AgentPortrait") return { AgentPortrait: () => React.createElement("span", null, "portrait") };
     if (name === "./talent-blueprint") return talent;
     return require(name);

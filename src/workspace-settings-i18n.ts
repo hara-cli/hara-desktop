@@ -1,5 +1,11 @@
+import { PERSONAL_EXTENSIONS_COPY } from "./agent-runtime-selection.ts";
 // Workspace settings copy. Keep notices as keys so an open page can change language.
 export const WORKSPACE_SETTINGS_KEYS = [
+  ["ws.runtimes.extensionsInherited", PERSONAL_EXTENSIONS_COPY.en, PERSONAL_EXTENSIONS_COPY["zh-Hans"], PERSONAL_EXTENSIONS_COPY["zh-Hant"]],
+  ["ws.runtimes.manualInstall", "Not installed. Install this CLI and sign in using its official guide, then rescan. Hara reuses the existing login.", "未安装。请按官方说明安装并登录 CLI，再重新检测；Hara 复用本机已有登录。", "未安裝。請依官方說明安裝並登入 CLI，再重新偵測；Hara 沿用本機既有登入。"],
+  ["ws.runtimes.manualGuide", "Official installation guide", "官方安装说明", "官方安裝說明"],
+  ["ws.runtimes.hostLoginOnly", "This runtime reuses this computer’s login. Hara does not copy credentials or offer a separate sign-in.", "此引擎复用本机登录，Hara 不复制凭据，也不提供独立登录。", "此引擎沿用本機登入，Hara 不複製憑證，也不提供獨立登入。"],
+  ["ws.runtimes.documentedModels", "Documented CLI options; availability depends on the CLI and account. CLI default keeps the existing model selection.", "官方文档选项，实际可用性取决于 CLI 与账号；CLI 默认保留已有模型选择。", "官方文件選項，實際可用性取決於 CLI 與帳號；CLI 預設保留既有模型選擇。"],
   ["ws.runtimeProxy.title", "Runtime network proxy", "引擎网络代理", "引擎網路代理"],
   ["ws.runtimeProxy.address", "Proxy address", "代理地址", "代理位址"],
   ["ws.runtimeProxy.note", "Applies to newly started Codex, Claude Code and OpenCode processes in this workspace.", "用于本空间新启动的 Codex、Claude Code 和 OpenCode 进程。", "用於本空間新啟動的 Codex、Claude Code 和 OpenCode 程序。"],

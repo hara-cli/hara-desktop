@@ -5,6 +5,10 @@ import { runtimeOperationText } from "./workspace-settings-copy";
 import { type Key } from "./i18n";
 import type { RuntimeApprovalCard, RuntimeLoginSource, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceModelConnection } from "./workspace-dev-state";
 
+
+const manualRuntimeGuide = (id: string) => id === "gemini" ? "https://geminicli.com/docs/get-started/installation/"
+  : id === "kimi" ? "https://github.com/MoonshotAI/kimi-cli#installation" : null;
+
 export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, onDirty }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void }) {
   const { t } = useWorkspaceLocale();
   const [label, setLabel] = useState(existing?.label ?? ""), [provider, setProvider] = useState<"openai" | "anthropic">(existing?.provider ?? "openai");
@@ -57,9 +61,11 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
       <div><strong>{runtime.label}</strong><small>{runtime.registered ? t("ws.runtimes.registered", { version: runtime.version ?? "" }) : runtime.state === "detected" ? t("ws.runtimes.detected", { version: runtime.version ?? "" }) : runtime.state === "integrity_failed" ? t("ws.runtimes.integrityFailed") : detecting || !checked ? t("ws.runtimes.checking") : t("ws.runtimes.missing")}</small>
       {runtime.path ? <code className="wsd-root">{runtime.path}</code> : null}
       {runtime.registered && runtime.loginSource === "isolated" && runtime.fingerprint && runtime.runtimeId !== "agy" ? <button disabled={pending} onClick={() => { setLoginSource("host"); setLocal(runtime); }}>{t("ws.runtimeAccess.switchHost")}</button> : null}
-      {runtime.registered && !runtime.generalAgentDriverAvailable ? <small>{t("ws.runtimes.driverNote")}</small> : null}</div>
+      {manualRuntimeGuide(runtime.runtimeId) ? <small>{t(runtime.state === "not_installed" && checked && !detecting ? "ws.runtimes.manualInstall" : "ws.runtimes.hostLoginOnly")} <a href={manualRuntimeGuide(runtime.runtimeId)!} target="_blank" rel="noreferrer">{t("ws.runtimes.manualGuide")}</a></small> : null}
+      {runtime.runtimeId === "kimi" ? <small>{t("ws.runtimes.extensionsInherited")}</small> : null}
+      {runtime.registered && !runtime.generalAgentDriverAvailable && runtime.runtimeId !== "kimi" ? <small>{t("ws.runtimes.driverNote")}</small> : null}</div>
       {runtime.state === "detected" ? <button className="wsd-primary" disabled={pending || detecting} onClick={() => { setLoginSource(runtime.runtimeId === "agy" ? "isolated" : "host"); setLocal(runtime); }}>{t("ws.runtimes.useLocal")}</button>
-        : runtime.state === "not_installed" && !runtime.path ? <button disabled={pending || downloading || detecting || !checked} onClick={() => void propose(runtime.runtimeId)}>{t("ws.runtimes.install")}</button> : null}
+        : runtime.state === "not_installed" && !runtime.path && !manualRuntimeGuide(runtime.runtimeId) ? <button disabled={pending || downloading || detecting || !checked} onClick={() => void propose(runtime.runtimeId)}>{t("ws.runtimes.install")}</button> : null}
     </div>)}</div>
     {workspace.runtimes?.options.some(runtime => runtime.runtimeId === "codex" && runtime.registered && runtime.loginSource !== "host") ? <section className="wsd-codex-login" aria-label={t("ws.resume.codexLogin")}>
       <h4>{t("ws.resume.codexLogin")}</h4><p>{t("ws.resume.loginGuide")}</p>
@@ -74,14 +80,14 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
       {operation.state === "downloading" ? <button onClick={() => void model.cancelRuntime(operation.id)}>{t("ws.runtimes.cancelInstall")}</button> : null}</div>)}
     {notice ? <p role="status">{t(notice)}</p> : null}
     {local ? <section className="wsd-approval wsd-runtime-bind-dialog" role="dialog" aria-label={t("ws.runtimes.confirmLocal")}><h3>{t("ws.runtimes.registerTitle", { name: local.label })}</h3>
-      <p>{t("ws.runtimes.bindLead")}</p><div className="wsd-runtime-proof"><small>{t("ws.runtimes.detectedPath")}</small><code>{local.path}</code><small>{t("ws.runtimes.registerNote")}</small></div>
-      <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="settings-local-login" checked={loginSource === "host"} disabled={pending || local.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: local.label })}</label>{local.runtimeId !== "opencode" ? <label><input type="radio" name="settings-local-login" checked={loginSource === "isolated"} disabled={pending} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
+      <p>{t("ws.runtimes.bindLead")}</p>{local.runtimeId === "kimi" ? <p role="note">{t("ws.runtimes.extensionsInherited")}</p> : null}<div className="wsd-runtime-proof"><small>{t("ws.runtimes.detectedPath")}</small><code>{local.path}</code><small>{t("ws.runtimes.registerNote")}</small></div>
+      <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="settings-local-login" checked={loginSource === "host"} disabled={pending || local.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: local.label })}</label>{!["opencode", "gemini", "kimi"].includes(local.runtimeId) ? <label><input type="radio" name="settings-local-login" checked={loginSource === "isolated"} disabled={pending} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
       <div className="wsd-card-actions"><button disabled={pending} onClick={() => setLocal(null)}>{t("ws.cancel")}</button><button className="wsd-primary" disabled={pending || !local.fingerprint} onClick={() => { if (!local.fingerprint || saveFence.current) return; saveFence.current = true; setPending(true);
         void model.registerLocalRuntime(local.runtimeId, local.fingerprint, workspace.workspaceId, workspace.resourceGeneration, loginSource).then(() => { setLocal(null); setNotice("ws.runtimes.registeredNotice"); })
           .catch(() => { setLocal(null); setNotice("ws.runtimes.registerUnknown"); }).finally(() => { saveFence.current = false; setPending(false); }); }}>{t("ws.runtimes.register")}</button></div></section> : null}
     {card ? <section className="wsd-approval" role="dialog" aria-label={t("ws.runtimes.confirmInstall")}><div className="wsd-kicker">{t("ws.approval.kicker")}</div>
       <h3>{t("ws.runtimes.installTitle", { name: card.label, version: card.version })}</h3><p>{card.origin} · {card.target.platform}/{card.target.arch} · {t("ws.runtimes.maxSize", { n: Math.ceil(card.maxBytes / 1024 / 1024) })}</p>
-      <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="settings-install-login" checked={loginSource === "host"} disabled={pending || card.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: card.label })}</label>{card.runtimeId !== "opencode" ? <label><input type="radio" name="settings-install-login" checked={loginSource === "isolated"} disabled={pending} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
+      <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="settings-install-login" checked={loginSource === "host"} disabled={pending || card.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: card.label })}</label>{!["opencode", "gemini", "kimi"].includes(card.runtimeId) ? <label><input type="radio" name="settings-install-login" checked={loginSource === "isolated"} disabled={pending} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
       <details><summary>{t("ws.runtimes.integrity")}</summary><code>{card.sha256}</code><p>{t("ws.runtimes.installNote")}</p></details>
       <div className="wsd-card-actions"><button disabled={pending} onClick={() => void decide(false)}>{t("ws.runtimes.notNow")}</button><button className="wsd-primary" disabled={pending} onClick={() => void decide(true)}>{t("ws.runtimes.approve")}</button></div>
     </section> : null}

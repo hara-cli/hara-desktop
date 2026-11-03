@@ -1,25 +1,28 @@
 import { useEffect, useId, useState } from "react";
 import type { AgentInfo, AgentRuntimeId, AgentRuntimeOption } from "./client";
-import { agentRuntimeLabel, agentRuntimeSelection } from "./agent-runtime-selection";
+import { agentRuntimeLabel, agentRuntimeSelection, runtimePersonalExtensionsNotice } from "./agent-runtime-selection";
 import type { WorkspaceDevAgent } from "./workspace-dev-state";
 
 /** Soft Dark uses the same Registry options, with the Workspace agent's revision fence. */
 export function WorkspaceAgentRuntimePicker({ agent, options, locale, saving, onApply }: {
-  agent: WorkspaceDevAgent; options: AgentRuntimeOption[]; locale: "en" | "zh"; saving: boolean;
+  agent: WorkspaceDevAgent; options: AgentRuntimeOption[]; locale: "en" | "zh" | "zh-Hans" | "zh-Hant"; saving: boolean;
   onApply(id: AgentRuntimeId): void;
 }) {
   const [selected, setSelected] = useState<AgentRuntimeId>(agent.runtime.id as AgentRuntimeId);
   useEffect(() => setSelected(agent.runtime.id as AgentRuntimeId), [agent.agentId, agent.runtime.id, agent.configRevision]);
   const available = options.some(option => option.id === selected && option.available);
+  const zh = locale !== "en", hant = locale === "zh-Hant";
+  const extensionsNotice = runtimePersonalExtensionsNotice(selected, locale);
   return <div className="agent-profile-runtime-controls">
     <label><span>Runtime</span><select aria-label="Runtime" value={selected} disabled={saving} onChange={event => setSelected(event.target.value as AgentRuntimeId)}>
       {!options.some(option => option.id === agent.runtime.id) ? <option value={agent.runtime.id} disabled>{agent.runtime.label}</option> : null}
-      {options.map(option => <option key={option.id} value={option.id} disabled={!option.available}>{agentRuntimeLabel(option.id, locale)}{!option.available
-        ? option.reason === "not_installed" ? (locale === "zh" ? " · 未安装" : " · not installed")
-          : option.reason === "not_registered" ? (locale === "zh" ? " · 登记后可绑定" : " · register before binding")
-          : (locale === "zh" ? " · 暂不可用" : " · unavailable") : ""}</option>)}
+      {options.map(option => <option key={option.id} value={option.id} disabled={!option.available}>{agentRuntimeLabel(option.id, zh ? "zh" : "en")}{!option.available
+        ? option.reason === "not_installed" ? (hant ? " · 未安裝" : zh ? " · 未安装" : " · not installed")
+          : option.reason === "not_registered" ? (hant ? " · 登記後可綁定" : zh ? " · 登记后可绑定" : " · register before binding")
+          : (hant ? " · 暫不可用" : zh ? " · 暂不可用" : " · unavailable") : ""}</option>)}
     </select></label>
-        <button type="button" disabled={saving || !agent.configRevision || !agent.agentEpoch || !available || selected === agent.runtime.id} onClick={() => onApply(selected)}>{locale === "zh" ? "应用 Runtime" : "Apply Runtime"}</button>
+    {extensionsNotice ? <p role="note">{extensionsNotice}</p> : null}
+        <button type="button" disabled={saving || !agent.configRevision || !agent.agentEpoch || !available || selected === agent.runtime.id} onClick={() => onApply(selected)}>{hant ? "套用 Runtime" : zh ? "应用 Runtime" : "Apply Runtime"}</button>
   </div>;
 }
 
@@ -37,12 +40,14 @@ export default function AgentRuntimePicker({ agent, options = [], locale, saving
   useEffect(() => { setSelected(runtimeId ?? "hara"); }, [agent.ref, runtimeId, revision]);
   const editable = !!onApply && agent.owner === "personal" && agent.allowedActions.includes("edit_profile");
   const choice = agentRuntimeSelection(agent, selected, options);
+  const extensionsNotice = runtimePersonalExtensionsNotice(selected, locale);
   return <details className="agent-profile-runtime">
     <summary><span>Runtime</span><small>{runtimeId ? agentRuntimeLabel(runtimeId, locale)
       : locale === "zh" ? "引擎尚未提供绑定信息" : "Binding not advertised by this engine"}</small></summary>
     <p id={noteId}>{locale === "zh"
       ? "决定这位 Agent 用什么引擎执行，不是模型或工具授权。切换只影响新任务；旧任务和历史保留原绑定。"
       : "Selects this Agent's execution engine, not its model or tool permissions. Changes affect new tasks; existing work keeps its binding."}</p>
+    {extensionsNotice ? <p role="note">{extensionsNotice}</p> : null}
     {agent.runtime && options.length ? <>
       <div className="agent-profile-runtime-controls">
         <label><span>{locale === "zh" ? "执行 Runtime" : "Execution Runtime"}</span>

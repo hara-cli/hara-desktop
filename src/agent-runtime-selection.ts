@@ -14,5 +14,15 @@ export function agentRuntimeSelection(agent: AgentInfo, runtimeId: AgentRuntimeI
 export function agentRuntimeLabel(id: AgentRuntimeId, locale: "en" | "zh"): string {
   if (id === "hara") return locale === "zh" ? "Hara · 现有相容引擎" : "Hara · compatibility engine";
   if (id === "pi") return locale === "zh" ? "Pi · 内建" : "Pi · built-in";
-  return { codex: "Codex", claude: "Claude Code", opencode: "OpenCode", agy: "Antigravity" }[id];
+  return { codex: "Codex", claude: "Claude Code", opencode: "OpenCode", agy: "Antigravity", gemini: "Gemini CLI", kimi: "Kimi CLI" }[id];
+}
+
+export const PERSONAL_EXTENSIONS_COPY = {
+  en: "This runtime will bring along your computer’s personal extensions (plugins / hooks / MCP).",
+  "zh-Hans": "会带上你本机的个人扩展（插件／hooks／MCP）。",
+  "zh-Hant": "會帶上你本機的個人擴充功能（外掛／hooks／MCP）。",
+} as const;
+/** Display-only policy notice; permissions remain in the Host. */
+export function runtimePersonalExtensionsNotice(runtimeId: string, locale: "en" | "zh" | "zh-Hans" | "zh-Hant"): string {
+  return runtimeId === "kimi" ? PERSONAL_EXTENSIONS_COPY[locale === "zh" ? "zh-Hans" : locale] : "";
 }

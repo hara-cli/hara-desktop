@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
-import { agentRuntimeLabel, agentRuntimeSelection } from "../src/agent-runtime-selection.ts";
+import { agentRuntimeLabel, agentRuntimeSelection, runtimePersonalExtensionsNotice } from "../src/agent-runtime-selection.ts";
 
 const require = createRequire(import.meta.url);
 const agent = { ref: "main", name: "Hara", owner: "personal", spaceId: "personal", revision: "a".repeat(32), allowedActions: ["chat", "edit_profile"],
@@ -17,7 +17,7 @@ function picker() {
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
   const exports = {};
   new Function("require", "exports", outputText)((name) => name === "./agent-runtime-selection"
-    ? { agentRuntimeLabel, agentRuntimeSelection } : require(name), exports);
+    ? { agentRuntimeLabel, agentRuntimeSelection, runtimePersonalExtensionsNotice } : require(name), exports);
   return exports.default;
 }
 
