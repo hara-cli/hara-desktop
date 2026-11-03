@@ -98,9 +98,11 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
 export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty, onCreateSkill }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; kind: "schedules" | "skills"; onClose?: () => void; onDirty?: (value: boolean) => void; onCreateSkill?: () => void }) {
   const { locale, t } = useWorkspaceLocale();
   const [value, setValue] = useState<WorkspaceFeatureView | null>(null), [notice, setNotice] = useState<"" | Key>(""), [pending, setPending] = useState(false);
-  const [editor, setEditor] = useState<{ id: string; content: string } | null>(null), [upgrade, setUpgrade] = useState<WorkspaceFeatureView["skills"][number] | null>(null);
+  const [editor, setEditor] = useState<{ id: string; content: string } | null>(null);
+  const [scheduleEditor, setScheduleEditor] = useState<{ id: string; name: string; task: string; tz: string; time: string; agentId: string; enabled: boolean } | null>(null);
+  const [scheduleDelete, setScheduleDelete] = useState<{ id: string; name: string } | null>(null), [upgrade, setUpgrade] = useState<WorkspaceFeatureView["skills"][number] | null>(null);
   const busy = useRef(false);
-  useEffect(() => { onDirty?.(Boolean(editor)); return () => onDirty?.(false); }, [editor, onDirty]);
+  useEffect(() => { onDirty?.(Boolean(editor || scheduleEditor || scheduleDelete)); return () => onDirty?.(false); }, [editor, scheduleEditor, scheduleDelete, onDirty]);
   useEffect(() => { let active = true; void model.workspaceRequest<WorkspaceFeatureView>("workspace.features.list").then(rows => { if (active) setValue(rows); })
     .catch(() => { if (active) setNotice("ws.features.loadFailed"); }); return () => { active = false; }; }, [model, workspace.workspaceId, workspace.resourceGeneration]);
   const runningSchedule = Boolean(value?.scheduler?.schedules.some(row => row.lastRun?.state === "running"));
@@ -116,6 +118,26 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
   const saveSkill = async () => { if (!value || !editor || busy.current) return; busy.current = true; setPending(true);
     try { setValue(await model.workspaceRequest<WorkspaceFeatureView>("workspace.skill.fork", { id: editor.id, content: editor.content, expectedRevision: value.revision, approved: true })); setEditor(null); }
     catch { setNotice("ws.skills.saveUnknown"); } finally { busy.current = false; setPending(false); } };
+  const editSchedule = async () => { if (!value || !scheduleEditor || busy.current) return;
+    const { id, name, task, tz, time, agentId, enabled } = scheduleEditor;
+    let schedule: { kind: string; expr?: string; everyMs?: number; runAt?: number; display?: string };
+    const every = /^every:(\d+)([mhd])$/.exec(time.trim());
+    if (every) { const unit = { m: 60_000, h: 3_600_000, d: 86_400_000 }[every[2] as "m" | "h" | "d"];
+      const everyMs = Number(every[1]) * unit; if (!Number.isSafeInteger(everyMs) || everyMs < 900_000) { setNotice("ws.schedules.invalidTime"); return; }
+      schedule = { kind: "every", everyMs, display: time.trim() };
+    } else if (/^\d{4}-\d\d-\d\dT/.test(time.trim())) { const runAt = Date.parse(time.trim());
+      if (!Number.isFinite(runAt) || runAt <= Date.now() || !time.trim().endsWith("Z")) { setNotice("ws.schedules.invalidTime"); return; }
+      schedule = { kind: "once", runAt, display: `at ${time.trim()}` };
+    } else if (/^\d{1,2} \d{1,2} \* \* (?:\*|[0-6](?:,[0-6])*)$/.test(time.trim())) schedule = { kind: "cron", expr: time.trim() };
+    else { setNotice("ws.schedules.invalidTime"); return; }
+    busy.current = true; setPending(true);
+    try { setValue(await model.workspaceRequest<WorkspaceFeatureView>("workspace.schedule.save", { input: { id, name: name.trim(), task: task.trim(), tz: tz.trim(), agentId, enabled, schedule }, expectedRevision: value.revision, approved: true })); setScheduleEditor(null); setNotice(""); }
+    catch { setNotice("ws.features.saveUnknown"); } finally { busy.current = false; setPending(false); }
+  };
+  const deleteSchedule = async () => { if (!value || !scheduleDelete || busy.current) return; busy.current = true; setPending(true);
+    try { setValue(await model.workspaceRequest<WorkspaceFeatureView>("workspace.schedule.delete", { id: scheduleDelete.id, expectedRevision: value.revision, approved: true })); setScheduleDelete(null); setNotice(""); }
+    catch { setNotice("ws.features.saveUnknown"); } finally { busy.current = false; setPending(false); }
+  };
   return <section className="wsd-feature-panel" aria-label={t(kind === "skills" ? "ws.skills.title" : "ws.schedules.title")}>{onClose ? <button onClick={onClose}>{t("ws.settings.back")}</button> : null}
     <h2>{t(kind === "skills" ? "ws.settings.page.skills" : "ws.settings.page.schedules")}</h2><p>{t("ws.features.scope", { workspace: workspace.label })}</p>
     {!value ? <p role="status">{t(notice || "ws.settings.loading")}</p> : kind === "skills" ? <>
@@ -134,9 +156,24 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
       <p className="wss-callout">{t("ws.schedules.legacyNote")}</p>
       <p className="wss-callout">{t("ws.schedules.colleagueNote")}</p>
       {!value.schedules.length ? <p>{t("ws.schedules.empty")}</p> : value.schedules.map(row => { const status = value.scheduler?.schedules.find(item => item.id === row.id); return <div className="wsd-connection" key={row.id}><strong>{row.name}</strong><code>{row.schedule.expr ?? row.schedule.display}</code>
+        <small>{t(row.source === "chat" ? "ws.schedules.chatSource" : row.source === "workspace" ? "ws.schedules.manualSource" : "ws.schedules.legacySource")}</small>
+        {row.anchor ? <small>{t("ws.schedules.anchor", { conversation: row.anchor.conversationId, message: row.anchor.messageId.slice(0, 8) })}</small> : null}
         <small>{t(row.enabled ? "ws.schedules.enabled" : "ws.schedules.off")}</small>
         <small>{status?.awaitingHandoff ? t("ws.schedules.handoff") : status?.lastRun ? t("ws.schedules.last", { state: settingsStateText(t, status.lastRun.state), reason: status.lastRun.reason ? ` · ${status.lastRun.reason}` : "" }) : t("ws.schedules.never")}</small>
         <small>{t("ws.schedules.next", { time: status?.nextRunAt ? new Date(status.nextRunAt).toLocaleString(locale) : "—" })}</small>
-        {status?.lastRun ? <details><summary>{t("ws.schedules.history")}</summary><p>{new Date(status.lastRun.occurredAt).toLocaleString(locale)} · {settingsStateText(t, status.lastRun.state)}</p></details> : null}</div>; })}</>}
+        {status?.lastRun ? <details><summary>{t("ws.schedules.history")}</summary><p>{new Date(status.lastRun.occurredAt).toLocaleString(locale)} · {settingsStateText(t, status.lastRun.state)}</p></details> : null}
+        {row.agentId && row.task && (row.source === "chat" || row.source === "workspace") ? <div className="wsd-card-actions">
+          <button disabled={pending} onClick={() => setScheduleEditor({ id: row.id, name: row.name, task: row.task!, tz: row.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+            time: row.schedule.kind === "once" && row.schedule.runAt ? new Date(row.schedule.runAt).toISOString()
+              : row.schedule.kind === "every" && row.schedule.everyMs ? `every:${row.schedule.everyMs / 60_000}m` : row.schedule.expr ?? "", agentId: row.agentId!, enabled: row.enabled })}>{t("ws.schedules.edit")}</button>
+          <button disabled={pending} onClick={() => setScheduleDelete({ id: row.id, name: row.name })}>{t("ws.schedules.delete")}</button></div> : null}</div>; })}
+      {scheduleEditor ? <section className="wsd-approval" role="dialog" aria-label={t("ws.schedules.edit")}><h3>{t("ws.schedules.edit")}</h3>
+        <label>{t("ws.schedules.name")}<input value={scheduleEditor.name} onChange={event => setScheduleEditor({ ...scheduleEditor, name: event.target.value })} /></label>
+        <label>{t("ws.schedules.time")}<input value={scheduleEditor.time} onChange={event => setScheduleEditor({ ...scheduleEditor, time: event.target.value })} /></label>
+        <label>{t("ws.schedules.tz")}<input value={scheduleEditor.tz} onChange={event => setScheduleEditor({ ...scheduleEditor, tz: event.target.value })} /></label>
+        <label>{t("ws.schedules.task")}<textarea value={scheduleEditor.task} onChange={event => setScheduleEditor({ ...scheduleEditor, task: event.target.value })} /></label>
+        <button disabled={pending} onClick={() => setScheduleEditor(null)}>{t("ws.cancel")}</button><button disabled={pending} onClick={() => void editSchedule()}>{t("ws.schedules.save")}</button></section> : null}
+      {scheduleDelete ? <section className="wsd-approval" role="dialog" aria-label={t("ws.schedules.delete")}><h3>{t("ws.schedules.deleteConfirm", { name: scheduleDelete.name, workspace: workspace.label })}</h3>
+        <button disabled={pending} onClick={() => setScheduleDelete(null)}>{t("ws.cancel")}</button><button disabled={pending} onClick={() => void deleteSchedule()}>{t("ws.schedules.delete")}</button></section> : null}</>}
     {notice && value ? <p role="status">{t(notice)}</p> : null}</section>;
 }
