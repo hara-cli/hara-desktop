@@ -1,11 +1,19 @@
+import { makeT } from "./i18n";
+import { inheritsPersonalExtensions } from "./runtime-expansion";
 import { useEffect, useId, useState } from "react";
 import type { AgentInfo, AgentRuntimeId, AgentRuntimeOption } from "./client";
 import { agentRuntimeLabel, agentRuntimeSelection } from "./agent-runtime-selection";
 import type { WorkspaceDevAgent } from "./workspace-dev-state";
 
+function PersonalExtensionsNotice({ runtimeId, locale }: { runtimeId: string; locale: "en" | "zh" | "zh-Hans" | "zh-Hant" }) {
+  if (!inheritsPersonalExtensions(runtimeId)) return null;
+  const t = makeT(locale === "zh" ? "zh-Hans" : locale);
+  return <p role="status" data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p>;
+}
+
 /** Soft Dark uses the same Registry options, with the Workspace agent's revision fence. */
 export function WorkspaceAgentRuntimePicker({ agent, options, locale, saving, onApply }: {
-  agent: WorkspaceDevAgent; options: AgentRuntimeOption[]; locale: "en" | "zh"; saving: boolean;
+  agent: WorkspaceDevAgent; options: AgentRuntimeOption[]; locale: "en" | "zh" | "zh-Hans" | "zh-Hant"; saving: boolean;
   onApply(id: AgentRuntimeId): void;
 }) {
   const [selected, setSelected] = useState<AgentRuntimeId>(agent.runtime.id as AgentRuntimeId);
@@ -14,12 +22,13 @@ export function WorkspaceAgentRuntimePicker({ agent, options, locale, saving, on
   return <div className="agent-profile-runtime-controls">
     <label><span>Runtime</span><select aria-label="Runtime" value={selected} disabled={saving} onChange={event => setSelected(event.target.value as AgentRuntimeId)}>
       {!options.some(option => option.id === agent.runtime.id) ? <option value={agent.runtime.id} disabled>{agent.runtime.label}</option> : null}
-      {options.map(option => <option key={option.id} value={option.id} disabled={!option.available}>{agentRuntimeLabel(option.id, locale)}{!option.available
-        ? option.reason === "not_installed" ? (locale === "zh" ? " · 未安装" : " · not installed")
-          : option.reason === "not_registered" ? (locale === "zh" ? " · 登记后可绑定" : " · register before binding")
-          : (locale === "zh" ? " · 暂不可用" : " · unavailable") : ""}</option>)}
+      {options.map(option => <option key={option.id} value={option.id} disabled={!option.available}>{agentRuntimeLabel(option.id, locale === "en" ? "en" : "zh")}{!option.available
+        ? option.reason === "not_installed" ? (locale !== "en" ? " · 未安装" : " · not installed")
+          : option.reason === "not_registered" ? (locale !== "en" ? " · 登记后可绑定" : " · register before binding")
+          : (locale !== "en" ? " · 暂不可用" : " · unavailable") : ""}</option>)}
     </select></label>
-        <button type="button" disabled={saving || !agent.configRevision || !agent.agentEpoch || !available || selected === agent.runtime.id} onClick={() => onApply(selected)}>{locale === "zh" ? "应用 Runtime" : "Apply Runtime"}</button>
+    <PersonalExtensionsNotice runtimeId={selected} locale={locale} />
+        <button type="button" disabled={saving || !agent.configRevision || !agent.agentEpoch || !available || selected === agent.runtime.id} onClick={() => onApply(selected)}>{locale !== "en" ? "应用 Runtime" : "Apply Runtime"}</button>
   </div>;
 }
 
@@ -55,6 +64,7 @@ export default function AgentRuntimePicker({ agent, options = [], locale, saving
             </option>)}
           </select>
         </label>
+        <PersonalExtensionsNotice runtimeId={selected} locale={locale} />
         <button type="button" disabled={saving || !choice || !editable} onClick={() => { if (choice) onApply?.(selected); }}>
           {saving ? locale === "zh" ? "保存中…" : "Saving…" : locale === "zh" ? "仅保存 Runtime" : "Save Runtime only"}
         </button>

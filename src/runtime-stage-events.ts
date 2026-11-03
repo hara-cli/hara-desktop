@@ -13,7 +13,7 @@ export interface RuntimeStageEvent {
 }
 export interface RuntimeStageReport {
   schemaVersion: 1; workspaceId: string; resourceGeneration: string; agentId: string; sessionId: string; runId: string; attemptId: string;
-  historyStart: number; runtime: { id: "hara" | "pi" | "opencode" | "codex" | "claude" | "copilot" | "cursor" | "grok" | "agy"; version: string | null;
+  historyStart: number; runtime: { extensionsIsolation?: "inherited"; id: "hara" | "pi" | "opencode" | "codex" | "claude" | "copilot" | "cursor" | "grok" | "agy"; version: string | null;
     loginSource: "host" | "isolated" | "unknown"; model: string | null; effort: string | null };
   state: RuntimeStageState; durationMs: number | null; errorKind: RuntimeStageFailure | null; events: RuntimeStageEvent[]; droppedEvents: number;
 }
@@ -63,12 +63,13 @@ export function parseRuntimeStageReport(value: unknown): RuntimeStageReport | nu
     || !integer(value.historyStart, 4000) || !member(value.state, ["running", "completed", "blocked", "cancelled", "error", "incomplete"])
     || !duration(value.durationMs) || !failure(value.errorKind) || !integer(value.droppedEvents, 1_000_000)
     || !Array.isArray(value.events) || value.events.length > 256 || !record(value.runtime)
-    || !exact(value.runtime, ["id", "version", "loginSource", "model", "effort"])) return null;
+    || !exact(value.runtime, ["id", "version", "loginSource", "model", "effort", ...(Object.prototype.hasOwnProperty.call(value.runtime, "extensionsIsolation") ? ["extensionsIsolation"] : [])])) return null;
   const runtime = value.runtime;
   if (!member(runtime.id, ["hara", "pi", "opencode", "codex", "claude", "copilot", "cursor", "grok", "agy"])
     || !(runtime.version === null || typeof runtime.version === "string" && runtime.version === runtime.version.trim() && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(runtime.version))
     || !member(runtime.loginSource, ["host", "isolated", "unknown"]) || !model(runtime.model)
     || !(runtime.effort === null || member(runtime.effort, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]))) return null;
+  if (Object.prototype.hasOwnProperty.call(runtime, "extensionsIsolation") && (runtime.extensionsIsolation !== "inherited" || !["copilot", "cursor", "grok"].includes(runtime.id))) return null;
   const events: RuntimeStageEvent[] = []; let seq = 0, offset = 0;
   for (const item of value.events) {
     const event = parseEvent(item);
@@ -89,7 +90,7 @@ export function parseRuntimeStageReport(value: unknown): RuntimeStageReport | nu
   if (new Set(firstMarks.map(event => event.kind)).size !== firstMarks.length) return null;
   return { schemaVersion: 1, workspaceId: value.workspaceId, resourceGeneration: value.resourceGeneration as string,
     agentId: value.agentId, sessionId: value.sessionId as string, runId: value.runId as string, attemptId: value.attemptId as string,
-    historyStart: value.historyStart, runtime: { id: runtime.id, version: runtime.version, loginSource: runtime.loginSource,
+    historyStart: value.historyStart, runtime: { id: runtime.id, ...(runtime.extensionsIsolation === "inherited" ? { extensionsIsolation: "inherited" as const } : {}), version: runtime.version, loginSource: runtime.loginSource,
       model: runtime.model, effort: runtime.effort }, state: value.state, durationMs: value.durationMs, errorKind: value.errorKind,
     events, droppedEvents: value.droppedEvents };
 }

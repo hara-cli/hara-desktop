@@ -1,3 +1,5 @@
+import { makeT } from "../src/i18n.ts";
+import * as runtimeExpansion from "../src/runtime-expansion.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -12,13 +14,14 @@ const agent = { ref: "main", name: "Hara", owner: "personal", spaceId: "personal
   runtime: { version: 1, agentRef: "main", spaceId: "personal", runtimeId: "hara", revision: 0, available: true } };
 const options = [{ id: "hara", available: true }, { id: "pi", available: false }, { id: "codex", available: true }];
 
-function picker() {
+function picker(workspace = false, draft) {
   const source = readFileSync(new URL("../src/AgentRuntimePicker.tsx", import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
   const exports = {};
   new Function("require", "exports", outputText)((name) => name === "./agent-runtime-selection"
-    ? { agentRuntimeLabel, agentRuntimeSelection } : require(name), exports);
-  return exports.default;
+    ? { agentRuntimeLabel, agentRuntimeSelection } : name === "./runtime-expansion" ? runtimeExpansion : name === "./i18n" ? { makeT }
+    : name === "react" && draft ? { ...React, useState: () => [draft, () => {}] } : require(name), exports);
+  return workspace ? exports.WorkspaceAgentRuntimePicker : exports.default;
 }
 
 function saveCallback(bindings) {
@@ -97,4 +100,21 @@ test("Antigravity appears as a pending Hara colleague runtime", () => {
   const html = renderToStaticMarkup(React.createElement(picker(), { agent, options: pending, locale: "zh", onApply() {} }));
   assert.match(html, /Antigravity · 暂不可用/);
   assert.equal(agentRuntimeSelection(agent, "agy", pending), null);
+});
+
+test("Workspace draft runtime choice discloses inherited personal extensions in all three locales before apply", () => {
+  const current = { agentId: "fixture", configRevision: 1, agentEpoch: 1, runtime: { id: "pi", label: "Pi", available: true } };
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const id of ["copilot", "cursor", "grok"]) {
+    const html = renderToStaticMarkup(React.createElement(picker(true, id), { agent: current, options: [{ id, label: id, available: true }], locale, saving: false, onApply() { throw Error("render cannot bind"); } }));
+    assert.match(html, /data-personal-extensions="inherited"/);
+    assert.ok(html.includes(makeT(locale)("ws.runtimeExpansion.extensionsInherited")));
+    assert.doesNotMatch(html, /isolationPending|Execution is pending/);
+  }
+});
+test("isolated runtime draft choices do not inherit the personal-extension notice", () => {
+  for (const id of ["pi", "codex", "claude", "opencode"]) {
+    const current = { configRevision: 1, agentEpoch: 1, runtime: { id, label: id, available: true } };
+    const html = renderToStaticMarkup(React.createElement(picker(true), { agent: current, options: [{ id, label: id, available: true }], locale: "en", saving: false, onApply() {} }));
+    assert.doesNotMatch(html, /data-personal-extensions/);
+  }
 });

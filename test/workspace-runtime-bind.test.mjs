@@ -395,3 +395,19 @@ for (const runtimeId of ["copilot", "cursor", "grok"]) test(runtimeId + " regist
   f.button(makeT("en")("ws.runtimes.register")).props.onClick(); await f.flush();
   assert.equal(f.registrations[0][2], "host");
 });
+
+test("binding and runtime-switch confirmations disclose inherited extensions for every expanded runtime and locale", async () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const id of ["copilot", "cursor", "grok"]) {
+    const t = makeT(locale), f = mount({ locale, workspace: { runtimeOptions: [{ id, label: id, available: true }],
+      runtimes: { options: [{ runtimeId: id, label: id, fingerprint: "fixture-fp", state: "detected", registered: false }] } } });
+    f.all().find(node => node.type === Picker).props.onApply(id); f.render();
+    assert.ok(f.text().includes(t("ws.runtimeExpansion.extensionsInherited")));
+    assert.deepEqual(f.changes, [], "a visible warning is not an automatic bind");
+    const g = mount({ locale, agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" }, runtime: { id, label: id, available: false } },
+      workspace: { workspaceId: "fixture", resourceGeneration: "g-one", runtimeOptions: [{ id, label: id, available: false, reason: "not_registered" }],
+        runtimes: { options: [{ runtimeId: id, label: id, fingerprint: "fixture-fp", state: "detected", registered: false }] }, conversation: { state: "completed", history: [] } } });
+    g.button(t("ws.runtimeAccess.register")).props.onClick(); g.render();
+    assert.ok(g.text().includes(t("ws.runtimeExpansion.extensionsInherited")));
+    assert.equal(g.all().filter(node => node.type === "input" && node.props.name === "inspector-login-source").length, 1);
+  }
+});

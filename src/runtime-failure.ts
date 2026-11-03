@@ -4,6 +4,7 @@ export const RUNTIME_FAILURE_MARKER = "hara_runtime_failure_v1=";
 export const RUNTIME_FAILURE_KINDS = ["not_installed", "version_incompatible", "runtime_auth_required", "runtime_auth_rejected", "runtime_network", "runtime_proxy", "invalid_model", "runtime_quota", "runtime_rate_limit", "runtime_permission_denied", "runtime_crashed", "project_not_trusted", "timeout", "spawn_failed", "runtime_failed"] as const;
 export type RuntimeFailureKind = typeof RUNTIME_FAILURE_KINDS[number];
 export interface RuntimeFailureDiagnostic {
+  extensionsIsolation?: "inherited";
   runtime: "codex" | "claude" | "opencode" | "copilot" | "cursor" | "grok";
   kind: RuntimeFailureKind;
   version: string | null;
@@ -22,12 +23,15 @@ export function parseRuntimeFailure(error: string | null | undefined, runtimeId?
   const index = error.indexOf(RUNTIME_FAILURE_MARKER);
   if (index < 0 || error.indexOf(RUNTIME_FAILURE_MARKER, index + RUNTIME_FAILURE_MARKER.length) >= 0) return null;
   const match = /^\{[^{}\r\n]{1,1024}\}/.exec(error.slice(index + RUNTIME_FAILURE_MARKER.length));
-  if (!match || match[0].includes("\\") || (match[0].match(/"[^"\\]*"\s*:/g)?.length ?? 0) !== FIELDS.length) return null;
+  if (!match || match[0].includes("\\")) return null;
   let row: Record<string, unknown>;
   try { row = JSON.parse(match[0]); } catch { return null; }
-  if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).length !== FIELDS.length || !FIELDS.every(field => Object.prototype.hasOwnProperty.call(row, field))) return null;
+  if (!row || typeof row !== "object" || Array.isArray(row) || (match[0].match(/"[^"\\]*"\s*:/g)?.length ?? 0) !== Object.keys(row).length
+    || Object.keys(row).length !== FIELDS.length + (Object.prototype.hasOwnProperty.call(row, "extensionsIsolation") ? 1 : 0)
+    || !FIELDS.every(field => Object.prototype.hasOwnProperty.call(row, field))) return null;
   if (row.runtime !== "codex" && row.runtime !== "claude" && row.runtime !== "opencode" && row.runtime !== "copilot" && row.runtime !== "cursor" && row.runtime !== "grok") return null;
   if (runtimeId !== undefined && row.runtime !== runtimeId) return null;
+  if (Object.prototype.hasOwnProperty.call(row, "extensionsIsolation") && (row.extensionsIsolation !== "inherited" || !["copilot", "cursor", "grok"].includes(row.runtime))) return null;
   if (!RUNTIME_FAILURE_KINDS.includes(row.kind as RuntimeFailureKind)
     || !(row.version === null || typeof row.version === "string" && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(row.version))
     || !["host", "isolated", "unknown"].includes(String(row.loginSource))
@@ -36,7 +40,7 @@ export function parseRuntimeFailure(error: string | null | undefined, runtimeId?
   // Core permits at most 30s. Allow 1s clock skew, but never keep a malformed record ticking forever.
   // Expired history remains valid and does not impose another cooldown.
   if (row.retryAtMs > Date.now() + 31_000) return null;
-  return { runtime: row.runtime, kind: row.kind as RuntimeFailureKind, version: row.version as string | null,
+  return { runtime: row.runtime, ...(row.extensionsIsolation === "inherited" ? { extensionsIsolation: "inherited" as const } : {}), kind: row.kind as RuntimeFailureKind, version: row.version as string | null,
     loginSource: row.loginSource as RuntimeFailureDiagnostic["loginSource"], homeMatchesAccount: row.homeMatchesAccount as boolean | null,
     elapsedMs: row.elapsedMs, retryAtMs: row.retryAtMs, consecutiveFailures: row.consecutiveFailures };
 }
@@ -52,6 +56,7 @@ export function runtimeLoginCommand(runtime: RuntimeFailureDiagnostic["runtime"]
 export function runtimeDiagnosticSummary(diagnostic: RuntimeFailureDiagnostic, t: ReturnType<typeof makeT>): string {
   return [
     `${t("ws.runtimeDiagnostic.runtime")}: ${diagnostic.runtime}`,
+    ...(diagnostic.extensionsIsolation ? [`${t("ws.runtimeDiagnostic.extensionsIsolation")}: ${diagnostic.extensionsIsolation}`] : []),
     `${t("ws.runtimeDiagnostic.kind")}: ${t(`ws.resume.runtime.${diagnostic.kind}.title`)}`,
     `${t("ws.runtimeDiagnostic.version")}: ${diagnostic.version ?? t("ws.runtimeDiagnostic.unknown")}`,
     `${t("ws.runtimeDiagnostic.loginSource")}: ${t(`ws.runtimeDiagnostic.${diagnostic.loginSource}`)}`,

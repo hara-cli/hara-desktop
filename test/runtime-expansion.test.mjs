@@ -27,7 +27,7 @@ test("effort is displayed for new runtimes only when the CLI advertised levels",
 test("installation, host login and live model provenance exist in all three locales", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     const t = makeT(locale);
-    for (const key of ["ws.runtimeExpansion.manualInstall", "ws.runtimeExpansion.instructions", "ws.runtimeExpansion.hostLogin", "ws.runtimeExpansion.modelsLive", "ws.runtimeExpansion.isolationPending", "ws.runtimeExpansion.loginReuseFailed"]) {
+    for (const key of ["ws.runtimeExpansion.manualInstall", "ws.runtimeExpansion.instructions", "ws.runtimeExpansion.hostLogin", "ws.runtimeExpansion.modelsLive", "ws.runtimeExpansion.extensionsInherited", "ws.runtimeExpansion.loginReuseFailed"]) {
       assert.notEqual(t(key), key); assert.ok(t(key).length > 0);
     }
   }

@@ -151,3 +151,21 @@ for (const runtime of ["copilot", "cursor", "grok"]) test(runtime + " retains ho
     assert.doesNotMatch(html, /onLogin|data-runtime-login-guidance|ws\.runtimeExpansion\.|PRIVATE/);
   }
 });
+
+test("inherited extension diagnostics remain closed, backward compatible and localized", () => {
+  for (const runtime of ["copilot", "cursor", "grok"]) {
+    const error = envelope({ runtime, extensionsIsolation: "inherited" });
+    assert.equal(parseRuntimeFailure(error, runtime).extensionsIsolation, "inherited");
+    assert.equal(Object.hasOwn(parseRuntimeFailure(envelope({ runtime }), runtime), "extensionsIsolation"), false);
+    for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+      const html = render(h(WorkspaceTaskRecovery, props(error, locale, runtime)));
+      assert.ok(html.includes(makeT(locale)("ws.runtimeDiagnostic.extensionsIsolation")));
+      assert.ok(html.includes("inherited"));
+    }
+  }
+  for (const overrides of [{ runtime: "codex", extensionsIsolation: "inherited" }, { runtime: "claude", extensionsIsolation: "inherited" },
+    { runtime: "cursor", extensionsIsolation: "isolated" }, { runtime: "cursor", extensionsIsolation: "PRIVATE" }, { runtime: "cursor", extensionsIsolation: null },
+    { runtime: "cursor", extensionsIsolation: "inherited", token: "PRIVATE" }]) assert.equal(parseRuntimeFailure(envelope(overrides)), null);
+  const duplicate = envelope({ runtime: "cursor", extensionsIsolation: "inherited" }).replace('"extensionsIsolation":"inherited"', '"extensionsIsolation":"inherited","extensionsIsolation":"inherited"');
+  assert.equal(parseRuntimeFailure(duplicate), null);
+});

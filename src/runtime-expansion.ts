@@ -8,3 +8,8 @@ export function manualRuntimeInstallUrl(runtimeId: string): string | null {
 export function runtimeEffortVisible(runtimeId: string, levels: readonly string[] = []): boolean {
   return runtimeId !== "opencode" && (!(EXPANDED_RUNTIME_IDS as readonly string[]).includes(runtimeId) || levels.length > 0);
 }
+
+/** Jeff option A applies to these Workspace adapters; isolated runtimes keep their existing mode. */
+export function inheritsPersonalExtensions(runtimeId: string): boolean {
+  return (EXPANDED_RUNTIME_IDS as readonly string[]).includes(runtimeId);
+}
