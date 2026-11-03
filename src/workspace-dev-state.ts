@@ -64,7 +64,7 @@ export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; wor
   workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string; dismissedRecoveryIdentity: string | null }
 export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
   maxBytes: number; expiresAt: string; target: { platform: string; arch: string }; workspaceId: string; resourceGeneration: string; viewEpoch: number }
-export interface WorkspaceRuntimeModels { runtimeId: string; revision: number; selectedModelId: string | null; selectedEffort?: string | null;
+export interface WorkspaceRuntimeModels { source?: "live" | "documented"; sourceUrl?: string; runtimeId: string; revision: number; selectedModelId: string | null; selectedEffort?: string | null;
   models: { id: string; label: string; description?: string; recommended?: boolean; supportedReasoningEfforts?: string[]; defaultReasoningEffort?: string }[] }
 export interface WorkspaceConnectionModels extends Omit<WorkspaceRuntimeModels, "runtimeId"> { connectionId: string; source: "live" | "documented" }
 export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; defaultReasoning?: string | null; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
@@ -393,7 +393,7 @@ export class WorkspaceDevModel {
     const current = () => bound && epoch === this.epoch && key === this.runtimeBindingKey() && this.runtimeModelRequests.get(key) === request;
     try {
       const result = await this.workspaceRequest<WorkspaceRuntimeModels>("workspace.runtime.listModels", { runtimeId });
-      if (result.runtimeId !== runtimeId || !Number.isSafeInteger(result.revision) || !Array.isArray(result.models)
+      if (result.source !== undefined && !["live", "documented"].includes(result.source) || result.runtimeId !== runtimeId || !Number.isSafeInteger(result.revision) || !Array.isArray(result.models)
         || result.selectedEffort !== undefined && result.selectedEffort !== null && typeof result.selectedEffort !== "string"
         || result.models.some(row => typeof row.id !== "string" || typeof row.label !== "string"
           || row.supportedReasoningEfforts !== undefined && (!Array.isArray(row.supportedReasoningEfforts)
