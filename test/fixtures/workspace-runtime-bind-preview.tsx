@@ -27,7 +27,7 @@ function Preview() {
       reason: integrityFailed ? "integrity_failed" : registered ? undefined : detected ? "not_registered" : "not_installed" },
       { id: "agy", label: "Antigravity", available: false, reason: "not_installed" }],
     runtimes: { options: [{ runtimeId: "codex", label: "Codex", state: detected ? registered ? "local_registered" : "detected" : "not_installed",
-      registered, fingerprint: "synthetic-fingerprint", path: detected ? "/fixture/codex" : undefined }] },
+      registered, loginSource: "host", fingerprint: "synthetic-fingerprint", path: detected ? "/fixture/codex" : undefined }] },
     conversation: { state: "completed", history: [] },
   } as WorkspaceDevSnapshot;
   const listModels = React.useCallback(async (runtimeId: string): Promise<WorkspaceRuntimeModels> => {

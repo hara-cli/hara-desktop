@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "runtime-selection",
+      "area": "runtime",
+      "scenario": "Inspect the bound runtime and open a change confirmation without applying it.",
+      "fixture": {
+        "entry": "workspace-runtime-bind-preview",
+        "query": {
+          "scenario": "bound",
+          "agent": "main",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "Bound runtime and model are visible.",
+        "Changing runtime requires a confirmation; cancel keeps the binding."
+      ]
+    },
+    {
+      "id": "runtime-missing",
+      "area": "runtime",
+      "scenario": "A missing runtime can be rescanned and proposed for explicit registration.",
+      "fixture": {
+        "entry": "workspace-runtime-bind-preview",
+        "query": {
+          "scenario": "missing",
+          "agent": "main",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "Missing runtime remains unavailable.",
+        "Rescan reveals a registration confirmation with explicit host login."
+      ]
+    },
+    {
+      "id": "login-host-recovery",
+      "area": "login",
+      "scenario": "An authentication failure for host login preserves the original task.",
+      "fixture": {
+        "entry": "workspace-failure-recovery-preview",
+        "query": {
+          "code": "runtime_auth_required",
+          "loginSource": "host",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "Host login has no isolated login action.",
+        "Only an explicit retry resumes the original task."
+      ]
+    },
+    {
+      "id": "login-isolated-recovery",
+      "area": "login",
+      "scenario": "An isolated login authentication failure offers login guidance and explicit retry.",
+      "fixture": {
+        "entry": "workspace-failure-recovery-preview",
+        "query": {
+          "code": "runtime_auth_required",
+          "loginSource": "isolated",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "An isolated login action is visible.",
+        "No login or retry is executed on mount."
+      ]
+    },
+    {
+      "id": "error-runtime-unavailable",
+      "area": "errors",
+      "scenario": "A missing runtime error offers rescan and settings while preserving the task.",
+      "fixture": {
+        "entry": "workspace-failure-recovery-preview",
+        "query": {
+          "code": "not_installed",
+          "loginSource": "host",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "Runtime unavailable is classified visibly.",
+        "Rescan is explicit; no alternate runtime is selected."
+      ]
+    },
+    {
+      "id": "error-model-inventory",
+      "area": "errors",
+      "scenario": "A bound runtime's failed model inventory is visible and recoverable by rescan.",
+      "fixture": {
+        "entry": "workspace-runtime-bind-preview",
+        "query": {
+          "scenario": "inventory",
+          "agent": "main",
+          "locale": "en"
+        }
+      },
+      "expectations": [
+        "An error is shown instead of a fabricated model list.",
+        "Rescan restores the synthetic model list."
+      ]
+    },
+    {
+      "id": "error-diagnostic-summary",
+      "area": "errors",
+      "scenario": "Inspect the safe diagnostic summary and its source without exposing credentials.",
+      "fixture": null,
+      "pendingReason": "The diagnostic-summary feature is outside baseline a890891; integrate its reviewed source before adding a fixture.",
+      "expectations": [
+        "Summary and failure kind match the Core receipt.",
+        "Credentials and private task content are absent."
+      ]
+    },
+    {
+      "id": "group-conversation",
+      "area": "groups",
+      "scenario": "Create a synthetic group, select two colleagues and inspect their replies.",
+      "fixture": {
+        "entry": "workspace-shell-preview",
+        "query": {
+          "scenario": "channels",
+          "locale": "en",
+          "theme": "dark",
+          "reset": "1"
+        }
+      },
+      "expectations": [
+        "Two selected colleagues each reply once.",
+        "Group transcript and DM state remain separate."
+      ]
+    },
+    {
+      "id": "group-interjection-fold",
+      "area": "groups",
+      "scenario": "Inspect folded and expanded interjections within their original group turn.",
+      "fixture": null,
+      "pendingReason": "Interjection folding is outside baseline a890891; it must be verified after reviewed integration, not simulated as implemented.",
+      "expectations": [
+        "Interjections start folded and expand without losing speaker or turn identity.",
+        "Toggling does not resend, change recipients or expose a DM."
+      ]
+    }
+  ]
+}
