@@ -19,7 +19,7 @@ export function assertNoOptionalRuntimeFiles(root) {
 }
 export function assertPiRuntimeManifest(raw) {
   const value = JSON.parse(raw); assert.equal(value.schemaVersion, 1); assert.deepEqual(value.preinstalled, ["pi"]);
-  assert.equal(value.piSdkVersion, "1.1.0"); assert.deepEqual(value.optional, ["opencode", "codex", "claude"]);
+  assert.equal(value.piSdkVersion, "1.5.0"); assert.deepEqual(value.optional, ["opencode", "codex", "claude"]);
 }
 if (process.argv[1] && basename(process.argv[1]) === "check-runtime-distribution.mjs") {
   const root = fileURLToPath(new URL("..", import.meta.url));
