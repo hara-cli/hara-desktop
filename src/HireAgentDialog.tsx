@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import type { AgentBlueprintInstallInput, AgentPublicIdentity, AgentRuntimeId, AgentRuntimeOption } from "./client";
-import { agentRuntimeLabel } from "./agent-runtime-selection";
+import { agentRuntimeLabel, runtimePersonalExtensionsNotice } from "./agent-runtime-selection";
 import { AgentPortrait } from "./AgentPortrait";
 import {
   talentBlueprintIdentity,
@@ -37,6 +37,7 @@ export default function HireAgentDialog({ locale, saving, error, blueprint, runt
   const runtimeNoteId = useId();
   const runtimeId = chosenRuntime || runtimeOptions.find((option) => option.id === "pi" && option.available)?.id
     || runtimeOptions.find((option) => option.id === "hara" && option.available)?.id;
+  const extensionsNotice = runtimePersonalExtensionsNotice(runtimeId ?? "", locale);
   const runtimeValid = !runtimeOptions.length || runtimeOptions.some((option) => option.id === runtimeId && option.available);
   const blueprintIdentity = blueprint ? talentBlueprintIdentity(blueprint, locale) : null;
   const [id, setId] = useState(() => blueprint?.username ?? "");
@@ -108,6 +109,7 @@ export default function HireAgentDialog({ locale, saving, error, blueprint, runt
             <small id={runtimeNoteId}>{locale === "zh"
               ? "Pi 已内建，无需另外安装。引擎不授予工具权限；模型跟随本空间连接，历史与记忆属于这位 Agent。以后可在名片中修改。"
               : "Pi is built in. A Runtime does not grant tool permissions; models follow this Workspace's connection and history belongs to this Agent. Edit it later in the profile."}</small>
+            {extensionsNotice ? <small role="note">{extensionsNotice}</small> : null}
           </label> : null}
           {blueprint ? (
             <div className="hire-agent-blueprint-note">

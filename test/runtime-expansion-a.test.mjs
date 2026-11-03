@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 import { makeT } from "../src/i18n.ts";
 import * as runtimeSelection from "../src/agent-runtime-selection.ts";
-import { parseRuntimeFailure, runtimeLoginCommand } from "../src/runtime-failure.ts";
+import { parseRuntimeFailure, runtimeLoginCommand, runtimeDiagnosticSummary } from "../src/runtime-failure.ts";
 const require = createRequire(import.meta.url), React = require("react"), { renderToStaticMarkup } = require("react-dom/server");
 function load(file, mocks = {}) {
   const source = readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8");
@@ -26,7 +26,11 @@ for (const [locale, unavailable, guide] of [["en", "not installed", "Official in
     const workspace = { workspaceId: "fixture", resourceGeneration: "one", runtimes: { options: ["gemini", "kimi"].map(runtimeId => ({ runtimeId,
       label: runtimeId === "gemini" ? "Gemini CLI" : "Kimi CLI", state: "not_installed", registered: false, installed: false, version: null })), operations: [] } };
     const output = renderToStaticMarkup(React.createElement(settings.default, { model: {}, workspace }));
-    assert.ok(output.includes(locale === "en" ? "Kimi execution is unavailable" : locale === "zh-Hant" ? "Kimi 暫不能執行" : "Kimi 暂不能执行"));
+    assert.ok(output.includes(runtimeSelection.runtimePersonalExtensionsNotice("kimi", locale)));
+    const bound = renderToStaticMarkup(React.createElement(picker.WorkspaceAgentRuntimePicker, { agent: { ...agent, runtime: { id: "kimi", label: "Kimi CLI" } }, options: [{ id: "kimi", label: "Kimi CLI", available: true }], locale, saving: false, onApply() {} }));
+    assert.ok(bound.includes(runtimeSelection.runtimePersonalExtensionsNotice("kimi", locale)));
+    const gemini = renderToStaticMarkup(React.createElement(picker.WorkspaceAgentRuntimePicker, { agent: { ...agent, runtime: { id: "gemini", label: "Gemini CLI" } }, options: [{ id: "gemini", available: true }], locale, saving: false, onApply() {} }));
+    assert.ok(!gemini.includes(runtimeSelection.runtimePersonalExtensionsNotice("kimi", locale)));
     assert.ok(output.includes(guide)); assert.ok(output.includes("geminicli.com/docs/get-started/installation/")); assert.ok(output.includes("github.com/MoonshotAI/kimi-cli#installation"));
     assert.ok(!output.includes('name="settings-install-login"'), "manual-only CLIs do not expose an automatic install confirmation");
   });
@@ -37,4 +41,17 @@ for (const runtime of ["gemini", "kimi"]) test(`${runtime} diagnostics retain cl
   const parsed = parseRuntimeFailure("hara_runtime_failure_v1=" + JSON.stringify(diagnostic), runtime);
   assert.deepEqual(parsed, diagnostic); assert.equal(parseRuntimeFailure("hara_runtime_failure_v1=" + JSON.stringify({ ...diagnostic, secret: "not allowed" }), runtime), null);
   assert.equal(runtimeLoginCommand(runtime), runtime === "gemini" ? "gemini" : "kimi login");
+});
+
+test("inherited Kimi diagnostics preserve the closed extension field and reject forged or duplicate fields", () => {
+  const base = { runtime: "kimi", kind: "runtime_auth_rejected", version: "1.2.3", loginSource: "host", homeMatchesAccount: true, elapsedMs: 1, retryAtMs: 0, consecutiveFailures: 1 };
+  const current = { ...base, extensionsIsolation: "inherited" }, prefix = "hara_runtime_failure_v1=";
+  assert.deepEqual(parseRuntimeFailure(prefix + JSON.stringify(current)), current);
+  assert.deepEqual(parseRuntimeFailure(prefix + JSON.stringify(base)), base, "old saved diagnostics remain valid without claiming inheritance");
+  for (const row of [{ ...current, unknown: true }, { ...current, extensionsIsolation: "isolated" }, { ...current, extensionsIsolation: null }, { ...current, runtime: "gemini" }]) assert.equal(parseRuntimeFailure(prefix + JSON.stringify(row)), null);
+  assert.equal(parseRuntimeFailure(prefix + JSON.stringify(current).replace('"inherited"', '"inherited","extensionsIsolation":"inherited"')), null);
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const summary = runtimeDiagnosticSummary(current, makeT(locale));
+    assert.ok(summary.includes("extensionsIsolation: inherited")); assert.ok(summary.includes(runtimeSelection.runtimePersonalExtensionsNotice("kimi", locale)));
+  }
 });

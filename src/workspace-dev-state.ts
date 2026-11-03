@@ -39,7 +39,7 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
   colleagueLimit?: number;
   inheritance?: WorkspaceInheritanceView;
   agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
-  runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string; loginSource?: RuntimeLoginSource; manualInstallation?: { url: string }; versionStatus?: RuntimeVersionStatus }[];
+  runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string; loginSource?: RuntimeLoginSource; manualInstallation?: { url: string }; extensionsIsolation?: "inherited"; versionStatus?: RuntimeVersionStatus }[];
     operations: { id: string; runtimeId: string; state: string }[] };
   budget?: { maxTokens: number; maxRequests: number; requests: number; inputTokens: number; outputTokens: number; uncertainReservedTokens: number; paused: boolean };
   connections: { revision: number; defaultConnectionId: string | null; activeConnectionId?: string | null; readOnly?: boolean; recovered?: boolean; migrationPending?: boolean; unavailable?: boolean; connections: WorkspaceModelConnection[] };

@@ -93,6 +93,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   const showEffort = !["opencode", "gemini", "kimi"].includes(agent.runtime.id);
   const currentLoginSource = installation?.loginSource ?? "isolated";
   if (compact) return <div className="vg-runtime-strip" aria-label={zh ? "本同事运行配置" : "This colleague runtime"}>
+    {agent.runtime.id === "kimi" ? <span role="note">{t("ws.runtimes.extensionsInherited")}</span> : null}
     <span>Runtime <strong>{agent.runtime.label}</strong></span><span>{t("ws.runtimeAccess.model")} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</strong></span>
     {showEffort ? <span>{t("ws.runtimeAccess.effort")} <strong>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</strong></span> : null}<span>{t("ws.runtimeAccess.loginSource")} <strong>{t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</strong></span>
   </div>;
@@ -143,6 +144,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     {target && change ? <ShellDialog label={t("ws.runtimeAccess.confirm")} onClose={() => { if (!saveFence.current) setChange(null); }} className="wsd-approval-dialog wsd-runtime-change-dialog">
       <section className="hs-card wsd-approval"><div className="wsd-kicker">{t("ws.runtimeAccess.confirm")}</div>
         <h3>{t("ws.runtimeAccess.target", { name: agent.identity.displayName, runtime: target.label })}</h3>
+        {target.id === "kimi" ? <p role="note">{t("ws.runtimes.extensionsInherited")}</p> : null}
         <label><input type="radio" name="runtime-restart" checked={restart === "keep"} disabled={busy} onChange={() => setRestart("keep")} />{t("ws.runtimeAccess.keep")}</label>
         <p>{t("ws.runtimeAccess.keepNote", { runtime: target.label })}</p>
         <label><input type="radio" name="runtime-restart" checked={restart === "fresh"} disabled={busy || freshBlocked} onChange={() => setRestart("fresh")} />{t("ws.runtimeAccess.fresh")}</label>
@@ -159,6 +161,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
       </section></ShellDialog> : null}
     {local?.scope === scope ? <ShellDialog label={t("ws.runtimes.confirmLocal")} onClose={() => { if (!saveFence.current) setLocal(null); }} className="wsd-approval-dialog wsd-runtime-change-dialog">
       <section className="hs-card wsd-approval"><h3>{t("ws.runtimes.registerTitle", { name: local.label })}</h3><p>{t("ws.runtimes.bindLead")}</p>
+        {local.runtimeId === "kimi" ? <p role="note">{t("ws.runtimes.extensionsInherited")}</p> : null}
         <code className="wsd-root">{local.path}</code><p>{t("ws.runtimes.registerNote")}</p>
         <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="inspector-login-source" checked={loginSource === "host"} disabled={busy || local.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: local.label })}</label>{!["opencode", "gemini", "kimi"].includes(local.runtimeId) ? <label><input type="radio" name="inspector-login-source" checked={loginSource === "isolated"} disabled={busy} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
         {error ? <p role="alert">{workspaceMessageText(t, error)}</p> : null}
