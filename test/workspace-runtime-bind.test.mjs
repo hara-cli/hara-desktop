@@ -162,7 +162,7 @@ for (const restart of ["keep", "fresh"]) test("confirmation " + restart + " refr
   assert.equal(f.dialog(), undefined);
   assert.ok(f.all().some(node => node.type === "option" && node.props.value === "codex-two"));
   assert.equal(f.all().some(node => node.type === "option" && node.props.value === "pi-two"), false);
-  f.all().find(node => node.type === "select").props.onChange({ target: { value: "codex-two" } }); f.render();
+  f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.onChange({ target: { value: "codex-two" } }); f.render();
   f.button("Apply model").props.onClick(); await f.flush();
   assert.deepEqual(f.models, [["codex", "codex-two", 3, null]]);
   assert.equal(f.requests.at(-1), "codex");
@@ -279,7 +279,7 @@ for (const kind of ["main", "colleague"]) test(kind + " inventory failure keeps 
     runtimes: { options: [{ runtimeId: "claude", label: "Claude Code", state: "detected", registered: false, fingerprint: "fixture" }] } } });
   await f.flush();
   assert.ok(f.text().includes("fixture inventory unavailable"));
-  assert.equal(f.all().find(node => node.type === "select").props.disabled, true);
+  assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.disabled, true);
   assert.equal(f.button("Apply model").props.disabled, true);
   assert.equal(f.text().includes("Register for binding"), false);
   assert.equal(f.text().includes("Install in Settings"), false);
@@ -287,7 +287,7 @@ for (const kind of ["main", "colleague"]) test(kind + " inventory failure keeps 
   assert.equal(rescan.props.className, "vg-runtime-rescan");
   rescan.props.onClick(); await f.flush();
   assert.equal(scans, 1);
-  assert.equal(f.all().find(node => node.type === "select").props.disabled, false);
+  assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.disabled, false);
   assert.ok(f.text().includes("Recovered model"));
   assert.equal(f.text().includes("Register for binding"), false);
   assert.equal(f.text().includes("Install in Settings"), false);
@@ -304,7 +304,7 @@ test("failure recovery links only the current missing installation, never integr
     const missing = reason === "not_registered" || reason === "not_installed";
     assert.equal(f.text().includes("Install in Settings"), missing, reason);
     assert.equal(f.text().includes("Register for binding"), missing, reason);
-    assert.equal(f.all().find(node => node.type === "select").props.disabled, true, reason);
+    assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.disabled, true, reason);
     const actions = f.all().find(node => node.props?.className === "vg-runtime-recovery-actions");
     const buttons = actions.props.children.flat().filter(Boolean);
     assert.equal(buttons[0].props.className, "vg-runtime-rescan");
@@ -336,7 +336,7 @@ test("rescan invalidates an older inventory response even if the rescan fails", 
   f.button("Rescan local runtimes").props.onClick(); await f.flush();
   pending.resolve({ runtimeId: "pi", revision: 1, selectedModelId: "old", models: [{ id: "old", label: "Stale model" }] });
   await f.flush();
-  assert.equal(f.all().find(node => node.type === "select").props.disabled, true);
+  assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.disabled, true);
   assert.ok(f.text().includes("fixture rescan failed"));
   assert.equal(f.text().includes("Stale model"), false);
 });

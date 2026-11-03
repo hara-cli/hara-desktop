@@ -6,7 +6,7 @@ import { makeT } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import { WorkspaceAgentRuntimePicker } from "./AgentRuntimePicker";
 import { ShellDialog } from "./WorkspaceShell";
-import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceConnectionModels, WorkspaceSessionRestart, RuntimeLoginSource } from "./workspace-dev-state";
+import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceConnectionModels, WorkspaceSessionRestart, RuntimeLoginSource, RuntimePermissionTier } from "./workspace-dev-state";
 
 type ModelCard = WorkspaceRuntimeModels & { source?: "live" | "documented"; connectionId?: string };
 const DEFAULT_EFFORT_ORDER = ["off", "minimal", "low", "medium"] as const;
@@ -17,11 +17,13 @@ function defaultEffort(levels: readonly string[] | undefined): string {
   return "";
 }
 
-export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory }: {
+export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, permissionSupported = false, onApplyPermissionTier, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory }: {
   agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; locale: "en" | "zh-Hans" | "zh-Hant"; compact?: boolean;
   listModels(runtimeId: string): Promise<WorkspaceRuntimeModels>;
   listConnectionModels(agentId: string, connectionId: string): Promise<WorkspaceConnectionModels>;
   connectionModelSupported: boolean;
+  permissionSupported?: boolean;
+  onApplyPermissionTier?(tier: RuntimePermissionTier): Promise<void>;
   onApplyRuntime(runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart): Promise<void>;
   onApplyModel(runtimeId: string, modelId: string, revision: number, effort: string | null): Promise<void>;
   onApplyConnectionModel(connectionId: string, modelId: string, revision: number, effort: string | null): Promise<void>;
@@ -94,13 +96,23 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   const currentLoginSource = installation?.loginSource ?? "isolated";
   if (compact) return <div className="vg-runtime-strip" aria-label={zh ? "本同事运行配置" : "This colleague runtime"}>
     {agent.runtime.id === "kimi" ? <span role="note">{t("ws.runtimes.extensionsInherited")}</span> : null}
-    <span>Runtime <strong>{agent.runtime.label}</strong></span><span>{t("ws.runtimeAccess.model")} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</strong></span>
+    <span>{t("ws.permissions.label")} <strong>{t(agent.permissionTier === "full-protected" ? "ws.permissions.full" : agent.permissionTier === "controlled" ? "ws.permissions.controlled" : "ws.permissions.unknown")}</strong></span><span>Runtime <strong>{agent.runtime.label}</strong></span><span>{t("ws.runtimeAccess.model")} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</strong></span>
     {showEffort ? <span>{t("ws.runtimeAccess.effort")} <strong>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</strong></span> : null}<span>{t("ws.runtimeAccess.loginSource")} <strong>{t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</strong></span>
   </div>;
   return <div className="vg-runtime-access">
     <section className="vg-context-card vg-p0-card">
       <p>{t("ws.runtimeAccess.bound", { name: agent.identity.displayName, runtime: agent.runtime.label })}</p>
       <dl className="vg-runtime-summary"><dt>{t("ws.runtimeAccess.model")}</dt><dd>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</dd>{showEffort ? <><dt>{t("ws.runtimeAccess.effort")}</dt><dd>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</dd></> : null}<dt>{t("ws.runtimeAccess.loginSource")}</dt><dd>{agent.runtime.id === "pi" ? "—" : t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</dd></dl>
+      <label className="vg-permission-tier">{t("ws.permissions.label")}
+        <select aria-label={t("ws.permissions.label")} value={agent.permissionTier ?? "unknown"} disabled={!permissionSupported || !onApplyPermissionTier || busy || freshBlocked}
+          onChange={event => { const tier = event.target.value; if (tier === "full-protected" || tier === "controlled") void run(() => onApplyPermissionTier!(tier)); }}>
+          {!agent.permissionTier ? <option value="unknown">{t("ws.permissions.unknown")}</option> : null}
+          <option value="full-protected">{t("ws.permissions.full")}</option><option value="controlled">{t("ws.permissions.controlled")}</option>
+        </select>
+      </label>
+      <p>{t("ws.permissions.help")}</p>
+      {conversation?.taskId && conversation.permissionTier ? <p>{t("ws.permissions.current", { tier: t(conversation.permissionTier === "full-protected" ? "ws.permissions.full" : "ws.permissions.controlled") })}</p> : null}
+      {!permissionSupported ? <p role="status">{t("ws.permissions.upgrade")}</p> : null}
       <WorkspaceRuntimeVersion runtimeId={agent.runtime.id} binding={runtimeVersionFor(workspace.runtimes?.options, agent.runtime.id)} t={t} />
       {installation?.registered && installation.loginSource === "isolated" && installation.fingerprint && installation.runtimeId !== "agy" ? <button disabled={busy} onClick={() => { setLoginSource("host"); setLocal({ scope, runtimeId: installation.runtimeId, label: installation.label, fingerprint: installation.fingerprint!, path: installation.path }); }}>{t("ws.runtimeAccess.switchHost")}</button> : null}
       {workspace.runtimeOptions ? <WorkspaceAgentRuntimePicker agent={agent} options={workspace.runtimeOptions} locale={locale} saving={busy}
