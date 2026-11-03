@@ -88,6 +88,7 @@ test("unavailable or locked capture has no last verified SHA or successful artif
   saveEvidence(row, { sourceSha: sha, captureMethod: "fixture-browser", checks: "pending", reason: "Screen locked; capture not attempted." }, f.root);
   const evidence = buildReport(cases, f.root, { sourceSha: sha, dirty: false }).cases[0].evidence["fixture-browser"];
   assert.equal(evidence.status, "pending"); assert.equal(evidence.lastVerifiedSha, null); assert.deepEqual(evidence.screenshots, []);
+  assert.equal(buildReport(cases, f.root, { sourceSha: coreSha, dirty: true }).cases[0].evidence["fixture-browser"].status, "pending");
 });
 test("evidence refuses paths outside its root, symlink screenshots and fake PNGs", t => {
   const f = fixture(t);

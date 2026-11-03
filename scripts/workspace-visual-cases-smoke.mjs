@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createServer } from "vite";
 import { makeT } from "../src/i18n.ts";
 import { readDevToolsAnnouncement, stopOwnedBrowser } from "./browser-process.mjs";
@@ -14,14 +14,15 @@ import { buildReport, loadCases, repoRoot, reportMarkdown, saveEvidence, sourceI
 
 if (!process.argv[2] || !process.argv[3]) throw new Error("Explicit evidence and task scratch directories required");
 const output = resolve(process.argv[2]), scratch = resolve(process.argv[3]);
-assert.notEqual(output, scratch);
+const contains = (parent, child) => { const rel = relative(parent, child); return !rel || rel !== ".." && !rel.startsWith(".." + sep) && !isAbsolute(rel); };
+assert.ok(!contains(output, scratch) && !contains(scratch, output), "Evidence and scratch must not overlap");
 const cases = loadCases(), identity = sourceIdentity(repoRoot, true);
 for (const row of cases) assert.equal(existsSync(join(output, row.id)), false, "Use a fresh evidence directory");
 mkdirSync(output, { recursive: true, mode: 0o700 }); mkdirSync(scratch, { recursive: true, mode: 0o700 });
 const working = mkdtempSync(join(scratch, "visual-cases-"));
 for (const directory of ["chrome-profile", "home", "tmp"]) mkdirSync(join(working, directory), { mode: 0o700 });
 const chromePath = [process.env.CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find(file => file && existsSync(file));
-let server, chrome, socket, sessionId, browserVersion;
+let server, chrome, socket, sessionId, browserVersion, serverPort;
 let requestId = 0, currentCase = "startup", exceptionCount = 0;
 const pending = new Map(), t = makeT("en");
 const pause = ms => new Promise(done => setTimeout(done, ms));
@@ -125,7 +126,8 @@ try {
   server = await createServer({ configFile: false, root: repoRoot, cacheDir: join(working, "vite-cache"), appType: "mpa",
     server: { host: "127.0.0.1", port: 0, strictPort: true }, logLevel: "error" });
   await server.listen();
-  const base = new URL(`http://127.0.0.1:${server.httpServer.address().port}/`);
+  serverPort = server.httpServer.address().port;
+  const base = new URL(`http://127.0.0.1:${serverPort}/`);
   if (!chromePath) throw new Error("Chrome unavailable");
   chrome = spawn(chromePath, ["--headless=new", "--use-mock-keychain", "--password-store=basic", "--disable-background-networking", "--disable-component-update", "--disable-default-apps", "--disable-extensions", "--disable-gpu", "--disable-sync", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--disable-background-timer-throttling", "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0", "--user-data-dir=" + join(working, "chrome-profile"), "about:blank"],
     { stdio: ["ignore", "ignore", "pipe"], env: { PATH: process.env.PATH, HOME: join(working, "home"), TMPDIR: join(working, "tmp"), LANG: "en_US.UTF-8" } });
@@ -201,10 +203,10 @@ try {
 } finally {
   let browserStopped = true, serverStopped = true;
   try { socket?.close(); if (chrome) await stopOwnedBrowser(chrome); } catch { browserStopped = false; process.exitCode = 1; }
-  try { await server?.close(); } catch { serverStopped = false; process.exitCode = 1; }
+  try { await server?.close(); if (server?.httpServer?.listening) throw new Error("Owned server is still listening"); } catch { serverStopped = false; process.exitCode = 1; }
   const report = buildReport(cases, output, sourceIdentity());
   writeFileSync(join(output, "report.json"), JSON.stringify(report, null, 2) + "\n", { mode: 0o600 });
   writeFileSync(join(output, "report.md"), reportMarkdown(report), { mode: 0o600 });
-  writeFileSync(join(output, "cleanup.json"), JSON.stringify({ browserStopped, serverStopped, scratch: working, systemKeychainUsed: false, realCoreStarted: false, nativeAcceptance: "pending" }, null, 2) + "\n", { mode: 0o600 });
+  writeFileSync(join(output, "cleanup.json"), JSON.stringify({ browserStopped, serverStopped, serverPort: serverPort ?? null, ownerPid: process.pid, browserPid: chrome?.pid ?? null, scratch: working, systemKeychainUsed: false, realCoreStarted: false, nativeAcceptance: "pending" }, null, 2) + "\n", { mode: 0o600 });
   console.log(JSON.stringify({ report: join(output, "report.md"), browserStopped, serverStopped }));
 }
