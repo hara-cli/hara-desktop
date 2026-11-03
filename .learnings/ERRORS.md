@@ -4182,3 +4182,10 @@ resolved paths before retrying, with no file edits from that failed read.
 - Corrected-environment evidence: desktop-full-host-loopback.log in the same private directory;
   all 21 failed cases were fixture listeners, with no assertion or timeout changes.
 ---
+
+## ERR-20261103-RUNTIME-DIAGNOSTICS-TEST-ENV
+
+- Scope: isolated runtime failure diagnostics feature, no real user state.
+- First Desk full test run had 31 failures because HOME/TMP alone did not supply the repository's canonical evidence binding. Rerun through `provisionCiEvidence` with its complete private environment; retain both logs and report their independent outcomes.
+- One exploratory `rg` command used an unmatched zsh glob and was refused before searching; use `rg --files` or explicit existing paths.
+- Browser access host was unavailable. Native Chrome indicated an active user change; stopped UI actions and continued CLI verification. Synthetic static/callback tests do not establish visual or real-runtime acceptance.
