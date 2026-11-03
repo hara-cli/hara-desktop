@@ -1,3 +1,4 @@
+import { extensionView, type ExtensionChange, type ExtensionProposal, type WorkspaceExtensionsView } from "./workspace-extensions.ts";
 import type { RuntimeVersionStatus } from "./runtime-version-drift.ts";
 import { parseRuntimeDiagnosticReceipt, parseRuntimeStageReports, sameRuntimeStageIdentity, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events.ts";
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
@@ -368,6 +369,32 @@ export class WorkspaceDevModel {
   private assertRuntimeProxyScope(workspaceId: string, generation: string): void {
     const workspace = this.view.workspace;
     if (workspace?.workspaceId !== workspaceId || workspace.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.scopeChanged");
+  }
+  supportsExtensions(): boolean { return this.rpc.supportsCapability?.("workspace.extensions.v1") === true; }
+  private assertExtensionScope(workspaceId: string, generation: string, agent?: { agentId: string; agentEpoch: number }): void {
+    this.assertRuntimeProxyScope(workspaceId, generation);
+    if (!this.supportsExtensions()) throw new WorkspaceViewError("ws.extensions.unavailable");
+    if (agent && !this.view.workspace?.agents.some(row => row.agentId === agent.agentId && row.agentEpoch === agent.agentEpoch && row.state === "active")) throw new WorkspaceViewError("ws.notice.scopeChanged");
+  }
+  async extensions(workspaceId: string, generation: string, agent?: { agentId: string; agentEpoch: number }): Promise<WorkspaceExtensionsView> {
+    this.assertExtensionScope(workspaceId, generation, agent);
+    const value = await this.workspaceRequest<unknown>(agent ? "workspace.agents.extensions.list" : "workspace.extensions.list", agent ?? {});
+    this.assertExtensionScope(workspaceId, generation, agent); return extensionView(value, workspaceId, generation, agent);
+  }
+  async proposeExtensions(change: ExtensionChange, expectedRevision: number, workspaceId: string, generation: string): Promise<ExtensionProposal> {
+    this.assertExtensionScope(workspaceId, generation, change.target === "agent" ? change : undefined);
+    const value = await this.workspaceRequest<ExtensionProposal>("workspace.extensions.propose", { change, expectedRevision });
+    this.assertExtensionScope(workspaceId, generation, change.target === "agent" ? change : undefined);
+    if (value.workspaceId !== workspaceId || value.resourceGeneration !== generation || value.revision !== expectedRevision
+      || !/^[a-f0-9-]{36}$/u.test(value.proposalId) || JSON.stringify(value.change) !== JSON.stringify({ ...change, allowedTools: [...change.allowedTools].sort() })) throw new WorkspaceViewError("ws.extensions.saveUnknown");
+    return value;
+  }
+  async approveExtensions(proposal: ExtensionProposal, approved: boolean): Promise<WorkspaceExtensionsView> {
+    const { workspaceId, resourceGeneration: generation, change } = proposal;
+    this.assertExtensionScope(workspaceId, generation, change.target === "agent" ? change : undefined);
+    const value = await this.workspaceRequest<unknown>("workspace.extensions.approve", { proposalId: proposal.proposalId, approved, expectedRevision: proposal.revision });
+    this.assertExtensionScope(workspaceId, generation, change.target === "agent" ? change : undefined);
+    return extensionView(value, workspaceId, generation, change.target === "agent" ? change : undefined);
   }
   async runtimeProxy(workspaceId: string, generation: string): Promise<WorkspaceRuntimeProxyView> {
     this.assertRuntimeProxyScope(workspaceId, generation);
