@@ -126,3 +126,15 @@ test("closing while waiting for a socket fails initialization immediately withou
   await assert.rejects(client.initialize(info().token), /已關閉/);t.mock.timers.tick(10000);
   assert.deepEqual(socket.sent, []);assert.equal(Socket.instances.length, 1);
 });
+test("optional clock calibration runs once and only annotates message submission", async () => {
+ const client=new WorkspaceDevConnectionClient(info(),()=>{}),socket=Socket.instances.at(-1),ready=client.initialize(info().token);
+ socket.open();await tick();socket.reply(socket.sent[0].id,{capabilities:["workspace.local-dev.v2","workspace.message-timing.v1"],syntheticOnly:true});await tick();
+ assert.equal(socket.sent.at(-1).method,"workspace.message-timing.clock");socket.reply(socket.sent.at(-1).id,{hostAtMs:performance.now()+1000});await ready;
+ for(const method of ["workspace.session.send","workspace.session.resume","workspace.session.answer","workspace.session.receipt"]){
+  const request=client.request(method,{requestId:"original"}),sent=socket.sent.at(-1);
+  assert.equal(Object.hasOwn(sent.params,"timing"),method!=="workspace.session.receipt");
+  if(sent.params.timing){assert.ok(sent.params.timing.hostAtMs>1000);assert.ok(sent.params.timing.errorMs<=1000);}
+  socket.reply(sent.id,{});await request;
+ }
+ assert.equal(socket.sent.filter(row=>row.method==="workspace.message-timing.clock").length,1);client.close();assert.equal(client.timingNow(),null);
+});

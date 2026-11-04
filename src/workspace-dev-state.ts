@@ -1,3 +1,4 @@
+import { parseMessageTimingReport, type MessageTimingReport } from "./message-timing.ts";
 import { mcpReviewList, mcpReviewDetail, type McpReviewList, type McpReviewDetail } from "./workspace-mcp-review.ts";
 import { extensionView, type ExtensionChange, type ExtensionProposal, type WorkspaceExtensionsView } from "./workspace-extensions.ts";
 import type { RuntimeVersionStatus } from "./runtime-version-drift.ts";
@@ -60,6 +61,7 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     completion: { state: string; evidence?: string[] } | null; blockReason?: string | null; pendingQuestion?: WorkspaceDevQuestion | null;
     pendingInteractions?: WorkspaceDevInteraction[];
     runtimeStages?: RuntimeStageReport[];
+    messageTimings?: MessageTimingReport[];
     permissionTier?: RuntimePermissionTier;
     nativeRisks?: { id: string; runId: string; kind: "outside-workspace-delete" | "external-publish"; state: "observed"; at: string }[];
     nativeSession?: { runtimeId: "codex"; revision: number; status: "empty" | "ready" | "recovery_needed" | "new_session_required";
@@ -191,6 +193,15 @@ export class WorkspaceDevModel {
     if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== this.executionMode) || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
       || (agentId && snapshot.selectedAgentId !== agentId) || !Array.isArray(snapshot.agents)
       || !Array.isArray(snapshot.conversation?.history)) throw new WorkspaceViewError("ws.notice.invalidView");
+    if (snapshot.conversation.messageTimings !== undefined) {
+      if (!Array.isArray(snapshot.conversation.messageTimings) || snapshot.conversation.messageTimings.length > 16) throw new WorkspaceViewError("ws.notice.invalidView");
+      snapshot.conversation.messageTimings = snapshot.conversation.messageTimings.map(value => {
+        const report = parseMessageTimingReport(value);
+        if (!report || report.workspaceId !== snapshot.workspaceId || report.resourceGeneration !== snapshot.resourceGeneration
+          || report.agentId !== snapshot.selectedAgentId || report.sessionId !== snapshot.conversation.sessionId) throw new WorkspaceViewError("ws.notice.invalidView");
+        return report;
+      });
+    }
   }
   private apply(snapshot: WorkspaceDevSnapshot): void {
     if (this.view.workspace && this.view.workspace.resourceGeneration !== snapshot.resourceGeneration) this.epoch++;

@@ -1,3 +1,4 @@
+import { parseMessageTimingInput, type MessageTimingInput } from "./message-timing.ts";
 import type { WorkspaceDevRpc } from "./workspace-dev-state";
 import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
 export interface WorkspaceDevConnection { port: number; token: string; instanceId: string; root: string; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
@@ -11,6 +12,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
   private readonly production: boolean;
   private onChanged: (workspaceId: string, agentId?: string) => void = () => {};
   private capabilities = new Set<string>();
+  private clock: { offset: number; errorMs: number } | null = null;
   constructor(info: WorkspaceDevConnection, onDisconnect: () => void) {
     this.onDisconnect = onDisconnect;
     this.realKey = info.syntheticOnly === false && info.executionMode === "ark-real-key";
@@ -28,7 +30,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       if (value.error) pending.reject(Object.assign(new Error(value.error.message ?? "Workspace 請求失敗"), { code: value.error.code })); else pending.resolve(value.result);
     });
     this.socket.addEventListener("close", () => {
-      this.capabilities.clear();
+      this.capabilities.clear(); this.clock = null;
       for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error("Workspace 連接已中斷")); }
       this.pending.clear(); this.onDisconnect();
     });
@@ -50,16 +52,30 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       : result.syntheticOnly !== true || (result.executionMode && result.executionMode !== "synthetic"))) {
       this.close(); throw new Error("引擎不支援這個獨立 Workspace Dev；沒有切換到舊連接。"); }
     this.capabilities = new Set(capabilities);
+    if (this.capabilities.has("workspace.message-timing.v1")) {
+      const began = performance.now();
+      try {
+        const value = await this.request<{ hostAtMs: number }>("workspace.message-timing.clock", {}), ended = performance.now();
+        const errorMs = Math.ceil((ended - began) / 2);
+        if (parseMessageTimingInput({ hostAtMs: value?.hostAtMs, errorMs }) && errorMs <= 1000)
+          this.clock = { offset: value.hostAtMs - (began + ended) / 2, errorMs };
+      } catch { /* Optional timing never prevents a connection. */ }
+    }
   }
   setChangedListener(listener: (workspaceId: string, agentId?: string) => void): void { this.onChanged = listener; }
   supportsCapability(capability: string): boolean { return this.capabilities.has(capability); }
+  timingNow(): MessageTimingInput | null {
+    return this.clock ? { hostAtMs: performance.now() + this.clock.offset, errorMs: this.clock.errorMs } : null;
+  }
   request<T>(method: string, params: Record<string, unknown>): Promise<T> {
     if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("Workspace 尚未連接"));
     return new Promise<T>((resolve, reject) => {
       const id = ++this.serial;
       const timer = setTimeout(() => { this.pending.delete(id); reject(new WorkspaceRpcWaitError(method)); }, 15000);
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
-      try { this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params })); }
+      const timing = this.timingNow();
+      const payload = timing && ["workspace.session.send", "workspace.session.resume", "workspace.session.answer"].includes(method) ? { ...params, timing } : params;
+      try { this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params: payload })); }
       catch { clearTimeout(timer); this.pending.delete(id); reject(new Error("Workspace 傳輸中斷；請只讀核對原請求，勿重送")); }
     });
   }
