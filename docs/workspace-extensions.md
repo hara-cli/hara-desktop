@@ -35,3 +35,14 @@ methods, and adjacent settings/Inspector regressions. They do not constitute vis
 npm run build
 node --experimental-strip-types --test --test-concurrency=1 test/workspace-extensions.test.mjs test/workspace-colleague-inspector.test.mjs test/workspace-settings-shell.test.mjs test/settings-leave-guard.test.mjs
 ```
+
+
+## Owner code and catalog review
+
+The Workspace settings catalog includes a separate Main Hara owner-review section when Core advertises `workspace.extensions.owner-review.v1`. It shows a read-only Host projection: source identity, abbreviated executable/package paths, code digests, launch summary, proxy-only network and no-forwarded-credential policy. Unsupported sources show fixed localized refusal reasons.
+
+The owner first confirms a bounded isolated startup to read the tool catalog, then approves the exact frozen code and schemas. Discovery/description never execute the source. This source approval does not enable either permission level or skip the one-call confirmation. Revocation has its own confirmation and blocks new calls; already dispatched effects require checking the original result.
+
+The renderer sends only opaque record IDs and confirmation plus normal Workspace/generation scope. It never supplies launcher commands, arguments, environment or tools. The model binds IDs to the current view epoch; Core additionally checks authenticated client ownership, local Main selection, agent epoch, source/library/code/proxy fences and CAS revision. Colleague assignment panels contain no owner-review controls. Unsaved permission drafts block opening a review, and an open review locks permission edits. Unknown results require a manual read-back; nothing is retried automatically. Closing/switching/unmount cancels the current inspection and discards late results.
+
+Source fingerprints/catalog changes and revocation require new owner review. Reapproving the same code creates a new source revision, so old Workspace/agent grants cannot silently return. English, Simplified and Traditional Chinese cover all actions and refusal reasons. Local component/model tests cover these behaviors; native screenshot acceptance remains separate.
