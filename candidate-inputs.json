@@ -15,10 +15,30 @@
     "ttlSeconds": 7200,
     "waitSeconds": 240
   },
-  "desktop": {"commit":"18d5488e74e068584bcd8479258da8cf3eb26100","tree":"6ce707546ef3b404478bd2e06627acddfa86f061","version":"1.1.0"},
-  "core": {"commit":"5b08e35e29328582705d281049c64d22fdd78d01","tree":"d3b39036c76f14b7efb9cb560c2c7f335b7bbca6","version":"1.0.2"},
-  "toolchain": {"node":"22.23.1","bun":"1.3.9","rust":"1.97.0"},
-  "locks": {"npm":"cbfc9d7b21b23019d6188962f5772996a500f4886f8fab241f79e7a89938c2dd","cargo":"66fe91ea71cfcd43b7df1d65b787c88555c370d4d31295c8835422b3006db6f2","coreNpm":"6955e11615a2e285bddc2967e182c7dbb68e654f6783508f080b7819b79f3c4d","sidecar":"9f4e3555144ec6ab3970973bdb32f8e517b1da2d9caf4c02f0f6fab458b19509"},
+  "desktop": {
+    "commit": "f8a0082556ed90805f07949e84824979fdd5fe05",
+    "tree": "feb9593f630aca7d8dd08612e72429e6dfdc6292",
+    "version": "1.1.0"
+  },
+  "core": {
+    "commit": "19fc8eac99887516cfef03e225ab15dbec1ba04f",
+    "tree": "cf8e159fe16a1e2b17c4106a83f66b4f890df415",
+    "version": "1.0.2"
+  },
+  "toolchain": {
+    "node": "22.23.1",
+    "bun": "1.3.9",
+    "rust": "1.97.0"
+  },
+  "locks": {
+    "npm": "cbfc9d7b21b23019d6188962f5772996a500f4886f8fab241f79e7a89938c2dd",
+    "cargo": "66fe91ea71cfcd43b7df1d65b787c88555c370d4d31295c8835422b3006db6f2",
+    "coreNpm": "6955e11615a2e285bddc2967e182c7dbb68e654f6783508f080b7819b79f3c4d",
+    "sidecar": "8fb8155b9c42482ed62f8d7decb912b27491539ddc9936698ed0d97f564e45b7"
+  },
   "updaterPublicKeySha256": "7e6a1d9c22989adb5c6991bae0fcdcbe4991dfd2e9eb67f5c08af271be6768d0",
-  "upgradeFrom": ["0.1.187", "1.0.3"]
+  "upgradeFrom": [
+    "0.1.187",
+    "1.0.3"
+  ]
 }
