@@ -4199,3 +4199,8 @@ resolved paths before retrying, with no file edits from that failed read.
 - Owner RPCs carry only opaque recordId + confirmed and ordinary workspace/generation. Keep Host's Main/client/library/code/CAS authority checks; no renderer command/args/env or model owner-review tool is permitted. Source review, permission grants and per-call cards are distinct.
 - Correct fixture expectations rather than loosening model scope: selecting a colleague requires the actual selectAgent path, and initialize now advertises both manager and owner-review capabilities. Native agent DTO has no channelId; Core's selected-channel fence remains authoritative.
 - Final build, 48 focused tests and actual Desk handler/model/WebSocket → Host → protected stdio smoke passed. Initial failing logs were preserved. Headless component tests and static HTML are not native visual acceptance or release receipts.
+
+
+## Wave3 candidate checkout pin consistency
+
+The merged sidecar input lock was updated, but the candidate workflow retained twelve old literal checkout refs. Preserve all exact-pin assertions and synchronize six Desktop plus six Core refs to candidate-inputs.json. No permissions, admission, signing, public keys, or publication behavior changes. Candidate execution remains on hold; local full-suite success is not formal candidate acceptance.
