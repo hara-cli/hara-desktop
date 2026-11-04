@@ -277,3 +277,12 @@ test("old and new attempt provenance remain separate and legacy records never in
     assert.equal(stages.parseRuntimeStageReport(report({ provenance: bad })), null);
   }
 });
+
+test("diagnostic copy includes only closed message timing matching the exact stage attempt", () => {
+ const stage=report(),{workspaceId,resourceGeneration,agentId,sessionId,runId,attemptId,historyStart}=stage;
+ const timing={schemaVersion:1,workspaceId,resourceGeneration,agentId,sessionId,runId,attemptId,historyStart,origin:"host_receive",clientClockErrorMs:2,
+  points:{T0:1,T1:0,T2:3,T3:5,T4:6,T5:10,T6:11,T7:12,T8:20,T9:22}};
+ assert.deepEqual(JSON.parse(stages.runtimeStageDiagnosticsText([stage],[timing])).messageTimings,[timing]);
+ for(const bad of [{...timing,attemptId:"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"},{...timing,historyStart:historyStart+1},{...timing,prompt:"PRIVATE"}])
+  assert.equal(Object.hasOwn(JSON.parse(stages.runtimeStageDiagnosticsText([stage],[bad])),"messageTimings"),false);
+});

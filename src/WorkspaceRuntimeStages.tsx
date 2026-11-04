@@ -1,3 +1,4 @@
+import type { MessageTimingReport } from "./message-timing.ts";
 import { useEffect, useRef, useState } from "react";
 import type { makeT } from "./i18n";
 import { formatRuntimeStageMs, runtimeStageActivities, runtimeStageIdentity, showRuntimeStageReport, runtimeStageDiagnosticsText,
@@ -8,7 +9,8 @@ import { copyRuntimeDiagnostic } from "./runtime-failure";
 
 type Translate = ReturnType<typeof makeT>;
 interface ExportState { key: string; pending: boolean; failed: boolean; receipt: RuntimeDiagnosticReceipt | null }
-export function WorkspaceRuntimeStages({ report, t, onExport, disabled = false, alwaysShow = false }: {
+export function WorkspaceRuntimeStages({ report, t, onExport, disabled = false, alwaysShow = false, messageTimings = [] }: {
+  messageTimings?: readonly MessageTimingReport[];
   report: RuntimeStageReport; t: Translate; onExport?: (report: RuntimeStageReport) => Promise<RuntimeDiagnosticReceipt>; disabled?: boolean; alwaysShow?: boolean;
 }) {
   const key = runtimeStageIdentity(report), liveKey = useRef(key), mounted = useRef(true), fence = useRef<string | null>(null);
@@ -29,7 +31,7 @@ export function WorkspaceRuntimeStages({ report, t, onExport, disabled = false, 
   };
   const copy = async () => {
     if (disabled) return;
-    const text = runtimeStageDiagnosticsText([report]); if (!text) return;
+    const text = runtimeStageDiagnosticsText([report], messageTimings); if (!text) return;
     const clipboard = globalThis.navigator?.clipboard;
     const result = await copyRuntimeDiagnostic(text, clipboard ? value => clipboard.writeText(value) : undefined);
     if (mounted.current && liveKey.current === key) setCopyState({ key, state: result });
@@ -69,7 +71,7 @@ export function WorkspaceRuntimeStages({ report, t, onExport, disabled = false, 
           {t(current?.pending ? "ws.stages.exporting" : "ws.stages.export")}</button> : null}
         <button type="button" className="hs-btn sec" data-runtime-action="copy" onClick={() => void copy()} disabled={disabled}>{t("ws.stages.copy")}</button>
         {copyState?.key === key ? <p role="status">{t(copyState.state === "copied" ? "ws.runtimeDiagnostic.copied" : "ws.runtimeDiagnostic.copyFailed")}</p> : null}
-        {copyState?.key === key && copyState.state === "copyFailed" ? <pre tabIndex={0}>{runtimeStageDiagnosticsText([report])}</pre> : null}
+        {copyState?.key === key && copyState.state === "copyFailed" ? <pre tabIndex={0}>{runtimeStageDiagnosticsText([report], messageTimings)}</pre> : null}
         <p className="wsd-runtime-stages-note">{t("ws.stages.privacy")}</p>
         {current?.failed ? <p role="alert">{t("ws.stages.exportFailed")}</p> : null}
         {current?.receipt ? <div className="wsd-runtime-stages-receipt" role="status"><strong>{t("ws.stages.saved")}</strong>

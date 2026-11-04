@@ -1,3 +1,4 @@
+import type { MessageTimingReport } from "./message-timing.ts";
 import { runtimeVersionFor } from "./runtime-version-drift";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -107,14 +108,15 @@ function SettledApprovalCard({ state, name, t }: { state: ApprovalSettleState; n
     <p>{t(copy, { name: label })}</p>
   </section>;
 }
-export function Transcript({ history, agent, t, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false, alwaysShowTimingDiagnostics = false }: {
+export function Transcript({ history, agent, t, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false, alwaysShowTimingDiagnostics = false, messageTimings = [] }: {
+  messageTimings?: readonly MessageTimingReport[];
   history: WorkspaceDevMessage[]; agent?: WorkspaceDevAgent; t: Translate; detailed?: boolean; stages?: RuntimeStageReport[];
   alwaysShowTimingDiagnostics?: boolean; historyOffset?: number; onExportStage?: (report: RuntimeStageReport) => Promise<RuntimeDiagnosticReceipt>; stageDisabled?: boolean;
 }) {
   let previous: WorkspaceDevMessage | undefined;
   const stageBoundaries = runtimeStagesBefore(stages, history, historyOffset);
   const renderStages = (boundary: number) => (stageBoundaries.get(boundary) ?? []).map(report => <WorkspaceRuntimeStages
-    key={report.attemptId} report={report} t={t} alwaysShow={alwaysShowTimingDiagnostics} onExport={onExportStage} disabled={stageDisabled} />);
+    key={report.attemptId} report={report} t={t} messageTimings={messageTimings} alwaysShow={alwaysShowTimingDiagnostics} onExport={onExportStage} disabled={stageDisabled} />);
   const renderItem = (item: ReturnType<typeof transcriptBlocks>[number]) => {
     if (item.kind === "execution") {
       previous = undefined;
@@ -500,7 +502,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
               <strong>{t("ws.permissions.risks")}</strong><ul>{workspace.conversation.nativeRisks.map(event => <li key={event.id}>{t(event.kind === "external-publish" ? "ws.permissions.publish" : "ws.permissions.delete")} · {t("ws.permissions.observed")}</li>)}</ul>
             </aside> : null}
             <Transcript history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false}
-              alwaysShowTimingDiagnostics={theme.settings?.alwaysShowTimingDiagnostics === true} stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
+              messageTimings={workspace.conversation.messageTimings} alwaysShowTimingDiagnostics={theme.settings?.alwaysShowTimingDiagnostics === true} stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
             {!disconnected ? <AssistantDraft model={model} agent={agent} t={t} follow={followPreview} /> : null}
             {pendingSchedule?.scope === scope && pendingSchedule.agentId === agent?.agentId ? <section className="vg-chat-schedule-card" aria-label={locale !== "en" ? "确认定时" : "Confirm schedule"}>
               <header><strong>{locale !== "en" ? "确认定时" : "Confirm schedule"}</strong><small>{locale !== "en" ? "挂接同事" : "Colleague"} · {agent.identity.displayName}</small></header>

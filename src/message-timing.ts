@@ -30,7 +30,7 @@ export function parseMessageTimingReport(value: unknown): MessageTimingReport | 
     || !record(value.points) || !exact(value.points, MESSAGE_TIMING_POINTS) || value.points.T1 !== 0) return null;
   for (const point of MESSAGE_TIMING_POINTS) {
     const at = value.points[point];
-    if (at !== null && (!Number.isSafeInteger(at) || Number(at) < (point === "T0" ? -LIMIT : 0) || Number(at) > (point === "T0" ? 0 : LIMIT))) return null;
+    if (at !== null && (!Number.isSafeInteger(at) || Number(at) < (point === "T0" ? -LIMIT : 0) || Number(at) > (point === "T0" ? Number(value.clientClockErrorMs ?? 0) : LIMIT))) return null;
   }
   if ((value.points.T0 === null) !== (value.clientClockErrorMs === null) || value.points.T7 !== null && value.clientClockErrorMs === null) return null;
   return structuredClone(value) as unknown as MessageTimingReport;

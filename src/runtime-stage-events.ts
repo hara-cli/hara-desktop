@@ -1,3 +1,4 @@
+import { parseMessageTimingReport, type MessageTimingReport } from "./message-timing.ts";
 /** Closed metadata projection. Native output and conversation content never enter this view. */
 export const RUNTIME_STAGE_KINDS = ["spawn", "cold_start", "first_token", "first_output", "model_roundtrip", "tool_call", "complete"] as const;
 export type RuntimeStageKind = typeof RUNTIME_STAGE_KINDS[number];
@@ -172,7 +173,9 @@ export function showRuntimeStageReport(report: RuntimeStageReport, alwaysShow = 
   const measured = report.durationMs ?? report.events[report.events.length - 1]?.offsetMs ?? 0;
   return alwaysShow || report.state === "error" || report.errorKind !== null || measured > RUNTIME_STAGE_SLOW_MS;
 }
-export function runtimeStageDiagnosticsText(reports: readonly RuntimeStageReport[]): string | null {
+export function runtimeStageDiagnosticsText(reports: readonly RuntimeStageReport[], timings: readonly MessageTimingReport[] = []): string | null {
   const safe = reports.slice(-16).map(parseRuntimeStageReport).filter((report): report is RuntimeStageReport => report !== null);
-  return safe.length ? JSON.stringify({ schemaVersion: 1, runtimeStages: safe }, null, 2) : null;
+  const messageTimings = timings.slice(-16).map(parseMessageTimingReport).filter((row): row is MessageTimingReport => row !== null
+    && safe.some(stage => runtimeStageIdentity(stage) === runtimeStageIdentity(row) && stage.historyStart === row.historyStart));
+  return safe.length ? JSON.stringify({ schemaVersion: 1, runtimeStages: safe, ...(messageTimings.length ? { messageTimings } : {}) }, null, 2) : null;
 }
