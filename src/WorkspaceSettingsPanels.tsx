@@ -28,13 +28,18 @@ export function useStableWorkspaceTheme(model: WorkspaceDevModel) {
     try { const saved = await model.saveDisplayPreference(executionDetails, collapseDetails); setSettings(saved); setNotice(""); }
     catch { setNotice("ws.theme.displayUnknown"); } finally { busy.current = false; }
   };
+  const changeTimingDiagnostics = async (value: boolean) => {
+    if (!settings || settings.readOnly || busy.current) return; busy.current = true;
+    try { const saved = await model.saveTimingDiagnosticsPreference(value); setSettings(saved); setNotice(""); }
+    catch { setNotice("ws.theme.displayUnknown"); } finally { busy.current = false; }
+  };
   const changeAppearance = (next: Partial<VioletAppearance>) => {
     setAppearance(current => { const value = { ...current, ...next }; saveAppearance(value); return value; });
   };
   const chooseTheme = async (value: "violet-glass" | "obsidian" | "daylight") => {
     if (await change(value === "daylight" ? "light" : "dark")) changeAppearance({ darkTheme: value === "obsidian" ? "obsidian" : "violet-glass" });
   };
-  return { preference, settings, notice, change, changeDetails, appearance, changeAppearance, chooseTheme };
+  return { preference, settings, notice, change, changeDetails, changeTimingDiagnostics, appearance, changeAppearance, chooseTheme };
 }
 export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<typeof useStableWorkspaceTheme>; locale?: Locale }) {
   const current = useWorkspaceLocale(), t = locale ? makeT(locale) : current.t;
@@ -52,6 +57,8 @@ export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<ty
       onChange={event => void theme.changeDetails(event.target.value as "brief" | "detailed", theme.settings?.collapseDetails !== false)}><option value="brief">{t("ws.display.brief")}</option><option value="detailed">{t("ws.display.detailed")}</option></select></label>
     <div className="wss-setting-row"><span>{t("ws.display.collapse")}</span><ToggleSwitch label={t("ws.display.collapse")} checked={theme.settings?.collapseDetails !== false} disabled={!theme.settings || theme.settings.readOnly}
       onCheckedChange={checked => void theme.changeDetails(theme.settings?.executionDetails ?? "brief", checked)} /></div>
+    <div className="wss-setting-row"><span>{t("ws.stages.alwaysShow")}</span><ToggleSwitch label={t("ws.stages.alwaysShow")} checked={theme.settings?.alwaysShowTimingDiagnostics === true} disabled={!theme.settings || theme.settings.readOnly}
+      onCheckedChange={checked => void theme.changeTimingDiagnostics(checked)} /></div>
     {theme.notice ? <p role="status">{t(theme.notice)}</p> : null}</section>;
 }
 export function WorkspaceConnections({ model, workspace, onDirty }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onDirty?: (value: boolean) => void }) {

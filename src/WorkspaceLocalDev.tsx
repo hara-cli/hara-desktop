@@ -84,14 +84,14 @@ function SettledApprovalCard({ state, name, t }: { state: ApprovalSettleState; n
     <p>{t(copy, { name: label })}</p>
   </section>;
 }
-export function Transcript({ history, agent, t, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false }: {
+export function Transcript({ history, agent, t, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false, alwaysShowTimingDiagnostics = false }: {
   history: WorkspaceDevMessage[]; agent?: WorkspaceDevAgent; t: Translate; detailed?: boolean; stages?: RuntimeStageReport[];
-  historyOffset?: number; onExportStage?: (report: RuntimeStageReport) => Promise<RuntimeDiagnosticReceipt>; stageDisabled?: boolean;
+  alwaysShowTimingDiagnostics?: boolean; historyOffset?: number; onExportStage?: (report: RuntimeStageReport) => Promise<RuntimeDiagnosticReceipt>; stageDisabled?: boolean;
 }) {
   let previous: WorkspaceDevMessage | undefined;
   const stageBoundaries = runtimeStagesBefore(stages, history, historyOffset);
   const renderStages = (boundary: number) => (stageBoundaries.get(boundary) ?? []).map(report => <WorkspaceRuntimeStages
-    key={report.attemptId} report={report} t={t} onExport={onExportStage} disabled={stageDisabled} />);
+    key={report.attemptId} report={report} t={t} alwaysShow={alwaysShowTimingDiagnostics} onExport={onExportStage} disabled={stageDisabled} />);
   const renderItem = (item: ReturnType<typeof transcriptBlocks>[number]) => {
     if (item.kind === "execution") {
       previous = undefined;
@@ -448,7 +448,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
               <strong>{t("ws.permissions.risks")}</strong><ul>{workspace.conversation.nativeRisks.map(event => <li key={event.id}>{t(event.kind === "external-publish" ? "ws.permissions.publish" : "ws.permissions.delete")} · {t("ws.permissions.observed")}</li>)}</ul>
             </aside> : null}
             <Transcript history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false}
-              stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
+              alwaysShowTimingDiagnostics={theme.settings?.alwaysShowTimingDiagnostics === true} stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
             {pendingSchedule?.scope === scope && pendingSchedule.agentId === agent?.agentId ? <section className="vg-chat-schedule-card" aria-label={locale !== "en" ? "确认定时" : "Confirm schedule"}>
               <header><strong>{locale !== "en" ? "确认定时" : "Confirm schedule"}</strong><small>{locale !== "en" ? "挂接同事" : "Colleague"} · {agent.identity.displayName}</small></header>
               <label>{locale !== "en" ? "名称" : "Name"}<input maxLength={60} value={pendingSchedule.draft.name} disabled={scheduleBusy} onChange={(event) => setPendingSchedule({ ...pendingSchedule, draft: { ...pendingSchedule.draft, name: event.target.value } })} /></label>
@@ -461,7 +461,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {scheduleNotice?.scope === scope && scheduleNotice.agentId === agent?.agentId && !pendingSchedule ? <p className="vg-schedule-notice" role="status">{locale !== "en" ? `已为这位同事创建定时：${scheduleNotice.name}。右侧可管理。` : `Created for this colleague: ${scheduleNotice.name}. Manage it on the right.`}</p> : null}
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
             {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified"><CheckCircleIcon className="hico" />{t("ws.verified")} <span>{t("ws.verified.note")}</span></p> : null}
-            <WorkspaceTaskRecovery conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
+            <WorkspaceTaskRecovery runtimeStages={stageReports} conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
               runtimeVersion={runtimeVersionFor(workspace.runtimes?.options, agent?.runtime.id)}
               runtimeId={agent?.runtime.id} loginSource={workspace.runtimes?.options.find(row => row.runtimeId === agent?.runtime.id)?.loginSource} onLogin={() => openSettingsPage("runtimes")} onRescan={() => void model.detectRuntimes().catch(() => {})}
               onRuntimeSettings={() => openSettingsPage("runtimes")}
@@ -471,13 +471,13 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
               onDismiss={() => model.dismissRecovery()} />
             {question ? <WorkspaceUserQuestion key={`${scope}:${question.id}`} conversation={workspace.conversation} t={t}
               disabled={Boolean(disconnected) || view.sending || view.pendingUnknown} supported={model.supportsUserQuestions?.() === true}
-              onAnswer={(questionId, answer) => void model.answer(questionId, answer)} onPause={questionId => void model.pauseQuestion(questionId)} onRepair={() => { setSettingsPage("connections"); setSettings(true); }} /> : null}
+              onTypeAnswer={() => input.current?.focus()} onAnswer={(questionId, answer) => void model.answer(questionId, answer)} onPause={questionId => void model.pauseQuestion(questionId)} onRepair={() => { setSettingsPage("connections"); setSettings(true); }} /> : null}
             {!liveApprovals.length ? <WorkspaceTaskActivity conversation={workspace.conversation} name={agent?.identity.displayName ?? "Hara"} t={t}><Avatar agent={agent} /></WorkspaceTaskActivity> : null}<div ref={end} />
           </div>}
       </div>
       {workspace && inChannel ? <LocalChannelComposer key={`${scope}:${channelView.channelId}`} view={channelView} model={channels} colleagues={colleagues} t={t} disconnected={!!disconnected} hasConnection={hasConnection} configure={() => void connect()} /> : null}
       {workspace && route.section === "chat" ? <footer className="hs-compose wsd-composer-wrap" data-composer={question ? "question" : undefined}><WorkspaceAsyncQuestions asks={asyncAsks} t={t}
-          disabled={Boolean(disconnected)} onAnswer={(questionId, answer) => void model.answerAsync(questionId, answer)} /><div className="hs-field wsd-composer"><textarea ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
+          onTypeAnswer={() => input.current?.focus()} disabled={Boolean(disconnected)} onAnswer={(questionId, answer) => void model.answerAsync(questionId, answer)} /><div className="hs-field wsd-composer"><textarea ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
         placeholder={!hasConnection ? t("ws.composer.noConnection") : t(question ? "ws.question.composerPlaceholder" : "ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} disabled={!hasConnection || view.runtimeChanging || Boolean(disconnected)} rows={1}
         onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submitComposer(); } }} />
         <span className="hs-conn">{agent && agent.runtime.id !== "pi" ? t("ws.composer.boundRuntime", { runtime: agent.runtime.label }) : t("ws.composer.connection")}</span>{busy ? <button className="hs-stop" onClick={() => void model.cancel()} disabled={Boolean(disconnected) || workspace.conversation.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button>

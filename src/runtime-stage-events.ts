@@ -157,3 +157,14 @@ export function formatRuntimeStageMs(value: number | null): string | null {
   if (value === null) return null;
   return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(2)} s`;
 }
+
+/** Visibility is presentation only; collectors and diagnostic exports retain the complete record. */
+export const RUNTIME_STAGE_SLOW_MS = 30_000;
+export function showRuntimeStageReport(report: RuntimeStageReport, alwaysShow = false): boolean {
+  const measured = report.durationMs ?? report.events[report.events.length - 1]?.offsetMs ?? 0;
+  return alwaysShow || report.state === "error" || report.errorKind !== null || measured > RUNTIME_STAGE_SLOW_MS;
+}
+export function runtimeStageDiagnosticsText(reports: readonly RuntimeStageReport[]): string | null {
+  const safe = reports.slice(-16).map(parseRuntimeStageReport).filter((report): report is RuntimeStageReport => report !== null);
+  return safe.length ? JSON.stringify({ schemaVersion: 1, runtimeStages: safe }, null, 2) : null;
+}

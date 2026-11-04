@@ -76,7 +76,7 @@ export interface WorkspaceRuntimeModels { source?: "live" | "documented"; source
 export interface WorkspaceConnectionModels extends Omit<WorkspaceRuntimeModels, "runtimeId"> { connectionId: string; source: "live" | "documented" }
 export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; defaultReasoning?: string | null; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
 export interface LegacyConnectionPreview { id: string; label: string; provider: "openai" | "anthropic"; baseURL: string; defaultModel: string; keySaved: boolean; source: string }
-export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean; executionDetails?: "brief" | "detailed"; collapseDetails?: boolean; updates?: UpdatePreferences }
+export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean; executionDetails?: "brief" | "detailed"; collapseDetails?: boolean; alwaysShowTimingDiagnostics?: boolean; updates?: UpdatePreferences }
 export interface WorkspaceFeatureView { revision: number; workspaceId: string; schedules: { id: string; name: string; source?: string; anchor?: { conversationId: string; messageId: string; agentId: string }; schedule: { kind: string; expr?: string; display?: string; runAt?: number; everyMs?: number }; enabled: boolean; agentId?: string; task?: string; tz?: string }[]; skills: { id: string; description: string; enabled: boolean; version: string; availableVersion: string; locked: boolean; source: "global" | "private" }[];
   scheduler?: { schedules: { id: string; nextRunAt: number | null; awaitingHandoff: boolean; lastRun: { state: string; reason: string | null; occurredAt: number } | null }[] } }
 
@@ -508,6 +508,9 @@ export class WorkspaceDevModel {
   async savePreference(theme: string, expectedRevision: number): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.set", { theme, expectedRevision }); }
   async saveDisplayPreference(executionDetails: "brief" | "detailed", collapseDetails: boolean): Promise<WorkspacePreferenceView> {
     const current = await this.preferences(); return this.rpc.request("workspace.preferences.set", { theme: current.theme, expectedRevision: current.revision, executionDetails, collapseDetails });
+  }
+  async saveTimingDiagnosticsPreference(alwaysShowTimingDiagnostics: boolean): Promise<WorkspacePreferenceView> {
+    const current = await this.preferences(); return this.rpc.request("workspace.preferences.set", { theme: current.theme, expectedRevision: current.revision, alwaysShowTimingDiagnostics });
   }
   async saveUpdatePreferences(updates: UpdatePreferences): Promise<void> {
     const current = await this.preferences(); await this.rpc.request("workspace.preferences.set", { theme: current.theme, expectedRevision: current.revision, updates });
