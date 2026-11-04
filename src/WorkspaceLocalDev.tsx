@@ -15,7 +15,7 @@ import { WorkspaceTaskActivity, WorkspaceTaskRecovery } from "./WorkspaceTaskRec
 import { WorkspaceRuntimeStages } from "./WorkspaceRuntimeStages";
 import { runtimeStagesBefore, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events";
 import { WorkspaceAsyncQuestions, WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
-import { WorkspaceDevModel, workspaceAsyncAsks, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval, type WorkspaceFeatureView } from "./workspace-dev-state";
+import { WorkspaceDevModel, workspaceAsyncAsks, type ColleagueCreateDraft, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval, type WorkspaceFeatureView } from "./workspace-dev-state";
 import { parseColleagueScheduleRequest, type ColleagueScheduleDraft } from "./colleague-schedule.js";
 import { useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
 import { Avatar, AwaitBar, ColleaguesPage, ShellDialog } from "./WorkspaceShell";
@@ -44,12 +44,17 @@ type Translate = ReturnType<typeof makeT>;
 const TOOL_LABELS: Record<string, Key> = Object.fromEntries(["task_intake", "task_checkpoint", "todo_write", "workspace_read", "workspace_write", "workspace_verify", "agent_list", "agent_create", "agent_contact", "schedule_create", "schedule_list", "schedule_cancel"]
   .map(name => [name, `ws.execution.${name}` as Key]));
 export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDialog = false }: { card: WorkspaceDevApproval;
-  model: { respond(card: WorkspaceDevApproval, approved: boolean): Promise<void>; getSnapshot(): { workspace: { approvals: WorkspaceDevApproval[] } | null } };
+  model: { respond(card: WorkspaceDevApproval, approved: boolean, draft?: ColleagueCreateDraft): Promise<void>;
+    getSnapshot(): { workspace: { approvals: WorkspaceDevApproval[]; runtimeOptions?: { id: string; label: string; available: boolean }[] } | null } };
   t: Translate; disabled?: boolean; onSettled?: () => void; inDialog?: boolean }) {
   const [pending, setPending] = useState(false), fence = useRef(false);
+  const [draft, setDraft] = useState<ColleagueCreateDraft | null>(() => card.kind === "schedule_create" ? null : { ...card.draft });
+  const runtimeOptions = model.getSnapshot().workspace?.runtimeOptions?.filter(row => row.available && row.id !== "hara") ?? [];
+  const edit = (key: keyof ColleagueCreateDraft, value: string) => setDraft(previous => previous ? { ...previous, [key]: value } : previous);
   const decide = async (approved: boolean) => {
-    if (fence.current || disabled) return; fence.current = true; setPending(true);
-    try { await model.respond(card, approved);
+    if (fence.current || disabled || approved && !schedule && (!draft?.username.trim() || !draft.displayName.trim() || !draft.title.trim() || !runtimeOptions.some(row => row.id === draft.runtimeId))) return;
+    fence.current = true; setPending(true);
+    try { await model.respond(card, approved, approved && !schedule ? draft ?? undefined : undefined);
       if (!model.getSnapshot().workspace?.approvals.some(row => row.id === card.id)) onSettled?.();
     } finally { fence.current = false; setPending(false); }
   };
@@ -58,11 +63,22 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
     <div className="wsd-kicker">{t("ws.approval.kicker")}</div>
     {schedule ? <><h3>{t("ws.scheduleApproval.title", { name: card.draft.title })}</h3>
       <p>{card.draft.timing} · {card.draft.tz}</p><details><summary>{t("ws.scheduleApproval.details")}</summary><p>{card.draft.task}</p><p>{t("ws.scheduleApproval.boundary")}</p></details></>
-      : <><h3>{t("ws.approval.title", { name: card.draft.displayName })}</h3>
-      <p>{card.draft.title} <span className="hs-tag">{t("ws.approval.runtime")}</span></p>
-      <details><summary>{t("ws.approval.details")}</summary><p>{card.draft.instructions}</p><p>{t("ws.approval.boundary")}</p></details></>}
+      : <><h3>{t("ws.approval.draftTitle")}</h3>
+      <div className="wsd-colleague-draft">
+        <label>{t("ws.approval.name")}<input value={draft?.displayName ?? ""} maxLength={80} onChange={event => edit("displayName", event.target.value)} disabled={pending || disabled} /></label>
+        <label>{t("ws.approval.handle")}<input value={draft?.username ?? ""} maxLength={64} onChange={event => edit("username", event.target.value)} disabled={pending || disabled} /></label>
+        <label>{t("ws.approval.role")}<input value={draft?.title ?? ""} maxLength={180} onChange={event => edit("title", event.target.value)} disabled={pending || disabled} /></label>
+        <label>{t("ws.approval.project")}<input value={draft?.project ?? ""} list={`project-${card.id}`} maxLength={240} onChange={event => edit("project", event.target.value)} disabled={pending || disabled} />
+          <datalist id={`project-${card.id}`}>{card.projectOptions?.map(option => <option key={option} value={option} />)}</datalist></label>
+        <label>{t("ws.approval.runtimeField")}<select value={draft?.runtimeId ?? ""} onChange={event => edit("runtimeId", event.target.value)} disabled={pending || disabled}>
+          {runtimeOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+        <label>{t("ws.approval.tier")}<select value={draft?.permissionTier ?? "full-protected"} onChange={event => edit("permissionTier", event.target.value)} disabled={pending || disabled}>
+          <option value="full-protected">{t("ws.approval.fullProtected")}</option><option value="controlled">{t("ws.approval.controlled")}</option></select></label>
+        <details><summary>{t("ws.approval.details")}</summary><label>{t("ws.approval.instructions")}<textarea value={draft?.instructions ?? ""} maxLength={8000}
+          onChange={event => edit("instructions", event.target.value)} disabled={pending || disabled} /></label></details>
+      </div><p>{t("ws.approval.boundary")}</p></>}
     <div className="wsd-card-actions"><button className="hs-btn sec" onClick={() => void decide(false)} disabled={pending || disabled}>{t(schedule ? "ws.scheduleApproval.decline" : "ws.approval.decline")}</button>
-      <button className="hs-btn pri" onClick={() => void decide(true)} disabled={pending || disabled}>{t(schedule ? "ws.scheduleApproval.confirm" : "ws.approval.confirm")}</button></div>
+      <button className="hs-btn pri" onClick={() => void decide(true)} disabled={pending || disabled || !schedule && (!draft?.username.trim() || !draft.displayName.trim() || !draft.title.trim() || !runtimeOptions.some(row => row.id === draft.runtimeId))}>{t(schedule ? "ws.scheduleApproval.confirm" : "ws.approval.confirm")}</button></div>
   </section>;
 }
 type ApprovalSettleState = "declined" | "expired" | "aborted";
