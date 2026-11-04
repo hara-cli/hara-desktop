@@ -2018,7 +2018,10 @@ const dict = {
 
 type WorkspaceRow = (typeof WORKSPACE_KEYS)[number] | (typeof WORKSPACE_EXTRA_KEYS)[number];
 export type Key = keyof typeof dict.en | WorkspaceRow[0];
-const workspaceRows: readonly (readonly [string, string, string, string])[] = [...WORKSPACE_KEYS, ...WORKSPACE_EXTRA_KEYS];
+type WorkspaceTranslationRow = readonly [string, string, string, string];
+const workspaceCanonicalRows: readonly WorkspaceTranslationRow[] = WORKSPACE_KEYS;
+const workspaceExtraRows: readonly WorkspaceTranslationRow[] = WORKSPACE_EXTRA_KEYS;
+const workspaceRows = [...workspaceCanonicalRows, ...workspaceExtraRows];
 const workspaceDictionaries = Object.fromEntries((["en", "zh-Hans", "zh-Hant"] as const).map((locale, index) =>
   [locale, Object.fromEntries(workspaceRows.map(row => [row[0], row[index + 1]]))])) as Record<Locale, Record<string, string>>;
 
