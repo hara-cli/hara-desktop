@@ -1,5 +1,7 @@
 // Local diagnostic metadata only; these strings never contain model or tool output.
 export const RUNTIME_STAGE_KEYS = [
+  ["ws.stages.startedAt", "Attempt started (UTC)", "尝试开始时间（UTC）", "嘗試開始時間（UTC）"],
+  ["ws.stages.coreInstance", "Core instance", "Core 实例", "Core 執行個體"],
   ["ws.stages.alwaysShow", "Always show timing diagnostics", "始终显示耗时诊断", "始終顯示耗時診斷"],
   ["ws.stages.copy", "Copy full timing diagnostics", "复制完整耗时诊断", "複製完整耗時診斷"],
   ["ws.stages.title", "Time breakdown for this turn", "本轮耗时拆解", "本輪耗時拆解"],

@@ -12,6 +12,7 @@ export interface RuntimeStageEvent {
   source: "host" | "provider_stream" | "native_event"; errorKind: RuntimeStageFailure | null;
 }
 export interface RuntimeStageReport {
+  provenance?: { startedAt: string; coreInstanceId: string };
   schemaVersion: 1; workspaceId: string; resourceGeneration: string; agentId: string; sessionId: string; runId: string; attemptId: string;
   historyStart: number; runtime: { extensionsIsolation?: "inherited"; id: "hara" | "pi" | "opencode" | "codex" | "claude" | "agy" | "gemini" | "kimi" | "copilot" | "cursor" | "grok"; version: string | null;
     loginSource: "host" | "isolated" | "unknown"; model: string | null; effort: string | null };
@@ -55,8 +56,15 @@ function parseEvent(value: unknown): RuntimeStageEvent | null {
   return { seq: value.seq, kind: value.kind, phase: value.phase, offsetMs: value.offsetMs, durationMs: value.durationMs,
     call: value.call, toolName: value.toolName, outcome: value.outcome, source: value.source, errorKind: value.errorKind };
 }
+function validProvenance(value: unknown): value is NonNullable<RuntimeStageReport["provenance"]> {
+  return record(value) && exact(value, ["startedAt", "coreInstanceId"]) && typeof value.startedAt === "string"
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value.startedAt)
+    && Number.isFinite(Date.parse(value.startedAt)) && new Date(value.startedAt).toISOString() === value.startedAt
+    && typeof value.coreInstanceId === "string" && uuid.test(value.coreInstanceId);
+}
 export function parseRuntimeStageReport(value: unknown): RuntimeStageReport | null {
-  if (!record(value) || !exact(value, ["schemaVersion", "workspaceId", "resourceGeneration", "agentId", "sessionId", "runId", "attemptId", "historyStart", "runtime", "state", "durationMs", "errorKind", "events", "droppedEvents"])
+  if (!record(value) || !exact(value, ["schemaVersion", "workspaceId", "resourceGeneration", "agentId", "sessionId", "runId", "attemptId", "historyStart", "runtime", "state", "durationMs", "errorKind", "events", "droppedEvents", ...(Object.prototype.hasOwnProperty.call(value, "provenance") ? ["provenance"] : [])])
+    || Object.prototype.hasOwnProperty.call(value, "provenance") && !validProvenance(value.provenance)
     || value.schemaVersion !== 1 || typeof value.workspaceId !== "string" || !workspaceId.test(value.workspaceId)
     || typeof value.agentId !== "string" || !agentId.test(value.agentId)
     || ![value.resourceGeneration, value.sessionId, value.runId, value.attemptId].every(item => typeof item === "string" && uuid.test(item))
@@ -88,7 +96,7 @@ export function parseRuntimeStageReport(value: unknown): RuntimeStageReport | nu
   }
   const firstMarks = events.filter(event => event.kind === "first_token" || event.kind === "first_output");
   if (new Set(firstMarks.map(event => event.kind)).size !== firstMarks.length) return null;
-  return { schemaVersion: 1, workspaceId: value.workspaceId, resourceGeneration: value.resourceGeneration as string,
+  return { schemaVersion: 1, ...(validProvenance(value.provenance) ? { provenance: { ...value.provenance } } : {}), workspaceId: value.workspaceId, resourceGeneration: value.resourceGeneration as string,
     agentId: value.agentId, sessionId: value.sessionId as string, runId: value.runId as string, attemptId: value.attemptId as string,
     historyStart: value.historyStart, runtime: { id: runtime.id, ...(runtime.extensionsIsolation === "inherited" ? { extensionsIsolation: "inherited" as const } : {}), version: runtime.version, loginSource: runtime.loginSource,
       model: runtime.model, effort: runtime.effort }, state: value.state, durationMs: value.durationMs, errorKind: value.errorKind,

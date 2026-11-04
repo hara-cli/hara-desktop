@@ -28,8 +28,8 @@ function RuntimeFailureDetails({ diagnostic, t, stages }: { diagnostic: RuntimeF
   </details>;
 }
 
-function RuntimeFailureRetry({ diagnostic, disabled, t, onContinue }: {
-  diagnostic: RuntimeFailureDiagnostic; disabled: boolean; t: ReturnType<typeof makeT>; onContinue(): void;
+function RuntimeFailureRetry({ diagnostic, disabled, t, onContinue, label }: {
+  diagnostic: RuntimeFailureDiagnostic; disabled: boolean; t: ReturnType<typeof makeT>; onContinue(): void; label?: string;
 }) {
   const [now, setNow] = useState(Date.now);
   const remaining = runtimeCooldownRemaining(diagnostic, now);
@@ -39,7 +39,7 @@ function RuntimeFailureRetry({ diagnostic, disabled, t, onContinue }: {
     return () => clearTimeout(timer);
   }, [diagnostic.retryAtMs, remaining, now]);
   return <>{remaining > 0 ? <p role="status" data-runtime-cooldown="true">{t("ws.runtimeDiagnostic.cooldown", { seconds: Math.ceil(remaining / 1000) })}</p> : null}
-    <button type="button" className="hs-btn pri" data-recovery-retry="true" onClick={() => retryRuntimeFailure(diagnostic, disabled, onContinue)} disabled={disabled || remaining > 0}>{t("ws.resume.retry")}</button></>;
+    <button type="button" className="hs-btn pri" data-recovery-retry="true" onClick={() => retryRuntimeFailure(diagnostic, disabled, onContinue)} disabled={disabled || remaining > 0}>{label ?? t("ws.resume.retry")}</button></>;
 }
 
 export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisabled = false, dismissedIdentity = null, runtimeId, loginSource, runtimeVersion, runtimeStages, onContinue, onRepair, onDismiss, onLogin, onRescan, onRuntimeSettings, onNewSession }: {
@@ -51,16 +51,29 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
   if (!workspaceRecoveryPromptVisible(conversation, dismissedIdentity)) return null;
   const contextFull = conversation.nativeSession?.status === "new_session_required";
   const resumeFailed = conversation.nativeSession?.status === "recovery_needed" || /\bcodex_resume_failed_history_preserved\b/.test(conversation.blockReason ?? "");
+  const nativeFailure = runtimeTurnFailure(conversation.blockReason, runtimeId);
+  const restoreDiagnostic = !contextFull && resumeFailed ? nativeFailure?.diagnostic : undefined;
+  // Only a known pre-turn restore timeout offers retry of the retained thread. Unknown delivery,
+  // invalid confinement, old opaque failures and context limits keep the explicit new-session exit.
+  const retryRestore = restoreDiagnostic?.runtime === "codex" && restoreDiagnostic.kind === "timeout"
+    && restoreDiagnostic.rpcMethod === "thread/resume";
   if (contextFull || resumeFailed) return <section className="wsd-resume" aria-labelledby="workspace-recovery-title" data-recovery="native-session">
     <strong id="workspace-recovery-title">{t(contextFull ? "ws.native.limitTitle" : "ws.native.recoveryTitle")}</strong>
     <p role="status">{t(contextFull ? "ws.native.limitBody" : "ws.native.recoveryBody")}</p>
+    {restoreDiagnostic ? <>
+      <p role="alert" data-native-failure-kind={restoreDiagnostic.kind}>{t(retryRestore ? "ws.native.restoreTimeout" : `ws.resume.runtime.${restoreDiagnostic.kind}.body`,
+        { seconds: (restoreDiagnostic.rpcTimeoutMs ?? 0) / 1000 })}</p>
+      <RuntimeFailureDetails key={JSON.stringify(restoreDiagnostic)} diagnostic={restoreDiagnostic} t={t} stages={runtimeStages} />
+    </> : null}
     <p>{t("ws.native.newHint")}</p>
-    <div className="wsd-resume-actions">{onNewSession ? <button type="button" className="hs-btn sec" data-new-native-session="true" onClick={onNewSession}
+    <div className="wsd-resume-actions">{retryRestore && restoreDiagnostic ? <RuntimeFailureRetry diagnostic={restoreDiagnostic} t={t}
+      label={t("ws.native.retryRestore")} onContinue={onContinue}
+      disabled={disabled || continueDisabled || ["running", "draining"].includes(conversation.state) || conversation.resumeAdmission?.allowed === false} /> : null}{onNewSession ? <button type="button" className="hs-btn sec" data-new-native-session="true" onClick={onNewSession}
       disabled={disabled || ["running", "draining"].includes(conversation.state)}>{t("ws.native.new")}</button> : <p>{t("ws.native.updateRequired")}</p>}</div>
   </section>;
   const state = workspaceRecoveryState(conversation);
   const reason = connectionRecoveryReason({ ...conversation, state });
-  const runtime = reason ? null : runtimeTurnFailure(conversation.blockReason, runtimeId);
+  const runtime = reason ? null : nativeFailure;
   const finishing = ["running", "draining"].includes(conversation.state);
   const failed = [conversation.state, conversation.taskState].some(value => value === "error" || value === "failed");
   const diagnostic = runtime?.diagnostic;

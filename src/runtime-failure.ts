@@ -12,11 +12,14 @@ export interface RuntimeFailureDiagnostic {
   homeMatchesAccount: boolean | null;
   extensionsIsolation?: "inherited";
   errorFirstLine?: string;
+  rpcMethod?: "initialize" | "thread/start" | "thread/resume" | "turn/start" | "turn/interrupt" | "thread/unsubscribe";
+  rpcTimeoutMs?: number;
   elapsedMs: number;
   retryAtMs: number;
   consecutiveFailures: number;
 }
 const FIELDS = ["runtime", "kind", "version", "loginSource", "homeMatchesAccount", "elapsedMs", "retryAtMs", "consecutiveFailures"];
+const RPC_METHODS = ["initialize", "thread/start", "thread/resume", "turn/start", "turn/interrupt", "thread/unsubscribe"];
 const integer = (value: unknown, maximum: number): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= maximum;
 
 /** Extract a single flat JSON envelope, preserving duplicate-key rejection even with escaped strings. */
@@ -59,16 +62,19 @@ export function parseRuntimeFailure(error: string | null | undefined, runtimeId?
   const envelope = diagnosticEnvelope(error.slice(index + RUNTIME_FAILURE_MARKER.length));
   if (!envelope || new Set(envelope.keys).size !== envelope.keys.length) return null;
   const fieldCount = envelope.keys.length;
-  if (fieldCount < FIELDS.length || fieldCount > FIELDS.length + 2) return null;
+  if (fieldCount < FIELDS.length || fieldCount > FIELDS.length + 4) return null;
   let row: Record<string, unknown>;
   try { row = JSON.parse(envelope.text); } catch { return null; }
   if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).length !== fieldCount
     || !FIELDS.every(field => Object.prototype.hasOwnProperty.call(row, field))
-    || Object.keys(row).some(field => !FIELDS.includes(field) && field !== "extensionsIsolation" && field !== "errorFirstLine")) return null;
+    || Object.keys(row).some(field => !FIELDS.includes(field) && field !== "extensionsIsolation" && field !== "errorFirstLine" && field !== "rpcMethod" && field !== "rpcTimeoutMs")) return null;
   if (Object.prototype.hasOwnProperty.call(row, "errorFirstLine") && !validErrorFirstLine(row.errorFirstLine)) return null;
   if (Object.prototype.hasOwnProperty.call(row, "extensionsIsolation") && (!["kimi", "copilot", "cursor", "grok"].includes(String(row.runtime)) || row.extensionsIsolation !== "inherited")) return null;
   if (row.runtime !== "pi" && row.runtime !== "codex" && row.runtime !== "claude" && row.runtime !== "opencode" && row.runtime !== "gemini" && row.runtime !== "kimi" && row.runtime !== "copilot" && row.runtime !== "cursor" && row.runtime !== "grok") return null;
   if (runtimeId !== undefined && row.runtime !== runtimeId) return null;
+  const hasRpc = Object.prototype.hasOwnProperty.call(row, "rpcMethod") || Object.prototype.hasOwnProperty.call(row, "rpcTimeoutMs");
+  if (hasRpc && (row.runtime !== "codex" || !RPC_METHODS.includes(String(row.rpcMethod))
+    || !integer(row.rpcTimeoutMs, 120_000) || row.rpcTimeoutMs < 500)) return null;
   if (Object.prototype.hasOwnProperty.call(row, "extensionsIsolation") && (row.extensionsIsolation !== "inherited" || !["kimi", "copilot", "cursor", "grok"].includes(row.runtime))) return null;
   if (!RUNTIME_FAILURE_KINDS.includes(row.kind as RuntimeFailureKind)
     || !(row.version === null || typeof row.version === "string" && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(row.version))
@@ -78,7 +84,7 @@ export function parseRuntimeFailure(error: string | null | undefined, runtimeId?
   // Core permits at most 30s. Allow 1s clock skew, but never keep a malformed record ticking forever.
   // Expired history remains valid and does not impose another cooldown.
   if (row.retryAtMs > Date.now() + 31_000) return null;
-  return { runtime: row.runtime, ...(typeof row.errorFirstLine === "string" ? { errorFirstLine: row.errorFirstLine } : {}), ...(row.extensionsIsolation === "inherited" ? { extensionsIsolation: "inherited" as const } : {}), kind: row.kind as RuntimeFailureKind, version: row.version as string | null,
+  return { runtime: row.runtime, ...(hasRpc ? { rpcMethod: row.rpcMethod as RuntimeFailureDiagnostic["rpcMethod"], rpcTimeoutMs: row.rpcTimeoutMs as number } : {}), ...(typeof row.errorFirstLine === "string" ? { errorFirstLine: row.errorFirstLine } : {}), ...(row.extensionsIsolation === "inherited" ? { extensionsIsolation: "inherited" as const } : {}), kind: row.kind as RuntimeFailureKind, version: row.version as string | null,
     loginSource: row.loginSource as RuntimeFailureDiagnostic["loginSource"], homeMatchesAccount: row.homeMatchesAccount as boolean | null,
     elapsedMs: row.elapsedMs, retryAtMs: row.retryAtMs, consecutiveFailures: row.consecutiveFailures };
 }
@@ -96,6 +102,8 @@ export function runtimeDiagnosticSummary(diagnostic: RuntimeFailureDiagnostic, t
   return [
     ...(diagnostic.errorFirstLine ? [`${t("ws.runtimeDiagnostic.errorFirstLine")}: ${diagnostic.errorFirstLine}`] : []),
     `${t("ws.runtimeDiagnostic.runtime")}: ${diagnostic.runtime}`,
+    ...(diagnostic.rpcMethod ? [`${t("ws.runtimeDiagnostic.rpcMethod")}: ${diagnostic.rpcMethod}`,
+      `${t("ws.runtimeDiagnostic.rpcTimeout")}: ${diagnostic.rpcTimeoutMs} ms`] : []),
     ...(diagnostic.extensionsIsolation ? [`${t("ws.runtimeDiagnostic.extensionsIsolation")}: ${diagnostic.extensionsIsolation}`] : []),
     `${t("ws.runtimeDiagnostic.kind")}: ${t(`ws.resume.runtime.${diagnostic.kind}.title`)}`,
     `${t("ws.runtimeDiagnostic.version")}: ${diagnostic.version ?? t("ws.runtimeDiagnostic.unknown")}`,

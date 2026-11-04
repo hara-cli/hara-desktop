@@ -43,6 +43,8 @@ export function WorkspaceRuntimeStages({ report, t, onExport, disabled = false, 
     <div className="wsd-runtime-stages-body">
       <p className="wsd-runtime-stages-status" role="status">{t(`ws.stages.state.${report.state}`)}</p>
       <dl className="wsd-runtime-stages-metadata">
+        <div><dt>{t("ws.stages.startedAt")}</dt><dd>{report.provenance?.startedAt ?? t("ws.stages.unknown")}</dd></div>
+        <div><dt>{t("ws.stages.coreInstance")}</dt><dd>{report.provenance?.coreInstanceId ?? t("ws.stages.unknown")}</dd></div>
         <div><dt>{t("ws.stages.runtime")}</dt><dd>{report.runtime.id}</dd></div>
         <div><dt>{t("ws.stages.version")}</dt><dd>{report.runtime.version ?? t("ws.stages.unknown")}</dd></div>
         <div><dt>{t("ws.stages.login")}</dt><dd>{t(`ws.stages.login.${report.runtime.loginSource}`)}</dd></div>

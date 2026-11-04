@@ -259,3 +259,21 @@ test("the always-show switch is off by default and has explicit labels in all th
     assert(toggle, locale); assert(toggle.includes('aria-checked="' + (enabled === true ? "true" : "false") + '"'));
   }
 });
+
+test("old and new attempt provenance remain separate and legacy records never inherit the current Core or time", () => {
+  const provenance = { startedAt: "2026-11-04T08:04:05.000Z", coreInstanceId: uuid(20) };
+  const old = report({ provenance }), newer = report({ attemptId: uuid(21), historyStart: 2,
+    provenance: { startedAt: "2026-11-04T15:30:25.000Z", coreInstanceId: uuid(22) } });
+  assert.deepEqual(stages.parseRuntimeStageReport(old).provenance, provenance);
+  assert.equal(stages.parseRuntimeStageReport(report()).provenance, undefined);
+  const records = stages.parseRuntimeStageReports([old, newer], { ...scope(), history: [...history, { role: "user", content: "next" }] });
+  assert.equal(records.length, 2);
+  assert.notEqual(records[0].provenance.coreInstanceId, records[1].provenance.coreInstanceId);
+  assert.ok(records[0].provenance.startedAt < records[1].provenance.startedAt);
+  const text = stages.runtimeStageDiagnosticsText(records);
+  assert.match(text, /08:04:05/); assert.match(text, /15:30:25/); assert.doesNotMatch(text, /content must not/);
+  for (const bad of [{ ...provenance, startedAt: "PRIVATE" }, { ...provenance, startedAt: "2026-02-30T00:00:00.000Z" },
+    { ...provenance, coreInstanceId: "/Users/PRIVATE" }, { ...provenance, prompt: "PRIVATE" }]) {
+    assert.equal(stages.parseRuntimeStageReport(report({ provenance: bad })), null);
+  }
+});
