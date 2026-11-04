@@ -1,3 +1,4 @@
+import type { RuntimeStageReport } from "./runtime-stage-events";
 import { WorkspaceRuntimeVersion } from "./WorkspaceRuntimeVersion";
 import type { RuntimeVersionBinding } from "./runtime-version-drift";
 import type { makeT } from "./i18n";
@@ -13,9 +14,9 @@ export function WorkspaceTaskActivity({ conversation, name, t, children }: {
   return <div className="wsd-typing" role="status">{children}<span>{t(conversation.state === "draining" ? "ws.draining" : "ws.replying", { name })}</span><i /><i /><i /></div>;
 }
 
-function RuntimeFailureDetails({ diagnostic, t }: { diagnostic: RuntimeFailureDiagnostic; t: ReturnType<typeof makeT> }) {
+function RuntimeFailureDetails({ diagnostic, t, stages }: { diagnostic: RuntimeFailureDiagnostic; t: ReturnType<typeof makeT>; stages?: RuntimeStageReport[] }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "copyFailed">("idle");
-  const summary = runtimeDiagnosticSummary(diagnostic, t);
+  const summary = runtimeDiagnosticSummary(diagnostic, t, stages);
   return <details className="wsd-runtime-diagnostic" data-runtime-diagnostic="true">
     <summary>{diagnostic.errorFirstLine ?? t("ws.runtimeDiagnostic.title")}</summary>
     <pre tabIndex={0}>{summary}</pre>
@@ -41,10 +42,10 @@ function RuntimeFailureRetry({ diagnostic, disabled, t, onContinue }: {
     <button type="button" className="hs-btn pri" data-recovery-retry="true" onClick={() => retryRuntimeFailure(diagnostic, disabled, onContinue)} disabled={disabled || remaining > 0}>{t("ws.resume.retry")}</button></>;
 }
 
-export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisabled = false, dismissedIdentity = null, runtimeId, loginSource, runtimeVersion, onContinue, onRepair, onDismiss, onLogin, onRescan, onRuntimeSettings, onNewSession }: {
+export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisabled = false, dismissedIdentity = null, runtimeId, loginSource, runtimeVersion, runtimeStages, onContinue, onRepair, onDismiss, onLogin, onRescan, onRuntimeSettings, onNewSession }: {
   conversation: WorkspaceDevSnapshot["conversation"]; t: ReturnType<typeof makeT>; disabled: boolean; continueDisabled?: boolean;
   dismissedIdentity?: string | null; runtimeId?: string; loginSource?: "host" | "isolated"; onContinue(): void; onRepair(): void; onDismiss?(): void;
-  runtimeVersion?: RuntimeVersionBinding | null; onLogin?(): void; onRescan?(): void; onRuntimeSettings?(): void;
+  runtimeStages?: RuntimeStageReport[];   runtimeVersion?: RuntimeVersionBinding | null; onLogin?(): void; onRescan?(): void; onRuntimeSettings?(): void;
   onNewSession?(): void;
 }) {
   if (!workspaceRecoveryPromptVisible(conversation, dismissedIdentity)) return null;
@@ -84,7 +85,7 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
         {runtime ? <p>{t("ws.resume.runtime.explicit")}</p> : null}
         {diagnostic?.homeMatchesAccount === false && !piConnection ? <p>{t("ws.runtimeDiagnostic.homeMismatch")}</p> : null}
         {diagnostic && authFailure ? piConnection ? <p data-runtime-connection-guidance="true">{t("ws.runtimeDiagnostic.piConnection")}</p> : !hostOnly ? <p data-runtime-login-guidance="true">{t(source === "host" ? "ws.runtimeDiagnostic.hostLogin" : source === "isolated" ? "ws.runtimeDiagnostic.privateLogin" : "ws.runtimeDiagnostic.unknownLogin", { command: runtimeLoginCommand(diagnostic.runtime) })}</p> : null : null}
-        {diagnostic ? <RuntimeFailureDetails key={scope} diagnostic={diagnostic} t={t} /> : null}
+        {diagnostic ? <RuntimeFailureDetails key={scope} diagnostic={diagnostic} t={t} stages={runtimeStages} /> : null}
         {showRuntimeVersion ? <WorkspaceRuntimeVersion runtimeId={runtimeId} binding={runtimeVersion} t={t} /> : null}
         {conversation.resumeAdmission?.allowed === false ? <p>{t("ws.resume.budget")}</p> : null}
         <div className="wsd-resume-actions">

@@ -1,3 +1,4 @@
+import { runtimeStageDiagnosticsText, type RuntimeStageReport } from "./runtime-stage-events.ts";
 import type { makeT } from "./i18n";
 
 export const RUNTIME_FAILURE_MARKER = "hara_runtime_failure_v1=";
@@ -90,7 +91,8 @@ export function runtimeLoginCommand(runtime: RuntimeFailureDiagnostic["runtime"]
   return runtime === "pi" ? "" : runtime === "codex" ? "codex login" : runtime === "claude" ? "claude" : runtime === "gemini" ? "gemini" : runtime === "kimi" ? "kimi login" : runtime === "opencode" ? "opencode auth login" : "";
 }
 
-export function runtimeDiagnosticSummary(diagnostic: RuntimeFailureDiagnostic, t: ReturnType<typeof makeT>): string {
+export function runtimeDiagnosticSummary(diagnostic: RuntimeFailureDiagnostic, t: ReturnType<typeof makeT>, stages: readonly RuntimeStageReport[] = []): string {
+  const timings = runtimeStageDiagnosticsText(stages);
   return [
     ...(diagnostic.errorFirstLine ? [`${t("ws.runtimeDiagnostic.errorFirstLine")}: ${diagnostic.errorFirstLine}`] : []),
     `${t("ws.runtimeDiagnostic.runtime")}: ${diagnostic.runtime}`,
@@ -103,6 +105,7 @@ export function runtimeDiagnosticSummary(diagnostic: RuntimeFailureDiagnostic, t
     `${t("ws.runtimeDiagnostic.elapsed")}: ${diagnostic.elapsedMs} ms`,
     `${t("ws.runtimeDiagnostic.failures")}: ${diagnostic.consecutiveFailures}`,
     `${t("ws.runtimeDiagnostic.retryAt")}: ${diagnostic.retryAtMs === 0 ? t("ws.runtimeDiagnostic.none") : new Date(diagnostic.retryAtMs).toISOString()}`,
+    ...(timings ? [timings] : []),
   ].join("\n");
 }
 

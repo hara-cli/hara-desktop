@@ -8,6 +8,7 @@ import ts from "typescript";
 import * as stages from "../src/runtime-stage-events.ts";
 import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
 import { makeT } from "../src/i18n.ts";
+import * as runtimeFailure from "../src/runtime-failure.ts";
 const uuid = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const workspaceId = `ws_${uuid(1)}`, agentId = `ag_${uuid(2)}`, generation = uuid(3), sessionId = uuid(4);
 const history = [{ role: "user", content: "content must not be exported" }, { role: "assistant", text: "private reply", tools: [] }];
@@ -132,14 +133,14 @@ test("late local-file receipts are fenced across resource, session, run and atte
   }
 });
 const require = createRequire(import.meta.url), root = fileURLToPath(new URL("../", import.meta.url));
-const bundle = await build({ stdin: { contents: 'export { Transcript } from "./src/WorkspaceLocalDev.tsx"; export { WorkspaceRuntimeStages } from "./src/WorkspaceRuntimeStages.tsx";',
+const bundle = await build({ stdin: { contents: 'export { Transcript } from "./src/WorkspaceLocalDev.tsx"; export { WorkspaceRuntimeStages } from "./src/WorkspaceRuntimeStages.tsx";export { WorkspaceThemeSettings } from "./src/WorkspaceSettingsPanels.tsx";',
   resolveDir: root, loader: "tsx" }, bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"],
   loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
 const React = require("react"), { renderToStaticMarkup } = require("react-dom/server");
 test("real turn panel renders all three locales, missing-token truth and separate overlapping waits", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
-    const t = makeT(locale), html = renderToStaticMarkup(React.createElement(module.exports.WorkspaceRuntimeStages, { report: report({ events: report().events.map(row => row.kind === "first_output" ? { ...row, source: "host" } : row) }), t, onExport: async () => receipt() }));
+    const t = makeT(locale), html = renderToStaticMarkup(React.createElement(module.exports.WorkspaceRuntimeStages, { report: report({ events: report().events.map(row => row.kind === "first_output" ? { ...row, source: "host" } : row) }), t, alwaysShow: true, onExport: async () => receipt() }));
     for (const key of ["ws.stages.title", "ws.stages.firstUnknown", "ws.stages.overlap", "ws.stages.privacy", "ws.stages.export"]) assert.ok(html.includes(t(key)), key);
     assert.ok(html.includes(t("ws.stages.kind.model_roundtrip", { n: 1 })));
     assert.ok(html.includes("1.09 s")); assert.ok(html.includes("1.15 s"));
@@ -149,17 +150,17 @@ test("real turn panel renders all three locales, missing-token truth and separat
 });
 test("transcript anchors the panel after its reply and before the next input, never in cleared history", () => {
   const all = [...history, { role: "user", content: "next public question" }], t = makeT("en");
-  const html = renderToStaticMarkup(React.createElement(module.exports.Transcript, { history: all, stages: [report()], t }));
+  const html = renderToStaticMarkup(React.createElement(module.exports.Transcript, { history: all, stages: [report()], t, alwaysShowTimingDiagnostics: true }));
   assert.ok(html.indexOf("private reply") < html.indexOf(t("ws.stages.title")));
   assert.ok(html.indexOf(t("ws.stages.title")) < html.indexOf("next public question"));
-  const cleared = renderToStaticMarkup(React.createElement(module.exports.Transcript, { history: all.slice(2), historyOffset: 2, stages: [report()], t }));
+  const cleared = renderToStaticMarkup(React.createElement(module.exports.Transcript, { history: all.slice(2), historyOffset: 2, stages: [report()], t, alwaysShowTimingDiagnostics: true }));
   assert.equal(cleared.includes(t("ws.stages.title")), false);
 });
 const componentSource = readFileSync(new URL("../src/WorkspaceRuntimeStages.tsx", import.meta.url), "utf8");
 const compiled = ts.transpileModule(componentSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
 function mountedPanel(initial = {}) {
   const slots = [], effects = []; let cursor = 0, dirty = false, tree;
-  let props = { report: report(), t: makeT("en"), onExport: async () => receipt(), ...initial };
+  let props = { report: report(), t: makeT("en"), alwaysShow: true, onExport: async () => receipt(), ...initial };
   const hooks = {
     useRef(value) { const index = cursor++; return slots[index] ??= { current: value }; },
     useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
@@ -167,7 +168,7 @@ function mountedPanel(initial = {}) {
     useEffect(fn, deps) { const index = cursor++, old = slots[index]; if (!old || deps.some((dep,n) => !Object.is(dep,old.deps[n]))) effects.push(() => { old?.cleanup?.(); slots[index] = { deps, cleanup: fn() }; }); },
   };
   const exports = {}; new Function("require", "exports", compiled)(name => name === "react" ? { ...React, ...hooks }
-    : name === "./runtime-stage-events" ? stages : name.endsWith(".css") ? {} : require(name), exports);
+    : name === "./runtime-stage-events" ? stages : name === "./runtime-failure" ? runtimeFailure : name.endsWith(".css") ? {} : require(name), exports);
   function render(next = {}) { props = { ...props, ...next }; cursor = 0; dirty = false; tree = exports.WorkspaceRuntimeStages(props); effects.splice(0).forEach(fn => fn()); }
   function all(value = tree, nodes = []) { if (Array.isArray(value)) value.forEach(item => all(item,nodes)); else if (value && typeof value === "object") { nodes.push(value); all(value.props?.children,nodes); } return nodes; }
   function text(value = tree) { if (Array.isArray(value)) return value.map(item => text(item)).join(""); return typeof value === "string" || typeof value === "number" ? String(value) : value?.props ? text(value.props.children) : ""; }
@@ -210,4 +211,51 @@ test("stage reports retain inherited mode only for the approved expanded runtime
     assert.equal(stages.parseRuntimeStageReport(report({ runtime: { ...value.runtime, extensionsIsolation: "PRIVATE" } })), null);
   }
   for (const id of ["pi", "claude", "codex", "opencode"]) assert.equal(stages.parseRuntimeStageReport(report({ runtime: { ...report().runtime, id, extensionsIsolation: "inherited" } })), null);
+});
+
+
+test("normal turns are hidden by default; only failed or measured-over-30-second turns get a compact closed row", () => {
+  const render = props => renderToStaticMarkup(React.createElement(module.exports.WorkspaceRuntimeStages, { t: makeT("en"), ...props }));
+  assert.equal(render({ report: report() }), "");
+  const slow = durationMs => report({ durationMs, events: [...report().events.slice(0, -1), event({ seq: 4, kind: "complete", phase: "mark", call: null, offsetMs: durationMs, durationMs, outcome: "completed" })] });
+  assert.equal(render({ report: slow(30000) }), "");
+  const slowHtml = render({ report: slow(30001) });
+  assert(slowHtml.includes('data-stage-display="compact"')); assert.equal(slowHtml.includes('open=""'), false);
+  const failed = report({ state: "error", errorKind: "runtime_failed", events: report().events.map(row => row.kind === "complete" ? { ...row, outcome: "error", errorKind: "runtime_failed" } : row) });
+  assert(render({ report: failed }).includes('data-stage-display="compact"'));
+  assert(render({ report: report(), alwaysShow: true }).includes('data-stage-display="always"'));
+  const running = report({ state: "running", durationMs: null, events: [event(), event({ seq: 2, kind: "first_token", phase: "mark", offsetMs: 30001, call: null, source: "provider_stream" })] });
+  assert(render({ report: running }).includes('data-stage-display="compact"'));
+});
+
+test("hiding a short turn does not trim the complete safe diagnostic or its copy/export scope", async () => {
+  const f = modelFixture(); await f.ready(); const reports = f.model.runtimeStageReports();
+  assert.equal(stages.showRuntimeStageReport(reports[0]), false);
+  const text = stages.runtimeStageDiagnosticsText(reports);
+  assert.deepEqual(JSON.parse(text).runtimeStages, reports);
+  assert.equal(stages.runtimeStageDiagnosticsText([report({ prompt: "PRIVATE" })]), null);
+  const diagnostic = { runtime: "codex", kind: "runtime_failed", version: "1.2.3", loginSource: "host", homeMatchesAccount: true, elapsedMs: 1200, consecutiveFailures: 1, retryAtMs: 0 };
+  const summary = runtimeFailure.runtimeDiagnosticSummary(diagnostic, makeT("zh-Hant"), reports), copied = [];
+  assert.equal(await runtimeFailure.copyRuntimeDiagnostic(summary, async value => copied.push(value)), "copied");
+  assert(copied[0].includes(text)); assert.equal(copied[0].includes("private reply"), false);
+  assert.deepEqual(await f.model.exportRuntimeDiagnostic(reports[0]), receipt());
+});
+
+test("the timing preference is saved explicitly with a fresh revision without resending other fields", async () => {
+  const calls = [], model = new WorkspaceDevModel({ async request(method, params) { calls.push({ method, params });
+    return method === "workspace.preferences.get" ? { theme: "dark", revision: 7, alwaysShowTimingDiagnostics: false } : { theme: "dark", revision: 8, alwaysShowTimingDiagnostics: params.alwaysShowTimingDiagnostics }; } });
+  assert.equal((await model.saveTimingDiagnosticsPreference(true)).alwaysShowTimingDiagnostics, true);
+  assert.deepEqual(calls.map(row => row.method), ["workspace.preferences.get", "workspace.preferences.set"]);
+  assert.deepEqual(calls[1].params, { theme: "dark", expectedRevision: 7, alwaysShowTimingDiagnostics: true });
+});
+
+
+test("the always-show switch is off by default and has explicit labels in all three locales", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const enabled of [undefined, true]) {
+    const t = makeT(locale), theme = { preference: "system", appearance: { darkTheme: "violet-glass", motion: "standard", transparency: "standard" },
+      settings: { theme: "system", readOnly: false, alwaysShowTimingDiagnostics: enabled }, notice: "", change() {}, chooseTheme() {}, changeAppearance() {}, changeDetails() {}, changeTimingDiagnostics() {} };
+    const html = renderToStaticMarkup(React.createElement(module.exports.WorkspaceThemeSettings, { theme, locale }));
+    const toggle = (html.match(/<button[^>]*>/g) ?? []).find(tag => tag.includes('aria-label="' + t("ws.stages.alwaysShow") + '"'));
+    assert(toggle, locale); assert(toggle.includes('aria-checked="' + (enabled === true ? "true" : "false") + '"'));
+  }
 });
