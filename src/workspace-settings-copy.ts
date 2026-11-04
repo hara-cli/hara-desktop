@@ -11,7 +11,9 @@ const stateLabels: Record<string, Key> = {
   failed: "ws.schedules.failed", cancelled: "ws.schedules.cancelled",
   skipped: "ws.schedules.skipped", accepted: "ws.schedules.accepted",
 };
-const messageKeys = new Set<string>([...WORKSPACE_KEYS, ...WORKSPACE_EXTRA_KEYS].map(row => row[0]));
+const messageKeys = new Set<string>();
+for (const row of WORKSPACE_KEYS) messageKeys.add(row[0]);
+for (const row of WORKSPACE_EXTRA_KEYS) messageKeys.add(row[0]);
 
 /** Unknown protocol states stay visible for diagnosis; content supplied by users is never translated. */
 export function settingsStateText(t: ReturnType<typeof makeT>, state: string): string {
