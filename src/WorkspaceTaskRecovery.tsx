@@ -55,6 +55,8 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
   const restoreDiagnostic = !contextFull && resumeFailed ? nativeFailure?.diagnostic : undefined;
   // Only a known pre-turn restore timeout offers retry of the retained thread. Unknown delivery,
   // invalid confinement, old opaque failures and context limits keep the explicit new-session exit.
+  const nativeScope = `${conversation.sessionId ?? ""}:${conversation.runId ?? ""}:${JSON.stringify(restoreDiagnostic)}`;
+  const nativeAdmissionReason = connectionRecoveryReason({ ...conversation, state: workspaceRecoveryState(conversation) });
   const retryRestore = restoreDiagnostic?.runtime === "codex" && restoreDiagnostic.kind === "timeout"
     && restoreDiagnostic.rpcMethod === "thread/resume";
   if (contextFull || resumeFailed) return <section className="wsd-resume" aria-labelledby="workspace-recovery-title" data-recovery="native-session">
@@ -63,10 +65,11 @@ export function WorkspaceTaskRecovery({ conversation, t, disabled, continueDisab
     {restoreDiagnostic ? <>
       <p role="alert" data-native-failure-kind={restoreDiagnostic.kind}>{t(retryRestore ? "ws.native.restoreTimeout" : `ws.resume.runtime.${restoreDiagnostic.kind}.body`,
         { seconds: (restoreDiagnostic.rpcTimeoutMs ?? 0) / 1000 })}</p>
-      <RuntimeFailureDetails key={JSON.stringify(restoreDiagnostic)} diagnostic={restoreDiagnostic} t={t} stages={runtimeStages} />
+      <RuntimeFailureDetails key={nativeScope} diagnostic={restoreDiagnostic} t={t} stages={runtimeStages} />
     </> : null}
+    {conversation.resumeAdmission?.allowed === false ? <p>{t(nativeAdmissionReason ? `ws.resume.${nativeAdmissionReason}` : "ws.resume.budget")}</p> : null}
     <p>{t("ws.native.newHint")}</p>
-    <div className="wsd-resume-actions">{retryRestore && restoreDiagnostic ? <RuntimeFailureRetry diagnostic={restoreDiagnostic} t={t}
+    <div className="wsd-resume-actions">{retryRestore && restoreDiagnostic ? <RuntimeFailureRetry key={nativeScope} diagnostic={restoreDiagnostic} t={t}
       label={t("ws.native.retryRestore")} onContinue={onContinue}
       disabled={disabled || continueDisabled || ["running", "draining"].includes(conversation.state) || conversation.resumeAdmission?.allowed === false} /> : null}{onNewSession ? <button type="button" className="hs-btn sec" data-new-native-session="true" onClick={onNewSession}
       disabled={disabled || ["running", "draining"].includes(conversation.state)}>{t("ws.native.new")}</button> : <p>{t("ws.native.updateRequired")}</p>}</div>

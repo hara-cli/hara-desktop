@@ -236,7 +236,9 @@ test("native recovery shows the specific safe reason and manual restore retry on
     assert.doesNotMatch(html, /PRIVATE|hara_runtime_failure_v1|ws\.runtimeDiagnostic\.|ws\.native\./);
     for (const lock of [{ disabled: true }, { continueDisabled: true }, { conversation: { ...p.conversation, state: "draining" } },
       { conversation: { ...p.conversation, resumeAdmission: { allowed: false, reason: "run_rounds" } } }]) {
-      assert.match(render(h(WorkspaceTaskRecovery, { ...p, ...lock })), /data-recovery-retry="true"[^>]*disabled/);
+      const locked = render(h(WorkspaceTaskRecovery, { ...p, ...lock }));
+      assert.match(locked, /data-recovery-retry="true"[^>]*disabled/);
+      if (lock.conversation?.resumeAdmission?.reason === "run_rounds") assert.ok(locked.includes(t("ws.resume.budget")));
     }
     for (const other of [{ kind: "timeout", rpcMethod: "turn/start", rpcTimeoutMs: 10000 }, { kind: "runtime_auth_rejected" }]) {
       const next = render(h(WorkspaceTaskRecovery, { ...p, conversation: { ...p.conversation, blockReason: envelope(other) } }));
