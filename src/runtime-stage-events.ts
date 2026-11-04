@@ -119,7 +119,7 @@ export function sameRuntimeStageIdentity(a: RuntimeStageReport, b: RuntimeStageR
   return a.workspaceId === b.workspaceId && a.resourceGeneration === b.resourceGeneration && a.agentId === b.agentId
     && a.sessionId === b.sessionId && a.runId === b.runId && a.attemptId === b.attemptId && a.historyStart === b.historyStart;
 }
-export function runtimeStageIdentity(report: RuntimeStageReport): string {
+export function runtimeStageIdentity(report: Pick<RuntimeStageReport, "workspaceId" | "resourceGeneration" | "agentId" | "sessionId" | "runId" | "attemptId">): string {
   return JSON.stringify([report.workspaceId, report.resourceGeneration, report.agentId, report.sessionId, report.runId, report.attemptId]);
 }
 export function parseRuntimeDiagnosticReceipt(value: unknown): RuntimeDiagnosticReceipt | null {
