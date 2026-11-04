@@ -20,11 +20,14 @@ export function WorkspaceAgentRuntimePicker({ agent, options, locale, saving, on
   useEffect(() => setSelected(agent.runtime.id as AgentRuntimeId), [agent.agentId, agent.runtime.id, agent.configRevision]);
   const available = options.some(option => option.id === selected && option.available);
   const zh = locale !== "en", hant = locale === "zh-Hant";
+  const t = makeT(locale === "zh" ? "zh-Hans" : locale);
   return <div className="agent-profile-runtime-controls">
     <label><span>Runtime</span><select aria-label="Runtime" value={selected} disabled={saving} onChange={event => setSelected(event.target.value as AgentRuntimeId)}>
       {!options.some(option => option.id === agent.runtime.id) ? <option value={agent.runtime.id} disabled>{agent.runtime.label}</option> : null}
       {options.map(option => <option key={option.id} value={option.id} disabled={!option.available}>{agentRuntimeLabel(option.id, zh ? "zh" : "en")}{!option.available
-        ? option.reason === "not_installed" ? (hant ? " · 未安裝" : zh ? " · 未安装" : " · not installed")
+        ? option.reason === "detection_pending" ? ` · ${t("ws.runtimes.checking")}`
+          : option.reason === "detection_failed" ? ` · ${t("ws.runtimes.detectFailed")}`
+          : option.reason === "not_installed" ? (hant ? " · 未安裝" : zh ? " · 未安装" : " · not installed")
           : option.reason === "not_registered" ? (hant ? " · 登記後可綁定" : zh ? " · 登记后可绑定" : " · register before binding")
           : (hant ? " · 暫不可用" : zh ? " · 暂不可用" : " · unavailable") : ""}</option>)}
     </select></label>

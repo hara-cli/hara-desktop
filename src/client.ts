@@ -239,7 +239,7 @@ export interface AgentRuntimeOption {
   id: AgentRuntimeId;
   label: string;
   available: boolean;
-  reason?: "general_agent_adapter_pending" | "adapter_pending_p05" | "not_registered" | "not_installed" | "integrity_failed";
+  reason?: "general_agent_adapter_pending" | "adapter_pending_p05" | "not_registered" | "not_installed" | "integrity_failed" | "detection_pending" | "detection_failed";
   recommended: boolean;
 }
 

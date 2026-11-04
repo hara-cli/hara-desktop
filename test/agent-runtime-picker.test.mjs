@@ -118,3 +118,16 @@ test("isolated runtime draft choices do not inherit the personal-extension notic
     assert.doesNotMatch(html, /data-personal-extensions/);
   }
 });
+
+for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const [reason, key] of [["detection_pending", "ws.runtimes.checking"], ["detection_failed", "ws.runtimes.detectFailed"]]) {
+  test(`Copilot ${reason} has an honest disabled choice in ${locale}`, () => {
+    const current = { agentId: "fixture", configRevision: 1, agentEpoch: 1, runtime: { id: "pi", label: "Pi", available: true } };
+    let applied = 0;
+    const html = renderToStaticMarkup(React.createElement(picker(true), { agent: current, options: [
+      { id: "pi", label: "Pi", available: true }, { id: "copilot", label: "GitHub Copilot", available: false, reason },
+    ], locale, saving: false, onApply() { applied++; } }));
+    assert.ok(html.includes(makeT(locale)(key)));
+    assert.match(html, /<option[^>]*value="copilot"[^>]*disabled/);
+    assert.equal(/not installed|未安装|未安裝/.test(html), false); assert.equal(applied, 0);
+  });
+}
