@@ -14,7 +14,7 @@ export function agentRuntimeSelection(agent: AgentInfo, runtimeId: AgentRuntimeI
 export function agentRuntimeLabel(id: AgentRuntimeId, locale: "en" | "zh"): string {
   if (id === "hara") return locale === "zh" ? "Hara · 现有相容引擎" : "Hara · compatibility engine";
   if (id === "pi") return locale === "zh" ? "Pi · 内建" : "Pi · built-in";
-  return { codex: "Codex", claude: "Claude Code", opencode: "OpenCode", agy: "Antigravity", gemini: "Gemini CLI", kimi: "Kimi CLI", copilot: "GitHub Copilot", cursor: "Cursor", grok: "Grok Build" }[id];
+  return { codex: "Codex", claude: "Claude Code", opencode: "OpenCode", agy: "Antigravity", gemini: "Gemini CLI", kimi: "Kimi Code", copilot: "GitHub Copilot", cursor: "Cursor", grok: "Grok Build" }[id];
 }
 
 export const PERSONAL_EXTENSIONS_COPY = {

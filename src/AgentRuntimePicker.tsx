@@ -8,7 +8,7 @@ import type { WorkspaceDevAgent } from "./workspace-dev-state";
 function PersonalExtensionsNotice({ runtimeId, locale }: { runtimeId: string; locale: "en" | "zh" | "zh-Hans" | "zh-Hant" }) {
   if (!inheritsPersonalExtensions(runtimeId)) return null;
   const t = makeT(locale === "zh" ? "zh-Hans" : locale);
-  return <p role="status" data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p>;
+  return <><p role="status" data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p><p role="note" data-runtime-acceptance="unverified">{t("ws.runtimeExpansion.unverified")}</p></>;
 }
 
 /** Soft Dark uses the same Registry options, with the Workspace agent's revision fence. */
