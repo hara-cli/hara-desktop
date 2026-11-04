@@ -84,7 +84,7 @@ function view({ empty = false, state = "completed", approval = false, directory 
     workspaceId: empty ? null : "A", agentId: empty ? null : "main", roster: empty ? [] : agents, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "",
     workspace: empty ? null : { workspaceId: "A", resourceGeneration: "generation-A", label: "My Workspace", selectedAgentId: "main", agents, syntheticOnly: false, executionMode: "workspace",
       connections: { revision: 1, defaultConnectionId: "local", connections: [{ id: "local", label: "Local fake", status: "active", defaultModel: "fake" }] },
-      approvals: approval ? [{ id: "card", workspaceId: "A", resourceGeneration: "generation-A", agentId: "main", expiresAt: "2099-01-01T00:00:00Z", draft: { username: "reviewer", displayName: "Reviewer", title: "Local reviewer", instructions: "Only this Workspace", runtimeId: "pi" } }] : [],
+      approvals: approval ? [{ id: "card", workspaceId: "A", resourceGeneration: "generation-A", agentId: "main", expiresAt: "2099-01-01T00:00:00Z", draft: { username: "reviewer", displayName: "Reviewer", title: "Local reviewer", instructions: "Only this Workspace", runtimeId: "pi", project: "", permissionTier: "full-protected" } }] : [],
       conversation: { revision: 1, state, taskState: state === "completed" ? "completed" : "blocked", taskId: "task", runId: "run", sessionId: "S", objective: "Local fixture", pastTaskCount: 1, usage, runUsage: usage,
         completion: state === "completed" ? { state: "verified" } : null, history: [{ role: "assistant", text: "Local fixture reply", tools: ["workspace_verify"] }, { role: "tool", results: [{ id: "receipt", name: "workspace_verify", content: error ? "verification failed" : "verified", isError: error }] }] } } };
 }
@@ -102,7 +102,7 @@ test("production keeps lab copy out of the sidebar; explicit Lab is a distinct a
 });
 test("real workspace screen retains colleague decisions, collapsed execution and verified task closure", () => {
   const html = renderScreen(view({ state:"blocked", approval: true, error: true }));
-  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
+  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /value="Reviewer"/, /wsd-colleague-draft/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
   const success = renderScreen(view());
   assert.match(success, /已核驗結果/);
   assert.doesNotMatch(success, /wsd-execution|1 個操作 · <span>查看詳情/);
