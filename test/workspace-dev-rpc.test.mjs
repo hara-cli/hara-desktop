@@ -42,6 +42,26 @@ test("unsupported/legacy capability closes rather than calling old initializatio
   socket.reply(socket.sent[0].id, { capabilities: ["legacy"], syntheticOnly: false }); await rejected;
   assert.equal(socket.closes, 1); assert.deepEqual(socket.sent.map(row => row.method), ["initialize"]);
 });
+test("mixed-version and malformed capability responses never grant missing features", async () => {
+  for (const capabilities of [["workspace.v2", "workspace.native-session.v1"], ["workspace.v1", { future: true }], "workspace.v1"]) {
+    const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "workspace" }, () => {}), socket = Socket.instances.at(-1);
+    const ready = assert.rejects(client.initialize(info().token), /不支援/); socket.open(); await tick();
+    socket.reply(socket.sent[0].id, { capabilities, syntheticOnly: false, executionMode: "workspace" }); await ready;
+    assert.equal(client.supportsCapability("workspace.native-session.v1"), false);
+    assert.deepEqual(socket.sent.map(row => row.method), ["initialize"]);
+  }
+  const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "workspace" }, () => {}), socket = Socket.instances.at(-1);
+  const ready = client.initialize(info().token); socket.open(); await tick();
+  socket.reply(socket.sent[0].id, { capabilities: ["workspace.v1", "future.optional.v1"], syntheticOnly: false, executionMode: "workspace" }); await ready;
+  assert.equal(client.supportsCapability("workspace.native-session.v1"), false, "unknown optional features do not imply known features");
+  client.close(); assert.equal(client.supportsCapability("workspace.v1"), false);
+});
+test("late socket events after disconnect cannot revive scoped notifications or capabilities", async () => {
+  const f = await setup(), changed = []; f.client.setChangedListener(id => changed.push(id));
+  assert.equal(f.client.supportsCapability("workspace.local-dev.v2"), true);
+  f.socket.close(); f.socket.message({ method: "workspace.changed", params: { workspaceId: "stale" } });
+  assert.deepEqual(changed, []); assert.equal(f.client.supportsCapability("workspace.local-dev.v2"), false);
+});
 test("authentication token is sent only in initialize, not business mutations", async () => {
   const f = await setup(); assert.equal(f.socket.url, "ws://127.0.0.1:12345");
   const request = f.client.request("workspace.list", {}); const sent = f.socket.sent.at(-1);
