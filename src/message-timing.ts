@@ -15,7 +15,7 @@ const id = new RegExp(`^${uuid}$`), workspace = new RegExp(`^ws_${uuid}$`), agen
 const identityKeys = ["workspaceId", "resourceGeneration", "agentId", "sessionId", "runId", "attemptId", "historyStart"];
 const keys = ["schemaVersion", ...identityKeys, "origin", "clientClockErrorMs", "points"];
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
-const exact = (value: Record<string, unknown>, fields: readonly string[]) => Object.keys(value).length === fields.length && fields.every(key => Object.hasOwn(value, key));
+const exact = (value: Record<string, unknown>, fields: readonly string[]) => Object.keys(value).length === fields.length && fields.every(key => Object.prototype.hasOwnProperty.call(value, key));
 export function parseMessageTimingInput(value: unknown): MessageTimingInput | null {
   if (!record(value) || !exact(value, ["hostAtMs", "errorMs"]) || typeof value.hostAtMs !== "number" || !Number.isFinite(value.hostAtMs)
     || value.hostAtMs < 0 || typeof value.errorMs !== "number" || !Number.isFinite(value.errorMs) || value.errorMs < 0 || value.errorMs > 1000) return null;
