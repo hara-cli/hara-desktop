@@ -4189,3 +4189,13 @@ resolved paths before retrying, with no file edits from that failed read.
 - First Desk full test run had 31 failures because HOME/TMP alone did not supply the repository's canonical evidence binding. Rerun through `provisionCiEvidence` with its complete private environment; retain both logs and report their independent outcomes.
 - One exploratory `rg` command used an unmatched zsh glob and was refused before searching; use `rg --files` or explicit existing paths.
 - Browser access host was unavailable. Native Chrome indicated an active user change; stopped UI actions and continued CLI verification. Synthetic static/callback tests do not establish visual or real-runtime acceptance.
+
+
+## [ERR-20261104-MCP-OWNER-CALLBACK] Old review handler retried an unknown inspection
+
+- Logged: 2026-11-04
+- Status: resolved locally; integration/install HOLD
+- A disabled current button did not invalidate a previously captured callback whose closure still had needsReload=false. Gate with current mutable halted/pending/view/record fences, and require explicit close/read-back after unknown results. A-B-A, model replacement, unmount and cancellation must discard late inspection/approval results.
+- Owner RPCs carry only opaque recordId + confirmed and ordinary workspace/generation. Keep Host's Main/client/library/code/CAS authority checks; no renderer command/args/env or model owner-review tool is permitted. Source review, permission grants and per-call cards are distinct.
+- Correct fixture expectations rather than loosening model scope: selecting a colleague requires the actual selectAgent path, and initialize now advertises both manager and owner-review capabilities. Native agent DTO has no channelId; Core's selected-channel fence remains authoritative.
+- Final build, 48 focused tests and actual Desk handler/model/WebSocket → Host → protected stdio smoke passed. Initial failing logs were preserved. Headless component tests and static HTML are not native visual acceptance or release receipts.

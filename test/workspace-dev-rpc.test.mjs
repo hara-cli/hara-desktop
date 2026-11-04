@@ -64,6 +64,7 @@ test("late socket events after disconnect cannot revive scoped notifications or 
 });
 test("authentication token is sent only in initialize, not business mutations", async () => {
   const f = await setup(); assert.equal(f.socket.url, "ws://127.0.0.1:12345");
+  assert.deepEqual(f.socket.sent[0].params.clientCapabilities, ["workspace.extensions.manager.v1", "workspace.extensions.owner-review.v1"]);
   const request = f.client.request("workspace.list", {}); const sent = f.socket.sent.at(-1);
   assert.equal(JSON.stringify(sent).includes(info().token), false); f.socket.reply(sent.id, { revision: 0 }); assert.deepEqual(await request, { revision: 0 });
 });

@@ -1,3 +1,4 @@
+import { mcpReviewList, mcpReviewDetail, type McpReviewList, type McpReviewDetail } from "./workspace-mcp-review.ts";
 import { extensionView, type ExtensionChange, type ExtensionProposal, type WorkspaceExtensionsView } from "./workspace-extensions.ts";
 import type { RuntimeVersionStatus } from "./runtime-version-drift.ts";
 import { parseRuntimeDiagnosticReceipt, parseRuntimeStageReports, sameRuntimeStageIdentity, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events.ts";
@@ -22,6 +23,7 @@ export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGe
   channelId?: string;
   status?: "pending" | "approved" | "rejected" | "expired"; risk?: "high" | "normal"; paid?: boolean; externalSend?: boolean; destructive?: boolean;
 } & ({ kind?: "agent_create"; draft: ColleagueCreateDraft; projectOptions?: string[]; catalogRevision?: number }
+  | { kind: "extension_call"; draft: { sourceName: string; toolName: string; target: string; action: "read" | "exec" } }
   | { kind: "schedule_create"; draft: { title: string; task: string; timing: string; tz: string } });
 export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
@@ -98,6 +100,7 @@ export class WorkspaceDevModel {
   private readonly questionPauses = new Set<string>();
   private readonly asyncAnswers = new Set<string>();
   private readonly approvalDecisions = new Set<string>();
+  private readonly mcpReviewRecords = new Map<string, { workspaceId: string; generation: string; epoch: number }>();
   private epoch = 0;
   private refreshEpoch: number | null = null;
   private refreshWait: Promise<void> | null = null;
@@ -373,6 +376,7 @@ export class WorkspaceDevModel {
     const workspace = this.view.workspace;
     if (workspace?.workspaceId !== workspaceId || workspace.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.scopeChanged");
   }
+  supportsExtensionManager(): boolean { return this.rpc.supportsCapability?.("workspace.extensions.manager.v1") === true; }
   supportsExtensions(): boolean { return this.rpc.supportsCapability?.("workspace.extensions.v1") === true; }
   private assertExtensionScope(workspaceId: string, generation: string, agent?: { agentId: string; agentEpoch: number }): void {
     this.assertRuntimeProxyScope(workspaceId, generation);
@@ -398,6 +402,38 @@ export class WorkspaceDevModel {
     const value = await this.workspaceRequest<unknown>("workspace.extensions.approve", { proposalId: proposal.proposalId, approved, expectedRevision: proposal.revision });
     this.assertExtensionScope(workspaceId, generation, change.target === "agent" ? change : undefined);
     return extensionView(value, workspaceId, generation, change.target === "agent" ? change : undefined);
+  }
+  supportsMcpOwnerReview(): boolean { return this.rpc.supportsCapability?.("workspace.extensions.owner-review.v1") === true; }
+  private assertMcpReviewScope(workspaceId: string, generation: string, recordId?: string): void {
+    this.assertExtensionScope(workspaceId, generation);
+    const workspace = this.view.workspace!, agent = workspace.agents.find(row => row.agentId === workspace.selectedAgentId);
+    if (!this.supportsMcpOwnerReview() || !agent || agent.kind !== "main" || agent.state !== "active") throw new WorkspaceViewError("ws.mcpReview.owner_required");
+    if (recordId) {
+      const record = this.mcpReviewRecords.get(recordId);
+      if (!record || record.workspaceId !== workspaceId || record.generation !== generation || record.epoch !== this.epoch) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    }
+  }
+  async mcpReviews(workspaceId: string, generation: string): Promise<McpReviewList> {
+    this.assertMcpReviewScope(workspaceId, generation);
+    const value = mcpReviewList(await this.workspaceRequest("workspace.extensions.review.list"), workspaceId, generation);
+    this.assertMcpReviewScope(workspaceId, generation); this.mcpReviewRecords.clear();
+    for (const source of value.sources) if (source.recordId) this.mcpReviewRecords.set(source.recordId, { workspaceId, generation, epoch: this.epoch });
+    return value;
+  }
+  async describeMcpReview(recordId: string, workspaceId: string, generation: string): Promise<McpReviewDetail> {
+    this.assertMcpReviewScope(workspaceId, generation, recordId);
+    const value = await this.workspaceRequest("workspace.extensions.review.describe", { recordId });
+    this.assertMcpReviewScope(workspaceId, generation, recordId); return mcpReviewDetail(value, workspaceId, generation, recordId);
+  }
+  async decideMcpReview(action: "inspect" | "approve" | "revoke", recordId: string, workspaceId: string, generation: string): Promise<McpReviewDetail> {
+    this.assertMcpReviewScope(workspaceId, generation, recordId);
+    if (!["inspect", "approve", "revoke"].includes(action)) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    const value = await this.workspaceRequest("workspace.extensions.review." + action, { recordId, confirmed: true });
+    this.assertMcpReviewScope(workspaceId, generation, recordId); return mcpReviewDetail(value, workspaceId, generation, recordId);
+  }
+  async cancelMcpReview(recordId: string, workspaceId: string, generation: string): Promise<void> {
+    this.assertMcpReviewScope(workspaceId, generation, recordId);
+    await this.workspaceRequest("workspace.extensions.review.cancel", { recordId }); this.mcpReviewRecords.delete(recordId);
   }
   async runtimeProxy(workspaceId: string, generation: string): Promise<WorkspaceRuntimeProxyView> {
     this.assertRuntimeProxyScope(workspaceId, generation);

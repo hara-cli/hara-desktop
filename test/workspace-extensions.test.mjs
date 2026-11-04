@@ -27,7 +27,7 @@ function mount(model, patch = {}) {
     useEffect(action, deps) { const index = cursor++, old = slots[index]; if (!old || deps.some((dep, n) => !Object.is(dep, old.deps[n]))) effects.push(() => { old?.cleanup?.(); slots[index] = { deps, cleanup: action() }; }); },
   };
   const exports = {};
-  new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks } : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t: makeT(props.locale ?? "en") }) } : name.endsWith(".css") ? {} : require(name), exports);
+  new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks } : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t: makeT(props.locale ?? "en"), locale: props.locale ?? "en" }) } : name.endsWith(".css") ? {} : require(name), exports);
   const render = (next = {}) => { props = { ...props, ...next }; cursor = 0; dirty = false; tree = exports.WorkspaceExtensions(props); effects.splice(0).forEach(effect => effect()); return tree; };
   const flush = async () => { await tick(); for (let count = 0; count < 24 && dirty; count++) { render(); await tick(); } };
   const nodes = () => { const list = []; const walk = value => { if (Array.isArray(value)) value.forEach(walk); else if (value && typeof value === "object" && value.props) { list.push(value); walk(value.props.children); } }; walk(tree); return list; };
@@ -180,4 +180,27 @@ test("actual model rejects late results, changed epochs and malformed/scope-mism
   await f.model.selectWorkspace("A"); const proposalPending = deferred(); f.handlers["workspace.extensions.propose"] = () => proposalPending.promise;
   const change = { target: "agent", agentId: "main", agentEpoch: 1, sourceId, sourceRevision, enabled: true, allowedTools: [] };
   const proposing = f.model.proposeExtensions(change, 0, "A", "generation-A"); f.epochs.A = 2; await f.model.refresh(); proposalPending.resolve(proposal(change)); await assert.rejects(proposing);
+});
+
+
+test("callable state and honest last-call diagnostics render in every locale without issuing a call", async () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const outcome of ["server_reported_success", "outcome_unknown", "denied", "tool_error"]) {
+    let writes = 0; const t = makeT(locale), row = source({ enabled: true, workspaceEnabled: true, allowedTools: ["read"], callable: true, managerStatus: "reviewed",
+      lastCall: { at: "2026-11-04T04:00:00.000Z", durationMs: 25, toolId: "read", outcome, code: outcome === "server_reported_success" ? null : "mcp_schema_stale" } });
+    extensionView(view("A", { sources: [row] }), "A", "generation-A");
+    const f = mount(mock({ supportsExtensionManager: () => true, extensions: async () => view("A", { sources: [row] }), proposeExtensions: async () => { writes++; } }), { locale });
+    await f.flush(); assert.ok(f.text().includes(t("ws.extensions.callable"))); assert.ok(f.text().includes(t("ws.extensions.lastCall")));
+    assert.ok(f.text().includes(t(`ws.extensions.outcome.${outcome}`))); assert.ok(f.text().includes("25 ms"));
+    assert.doesNotMatch(f.text(), /mcp_schema_stale|ws\.extensions\./); assert.equal(writes, 0); f.unmount();
+  }
+});
+
+test("malformed or inconsistent invocation diagnostics fail closed instead of claiming callable", () => {
+  const callable = source({ enabled: true, workspaceEnabled: true, allowedTools: ["read"], callable: true, managerStatus: "reviewed" });
+  for (const patch of [{ managerStatus: "unreviewed" }, { workspaceEnabled: false }, { allowedTools: [] }, { status: "needs-review" },
+    { lastCall: { at: "invalid", durationMs: 1, toolId: "read", outcome: "outcome_unknown", code: null } },
+    { lastCall: { at: "2026-11-04", durationMs: -1, toolId: "read", outcome: "verified", code: "RAW_ERROR" } }]) {
+    assert.throws(() => extensionView(view("A", { sources: [{ ...callable, ...patch }] }), "A", "generation-A"));
+  }
+  assert.throws(() => extensionView(view("A", { readOnly: true, sources: [callable] }), "A", "generation-A"));
 });
