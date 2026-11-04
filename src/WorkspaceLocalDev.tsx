@@ -149,6 +149,34 @@ export function Transcript({ history, agent, t, detailed = false, stages = [], h
     {renderItem(item)}
   </Fragment>)}{renderStages(historyOffset + history.length)}</>;
 }
+/** Preview owns its subscription so a prose batch does not rerender the full transcript. */
+function AssistantDraft({ model, agent, t, follow }: { model: WorkspaceDevModel; agent?: WorkspaceDevAgent; t: Translate; follow(): void }) {
+  const preview = useSyncExternalStore(model.subscribeAssistantPreview, model.getAssistantPreviewSnapshot, model.getAssistantPreviewSnapshot);
+  const bubble = useRef<HTMLDivElement>(null), painted = useRef<string | null>(null);
+  useLayoutEffect(() => { if (preview) follow(); }, [preview?.seq, follow]);
+  useEffect(() => {
+    if (!preview || painted.current === preview.attemptId) return;
+    let first = 0, second = 0, stopped = false;
+    const observe = () => {
+      if (stopped || document.visibilityState !== "visible" || first || second) return;
+      first = requestAnimationFrame(() => { first = 0; second = requestAnimationFrame(() => {
+        second = 0;
+        const node = bubble.current, rect = node?.getBoundingClientRect();
+        if (stopped || document.visibilityState !== "visible" || !node?.isConnected || !rect || rect.width <= 0 || rect.height <= 0
+          || rect.bottom <= 0 || rect.top >= window.innerHeight || rect.right <= 0 || rect.left >= window.innerWidth) return;
+        painted.current = preview.attemptId; void model.paintAssistantPreview(preview);
+      }); });
+    };
+    observe(); document.addEventListener("visibilitychange", observe); window.addEventListener("scroll", observe, { capture: true, passive: true });
+    return () => { stopped = true; cancelAnimationFrame(first); cancelAnimationFrame(second);
+      document.removeEventListener("visibilitychange", observe); window.removeEventListener("scroll", observe, true); };
+  }, [model, preview?.attemptId, preview?.itemId]);
+  if (!preview) return null;
+  return <div className="wsd-message-group wsd-assistant-draft" data-attempt-id={preview.attemptId} data-preview-seq={preview.seq}>
+    <div className="hs-who">{agent?.identity.displayName ?? "Hara"} <span className="wsd-preview-label">{t("ws.preview.label")}</span></div>
+    <div className="hs-msg wsd-message is-agent"><Avatar agent={agent} /><div ref={bubble} className="hs-bub wsd-bubble wsd-preview-text" aria-label={t("ws.preview.label")}>{preview.text}</div></div>
+  </div>;
+}
 export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, onOpenBrowser }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string;
   mode: "workspace" | "lab"; onOpenBrowser?: () => void }) {
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -178,6 +206,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const channelRouteSelection = useRef<string | null>(null);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
   const stageReports = useMemo(() => model.runtimeStageReports(), [model, workspace]);
+  const followPreview = useCallback(() => { if (nearBottom.current) end.current?.scrollIntoView({ block: "end", behavior: "auto" }); }, []);
   const exportStageReport = useCallback((report: RuntimeStageReport) => model.exportRuntimeDiagnostic(report), [model]);
   const listBotModels = useCallback((runtimeId: string) => model.listRuntimeModels(runtimeId), [model]);
   const listConnectionModels = useCallback((agentId: string, connectionId: string) => model.listConnectionModels(agentId, connectionId), [model]);
@@ -472,6 +501,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             </aside> : null}
             <Transcript history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false}
               alwaysShowTimingDiagnostics={theme.settings?.alwaysShowTimingDiagnostics === true} stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
+            {!disconnected ? <AssistantDraft model={model} agent={agent} t={t} follow={followPreview} /> : null}
             {pendingSchedule?.scope === scope && pendingSchedule.agentId === agent?.agentId ? <section className="vg-chat-schedule-card" aria-label={locale !== "en" ? "确认定时" : "Confirm schedule"}>
               <header><strong>{locale !== "en" ? "确认定时" : "Confirm schedule"}</strong><small>{locale !== "en" ? "挂接同事" : "Colleague"} · {agent.identity.displayName}</small></header>
               <label>{locale !== "en" ? "名称" : "Name"}<input maxLength={60} value={pendingSchedule.draft.name} disabled={scheduleBusy} onChange={(event) => setPendingSchedule({ ...pendingSchedule, draft: { ...pendingSchedule.draft, name: event.target.value } })} /></label>

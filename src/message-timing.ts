@@ -35,36 +35,3 @@ export function parseMessageTimingReport(value: unknown): MessageTimingReport | 
   if ((value.points.T0 === null) !== (value.clientClockErrorMs === null) || value.points.T7 !== null && value.clientClockErrorMs === null) return null;
   return structuredClone(value) as unknown as MessageTimingReport;
 }
-/** Host monotonic observations; unobserved points remain null, including unavailable client paint. */
-export class MessageTimingRecorder {
-  private readonly points = Object.fromEntries(MESSAGE_TIMING_POINTS.map(key => [key, key === "T1" ? 0 : null])) as Record<MessageTimingPoint, number | null>;
-  private readonly began: number;
-  private readonly errorMs: number | null = null;
-  private ended = false;
-  constructor(private readonly options: { receivedAt?: number; client?: MessageTimingInput; now?: () => number } = {}) {
-    this.began = options.receivedAt ?? this.now();
-    if (!Number.isFinite(this.began) || this.began < 0) throw new Error("Invalid message timing clock");
-    const client = parseMessageTimingInput(options.client);
-    if (client && client.hostAtMs <= this.began && this.began - client.hostAtMs <= 60_000) {
-      this.points.T0 = Math.floor(client.hostAtMs - this.began); this.errorMs = Math.ceil(client.errorMs);
-    }
-  }
-  private now(): number { return (this.options.now ?? performance.now.bind(performance))(); }
-  mark(point: Exclude<MessageTimingPoint, "T0" | "T1" | "T7">, at = this.now()): void {
-    if (this.ended || !MESSAGE_TIMING_POINTS.includes(point) || this.points[point] !== null || !Number.isFinite(at)) return;
-    const offset = Math.floor(at - this.began);
-    if (offset >= 0 && offset <= LIMIT) this.points[point] = offset;
-  }
-  paint(input: MessageTimingInput): boolean {
-    const value = parseMessageTimingInput(input);
-    if (!value || this.points.T7 !== null || this.errorMs === null || Math.ceil(value.errorMs) !== this.errorMs) return false;
-    const offset = Math.floor(value.hostAtMs - this.began), now = this.now();
-    if (offset < 0 || offset > LIMIT || value.hostAtMs > now + this.errorMs || now - value.hostAtMs > 30_000) return false;
-    this.points.T7 = offset; return true;
-  }
-  finish(): void { if (!this.ended) { this.mark("T9"); this.ended = true; } }
-  snapshot(identity: MessageTimingIdentity): MessageTimingReport {
-    const report = parseMessageTimingReport({ schemaVersion: 1, ...identity, origin: "host_receive", clientClockErrorMs: this.errorMs, points: { ...this.points } });
-    if (!report) throw new Error("Invalid message timing identity"); return report;
-  }
-}

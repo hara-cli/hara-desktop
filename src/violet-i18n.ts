@@ -17,6 +17,7 @@ export const VIOLET_KEYS = [
   ["vg.none", "Not configured", "未配置", "未設定"],
   ["vg.connected", "Connected", "已连接", "已連線"],
   ["vg.disconnected", "Disconnected", "已断开", "已中斷"],
+  ["ws.preview.label", "Draft · responding", "草稿 · 正在回复", "草稿 · 正在回覆"],
   ["vg.overview", "Workspace overview", "工作区概览", "工作區概覽"],
   ["vg.colleagues", "Colleagues", "同事", "同事"],
   ["vg.pending", "Needs your attention", "待你处理", "待你處理"],

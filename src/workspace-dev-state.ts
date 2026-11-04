@@ -1,3 +1,5 @@
+import { parseWorkspaceAssistantPreview, type WorkspaceAssistantPreview } from "./assistant-preview.ts";
+import type { MessageTimingInput } from "./message-timing.ts";
 import { parseMessageTimingReport, type MessageTimingReport } from "./message-timing.ts";
 import { mcpReviewList, mcpReviewDetail, type McpReviewList, type McpReviewDetail } from "./workspace-mcp-review.ts";
 import { extensionView, type ExtensionChange, type ExtensionProposal, type WorkspaceExtensionsView } from "./workspace-extensions.ts";
@@ -9,7 +11,7 @@ import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-error
 import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
 import type { AgentRuntimeId, AgentRuntimeOption } from "./client";
-export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean }
+export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean; setAssistantPreviewListener?(listener: (value: WorkspaceAssistantPreview | null) => void): void; timingNow?(): MessageTimingInput | null }
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
 export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
@@ -89,6 +91,36 @@ export interface WorkspaceFeatureView { revision: number; workspaceId: string; s
 export class WorkspaceDevModel {
   private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, localHistoryStart: 0, runtimeChanging: false, runtimeBlocked: false, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "", dismissedRecoveryIdentity: null };
   private readonly listeners = new Set<() => void>();
+  private preview: WorkspaceAssistantPreview | null = null;
+  private readonly previewListeners = new Set<() => void>();
+  private previewRequest?: { key: string; epoch: number; requestId: string; runId?: string; painted: boolean };
+  getAssistantPreviewSnapshot = (): WorkspaceAssistantPreview | null => this.preview;
+  subscribeAssistantPreview = (listener: () => void) => { this.previewListeners.add(listener); return () => { this.previewListeners.delete(listener); }; };
+  private setPreview(value: WorkspaceAssistantPreview | null): void {
+    if (this.preview === value) return; this.preview = value;
+    for (const listener of this.previewListeners) listener();
+  }
+  private clearPreview(): void { this.previewRequest = undefined; this.setPreview(null); }
+  assistantPreview(value: unknown): void {
+    if (value === null) { this.clearPreview(); return; }
+    const frame = parseWorkspaceAssistantPreview(value), expected = this.previewRequest, workspace = this.view.workspace;
+    if (!frame || !expected || expected.epoch !== this.epoch || expected.key !== this.key() || !workspace
+      || frame.requestId !== expected.requestId || frame.workspaceId !== workspace.workspaceId || frame.resourceGeneration !== workspace.resourceGeneration
+      || frame.agentId !== workspace.selectedAgentId || frame.sessionId !== workspace.conversation.sessionId
+      || expected.runId && expected.runId !== frame.runId) return;
+    const before = this.preview;
+    if (before ? frame.attemptId !== before.attemptId || frame.nativeTurnId !== before.nativeTurnId || frame.itemId !== before.itemId
+      || frame.seq !== before.seq + 1 || !frame.text.startsWith(before.text) : frame.seq !== 1) return;
+    expected.runId = frame.runId; this.setPreview(frame);
+  }
+  async paintAssistantPreview(frame: WorkspaceAssistantPreview): Promise<void> {
+    const current = this.preview, expected = this.previewRequest, timing = this.rpc.timingNow?.();
+    if (!current || !expected || expected.painted || expected.epoch !== this.epoch || expected.key !== this.key() || !timing
+      || current.attemptId !== frame.attemptId || current.itemId !== frame.itemId || current.seq < frame.seq) return;
+    expected.painted = true;
+    try { await this.rpc.request("workspace.session.paint", { workspaceId: frame.workspaceId, expectedGeneration: frame.resourceGeneration,
+      agentId: frame.agentId, sessionId: frame.sessionId, runId: frame.runId, attemptId: frame.attemptId, timing }); } catch { /* Optional observation only. */ }
+  }
   private readonly drafts = new Map<string, string>();
   private readonly localHistoryStarts = new Map<string, { sessionId: string; offset: number; boundary: string }>();
   private readonly runtimeChanges = new Set<string>();
@@ -120,6 +152,7 @@ export class WorkspaceDevModel {
   private readonly settingsOnly: boolean;
   constructor(rpc: WorkspaceDevRpc, nonce: () => string = () => crypto.randomUUID(), syntheticOnly = true, executionMode = syntheticOnly ? "synthetic" : "ark-real-key", settingsOnly = false) {
     this.rpc = rpc; this.nonce = nonce; this.syntheticOnly = syntheticOnly; this.executionMode = executionMode; this.settingsOnly = settingsOnly;
+    if (!settingsOnly) rpc.setAssistantPreviewListener?.(value => this.assistantPreview(value));
   }
   getSnapshot = (): WorkspaceDevView => this.view;
   supportsRuntimePermissions(): boolean { return this.rpc.supportsCapability?.("workspace.runtime-permissions.v1") === true; }
@@ -204,7 +237,10 @@ export class WorkspaceDevModel {
     }
   }
   private apply(snapshot: WorkspaceDevSnapshot): void {
-    if (this.view.workspace && this.view.workspace.resourceGeneration !== snapshot.resourceGeneration) this.epoch++;
+    if (this.view.workspace && this.view.workspace.resourceGeneration !== snapshot.resourceGeneration) { this.epoch++; this.clearPreview(); }
+    if (this.preview && (snapshot.conversation.sessionId !== this.preview.sessionId
+      || snapshot.conversation.runId === this.preview.runId && (!(["running", "draining"].includes(snapshot.conversation.state))
+        || snapshot.conversation.history.slice(this.preview.historyStart).some(message => message.role === "assistant" && message.text)))) this.clearPreview();
     const key = this.key(snapshot), pending = this.pending.get(key);
     const identity = workspaceRecoveryIdentity(snapshot.conversation);
     const reset = this.nativeResets.get(key), resetVerified = Boolean(reset && snapshot.conversation.nativeSession?.lastResetRequestId === reset.requestId);
@@ -229,7 +265,7 @@ export class WorkspaceDevModel {
     if (epoch === this.epoch) this.update({ directory });
   }
   async selectWorkspace(workspaceId: string): Promise<void> {
-    const epoch = ++this.epoch;
+    const epoch = ++this.epoch; this.clearPreview();
     this.update({ workspaceId, agentId: null, roster: [], workspace: null, draft: "", loading: true, sending: false, pendingUnknown: false, error: "", syncNotice: "" });
     try {
       const directory = await this.rpc.request<WorkspaceDevDirectory>("workspace.list", {});
@@ -243,7 +279,7 @@ export class WorkspaceDevModel {
   }
   async selectAgent(agentId: string): Promise<void> {
     const workspace = this.view.workspace; if (!workspace || !workspace.agents.some(agent => agent.agentId === agentId)) return;
-    const epoch = ++this.epoch;
+    const epoch = ++this.epoch; this.clearPreview();
     this.update({ agentId, workspace: null, draft: "", loading: true, sending: false, pendingUnknown: false, error: "", syncNotice: "" });
     try {
       const snapshot = await this.rpc.request<WorkspaceDevSnapshot>("workspace.agent.select", { workspaceId: workspace.workspaceId,
@@ -705,10 +741,15 @@ export class WorkspaceDevModel {
       const identity = workspaceRecoveryIdentity(workspace.conversation);
       if (identity) { this.dismissedRecovery.set(key, identity); }
     }
+    this.previewRequest = { key, epoch: this.epoch, requestId: String(pending.payload.requestId), painted: false }; this.setPreview(null);
     this.pending.set(key, pending); this.update({ sending: true, pendingUnknown: false, error: "",
       dismissedRecoveryIdentity: (!resume && !answer) ? (workspaceRecoveryIdentity(workspace.conversation) ?? this.view.dismissedRecoveryIdentity) : this.view.dismissedRecoveryIdentity });
     try {
-      await this.rpc.request(pending.method, pending.payload);
+      const accepted = await this.rpc.request<{ runId?: string }>(pending.method, pending.payload);
+      if (this.previewRequest?.requestId === pending.payload.requestId && accepted?.runId) {
+        if (this.previewRequest.runId && this.previewRequest.runId !== accepted.runId) this.clearPreview();
+        else this.previewRequest.runId = accepted.runId;
+      }
       if (this.pending.get(key) !== pending) return; this.pending.delete(key);
       if ((pending.method !== "workspace.session.answer" || pending.fromDraft) && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
       // A→B→A may return to the exact same pending nonce. Settle its status without applying any
@@ -773,6 +814,7 @@ export class WorkspaceDevModel {
     } finally { this.approvalDecisions.delete(decisionKey); }
   }
   async cancel(): Promise<void> {
+    this.clearPreview();
     const workspace = this.view.workspace; if (!workspace?.conversation.runId) return; const epoch = this.epoch;
     try { await this.rpc.request("workspace.session.cancel", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration,
       agentId: workspace.selectedAgentId, runId: workspace.conversation.runId }); if (epoch === this.epoch) await this.refresh();

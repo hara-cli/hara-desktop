@@ -1,3 +1,4 @@
+import { parseWorkspaceAssistantPreview, type WorkspaceAssistantPreview } from "./assistant-preview.ts";
 import { parseMessageTimingInput, type MessageTimingInput } from "./message-timing.ts";
 import type { WorkspaceDevRpc } from "./workspace-dev-state";
 import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
@@ -12,6 +13,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
   private readonly production: boolean;
   private onChanged: (workspaceId: string, agentId?: string) => void = () => {};
   private capabilities = new Set<string>();
+  private onPreview: (value: WorkspaceAssistantPreview | null) => void = () => {};
   private clock: { offset: number; errorMs: number } | null = null;
   constructor(info: WorkspaceDevConnection, onDisconnect: () => void) {
     this.onDisconnect = onDisconnect;
@@ -24,13 +26,16 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       if (this.socket.readyState !== WebSocket.OPEN) return;
       let value: { id?: number; method?: string; params?: { workspaceId?: string; agentId?: string }; result?: unknown; error?: { message?: string; code?: number } };
       try { value = JSON.parse(String(event.data)); } catch { return; }
+      if (value.method === "workspace.assistant.preview") {
+        if (this.capabilities.has("workspace.assistant-preview.v1")) { const frame = parseWorkspaceAssistantPreview(value.params); if (frame) this.onPreview(frame); } return;
+      }
       if (value.method === "workspace.changed" && typeof value.params?.workspaceId === "string") { this.onChanged(value.params.workspaceId, typeof value.params.agentId === "string" ? value.params.agentId : undefined); return; }
       const pending = value.id === undefined ? undefined : this.pending.get(value.id); if (!pending || value.id === undefined) return;
       this.pending.delete(value.id); clearTimeout(pending.timer);
       if (value.error) pending.reject(Object.assign(new Error(value.error.message ?? "Workspace 請求失敗"), { code: value.error.code })); else pending.resolve(value.result);
     });
     this.socket.addEventListener("close", () => {
-      this.capabilities.clear(); this.clock = null;
+      this.capabilities.clear(); this.clock = null; this.onPreview(null);
       for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error("Workspace 連接已中斷")); }
       this.pending.clear(); this.onDisconnect();
     });
@@ -43,7 +48,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       const failed = () => { clean();reject(new Error("本機 Workspace Dev 無法連接")); };
       const timer = setTimeout(failed, 10000);this.socket.addEventListener("open", opened, { once: true });this.socket.addEventListener("error", failed, { once: true });this.socket.addEventListener("close", failed, { once: true });
     });
-    const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean; executionMode?: string }>("initialize", { token, clientCapabilities: ["workspace.extensions.manager.v1", "workspace.extensions.owner-review.v1"] });
+    const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean; executionMode?: string }>("initialize", { token, clientCapabilities: ["workspace.extensions.manager.v1", "workspace.extensions.owner-review.v1", "workspace.assistant-preview.v1"] });
     const capabilities = Array.isArray(result.capabilities) && result.capabilities.length <= 128
       && result.capabilities.every(value => typeof value === "string" && /^[a-z][a-z0-9.-]{0,100}$/.test(value)) ? result.capabilities : [];
     if (this.production ? !capabilities.includes("workspace.v1") || result.syntheticOnly !== false || result.executionMode !== "workspace"
@@ -62,6 +67,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       } catch { /* Optional timing never prevents a connection. */ }
     }
   }
+  setAssistantPreviewListener(listener: (value: WorkspaceAssistantPreview | null) => void): void { this.onPreview = listener; }
   setChangedListener(listener: (workspaceId: string, agentId?: string) => void): void { this.onChanged = listener; }
   supportsCapability(capability: string): boolean { return this.capabilities.has(capability); }
   timingNow(): MessageTimingInput | null {
