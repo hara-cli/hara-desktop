@@ -205,3 +205,51 @@ test("first-line extension cannot introduce nested fields, duplicate escaped key
   assert.equal(parseRuntimeFailure(escapedDuplicate, "codex"), null);
   assert.equal(parseRuntimeFailure(envelope({ errorFirstLine: "token=*** [path] [url] [account]" }), "codex").errorFirstLine, "token=*** [path] [url] [account]");
 });
+
+test("RPC diagnostics accept only a complete bounded Codex method/deadline pair", () => {
+  const pair = { rpcMethod: "thread/resume", rpcTimeoutMs: 10000 };
+  const parsed = parseRuntimeFailure(envelope(pair), "codex");
+  assert.equal(parsed.rpcMethod, pair.rpcMethod); assert.equal(parsed.rpcTimeoutMs, 10000);
+  for (const bad of [{ rpcMethod: "PRIVATE_RPC", rpcTimeoutMs: 10000 }, { rpcMethod: "thread/resume" }, { rpcTimeoutMs: 10000 },
+    { ...pair, rpcTimeoutMs: 499 }, { ...pair, rpcTimeoutMs: 120001 }, { ...pair, rpcTimeoutMs: 10000.5 },
+    { ...pair, runtime: "claude" }, { ...pair, prompt: "PRIVATE_PROMPT" }]) {
+    assert.equal(parseRuntimeFailure(envelope(bad)), null);
+  }
+  const copied = runtimeDiagnosticSummary(parsed, makeT("en"));
+  assert.match(copied, /thread\/resume/); assert.match(copied, /10000 ms/);
+  assert.doesNotMatch(copied, /PRIVATE|hara_runtime_failure_v1/);
+});
+
+test("native recovery shows the specific safe reason and manual restore retry only for a pre-turn restore timeout", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const info = { kind: "timeout", rpcMethod: "thread/resume", rpcTimeoutMs: 10000, consecutiveFailures: 3 };
+    const p = props(envelope(info), locale), t = p.t;
+    p.conversation.nativeSession = { runtimeId: "codex", revision: 3, status: "recovery_needed" };
+    let clicks = 0; p.onContinue = () => clicks++; p.onNewSession = () => clicks++;
+    const before = structuredClone(p.conversation), html = render(h(WorkspaceTaskRecovery, p));
+    assert.ok(html.includes('data-recovery="native-session"'));
+    assert.ok(html.includes('data-native-failure-kind="timeout"'));
+    assert.ok(html.includes(t("ws.native.restoreTimeout", { seconds: 10 })));
+    assert.ok(html.includes(t("ws.native.retryRestore"))); assert.ok(html.includes(t("ws.native.new")));
+    assert.ok(html.includes("thread/resume")); assert.ok(html.includes('data-runtime-diagnostic="true"'));
+    assert.equal(clicks, 0); assert.deepEqual(p.conversation, before);
+    assert.doesNotMatch(html, /PRIVATE|hara_runtime_failure_v1|ws\.runtimeDiagnostic\.|ws\.native\./);
+    for (const lock of [{ disabled: true }, { continueDisabled: true }, { conversation: { ...p.conversation, state: "draining" } },
+      { conversation: { ...p.conversation, resumeAdmission: { allowed: false, reason: "run_rounds" } } }]) {
+      const locked = render(h(WorkspaceTaskRecovery, { ...p, ...lock }));
+      assert.match(locked, /data-recovery-retry="true"[^>]*disabled/);
+      if (lock.conversation?.resumeAdmission?.reason === "run_rounds") assert.ok(locked.includes(t("ws.resume.budget")));
+    }
+    for (const other of [{ kind: "timeout", rpcMethod: "turn/start", rpcTimeoutMs: 10000 }, { kind: "runtime_auth_rejected" }]) {
+      const next = render(h(WorkspaceTaskRecovery, { ...p, conversation: { ...p.conversation, blockReason: envelope(other) } }));
+      assert.ok(next.includes(t(`ws.resume.runtime.${other.kind}.body`)));
+      assert.ok(next.includes('data-runtime-diagnostic="true"'));
+      assert.equal(next.includes("data-recovery-retry"), false, "unknown delivery never offers a restore retry");
+    }
+    const contextFull = render(h(WorkspaceTaskRecovery, { ...p, conversation: { ...p.conversation, nativeSession: { status: "new_session_required" } } }));
+    assert.equal(contextFull.includes("data-recovery-retry"), false);
+    assert.equal(contextFull.includes("data-runtime-diagnostic"), false, "context limit does not borrow an old unrelated timeout cause");
+    const malformed = render(h(WorkspaceTaskRecovery, { ...p, conversation: { ...p.conversation, blockReason: envelope({ ...info, rpcMethod: "PRIVATE_RPC" }) } }));
+    assert.doesNotMatch(malformed, /PRIVATE|data-runtime-diagnostic|data-recovery-retry/);
+  }
+});
