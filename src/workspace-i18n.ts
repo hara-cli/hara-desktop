@@ -38,6 +38,8 @@ export const WORKSPACE_KEYS = [
   ["ws.question.reason.lookup_missing", "Target not found", "没找到对应对象", "沒找到對應對象"],
   ["ws.question.reason.lookup_ambiguous", "Several matches", "有多个可能对象", "有多個可能對象"],
   ["ws.question.reason.tool_problem", "Step blocked", "步骤受阻", "步驟受阻"],
+  ["ws.question.template.runaway_guard", "Execution reached the runaway-loop safety checkpoint. Progress is saved. Check whether it is advancing, then choose Continue or Stop.", "连续执行已达到防死循环熔断点，进度已保留。请检查是否仍在推进，再选择继续或停止。", "連續執行已達到防死循環熔斷點，進度已保留。請檢查是否仍在推進，再選擇繼續或停止。"],
+  ["ws.question.reason.runaway_guard", "Loop safety checkpoint", "防死循环检查点", "防死循環檢查點"],
   ["ws.question.reason.budget_warning", "Near budget limit", "接近预算上限", "接近預算上限"],
   ["ws.question.reason.explicit", "Needs one answer", "需要一个回答", "需要一個回答"],
   ["ws.question.intent.rename_target", "Choose who to rename", "选择要改名的同事", "選擇要改名的同事"],

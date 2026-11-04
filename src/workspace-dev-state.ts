@@ -24,7 +24,7 @@ export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGe
 export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
 export type WorkspaceQuestionConversation = Pick<WorkspaceDevSnapshot["conversation"], "state" | "taskState" | "pendingQuestion" | "resumeAdmission" | "blockReason">;
-export interface WorkspaceDevQuestion { id: string; reason: "lookup_missing" | "lookup_ambiguous" | "tool_problem" | "budget_warning" | "explicit";
+export interface WorkspaceDevQuestion { id: string; reason: "lookup_missing" | "lookup_ambiguous" | "tool_problem" | "budget_warning" | "runaway_guard" | "explicit";
   question: string; options: string[]; taskId: string; runId: string; step?: string; header?: string; intent?: "rename_target" }
 /** Core unified interaction (workspace.interaction.v2). pendingQuestion remains the sync legacy shape. */
 export type WorkspaceDevInteraction =

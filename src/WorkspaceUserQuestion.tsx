@@ -10,6 +10,7 @@ const CORE_QUESTION_TEMPLATES: Record<WorkspaceDevQuestion["reason"], string[]> 
   lookup_ambiguous: ["Several evidenced matches remain. Which one do you mean?", "找到了多个可能的对象。你指的是哪一个？"],
   tool_problem: ["This step failed twice. Progress is saved. What should be corrected or clarified before continuing?", "当前步骤连续遇到问题，进度已保留。你希望先处理哪个卡点，或补充什么信息？"],
   budget_warning: ["This task is near its budget limit. Continue from the saved point within the original remaining allowance? Your answer will not reset the budget.", "本次任务快到预算上限，已保留当前位置。是否在原剩余额度内继续？回答不会重置预算。"],
+  runaway_guard: ["Execution reached the runaway-loop safety checkpoint. Progress is saved. Check whether it is advancing, then choose Continue or Stop.", "连续执行已达到防死循环熔断点，进度已保留。请检查是否仍在推进，再选择继续或停止。"],
   explicit: ["Please provide the information needed to continue this step.", "请补充继续当前步骤所需的信息。"],
 };
 export function workspaceQuestionText(t: Translate, question: Pick<WorkspaceDevQuestion, "reason" | "question">): string {
