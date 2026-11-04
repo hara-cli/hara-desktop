@@ -184,12 +184,13 @@ test("inherited extension diagnostics remain closed, backward compatible and loc
 
 test("redacted native first line survives escaped JSON and appears first in card and clipboard summary", async () => {
   const firstLine = 'Error: invalid transport in mcp_servers."disabled" {transport}';
-  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
-    const parsed = parseRuntimeFailure(envelope({ errorFirstLine: firstLine }), "codex");
+  for (const runtime of ["codex", "copilot", "cursor", "grok"]) for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const error = envelope({ runtime, errorFirstLine: firstLine, ...(runtime === "codex" ? {} : { extensionsIsolation: "inherited" }) });
+    const parsed = parseRuntimeFailure(error, runtime);
     assert.equal(parsed.errorFirstLine, firstLine);
     const summary = runtimeDiagnosticSummary(parsed, makeT(locale));
     assert.ok(summary.split("\n")[0].endsWith(firstLine));
-    const html = render(h(WorkspaceTaskRecovery, props(envelope({ errorFirstLine: firstLine }), locale)));
+    const html = render(h(WorkspaceTaskRecovery, props(error, locale, runtime)));
     assert.match(html, /Error: invalid transport/);
     const copied = []; await copyRuntimeDiagnostic(summary, async text => copied.push(text));
     assert.equal(copied[0], summary);
