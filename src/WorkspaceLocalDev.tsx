@@ -47,14 +47,15 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
   model: { respond(card: WorkspaceDevApproval, approved: boolean, draft?: ColleagueCreateDraft): Promise<void>;
     getSnapshot(): { workspace: { approvals: WorkspaceDevApproval[]; runtimeOptions?: { id: string; label: string; available: boolean }[] } | null } };
   t: Translate; disabled?: boolean; onSettled?: () => void; inDialog?: boolean }) {
+  const schedule = card.kind === "schedule_create", colleague = !schedule && card.kind !== "extension_call";
   const [pending, setPending] = useState(false), fence = useRef(false);
-  const [draft, setDraft] = useState<ColleagueCreateDraft | null>(() => card.kind === "schedule_create" ? null : { ...card.draft });
+  const [draft, setDraft] = useState<ColleagueCreateDraft | null>(() => card.kind === "schedule_create" || card.kind === "extension_call" ? null : { ...card.draft });
   const runtimeOptions = model.getSnapshot().workspace?.runtimeOptions?.filter(row => row.available && row.id !== "hara") ?? [];
   const edit = (key: keyof ColleagueCreateDraft, value: string) => setDraft(previous => previous ? { ...previous, [key]: value } : previous);
   const decide = async (approved: boolean) => {
-    if (fence.current || disabled || approved && !schedule && (!draft?.username.trim() || !draft.displayName.trim() || !draft.title.trim() || !runtimeOptions.some(row => row.id === draft.runtimeId))) return;
+    if (fence.current || disabled || approved && colleague && (!draft?.username.trim() || !draft.displayName.trim() || !draft.title.trim() || !runtimeOptions.some(row => row.id === draft.runtimeId))) return;
     fence.current = true; setPending(true);
-    try { await model.respond(card, approved, approved && !schedule ? draft ?? undefined : undefined);
+    try { await model.respond(card, approved, approved && colleague ? draft ?? undefined : undefined);
       if (!model.getSnapshot().workspace?.approvals.some(row => row.id === card.id)) onSettled?.();
     } finally { fence.current = false; setPending(false); }
   };
@@ -65,7 +66,6 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
     <div className="wsd-card-actions"><button className="hs-btn sec" disabled={pending || disabled} onClick={() => void decide(false)}>{t("ws.extensionApproval.decline")}</button>
       <button className="hs-btn pri" disabled={pending || disabled} onClick={() => void decide(true)}>{t("ws.extensionApproval.confirm")}</button></div>
   </section>;
-  const schedule = card.kind === "schedule_create";
   return <section className="hs-card wsd-approval" role="group" aria-label={t(schedule ? "ws.scheduleApproval.label" : "ws.approval.label")} id={`${inDialog ? "approval-dialog" : "approval"}-${card.id}`} tabIndex={-1}>
     <div className="wsd-kicker">{t("ws.approval.kicker")}</div>
     {schedule ? <><h3>{t("ws.scheduleApproval.title", { name: card.draft.title })}</h3>

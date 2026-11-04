@@ -753,7 +753,7 @@ export class WorkspaceDevModel {
     this.approvalDecisions.add(decisionKey);
     const epoch = this.epoch;
     try { await this.rpc.request("workspace.approval.respond", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, approvalId: card.id, approved,
-      ...(approved && card.kind !== "schedule_create" && draft ? { draft } : {}) });
+      ...(approved && card.kind !== "schedule_create" && card.kind !== "extension_call" && draft ? { draft } : {}) });
       if (epoch === this.epoch) await this.refresh();
     } catch (error) {
       if (epoch !== this.epoch) return;

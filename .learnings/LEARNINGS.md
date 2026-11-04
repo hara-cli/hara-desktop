@@ -680,3 +680,10 @@ profile cleanup asynchronously before reporting success; never remove or attach 
 - Related Files: package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/binaries/SIDECAR_COMMIT
 
 ---
+
+
+## [LRN-20261104-APPROVAL-VARIANTS] integration
+
+When adding extension approvals to a shared React card, gate editable colleague state and payloads by the actual colleague variant, preserving legacy cards with an omitted kind. Initialize schedule/colleague flags before callbacks and early returns: extension confirmation must not close over an uninitialized schedule flag or require colleague/runtime fields. Keep the existing ref fence during an in-flight decision. Behavioral regression mounts the actual ApprovalCard function and verifies extension read/exec, schedule, legacy colleague, disabled/invalid runtime and model payload cases.
+
+Large const translation tables should preserve their literal key union at the exported API, but widen only the internal row-value array to its four-string tuple shape before Object.fromEntries mapping. This avoids TypeScript's combinatorial union limit without weakening valid translation keys or changing copy.
