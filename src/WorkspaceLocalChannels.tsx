@@ -115,7 +115,7 @@ export function channelHistoryRows(snapshot: LocalChannelSnapshot): ChannelHisto
 }
 export function LocalChannelThread({ view, colleagues, t, retry, transcript, approval, model, scrollRoot, onFollowChange, onRepair, disabled = false }: { view: LocalChannelsView; colleagues: WorkspaceDevAgent[]; t: Translate; retry: () => void;
   transcript: (messages: WorkspaceDevMessage[], agent?: WorkspaceDevAgent) => ReactNode; approval: (card: WorkspaceDevApproval) => ReactNode;
-  model?: Pick<WorkspaceLocalChannelsModel, "setHistoryAnchor"> & Partial<Pick<WorkspaceLocalChannelsModel, "answer" | "pauseQuestion" | "supportsUserQuestions" | "supportsPass" | "supportsQueue" | "supportsAutonomy" | "speakPassed">>; onRepair?: () => void; disabled?: boolean; scrollRoot?: RefObject<HTMLDivElement | null>; onFollowChange?: (following: boolean) => void }) {
+  model?: Pick<WorkspaceLocalChannelsModel, "setHistoryAnchor"> & Partial<Pick<WorkspaceLocalChannelsModel, "answer" | "pauseQuestion" | "supportsUserQuestions" | "supportsPass" | "supportsQueue" | "supportsAutonomy" | "speakPassed" | "setRecipients">>; onRepair?: () => void; disabled?: boolean; scrollRoot?: RefObject<HTMLDivElement | null>; onFollowChange?: (following: boolean) => void }) {
   const channel = view.channel, rows = useMemo(() => channel ? channelHistoryRows(channel) : [], [channel]);
   const anchor = view.historyAnchor ?? null, page = useMemo(() => channelHistoryPage(rows, anchor), [rows, anchor]);
   const colleaguesById = useMemo(() => new Map(colleagues.map(row => [row.agentId, row])), [colleagues]);
@@ -180,6 +180,7 @@ export function LocalChannelThread({ view, colleagues, t, retry, transcript, app
     {rendered}
     {(channel.questions ?? []).map(row => <div key={row.conversation.pendingQuestion?.id} data-question-agent={row.agentId}><strong>{row.displayName}</strong>
       <WorkspaceUserQuestion conversation={row.conversation} t={t} disabled={disabled || view.saving || Boolean(view.pending) || Boolean(view.queueAction) || view.queueUnknown === true || ["running", "draining"].includes(channel.state)}
+        onTypeAnswer={model?.setRecipients ? () => { model.setRecipients!([row.agentId]); container.current?.closest(".hs-chat")?.querySelector<HTMLTextAreaElement>(".hs-channel-compose textarea")?.focus(); } : undefined}
         supported={model?.supportsUserQuestions?.() === true} onAnswer={(questionId, answer) => void model?.answer?.(row.agentId, questionId, answer)} onPause={questionId => void model?.pauseQuestion?.(row.agentId, questionId)} onRepair={onRepair ?? (() => {})} />
     </div>)}
     {page.hasNewer ? <nav className="hs-channel-history-nav" aria-label={t("ws.channels.history.label")}>

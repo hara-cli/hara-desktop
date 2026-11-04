@@ -3,6 +3,20 @@ import type { WorkspaceDevAsyncAsk, WorkspaceDevQuestion, WorkspaceQuestionConve
 import { connectionRecoveryReason } from "./workspace-resume";
 
 type Translate = ReturnType<typeof makeT>;
+const OTHER_INPUT_OPTIONS = new Set(["Other (type an answer)", "其它（输入）", "其它（輸入）"]);
+const answerChoices = (options: string[]) => options.filter(option => !OTHER_INPUT_OPTIONS.has(option.trim()));
+/** The custom-input action never submits its label as a user decision. */
+export function WorkspaceQuestionOptions({ id, options, t, disabled, onAnswer, onTypeAnswer }: {
+  id: string; options: string[]; t: Translate; disabled: boolean;
+  onAnswer(questionId: string, answer: string): void; onTypeAnswer?(): void;
+}) {
+  const choices = answerChoices(options);
+  return choices.length ? <div className="wsd-ask-options" role="group" aria-label={t("ws.question.choices")}>{choices.map((option, index) =>
+    <button type="button" className="hs-btn sec" key={`${id}:${index}`} disabled={disabled} onClick={() => onAnswer(id, option)}>{option}</button>)}
+    <button type="button" className="hs-btn sec" data-question-action="type" disabled={disabled || !onTypeAnswer} onClick={onTypeAnswer}>{t("ws.question.otherInput")}</button>
+  </div> : null;
+}
+
 // Core's built-in question copy is fixed when the question is created, in the session's language. Show the
 // viewer's language for those exact templates; any other model-written question stays verbatim.
 const CORE_QUESTION_TEMPLATES: Record<WorkspaceDevQuestion["reason"], string[]> = {
@@ -34,9 +48,9 @@ export function workspaceQuestionStep(t: Translate, step: string | undefined): s
 /** A question is scoped server state. No default, timeout answer, retry timer or browser storage.
  * The card sits in the message stream and offers only choices; free text goes through the one chat
  * composer below, which answers this question while it is pending. */
-export function WorkspaceUserQuestion({ conversation, t, disabled, supported, onAnswer, onRepair, onPause }: {
+export function WorkspaceUserQuestion({ conversation, t, disabled, supported, onAnswer, onRepair, onPause, onTypeAnswer }: {
   conversation: WorkspaceQuestionConversation; t: Translate; disabled: boolean; supported: boolean;
-  onAnswer(questionId: string, answer: string): void; onRepair(): void; onPause?(questionId: string): void;
+  onAnswer(questionId: string, answer: string): void; onRepair(): void; onPause?(questionId: string): void; onTypeAnswer?(): void;
 }) {
   const question = conversation.pendingQuestion; if (!question) return null;
   const finishing = ["running", "draining"].includes(conversation.state);
@@ -44,17 +58,17 @@ export function WorkspaceUserQuestion({ conversation, t, disabled, supported, on
   const blocked = disabled || !supported || finishing || Boolean(connection) || conversation.resumeAdmission?.allowed === false;
   const titleId = `question-${question.id}`;
   const step = workspaceQuestionStep(t, question.step);
-  return <section className="wsd-ask wsd-user-question is-thread" aria-labelledby={titleId} data-task-state="awaiting_user">
-    <header className="wsd-ask-head"><span className="wsd-ask-title">{question.header ?? t("ws.question.title")}</span><span className="wsd-ask-reason" role="status">{t(question.intent ? `ws.question.intent.${question.intent}` : `ws.question.reason.${question.reason}`)}</span></header>
+  const hasChoices = answerChoices(question.options).length > 0;
+  return <section className="wsd-ask wsd-user-question is-thread" aria-labelledby={titleId} data-task-state="awaiting_user" data-answer-mode={hasChoices ? "options" : "free-text"}>
+    <header className="wsd-ask-head"><span className="wsd-ask-title">{question.header ?? t("ws.question.title")}</span><span className="wsd-ask-reason" role="status">{t(question.intent && hasChoices ? `ws.question.intent.${question.intent}` : `ws.question.reason.${question.reason}`)}</span></header>
     <p id={titleId} className="wsd-user-question-text">{workspaceQuestionText(t, question)}</p>
     {step ? <p className="wsd-ask-step"><strong>{t("ws.question.step")}</strong> {step}</p> : null}
     {finishing ? <p role="status">{t("ws.resume.finishing")}</p> : null}
     {!supported ? <p role="alert">{t("ws.question.unsupported")}</p> : null}
     {conversation.resumeAdmission?.allowed === false ? <p role="alert">{t("ws.resume.budget")}</p> : null}
     {connection ? <><p role="alert">{t(`ws.resume.${connection}`)}</p><button type="button" className="hs-btn sec" onClick={onRepair} disabled={disabled}>{t("ws.resume.repairAction")}</button></> : null}
-    {question.options.length ? <div className="wsd-ask-options" role="group" aria-label={t("ws.question.choices")}>{question.options.map((option, index) =>
-      <button type="button" className="hs-btn sec" key={`${question.id}:${index}`} disabled={blocked} onClick={() => onAnswer(question.id, option)}>{option}</button>)}</div> : null}
-    <footer className="wsd-ask-foot"><small>{t("ws.question.composerHint")} {t("ws.question.saved")} {t("ws.question.noDefault")}</small>{onPause ? <button type="button" className="hs-btn sec" data-question-action="pause" disabled={disabled || !supported || finishing} onClick={() => onPause(question.id)}>{t("ws.question.pause")}</button> : null}</footer>
+    <WorkspaceQuestionOptions id={question.id} options={question.options} t={t} disabled={blocked} onAnswer={onAnswer} onTypeAnswer={onTypeAnswer} />
+    <footer className="wsd-ask-foot"><small>{t(hasChoices ? "ws.question.composerHint" : "ws.question.freeTextHint")} {t("ws.question.saved")} {t("ws.question.noDefault")}</small>{onPause ? <button type="button" className="hs-btn sec" data-question-action="pause" disabled={disabled || !supported || finishing} onClick={() => onPause(question.id)}>{t("ws.question.pause")}</button> : null}</footer>
   </section>;
 }
 
@@ -62,20 +76,19 @@ export function WorkspaceUserQuestion({ conversation, t, disabled, supported, on
  * and never replace or lock it; cards offer only choices. With exactly one open ask the composer
  * answers it, so free text never needs a second input. No default answer; an unanswered card closes
  * when the run ends. */
-export function WorkspaceAsyncQuestions({ asks, t, disabled, onAnswer }: {
-  asks: WorkspaceDevAsyncAsk[]; t: Translate; disabled: boolean; onAnswer(questionId: string, answer: string): void;
+export function WorkspaceAsyncQuestions({ asks, t, disabled, onAnswer, onTypeAnswer }: {
+  asks: WorkspaceDevAsyncAsk[]; t: Translate; disabled: boolean; onAnswer(questionId: string, answer: string): void; onTypeAnswer?(): void;
 }) {
   if (!asks.length) return null;
-  return <div className="wsd-ask-async-list" data-composer="async-questions">{asks.map(ask => <WorkspaceAsyncQuestion key={ask.requestId} ask={ask} t={t} disabled={disabled} onAnswer={onAnswer} viaComposer={asks.length === 1} />)}</div>;
+  return <div className="wsd-ask-async-list" data-composer="async-questions">{asks.map(ask => <WorkspaceAsyncQuestion key={ask.requestId} ask={ask} t={t} disabled={disabled} onAnswer={onAnswer} onTypeAnswer={asks.length === 1 ? onTypeAnswer : undefined} viaComposer={asks.length === 1} />)}</div>;
 }
-function WorkspaceAsyncQuestion({ ask, t, disabled, onAnswer, viaComposer }: { ask: WorkspaceDevAsyncAsk; t: Translate; disabled: boolean; onAnswer(questionId: string, answer: string): void; viaComposer: boolean }) {
+function WorkspaceAsyncQuestion({ ask, t, disabled, onAnswer, onTypeAnswer, viaComposer }: { ask: WorkspaceDevAsyncAsk; t: Translate; disabled: boolean; onAnswer(questionId: string, answer: string): void; onTypeAnswer?(): void; viaComposer: boolean }) {
   const item = ask.questions[0]; if (!item) return null;
   const titleId = `async-question-${ask.requestId}`;
   return <section className="wsd-ask is-async" aria-labelledby={titleId} data-delivery="async">
     <header className="wsd-ask-head"><span className="wsd-ask-title">{item.header ?? t("ws.question.async.title")}</span></header>
     <p id={titleId} className="wsd-user-question-text">{item.question}</p>
-    {item.options.length ? <div className="wsd-ask-options" role="group" aria-label={t("ws.question.choices")}>{item.options.map((option, index) =>
-      <button type="button" className="hs-btn sec" key={`${ask.requestId}:${index}`} disabled={disabled} onClick={() => onAnswer(ask.requestId, option)}>{option}</button>)}</div> : null}
-    <footer className="wsd-ask-foot"><small>{viaComposer ? `${t("ws.question.async.composerHint")} ` : ""}{t("ws.question.async.note")}</small></footer>
+    <WorkspaceQuestionOptions id={ask.requestId} options={item.options} t={t} disabled={disabled} onAnswer={onAnswer} onTypeAnswer={onTypeAnswer} />
+    <footer className="wsd-ask-foot"><small>{viaComposer ? `${t(answerChoices(item.options).length ? "ws.question.async.composerHint" : "ws.question.freeTextHint")} ` : ""}{t("ws.question.async.note")}</small></footer>
   </section>;
 }
