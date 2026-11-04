@@ -306,3 +306,15 @@ test("async cards sit inside the normal composer footer above the textarea", asy
   const asyncCards = source.indexOf("<WorkspaceAsyncQuestions"), composer = source.indexOf('<div className="hs-field wsd-composer"><textarea');
   assert(asyncCards >= 0 && asyncCards < composer, "async cards render in the composer footer, above the still-enabled textarea");
 });
+
+
+test("the high loop-safety checkpoint renders explicit Continue and Stop without a near-budget warning", () => {
+  const copy = "Execution reached the runaway-loop safety checkpoint. Progress is saved. Check whether it is advancing, then choose Continue or Stop.";
+  for (const language of ["en", "zh-Hans", "zh-Hant"]) {
+    const t = makeT(language), question = { ...q, reason: "runaway_guard", question: copy, options: ["Continue", "Stop"] };
+    const html = render(h(WorkspaceUserQuestion, { conversation: { ...conversation, pendingQuestion: question }, t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
+    assert(html.includes(t("ws.question.reason.runaway_guard"))); assert(html.includes(t("ws.question.template.runaway_guard")));
+    assert(html.includes(">Continue</button>")); assert(html.includes(">Stop</button>"));
+    assert.equal(html.includes(t("ws.question.reason.budget_warning")), false);
+  }
+});
