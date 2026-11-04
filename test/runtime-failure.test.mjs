@@ -180,3 +180,27 @@ test("inherited extension diagnostics remain closed, backward compatible and loc
   const duplicate = envelope({ runtime: "cursor", extensionsIsolation: "inherited" }).replace('"extensionsIsolation":"inherited"', '"extensionsIsolation":"inherited","extensionsIsolation":"inherited"');
   assert.equal(parseRuntimeFailure(duplicate), null);
 });
+
+
+test("redacted native first line survives escaped JSON and appears first in card and clipboard summary", async () => {
+  const firstLine = 'Error: invalid transport in mcp_servers."disabled" {transport}';
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const parsed = parseRuntimeFailure(envelope({ errorFirstLine: firstLine }), "codex");
+    assert.equal(parsed.errorFirstLine, firstLine);
+    const summary = runtimeDiagnosticSummary(parsed, makeT(locale));
+    assert.ok(summary.split("\n")[0].endsWith(firstLine));
+    const html = render(h(WorkspaceTaskRecovery, props(envelope({ errorFirstLine: firstLine }), locale)));
+    assert.match(html, /Error: invalid transport/);
+    const copied = []; await copyRuntimeDiagnostic(summary, async text => copied.push(text));
+    assert.equal(copied[0], summary);
+  }
+});
+
+test("first-line extension cannot introduce nested fields, duplicate escaped keys, secrets or extra lines", () => {
+  for (const errorFirstLine of ["x\ny", "x\ry", "x".repeat(321), "token=secret", "Authorization: Bearer secret", "/Users/private/auth.json", "https://private.example/?token=secret", "private@example.com", { message: "nested" }, "\u001b[31mError"]) {
+    assert.equal(parseRuntimeFailure(envelope({ errorFirstLine }), "codex"), null);
+  }
+  const escapedDuplicate = RUNTIME_FAILURE_MARKER + JSON.stringify(sample({ errorFirstLine: "safe" })).replace('{', '{"errorFirstL\\u0069ne":"duplicate",');
+  assert.equal(parseRuntimeFailure(escapedDuplicate, "codex"), null);
+  assert.equal(parseRuntimeFailure(envelope({ errorFirstLine: "token=*** [path] [url] [account]" }), "codex").errorFirstLine, "token=*** [path] [url] [account]");
+});

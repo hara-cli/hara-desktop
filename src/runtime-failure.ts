@@ -10,6 +10,7 @@ export interface RuntimeFailureDiagnostic {
   loginSource: "host" | "isolated" | "unknown";
   homeMatchesAccount: boolean | null;
   extensionsIsolation?: "inherited";
+  errorFirstLine?: string;
   elapsedMs: number;
   retryAtMs: number;
   consecutiveFailures: number;
@@ -17,20 +18,53 @@ export interface RuntimeFailureDiagnostic {
 const FIELDS = ["runtime", "kind", "version", "loginSource", "homeMatchesAccount", "elapsedMs", "retryAtMs", "consecutiveFailures"];
 const integer = (value: unknown, maximum: number): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= maximum;
 
+/** Extract a single flat JSON envelope, preserving duplicate-key rejection even with escaped strings. */
+function diagnosticEnvelope(source: string): { text: string; keys: string[] } | null {
+  if (source[0] !== "{") return null;
+  let quoted = false, escaped = false, start = 0;
+  const keys: string[] = [];
+  for (let i = 1; i < Math.min(source.length, 2048); i++) {
+    const c = source[i]!;
+    if (c === "\n" || c === "\r") return null;
+    if (quoted) {
+      if (escaped) { escaped = false; continue; }
+      if (c === "\\") { escaped = true; continue; }
+      if (c === '"') {
+        quoted = false;
+        if (/^\s*:/u.test(source.slice(i + 1))) {
+          try { keys.push(JSON.parse(source.slice(start, i + 1))); } catch { return null; }
+        }
+      }
+    } else if (c === '"') { quoted = true; start = i; }
+    else if (c === "{" || c === "[") return null;
+    else if (c === "}") return { text: source.slice(0, i + 1), keys };
+  }
+  return null;
+}
+
+function validErrorFirstLine(value: unknown): value is string {
+  return typeof value === "string" && value.trim() === value && value.length > 0 && [...value].length <= 320
+    && !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(value)
+    && !/(?:https?|socks[45]?):\/\/|(?:[A-Za-z]:[\\/]|\/)[^\s]+|[A-Za-z0-9_.+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/iu.test(value)
+    && !/\b[A-Za-z0-9_-]{20,}\b/u.test(value)
+    && !/(?:Bearer\s+(?!\*{3})\S+|(?:api[ _-]?key|token|password|secret)["']?\s*[:=]\s*["']?(?!\*{3}|\[redacted\])[^\s"']+)/iu.test(value);
+}
+
 /** Rebuild a closed diagnostic, never display or copy the original error or unknown fields. */
 export function parseRuntimeFailure(error: string | null | undefined, runtimeId?: string): RuntimeFailureDiagnostic | null {
   if (typeof error !== "string" || error.length > 4096) return null;
   const index = error.indexOf(RUNTIME_FAILURE_MARKER);
   if (index < 0 || error.indexOf(RUNTIME_FAILURE_MARKER, index + RUNTIME_FAILURE_MARKER.length) >= 0) return null;
-  const match = /^\{[^{}\r\n]{1,1024}\}/.exec(error.slice(index + RUNTIME_FAILURE_MARKER.length));
-  if (!match || match[0].includes("\\")) return null;
-  const fieldCount = match[0].match(/"[^"\\]*"\s*:/g)?.length ?? 0;
-  if (fieldCount < FIELDS.length || fieldCount > FIELDS.length + 1) return null;
+  const envelope = diagnosticEnvelope(error.slice(index + RUNTIME_FAILURE_MARKER.length));
+  if (!envelope || new Set(envelope.keys).size !== envelope.keys.length) return null;
+  const fieldCount = envelope.keys.length;
+  if (fieldCount < FIELDS.length || fieldCount > FIELDS.length + 2) return null;
   let row: Record<string, unknown>;
-  try { row = JSON.parse(match[0]); } catch { return null; }
+  try { row = JSON.parse(envelope.text); } catch { return null; }
   if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).length !== fieldCount
     || !FIELDS.every(field => Object.prototype.hasOwnProperty.call(row, field))
-    || Object.keys(row).some(field => !FIELDS.includes(field) && field !== "extensionsIsolation")) return null;
+    || Object.keys(row).some(field => !FIELDS.includes(field) && field !== "extensionsIsolation" && field !== "errorFirstLine")) return null;
+  if (Object.prototype.hasOwnProperty.call(row, "errorFirstLine") && !validErrorFirstLine(row.errorFirstLine)) return null;
   if (Object.prototype.hasOwnProperty.call(row, "extensionsIsolation") && (!["kimi", "copilot", "cursor", "grok"].includes(String(row.runtime)) || row.extensionsIsolation !== "inherited")) return null;
   if (row.runtime !== "pi" && row.runtime !== "codex" && row.runtime !== "claude" && row.runtime !== "opencode" && row.runtime !== "gemini" && row.runtime !== "kimi" && row.runtime !== "copilot" && row.runtime !== "cursor" && row.runtime !== "grok") return null;
   if (runtimeId !== undefined && row.runtime !== runtimeId) return null;
@@ -43,7 +77,7 @@ export function parseRuntimeFailure(error: string | null | undefined, runtimeId?
   // Core permits at most 30s. Allow 1s clock skew, but never keep a malformed record ticking forever.
   // Expired history remains valid and does not impose another cooldown.
   if (row.retryAtMs > Date.now() + 31_000) return null;
-  return { runtime: row.runtime, ...(row.extensionsIsolation === "inherited" ? { extensionsIsolation: "inherited" as const } : {}), kind: row.kind as RuntimeFailureKind, version: row.version as string | null,
+  return { runtime: row.runtime, ...(typeof row.errorFirstLine === "string" ? { errorFirstLine: row.errorFirstLine } : {}), ...(row.extensionsIsolation === "inherited" ? { extensionsIsolation: "inherited" as const } : {}), kind: row.kind as RuntimeFailureKind, version: row.version as string | null,
     loginSource: row.loginSource as RuntimeFailureDiagnostic["loginSource"], homeMatchesAccount: row.homeMatchesAccount as boolean | null,
     elapsedMs: row.elapsedMs, retryAtMs: row.retryAtMs, consecutiveFailures: row.consecutiveFailures };
 }
@@ -58,6 +92,7 @@ export function runtimeLoginCommand(runtime: RuntimeFailureDiagnostic["runtime"]
 
 export function runtimeDiagnosticSummary(diagnostic: RuntimeFailureDiagnostic, t: ReturnType<typeof makeT>): string {
   return [
+    ...(diagnostic.errorFirstLine ? [`${t("ws.runtimeDiagnostic.errorFirstLine")}: ${diagnostic.errorFirstLine}`] : []),
     `${t("ws.runtimeDiagnostic.runtime")}: ${diagnostic.runtime}`,
     ...(diagnostic.extensionsIsolation ? [`${t("ws.runtimeDiagnostic.extensionsIsolation")}: ${diagnostic.extensionsIsolation}`] : []),
     `${t("ws.runtimeDiagnostic.kind")}: ${t(`ws.resume.runtime.${diagnostic.kind}.title`)}`,

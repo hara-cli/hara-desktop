@@ -17,7 +17,7 @@ function RuntimeFailureDetails({ diagnostic, t }: { diagnostic: RuntimeFailureDi
   const [copyState, setCopyState] = useState<"idle" | "copied" | "copyFailed">("idle");
   const summary = runtimeDiagnosticSummary(diagnostic, t);
   return <details className="wsd-runtime-diagnostic" data-runtime-diagnostic="true">
-    <summary>{t("ws.runtimeDiagnostic.title")}</summary>
+    <summary>{diagnostic.errorFirstLine ?? t("ws.runtimeDiagnostic.title")}</summary>
     <pre tabIndex={0}>{summary}</pre>
     <button type="button" className="hs-btn sec" onClick={async () => {
       const clipboard = globalThis.navigator?.clipboard;

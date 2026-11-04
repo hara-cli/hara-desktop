@@ -638,6 +638,7 @@ export const WORKSPACE_EXTRA_KEYS = [
   ['ws.resume.body', 'History and files are retained. Check the result before explicitly continuing. Restarting does not rerun the task.', '历史与文件已保留。请先检查结果，再明确继续原任务；重启不会自动重跑。', '歷史與檔案已保留。請先檢查結果，再明確繼續原任務；重新啟動不會自動重跑。'],
   ["ws.runtimeDiagnostic.title", "Diagnostic summary", "诊断摘要", "診斷摘要"],
   ["ws.runtimeDiagnostic.runtime", "Runtime", "引擎", "引擎"],
+  ["ws.runtimeDiagnostic.errorFirstLine", "Runtime error (redacted)", "引擎错误（已脱敏）", "引擎錯誤（已脫敏）"],
   ["ws.runtimeDiagnostic.kind", "Cause", "原因", "原因"],
   ["ws.runtimeDiagnostic.version", "Version", "版本", "版本"],
   ["ws.runtimeDiagnostic.loginSource", "Login source", "登录来源", "登入來源"],
