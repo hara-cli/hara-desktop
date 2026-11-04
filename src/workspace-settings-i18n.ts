@@ -1,6 +1,21 @@
 import { PERSONAL_EXTENSIONS_COPY } from "./agent-runtime-selection.ts";
 // Workspace settings copy. Keep notices as keys so an open page can change language.
 export const WORKSPACE_SETTINGS_KEYS = [
+  ["ws.extensions.managerNote", "Reviewed tools run through Hara permissions and a confirmation for each call.", "已审工具经 Hara 权限检查，并在每次调用时确认。", "已審工具經 Hara 權限檢查，並在每次呼叫時確認。"],
+  ["ws.extensions.callable", "Enabled · callable", "已启用 · 可调用", "已啟用 · 可呼叫"],
+  ["ws.extensions.lastCall", "Most recent call", "最近调用", "最近呼叫"],
+  ["ws.extensions.outcome.server_reported_success", "The upstream server returned a result.", "上游服务已返回结果。", "上游服務已傳回結果。"],
+  ["ws.extensions.outcome.tool_error", "The upstream tool reported an error.", "上游工具报告错误。", "上游工具回報錯誤。"],
+  ["ws.extensions.outcome.denied", "The call was not dispatched.", "调用未派发。", "呼叫未送出。"],
+  ["ws.extensions.outcome.outcome_unknown", "The outcome is unknown. Check the original operation before trying again.", "结果未知，请先核对原操作再决定是否重试。", "結果未知，請先核對原操作再決定是否重試。"],
+  ["ws.extensions.callStale", "This source or tool changed. Review it again before calling.", "来源或工具已变更，请复核后再调用。", "來源或工具已變更，請複核後再呼叫。"],
+  ["ws.extensions.callFailed", "The connection could not complete this call. Reload to check its current state.", "连接未能完成本次调用，请重新读取当前状态。", "連接未能完成本次呼叫，請重新讀取目前狀態。"],
+  ["ws.extensionApproval.label", "Confirm external tool call", "确认外部工具调用", "確認外部工具呼叫"],
+  ["ws.extensionApproval.read", "Read from this reviewed connection", "从此已审连接读取", "從此已審連接讀取"],
+  ["ws.extensionApproval.exec", "Perform this external operation", "执行本次外部操作", "執行本次外部操作"],
+  ["ws.extensionApproval.boundary", "This confirms the reviewed connection startup and this one call only.", "仅确认启动此已审连接并执行这一次调用。", "僅確認啟動此已審連接並執行這一次呼叫。"],
+  ["ws.extensionApproval.decline", "Decline call", "拒绝调用", "拒絕呼叫"],
+  ["ws.extensionApproval.confirm", "Confirm this call", "确认本次调用", "確認本次呼叫"],
   ["ws.runtimes.extensionsInherited", PERSONAL_EXTENSIONS_COPY.en, PERSONAL_EXTENSIONS_COPY["zh-Hans"], PERSONAL_EXTENSIONS_COPY["zh-Hant"]],
   ["ws.runtimes.manualInstall", "Not installed. Install this CLI and sign in using its official guide, then rescan. Hara reuses the existing login.", "未安装。请按官方说明安装并登录 CLI，再重新检测；Hara 复用本机已有登录。", "未安裝。請依官方說明安裝並登入 CLI，再重新偵測；Hara 沿用本機既有登入。"],
   ["ws.runtimes.manualGuide", "Official installation guide", "官方安装说明", "官方安裝說明"],

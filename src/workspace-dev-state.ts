@@ -20,6 +20,7 @@ export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGe
   channelId?: string;
   status?: "pending" | "approved" | "rejected" | "expired"; risk?: "high" | "normal"; paid?: boolean; externalSend?: boolean; destructive?: boolean;
 } & ({ kind?: "agent_create"; draft: { username: string; displayName: string; title: string; instructions: string; runtimeId: "pi" } }
+  | { kind: "extension_call"; draft: { sourceName: string; toolName: string; target: string; action: "read" | "exec" } }
   | { kind: "schedule_create"; draft: { title: string; task: string; timing: string; tz: string } });
 export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
@@ -371,6 +372,7 @@ export class WorkspaceDevModel {
     const workspace = this.view.workspace;
     if (workspace?.workspaceId !== workspaceId || workspace.resourceGeneration !== generation) throw new WorkspaceViewError("ws.notice.scopeChanged");
   }
+  supportsExtensionManager(): boolean { return this.rpc.supportsCapability?.("workspace.extensions.manager.v1") === true; }
   supportsExtensions(): boolean { return this.rpc.supportsCapability?.("workspace.extensions.v1") === true; }
   private assertExtensionScope(workspaceId: string, generation: string, agent?: { agentId: string; agentEpoch: number }): void {
     this.assertRuntimeProxyScope(workspaceId, generation);

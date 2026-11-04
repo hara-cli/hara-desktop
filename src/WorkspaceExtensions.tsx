@@ -14,7 +14,7 @@ export function WorkspaceExtensions({ model, workspaceId, generation, agent, onD
   model: WorkspaceDevModel; workspaceId: string; generation: string; agent?: { agentId: string; agentEpoch: number };
   onDirty?: (value: boolean) => void;
 }) {
-  const { t } = useWorkspaceLocale();
+  const { t, locale } = useWorkspaceLocale();
   const supported = model.supportsExtensions?.() === true;
   const [view, setView] = useState<WorkspaceExtensionsView | null>(null), [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [needsReload, setNeedsReload] = useState(false);
@@ -73,7 +73,7 @@ export function WorkspaceExtensions({ model, workspaceId, generation, agent, onD
   return <section className="wse" aria-label={t(agent ? "ws.extensions.assignmentTitle" : "ws.extensions.title")}>
     <header className="wse-heading"><h3>{t(agent ? "ws.extensions.assignmentTitle" : "ws.extensions.title")}</h3>
       {supported ? <button type="button" disabled={loading || busy || !!proposal} onClick={() => void load()}>{t("ws.extensions.reload")}</button> : null}</header>
-    <p className="wse-note">{t("ws.extensions.note")}</p><p className="wse-note">{t("ws.extensions.timing")}</p>
+    <p className="wse-note">{t(model.supportsExtensionManager?.() ? "ws.extensions.managerNote" : "ws.extensions.note")}</p><p className="wse-note">{t("ws.extensions.timing")}</p>
     {!supported ? <p role="status">{t("ws.extensions.unavailable")}</p> : loading ? <p role="status">{t("ws.extensions.loading")}</p> : null}
     {notice ? <p role={notice === "ws.extensions.saved" ? "status" : "alert"}>{t(notice)}</p> : null}
     {current?.readOnly ? <p role="status">{t("ws.extensions.readOnly")}</p> : null}
@@ -83,8 +83,13 @@ export function WorkspaceExtensions({ model, workspaceId, generation, agent, onD
       const changed = JSON.stringify(draft) !== JSON.stringify(baseline) || source.status === "needs-review";
       const rowDisabled = disabled || !!agent && !source.workspaceEnabled && !baseline.enabled;
       return <article key={source.sourceId} className="wse-source">
-        <header><div><strong>{source.name}</strong><small>{t(`ws.extensions.${source.kind}`)} · {source.transport}</small></div><span className="wse-status">{t(statusKey(source))}</span></header>
+        <header><div><strong>{source.name}</strong><small>{t(`ws.extensions.${source.kind}`)} · {source.transport}</small></div><span className="wse-status">{t(source.callable ? "ws.extensions.callable" : statusKey(source))}</span></header>
         <p>{source.description}</p><small>{source.executableSummary}</small>
+        {source.lastCall ? <details className="wse-diagnostics"><summary>{t("ws.extensions.lastCall")}</summary>
+          <p>{source.tools.find(tool => tool.toolId === source.lastCall!.toolId)?.name ?? source.lastCall.toolId}</p>
+          <p>{t(`ws.extensions.outcome.${source.lastCall.outcome}`)}</p><small>{new Date(source.lastCall.at).toLocaleString(locale)} · {source.lastCall.durationMs} ms</small>
+          {source.lastCall.code ? <p>{t(source.lastCall.code === "mcp_schema_stale" || source.lastCall.code === "mcp_source_stale" ? "ws.extensions.callStale" : "ws.extensions.callFailed")}</p> : null}
+        </details> : null}
         <label className="wse-switch"><input type="checkbox" checked={draft.enabled} disabled={rowDisabled}
           onChange={event => edit(source, { ...draft, enabled: event.target.checked })} />{t(agent ? "ws.extensions.agentSwitch" : "ws.extensions.workspaceSwitch")}</label>
         {agent && !source.workspaceEnabled ? <p className="wse-note">{t("ws.extensions.spaceFirst")}</p> : null}

@@ -25,7 +25,7 @@ test("visible assistant replies and user turns separate operations, including pe
   assert.equal(blocks.at(-1).results.length, 0, "a pending operation still contributes to the count");
 });
 const require = createRequire(import.meta.url), root = fileURLToPath(new URL("../", import.meta.url));
-const bundled = await build({ stdin: { contents: 'export { Transcript } from "./src/WorkspaceLocalDev.tsx";', resolveDir: root, loader: "tsx" },
+const bundled = await build({ stdin: { contents: 'export { Transcript, ApprovalCard } from "./src/WorkspaceLocalDev.tsx";', resolveDir: root, loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);
 const { createElement } = require("react"), { renderToStaticMarkup } = require("react-dom/server");
@@ -98,4 +98,18 @@ test("Soft Dark bubble CSS resets pre-wrap and styles Markdown without App.css",
   const { readFile } = await import("node:fs/promises"), css = await readFile(new URL("../src/workspace-local-dev.css", import.meta.url), "utf8");
   assert.match(css, /\.hs \.hs-bub \.md \{ white-space:normal; \}/);
   for (const selector of ["ul", "table", "th", "pre", "code", "blockquote", "a"]) assert.match(css, new RegExp(`\\.hs \\.hs-bub \\.md ${selector}\\b`));
+});
+
+
+test("actual external approval cards identify the one-call boundary, action and escaped target in three locales", () => {
+  const model = { async respond() {}, getSnapshot: () => ({ workspace: null }) };
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const action of ["read", "exec"]) {
+    const t = makeT(locale), card = { id: "synthetic-call", kind: "extension_call", draft: { sourceName: "Synthetic MCP", toolName: "fixture_read", target: '<script>synthetic only</script>', action } };
+    const html = renderToStaticMarkup(createElement(module.exports.ApprovalCard, { card, model, t }));
+    for (const key of ["ws.extensionApproval.label", "ws.extensionApproval." + action, "ws.extensionApproval.boundary", "ws.extensionApproval.confirm", "ws.extensionApproval.decline"]) assert.ok(html.includes(t(key)), key);
+    assert.ok(html.includes("Synthetic MCP / fixture_read")); assert.ok(html.includes("&lt;script&gt;synthetic only&lt;/script&gt;")); assert.equal(html.includes("<script>"), false);
+    assert.equal(html.includes(t("ws.approval.runtime")), false); assert.equal((html.match(/<button/g) ?? []).length, 2);
+    const disabled = renderToStaticMarkup(createElement(module.exports.ApprovalCard, { card, model, t, disabled: true }));
+    assert.equal((disabled.match(/<button[^>]*disabled/g) ?? []).length, 2);
+  }
 });

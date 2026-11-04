@@ -39,7 +39,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       const failed = () => { clean();reject(new Error("本機 Workspace Dev 無法連接")); };
       const timer = setTimeout(failed, 10000);this.socket.addEventListener("open", opened, { once: true });this.socket.addEventListener("error", failed, { once: true });this.socket.addEventListener("close", failed, { once: true });
     });
-    const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean; executionMode?: string }>("initialize", { token });
+    const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean; executionMode?: string }>("initialize", { token, clientCapabilities: ["workspace.extensions.manager.v1"] });
     this.capabilities = new Set(Array.isArray(result.capabilities) ? result.capabilities : []);
     if (this.production ? !result.capabilities?.includes("workspace.v1") || result.syntheticOnly !== false || result.executionMode !== "workspace"
       : !result.capabilities?.includes("workspace.local-dev.v2") || (this.realKey

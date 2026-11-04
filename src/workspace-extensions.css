@@ -15,3 +15,8 @@
 .vg-colleague-manage .wse { padding: 16px; border-top: 1px solid var(--wsd-line, #ffffff18); }
 .vg-colleague-manage .wse-heading, .vg-colleague-manage .wse-source > header, .vg-colleague-manage .wse-source > footer { flex-wrap: wrap; }
 .vg-colleague-manage .wse-source { padding: 12px; }
+
+.wse-diagnostics { border-top: 1px solid var(--wsd-line, #ffffff18); padding-top: 10px; }
+.wse-diagnostics summary { cursor: pointer; font-size: 12px; }
+.wse-diagnostics p { margin-top: 8px; }
+.wsd-approval > pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

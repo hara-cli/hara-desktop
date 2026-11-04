@@ -53,6 +53,13 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
       if (!model.getSnapshot().workspace?.approvals.some(row => row.id === card.id)) onSettled?.();
     } finally { fence.current = false; setPending(false); }
   };
+  if (card.kind === "extension_call") return <section className="hs-card wsd-approval" role="group" aria-label={t("ws.extensionApproval.label")} id={`${inDialog ? "approval-dialog" : "approval"}-${card.id}`} tabIndex={-1}>
+    <div className="wsd-kicker">{t("ws.approval.kicker")}</div><h3>{card.draft.sourceName} / {card.draft.toolName}</h3>
+    <p>{t(card.draft.action === "read" ? "ws.extensionApproval.read" : "ws.extensionApproval.exec")}</p>
+    <pre>{card.draft.target}</pre><p>{t("ws.extensionApproval.boundary")}</p>
+    <div className="wsd-card-actions"><button className="hs-btn sec" disabled={pending || disabled} onClick={() => void decide(false)}>{t("ws.extensionApproval.decline")}</button>
+      <button className="hs-btn pri" disabled={pending || disabled} onClick={() => void decide(true)}>{t("ws.extensionApproval.confirm")}</button></div>
+  </section>;
   const schedule = card.kind === "schedule_create";
   return <section className="hs-card wsd-approval" role="group" aria-label={t(schedule ? "ws.scheduleApproval.label" : "ws.approval.label")} id={`${inDialog ? "approval-dialog" : "approval"}-${card.id}`} tabIndex={-1}>
     <div className="wsd-kicker">{t("ws.approval.kicker")}</div>
