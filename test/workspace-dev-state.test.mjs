@@ -324,6 +324,18 @@ test("stale or foreign approval cards never dispatch", async () => {
   assert.equal(f.calls.some(call => call.method === "workspace.approval.respond"), false);
   await f.model.respond(card, true); assert.equal(f.calls.filter(call => call.method === "workspace.approval.respond").length, 1);
 });
+test("an edited colleague draft is sent only with the exact current approval", async () => {
+  const f = fixture(); await f.ready();
+  const draft = { username: "video-owner", displayName: "Video Owner", title: "Video lead", instructions: "Manage video work.",
+    project: "Project: /known/video", runtimeId: "pi", permissionTier: "controlled" };
+  const card = { id: "video-card", workspaceId: "A", resourceGeneration: "generation-1", agentId: "main", kind: "agent_create", draft };
+  f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), approvals: [card] }); await f.model.refresh();
+  await f.model.respond({ ...card, id: "foreign" }, true, draft);
+  assert.equal(f.calls.some(call => call.method === "workspace.approval.respond"), false);
+  await f.model.respond(card, true, draft);
+  const calls = f.calls.filter(call => call.method === "workspace.approval.respond");
+  assert.equal(calls.length, 1); assert.deepEqual(calls[0].params.draft, draft);
+});
 test("read-only refresh never sends/resumes; missing connection refuses execution", async () => {
   const f = fixture(); await f.ready(); f.handlers["workspace.snapshot"] = () => ({ ...snapshot(), connections: { revision: 0, defaultConnectionId: null, connections: [] } });
   await f.model.refresh(); f.model.setDraft("hello"); await f.model.send(); await f.model.send(true);

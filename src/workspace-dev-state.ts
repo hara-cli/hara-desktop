@@ -16,10 +16,12 @@ export type RuntimePermissionTier = "full-protected" | "controlled";
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
   configRevision?: number; agentEpoch?: number; description?: string; permissionTier?: RuntimePermissionTier;
   identity: { displayName: string; title?: string; emoji?: string; avatar?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
+export interface ColleagueCreateDraft { username: string; displayName: string; title: string; instructions: string;
+  project: string; runtimeId: AgentRuntimeId; permissionTier: RuntimePermissionTier }
 export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
   channelId?: string;
   status?: "pending" | "approved" | "rejected" | "expired"; risk?: "high" | "normal"; paid?: boolean; externalSend?: boolean; destructive?: boolean;
-} & ({ kind?: "agent_create"; draft: { username: string; displayName: string; title: string; instructions: string; runtimeId: "pi" } }
+} & ({ kind?: "agent_create"; draft: ColleagueCreateDraft; projectOptions?: string[]; catalogRevision?: number }
   | { kind: "schedule_create"; draft: { title: string; task: string; timing: string; tz: string } });
 export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
@@ -703,7 +705,7 @@ export class WorkspaceDevModel {
         syncNotice: "ws.notice.receiptUnavailable" });
     }
   }
-  async respond(card: WorkspaceDevApproval, approved: boolean): Promise<void> {
+  async respond(card: WorkspaceDevApproval, approved: boolean, draft?: ColleagueCreateDraft): Promise<void> {
     const workspace = this.view.workspace;
     if (!workspace || card.workspaceId !== workspace.workspaceId || card.agentId !== workspace.selectedAgentId
       || card.resourceGeneration !== workspace.resourceGeneration || !workspace.approvals.some(current => current.id === card.id)) return;
@@ -711,7 +713,8 @@ export class WorkspaceDevModel {
     if (this.approvalDecisions.has(decisionKey)) return;
     this.approvalDecisions.add(decisionKey);
     const epoch = this.epoch;
-    try { await this.rpc.request("workspace.approval.respond", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, approvalId: card.id, approved });
+    try { await this.rpc.request("workspace.approval.respond", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, approvalId: card.id, approved,
+      ...(approved && card.kind !== "schedule_create" && draft ? { draft } : {}) });
       if (epoch === this.epoch) await this.refresh();
     } catch (error) {
       if (epoch !== this.epoch) return;
