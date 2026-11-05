@@ -105,7 +105,7 @@ test("real workspace screen retains colleague decisions, collapsed execution and
   for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /value="Reviewer"/, /wsd-colleague-draft/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
   const success = renderScreen(view());
   assert.match(success, /Local fixture reply/);
-  assert.doesNotMatch(success, /已核驗結果|wsd-timing-verified/, "legacy history without T9 never gains timing completion proof");
+  assert.doesNotMatch(success, /已核驗結果|wsd-timing-chip| ✓/, "legacy history without T9 never gains timing completion proof");
   assert.doesNotMatch(success, /wsd-execution|1 個操作 · <span>查看詳情/);
   assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
   assert.equal(html.includes('aria-label="建立群"'), true);
