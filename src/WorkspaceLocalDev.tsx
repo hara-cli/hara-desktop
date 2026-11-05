@@ -1,3 +1,4 @@
+import type { AgentRuntimeId } from "./client";
 import { WorkspaceContextCompaction } from "./WorkspaceContextCompaction";
 import type { ContextCompactionView } from "./context-compaction";
 import { WorkspaceDraftTiming, WorkspaceOptimisticMessage, WorkspaceTimingChip, WorkspaceWaiting, compactFailureHandled } from "./WorkspaceWaitTiming";
@@ -556,6 +557,12 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
               onNewSession={model.supportsNativeSessions() && workspace.conversation.nativeSession ? () => void model.newNativeSession() : undefined}
               continueDisabled={!hasConnection || view.runtimeBlocked || busy} dismissedIdentity={view.dismissedRecoveryIdentity}
               onContinue={() => void model.send(true)} onRepair={() => { setSettingsPage("connections");setSettings(true); }}
+              runtimeUpdate={(() => { const row = workspace.runtimes?.options.find(item => item.runtimeId === agent?.runtime.id);
+                return agent && model.supportsRuntimeForm?.() && row?.use === "confirm_update" && row.fingerprint ? { engine: agent.runtime.label, version: row.version } : null; })()}
+              onConfirmUpdate={() => { const row = workspace.runtimes?.options.find(item => item.runtimeId === agent?.runtime.id);
+                if (!agent || !row?.fingerprint) return;
+                void model.applyRuntimeForm(agent, { runtimeId: agent.runtime.id as AgentRuntimeId, confirm: { fingerprint: row.fingerprint, loginSource: row.loginSource ?? "host" } })
+                  .then(result => { if (!result.failed) void model.send(true); }).catch(() => { /* The card stays; Settings shows the reason. */ }); }}
               onDismiss={() => model.dismissRecovery()} /> : null}
             {question ? <WorkspaceUserQuestion key={`${scope}:${question.id}`} conversation={workspace.conversation} t={t}
               disabled={Boolean(disconnected) || view.sending || view.pendingUnknown} supported={model.supportsUserQuestions?.() === true}
