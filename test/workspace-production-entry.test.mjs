@@ -59,7 +59,7 @@ test("Pi-only package gate rejects obsolete native tools, optional dependency fo
   const root = mkdtempSync(join(tmpdir(), "hara-pi-inventory-"));
   try {
     assertPiOnlyConfiguration(JSON.parse(read("src-tauri/tauri.conf.json"))); assertNoOptionalRuntimeFiles(root);
-    for (const name of ["opencode", "codex.exe", "claude", "hara-code-runtime", "opencode-darwin-arm64", "claude-agent-sdk"]) {
+    for (const name of ["opencode", "codex.exe", "claude", "hara-code-runtime", "opencode-darwin-arm64", "claude-agent-sdk", "kimi", "kimi-code", "kimi-cli"]) {
       const path = join(root, name); mkdirSync(path); assert.throws(() => assertNoOptionalRuntimeFiles(root), /unexpectedly/); rmSync(path, { recursive: true });
     }
     const manifest = { schemaVersion: 1, preinstalled: ["pi"], piSdkVersion: "1.5.0", optional: ["opencode", "codex", "claude", "agy", "gemini", "kimi", "copilot", "cursor", "grok"] }; assertPiRuntimeManifest(JSON.stringify(manifest));

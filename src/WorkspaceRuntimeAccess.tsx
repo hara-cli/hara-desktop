@@ -117,7 +117,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
         ? <p role="alert">{t("ws.runtimeAccess.unavailable", { runtime: agent.runtime.label })}</p> : null}
       {showDetectedCards ? detected.map(row => <div key={row.runtimeId}><p>{t("ws.runtimeAccess.detected", { runtime: row.label })}</p>
         <button disabled={busy || !row.fingerprint} onClick={() => { setError(""); setLoginSource(row.runtimeId === "agy" ? "isolated" : "host"); setLocal({ scope, runtimeId: row.runtimeId, label: row.label, fingerprint: row.fingerprint!, path: row.path }); }}>{t("ws.runtimeAccess.register")}</button></div>) : null}
-      {missing.map(row => <div key={row.runtimeId}><p>{t("ws.runtimeAccess.missing", { runtime: row.label })}</p>{row.runtimeId === "gemini" || row.runtimeId === "kimi" ? <p>{t("ws.runtimes.manualInstall")} <a href={row.runtimeId === "gemini" ? "https://geminicli.com/docs/get-started/installation/" : "https://github.com/MoonshotAI/kimi-cli#installation"} target="_blank" rel="noreferrer">{t("ws.runtimes.manualGuide")}</a></p> : null}</div>)}
+      {missing.map(row => <div key={row.runtimeId}><p>{t("ws.runtimeAccess.missing", { runtime: row.label })}</p>{row.runtimeId === "gemini" || row.runtimeId === "kimi" ? <p>{t("ws.runtimes.manualInstall")} <a href={row.runtimeId === "gemini" ? "https://geminicli.com/docs/get-started/installation/" : "https://moonshotai.github.io/kimi-code/en/guides/getting-started.html"} target="_blank" rel="noreferrer">{t("ws.runtimes.manualGuide")}</a></p> : null}</div>)}
       <div className="vg-runtime-recovery-actions">
         <button type="button" className="vg-runtime-rescan" disabled={busy} onClick={() => void run(async () => {
           modelRequest.current++; setScanning(true); setLoading(false); setModelView(null); setSelected("");
@@ -128,6 +128,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     </section>
     {!option?.available && manualRuntimeInstallUrl(agent.runtime.id) ? <p role="status">{t("ws.runtimeExpansion.manualInstall")} <a href={manualRuntimeInstallUrl(agent.runtime.id)!} target="_blank" rel="noopener noreferrer">{t("ws.runtimeExpansion.instructions")}</a></p> : null}
     {inheritsPersonalExtensions(agent.runtime.id) ? <p role="status" data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}
+        {inheritsPersonalExtensions(agent.runtime.id) ? <p role="note" data-runtime-acceptance="unverified">{t("ws.runtimeExpansion.unverified")}</p> : null}
     <section className="vg-context-card vg-p0-card vg-runtime-model-card"><h3>{t("ws.runtimeAccess.modelTitle")}</h3>
       {loading || scanning ? <p role="status">{t("ws.connectionModels.loading")}</p> : !models || !models.models.length ? <p role={option?.available ? "alert" : undefined}>{option?.available
         ? (modelError
@@ -155,6 +156,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
       <section className="hs-card wsd-approval"><div className="wsd-kicker">{t("ws.runtimeAccess.confirm")}</div>
         <h3>{t("ws.runtimeAccess.target", { name: agent.identity.displayName, runtime: target.label })}</h3>
         {inheritsPersonalExtensions(target.id) ? <p data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}
+        {inheritsPersonalExtensions(target.id) ? <p role="note" data-runtime-acceptance="unverified">{t("ws.runtimeExpansion.unverified")}</p> : null}
         <label><input type="radio" name="runtime-restart" checked={restart === "keep"} disabled={busy} onChange={() => setRestart("keep")} />{t("ws.runtimeAccess.keep")}</label>
         <p>{t("ws.runtimeAccess.keepNote", { runtime: target.label })}</p>
         <label><input type="radio" name="runtime-restart" checked={restart === "fresh"} disabled={busy || freshBlocked} onChange={() => setRestart("fresh")} />{t("ws.runtimeAccess.fresh")}</label>
@@ -174,6 +176,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
         {local.runtimeId === "kimi" ? <p role="note">{t("ws.runtimes.extensionsInherited")}</p> : null}
         <code className="wsd-root">{local.path}</code><p>{t("ws.runtimes.registerNote")}</p>
         {inheritsPersonalExtensions(local.runtimeId) ? <p data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}
+        {inheritsPersonalExtensions(local.runtimeId) ? <p role="note" data-runtime-acceptance="unverified">{t("ws.runtimeExpansion.unverified")}</p> : null}
         <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="inspector-login-source" checked={loginSource === "host"} disabled={busy || local.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: local.label })}</label>{!HOST_LOGIN_ONLY_RUNTIMES.includes(local.runtimeId) ? <label><input type="radio" name="inspector-login-source" checked={loginSource === "isolated"} disabled={busy} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
         {error ? <p role="alert">{workspaceMessageText(t, error)}</p> : null}
         <div className="wsd-card-actions"><button disabled={busy} onClick={() => setLocal(null)}>{t("ws.cancel")}</button>

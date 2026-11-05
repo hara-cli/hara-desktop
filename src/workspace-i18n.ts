@@ -9,6 +9,8 @@ import { VIOLET_KEYS } from "./violet-i18n.ts";
 export const WORKSPACE_KEYS = [
   ...CONTEXT_COMPACTION_KEYS,
   ...RUNTIME_VERSION_KEYS,
+  ["ws.runtimeExpansion.unverified", "Not verified with a real account", "未经真实验收", "未經真實驗收"],
+  ["ws.runtimeExpansion.legacyUnsupported", "Legacy kimi-cli is no longer maintained. Install Kimi Code and rescan.", "旧版 kimi-cli 已停止维护，请安装 Kimi Code 后重新扫描。", "舊版 kimi-cli 已停止維護，請安裝 Kimi Code 後重新掃描。"],
   ["ws.runtimeExpansion.manualInstall", "Install this CLI using its official instructions, then rescan.", "请按官方说明安装 CLI，然后重新扫描。", "請依官方說明安裝 CLI，然後重新掃描。"],
   ["ws.runtimeExpansion.instructions", "Installation instructions", "安装说明", "安裝說明"],
   ["ws.runtimeExpansion.hostLogin", "Reuses your local login. Hara does not start a new login.", "直接复用本机登录，Hara 不会要求重新登录。", "直接沿用本機登入，Hara 不會要求重新登入。"],

@@ -11,7 +11,7 @@ export function assertNoOptionalRuntimeFiles(root) {
     const directory = queue.pop();
     for (const name of readdirSync(directory)) {
       if (++visited > 100000) throw new Error("Packaged runtime inventory exceeded bound");
-      if (/^(?:hara-code-runtime|opencode|codex|claude|agy|gemini|kimi|copilot|cursor-agent|grok)(?:\.exe)?$/i.test(name) || name === "claude-agent-sdk" || /^opencode-(?:darwin|linux|windows)-/.test(name)) throw new Error("Package unexpectedly preinstalls an optional Agent runtime");
+      if (/^(?:hara-code-runtime|opencode|codex|claude|agy|gemini|kimi|kimi-code|kimi-cli|copilot|cursor-agent|grok)(?:\.exe)?$/i.test(name) || name === "claude-agent-sdk" || /^opencode-(?:darwin|linux|windows)-/.test(name)) throw new Error("Package unexpectedly preinstalls an optional Agent runtime");
       const path = join(directory, name), info = lstatSync(path);
       if (info.isDirectory() && !info.isSymbolicLink()) queue.push(path);
     }
