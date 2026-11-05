@@ -91,3 +91,15 @@ test('actual WorkspaceScreen passes only current snapshot version data down to t
   try {const html=render(WorkspaceScreen,{model,disconnected:'',root:'/synthetic',mode:'workspace',onReconnect(){}});assert.ok(html.includes('CLI upgraded from 1.2.3 to 1.3.0.'));assert.equal(html.includes('9.0.0'),false);}
   finally{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;}
 });
+
+test('server rendering never reads a live assistant draft or reports browser paint',()=>{
+  const ws=workspace(),value={directory:{revision:1,activeWorkspaceId:'fixture',workspaces:[{workspaceId:'fixture',label:'Synthetic',role:'owner',active:true}],syntheticOnly:false,executionMode:'workspace'},workspaceId:'fixture',agentId:'main',roster:ws.agents,draft:'',loading:false,sending:false,pendingUnknown:false,error:'',syncNotice:'',localHistoryStart:0,runtimeChanging:false,runtimeBlocked:false,workspace:ws};
+  let reads=0,subscriptions=0,paints=0;
+  const model={getSnapshot:()=>value,subscribe:()=>()=>{},runtimeStageReports:()=>[],supportsNativeSessions:()=>false,
+    getAssistantPreviewSnapshot(){reads++;return {text:'PRIVATE_OLD_DRAFT'};},
+    subscribeAssistantPreview(){subscriptions++;return()=>{};},paintAssistantPreview(){paints++;}};
+  const html=render(WorkspaceScreen,{model,disconnected:'',root:'/synthetic',mode:'workspace',onReconnect(){}});
+  assert.equal(html.includes('PRIVATE_OLD_DRAFT'),false);
+  assert.equal(html.includes('wsd-assistant-draft'),false);
+  assert.equal(reads,0);assert.equal(subscriptions,0);assert.equal(paints,0);
+});

@@ -151,9 +151,11 @@ export function Transcript({ history, agent, t, detailed = false, stages = [], h
     {renderItem(item)}
   </Fragment>)}{renderStages(historyOffset + history.length)}</>;
 }
+/** A server render has no live view or paint evidence. */
+const emptyAssistantPreviewSnapshot = () => null;
 /** Preview owns its subscription so a prose batch does not rerender the full transcript. */
 function AssistantDraft({ model, agent, t, follow }: { model: WorkspaceDevModel; agent?: WorkspaceDevAgent; t: Translate; follow(): void }) {
-  const preview = useSyncExternalStore(model.subscribeAssistantPreview, model.getAssistantPreviewSnapshot, model.getAssistantPreviewSnapshot);
+  const preview = useSyncExternalStore(model.subscribeAssistantPreview, model.getAssistantPreviewSnapshot, emptyAssistantPreviewSnapshot);
   const bubble = useRef<HTMLDivElement>(null), painted = useRef<string | null>(null);
   useLayoutEffect(() => { if (preview) follow(); }, [preview?.seq, follow]);
   useEffect(() => {

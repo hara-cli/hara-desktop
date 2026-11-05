@@ -4204,3 +4204,6 @@ resolved paths before retrying, with no file edits from that failed read.
 ## Wave3 candidate checkout pin consistency
 
 The merged sidecar input lock was updated, but the candidate workflow retained twelve old literal checkout refs. Preserve all exact-pin assertions and synchronize six Desktop plus six Core refs to candidate-inputs.json. No permissions, admission, signing, public keys, or publication behavior changes. Candidate execution remains on hold; local full-suite success is not formal candidate acceptance.
+
+## [SSR-20261105-ASSISTANT-PREVIEW] Server snapshots must not read client-only draft state
+Desk full suite atafafbe9 passed1614/1619, with five SSR WorkspaceScreen cases failing because partial server models have no getAssistantPreviewSnapshot. AssistantDraft used the client snapshot getter as its server getter, so React treated the missing method as missing getServerSnapshot. Provide a stable empty server snapshot: no live view/draft/paint evidence exists during SSR. Client subscription and snapshot behavior stay unchanged. Add actual WorkspaceScreen server rendering with a populated client-only getter and subscription/paint counters; require no draft, no client read, no subscription and no paint report. Retain the failed full receipt; current build/focus/full pending, no real call or installation.
