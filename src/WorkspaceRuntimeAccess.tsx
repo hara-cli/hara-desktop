@@ -10,13 +10,7 @@ import { ShellDialog } from "./WorkspaceShell";
 import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceConnectionModels, WorkspaceSessionRestart, RuntimeLoginSource, RuntimePermissionTier } from "./workspace-dev-state";
 
 type ModelCard = WorkspaceRuntimeModels & { source?: "live" | "documented"; connectionId?: string };
-const DEFAULT_EFFORT_ORDER = ["off", "minimal", "low", "medium"] as const;
-function defaultEffort(levels: readonly string[] | undefined): string {
-  for (let index = DEFAULT_EFFORT_ORDER.length - 1; index >= 0; index--) {
-    if (levels?.includes(DEFAULT_EFFORT_ORDER[index])) return DEFAULT_EFFORT_ORDER[index];
-  }
-  return "";
-}
+const effortChoice = (value: string | null | undefined): string => value === "auto" ? "" : value ?? "";
 
 export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, permissionSupported = false, onApplyPermissionTier, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory }: {
   agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; locale: "en" | "zh-Hans" | "zh-Hant"; compact?: boolean;
@@ -78,7 +72,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     void inventory.then(result => {
       if (!current()) return;
       if (result.runtimeId !== agent.runtime.id) throw new Error("ws.runtimeAccess.modelMismatch");
-      setModelView({ scope, data: result }); setSelected(result.selectedModelId ?? ""); setEffort(result.selectedEffort ?? "");
+      setModelView({ scope, data: result }); setSelected(result.selectedModelId ?? ""); setEffort(effortChoice(result.selectedEffort));
     }).catch(cause => { if (current()) setInventoryError(cause instanceof Error ? cause.message : String(cause)); })
       .finally(() => { if (current()) setLoading(false); });
     return () => { active = false; };
@@ -98,12 +92,12 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   if (compact) return <div className="vg-runtime-strip" aria-label={zh ? "本同事运行配置" : "This colleague runtime"}>
     {agent.runtime.id === "kimi" ? <span role="note">{t("ws.runtimes.extensionsInherited")}</span> : null}
     <span>{t("ws.permissions.label")} <strong>{t(agent.permissionTier === "full-protected" ? "ws.permissions.full" : agent.permissionTier === "controlled" ? "ws.permissions.controlled" : "ws.permissions.unknown")}</strong></span><span>Runtime <strong>{agent.runtime.label}</strong></span><span>{t("ws.runtimeAccess.model")} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</strong></span>
-    {showEffort ? <span>{t("ws.runtimeAccess.effort")} <strong>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</strong></span> : null}<span>{t("ws.runtimeAccess.loginSource")} <strong>{t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</strong></span>
+    {showEffort ? <span>{t("ws.runtimeAccess.effort")} <strong>{effortChoice(models?.selectedEffort) || t("ws.runtimeAccess.auto")}</strong></span> : null}<span>{t("ws.runtimeAccess.loginSource")} <strong>{t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</strong></span>
   </div>;
   return <div className="vg-runtime-access">
     <section className="vg-context-card vg-p0-card">
       <p>{t("ws.runtimeAccess.bound", { name: agent.identity.displayName, runtime: agent.runtime.label })}</p>
-      <dl className="vg-runtime-summary"><dt>{t("ws.runtimeAccess.model")}</dt><dd>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</dd>{showEffort ? <><dt>{t("ws.runtimeAccess.effort")}</dt><dd>{models?.selectedEffort ?? t("ws.runtimeAccess.auto")}</dd></> : null}<dt>{t("ws.runtimeAccess.loginSource")}</dt><dd>{agent.runtime.id === "pi" ? "—" : t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</dd></dl>
+      <dl className="vg-runtime-summary"><dt>{t("ws.runtimeAccess.model")}</dt><dd>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</dd>{showEffort ? <><dt>{t("ws.runtimeAccess.effort")}</dt><dd>{effortChoice(models?.selectedEffort) || t("ws.runtimeAccess.auto")}</dd></> : null}<dt>{t("ws.runtimeAccess.loginSource")}</dt><dd>{agent.runtime.id === "pi" ? "—" : t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</dd></dl>
       <label className="vg-permission-tier">{t("ws.permissions.label")}
         <select aria-label={t("ws.permissions.label")} value={agent.permissionTier ?? "unknown"} disabled={!permissionSupported || !onApplyPermissionTier || busy || freshBlocked}
           onChange={event => { const tier = event.target.value; if (tier === "full-protected" || tier === "controlled") void run(() => onApplyPermissionTier!(tier)); }}>
@@ -142,11 +136,11 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
         : (zh ? "请先绑定可用引擎" : "Bind an available runtime first")}</p> : null}
       {models?.source === "live" ? <p role="status" className="vg-muted">{t("ws.runtimeExpansion.modelsLive")}</p> : null}
       {models?.source === "documented" ? <p role="status" className="vg-muted">{t(pi ? "ws.connectionModels.documented" : "ws.runtimes.documentedModels")}</p> : null}
-      <label>{t("ws.runtimeAccess.model")}<select aria-label={t("ws.runtimeAccess.modelTitle")} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => { setSelected(event.target.value); setEffort(event.target.value === models?.selectedModelId ? models?.selectedEffort ?? "" : agent.runtime.id === "opencode" ? "" : defaultEffort(models?.models.find(row => row.id === event.target.value)?.supportedReasoningEfforts)); }}>
+      <label>{t("ws.runtimeAccess.model")}<select aria-label={t("ws.runtimeAccess.modelTitle")} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => { setSelected(event.target.value); setEffort(event.target.value === models?.selectedModelId ? effortChoice(models?.selectedEffort) : ""); }}>
         <option value="">{zh ? "选择模型" : "Choose a model"}</option>{models?.models.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
       </select></label>
-      {selected && showEffort && (effortLevels.length ? <label>{t("ws.runtimeAccess.effort")}<select aria-label={t("ws.runtimeAccess.effort")} value={effort} disabled={busy || loading || scanning} onChange={event => setEffort(event.target.value)}><option value="">{t("ws.runtimeAccess.auto")}</option>{effortLevels.map(level => <option key={level} value={level}>{level}</option>)}</select><small>{t("ws.runtimeAccess.effortSlow")}</small></label> : <p>{t("ws.runtimeAccess.effortUnknown")}</p>)}
-      <button disabled={busy || loading || scanning || !models || !selected || (selected === models.selectedModelId && effort === (models.selectedEffort ?? "")) || !models.models.some(row => row.id === selected)}
+      {selected && showEffort && (effortLevels.length ? <label>{t("ws.runtimeAccess.effort")}<select aria-label={t("ws.runtimeAccess.effort")} value={effort} disabled={busy || loading || scanning} onChange={event => setEffort(event.target.value)}><option value="">{t("ws.runtimeAccess.auto")}</option>{effortLevels.map(level => <option key={level} value={level}>{level}</option>)}</select><small>{t(effort ? "ws.runtimeAccess.effortSlow" : "ws.runtimeAccess.autoHint")}</small></label> : <p>{t("ws.runtimeAccess.effortUnknown")}</p>)}
+      <button disabled={busy || loading || scanning || !models || !selected || (selected === models.selectedModelId && effort === effortChoice(models.selectedEffort)) || !models.models.some(row => row.id === selected)}
           onClick={() => void run(async () => {
             if (!models || liveScope.current !== scope || models.runtimeId !== agent.runtime.id) throw new Error("ws.runtimeAccess.stale");
             if (pi) {

@@ -116,6 +116,7 @@ export const WORKSPACE_SETTINGS_KEYS = [
   ["ws.runtimeAccess.effort", "Reasoning effort", "推理强度", "推理強度"],
   ["ws.runtimeAccess.effortSlow", "Higher effort takes longer", "强度越高，回复越慢", "強度越高，回覆越慢"],
   ["ws.runtimeAccess.auto", "Automatic", "自动", "自動"],
+  ["ws.runtimeAccess.autoHint", "Automatic uses low effort for short answers and medium for tasks, within the model’s supported levels. See the actual level in this turn’s timing details.", "自动按请求选档：简短回答用低档，任务用中档，并遵守模型支持的档位。本轮实际档位可在耗时详情查看。", "自動按請求選檔：簡短回答用低檔，任務用中檔，並遵守模型支援的檔位。本輪實際檔位可在耗時詳情查看。"],
   ["ws.runtimeAccess.effortUnknown", "This model does not report reasoning effort; the automatic level will be used.", "此模型未报告推理强度；将使用自动强度。", "此模型未報告推理強度；將使用自動強度。"],
   ["ws.runtimeAccess.loginSource", "Login source", "登录来源", "登入來源"],
   ["ws.runtimeAccess.host", "This Mac's login", "本机登录", "本機登入"],
