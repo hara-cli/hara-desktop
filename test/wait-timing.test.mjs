@@ -86,7 +86,7 @@ test("a push arriving during refresh schedules another snapshot and retains fina
  assert.equal(reads,2);assert.equal(f.model.getSnapshot().workspace.conversation.messageTimings[0].points.T9,8000);
 });
 const require=createRequire(import.meta.url),root=fileURLToPath(new URL("../",import.meta.url));
-const bundle=await build({stdin:{contents:'export { Transcript } from "./src/WorkspaceLocalDev.tsx";export { WorkspaceTimingChip, WorkspaceDraftTiming, friendlyTool } from "./src/WorkspaceWaitTiming.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],loader:{".css":"empty",".svg":"dataurl"},write:false});
+const bundle=await build({stdin:{contents:'export { Transcript } from "./src/WorkspaceLocalDev.tsx";export { WorkspaceTimingChip, WorkspaceDraftTiming, WorkspaceWaiting, friendlyTool } from "./src/WorkspaceWaitTiming.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],loader:{".css":"empty",".svg":"dataurl"},write:false});
 const module={exports:{}};new Function("require","module","exports",bundle.outputFiles[0].text)(require,module,module.exports);
 const React=require("react"),{renderToStaticMarkup}=require("react-dom/server");
 test("real transcript renders tiny chips, strict T9 checks and folded failures in all locales",()=>{
@@ -157,4 +157,20 @@ test("active validated preview pushes also defer stale snapshot fallback",async 
  assert.ok(f.model.getAssistantPreviewSnapshot());assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before);
  t.mock.timers.tick(3000);await tick();assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+1);
  }finally{stop();}
+});
+
+
+test("authentication failures check account access without requiring a new local login",()=>{
+ let settings=0;
+ for(const locale of ["en","zh-Hans","zh-Hant"])for(const kind of ["runtime_auth_required","runtime_auth_rejected"])for(const loginSource of ["host","isolated","unknown"]){
+  const failed=report({state:"error",durationMs:8000,errorKind:kind,runtime:{...report().runtime,loginSource}});
+  const conversation=c({state:"blocked",taskState:"blocked",resumeAdmission:{allowed:false,reason:"runtime_unavailable"}});
+  const model={getSnapshot:()=>({workspace:{conversation,approvals:[]},loading:false,sending:false,pendingUnknown:false,runtimeBlocked:false}),
+   subscribeWaitTiming:()=>()=>{},getWaitTimingSnapshot:()=>null,subscribeAssistantPreview:()=>()=>{},getAssistantPreviewSnapshot:()=>null,
+   runtimeStageReports:()=>[failed],supportsNativeSessions:()=>false,waitClock:{now:()=>0}};
+  const t=makeT(locale),html=renderToStaticMarkup(React.createElement(module.exports.WorkspaceWaiting,{model,t,name:"Hara",runtime:"Codex",disabled:false,onSettings(){settings++;}}));
+  assert.ok(html.includes(t("ws.wait.action.login")));assert.ok(html.includes(t(`ws.wait.failure.${kind}`)));
+  assert.doesNotMatch(html,/sign in again|needs you to sign in|needs to be renewed|重新登[录入]|需要登[录入]/i);
+ }
+ assert.equal(settings,0,"rendering never starts login, opens settings, or replays the task");
 });
