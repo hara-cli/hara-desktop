@@ -12,14 +12,14 @@ export interface RuntimeFailureDiagnostic {
   homeMatchesAccount: boolean | null;
   extensionsIsolation?: "inherited";
   errorFirstLine?: string;
-  rpcMethod?: "initialize" | "thread/start" | "thread/resume" | "turn/start" | "turn/interrupt" | "thread/unsubscribe";
+  rpcMethod?: "initialize" | "thread/start" | "thread/resume" | "turn/start" | "turn/interrupt" | "thread/unsubscribe" | "thread/compact/start";
   rpcTimeoutMs?: number;
   elapsedMs: number;
   retryAtMs: number;
   consecutiveFailures: number;
 }
 const FIELDS = ["runtime", "kind", "version", "loginSource", "homeMatchesAccount", "elapsedMs", "retryAtMs", "consecutiveFailures"];
-const RPC_METHODS = ["initialize", "thread/start", "thread/resume", "turn/start", "turn/interrupt", "thread/unsubscribe"];
+const RPC_METHODS = ["initialize", "thread/start", "thread/resume", "turn/start", "turn/interrupt", "thread/unsubscribe", "thread/compact/start"];
 const integer = (value: unknown, maximum: number): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= maximum;
 
 /** Extract a single flat JSON envelope, preserving duplicate-key rejection even with escaped strings. */
