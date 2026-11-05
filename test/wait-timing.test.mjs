@@ -86,7 +86,7 @@ test("a push arriving during refresh schedules another snapshot and retains fina
  assert.equal(reads,2);assert.equal(f.model.getSnapshot().workspace.conversation.messageTimings[0].points.T9,8000);
 });
 const require=createRequire(import.meta.url),root=fileURLToPath(new URL("../",import.meta.url));
-const bundle=await build({stdin:{contents:'export { Transcript } from "./src/WorkspaceLocalDev.tsx";export { WorkspaceTimingChip, friendlyTool } from "./src/WorkspaceWaitTiming.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],loader:{".css":"empty",".svg":"dataurl"},write:false});
+const bundle=await build({stdin:{contents:'export { Transcript } from "./src/WorkspaceLocalDev.tsx";export { WorkspaceTimingChip, WorkspaceDraftTiming, friendlyTool } from "./src/WorkspaceWaitTiming.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],loader:{".css":"empty",".svg":"dataurl"},write:false});
 const module={exports:{}};new Function("require","module","exports",bundle.outputFiles[0].text)(require,module,module.exports);
 const React=require("react"),{renderToStaticMarkup}=require("react-dom/server");
 test("real transcript renders tiny chips, strict T9 checks and folded failures in all locales",()=>{
@@ -106,4 +106,55 @@ test("full diagnostics remains opt-in, compaction stays at its absolute boundary
 test("normal chat has no busy interval; reduced motion and accessible popover exits are implemented",()=>{
  const source=readFileSync(new URL("../src/WorkspaceLocalDev.tsx",import.meta.url),"utf8"),ui=readFileSync(new URL("../src/WorkspaceWaitTiming.tsx",import.meta.url),"utf8"),css=readFileSync(new URL("../src/wait-timing.css",import.meta.url),"utf8");
  assert.equal(source.includes('setInterval(() => { void model.refresh(); }, 1000)'),false);assert.ok(ui.includes('event.key === "Escape"'));assert.ok(ui.includes('aria-expanded={open}'));assert.ok(css.includes('prefers-reduced-motion'));assert.ok(css.includes('[data-motion="off"]'));
+});
+
+test("a dropped terminal push is recovered after three stale seconds without replay",async t=>{
+ const f=modelFixture();await f.ready();f.model.setDraft("fixture");await f.model.send();
+ t.mock.timers.enable({apis:["setTimeout"]});const stop=f.model.watchStaleConversation();
+ try{const before=f.calls.filter(x=>x.method==="workspace.snapshot").length;
+ f.set({...f.get(),conversation:c({state:"completed",taskState:"completed",completion:{state:"verified"},runtimeStages:[report({state:"completed",durationMs:8000})],messageTimings:[timing({T8:6000,T9:8000})]})});
+ t.mock.timers.tick(2999);await tick();assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before);
+ t.mock.timers.tick(1);await tick();assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+1);
+ assert.equal(f.model.getSnapshot().workspace.conversation.messageTimings[0].points.T9,8000);
+ t.mock.timers.tick(20000);await tick();assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+1);
+ assert.equal(f.calls.filter(x=>/workspace.session.(send|resume)$/.test(x.method)).length,1);
+ }finally{stop();}
+});
+test("active pushes rearm fallback, local drafts do not, and disconnect cleanup cancels it",async t=>{
+ const f=modelFixture();await f.ready();f.model.setDraft("fixture");await f.model.send();
+ t.mock.timers.enable({apis:["setTimeout"]});const stop=f.model.watchStaleConversation();
+ try{const before=f.calls.filter(x=>x.method==="workspace.snapshot").length;
+ for(let i=0;i<5;i++){t.mock.timers.tick(2000);f.model.workspaceChanged(ids.workspaceId,ids.agentId);await tick();}
+ assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+5,"healthy pushes add no fallback polling");
+ t.mock.timers.tick(2000);f.model.setDraft("keep typing");t.mock.timers.tick(1000);await tick();
+ assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+6,"local typing cannot hide a missing terminal push");
+ stop();t.mock.timers.tick(10000);await tick();assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+6);
+ }finally{stop();}
+});
+test("stale fallback does not duplicate an in-flight read or schedule after teardown",async t=>{
+ const f=modelFixture();await f.ready();f.model.setDraft("fixture");await f.model.send();let resolve;
+ f.gate(()=>new Promise(r=>{resolve=r;}));t.mock.timers.enable({apis:["setTimeout"]});const stop=f.model.watchStaleConversation();
+ const before=f.calls.filter(x=>x.method==="workspace.snapshot").length;
+ try{t.mock.timers.tick(3000);await tick();assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+1);
+ t.mock.timers.tick(9000);await tick();assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+1);
+ stop();resolve(structuredClone(f.get()));await tick();t.mock.timers.tick(10000);await tick();
+ assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+1);
+ }finally{stop();if(resolve)resolve(structuredClone(f.get()));}
+});
+
+test("the draft timing header keeps a current-run Stop control in every locale",async()=>{
+ const f=modelFixture();await f.ready();f.model.setDraft("fixture");await f.model.send();
+ for(const locale of ["en","zh-Hans","zh-Hant"]){const t=makeT(locale),html=renderToStaticMarkup(React.createElement(module.exports.WorkspaceDraftTiming,{model:f.model,t}));assert.ok(html.includes("wsd-wait-stop"));assert.ok(html.includes(t("ws.wait.action.stop")));assert.equal(html.includes('disabled=""'),false);}
+ f.set({...f.get(),conversation:c({state:"draining"})});await f.model.refresh();
+ assert.ok(renderToStaticMarkup(React.createElement(module.exports.WorkspaceDraftTiming,{model:f.model,t:makeT("en")})).includes('disabled=""'));
+});
+
+test("active validated preview pushes also defer stale snapshot fallback",async t=>{
+ const f=modelFixture();await f.ready();f.model.setDraft("fixture");await f.model.send();
+ t.mock.timers.enable({apis:["setTimeout"]});const stop=f.model.watchStaleConversation();
+ try{const before=f.calls.filter(x=>x.method==="workspace.snapshot").length;
+ for(let i=0;i<5;i++){t.mock.timers.tick(2000);f.model.assistantPreview({schemaVersion:1,...ids,requestId:uuid(9),nativeTurnId:"native-fixture",itemId:"item-fixture",seq:i+1,text:"x".repeat(i+1),draft:true,evidenceVerified:false});await tick();}
+ assert.ok(f.model.getAssistantPreviewSnapshot());assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before);
+ t.mock.timers.tick(3000);await tick();assert.equal(f.calls.filter(x=>x.method==="workspace.snapshot").length,before+1);
+ }finally{stop();}
 });

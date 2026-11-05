@@ -385,6 +385,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   useEffect(() => { if (inChannel) { nearBottom.current = true; if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; } }, [channelView.channelId, inChannel]);
   // workspace.changed push coalesces refreshes; Startup reconnect performs a fresh snapshot.
   // Live seconds belong to WaitElapsed, never to a whole-conversation poll.
+  useEffect(() => {
+    if (disconnected || inChannel || !busy) return;
+    return model.watchStaleConversation();
+  }, [model, disconnected, inChannel, busy]);
   useEffect(() => { nearBottom.current = true; if (workspace?.selectedAgentId && route.section === "chat") input.current?.focus(); }, [workspace?.selectedAgentId, route.section]);
   useEffect(() => { if ((route.section === "chat" && (agent?.kind === "colleague" || agent?.kind === "main")) || route.section === "channel") setInspector(true); }, [agent?.agentId, agent?.kind, route.section, route.channelId]);
   useLayoutEffect(() => { const node = input.current; if (!node) return; node.style.height = "auto"; node.style.height = `${Math.min(160, Math.max(32, node.scrollHeight))}px`; }, [view.draft, workspace?.selectedAgentId, route.section, workspace?.conversation.pendingQuestion?.id]);

@@ -216,6 +216,30 @@ export class WorkspaceDevModel {
     return this.rpc.request<T>(method, params);
   }
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
+  /** Read-only fallback after three seconds without a fresh active-chat snapshot.
+   * Live pushes rearm it; view teardown/disconnect owns the returned cleanup. */
+  watchStaleConversation(): () => void {
+    let alive = true, seen = this.view.workspace;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      clearTimeout(timer);
+      const workspace = this.view.workspace, epoch = this.epoch;
+      if (!alive || this.settingsOnly || this.view.loading || !workspace || !["running", "draining"].includes(workspace.conversation.state)) return;
+      timer = setTimeout(() => {
+        if (!alive) return;
+        if (epoch !== this.epoch || this.view.workspace !== workspace) { arm(); return; }
+        // A live read already covers the scope; never dirty it just because a clock ticked.
+        if (this.refreshEpoch === epoch) { arm(); return; }
+        void this.refresh().finally(arm);
+      }, 3000);
+    };
+    const unsubscribe = this.subscribe(() => {
+      if (this.view.workspace !== seen || this.view.loading) { seen = this.view.workspace; arm(); }
+    });
+    const unsubscribePreview = this.subscribeAssistantPreview(arm);
+    arm();
+    return () => { alive = false; clearTimeout(timer); unsubscribe(); unsubscribePreview(); };
+  }
   setSettingsFactory(factory: () => Promise<{ model: WorkspaceDevModel; close(): void }>) { this.settingsFactory = factory; }
   openSettingsSession() { if (!this.settingsFactory) return Promise.reject(new WorkspaceViewError("ws.notice.settingsNotReady")); return this.settingsFactory(); }
   private update(next: Partial<WorkspaceDevView>): void {

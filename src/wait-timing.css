@@ -28,3 +28,5 @@
 @keyframes wait-breathe { 50% { opacity: .4; } }@keyframes wait-enter { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .wsd-wait *, .wsd-wait-dot { animation: none !important; transition: none !important; } }
 [data-motion="off"] .wsd-wait * { animation: none !important; transition: none !important; }
+
+.wsd-draft-timing .wsd-wait-stop { margin-left: 5px; min-height: 24px; padding: 2px 7px; font-size: 12px; }

@@ -40,10 +40,13 @@ function useWaiting(model: WorkspaceDevModel) {
   return { local, preview, view, w, report, timing, derived };
 }
 export function WorkspaceDraftTiming({ model, t }: { model: WorkspaceDevModel; t: T }) {
-  const { local, derived, report } = useWaiting(model);
+  const { local, derived, report, view, w } = useWaiting(model);
+  const canStop = Boolean(w && !view.loading && w.conversation.state === "running"
+    && (!local || local.runId === w.conversation.runId));
   const phase = derived?.phase === "finalizing" ? "finalizing" : ["tool", "question", "approval", "queued", "thinking"].includes(derived?.phase ?? "") ? derived!.phase : "output";
   return derived ? <span className="wsd-draft-timing" data-wait-phase={derived.phase}>{t(`ws.wait.${phase}` as Parameters<T>[0], { name: friendlyTool(derived.activity?.toolName ?? null, t), runtime: report?.runtime.id ?? "Hara" })}{phase === "tool" && derived.activity?.targetLabel ? <> · <bdi>{derived.activity.targetLabel}</bdi></> : null}
-    {local && derived.showSeconds ? <> · <WaitElapsed local={local} now={model.waitClock.now} frozen={derived.phase === "finalizing" ? local.repliedElapsedMs : null} label={t("ws.wait.elapsed")} /></> : null}</span> : null;
+    {local && derived.showSeconds ? <> · <WaitElapsed local={local} now={model.waitClock.now} frozen={derived.phase === "finalizing" ? local.repliedElapsedMs : null} label={t("ws.wait.elapsed")} /></> : null}
+    <button type="button" className="hs-btn sec wsd-wait-stop" disabled={!canStop} onClick={() => { if (canStop) void model.cancel(); }}>{t("ws.wait.action.stop")}</button></span> : null;
 }
 export function WorkspaceOptimisticMessage({ model, t }: { model: WorkspaceDevModel; t: T }) {
   useSyncExternalStore(model.subscribeWaitTiming, model.getWaitTimingSnapshot, noPreview);
