@@ -1,8 +1,12 @@
+import { WorkspaceContextCompaction } from "./WorkspaceContextCompaction";
+import type { ContextCompactionView } from "./context-compaction";
+import { WorkspaceDraftTiming, WorkspaceOptimisticMessage, WorkspaceTimingChip, WorkspaceWaiting, compactFailureHandled } from "./WorkspaceWaitTiming";
+import { currentWaitReport, type WaitConversation } from "./wait-timing";
 import type { MessageTimingReport } from "./message-timing.ts";
 import { runtimeVersionFor } from "./runtime-version-drift";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CheckCircleIcon, Cog6ToothIcon, GlobeAltIcon,
+import { Cog6ToothIcon, GlobeAltIcon,
   ViewColumnsIcon, MagnifyingGlassIcon, PlusIcon, UserPlusIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import HaraLogo from "./mark";
@@ -12,7 +16,7 @@ import { workspaceMessageText } from "./workspace-settings-copy";
 import type { WorkspaceDevConnection } from "./workspace-dev-rpc";
 import { WorkspaceStartupModel } from "./workspace-startup";
 import { WorkspaceBoot } from "./WorkspaceBoot";
-import { WorkspaceTaskActivity, WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
+import { WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
 import { WorkspaceRuntimeStages } from "./WorkspaceRuntimeStages";
 import { runtimeStagesBefore, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events";
 import { WorkspaceAsyncQuestions, WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
@@ -108,15 +112,33 @@ function SettledApprovalCard({ state, name, t }: { state: ApprovalSettleState; n
     <p>{t(copy, { name: label })}</p>
   </section>;
 }
-export function Transcript({ history, agent, t, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false, alwaysShowTimingDiagnostics = false, messageTimings = [] }: {
+export function Transcript({ history, agent, t, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false, alwaysShowTimingDiagnostics = false, messageTimings = [], conversation, compactions = [] }: {
+  conversation?: WaitConversation; compactions?: readonly ContextCompactionView[];
   messageTimings?: readonly MessageTimingReport[];
   history: WorkspaceDevMessage[]; agent?: WorkspaceDevAgent; t: Translate; detailed?: boolean; stages?: RuntimeStageReport[];
   alwaysShowTimingDiagnostics?: boolean; historyOffset?: number; onExportStage?: (report: RuntimeStageReport) => Promise<RuntimeDiagnosticReceipt>; stageDisabled?: boolean;
 }) {
   let previous: WorkspaceDevMessage | undefined;
   const stageBoundaries = runtimeStagesBefore(stages, history, historyOffset);
-  const renderStages = (boundary: number) => (stageBoundaries.get(boundary) ?? []).map(report => <WorkspaceRuntimeStages
-    key={report.attemptId} report={report} t={t} messageTimings={messageTimings} alwaysShow={alwaysShowTimingDiagnostics} onExport={onExportStage} disabled={stageDisabled} />);
+  const [diagnostics, setDiagnostics] = useState<{ attemptId: string; request: number } | null>(null);
+  const assistantReports = new Map<number, RuntimeStageReport[]>(), withoutAssistant = new Set<string>();
+  for (const [boundary, reports] of stageBoundaries) for (const report of reports) {
+    if (report.state === "running" || conversation?.runId === report.runId && ["running", "draining"].includes(conversation.state)) continue;
+    let last = -1;
+    for (let index = Math.max(0, report.historyStart - historyOffset); index < Math.min(history.length, boundary - historyOffset); index++) if (history[index].role === "assistant") last = index;
+    if (last < 0) withoutAssistant.add(report.attemptId);
+    else assistantReports.set(last, [...(assistantReports.get(last) ?? []), report]);
+  }
+  const chip = (report: RuntimeStageReport) => <WorkspaceTimingChip key={report.attemptId} report={report} timings={messageTimings} conversation={conversation} compactions={compactions} t={t} disabled={stageDisabled} onDiagnostics={() => setDiagnostics(previous => ({ attemptId: report.attemptId, request: (previous?.request ?? 0) + 1 }))} />;
+  const renderStages = (boundary: number) => (stageBoundaries.get(boundary) ?? []).map(report => <Fragment key={report.attemptId}>
+    {withoutAssistant.has(report.attemptId) ? <div className="hs-who wsd-timing-orphan">{chip(report)}</div> : null}
+    {alwaysShowTimingDiagnostics || diagnostics?.attemptId === report.attemptId || report.errorKind ? <WorkspaceRuntimeStages
+      report={report} t={t} messageTimings={messageTimings} alwaysShow={alwaysShowTimingDiagnostics} forceVisible expanded={diagnostics?.attemptId === report.attemptId} expandRequest={diagnostics?.request} onExport={onExportStage} disabled={stageDisabled} /> : null}
+  </Fragment>);
+  const renderedCompactions = new Set<string>();
+  const renderCompactions = (boundary: number) => compactions.filter(row => row.historyStart >= historyOffset && row.historyStart <= boundary && !renderedCompactions.has(row.id)).map(row => {
+    renderedCompactions.add(row.id); return <WorkspaceContextCompaction key={row.id} value={row} t={t} />;
+  });
   const renderItem = (item: ReturnType<typeof transcriptBlocks>[number]) => {
     if (item.kind === "execution") {
       previous = undefined;
@@ -141,20 +163,21 @@ export function Transcript({ history, agent, t, detailed = false, stages = [], h
     const continuation = messageContinues(previous, message); previous = message;
     if (message.role === "user") return <div className={`hs-msg me wsd-message is-user ${continuation ? "cont" : ""}`} key={`user-${index}`}><div className="hs-bub wsd-bubble">{message.content}</div></div>;
     return <div className={`wsd-message-group ${continuation ? "cont" : ""}`} key={`assistant-${index}`}>
-      {!continuation ? <div className="hs-who">{agent?.identity.displayName ?? "Hara"}</div> : null}
+      {!continuation || assistantReports.has(index) ? <div className="hs-who">{agent?.identity.displayName ?? "Hara"}{assistantReports.get(index)?.map(chip)}</div> : null}
       <div className={`hs-msg wsd-message is-agent ${continuation ? "cont" : ""}`}><Avatar agent={agent} /><div className="hs-bub wsd-bubble"><Md text={message.text}
         copyCodeLabel={t("copyCode")} copiedLabel={t("taskCopied")} copyFailedLabel={t("copyFailed")} /></div></div>
     </div>;
   };
   return <>{transcriptBlocks(history).map(item => <Fragment key={`${item.kind}-${item.index}`}>
+    {renderCompactions(item.index + historyOffset)}
     {item.kind === "message" && item.message.role === "user" ? renderStages(item.index + historyOffset) : null}
     {renderItem(item)}
-  </Fragment>)}{renderStages(historyOffset + history.length)}</>;
+  </Fragment>)}{renderStages(historyOffset + history.length)}{renderCompactions(historyOffset + history.length)}</>;
 }
 /** A server render has no live view or paint evidence. */
 const emptyAssistantPreviewSnapshot = () => null;
 /** Preview owns its subscription so a prose batch does not rerender the full transcript. */
-function AssistantDraft({ model, agent, t, follow }: { model: WorkspaceDevModel; agent?: WorkspaceDevAgent; t: Translate; follow(): void }) {
+export function AssistantDraft({ model, agent, t, follow }: { model: WorkspaceDevModel; agent?: WorkspaceDevAgent; t: Translate; follow(): void }) {
   const preview = useSyncExternalStore(model.subscribeAssistantPreview, model.getAssistantPreviewSnapshot, emptyAssistantPreviewSnapshot);
   const bubble = useRef<HTMLDivElement>(null), painted = useRef<string | null>(null);
   useLayoutEffect(() => { if (preview) follow(); }, [preview?.seq, follow]);
@@ -177,7 +200,7 @@ function AssistantDraft({ model, agent, t, follow }: { model: WorkspaceDevModel;
   }, [model, preview?.attemptId, preview?.itemId]);
   if (!preview) return null;
   return <div className="wsd-message-group wsd-assistant-draft" data-attempt-id={preview.attemptId} data-preview-seq={preview.seq}>
-    <div className="hs-who">{agent?.identity.displayName ?? "Hara"} <span className="wsd-preview-label">{t("ws.preview.label")}</span></div>
+    <div className="hs-who">{agent?.identity.displayName ?? "Hara"} <WorkspaceDraftTiming model={model} t={t} /></div>
     <div className="hs-msg wsd-message is-agent"><Avatar agent={agent} /><div ref={bubble} className="hs-bub wsd-bubble wsd-preview-text" aria-label={t("ws.preview.label")}>{preview.text}</div></div>
   </div>;
 }
@@ -360,7 +383,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   useEffect(() => { if (nearBottom.current && route.section === "chat") end.current?.scrollIntoView({ block: "end", behavior: "auto" }); }, [workspace?.conversation.history.length, workspace?.approvals.length, workspace?.conversation.pendingQuestion?.id, busy, route.section]);
   useEffect(() => { if (nearBottom.current && inChannel && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }, [channelView.channel?.messages.length, channelView.channel?.approvals.length, channelView.channel?.state, inChannel]);
   useEffect(() => { if (inChannel) { nearBottom.current = true; if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; } }, [channelView.channelId, inChannel]);
-  useEffect(() => { if (!busy) return; const timer = setInterval(() => { void model.refresh(); }, 1000); return () => clearInterval(timer); }, [model, busy]);
+  // workspace.changed push coalesces refreshes; Startup reconnect performs a fresh snapshot.
+  // Live seconds belong to WaitElapsed, never to a whole-conversation poll.
   useEffect(() => { nearBottom.current = true; if (workspace?.selectedAgentId && route.section === "chat") input.current?.focus(); }, [workspace?.selectedAgentId, route.section]);
   useEffect(() => { if ((route.section === "chat" && (agent?.kind === "colleague" || agent?.kind === "main")) || route.section === "channel") setInspector(true); }, [agent?.agentId, agent?.kind, route.section, route.channelId]);
   useLayoutEffect(() => { const node = input.current; if (!node) return; node.style.height = "auto"; node.style.height = `${Math.min(160, Math.max(32, node.scrollHeight))}px`; }, [view.draft, workspace?.selectedAgentId, route.section, workspace?.conversation.pendingQuestion?.id]);
@@ -504,7 +528,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
               <strong>{t("ws.permissions.risks")}</strong><ul>{workspace.conversation.nativeRisks.map(event => <li key={event.id}>{t(event.kind === "external-publish" ? "ws.permissions.publish" : "ws.permissions.delete")} · {t("ws.permissions.observed")}</li>)}</ul>
             </aside> : null}
             <Transcript history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false}
-              messageTimings={workspace.conversation.messageTimings} alwaysShowTimingDiagnostics={theme.settings?.alwaysShowTimingDiagnostics === true} stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
+              conversation={workspace.conversation} compactions={workspace.conversation.contextCompactions} messageTimings={workspace.conversation.messageTimings} alwaysShowTimingDiagnostics={theme.settings?.alwaysShowTimingDiagnostics === true} stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
+            <WorkspaceOptimisticMessage model={model} t={t} />
             {!disconnected ? <AssistantDraft model={model} agent={agent} t={t} follow={followPreview} /> : null}
             {pendingSchedule?.scope === scope && pendingSchedule.agentId === agent?.agentId ? <section className="vg-chat-schedule-card" aria-label={locale !== "en" ? "确认定时" : "Confirm schedule"}>
               <header><strong>{locale !== "en" ? "确认定时" : "Confirm schedule"}</strong><small>{locale !== "en" ? "挂接同事" : "Colleague"} · {agent.identity.displayName}</small></header>
@@ -517,19 +542,19 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             </section> : null}
             {scheduleNotice?.scope === scope && scheduleNotice.agentId === agent?.agentId && !pendingSchedule ? <p className="vg-schedule-notice" role="status">{locale !== "en" ? `已为这位同事创建定时：${scheduleNotice.name}。右侧可管理。` : `Created for this colleague: ${scheduleNotice.name}. Manage it on the right.`}</p> : null}
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
-            {workspace.conversation.completion?.state === "verified" && workspace.conversation.taskState === "completed" ? <p className="wsd-verified"><CheckCircleIcon className="hico" />{t("ws.verified")} <span>{t("ws.verified.note")}</span></p> : null}
-            <WorkspaceTaskRecovery runtimeStages={stageReports} conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
+            {!compactFailureHandled(workspace.conversation, currentWaitReport(workspace.conversation, stageReports, model.getWaitTimingSnapshot())) ? <WorkspaceTaskRecovery runtimeStages={stageReports} conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
               runtimeVersion={runtimeVersionFor(workspace.runtimes?.options, agent?.runtime.id)}
               runtimeId={agent?.runtime.id} loginSource={workspace.runtimes?.options.find(row => row.runtimeId === agent?.runtime.id)?.loginSource} onLogin={() => openSettingsPage("runtimes")} onRescan={() => void model.detectRuntimes().catch(() => {})}
               onRuntimeSettings={() => openSettingsPage("runtimes")}
               onNewSession={model.supportsNativeSessions() && workspace.conversation.nativeSession ? () => void model.newNativeSession() : undefined}
               continueDisabled={!hasConnection || view.runtimeBlocked || busy} dismissedIdentity={view.dismissedRecoveryIdentity}
               onContinue={() => void model.send(true)} onRepair={() => { setSettingsPage("connections");setSettings(true); }}
-              onDismiss={() => model.dismissRecovery()} />
+              onDismiss={() => model.dismissRecovery()} /> : null}
             {question ? <WorkspaceUserQuestion key={`${scope}:${question.id}`} conversation={workspace.conversation} t={t}
               disabled={Boolean(disconnected) || view.sending || view.pendingUnknown} supported={model.supportsUserQuestions?.() === true}
               onTypeAnswer={() => input.current?.focus()} onAnswer={(questionId, answer) => void model.answer(questionId, answer)} onPause={questionId => void model.pauseQuestion(questionId)} onRepair={() => { setSettingsPage("connections"); setSettings(true); }} /> : null}
-            {!liveApprovals.length ? <WorkspaceTaskActivity conversation={workspace.conversation} name={agent?.identity.displayName ?? "Hara"} t={t}><Avatar agent={agent} /></WorkspaceTaskActivity> : null}<div ref={end} />
+            <WorkspaceWaiting key={`${scope}:${workspace.conversation.sessionId}`} model={model} t={t} name={agent?.identity.displayName ?? "Hara"} runtime={agent?.runtime.label ?? "Hara"} disabled={Boolean(disconnected) || view.runtimeChanging}
+              onSettings={() => openSettingsPage("runtimes")} /><div ref={end} />
           </div>}
       </div>
       {workspace && inChannel ? <LocalChannelComposer key={`${scope}:${channelView.channelId}`} view={channelView} model={channels} colleagues={colleagues} t={t} disconnected={!!disconnected} hasConnection={hasConnection} configure={() => void connect()} /> : null}

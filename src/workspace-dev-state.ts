@@ -1,3 +1,5 @@
+import { LocalWaitClock, waitScope } from "./wait-timing.ts";
+import { parseContextCompactions, type ContextCompactionView } from "./context-compaction.ts";
 import { parseWorkspaceAssistantPreview, type WorkspaceAssistantPreview } from "./assistant-preview.ts";
 import type { MessageTimingInput } from "./message-timing.ts";
 import { parseMessageTimingReport, type MessageTimingReport } from "./message-timing.ts";
@@ -64,6 +66,7 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     pendingInteractions?: WorkspaceDevInteraction[];
     runtimeStages?: RuntimeStageReport[];
     messageTimings?: MessageTimingReport[];
+    contextCompactions?: ContextCompactionView[];
     permissionTier?: RuntimePermissionTier;
     nativeRisks?: { id: string; runId: string; kind: "outside-workspace-delete" | "external-publish"; state: "observed"; at: string }[];
     nativeSession?: { runtimeId: "codex"; revision: number; status: "empty" | "ready" | "recovery_needed" | "new_session_required";
@@ -91,6 +94,17 @@ export interface WorkspaceFeatureView { revision: number; workspaceId: string; s
 export class WorkspaceDevModel {
   private view: WorkspaceDevView = { directory: null, workspaceId: null, agentId: null, localHistoryStart: 0, runtimeChanging: false, runtimeBlocked: false, roster: [], workspace: null, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "", dismissedRecoveryIdentity: null };
   private readonly listeners = new Set<() => void>();
+  readonly waitClock: LocalWaitClock;
+  private readonly waitListeners = new Set<() => void>();
+  subscribeWaitTiming = (listener: () => void) => { this.waitListeners.add(listener); return () => { this.waitListeners.delete(listener); }; };
+  getWaitTimingSnapshot = () => this.view.workspace ? this.waitClock.get(waitScope(this.view.workspace)) : null;
+  private notifyWait(): void { for (const listener of this.waitListeners) listener(); }
+  private optimisticMessage: { scope: string; requestId: string; historyStart: number; text: string } | null = null;
+  getOptimisticMessage = (): string | null => {
+    const w = this.view.workspace, row = this.optimisticMessage;
+    if (!w || !row || row.scope !== waitScope(w) || row.requestId !== this.getWaitTimingSnapshot()?.requestId) return null;
+    return w.conversation.history.slice(row.historyStart).some(item => item.role === "user" && item.content === row.text) ? null : row.text;
+  };
   private preview: WorkspaceAssistantPreview | null = null;
   private readonly previewListeners = new Set<() => void>();
   private previewRequest?: { key: string; epoch: number; requestId: string; runId?: string; painted: boolean };
@@ -111,7 +125,8 @@ export class WorkspaceDevModel {
     const before = this.preview;
     if (before ? frame.attemptId !== before.attemptId || frame.nativeTurnId !== before.nativeTurnId || frame.itemId !== before.itemId
       || frame.seq !== before.seq + 1 || !frame.text.startsWith(before.text) : frame.seq !== 1) return;
-    expected.runId = frame.runId; this.setPreview(frame);
+    expected.runId = frame.runId;
+    this.waitClock.preview(waitScope(workspace), expected.requestId, frame); this.notifyWait(); this.setPreview(frame);
   }
   async paintAssistantPreview(frame: WorkspaceAssistantPreview): Promise<void> {
     const current = this.preview, expected = this.previewRequest, timing = this.rpc.timingNow?.();
@@ -150,7 +165,8 @@ export class WorkspaceDevModel {
   private readonly executionMode: string;
   private settingsFactory?: () => Promise<{ model: WorkspaceDevModel; close(): void }>;
   private readonly settingsOnly: boolean;
-  constructor(rpc: WorkspaceDevRpc, nonce: () => string = () => crypto.randomUUID(), syntheticOnly = true, executionMode = syntheticOnly ? "synthetic" : "ark-real-key", settingsOnly = false) {
+  constructor(rpc: WorkspaceDevRpc, nonce: () => string = () => crypto.randomUUID(), syntheticOnly = true, executionMode = syntheticOnly ? "synthetic" : "ark-real-key", settingsOnly = false, waitNow?: () => number) {
+    this.waitClock = new LocalWaitClock(waitNow);
     this.rpc = rpc; this.nonce = nonce; this.syntheticOnly = syntheticOnly; this.executionMode = executionMode; this.settingsOnly = settingsOnly;
     if (!settingsOnly) rpc.setAssistantPreviewListener?.(value => this.assistantPreview(value));
   }
@@ -215,6 +231,8 @@ export class WorkspaceDevModel {
     if (this.questionPauses.has(key) || this.pending.get(key)?.state === "sending") this.view.sending = true;
     const nativeReset = this.nativeResets.get(key);
     if (nativeReset) { this.view.sending = nativeReset.state === "sending"; this.view.pendingUnknown = nativeReset.state === "unknown"; }
+    if (workspace) this.waitClock.observe(waitScope(workspace), workspace.conversation, this.runtimeStageReports(), workspace.conversation.messageTimings ?? [], workspace.approvals.map(row => row.id));
+    this.notifyWait();
     for (const listener of this.listeners) listener();
   }
   private key(snapshot = this.view.workspace): string { return snapshot ? JSON.stringify([snapshot.workspaceId, snapshot.resourceGeneration, snapshot.selectedAgentId]) : ""; }
@@ -226,6 +244,11 @@ export class WorkspaceDevModel {
     if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== this.executionMode) || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
       || (agentId && snapshot.selectedAgentId !== agentId) || !Array.isArray(snapshot.agents)
       || !Array.isArray(snapshot.conversation?.history)) throw new WorkspaceViewError("ws.notice.invalidView");
+    if (snapshot.conversation.contextCompactions !== undefined) {
+      const rows = parseContextCompactions(snapshot.conversation.contextCompactions, { agentId: snapshot.selectedAgentId, sessionId: snapshot.conversation.sessionId, historyLength: snapshot.conversation.history.length });
+      if (!rows) throw new WorkspaceViewError("ws.notice.invalidView");
+      snapshot.conversation.contextCompactions = rows;
+    }
     if (snapshot.conversation.messageTimings !== undefined) {
       if (!Array.isArray(snapshot.conversation.messageTimings) || snapshot.conversation.messageTimings.length > 16) throw new WorkspaceViewError("ws.notice.invalidView");
       snapshot.conversation.messageTimings = snapshot.conversation.messageTimings.map(value => {
@@ -741,11 +764,15 @@ export class WorkspaceDevModel {
       const identity = workspaceRecoveryIdentity(workspace.conversation);
       if (identity) { this.dismissedRecovery.set(key, identity); }
     }
-    this.previewRequest = { key, epoch: this.epoch, requestId: String(pending.payload.requestId), painted: false }; this.setPreview(null);
+    const timingScope = waitScope(workspace), requestId = String(pending.payload.requestId);
+    this.waitClock.begin(timingScope, requestId, [...(workspace.conversation.runtimeStages ?? []).map(row => row.attemptId), ...(workspace.conversation.messageTimings ?? []).map(row => row.attemptId)]);
+    this.optimisticMessage = !resume && !answer ? { scope: timingScope, requestId, historyStart: workspace.conversation.history.length, text: message } : null;
+    this.previewRequest = { key, epoch: this.epoch, requestId, painted: false }; this.setPreview(null);
     this.pending.set(key, pending); this.update({ sending: true, pendingUnknown: false, error: "",
       dismissedRecoveryIdentity: (!resume && !answer) ? (workspaceRecoveryIdentity(workspace.conversation) ?? this.view.dismissedRecoveryIdentity) : this.view.dismissedRecoveryIdentity });
     try {
       const accepted = await this.rpc.request<{ runId?: string }>(pending.method, pending.payload);
+      this.waitClock.accept(timingScope, requestId, accepted?.runId); this.notifyWait();
       if (this.previewRequest?.requestId === pending.payload.requestId && accepted?.runId) {
         if (this.previewRequest.runId && this.previewRequest.runId !== accepted.runId) this.clearPreview();
         else this.previewRequest.runId = accepted.runId;
@@ -759,9 +786,11 @@ export class WorkspaceDevModel {
       if (this.pending.get(key) !== pending) return;
       if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "number") {
         this.pending.delete(key); // explicit server refusal, not a transport-unknown mutation
+        this.waitClock.refuse(timingScope, requestId); this.notifyWait();
         if (this.key() === key) this.update({ sending: false, pendingUnknown: false, error: String(error) });
         return;
       }
+      this.waitClock.unknown(timingScope, requestId); this.notifyWait();
       const unknown: PendingMessage = { ...pending, state: "unknown" }; this.pending.set(key, unknown);
       if (this.key() === key) this.update({ sending: false, pendingUnknown: true, error: "",
         syncNotice: "ws.notice.acceptancePending" });
@@ -785,6 +814,8 @@ export class WorkspaceDevModel {
         if (this.key() === key) this.update({ syncNotice: "ws.notice.receiptPending" }); return;
       }
       this.pending.delete(key);
+      const w = this.view.workspace;
+      if (w && this.key() === key) { const scope = waitScope(w); if (receipt.state === "accepted") this.waitClock.accept(scope, String(requestId), receipt.runId!); else this.waitClock.refuse(scope, String(requestId)); this.notifyWait(); }
       if (receipt.state === "accepted" && (pending.method !== "workspace.session.answer" || pending.fromDraft) && this.drafts.get(key)?.trim() === pending.message) this.drafts.set(key, "");
       if (this.key() === key) {
         this.update({ sending: false, pendingUnknown: false, draft: this.drafts.get(key) ?? "", error: "", syncNotice: "" });

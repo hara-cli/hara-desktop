@@ -1,6 +1,6 @@
 import { parseMessageTimingReport, type MessageTimingReport } from "./message-timing.ts";
 /** Closed metadata projection. Native output and conversation content never enter this view. */
-export const RUNTIME_STAGE_KINDS = ["spawn", "cold_start", "first_token", "first_output", "model_roundtrip", "tool_call", "complete"] as const;
+export const RUNTIME_STAGE_KINDS = ["queued", "retry", "spawn", "cold_start", "first_token", "first_output", "model_roundtrip", "tool_call", "complete"] as const;
 export type RuntimeStageKind = typeof RUNTIME_STAGE_KINDS[number];
 export const RUNTIME_STAGE_FAILURES = ["not_installed", "version_incompatible", "runtime_auth_required", "runtime_auth_rejected",
   "runtime_network", "runtime_proxy", "invalid_model", "runtime_quota", "runtime_rate_limit", "runtime_permission_denied",
@@ -9,15 +9,15 @@ export type RuntimeStageFailure = typeof RUNTIME_STAGE_FAILURES[number];
 export type RuntimeStageState = "running" | "completed" | "blocked" | "cancelled" | "error" | "incomplete";
 export interface RuntimeStageEvent {
   seq: number; kind: RuntimeStageKind; phase: "start" | "end" | "mark"; offsetMs: number; durationMs: number | null;
-  call: number | null; toolName: string | null; outcome: "completed" | "error" | "cancelled" | null;
+  call: number | null; toolName: string | null; targetLabel?: string; outcome: "completed" | "error" | "cancelled" | null;
   source: "host" | "provider_stream" | "native_event"; errorKind: RuntimeStageFailure | null;
 }
 export interface RuntimeStageReport {
   provenance?: { startedAt: string; coreInstanceId: string };
   schemaVersion: 1; workspaceId: string; resourceGeneration: string; agentId: string; sessionId: string; runId: string; attemptId: string;
   historyStart: number; runtime: { extensionsIsolation?: "inherited"; id: "hara" | "pi" | "opencode" | "codex" | "claude" | "agy" | "gemini" | "kimi" | "copilot" | "cursor" | "grok"; version: string | null;
-    loginSource: "host" | "isolated" | "unknown"; model: string | null; effort: string | null };
-  state: RuntimeStageState; durationMs: number | null; errorKind: RuntimeStageFailure | null; events: RuntimeStageEvent[]; droppedEvents: number;
+    loginSource: "host" | "isolated" | "unknown"; model: string | null; effort: string | null; effortSource?: "auto" | "user" | "default" };
+  state: RuntimeStageState; durationMs: number | null; errorKind: RuntimeStageFailure | null; events: RuntimeStageEvent[]; droppedEvents: number; contextTokens?: number;
 }
 export interface RuntimeStageScope { workspaceId: string; resourceGeneration: string; agentId: string; sessionId: string;
   history: readonly { role: string }[] }
@@ -35,27 +35,38 @@ function model(value: unknown): value is string | null {
     && !/^(?:https?:|[A-Za-z]:[\\/]|sk[-_]|gh[pousr]_|github_pat_|xox[baprs]-|bearer)/i.test(value)
     && !/(?:^|\/)(?:Users|home|credentials?|secrets?)(?:\/|$)/i.test(value) && !/^[a-f0-9]{32,}$/i.test(value);
 }
+export function isSafeRuntimeTargetLabel(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value === value.trim() && [...value].length <= 40
+    && value !== "." && value !== ".."
+    && !/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\/\\<>:@?#]|%2f|%5c|(?:sk[-_]|gh[pousr]_|github_pat_|xox[baprs]-|AKIA[A-Z0-9]{12})|(?:password|token|secret)\s*[:=]|\.(?:pem|key|p12|pfx)$/iu.test(value)
+    && !/^(?:\.env(?:\.|$)|\.(?:hara|codex|claude|gemini|kimi|ssh|aws|npmrc)$|credentials?$|secrets?$|auth\.json$)/iu.test(value)
+    && !/^[a-f0-9]{24,}(?:\.[a-z0-9]+)?$/iu.test(value);
+}
 function parseEvent(value: unknown): RuntimeStageEvent | null {
-  if (!record(value) || !exact(value, ["seq", "kind", "phase", "offsetMs", "durationMs", "call", "toolName", "outcome", "source", "errorKind"])
+  if (!record(value) || !exact(value, ["seq", "kind", "phase", "offsetMs", "durationMs", "call", "toolName", "outcome", "source", "errorKind", ...(Object.prototype.hasOwnProperty.call(value, "targetLabel") ? ["targetLabel"] : [])])
     || !integer(value.seq, 1_000_000, 1) || !member(value.kind, RUNTIME_STAGE_KINDS) || !member(value.phase, ["start", "end", "mark"])
     || !integer(value.offsetMs, 86_400_000) || !duration(value.durationMs) || !(value.call === null || integer(value.call, 1_000_000, 1))
     || !(value.toolName === null || typeof value.toolName === "string" && value.toolName === value.toolName.trim() && /^[a-z][a-z0-9_]{0,63}$/.test(value.toolName))
     || !(value.outcome === null || member(value.outcome, ["completed", "error", "cancelled"]))
     || !member(value.source, ["host", "provider_stream", "native_event"]) || !failure(value.errorKind)) return null;
+  if (Object.prototype.hasOwnProperty.call(value, "targetLabel") && (value.kind !== "tool_call" || !isSafeRuntimeTargetLabel(value.targetLabel))) return null;
+  if (value.kind === "queued" && (value.call !== null || value.toolName !== null || value.source !== "host")) return null;
   if (value.durationMs !== null && value.durationMs > value.offsetMs) return null;
-  if (["spawn", "cold_start", "model_roundtrip", "tool_call"].includes(value.kind)) {
+  if (["queued", "spawn", "cold_start", "model_roundtrip", "tool_call"].includes(value.kind)) {
     if (value.phase === "mark" || (value.phase === "start"
       ? value.durationMs !== null || value.outcome !== null || value.errorKind !== null
       : value.durationMs === null || value.outcome === null)) return null;
   } else {
     if (value.phase !== "mark" || value.call !== null || value.toolName !== null) return null;
-    if (value.kind === "complete") {
+    if (value.kind === "retry") {
+      if (value.durationMs !== null || value.outcome !== null || value.source !== "host" || value.errorKind === null) return null;
+    } else if (value.kind === "complete") {
       if (value.outcome === null || value.durationMs === null || value.source !== "host") return null;
     } else if (value.durationMs !== null || value.outcome !== null || value.errorKind !== null
       || value.kind === "first_token" && value.source === "host") return null;
   }
   return { seq: value.seq, kind: value.kind, phase: value.phase, offsetMs: value.offsetMs, durationMs: value.durationMs,
-    call: value.call, toolName: value.toolName, outcome: value.outcome, source: value.source, errorKind: value.errorKind };
+    call: value.call, toolName: value.toolName, ...(typeof value.targetLabel === "string" ? { targetLabel: value.targetLabel } : {}), outcome: value.outcome, source: value.source, errorKind: value.errorKind };
 }
 function validProvenance(value: unknown): value is NonNullable<RuntimeStageReport["provenance"]> {
   return record(value) && exact(value, ["startedAt", "coreInstanceId"]) && typeof value.startedAt === "string"
@@ -64,21 +75,23 @@ function validProvenance(value: unknown): value is NonNullable<RuntimeStageRepor
     && typeof value.coreInstanceId === "string" && uuid.test(value.coreInstanceId);
 }
 export function parseRuntimeStageReport(value: unknown): RuntimeStageReport | null {
-  if (!record(value) || !exact(value, ["schemaVersion", "workspaceId", "resourceGeneration", "agentId", "sessionId", "runId", "attemptId", "historyStart", "runtime", "state", "durationMs", "errorKind", "events", "droppedEvents", ...(Object.prototype.hasOwnProperty.call(value, "provenance") ? ["provenance"] : [])])
+  if (!record(value) || !exact(value, ["schemaVersion", "workspaceId", "resourceGeneration", "agentId", "sessionId", "runId", "attemptId", "historyStart", "runtime", "state", "durationMs", "errorKind", "events", "droppedEvents", ...(Object.prototype.hasOwnProperty.call(value, "provenance") ? ["provenance"] : []), ...(Object.prototype.hasOwnProperty.call(value, "contextTokens") ? ["contextTokens"] : [])])
     || Object.prototype.hasOwnProperty.call(value, "provenance") && !validProvenance(value.provenance)
     || value.schemaVersion !== 1 || typeof value.workspaceId !== "string" || !workspaceId.test(value.workspaceId)
     || typeof value.agentId !== "string" || !agentId.test(value.agentId)
     || ![value.resourceGeneration, value.sessionId, value.runId, value.attemptId].every(item => typeof item === "string" && uuid.test(item))
     || !integer(value.historyStart, 4000) || !member(value.state, ["running", "completed", "blocked", "cancelled", "error", "incomplete"])
-    || !duration(value.durationMs) || !failure(value.errorKind) || !integer(value.droppedEvents, 1_000_000)
+    || !duration(value.durationMs) || !failure(value.errorKind) || Object.prototype.hasOwnProperty.call(value, "contextTokens") && !integer(value.contextTokens, 1_000_000_000)
+    || !integer(value.droppedEvents, 1_000_000)
     || !Array.isArray(value.events) || value.events.length > 256 || !record(value.runtime)
-    || !exact(value.runtime, ["id", "version", "loginSource", "model", "effort", ...(Object.prototype.hasOwnProperty.call(value.runtime, "extensionsIsolation") ? ["extensionsIsolation"] : [])])) return null;
+    || !exact(value.runtime, ["id", "version", "loginSource", "model", "effort", ...(Object.prototype.hasOwnProperty.call(value.runtime, "extensionsIsolation") ? ["extensionsIsolation"] : []), ...(Object.prototype.hasOwnProperty.call(value.runtime, "effortSource") ? ["effortSource"] : [])])) return null;
   const runtime = value.runtime;
   if (!member(runtime.id, ["hara", "pi", "opencode", "codex", "claude", "agy", "gemini", "kimi", "copilot", "cursor", "grok"])
     || !(runtime.version === null || typeof runtime.version === "string" && runtime.version === runtime.version.trim() && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(runtime.version))
     || !member(runtime.loginSource, ["host", "isolated", "unknown"]) || !model(runtime.model)
     || !(runtime.effort === null || member(runtime.effort, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]))) return null;
   if (Object.prototype.hasOwnProperty.call(runtime, "extensionsIsolation") && (runtime.extensionsIsolation !== "inherited" || !["kimi", "copilot", "cursor", "grok"].includes(runtime.id))) return null;
+  if (Object.prototype.hasOwnProperty.call(runtime, "effortSource") && !member(runtime.effortSource, ["auto", "user", "default"])) return null;
   const events: RuntimeStageEvent[] = []; let seq = 0, offset = 0;
   for (const item of value.events) {
     const event = parseEvent(item);
@@ -100,8 +113,8 @@ export function parseRuntimeStageReport(value: unknown): RuntimeStageReport | nu
   return { schemaVersion: 1, ...(validProvenance(value.provenance) ? { provenance: { ...value.provenance } } : {}), workspaceId: value.workspaceId, resourceGeneration: value.resourceGeneration as string,
     agentId: value.agentId, sessionId: value.sessionId as string, runId: value.runId as string, attemptId: value.attemptId as string,
     historyStart: value.historyStart, runtime: { id: runtime.id, ...(runtime.extensionsIsolation === "inherited" ? { extensionsIsolation: "inherited" as const } : {}), version: runtime.version, loginSource: runtime.loginSource,
-      model: runtime.model, effort: runtime.effort }, state: value.state, durationMs: value.durationMs, errorKind: value.errorKind,
-    events, droppedEvents: value.droppedEvents };
+      model: runtime.model, effort: runtime.effort, ...(member(runtime.effortSource, ["auto", "user", "default"]) ? { effortSource: runtime.effortSource } : {}) }, state: value.state, durationMs: value.durationMs, errorKind: value.errorKind,
+    events, droppedEvents: value.droppedEvents, ...(typeof value.contextTokens === "number" ? { contextTokens: value.contextTokens } : {}) };
 }
 export function parseRuntimeStageReports(value: unknown, scope: RuntimeStageScope): RuntimeStageReport[] {
   if (!Array.isArray(value) || value.length > 16) return [];
