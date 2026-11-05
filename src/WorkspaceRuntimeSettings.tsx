@@ -1,5 +1,5 @@
 import { HOST_LOGIN_ONLY_RUNTIMES, inheritsPersonalExtensions, manualRuntimeInstallUrl } from "./runtime-expansion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { WorkspaceRuntimeProxy } from "./WorkspaceRuntimeProxy";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { runtimeOperationText } from "./workspace-settings-copy";
@@ -9,6 +9,34 @@ import type { RuntimeApprovalCard, RuntimeLoginSource, WorkspaceDevModel, Worksp
 
 const manualRuntimeGuide = (id: string) => id === "gemini" ? "https://geminicli.com/docs/get-started/installation/"
   : id === "kimi" ? "https://github.com/MoonshotAI/kimi-cli#installation" : null;
+
+function RuntimeSetupDialog({ label, pending, onClose, children }: { label: string; pending: boolean; onClose(): void; children: ReactNode }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const panel = dialog.current!, previous = document.activeElement as HTMLElement | null;
+    const row = previous?.closest<HTMLElement>(".wsd-runtime-row");
+    panel.showModal();
+    (panel.querySelector<HTMLElement>("input:checked:not(:disabled),button:not(:disabled)") ?? panel).focus({ preventScroll: true });
+    return () => {
+      panel.close();
+      const target = previous?.isConnected ? previous : row?.isConnected ? row : null;
+      target?.focus({ preventScroll: true });
+    };
+  }, []);
+  return <dialog ref={dialog} className="wsd-approval wsd-runtime-bind-dialog wsd-runtime-setup-dialog" aria-modal="true" aria-label={label} aria-busy={pending}
+    onKeyDown={event => {
+      event.stopPropagation();
+      if (event.key !== "Tab") return;
+      const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not([type="radio"]):not(:disabled),input[type="radio"]:checked:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]'))
+        .filter(node => node.getClientRects().length > 0);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!first) { event.preventDefault(); event.currentTarget.focus(); }
+      else if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }} onCancel={event => { event.preventDefault(); if (!pending) onClose(); }}>
+    {children}
+  </dialog>;
+}
 
 export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, onDirty }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void }) {
   const { t } = useWorkspaceLocale();
@@ -58,7 +86,7 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
     <WorkspaceRuntimeProxy key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} onDirty={onDirty} />
     <button disabled={detecting || pending} onClick={() => { setDetecting(true); setChecked(false); setNotice(""); void model.detectRuntimes().then(() => setChecked(true)).catch(() => setNotice("ws.runtimes.detectFailed")).finally(() => setDetecting(false)); }}>{t(detecting ? "ws.runtimes.detecting" : "ws.runtimes.detect")}</button>
     <div className="wsd-runtime-list"><div className="wsd-connection wsd-runtime-row"><div><strong>Pi</strong><small>{t("ws.runtimes.builtIn")}</small><small>{t("ws.runtimes.piNote")}</small></div></div>
-    {workspace.runtimes?.options.map(runtime => <div className="wsd-connection wsd-runtime-row" key={runtime.runtimeId}>
+    {workspace.runtimes?.options.map(runtime => <div className="wsd-connection wsd-runtime-row" key={runtime.runtimeId} role="group" aria-label={runtime.label} tabIndex={-1}>
       <div><strong>{runtime.label}</strong><small>{runtime.registered ? t("ws.runtimes.registered", { version: runtime.version ?? "" }) : runtime.state === "detected" ? t("ws.runtimes.detected", { version: runtime.version ?? "" }) : runtime.state === "integrity_failed" ? t("ws.runtimes.integrityFailed") : detecting || !checked ? t("ws.runtimes.checking") : t("ws.runtimes.missing")}</small>
       {manualRuntimeInstallUrl(runtime.runtimeId) ? <><small>{t("ws.runtimeExpansion.hostLogin")}</small><small>{t("ws.runtimeExpansion.extensionsInherited")}</small></> : null}
       {runtime.path ? <code className="wsd-root">{runtime.path}</code> : null}
@@ -82,19 +110,19 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
     {workspace.runtimes?.operations.map(operation => <div className="wsd-runtime-operation" key={operation.id}><span>{operation.runtimeId} · {runtimeOperationText(t, operation.state)}</span>
       {operation.state === "downloading" ? <button onClick={() => void model.cancelRuntime(operation.id)}>{t("ws.runtimes.cancelInstall")}</button> : null}</div>)}
     {notice ? <p role="status">{t(notice)}</p> : null}
-    {local ? <section className="wsd-approval wsd-runtime-bind-dialog" role="dialog" aria-label={t("ws.runtimes.confirmLocal")}><h3>{t("ws.runtimes.registerTitle", { name: local.label })}</h3>
+    {local ? <RuntimeSetupDialog label={t("ws.runtimes.confirmLocal")} pending={pending} onClose={() => setLocal(null)}><h3>{t("ws.runtimes.registerTitle", { name: local.label })}</h3>
       <p>{t("ws.runtimes.bindLead")}</p>
-      {inheritsPersonalExtensions(local.runtimeId) ? <p data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}<div className="wsd-runtime-proof"><small>{t("ws.runtimes.detectedPath")}</small><code>{local.path}</code><small>{t("ws.runtimes.registerNote")}</small></div>
+      {inheritsPersonalExtensions(local.runtimeId) ? <p data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}<div className="wsd-runtime-proof">{local.version ? <small>{t("ws.runtimes.detected", { version: local.version })}</small> : null}<small>{t("ws.runtimes.detectedPath")}</small><code>{local.path}</code><small>{t("ws.runtimes.registerNote")}</small></div>
       <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="settings-local-login" checked={loginSource === "host"} disabled={pending || local.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: local.label })}</label>{!HOST_LOGIN_ONLY_RUNTIMES.includes(local.runtimeId) ? <label><input type="radio" name="settings-local-login" checked={loginSource === "isolated"} disabled={pending} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
       <div className="wsd-card-actions"><button disabled={pending} onClick={() => setLocal(null)}>{t("ws.cancel")}</button><button className="wsd-primary" disabled={pending || !local.fingerprint} onClick={() => { if (!local.fingerprint || saveFence.current) return; saveFence.current = true; setPending(true);
         void model.registerLocalRuntime(local.runtimeId, local.fingerprint, workspace.workspaceId, workspace.resourceGeneration, loginSource).then(() => { setLocal(null); setNotice("ws.runtimes.registeredNotice"); })
-          .catch(() => { setLocal(null); setNotice("ws.runtimes.registerUnknown"); }).finally(() => { saveFence.current = false; setPending(false); }); }}>{t("ws.runtimes.register")}</button></div></section> : null}
-    {card ? <section className="wsd-approval" role="dialog" aria-label={t("ws.runtimes.confirmInstall")}><div className="wsd-kicker">{t("ws.approval.kicker")}</div>
+          .catch(() => { setLocal(null); setNotice("ws.runtimes.registerUnknown"); }).finally(() => { saveFence.current = false; setPending(false); }); }}>{t("ws.runtimes.register")}</button></div></RuntimeSetupDialog> : null}
+    {card ? <RuntimeSetupDialog label={t("ws.runtimes.confirmInstall")} pending={pending} onClose={() => void decide(false)}><div className="wsd-kicker">{t("ws.approval.kicker")}</div>
       <h3>{t("ws.runtimes.installTitle", { name: card.label, version: card.version })}</h3>
       {inheritsPersonalExtensions(card.runtimeId) ? <p data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}<p>{card.origin} · {card.target.platform}/{card.target.arch} · {t("ws.runtimes.maxSize", { n: Math.ceil(card.maxBytes / 1024 / 1024) })}</p>
       <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="settings-install-login" checked={loginSource === "host"} disabled={pending || card.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: card.label })}</label>{!HOST_LOGIN_ONLY_RUNTIMES.includes(card.runtimeId) ? <label><input type="radio" name="settings-install-login" checked={loginSource === "isolated"} disabled={pending} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>
       <details><summary>{t("ws.runtimes.integrity")}</summary><code>{card.sha256}</code><p>{t("ws.runtimes.installNote")}</p></details>
       <div className="wsd-card-actions"><button disabled={pending} onClick={() => void decide(false)}>{t("ws.runtimes.notNow")}</button><button className="wsd-primary" disabled={pending} onClick={() => void decide(true)}>{t("ws.runtimes.approve")}</button></div>
-    </section> : null}
+    </RuntimeSetupDialog> : null}
   </section>;
 }
