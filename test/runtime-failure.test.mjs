@@ -121,7 +121,7 @@ test("far-future cooldown records safely fall back while expired history stays u
   }
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     const body = makeT(locale)("ws.resume.runtime.not_installed.body");
-    assert.match(body, locale === "en" ? /uninstalled or not registered/ : locale === "zh-Hans" ? /尚未安装或尚未注册/ : /尚未安裝或尚未註冊/);
+    assert.match(body, locale === "en" ? /not be installed or enabled/ : locale === "zh-Hans" ? /尚未安装或启用/ : /尚未安裝或啟用/);
   }
 });
 

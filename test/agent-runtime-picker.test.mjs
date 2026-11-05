@@ -52,13 +52,13 @@ test("the actual picker is folded, labels unavailable engines honestly and does 
   const html = renderToStaticMarkup(React.createElement(picker(), { agent, options, locale: "zh", onApply() {} }));
   assert.ok(html.startsWith("<details")); assert.equal(/<details[^>]*\bopen\b/.test(html), false);
   assert.ok(/<option[^>]*value="pi"[^>]*disabled/.test(html));
-  assert.ok(html.includes("不是模型或工具授权")); assert.ok(html.includes("旧任务和历史保留原绑定"));
+  assert.ok(html.includes("模型和操作权限需要分别设置")); assert.ok(html.includes("已有任务和历史继续使用原引擎"));
   assert.equal(html.includes("apiKey"), false);
 });
 
 test("older engines and company Agents render read-only rather than inventing a Runtime binding", () => {
   const legacy = renderToStaticMarkup(React.createElement(picker(), { agent: { ...agent, runtime: undefined }, options: [], locale: "en" }));
-  assert.ok(legacy.includes("Binding not advertised")); assert.equal(legacy.includes("<select"), false);
+  assert.ok(legacy.includes("Current engine details are unavailable")); assert.equal(legacy.includes("<select"), false);
   const company = renderToStaticMarkup(React.createElement(picker(), { agent: { ...agent, owner: "organization" }, options, locale: "en", onApply() {} }));
   assert.ok(/<select[^>]*disabled/.test(company));
 });

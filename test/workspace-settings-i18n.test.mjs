@@ -156,3 +156,48 @@ test("settings source routes visible copy and async notices through the three-la
     visit(ast); assert.deepEqual(violations, [], file);
   }
 });
+
+
+test("engine cards use everyday status text and keep installation paths in closed details in every locale", () => {
+  const expected = {
+    en: ["Enable", "1.2.3 · Installed · Not enabled", "1.2.3 · Enabled", "Details"],
+    "zh-Hans": ["启用", "1.2.3 · 已安装 · 未启用", "1.2.3 · 已启用", "详情"],
+    "zh-Hant": ["啟用", "1.2.3 · 已安裝 · 未啟用", "1.2.3 · 已啟用", "詳情"],
+  };
+  for (const locale of locales) {
+    const [enable, installed, enabled, details] = expected[locale];
+    const row = { runtimeId: "codex", label: "Codex", registered: false, state: "detected", version: "1.2.3", path: "/fixture/bin/codex" };
+    const html = render("Runtime", { model: {}, workspace: { ...workspace, runtimes: { options: [row], operations: [] } } }, locale);
+    assert.ok([...html.matchAll(/<button[^>]*class="wsd-primary"[^>]*>([^<]*)<\/button>/g)].some(([, text]) => text === enable));
+    assert.ok(html.includes(installed));
+    const disclosure = html.match(/<details class="wsd-runtime-details">([\s\S]*?)<\/details>/);
+    assert.ok(disclosure, "installation details are closed by default");
+    assert.ok(disclosure[1].includes(`<summary>${details}</summary>`));
+    assert.ok(disclosure[1].includes('<code class="wsd-root wsd-runtime-path">/fixture/bin/codex</code>'));
+    const registered = render("Runtime", { model: {}, workspace: { ...workspace, runtimes: { options: [{ ...row, registered: true, state: "local_registered" }], operations: [] } } }, locale);
+    assert.ok(registered.includes(enabled));
+    assert.equal(registered.includes(installed), false);
+    localized(html, locale); localized(registered, locale);
+  }
+});
+
+test("the enabled-but-unavailable notice requires an explicit capability denial, with supporting detail collapsed", () => {
+  for (const locale of locales) for (const capability of [false, true, undefined]) for (const registered of [false, true]) {
+    const t = makeT(locale), row = { runtimeId: "codex", label: "Codex", registered,
+      state: registered ? "local_registered" : "detected", generalAgentDriverAvailable: capability };
+    const html = render("Runtime", { model: {}, workspace: { ...workspace, runtimes: { options: [row], operations: [] } } }, locale);
+    const unavailable = registered && capability === false;
+    assert.equal(html.includes(escape(t("ws.runtimes.driverNote"))), unavailable, `${locale}, registered ${registered}, capability ${capability}`);
+    assert.equal(html.includes(escape(t("ws.runtimes.driverDetails"))), unavailable);
+    if (unavailable) {
+      const details = html.match(/<details class="wsd-runtime-details">([\s\S]*?)<\/details>/);
+      assert.ok(details?.[1].includes(escape(t("ws.runtimes.driverDetails"))));
+      assert.equal(details[1].includes(escape(t("ws.runtimes.driverNote"))), false, "short notice stays on the card");
+    }
+  }
+  for (const locale of locales) {
+    const html = render("Runtime", { model: {}, workspace: { ...workspace, runtimes: { options: [{ runtimeId: "kimi", label: "Kimi", registered: true,
+      state: "local_registered", generalAgentDriverAvailable: false }], operations: [] } } }, locale);
+    assert.equal(html.includes(escape(makeT(locale)("ws.runtimes.driverNote"))), false, "Kimi retains its existing display exception");
+  }
+});

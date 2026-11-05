@@ -30,8 +30,8 @@ test("selected colleague inspector owns schedule management in all three locales
       onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] }),
       async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
     assert.match(html, locale === "en" ? /Manage Dora/ : /Dora · 管理/);
-    assert.match(html, /Runtime/);
-    assert.ok(html.includes(locale === "en" ? "Apply Runtime" : locale === "zh-Hant" ? "套用 Runtime" : "应用 Runtime"));
+    assert.ok(html.includes(locale === "en" ? "Engine" : "引擎"));
+    assert.ok(html.includes(locale === "en" ? "Use this engine" : locale === "zh-Hant" ? "使用此引擎" : "使用此引擎"));
     assert.doesNotMatch(html, /sonnet|Open Runtime settings|Open model settings|管理本机引擎/);
     assert.match(html, /Visual summary/);
     assert.doesNotMatch(html, /Private other colleague schedule|Another task/);
@@ -56,7 +56,7 @@ test("main Hara shares the Runtime and model entry without colleague schedules",
     onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] }),
     async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
   assert.match(html, /Hara management/);
-  assert.match(html, /Apply Runtime/);
+  assert.match(html, /Use this engine/);
   assert.match(html, /This Hara colleague.*model/);
   assert.doesNotMatch(html, /Open Runtime settings|Open model settings|gpt-6/);
   assert.doesNotMatch(html, /Create in chat; manage only this colleague here/);
@@ -110,11 +110,11 @@ test("main and colleague inspectors retain identical visible, disabled same-valu
     const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: false,
       onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "codex", revision: 1, selectedModelId: null, models: [] }),
       async onApplyRuntime() {}, async onApplyModel() {}, async onRescan() {}, async onRegisterRuntime() {}, onRuntimeDirectory() {}, async onSaveProfile() {} }));
-    assert.match(html, /<select[^>]*aria-label="Runtime"/);
-    assert.match(html, /<button[^>]*disabled=""[^>]*>Apply Runtime<\/button>/);
+    assert.match(html, /<select[^>]*aria-label="Engine"/);
+    assert.match(html, /<button[^>]*disabled=""[^>]*>Use this engine<\/button>/);
     assert.match(html, /Rescan local runtimes/);
     assert.match(html, /<select[^>]*aria-label="This Hara colleague&#x27;s model"[^>]*disabled=""/);
-    assert.doesNotMatch(html, /Install in Settings|Register for binding|Antigravity detected/);
+    assert.doesNotMatch(html, /Install in Settings|>Enable<|Antigravity found/);
   }
 });
 

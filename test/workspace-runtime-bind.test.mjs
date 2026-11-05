@@ -143,12 +143,12 @@ test("OpenCode model card omits effort and its registration card offers host log
       runtimes: { options: [{ runtimeId: "opencode", label: "OpenCode", state: "detected", registered: false,
         installed: true, fingerprint: "fixture", path: "/fixture/opencode", loginSource: "isolated" }] } } });
   await f.flush();
-  f.button("Register for binding").props.onClick(); f.render();
+  f.button(makeT("en")("ws.runtimeAccess.register")).props.onClick(); f.render();
   const radios = f.all().filter(node => node.type === "input" && node.props.type === "radio" && node.props.name === "inspector-login-source");
   assert.equal(radios.length, 1);
   assert.equal(radios[0].props.checked, true);
   assert.equal(f.text().includes("Reasoning effort"), false);
-  f.button("Confirm registration").props.onClick(); await f.flush();
+  f.button(makeT("en")("ws.runtimes.register")).props.onClick(); await f.flush();
   assert.deepEqual(f.registrations, [["opencode", "fixture", "host"]]);
 });
 
@@ -180,14 +180,14 @@ test("empty, detected and missing have different guidance; rescan does not insta
     ] } }, onRescan: async () => { scans++; } });
   await f.flush();
   assert.ok(f.text().includes("No usable runtime"));
-  assert.ok(f.text().includes("Codex detected"));
+  assert.ok(f.text().includes(makeT("en")("ws.runtimeAccess.detected", { runtime: "Codex" })));
   assert.ok(f.text().includes("Claude Code · No usable installation"));
   assert.deepEqual(f.requests, []);
   f.button("Rescan local runtimes").props.onClick(); await f.flush();
   assert.equal(scans, 1); assert.deepEqual(f.changes, []); assert.deepEqual(f.registrations, []);
-  f.button("Register for binding").props.onClick(); f.render();
+  f.button(makeT("en")("ws.runtimeAccess.register")).props.onClick(); f.render();
   assert.equal(f.registrations.length, 0); assert.ok(f.dialog());
-  f.button("Confirm registration").props.onClick(); await f.flush();
+  f.button(makeT("en")("ws.runtimes.register")).props.onClick(); await f.flush();
   assert.deepEqual(f.registrations, [["codex", "fixture-fingerprint", "host"]]); assert.deepEqual(f.changes, []);
 });
 
@@ -243,9 +243,9 @@ test("available binding hides detected discovery cards; listModels failures surf
     ] } }, agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1, identity: { displayName: "Hara" },
       runtime: { id: "codex", label: "Codex", available: true } } });
   await f.flush();
-  assert.equal(f.text().includes("Claude Code detected"), false);
-  assert.equal(f.text().includes("Antigravity detected"), false);
-  assert.equal(f.text().includes("Register for binding"), false);
+  assert.equal(f.text().includes(makeT("en")("ws.runtimeAccess.detected", { runtime: "Claude Code" })), false);
+  assert.equal(f.text().includes(makeT("en")("ws.runtimeAccess.detected", { runtime: "Antigravity" })), false);
+  assert.equal(f.text().includes(makeT("en")("ws.runtimeAccess.register")), false);
   assert.ok(f.text().includes("This Hara colleague's model"));
   assert.equal(f.text().includes("This bot's model"), false);
   const heading = node => {
@@ -282,7 +282,7 @@ for (const kind of ["main", "colleague"]) test(kind + " inventory failure keeps 
   assert.ok(f.text().includes("fixture inventory unavailable"));
   assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.disabled, true);
   assert.equal(f.button("Apply model").props.disabled, true);
-  assert.equal(f.text().includes("Register for binding"), false);
+  assert.equal(f.text().includes(makeT("en")("ws.runtimeAccess.register")), false);
   assert.equal(f.text().includes("Install in Settings"), false);
   const rescan = f.button("Rescan local runtimes");
   assert.equal(rescan.props.className, "vg-runtime-rescan");
@@ -290,7 +290,7 @@ for (const kind of ["main", "colleague"]) test(kind + " inventory failure keeps 
   assert.equal(scans, 1);
   assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.disabled, false);
   assert.ok(f.text().includes("Recovered model"));
-  assert.equal(f.text().includes("Register for binding"), false);
+  assert.equal(f.text().includes(makeT("en")("ws.runtimeAccess.register")), false);
   assert.equal(f.text().includes("Install in Settings"), false);
   assert.ok(f.picker()); assert.equal(f.button("Rescan local runtimes").props.className, rescan.props.className);
 });
@@ -304,7 +304,7 @@ test("failure recovery links only the current missing installation, never integr
     await f.flush();
     const missing = reason === "not_registered" || reason === "not_installed";
     assert.equal(f.text().includes("Install in Settings"), missing, reason);
-    assert.equal(f.text().includes("Register for binding"), missing, reason);
+    assert.equal(f.text().includes(makeT("en")("ws.runtimeAccess.register")), missing, reason);
     assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.disabled, true, reason);
     const actions = f.all().find(node => node.props?.className === "vg-runtime-recovery-actions");
     const buttons = actions.props.children.flat().filter(Boolean);
@@ -365,7 +365,7 @@ test("an old isolated Codex binding offers an explicit host-login confirmation",
   await f.flush();
   f.button("Use this Mac's login").props.onClick(); f.render();
   assert.ok(f.dialog()); assert.ok(f.text().includes("Use the Codex login on this Mac (recommended)"));
-  f.button("Confirm registration").props.onClick(); await f.flush();
+  f.button(makeT("en")("ws.runtimes.register")).props.onClick(); await f.flush();
   assert.deepEqual(f.registrations, [["codex", "fixture-fingerprint", "host"]]);
 });
 

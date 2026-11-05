@@ -77,3 +77,12 @@
 .hs.wss-app .wsd-runtime-model-options input{accent-color:var(--brand)}
 .hs.wss-app .wsd-runtime-model-options :is(strong,small){display:block}
 @media (max-width:700px){.hs.wss-app .wss-content .wsd-runtime-list .wsd-runtime-row{grid-template-columns:1fr}.hs.wss-app .wsd-runtime-row>button{justify-self:start}}
+
+/* Keep runtime installation paths and setup details secondary in both themes. */
+.wsd-runtime-details{color:var(--wsd-muted,var(--muted));font-size:11px;min-width:0}
+.wsd-runtime-details>summary{cursor:pointer;line-height:1.6}
+.wsd-runtime-details>:is(small,code,p){display:block}
+.wsd-runtime-details>:is(small,code,p)+:is(small,code,p){margin-top:6px}
+.wsd-runtime-details>summary:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+.wsd-runtime-details[open]>summary{margin-bottom:8px}
+.wss-content .wsd-root.wsd-runtime-path,.wsd-runtime-proof .wsd-root.wsd-runtime-path{font-size:11px;color:var(--wsd-muted,var(--muted));overflow-wrap:anywhere}
