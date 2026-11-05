@@ -1,3 +1,4 @@
+import { CONTEXT_COMPACTION_KEYS } from "./context-compaction-i18n.ts";
 import { PERSONAL_EXTENSIONS_COPY } from "./agent-runtime-selection.ts";
 import { RUNTIME_VERSION_KEYS } from "./runtime-version-i18n.ts";
 import { RUNTIME_STAGE_KEYS } from "./runtime-stage-i18n.ts";
@@ -6,6 +7,7 @@ import { VIOLET_KEYS } from "./violet-i18n.ts";
 
 // Shared shell keys in English, Simplified Chinese and Traditional Chinese.
 export const WORKSPACE_KEYS = [
+  ...CONTEXT_COMPACTION_KEYS,
   ...RUNTIME_VERSION_KEYS,
   ["ws.runtimeExpansion.manualInstall", "Install this CLI using its official instructions, then rescan.", "请按官方说明安装 CLI，然后重新扫描。", "請依官方說明安裝 CLI，然後重新掃描。"],
   ["ws.runtimeExpansion.instructions", "Installation instructions", "安装说明", "安裝說明"],

@@ -1,3 +1,4 @@
+import { parseContextCompactions, type ContextCompactionView } from "./context-compaction.ts";
 import { parseWorkspaceAssistantPreview, type WorkspaceAssistantPreview } from "./assistant-preview.ts";
 import type { MessageTimingInput } from "./message-timing.ts";
 import { parseMessageTimingReport, type MessageTimingReport } from "./message-timing.ts";
@@ -64,6 +65,7 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     pendingInteractions?: WorkspaceDevInteraction[];
     runtimeStages?: RuntimeStageReport[];
     messageTimings?: MessageTimingReport[];
+    contextCompactions?: ContextCompactionView[];
     permissionTier?: RuntimePermissionTier;
     nativeRisks?: { id: string; runId: string; kind: "outside-workspace-delete" | "external-publish"; state: "observed"; at: string }[];
     nativeSession?: { runtimeId: "codex"; revision: number; status: "empty" | "ready" | "recovery_needed" | "new_session_required";
@@ -226,6 +228,12 @@ export class WorkspaceDevModel {
     if (snapshot?.syntheticOnly !== this.syntheticOnly || (!this.syntheticOnly && snapshot.executionMode !== this.executionMode) || snapshot.workspaceId !== workspaceId || !snapshot.resourceGeneration
       || (agentId && snapshot.selectedAgentId !== agentId) || !Array.isArray(snapshot.agents)
       || !Array.isArray(snapshot.conversation?.history)) throw new WorkspaceViewError("ws.notice.invalidView");
+    if (snapshot.conversation.contextCompactions !== undefined) {
+      const rows = parseContextCompactions(snapshot.conversation.contextCompactions, { agentId: snapshot.selectedAgentId,
+        sessionId: snapshot.conversation.sessionId, historyLength: snapshot.conversation.history.length });
+      if (!rows) throw new WorkspaceViewError("ws.notice.invalidView");
+      snapshot.conversation.contextCompactions = rows;
+    }
     if (snapshot.conversation.messageTimings !== undefined) {
       if (!Array.isArray(snapshot.conversation.messageTimings) || snapshot.conversation.messageTimings.length > 16) throw new WorkspaceViewError("ws.notice.invalidView");
       snapshot.conversation.messageTimings = snapshot.conversation.messageTimings.map(value => {

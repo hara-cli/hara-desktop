@@ -156,3 +156,8 @@
 .wsd-colleague-draft details { grid-column: 1 / -1; }
 .wsd-colleague-draft textarea { min-height: 86px; resize: vertical; }
 @media (max-width: 540px) { .wsd-colleague-draft { grid-template-columns: minmax(0, 1fr); } }
+
+.wsd-context-compaction { margin: 12px 0; color: var(--hs-muted, #777); font-size: 12px; }
+.wsd-context-compaction > summary { cursor: pointer; padding: 5px 0; }
+.wsd-context-compaction-body { padding: 4px 12px 10px; border-left: 2px solid currentColor; max-width: 70ch; overflow-wrap: anywhere; }
+.wsd-context-compaction-body p, .wsd-context-compaction-body ul { margin: 8px 0; white-space: pre-wrap; }
