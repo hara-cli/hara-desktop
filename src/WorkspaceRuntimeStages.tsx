@@ -9,10 +9,12 @@ import { copyRuntimeDiagnostic } from "./runtime-failure";
 
 type Translate = ReturnType<typeof makeT>;
 interface ExportState { key: string; pending: boolean; failed: boolean; receipt: RuntimeDiagnosticReceipt | null }
-export function WorkspaceRuntimeStages({ report, t, onExport, disabled = false, alwaysShow = false, messageTimings = [] }: {
-  messageTimings?: readonly MessageTimingReport[];
+export function WorkspaceRuntimeStages({ report, t, onExport, disabled = false, alwaysShow = false, messageTimings = [], forceVisible = false, expanded = false, expandRequest }: {
+  expandRequest?: number; forceVisible?: boolean; expanded?: boolean; messageTimings?: readonly MessageTimingReport[];
   report: RuntimeStageReport; t: Translate; onExport?: (report: RuntimeStageReport) => Promise<RuntimeDiagnosticReceipt>; disabled?: boolean; alwaysShow?: boolean;
 }) {
+  const details = useRef<HTMLDetailsElement>(null);
+  useEffect(() => { if (expanded && details.current) { details.current.open = true; details.current.querySelector("summary")?.focus(); details.current.scrollIntoView?.({ block: "nearest" }); } }, [expanded, expandRequest]);
   const key = runtimeStageIdentity(report), liveKey = useRef(key), mounted = useRef(true), fence = useRef<string | null>(null);
   liveKey.current = key;
   const [state, setState] = useState<ExportState | null>(null);
@@ -36,11 +38,11 @@ export function WorkspaceRuntimeStages({ report, t, onExport, disabled = false, 
     const result = await copyRuntimeDiagnostic(text, clipboard ? value => clipboard.writeText(value) : undefined);
     if (mounted.current && liveKey.current === key) setCopyState({ key, state: result });
   };
-  if (!showRuntimeStageReport(report, alwaysShow)) return null;
+  if (!forceVisible && !showRuntimeStageReport(report, alwaysShow)) return null;
   const firstToken = report.events.find(event => event.kind === "first_token" && event.source !== "host");
   const firstOutput = report.events.find(event => event.kind === "first_output");
   const activities = runtimeStageActivities(report), measured = (value: number | null) => formatRuntimeStageMs(value) ?? t("ws.stages.unknown");
-  return <details className={"wsd-runtime-stages" + (alwaysShow ? "" : " is-compact")} data-stage-display={alwaysShow ? "always" : "compact"} data-runtime-attempt={report.attemptId}>
+  return <details ref={details} className={"wsd-runtime-stages" + (alwaysShow ? "" : " is-compact")} data-stage-display={alwaysShow ? "always" : "compact"} data-runtime-attempt={report.attemptId}>
     <summary><span>{t("ws.stages.title")}</span><span className="wsd-runtime-stages-total">{measured(report.durationMs)}</span></summary>
     <div className="wsd-runtime-stages-body">
       <p className="wsd-runtime-stages-status" role="status">{t(`ws.stages.state.${report.state}`)}</p>

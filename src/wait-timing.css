@@ -1,0 +1,30 @@
+.wsd-wait { margin: 16px 0 12px 42px; color: var(--hara-text-secondary); font-size: 13px; }
+.wsd-wait-line { display: flex; gap: 9px; align-items: center; min-height: 32px; }
+.wsd-wait-dot { width: 6px; height: 6px; flex: 0 0 6px; background: currentColor; border-radius: 50%; animation: wait-breathe 1.8s ease-in-out infinite; }
+.wsd-wait-elapsed { margin-left: auto; color: var(--hara-text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wsd-wait-spacer { flex: 1; }.wsd-wait .hs-btn { min-height: 28px; padding: 3px 9px; font-size: 12px; }
+.wsd-wait-stop.is-emphasized { color: var(--hara-text-primary); border-color: currentColor; }
+.wsd-wait-hint, .wsd-wait-tool { margin: 5px 0 0 15px; color: var(--hara-text-tertiary); font-size: 12px; }
+.wsd-wait-tool { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: wait-enter .18s ease-out; }
+.wsd-wait-tool.is-finished { opacity: .6; transition: opacity .25s; }
+.wsd-draft-timing { display: inline-flex; align-items: baseline; gap: 4px; color: var(--hara-text-tertiary); font-weight: normal; font-size: 12px; }
+.wsd-optimistic small { display: block; margin-top: 5px; text-align: right; font-size: 11px; color: var(--hara-text-tertiary); }
+.wsd-wait-failure { margin: 10px 0 14px 42px; font-size: 13px; color: var(--hara-text-secondary); }
+.wsd-wait-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.wsd-wait-dialog { color: var(--hara-text-primary); background: var(--hara-bg-elevated); border: 1px solid var(--hara-border-default); border-radius: 12px; max-width: min(440px, 90vw); padding: 24px; }
+.wsd-wait-dialog::backdrop { background: #0005; }.wsd-wait-dialog p { line-height: 1.6; }
+.wsd-timing-wrap { position: relative; margin-left: auto; display: inline-flex; align-items: baseline; flex-wrap: wrap; font-weight: normal; font-size: 12px; }
+.wsd-timing-chip { color: var(--hara-text-tertiary); border: 0; border-radius: 5px; background: transparent; font: inherit; font-variant-numeric: tabular-nums; padding: 2px 6px; cursor: pointer; }
+.wsd-timing-chip:hover, .wsd-timing-chip:focus-visible { background: var(--hara-bg-surface); color: var(--hara-text-secondary); }
+.wsd-timing-wrap.is-slow .wsd-timing-chip, .wsd-timing-reason { color: var(--hara-status-waiting); }
+.wsd-timing-reason { width: 100%; font-size: 11px; margin: 3px 6px; }
+.wsd-timing-popover { position: fixed; max-height: calc(100vh - 16px); overflow-y: auto; box-sizing: border-box; width: min(360px, 80vw); z-index: 12; background: var(--hara-bg-elevated); color: var(--hara-text-secondary); border: 1px solid var(--hara-border-default); border-radius: 10px; padding: 16px; box-shadow: 0 8px 24px #0002; line-height: 1.5; text-align: left; }
+.wsd-timing-popover strong { color: var(--hara-text-primary); font-size: 13px; }.wsd-timing-popover dl { margin: 12px 0; }
+.wsd-timing-popover dl > div { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 7px 0; }.wsd-timing-popover dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.wsd-timing-popover small { display: block; color: var(--hara-text-tertiary); }.wsd-timing-popover pre { max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wsd-timing-popover .hs-btn { font-size: 12px; padding: 5px 8px; }
+.wsd-context-compaction { margin: 16px 0; border-top: 1px solid var(--hara-border-default); color: var(--hara-text-tertiary); font-size: 12px; }
+.wsd-context-compaction summary { padding: 9px 0; cursor: pointer; }.wsd-context-compaction-body { padding: 8px 14px; color: var(--hara-text-secondary); }
+@keyframes wait-breathe { 50% { opacity: .4; } }@keyframes wait-enter { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .wsd-wait *, .wsd-wait-dot { animation: none !important; transition: none !important; } }
+[data-motion="off"] .wsd-wait * { animation: none !important; transition: none !important; }
