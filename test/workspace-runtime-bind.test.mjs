@@ -119,9 +119,9 @@ test("Pi connection catalog marks documented results and applies model with its 
 });
 
 for (const [levels, expected] of [
-  [["low", "medium", "high", "max"], "medium"],
-  [["off", "low", "high"], "low"],
-]) test(`a new Codex model defaults to ${expected} when supported`, async () => {
+  [["low", "medium", "high", "max"], ""],
+  [["off", "low", "high"], ""],
+]) test(`a new Codex model stays automatic with ${levels.join(",")}`, async () => {
   const f = mount({ agent: { agentId: "main", kind: "main", configRevision: 2, agentEpoch: 1,
     identity: { displayName: "Hara" }, runtime: { id: "codex", label: "Codex", available: true } },
   listModels: async () => ({ runtimeId: "codex", revision: 1, selectedModelId: "codex-one", selectedEffort: null,
@@ -129,10 +129,10 @@ for (const [levels, expected] of [
   await f.flush();
   f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model")
     .props.onChange({ target: { value: "codex-two" } }); f.render();
-  assert.ok(f.text().includes("Higher effort takes longer"));
+  assert.ok(f.text().includes("Automatic uses low effort for short answers"));
   assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "Reasoning effort").props.value, expected);
   f.button("Apply model").props.onClick(); await f.flush();
-  assert.deepEqual(f.models, [["codex", "codex-two", 1, expected]]);
+  assert.deepEqual(f.models, [["codex", "codex-two", 1, null]]);
 });
 
 test("OpenCode model card omits effort and its registration card offers host login only", async () => {
@@ -411,3 +411,20 @@ test("binding and runtime-switch confirmations disclose inherited extensions for
     assert.equal(g.all().filter(node => node.type === "input" && node.props.name === "inspector-login-source").length, 1);
   }
 });
+
+for (const configured of [null, "auto", "low", "medium", "high", "xhigh", "max"])
+  test(`effort picker preserves ${configured ?? "unset"} and permits a fixed selection`, async () => {
+    const f = mount({ agent: { agentId: "colleague", kind: "colleague", configRevision: 2, agentEpoch: 1,
+      identity: { displayName: "Tester" }, runtime: { id: "codex", label: "Codex", available: true } },
+      listModels: async () => ({ runtimeId: "codex", revision: 5, selectedModelId: "codex-one", selectedEffort: configured,
+        models: [{ id: "codex-one", label: "Codex one", supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"] }] }) });
+    await f.flush();
+    const picker = () => f.all().find(node => node.type === "select" && node.props["aria-label"] === "Reasoning effort");
+    assert.equal(picker().props.value, configured === "auto" || configured === null ? "" : configured);
+    picker().props.onChange({ target: { value: "high" } }); f.render();
+    assert.equal(picker().props.value, "high");
+    if (configured !== "high") {
+      f.button("Apply model").props.onClick(); await f.flush();
+      assert.deepEqual(f.models, [["codex", "codex-one", 5, "high"]]);
+    }
+  });
