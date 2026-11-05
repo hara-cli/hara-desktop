@@ -13,10 +13,10 @@
 .wsd-wait-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .wsd-wait-dialog { color: var(--hara-text-primary); background: var(--hara-bg-elevated); border: 1px solid var(--hara-border-default); border-radius: 12px; max-width: min(440px, 90vw); padding: 24px; }
 .wsd-wait-dialog::backdrop { background: #0005; }.wsd-wait-dialog p { line-height: 1.6; }
-.wsd-timing-wrap { position: relative; margin-left: auto; display: inline-flex; align-items: baseline; flex-wrap: wrap; font-weight: normal; font-size: 12px; }
+.wsd-timing-wrap { --wsd-timing-amber: #d6aa58; position: relative; margin-left: auto; display: inline-flex; align-items: baseline; flex-wrap: wrap; font-weight: normal; font-size: 12px; }
 .wsd-timing-chip { color: var(--hara-text-tertiary); border: 0; border-radius: 5px; background: transparent; font: inherit; font-variant-numeric: tabular-nums; padding: 2px 6px; cursor: pointer; }
 .wsd-timing-chip:hover, .wsd-timing-chip:focus-visible { background: var(--hara-bg-surface); color: var(--hara-text-secondary); }
-.wsd-timing-wrap.is-slow .wsd-timing-chip, .wsd-timing-reason { color: var(--hara-status-waiting); }
+.wsd-timing-wrap.is-slow .wsd-timing-chip, .wsd-timing-reason { color: var(--wsd-timing-amber); }
 .wsd-timing-reason { width: 100%; font-size: 11px; margin: 3px 6px; }
 .wsd-timing-popover { position: fixed; max-height: calc(100vh - 16px); overflow-y: auto; box-sizing: border-box; width: min(360px, 80vw); z-index: 12; background: var(--hara-bg-elevated); color: var(--hara-text-secondary); border: 1px solid var(--hara-border-default); border-radius: 10px; padding: 16px; box-shadow: 0 8px 24px #0002; line-height: 1.5; text-align: left; }
 .wsd-timing-popover strong { color: var(--hara-text-primary); font-size: 13px; }.wsd-timing-popover dl { margin: 12px 0; }
@@ -30,3 +30,4 @@
 [data-motion="off"] .wsd-wait * { animation: none !important; transition: none !important; }
 
 .wsd-draft-timing .wsd-wait-stop { margin-left: 5px; min-height: 24px; padding: 2px 7px; font-size: 12px; }
+:root[data-theme="light"] .wsd-timing-wrap, .theme-daylight .wsd-timing-wrap { --wsd-timing-amber: #8a5b10; }
