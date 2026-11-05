@@ -204,9 +204,12 @@ export function AssistantDraft({ model, agent, t, follow }: { model: WorkspaceDe
     <div className="hs-msg wsd-message is-agent"><Avatar agent={agent} /><div ref={bubble} className="hs-bub wsd-bubble wsd-preview-text" aria-label={t("ws.preview.label")}>{preview.text}</div></div>
   </div>;
 }
+const emptyWaitTimingSnapshot = () => null;
+
 export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, onOpenBrowser }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string;
   mode: "workspace" | "lab"; onOpenBrowser?: () => void }) {
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
+  const localWait = useSyncExternalStore(model.subscribeWaitTiming, model.getWaitTimingSnapshot, emptyWaitTimingSnapshot);
   const channels = useMemo(() => new WorkspaceLocalChannelsModel(model), [model]);
   const channelView = useSyncExternalStore(channels.subscribe, channels.getSnapshot, channels.getSnapshot);
   const [channelDialog, setChannelDialog] = useState<"create" | "members" | "invite" | null>(null);
@@ -546,7 +549,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             </section> : null}
             {scheduleNotice?.scope === scope && scheduleNotice.agentId === agent?.agentId && !pendingSchedule ? <p className="vg-schedule-notice" role="status">{locale !== "en" ? `已为这位同事创建定时：${scheduleNotice.name}。右侧可管理。` : `Created for this colleague: ${scheduleNotice.name}. Manage it on the right.`}</p> : null}
             {liveApprovals.map(card => <ApprovalCard key={card.id} card={card} model={model} t={t} disabled={Boolean(disconnected)} />)}
-            {!compactFailureHandled(workspace.conversation, currentWaitReport(workspace.conversation, stageReports, model.getWaitTimingSnapshot())) ? <WorkspaceTaskRecovery runtimeStages={stageReports} conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
+            {!compactFailureHandled(workspace.conversation, currentWaitReport(workspace.conversation, stageReports, localWait)) ? <WorkspaceTaskRecovery runtimeStages={stageReports} conversation={workspace.conversation} t={t} disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown}
               runtimeVersion={runtimeVersionFor(workspace.runtimes?.options, agent?.runtime.id)}
               runtimeId={agent?.runtime.id} loginSource={workspace.runtimes?.options.find(row => row.runtimeId === agent?.runtime.id)?.loginSource} onLogin={() => openSettingsPage("runtimes")} onRescan={() => void model.detectRuntimes().catch(() => {})}
               onRuntimeSettings={() => openSettingsPage("runtimes")}

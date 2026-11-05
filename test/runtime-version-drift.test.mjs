@@ -94,12 +94,18 @@ test('actual WorkspaceScreen passes only current snapshot version data down to t
 
 test('server rendering never reads a live assistant draft or reports browser paint',()=>{
   const ws=workspace(),value={directory:{revision:1,activeWorkspaceId:'fixture',workspaces:[{workspaceId:'fixture',label:'Synthetic',role:'owner',active:true}],syntheticOnly:false,executionMode:'workspace'},workspaceId:'fixture',agentId:'main',roster:ws.agents,draft:'',loading:false,sending:false,pendingUnknown:false,error:'',syncNotice:'',localHistoryStart:0,runtimeChanging:false,runtimeBlocked:false,workspace:ws};
-  let reads=0,subscriptions=0,paints=0;
+  let reads=0,subscriptions=0,paints=0,timingReads=0,timingSubscriptions=0,optimisticReads=0,clockReads=0;
   const model={getSnapshot:()=>value,subscribe:()=>()=>{},runtimeStageReports:()=>[],supportsNativeSessions:()=>false,
     getAssistantPreviewSnapshot(){reads++;return {text:'PRIVATE_OLD_DRAFT'};},
-    subscribeAssistantPreview(){subscriptions++;return()=>{};},paintAssistantPreview(){paints++;}};
+    subscribeAssistantPreview(){subscriptions++;return()=>{};},paintAssistantPreview(){paints++;},
+    getWaitTimingSnapshot(){timingReads++;throw Error('SSR must not read the live wait clock');},
+    subscribeWaitTiming(){timingSubscriptions++;return()=>{};},
+    getOptimisticMessage(){optimisticReads++;return 'PRIVATE_OPTIMISTIC_DRAFT';},
+    waitClock:{now(){clockReads++;throw Error('SSR must not advance the client clock');}}};
   const html=render(WorkspaceScreen,{model,disconnected:'',root:'/synthetic',mode:'workspace',onReconnect(){}});
   assert.equal(html.includes('PRIVATE_OLD_DRAFT'),false);
   assert.equal(html.includes('wsd-assistant-draft'),false);
+  assert.equal(html.includes('PRIVATE_OPTIMISTIC_DRAFT'),false);
   assert.equal(reads,0);assert.equal(subscriptions,0);assert.equal(paints,0);
+  assert.equal(timingReads,0);assert.equal(timingSubscriptions,0);assert.equal(optimisticReads,0);assert.equal(clockReads,0);
 });

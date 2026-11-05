@@ -32,7 +32,7 @@ function useWaiting(model: WorkspaceDevModel) {
   const [, wake] = useState(0), view = model.getSnapshot(), w = view.workspace;
   const report = w ? currentWaitReport(w.conversation, model.runtimeStageReports(), local) : undefined;
   const timing = report && w ? timingFor(report, w.conversation.messageTimings ?? []) : undefined;
-  const derived = w ? deriveWaitingView({ conversation: w.conversation, report, timing, local, now: model.waitClock.now(), sending: view.sending,
+  const derived = w ? deriveWaitingView({ conversation: w.conversation, report, timing, local, now: local ? model.waitClock.now() : 0, sending: view.sending,
     preview: Boolean(preview), approvalCount: w.approvals.length, pendingUnknown: view.pendingUnknown }) : null;
   useEffect(() => { if (derived?.nextWakeMs == null) return;
     const timer = setTimeout(() => wake(value => value + 1), derived.nextWakeMs); return () => clearTimeout(timer);
@@ -49,8 +49,7 @@ export function WorkspaceDraftTiming({ model, t }: { model: WorkspaceDevModel; t
     <button type="button" className="hs-btn sec wsd-wait-stop" disabled={!canStop} onClick={() => { if (canStop) void model.cancel(); }}>{t("ws.wait.action.stop")}</button></span> : null;
 }
 export function WorkspaceOptimisticMessage({ model, t }: { model: WorkspaceDevModel; t: T }) {
-  useSyncExternalStore(model.subscribeWaitTiming, model.getWaitTimingSnapshot, noPreview);
-  const text = model.getOptimisticMessage();
+  const text = useSyncExternalStore(model.subscribeWaitTiming, model.getOptimisticMessage, noPreview);
   return text ? <div className="hs-msg me wsd-message is-user wsd-optimistic"><div className="hs-bub wsd-bubble">{text}<small>{t("ws.wait.sending")}</small></div></div> : null;
 }
 export function compactFailureHandled(c: WaitConversation, report?: RuntimeStageReport): boolean {
