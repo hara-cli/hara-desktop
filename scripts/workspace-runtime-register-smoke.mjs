@@ -46,7 +46,7 @@ const click = async expression => {
 };
 const key = async (key, code, shift = false) => {
   const params = { key, code: key, windowsVirtualKeyCode: code, modifiers: shift ? 8 : 0 };
-  await send("Input.dispatchKeyEvent", { ...params, type: "keyDown" }); await send("Input.dispatchKeyEvent", { ...params, type: "keyUp" });
+  await send("Input.dispatchKeyEvent", { ...params, type: "keyDown", ...(key === "Enter" ? { text: "\r", unmodifiedText: "\r" } : {}) }); await send("Input.dispatchKeyEvent", { ...params, type: "keyUp" });
 };
 const row = id => `Array.from(document.querySelectorAll('.wsd-runtime-row')).find(e=>e.querySelector('strong')?.textContent===${JSON.stringify(id)})`;
 const opener = id => `${row(id)}?.querySelector('button')`;
@@ -101,7 +101,16 @@ try {
     const proof = await evaluate(`(()=>{const d=${dialog},r=d.getBoundingClientRect();return {visible:r.top>=0&&r.bottom<=innerHeight,focused:d.contains(document.activeElement)&&document.activeElement.matches('input:checked:not(:disabled)'),scroll:document.querySelector('.wss-main').scrollTop,text:d.textContent}})()`);
     assert.equal(proof.visible, true); assert.equal(proof.focused, true); assert.equal(proof.scroll, before);
     assert(proof.text.includes("1.2.3") && proof.text.includes("/fixture/bin/"));
+    const details = `${dialog}.querySelector('details.wsd-runtime-details')`;
+    assert.equal(await evaluate(`${details}.open`), false, "Setup details start collapsed");
     await screenshot(step + "-dialog");
+    await key("Tab", 9, true);
+    assert(await evaluate(`document.activeElement===${details}.querySelector('summary')`), "Details are reachable from the initial selection by keyboard");
+    await key("Enter", 13); await wait(`${details}.open`);
+    const pathStyle = await evaluate(`(()=>{const p=${details}.querySelector('.wsd-runtime-path'),s=getComputedStyle(p),r=p.getBoundingClientRect();return {visible:r.height>0,fontSize:s.fontSize,color:s.color,ownLine:r.top>=p.previousElementSibling.getBoundingClientRect().bottom&&p.nextElementSibling.getBoundingClientRect().top>=r.bottom}})()`);
+    assert.equal(pathStyle.visible, true); assert.equal(pathStyle.fontSize, "11px"); assert.equal(pathStyle.ownLine, true);
+    await screenshot(step + "-details");
+    await key("Enter", 13); await wait(`!${details}.open`);
     for (let count = 0; count < 6; count++) { await key("Tab", 9); assert(await evaluate(`${dialog}.contains(document.activeElement)`)); }
     await key("Tab", 9, true); assert(await evaluate(`${dialog}.contains(document.activeElement)`));
     await key("Escape", 27); await wait(`!${dialog}`);
@@ -117,7 +126,7 @@ try {
     const id = runtime === "Codex" ? "codex" : "agy";
     assert.deepEqual(result.registrations, [[id, `fixture-${id}`, "fixture", "generation-1", id === "agy" ? "isolated" : "host"]]);
     assert.equal(result.returned, true); assert(!await evaluate(`!!${opener(runtime)}`), "Registered row no longer offers registration");
-    samples.push({ step, before, proof, result }); await screenshot(step + "-registered");
+    samples.push({ step, before, proof, pathStyle, result }); await screenshot(step + "-registered");
   }
   if (mode !== "--baseline") {
     for (const scenario of ["pending", "install", "scope"]) {

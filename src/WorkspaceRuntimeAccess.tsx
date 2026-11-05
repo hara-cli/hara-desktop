@@ -174,7 +174,9 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     {local?.scope === scope ? <ShellDialog label={t("ws.runtimes.confirmLocal")} onClose={() => { if (!saveFence.current) setLocal(null); }} className="wsd-approval-dialog wsd-runtime-change-dialog">
       <section className="hs-card wsd-approval"><h3>{t("ws.runtimes.registerTitle", { name: local.label })}</h3><p>{t("ws.runtimes.bindLead")}</p>
         {local.runtimeId === "kimi" ? <p role="note">{t("ws.runtimes.extensionsInherited")}</p> : null}
-        <code className="wsd-root">{local.path}</code><p>{t("ws.runtimes.registerNote")}</p>
+        <details className="wsd-runtime-proof wsd-runtime-details"><summary>{t("ws.runtimes.details")}</summary>
+          <small>{t("ws.runtimes.detectedPath")}</small><code className="wsd-root wsd-runtime-path">{local.path}</code><p>{t("ws.runtimes.registerNote")}</p>
+        </details>
         {inheritsPersonalExtensions(local.runtimeId) ? <p data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}
         {inheritsPersonalExtensions(local.runtimeId) ? <p role="note" data-runtime-acceptance="unverified">{t("ws.runtimeExpansion.unverified")}</p> : null}
         <fieldset><legend>{t("ws.runtimeAccess.loginSource")}</legend><label><input type="radio" name="inspector-login-source" checked={loginSource === "host"} disabled={busy || local.runtimeId === "agy"} onChange={() => setLoginSource("host")} />{t("ws.runtimeAccess.hostRecommendedRuntime", { runtime: local.label })}</label>{!HOST_LOGIN_ONLY_RUNTIMES.includes(local.runtimeId) ? <label><input type="radio" name="inspector-login-source" checked={loginSource === "isolated"} disabled={busy} onChange={() => setLoginSource("isolated")} />{t("ws.runtimeAccess.isolated")}</label> : null}</fieldset>

@@ -22,17 +22,17 @@ export function WorkspaceAgentRuntimePicker({ agent, options, locale, saving, on
   const zh = locale !== "en", hant = locale === "zh-Hant";
   const t = makeT(locale === "zh" ? "zh-Hans" : locale);
   return <div className="agent-profile-runtime-controls">
-    <label><span>Runtime</span><select aria-label="Runtime" value={selected} disabled={saving} onChange={event => setSelected(event.target.value as AgentRuntimeId)}>
+    <label><span>{zh ? "引擎" : "Engine"}</span><select aria-label={zh ? "引擎" : "Engine"} value={selected} disabled={saving} onChange={event => setSelected(event.target.value as AgentRuntimeId)}>
       {!options.some(option => option.id === agent.runtime.id) ? <option value={agent.runtime.id} disabled>{agent.runtime.label}</option> : null}
       {options.map(option => <option key={option.id} value={option.id} disabled={!option.available}>{agentRuntimeLabel(option.id, zh ? "zh" : "en")}{!option.available
         ? option.reason === "detection_pending" ? ` · ${t("ws.runtimes.checking")}`
           : option.reason === "detection_failed" ? ` · ${t("ws.runtimes.detectFailed")}`
           : option.reason === "not_installed" ? (hant ? " · 未安裝" : zh ? " · 未安装" : " · not installed")
-          : option.reason === "not_registered" ? (hant ? " · 登記後可綁定" : zh ? " · 登记后可绑定" : " · register before binding")
+          : option.reason === "not_registered" ? (hant ? " · 請先啟用" : zh ? " · 请先启用" : " · enable first")
           : (hant ? " · 暫不可用" : zh ? " · 暂不可用" : " · unavailable") : ""}</option>)}
     </select></label>
     <PersonalExtensionsNotice runtimeId={selected} locale={locale} />
-        <button type="button" disabled={saving || !agent.configRevision || !agent.agentEpoch || !available || selected === agent.runtime.id} onClick={() => onApply(selected)}>{hant ? "套用 Runtime" : zh ? "应用 Runtime" : "Apply Runtime"}</button>
+        <button type="button" disabled={saving || !agent.configRevision || !agent.agentEpoch || !available || selected === agent.runtime.id} onClick={() => onApply(selected)}>{hant ? "使用此引擎" : zh ? "使用此引擎" : "Use this engine"}</button>
   </div>;
 }
 
@@ -51,14 +51,14 @@ export default function AgentRuntimePicker({ agent, options = [], locale, saving
   const editable = !!onApply && agent.owner === "personal" && agent.allowedActions.includes("edit_profile");
   const choice = agentRuntimeSelection(agent, selected, options);
   return <details className="agent-profile-runtime">
-    <summary><span>Runtime</span><small>{runtimeId ? agentRuntimeLabel(runtimeId, locale)
-      : locale === "zh" ? "引擎尚未提供绑定信息" : "Binding not advertised by this engine"}</small></summary>
+    <summary><span>{locale === "zh" ? "引擎" : "Engine"}</span><small>{runtimeId ? agentRuntimeLabel(runtimeId, locale)
+      : locale === "zh" ? "暂未提供当前引擎信息" : "Current engine details are unavailable"}</small></summary>
     <p id={noteId}>{locale === "zh"
-      ? "决定这位 Agent 用什么引擎执行，不是模型或工具授权。切换只影响新任务；旧任务和历史保留原绑定。"
-      : "Selects this Agent's execution engine, not its model or tool permissions. Changes affect new tasks; existing work keeps its binding."}</p>
+      ? "选择这位同事使用的引擎，模型和操作权限需要分别设置。更换只影响新任务；已有任务和历史继续使用原引擎。"
+      : "Choose this colleague’s engine. Set the model and permissions separately. Changes affect new tasks; existing work keeps its original engine."}</p>
     {agent.runtime && options.length ? <>
       <div className="agent-profile-runtime-controls">
-        <label><span>{locale === "zh" ? "执行 Runtime" : "Execution Runtime"}</span>
+        <label><span>{locale === "zh" ? "使用的引擎" : "Engine"}</span>
           <select value={selected} disabled={!editable || saving} aria-describedby={noteId}
             onChange={(event) => setSelected(event.target.value as AgentRuntimeId)}>
             {!options.some((option) => option.id === runtimeId) && runtimeId
@@ -70,12 +70,12 @@ export default function AgentRuntimePicker({ agent, options = [], locale, saving
         </label>
         <PersonalExtensionsNotice runtimeId={selected} locale={locale} />
         <button type="button" disabled={saving || !choice || !editable} onClick={() => { if (choice) onApply?.(selected); }}>
-          {saving ? locale === "zh" ? "保存中…" : "Saving…" : locale === "zh" ? "仅保存 Runtime" : "Save Runtime only"}
+          {saving ? locale === "zh" ? "保存中…" : "Saving…" : locale === "zh" ? "保存引擎选择" : "Save engine choice"}
         </button>
       </div>
       {!agent.runtime.available ? <p role="status">{locale === "zh"
-        ? "绑定引擎目前不可用，不会自动切换；可为新任务明确选择其他可用引擎。"
-        : "The bound engine is unavailable. No automatic fallback will run; explicitly select an available engine for new tasks."}</p> : null}
-    </> : <p>{locale === "zh" ? "更新引擎后可使用逐 Agent Runtime 设置。" : "Update the engine to configure a Runtime per Agent."}</p>}
+        ? "当前引擎暂不可用，不会自动更换；你可以为新任务选择其他可用引擎。"
+        : "The current engine is unavailable. Hara will not change it automatically; choose another available engine for new tasks."}</p> : null}
+    </> : <p>{locale === "zh" ? "更新后可为每位同事选择引擎。" : "Update to choose an engine for each colleague."}</p>}
   </details>;
 }

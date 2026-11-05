@@ -13,5 +13,5 @@ export const RUNTIME_VERSION_KEYS = [
   ["ws.runtimeVersion.unverified", "Successful use with this version and the current executable has not been verified.", "尚未验证此版本与当前程序能成功执行。", "尚未驗證此版本與目前程式能成功執行。"],
   ["ws.runtimeVersion.binaryChanged", "The executable changed since the last successful use. A changed executable requires a new trust confirmation.", "程序已在上次成功使用后更换；更换程序仍须重新确认信任。", "程式已在上次成功使用後更換；更換程式仍須重新確認信任。"],
   ["ws.runtimeVersion.retrust", "Confirm trust in Runtime settings before using this executable.", "使用此程序前，请在运行时设置中确认信任。", "使用此程式前，請在執行環境設定中確認信任。"],
-  ["ws.runtimeVersion.invalid", "Version information could not be verified. Compatibility is unknown; refresh Runtime settings to check again.", "版本信息未能校验，兼容性未知；请刷新运行时设置后核对。", "版本資訊未能驗證，相容性未知；請重新整理執行環境設定後核對。"],
+  ["ws.runtimeVersion.invalid", "Version information could not be confirmed. Compatibility is unknown; check again in engine settings.", "版本信息还未确认，兼容性未知；请到引擎设置重新检查。", "版本資訊尚未確認，相容性未知；請到引擎設定重新檢查。"],
 ] as const;
