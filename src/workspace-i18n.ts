@@ -1,4 +1,5 @@
 import { WAIT_TIMING_KEYS } from "./wait-timing-i18n.ts";
+import { RUNTIME_FORM_KEYS } from "./runtime-form-i18n.ts";
 import { CONTEXT_COMPACTION_KEYS } from "./context-compaction-i18n.ts";
 import { PERSONAL_EXTENSIONS_COPY } from "./agent-runtime-selection.ts";
 import { RUNTIME_VERSION_KEYS } from "./runtime-version-i18n.ts";
@@ -9,6 +10,7 @@ import { VIOLET_KEYS } from "./violet-i18n.ts";
 // Shared shell keys in English, Simplified Chinese and Traditional Chinese.
 export const WORKSPACE_KEYS = [
   ...WAIT_TIMING_KEYS,
+  ...RUNTIME_FORM_KEYS,
   ...CONTEXT_COMPACTION_KEYS,
   ...RUNTIME_VERSION_KEYS,
   ["ws.runtimeExpansion.unverified", "Not verified with a real account", "未经真实验收", "未經真實驗收"],

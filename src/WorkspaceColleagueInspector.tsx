@@ -4,6 +4,7 @@ import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import type { WorkspaceDevAgent, WorkspaceFeatureView } from "./workspace-dev-state";
 import WorkspaceRuntimeAccess from "./WorkspaceRuntimeAccess";
+import ColleagueRuntimeForm from "./ColleagueRuntimeForm";
 import type { WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceConnectionModels, WorkspaceSessionRestart, RuntimeLoginSource, RuntimePermissionTier } from "./workspace-dev-state";
 import type { AgentRuntimeId } from "./client";
 import { WorkspaceAgentProfileSheet } from "./AgentProfileEditor";
@@ -58,7 +59,8 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   return <aside id="workspace-inspector" className="vg-inspector vg-colleague-manage" aria-label={zh ? `${agent.identity.displayName} · 管理` : `Manage ${agent.identity.displayName}`} inert={inert}>
     <header><h2>{agent.kind === "main" ? (zh ? "Hara · 管理" : "Hara management") : (zh ? "该同事 · 内部管理" : "Colleague management")}</h2><button className="hs-icon" aria-label={zh ? "关闭管理栏" : "Close management"} onClick={onClose}><XMarkIcon className="hico" /></button></header>
     <div className="vg-colleague-identity"><strong>{agent.identity.displayName}</strong><span>{agent.identity.title || (zh ? "Hara 同事" : "Hara colleague")}</span></div>
-    <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} listModels={listModels} listConnectionModels={listConnectionModels} connectionModelSupported={connectionModelSupported} onApplyRuntime={onApplyRuntime} permissionSupported={permissionSupported} onApplyPermissionTier={onApplyPermissionTier} onApplyModel={onApplyModel} onApplyConnectionModel={onApplyConnectionModel} onRescan={onRescan} onRegisterRuntime={onRegisterRuntime} onRuntimeDirectory={onRuntimeDirectory} />
+    {extensionsModel?.supportsRuntimeForm?.() ? <ColleagueRuntimeForm agent={agent} workspace={workspace} model={extensionsModel} locale={locale} permissionSupported={permissionSupported} onApplyPermissionTier={onApplyPermissionTier} onRuntimeDirectory={onRuntimeDirectory} />
+      : <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} listModels={listModels} listConnectionModels={listConnectionModels} connectionModelSupported={connectionModelSupported} onApplyRuntime={onApplyRuntime} permissionSupported={permissionSupported} onApplyPermissionTier={onApplyPermissionTier} onApplyModel={onApplyModel} onApplyConnectionModel={onApplyConnectionModel} onRescan={onRescan} onRegisterRuntime={onRegisterRuntime} onRuntimeDirectory={onRuntimeDirectory} />}
     {extensionsModel && agent.agentEpoch ? <WorkspaceExtensions model={extensionsModel} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} agent={{ agentId: agent.agentId, agentEpoch: agent.agentEpoch }} /> : null}
     <section className="vg-context-card"><h3>{zh ? "基本信息" : "Profile"}</h3><dl><dt>{zh ? "显示名" : "Display name"}</dt><dd>{agent.identity.displayName}</dd><dt>{zh ? "职责" : "Role"}</dt><dd>{agent.identity.title || "—"}</dd><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{agent.runtime.label}</dd></dl><button onClick={() => setProfileOpen(true)}>{zh ? "编辑此同事名片" : "Edit this colleague's profile"}</button></section>
     {profileOpen ? <WorkspaceAgentProfileSheet agent={agent} locale={zh ? "zh" : "en"} onClose={() => setProfileOpen(false)} onSave={onSaveProfile} /> : null}

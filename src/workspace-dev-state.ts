@@ -51,8 +51,8 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
   colleagueLimit?: number;
   inheritance?: WorkspaceInheritanceView;
   agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
-  runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; path?: string; fingerprint?: string | null; source?: string; loginSource?: RuntimeLoginSource; manualInstallation?: { url: string }; compatibilityMessage?: string; extensionsIsolation?: "inherited"; versionStatus?: RuntimeVersionStatus }[];
-    operations: { id: string; runtimeId: string; state: string }[] };
+  runtimes?: { builtIn: string; options: { runtimeId: string; label: string; installed: boolean; registered: boolean; version: string | null; state: string; generalAgentDriverAvailable: boolean; use?: RuntimeUse; unavailableReason?: string; path?: string; fingerprint?: string | null; source?: string; loginSource?: RuntimeLoginSource; manualInstallation?: { url: string }; compatibilityMessage?: string; extensionsIsolation?: "inherited"; versionStatus?: RuntimeVersionStatus }[];
+    operations: { id: string; runtimeId: string; state: string }[]; detection?: { running: boolean; completedAt: string | null; incomplete: string[] } };
   budget?: { maxTokens: number; maxRequests: number; requests: number; inputTokens: number; outputTokens: number; uncertainReservedTokens: number; paused: boolean };
   connections: { revision: number; defaultConnectionId: string | null; activeConnectionId?: string | null; readOnly?: boolean; recovered?: boolean; migrationPending?: boolean; unavailable?: boolean; connections: WorkspaceModelConnection[] };
   /** Account-native, read-only projection from Core. Absent on older Core means unknown. */
@@ -76,6 +76,16 @@ interface PendingMessage { method: "workspace.session.send" | "workspace.session
   message: string; state: "sending" | "unknown"; fromDraft?: boolean }
 export type WorkspaceSessionRestart = "keep" | "fresh";
 export type RuntimeLoginSource = "host" | "isolated";
+/** Core runtime-form projection; absent on an older Core. Only "ready" is execution authority. */
+export type RuntimeUse = "ready" | "confirm_first_use" | "confirm_update" | "unavailable" | "detecting";
+export interface WorkspaceRuntimeFormOptions { runtimeId: string; use: RuntimeUse; unavailableReason?: string; version: string | null; path: string | null;
+  fingerprint: string | null; loginSource: RuntimeLoginSource; models: WorkspaceRuntimeModels["models"]; defaultModelId: string | null;
+  modelSource: "live" | "official" | "engine_default" | "none"; effortSupported: boolean; selected: { modelId: string | null; effort: string | null } | null;
+  revision: number; sharedWith: { agentId: string; displayName: string }[] }
+export interface WorkspaceRuntimeFormInput { runtimeId: AgentRuntimeId; confirm?: { fingerprint: string; loginSource: RuntimeLoginSource };
+  model?: { modelId: string; expectedRevision: number; effort: string | null } }
+export interface WorkspaceRuntimeFormResult { applied: ("confirm" | "runtime" | "model")[]; failed?: { step: string; message: string } }
+const RUNTIME_USES = ["ready", "confirm_first_use", "confirm_update", "unavailable", "detecting"];
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
   localHistoryStart: number; runtimeChanging: boolean; runtimeBlocked: boolean;
   roster: WorkspaceDevAgent[];
@@ -587,6 +597,58 @@ export class WorkspaceDevModel {
     await this.workspaceRequest("workspace.runtime.selectModel", { runtimeId, modelId, expectedRevision, ...(effort !== undefined ? { effort } : {}) });
     await this.refresh();
   }
+  supportsRuntimeForm(): boolean { return this.rpc.supportsCapability?.("workspace.runtime-form.v1") === true; }
+  /** One engine's form data. A draft engine may be read; it grants nothing until Apply. */
+  async runtimeFormOptions(runtimeId: string, agentId?: string): Promise<WorkspaceRuntimeFormOptions> {
+    if (!this.supportsRuntimeForm()) throw new WorkspaceViewError("ws.rf.upgrade");
+    const result = await this.workspaceRequest<WorkspaceRuntimeFormOptions>("workspace.runtime.formOptions", { runtimeId, ...(agentId ? { agentId } : {}) });
+    const text = (value: unknown) => value === null || typeof value === "string";
+    if (!result || result.runtimeId !== runtimeId || !RUNTIME_USES.includes(result.use) || !text(result.version) || !text(result.path) || !text(result.fingerprint)
+      || !text(result.defaultModelId) || !["live", "official", "engine_default", "none"].includes(result.modelSource) || typeof result.effortSupported !== "boolean"
+      || !Number.isSafeInteger(result.revision) || !Array.isArray(result.models) || result.models.length > 256 || !Array.isArray(result.sharedWith)
+      || result.models.some(row => typeof row.id !== "string" || typeof row.label !== "string" || row.supportedReasoningEfforts !== undefined
+        && (!Array.isArray(row.supportedReasoningEfforts) || row.supportedReasoningEfforts.some(level => typeof level !== "string")))
+      || result.selected !== null && (typeof result.selected !== "object" || !text(result.selected.modelId) || !text(result.selected.effort))
+      || result.sharedWith.some(row => typeof row?.agentId !== "string" || typeof row.displayName !== "string")) throw new WorkspaceViewError("ws.notice.invalidView");
+    return result;
+  }
+  /**
+   * The colleague form's single Apply. Core validates everything, then confirms, switches and saves the
+   * model in order. A fresh conversation is the existing Desk-only reset, applied only when the engine changed.
+   */
+  async applyRuntimeForm(agent: WorkspaceDevAgent, input: WorkspaceRuntimeFormInput, sessionRestart: WorkspaceSessionRestart = "keep"): Promise<WorkspaceRuntimeFormResult> {
+    if (!this.supportsRuntimeForm()) throw new WorkspaceViewError("ws.rf.upgrade");
+    if (!agent.configRevision || !agent.agentEpoch || (sessionRestart !== "keep" && sessionRestart !== "fresh")) throw new WorkspaceViewError("ws.notice.invalidView");
+    const workspace = this.view.workspace, key = this.key(), epoch = this.epoch;
+    const switching = input.runtimeId !== agent.runtime.id;
+    if (!workspace || this.nativeResets.has(key) || switching && sessionRestart === "fresh" && !this.freshRestartAllowed(workspace, agent, key)) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    const targetKey = JSON.stringify([workspace.workspaceId, workspace.resourceGeneration, agent.agentId]);
+    if (this.runtimeChanges.has(targetKey)) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    this.runtimeChanges.add(targetKey); this.update({});
+    try {
+      const result = await this.workspaceRequest<WorkspaceRuntimeFormResult>("workspace.agents.applyRuntimeForm", { agentId: agent.agentId, runtimeId: input.runtimeId,
+        configRevision: agent.configRevision, agentEpoch: agent.agentEpoch, ...(input.confirm ? { confirm: input.confirm } : {}), ...(input.model ? { model: input.model } : {}) });
+      if (!result || !Array.isArray(result.applied) || result.applied.some(step => !["confirm", "runtime", "model"].includes(step))) throw new WorkspaceViewError("ws.notice.invalidView");
+      if (result.applied.includes("runtime") && sessionRestart === "fresh") this.resetDeskSession(workspace, key, epoch, agent);
+      this.overviewCache.delete(agent.agentId);
+      if (epoch === this.epoch && key === this.key()) await this.refresh();
+      return { applied: result.applied, ...(result.failed && typeof result.failed.message === "string" ? { failed: { step: String(result.failed.step), message: result.failed.message } } : {}) };
+    } finally { this.runtimeChanges.delete(targetKey); this.update({}); }
+  }
+  private freshRestartAllowed(workspace: WorkspaceDevSnapshot, agent: WorkspaceDevAgent, key: string): boolean {
+    return workspace.selectedAgentId === agent.agentId && !this.pending.has(key) && !this.view.sending && !this.view.pendingUnknown
+      && !["running", "draining"].includes(workspace.conversation.state) && !workspace.conversation.pendingQuestion && !workspace.conversation.pendingInteractions?.length;
+  }
+  /** Desk-only reset: never claim or send an engine-session restart. Keep Core history and task bindings. */
+  private resetDeskSession(workspace: WorkspaceDevSnapshot, key: string, epoch: number, agent: WorkspaceDevAgent): void {
+    this.drafts.delete(key);
+    this.localHistoryStarts.set(key, { sessionId: workspace.conversation.sessionId, offset: workspace.conversation.history.length,
+      boundary: JSON.stringify(workspace.conversation.history[workspace.conversation.history.length - 1]) ?? "" });
+    const identity = workspaceRecoveryIdentity(workspace.conversation);
+    if (identity) this.dismissedRecovery.set(key, identity);
+    this.overviewCache.delete(agent.agentId);
+    if (epoch === this.epoch && key === this.key()) this.update({ draft: "", localHistoryStart: workspace.conversation.history.length, dismissedRecoveryIdentity: identity });
+  }
   async setAgentPermissionTier(agent: WorkspaceDevAgent, permissionTier: RuntimePermissionTier): Promise<void> {
     if (!this.supportsRuntimePermissions()) throw new WorkspaceViewError("ws.permissions.upgrade");
     if (!agent.configRevision || !agent.agentEpoch || !["full-protected", "controlled"].includes(permissionTier)) throw new WorkspaceViewError("ws.notice.invalidView");
@@ -617,15 +679,7 @@ export class WorkspaceDevModel {
     try {
       await this.workspaceRequest("workspace.agents.setRuntime", { agentId: agent.agentId, runtimeId, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
       // Desk-only reset: never claim or send an engine-session restart. Keep Core history and task bindings.
-      if (sessionRestart === "fresh") {
-        this.drafts.delete(key);
-        this.localHistoryStarts.set(key, { sessionId: workspace.conversation.sessionId, offset: workspace.conversation.history.length,
-          boundary: JSON.stringify(workspace.conversation.history[workspace.conversation.history.length - 1]) ?? "" });
-        const identity = workspaceRecoveryIdentity(workspace.conversation);
-        if (identity) this.dismissedRecovery.set(key, identity);
-        this.overviewCache.delete(agent.agentId);
-        if (epoch === this.epoch && key === this.key()) this.update({ draft: "", localHistoryStart: workspace.conversation.history.length, dismissedRecoveryIdentity: identity });
-      }
+      if (sessionRestart === "fresh") this.resetDeskSession(workspace, key, epoch, agent);
       if (epoch !== this.epoch || key !== this.key()) return;
       await this.refresh();
       if (epoch === this.epoch && this.view.workspace?.agents.find(row => row.agentId === agent.agentId)?.runtime.id !== runtimeId)

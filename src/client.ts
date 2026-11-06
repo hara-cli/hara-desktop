@@ -241,6 +241,10 @@ export interface AgentRuntimeOption {
   available: boolean;
   reason?: "general_agent_adapter_pending" | "adapter_pending_p05" | "not_registered" | "not_installed" | "integrity_failed" | "detection_pending" | "detection_failed";
   recommended: boolean;
+  /** Core runtime-form: may be chosen in a form (installed, checked, has a driver); not execution authority. */
+  selectable?: boolean;
+  /** Core runtime-form: what a person must confirm before `available` can become true. */
+  confirmation?: "none" | "first_use" | "update";
 }
 
 export interface AgentRuntimeBinding {

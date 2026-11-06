@@ -7,6 +7,12 @@ import { type Key } from "./i18n";
 import type { RuntimeApprovalCard, RuntimeLoginSource, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceModelConnection } from "./workspace-dev-state";
 
 
+// Core runtime-form status line (kept local: this module is also loaded standalone by tests).
+const RUNTIME_USES = ["ready", "confirm_first_use", "confirm_update", "detecting"], UNAVAILABLE_REASONS = ["not_installed", "unsafe_file", "legacy_unsupported", "adapter_pending", "detection_failed", "host_login_required"];
+function runtimeUseText(t: (key: Key, values?: Record<string, string | number>) => string, use?: string, reason?: string): string | null {
+  if (use === "unavailable") return t("ws.rf.status.unavailable", { reason: t(`ws.rf.reason.${UNAVAILABLE_REASONS.includes(reason ?? "") ? reason : "unknown"}` as Key) });
+  return use && RUNTIME_USES.includes(use) ? t(`ws.rf.status.${use}` as Key) : null;
+}
 const manualRuntimeGuide = (id: string) => id === "gemini" ? "https://geminicli.com/docs/get-started/installation/"
   : id === "kimi" ? "https://moonshotai.github.io/kimi-code/en/guides/getting-started.html" : null;
 
@@ -62,7 +68,7 @@ export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, on
 }
 
 export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onDirty?: (value: boolean) => void }) {
-  const { t } = useWorkspaceLocale();
+  const { t, locale } = useWorkspaceLocale();
   const [loginSource, setLoginSource] = useState<RuntimeLoginSource>("host");
   const [card, setCard] = useState<RuntimeApprovalCard | null>(null), [pending, setPending] = useState(false), [notice, setNotice] = useState<"" | Key>("");
   const [detecting, setDetecting] = useState(true), [checked, setChecked] = useState(false);
@@ -85,11 +91,16 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
   return <section className="wsd-runtime-settings" aria-label={t("ws.runtimes.title")}><h3>{t("ws.settings.page.runtimes")}</h3><p>{t("ws.runtimes.note")}</p>
     <WorkspaceRuntimeProxy key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} onDirty={onDirty} />
     <button disabled={detecting || pending} onClick={() => { setDetecting(true); setChecked(false); setNotice(""); void model.detectRuntimes().then(() => setChecked(true)).catch(() => setNotice("ws.runtimes.detectFailed")).finally(() => setDetecting(false)); }}>{t(detecting ? "ws.runtimes.detecting" : "ws.runtimes.detect")}</button>
+    {workspace.runtimes?.detection?.completedAt ? <p role="status" className="wsd-runtime-checked">{t("ws.rf.lastChecked", { time: new Date(workspace.runtimes.detection.completedAt).toLocaleTimeString(locale === "en" ? "en" : locale === "zh-Hant" ? "zh-TW" : "zh-CN", { hour: "2-digit", minute: "2-digit" }) })}{workspace.runtimes.detection.running || workspace.runtimes.detection.incomplete.length ? ` · ${t("ws.rf.stillChecking")}` : ""}</p> : null}
     <div className="wsd-runtime-list"><div className="wsd-connection wsd-runtime-row"><div><strong>Pi</strong><small>{t("ws.runtimes.builtIn")}</small><small>{t("ws.runtimes.piNote")}</small></div></div>
     {workspace.runtimes?.options.map(runtime => {
       const unavailableForColleagues = runtime.registered && runtime.generalAgentDriverAvailable === false && runtime.runtimeId !== "kimi";
+      // Core runtime-form: a read-only status; first use is confirmed in the colleague form, not here.
+      const formStatus = runtimeUseText(t, runtime.use, runtime.unavailableReason);
+      const users = (workspace.agents ?? []).filter(agent => agent.state !== "archived" && agent.runtime.id === runtime.runtimeId).map(agent => agent.identity.displayName);
       return <div className="wsd-connection wsd-runtime-row" key={runtime.runtimeId} role="group" aria-label={runtime.label} tabIndex={-1}>
-      <div><strong>{runtime.label}</strong>{inheritsPersonalExtensions(runtime.runtimeId) ? <small data-runtime-acceptance="unverified">{t("ws.runtimeExpansion.unverified")}</small> : null}<small>{runtime.registered ? t("ws.runtimes.registered", { version: runtime.version ?? "" }) : runtime.state === "detected" ? t("ws.runtimes.detected", { version: runtime.version ?? "" }) : runtime.state === "integrity_failed" ? t("ws.runtimes.integrityFailed") : runtime.state === "detection_failed" ? t("ws.runtimes.detectFailed") : runtime.state === "detecting" || detecting || !checked ? t("ws.runtimes.checking") : t("ws.runtimes.missing")}</small>
+      <div><strong>{runtime.label}</strong>{inheritsPersonalExtensions(runtime.runtimeId) ? <small data-runtime-acceptance="unverified">{t("ws.runtimeExpansion.unverified")}</small> : null}<small data-runtime-use={runtime.use}>{formStatus ? `${formStatus}${runtime.version ? ` · ${runtime.version}` : ""}` : runtime.registered ? t("ws.runtimes.registered", { version: runtime.version ?? "" }) : runtime.state === "detected" ? t("ws.runtimes.detected", { version: runtime.version ?? "" }) : runtime.state === "integrity_failed" ? t("ws.runtimes.integrityFailed") : runtime.state === "detection_failed" ? t("ws.runtimes.detectFailed") : runtime.state === "detecting" || detecting || !checked ? t("ws.runtimes.checking") : t("ws.runtimes.missing")}</small>
+      {users.length ? <small data-runtime-users="true">{t("ws.rf.usedBy", { names: users.join("、") })}</small> : null}
       {manualRuntimeInstallUrl(runtime.runtimeId) ? <small>{t("ws.runtimeExpansion.hostLogin")}</small> : null}
       {runtime.registered && runtime.loginSource === "isolated" && runtime.fingerprint && runtime.runtimeId !== "agy" ? <button disabled={pending} onClick={() => { setLoginSource("host"); setLocal(runtime); }}>{t("ws.runtimeAccess.switchHost")}</button> : null}
       {manualRuntimeGuide(runtime.runtimeId) ? <small>{t(runtime.state === "not_installed" && checked && !detecting ? "ws.runtimes.manualInstall" : "ws.runtimes.hostLoginOnly")} <a href={manualRuntimeGuide(runtime.runtimeId)!} target="_blank" rel="noreferrer">{t("ws.runtimes.manualGuide")}</a></small> : null}
@@ -101,7 +112,8 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
         {unavailableForColleagues ? <small>{t("ws.runtimes.driverDetails")}</small> : null}
       </details> : null}</div>
       {runtime.state === "legacy_unsupported" ? <p role="status">{t("ws.runtimeExpansion.legacyUnsupported")}</p> : null}
-      {runtime.state === "detected" ? <button className="wsd-primary" disabled={pending || detecting} onClick={() => { setLoginSource(runtime.runtimeId === "agy" ? "isolated" : "host"); setLocal(runtime); }}>{t("ws.runtimes.useLocal")}</button>
+      {runtime.state === "detected" && runtime.use ? <small data-first-use="true">{t("ws.rf.firstUseNote")}</small>
+        : runtime.state === "detected" ? <button className="wsd-primary" disabled={pending || detecting} onClick={() => { setLoginSource(runtime.runtimeId === "agy" ? "isolated" : "host"); setLocal(runtime); }}>{t("ws.runtimes.useLocal")}</button>
         : runtime.state === "not_installed" && manualRuntimeInstallUrl(runtime.runtimeId) ? <div><p>{t("ws.runtimeExpansion.manualInstall")}</p><a href={manualRuntimeInstallUrl(runtime.runtimeId)!} target="_blank" rel="noopener noreferrer">{t("ws.runtimeExpansion.instructions")}</a></div>
         : runtime.state === "not_installed" && !runtime.path && !manualRuntimeGuide(runtime.runtimeId) ? <button disabled={pending || downloading || detecting || !checked} onClick={() => void propose(runtime.runtimeId)}>{t("ws.runtimes.install")}</button> : null}
     </div>; })}</div>
