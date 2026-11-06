@@ -1,3 +1,4 @@
+import { isInternalUserText, userVisibleText } from "./user-visible-text";
 import { WorkspaceContextCompaction } from "./WorkspaceContextCompaction";
 import type { ContextCompactionView } from "./context-compaction";
 import { WorkspaceDraftTiming, WorkspaceOptimisticMessage, WorkspaceTimingChip, WorkspaceWaiting, compactFailureHandled } from "./WorkspaceWaitTiming";
@@ -161,6 +162,7 @@ export function Transcript({ history, agent, t, detailed = false, stages = [], h
     }
     const { message, index } = item;
     const continuation = messageContinues(previous, message); previous = message;
+    if (message.role === "user" && isInternalUserText(message.content)) return null;
     if (message.role === "user") return <div className={`hs-msg me wsd-message is-user ${continuation ? "cont" : ""}`} key={`user-${index}`}><div className="hs-bub wsd-bubble">{message.content}</div></div>;
     return <div className={`wsd-message-group ${continuation ? "cont" : ""}`} key={`assistant-${index}`}>
       {!continuation || assistantReports.has(index) ? <div className="hs-who">{agent?.identity.displayName ?? "Hara"}{assistantReports.get(index)?.map(chip)}</div> : null}
@@ -429,9 +431,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const dialogCard = approvalDialog?.scope === scope ? liveApprovals.find(card => card.id === approvalDialog.id) : undefined;
   const dmRows = useMemo(() => colleagues.map(row => {
     const snapshot = shell.snapshots.find(value => value.selectedAgentId === row.agentId);
-    const last = snapshot ? [...snapshot.conversation.history].reverse().find(message => message.role !== "tool") : undefined;
+    const last = snapshot ? [...snapshot.conversation.history].reverse().find(message => message.role === "assistant" || message.role === "user" && !isInternalUserText(message.content)) : undefined;
     const timestamp = snapshot?.conversation.updatedAt ?? last?.createdAt;
-    return { agent: row, preview: last?.role === "user" ? last.content : last?.role === "assistant" ? last.text : row.identity.title ?? t("ws.role.colleague"), timestamp,
+    return { agent: row, preview: last?.role === "user" ? userVisibleText(last.content) : last?.role === "assistant" ? last.text : row.identity.title ?? t("ws.role.colleague"), timestamp,
       order: Date.parse(timestamp ?? "") || shell.activity[row.agentId]?.observedAt || 0 };
   }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity, t]);
   const closeSettings = () => { setSettings(false); };

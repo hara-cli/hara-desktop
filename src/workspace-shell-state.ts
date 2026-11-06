@@ -1,3 +1,4 @@
+import { isInternalUserText } from "./user-visible-text.ts";
 // Presentation only. Core remains the authority for task state and every approval decision.
 import type { WorkspaceDevApproval, WorkspaceDevMessage, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state.ts";
 
@@ -20,7 +21,7 @@ export function transcriptBlocks(history: readonly WorkspaceDevMessage[]): Trans
   const blocks: TranscriptBlock[] = [];
   let execution: ExecutionBlock | undefined;
   history.forEach((message, index) => {
-    if (message.role === "tool") return;
+    if (message.role === "tool" || message.role === "user" && isInternalUserText(message.content)) return;
     if (message.role === "user" || message.text.trim()) {
       execution = undefined;
       blocks.push({ kind: "message", index, message });

@@ -113,3 +113,11 @@ test("actual external approval cards identify the one-call boundary, action and 
     assert.equal((disabled.match(/<button[^>]*disabled/g) ?? []).length, 2);
   }
 });
+
+
+test("old internal user reminders stay hidden without altering original history indices or ordinary user text",()=>{
+ const rows=[{role:"user",content:"visible current request"},{role:"user",content:"<system-reminder>PRIVATE-HOST-FEEDBACK</system-reminder>"},assistant([],"visible reply"),{role:"user",content:"Explain how a <system-reminder> tag works"}];
+ const before=JSON.stringify(rows),blocks=transcriptBlocks(rows);assert.deepEqual(blocks.map(row=>row.index),[0,2,3]);
+ for(const locale of ["en","zh-Hans","zh-Hant"]){const html=renderToStaticMarkup(createElement(module.exports.Transcript,{history:rows,t:makeT(locale)}));assert.doesNotMatch(html,/PRIVATE-HOST-FEEDBACK/);assert.match(html,/visible current request/);assert.match(html,/Explain how/);}
+ assert.equal(JSON.stringify(rows),before);
+});
