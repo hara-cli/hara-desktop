@@ -91,7 +91,7 @@ function view({ empty = false, state = "completed", approval = false, directory 
 function renderScreen(value, mode = "workspace", locale = "zh-Hant") {
   const descriptor=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
   Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:key=>key==="hara.locale"?locale:null}});
-  try { return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {}, runtimeStageReports: () => [], supportsNativeSessions: () => false }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} }); }
+  try { return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {}, runtimeStageReports: () => [], supportsNativeSessions: () => false, supportsAgentArchive: () => false }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} }); }
   finally { if(descriptor)Object.defineProperty(globalThis,"localStorage",descriptor);else delete globalThis.localStorage; }
 }
 test("production keeps lab copy out of the sidebar; explicit Lab is a distinct annotated entry", () => {
@@ -102,13 +102,15 @@ test("production keeps lab copy out of the sidebar; explicit Lab is a distinct a
 });
 test("real workspace screen retains colleague decisions, collapsed execution and verified task closure", () => {
   const html = renderScreen(view({ state:"blocked", approval: true, error: true }));
-  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /value="Reviewer"/, /wsd-colleague-draft/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
+  for (const marker of [/hd-main-card/, /總調度/, /Coder/, /aria-label="新增" aria-expanded="false" aria-haspopup="menu"/, /確認建立同事/, /value="Reviewer"/, /wsd-colleague-draft/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
   const success = renderScreen(view());
   assert.match(success, /Local fixture reply/);
   assert.doesNotMatch(success, /已核驗結果|wsd-timing-chip| ✓/, "legacy history without T9 never gains timing completion proof");
   assert.doesNotMatch(success, /wsd-execution|1 個操作 · <span>查看詳情/);
-  assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
-  assert.equal(html.includes('aria-label="建立群"'), true);
+  assert.doesNotMatch(html, /core\.groups|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
+  // Sidebar C keeps creation actions inside its closed New menu.
+  assert.equal(html.includes('aria-label="建立群"'), false);
+  assert.doesNotMatch(html, /hd-new-menu/, "creation popup starts closed");
   assert.equal(/即將推出|即将推出|Channels for group work with several colleagues are coming/.test(html), false);
 });
 test("real workspace screen preserves explicit resume and never opens a legacy surface for blocked tasks", () => {
