@@ -20,3 +20,9 @@ for(const [locale,title,confirm]of[["en","Confirm a new group","Create group"],[
   assert.doesNotMatch(html,/<(?:input|textarea|select)\b/);assert.doesNotMatch(html,/<button[^>]*disabled/);
  });
 }
+
+for(const locale of["en","zh-Hans","zh-Hant"])for(const kind of["instruction_update","memory_promote"])test("actual frozen "+kind+" card exposes its content with no editable draft in "+locale,()=>{
+ const current={...card,kind,draft:kind==="instruction_update"?{file:"AGENTS.md",previousSha256:null,content:"Approved guidance <safe>"}:{scope:"global",content:"Approved shared fact <safe>"}},model={respond:async()=>{},getSnapshot:()=>({workspace:{approvals:[current],agents:[],runtimeOptions:[]}})};
+ const html=renderToStaticMarkup(React.createElement(exports.ApprovalCard,{card:current,model,t:makeT(locale),locale}));
+ assert(html.includes(kind==="instruction_update"?"AGENTS.md":"Approved shared fact"));assert(html.includes("&lt;safe&gt;"));assert(html.includes(redesignText(locale,"confirmChange")));assert.doesNotMatch(html,/<(?:input|textarea|select)\b/);assert.doesNotMatch(html,/<button[^>]*disabled/);
+});

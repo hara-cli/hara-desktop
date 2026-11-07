@@ -36,7 +36,7 @@ test("new session is a scoped explicit mutation; drafts, task history and usage 
   assert.equal(f.model.getSnapshot().syncNotice,"ws.native.newReady");
 });
 
-test("old Core, non-Codex, pending interaction and running/draining state cannot reset",async()=>{
+test("old Core, mismatched runtime metadata, pending interaction and running/draining state cannot reset",async()=>{
   for(const kind of ["old","pi","running","draining","question","async"]){
     const f=fixture(kind!=="old"); f.setSnapshot(w=>{if(kind==="pi")w.agents[0].runtime.id="pi";
       if(["running","draining"].includes(kind))w.conversation.state=kind;
@@ -65,4 +65,13 @@ test("late reset response cannot apply another workspace's state and explicit re
   pending.resolve({requestId,revision:4});await reset;assert.equal(f.model.getSnapshot().workspaceId,"B");assert.equal(f.model.getSnapshot().draft,"B draft");assert.equal(f.model.getSnapshot().syncNotice,"");
   f.handlers["workspace.session.new"]=()=>{throw Object.assign(new Error("stale revision"),{code:-32000});};await f.model.newNativeSession();
   assert.equal(f.model.getSnapshot().error,"ws.native.resetRejected");assert.equal(f.model.getSnapshot().draft,"B draft");assert.equal(f.model.getSnapshot().pendingUnknown,false);
+});
+
+for(const runtimeId of["pi","claude"])test(runtimeId+" resets only with matching implemented native metadata and keeps history",async()=>{
+ const f=fixture();f.setSnapshot(w=>{w.agents[0].kind="colleague";w.agents[0].runtime.id=runtimeId;w.conversation.nativeSession.runtimeId=runtimeId;w.conversation.nativeSession.status="ready";w.conversation.nativeSession.contextTokens=null;w.conversation.nativeSession.contextLimit=null;return w;});
+ await f.ready();const before=structuredClone(f.model.getSnapshot().workspace.conversation.history);f.model.setDraft("next task");await f.model.newNativeSession();
+ const writes=f.calls.filter(row=>row.method==="workspace.session.new");assert.equal(writes.length,1);assert.equal(writes[0].params.expectedNativeRevision,3);assert.deepEqual(f.model.getSnapshot().workspace.conversation.history,before);assert.equal(f.model.getSnapshot().draft,"next task");assert(!f.calls.some(row=>/workspace.session.(send|resume)/.test(row.method)));
+});
+test("unsupported native runtime metadata does not expose a reset through the model",async()=>{
+ const f=fixture();f.setSnapshot(w=>{w.agents[0].runtime.id="opencode";w.conversation.nativeSession.runtimeId="opencode";return w;});await f.ready();await f.model.newNativeSession();assert(!f.calls.some(row=>row.method==="workspace.session.new"));
 });
