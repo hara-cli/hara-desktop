@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildReport, loadCases, reportMarkdown, saveEvidence, sourceIdentity, validateRegistry } from "../scripts/visual-case-registry.mjs";
 const sha = "a".repeat(40), coreSha = "b".repeat(40), cases = loadCases(), row = cases[0];
@@ -98,7 +98,7 @@ test("evidence refuses paths outside its root, symlink screenshots and fake PNGs
   assert.throws(() => saveEvidence(row, { ...f.input, screenshots: ["link.png"] }, f.root), /regular file/);
   const outside = mkdtempSync(join(tmpdir(), "hara-visual-outside-")); t.after(() => rmSync(outside, { recursive: true }));
   writeFileSync(join(outside, "shot.png"), png);
-  assert.throws(() => saveEvidence(row, { ...f.input, screenshots: ["../" + outside.split("/").at(-1) + "/shot.png"] }, f.root), /within/);
+  assert.throws(() => saveEvidence(row, { ...f.input, screenshots: ["../" + basename(outside) + "/shot.png"] }, f.root), /within/);
   writeFileSync(join(f.root, "shot.png"), "not a PNG");
   assert.throws(() => saveEvidence(row, f.input, f.root), /PNG/);
 });
