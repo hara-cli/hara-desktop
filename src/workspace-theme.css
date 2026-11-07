@@ -334,3 +334,7 @@
 /* Bind the retained scoped Settings controls to the same v1.4 palette. */
 .hs { --wsd-paper:var(--paper); --wsd-surface:var(--surface); --wsd-sidebar:var(--sidebar); --wsd-card:var(--bubble); --wsd-ink:var(--ink); --wsd-muted:var(--muted); --wsd-line:var(--line); --wsd-red:var(--brand); --wsd-primary-ink:var(--on-brand); color-scheme:light; }
 :root[data-theme="dark"] .hs { color-scheme:dark; }
+
+/* Roster menu follows each resolved light/dark shell surface. */
+.hs { --vg-surface:var(--surface); --vg-border:var(--line); }
+:root[data-theme="dark"] .hs { --vg-surface:var(--surface); --vg-border:var(--line); }

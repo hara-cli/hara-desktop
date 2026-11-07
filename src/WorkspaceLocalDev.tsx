@@ -1,3 +1,4 @@
+import type { WorkspaceMediaAccess } from "./workspace-media";
 import { isInternalUserText, userVisibleText } from "./user-visible-text";
 import type { AgentRuntimeId } from "./client";
 import { WorkspaceContextCompaction } from "./WorkspaceContextCompaction";
@@ -52,12 +53,14 @@ const TOOL_LABELS: Record<string, Key> = Object.fromEntries(["task_intake", "tas
   .map(name => [name, `ws.execution.${name}` as Key]));
 export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDialog = false }: { card: WorkspaceDevApproval;
   model: { respond(card: WorkspaceDevApproval, approved: boolean, draft?: ColleagueCreateDraft): Promise<void>;
-    getSnapshot(): { workspace: { approvals: WorkspaceDevApproval[]; runtimeOptions?: { id: string; label: string; available: boolean }[] } | null } };
+    getSnapshot(): { workspace: { approvals: WorkspaceDevApproval[]; runtimeOptions?: { id: string; label: string; available: boolean }[]; agents?: WorkspaceDevAgent[] } | null } };
   t: Translate; disabled?: boolean; onSettled?: () => void; inDialog?: boolean }) {
   const schedule = card.kind === "schedule_create", colleague = !schedule && card.kind !== "extension_call";
   const [pending, setPending] = useState(false), fence = useRef(false);
   const [draft, setDraft] = useState<ColleagueCreateDraft | null>(() => card.kind === "schedule_create" || card.kind === "extension_call" ? null : { ...card.draft });
   const runtimeOptions = model.getSnapshot().workspace?.runtimeOptions?.filter(row => row.available && row.id !== "hara") ?? [];
+  const duplicateName = colleague && draft?.displayName.trim() && model.getSnapshot().workspace?.agents?.some(row => row.state === "active"
+    && row.identity.displayName.trim().toLocaleLowerCase() === draft.displayName.trim().toLocaleLowerCase());
   const edit = (key: keyof ColleagueCreateDraft, value: string) => setDraft(previous => previous ? { ...previous, [key]: value } : previous);
   const decide = async (approved: boolean) => {
     if (fence.current || disabled || approved && colleague && (!draft?.username.trim() || !draft.displayName.trim() || !draft.title.trim() || !runtimeOptions.some(row => row.id === draft.runtimeId))) return;
@@ -90,7 +93,7 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
           <option value="full-protected">{t("ws.approval.fullProtected")}</option><option value="controlled">{t("ws.approval.controlled")}</option></select></label>
         <details><summary>{t("ws.approval.details")}</summary><label>{t("ws.approval.instructions")}<textarea value={draft?.instructions ?? ""} maxLength={8000}
           onChange={event => edit("instructions", event.target.value)} disabled={pending || disabled} /></label></details>
-      </div><p>{t("ws.approval.boundary")}</p></>}
+      </div>{duplicateName ? <p role="status">{t("ws.approval.duplicateName")}</p> : null}<p>{t("ws.approval.boundary")}</p></>}
     <div className="wsd-card-actions"><button className="hs-btn sec" onClick={() => void decide(false)} disabled={pending || disabled}>{t(schedule ? "ws.scheduleApproval.decline" : "ws.approval.decline")}</button>
       <button className="hs-btn pri" onClick={() => void decide(true)} disabled={pending || disabled || !schedule && (!draft?.username.trim() || !draft.displayName.trim() || !draft.title.trim() || !runtimeOptions.some(row => row.id === draft.runtimeId))}>{t(schedule ? "ws.scheduleApproval.confirm" : "ws.approval.confirm")}</button></div>
   </section>;
@@ -114,8 +117,8 @@ function SettledApprovalCard({ state, name, t }: { state: ApprovalSettleState; n
     <p>{t(copy, { name: label })}</p>
   </section>;
 }
-export function Transcript({ history, agent, t, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false, alwaysShowTimingDiagnostics = false, messageTimings = [], conversation, contextCompactions, compactions = contextCompactions ?? [] }: {
-  conversation?: WaitConversation; contextCompactions?: readonly ContextCompactionView[]; compactions?: readonly ContextCompactionView[];
+export function Transcript({ history, agent, t, media, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false, alwaysShowTimingDiagnostics = false, messageTimings = [], conversation, contextCompactions, compactions = contextCompactions ?? [] }: {
+  media?: WorkspaceMediaAccess; conversation?: WaitConversation; contextCompactions?: readonly ContextCompactionView[]; compactions?: readonly ContextCompactionView[];
   messageTimings?: readonly MessageTimingReport[];
   history: WorkspaceDevMessage[]; agent?: WorkspaceDevAgent; t: Translate; detailed?: boolean; stages?: RuntimeStageReport[];
   alwaysShowTimingDiagnostics?: boolean; historyOffset?: number; onExportStage?: (report: RuntimeStageReport) => Promise<RuntimeDiagnosticReceipt>; stageDisabled?: boolean;
@@ -167,7 +170,7 @@ export function Transcript({ history, agent, t, detailed = false, stages = [], h
     if (message.role === "user") return <div className={`hs-msg me wsd-message is-user ${continuation ? "cont" : ""}`} key={`user-${index}`}><div className="hs-bub wsd-bubble">{message.content}</div></div>;
     return <div className={`wsd-message-group ${continuation ? "cont" : ""}`} key={`assistant-${index}`}>
       {!continuation || assistantReports.has(index) ? <div className="hs-who">{agent?.identity.displayName ?? "Hara"}{assistantReports.get(index)?.map(chip)}</div> : null}
-      <div className={`hs-msg wsd-message is-agent ${continuation ? "cont" : ""}`}><Avatar agent={agent} /><div className="hs-bub wsd-bubble"><Md text={message.text}
+      <div className={`hs-msg wsd-message is-agent ${continuation ? "cont" : ""}`}><Avatar agent={agent} /><div className="hs-bub wsd-bubble"><Md text={message.text} media={media} mediaUnavailableLabel={t("ws.media.unavailable")} revealMediaLabel={t("ws.media.reveal")}
         copyCodeLabel={t("copyCode")} copiedLabel={t("taskCopied")} copyFailedLabel={t("copyFailed")} /></div></div>
     </div>;
   };
@@ -230,7 +233,6 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const [rosterPrefs, setRosterPrefs] = useState<Record<string, { pinned?: boolean; hidden?: boolean; unread?: boolean; section?: string }>>({});
   const [rosterPrefsWorkspaceId, setRosterPrefsWorkspaceId] = useState<string | null>(null);
   const [rosterMove, setRosterMove] = useState<WorkspaceDevAgent | null>(null), [sectionName, setSectionName] = useState("");
-  const [rosterDelete, setRosterDelete] = useState<WorkspaceDevAgent | null>(null);
   const [renameAgentId, setRenameAgentId] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null), end = useRef<HTMLDivElement>(null), nearBottom = useRef(true), selectedRow = useRef<HTMLButtonElement>(null);
   const scroll = useRef<HTMLDivElement>(null), scrollContext = useRef("");
@@ -247,7 +249,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const shell = useWorkspaceOverview(model, workspace);
   const scope = workspace ? JSON.stringify([workspace.workspaceId, workspace.resourceGeneration]) : "";
   const activeRosterPrefs = rosterPrefsWorkspaceId === workspace?.workspaceId ? rosterPrefs : {};
-  useEffect(() => { setRosterMenu(null); setRosterDelete(null); setRosterMove(null);
+  useEffect(() => { setRosterMenu(null);  setRosterMove(null);
     try { const saved: unknown = JSON.parse(localStorage.getItem(`hara.roster.${workspace?.workspaceId}`) || "{}");
       setRosterPrefs(saved && typeof saved === "object" && !Array.isArray(saved) ? saved as typeof rosterPrefs : {});
     } catch { setRosterPrefs({}); }
@@ -282,7 +284,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const showContextInspector = inspector && !browser && route.section !== "chat" && !inChannel;
   const selectedChannel = inChannel ? channelView.channel?.channel ?? channelView.catalog?.channels.find(row => row.id === route.channelId) : undefined;
   const detailedChannel = theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false;
-  const renderChannelTranscript = useCallback((messages: WorkspaceDevMessage[], author?: WorkspaceDevAgent) => <Transcript history={messages} agent={author} t={t} detailed={detailedChannel} />, [t, detailedChannel]);
+  const renderChannelTranscript = useCallback((messages: WorkspaceDevMessage[], author?: WorkspaceDevAgent) => <Transcript media={model} history={messages} agent={author} t={t} detailed={detailedChannel} />, [model, t, detailedChannel]);
   const channelFollowing = useCallback((following: boolean) => { nearBottom.current = following; }, []);
   useEffect(() => { void channels.bind(workspace?.workspaceId ?? "", workspace?.resourceGeneration ?? ""); setChannelDialog(null); }, [channels, scope]);
   useEffect(() => { if (workspace) void channels.refresh(); }, [channels, workspace]);
@@ -439,7 +441,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity, t]);
   const closeSettings = () => { setSettings(false); };
   const openSettingsPage = (page: SettingsPage) => { setSettingsPage(page); setSettings(true); };
-  const modalOpen = settings || creating || !!channelDialog || !!rosterMove || !!rosterDelete || approvalDialog?.scope === scope;
+  const modalOpen = settings || creating || !!channelDialog || !!rosterMove || approvalDialog?.scope === scope;
   const draftSkill = async (workspaceId: string) => {
     if (model.getSnapshot().workspaceId !== workspaceId) await model.selectWorkspace(workspaceId);
     const current = model.getSnapshot().workspace;
@@ -476,7 +478,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       {searching ? <input className="hs-search" type="search" aria-label={t("ws.search")} placeholder={t("ws.search.placeholder")} value={search} onChange={event => setSearch(event.target.value)} autoFocus /> : null}
       <div className="vg-roster-label">{locale !== "en" ? "Hara 同事" : "Hara colleagues"}</div>
       {view.workspaceId && agents.length ? <>
-        {agents.filter(row => row.kind === "main").map(row => <button key={row.agentId} disabled={view.loading} className="hs-row hs-main wsd-contact is-main" aria-label={row.identity.displayName} title={row.identity.displayName} aria-current={route.section === "chat" && row.agentId === view.agentId ? "page" : undefined}
+        {agents.filter(row => row.kind === "main").map(row => <button key={row.agentId} disabled={view.loading} className="hs-row hs-main wsd-contact is-main" aria-label={row.identity.displayName} aria-current={route.section === "chat" && row.agentId === view.agentId ? "page" : undefined}
           onContextMenu={event => { event.preventDefault(); if (workspace) setRosterMenu({ workspaceId: workspace.workspaceId, agentId: row.agentId, x: event.clientX, y: event.clientY }); }}
           onClick={() => void openAgent(row.agentId)}><Avatar agent={row} large /><span className="hs-txt"><strong className="hs-name"><span className="nm">{row.identity.displayName}</span><span className="hs-tag brand">{t("ws.main.tag")}</span></strong>
             <span className="pv">{t("ws.main.subtitle")}</span></span></button>)}
@@ -485,14 +487,14 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             <button className="hs-sec-a" aria-label={t("ws.channels.new")} disabled={!channelView.supported || view.loading || !!disconnected} onClick={() => setChannelDialog("create")}><PlusIcon className="hico" />{locale !== "en" ? "新建群" : "New group"}</button></div>
           {rosterRows.filter(item => !search || (item.kind === "colleague" ? `${item.row.agent.identity.displayName} ${item.row.agent.identity.title ?? ""}` : item.row.name).toLocaleLowerCase().includes(search.toLocaleLowerCase())).map((item, index, visible) => item.kind === "colleague" ? <Fragment key={`colleague:${item.row.agent.agentId}`}>
             {rosterSectionOf(item) && rosterSectionOf(visible[index - 1]) !== rosterSectionOf(item) ? <div className="vg-roster-section">{rosterSectionOf(item)}</div> : null}
-            <button className="hs-row hs-dm wsd-contact" aria-label={item.row.agent.identity.displayName} title={item.row.agent.identity.displayName} disabled={view.loading}
+            <button className="hs-row hs-dm wsd-contact" aria-label={item.row.agent.identity.displayName} disabled={view.loading}
             onContextMenu={event => { event.preventDefault(); if (workspace) setRosterMenu({ workspaceId: workspace.workspaceId, agentId: item.row.agent.agentId, x: event.clientX, y: event.clientY }); }}
             ref={item.row.agent.agentId === view.agentId ? selectedRow : undefined} aria-current={route.section === "chat" && item.row.agent.agentId === view.agentId ? "page" : undefined} onClick={() => { updateRosterPref(item.row.agent.agentId, { unread: false }); void openAgent(item.row.agent.agentId); }}>
             <Avatar agent={item.row.agent} /><span className="hs-txt"><strong className="hs-name"><span className="nm">{item.row.agent.identity.displayName}</span></strong><span className="pv">{item.row.preview}</span></span>
             {colleagueUsageView(accountUsage.get(item.row.agent.agentId)).state !== "parse_unavailable" ? <span className={`hs-usage-chip ${colleagueUsageView(accountUsage.get(item.row.agent.agentId)).state}`}>{colleagueUsageView(accountUsage.get(item.row.agent.agentId)).label}</span> : null}
             <span className="hs-meta">{item.row.timestamp && Number.isFinite(Date.parse(item.row.timestamp)) ? <time className="hs-time" dateTime={item.row.timestamp}>{new Date(item.row.timestamp).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time> : null}
               {(shell.activity[item.row.agent.agentId]?.unread ?? 0) > 0 || activeRosterPrefs[item.row.agent.agentId]?.unread ? <span className="hs-dot" role="img" aria-label={t("ws.unread", { n: Math.max(1, shell.activity[item.row.agent.agentId]?.unread ?? 0) })} /> : null}</span></button></Fragment>
-            : <button className="hs-row hs-dm wsd-contact vg-group-row" key={`group:${item.row.id}`} data-group-id={item.row.id} aria-label={item.row.name} title={item.row.name} aria-current={inChannel && channelView.channelId === item.row.id ? "page" : undefined} onClick={() => openChannel(item.row.id)}>
+            : <button className="hs-row hs-dm wsd-contact vg-group-row" key={`group:${item.row.id}`} data-group-id={item.row.id} aria-label={item.row.name} aria-current={inChannel && channelView.channelId === item.row.id ? "page" : undefined} onClick={() => openChannel(item.row.id)}>
               <span className="hs-ava vg-group-avatar" aria-hidden="true"><UsersIcon className="hico" /></span><span className="hs-txt"><strong className="hs-name"><span className="nm">{item.row.name}</span></strong><span className="pv">{channelMemberLabel(t, item.row.memberIds.length)}</span></span><span className="vg-group-badge">{locale !== "en" ? "群" : "Group"}</span></button>)}
           {search && !rosterRows.some(item => (item.kind === "colleague" ? `${item.row.agent.identity.displayName} ${item.row.agent.identity.title ?? ""}` : item.row.name).toLocaleLowerCase().includes(search.toLocaleLowerCase())) ? <p className="hs-empty">{t("ws.search.empty")}</p> : null}
           {!rosterRows.length ? <p className="hs-empty">{t("ws.dm.empty")}</p> : null}
@@ -537,7 +539,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {workspace.conversation.nativeRisks?.length ? <aside className="wsd-notice" aria-label={t("ws.permissions.risks")}>
               <strong>{t("ws.permissions.risks")}</strong><ul>{workspace.conversation.nativeRisks.map(event => <li key={event.id}>{t(event.kind === "external-publish" ? "ws.permissions.publish" : "ws.permissions.delete")} · {t("ws.permissions.observed")}</li>)}</ul>
             </aside> : null}
-            <Transcript history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false}
+            <Transcript media={model} history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false}
               conversation={workspace.conversation} compactions={workspace.conversation.contextCompactions} messageTimings={workspace.conversation.messageTimings} alwaysShowTimingDiagnostics={theme.settings?.alwaysShowTimingDiagnostics === true} stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
             <WorkspaceOptimisticMessage model={model} t={t} />
             {!disconnected ? <AssistantDraft model={model} agent={agent} t={t} follow={followPreview} /> : null}
@@ -611,19 +613,11 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       onMove={() => { setSectionName(""); setRosterMove(menuAgent); }} onUnread={() => updateRosterPref(menuAgent.agentId, { unread: true })}
       onRename={() => void manageRosterAgent(menuAgent, true)}
       onCopyId={() => { const id = shell.snapshots.find(row => row.selectedAgentId === menuAgent.agentId)?.conversation.sessionId; if (id) void navigator.clipboard.writeText(id); }}
-      onHide={() => updateRosterPref(menuAgent.agentId, { hidden: !activeRosterPrefs[menuAgent.agentId]?.hidden })}
-      onDelete={() => setRosterDelete(menuAgent)} /> : null}
+      onHide={() => updateRosterPref(menuAgent.agentId, { hidden: !activeRosterPrefs[menuAgent.agentId]?.hidden })} /> : null}
     {rosterMove ? <ShellDialog label={locale !== "en" ? "移至新分组" : "Move to new section"} onClose={() => setRosterMove(null)} className="wsd-roster-dialog">
       <h2>{locale !== "en" ? "移至新分组" : "Move to new section"}</h2><label>{locale !== "en" ? "分组名称" : "Section name"}<input value={sectionName} maxLength={60} onChange={event => setSectionName(event.target.value)} /></label>
       <div className="wsd-card-actions"><button onClick={() => setRosterMove(null)}>{t("ws.cancel")}</button><button className="hs-btn pri" disabled={!sectionName.trim()} onClick={() => { updateRosterPref(rosterMove.agentId, { section: sectionName.trim() }); setRosterMove(null); }}>{locale !== "en" ? "移动" : "Move"}</button></div>
     </ShellDialog> : null}
-    {rosterDelete ? <ShellDialog label={locale !== "en" ? `删除「${rosterDelete.identity.displayName}」？` : `Delete “${rosterDelete.identity.displayName}”?`} onClose={() => setRosterDelete(null)} className="wsd-roster-dialog">
-      <section className="hs-card wsd-approval"><div className="wsd-kicker">{locale !== "en" ? "确认删除" : "Confirm deletion"}</div>
-        <h2>{locale !== "en" ? `删除「${rosterDelete.identity.displayName}」？` : `Delete “${rosterDelete.identity.displayName}”?`}</h2>
-        <p>{locale !== "en" ? "该 bot 会从 Hara 团队目录移除；外部角色文件和历史对话保留，以后可重新雇佣。" : "This bot will leave Hara's active directory. External role files and conversation history stay untouched, and you can re-hire it later."}</p>
-        <p role="status">{locale !== "en" ? "删除暂不可用：当前 Hara Core 未开放 Soft Dark bot 归档接口。" : "Delete is unavailable: this Hara Core does not expose the Soft Dark bot archive action."}</p>
-        <div className="wsd-card-actions"><button onClick={() => setRosterDelete(null)}>{t("ws.cancel")}</button><button className="hs-btn danger" disabled>{locale !== "en" ? "删除" : "Delete"}</button></div>
-      </section></ShellDialog> : null}
     {settings ? <WorkspaceSettings key={`settings:${view.workspaceId}`} mainModel={model} initialPage={settingsPage} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
       onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} /> : null}
   </div></div></div>;

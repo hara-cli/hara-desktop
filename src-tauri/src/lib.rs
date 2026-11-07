@@ -11,6 +11,7 @@ use tauri_plugin_updater::UpdaterExt;
 #[cfg(test)]
 mod brand_asset_tests;
 mod command_line_probe;
+mod workspace_media;
 mod update_channel;
 #[cfg(windows)]
 mod windows_process;
@@ -1270,10 +1271,12 @@ fn workspace_dev_connection_at(
 /// discover the installed engine, copy its keys, or expose a general filesystem/PID operation.
 #[tauri::command]
 fn workspace_dev_connection() -> Result<WorkspaceDevConnection, String> {
-    workspace_dev_connection_at(
+    let connection = workspace_dev_connection_at(
         cfg!(debug_assertions),
         std::env::var_os("HARA_DESKTOP_WORKSPACE_DEV_ROOT").map(PathBuf::from),
-    )
+    )?;
+    workspace_media::remember(connection.port, &connection.token);
+    Ok(connection)
 }
 
 fn workspace_entry_selection(identifier: &str, rollback: Option<&str>) -> Result<&'static str, String> {
@@ -1463,7 +1466,9 @@ fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
 
 #[tauri::command]
 async fn workspace_connection() -> Result<WorkspaceDevConnection, String> {
-    tauri::async_runtime::spawn_blocking(connect_or_start_workspace).await.map_err(|_| "Workspace startup worker unavailable".to_string())?
+    let connection = tauri::async_runtime::spawn_blocking(connect_or_start_workspace).await.map_err(|_| "Workspace startup worker unavailable".to_string())??;
+    workspace_media::remember(connection.port, &connection.token);
+    Ok(connection)
 }
 
 fn workspace_lab_preflight(
@@ -3700,6 +3705,10 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("hara-media", |context, request, responder| {
+            if context.webview_label() != "main" { responder.respond(tauri::http::Response::builder().status(404).body(Vec::<u8>::new()).unwrap()); return; }
+            tauri::async_runtime::spawn(async move { responder.respond(workspace_media::response(request).await); });
+        })
         .manage(OwnedPanels(std::sync::Mutex::new(Vec::new())))
         .manage(RendererBootState::default())
         .plugin(tauri_plugin_opener::init())
@@ -3734,6 +3743,7 @@ pub fn run() {
             workspace_dev_connection,
             workspace_entry_mode,
             workspace_connection,
+            workspace_media::workspace_media_reveal,
             start_serve,
             inspect_command_line_hara,
             inspect_terminal_hara,
