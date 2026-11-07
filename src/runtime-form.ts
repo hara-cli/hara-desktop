@@ -79,3 +79,18 @@ export function engineStatus(use: string | undefined, reason: string | undefined
 export const needsConfirmation = (use: string | undefined) => use === "confirm_first_use" || use === "confirm_update";
 /** Only Codex and Claude can sign in separately inside Hara; the others always use this computer's login. */
 export const separateLoginOffered = (runtimeId: string) => runtimeId === "codex" || runtimeId === "claude";
+
+/** Draft Pi reads the Workspace connection; only an actually listed model is applicable. */
+export function canApplyPiModel(ready: boolean, connectionId: string | undefined,
+  inventory: (FormInventory & { connectionId?: string }) | null, modelId: string): boolean {
+  return ready && Boolean(connectionId) && inventory !== null && inventory.connectionId === connectionId
+    && inventory.models.some(row => row.id === modelId);
+}
+
+/** Connection failures have closed user-facing explanations; raw internal details never enter Pi copy. */
+export function piModelErrorKey(reason: string) {
+  if (/changed|generation unavailable|agent unavailable|ws\.notice\.scopeChanged/i.test(reason)) return "ws.rf.piModelsChanged" as const;
+  if (/credential|authorization pending|secure settings|unavailable scoped model connection/i.test(reason)) return "ws.rf.piCredentials" as const;
+  if (/Connection unavailable|No usable connection/i.test(reason)) return "ws.rf.piNoConnection" as const;
+  return "ws.rf.piModelsUnavailable" as const;
+}

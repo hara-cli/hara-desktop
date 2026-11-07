@@ -8,7 +8,7 @@ import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
 import { RUNTIME_FORM_KEYS } from "../src/runtime-form-i18n.ts";
 import { RUNTIME_FAILURE_MARKER } from "../src/runtime-failure.ts";
 import { AUTO_EFFORT, ENGINE_DEFAULT_EFFORT, changedFields, defaultModel, effortChoices, effortForWire, engineStatus, formBaseline,
-  modelLevels, reconcileEffort, savedEffortChoice, separateLoginOffered } from "../src/runtime-form.ts";
+  modelLevels, reconcileEffort, savedEffortChoice, separateLoginOffered, canApplyPiModel, piModelErrorKey } from "../src/runtime-form.ts";
 
 const sol = { id: "sol", label: "Sol", supportedReasoningEfforts: ["xhigh", "low", "high", "medium"] };
 const luna = { id: "luna", label: "Luna", supportedReasoningEfforts: ["low", "medium"] };
@@ -158,5 +158,25 @@ test("recovery card: an updated engine offers Confirm and continue and says Hara
     assert.ok(updated.includes(t("ws.rf.recoveryUpdatedTitle", { engine: "Codex" })));
     const missing = render(h(module.exports.WorkspaceTaskRecovery, base));
     assert.ok(!missing.includes(t("ws.rf.recoveryConfirm")), "a missing engine is not offered a confirmation");
+  }
+});
+
+
+test("Pi Apply requires a current connection catalog and an actually selected model", () => {
+  const inventory = { models: [sol], defaultModelId: "sol", selected: null, connectionId: "connection-a" };
+  assert.equal(canApplyPiModel(true, "connection-a", inventory, "sol"), true);
+  for (const [ready, connectionId, data, model] of [[false,"connection-a",inventory,"sol"],[true,undefined,inventory,"sol"],[true,"connection-b",inventory,"sol"],[true,"connection-a",inventory,""],[true,"connection-a",inventory,"missing"],[true,"connection-a",null,"sol"]])
+    assert.equal(canApplyPiModel(ready, connectionId, data, model), false);
+});
+
+test("Pi model failures give localized connection/credential/refresh guidance without internal text", () => {
+  const cases = [["Connection unavailable in this workspace","ws.rf.piNoConnection"],["Original credential unavailable; no fallback selected","ws.rf.piCredentials"],["invalid or unavailable scoped model connection; no fallback was selected","ws.rf.piCredentials"],["Workspace model view changed; refresh","ws.rf.piModelsChanged"],["Connection changed; refresh model list","ws.rf.piModelsChanged"],["INTERNAL_FILE_PATH_SECRET","ws.rf.piModelsUnavailable"]];
+  for (const [reason, expected] of cases) {
+    assert.equal(piModelErrorKey(reason), expected);
+    for (const locale of ["zh-Hans", "zh-Hant"]) {
+      const text = makeT(locale)(piModelErrorKey(reason));
+      assert.doesNotMatch(text, /Pi agent unavailable|Original credential|Workspace model view|INTERNAL_FILE_PATH_SECRET/);
+      assert.match(text, /空间连接|空間連線|刷新模型|重新整理模型/);
+    }
   }
 });

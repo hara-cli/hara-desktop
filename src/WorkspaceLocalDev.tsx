@@ -589,7 +589,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       onApplyModel={(runtimeId, modelId, revision, effort) => model.selectRuntimeModel(runtimeId, modelId, revision, effort)}
       onApplyConnectionModel={(connectionId, modelId, revision, effort) => model.selectConnectionModel(connectionId, modelId, revision, effort)}
       onRescan={() => model.detectRuntimes()} onRegisterRuntime={(runtimeId, fingerprint, loginSource) => model.registerLocalRuntime(runtimeId, fingerprint, workspace.workspaceId, workspace.resourceGeneration, loginSource)}
-      onRuntimeDirectory={() => openSettingsPage("runtimes")} onSaveProfile={profile => model.updateAgentPersona(agent, profile)}
+      onRuntimeDirectory={() => openSettingsPage("runtimes")} onConnections={() => openSettingsPage("connections")} onSaveProfile={profile => model.updateAgentPersona(agent, profile)}
       onToggle={(schedule) => updateColleagueSchedule("workspace.features.update", { kind: "schedule", id: schedule.id, enabled: !schedule.enabled }, schedule.agentId)}
       onSave={(schedule, values) => updateColleagueSchedule("workspace.schedule.save", { input: { id: schedule.id, name: values.name.trim(), schedule: { kind: "cron", expr: values.cron.trim() }, tz: values.tz.trim(), task: values.task.trim(), agentId: agent.agentId, enabled: schedule.enabled }, approved: true }, schedule.agentId)}
       onDelete={(schedule) => updateColleagueSchedule("workspace.schedule.delete", { id: schedule.id, approved: true }, schedule.agentId)} />

@@ -7,7 +7,7 @@ import { WorkspaceRuntimeVersion } from "./WorkspaceRuntimeVersion";
 import { runtimeVersionFor } from "./runtime-version-drift";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import { AUTO_EFFORT, ENGINE_DEFAULT_EFFORT, changedFields, effortChoices, effortForWire, engineStatus, formBaseline, needsConfirmation,
-  reconcileEffort, separateLoginOffered, defaultModel, type FormInventory } from "./runtime-form";
+  reconcileEffort, separateLoginOffered, defaultModel, canApplyPiModel, piModelErrorKey, type FormInventory } from "./runtime-form";
 import type { RuntimeLoginSource, RuntimePermissionTier, WorkspaceDevAgent, WorkspaceDevModel, WorkspaceDevSnapshot,
   WorkspaceRuntimeFormOptions, WorkspaceSessionRestart } from "./workspace-dev-state";
 
@@ -42,9 +42,9 @@ function FormDialog({ label, pending, onClose, children }: { label: string; pend
  * engine immediately shows that engine's models, default, effort choices and version. A first use or an
  * updated file is confirmed once, inside Apply; Core refuses execution until then.
  */
-export default function ColleagueRuntimeForm({ agent, workspace, model, locale, permissionSupported = false, onApplyPermissionTier, onRuntimeDirectory }: {
+export default function ColleagueRuntimeForm({ agent, workspace, model, locale, permissionSupported = false, onApplyPermissionTier, onRuntimeDirectory, onConnections }: {
   agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; model: WorkspaceDevModel; locale: "en" | "zh-Hans" | "zh-Hant";
-  permissionSupported?: boolean; onApplyPermissionTier?(tier: RuntimePermissionTier): Promise<void>; onRuntimeDirectory(): void;
+  permissionSupported?: boolean; onApplyPermissionTier?(tier: RuntimePermissionTier): Promise<void>; onRuntimeDirectory(): void; onConnections?(): void;
 }) {
   const t = makeT(locale), zh = locale !== "en";
   const engineName = (id: string) => agentRuntimeLabel(id as AgentRuntimeId, zh ? "zh" : "en");
@@ -103,6 +103,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
   const status = engineStatus(use, form?.unavailableReason ?? runtimeRow?.unavailableReason);
   const selectedModel = inventory?.models.find(row => row.id === draftModel);
   const choices = effortChoices(selectedModel, draftRuntime);
+  const piModelReady = draftRuntime !== "pi" || canApplyPiModel(ready, connection?.id, inventory, draftModel);
   const fields = changedFields({ runtimeId: agent.runtime.id }, { runtimeId: draftRuntime, model: draftModel, effort: choices.length ? draftEffort : (baseline?.effort ?? AUTO_EFFORT) }, ready ? baseline : null);
   const confirmNeeded = needsConfirmation(use);
   const usable = use === "ready" || confirmNeeded;
@@ -121,7 +122,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
     setDropped(reconciled.dropped && next ? { model: next.label, level: reconciled.dropped } : null); setNotice("");
   };
   const apply = async () => {
-    if (fence.current || !inventory || liveScope.current !== scope) return;
+    if (fence.current || !inventory || !piModelReady || liveScope.current !== scope) return;
     fence.current = true; setBusy(true); setError(""); setNotice("");
     try {
       const modelChanged = fields.includes("model") || fields.includes("effort");
@@ -140,7 +141,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
       }
       setConfirming(false); setNotice(t("ws.rf.appliedNext")); setReload(value => value + 1);
     } catch (cause) {
-      if (liveScope.current === scope) setError(workspaceMessageText(t, cause instanceof Error ? cause.message : String(cause)));
+      if (liveScope.current === scope) { const reason = cause instanceof Error ? cause.message : String(cause); setError(draftRuntime === "pi" ? t(piModelErrorKey(reason)) : workspaceMessageText(t, reason)); }
     } finally { fence.current = false; setBusy(false); }
   };
   const startApply = () => {
@@ -153,6 +154,12 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
     setScanning(true); setError("");
     try { await model.detectRuntimes(); setReload(value => value + 1); }
     catch (cause) { setError(workspaceMessageText(t, cause instanceof Error ? cause.message : String(cause))); }
+    finally { setScanning(false); }
+  };
+  const refreshModels = async () => {
+    setScanning(true); setError(""); setNotice("");
+    try { await model.refresh(); setReload(value => value + 1); }
+    catch (cause) { setError(t(piModelErrorKey(cause instanceof Error ? cause.message : String(cause)))); }
     finally { setScanning(false); }
   };
   const permissionBlocked = !permissionSupported || !onApplyPermissionTier || busy || freshBlocked;
@@ -175,9 +182,10 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
         {(form?.path ?? runtimeRow?.path) ? <code>{form?.path ?? runtimeRow?.path}</code> : null}
       </div>
       {inheritsPersonalExtensions(draftRuntime) ? <p role="note" data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}
-      {draftRuntime === "pi" ? <p className="vg-muted">{t(connection ? "ws.rf.piModels" : "ws.rf.piConnect")}</p> : null}
+      {draftRuntime === "pi" ? <p className="vg-muted">{t(connection ? "ws.rf.piModels" : "ws.rf.piNoConnection")}</p> : null}
       {loaded?.key === loadKey && loaded.status === "loading" ? <p role="status">{t("ws.rf.modelsLoading")}</p> : null}
-      {loaded?.key === loadKey && loaded.status === "error" ? <p role="alert">{t("ws.rf.modelsFailed", { reason: workspaceMessageText(t, loaded.error) })}</p> : null}
+      {loaded?.key === loadKey && loaded.status === "error" ? <p role="alert">{draftRuntime === "pi" ? t(piModelErrorKey(loaded.error)) : t("ws.rf.modelsFailed", { reason: workspaceMessageText(t, loaded.error) })}</p> : null}
+      {draftRuntime === "pi" ? <div className="vg-rf-actions">{onConnections ? <button type="button" onClick={onConnections}>{t("ws.rf.piConnections")}</button> : null}<button type="button" disabled={busy || scanning || !connection || !model.supportsConnectionModels()} onClick={() => void refreshModels()}>{t("ws.rf.piRefreshModels")}</button></div> : null}
       {ready && usable && draftRuntime !== "hara" && (draftRuntime !== "pi" || inventory!.models.length) ? <>
         <label className="vg-rf-field">{t("ws.rf.model")}
           <select aria-label={t("ws.rf.model")} value={draftModel} disabled={busy || scanning || !inventory!.models.length} onChange={event => chooseModel(event.target.value)}>
@@ -203,7 +211,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
       <footer className="vg-rf-foot">
         {fields.length ? <span className="vg-rf-chip dirty" role="status">{t("ws.rf.unsaved", { fields: fieldText })}</span>
           : confirmNeeded ? <span className="vg-rf-chip warn" role="status">{statusText(status)}</span> : <span className="vg-rf-chip" role="status">{t("ws.rf.saved")}</span>}
-        <button type="button" className="vg-rf-apply" disabled={busy || scanning || !ready || !fields.length && !confirmNeeded || !usable || draftRuntime === "hara" && draftRuntime !== agent.runtime.id} onClick={startApply}>{t(busy ? "ws.rf.applying" : "ws.rf.apply")}</button>
+        <button type="button" className="vg-rf-apply" disabled={busy || scanning || !ready || !piModelReady || !fields.length && !confirmNeeded || !usable || draftRuntime === "hara" && draftRuntime !== agent.runtime.id} onClick={startApply}>{t(busy ? "ws.rf.applying" : "ws.rf.apply")}</button>
       </footer>
       {fields.includes("engine") ? <p className="vg-muted">{t("ws.rf.untilApplied", { name: agent.identity.displayName, engine: engineName(agent.runtime.id) })}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
@@ -219,7 +227,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
       </label>
       <p>{t("ws.permissions.help")}</p>
       {!permissionSupported ? <p role="status">{t("ws.permissions.upgrade")}</p> : null}
-      <WorkspaceRuntimeVersion runtimeId={agent.runtime.id} binding={runtimeVersionFor(workspace.runtimes?.options, agent.runtime.id)} t={t} />
+      {draftRuntime !== "pi" && draftRuntime !== "hara" ? <WorkspaceRuntimeVersion runtimeId={draftRuntime} binding={runtimeVersionFor(workspace.runtimes?.options, draftRuntime)} t={t} /> : null}
     </section>
     {confirming ? <FormDialog label={t("ws.rf.confirmAction")} pending={busy} onClose={() => setConfirming(false)}>
       <section className="vg-rf-confirm">
@@ -242,7 +250,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
         </fieldset> : null}
         {error ? <p role="alert">{error}</p> : null}
         <div className="wsd-card-actions"><button type="button" disabled={busy} onClick={() => setConfirming(false)}>{t("ws.rf.cancel")}</button>
-          <button type="button" className="wsd-primary" disabled={busy || restart === "fresh" && freshBlocked} onClick={() => void apply()}>{t(busy ? "ws.rf.applying" : "ws.rf.confirmAction")}</button></div>
+          <button type="button" className="wsd-primary" disabled={busy || !piModelReady || restart === "fresh" && freshBlocked} onClick={() => void apply()}>{t(busy ? "ws.rf.applying" : "ws.rf.confirmAction")}</button></div>
       </section>
     </FormDialog> : null}
   </div>;
