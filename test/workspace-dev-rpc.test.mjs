@@ -145,3 +145,24 @@ test("archive errors retain only fixed recovery reasons, never arbitrary server 
  await assert.rejects(pending,error=>error.archiveReason==="archive_drain_timeout"&&error.code===-32602&&error.data===undefined&&error.privatePayload===undefined);
  const unknown=client.request("workspace.agents.setArchived",{});socket.message({jsonrpc:"2.0",id:socket.sent.at(-1).id,error:{code:-32602,message:"Synthetic unknown",data:{archiveReason:"untrusted-reason"}}});await assert.rejects(unknown,error=>error.archiveReason===undefined);client.close();
 });
+
+
+test("B2 request locales follow current preference; closed error codes localize and retain numeric/archive compatibility", async () => {
+  const originalStorage = globalThis.localStorage; let locale = "en";
+  globalThis.localStorage = { getItem: () => locale };
+  try {
+    const client = new WorkspaceDevConnectionClient(info(), () => {}), socket = Socket.instances.at(-1);
+    const ready = client.initialize(info().token); socket.open(); await tick();
+    assert.deepEqual(socket.sent[0].params.clientLocale, { tag: "en", fallback: [] });
+    socket.reply(socket.sent[0].id, { capabilities: ["workspace.local-dev.v2", "workspace.i18n.v1"], syntheticOnly: true }); await ready;
+    locale = "zh-Hans"; const pending = client.request("workspace.session.send", { clientLocale: { tag: "evil", fallback: [] } });
+    assert.deepEqual(socket.sent.at(-1).params.clientLocale, { tag: "zh-Hans", fallback: ["en"] });
+    const checked = assert.rejects(pending, error => error.code === -32602 && error.publicCode === "message_invalid" && error.message === "请输入有效消息后再试。" && String(error) === "core.error.message_invalid" && error.technicalDetail === "safe diagnostic");
+    socket.message({ jsonrpc: "2.0", id: socket.sent.at(-1).id, error: { code: -32602, message: "internal raw English", data: { code: "message_invalid", params: {}, technicalDetail: "safe diagnostic", privatePayload: "never copy" } } }); await checked; client.close();
+  } finally { if (originalStorage === undefined) delete globalThis.localStorage; else globalThis.localStorage = originalStorage; }
+});
+
+test("older Core capability keeps method field compatibility after locale-aware initialization", async () => {
+  const {client,socket} = await setup(); const pending = client.request("workspace.list", {});
+  assert.equal(Object.prototype.hasOwnProperty.call(socket.sent.at(-1).params,"clientLocale"),false);socket.reply(socket.sent.at(-1).id,{});await pending;client.close();
+});

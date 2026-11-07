@@ -1,3 +1,4 @@
+import { WorkspacePublicRpcError } from "./core-i18n.ts";
 import { redesignText } from "./desktop-redesign-copy";
 import desktopPackage from "../package.json";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -140,7 +141,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
         const result = await model.applyRuntimeForm(agent, { runtimeId: draftRuntime as AgentRuntimeId,
           ...(confirmNeeded && form?.fingerprint ? { confirm: { fingerprint: form.fingerprint, loginSource: separateLoginOffered(draftRuntime) ? loginSource : "host" } } : {}),
           ...(modelChanged && draftModel ? { model: { modelId: draftModel, expectedRevision: inventory.revision, effort: wireEffort } } : {}) }, restart);
-        if (result.failed) { setError(t("ws.rf.partial", { reason: workspaceMessageText(t, result.failed.message) })); setConfirming(false); setReload(value => value + 1); return; }
+        if (result.failed) { setError(t("ws.rf.partial", { reason: workspaceMessageText(t, result.failed.data ? String(new WorkspacePublicRpcError(undefined, result.failed.data, result.failed.message)) : result.failed.message) })); setConfirming(false); setReload(value => value + 1); return; }
       }
       setConfirming(false); setNotice(t("ws.rf.appliedNext")); setReload(value => value + 1);
     } catch (cause) {

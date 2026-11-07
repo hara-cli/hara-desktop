@@ -1,10 +1,11 @@
+import { WorkspaceRpcErrorNotice } from "./WorkspaceRpcErrorNotice.tsx";
+import { localizedWorkspaceView } from "./workspace-default-labels.ts";
 import { WorkspaceDeletedColleagues } from "./WorkspaceDeletedColleagues";
 import { WorkspaceExtensions } from "./WorkspaceExtensions";
 import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useWorkspaceLocale, workspacePlatform } from "./workspace-shell-hooks";
 import { ArrowPathIcon, CalendarDaysIcon, ChevronDownIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { type Key, type LocalePreference } from "./i18n";
-import { workspaceMessageText } from "./workspace-settings-copy";
 import HaraLogo from "./mark";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot } from "./workspace-dev-state";
 import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
@@ -67,7 +68,7 @@ export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
 }
 export function SettingsContent({ model, initialPage, root, production, theme, updater, versionInfo, onClose, onCreateSkill }: WorkspaceSettingsProps & { model: WorkspaceDevModel }) {
   const { locale, preference, t, changeLocale } = useWorkspaceLocale();
-  const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot), updates = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot);
+  const rawView = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot), view = localizedWorkspaceView(rawView, locale), updates = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot);
   const [page, setPage] = useState<SettingsPage>(initialPage), [scopeOpen, setScopeOpen] = useState(false), [leaveNotice, setLeaveNotice] = useState<"" | Key>("");
   const scopeTrigger = useRef<HTMLButtonElement>(null), scopeMenu = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null);
   const cancelLeave = useRef<HTMLButtonElement>(null), discardLeave = useRef<HTMLButtonElement>(null), returnFocus = useRef<HTMLElement | null>(null);
@@ -124,7 +125,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
     </nav><footer><HaraLogo size={19} /><span>Hara {versionInfo?.desktop ?? ""}<small>{t("ws.settings.savedHere")}</small></span></footer></aside>
     <main className="wss-main" ref={body} inert={Boolean(decision)}><header className="wss-heading"><div><p>{t("ws.settings")} / {device ? t("ws.settings.device") : `${t("ws.settings.workspace")} / ${workspace?.label ?? "—"}`}</p><h1>{t(pages[page].name)}</h1></div>
       <span className="wss-scope-chip">{device ? `${t("ws.settings.device")} · ${t("ws.settings.allSpaces")}` : t("ws.settings.currentOnly")}</span></header><p className="wss-description">{t(pages[page].detail)}</p>
-      {view.error ? <p className="wss-callout" role="alert">{workspaceMessageText(t, view.error)}</p> : null}
+      <WorkspaceRpcErrorNotice value={view.error} technicalDetail={view.errorTechnicalDetail} locale={locale} t={t} className="wss-callout" />
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
       {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.filter(id => id !== "members").map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}</h2><p>{id === "connections" ? t(connectionCount === 1 ? "ws.settings.connectionOne" : "ws.settings.connectionCount", { n: connectionCount }) : id === "runtimes" ? t("ws.settings.runtimeSummary") : t(pages[id].detail)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
         <h3>{t("ws.settings.device")} · {t("ws.settings.allSpaces")}</h3><div className="wss-overview">{(["appearance", "updates"] as const).map(id => <button key={id} onClick={() => navigate(id)}><h2>{t(pages[id].name)}</h2><p>{id === "appearance" ? t("ws.settings.themeSummary") : ["available", "ready"].includes(updates.phase) ? t("ws.settings.updateAvailable", { version: updates.version ?? "" }) : t("ws.settings.updateSummary")}</p><span>{t("ws.settings.open")}</span></button>)}</div></> : null}

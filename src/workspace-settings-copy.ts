@@ -1,3 +1,4 @@
+import { workspaceCoreMessage, currentClientLocale } from "./core-i18n.ts";
 import type { Key, makeT } from "./i18n";
 import { WORKSPACE_KEYS, WORKSPACE_EXTRA_KEYS } from "./workspace-i18n.ts";
 
@@ -28,5 +29,5 @@ export function runtimeOperationText(t: ReturnType<typeof makeT>, state: string)
 
 /** Fixed controller messages stay as keys, so changing locale also changes an existing notice. */
 export function workspaceMessageText(t: ReturnType<typeof makeT>, message: string): string {
-  return messageKeys.has(message) ? t(message as Key) : message;
+  return workspaceCoreMessage(message, currentClientLocale().tag) ?? (messageKeys.has(message) ? t(message as Key) : message);
 }

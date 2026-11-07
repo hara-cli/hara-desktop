@@ -1,3 +1,4 @@
+import { currentClientLocale, WorkspacePublicRpcError } from "./core-i18n.ts";
 import { parseWorkspaceAssistantPreview, type WorkspaceAssistantPreview } from "./assistant-preview.ts";
 import { parseMessageTimingInput, type MessageTimingInput } from "./message-timing.ts";
 import type { WorkspaceDevRpc } from "./workspace-dev-state";
@@ -24,7 +25,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
     this.socket = new WebSocket(`ws://127.0.0.1:${info.port}`);
     this.socket.addEventListener("message", event => {
       if (this.socket.readyState !== WebSocket.OPEN) return;
-      let value: { id?: number; method?: string; params?: { workspaceId?: string; agentId?: string }; result?: unknown; error?: { message?: string; code?: number; data?: { archiveReason?: unknown } } };
+      let value: { id?: number; method?: string; params?: { workspaceId?: string; agentId?: string }; result?: unknown; error?: { message?: string; code?: number; data?: { archiveReason?: unknown; code?: unknown; params?: unknown; technicalDetail?: unknown } } };
       try { value = JSON.parse(String(event.data)); } catch { return; }
       if (value.method === "workspace.assistant.preview") {
         if (this.capabilities.has("workspace.assistant-preview.v1")) { const frame = parseWorkspaceAssistantPreview(value.params); if (frame) this.onPreview(frame); } return;
@@ -35,7 +36,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       if (value.error) {
         const reason = value.error.data?.archiveReason;
         const archiveReason = typeof reason === "string" && ["archive_confirmation_required", "archive_drain_timeout", "archive_cleanup_failed", "archive_schedule_rollback_failed"].includes(reason) ? reason : undefined;
-        pending.reject(Object.assign(new Error(value.error.message ?? "Workspace 請求失敗"), { code: value.error.code, ...(archiveReason ? { archiveReason } : {}) }));
+        pending.reject(Object.assign(new WorkspacePublicRpcError(value.error.code, value.error.data, value.error.message ?? "Workspace request failed"), { ...(archiveReason ? { archiveReason } : {}) }));
       } else pending.resolve(value.result);
     });
     this.socket.addEventListener("close", () => {
@@ -85,7 +86,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
       const timing = this.timingNow();
       const payload = timing && ["workspace.session.send", "workspace.session.resume", "workspace.session.answer"].includes(method) ? { ...params, timing } : params;
-      try { this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params: payload })); }
+      try { this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params: method === "initialize" || this.capabilities.has("workspace.i18n.v1") ? { ...payload, clientLocale: currentClientLocale() } : payload })); }
       catch { clearTimeout(timer); this.pending.delete(id); reject(new Error("Workspace 傳輸中斷；請只讀核對原請求，勿重送")); }
     });
   }

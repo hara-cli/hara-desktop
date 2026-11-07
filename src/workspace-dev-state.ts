@@ -1,3 +1,4 @@
+import { workspaceErrorState } from "./core-i18n.ts";
 import { workspaceMediaMimeAllowed } from "./workspace-media.ts";
 import type { WorkspaceMedia, WorkspaceMediaDescription } from "./workspace-media";
 import { LocalWaitClock, waitScope } from "./wait-timing.ts";
@@ -19,9 +20,9 @@ export interface WorkspaceDevRpc { request<T>(method: string, params: Record<str
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
 export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
-  workspaces: { workspaceId: string; label: string; role: string; active: boolean; kind?: "personal" | "team" }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
+  workspaces: { workspaceId: string; label: string; labelSource?: "default"; labelKey?: "core.name.workspace"; role: string; active: boolean; kind?: "personal" | "team" }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
 export type RuntimePermissionTier = "full-protected" | "controlled";
-export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
+export interface WorkspaceDevAgent { titleSource?: "default"; titleKey?: "core.name.orchestrator"; agentId: string; kind: "main" | "colleague"; state: string;
   configRevision?: number; agentEpoch?: number; description?: string; permissionTier?: RuntimePermissionTier;
   archivedAt?: string; pausedScheduleCount?: number;
   identity: { displayName: string; title?: string; emoji?: string; avatar?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
@@ -42,7 +43,7 @@ export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
 export type WorkspaceQuestionConversation = Pick<WorkspaceDevSnapshot["conversation"], "state" | "taskState" | "pendingQuestion" | "resumeAdmission" | "blockReason">;
 export interface WorkspaceDevQuestion { id: string; reason: "lookup_missing" | "lookup_ambiguous" | "tool_problem" | "budget_warning" | "runaway_guard" | "explicit";
-  question: string; options: string[]; taskId: string; runId: string; step?: string; header?: string; intent?: "rename_target" }
+  messageKey?: `core.question.${WorkspaceDevQuestion["reason"]}`; question: string; options: string[]; taskId: string; runId: string; step?: string; header?: string; intent?: "rename_target" }
 /** Core unified interaction (workspace.interaction.v2). pendingQuestion remains the sync legacy shape. */
 export type WorkspaceDevInteraction =
   | { requestId: string; kind: "ask_user_question"; delivery: "sync" | "async"; questions: { question: string; header?: string; options: string[] }[];
@@ -54,7 +55,7 @@ export type WorkspaceDevAsyncAsk = Extract<WorkspaceDevInteraction, { kind: "ask
 export function workspaceAsyncAsks(conversation: { pendingInteractions?: WorkspaceDevInteraction[] } | null | undefined): WorkspaceDevAsyncAsk[] {
   return (conversation?.pendingInteractions ?? []).filter((row): row is WorkspaceDevAsyncAsk => row.kind === "ask_user_question" && row.delivery === "async");
 }
-export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
+export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; labelSource?: "default"; labelKey?: "core.name.workspace"; selectedAgentId: string;
   runtimeOptions?: AgentRuntimeOption[];
   colleagueHome?: { path: string; legacyPath: string; created: boolean; available: boolean; memoryScope: "private"; codexMigrationPending: boolean };
   colleagueLimit?: number;
@@ -93,12 +94,12 @@ export interface WorkspaceRuntimeFormOptions { runtimeId: string; use: RuntimeUs
   revision: number; sharedWith: { agentId: string; displayName: string }[] }
 export interface WorkspaceRuntimeFormInput { runtimeId: AgentRuntimeId; confirm?: { fingerprint: string; loginSource: RuntimeLoginSource };
   model?: { modelId: string; expectedRevision: number; effort: string | null } }
-export interface WorkspaceRuntimeFormResult { applied: ("confirm" | "runtime" | "model")[]; failed?: { step: string; message: string } }
+export interface WorkspaceRuntimeFormResult { applied: ("confirm" | "runtime" | "model")[]; failed?: { step: string; message: string; data?: { code: string; params: Record<string, string | number>; technicalDetail: string } } }
 const RUNTIME_USES = ["ready", "confirm_first_use", "confirm_update", "unavailable", "detecting"];
 export interface WorkspaceDevView { directory: WorkspaceDevDirectory | null; workspaceId: string | null; agentId: string | null;
   localHistoryStart: number; runtimeChanging: boolean; runtimeBlocked: boolean;
   roster: WorkspaceDevAgent[];
-  workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; syncNotice: string; dismissedRecoveryIdentity: string | null }
+  workspace: WorkspaceDevSnapshot | null; draft: string; loading: boolean; sending: boolean; pendingUnknown: boolean; error: string; errorTechnicalDetail?: string; syncNotice: string; dismissedRecoveryIdentity: string | null }
 export interface RuntimeApprovalCard { id: string; runtimeId: string; label: string; version: string; origin: string; sha256: string;
   maxBytes: number; expiresAt: string; target: { platform: string; arch: string }; workspaceId: string; resourceGeneration: string; viewEpoch: number }
 export interface WorkspaceRuntimeModels { source?: "live" | "documented"; sourceURL?: string; sourceUrl?: string; runtimeId: string; revision: number; selectedModelId: string | null; selectedEffort?: string | null;
@@ -281,6 +282,7 @@ export class WorkspaceDevModel {
   setSettingsFactory(factory: () => Promise<{ model: WorkspaceDevModel; close(): void }>) { this.settingsFactory = factory; }
   openSettingsSession() { if (!this.settingsFactory) return Promise.reject(new WorkspaceViewError("ws.notice.settingsNotReady")); return this.settingsFactory(); }
   private update(next: Partial<WorkspaceDevView>): void {
+    if (Object.prototype.hasOwnProperty.call(next, "error") && !Object.prototype.hasOwnProperty.call(next, "errorTechnicalDetail")) next.errorTechnicalDetail = "";
     this.view = { ...this.view, ...next };
     // Scoped pending records own the dispatch latch, including when returning to an earlier view.
     const key = this.key();
@@ -361,7 +363,7 @@ export class WorkspaceDevModel {
       this.update({ directory });
       const snapshot = await this.rpc.request<WorkspaceDevSnapshot>(this.settingsOnly ? "workspace.settings.select" : "workspace.select", { workspaceId, expectedRevision: directory.revision });
       if (epoch !== this.epoch) return; this.valid(snapshot, workspaceId); this.apply(snapshot);
-    } catch (error) { if (epoch === this.epoch) this.update({ loading: false, error: String(error) }); }
+    } catch (error) { if (epoch === this.epoch) this.update({ loading: false, ...workspaceErrorState(error) }); }
   }
   async selectAgent(agentId: string): Promise<void> {
     const workspace = this.view.workspace; if (!workspace || !workspace.agents.some(agent => agent.agentId === agentId)) return;
@@ -371,7 +373,7 @@ export class WorkspaceDevModel {
       const snapshot = await this.rpc.request<WorkspaceDevSnapshot>("workspace.agent.select", { workspaceId: workspace.workspaceId,
         expectedGeneration: workspace.resourceGeneration, agentId });
       if (epoch !== this.epoch) return; this.valid(snapshot, workspace.workspaceId, agentId); this.apply(snapshot);
-    } catch (error) { if (epoch === this.epoch) this.update({ loading: false, error: String(error) }); }
+    } catch (error) { if (epoch === this.epoch) this.update({ loading: false, ...workspaceErrorState(error) }); }
   }
   async refresh(): Promise<void> {
     const { workspaceId, agentId } = this.view; if (!workspaceId || !agentId) return;
@@ -384,7 +386,7 @@ export class WorkspaceDevModel {
       const snapshot = await this.rpc.request<WorkspaceDevSnapshot>("workspace.snapshot", { workspaceId, agentId });
       if (epoch !== this.epoch) return; this.valid(snapshot, workspaceId, agentId); this.apply(snapshot);
     } catch (error) { if (epoch === this.epoch) this.update(error instanceof WorkspaceRpcWaitError
-      ? { syncNotice: "ws.notice.syncing" } : { error: String(error) }); }
+      ? { syncNotice: "ws.notice.syncing" } : { ...workspaceErrorState(error) }); }
     finally {
       refreshed();
       if (this.refreshEpoch === epoch) {
@@ -401,7 +403,7 @@ export class WorkspaceDevModel {
       if (epoch !== this.epoch) return;
       const workspace = await this.rpc.request<WorkspaceDevSnapshot>("workspace.create", { label: label.trim(), expectedRevision: directory.revision });
       if (epoch !== this.epoch) return; this.update({ loading: false }); await this.selectWorkspace(workspace.workspaceId);
-    } catch (error) { if (epoch === this.epoch) this.update({ loading: false, error: String(error) }); }
+    } catch (error) { if (epoch === this.epoch) this.update({ loading: false, ...workspaceErrorState(error) }); }
   }
   async addSynthetic(): Promise<void> {
     return this.addConnection("workspace.connection.synthetic");
@@ -799,7 +801,7 @@ export class WorkspaceDevModel {
       await this.rpc.request(method, { workspaceId: workspace.workspaceId,
         expectedGeneration: workspace.resourceGeneration, expectedRevision: workspace.connections.revision });
       if (epoch === this.epoch) await this.refresh();
-    } catch (error) { if (epoch === this.epoch) this.update({ error: String(error) }); }
+    } catch (error) { if (epoch === this.epoch) this.update({ ...workspaceErrorState(error) }); }
   }
   supportsUserQuestions(): boolean { return this.rpc.supportsCapability?.("workspace.user-interaction.v1") === true; }
   async pauseQuestion(questionId: string): Promise<void> {
@@ -935,7 +937,7 @@ export class WorkspaceDevModel {
       if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "number") {
         this.pending.delete(key); // explicit server refusal, not a transport-unknown mutation
         this.waitClock.refuse(timingScope, requestId); this.notifyWait();
-        if (this.key() === key) this.update({ sending: false, pendingUnknown: false, error: String(error) });
+        if (this.key() === key) this.update({ sending: false, pendingUnknown: false, ...workspaceErrorState(error) });
         return;
       }
       this.waitClock.unknown(timingScope, requestId); this.notifyWait();
@@ -971,7 +973,7 @@ export class WorkspaceDevModel {
         if (receipt.state === "rejected" && this.key() === key) this.update({ error: "ws.notice.requestRejected" });
       }
     } catch (error) {
-      if (this.key() === key && this.pending.get(key) === pending) this.update({ error: error instanceof WorkspaceRpcWaitError ? "" : String(error),
+      if (this.key() === key && this.pending.get(key) === pending) this.update({ ...(error instanceof WorkspaceRpcWaitError ? { error: "", errorTechnicalDetail: "" } : workspaceErrorState(error)),
         syncNotice: "ws.notice.receiptUnavailable" });
     }
   }
@@ -989,7 +991,7 @@ export class WorkspaceDevModel {
     } catch (error) {
       if (epoch !== this.epoch) return;
       if (error instanceof WorkspaceRpcWaitError) { this.update({ syncNotice: "ws.notice.approvalPending" }); await this.refresh(); }
-      else this.update({ error: String(error) });
+      else this.update({ ...workspaceErrorState(error) });
     } finally { this.approvalDecisions.delete(decisionKey); }
   }
   async cancel(): Promise<void> {
@@ -1000,7 +1002,7 @@ export class WorkspaceDevModel {
     } catch (error) {
       if (epoch !== this.epoch) return;
       if (error instanceof WorkspaceRpcWaitError) { this.update({ syncNotice: "ws.notice.cancelPending" }); await this.refresh(); }
-      else this.update({ error: String(error) });
+      else this.update({ ...workspaceErrorState(error) });
     }
   }
 }
