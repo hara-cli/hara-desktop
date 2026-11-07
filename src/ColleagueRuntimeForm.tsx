@@ -1,3 +1,4 @@
+import { DEFAULT_RUNTIME_PLATFORM } from "./runtime-platform.ts";
 import { redesignText } from "./desktop-redesign-copy";
 import desktopPackage from "../package.json";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -165,7 +166,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
     catch (cause) { setError(t(piModelErrorKey(cause instanceof Error ? cause.message : String(cause)))); }
     finally { setScanning(false); }
   };
-  const platform = model.runtimePlatform();
+  const platform = model.runtimePlatform?.() ?? DEFAULT_RUNTIME_PLATFORM;
   const permissionBlocked = !permissionSupported || !onApplyPermissionTier || busy || freshBlocked;
   return <div className="vg-runtime-access vg-rf" data-runtime-form="a">
     <details className="hd-manage-section hd-engine-section" open><summary>{r("engine")}<small>{engineName(agent.runtime.id)}</small></summary>

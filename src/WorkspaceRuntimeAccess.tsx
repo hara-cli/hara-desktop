@@ -1,4 +1,4 @@
-import { DEFAULT_RUNTIME_PLATFORM, type WorkspaceRuntimePlatform } from "./runtime-platform.ts";
+import type { WorkspaceRuntimePlatform } from "./runtime-platform.ts";
 import { HOST_LOGIN_ONLY_RUNTIMES, inheritsPersonalExtensions, manualRuntimeInstallUrl, runtimeEffortVisible } from "./runtime-expansion";
 import { WorkspaceRuntimeVersion } from "./WorkspaceRuntimeVersion";
 import { runtimeVersionFor } from "./runtime-version-drift";
@@ -13,7 +13,7 @@ import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, W
 type ModelCard = WorkspaceRuntimeModels & { source?: "live" | "documented"; connectionId?: string };
 const effortChoice = (value: string | null | undefined): string => value === "auto" ? "" : value ?? "";
 
-export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, permissionSupported = false, onApplyPermissionTier, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory, platform = DEFAULT_RUNTIME_PLATFORM }: {
+export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, permissionSupported = false, onApplyPermissionTier, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory, platform = { writeProtection: "seatbelt", permissionTiers: ["full-protected", "controlled"] } }: {
   platform?: WorkspaceRuntimePlatform;
   agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; locale: "en" | "zh-Hans" | "zh-Hant"; compact?: boolean;
   listModels(runtimeId: string): Promise<WorkspaceRuntimeModels>;

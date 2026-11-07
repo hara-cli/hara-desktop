@@ -30,7 +30,7 @@ import { WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
 import { WorkspaceRuntimeStages } from "./WorkspaceRuntimeStages";
 import { runtimeStagesBefore, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events";
 import { WorkspaceAsyncQuestions, WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
-import { DEFAULT_RUNTIME_PLATFORM, type WorkspaceRuntimePlatform } from "./runtime-platform.ts";
+import type { WorkspaceRuntimePlatform } from "./runtime-platform.ts";
 import { WorkspaceDevModel, workspaceAsyncAsks, type ColleagueCreateDraft, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval, type WorkspaceFeatureView, type WorkspaceDevArchiveStatus } from "./workspace-dev-state";
 import { parseColleagueScheduleRequest, type ColleagueScheduleDraft } from "./colleague-schedule.js";
 import { useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
@@ -65,7 +65,8 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
     runtimePlatform?(): WorkspaceRuntimePlatform };
   t: Translate; disabled?: boolean; onSettled?: () => void; inDialog?: boolean; locale?: string; onRestoreArchived?: (agent: WorkspaceDevAgent) => Promise<void> }) {
   const schedule = card.kind === "schedule_create", colleague = !schedule && card.kind !== "extension_call";
-  const platform = model.runtimePlatform?.() ?? DEFAULT_RUNTIME_PLATFORM;
+  // Self-contained: an older model without platform data keeps the macOS tiers it shipped with.
+  const platform: WorkspaceRuntimePlatform = model.runtimePlatform?.() ?? { writeProtection: "seatbelt", permissionTiers: ["full-protected", "controlled"] };
   const [pending, setPending] = useState(false), fence = useRef(false);
   const [draft, setDraft] = useState<ColleagueCreateDraft | null>(() => card.kind === "schedule_create" || card.kind === "extension_call" ? null : { ...card.draft });
   const runtimeOptions = model.getSnapshot().workspace?.runtimeOptions?.filter(row => row.available && row.id !== "hara") ?? [];
