@@ -613,6 +613,7 @@ export const WORKSPACE_EXTRA_KEYS = [
   ['ws.scheduleApproval.boundary', 'This task may use model quota each time. It stays in the original conversation, with the same colleague and frozen runtime. Minimum interval: 15 minutes.', '每次运行可能使用模型额度；结果回到原对话，由同一同事按冻结引擎执行。最短间隔为 15 分钟。', '每次執行可能使用模型額度；結果回到原對話，由同一同事按凍結引擎執行。最短間隔為 15 分鐘。'],
   ['ws.scheduleApproval.decline', 'Do not schedule', '不创建', '不建立'],
   ['ws.scheduleApproval.confirm', 'Confirm repeating task', '确认重复任务', '確認重複任務'],
+  ['ws.execution.group_create', 'Create a group', '建立群聊', '建立群聊'],
   ['ws.execution.schedule_create', 'Schedule a task', '创建定时任务', '建立定時任務'],
   ['ws.execution.schedule_list', 'List schedules', '查看定时任务', '查看定時任務'],
   ['ws.execution.schedule_cancel', 'Cancel a schedule', '取消定时任务', '取消定時任務'],
