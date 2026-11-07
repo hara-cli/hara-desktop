@@ -30,6 +30,7 @@ import { WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
 import { WorkspaceRuntimeStages } from "./WorkspaceRuntimeStages";
 import { runtimeStagesBefore, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events";
 import { WorkspaceAsyncQuestions, WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
+import { DEFAULT_RUNTIME_PLATFORM, type WorkspaceRuntimePlatform } from "./runtime-platform.ts";
 import { WorkspaceDevModel, workspaceAsyncAsks, type ColleagueCreateDraft, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval, type WorkspaceFeatureView, type WorkspaceDevArchiveStatus } from "./workspace-dev-state";
 import { parseColleagueScheduleRequest, type ColleagueScheduleDraft } from "./colleague-schedule.js";
 import { useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
@@ -60,9 +61,11 @@ const TOOL_LABELS: Record<string, Key> = Object.fromEntries(["task_intake", "tas
   .map(name => [name, `ws.execution.${name}` as Key]));
 export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDialog = false, locale = "en", onRestoreArchived }: { card: WorkspaceDevApproval;
   model: { respond(card: WorkspaceDevApproval, approved: boolean, draft?: ColleagueCreateDraft): Promise<void>;
-    getSnapshot(): { workspace: { approvals: WorkspaceDevApproval[]; runtimeOptions?: { id: string; label: string; available: boolean }[]; agents?: WorkspaceDevAgent[] } | null } };
+    getSnapshot(): { workspace: { approvals: WorkspaceDevApproval[]; runtimeOptions?: { id: string; label: string; available: boolean }[]; agents?: WorkspaceDevAgent[] } | null };
+    runtimePlatform?(): WorkspaceRuntimePlatform };
   t: Translate; disabled?: boolean; onSettled?: () => void; inDialog?: boolean; locale?: string; onRestoreArchived?: (agent: WorkspaceDevAgent) => Promise<void> }) {
   const schedule = card.kind === "schedule_create", colleague = !schedule && card.kind !== "extension_call";
+  const platform = model.runtimePlatform?.() ?? DEFAULT_RUNTIME_PLATFORM;
   const [pending, setPending] = useState(false), fence = useRef(false);
   const [draft, setDraft] = useState<ColleagueCreateDraft | null>(() => card.kind === "schedule_create" || card.kind === "extension_call" ? null : { ...card.draft });
   const runtimeOptions = model.getSnapshot().workspace?.runtimeOptions?.filter(row => row.available && row.id !== "hara") ?? [];
@@ -101,8 +104,9 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
           <datalist id={`project-${card.id}`}>{card.projectOptions?.map(option => <option key={option} value={option} />)}</datalist></label>
         <label>{t("ws.approval.runtimeField")}<select value={draft?.runtimeId ?? ""} onChange={event => edit("runtimeId", event.target.value)} disabled={pending || disabled}>
           {runtimeOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-        <label>{t("ws.approval.tier")}<select value={draft?.permissionTier ?? "full-protected"} onChange={event => edit("permissionTier", event.target.value)} disabled={pending || disabled}>
-          <option value="full-protected">{t("ws.approval.fullProtected")}</option><option value="controlled">{t("ws.approval.controlled")}</option></select></label>
+        <label>{t("ws.approval.tier")}<select value={draft?.permissionTier ?? platform.permissionTiers[0]} onChange={event => edit("permissionTier", event.target.value)} disabled={pending || disabled}>
+          {platform.permissionTiers.includes("full-protected") ? <option value="full-protected">{t("ws.approval.fullProtected")}</option> : null}<option value="controlled">{t("ws.approval.controlled")}</option></select></label>
+        {platform.writeProtection === "none" ? <p className="vg-platform-note" role="note">{t("ws.permissions.noOsProtection")}</p> : null}
         <details><summary>{t("ws.approval.details")}</summary><label>{t("ws.approval.instructions")}<textarea value={draft?.instructions ?? ""} maxLength={8000}
           onChange={event => edit("instructions", event.target.value)} disabled={pending || disabled} /></label></details>
       </div>{duplicateName ? <p role="status">{t("ws.approval.duplicateName")}</p> : null}{archivedMatch ? <p className="hd-archived-duplicate" role="status">{r("archivedName", { name: archivedMatch.identity.displayName })}{onRestoreArchived ? <button type="button" className="hs-btn sec" disabled={disabled || pending} onClick={async () => {

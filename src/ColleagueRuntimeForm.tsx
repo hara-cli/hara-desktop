@@ -165,6 +165,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
     catch (cause) { setError(t(piModelErrorKey(cause instanceof Error ? cause.message : String(cause)))); }
     finally { setScanning(false); }
   };
+  const platform = model.runtimePlatform();
   const permissionBlocked = !permissionSupported || !onApplyPermissionTier || busy || freshBlocked;
   return <div className="vg-runtime-access vg-rf" data-runtime-form="a">
     <details className="hd-manage-section hd-engine-section" open><summary>{r("engine")}<small>{engineName(agent.runtime.id)}</small></summary>
@@ -231,10 +232,16 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
         <select aria-label={t("ws.permissions.label")} value={agent.permissionTier ?? "unknown"} disabled={permissionBlocked}
           onChange={event => { const tier = event.target.value; if ((tier === "full-protected" || tier === "controlled") && onApplyPermissionTier) void onApplyPermissionTier(tier).catch(cause => setError(workspaceMessageText(t, cause instanceof Error ? cause.message : String(cause)))); }}>
           {!agent.permissionTier ? <option value="unknown">{t("ws.permissions.unknown")}</option> : null}
-          <option value="full-protected">{t("ws.permissions.full")}</option><option value="controlled">{t("ws.permissions.controlled")}</option>
+          {/* Decision B: offer the full tier only where the Host has Seatbelt; keep a stored value visible but unselectable. */}
+          {platform.permissionTiers.includes("full-protected") || agent.permissionTier === "full-protected"
+            ? <option value="full-protected" disabled={!platform.permissionTiers.includes("full-protected")}>{t("ws.permissions.full")}</option> : null}
+          <option value="controlled">{t("ws.permissions.controlled")}</option>
         </select>
       </label>
-      <p>{t("ws.permissions.help")}</p>
+      {platform.writeProtection === "none" ? <p className="vg-platform-note" role="note">{t("ws.permissions.noOsProtection")}</p> : <p>{t("ws.permissions.help")}</p>}
+      {agent.permissionTierUnavailable ? <div className="vg-platform-alert" role="alert"><p>{t("ws.permissions.unavailableHere")}</p>
+        <button type="button" className="hs-btn pri" disabled={permissionBlocked || !onApplyPermissionTier}
+          onClick={() => { if (onApplyPermissionTier) void onApplyPermissionTier("controlled").catch(cause => setError(workspaceMessageText(t, cause instanceof Error ? cause.message : String(cause)))); }}>{t("ws.permissions.switchControlled")}</button></div> : null}
       {!permissionSupported ? <p role="status">{t("ws.permissions.upgrade")}</p> : null}
     </section></details>
     {confirming ? <FormDialog label={t("ws.rf.confirmAction")} pending={busy} onClose={() => setConfirming(false)}>

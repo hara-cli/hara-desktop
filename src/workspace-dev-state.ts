@@ -1,3 +1,4 @@
+import { DEFAULT_RUNTIME_PLATFORM, platformReasonKey, type WorkspaceRuntimePlatform } from "./runtime-platform.ts";
 import { workspaceMediaMimeAllowed } from "./workspace-media.ts";
 import type { WorkspaceMedia, WorkspaceMediaDescription } from "./workspace-media";
 import { LocalWaitClock, waitScope } from "./wait-timing.ts";
@@ -15,7 +16,7 @@ import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-error
 import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
 import type { AgentRuntimeId, AgentRuntimeOption } from "./client";
-export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean; setAssistantPreviewListener?(listener: (value: WorkspaceAssistantPreview | null) => void): void; timingNow?(): MessageTimingInput | null }
+export interface WorkspaceDevRpc { request<T>(method: string, params: Record<string, unknown>): Promise<T>; supportsCapability?(capability: string): boolean; setAssistantPreviewListener?(listener: (value: WorkspaceAssistantPreview | null) => void): void; timingNow?(): MessageTimingInput | null; runtimePlatform?(): WorkspaceRuntimePlatform }
 export interface WorkspaceTaskRecord { taskId: string; objective: string; status: string; colleague: string }
 export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "verified" | "rolled_back"; handoff: boolean }
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
@@ -23,6 +24,8 @@ export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: st
 export type RuntimePermissionTier = "full-protected" | "controlled";
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
   configRevision?: number; agentEpoch?: number; description?: string; permissionTier?: RuntimePermissionTier;
+  /** Core decision B: the stored tier cannot run on this Host platform until the user switches it. */
+  permissionTierUnavailable?: true;
   archivedAt?: string; pausedScheduleCount?: number;
   identity: { displayName: string; title?: string; emoji?: string; avatar?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 export interface ColleagueCreateDraft { username: string; displayName: string; title: string; instructions: string;
@@ -675,6 +678,7 @@ export class WorkspaceDevModel {
   async setAgentPermissionTier(agent: WorkspaceDevAgent, permissionTier: RuntimePermissionTier): Promise<void> {
     if (!this.supportsRuntimePermissions()) throw new WorkspaceViewError("ws.permissions.upgrade");
     if (!agent.configRevision || !agent.agentEpoch || !["full-protected", "controlled"].includes(permissionTier)) throw new WorkspaceViewError("ws.notice.invalidView");
+    if (!this.runtimePlatform().permissionTiers.includes(permissionTier)) throw new WorkspaceViewError("ws.permissions.unavailableHere");
     const workspace = this.view.workspace, epoch = this.epoch, key = this.key();
     if (!workspace || !workspace.agents.some(row => row.agentId === agent.agentId && row.configRevision === agent.configRevision && row.agentEpoch === agent.agentEpoch)
       || ["running", "draining"].includes(workspace.conversation.state) || this.view.sending || this.view.pendingUnknown) throw new WorkspaceViewError("ws.permissions.busy");
@@ -710,6 +714,8 @@ export class WorkspaceDevModel {
     } finally { this.runtimeChanges.delete(targetKey); this.update({}); }
   }
   supportsAgentArchive(): boolean { return this.rpc.supportsCapability?.("workspace.agents.archive.v1") === true; }
+  /** Host OS write protection and the tiers it can run (decision B). Older Cores are treated as macOS. */
+  runtimePlatform(): WorkspaceRuntimePlatform { return this.rpc.runtimePlatform?.() ?? DEFAULT_RUNTIME_PLATFORM; }
   async agentArchiveStatus(agent: WorkspaceDevAgent): Promise<WorkspaceDevArchiveStatus> {
     const workspace = this.view.workspace, epoch = this.epoch;
     if (!workspace || !this.supportsAgentArchive() || agent.kind !== "colleague" || agent.state !== "active") throw new WorkspaceViewError("ws.notice.invalidView");
@@ -930,7 +936,7 @@ export class WorkspaceDevModel {
       if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "number") {
         this.pending.delete(key); // explicit server refusal, not a transport-unknown mutation
         this.waitClock.refuse(timingScope, requestId); this.notifyWait();
-        if (this.key() === key) this.update({ sending: false, pendingUnknown: false, error: String(error) });
+        if (this.key() === key) this.update({ sending: false, pendingUnknown: false, error: platformReasonKey(error) ?? String(error) });
         return;
       }
       this.waitClock.unknown(timingScope, requestId); this.notifyWait();

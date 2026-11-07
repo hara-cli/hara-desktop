@@ -79,3 +79,6 @@
 .hs.hd-redesign.vg-app .hd-file-card{text-align:left}.hd-file-card .hd-file-meta{align-items:flex-start}
 
 .hd-archive-dialog ul{list-style:none;padding:0;margin:14px 0;max-height:260px;overflow:auto}.hd-archive-dialog li{display:flex;flex-direction:column;gap:5px;padding:10px 0;border-bottom:1px solid var(--line)}.hd-archive-dialog li strong{font-size:13px;font-weight:500;white-space:pre-wrap;overflow-wrap:anywhere}.hd-archive-dialog li small{font-size:11.5px;color:var(--muted)}
+
+.vg-platform-note{margin:8px 0 0;font-size:12px;line-height:1.6;color:var(--hd-warn,var(--muted))}
+.vg-platform-alert{display:grid;gap:8px;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--hd-warn-soft,rgba(202,138,4,.12));color:var(--hd-ink,var(--ink));font-size:12.5px;line-height:1.6}.vg-platform-alert p{margin:0}.vg-platform-alert .hs-btn{justify-self:start}

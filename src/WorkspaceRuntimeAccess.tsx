@@ -1,3 +1,4 @@
+import { DEFAULT_RUNTIME_PLATFORM, type WorkspaceRuntimePlatform } from "./runtime-platform.ts";
 import { HOST_LOGIN_ONLY_RUNTIMES, inheritsPersonalExtensions, manualRuntimeInstallUrl, runtimeEffortVisible } from "./runtime-expansion";
 import { WorkspaceRuntimeVersion } from "./WorkspaceRuntimeVersion";
 import { runtimeVersionFor } from "./runtime-version-drift";
@@ -12,7 +13,8 @@ import type { WorkspaceDevAgent, WorkspaceDevSnapshot, WorkspaceRuntimeModels, W
 type ModelCard = WorkspaceRuntimeModels & { source?: "live" | "documented"; connectionId?: string };
 const effortChoice = (value: string | null | undefined): string => value === "auto" ? "" : value ?? "";
 
-export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, permissionSupported = false, onApplyPermissionTier, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory }: {
+export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compact = false, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, permissionSupported = false, onApplyPermissionTier, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory, platform = DEFAULT_RUNTIME_PLATFORM }: {
+  platform?: WorkspaceRuntimePlatform;
   agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; locale: "en" | "zh-Hans" | "zh-Hant"; compact?: boolean;
   listModels(runtimeId: string): Promise<WorkspaceRuntimeModels>;
   listConnectionModels(agentId: string, connectionId: string): Promise<WorkspaceConnectionModels>;
@@ -102,10 +104,14 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
         <select aria-label={t("ws.permissions.label")} value={agent.permissionTier ?? "unknown"} disabled={!permissionSupported || !onApplyPermissionTier || busy || freshBlocked}
           onChange={event => { const tier = event.target.value; if (tier === "full-protected" || tier === "controlled") void run(() => onApplyPermissionTier!(tier)); }}>
           {!agent.permissionTier ? <option value="unknown">{t("ws.permissions.unknown")}</option> : null}
-          <option value="full-protected">{t("ws.permissions.full")}</option><option value="controlled">{t("ws.permissions.controlled")}</option>
+          {platform.permissionTiers.includes("full-protected") || agent.permissionTier === "full-protected"
+            ? <option value="full-protected" disabled={!platform.permissionTiers.includes("full-protected")}>{t("ws.permissions.full")}</option> : null}
+          <option value="controlled">{t("ws.permissions.controlled")}</option>
         </select>
       </label>
-      <p>{t("ws.permissions.help")}</p>
+      {platform.writeProtection === "none" ? <p className="vg-platform-note" role="note">{t("ws.permissions.noOsProtection")}</p> : <p>{t("ws.permissions.help")}</p>}
+      {agent.permissionTierUnavailable ? <div className="vg-platform-alert" role="alert"><p>{t("ws.permissions.unavailableHere")}</p>
+        <button type="button" className="hs-btn pri" disabled={!permissionSupported || !onApplyPermissionTier || busy} onClick={() => void run(() => onApplyPermissionTier!("controlled"))}>{t("ws.permissions.switchControlled")}</button></div> : null}
       {conversation?.taskId && conversation.permissionTier ? <p>{t("ws.permissions.current", { tier: t(conversation.permissionTier === "full-protected" ? "ws.permissions.full" : "ws.permissions.controlled") })}</p> : null}
       {!permissionSupported ? <p role="status">{t("ws.permissions.upgrade")}</p> : null}
       <WorkspaceRuntimeVersion runtimeId={agent.runtime.id} binding={runtimeVersionFor(workspace.runtimes?.options, agent.runtime.id)} t={t} />

@@ -131,6 +131,11 @@ export const WORKSPACE_SETTINGS_KEYS = [
   ["ws.permissions.help", "Full access lets this colleague use shell and file tools in its working folder. Hara state and credentials stay protected. Changes apply to new tasks; scheduled tasks use the same permissions.", "全权允许本同事在工作目录使用 shell 和文件工具，Hara 状态和凭据仍受保护。切换影响新任务；定时任务使用相同权限。", "全權允許本同事在工作目錄使用 shell 和檔案工具，Hara 狀態和憑據仍受保護。切換影響新任務；定時任務使用相同權限。"],
   ["ws.permissions.current", "Current task: {tier}", "当前任务：{tier}", "目前任務：{tier}"],
   ["ws.permissions.upgrade", "Update Core to switch execution permissions.", "更新 Core 后可切换执行权限。", "更新 Core 後可切換執行權限。"],
+  // Platform write protection: never imply a sandbox where the Host platform has none.
+  ["ws.permissions.noOsProtection", "This platform has no system-level write protection. Colleagues run in the controlled tier and are governed only by Hara's approvals and permissions.", "此平台没有系统级写保护。同事只能以受控档运行，仅由 Hara 的审批与权限治理。", "此平台沒有系統層級寫保護。同事只能以受控檔執行，僅由 Hara 的審批與權限治理。"],
+  ["ws.permissions.unavailableHere", "This colleague is set to full access, which needs macOS write protection. It can't run on this platform until you switch it to controlled.", "该同事设为全权，需要 macOS 的写保护，在此平台无法运行。改为受控后才能运行。", "該同事設為全權，需要 macOS 的寫保護，在此平台無法執行。改為受控後才能執行。"],
+  ["ws.permissions.switchControlled", "Switch to controlled", "改为受控", "改為受控"],
+  ["ws.engine.unsupportedPlatform", "This engine isn't supported on this platform yet. Use Pi.", "此平台暂不支持该引擎，请使用 Pi。", "此平台暫不支援該引擎，請使用 Pi。"],
   ["ws.permissions.busy", "Wait for this colleague to finish before switching permissions.", "请等待本同事执行结束后切换权限。", "請等待本同事執行結束後切換權限。"],
   ["ws.permissions.risks", "High-risk action observations", "高风险动作记录", "高風險動作紀錄"],
   ["ws.permissions.publish", "External publication", "对外发布", "對外發布"],
