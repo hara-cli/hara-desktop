@@ -13,3 +13,18 @@ test("media registration uses scoped metadata RPC and rejects late responses aft
  const model=new WorkspaceDevModel(rpc);await model.selectWorkspace("A");const originalScope=model.mediaScope,pending=model.registerMedia("a.gif");await model.selectWorkspace("B");assert.notEqual(model.mediaScope,originalScope);await assert.rejects(model.registerMedia("a.gif",originalScope),/media unavailable/);assert.equal(calls.filter(row=>row.method==="workspace.media.register").length,1);finish({id:"a".repeat(64),mime:"image/gif",bytes:34});await assert.rejects(pending,/media unavailable/);
  assert.deepEqual(calls.find(row=>row.method==="workspace.media.register").params,{workspaceId:"A",expectedGeneration:"generation-A",path:"a.gif"});
 });
+
+
+test("scoped media reasons distinguish links and spelling without exposing arbitrary Host errors",async()=>{
+ let description={state:"failed",reason:"symlink"};
+ const rpc={supportsCapability:()=>true,async request(method,params){
+  if(method==="workspace.select")return snapshot(params.workspaceId);
+  if(method==="workspace.media.describe")return description;
+  if(method==="workspace.list")return{revision:1,activeWorkspaceId:"A",syntheticOnly:true,workspaces:[{workspaceId:"A",label:"A",active:true}]};
+  throw Error(method);
+ }};
+ const model=new WorkspaceDevModel(rpc);await model.selectWorkspace("A");
+ assert.deepEqual(await model.describeMedia("alias.gif"),{state:"failed",reason:"symlink"});
+ description={state:"failed",reason:"path_spelling"};assert.deepEqual(await model.describeMedia("Cafe.gif"),description);
+ description={state:"failed",reason:"private_path_errno"};await assert.rejects(model.describeMedia("a.gif"),/media unavailable/);
+});

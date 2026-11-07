@@ -48,6 +48,8 @@ const copy = {
   fileFailed: ["文件暂不可用", "File unavailable", "檔案暫時無法使用"],
   retry: ["重试", "Retry", "重試"], moved: ["文件已移走或被删除", "File moved or deleted", "檔案已移走或刪除"], locate: ["重新查找…", "Locate…", "重新尋找…"],
   outside: ["无法在这里显示：这个文件不在工作空间或已登记的项目里", "Can’t show this here: the file isn’t in the workspace or a registered project.", "無法在這裡顯示：這個檔案不在工作空間或已登記的專案裡"],
+  mediaSymlink: ["链接文件不能直接预览，请重新选择原文件。", "Linked files cannot be previewed directly. Select the original file.", "連結檔案無法直接預覽，請重新選擇原始檔案。"],
+  mediaSpelling: ["文件名与磁盘记录不一致，请重新选择文件。", "The filename differs from its disk spelling. Select the file again.", "檔案名稱與磁碟記錄不一致，請重新選擇檔案。"],
   originalLocation: ["原位置：{path}", "Was at: {path}", "原位置：{path}"],
   zoom: ["放大", "Enlarge", "放大"], copy: ["复制", "Copy", "拷貝"], download: ["下载", "Download", "下載"], reveal: ["在 Finder 中显示", "Show in Finder", "在 Finder 中顯示"], close: ["关闭", "Close", "關閉"],
   exportYou: ["你", "You", "你"], unknownAuthor: ["未知同事", "Unknown colleague", "未知同事"],

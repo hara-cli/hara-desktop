@@ -502,7 +502,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     try { const file = await chooseFile({ multiple: false, directory: false, filters: [{ name: r("attach"), extensions: ["gif", "png", "jpg", "jpeg", "webp", "mp4", "m4v", "mov", "webm", "pdf", "zip", "xlsx", "md", "txt"] }] });
       if (typeof file !== "string" || selectedScope !== model.mediaScope) return;
       const description = await model.describeMedia(file, selectedScope);
-      if (description.state !== "ready") { setUndoNotice({ id: ++toastCounter.current, scope, text: r(description.state === "outside" ? "outside" : description.state === "missing" ? "moved" : "fileRefFailed") }); return; }
+      if (description.state !== "ready") { setUndoNotice({ id: ++toastCounter.current, scope, text: r(description.state === "outside" ? "outside" : description.state === "missing" ? "moved" : description.reason === "symlink" ? "mediaSymlink" : description.reason === "path_spelling" ? "mediaSpelling" : "fileRefFailed") }); return; }
       const next = `${model.getSnapshot().draft.trimEnd()}\n${file}\n`; if (next.length > 24000) throw new Error("Draft exceeds limit");
       model.setDraft(next); input.current?.focus();
     } catch { setUndoNotice({ id: ++toastCounter.current, scope, text: r("fileRefFailed") }); }

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { redesignText } from "./desktop-redesign-copy";
-import { workspaceMediaUrl, revealWorkspaceMedia, type WorkspaceMediaAccess, type WorkspaceMediaDescription } from "./workspace-media";
+import { workspaceMediaUrl, revealWorkspaceMedia, type WorkspaceMediaAccess, type WorkspaceMediaDescription, type WorkspaceMediaFailureReason } from "./workspace-media";
 type MediaState = "loading" | "content" | "ready" | "failed" | "missing" | "outside";
 const filename = (path: string) => { try { return decodeURIComponent(path.split(/[\\/]/u).pop() ?? path).replace(/[\u0000-\u001f\u007f]/gu, "").slice(0, 160); } catch { return ""; } };
 const size = (bytes: number) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -15,15 +15,16 @@ export function WorkspaceMediaCard({ source, alt, kind, media, scope, locale, lo
   load(path: string, refresh: boolean): Promise<WorkspaceMediaDescription>;
 }) {
   const [path, setPath] = useState(source), [state, setState] = useState<MediaState>("loading"), [descriptor, setDescriptor] = useState<Extract<WorkspaceMediaDescription, { state: "ready" }> | null>(null);
+  const [failureReason, setFailureReason] = useState<WorkspaceMediaFailureReason | undefined>();
   const [revision, setRevision] = useState(0), [lightbox, setLightbox] = useState(false), [seconds, setSeconds] = useState<number | null>(null), [playing, setPlaying] = useState(false), [actionNotice, setActionNotice] = useState("");
   const image = useRef<HTMLImageElement>(null), video = useRef<HTMLVideoElement>(null), dialog = useRef<HTMLDialogElement>(null), zoom = useRef<HTMLButtonElement>(null), alive = useRef(true);
   const r = (key: Parameters<typeof redesignText>[1], values: Record<string, string | number> = {}) => redesignText(locale, key, values);
   const current = () => alive.current && (!media || media.mediaScope === scope);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => {
-    let cancelled = false; setState("loading"); setDescriptor(null); setActionNotice(""); setSeconds(null); setPlaying(false);
+    let cancelled = false; setState("loading"); setFailureReason(undefined); setDescriptor(null); setActionNotice(""); setSeconds(null); setPlaying(false);
     void load(path, revision > 0).then(result => { if (cancelled || !current()) return;
-      if (result.state === "ready") { setDescriptor(result); setState(/^(image|video)\//u.test(result.media.mime) ? "content" : "ready"); } else setState(result.state);
+      if (result.state === "ready") { setDescriptor(result); setState(/^(image|video)\//u.test(result.media.mime) ? "content" : "ready"); } else { setState(result.state); setFailureReason(result.state === "failed" ? result.reason : undefined); }
     }, () => { if (!cancelled && current()) setState("failed"); });
     return () => { cancelled = true; const node = video.current; if (node) { node.pause(); node.removeAttribute("src"); node.load(); } };
   }, [path, revision, scope, load]);
@@ -63,9 +64,9 @@ export function WorkspaceMediaCard({ source, alt, kind, media, scope, locale, lo
       {ready && !isVideo ? <button type="button" ref={zoom} className="hd-media-zoom" aria-label={r("zoom")} onClick={() => setLightbox(true)}><ArrowsPointingOutIcon className="hico" /></button> : null}
       {ready && isVideo && !playing ? <button type="button" className="hd-media-play" aria-label={r("play")} onClick={() => void act(() => video.current?.play() ?? Promise.resolve())}><PlayIcon className="hico" /></button> : null}
       {ready && isVideo && !playing && seconds !== null ? <span className="hd-video-duration">{duration(seconds)}</span> : null}
-      {failed ? <span className="hd-media-failure" role="status"><span aria-hidden="true">{state === "outside" ? <ShieldCheckIcon className="hico" /> : state === "failed" ? <ExclamationTriangleIcon className="hico" /> : <PhotoIcon className="hico" />}</span><strong>{r(state === "outside" ? "outside" : state === "missing" ? "moved" : isFile ? "fileFailed" : isVideo ? "videoFailed" : "mediaFailed")}</strong>
+      {failed ? <span className="hd-media-failure" role="status"><span aria-hidden="true">{state === "outside" ? <ShieldCheckIcon className="hico" /> : state === "failed" ? <ExclamationTriangleIcon className="hico" /> : <PhotoIcon className="hico" />}</span><strong>{r(state === "outside" ? "outside" : state === "missing" ? "moved" : failureReason === "symlink" ? "mediaSymlink" : failureReason === "path_spelling" ? "mediaSpelling" : isFile ? "fileFailed" : isVideo ? "videoFailed" : "mediaFailed")}</strong>
         {state === "missing" ? <small>{r("originalLocation", { path })}</small> : null}
-        <span className="hd-media-failure-actions">{state === "missing" ? <button type="button" onClick={() => void locate()}>{r("locate")}</button> : state !== "outside" ? <button type="button" onClick={() => setRevision(value => value + 1)}>{r("retry")}</button> : null}<button type="button" disabled={!descriptor || state === "outside" || state === "missing"} onClick={() => void reveal()}>{r("reveal")}</button></span>
+        <span className="hd-media-failure-actions">{state === "missing" || failureReason ? <button type="button" onClick={() => void locate()}>{r("locate")}</button> : state !== "outside" ? <button type="button" onClick={() => setRevision(value => value + 1)}>{r("retry")}</button> : null}<button type="button" disabled={!descriptor || state === "outside" || state === "missing"} onClick={() => void reveal()}>{r("reveal")}</button></span>
       </span> : null}
     </span>
     <span className="hd-media-caption"><span>{name}</span>{descriptor ? <small>{isVideo ? `${descriptor.media.mime.split("/")[1].toUpperCase()} · ` : ""}{size(descriptor.media.bytes)}</small> : null}{ready ? <><button type="button" aria-label={r("download")} onClick={() => void download()}><ArrowDownTrayIcon className="hico" /></button><button type="button" aria-label={r("reveal")} onClick={() => void reveal()}><FolderIcon className="hico" /></button></> : null}</span>

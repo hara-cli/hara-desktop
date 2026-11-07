@@ -232,6 +232,7 @@ export class WorkspaceDevModel {
     if (!this.rpc.supportsCapability?.("workspace.media.states.v1")) return { state: "ready", media: await this.registerMedia(path, expectedScope) };
     const result = await this.rpc.request<WorkspaceMediaDescription>("workspace.media.describe", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration, path });
     if (expectedScope !== this.mediaScope || !result || !["ready", "outside", "missing", "failed"].includes(result.state)) throw new Error("Workspace media unavailable");
+    if (result.state === "failed" && result.reason !== undefined && !["symlink", "path_spelling"].includes(result.reason)) throw new Error("Workspace media unavailable");
     if (result.state === "ready" && (!result.media || !/^[a-f0-9]{64}$/u.test(result.media.id) || !workspaceMediaMimeAllowed(result.media.mime) || !Number.isSafeInteger(result.media.bytes) || result.media.bytes < 1)) throw new Error("Workspace media unavailable");
     return result;
   }
