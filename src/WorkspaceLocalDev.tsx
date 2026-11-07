@@ -442,7 +442,12 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       if (event.isComposing || event.altKey || (!event.metaKey && !event.ctrlKey) || event.key.toLowerCase() !== "i" || settings || creating || workspaceRename || channelDialog || approvalDialog) return;
       event.preventDefault(); setBrowser(false); setInspector(value => browser || !value);
     };
-    const closeNarrow = (event: KeyboardEvent) => { if (event.key === "Escape" && inspector && window.innerWidth < 1100 && !settings && !creating && !workspaceRename && !channelDialog && !approvalDialog) { setInspector(false); manageButton.current?.focus(); } };
+    const closeNarrow = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || window.innerWidth >= 1100 || settings || creating || workspaceRename || channelDialog || approvalDialog) return;
+      if (inspector) { setInspector(false); manageButton.current?.focus(); }
+      // Errata S1b: the narrow browser overlay closes like the manage drawer, unless a control consumed Escape.
+      else if (browser && !event.defaultPrevented) { setBrowser(false); moreRef.current?.querySelector<HTMLButtonElement>("button")?.focus(); }
+    };
     document.addEventListener("keydown", shortcut); document.addEventListener("keydown", closeNarrow);
     return () => { document.removeEventListener("keydown", shortcut); document.removeEventListener("keydown", closeNarrow); };
   }, [inspector, browser, settings, creating, workspaceRename, channelDialog, approvalDialog]);
