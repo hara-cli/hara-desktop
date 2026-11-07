@@ -1,6 +1,6 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 export interface WorkspaceMedia { id: string; mime: string; bytes: number }
-export interface WorkspaceMediaAccess { registerMedia(path: string): Promise<WorkspaceMedia> }
+export interface WorkspaceMediaAccess { readonly mediaScope: string; registerMedia(path: string, expectedScope?: string): Promise<WorkspaceMedia> }
 /** Only local image references are eligible for Host registration. Remote URLs keep normal behavior. */
 export function localMediaPath(source: string): string | null {
   if (!source || source.startsWith("//") || /^(?:https?:|data:|blob:|hara-media:)/iu.test(source)) return null;

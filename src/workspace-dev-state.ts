@@ -213,9 +213,10 @@ export class WorkspaceDevModel {
   }
   supportsLocalChannels(): boolean { return this.rpc.supportsCapability?.("workspace.local-channels.v1") === true; }
   supportsColleagueSchedules(): boolean { return this.rpc.supportsCapability?.("workspace.colleague-schedules.v1") === true; }
-  async registerMedia(path: string): Promise<WorkspaceMedia> {
+  get mediaScope(): string { const workspace = this.view.workspace; return workspace ? JSON.stringify([workspace.workspaceId, workspace.resourceGeneration]) : ""; }
+  async registerMedia(path: string, expectedScope = this.mediaScope): Promise<WorkspaceMedia> {
     const workspace = this.view.workspace;
-    if (!workspace || !this.rpc.supportsCapability?.("workspace.media.v1")) throw new Error("Workspace media unavailable");
+    if (!workspace || expectedScope !== this.mediaScope || !this.rpc.supportsCapability?.("workspace.media.v1")) throw new Error("Workspace media unavailable");
     const result = await this.rpc.request<WorkspaceMedia>("workspace.media.register", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration, path });
     if (this.view.workspace?.workspaceId !== workspace.workspaceId || this.view.workspace?.resourceGeneration !== workspace.resourceGeneration
       || !result || !/^[a-f0-9]{64}$/u.test(result.id) || !/^(image|video)\//u.test(result.mime) || !Number.isSafeInteger(result.bytes) || result.bytes < 1) throw new Error("Workspace media unavailable");

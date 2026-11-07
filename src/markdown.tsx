@@ -24,6 +24,7 @@ export function Md({
   media?: WorkspaceMediaAccess; mediaUnavailableLabel?: string; revealMediaLabel?: string;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const mediaScope = media?.mediaScope ?? "";
   const html = useMemo(() => {
     try {
       const parsed = marked.parse(text, { async: false }) as string;
@@ -39,6 +40,9 @@ export function Md({
       return "";
     }
   }, [text]);
+  // React compares this object by identity. Keep it stable so parent metadata/menu renders do not
+  // replace the code-copy/media nodes installed by effects. A Workspace scope change replaces the root.
+  const markup = useMemo(() => ({ __html: html }), [html]);
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -81,7 +85,7 @@ export function Md({
       });
     });
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, [html, copyCodeLabel, copiedLabel, copyFailedLabel]);
+  }, [html, mediaScope, copyCodeLabel, copiedLabel, copyFailedLabel]);
   useEffect(() => {
     const root = rootRef.current; if (!root) return;
     let disposed = false; const cleanups: Array<() => void> = [], pending = new Map<string, Promise<WorkspaceMedia>>();
@@ -97,7 +101,7 @@ export function Md({
         reveal.onclick = event => { event.preventDefault(); event.stopPropagation(); if (registered) void revealWorkspaceMedia(registered.id).catch(() => { label.textContent = mediaUnavailableLabel; }); };
         wrapper.append(label, reveal);
       };
-      const request = pending.get(path) ?? (media ? media.registerMedia(path) : Promise.reject(new Error("Media unavailable")));
+      const request = pending.get(path) ?? (media ? media.registerMedia(path, mediaScope) : Promise.reject(new Error("Media unavailable")));
       pending.set(path, request);
       void request.then(value => {
         if (disposed) return; registered = value;
@@ -108,7 +112,7 @@ export function Md({
       cleanups.push(() => { if (content) { content.removeEventListener("error", failed); content.removeAttribute("src"); if (content instanceof HTMLVideoElement) content.load(); } wrapper.replaceWith(original); });
     }
     return () => { disposed = true; cleanups.forEach(cleanup => cleanup()); };
-  }, [html, media, mediaUnavailableLabel, revealMediaLabel]);
+  }, [html, media, mediaScope, mediaUnavailableLabel, revealMediaLabel]);
   const onClick = (e: React.MouseEvent) => {
     const a = (e.target as HTMLElement).closest("a");
     if (!a) return;
@@ -118,5 +122,5 @@ export function Md({
   };
   // fallback to plain text when sanitize/parse produced nothing for non-empty input
   if (!html && text.trim()) return <>{text}</>;
-  return <div ref={rootRef} className="md" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div key={mediaScope} ref={rootRef} className="md" onClick={onClick} dangerouslySetInnerHTML={markup} />;
 }
