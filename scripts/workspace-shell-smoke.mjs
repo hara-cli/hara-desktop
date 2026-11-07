@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makeT } from "../src/i18n.ts";
+import { redesignText } from "../src/desktop-redesign-copy.ts";
 import { waitForLayout } from "./browser-layout-wait.mjs";
 import { requestCdp } from "./browser-cdp-request.mjs";
 import { navigateCdp } from "./browser-cdp-navigation.mjs";
@@ -87,11 +88,38 @@ async function navigate({width=1280,locale='zh-Hant',theme='light',scenario='hom
   const url=new URL('test/fixtures/workspace-shell-preview.html',base);url.search=new URLSearchParams({locale,theme,scenario,reset:reset?'1':'0'}).toString();
   await navigateCdp(send, socket, {url:url.href, sessionId, step});
   await ready("!!window.__HARA_SHELL_FIXTURE__ && !!document.querySelector('.hs-field textarea,[data-tasks-count]')",'Synthetic Workspace fixture must mount');
-  await ready("document.querySelector('[data-await-count]')?.textContent === (new URLSearchParams(location.search).get('scenario')==='many'?'10':new URLSearchParams(location.search).get('scenario')==='partial'?'2':'3')",'Overview must settle with the expected scoped count');
+  await ready("document.querySelector('.hd-needs-you .hd-unread')?.textContent === (new URLSearchParams(location.search).get('scenario')==='many'?'10':new URLSearchParams(location.search).get('scenario')==='partial'?'2':'3')",'Overview must settle with the expected scoped count');
   await settled();assert.equal(await evaluate('document.documentElement.dataset.theme'),theme);
   if(!['system','saved'].includes(locale))assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),locale);
 }
 async function click(selector){assert.ok(await evaluate(`!!document.querySelector(${JSON.stringify(selector)})`),`Missing ${selector}`);await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);await settled();}
+// Sidebar C creates a local channel ("group") from the sidebar New menu.
+async function openNewGroup(locale){
+ const plus=`.hd-sidebar-tools button[aria-label=${JSON.stringify(redesignText(locale,'new'))}]:not(:disabled)`,label=redesignText(locale,'newGroup');
+ await ready(`!!document.querySelector(${JSON.stringify(plus)})`,'Local channel capability must be ready');await click(plus);
+ const item=`[...document.querySelectorAll('.hd-new-menu [role=menuitem]')].find(node=>node.textContent.trim()===${JSON.stringify(label)})`;
+ await ready(`!!${item}`,'Sidebar New menu must offer a new group');await evaluate(`${item}.click()`);await settled();
+}
+// Sidebar C keeps Settings in the user area footer (formerly the .hs-set sidebar button).
+async function openSettings(){
+ const labels=JSON.stringify(['en','zh-Hans','zh-Hant'].map(locale=>makeT(locale)('ws.settings')));
+ const button=`[...document.querySelectorAll('.hd-user-area button')].find(node=>${labels}.includes(node.getAttribute('aria-label')))`;
+ assert.ok(await evaluate(`!!${button}`),'Missing Sidebar C settings button');await evaluate(`${button}.click()`);await settled();
+}
+// Sidebar C switches Workspaces from the user-area menu (formerly the .hs-space select).
+async function switchWorkspace(label){
+ await click('.hd-workspace-trigger');
+ const item=`[...document.querySelectorAll('.hd-workspace-menu [role=menuitemradio]')].find(node=>node.textContent.replace(/\\s*✓$/u,'').trim()===${JSON.stringify(label)})`;
+ await ready(`!!${item}`,'Workspace menu must list '+label);await evaluate(`${item}.click()`);await settled();
+}
+const activeWorkspace=label=>`[...document.querySelectorAll('.hd-workspace-menu [role=menuitemradio][aria-checked=true]')].length===0&&document.querySelector('.hd-workspace-trigger')?.textContent.includes(${JSON.stringify(label)})`;
+// Redesign A moved header actions (browser panel, channel members/invite) into the header More menu.
+async function moreAction(labels,label='Header More menu action'){
+ await click('.hd-header-more>button[aria-haspopup=menu]');
+ const item=`[...document.querySelectorAll('.hd-more-menu [role=menuitem]')].find(node=>${JSON.stringify(labels)}.includes(node.textContent.trim()))`;
+ await ready(`!!${item}&&!${item}.disabled`,label);await evaluate(`${item}.click()`);await settled();
+}
+async function openBrowserPanel(){await moreAction(['en','zh-Hans','zh-Hant'].map(locale=>redesignText(locale,'browser')),'Header More menu must offer the browser panel');}
 async function buttonText(text, scope='.wss-main'){
  await evaluate(`(()=>{const button=Array.from(document.querySelectorAll(${JSON.stringify(scope+' button')})).find(node=>node.textContent.trim()===${JSON.stringify(text)});if(!button)throw new Error('Missing button: '+${JSON.stringify(text)});button.click();})()`);await settled();
 }
@@ -102,7 +130,7 @@ async function setSystemLanguage(language){
  assert.equal(await evaluate('navigator.language'),language);
 }
 async function selectValue(selector,value){await evaluate(`(()=>{const select=document.querySelector(${JSON.stringify(selector)});select.value=${JSON.stringify(value)};select.dispatchEvent(new Event('change',{bubbles:true}));})()`);await settled();}
-async function inputValue(selector,value){await evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);await settled();}
+async function inputValue(selector,value){await evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});if(!input)throw new Error('Missing input: '+${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);await settled();}
 async function settingsFits(){const size=await evaluate("(()=>{const main=document.querySelector('.wss-main');return {viewport:innerWidth,body:document.documentElement.scrollWidth,mainWidth:main.clientWidth,mainScroll:main.scrollWidth,badButtons:Array.from(main.querySelectorAll('button:not(.wss-switch)')).filter(node=>node.getBoundingClientRect().height<31.9).map(node=>node.textContent),badFields:Array.from(main.querySelectorAll('.wsd-connection-form input,.wsd-connection-form select')).filter(node=>node.getBoundingClientRect().height<35.9).map(node=>node.outerHTML.slice(0,160)),inlineLabels:Array.from(main.querySelectorAll('.wsd-connection-form>label')).filter(node=>getComputedStyle(node).display!=='grid').length}})()");assert.ok(size.body<=size.viewport&&size.mainScroll<=size.mainWidth+1,JSON.stringify(size));assert.deepEqual(size.badButtons,[]);assert.deepEqual(size.badFields,[]);assert.equal(size.inlineLabels,0);return size;}
 async function key(key,shift=false){const value={key,code:key,modifiers:shift?8:0,windowsVirtualKeyCode:{Enter:13,Tab:9,Escape:27}[key]??0};await send('Input.dispatchKeyEvent',{type:'keyDown',...value,...(key==='Enter'?{text:'\r'}:{})});await send('Input.dispatchKeyEvent',{type:'keyUp',...value});await settled();}
 async function capture(name){step=name;screenshots++;await pause(150);const result=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(result.data,'base64'),{mode:0o600});}
@@ -228,7 +256,7 @@ try{
  // Every urgent approval stays on the home tray; identical counters and original-card navigation.
  await navigate({scenario:'many'});
  assert.equal(await evaluate("document.querySelectorAll('.hs-await .hs-ai').length"),5);
- assert.equal(await evaluate("document.querySelector('[data-await-count]').textContent"),'10');
+ assert.equal(await evaluate("document.querySelector('.hd-needs-you .hd-unread').textContent"),'10');
  await click('.hs-await-all');assert.equal(await evaluate("document.querySelector('[data-tasks-count]').textContent"),'10');
  await click('.hs-task[data-approval-id="fixture-0"] button');
  await ready("document.activeElement?.id==='approval-fixture-0'",'Task link must focus its original decision card');
@@ -250,11 +278,11 @@ try{
  assert.equal(await evaluate("document.querySelector('.hs-send').disabled"),false);
  await evaluate("document.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,isComposing:true}))");await settled();
  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.session.send').length"),0);
- await click('.hs-set');await ready("!!document.querySelector('.wsd-settings')",'Settings must open');
+ await openSettings();await ready("!!document.querySelector('.wsd-settings')",'Settings must open');
  await click('.wsd-settings button.hs-btn:nth-child(1)'); // scoped schedules button
  assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.some(row=>row.method==='workspace.features.list'&&row.params.workspaceId==='A'&&row.params.expectedGeneration==='g-A')"),true);
  await key('Escape');assert.equal(await evaluate("document.querySelector('textarea').value"),'Draft kept on this workspace');
- await navigate({locale:'en'});await click('.hs-set');
+ await navigate({locale:'en'});await openSettings();
  await evaluate("(()=>{const select=document.querySelector('select[aria-label=Language]');select.value='zh-Hant';select.dispatchEvent(new Event('change',{bubbles:true}));})()");await settled();
  assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),'zh-Hant');assert.equal(await evaluate("localStorage.getItem('hara.locale')"),'zh-Hant');
  await capture('settings-language');await key('Escape');
@@ -267,7 +295,7 @@ try{
  for (const theme of ['light','dark']) for (const width of [1280,1100,900,720,700]) {
   await navigate({theme,width});
   await evaluate("window.__HARA_SHELL_FIXTURE__.model.setDraft('Right panel draft')");
-  await click('.hs-head .hs-ghost');await ready("!!document.querySelector('.hs-browser-address')",'Browser panel must mount');
+  await openBrowserPanel();await ready("!!document.querySelector('.hs-browser-address')",'Browser panel must mount');
   const measurePanel=()=>evaluate("(()=>{const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom}};return {chat:box('.hs-chat'),panel:box('.hs-browser'),composer:box('.hs-field'),scrollWidth:document.documentElement.scrollWidth,viewport:innerWidth}})()");
   for (const expanded of [false,true]) {
    if (expanded) await click('.hs-browser-head [aria-pressed]');
@@ -282,7 +310,7 @@ try{
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.some(row=>row.method==='workspace.session.send'||row.method==='workspace.approval.respond')"),false);
   receipts.push({theme,width,browser:'right-side sibling; expand keeps chat/composer visible; draft retained; scoped teardown; no execution'});
  }
- await navigate();await click('.hs-head .hs-ghost');await ready("!!document.querySelector('.hs-browser-address')",'Browser URL form must mount');
+ await navigate();await openBrowserPanel();await ready("!!document.querySelector('.hs-browser-address')",'Browser URL form must mount');
  const preview=new URL('test/fixtures/browser-panel-preview.html',base).href;
  await evaluate(`(()=>{const input=document.querySelector('.hs-browser-address input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(preview)});input.dispatchEvent(new Event('input',{bubbles:true}));})()`);await settled();
  await click('.hs-browser-address [type=submit]');await ready("!!document.querySelector('.hs-browser iframe')",'Local preview iframe must load');
@@ -293,7 +321,7 @@ try{
   await navigate({scenario:'native-settings',locale});
   await evaluate("(()=>{const area=document.querySelector('.hs-scroll');area.scrollTop=250;area.dispatchEvent(new Event('scroll',{bubbles:true}));})()");await settled();
   assert.equal(await evaluate("Math.round(document.querySelector('.hs-scroll').scrollTop)"),250);
-  await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Independent settings must load');
+  await openSettings();await ready("!!document.querySelector('.wss-nav nav')",'Independent settings must load');
   assert.equal(await evaluate("document.querySelector('.wss-app').getAttribute('lang')"),locale);
   const geometry=await evaluate("(()=>{const nav=document.querySelector('.wss-nav').getBoundingClientRect(),main=document.querySelector('.wss-main').getBoundingClientRect(),back=document.querySelector('.wss-back').getBoundingClientRect();return {navRight:nav.right,mainLeft:main.left,mainWidth:main.width,navLeft:nav.left,navTop:nav.top,navBottom:nav.bottom,mainRight:main.right,backTop:back.top}})()");
   assert.ok(geometry.navRight<=geometry.mainLeft+1,JSON.stringify(geometry));assert.ok(geometry.mainWidth>500,JSON.stringify(geometry));
@@ -305,7 +333,7 @@ try{
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.model.getSnapshot().workspaceId"),'A');
   const readingTop=await evaluate("(()=>{const area=document.querySelector('.hs-scroll');area.scrollTop=area.scrollHeight-area.clientHeight-100;area.dispatchEvent(new Event('scroll',{bubbles:true}));return area.scrollTop;})()");await settled();
   assert.equal(await evaluate("Math.round((()=>{const area=document.querySelector('.hs-scroll');return area.scrollHeight-area.clientHeight-area.scrollTop;})())"),100);
-  await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Settings must open from a near-bottom reading position');
+  await openSettings();await ready("!!document.querySelector('.wss-nav nav')",'Settings must open from a near-bottom reading position');
   await click('.wss-back');await ready("!!document.querySelector('.hs-field textarea')",'Main chat must return from settings');
   assert.equal(await evaluate("document.querySelector('.hs-scroll').scrollTop"),readingTop,'Reading 100px above the bottom must not be mistaken for following the bottom');
   await capture(`native-settings-reading-return-${locale}`);
@@ -315,7 +343,7 @@ try{
  // Change locale while notices and confirmation cards are already open, preserving user drafts.
  for(const theme of ['light','dark']) for(const [index,locale] of ['en','zh-Hans','zh-Hant'].entries()){
   const nextLocale=['en','zh-Hans','zh-Hant'][(index+1)%3], t=makeT(locale), next=makeT(nextLocale);
-  await navigate({scenario:'native-settings',locale,theme});await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Settings i18n fixture must load');
+  await navigate({scenario:'native-settings',locale,theme});await openSettings();await ready("!!document.querySelector('.wss-nav nav')",'Settings i18n fixture must load');
   const connectionSummary=await evaluate(`Array.from(document.querySelectorAll('.wss-overview button')).find(button=>button.querySelector('h2')?.textContent===${JSON.stringify(t('ws.settings.page.connections'))})?.querySelector('p')?.textContent`);
   assert.equal(connectionSummary,t('ws.settings.connectionOne',{n:1}),'One active connection must use singular copy in the rendered settings overview');
   await capture(`settings-overview-${theme}-${locale}`);
@@ -377,7 +405,7 @@ try{
   await setSystemLanguage(language);await navigate({scenario:'native-settings',locale:'system'});
   assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),locale);
   assert.equal(await evaluate("localStorage.getItem('hara.locale')"),null,'A default system locale must not become a persisted manual choice');
-  await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'System-language settings must mount');
+  await openSettings();await ready("!!document.querySelector('.wss-nav nav')",'System-language settings must mount');
   await buttonText(makeT(locale)('ws.settings.page.appearance'),'.wss-nav nav');
   assert.equal(await evaluate("document.querySelector('.wss-page-card>label select').value"),'system');
   await capture(`system-language-${locale}`);receipts.push({systemLanguage:language,resolvedLocale:locale,defaultPreference:'system'});
@@ -387,7 +415,7 @@ try{
  await navigate({scenario:'native-settings',locale:'saved'});
  assert.equal(await evaluate("document.querySelector('.wsd-app').lang"),'zh-Hant','Manual choice survives a reload');
  await evaluate("window.__HARA_SHELL_FIXTURE__.model.setDraft('Language preference draft')");
- await click('.hs-set');await ready("!!document.querySelector('.wss-nav nav')",'Saved-language settings must mount');
+ await openSettings();await ready("!!document.querySelector('.wss-nav nav')",'Saved-language settings must mount');
  await buttonText(makeT('zh-Hant')('ws.settings.page.appearance'),'.wss-nav nav');
  assert.equal(await evaluate("document.querySelector('.wss-page-card>label select').value"),'zh-Hant');
  await selectValue('.wss-page-card>label select','system');assert.equal(await evaluate("document.querySelector('.wss-app').lang"),'zh-Hans');
@@ -413,8 +441,7 @@ try{
  for(const theme of ['light','dark'])for(const locale of ['en','zh-Hans','zh-Hant']){
   const t=makeT(locale),name=`Local planning ${locale}`;
   await navigate({theme,locale,scenario:'channels'});
-  await ready(`!!document.querySelector(${JSON.stringify(`.hs-sec-a[aria-label=${JSON.stringify(t('ws.channels.new'))}]:not(:disabled)`)})`,'Local channel capability must be ready');
-  await click(`.hs-sec-a[aria-label=${JSON.stringify(t('ws.channels.new'))}]`);
+  await openNewGroup(locale);
   assert.equal(await evaluate("document.querySelectorAll('.hs-channel-choices input[type=checkbox]').length"),13);
   await inputValue(`.hs-channel-dialog input[aria-label=${JSON.stringify(t('ws.channels.name'))}]`,name);
   await buttonText(t('ws.channels.all'),'.hs-channel-dialog');
@@ -460,33 +487,34 @@ try{
   await buttonText(t('ws.channels.all'),'.hs-channel-recipients fieldset');await click('.hs-channel-recipients>summary');
   assert.equal(await evaluate("document.querySelector('.hs-channel-recipients>summary').textContent"),t('ws.channels.replyAll',{n:13}));
   await send('Emulation.setDeviceMetricsOverride',{width:1480,height:800,deviceScaleFactor:1,mobile:false});await settled();
-  await click(`.hs-head [aria-label=${JSON.stringify(t('ws.header.browser'))}]`);
+  await openBrowserPanel();
   const roomyPreviewClose=`#workspace-browser-panel [aria-label=${JSON.stringify(t('ws.browser.close'))}]`;
   await ready(`!!document.querySelector(${JSON.stringify(roomyPreviewClose)})`,'Channel preview must mount beside the chat');await settled();
-  const headerLayout=await evaluate("(()=>{const h=document.querySelector('.hs-head').getBoundingClientRect(),p=document.querySelector('.hs-browser').getBoundingClientRect(),c=document.querySelector('.hs-chat').getBoundingClientRect();return {chatWidth:c.width,chatRight:c.right,panelLeft:p.left,controls:[...document.querySelectorAll('.hs-head button')].map(n=>{const r=n.getBoundingClientRect();return {height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom}}),header:{left:h.left,right:h.right,top:h.top,bottom:h.bottom},actionFont:getComputedStyle(document.querySelector('.hs-channel-header-actions button')).fontSize,body:document.documentElement.scrollWidth};})()");
+  const headerLayout=await evaluate("(()=>{const h=document.querySelector('.hs-head').getBoundingClientRect(),p=document.querySelector('.hs-browser').getBoundingClientRect(),c=document.querySelector('.hs-chat').getBoundingClientRect();return {chatWidth:c.width,chatRight:c.right,panelLeft:p.left,controls:[...document.querySelectorAll('.hs-head button')].map(n=>{const r=n.getBoundingClientRect();return {height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom}}),header:{left:h.left,right:h.right,top:h.top,bottom:h.bottom},actionFont:(n=>n?getComputedStyle(n).fontSize:null)(document.querySelector('.hs-channel-header-actions button')),body:document.documentElement.scrollWidth};})()");
   assert.ok(headerLayout.panelLeft>=headerLayout.chatRight&&headerLayout.body<=1480,JSON.stringify(headerLayout));
   for(const control of headerLayout.controls)assert.ok(control.height>=32&&control.height<=40&&control.left>=headerLayout.header.left&&control.right<=headerLayout.header.right&&control.top>=headerLayout.header.top&&control.bottom<=headerLayout.header.bottom,JSON.stringify(headerLayout));
-  if(headerLayout.chatWidth<=700)assert.equal(headerLayout.actionFont,'0px');
+  // Redesign A moved channel actions into the More menu; labeled header actions only exist in the legacy header.
+  if(headerLayout.chatWidth<=700&&headerLayout.actionFont!==null)assert.equal(headerLayout.actionFont,'0px');
   await capture(`channel-browser-${locale}-${theme}`);await click(roomyPreviewClose);
   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false});await settled();
-  await inputValue('.hs-channel-compose textarea','channel draft preserved');await click('.hs-set');await key('Escape');
+  await inputValue('.hs-channel-compose textarea','channel draft preserved');await openSettings();await key('Escape');
   assert.equal(await evaluate("document.querySelector('.hs-channel-compose textarea').value"),'channel draft preserved');
   await click('.hs-main');await ready("!!document.querySelector('.wsd-composer textarea')",'Main chat must remain separate');
   await inputValue('.wsd-composer textarea','PRIVATE_DM_ONLY');await click(`[data-group-id=${JSON.stringify(channelId)}]`);
   await ready("!!document.querySelector('.hs-channel-compose textarea')",'Channel must reopen after main chat');
   assert.equal(await evaluate("document.querySelector('.hs-channel-compose textarea').value"),'channel draft preserved');
   assert.equal(await evaluate("document.querySelector('.hs-channel-thread').textContent.includes('PRIVATE_DM_ONLY')"),false);
-  await click(`.hs-channel-header-actions [aria-label=${JSON.stringify(t('ws.channels.invite'))}]`);
+  await moreAction([t('ws.channels.invite')]);
   assert.ok(await evaluate(`document.querySelector('[role=dialog]').textContent.includes(${JSON.stringify(t('ws.channels.inviteBody'))})`));
   assert.equal(await evaluate("!!document.querySelector('[role=dialog] input,[role=dialog] a')"),false);await key('Escape');
   if(locale==='zh-Hans'&&theme==='light'){
    await click('.hs-channel-recipients>summary');await buttonText(t('ws.channels.notesOnly'),'.hs-channel-recipients fieldset');await click('.hs-channel-recipient input');await click('.hs-channel-recipients>summary');
-   await click('.hs-set');await key('Escape');
+   await openSettings();await key('Escape');
    assert.equal(await evaluate(`document.querySelector('.hs-channel-recipients>summary').textContent`),t('ws.channels.replyCount',{n:1}),'Settings cannot widen the selected recipients');
    await inputValue('.hs-channel-compose textarea','one chosen before membership update');await click('.hs-channel-compose .hs-send');
    await ready("document.querySelectorAll('[data-channel-speaker]:not([data-channel-speaker=user])').length===14&&!document.querySelector('.hs-channel-thread .wsd-typing')",'Only the one chosen colleague must reply');
    assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.send').at(-1).params.recipientIds.length"),1);
-   await click(`.hs-channel-header-actions [aria-label=${JSON.stringify(t('ws.channels.members'))}]`);
+   await moreAction([t('ws.channels.members')]);
    await buttonText(t('ws.channels.none'),'.hs-channel-dialog');await click('.hs-channel-choices input');
    await buttonText(t('ws.channels.save'),'.hs-channel-dialog');await ready("!document.querySelector('[role=dialog]')",'Membership update must save');
    assert.equal(await evaluate("document.querySelectorAll('[data-channel-speaker]:not([data-channel-speaker=user])').length"),14,'Removing colleagues keeps original messages');
@@ -507,25 +535,29 @@ try{
    await ready("!!document.querySelector('.hs-channel-compose .hs-stop')",'Active channel must offer stop');await click('.hs-channel-compose .hs-stop');
    await ready("!!document.querySelector('.hs-channel-compose .hs-send')&&!document.querySelector('.hs-channel-thread .wsd-typing')",'Stopping a channel must finish without queued replies');
    await evaluate("window.__HARA_SHELL_FIXTURE__.channelSlow(false)");
-   await selectValue('.hs-space','B');await ready("document.querySelector('.hs-space').value==='B'&&!document.querySelector('[data-group-id]')",'Other Workspace cannot show original channels');
-   await selectValue('.hs-space','A');await ready(`!!document.querySelector('[data-group-id="${channelId}"]')`,'Original channel catalog must recover');
+   await switchWorkspace('Studio');await ready(`${activeWorkspace('Studio')}&&!document.querySelector('[data-group-id]')`,'Other Workspace cannot show original channels');
+   await switchWorkspace('My workspace');await ready(`!!document.querySelector('[data-group-id="${channelId}"]')`,'Original channel catalog must recover');
    await click(`[data-group-id=${JSON.stringify(channelId)}]`);await ready("!!document.querySelector('.hs-channel-compose textarea')",'Original channel must open');
    const messageCount=await evaluate("document.querySelectorAll('[data-channel-speaker]').length");
    await evaluate("(()=>{const u=new URL(location.href);u.searchParams.set('reset','0');history.replaceState(null,'',u.href);window.__HARA_RELOAD_MARKER__=true;})()");await send('Page.reload');
    await ready(`!window.__HARA_RELOAD_MARKER__&&!!document.querySelector('.hs-channel-compose textarea')&&document.querySelectorAll('[data-channel-speaker]').length===${messageCount}`,'Local channel history must survive fixture reload in a new document');
    assert.equal(await evaluate("document.querySelectorAll('[data-channel-speaker]').length"),messageCount);
    await send('Emulation.setDeviceMetricsOverride',{width:720,height:800,deviceScaleFactor:1,mobile:false});await settled();
-   await click(`.hs-head [aria-label=${JSON.stringify(t('ws.header.browser'))}]`);
+   await openBrowserPanel();
    const previewClose=`#workspace-browser-panel [aria-label=${JSON.stringify(t('ws.browser.close'))}]`;
    await ready(`!!document.querySelector(${JSON.stringify(previewClose)})`,'Lazy channel preview must finish mounting beside chat');await settled();
+   // Design errata S1/S1b: below 1100px the browser is a 360px overlay on the right of the chat; 720px is below the
+   // 900px acceptance floor, so it only must not overflow horizontally. Escape and its close button both dismiss it.
    const measured=await geometry();assert.ok(measured.chat.width>150&&measured.body<=720,JSON.stringify(measured));
-   const pane=await evaluate("(()=>{const a=document.querySelector('.hs-chat').getBoundingClientRect(),b=document.querySelector('#workspace-browser-panel').getBoundingClientRect();return {chatRight:a.right,panelLeft:b.left,panelRight:b.right};})()");
-   assert.ok(pane.panelLeft>=pane.chatRight&&pane.panelRight<=721,JSON.stringify(pane));await capture('channel-narrow-browser-zh-Hans-light');
-   await click(previewClose);
+   const pane=await evaluate("(()=>{const a=document.querySelector('.hs-chat').getBoundingClientRect(),n=document.querySelector('#workspace-browser-panel'),b=n.getBoundingClientRect();return {chatRight:a.right,panelLeft:b.left,panelRight:b.right,panelWidth:b.width,position:getComputedStyle(n).position};})()");
+   assert.ok(pane.position==='absolute'&&Math.abs(pane.panelWidth-360)<=1&&pane.panelLeft>=0&&pane.panelRight<=721,JSON.stringify(pane));await capture('channel-narrow-browser-zh-Hans-light');
+   await key('Escape');await ready("!document.querySelector('#workspace-browser-panel')",'Escape must dismiss the narrow browser overlay');
+   await openBrowserPanel();await ready(`!!document.querySelector(${JSON.stringify(previewClose)})`,'Narrow browser overlay must reopen');
+   await click(previewClose);await ready("!document.querySelector('#workspace-browser-panel')",'Close must dismiss the narrow browser overlay');
   }
   assert.equal(await evaluate("window.__HARA_SHELL_FIXTURE__.calls.some(row=>/workspace\.session\.send|collaboration|account|login/.test(row.method))"),false);
   await click('.hs-channel-recipients>summary');await inputValue('.hs-channel-recipients input[type=search]','QA');
-  await click(`.hs-sec-a[aria-label=${JSON.stringify(t('ws.channels.new'))}]`);
+  await openNewGroup(locale);
   await inputValue(`.hs-channel-dialog input[aria-label=${JSON.stringify(t('ws.channels.name'))}]`,'Local notes');
   await buttonText(t('ws.channels.new'),'.hs-channel-dialog');
   const notesChannelId=await evaluate("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.channels.create').at(-1).params.channelId");
