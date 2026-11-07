@@ -218,7 +218,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
       <footer className="vg-rf-foot">
         {fields.length ? <span className="vg-rf-chip dirty" role="status">{t("ws.rf.unsaved", { fields: fieldText })}</span>
           : confirmNeeded ? <span className="vg-rf-chip warn" role="status">{statusText(status)}</span> : <span className="vg-rf-chip" role="status">{t("ws.rf.saved")}</span>}
-        {fields.length ? <button type="button" className="vg-rf-revert" disabled={busy || scanning} onClick={() => { setDraftRuntime(agent.runtime.id); if (draftRuntime === agent.runtime.id && baseline) { setDraftModel(baseline.model); setDraftEffort(baseline.effort); } else setInitFor(""); setDropped(null); setError(""); setNotice(""); }}>{locale === "en" ? "Revert" : locale === "zh-Hant" ? "還原" : "还原"}</button> : null}
+        {fields.length ? <button type="button" className="vg-rf-revert" disabled={busy || scanning} onClick={() => { setDraftRuntime(agent.runtime.id); if (draftRuntime === agent.runtime.id && baseline) { setDraftModel(baseline.model); setDraftEffort(baseline.effort); } else setInitFor(""); setDropped(null); setError(""); setNotice(""); }}>{redesignText(locale, "revert")}</button> : null}
         <button type="button" className="vg-rf-apply" disabled={busy || scanning || !ready || !piModelReady || !fields.length && !confirmNeeded || !usable || draftRuntime === "hara" && draftRuntime !== agent.runtime.id} onClick={startApply}>{t(busy ? "ws.rf.applying" : "ws.rf.apply")}</button>
       </footer>
       {fields.includes("engine") ? <p className="vg-muted">{t("ws.rf.untilApplied", { name: agent.identity.displayName, engine: engineName(agent.runtime.id) })}</p> : null}

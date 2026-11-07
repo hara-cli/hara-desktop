@@ -138,3 +138,10 @@ test("optional clock calibration runs once and only annotates message submission
  }
  assert.equal(socket.sent.filter(row=>row.method==="workspace.message-timing.clock").length,1);client.close();assert.equal(client.timingNow(),null);
 });
+
+test("archive errors retain only fixed recovery reasons, never arbitrary server error data",async()=>{
+ const {client,socket}=await setup();const pending=client.request("workspace.agents.setArchived",{}),id=socket.sent.at(-1).id;
+ socket.message({jsonrpc:"2.0",id,error:{code:-32602,message:"Synthetic cleanup timeout",data:{archiveReason:"archive_drain_timeout",privatePayload:"must not copy"}}});
+ await assert.rejects(pending,error=>error.archiveReason==="archive_drain_timeout"&&error.code===-32602&&error.data===undefined&&error.privatePayload===undefined);
+ const unknown=client.request("workspace.agents.setArchived",{});socket.message({jsonrpc:"2.0",id:socket.sent.at(-1).id,error:{code:-32602,message:"Synthetic unknown",data:{archiveReason:"untrusted-reason"}}});await assert.rejects(unknown,error=>error.archiveReason===undefined);client.close();
+});

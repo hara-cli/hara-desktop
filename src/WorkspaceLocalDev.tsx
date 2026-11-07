@@ -30,7 +30,7 @@ import { WorkspaceTaskRecovery } from "./WorkspaceTaskRecovery";
 import { WorkspaceRuntimeStages } from "./WorkspaceRuntimeStages";
 import { runtimeStagesBefore, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events";
 import { WorkspaceAsyncQuestions, WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
-import { WorkspaceDevModel, workspaceAsyncAsks, type ColleagueCreateDraft, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval, type WorkspaceFeatureView } from "./workspace-dev-state";
+import { WorkspaceDevModel, workspaceAsyncAsks, type ColleagueCreateDraft, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval, type WorkspaceFeatureView, type WorkspaceDevArchiveStatus } from "./workspace-dev-state";
 import { parseColleagueScheduleRequest, type ColleagueScheduleDraft } from "./colleague-schedule.js";
 import { useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
 import { Avatar, ColleaguesPage, ShellDialog } from "./WorkspaceShell";
@@ -255,6 +255,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const mentionMenu = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null), manageButton = useRef<HTMLButtonElement>(null);
   const [undoNotice, setUndoNotice] = useState<UndoNotice | null>(null), [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveConfirm, setArchiveConfirm] = useState<{ agent: WorkspaceDevAgent; status: WorkspaceDevArchiveStatus; scope: string } | null>(null);
   const toastCounter = useRef(0);
   const [workspaceRename, setWorkspaceRename] = useState<string | null>(null), [workspaceNameDraft, setWorkspaceNameDraft] = useState("");
   const [workspaceRenameBusy, setWorkspaceRenameBusy] = useState(false);
@@ -285,9 +286,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   else if (view.workspaceId !== retainedScope.current.workspaceId) retainedScope.current = { workspaceId: view.workspaceId ?? "", value: "" };
   const scope = retainedScope.current.value;
   const scopeRef = useRef(scope); scopeRef.current = scope;
+  useEffect(() => { setArchiveConfirm(null); }, [scope]);
   const hostChannelSelected = useRef(false);
   const activeRosterPrefs = rosterPrefsWorkspaceId === workspace?.workspaceId ? rosterPrefs : {};
-  useEffect(() => { setRosterMenu(null);  setRosterMove(null);
+  useEffect(() => { setRosterMenu(null); setArchiveConfirm(null); setRosterMove(null);
     try { const saved: unknown = JSON.parse(localStorage.getItem(`hara.roster.${workspace?.workspaceId}`) || "{}");
       setRosterPrefs(saved && typeof saved === "object" && !Array.isArray(saved) ? saved as typeof rosterPrefs : {});
     } catch { setRosterPrefs({}); }
@@ -493,7 +495,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity, t]);
   const closeSettings = () => { setSettings(false); };
   const openSettingsPage = (page: SettingsPage) => { setSettingsPage(page); setSettings(true); };
-  const modalOpen = settings || creating || !!workspaceRename || !!channelDialog || !!rosterMove || approvalDialog?.scope === scope;
+  const modalOpen = settings || creating || !!workspaceRename || !!channelDialog || !!rosterMove || approvalDialog?.scope === scope || archiveConfirm?.scope === scope;
   useEffect(() => { if (mentionOpen) mentionMenu.current?.querySelector<HTMLButtonElement>("button")?.focus(); }, [mentionOpen]);
   const attachReference = async () => {
     if (attaching || disconnected) return; setAttaching(true); const selectedScope = model.mediaScope;
@@ -510,10 +512,13 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   useEffect(() => { if (findOpen) findMessage(0); }, [findOpen, findQuery, workspace?.conversation.revision, channelView.channel?.revision]);
   const exportConversation = async () => {
     if (!workspace || exporting) return; setExporting(true);
-    const messages = inChannel ? channelView.channel?.messages.map(row => row.message) ?? [] : workspace.conversation.history;
-    try { const saved = await invoke<boolean>("workspace_export_conversation", { text: conversationMarkdown(messages, inChannel ? selectedChannel?.name ?? "Hara" : agent?.identity.displayName ?? "Hara") });
-      if (saved) setUndoNotice({ id: ++toastCounter.current, scope, text: locale === "en" ? "Conversation exported." : locale === "zh-Hant" ? "已匯出對話。" : "对话已导出。" });
-    } catch { setUndoNotice({ id: ++toastCounter.current, scope, text: locale === "en" ? "Couldn’t export. Retry." : locale === "zh-Hant" ? "匯出失敗，請重試。" : "导出失败，请重试。" }); }
+    const channelMessages = inChannel ? channelView.channel?.messages ?? [] : null;
+    const messages = channelMessages?.map(row => row.message) ?? workspace.conversation.history;
+    const authors = channelMessages?.map(row => row.message.role === "user" && row.displayName === "You" ? r("exportYou") : row.displayName || r("unknownAuthor"));
+    try { const saved = await invoke<boolean>("workspace_export_conversation", { text: conversationMarkdown(messages, inChannel ? selectedChannel?.name ?? "Hara" : agent?.identity.displayName ?? "Hara",
+      { historyStart: inChannel ? 0 : view.localHistoryStart, userLabel: r("exportYou"), authors }) });
+      if (saved) setUndoNotice({ id: ++toastCounter.current, scope, text: r("exported") });
+    } catch { setUndoNotice({ id: ++toastCounter.current, scope, text: r("exportFailed") }); }
     finally { setExporting(false); }
   };
   const draftSkill = async (workspaceId: string) => {
@@ -550,12 +555,26 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     const hidden = !activeRosterPrefs[target.agentId]?.hidden; updateRosterPref(target.agentId, { hidden });
     if (hidden) setUndoNotice({ id: ++toastCounter.current, scope, text: r("hiddenNotice", { name: target.identity.displayName }), undo: () => updateRosterPref(target.agentId, { hidden: false }) });
   };
-  const archiveRoster = async (target: WorkspaceDevAgent) => {
-    if (archiveBusy) return; setArchiveBusy(true);
-    try { const result = await model.setAgentArchived(target, true);
-      setUndoNotice({ id: ++toastCounter.current, scope, text: r("deletedNotice", { name: target.identity.displayName, schedules: result.pausedSchedules ? r("pausedSchedules", { n: result.pausedSchedules }) : "" }), undo: async () => { await model.setAgentArchived(result.agent, false); } });
-    } catch { setUndoNotice({ id: ++toastCounter.current, scope, text: r("archiveFailed") }); }
-    finally { setArchiveBusy(false); }
+  const archiveRoster = async (target: WorkspaceDevAgent, confirmed?: WorkspaceDevArchiveStatus) => {
+    if (archiveBusy) return; const operationScope = scope; setArchiveBusy(true);
+    try {
+      const status = confirmed ?? await model.agentArchiveStatus(target);
+      if (scopeRef.current !== operationScope || status.workspaceId !== workspace?.workspaceId || status.resourceGeneration !== workspace?.resourceGeneration) return;
+      if (!confirmed && status.runs.length) { setArchiveConfirm({ agent: target, status, scope: operationScope }); return; }
+      setArchiveConfirm(null);
+      const result = await model.setAgentArchived(target, true, status);
+      if (scopeRef.current !== operationScope) return;
+      const schedules = result.pausedSchedules ? r("pausedSchedules", { n: result.pausedSchedules }) : "";
+      const stopped = result.stoppedTasks ?? status.runs.length;
+      const note = result.pausedSchedules || stopped ? ` ${r("undoArchiveWarning")}` : "";
+      setUndoNotice({ id: ++toastCounter.current, scope: operationScope, text: r("deletedNotice", { name: target.identity.displayName, schedules }) + note,
+        undo: async () => { await model.setAgentArchived(result.agent, false); } });
+    } catch (error) {
+      if (scopeRef.current !== operationScope) return;
+      const reason = error && typeof error === "object" && "archiveReason" in error ? error.archiveReason : null;
+      setArchiveConfirm(null); setUndoNotice({ id: ++toastCounter.current, scope: operationScope,
+        text: r(reason === "archive_drain_timeout" ? "archiveDrainTimeout" : reason === "archive_confirmation_required" ? "archiveRunsChanged" : reason === "archive_schedule_rollback_failed" ? "archiveRollbackFailed" : "archiveFailed") });
+    } finally { setArchiveBusy(false); }
   };
   const commitRename = async () => {
     if (!inlineRename?.name.trim() || inlineRename.pending) return;
@@ -702,9 +721,15 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       onHide={() => hideRoster(menuAgent)}
       onArchive={!menuGroup && menuAgent.kind !== "main" && model.supportsAgentArchive() && !archiveBusy ? () => void archiveRoster(menuAgent) : undefined}
       onNewSession={menuAgent.kind === "main" && model.supportsNativeSessions() && shell.snapshots.some(row => row.selectedAgentId === menuAgent.agentId && !!row.conversation.nativeSession) ? () => { void openAgent(menuAgent.agentId).then(() => { const current = model.getSnapshot().workspace; if (current?.selectedAgentId === menuAgent.agentId && !["running", "draining"].includes(current.conversation.state)) { if (model.supportsNativeSessions() && current.conversation.nativeSession) void model.newNativeSession(); } }); } : undefined} /> : null}
+    {archiveConfirm?.scope === scope ? <ShellDialog label={r("archiveConfirmTitle", { name: archiveConfirm.agent.identity.displayName })} onClose={() => { if (!archiveBusy) setArchiveConfirm(null); }} className="wsd-roster-dialog hd-archive-dialog">
+      <h2>{r("archiveConfirmTitle", { name: archiveConfirm.agent.identity.displayName })}</h2><p>{r("archiveConfirmBody", { n: archiveConfirm.status.runs.length })}</p>
+      <ul>{archiveConfirm.status.runs.map(run => <li key={run.runId} data-archive-run={run.runId}><strong>{run.title || r(run.kind === "group" ? "archiveGroupTask" : "archiveChatTask")}</strong><small>{r(run.kind === "group" ? "archiveGroupTask" : "archiveChatTask")} · {run.taskId.slice(0, 8)}</small></li>)}</ul>
+      <p>{r("undoArchiveWarning")}</p>{archiveConfirm.status.scheduledTasks ? <p>{r("archivePauseSchedules", { n: archiveConfirm.status.scheduledTasks })}</p> : null}
+      <div className="wsd-card-actions"><button type="button" className="hs-btn sec" disabled={archiveBusy} onClick={() => setArchiveConfirm(null)}>{t("ws.cancel")}</button><button type="button" className="hs-btn pri" disabled={archiveBusy} onClick={() => void archiveRoster(archiveConfirm.agent, archiveConfirm.status)}>{r("archiveConfirmAction")}</button></div>
+    </ShellDialog> : null}
     {rosterMove ? <ShellDialog label={r("newFolder")} onClose={() => setRosterMove(null)} className="wsd-roster-dialog">
-      <h2>{r("newFolder")}</h2><label>{locale !== "en" ? "分组名称" : "Section name"}<input value={sectionName} maxLength={60} onChange={event => setSectionName(event.target.value)} /></label>
-      <div className="wsd-card-actions"><button onClick={() => setRosterMove(null)}>{t("ws.cancel")}</button><button className="hs-btn pri" disabled={!sectionName.trim()} onClick={() => { updateRosterPref(rosterMove.agentId, { section: sectionName.trim() }); setRosterMove(null); }}>{locale !== "en" ? "移动" : "Move"}</button></div>
+      <h2>{r("newFolder")}</h2><label>{r("folderName")}<input value={sectionName} maxLength={60} onChange={event => setSectionName(event.target.value)} /></label>
+      <div className="wsd-card-actions"><button onClick={() => setRosterMove(null)}>{t("ws.cancel")}</button><button className="hs-btn pri" disabled={!sectionName.trim()} onClick={() => { updateRosterPref(rosterMove.agentId, { section: sectionName.trim() }); setRosterMove(null); }}>{r("move")}</button></div>
     </ShellDialog> : null}
     {settings ? <WorkspaceSettings key={`settings:${view.workspaceId}`} mainModel={model} initialPage={settingsPage} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
       onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} /> : null}

@@ -33,6 +33,8 @@ export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGe
 } & ({ kind?: "agent_create"; draft: ColleagueCreateDraft; projectOptions?: string[]; catalogRevision?: number }
   | { kind: "extension_call"; draft: { sourceName: string; toolName: string; target: string; action: "read" | "exec" } }
   | { kind: "schedule_create"; draft: { title: string; task: string; timing: string; tz: string } });
+export interface WorkspaceDevArchiveStatus { workspaceId: string; resourceGeneration: string; agentId: string; configRevision: number; agentEpoch: number; scheduledTasks: number;
+  runs: { runId: string; taskId: string; title: string; kind: "chat" | "group"; state: "running" | "draining" }[] }
 export type WorkspaceDevMessage = ({ role: "user"; content: string } | { role: "assistant"; text: string; tools: string[] }
   | { role: "tool"; results: { id: string; name: string; content: string; isError: boolean }[] }) & { createdAt?: string };
 export type WorkspaceQuestionConversation = Pick<WorkspaceDevSnapshot["conversation"], "state" | "taskState" | "pendingQuestion" | "resumeAdmission" | "blockReason">;
@@ -708,18 +710,33 @@ export class WorkspaceDevModel {
     } finally { this.runtimeChanges.delete(targetKey); this.update({}); }
   }
   supportsAgentArchive(): boolean { return this.rpc.supportsCapability?.("workspace.agents.archive.v1") === true; }
-  async setAgentArchived(agent: WorkspaceDevAgent, archived: boolean): Promise<{ agent: WorkspaceDevAgent; pausedSchedules: number }> {
+  async agentArchiveStatus(agent: WorkspaceDevAgent): Promise<WorkspaceDevArchiveStatus> {
+    const workspace = this.view.workspace, epoch = this.epoch;
+    if (!workspace || !this.supportsAgentArchive() || agent.kind !== "colleague" || agent.state !== "active") throw new WorkspaceViewError("ws.notice.invalidView");
+    const result = await this.workspaceRequest<WorkspaceDevArchiveStatus>("workspace.agents.archiveStatus", { agentId: agent.agentId, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
+    if (epoch !== this.epoch || this.view.workspace?.workspaceId !== workspace.workspaceId || this.view.workspace.resourceGeneration !== workspace.resourceGeneration)
+      throw new WorkspaceViewError("ws.notice.scopeChanged");
+    if (!result || result.workspaceId !== workspace.workspaceId || result.resourceGeneration !== workspace.resourceGeneration || result.agentId !== agent.agentId
+      || result.configRevision !== agent.configRevision || result.agentEpoch !== agent.agentEpoch || !Number.isSafeInteger(result.scheduledTasks) || result.scheduledTasks < 0 || result.scheduledTasks > 4096
+      || !Array.isArray(result.runs) || result.runs.length > 1024
+      || result.runs.some(row => !row || typeof row.runId !== "string" || !row.runId || row.runId.length > 200 || typeof row.taskId !== "string" || row.taskId.length > 200
+        || typeof row.title !== "string" || row.title.length > 160 || !["chat", "group"].includes(row.kind) || !["running", "draining"].includes(row.state)) || new Set(result.runs.map(row => row.runId)).size !== result.runs.length) throw new WorkspaceViewError("ws.notice.invalidView");
+    return result;
+  }
+  async setAgentArchived(agent: WorkspaceDevAgent, archived: boolean, confirmation?: WorkspaceDevArchiveStatus): Promise<{ agent: WorkspaceDevAgent; pausedSchedules: number; stoppedTasks?: number }> {
     const workspace = this.view.workspace, epoch = this.epoch;
     if (!workspace || !this.supportsAgentArchive() || !agent.configRevision || !agent.agentEpoch || agent.kind === "main")
       throw new WorkspaceViewError("ws.notice.invalidView");
     const workspaceId = workspace.workspaceId, generation = workspace.resourceGeneration;
-    const result = await this.workspaceRequest<{ agent: WorkspaceDevAgent; pausedSchedules: number }>("workspace.agents.setArchived", {
-      agentId: agent.agentId, archived, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
+    if (confirmation && (!archived || confirmation.workspaceId !== workspaceId || confirmation.resourceGeneration !== generation || confirmation.agentId !== agent.agentId
+      || confirmation.configRevision !== agent.configRevision || confirmation.agentEpoch !== agent.agentEpoch)) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    const result = await this.workspaceRequest<{ agent: WorkspaceDevAgent; pausedSchedules: number; stoppedTasks?: number }>("workspace.agents.setArchived", {
+      agentId: agent.agentId, archived, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch, ...(confirmation ? { confirmedRunIds: confirmation.runs.map(row => row.runId) } : {}) });
     if (epoch !== this.epoch || this.view.workspace?.workspaceId !== workspaceId || this.view.workspace.resourceGeneration !== generation)
       throw new WorkspaceViewError("ws.notice.scopeChanged");
     if (!result || result.agent?.agentId !== agent.agentId || result.agent.kind !== "colleague" || result.agent.state !== (archived ? "archived" : "active")
       || result.agent.configRevision !== agent.configRevision || result.agent.agentEpoch !== agent.agentEpoch + 1
-      || !Number.isSafeInteger(result.pausedSchedules) || result.pausedSchedules < 0) throw new WorkspaceViewError("ws.notice.invalidView");
+      || !Number.isSafeInteger(result.pausedSchedules) || result.pausedSchedules < 0 || result.stoppedTasks !== undefined && (!Number.isSafeInteger(result.stoppedTasks) || result.stoppedTasks < 0 || result.stoppedTasks > 1024)) throw new WorkspaceViewError("ws.notice.invalidView");
     if (archived && this.view.agentId === agent.agentId) {
       const main = workspace.agents.find(row => row.kind === "main");
       if (main) await this.selectAgent(main.agentId); else await this.refresh();

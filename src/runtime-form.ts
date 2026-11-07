@@ -1,7 +1,7 @@
 // Pure rules for the colleague engine form (runtime-form-1105, Jeff 2026-11-05: layout A).
 // No I/O here: the component and tests share exactly these decisions.
 
-/** Hara sends no effort argument; the engine decides. Distinct from "auto" (Hara picks per message). */
+/** Preserve the model-default sentinel; Codex resolves its catalog default to a concrete per-turn effort. Distinct from "auto" (Hara picks per message). */
 export const ENGINE_DEFAULT_EFFORT = "engine-default";
 export const AUTO_EFFORT = "auto";
 const LEVEL_ORDER = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];

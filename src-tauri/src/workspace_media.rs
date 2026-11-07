@@ -62,6 +62,14 @@ pub(super) async fn workspace_media_reveal(app: tauri::AppHandle, id: String) ->
     app.opener().reveal_item_in_dir(path).map_err(|_| "Cannot show media in Finder".into())
 }
 // User-clicked file opening is limited to the same Core registrations and closed passive extensions.
+fn file_path_still_regular(path: &std::path::Path) -> bool {
+    let Ok(info) = std::fs::symlink_metadata(path) else { return false; };
+    if !info.is_file() || info.file_type().is_symlink() { return false; }
+    #[cfg(unix)] { use std::os::unix::fs::MetadataExt;
+        if info.nlink() != 1 || std::fs::canonicalize(path).ok().as_deref() != Some(path) { return false; }
+    }
+    true
+}
 #[tauri::command]
 pub(super) async fn workspace_file_open(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let mut source = fetch(&id, "/path", "GET", None).await.map_err(|_| "File unavailable")?;
@@ -73,6 +81,7 @@ pub(super) async fn workspace_file_open(app: tauri::AppHandle, id: String) -> Re
     let expected = match ext.as_str() { "pdf" => "application/pdf", "zip" => "application/zip", "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "md" => "text/markdown", "txt" => "text/plain", _ => return Err("File unavailable".into()) };
     let head = fetch(&id, "", "HEAD", None).await.map_err(|_| "File unavailable")?;
     if head.status() != 200 || head.headers().get("Content-Type").and_then(|value| value.to_str().ok()) != Some(expected) { return Err("File unavailable".into()); }
+    if !file_path_still_regular(std::path::Path::new(path)) { return Err("File unavailable".into()); }
     app.opener().open_path(path, None::<&str>).map_err(|_| "Cannot open file".into())
 }
 // All writes require a native Save dialog. The renderer can supply neither a destination nor a root.
@@ -257,6 +266,17 @@ mod tests {
         assert_eq!(served(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec(), None, false).status(), 404);
         let large = format!("HTTP/1.1 200 OK\r\nContent-Type: image/gif\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", MAX_BYTES + 1);
         assert_eq!(served(large.into_bytes(), None, false).status(), 404);
+    }
+
+    #[test] fn file_open_rechecks_regular_identity_before_the_os_opener() {
+        let root = std::env::temp_dir().join(format!("hara-file-open-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir(&root).unwrap(); let root = std::fs::canonicalize(root).unwrap(); let file = root.join("fixture.md");
+        std::fs::write(&file, b"Synthetic file").unwrap(); assert!(super::file_path_still_regular(&file)); assert!(!super::file_path_still_regular(&root));
+        #[cfg(unix)] {
+            let link = root.join("alias.md"); std::os::unix::fs::symlink(&file, &link).unwrap(); assert!(!super::file_path_still_regular(&link));
+            let hard = root.join("hard.md"); std::fs::hard_link(&file, &hard).unwrap(); assert!(!super::file_path_still_regular(&hard));
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
 }
