@@ -1,1 +1,7 @@
 src-tauri/Cargo.toml text eol=lf
+
+# Candidate source locks must match their committed bytes on Windows as well.
+package-lock.json text eol=lf
+src-tauri/Cargo.lock text eol=lf
+src-tauri/binaries/SIDECAR_COMMIT text eol=lf
+src-tauri/examples/verify_updater_signature.rs text eol=lf
