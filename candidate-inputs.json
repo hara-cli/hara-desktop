@@ -16,8 +16,8 @@
     "waitSeconds": 240
   },
   "desktop": {
-    "commit": "b96008c36b64cb9acfe89eb8ed5aaf400a468621",
-    "tree": "45dbe74c13370af01376025fabd6e6acaede978f",
+    "commit": "675d11d33d424a3b344c08a5dbccf5ba5ad63500",
+    "tree": "8a086b501cadf90cbd45b7910f8ca2cd34a2a149",
     "version": "1.1.0"
   },
   "core": {
