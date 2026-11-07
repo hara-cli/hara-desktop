@@ -26,7 +26,9 @@ export function Md({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const html = useMemo(() => {
     try {
-      const template = document.createElement("template"); template.innerHTML = marked.parse(text, { async: false }) as string;
+      const parsed = marked.parse(text, { async: false }) as string;
+      if (typeof document === "undefined") return DOMPurify.sanitize(parsed);
+      const template = document.createElement("template"); template.innerHTML = parsed;
       for (const node of template.content.querySelectorAll("img,video")) {
         const source = node.getAttribute("src") ?? node.querySelector("source")?.getAttribute("src") ?? "";
         const local = localMediaPath(source);
