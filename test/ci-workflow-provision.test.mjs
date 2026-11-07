@@ -92,7 +92,9 @@ for (const [job, output, log] of [['core-native-install', 'core-platform-smoke',
 }
 
 test('ordinary provision retains hosted matrices, permissions, timing and isolation from candidate/signing', () => {
-  assert.equal((workflow.match(/timeout-minutes: 20/g) ?? []).length, 5);
+  // The native matrix gives the slower Intel cold Rust build 40 minutes; every other hosted job keeps 20.
+  assert.equal((workflow.match(/timeout-minutes: 20$/gm) ?? []).length, 4);
+  assert.equal((workflow.match(/timeout-minutes: \$\{\{ matrix\.os == 'macos-15-intel' && 40 \|\| 20 \}\}/g) ?? []).length, 1);
   assert.match(workflow, /runs-on: ubuntu-22\.04/); assert.match(workflow, /os: \[macos-15, macos-15-intel\]/);
   assert.equal((workflow.match(/runs-on: windows-latest/g) ?? []).length, 2);
   assert.match(workflow, /permissions:\n  contents: read/);

@@ -78,7 +78,7 @@ jobs:
           - os: macos-15-intel
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.os == 'macos-15-intel' && 40 || 20 }}
     env:
       CI_EVIDENCE_LEAF: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}-native
     steps:
