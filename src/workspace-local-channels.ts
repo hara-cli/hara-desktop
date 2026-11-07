@@ -2,7 +2,7 @@ import type { WorkspaceDevApproval, WorkspaceDevMessage, WorkspaceDevModel, Work
 import { createLocalChannelPreferencesStore, emptyChannelPreferences, type LocalChannelCreation, type LocalChannelPreferences, type LocalChannelPreferencesStore } from "./workspace-local-channel-preferences.ts";
 export interface LocalChannelAutonomy { schemaVersion: 1; mode: "off" | "mention" | "ambient"; mutedAgentIds: string[]; pausedUntil?: string; cooldownMs: 600000 }
 export interface LocalChannelAutonomyPatch { mode?: "off" | "mention"; mutedAgentIds?: string[]; pausedUntil?: string | null }
-export interface LocalChannel { id: string; name: string; memberIds: string[]; createdAt: string; autonomy?: LocalChannelAutonomy }
+export interface LocalChannel { id: string; name: string; memberIds: string[]; createdAt: string; autonomy?: LocalChannelAutonomy; lastMessageAt?: string; preview?: string; messageCount?: number; activityAvailable?: boolean }
 export interface LocalChannelCatalog { workspaceId: string; resourceGeneration: string; revision: number; channels: LocalChannel[] }
 export interface LocalChannelSnapshot { workspaceId: string; resourceGeneration: string; channel: LocalChannel; revision: number; state: string;
   pendingCount?: number; queueNeedsResume?: boolean;

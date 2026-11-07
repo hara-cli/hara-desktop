@@ -46,10 +46,10 @@ export function LocalChannelDialog({ mode, view, model, colleagues, t, onClose, 
         onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim() && !busy) { event.preventDefault(); void save(); } }} /></label>
       <fieldset disabled={busy} className="hs-channel-picker"><legend>{t("ws.channels.selectMembers")}</legend>
         {colleagues.length ? <><label className="hs-channel-search"><MagnifyingGlassIcon className="hico" /><input type="search" aria-label={t("ws.channels.searchMembers")} placeholder={t("ws.channels.searchMembers")} value={search} onChange={event => setSearch(event.target.value)} /></label>
-          <div className="hs-channel-picker-actions"><span>{channelMemberLabel(t, memberIds.length)}</span><button type="button" className="hs-btn sec" onClick={() => setMembers(colleagues.map(row => row.agentId))}>{t("ws.channels.all")}</button><button type="button" className="hs-btn sec" onClick={() => setMembers([])}>{t("ws.channels.none")}</button></div>
+          <div className="hs-channel-picker-actions"><span>{channelMemberLabel(t, memberIds.length)}</span><button type="button" className="hs-btn sec" onClick={() => setMembers(colleagues.filter(row => row.state !== "archived").map(row => row.agentId))}>{t("ws.channels.all")}</button><button type="button" className="hs-btn sec" onClick={() => setMembers([])}>{t("ws.channels.none")}</button></div>
           <div className="hs-channel-choices">{matchingColleagues.map(row => <label key={row.agentId} className="hs-channel-choice">
-            <input type="checkbox" checked={selectedMembers.has(row.agentId)} onChange={event => { const checked = event.currentTarget.checked; setMembers(previous => checked ? [...new Set([...previous, row.agentId])] : previous.filter(id => id !== row.agentId)); }} />
-            <Avatar agent={row} /><span><strong>{row.identity.displayName}</strong><small>{row.identity.title ?? t("ws.role.colleague")}</small></span></label>)}
+            <input type="checkbox" checked={selectedMembers.has(row.agentId)} disabled={row.state === "archived" && !selectedMembers.has(row.agentId)} onChange={event => { const checked = event.currentTarget.checked; setMembers(previous => checked ? [...new Set([...previous, row.agentId])] : previous.filter(id => id !== row.agentId)); }} />
+            <Avatar agent={row} /><span><strong>{row.identity.displayName}</strong><small>{row.state === "archived" ? t("ws.channels.archivedMember") : row.identity.title ?? t("ws.role.colleague")}</small></span></label>)}
             {!matchingColleagues.length ? <p className="hs-channel-search-empty" role="status">{t("ws.search.empty")}</p> : null}</div></> : <p>{t("ws.channels.noColleagues")}</p>}
       </fieldset>
       {view.error ? <p className="wsd-notice is-error" role="alert">{t(view.error as Parameters<Translate>[0])}</p> : null}
@@ -224,14 +224,17 @@ export function LocalChannelAutonomyControls({ view, model, colleagues, t, disab
     </div></details>;
 }
 
-export function LocalChannelComposer({ view, model, colleagues, t, disconnected, hasConnection, configure }: { view: LocalChannelsView; model: WorkspaceLocalChannelsModel; colleagues: WorkspaceDevAgent[];
-  t: Translate; disconnected: boolean; hasConnection: boolean; configure: () => void }) {
+export function LocalChannelComposer({ view, model, colleagues, t, disconnected, hasConnection, configure, showAutonomy = true }: { view: LocalChannelsView; model: WorkspaceLocalChannelsModel; colleagues: WorkspaceDevAgent[];
+  t: Translate; disconnected: boolean; hasConnection: boolean; configure: () => void; showAutonomy?: boolean }) {
   const input = useRef<HTMLTextAreaElement>(null), channel = view.channel;
   const [recipientSearch, setRecipientSearch] = useState("");
   const recipients = view.recipientIds ?? channel?.channel.memberIds ?? [];
   const selectedRecipients = useMemo(() => new Set(recipients), [recipients]);
   const colleaguesById = useMemo(() => new Map(colleagues.map(row => [row.agentId, row])), [colleagues]);
-  const query = recipientSearch.trim().toLocaleLowerCase(), members = channel?.channel.memberIds;
+  const activeMembers = channel?.channel.memberIds.filter(id => colleaguesById.has(id)) ?? [];
+  const availableKey = JSON.stringify(activeMembers), recipientKey = JSON.stringify(view.recipientIds ?? []);
+  useEffect(() => { if (view.recipientIds?.some(id => !activeMembers.includes(id))) model.setRecipients(view.recipientIds.filter(id => activeMembers.includes(id))); }, [view.scope, view.channelId, availableKey, recipientKey, model]);
+  const query = recipientSearch.trim().toLocaleLowerCase(), members = activeMembers;
   const matchingRecipients = useMemo(() => (members ?? []).map(id => ({ id, agent: colleaguesById.get(id) })).filter(({ id, agent }) =>
     `${agent?.identity.displayName ?? id} ${agent?.identity.title ?? ""}`.toLocaleLowerCase().includes(query)), [members, colleaguesById, query]);
   const setRecipients = (value: string[]) => model.setRecipients(value);
@@ -259,11 +262,11 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
           <button className="hs-btn sec" disabled={actionLocked || !pendingCount} title={t("ws.channels.queueClearHint")} onClick={() => void model.clearQueue()}>{t(view.queueAction === "clear" ? "ws.channels.queueClearing" : "ws.channels.queueClear")}</button></>}</div>
     </div> : null}
     {queueSupported && pendingCount >= 5 ? <p className="hs-channel-status" role="status">{t("ws.channels.queueFull")}</p> : null}
-    <LocalChannelAutonomyControls view={view} model={model} colleagues={colleagues} t={t} disabled={disconnected} />
+    {showAutonomy ? <LocalChannelAutonomyControls view={view} model={model} colleagues={colleagues} t={t} disabled={disconnected} /> : null}
     <details className="hs-channel-recipients"><summary>{t(!recipients.length ? "ws.channels.notesOnly" : recipients.length === 1 ? "ws.channels.replyOne" : recipients.length === channel.channel.memberIds.length ? "ws.channels.replyAll" : "ws.channels.replyCount", { n: recipients.length })}</summary>
       <fieldset disabled={actionLocked || (busy && !queueSupported)}><legend>{t("ws.channels.responders")}</legend>
         {channel.channel.memberIds.length ? <label className="hs-channel-search"><MagnifyingGlassIcon className="hico" /><input type="search" aria-label={t("ws.channels.searchMembers")} placeholder={t("ws.channels.searchMembers")} value={recipientSearch} onChange={event => setRecipientSearch(event.target.value)} /></label> : null}
-        <div className="hs-channel-picker-actions"><button className="hs-btn sec" onClick={() => setRecipients(channel.channel.memberIds)}>{t("ws.channels.all")}</button><button className="hs-btn sec" onClick={() => setRecipients([])}>{t("ws.channels.notesOnly")}</button></div>
+        <div className="hs-channel-picker-actions"><button className="hs-btn sec" onClick={() => setRecipients(activeMembers)}>{t("ws.channels.all")}</button><button className="hs-btn sec" onClick={() => setRecipients([])}>{t("ws.channels.notesOnly")}</button></div>
         {matchingRecipients.map(({ id, agent }) => <label className="hs-channel-recipient" key={id}><input type="checkbox" checked={selectedRecipients.has(id)} onChange={event => setRecipients(event.target.checked ? [...recipients, id] : recipients.filter(value => value !== id))} />{agent?.identity.displayName ?? id}</label>)}
         {!matchingRecipients.length ? <p className="hs-channel-search-empty" role="status">{t(channel.channel.memberIds.length ? "ws.search.empty" : "ws.channels.noRecipients")}</p> : null}
       </fieldset></details>

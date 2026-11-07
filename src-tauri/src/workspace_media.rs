@@ -61,9 +61,161 @@ pub(super) async fn workspace_media_reveal(app: tauri::AppHandle, id: String) ->
     let path = value["path"].as_str().filter(|value| std::path::Path::new(value).is_absolute()).ok_or("Media unavailable")?;
     app.opener().reveal_item_in_dir(path).map_err(|_| "Cannot show media in Finder".into())
 }
+// User-clicked file opening is limited to the same Core registrations and closed passive extensions.
+#[tauri::command]
+pub(super) async fn workspace_file_open(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let mut source = fetch(&id, "/path", "GET", None).await.map_err(|_| "File unavailable")?;
+    if source.status() != 200 { return Err("File unavailable".into()); }
+    let bytes = bounded_body(&mut source, 8192).await.map_err(|_| "File unavailable")?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| "File unavailable")?;
+    let path = value["path"].as_str().filter(|path| std::path::Path::new(path).is_absolute()).ok_or("File unavailable")?;
+    let ext = std::path::Path::new(path).extension().and_then(|part| part.to_str()).unwrap_or("").to_ascii_lowercase();
+    let expected = match ext.as_str() { "pdf" => "application/pdf", "zip" => "application/zip", "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "md" => "text/markdown", "txt" => "text/plain", _ => return Err("File unavailable".into()) };
+    let head = fetch(&id, "", "HEAD", None).await.map_err(|_| "File unavailable")?;
+    if head.status() != 200 || head.headers().get("Content-Type").and_then(|value| value.to_str().ok()) != Some(expected) { return Err("File unavailable".into()); }
+    app.opener().open_path(path, None::<&str>).map_err(|_| "Cannot open file".into())
+}
+// All writes require a native Save dialog. The renderer can supply neither a destination nor a root.
+fn safe_destination(path: &std::path::Path, extensions: &[&str]) -> bool {
+    let forbidden = [".hara", ".codex", ".claude", ".gemini", ".ssh", "Keychains"];
+    path.is_absolute() && !path.components().any(|part| forbidden.iter().any(|name| part.as_os_str().to_string_lossy().eq_ignore_ascii_case(name)))
+        && path.extension().and_then(|part| part.to_str()).is_some_and(|ext| extensions.iter().any(|allowed| ext.eq_ignore_ascii_case(allowed)))
+        && match std::fs::symlink_metadata(path) { Ok(meta) => meta.is_file() && !meta.file_type().is_symlink(), Err(error) => error.kind() == std::io::ErrorKind::NotFound }
+}
+#[cfg(unix)]
+fn save_in_directory(directory: &std::fs::File, name: &std::ffi::OsStr, bytes: &[u8]) -> Result<(), String> {
+    use std::{ffi::CString, io::Write, os::{fd::{AsRawFd, FromRawFd}, unix::{ffi::OsStrExt, fs::MetadataExt}}};
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_| "Cannot save file")?.as_nanos();
+    let temporary = CString::new(format!(".hara-download-{}-{stamp}.part", std::process::id())).map_err(|_| "Cannot save file")?;
+    let destination = CString::new(name.as_bytes()).map_err(|_| "Cannot save file")?;
+    // Both publication and cleanup are relative to the verified directory descriptor. Replacing
+    // an ancestor with a symlink cannot redirect the Host's write into a protected runtime Home.
+    let raw = unsafe { libc::openat(directory.as_raw_fd(), temporary.as_ptr(), libc::O_CREAT | libc::O_EXCL | libc::O_WRONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC, 0o600) };
+    if raw < 0 { return Err("Cannot save file".into()); }
+    let mut output = unsafe { std::fs::File::from_raw_fd(raw) };
+    let identity = output.metadata().map_err(|_| "Cannot verify save file")?;
+    let same_temporary = || { let mut info = std::mem::MaybeUninit::<libc::stat>::uninit();
+        let ok = unsafe { libc::fstatat(directory.as_raw_fd(), temporary.as_ptr(), info.as_mut_ptr(), libc::AT_SYMLINK_NOFOLLOW) } == 0;
+        ok && { let info = unsafe { info.assume_init() }; info.st_dev as u64 == identity.dev() && info.st_ino as u64 == identity.ino() } };
+    let result = (|| { output.write_all(bytes).map_err(|_| "Cannot save file")?; output.sync_all().map_err(|_| "Cannot save file")?;
+        if !same_temporary() { return Err("Save location changed"); }
+        if unsafe { libc::renameat(directory.as_raw_fd(), temporary.as_ptr(), directory.as_raw_fd(), destination.as_ptr()) } != 0 { return Err("Cannot save file"); } Ok(()) })();
+    if result.is_err() && same_temporary() { unsafe { libc::unlinkat(directory.as_raw_fd(), temporary.as_ptr(), 0); } }
+    result.map_err(str::to_string)
+}
+fn atomic_save(path: &std::path::Path, bytes: &[u8], extensions: &[&str]) -> Result<(), String> {
+    if !safe_destination(path, extensions) { return Err("Cannot save at this location".into()); }
+    let parent = path.parent().and_then(|value| std::fs::canonicalize(value).ok()).ok_or("Cannot save at this location")?;
+    let destination = parent.join(path.file_name().ok_or("Cannot save at this location")?);
+    if !safe_destination(&destination, extensions) { return Err("Cannot save at this location".into()); }
+    #[cfg(unix)] {
+        use std::os::unix::fs::{OpenOptionsExt, MetadataExt};
+        use std::os::fd::AsRawFd;
+        let expected = std::fs::symlink_metadata(&parent).map_err(|_| "Cannot save at this location")?;
+        let directory = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC).open(&parent).map_err(|_| "Cannot save at this location")?;
+        let opened = directory.metadata().map_err(|_| "Cannot save at this location")?;
+        if !opened.is_dir() || expected.dev() != opened.dev() || expected.ino() != opened.ino() { return Err("Save location changed".into()); }
+        #[cfg(target_os = "macos")] {
+            use std::os::unix::ffi::OsStrExt;
+            let mut buffer = vec![0u8; libc::PATH_MAX as usize];
+            if unsafe { libc::fcntl(directory.as_raw_fd(), libc::F_GETPATH, buffer.as_mut_ptr()) } != 0 { return Err("Cannot verify save location".into()); }
+            let end = buffer.iter().position(|byte| *byte == 0).ok_or("Cannot verify save location")?;
+            if std::path::Path::new(std::ffi::OsStr::from_bytes(&buffer[..end])) != parent { return Err("Save location changed".into()); }
+        }
+        #[cfg(target_os = "linux")]
+        if std::fs::read_link(format!("/proc/self/fd/{}", directory.as_raw_fd())).map_err(|_| "Cannot verify save location")? != parent { return Err("Save location changed".into()); }
+        return save_in_directory(&directory, path.file_name().ok_or("Cannot save file")?, bytes);
+    }
+    #[cfg(not(unix))] {
+        use std::io::Write;
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_| "Cannot save file")?.as_nanos();
+        let temporary = parent.join(format!(".hara-download-{}-{stamp}.part", std::process::id()));
+        let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(|_| "Cannot save file")?;
+        let result = (|| { output.write_all(bytes).map_err(|_| "Cannot save file")?; output.sync_all().map_err(|_| "Cannot save file")?;
+            if !safe_destination(&destination, extensions) { return Err("Cannot save at this location"); }
+            std::fs::rename(&temporary, &destination).map_err(|_| "Cannot save file") })();
+        drop(output); if result.is_err() { let _ = std::fs::remove_file(&temporary); } result.map_err(str::to_string)
+    }
+}
+async fn selected_destination(app: tauri::AppHandle, name: String, extensions: Vec<String>) -> Result<Option<std::path::PathBuf>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    tauri::async_runtime::spawn_blocking(move || { let extensions: Vec<&str> = extensions.iter().map(String::as_str).collect();
+        app.dialog().file().add_filter("File", &extensions).set_file_name(name).blocking_save_file()
+            .map(|value| value.into_path().map_err(|_| "Cannot save at this location".to_string())).transpose()
+    }).await.map_err(|_| "Save dialog unavailable".to_string())?
+}
+#[tauri::command]
+pub(super) async fn workspace_media_download(app: tauri::AppHandle, id: String) -> Result<bool, String> {
+    let mut metadata = fetch(&id, "/path", "GET", None).await.map_err(|_| "Media unavailable")?;
+    if metadata.status() != 200 { return Err("Media unavailable".into()); }
+    let body = bounded_body(&mut metadata, 8192).await.map_err(|_| "Media unavailable")?;
+    let value: serde_json::Value = serde_json::from_slice(&body).map_err(|_| "Media unavailable")?;
+    let path = value["path"].as_str().filter(|value| std::path::Path::new(value).is_absolute()).ok_or("Media unavailable")?;
+    let source_path = std::path::Path::new(path);
+    let name = source_path.file_name().and_then(|name| name.to_str()).ok_or("Media unavailable")?.to_string();
+    let head = fetch(&id, "", "HEAD", None).await.map_err(|_| "Media unavailable")?;
+    if !matches!(head.status().as_u16(), 200 | 206) { return Err("Media unavailable".into()); }
+    let mime = head.headers().get("Content-Type").and_then(|value| value.to_str().ok()).ok_or("Media unavailable")?.to_string();
+    let extensions = match mime.as_str() { "image/png" => vec!["png"], "image/jpeg" => vec!["jpg", "jpeg"], "image/gif" => vec!["gif"], "image/webp" => vec!["webp"],
+        "video/mp4" => vec!["mp4", "m4v"], "video/quicktime" => vec!["mov"], "video/webm" => vec!["webm"], _ => return Err("Media unavailable".into()) };
+    let total = head.headers().get("Content-Range").and_then(|value| value.to_str().ok()).and_then(|value| value.rsplit('/').next()).and_then(|value| value.parse::<usize>().ok())
+        .or_else(|| head.content_length().and_then(|value| usize::try_from(value).ok())).filter(|value| *value > 0 && *value <= 256 * 1024 * 1024).ok_or("Media unavailable")?;
+    let selected = selected_destination(app, name, extensions.iter().map(|value| value.to_string()).collect()).await?;
+    let Some(selected) = selected else { return Ok(false); };
+    let mut bytes = Vec::with_capacity(total);
+    while bytes.len() < total {
+        let start = bytes.len(); let end = (start + MAX_BYTES).min(total) - 1; let range = format!("bytes={start}-{end}");
+        let mut response = fetch(&id, "", "GET", Some(&range)).await.map_err(|_| "Media unavailable")?;
+        if response.status() != 206 || response.headers().get("Content-Type").and_then(|value| value.to_str().ok()) != Some(mime.as_str())
+            || response.headers().get("Content-Range").and_then(|value| value.to_str().ok()) != Some(format!("bytes {start}-{end}/{total}").as_str()) { return Err("Media unavailable".into()); }
+        let chunk = bounded_body(&mut response, MAX_BYTES).await.map_err(|_| "Media unavailable")?;
+        if chunk.len() != end - start + 1 { return Err("Media unavailable".into()); } bytes.extend_from_slice(&chunk);
+    }
+    atomic_save(&selected, &bytes, &extensions)?; Ok(true)
+}
+#[tauri::command]
+pub(super) async fn workspace_export_conversation(app: tauri::AppHandle, text: String) -> Result<bool, String> {
+    if text.is_empty() || text.len() > MAX_BYTES { return Err("Conversation export unavailable".into()); }
+    let selected = selected_destination(app, "Conversation.md".into(), vec!["md".into(), "txt".into()]).await?;
+    let Some(selected) = selected else { return Ok(false); };
+    atomic_save(&selected, text.as_bytes(), &["md", "txt"])?; Ok(true)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn native_save_ancestor_replacement_stays_in_the_selected_directory() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir().join(format!("hara-native-save-dir-{}", std::process::id()));
+        assert!(!root.exists()); std::fs::create_dir(&root).unwrap();
+        let selected = root.join("selected"); let retained = root.join("retained"); let protected = root.join(".hara");
+        std::fs::create_dir(&selected).unwrap(); std::fs::create_dir(&protected).unwrap();
+        let directory = std::fs::File::open(&selected).unwrap(); std::fs::rename(&selected, &retained).unwrap(); symlink(&protected, &selected).unwrap();
+        save_in_directory(&directory, std::ffi::OsStr::new("fixture.md"), b"Synthetic verified bytes").unwrap();
+        assert_eq!(std::fs::read(retained.join("fixture.md")).unwrap(), b"Synthetic verified bytes"); assert!(!protected.join("fixture.md").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn native_save_rejects_private_paths_extensions_and_aliases_and_preserves_bytes() {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("hara-save-{}-{stamp}", std::process::id())); std::fs::create_dir(&root).unwrap();
+        let output = root.join("Conversation.md"); atomic_save(&output, b"synthetic conversation", &["md"]).unwrap();
+        assert_eq!(std::fs::read(&output).unwrap(), b"synthetic conversation");
+        atomic_save(&output, b"explicit replacement", &["md"]).unwrap(); assert_eq!(std::fs::read(&output).unwrap(), b"explicit replacement");
+        assert!(atomic_save(&root.join("auth.json"), b"no", &["md"]).is_err()); assert!(!root.join("auth.json").exists());
+        let private = root.join(".hara"); std::fs::create_dir(&private).unwrap(); assert!(atomic_save(&private.join("report.md"), b"no", &["md"]).is_err());
+        #[cfg(unix)] {
+            std::os::unix::fs::symlink(&output, root.join("link.md")).unwrap();
+            assert!(atomic_save(&root.join("link.md"), b"must not overwrite", &["md"]).is_err()); assert_eq!(std::fs::read(&output).unwrap(), b"explicit replacement");
+            std::os::unix::fs::symlink(&private, root.join("alias")).unwrap();
+            assert!(atomic_save(&root.join("alias/report.md"), b"no", &["md"]).is_err()); assert!(!private.join("report.md").exists());
+        }
+        assert!(!safe_destination(std::path::Path::new("relative.md"), &["md"]));
+        assert!(std::fs::read_dir(&root).unwrap().all(|entry| !entry.unwrap().file_name().to_string_lossy().ends_with(".part")));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     #[test] fn opaque_media_routes_reject_paths_queries_and_other_authorities() {
         let id = "a".repeat(64);
         for uri in [format!("hara-media://localhost/{id}"), format!("http://hara-media.localhost/{id}")] {

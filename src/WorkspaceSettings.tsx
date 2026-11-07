@@ -1,3 +1,4 @@
+import { WorkspaceDeletedColleagues } from "./WorkspaceDeletedColleagues";
 import { WorkspaceExtensions } from "./WorkspaceExtensions";
 import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useWorkspaceLocale, workspacePlatform } from "./workspace-shell-hooks";
@@ -13,8 +14,9 @@ import { hasUpdateAttention, type WorkspaceUpdater } from "./workspace-updater-s
 import { SettingsLeaveGuard, type SettingsLeaveAction } from "./settings-leave-guard";
 import "./workspace-settings.css";
 
-export type SettingsPage = "overview" | "connections" | "runtimes" | "schedules" | "plugins" | "skills" | "members" | "general" | "appearance" | "updates";
+export type SettingsPage = "colleagues" | "overview" | "connections" | "runtimes" | "schedules" | "plugins" | "skills" | "members" | "general" | "appearance" | "updates";
 const pages: Record<SettingsPage, { name: Key; icon: typeof HomeIcon; detail: Key }> = {
+  colleagues: { name: "ws.nav.colleagues", icon: UsersIcon, detail: "ws.nav.colleagues" },
   overview: { name: "ws.settings.page.overview", icon: HomeIcon, detail: "ws.settings.detail.overview" },
   connections: { name: "ws.settings.page.connections", icon: LinkIcon, detail: "ws.settings.detail.connections" },
   runtimes: { name: "ws.settings.page.runtimes", icon: ComputerDesktopIcon, detail: "ws.settings.detail.runtimes" },
@@ -109,7 +111,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
     document.addEventListener("pointerdown", outside); return () => document.removeEventListener("pointerdown", outside);
   }, [scopeOpen]);
   const switchScope = (workspaceId: string) => { if (workspaceId !== view.workspaceId) requestLeave({ kind: "scope", workspaceId }); else setScopeOpen(false); };
-  const workspacePages: SettingsPage[] = ["connections", "runtimes", "schedules", "plugins", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
+  const workspacePages: SettingsPage[] = ["colleagues", "connections", "runtimes", "schedules", "plugins", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
   const navItem = (id: SettingsPage) => <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}><span aria-hidden>{createElement(pages[id].icon, { className: "hico" })}</span><span>{t(pages[id].name)}</span>{id === "updates" && hasUpdateAttention(updates) ? <i className="wss-update-dot" /> : null}</button>;
   const key = workspace ? `${workspace.workspaceId}:${workspace.resourceGeneration}:${page}` : "loading";
   return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}>
@@ -129,6 +131,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
       {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option><option value="en">English</option><option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option></select></label></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
         : page === "overview" ? null : !workspace ? <p role="status">{t(view.loading ? "ws.settings.loading" : "ws.settings.createFirst")}</p> : <fieldset className="wss-content" key={key} disabled={Boolean(readonly)}>
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
+          {page === "colleagues" ? <WorkspaceDeletedColleagues key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} locale={locale} /> : null}
           {page === "connections" ? production ? <WorkspaceConnections model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.connectionsLab")}</p> : null}
           {page === "runtimes" ? production ? <WorkspaceRuntimeSettings model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.runtimeLab")}</p> : null}
           {page === "plugins" ? <WorkspaceExtensions model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} onDirty={leaveGuard.setDirty} /> : null}

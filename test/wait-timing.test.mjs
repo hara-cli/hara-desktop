@@ -89,12 +89,12 @@ const require=createRequire(import.meta.url),root=fileURLToPath(new URL("../",im
 const bundle=await build({stdin:{contents:'export { Transcript } from "./src/WorkspaceLocalDev.tsx";export { WorkspaceTimingChip, WorkspaceDraftTiming, WorkspaceWaiting, friendlyTool } from "./src/WorkspaceWaitTiming.tsx";',resolveDir:root,loader:"tsx"},bundle:true,format:"cjs",platform:"node",jsx:"automatic",external:["react"],loader:{".css":"empty",".svg":"dataurl"},write:false});
 const module={exports:{}};new Function("require","module","exports",bundle.outputFiles[0].text)(require,module,module.exports);
 const React=require("react"),{renderToStaticMarkup}=require("react-dom/server");
-test("real transcript renders tiny chips, strict T9 checks and folded failures in all locales",()=>{
+test("M1 renders timing below bubbles with a slow dot and folded failures in all locales",()=>{
  for(const locale of ["en","zh-Hans","zh-Hant"]){const t=makeT(locale),done=report({state:"completed",durationMs:8200}),history=[{role:"user",content:"question"},{role:"assistant",text:"answer",tools:[]}];
  const render=(extra={})=>renderToStaticMarkup(React.createElement(module.exports.Transcript,{history,stages:[done],messageTimings:[timing({T5:1000,T8:6000,T9:8200})],conversation:c({state:"completed",taskState:"completed",completion:{state:"verified"}}),t,...extra}));
- const html=render();assert.ok(html.includes("wsd-timing-chip"));assert.ok(html.includes("8.2s"));assert.ok(html.includes("✓"));assert.equal(html.includes("wsd-runtime-stages"),false);assert.equal(html.includes("ws.wait."),false);
+ const html=render();assert.ok(html.includes("wsd-timing-chip"));assert.ok(html.includes("8.2s"));assert.equal(html.includes("✓"),false);assert.ok(html.indexOf("wsd-bubble")<html.indexOf("hd-message-meta"));assert.equal(html.includes("wsd-runtime-stages"),false);assert.equal(html.includes("ws.wait."),false);
  assert.equal(render({messageTimings:[timing({T8:6000})]}).includes("✓"),false);
- const slow=render({stages:[report({state:"completed",durationMs:32000})],messageTimings:[timing({T8:30000,T9:32000})]});assert.ok(slow.includes(t("ws.wait.slow")));assert.equal(slow.includes("wsd-runtime-stages"),false);
+ const slow=render({stages:[report({state:"completed",durationMs:32000})],messageTimings:[timing({T8:30000,T9:32000})]});assert.ok(slow.includes("hd-slow-dot"));assert.equal(slow.replace(/<[^>]*>/g,"").includes(t("ws.wait.slow")),false);assert.equal(slow.includes("wsd-runtime-stages"),false);
  const failed=render({stages:[report({state:"error",durationMs:8000,errorKind:"runtime_network"})]});assert.ok(failed.includes("wsd-runtime-stages"));assert.equal(failed.includes('open=""'),false);
  assert.equal(module.exports.friendlyTool("private-tool-name",t),t("ws.wait.tool.generic"));}
 });
@@ -173,4 +173,10 @@ test("authentication failures check account access without requiring a new local
   assert.doesNotMatch(html,/sign in again|needs you to sign in|needs to be renewed|重新登[录入]|需要登[录入]/i);
  }
  assert.equal(settings,0,"rendering never starts login, opens settings, or replays the task");
+});
+
+test("brief hidden tool metadata keeps a continuous sender while visible cards separate it",()=>{
+ const history=[{role:"assistant",text:"First visible reply",tools:["workspace_read"]},{role:"tool",results:[{id:"call",name:"workspace_read",content:"Synthetic read",isError:false}]},{role:"assistant",text:"Second visible reply",tools:[]}];
+ const render=detailed=>renderToStaticMarkup(React.createElement(module.exports.Transcript,{history,t:makeT("en"),detailed}));
+ assert.equal((render(false).match(/class="hs-who"/g)??[]).length,1);assert.equal((render(true).match(/class="hs-who"/g)??[]).length,2);
 });

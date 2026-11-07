@@ -1,3 +1,4 @@
+import { QuestionMarkCircleIcon } from "@heroicons/react/24/outline";
 import type { Key, makeT } from "./i18n";
 import type { WorkspaceDevAsyncAsk, WorkspaceDevQuestion, WorkspaceQuestionConversation } from "./workspace-dev-state";
 import { connectionRecoveryReason } from "./workspace-resume";
@@ -61,7 +62,7 @@ export function WorkspaceUserQuestion({ conversation, t, disabled, supported, on
   const step = workspaceQuestionStep(t, question.step);
   const hasChoices = answerChoices(question.options).length > 0;
   return <section className="wsd-ask wsd-user-question is-thread" aria-labelledby={titleId} data-task-state="awaiting_user" data-answer-mode={hasChoices ? "options" : "free-text"}>
-    <header className="wsd-ask-head"><span className="wsd-ask-title">{question.header ?? t("ws.question.title")}</span><span className="wsd-ask-reason" role="status">{t(question.intent && hasChoices ? `ws.question.intent.${question.intent}` : `ws.question.reason.${question.reason}`)}</span></header>
+    <header className="wsd-ask-head"><QuestionMarkCircleIcon className="hico" aria-hidden="true" /><span className="wsd-ask-title">{question.header ?? t("ws.question.title")}</span><span className="wsd-ask-reason" role="status">{t(question.intent && hasChoices ? `ws.question.intent.${question.intent}` : `ws.question.reason.${question.reason}`)}</span></header>
     <p id={titleId} className="wsd-user-question-text">{workspaceQuestionText(t, question)}</p>
     {step ? <p className="wsd-ask-step"><strong>{t("ws.question.step")}</strong> {step}</p> : null}
     {finishing ? <p role="status">{t("ws.resume.finishing")}</p> : null}
@@ -87,7 +88,7 @@ function WorkspaceAsyncQuestion({ ask, t, disabled, onAnswer, onTypeAnswer, viaC
   const item = ask.questions[0]; if (!item) return null;
   const titleId = `async-question-${ask.requestId}`;
   return <section className="wsd-ask is-async" aria-labelledby={titleId} data-delivery="async">
-    <header className="wsd-ask-head"><span className="wsd-ask-title">{item.header ?? t("ws.question.async.title")}</span></header>
+    <header className="wsd-ask-head"><QuestionMarkCircleIcon className="hico" aria-hidden="true" /><span className="wsd-ask-title">{item.header ?? t("ws.question.async.title")}</span></header>
     <p id={titleId} className="wsd-user-question-text">{item.question}</p>
     <WorkspaceQuestionOptions id={ask.requestId} options={item.options} t={t} disabled={disabled} onAnswer={onAnswer} onTypeAnswer={onTypeAnswer} />
     <footer className="wsd-ask-foot"><small>{viaComposer ? `${t(answerChoices(item.options).length ? "ws.question.async.composerHint" : "ws.question.freeTextHint")} ` : ""}{t("ws.question.async.note")}</small></footer>

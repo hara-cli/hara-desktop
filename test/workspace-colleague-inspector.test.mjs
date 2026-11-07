@@ -35,8 +35,8 @@ test("selected colleague inspector owns schedule management in all three locales
     assert.doesNotMatch(html, /sonnet|Open Runtime settings|Open model settings|管理本机引擎/);
     assert.match(html, /Visual summary/);
     assert.doesNotMatch(html, /Private other colleague schedule|Another task/);
-    for (const label of (locale === "en" ? ["Schedules", "Edit", "Pause", "Delete", "Create in chat; manage only this colleague here."]
-      : ["定时", "编辑", "停用", "删除", "在聊天里创建；这里只管理这位同事的定时。"])) assert.ok(html.includes(label), `${locale}: ${label}`);
+    for (const label of (locale === "en" ? ["Scheduled Tasks", "Edit", "Pause", "Delete", "Create in chat; manage only this colleague here."]
+      : locale === "zh-Hant" ? ["排程", "編輯", "停用", "刪除", "在聊天裡建立；這裡只管理這位同事的排程。"] : ["定时", "编辑", "停用", "删除", "在聊天里创建；这里只管理这位同事的定时。"])) assert.ok(html.includes(label), `${locale}: ${label}`);
   }
 });
 
@@ -55,7 +55,7 @@ test("main Hara shares the Runtime and model entry without colleague schedules",
   const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: true,
     onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] }),
     async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
-  assert.match(html, /Hara management/);
+  assert.match(html, /Manage Hara/);
   assert.match(html, /Use this engine/);
   assert.match(html, /This Hara colleague.*model/);
   assert.doesNotMatch(html, /Open Runtime settings|Open model settings|gpt-6/);
@@ -121,7 +121,7 @@ test("main and colleague inspectors retain identical visible, disabled same-valu
 test("selected group inspector shows its members without colleague runtime controls", () => {
   const agents = [{ agentId: "dora", kind: "colleague", identity: { displayName: "Dora", title: "Design" }, runtime: { id: "pi", label: "Pi", available: true } }];
   const html = renderToStaticMarkup(createElement(groupModule.exports.default, { name: "Design review", memberIds: ["dora"], agents, locale: "en", inert: false, onClose() {}, onMembers() {} }));
-  assert.match(html, /Manage group Design review/);
+  assert.match(html, /Design review · Manage Group/);
   assert.match(html, /Dora/);
   assert.match(html, /Manage members/);
   assert.doesNotMatch(html, /Open Runtime settings|Open model settings/);

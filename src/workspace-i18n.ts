@@ -623,6 +623,8 @@ export const WORKSPACE_EXTRA_KEYS = [
   ['ws.approval.runtime', 'Pi · built in', 'Pi · 内置', 'Pi · 內建'],
   ['ws.approval.draftTitle', 'Review your new colleague', '核对新同事草稿', '核對新同事草稿'],
   ['ws.approval.name', 'Name', '名字', '名字'],
+  ['ws.channels.archivedMember', 'Deleted colleague', '已删除同事', '已刪除同事'],
+  ['ws.approval.advanced', 'Advanced', '高级', '進階'],
   ['ws.approval.handle', 'Unique ID', '唯一标识', '唯一識別碼'],
   ['ws.approval.role', 'Role', '职责', '職責'],
   ['ws.approval.project', 'Responsible project (label only)', '负责项目（仅作标签）', '負責專案（僅作標籤）'],

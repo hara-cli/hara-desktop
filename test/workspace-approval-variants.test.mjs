@@ -4,6 +4,7 @@ import {readFileSync} from "node:fs";
 import {createRequire} from "node:module";
 import ts from "typescript";
 import {makeT} from "../src/i18n.ts";
+import {redesignText} from "../src/desktop-redesign-copy.ts";
 import {WorkspaceDevModel} from "../src/workspace-dev-state.ts";
 const require=createRequire(import.meta.url),React=require("react");
 const source=readFileSync(new URL("../src/WorkspaceLocalDev.tsx",import.meta.url),"utf8");
@@ -18,7 +19,7 @@ function mount(card,{disabled=false,runtimeOptions=[],agents=[]}={}){
  const calls=[],slots=[];let cursor=0,release,settled=0;
  const wait=new Promise(resolve=>release=resolve);
  const hooks={useRef(value){const index=cursor++;return slots[index]??={current:value};},useState(initial){const index=cursor++;if(!(index in slots))slots[index]=typeof initial==="function"?initial():initial;return[slots[index],value=>{slots[index]=typeof value==="function"?value(slots[index]):value;}];}};
- const exports={};new Function("require","exports",compiled)(name=>name==="react"?{...React,...hooks}:require(name),exports);
+ const exports={};new Function("require","exports","redesignText","CalendarDaysIcon","UserPlusIcon","ShieldCheckIcon",compiled)(name=>name==="react"?{...React,...hooks}:require(name),exports,redesignText,...["CalendarDaysIcon","UserPlusIcon","ShieldCheckIcon"].map(key=>require("@heroicons/react/24/outline")[key]));
  const model={getSnapshot:()=>({workspace:{approvals:calls.length?[]:[card],runtimeOptions,agents}}),respond(...args){calls.push(args);return wait;}};
  const tree=exports.ApprovalCard({card,model,t:makeT("en"),disabled,onSettled:()=>settled++});
  const nodes=[];function walk(value){if(Array.isArray(value))value.forEach(walk);else if(value&&typeof value==="object"&&value.props){nodes.push(value);walk(value.props.children);}}walk(tree);

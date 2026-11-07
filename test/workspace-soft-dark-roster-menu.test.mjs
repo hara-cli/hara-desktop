@@ -17,24 +17,21 @@ const render = kind => { const old = globalThis.window; globalThis.window = { in
   try { return renderToStaticMarkup(createElement(module.exports.WorkspaceRosterMenu, props(kind))); }
   finally { if (old === undefined) delete globalThis.window; else globalThis.window = old; } };
 
-test("colleague roster menu matches the available actions plus Manage while deletion is undecided", () => {
+test("colleague menu exposes available actions, an actual folder submenu and optional archive authority", () => {
   const html = render("colleague");
-  for (const label of ["Pin", "Move to new section", "Mark as Unread", "Rename Bot", "Copy conversation ID", "Hide from sidebar", "Manage"])
-    assert.match(html, new RegExp(`>${label}</button>`));
-  assert.equal((html.match(/role="menuitem"/g) ?? []).length, 7);
-  assert.doesNotMatch(html, /Duplicate|Archive/);
+  for (const label of ["Pin", "Move to Folder", "Mark as Unread", "Rename Colleague…", "Hide from Sidebar", "Manage Colleague…"]) assert.ok(html.includes(label), label);
+  assert.match(html, /aria-haspopup="menu"/); assert.doesNotMatch(html, /Copy Conversation ID|Delete Colleague|Archive|disabled=""/);
+  const withArchive = renderToStaticMarkup(createElement(module.exports.WorkspaceRosterMenu, { ...props("colleague"), onArchive() {} }));
+  assert.match(withArchive, /Delete Colleague/);
 });
-
-test("main Hara can open Manage but cannot Delete or Hide", () => {
-  const html = render("main");
-  assert.match(html, />Manage<\/button>/);
-  assert.doesNotMatch(html, />Delete<\/button>/);
-  assert.match(html, /disabled=""[^>]*>Hide from sidebar<\/button>/);
+test("main Hara has only Unread, Manage and an actually supported New Session", () => {
+  const html = render("main"); assert.match(html, /Manage Hara/); assert.match(html, /Mark as Unread/);
+  assert.doesNotMatch(html, /Hide from Sidebar|Delete|Move to Folder|Pin|New Session/);
+  const supported = renderToStaticMarkup(createElement(module.exports.WorkspaceRosterMenu, { ...props("main"), onNewSession() {} })); assert.match(supported, /New Session/);
 });
-
-test("no Delete entry, internal archive code name, or row title tooltips remain", () => {
-  const source = readFileSync(new URL("../src/WorkspaceLocalDev.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /rosterDelete|setRosterDelete|Soft Dark|title=\{(?:row\.identity\.displayName|item\.row\.agent\.identity\.displayName|item\.row\.name)\}/);
-  assert.doesNotMatch(render("colleague"), />Delete<\/button>/);
-  assert.match(source, /onManage=\{\(\) => void manageRosterAgent\(menuAgent\)\}/);
+test("group menus omit deletion and internal identifiers; names have custom focus tooltips", () => {
+  const html = renderToStaticMarkup(createElement(module.exports.WorkspaceRosterMenu, { ...props("colleague"), targetKind: "group", onArchive() {} }));
+  assert.match(html, /Rename Group/); assert.match(html, /Manage Group/); assert.doesNotMatch(html, /Delete|session-1/);
+  const source = readFileSync(new URL("src/WorkspaceSidebarC.tsx", new URL("../", import.meta.url)), "utf8");
+  assert.doesNotMatch(source, /title=/); assert.match(source, /role="tooltip"/);
 });

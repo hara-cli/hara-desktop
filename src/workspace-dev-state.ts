@@ -1,4 +1,5 @@
-import type { WorkspaceMedia } from "./workspace-media";
+import { workspaceMediaMimeAllowed } from "./workspace-media.ts";
+import type { WorkspaceMedia, WorkspaceMediaDescription } from "./workspace-media";
 import { LocalWaitClock, waitScope } from "./wait-timing.ts";
 import { parseContextCompactions, type ContextCompactionView } from "./context-compaction.ts";
 import { parseWorkspaceAssistantPreview, type WorkspaceAssistantPreview } from "./assistant-preview.ts";
@@ -22,6 +23,7 @@ export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: st
 export type RuntimePermissionTier = "full-protected" | "controlled";
 export interface WorkspaceDevAgent { agentId: string; kind: "main" | "colleague"; state: string;
   configRevision?: number; agentEpoch?: number; description?: string; permissionTier?: RuntimePermissionTier;
+  archivedAt?: string; pausedScheduleCount?: number;
   identity: { displayName: string; title?: string; emoji?: string; avatar?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 export interface ColleagueCreateDraft { username: string; displayName: string; title: string; instructions: string;
   project: string; runtimeId: AgentRuntimeId; permissionTier: RuntimePermissionTier }
@@ -219,7 +221,16 @@ export class WorkspaceDevModel {
     if (!workspace || expectedScope !== this.mediaScope || !this.rpc.supportsCapability?.("workspace.media.v1")) throw new Error("Workspace media unavailable");
     const result = await this.rpc.request<WorkspaceMedia>("workspace.media.register", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration, path });
     if (this.view.workspace?.workspaceId !== workspace.workspaceId || this.view.workspace?.resourceGeneration !== workspace.resourceGeneration
-      || !result || !/^[a-f0-9]{64}$/u.test(result.id) || !/^(image|video)\//u.test(result.mime) || !Number.isSafeInteger(result.bytes) || result.bytes < 1) throw new Error("Workspace media unavailable");
+      || !result || !/^[a-f0-9]{64}$/u.test(result.id) || !workspaceMediaMimeAllowed(result.mime) || !Number.isSafeInteger(result.bytes) || result.bytes < 1) throw new Error("Workspace media unavailable");
+    return result;
+  }
+  async describeMedia(path: string, expectedScope = this.mediaScope): Promise<WorkspaceMediaDescription> {
+    const workspace = this.view.workspace;
+    if (!workspace || expectedScope !== this.mediaScope) throw new Error("Workspace media unavailable");
+    if (!this.rpc.supportsCapability?.("workspace.media.states.v1")) return { state: "ready", media: await this.registerMedia(path, expectedScope) };
+    const result = await this.rpc.request<WorkspaceMediaDescription>("workspace.media.describe", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration, path });
+    if (expectedScope !== this.mediaScope || !result || !["ready", "outside", "missing", "failed"].includes(result.state)) throw new Error("Workspace media unavailable");
+    if (result.state === "ready" && (!result.media || !/^[a-f0-9]{64}$/u.test(result.media.id) || !workspaceMediaMimeAllowed(result.media.mime) || !Number.isSafeInteger(result.media.bytes) || result.media.bytes < 1)) throw new Error("Workspace media unavailable");
     return result;
   }
   supportsConnectionModels(): boolean { return this.rpc.supportsCapability?.("workspace.connection-models.v1") === true; }
@@ -696,10 +707,36 @@ export class WorkspaceDevModel {
         throw new WorkspaceViewError("ws.notice.invalidView");
     } finally { this.runtimeChanges.delete(targetKey); this.update({}); }
   }
+  supportsAgentArchive(): boolean { return this.rpc.supportsCapability?.("workspace.agents.archive.v1") === true; }
+  async setAgentArchived(agent: WorkspaceDevAgent, archived: boolean): Promise<{ agent: WorkspaceDevAgent; pausedSchedules: number }> {
+    const workspace = this.view.workspace, epoch = this.epoch;
+    if (!workspace || !this.supportsAgentArchive() || !agent.configRevision || !agent.agentEpoch || agent.kind === "main")
+      throw new WorkspaceViewError("ws.notice.invalidView");
+    const workspaceId = workspace.workspaceId, generation = workspace.resourceGeneration;
+    const result = await this.workspaceRequest<{ agent: WorkspaceDevAgent; pausedSchedules: number }>("workspace.agents.setArchived", {
+      agentId: agent.agentId, archived, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
+    if (epoch !== this.epoch || this.view.workspace?.workspaceId !== workspaceId || this.view.workspace.resourceGeneration !== generation)
+      throw new WorkspaceViewError("ws.notice.scopeChanged");
+    if (!result || result.agent?.agentId !== agent.agentId || result.agent.kind !== "colleague" || result.agent.state !== (archived ? "archived" : "active")
+      || result.agent.configRevision !== agent.configRevision || result.agent.agentEpoch !== agent.agentEpoch + 1
+      || !Number.isSafeInteger(result.pausedSchedules) || result.pausedSchedules < 0) throw new WorkspaceViewError("ws.notice.invalidView");
+    if (archived && this.view.agentId === agent.agentId) {
+      const main = workspace.agents.find(row => row.kind === "main");
+      if (main) await this.selectAgent(main.agentId); else await this.refresh();
+    } else await this.refresh();
+    if (this.view.workspace?.workspaceId !== workspaceId || this.view.workspace.resourceGeneration !== generation)
+      throw new WorkspaceViewError("ws.notice.scopeChanged");
+    return result;
+  }
   async updateAgentPersona(agent: WorkspaceDevAgent, profile: { displayName: string; title?: string; emoji?: string; avatar?: string }): Promise<void> {
     if (!agent.configRevision || !agent.agentEpoch) throw new WorkspaceViewError("ws.notice.invalidView");
     await this.workspaceRequest("workspace.agents.updatePersona", { agentId: agent.agentId, input: { profile }, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
     await this.refresh();
+  }
+  async renameWorkspace(label: string, workspaceId: string): Promise<void> {
+    if (this.view.workspaceId !== workspaceId || !this.view.directory) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    await this.workspaceRequest("workspace.rename", { label, expectedRevision: this.view.directory.revision });
+    await this.loadDirectory(); if (this.view.workspaceId === workspaceId) await this.refresh();
   }
   async preferences(): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.get", {}); }
   async savePreference(theme: string, expectedRevision: number): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.set", { theme, expectedRevision }); }

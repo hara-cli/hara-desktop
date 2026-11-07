@@ -3744,6 +3744,8 @@ pub fn run() {
             workspace_entry_mode,
             workspace_connection,
             workspace_media::workspace_media_reveal,
+            workspace_media::workspace_media_download, workspace_media::workspace_file_open,
+            workspace_media::workspace_export_conversation,
             start_serve,
             inspect_command_line_hara,
             inspect_terminal_hara,

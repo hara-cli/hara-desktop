@@ -94,11 +94,11 @@ export function ColleaguesPage({ shell, agents, tab, setTab, t, openAgent, openI
             const tasks = shell.tasks.filter(task => task.group === group && task.status !== "pending");
             if (!approvals.length && !tasks.length) return null;
             return <section key={group} aria-label={t(`ws.tasks.group.${group}`)}><h3 className="hs-grp">{t(`ws.tasks.group.${group}`)}<span>{approvals.length + tasks.length}</span></h3>
-              {approvals.map(item => <article key={item.id} className="hs-task" data-approval-id={item.id}><span className="hs-st need">{t("ws.await.kind.approval")}</span><span className="t"><b>{t("ws.approval.summary", { name: item.title })}</b></span>
-                <button className="hs-btn sec" onClick={() => openItem(item)}>{t("ws.tasks.openConversation")}<ChevronRightIcon className="hico" /></button></article>)}
-              {tasks.map(task => <article className="hs-task" key={task.id}><span className={`hs-st ${group === "needsYou" ? "need" : ""}`}>{t(`ws.tasks.status.${task.status}`)}</span>
-                <span className="t"><b>{task.title || t("ws.tasks.untitled")}</b><span>{task.colleagueLabel ?? shell.snapshots[0]?.agents.find(agent => agent.agentId === task.agentId)?.identity.displayName ?? t("ws.role.colleague")}</span></span>
-                {task.agentId ? <button className="hs-btn sec" onClick={() => openAgent(task.agentId!)}>{t("ws.tasks.openConversation")}<ChevronRightIcon className="hico" /></button> : <span className="hs-data-note">{t("ws.tasks.record")}</span>}</article>)}</section>;
+              {approvals.map(item => <article key={item.id} className="hs-task hd-task-card needs-confirmation" data-approval-id={item.id}><header className="hd-card-head"><InboxStackIcon aria-hidden="true" /><strong>{t("ws.await.kind.approval")}</strong><span className="hd-card-state">{t("ws.tasks.status.pending")}</span></header><div className="hd-task-body"><h3>{t("ws.approval.summary", { name: item.title })}</h3></div>
+                <footer><small>{t("ws.approval.boundary")}</small><button className="hs-btn sec" onClick={() => openItem(item)}>{t("ws.tasks.openConversation")}<ChevronRightIcon className="hico" /></button></footer></article>)}
+              {tasks.map(task => <article className={`hs-task hd-task-card${group === "closed" ? " is-settled" : ""}`} key={task.id}><header className="hd-card-head"><ClipboardDocumentCheckIcon aria-hidden="true" /><strong>{t("ws.colleagues.tab.tasks")}</strong><span className="hd-card-state">{t(`ws.tasks.status.${task.status}`)}</span></header>
+                <div className="hd-task-body"><h3>{task.title || t("ws.tasks.untitled")}</h3><span>{task.colleagueLabel ?? shell.snapshots[0]?.agents.find(agent => agent.agentId === task.agentId)?.identity.displayName ?? t("ws.role.colleague")}</span></div>
+                <footer>{task.agentId ? <button className="hs-btn sec" onClick={() => openAgent(task.agentId!)}>{t("ws.tasks.openConversation")}<ChevronRightIcon className="hico" /></button> : <span className="hs-data-note">{t("ws.tasks.record")}</span>}</footer></article>)}</section>;
           })}</>}
     </div>
   </section>;

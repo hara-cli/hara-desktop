@@ -1,6 +1,9 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+export const workspaceMediaMimeAllowed = (mime: string) => ["image/png", "image/jpeg", "image/gif", "image/webp", "video/mp4", "video/quicktime", "video/webm", "application/pdf", "application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/markdown", "text/plain"].includes(mime);
 export interface WorkspaceMedia { id: string; mime: string; bytes: number }
-export interface WorkspaceMediaAccess { readonly mediaScope: string; registerMedia(path: string, expectedScope?: string): Promise<WorkspaceMedia> }
+export type WorkspaceMediaDescription = { state: "ready"; media: WorkspaceMedia } | { state: "outside" | "missing" | "failed" };
+export interface WorkspaceMediaAccess { readonly mediaScope: string; registerMedia(path: string, expectedScope?: string): Promise<WorkspaceMedia>;
+  describeMedia?(path: string, expectedScope?: string): Promise<WorkspaceMediaDescription> }
 /** Only local image references are eligible for Host registration. Remote URLs keep normal behavior. */
 export function localMediaPath(source: string): string | null {
   if (!source || source.startsWith("//") || /^(?:https?:|data:|blob:|hara-media:)/iu.test(source)) return null;

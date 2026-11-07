@@ -1,3 +1,5 @@
+import { redesignText } from "./desktop-redesign-copy";
+import desktopPackage from "../package.json";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { AgentRuntimeId } from "./client";
 import { makeT, type Key } from "./i18n";
@@ -47,6 +49,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
   permissionSupported?: boolean; onApplyPermissionTier?(tier: RuntimePermissionTier): Promise<void>; onRuntimeDirectory(): void; onConnections?(): void;
 }) {
   const t = makeT(locale), zh = locale !== "en";
+  const r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key);
   const engineName = (id: string) => agentRuntimeLabel(id as AgentRuntimeId, zh ? "zh" : "en");
   const connection = workspace.connections?.connections.find(row => row.id === (workspace.connections.activeConnectionId ?? workspace.connections.defaultConnectionId) && row.status === "active");
   const scope = JSON.stringify([workspace.workspaceId, workspace.resourceGeneration, agent.agentId, agent.configRevision, agent.agentEpoch, agent.runtime.id, connection?.id ?? null, workspace.connections?.revision ?? null]);
@@ -164,8 +167,8 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
   };
   const permissionBlocked = !permissionSupported || !onApplyPermissionTier || busy || freshBlocked;
   return <div className="vg-runtime-access vg-rf" data-runtime-form="a">
+    <details className="hd-manage-section hd-engine-section" open><summary>{r("engine")}<small>{engineName(agent.runtime.id)}</small></summary>
     <section className="vg-context-card vg-p0-card vg-rf-card" aria-label={t("ws.rf.title")}>
-      <h3>{t("ws.rf.title")}</h3>
       <label className="vg-rf-field">{t("ws.rf.engine")}
         <select aria-label={t("ws.rf.engine")} value={draftRuntime} disabled={busy || scanning} onChange={event => { setDraftRuntime(event.target.value); setNotice(""); setError(""); }}>
           {!options.some(row => row.id === agent.runtime.id) ? <option value={agent.runtime.id}>{engineName(agent.runtime.id)}</option> : null}
@@ -179,7 +182,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
       <div className="vg-rf-meta" data-runtime-use={use ?? "unknown"}>
         {status && draftRuntime !== "pi" && draftRuntime !== "hara" ? <span className={`vg-rf-chip ${use === "ready" ? "ok" : use === "unavailable" ? "fail" : "warn"}`}>{statusText(status)}</span> : null}
         {(form?.version ?? runtimeRow?.version) ? <span>{t("ws.rf.version", { version: (form?.version ?? runtimeRow?.version)! })}</span> : null}
-        {(form?.path ?? runtimeRow?.path) ? <code>{form?.path ?? runtimeRow?.path}</code> : null}
+        {draftRuntime === "pi" ? <span className="vg-rf-chip ok">{r("piAvailable")}</span> : null}
       </div>
       {inheritsPersonalExtensions(draftRuntime) ? <p role="note" data-personal-extensions="inherited">{t("ws.runtimeExpansion.extensionsInherited")}</p> : null}
       {draftRuntime === "pi" ? <p className="vg-muted">{t(connection ? "ws.rf.piModels" : "ws.rf.piNoConnection")}</p> : null}
@@ -208,15 +211,21 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
         <button type="button" disabled={busy || scanning} onClick={() => void rescan()}>{t(scanning ? "ws.rf.status.detecting" : "ws.rf.recheck")}</button>
         {form?.unavailableReason === "not_installed" || runtimeRow?.unavailableReason === "not_installed" ? <button type="button" className="vg-runtime-install" onClick={onRuntimeDirectory}>{t("ws.rf.install")} <span aria-hidden="true">↗</span></button> : null}
       </div> : null}
+      <details className="vg-rf-details"><summary>{r("details")}</summary>{draftRuntime === "pi" ? <p>{r("piDetails")} (Hara {desktopPackage.version})</p> : <>
+        {(form?.path ?? runtimeRow?.path) ? <code>{form?.path ?? runtimeRow?.path}</code> : null}
+        {draftRuntime !== "hara" ? <WorkspaceRuntimeVersion runtimeId={draftRuntime} binding={runtimeVersionFor(workspace.runtimes?.options, draftRuntime)} t={t} /> : null}
+      </>}</details>
       <footer className="vg-rf-foot">
         {fields.length ? <span className="vg-rf-chip dirty" role="status">{t("ws.rf.unsaved", { fields: fieldText })}</span>
           : confirmNeeded ? <span className="vg-rf-chip warn" role="status">{statusText(status)}</span> : <span className="vg-rf-chip" role="status">{t("ws.rf.saved")}</span>}
+        {fields.length ? <button type="button" className="vg-rf-revert" disabled={busy || scanning} onClick={() => { setDraftRuntime(agent.runtime.id); if (draftRuntime === agent.runtime.id && baseline) { setDraftModel(baseline.model); setDraftEffort(baseline.effort); } else setInitFor(""); setDropped(null); setError(""); setNotice(""); }}>{locale === "en" ? "Revert" : locale === "zh-Hant" ? "還原" : "还原"}</button> : null}
         <button type="button" className="vg-rf-apply" disabled={busy || scanning || !ready || !piModelReady || !fields.length && !confirmNeeded || !usable || draftRuntime === "hara" && draftRuntime !== agent.runtime.id} onClick={startApply}>{t(busy ? "ws.rf.applying" : "ws.rf.apply")}</button>
       </footer>
       {fields.includes("engine") ? <p className="vg-muted">{t("ws.rf.untilApplied", { name: agent.identity.displayName, engine: engineName(agent.runtime.id) })}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
       {error && !confirming ? <p role="alert">{error}</p> : null}
-    </section>
+    </section></details>
+    <details className="hd-manage-section"><summary>{r("permissions")}<small>{t(agent.permissionTier === "full-protected" ? "ws.permissions.full" : "ws.permissions.controlled")}</small></summary>
     <section className="vg-context-card vg-p0-card">
       <label className="vg-permission-tier vg-rf-field">{t("ws.permissions.label")}
         <select aria-label={t("ws.permissions.label")} value={agent.permissionTier ?? "unknown"} disabled={permissionBlocked}
@@ -227,8 +236,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
       </label>
       <p>{t("ws.permissions.help")}</p>
       {!permissionSupported ? <p role="status">{t("ws.permissions.upgrade")}</p> : null}
-      {draftRuntime !== "pi" && draftRuntime !== "hara" ? <WorkspaceRuntimeVersion runtimeId={draftRuntime} binding={runtimeVersionFor(workspace.runtimes?.options, draftRuntime)} t={t} /> : null}
-    </section>
+    </section></details>
     {confirming ? <FormDialog label={t("ws.rf.confirmAction")} pending={busy} onClose={() => setConfirming(false)}>
       <section className="vg-rf-confirm">
         <h3>{t(use === "confirm_update" ? "ws.rf.confirmUpdateTitle" : use === "confirm_first_use" ? "ws.rf.confirmFirstTitle" : "ws.rf.confirmChangeTitle",

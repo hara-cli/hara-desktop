@@ -1,3 +1,5 @@
+import { redesignText } from "./desktop-redesign-copy";
+import { copyTextToClipboard } from "./clipboard";
 import { WorkspaceExtensions } from "./WorkspaceExtensions";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
 import { useState } from "react";
@@ -41,6 +43,10 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   onSaveProfile(profile: { displayName: string; title: string; emoji: string; avatar: string }): Promise<void>;
 }) {
   const zh = locale !== "en";
+  const c = (hans: string, en: string, hant: string) => locale === "en" ? en : locale === "zh-Hant" ? hant : hans;
+  const r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [copied, setCopied] = useState<"copied" | "copyFailed" | null>(null);
   const schedules = features?.schedules.filter((row) => row.agentId === agent.agentId) ?? [];
   const [editing, setEditing] = useState<string | null>(null);
   const [values, setValues] = useState({ name: "", cron: "", tz: "", task: "" });
@@ -58,31 +64,31 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
     setLocalError("");
   };
   return <aside id="workspace-inspector" className="vg-inspector vg-colleague-manage" aria-label={zh ? `${agent.identity.displayName} · 管理` : `Manage ${agent.identity.displayName}`} inert={inert}>
-    <header><h2>{agent.kind === "main" ? (zh ? "Hara · 管理" : "Hara management") : (zh ? "该同事 · 内部管理" : "Colleague management")}</h2><button className="hs-icon" aria-label={zh ? "关闭管理栏" : "Close management"} onClick={onClose}><XMarkIcon className="hico" /></button></header>
-    <div className="vg-colleague-identity"><strong>{agent.identity.displayName}</strong><span>{agent.identity.title || (zh ? "Hara 同事" : "Hara colleague")}</span></div>
+    <header><h2>{agent.identity.displayName} · {r("manage")}</h2><button className="hs-icon" aria-label={c("关闭管理栏", "Close management", "關閉管理欄")} onClick={onClose}><XMarkIcon className="hico" /></button></header>
+    <div className="vg-colleague-identity"><strong>{agent.identity.displayName}</strong><span>{agent.kind === "main" ? r("orchestrator") : agent.identity.title || r("colleagues")}</span></div>
     {extensionsModel?.supportsRuntimeForm?.() ? <ColleagueRuntimeForm agent={agent} workspace={workspace} model={extensionsModel} locale={locale} permissionSupported={permissionSupported} onApplyPermissionTier={onApplyPermissionTier} onRuntimeDirectory={onRuntimeDirectory} onConnections={onConnections} />
       : <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} listModels={listModels} listConnectionModels={listConnectionModels} connectionModelSupported={connectionModelSupported} onApplyRuntime={onApplyRuntime} permissionSupported={permissionSupported} onApplyPermissionTier={onApplyPermissionTier} onApplyModel={onApplyModel} onApplyConnectionModel={onApplyConnectionModel} onRescan={onRescan} onRegisterRuntime={onRegisterRuntime} onRuntimeDirectory={onRuntimeDirectory} />}
-    {extensionsModel && agent.agentEpoch ? <WorkspaceExtensions model={extensionsModel} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} agent={{ agentId: agent.agentId, agentEpoch: agent.agentEpoch }} /> : null}
-    <section className="vg-context-card"><h3>{zh ? "基本信息" : "Profile"}</h3><dl><dt>{zh ? "显示名" : "Display name"}</dt><dd>{agent.identity.displayName}</dd><dt>{zh ? "职责" : "Role"}</dt><dd>{agent.identity.title || "—"}</dd><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{agent.runtime.label}</dd></dl><button onClick={() => setProfileOpen(true)}>{zh ? "编辑此同事名片" : "Edit this colleague's profile"}</button></section>
+    <details className="hd-manage-section"><summary>{r("profile")}<small>{agent.kind === "main" ? r("orchestrator") : agent.identity.title}</small></summary><section className="vg-context-card"><h3>{r("profile")}</h3><dl><dt>{c("显示名", "Display name", "顯示名稱")}</dt><dd>{agent.identity.displayName}</dd><dt>{c("职责", "Role", "職責")}</dt><dd>{agent.kind === "main" ? r("orchestrator") : agent.identity.title || "—"}</dd><dt>{c("运行环境", "Runtime", "執行環境")}</dt><dd>{agent.runtime.label}</dd></dl><button onClick={() => setProfileOpen(true)}>{locale === "zh-Hant" ? "編輯同事名片" : zh ? "编辑同事名片" : "Edit colleague profile"}</button></section></details>
     {profileOpen ? <WorkspaceAgentProfileSheet agent={agent} locale={zh ? "zh" : "en"} onClose={() => setProfileOpen(false)} onSave={onSaveProfile} /> : null}
-    {agent.kind === "colleague" ? <section className="vg-context-card vg-colleague-schedules"><h3>{zh ? "定时" : "Schedules"}<span>{schedules.length}</span></h3>
-      {!supported ? <p className="vg-muted" role="status">{zh ? "更新 Hara 引擎后可管理同事定时。" : "Update Hara Core to manage colleague schedules."}</p>
-        : !features ? <p className="vg-muted" role="status">{zh ? "正在读取本同事定时…" : "Loading colleague schedules…"}</p>
-        : schedules.length === 0 ? <p className="vg-muted">{zh ? `还没有挂在 ${agent.identity.displayName} 上的定时。在聊天里说“每天 09:00 …”，确认后会出现在这里。` : `No schedules for ${agent.identity.displayName}. Ask in chat for a daily schedule and confirm it there.`}</p>
+    {agent.kind === "colleague" ? <details className="hd-manage-section"><summary>{r("schedules")}<small>{schedules.length}</small></summary><section className="vg-context-card vg-colleague-schedules"><h3>{r("schedules")}<span>{schedules.length}</span></h3>
+      {!supported ? <p className="vg-muted" role="status">{c("更新 Hara 引擎后可管理同事定时。", "Update Hara Core to manage colleague schedules.", "更新 Hara 引擎後可管理同事排程。")}</p>
+        : !features ? <p className="vg-muted" role="status">{c("正在读取本同事定时…", "Loading colleague schedules…", "正在讀取同事排程…")}</p>
+        : schedules.length === 0 ? <p className="vg-muted">{c(`还没有挂在 ${agent.identity.displayName} 上的定时。在聊天里说“每天 09:00 …”，确认后会出现在这里。`, `No schedules for ${agent.identity.displayName}. Ask in chat for a daily schedule and confirm it there.`, `還沒有 ${agent.identity.displayName} 的排程。在聊天裡說「每天 09:00 …」，確認後會出現在這裡。`)}</p>
           : schedules.map((schedule) => <article key={schedule.id} className="vg-colleague-job">
-            <div className="vg-colleague-job-head"><input type="checkbox" aria-label={(zh ? "启用 " : "Enable ") + schedule.name} checked={schedule.enabled} disabled={busy} onChange={() => void run(() => onToggle(schedule))} /><strong>{schedule.name}</strong></div>
+            <div className="vg-colleague-job-head"><input type="checkbox" aria-label={(c("启用 ", "Enable ", "啟用 ")) + schedule.name} checked={schedule.enabled} disabled={busy} onChange={() => void run(() => onToggle(schedule))} /><strong>{schedule.name}</strong></div>
             <p>{schedule.schedule.expr ?? schedule.schedule.display ?? "—"}{schedule.tz ? ` · ${schedule.tz}` : ""}</p>
-            <small>{zh ? "下次" : "Next"} · {features.scheduler?.schedules.find((row) => row.id === schedule.id)?.nextRunAt ? new Date(features.scheduler.schedules.find((row) => row.id === schedule.id)!.nextRunAt!).toLocaleString(locale) : "—"}</small>
+            <small>{c("下次", "Next", "下次")} · {features.scheduler?.schedules.find((row) => row.id === schedule.id)?.nextRunAt ? new Date(features.scheduler.schedules.find((row) => row.id === schedule.id)!.nextRunAt!).toLocaleString(locale) : "—"}</small>
             {editing === schedule.id ? <div className="vg-colleague-edit">
-              <label>{zh ? "名称" : "Name"}<input value={values.name} maxLength={60} onChange={(event) => setValues({ ...values, name: event.target.value })} /></label>
-              <label>{zh ? "节奏（Cron）" : "Schedule (Cron)"}<input value={values.cron} onChange={(event) => setValues({ ...values, cron: event.target.value })} /></label>
-              <label>{zh ? "时区" : "Time zone"}<input value={values.tz} onChange={(event) => setValues({ ...values, tz: event.target.value })} /></label>
-              <label>{zh ? "指令" : "Instruction"}<textarea rows={3} value={values.task} onChange={(event) => setValues({ ...values, task: event.target.value })} /></label>
-              <div><button disabled={busy || !values.name.trim() || !values.cron.trim() || !values.task.trim()} onClick={() => void run(async () => { await onSave(schedule, values); setEditing(null); })}>{zh ? "保存" : "Save"}</button><button disabled={busy} onClick={() => setEditing(null)}>{zh ? "取消" : "Cancel"}</button></div>
-            </div> : <div className="vg-colleague-actions"><button onClick={() => beginEdit(schedule)} disabled={busy}>{zh ? "编辑" : "Edit"}</button><button onClick={() => void run(() => onToggle(schedule))} disabled={busy}>{schedule.enabled ? (zh ? "停用" : "Pause") : (zh ? "启用" : "Resume")}</button><button disabled={busy} onClick={() => { if (window.confirm(zh ? `删除“${schedule.name}”？` : `Delete “${schedule.name}”?`)) void run(() => onDelete(schedule)); }}>{zh ? "删除" : "Delete"}</button></div>}
+              <label>{c("名称", "Name", "名稱")}<input value={values.name} maxLength={60} onChange={(event) => setValues({ ...values, name: event.target.value })} /></label>
+              <label>{c("节奏（Cron）", "Schedule (Cron)", "週期（Cron）")}<input value={values.cron} onChange={(event) => setValues({ ...values, cron: event.target.value })} /></label>
+              <label>{c("时区", "Time zone", "時區")}<input value={values.tz} onChange={(event) => setValues({ ...values, tz: event.target.value })} /></label>
+              <label>{c("指令", "Instruction", "指令")}<textarea rows={3} value={values.task} onChange={(event) => setValues({ ...values, task: event.target.value })} /></label>
+              <div><button disabled={busy || !values.name.trim() || !values.cron.trim() || !values.task.trim()} onClick={() => void run(async () => { await onSave(schedule, values); setEditing(null); })}>{c("保存", "Save", "儲存")}</button><button disabled={busy} onClick={() => setEditing(null)}>{c("取消", "Cancel", "取消")}</button></div>
+            </div> : <div className="vg-colleague-actions"><button onClick={() => beginEdit(schedule)} disabled={busy}>{c("编辑", "Edit", "編輯")}</button><button onClick={() => void run(() => onToggle(schedule))} disabled={busy}>{schedule.enabled ? (c("停用", "Pause", "停用")) : (c("启用", "Resume", "啟用"))}</button><button disabled={busy} onClick={() => { if (window.confirm(c(`删除“${schedule.name}”？`, `Delete “${schedule.name}”?`, `刪除「${schedule.name}」？`))) void run(() => onDelete(schedule)); }}>{c("删除", "Delete", "刪除")}</button></div>}
           </article>)}
-      <p className="vg-muted">{zh ? "在聊天里创建；这里只管理这位同事的定时。" : "Create in chat; manage only this colleague here."}</p>
-      {error || localError ? <p role="alert" className="vg-colleague-error">{error || localError} <button onClick={onRefresh}>{zh ? "重试" : "Retry"}</button></p> : null}
-    </section> : null}
+      <p className="vg-muted">{c("在聊天里创建；这里只管理这位同事的定时。", "Create in chat; manage only this colleague here.", "在聊天裡建立；這裡只管理這位同事的排程。")}</p>
+      {error || localError ? <p role="alert" className="vg-colleague-error">{error || localError} <button onClick={onRefresh}>{c("重试", "Retry", "重試")}</button></p> : null}
+    </section></details> : null}
+    <details className="hd-manage-section" onToggle={event => setAdvancedOpen(event.currentTarget.open)}><summary>{r("advanced")}</summary><div>{advancedOpen && extensionsModel && agent.agentEpoch ? <WorkspaceExtensions model={extensionsModel} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} agent={{ agentId: agent.agentId, agentEpoch: agent.agentEpoch }} /> : null}<button type="button" className="hs-btn sec" onClick={async () => setCopied(await copyTextToClipboard(workspace.conversation.sessionId) ? "copied" : "copyFailed")}>{copied ? r(copied) : r("copyId")}</button>{copied === "copyFailed" ? <code>{workspace.conversation.sessionId}</code> : null}</div></details>
   </aside>;
 }

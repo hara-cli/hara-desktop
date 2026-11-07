@@ -7,7 +7,7 @@ import { copyRuntimeDiagnostic, runtimeCooldownRemaining } from "./runtime-failu
 import { runtimeTurnFailure } from "./workspace-resume";
 import { runtimeStageDiagnosticsText, type RuntimeStageReport } from "./runtime-stage-events";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
-import { currentWaitReport, deriveWaitingView, failureActions, formatWaitElapsed, timingFor, timingSummary, timingVerified,
+import { currentWaitReport, deriveWaitingView, failureActions, formatWaitElapsed, timingFor, timingSummary,
   type LocalWaitTiming, type TimingAction, type WaitConversation } from "./wait-timing";
 import "./wait-timing.css";
 type T = ReturnType<typeof makeT>;
@@ -97,7 +97,7 @@ export function WorkspaceWaiting({ model, t, name, runtime, disabled, onSettings
     </dialog>
   </>;
 }
-export function WorkspaceTimingChip({ report, timings = [], conversation, compactions = [], t, disabled, onDiagnostics }: {
+export function WorkspaceTimingChip({ report, timings = [], compactions = [], t, disabled, onDiagnostics }: {
   report: RuntimeStageReport; timings?: readonly MessageTimingReport[]; conversation?: WaitConversation; compactions?: readonly ContextCompactionView[]; t: T; disabled?: boolean; onDiagnostics(): void;
 }) {
   const [open, setOpen] = useState(false), [copy, setCopy] = useState<"copied" | "copyFailed" | null>(null);
@@ -117,19 +117,20 @@ export function WorkspaceTimingChip({ report, timings = [], conversation, compac
   useEffect(() => { if (!open) return; const outside = (event: PointerEvent) => { if (!contains(event.target as Node)) { setOpen(false); pinned.current = false; } };
     document.addEventListener("pointerdown", outside); return () => document.removeEventListener("pointerdown", outside); }, [open]);
   const timing = timingFor(report, timings), summary = timingSummary(report, timing), slow = (summary.totalMs ?? 0) > 30_000;
-  const verified = timingVerified(report, timing, conversation);
   const ms = (value: number | null) => value === null ? t("ws.wait.unknownValue") : formatWaitElapsed(value, true);
   const effort = report.runtime.effort, source = report.runtime.effortSource;
   const knownEffort = effort && ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(effort) ? t(`ws.wait.effort.${effort}` as Parameters<T>[0]) : t("ws.wait.unknownValue");
   const compacted = compactions.some(row => row.sessionId === report.sessionId && row.agentId === report.agentId && row.historyStart <= report.historyStart && row.status === "completed");
-  const reasons = slow ? summary.finalizeMs !== null && summary.finalizeMs > 5000 ? "finalize" : ["high", "xhigh", "max"].includes(effort ?? "") ? "high" : "slow" : null;
-  return <span className={"wsd-timing-wrap" + (slow ? " is-slow" : "")} ref={root} onPointerEnter={event => { if (event.pointerType === "mouse") setOpen(true); }} onPointerLeave={event => { if (!pinned.current && !contains(event.relatedTarget as Node) && !contains(document.activeElement)) setOpen(false); }}
+  const phases = [["prepareLabel", summary.prepareMs], ["startupLabel", summary.startupMs], ["firstLabel", summary.firstTokenMs], ["generationLabel", summary.generationMs], ["toolLabel", summary.toolMs], ["finalizeLabel", summary.finalizeMs]] as const;
+  const sum = phases.reduce((total, [, duration]) => total + Math.max(0, duration ?? 0), 0), longest = Math.max(...phases.map(([, duration]) => duration ?? 0));
+  return <span className={"wsd-timing-wrap" + (slow ? " is-slow" : "")} ref={root}
     onBlur={event => { if (!contains(event.relatedTarget)) { setOpen(false); pinned.current = false; } }} onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); setOpen(false); pinned.current = false; trigger.current?.focus(); } }}>
     <button type="button" ref={trigger} className="wsd-timing-chip" aria-expanded={open} aria-controls={id} aria-label={`${t("ws.wait.details")} · ${ms(summary.totalMs)}`} onClick={() => { pinned.current = !pinned.current; setOpen(pinned.current); }}>
-      {ms(summary.totalMs)}{slow ? ` · ${t("ws.wait.slow")}` : ""}{verified ? <span aria-label={t("ws.wait.verified")}> ✓</span> : null}
+      {slow ? <span className="hd-slow-dot" aria-label={t("ws.wait.slow")} /> : null}{ms(summary.totalMs)}
     </button>
     {open ? createPortal(<div ref={popover} className="wsd-timing-popover" role="region" id={id} aria-label={t("ws.wait.details")} style={{ left: position?.left ?? 0, top: position?.top ?? 0, visibility: position ? "visible" : "hidden" }} onPointerLeave={event => { if (!pinned.current && !contains(event.relatedTarget as Node) && !contains(document.activeElement)) setOpen(false); }}>
-      <strong>{t("ws.wait.details")} · {ms(summary.totalMs)}</strong><dl>
+      <strong>{t("ws.wait.details")} · {ms(summary.totalMs)}</strong>
+      <div className="hd-phase-bar" role="img" aria-label={t("ws.wait.overlap")}>{phases.map(([name, duration], index) => duration != null && duration > 0 ? <span key={name} className={duration === longest ? "is-longest" : ""} style={{ flexGrow: sum ? duration / sum : 0, opacity: .42 + index * .08 }} aria-label={`${t(`ws.wait.${name}`)} ${ms(duration)}`} /> : null)}</div><dl>
         {([["prepareLabel", summary.prepareMs], ["startupLabel", summary.startupMs], ["firstLabel", summary.firstTokenMs], ["generationLabel", summary.generationMs]] as const).map(([key, value]) => <div key={key}><dt>{t(`ws.wait.${key}`)}</dt><dd>{ms(value)}</dd></div>)}
         <div><dt>{t("ws.wait.toolLabel")}</dt><dd>{summary.toolCalls ? t("ws.wait.observedTools", { n: summary.toolCalls, duration: ms(summary.toolMs) }) : t("ws.wait.unknownValue")}</dd></div>
         <div><dt>{t("ws.wait.finalizeLabel")}</dt><dd>{ms(summary.finalizeMs)}</dd></div>
@@ -140,6 +141,5 @@ export function WorkspaceTimingChip({ report, timings = [], conversation, compac
         <button type="button" className="hs-btn ghost" disabled={disabled} onClick={async () => { const text = runtimeStageDiagnosticsText([report], timings); if (text) setCopy(await copyRuntimeDiagnostic(text, navigator.clipboard ? value => navigator.clipboard.writeText(value) : undefined)); }}>{t("ws.wait.copy")}</button></span>
       {copy ? <span role="status">{t(`ws.wait.${copy}`)}</span> : null}{copy === "copyFailed" ? <pre tabIndex={0}>{runtimeStageDiagnosticsText([report], timings)}</pre> : null}
     </div>, document.body) : null}
-    {reasons ? <span className="wsd-timing-reason">{t(`ws.wait.hint.${reasons}`)}</span> : null}
   </span>;
 }
