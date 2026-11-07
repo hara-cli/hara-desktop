@@ -24,7 +24,7 @@
 .hd-sidebar-tools label>.hico{width:14px;height:14px;flex:none}.hd-sidebar-tools input{border:0;background:transparent;outline:0;color:var(--hd-ink);min-width:0;width:100%;font:inherit;font-size:12px}
 .hd-sidebar-list{flex:1;min-height:0;overflow:auto;padding:0 8px 12px;scrollbar-width:thin}
 .hs.hd-redesign.vg-app .hd-sidebar .hs-row{position:relative;display:flex;align-items:center;width:100%;min-height:42px;gap:9px;padding:6px 8px;border:0;border-radius:10px;color:var(--hd-ink);background:transparent;text-align:left;font:inherit}
-.hs.hd-redesign.vg-app .hd-sidebar .hs-row[aria-current="page"]{background:var(--hd-selected);box-shadow:none;border:0}
+.hs.hd-redesign.vg-app .hd-sidebar .hs-row[aria-current="page"]{background:var(--hd-selected);box-shadow:none;border:0;--hd-faint:var(--hd-muted)}
 .hs.hd-redesign.vg-app .hd-sidebar .hs-row[aria-current="page"]::before,.hs.hd-redesign.vg-app .hd-sidebar .hs-row[aria-current="page"]::after{display:none}
 .hs.hd-redesign.vg-app .hd-sidebar .hs-row:hover{background:var(--hd-hover)}
 .hs.hd-redesign.vg-app .hd-sidebar .hs-row[aria-current="page"]:hover{background:var(--hd-selected)}
