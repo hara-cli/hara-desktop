@@ -15,14 +15,14 @@
     "ttlSeconds": 7200,
     "waitSeconds": 240
   },
-  "desktop": {"commit": "bd08ba770235689b13bcbf786fc59f429f0dbcfb", "tree": "3c8cb42ba5666efbf8f71be5dd86c22e932ada83", "version": "1.1.0"},
-  "core": { "commit": "49ee589256c454afc59b82729c072b64d8401f17", "tree": "d27e80e7364f5b9385d0136543f47be707bc4e52", "version": "1.0.2" },
+  "desktop": {"commit": "c241d90972134d03aaa66cdb4f7c33a52fac20b1", "tree": "4efffd1f8d2edc574b2e826055b2789f1ee6278c", "version": "1.2.0"},
+  "core": { "commit": "7e225a900bd4bc751646c849c54da9d7f849660d", "tree": "85e79b5b02a6ae0168498e2b70bef88c28e6911d", "version": "1.2.0" },
   "toolchain": { "node": "22.23.1", "bun": "1.3.9", "rust": "1.97.0" },
   "locks": {
-    "npm": "cbfc9d7b21b23019d6188962f5772996a500f4886f8fab241f79e7a89938c2dd",
-    "cargo": "66fe91ea71cfcd43b7df1d65b787c88555c370d4d31295c8835422b3006db6f2",
-    "coreNpm": "0713cc29af4205d12fd0f57969b09fe0db64a71f70626833e37797da9c0f3034",
-    "sidecar": "e3607d8e2667a51aaf9b5f0964527547fae5440a2f7403be552e545d4ec0c32b"
+    "npm": "e779200f374908f6d6dcebb9e26f4f557324f1fa98be2c6366266a513d7f7a27",
+    "cargo": "befef88a37e5717f492af17b8b7a785237f479ee0eea5b150aec5e969e3a4462",
+    "coreNpm": "9dee8a697ddb2fce4136c1814317622c0bf835c9c51bc886901bccfc154d5ff1",
+    "sidecar": "25874f8d30f217982eef98287ff3a59d75ff751201c0a8894845226bc295c13c"
   },
   "updaterPublicKeySha256": "7e6a1d9c22989adb5c6991bae0fcdcbe4991dfd2e9eb67f5c08af271be6768d0",
   "upgradeFrom": ["0.1.187", "1.0.3"]
