@@ -1,3 +1,4 @@
+import { parseRuntimeFailure, RUNTIME_FAILURE_KINDS, RUNTIME_FAILURE_MARKER, type RuntimeFailureKind, type RuntimeFailureDiagnostic } from "./runtime-failure.ts";
 import type { WorkspaceDevSnapshot } from "./workspace-dev-state";
 type Conversation = WorkspaceDevSnapshot["conversation"];
 const STOPPED_TASKS = new Set(["blocked", "error", "failed", "paused", "awaiting_user", "awaiting_review", "completed", "cancelled", "interrupted"]);
@@ -14,13 +15,21 @@ export function workspaceRecoveryState(conversation: Conversation): string {
 export const CONNECTION_RECOVERY_REASONS = ["connection_model_unavailable", "connection_auth_required", "connection_quota_exhausted", "connection_region_unavailable", "connection_recovery_unavailable"] as const;
 export type ConnectionRecoveryReason = typeof CONNECTION_RECOVERY_REASONS[number];
 
-export type RuntimeTurnFailure = "project_not_trusted" | "runtime_auth_required" | "command_failed" | "spawn_failed" | "timeout" | "runtime_unavailable";
+const nativeRuntime = (id: string | undefined): boolean => ["pi", "codex", "claude", "opencode", "gemini", "kimi", "copilot", "cursor", "grok"].includes(id ?? "");
+export type RuntimeTurnFailure = RuntimeFailureKind | "command_failed" | "runtime_unavailable";
 /** New Core supplies allowlisted codes. Legacy native errors are mapped without displaying stderr. */
-export function runtimeTurnFailure(blockReason: string | null | undefined, runtimeId?: string): { kind: RuntimeTurnFailure; runtimeId: string } | null {
+export function runtimeTurnFailure(blockReason: string | null | undefined, runtimeId?: string): { kind: RuntimeTurnFailure; runtimeId: string; diagnostic?: RuntimeFailureDiagnostic } | null {
   const text = blockReason?.trim() ?? "";
-  const native = /^(codex|claude) Runtime failed \(([a-z0-9_]+)\)/i.exec(text);
-  const id = native?.[1]?.toLowerCase() ?? runtimeId;
-  if (id !== "codex" && id !== "claude") return null;
+  if (text.includes(RUNTIME_FAILURE_MARKER)) {
+    const diagnostic = parseRuntimeFailure(text, runtimeId);
+    return diagnostic ? { kind: diagnostic.kind, runtimeId: diagnostic.runtime, diagnostic }
+      : nativeRuntime(runtimeId) ? { kind: "runtime_failed", runtimeId: runtimeId! } : null;
+  }
+  if ((nativeRuntime(runtimeId)) && RUNTIME_FAILURE_KINDS.includes(text as RuntimeFailureKind)) return { kind: text as RuntimeFailureKind, runtimeId: runtimeId! };
+  const native = /^(pi|codex|claude|opencode|gemini|kimi|copilot|cursor|grok|registered) Runtime failed \(([a-z0-9_]+)\)/i.exec(text);
+  const detected = native?.[1]?.toLowerCase();
+  const id = detected === "registered" ? runtimeId : detected ?? runtimeId;
+  if (!nativeRuntime(id)) return null;
   const code = native?.[2]?.toLowerCase();
   let kind: RuntimeTurnFailure;
   if (code === "project_not_trusted" || /not inside a trusted directory|--skip-git-repo-check was not specified|not a git repository/i.test(text)) kind = "project_not_trusted";
@@ -30,7 +39,7 @@ export function runtimeTurnFailure(blockReason: string | null | undefined, runti
   else if (code === "timeout" || code === "timed_out") kind = "timeout";
   else if (native) kind = "command_failed";
   else return null;
-  return { kind, runtimeId: id };
+  return { kind, runtimeId: id! };
 }
 
 function requestWindowQuota(message: string): boolean {
@@ -45,6 +54,7 @@ function explicitQuotaExhaustion(message: string): boolean {
 export function connectionRecoveryReason(conversation: Pick<WorkspaceDevSnapshot["conversation"], "resumeAdmission" | "blockReason" | "state">): ConnectionRecoveryReason | null {
   const reason = conversation.resumeAdmission?.reason;
   if (CONNECTION_RECOVERY_REASONS.includes(reason as ConnectionRecoveryReason)) return reason as ConnectionRecoveryReason;
+  if (conversation.blockReason?.includes(RUNTIME_FAILURE_MARKER)) return null;
   // Older engines have no typed provider admission reason. Only inspect their provider-error prefix.
   const match = /^\[[^\]\r\n]{1,40} error\]\s+(.*)$/s.exec(conversation.blockReason ?? "");
   if (!match || conversation.state !== "blocked") return null;

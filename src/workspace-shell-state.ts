@@ -1,3 +1,4 @@
+import { isInternalUserText } from "./user-visible-text.ts";
 // Presentation only. Core remains the authority for task state and every approval decision.
 import type { WorkspaceDevApproval, WorkspaceDevMessage, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state.ts";
 
@@ -20,7 +21,7 @@ export function transcriptBlocks(history: readonly WorkspaceDevMessage[]): Trans
   const blocks: TranscriptBlock[] = [];
   let execution: ExecutionBlock | undefined;
   history.forEach((message, index) => {
-    if (message.role === "tool") return;
+    if (message.role === "tool" || message.role === "user" && isInternalUserText(message.content)) return;
     if (message.role === "user" || message.text.trim()) {
       execution = undefined;
       blocks.push({ kind: "message", index, message });
@@ -83,7 +84,7 @@ export function buildWorkspaceShell(snapshots: readonly WorkspaceDevSnapshot[], 
     if (conversation.taskId) tasks.push({ id: conversation.taskId, agentId: snapshot.selectedAgentId, title: conversation.objective, status, group: taskGroup(status) });
     for (const approval of approvals) {
       if (seen.has(approval.id)) continue; seen.add(approval.id);
-      waiting.push({ id: approval.id, agentId: approval.agentId, kind: "approval", title: approval.draft.displayName,
+      waiting.push({ id: approval.id, agentId: approval.agentId, kind: "approval", title: approval.kind === "extension_call" ? `${approval.draft.sourceName} / ${approval.draft.toolName}` : approval.kind === "schedule_create" ? approval.draft.title : approval.kind === "group_create" ? approval.draft.name : approval.kind === "instruction_update" ? approval.draft.file : approval.kind === "memory_promote" ? approval.draft.content.slice(0, 120) : approval.draft.displayName,
         highPriority: highPriorityApproval(approval, now), approval });
     }
     if (!approvals.length && conversation.taskId && ["reply", "review", "blocked"].includes(status)) {

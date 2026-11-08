@@ -1,3 +1,6 @@
+import { makeT } from "../src/i18n.ts";
+import * as runtimeExpansion from "../src/runtime-expansion.ts";
+import { formatList, toLocale } from "../src/i18n-runtime.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -5,20 +8,21 @@ import { createRequire } from "node:module";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
-import { agentRuntimeLabel, agentRuntimeSelection } from "../src/agent-runtime-selection.ts";
+import { agentRuntimeLabel, agentRuntimeSelection, runtimePersonalExtensionsNotice } from "../src/agent-runtime-selection.ts";
 
 const require = createRequire(import.meta.url);
 const agent = { ref: "main", name: "Hara", owner: "personal", spaceId: "personal", revision: "a".repeat(32), allowedActions: ["chat", "edit_profile"],
   runtime: { version: 1, agentRef: "main", spaceId: "personal", runtimeId: "hara", revision: 0, available: true } };
 const options = [{ id: "hara", available: true }, { id: "pi", available: false }, { id: "codex", available: true }];
 
-function picker() {
+function picker(workspace = false, draft) {
   const source = readFileSync(new URL("../src/AgentRuntimePicker.tsx", import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
   const exports = {};
   new Function("require", "exports", outputText)((name) => name === "./agent-runtime-selection"
-    ? { agentRuntimeLabel, agentRuntimeSelection } : require(name), exports);
-  return exports.default;
+    ? { agentRuntimeLabel, agentRuntimeSelection, runtimePersonalExtensionsNotice } : name === "./runtime-expansion" ? runtimeExpansion : name === "./i18n" ? { makeT } : name === "./i18n-runtime.ts" ? { formatList, toLocale }
+    : name === "react" && draft ? { ...React, useState: () => [draft, () => {}] } : require(name), exports);
+  return workspace ? exports.WorkspaceAgentRuntimePicker : exports.default;
 }
 
 function saveCallback(bindings) {
@@ -49,13 +53,13 @@ test("the actual picker is folded, labels unavailable engines honestly and does 
   const html = renderToStaticMarkup(React.createElement(picker(), { agent, options, locale: "zh", onApply() {} }));
   assert.ok(html.startsWith("<details")); assert.equal(/<details[^>]*\bopen\b/.test(html), false);
   assert.ok(/<option[^>]*value="pi"[^>]*disabled/.test(html));
-  assert.ok(html.includes("不是模型或工具授权")); assert.ok(html.includes("旧任务和历史保留原绑定"));
+  assert.ok(html.includes("模型和操作权限需要分别设置")); assert.ok(html.includes("已有任务和历史继续使用原引擎"));
   assert.equal(html.includes("apiKey"), false);
 });
 
 test("older engines and company Agents render read-only rather than inventing a Runtime binding", () => {
   const legacy = renderToStaticMarkup(React.createElement(picker(), { agent: { ...agent, runtime: undefined }, options: [], locale: "en" }));
-  assert.ok(legacy.includes("Binding not advertised")); assert.equal(legacy.includes("<select"), false);
+  assert.ok(legacy.includes("Current engine details are unavailable")); assert.equal(legacy.includes("<select"), false);
   const company = renderToStaticMarkup(React.createElement(picker(), { agent: { ...agent, owner: "organization" }, options, locale: "en", onApply() {} }));
   assert.ok(/<select[^>]*disabled/.test(company));
 });
@@ -98,3 +102,33 @@ test("Antigravity appears as a pending Hara colleague runtime", () => {
   assert.match(html, /Antigravity · 暂不可用/);
   assert.equal(agentRuntimeSelection(agent, "agy", pending), null);
 });
+
+test("Workspace draft runtime choice discloses inherited personal extensions in all three locales before apply", () => {
+  const current = { agentId: "fixture", configRevision: 1, agentEpoch: 1, runtime: { id: "pi", label: "Pi", available: true } };
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const id of ["copilot", "cursor", "grok"]) {
+    const html = renderToStaticMarkup(React.createElement(picker(true, id), { agent: current, options: [{ id, label: id, available: true }], locale, saving: false, onApply() { throw Error("render cannot bind"); } }));
+    assert.match(html, /data-personal-extensions="inherited"/);
+    assert.ok(html.includes(makeT(locale)("ws.runtimeExpansion.extensionsInherited")));
+    assert.doesNotMatch(html, /isolationPending|Execution is pending/);
+  }
+});
+test("isolated runtime draft choices do not inherit the personal-extension notice", () => {
+  for (const id of ["pi", "codex", "claude", "opencode"]) {
+    const current = { configRevision: 1, agentEpoch: 1, runtime: { id, label: id, available: true } };
+    const html = renderToStaticMarkup(React.createElement(picker(true), { agent: current, options: [{ id, label: id, available: true }], locale: "en", saving: false, onApply() {} }));
+    assert.doesNotMatch(html, /data-personal-extensions/);
+  }
+});
+
+for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const [reason, key] of [["detection_pending", "ws.runtimes.checking"], ["detection_failed", "ws.runtimes.detectFailed"]]) {
+  test(`Copilot ${reason} has an honest disabled choice in ${locale}`, () => {
+    const current = { agentId: "fixture", configRevision: 1, agentEpoch: 1, runtime: { id: "pi", label: "Pi", available: true } };
+    let applied = 0;
+    const html = renderToStaticMarkup(React.createElement(picker(true), { agent: current, options: [
+      { id: "pi", label: "Pi", available: true }, { id: "copilot", label: "GitHub Copilot", available: false, reason },
+    ], locale, saving: false, onApply() { applied++; } }));
+    assert.ok(html.includes(makeT(locale)(key)));
+    assert.match(html, /<option[^>]*value="copilot"[^>]*disabled/);
+    assert.equal(/not installed|未安装|未安裝/.test(html), false); assert.equal(applied, 0);
+  });
+}

@@ -13,7 +13,7 @@ const snapshot = id => ({ workspaceId:id,resourceGeneration:`generation-${id}`,l
   approvals:[],connections:{revision:3,defaultConnectionId:"one",connections:[{id:"one",label:"Fixture",status:"active",provider:"openai",baseURL:"https://example.invalid/v1",defaultModel:"fake",keySaved:true}]},
   conversation:{history:[],state:"idle",usage:{modelCalls:0},runUsage:{modelCalls:0}} });
 function fixture() {
- const calls=[],handlers={}; const model=new WorkspaceDevModel({async request(method,params){calls.push({method,params});if(handlers[method])return handlers[method](params);
+ const calls=[],handlers={}; const model=new WorkspaceDevModel({supportsCapability: capability => capability === "workspace.connection-models.v1", async request(method,params){calls.push({method,params});if(handlers[method])return handlers[method](params);
  if(method==="workspace.list")return {revision:1,syntheticOnly:false,executionMode:"workspace",workspaces:["A","B"].map(workspaceId=>({workspaceId,active:true}))};return snapshot(params.workspaceId);}},()=>"fake-request",false,"workspace");
  return {model,calls,handlers};
 }
@@ -64,14 +64,22 @@ test("unavailable connections and backup-only recovery retain distinct non-destr
 });
 test("detected runtimes offer workspace binding and missing runtimes alone offer installation",()=>{
  const workspace={...snapshot("A"),runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"detected",version:"1.2.3",path:"/fixture/nvm/bin/codex"}],operations:[]}};
- const html=render("Runtime",{model:{},workspace});assert.match(html,/1\.2\.3 · 本機已安裝/);assert.match(html,/fixture\/nvm\/bin\/codex/);assert.match(html,/登記本機引擎/);assert.doesNotMatch(html,/使用本機安裝|>按需安裝<\/button>/);
+ const html=render("Runtime",{model:{},workspace});assert.match(html,/1\.2\.3 · 已安裝 · 未啟用/);assert.match(html,/fixture\/nvm\/bin\/codex/);assert.match(html,/>啟用<\/button>/);assert.doesNotMatch(html,/使用本機安裝|>按需安裝<\/button>/);
  const missing=render("Runtime",{model:{},workspace:{...workspace,runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"not_installed"}],operations:[]}}});
  assert.match(missing,/正在確認本機安裝/);assert.match(missing,/<button disabled="">按需安裝<\/button>/);
  const failed=render("Runtime",{model:{},workspace:{...workspace,runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"integrity_failed"}],operations:[]}}});
- assert.doesNotMatch(failed,/>按需安裝<\/button>|登記本機引擎/);
+ assert.doesNotMatch(failed,/>按需安裝<\/button>|>啟用<\/button>/);
  const source=read("src/WorkspaceRuntimeSettings.tsx");assert.match(source,/model\.registerLocalRuntime\(local\.runtimeId/);
  assert.doesNotMatch(source,/model\.listRuntimeModels|model\.selectRuntimeModel|wsd-runtime-model-step/);
  assert.doesNotMatch(source,/model\.changeConnection|selectedConnection|runtime-model-connection/);
+});
+test("host-login Codex hides isolated sign-in guidance",()=>{
+ const base=snapshot("A");
+ const row={runtimeId:"codex",label:"Codex",registered:true,state:"local_registered",version:"1.2.3",fingerprint:"fixture",loginSource:"host"};
+ const host=render("Runtime",{model:{},workspace:{...base,runtimes:{options:[row],operations:[]}}});
+ assert.doesNotMatch(host,/查看獨立登入|Codex 獨立登入|codex login/);
+ const isolated=render("Runtime",{model:{},workspace:{...base,runtimes:{options:[{...row,loginSource:"isolated"}],operations:[]}}});
+ assert.notEqual(host,isolated);
 });
 test("bound runtime lists and selects its own model with workspace generation and runtime revision",async()=>{
  const f=fixture();await f.model.selectWorkspace("A");
@@ -83,6 +91,22 @@ test("bound runtime lists and selects its own model with workspace generation an
   {method:"workspace.runtime.listModels",params:{workspaceId:"A",expectedGeneration:"generation-A",runtimeId:"codex"}},
   {method:"workspace.runtime.selectModel",params:{workspaceId:"A",expectedGeneration:"generation-A",runtimeId:"codex",modelId:"o3",expectedRevision:7}}]);
  assert.equal(f.calls.some(row=>row.method==="workspace.connection.select"),false);
+});
+test("Pi connection model list and selection use the same scoped connection route without a key",async()=>{
+ const f=fixture();await f.model.selectWorkspace("A");
+ f.handlers["workspace.connection.listModels"]=()=>({connectionId:"one",revision:3,source:"documented",selectedModelId:"fake",selectedEffort:null,
+   models:[{id:"qwen3.7-plus",label:"qwen3.7-plus",supportedReasoningEfforts:["off","high"]}]});
+ const listed=await f.model.listConnectionModels("main","one");
+ assert.equal(listed.source,"documented");assert.deepEqual(listed.models.map(row=>row.id),["qwen3.7-plus"]);
+ f.handlers["workspace.connection.select"]=()=>({selected:true});
+ await f.model.selectConnectionModel("one","qwen3.7-plus",listed.revision,"high");
+ assert.deepEqual(f.calls.filter(row=>row.method.startsWith("workspace.connection.")),[
+  {method:"workspace.connection.listModels",params:{workspaceId:"A",expectedGeneration:"generation-A",agentId:"main",connectionId:"one"}},
+  {method:"workspace.connection.select",params:{workspaceId:"A",expectedGeneration:"generation-A",connectionId:"one",modelId:"qwen3.7-plus",effort:"high",expectedRevision:3}}]);
+ assert(!JSON.stringify(f.calls).includes("apiKey"));
+ const source=read("src/WorkspaceRuntimeAccess.tsx");
+ assert.match(source,/listConnectionModels\(agent\.agentId, connection!\.id\)/);
+ assert.match(source,/onApplyConnectionModel\(models\.connectionId, selected, models\.revision/);
 });
 test("empty, invalid and stale runtime model results never fall back to connection selection",async()=>{
  const f=fixture();await f.model.selectWorkspace("A");
@@ -96,6 +120,20 @@ test("empty, invalid and stale runtime model results never fall back to connecti
  await assert.rejects(f.model.listRuntimeModels("codex"),/Runtime not bound/);
  assert.equal(f.calls.some(row=>row.method==="workspace.connection.select"),false);
  const source=read("src/WorkspaceRuntimeSettings.tsx");assert.doesNotMatch(source,/modelError|runtimeModels|selectedModelId/);
+});
+test("malformed reasoning capability cannot reach the Desktop effort picker",async()=>{
+ const f=fixture(); await f.model.selectWorkspace("A");
+ f.handlers["workspace.runtime.listModels"]=()=>({runtimeId:"codex",revision:1,selectedModelId:"o3",selectedEffort:null,
+  models:[{id:"o3",label:"o3",supportedReasoningEfforts:"high"}]});
+ await assert.rejects(f.model.listRuntimeModels("codex"),{messageKey:"ws.notice.invalidView"});
+});
+test("local runtime registration requires and forwards an explicit login source",async()=>{
+ const f=fixture(); await f.model.selectWorkspace("A");
+ await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A"),{messageKey:"ws.notice.invalidView"});
+ assert.equal(f.calls.some(row=>row.method==="workspace.runtime.registerLocal"),false);
+ await f.model.registerLocalRuntime("codex","fingerprint","A","generation-A","isolated");
+ const call=f.calls.find(row=>row.method==="workspace.runtime.registerLocal");
+ assert.equal(call.params.loginSource,"isolated");assert.equal(call.params.approved,true);
 });
 test("three-way appearance setting and scoped features are actual rendered controls",()=>{
  const html=render("WorkspaceThemeSettings",{theme:{preference:"system",settings:{readOnly:false},notice:"",change(){}}});
@@ -115,7 +153,7 @@ test("late metadata and failed key writes cannot leak into a different workspace
  const old=f.model.legacyConnections();await f.model.selectWorkspace("B");finish([{id:"old-A"}]);await assert.rejects(old,{messageKey:"ws.notice.scopeChanged"});
  f.handlers["workspace.connection.edit"]=()=>{throw new Error("fixture-secret-in-provider-error");};assert.equal(await f.model.editConnection("one",{apiKey:"fake"}),false);
  assert(!JSON.stringify(f.model.getSnapshot()).includes("fixture-secret"));assert.equal(f.calls.filter(row=>row.method==="workspace.connection.edit").length,1);
- await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A"),{messageKey:"ws.notice.localConfirmationExpired"});
+ await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A","host"),{messageKey:"ws.notice.localConfirmationExpired"});
  assert.equal(f.calls.some(row=>row.method==="workspace.runtime.registerLocal"),false);
 });
 test("actual confirmation action fences same-frame repeated clicks; cancellation remains a local card action",async()=>{

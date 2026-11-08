@@ -38,12 +38,33 @@ test("invalid native transport metadata never opens a socket or falls back", () 
 });
 test("unsupported/legacy capability closes rather than calling old initialization/config", async () => {
   const client = new WorkspaceDevConnectionClient(info(), () => {}), socket = Socket.instances.at(-1);
-  const ready = client.initialize(info().token); const rejected = assert.rejects(ready, /不支援/); socket.open(); await tick();
+  const ready = client.initialize(info().token); const rejected = assert.rejects(ready, error => error.messageKey === "ws.rpc.unsupportedDev"); socket.open(); await tick();
   socket.reply(socket.sent[0].id, { capabilities: ["legacy"], syntheticOnly: false }); await rejected;
   assert.equal(socket.closes, 1); assert.deepEqual(socket.sent.map(row => row.method), ["initialize"]);
 });
+test("mixed-version and malformed capability responses never grant missing features", async () => {
+  for (const capabilities of [["workspace.v2", "workspace.native-session.v1"], ["workspace.v1", { future: true }], "workspace.v1"]) {
+    const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "workspace" }, () => {}), socket = Socket.instances.at(-1);
+    const ready = assert.rejects(client.initialize(info().token), error => error.messageKey === "ws.rpc.unsupportedDev"); socket.open(); await tick();
+    socket.reply(socket.sent[0].id, { capabilities, syntheticOnly: false, executionMode: "workspace" }); await ready;
+    assert.equal(client.supportsCapability("workspace.native-session.v1"), false);
+    assert.deepEqual(socket.sent.map(row => row.method), ["initialize"]);
+  }
+  const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "workspace" }, () => {}), socket = Socket.instances.at(-1);
+  const ready = client.initialize(info().token); socket.open(); await tick();
+  socket.reply(socket.sent[0].id, { capabilities: ["workspace.v1", "future.optional.v1"], syntheticOnly: false, executionMode: "workspace" }); await ready;
+  assert.equal(client.supportsCapability("workspace.native-session.v1"), false, "unknown optional features do not imply known features");
+  client.close(); assert.equal(client.supportsCapability("workspace.v1"), false);
+});
+test("late socket events after disconnect cannot revive scoped notifications or capabilities", async () => {
+  const f = await setup(), changed = []; f.client.setChangedListener(id => changed.push(id));
+  assert.equal(f.client.supportsCapability("workspace.local-dev.v2"), true);
+  f.socket.close(); f.socket.message({ method: "workspace.changed", params: { workspaceId: "stale" } });
+  assert.deepEqual(changed, []); assert.equal(f.client.supportsCapability("workspace.local-dev.v2"), false);
+});
 test("authentication token is sent only in initialize, not business mutations", async () => {
   const f = await setup(); assert.equal(f.socket.url, "ws://127.0.0.1:12345");
+  assert.deepEqual(f.socket.sent[0].params.clientCapabilities, ["workspace.extensions.manager.v1", "workspace.extensions.owner-review.v1", "workspace.assistant-preview.v1"]);
   const request = f.client.request("workspace.list", {}); const sent = f.socket.sent.at(-1);
   assert.equal(JSON.stringify(sent).includes(info().token), false); f.socket.reply(sent.id, { revision: 0 }); assert.deepEqual(await request, { revision: 0 });
 });
@@ -75,7 +96,7 @@ test("real-key attachment requires matching private native mode and exact new ca
   ]) {
     const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "ark-real-key" }, () => {});
     const socket = Socket.instances.at(-1), ready = client.initialize(info().token);
-    const checked = result.syntheticOnly === false && result.capabilities.length === 2 ? ready : assert.rejects(ready, /不支援/);
+    const checked = result.syntheticOnly === false && result.capabilities.length === 2 ? ready : assert.rejects(ready, error => error.messageKey === "ws.rpc.unsupportedDev");
     socket.open(); await tick(); socket.reply(socket.sent[0].id, result); await checked; client.close();
   }
 });
@@ -93,7 +114,7 @@ test("15-second transport expiry is typed unknown, late ACK is ignored and no mu
 test("a synchronous transport send failure cleans its timer without reconnecting or retrying", async () => {
   const f = await setup(), originalSend = f.socket.send;
   f.socket.send = () => { throw new Error("synthetic socket failure"); };
-  await assert.rejects(f.client.request("workspace.session.send", {}), /勿重送/);
+  await assert.rejects(f.client.request("workspace.session.send", {}), error => error.messageKey === "ws.rpc.transportLost");
   f.socket.send = originalSend;
   const lookup = f.client.request("workspace.session.receipt", {}); f.socket.reply(f.socket.sent.at(-1).id, { state: "unknown" }); await lookup;
   assert.equal(Socket.instances.length, 1); assert.equal(f.socket.sent.some(row => row.method === "workspace.session.send"), false);
@@ -101,7 +122,47 @@ test("a synchronous transport send failure cleans its timer without reconnecting
 test("closing while waiting for a socket fails initialization immediately without a timer retry or business request", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const client = new WorkspaceDevConnectionClient(info(), () => {}), socket = Socket.instances.at(-1);
-  const first = assert.rejects(client.initialize(info().token), /無法連接/);socket.close();await first;
-  await assert.rejects(client.initialize(info().token), /已關閉/);t.mock.timers.tick(10000);
+  const first = assert.rejects(client.initialize(info().token), error => error.messageKey === "ws.rpc.connectFailed");socket.close();await first;
+  await assert.rejects(client.initialize(info().token), error => error.messageKey === "ws.rpc.localClosed");t.mock.timers.tick(10000);
   assert.deepEqual(socket.sent, []);assert.equal(Socket.instances.length, 1);
+});
+test("optional clock calibration runs once and only annotates message submission", async () => {
+ const client=new WorkspaceDevConnectionClient(info(),()=>{}),socket=Socket.instances.at(-1),ready=client.initialize(info().token);
+ socket.open();await tick();socket.reply(socket.sent[0].id,{capabilities:["workspace.local-dev.v2","workspace.message-timing.v1"],syntheticOnly:true});await tick();
+ assert.equal(socket.sent.at(-1).method,"workspace.message-timing.clock");socket.reply(socket.sent.at(-1).id,{hostAtMs:performance.now()+1000});await ready;
+ for(const method of ["workspace.session.send","workspace.session.resume","workspace.session.answer","workspace.session.receipt"]){
+  const request=client.request(method,{requestId:"original"}),sent=socket.sent.at(-1);
+  assert.equal(Object.hasOwn(sent.params,"timing"),method!=="workspace.session.receipt");
+  if(sent.params.timing){assert.ok(sent.params.timing.hostAtMs>1000);assert.ok(sent.params.timing.errorMs<=1000);}
+  socket.reply(sent.id,{});await request;
+ }
+ assert.equal(socket.sent.filter(row=>row.method==="workspace.message-timing.clock").length,1);client.close();assert.equal(client.timingNow(),null);
+});
+
+test("archive errors retain only fixed recovery reasons, never arbitrary server error data",async()=>{
+ const {client,socket}=await setup();const pending=client.request("workspace.agents.setArchived",{}),id=socket.sent.at(-1).id;
+ socket.message({jsonrpc:"2.0",id,error:{code:-32602,message:"Synthetic cleanup timeout",data:{archiveReason:"archive_drain_timeout",privatePayload:"must not copy"}}});
+ await assert.rejects(pending,error=>error.archiveReason==="archive_drain_timeout"&&error.code===-32602&&error.data===undefined&&error.privatePayload===undefined);
+ const unknown=client.request("workspace.agents.setArchived",{});socket.message({jsonrpc:"2.0",id:socket.sent.at(-1).id,error:{code:-32602,message:"Synthetic unknown",data:{archiveReason:"untrusted-reason"}}});await assert.rejects(unknown,error=>error.archiveReason===undefined);client.close();
+});
+
+
+test("B2 request locales follow current preference; closed error codes localize and retain numeric/archive compatibility", async () => {
+  const originalStorage = globalThis.localStorage; let locale = "en";
+  globalThis.localStorage = { getItem: () => locale };
+  try {
+    const client = new WorkspaceDevConnectionClient(info(), () => {}), socket = Socket.instances.at(-1);
+    const ready = client.initialize(info().token); socket.open(); await tick();
+    assert.deepEqual(socket.sent[0].params.clientLocale, { tag: "en", fallback: [] });
+    socket.reply(socket.sent[0].id, { capabilities: ["workspace.local-dev.v2", "workspace.i18n.v1"], syntheticOnly: true }); await ready;
+    locale = "zh-Hans"; const pending = client.request("workspace.session.send", { clientLocale: { tag: "evil", fallback: [] } });
+    assert.deepEqual(socket.sent.at(-1).params.clientLocale, { tag: "zh-Hans", fallback: ["en"] });
+    const checked = assert.rejects(pending, error => error.code === -32602 && error.publicCode === "message_invalid" && error.message === "请输入有效消息后再试。" && String(error) === "core.error.message_invalid" && error.technicalDetail === "safe diagnostic");
+    socket.message({ jsonrpc: "2.0", id: socket.sent.at(-1).id, error: { code: -32602, message: "internal raw English", data: { code: "message_invalid", params: {}, technicalDetail: "safe diagnostic", privatePayload: "never copy" } } }); await checked; client.close();
+  } finally { if (originalStorage === undefined) delete globalThis.localStorage; else globalThis.localStorage = originalStorage; }
+});
+
+test("older Core capability keeps method field compatibility after locale-aware initialization", async () => {
+  const {client,socket} = await setup(); const pending = client.request("workspace.list", {});
+  assert.equal(Object.prototype.hasOwnProperty.call(socket.sent.at(-1).params,"clientLocale"),false);socket.reply(socket.sent.at(-1).id,{});await pending;client.close();
 });

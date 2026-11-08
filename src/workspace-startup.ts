@@ -54,7 +54,7 @@ export class WorkspaceStartupModel {
       const info = await this.connect();if (epoch !== this.epoch) return;
       client = this.makeClient(info, () => {
         if (epoch !== this.epoch) return;
-        if (this.view.model) this.update({ phase: "disconnected", diagnostic: "CORE_CONNECTION_CLOSED" });
+        if (this.view.model) { this.view.model.assistantPreview(null); this.update({ phase: "disconnected", diagnostic: "CORE_CONNECTION_CLOSED" }); }
         else {
           ++this.epoch;this.client = null;this.pending = null;
           this.update({ phase: "failed", diagnostic: phase === "loading" ? "WORKSPACE_LOAD_FAILED" : "CORE_HANDSHAKE_FAILED", model: null, root: "" });

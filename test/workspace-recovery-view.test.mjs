@@ -200,6 +200,20 @@ test("legacy Codex diagnostics map to safe categories without echoing raw stderr
 });
 
 
+test("host Codex hides login CTAs in recovery and Runtime Settings", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
+    const t=makeT(locale), conversation={state:"blocked",taskState:"blocked",blockReason:"codex Runtime failed (runtime_auth_required); no fallback was selected",history:[{role:"user",content:"hi"}],resumeAdmission:{allowed:true}};
+    const card=render(h(WorkspaceTaskRecovery,{conversation,t,disabled:false,runtimeId:"codex",loginSource:"host",onContinue(){},onRepair(){},onLogin(){throw Error("host login CTA must stay hidden");}}));
+    assert.ok(card.includes(t("ws.resume.retry")));assert.equal(card.includes(t("ws.resume.codexLogin")),false);
+    const before=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
+    Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:()=>locale}});
+    try {
+      const workspace={workspaceId:"fixture",resourceGeneration:"one",runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:true,loginSource:"host",generalAgentDriverAvailable:true}],operations:[]}};
+      const settings=render(h(WorkspaceRuntimeSettings,{workspace,model:{codexLoginInstructions(){throw Error("host guidance unavailable");}}}));
+      assert.equal(settings.includes(t("ws.resume.loginCommand")),false);
+    } finally {if(before)Object.defineProperty(globalThis,"localStorage",before);else delete globalThis.localStorage;}
+  }
+});
 test("registered Codex exposes separate private-login guidance in all three languages without starting login", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -219,5 +233,19 @@ test("one-shot continuation wording stays scoped to native failures and preserve
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     const t = makeT(locale), html = render(h(WorkspaceTaskRecovery, { conversation: { state: "blocked", blockReason: "Synthetic task checkpoint" }, runtimeId: "pi", t, disabled: false, onContinue() {}, onRepair() {} }));
     assert.ok(html.includes(t("ws.resume.body"))); assert.equal(html.includes(t("ws.resume.runtime.body")), false);
+  }
+});
+
+test("native context and restore failure have a three-language new-session exit without generic failure or retry", () => {
+  for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const full of [true, false]) {
+    const t = makeT(locale), conversation = { state: "blocked", taskState: full ? "paused" : "blocked", history: [{ role: "user", content: "retained" }],
+      blockReason: full ? "Native context limit reached. Open a new session to continue." : "codex Runtime failed (codex_resume_failed_history_preserved)",
+      nativeSession: { status: full ? "new_session_required" : "recovery_needed" } };
+    const html = render(h(WorkspaceTaskRecovery, { conversation, t, disabled: false, runtimeId: "codex", onContinue() {}, onRepair() {}, onNewSession() {} }));
+    assert.ok(html.includes(t("ws.native.new"))); assert.ok(html.includes(t(full ? "ws.native.limitBody" : "ws.native.recoveryBody")));
+    assert.ok(html.includes('role="status"')); assert.equal(html.includes('role="alert"'), false); assert.equal(html.includes("data-recovery-retry"), false);
+    assert.equal(html.includes("codex_resume_failed_history_preserved"), false);
+    const busy = render(h(WorkspaceTaskRecovery, { conversation: { ...conversation, state: "draining" }, t, disabled: false, onContinue() {}, onRepair() {}, onNewSession() {} }));
+    assert.ok(/<button[^>]*disabled/.test(busy));
   }
 });

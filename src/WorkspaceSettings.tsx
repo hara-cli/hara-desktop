@@ -1,8 +1,11 @@
+import { WorkspaceRpcErrorNotice } from "./WorkspaceRpcErrorNotice.tsx";
+import { localizedWorkspaceView } from "./workspace-default-labels.ts";
+import { WorkspaceDeletedColleagues } from "./WorkspaceDeletedColleagues";
+import { WorkspaceExtensions } from "./WorkspaceExtensions";
 import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useWorkspaceLocale, workspacePlatform } from "./workspace-shell-hooks";
-import { ArrowPathIcon, ChevronDownIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { type Key, type LocalePreference } from "./i18n";
-import { workspaceMessageText } from "./workspace-settings-copy";
+import { ArrowPathIcon, CalendarDaysIcon, ChevronDownIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { selectableLanguages, type Key, type LocalePreference } from "./i18n";
 import HaraLogo from "./mark";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot } from "./workspace-dev-state";
 import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
@@ -12,11 +15,14 @@ import { hasUpdateAttention, type WorkspaceUpdater } from "./workspace-updater-s
 import { SettingsLeaveGuard, type SettingsLeaveAction } from "./settings-leave-guard";
 import "./workspace-settings.css";
 
-export type SettingsPage = "overview" | "connections" | "runtimes" | "skills" | "members" | "general" | "appearance" | "updates";
+export type SettingsPage = "colleagues" | "overview" | "connections" | "runtimes" | "schedules" | "plugins" | "skills" | "members" | "general" | "appearance" | "updates";
 const pages: Record<SettingsPage, { name: Key; icon: typeof HomeIcon; detail: Key }> = {
+  colleagues: { name: "ws.nav.colleagues", icon: UsersIcon, detail: "ws.nav.colleagues" },
   overview: { name: "ws.settings.page.overview", icon: HomeIcon, detail: "ws.settings.detail.overview" },
   connections: { name: "ws.settings.page.connections", icon: LinkIcon, detail: "ws.settings.detail.connections" },
   runtimes: { name: "ws.settings.page.runtimes", icon: ComputerDesktopIcon, detail: "ws.settings.detail.runtimes" },
+  plugins: { name: "ws.extensions.title", icon: LinkIcon, detail: "ws.extensions.detail" },
+  schedules: { name: "ws.settings.page.schedules", icon: CalendarDaysIcon, detail: "ws.settings.detail.schedules" },
   skills: { name: "ws.settings.page.skills", icon: SparklesIcon, detail: "ws.settings.detail.skills" },
   members: { name: "ws.settings.page.members", icon: UsersIcon, detail: "ws.settings.detail.members" },
   general: { name: "ws.settings.page.general", icon: Cog6ToothIcon, detail: "ws.settings.detail.general" },
@@ -62,7 +68,7 @@ export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
 }
 export function SettingsContent({ model, initialPage, root, production, theme, updater, versionInfo, onClose, onCreateSkill }: WorkspaceSettingsProps & { model: WorkspaceDevModel }) {
   const { locale, preference, t, changeLocale } = useWorkspaceLocale();
-  const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot), updates = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot);
+  const rawView = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot), view = localizedWorkspaceView(rawView, locale), updates = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot);
   const [page, setPage] = useState<SettingsPage>(initialPage), [scopeOpen, setScopeOpen] = useState(false), [leaveNotice, setLeaveNotice] = useState<"" | Key>("");
   const scopeTrigger = useRef<HTMLButtonElement>(null), scopeMenu = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null);
   const cancelLeave = useRef<HTMLButtonElement>(null), discardLeave = useRef<HTMLButtonElement>(null), returnFocus = useRef<HTMLElement | null>(null);
@@ -106,7 +112,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
     document.addEventListener("pointerdown", outside); return () => document.removeEventListener("pointerdown", outside);
   }, [scopeOpen]);
   const switchScope = (workspaceId: string) => { if (workspaceId !== view.workspaceId) requestLeave({ kind: "scope", workspaceId }); else setScopeOpen(false); };
-  const workspacePages: SettingsPage[] = ["connections", "runtimes", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
+  const workspacePages: SettingsPage[] = ["colleagues", "connections", "runtimes", "schedules", "plugins", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
   const navItem = (id: SettingsPage) => <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}><span aria-hidden>{createElement(pages[id].icon, { className: "hico" })}</span><span>{t(pages[id].name)}</span>{id === "updates" && hasUpdateAttention(updates) ? <i className="wss-update-dot" /> : null}</button>;
   const key = workspace ? `${workspace.workspaceId}:${workspace.resourceGeneration}:${page}` : "loading";
   return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}>
@@ -119,16 +125,23 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
     </nav><footer><HaraLogo size={19} /><span>Hara {versionInfo?.desktop ?? ""}<small>{t("ws.settings.savedHere")}</small></span></footer></aside>
     <main className="wss-main" ref={body} inert={Boolean(decision)}><header className="wss-heading"><div><p>{t("ws.settings")} / {device ? t("ws.settings.device") : `${t("ws.settings.workspace")} / ${workspace?.label ?? "—"}`}</p><h1>{t(pages[page].name)}</h1></div>
       <span className="wss-scope-chip">{device ? `${t("ws.settings.device")} · ${t("ws.settings.allSpaces")}` : t("ws.settings.currentOnly")}</span></header><p className="wss-description">{t(pages[page].detail)}</p>
-      {view.error ? <p className="wss-callout" role="alert">{workspaceMessageText(t, view.error)}</p> : null}
+      <WorkspaceRpcErrorNotice value={view.error} technicalDetail={view.errorTechnicalDetail} locale={locale} t={t} className="wss-callout" />
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
       {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.filter(id => id !== "members").map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}</h2><p>{id === "connections" ? t(connectionCount === 1 ? "ws.settings.connectionOne" : "ws.settings.connectionCount", { n: connectionCount }) : id === "runtimes" ? t("ws.settings.runtimeSummary") : t(pages[id].detail)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
         <h3>{t("ws.settings.device")} · {t("ws.settings.allSpaces")}</h3><div className="wss-overview">{(["appearance", "updates"] as const).map(id => <button key={id} onClick={() => navigate(id)}><h2>{t(pages[id].name)}</h2><p>{id === "appearance" ? t("ws.settings.themeSummary") : ["available", "ready"].includes(updates.phase) ? t("ws.settings.updateAvailable", { version: updates.version ?? "" }) : t("ws.settings.updateSummary")}</p><span>{t("ws.settings.open")}</span></button>)}</div></> : null}
-      {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option><option value="en">English</option><option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option></select></label></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
+      {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option>
+            {/* Options come from the registry; only `stable` languages are offered (Jeff decision Q7).
+                zh-Hant is beta for this release: the translations ship in the locale JSON and the
+                contract test still checks them, but the picker must not offer them yet. */}
+            {selectableLanguages().map(language => <option key={language.tag} value={language.tag}>{language.nativeName}</option>)}</select></label></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
         : page === "overview" ? null : !workspace ? <p role="status">{t(view.loading ? "ws.settings.loading" : "ws.settings.createFirst")}</p> : <fieldset className="wss-content" key={key} disabled={Boolean(readonly)}>
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
+          {page === "colleagues" ? <WorkspaceDeletedColleagues key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} locale={locale} /> : null}
           {page === "connections" ? production ? <WorkspaceConnections model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.connectionsLab")}</p> : null}
-          {page === "runtimes" ? production ? <WorkspaceRuntimeSettings model={model} workspace={workspace} /> : <p>{t("ws.settings.runtimeLab")}</p> : null}
-          {page === "skills" ? <WorkspaceFeaturePanel model={model} workspace={workspace} kind={page} onDirty={leaveGuard.setDirty} onCreateSkill={() => requestLeave({ kind: "skill", workspaceId: workspace.workspaceId })} /> : null}
+          {page === "runtimes" ? production ? <WorkspaceRuntimeSettings model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.runtimeLab")}</p> : null}
+          {page === "plugins" ? <WorkspaceExtensions model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} onDirty={leaveGuard.setDirty} /> : null}
+          {page === "schedules" || page === "skills" ? <WorkspaceFeaturePanel model={model} workspace={workspace} kind={page} onDirty={leaveGuard.setDirty}
+            onCreateSkill={page === "skills" ? () => requestLeave({ kind: "skill", workspaceId: workspace.workspaceId }) : undefined} /> : null}
           {page === "general" ? <General workspace={workspace} root={root} role={selected?.role ?? "owner"} kind={selected?.kind ?? "personal"} /> : null}
           {page === "members" ? <p>{t("ws.settings.membersUnavailable")}</p> : null}
         </fieldset>}

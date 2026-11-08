@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "coreCommit": "4b73b36adf91e868429f0710bb0543a9cb6cda1e",
+  "files": {
+    "registry.json": "7780d1a8e4c7b2959650b94985be6d4f84934f4044afde0abc9df59a4fd4bb90",
+    "registry.generated.ts": "c433dda1fb5c61f36d9d1b35406674e5e76a95ef2b2a7b174504af35eab04126",
+    "errors.json": "cf0b3cef3ffc727235811b275b8162b23c7b2678db6ab3f50247494aab3df535",
+    "messages.generated.ts": "28fe7a35a422a1d0f3b09770750e28d91c7702bec46fc8bbd1e84a3da580bc89",
+    "en/core.json": "84b09bccbe885ab30eb721ee03529089683df32e870a0bf880e6929816794892",
+    "en/errors.json": "5ca894afa1dbd9e863ba12ec043faba820d466600a444cc1adcb82c29554aad8",
+    "zh-Hans/core.json": "586bd36b0d500a60d1084b7b46ce05f278c1760dc05f11cbb4102fa8206b350a",
+    "zh-Hans/errors.json": "9d5893f60c61f250e7f721d4f30fff60e88266fb06e4567936d822fc8d1f7573",
+    "zh-Hant/core.json": "1eba189836ef27a9891fb0e21c3cefa641b2bc62d366fb996ee9910358cb399f",
+    "core-messages.ts": "1d13e76e19b5adc66df637bac60c64c794afc4b8093990ae5da90915df1a0592"
+  }
+}

@@ -1,6 +1,5 @@
 // Workspace locales follow the Mac preference: English, Simplified and Traditional Chinese.
 // The native rollback surface keeps the original bilingual dictionary below.
-import { WORKSPACE_KEYS, WORKSPACE_EXTRA_KEYS } from "./workspace-i18n.ts";
 export type Locale = "en" | "zh-Hans" | "zh-Hant";
 // The native rollback entry retains its bilingual contract. New Workspace UI uses Locale.
 export type LegacyLocale = "en" | "zh";
@@ -2016,20 +2015,39 @@ const dict = {
   },
 } as const;
 
-type WorkspaceRow = (typeof WORKSPACE_KEYS)[number] | (typeof WORKSPACE_EXTRA_KEYS)[number];
-export type Key = keyof typeof dict.en | WorkspaceRow[0];
-const workspaceDictionaries = Object.fromEntries((["en", "zh-Hans", "zh-Hant"] as const).map((locale, index) =>
-  [locale, Object.fromEntries([...WORKSPACE_KEYS, ...WORKSPACE_EXTRA_KEYS].map(row => [row[0], row[index + 1]]))])) as Record<Locale, Record<string, string>>;
+/**
+ * Workspace shell keys now live in `src/locales/<lang>/<ns>.json` (B0).
+ * `WORKSPACE_KEYS` / `WORKSPACE_EXTRA_KEYS` are re-exported by workspace-i18n.ts, which
+ * derives them from those JSON files; the legacy bilingual `dict` below still backs the
+ * frozen rollback entry and a handful of keys the formal shell has not migrated yet.
+ */
+type LegacyKey = keyof typeof dict.en;
+export type Key = LegacyKey | WorkspaceKey;
+
+export {
+  BASELINE_LOCALE, LANGUAGES, NAMESPACES, isLocale, localeChain, matchLanguageTag,
+  isComplexMessage, messageText, selectableLanguages, formatMessage, applyDocumentLanguage,
+} from "./i18n-runtime.ts";
+export type { LanguageRecord, LanguageStatus } from "./i18n-runtime.ts";
+import {
+  BASELINE_LOCALE, formatMessage, matchLanguageTag, messageText,
+  type LocalePreference as RuntimePreference,
+} from "./i18n-runtime.ts";
+import { WORKSPACE_KEY_SET, type WorkspaceKey } from "./i18n-catalog.ts";
 
 export function normalizeLocale(value: string | null | undefined): Locale | null {
   if (value === "zh") return "zh-Hans";
-  return value === "en" || value === "zh-Hans" || value === "zh-Hant" ? value : null;
+  if (value === "en" || value === "zh-Hans" || value === "zh-Hant") return value;
+  // Any other tag (zh-TW, en-GB, ja, …) goes through the registry matcher; unsupported
+  // languages return null so callers keep their existing "unknown preference" handling.
+  return matchLanguageTag(value);
 }
-export type LocalePreference = Locale | "system";
+export type LocalePreference = RuntimePreference;
 export function detectLocalePreference(): LocalePreference {
   try { return normalizeLocale(globalThis.localStorage?.getItem("hara.locale")) ?? "system"; } catch { return "system"; }
 }
-export function detectSystemLocale(): Locale {
+export const detectSystemLocale: () => Locale = detectSystemLocaleRuntime;
+function detectSystemLocaleRuntime(): Locale {
   const languages = globalThis.navigator?.languages;
   return localeFromLanguages(languages?.length ? languages : [globalThis.navigator?.language ?? "en"]);
 }
@@ -2040,17 +2058,11 @@ export function detectLocale(): Locale {
   return resolveLocale(detectLocalePreference());
 }
 export function localeFromLanguages(languages: readonly string[]): Locale {
-  for (const value of languages) if (/^(?:zh|en)(?:[-_]|$)/i.test(value.trim())) return localeFromSystem(value);
-  return "en";
+  for (const value of languages) { const tag = matchLanguageTag(value); if (tag) return tag; }
+  return BASELINE_LOCALE;
 }
 export function localeFromSystem(value: string): Locale {
-  const language = value.trim().toLowerCase().replace(/_/g, "-");
-  if (/^zh(?:-|$)/.test(language)) {
-    if (/(?:^|-)hans(?:-|$)/.test(language)) return "zh-Hans";
-    if (/(?:^|-)hant(?:-|$)/.test(language)) return "zh-Hant";
-    return /(?:^|-)(?:tw|hk|mo)(?:-|$)/.test(language) ? "zh-Hant" : "zh-Hans";
-  }
-  return "en";
+  return matchLanguageTag(value) ?? BASELINE_LOCALE;
 }
 export function detectLegacyLocale(): LegacyLocale { return detectLocale() === "en" ? "en" : "zh"; }
 export function saveLocale(locale: LocalePreference | LegacyLocale): void {
@@ -2058,10 +2070,17 @@ export function saveLocale(locale: LocalePreference | LegacyLocale): void {
   try { globalThis.localStorage?.setItem("hara.locale", normalized); } catch { /* current view still changes */ }
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("hara:locale-changed", { detail: normalized }));
 }
+/**
+ * One translator for both surfaces: workspace keys resolve through the locale JSON
+ * (with the registry fallback chain), legacy keys keep the frozen bilingual dictionary.
+ */
 export function makeT(locale: Locale | LegacyLocale) {
-  const normalized = normalizeLocale(locale) ?? "en";
+  const normalized: Locale = normalizeLocale(locale) ?? "en";
   return (key: Key, values: Record<string, string | number> = {}): string => {
-    const text = workspaceDictionaries[normalized][key] ?? dict[normalized === "en" ? "en" : "zh"][key as keyof typeof dict.en] ?? key;
-    return text.replace(/\{(\w+)\}/g, (match, name) => String(values[name] ?? match));
+    if (WORKSPACE_KEY_SET.has(key)) return formatMessage(normalized, key, values);
+    const legacy = dict[normalized === "en" ? "en" : "zh"][key as LegacyKey];
+    if (typeof legacy === "string") return legacy.replace(/\{(\w+)\}/g, (match, name) => String(values[name] ?? match));
+    // Unknown workspace-shaped key: show the key itself rather than an empty string.
+    return messageText(normalized, key);
   };
 }

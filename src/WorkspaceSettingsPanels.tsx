@@ -7,6 +7,8 @@ import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { settingsStateText } from "./workspace-settings-copy";
 import { makeT, type Key, type Locale } from "./i18n";
 import { applyAppearance, loadAppearance, saveAppearance, type VioletAppearance } from "./violet-appearance";
+import { WorkspaceSchedulePicker } from "./WorkspaceSchedulePicker";
+import { emptySchedulePicker, pickerToSchedule, scheduleToPicker, type SchedulePickerValue } from "./workspace-schedule-picker";
 
 export function useStableWorkspaceTheme(model: WorkspaceDevModel) {
   const [preference, setPreference] = useState<ThemePreference>(loadThemePreference);
@@ -28,13 +30,18 @@ export function useStableWorkspaceTheme(model: WorkspaceDevModel) {
     try { const saved = await model.saveDisplayPreference(executionDetails, collapseDetails); setSettings(saved); setNotice(""); }
     catch { setNotice("ws.theme.displayUnknown"); } finally { busy.current = false; }
   };
+  const changeTimingDiagnostics = async (value: boolean) => {
+    if (!settings || settings.readOnly || busy.current) return; busy.current = true;
+    try { const saved = await model.saveTimingDiagnosticsPreference(value); setSettings(saved); setNotice(""); }
+    catch { setNotice("ws.theme.displayUnknown"); } finally { busy.current = false; }
+  };
   const changeAppearance = (next: Partial<VioletAppearance>) => {
     setAppearance(current => { const value = { ...current, ...next }; saveAppearance(value); return value; });
   };
   const chooseTheme = async (value: "violet-glass" | "obsidian" | "daylight") => {
     if (await change(value === "daylight" ? "light" : "dark")) changeAppearance({ darkTheme: value === "obsidian" ? "obsidian" : "violet-glass" });
   };
-  return { preference, settings, notice, change, changeDetails, appearance, changeAppearance, chooseTheme };
+  return { preference, settings, notice, change, changeDetails, changeTimingDiagnostics, appearance, changeAppearance, chooseTheme };
 }
 export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<typeof useStableWorkspaceTheme>; locale?: Locale }) {
   const current = useWorkspaceLocale(), t = locale ? makeT(locale) : current.t;
@@ -52,6 +59,8 @@ export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<ty
       onChange={event => void theme.changeDetails(event.target.value as "brief" | "detailed", theme.settings?.collapseDetails !== false)}><option value="brief">{t("ws.display.brief")}</option><option value="detailed">{t("ws.display.detailed")}</option></select></label>
     <div className="wss-setting-row"><span>{t("ws.display.collapse")}</span><ToggleSwitch label={t("ws.display.collapse")} checked={theme.settings?.collapseDetails !== false} disabled={!theme.settings || theme.settings.readOnly}
       onCheckedChange={checked => void theme.changeDetails(theme.settings?.executionDetails ?? "brief", checked)} /></div>
+    <div className="wss-setting-row"><span>{t("ws.stages.alwaysShow")}</span><ToggleSwitch label={t("ws.stages.alwaysShow")} checked={theme.settings?.alwaysShowTimingDiagnostics === true} disabled={!theme.settings || theme.settings.readOnly}
+      onCheckedChange={checked => void theme.changeTimingDiagnostics(checked)} /></div>
     {theme.notice ? <p role="status">{t(theme.notice)}</p> : null}</section>;
 }
 export function WorkspaceConnections({ model, workspace, onDirty }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onDirty?: (value: boolean) => void }) {
@@ -98,9 +107,12 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
 export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty, onCreateSkill }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; kind: "schedules" | "skills"; onClose?: () => void; onDirty?: (value: boolean) => void; onCreateSkill?: () => void }) {
   const { locale, t } = useWorkspaceLocale();
   const [value, setValue] = useState<WorkspaceFeatureView | null>(null), [notice, setNotice] = useState<"" | Key>(""), [pending, setPending] = useState(false);
-  const [editor, setEditor] = useState<{ id: string; content: string } | null>(null), [upgrade, setUpgrade] = useState<WorkspaceFeatureView["skills"][number] | null>(null);
+  const [editor, setEditor] = useState<{ id: string; content: string } | null>(null);
+  const [scheduleEditor, setScheduleEditor] = useState<{ id: string; name: string; task: string; picker: SchedulePickerValue; agentId: string; enabled: boolean; creating: boolean } | null>(null);
+  const [repeatConfirm, setRepeatConfirm] = useState(false);
+  const [scheduleDelete, setScheduleDelete] = useState<{ id: string; name: string } | null>(null), [upgrade, setUpgrade] = useState<WorkspaceFeatureView["skills"][number] | null>(null);
   const busy = useRef(false);
-  useEffect(() => { onDirty?.(Boolean(editor)); return () => onDirty?.(false); }, [editor, onDirty]);
+  useEffect(() => { onDirty?.(Boolean(editor || scheduleEditor || scheduleDelete)); return () => onDirty?.(false); }, [editor, scheduleEditor, scheduleDelete, onDirty]);
   useEffect(() => { let active = true; void model.workspaceRequest<WorkspaceFeatureView>("workspace.features.list").then(rows => { if (active) setValue(rows); })
     .catch(() => { if (active) setNotice("ws.features.loadFailed"); }); return () => { active = false; }; }, [model, workspace.workspaceId, workspace.resourceGeneration]);
   const runningSchedule = Boolean(value?.scheduler?.schedules.some(row => row.lastRun?.state === "running"));
@@ -116,6 +128,20 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
   const saveSkill = async () => { if (!value || !editor || busy.current) return; busy.current = true; setPending(true);
     try { setValue(await model.workspaceRequest<WorkspaceFeatureView>("workspace.skill.fork", { id: editor.id, content: editor.content, expectedRevision: value.revision, approved: true })); setEditor(null); }
     catch { setNotice("ws.skills.saveUnknown"); } finally { busy.current = false; setPending(false); } };
+  const editSchedule = async (confirmed = false) => { if (!value || !scheduleEditor || busy.current) return;
+    const { id, name, task, picker, agentId, enabled } = scheduleEditor;
+    if (!name.trim() || !task.trim() || !agentId) { setNotice("ws.schedules.invalidFields"); return; }
+    let schedule;
+    try { schedule = pickerToSchedule(picker); } catch { setNotice("ws.schedules.invalidTime"); return; }
+    if (schedule.kind !== "once" && !confirmed) { setRepeatConfirm(true); return; }
+    busy.current = true; setPending(true);
+    try { setValue(await model.workspaceRequest<WorkspaceFeatureView>("workspace.schedule.save", { input: { id, name: name.trim(), task: task.trim(), tz: picker.tz.trim(), agentId, enabled, schedule }, expectedRevision: value.revision, approved: true })); setScheduleEditor(null); setRepeatConfirm(false); setNotice(""); }
+    catch { setNotice("ws.features.saveUnknown"); } finally { busy.current = false; setPending(false); }
+  };
+  const deleteSchedule = async () => { if (!value || !scheduleDelete || busy.current) return; busy.current = true; setPending(true);
+    try { setValue(await model.workspaceRequest<WorkspaceFeatureView>("workspace.schedule.delete", { id: scheduleDelete.id, expectedRevision: value.revision, approved: true })); setScheduleDelete(null); setNotice(""); }
+    catch { setNotice("ws.features.saveUnknown"); } finally { busy.current = false; setPending(false); }
+  };
   return <section className="wsd-feature-panel" aria-label={t(kind === "skills" ? "ws.skills.title" : "ws.schedules.title")}>{onClose ? <button onClick={onClose}>{t("ws.settings.back")}</button> : null}
     <h2>{t(kind === "skills" ? "ws.settings.page.skills" : "ws.settings.page.schedules")}</h2><p>{t("ws.features.scope", { workspace: workspace.label })}</p>
     {!value ? <p role="status">{t(notice || "ws.settings.loading")}</p> : kind === "skills" ? <>
@@ -133,10 +159,27 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
         <button disabled={pending} onClick={() => setEditor(null)}>{t("ws.cancel")}</button><button disabled={pending} onClick={() => void saveSkill()}>{t("ws.skills.save")}</button></section> : null}</> : <>
       <p className="wss-callout">{t("ws.schedules.legacyNote")}</p>
       <p className="wss-callout">{t("ws.schedules.colleagueNote")}</p>
+      <button disabled={pending || !workspace.agents.some(agent => agent.state === "active")} onClick={() => { setScheduleEditor({ id: crypto.randomUUID(), name: "", task: "", picker: emptySchedulePicker(),
+        agentId: workspace.agents.find(agent => agent.agentId === workspace.selectedAgentId && agent.state === "active")?.agentId ?? workspace.agents.find(agent => agent.state === "active")?.agentId ?? "",
+        enabled: true, creating: true }); setRepeatConfirm(false); setNotice(""); }}>{t("ws.schedules.add")}</button>
       {!value.schedules.length ? <p>{t("ws.schedules.empty")}</p> : value.schedules.map(row => { const status = value.scheduler?.schedules.find(item => item.id === row.id); return <div className="wsd-connection" key={row.id}><strong>{row.name}</strong><code>{row.schedule.expr ?? row.schedule.display}</code>
+        <small>{t(row.source === "chat" ? "ws.schedules.chatSource" : row.source === "workspace" ? "ws.schedules.manualSource" : "ws.schedules.legacySource")}</small>
+        {row.anchor ? <small>{t("ws.schedules.anchor", { conversation: row.anchor.conversationId, message: row.anchor.messageId.slice(0, 8) })}</small> : null}
         <small>{t(row.enabled ? "ws.schedules.enabled" : "ws.schedules.off")}</small>
         <small>{status?.awaitingHandoff ? t("ws.schedules.handoff") : status?.lastRun ? t("ws.schedules.last", { state: settingsStateText(t, status.lastRun.state), reason: status.lastRun.reason ? ` · ${status.lastRun.reason}` : "" }) : t("ws.schedules.never")}</small>
         <small>{t("ws.schedules.next", { time: status?.nextRunAt ? new Date(status.nextRunAt).toLocaleString(locale) : "—" })}</small>
-        {status?.lastRun ? <details><summary>{t("ws.schedules.history")}</summary><p>{new Date(status.lastRun.occurredAt).toLocaleString(locale)} · {settingsStateText(t, status.lastRun.state)}</p></details> : null}</div>; })}</>}
+        {status?.lastRun ? <details><summary>{t("ws.schedules.history")}</summary><p>{new Date(status.lastRun.occurredAt).toLocaleString(locale)} · {settingsStateText(t, status.lastRun.state)}</p></details> : null}
+        {row.agentId && row.task && (row.source === "chat" || row.source === "workspace") ? <div className="wsd-card-actions">
+          <button disabled={pending} onClick={() => { setScheduleEditor({ id: row.id, name: row.name, task: row.task!, picker: scheduleToPicker(row.schedule, row.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone), agentId: row.agentId!, enabled: row.enabled, creating: false }); setRepeatConfirm(false); }}>{t("ws.schedules.edit")}</button>
+          <button disabled={pending} onClick={() => setScheduleDelete({ id: row.id, name: row.name })}>{t("ws.schedules.delete")}</button></div> : null}</div>; })}
+      {scheduleEditor ? <section className="wsd-approval" role="dialog" aria-label={t(scheduleEditor.creating ? "ws.schedules.add" : "ws.schedules.edit")}><h3>{t(scheduleEditor.creating ? "ws.schedules.add" : "ws.schedules.edit")}</h3>
+        <label>{t("ws.schedules.name")}<input value={scheduleEditor.name} onChange={event => { setScheduleEditor({ ...scheduleEditor, name: event.target.value }); setRepeatConfirm(false); }} /></label>
+        {scheduleEditor.creating ? <label>{t("ws.schedules.assignee")}<select value={scheduleEditor.agentId} onChange={event => { setScheduleEditor({ ...scheduleEditor, agentId: event.target.value }); setRepeatConfirm(false); }}>{workspace.agents.filter(agent => agent.state === "active").map(agent => <option key={agent.agentId} value={agent.agentId}>{agent.identity.displayName}</option>)}</select></label> : null}
+        <WorkspaceSchedulePicker value={scheduleEditor.picker} onChange={picker => { setScheduleEditor({ ...scheduleEditor, picker }); setRepeatConfirm(false); }} t={t} />
+        <label>{t("ws.schedules.task")}<textarea value={scheduleEditor.task} onChange={event => { setScheduleEditor({ ...scheduleEditor, task: event.target.value }); setRepeatConfirm(false); }} /></label>
+        {repeatConfirm ? <p role="alert">{t("ws.schedules.repeatConfirm")}</p> : null}
+        <button disabled={pending} onClick={() => { setScheduleEditor(null); setRepeatConfirm(false); }}>{t("ws.cancel")}</button><button disabled={pending || scheduleEditor.picker.mode === "unsupported"} onClick={() => void editSchedule(repeatConfirm)}>{t(repeatConfirm ? "ws.schedules.confirmRepeat" : scheduleEditor.creating ? "ws.schedules.create" : "ws.schedules.save")}</button></section> : null}
+      {scheduleDelete ? <section className="wsd-approval" role="dialog" aria-label={t("ws.schedules.delete")}><h3>{t("ws.schedules.deleteConfirm", { name: scheduleDelete.name, workspace: workspace.label })}</h3>
+        <button disabled={pending} onClick={() => setScheduleDelete(null)}>{t("ws.cancel")}</button><button disabled={pending} onClick={() => void deleteSchedule()}>{t("ws.schedules.delete")}</button></section> : null}</>}
     {notice && value ? <p role="status">{t(notice)}</p> : null}</section>;
 }

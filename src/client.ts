@@ -234,13 +234,17 @@ export type ExternalTerminalEvent =
       handoffId: string;
     };
 
-export type AgentRuntimeId = "hara" | "pi" | "opencode" | "codex" | "claude" | "agy";
+export type AgentRuntimeId = "hara" | "pi" | "opencode" | "codex" | "claude" | "agy" | "gemini" | "kimi" | "copilot" | "cursor" | "grok";
 export interface AgentRuntimeOption {
   id: AgentRuntimeId;
   label: string;
   available: boolean;
-  reason?: "general_agent_adapter_pending" | "adapter_pending_p05" | "not_registered" | "not_installed" | "integrity_failed";
+  reason?: "general_agent_adapter_pending" | "adapter_pending_p05" | "not_registered" | "not_installed" | "integrity_failed" | "detection_pending" | "detection_failed";
   recommended: boolean;
+  /** Core runtime-form: may be chosen in a form (installed, checked, has a driver); not execution authority. */
+  selectable?: boolean;
+  /** Core runtime-form: what a person must confirm before `available` can become true. */
+  confirmation?: "none" | "first_use" | "update";
 }
 
 export interface AgentRuntimeBinding {
@@ -1579,7 +1583,7 @@ export interface SessionTurnResult {
   taskId: string;
   turnId: string;
   status?: "paused";
-  stopReason?: "deadline" | "task_round_budget" | "max_rounds" | "strategy_stall" | "no_progress" | "repeat_loop" | "completion_verification";
+  stopReason?: "deadline" | "task_round_budget" | "max_rounds" | "strategy_stall" | "no_progress" | "repeat_loop" | "completion_verification" | "native_context_limit" | "native_prose_only" | "native_resume_timeout";
 }
 
 export type SessionSubmitResult =

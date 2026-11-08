@@ -11,6 +11,7 @@ use tauri_plugin_updater::UpdaterExt;
 #[cfg(test)]
 mod brand_asset_tests;
 mod command_line_probe;
+mod workspace_media;
 mod update_channel;
 #[cfg(windows)]
 mod windows_process;
@@ -1270,10 +1271,12 @@ fn workspace_dev_connection_at(
 /// discover the installed engine, copy its keys, or expose a general filesystem/PID operation.
 #[tauri::command]
 fn workspace_dev_connection() -> Result<WorkspaceDevConnection, String> {
-    workspace_dev_connection_at(
+    let connection = workspace_dev_connection_at(
         cfg!(debug_assertions),
         std::env::var_os("HARA_DESKTOP_WORKSPACE_DEV_ROOT").map(PathBuf::from),
-    )
+    )?;
+    workspace_media::remember(connection.port, &connection.token);
+    Ok(connection)
 }
 
 fn workspace_entry_selection(identifier: &str, rollback: Option<&str>) -> Result<&'static str, String> {
@@ -1418,7 +1421,28 @@ fn observe_owned_workspace_start(pending: &mut Option<OwnedWorkspaceStartup>, wa
     }
 }
 
-fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
+#[cfg(test)]
+mod workspace_locale_tests {
+    use super::*;
+    #[test]
+    fn sidecar_locale_accepts_only_closed_tags() {
+        assert_eq!(validated_workspace_locale(None).unwrap(), "en");
+        for locale in ["en", "zh-Hans", "zh-Hant", "zh-HK"] { assert_eq!(validated_workspace_locale(Some(locale)).unwrap(), locale); }
+        for value in ["zh", "../../secret", "en\nHARA_HOME=/tmp", "en;echo injected", "en-US", ""] { assert!(validated_workspace_locale(Some(value)).is_err()); }
+    }
+}
+
+fn validated_workspace_locale(value: Option<&str>) -> Result<&str, String> {
+    let locale = value.unwrap_or("en");
+    let registry: serde_json::Value = serde_json::from_str(include_str!("../../src/locales/registry.json"))
+        .map_err(|_| "Invalid bundled language registry".to_string())?;
+    if registry.get("languages").and_then(|v| v.as_array()).is_some_and(|rows| rows.iter().any(|row| row.get("tag").and_then(|v| v.as_str()) == Some(locale))) {
+        Ok(locale)
+    } else { Err("Invalid interface language".into()) }
+}
+
+fn connect_or_start_workspace(client_locale: Option<String>) -> Result<WorkspaceDevConnection, String> {
+    let locale = validated_workspace_locale(client_locale.as_deref())?;
     let mut pending = WORKSPACE_START_LOCK.lock().map_err(|_| "Workspace startup lock unavailable")?;
     let root = workspace_root()?;
     if let Some(owned) = pending.as_ref() {
@@ -1443,6 +1467,7 @@ fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
         .env("HARA_UPDATE_CHECK", "0").env("NO_COLOR", "1");
     // Writes remain in the selected stable data Home; the separate sources are read-only and are
     // never renderer parameters. A debug fixture can supply a sanitized legacy-copy Home.
+    command.env("HARA_CLIENT_LOCALE", locale);
     command.env("HARA_WORKSPACE_HOST_HOME", user_home()?);
     let (os_home, shell) = os_account_identity()?;
     let isolated = LOCAL_CANDIDATE_ISOLATION.load(Ordering::SeqCst);
@@ -1462,8 +1487,10 @@ fn connect_or_start_workspace() -> Result<WorkspaceDevConnection, String> {
 }
 
 #[tauri::command]
-async fn workspace_connection() -> Result<WorkspaceDevConnection, String> {
-    tauri::async_runtime::spawn_blocking(connect_or_start_workspace).await.map_err(|_| "Workspace startup worker unavailable".to_string())?
+async fn workspace_connection(client_locale: Option<String>) -> Result<WorkspaceDevConnection, String> {
+    let connection = tauri::async_runtime::spawn_blocking(move || connect_or_start_workspace(client_locale)).await.map_err(|_| "Workspace startup worker unavailable".to_string())??;
+    workspace_media::remember(connection.port, &connection.token);
+    Ok(connection)
 }
 
 fn workspace_lab_preflight(
@@ -3700,6 +3727,10 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("hara-media", |context, request, responder| {
+            if context.webview_label() != "main" { responder.respond(tauri::http::Response::builder().status(404).body(Vec::<u8>::new()).unwrap()); return; }
+            tauri::async_runtime::spawn(async move { responder.respond(workspace_media::response(request).await); });
+        })
         .manage(OwnedPanels(std::sync::Mutex::new(Vec::new())))
         .manage(RendererBootState::default())
         .plugin(tauri_plugin_opener::init())
@@ -3734,6 +3765,9 @@ pub fn run() {
             workspace_dev_connection,
             workspace_entry_mode,
             workspace_connection,
+            workspace_media::workspace_media_reveal,
+            workspace_media::workspace_media_download, workspace_media::workspace_file_open,
+            workspace_media::workspace_export_conversation,
             start_serve,
             inspect_command_line_hara,
             inspect_terminal_hara,

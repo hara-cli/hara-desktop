@@ -680,3 +680,14 @@ profile cleanup asynchronously before reporting success; never remove or attach 
 - Related Files: package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/binaries/SIDECAR_COMMIT
 
 ---
+
+
+## [LRN-20261104-APPROVAL-VARIANTS] integration
+
+When adding extension approvals to a shared React card, gate editable colleague state and payloads by the actual colleague variant, preserving legacy cards with an omitted kind. Initialize schedule/colleague flags before callbacks and early returns: extension confirmation must not close over an uninitialized schedule flag or require colleague/runtime fields. Keep the existing ref fence during an in-flight decision. Behavioral regression mounts the actual ApprovalCard function and verifies extension read/exec, schedule, legacy colleague, disabled/invalid runtime and model payload cases.
+
+Large const translation tables should preserve their literal key union at the exported API, but type-check and widen each internal value table to its four-string row shape before spreading or Object.fromEntries mapping; annotating the already-concatenated expression still expands the large tuples. This avoids TypeScript's combinatorial union limit without weakening valid translation keys or changing copy.
+
+The same tuple-concatenation limit applies to derived key-only sets: add each table's keys separately instead of concatenating their const tuple types. Search every source consumer after a table grows.
+
+Sidecar source updates must also refresh only source/tree/lock-hash fields in candidate-inputs; immutable admission policy, reviewer/public-key fields and actual candidate execution stay separate. Test evidence bindings use synthetic-home, not a runner-invented home sibling. An editable colleague draft is identified by its actual name input and form, not the obsolete fixed heading.

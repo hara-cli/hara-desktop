@@ -11,7 +11,7 @@ export function assertNoOptionalRuntimeFiles(root) {
     const directory = queue.pop();
     for (const name of readdirSync(directory)) {
       if (++visited > 100000) throw new Error("Packaged runtime inventory exceeded bound");
-      if (/^(?:hara-code-runtime|opencode|codex|claude)(?:\.exe)?$/i.test(name) || name === "claude-agent-sdk" || /^opencode-(?:darwin|linux|windows)-/.test(name)) throw new Error("Package unexpectedly preinstalls an optional Agent runtime");
+      if (/^(?:hara-code-runtime|opencode|codex|claude|agy|gemini|kimi|kimi-code|kimi-cli|copilot|cursor-agent|grok)(?:\.exe)?$/i.test(name) || name === "claude-agent-sdk" || /^opencode-(?:darwin|linux|windows)-/.test(name)) throw new Error("Package unexpectedly preinstalls an optional Agent runtime");
       const path = join(directory, name), info = lstatSync(path);
       if (info.isDirectory() && !info.isSymbolicLink()) queue.push(path);
     }
@@ -19,7 +19,7 @@ export function assertNoOptionalRuntimeFiles(root) {
 }
 export function assertPiRuntimeManifest(raw) {
   const value = JSON.parse(raw); assert.equal(value.schemaVersion, 1); assert.deepEqual(value.preinstalled, ["pi"]);
-  assert.equal(value.piSdkVersion, "1.1.0"); assert.deepEqual(value.optional, ["opencode", "codex", "claude"]);
+  assert.equal(value.piSdkVersion, "1.5.0"); assert.deepEqual(value.optional, ["opencode", "codex", "claude", "agy", "gemini", "kimi", "copilot", "cursor", "grok"]);
 }
 if (process.argv[1] && basename(process.argv[1]) === "check-runtime-distribution.mjs") {
   const root = fileURLToPath(new URL("..", import.meta.url));

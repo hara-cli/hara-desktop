@@ -1,14 +1,20 @@
+import { redesignText } from "./desktop-redesign-copy";
+import { makeT } from "./i18n";
+import { copyTextToClipboard } from "./clipboard";
+import { WorkspaceExtensions } from "./WorkspaceExtensions";
+import type { WorkspaceDevModel } from "./workspace-dev-state";
 import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import type { WorkspaceDevAgent, WorkspaceFeatureView } from "./workspace-dev-state";
 import WorkspaceRuntimeAccess from "./WorkspaceRuntimeAccess";
-import type { WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceSessionRestart } from "./workspace-dev-state";
+import ColleagueRuntimeForm from "./ColleagueRuntimeForm";
+import type { WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceConnectionModels, WorkspaceSessionRestart, RuntimeLoginSource, RuntimePermissionTier } from "./workspace-dev-state";
 import type { AgentRuntimeId } from "./client";
 import { WorkspaceAgentProfileSheet } from "./AgentProfileEditor";
 
 type Schedule = WorkspaceFeatureView["schedules"][number];
 
-export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, initialProfileOpen = false, onClose, onRefresh, onToggle, onSave, onDelete, listModels, onApplyRuntime, onApplyModel, onRescan, onRegisterRuntime, onRuntimeDirectory, onSaveProfile }: {
+export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, extensionsModel, initialProfileOpen = false, onClose, onRefresh, onToggle, onSave, onDelete, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, permissionSupported = false, onApplyPermissionTier, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory, onConnections, onSaveProfile }: {
   agent: WorkspaceDevAgent;
   workspace: WorkspaceDevSnapshot;
   features: WorkspaceFeatureView | null;
@@ -16,6 +22,7 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   error: string;
   inert: boolean;
   supported: boolean;
+  extensionsModel?: WorkspaceDevModel;
   initialProfileOpen?: boolean;
   onClose(): void;
   onRefresh(): void;
@@ -23,14 +30,25 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   onSave(schedule: Schedule, values: { name: string; cron: string; tz: string; task: string }): Promise<void>;
   onDelete(schedule: Schedule): Promise<void>;
   listModels(runtimeId: string): Promise<WorkspaceRuntimeModels>;
+  listConnectionModels(agentId: string, connectionId: string): Promise<WorkspaceConnectionModels>;
+  connectionModelSupported: boolean;
+  permissionSupported?: boolean;
+  onApplyPermissionTier?(tier: RuntimePermissionTier): Promise<void>;
   onApplyRuntime(runtimeId: AgentRuntimeId, sessionRestart: WorkspaceSessionRestart): Promise<void>;
-  onApplyModel(runtimeId: string, modelId: string, revision: number): Promise<void>;
+  onApplyModel(runtimeId: string, modelId: string, revision: number, effort: string | null): Promise<void>;
+  onApplyConnectionModel(connectionId: string, modelId: string, revision: number, effort: string | null): Promise<void>;
   onRescan(): Promise<void>;
-  onRegisterRuntime(runtimeId: string, fingerprint: string): Promise<void>;
+  onRegisterRuntime(runtimeId: string, fingerprint: string, loginSource: RuntimeLoginSource): Promise<void>;
   onRuntimeDirectory(): void;
+  onConnections?(): void;
   onSaveProfile(profile: { displayName: string; title: string; emoji: string; avatar: string }): Promise<void>;
 }) {
-  const zh = locale !== "en";
+  // B1: every authored string is a key now; the old `c(hans, en, hant)` helper existed
+  // only because the copy was inline, and it is gone along with the ternaries.
+  const t = makeT(locale);
+  const r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [copied, setCopied] = useState<"copied" | "copyFailed" | null>(null);
   const schedules = features?.schedules.filter((row) => row.agentId === agent.agentId) ?? [];
   const [editing, setEditing] = useState<string | null>(null);
   const [values, setValues] = useState({ name: "", cron: "", tz: "", task: "" });
@@ -47,30 +65,37 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
     setValues({ name: schedule.name, cron: schedule.schedule.expr ?? "", tz: schedule.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone, task: schedule.task ?? "" });
     setLocalError("");
   };
-  return <aside id="workspace-inspector" className="vg-inspector vg-colleague-manage" aria-label={zh ? `${agent.identity.displayName} · 管理` : `Manage ${agent.identity.displayName}`} inert={inert}>
-    <header><h2>{agent.kind === "main" ? (zh ? "Hara · 管理" : "Hara management") : (zh ? "该同事 · 内部管理" : "Colleague management")}</h2><button className="hs-icon" aria-label={zh ? "关闭管理栏" : "Close management"} onClick={onClose}><XMarkIcon className="hico" /></button></header>
-    <div className="vg-colleague-identity"><strong>{agent.identity.displayName}</strong><span>{agent.identity.title || (zh ? "Hara 同事" : "Hara colleague")}</span></div>
-    <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} listModels={listModels} onApplyRuntime={onApplyRuntime} onApplyModel={onApplyModel} onRescan={onRescan} onRegisterRuntime={onRegisterRuntime} onRuntimeDirectory={onRuntimeDirectory} />
-    <section className="vg-context-card"><h3>{zh ? "基本信息" : "Profile"}</h3><dl><dt>{zh ? "显示名" : "Display name"}</dt><dd>{agent.identity.displayName}</dd><dt>{zh ? "职责" : "Role"}</dt><dd>{agent.identity.title || "—"}</dd><dt>{zh ? "运行环境" : "Runtime"}</dt><dd>{agent.runtime.label}</dd></dl><button onClick={() => setProfileOpen(true)}>{zh ? "编辑此同事名片" : "Edit this colleague's profile"}</button></section>
-    {profileOpen ? <WorkspaceAgentProfileSheet agent={agent} locale={zh ? "zh" : "en"} onClose={() => setProfileOpen(false)} onSave={onSaveProfile} /> : null}
-    {agent.kind === "colleague" ? <section className="vg-context-card vg-colleague-schedules"><h3>{zh ? "定时" : "Schedules"}<span>{schedules.length}</span></h3>
-      {!supported ? <p className="vg-muted" role="status">{zh ? "更新 Hara 引擎后可管理同事定时。" : "Update Hara Core to manage colleague schedules."}</p>
-        : !features ? <p className="vg-muted" role="status">{zh ? "正在读取本同事定时…" : "Loading colleague schedules…"}</p>
-        : schedules.length === 0 ? <p className="vg-muted">{zh ? `还没有挂在 ${agent.identity.displayName} 上的定时。在聊天里说“每天 09:00 …”，确认后会出现在这里。` : `No schedules for ${agent.identity.displayName}. Ask in chat for a daily schedule and confirm it there.`}</p>
+  return <aside id="workspace-inspector" className="vg-inspector vg-colleague-manage" aria-label={t("ws.colleague.manage.ariaManage", { name: agent.identity.displayName })} inert={inert}>
+    <header><h2>{agent.identity.displayName} · {r("manage")}</h2><button className="hs-icon" aria-label={t("ws.colleague.manage.close")} onClick={onClose}><XMarkIcon className="hico" /></button></header>
+    <div className="vg-colleague-identity"><strong>{agent.identity.displayName}</strong><span>{agent.kind === "main" ? r("orchestrator") : agent.identity.title || r("colleagues")}</span></div>
+    {extensionsModel?.supportsRuntimeForm?.() ? <ColleagueRuntimeForm agent={agent} workspace={workspace} model={extensionsModel} locale={locale} permissionSupported={permissionSupported} onApplyPermissionTier={onApplyPermissionTier} onRuntimeDirectory={onRuntimeDirectory} onConnections={onConnections} />
+      : <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} listModels={listModels} listConnectionModels={listConnectionModels} connectionModelSupported={connectionModelSupported} onApplyRuntime={onApplyRuntime} permissionSupported={permissionSupported} onApplyPermissionTier={onApplyPermissionTier} onApplyModel={onApplyModel} onApplyConnectionModel={onApplyConnectionModel} onRescan={onRescan} onRegisterRuntime={onRegisterRuntime} onRuntimeDirectory={onRuntimeDirectory} platform={extensionsModel?.runtimePlatform?.()} />}
+    <details className="hd-manage-section"><summary>{r("profile")}<small>{agent.kind === "main" ? r("orchestrator") : agent.identity.title}</small></summary><section className="vg-context-card"><h3>{r("profile")}</h3><dl><dt>{t("ws.colleague.manage.displayName")}</dt><dd>{agent.identity.displayName}</dd><dt>{t("ws.colleague.manage.role")}</dt><dd>{agent.kind === "main" ? r("orchestrator") : agent.identity.title || "—"}</dd><dt>{t("ws.colleague.manage.runtime")}</dt><dd>{agent.runtime.label}</dd></dl><button onClick={() => setProfileOpen(true)}>{t("ws.colleague.manage.editProfile")}</button></section></details>
+    {agent.kind === "colleague" && workspace.selectedAgentId === agent.agentId && workspace.colleagueHome ? <details className="hd-manage-section"><summary>{r("workingFolder")}</summary><section className="vg-context-card">
+      <dl><dt>{r("workingFolder")}</dt><dd><code>{workspace.colleagueHome.path}</code></dd><dt>{r("relatedFolder")}</dt><dd><code>{workspace.colleagueHome.legacyPath}</code></dd></dl>
+      {!workspace.colleagueHome.created ? <p>{r("folderLazy")}</p> : !workspace.colleagueHome.available ? <p role="alert">{r("folderUnavailable")}</p> : null}
+      {workspace.colleagueHome.codexMigrationPending ? <p>{r("codexFolderPending")}</p> : null}<p>{r("privateMemory")}</p>
+    </section></details> : null}
+    {profileOpen ? <WorkspaceAgentProfileSheet agent={agent} locale={locale} onClose={() => setProfileOpen(false)} onSave={onSaveProfile} /> : null}
+    {agent.kind === "colleague" ? <details className="hd-manage-section"><summary>{r("schedules")}<small>{schedules.length}</small></summary><section className="vg-context-card vg-colleague-schedules"><h3>{r("schedules")}<span>{schedules.length}</span></h3>
+      {!supported ? <p className="vg-muted" role="status">{t("ws.colleague.manage.schedulesUpgrade")}</p>
+        : !features ? <p className="vg-muted" role="status">{t("ws.colleague.manage.schedulesLoading")}</p>
+        : schedules.length === 0 ? <p className="vg-muted">{t("ws.colleague.manage.schedulesEmpty", { name: agent.identity.displayName })}</p>
           : schedules.map((schedule) => <article key={schedule.id} className="vg-colleague-job">
-            <div className="vg-colleague-job-head"><input type="checkbox" aria-label={(zh ? "启用 " : "Enable ") + schedule.name} checked={schedule.enabled} disabled={busy} onChange={() => void run(() => onToggle(schedule))} /><strong>{schedule.name}</strong></div>
+            <div className="vg-colleague-job-head"><input type="checkbox" aria-label={t("ws.colleague.manage.enableAria", { name: schedule.name })} checked={schedule.enabled} disabled={busy} onChange={() => void run(() => onToggle(schedule))} /><strong>{schedule.name}</strong></div>
             <p>{schedule.schedule.expr ?? schedule.schedule.display ?? "—"}{schedule.tz ? ` · ${schedule.tz}` : ""}</p>
-            <small>{zh ? "下次" : "Next"} · {features.scheduler?.schedules.find((row) => row.id === schedule.id)?.nextRunAt ? new Date(features.scheduler.schedules.find((row) => row.id === schedule.id)!.nextRunAt!).toLocaleString(locale) : "—"}</small>
+            <small>{t("ws.colleague.manage.next")} · {features.scheduler?.schedules.find((row) => row.id === schedule.id)?.nextRunAt ? new Date(features.scheduler.schedules.find((row) => row.id === schedule.id)!.nextRunAt!).toLocaleString(locale) : "—"}</small>
             {editing === schedule.id ? <div className="vg-colleague-edit">
-              <label>{zh ? "名称" : "Name"}<input value={values.name} maxLength={60} onChange={(event) => setValues({ ...values, name: event.target.value })} /></label>
-              <label>{zh ? "节奏（Cron）" : "Schedule (Cron)"}<input value={values.cron} onChange={(event) => setValues({ ...values, cron: event.target.value })} /></label>
-              <label>{zh ? "时区" : "Time zone"}<input value={values.tz} onChange={(event) => setValues({ ...values, tz: event.target.value })} /></label>
-              <label>{zh ? "指令" : "Instruction"}<textarea rows={3} value={values.task} onChange={(event) => setValues({ ...values, task: event.target.value })} /></label>
-              <div><button disabled={busy || !values.name.trim() || !values.cron.trim() || !values.task.trim()} onClick={() => void run(async () => { await onSave(schedule, values); setEditing(null); })}>{zh ? "保存" : "Save"}</button><button disabled={busy} onClick={() => setEditing(null)}>{zh ? "取消" : "Cancel"}</button></div>
-            </div> : <div className="vg-colleague-actions"><button onClick={() => beginEdit(schedule)} disabled={busy}>{zh ? "编辑" : "Edit"}</button><button onClick={() => void run(() => onToggle(schedule))} disabled={busy}>{schedule.enabled ? (zh ? "停用" : "Pause") : (zh ? "启用" : "Resume")}</button><button disabled={busy} onClick={() => { if (window.confirm(zh ? `删除“${schedule.name}”？` : `Delete “${schedule.name}”?`)) void run(() => onDelete(schedule)); }}>{zh ? "删除" : "Delete"}</button></div>}
+              <label>{t("ws.colleague.manage.name")}<input value={values.name} maxLength={60} onChange={(event) => setValues({ ...values, name: event.target.value })} /></label>
+              <label>{t("ws.colleague.manage.cron")}<input value={values.cron} onChange={(event) => setValues({ ...values, cron: event.target.value })} /></label>
+              <label>{t("ws.colleague.manage.tz")}<input value={values.tz} onChange={(event) => setValues({ ...values, tz: event.target.value })} /></label>
+              <label>{t("ws.colleague.manage.instruction")}<textarea rows={3} value={values.task} onChange={(event) => setValues({ ...values, task: event.target.value })} /></label>
+              <div><button disabled={busy || !values.name.trim() || !values.cron.trim() || !values.task.trim()} onClick={() => void run(async () => { await onSave(schedule, values); setEditing(null); })}>{t("ws.action.save")}</button><button disabled={busy} onClick={() => setEditing(null)}>{t("ws.cancel")}</button></div>
+            </div> : <div className="vg-colleague-actions"><button onClick={() => beginEdit(schedule)} disabled={busy}>{t("ws.colleague.manage.edit")}</button><button onClick={() => void run(() => onToggle(schedule))} disabled={busy}>{schedule.enabled ? t("ws.colleague.manage.pause") : t("ws.colleague.manage.resume")}</button><button disabled={busy} onClick={() => { if (window.confirm(t("ws.colleague.manage.deleteConfirm", { name: schedule.name }))) void run(() => onDelete(schedule)); }}>{t("ws.action.delete")}</button></div>}
           </article>)}
-      <p className="vg-muted">{zh ? "在聊天里创建；这里只管理这位同事的定时。" : "Create in chat; manage only this colleague here."}</p>
-      {error || localError ? <p role="alert" className="vg-colleague-error">{error || localError} <button onClick={onRefresh}>{zh ? "重试" : "Retry"}</button></p> : null}
-    </section> : null}
+      <p className="vg-muted">{t("ws.colleague.manage.footer")}</p>
+      {error || localError ? <p role="alert" className="vg-colleague-error">{error || localError} <button onClick={onRefresh}>{t("ws.action.retry")}</button></p> : null}
+    </section></details> : null}
+    <details className="hd-manage-section" onToggle={event => setAdvancedOpen(event.currentTarget.open)}><summary>{r("advanced")}</summary><div>{advancedOpen && extensionsModel && agent.agentEpoch ? <WorkspaceExtensions model={extensionsModel} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} agent={{ agentId: agent.agentId, agentEpoch: agent.agentEpoch }} /> : null}<button type="button" className="hs-btn sec" onClick={async () => setCopied(await copyTextToClipboard(workspace.conversation.sessionId) ? "copied" : "copyFailed")}>{copied ? r(copied) : r("copyId")}</button>{copied === "copyFailed" ? <code>{workspace.conversation.sessionId}</code> : null}</div></details>
   </aside>;
 }

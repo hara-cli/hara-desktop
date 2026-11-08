@@ -24,7 +24,7 @@ test("formal entry is independent of Vite/DEV flags; legacy is native-selected r
   assert.match(read("src/LegacyDesktopEntry.tsx"), /lazy\(\(\) => import\("\.\/App"\)\)/);
   assert.doesNotMatch(entry, /import\.meta\.env|location\.|localStorage|<Legacy[^]*?catch/);
   assert.match(native, /None \| Some\("0"\) => Ok\("workspace"\)/); assert.match(native, /HARA_DESKTOP_LEGACY_ENTRY/);
-  assert.match(native, /workspace_connection\(\)/); assert.match(native, /observe_owned_workspace_start\(&mut pending/);
+  assert.match(native, /workspace_connection\(client_locale: Option<String>\)/); assert.match(native, /observe_owned_workspace_start\(&mut pending/);
 });
 test("isolated Core source override cannot enter a release/signing refresh", () => {
   const source = read("scripts/refresh-sidecar.sh");
@@ -47,21 +47,22 @@ test("runtime approval remains pinned to the original scope and single explicit 
   const f = fixture(); await f.model.selectWorkspace("A");
   f.handlers["workspace.runtime.propose"] = () => ({ id: "card-id", runtimeId: "codex", label: "Codex", version: "1.2.3", sha256: "a".repeat(64), origin: "http://127.0.0.1:1234", maxBytes: 128, target: { platform: "darwin", arch: "arm64" } });
   const card = await f.model.proposeRuntime("codex"); assert.equal(f.calls.filter(row => row.method === "workspace.runtime.approve").length, 0);
-  await f.model.selectWorkspace("B"); await assert.rejects(f.model.approveRuntime(card, true), { messageKey: "ws.notice.installScopeMismatch" });
+  await f.model.selectWorkspace("B"); await assert.rejects(f.model.approveRuntime(card, true, "host"), { messageKey: "ws.notice.installScopeMismatch" });
   assert.equal(f.calls.filter(row => row.method === "workspace.runtime.approve").length, 0);
-  await f.model.selectWorkspace("A"); await assert.rejects(f.model.approveRuntime(card, true), { messageKey: "ws.notice.installScopeMismatch" });
-  const fresh = await f.model.proposeRuntime("codex"); await f.model.approveRuntime(fresh, false);
-  const call = f.calls.find(row => row.method === "workspace.runtime.approve"); assert.deepEqual(call.params, { workspaceId: "A", expectedGeneration: "generation-A", proposalId: "card-id", approved: false });
+  await f.model.selectWorkspace("A"); await assert.rejects(f.model.approveRuntime(card, true, "host"), { messageKey: "ws.notice.installScopeMismatch" });
+  const fresh = await f.model.proposeRuntime("codex"); await f.model.approveRuntime(fresh, false, "host");
+  await assert.rejects(f.model.approveRuntime(fresh, true), { messageKey: "ws.notice.invalidView" });
+  const call = f.calls.find(row => row.method === "workspace.runtime.approve"); assert.deepEqual(call.params, { workspaceId: "A", expectedGeneration: "generation-A", proposalId: "card-id", approved: false, loginSource: "host" });
   assert.equal(f.calls.filter(row => row.method === "workspace.runtime.approve").length, 1);
 });
 test("Pi-only package gate rejects obsolete native tools, optional dependency folders and false manifests", () => {
   const root = mkdtempSync(join(tmpdir(), "hara-pi-inventory-"));
   try {
     assertPiOnlyConfiguration(JSON.parse(read("src-tauri/tauri.conf.json"))); assertNoOptionalRuntimeFiles(root);
-    for (const name of ["opencode", "codex.exe", "claude", "hara-code-runtime", "opencode-darwin-arm64", "claude-agent-sdk"]) {
+    for (const name of ["opencode", "codex.exe", "claude", "hara-code-runtime", "opencode-darwin-arm64", "claude-agent-sdk", "kimi", "kimi-code", "kimi-cli"]) {
       const path = join(root, name); mkdirSync(path); assert.throws(() => assertNoOptionalRuntimeFiles(root), /unexpectedly/); rmSync(path, { recursive: true });
     }
-    const manifest = { schemaVersion: 1, preinstalled: ["pi"], piSdkVersion: "1.1.0", optional: ["opencode", "codex", "claude"] }; assertPiRuntimeManifest(JSON.stringify(manifest));
+    const manifest = { schemaVersion: 1, preinstalled: ["pi"], piSdkVersion: "1.5.0", optional: ["opencode", "codex", "claude", "agy", "gemini", "kimi", "copilot", "cursor", "grok"] }; assertPiRuntimeManifest(JSON.stringify(manifest));
     assert.throws(() => assertPiRuntimeManifest(JSON.stringify({ ...manifest, preinstalled: ["pi", "opencode"] })));
     assert.throws(() => assertPiOnlyConfiguration({ bundle: { externalBin: ["binaries/hara", "binaries/herdr", "binaries/hara-code-runtime"] } }));
   } finally { rmSync(root, { recursive: true, force: true }); }

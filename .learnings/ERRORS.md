@@ -4182,3 +4182,28 @@ resolved paths before retrying, with no file edits from that failed read.
 - Corrected-environment evidence: desktop-full-host-loopback.log in the same private directory;
   all 21 failed cases were fixture listeners, with no assertion or timeout changes.
 ---
+
+## ERR-20261103-RUNTIME-DIAGNOSTICS-TEST-ENV
+
+- Scope: isolated runtime failure diagnostics feature, no real user state.
+- First Desk full test run had 31 failures because HOME/TMP alone did not supply the repository's canonical evidence binding. Rerun through `provisionCiEvidence` with its complete private environment; retain both logs and report their independent outcomes.
+- One exploratory `rg` command used an unmatched zsh glob and was refused before searching; use `rg --files` or explicit existing paths.
+- Browser access host was unavailable. Native Chrome indicated an active user change; stopped UI actions and continued CLI verification. Synthetic static/callback tests do not establish visual or real-runtime acceptance.
+
+
+## [ERR-20261104-MCP-OWNER-CALLBACK] Old review handler retried an unknown inspection
+
+- Logged: 2026-11-04
+- Status: resolved locally; integration/install HOLD
+- A disabled current button did not invalidate a previously captured callback whose closure still had needsReload=false. Gate with current mutable halted/pending/view/record fences, and require explicit close/read-back after unknown results. A-B-A, model replacement, unmount and cancellation must discard late inspection/approval results.
+- Owner RPCs carry only opaque recordId + confirmed and ordinary workspace/generation. Keep Host's Main/client/library/code/CAS authority checks; no renderer command/args/env or model owner-review tool is permitted. Source review, permission grants and per-call cards are distinct.
+- Correct fixture expectations rather than loosening model scope: selecting a colleague requires the actual selectAgent path, and initialize now advertises both manager and owner-review capabilities. Native agent DTO has no channelId; Core's selected-channel fence remains authoritative.
+- Final build, 48 focused tests and actual Desk handler/model/WebSocket → Host → protected stdio smoke passed. Initial failing logs were preserved. Headless component tests and static HTML are not native visual acceptance or release receipts.
+
+
+## Wave3 candidate checkout pin consistency
+
+The merged sidecar input lock was updated, but the candidate workflow retained twelve old literal checkout refs. Preserve all exact-pin assertions and synchronize six Desktop plus six Core refs to candidate-inputs.json. No permissions, admission, signing, public keys, or publication behavior changes. Candidate execution remains on hold; local full-suite success is not formal candidate acceptance.
+
+## [SSR-20261105-ASSISTANT-PREVIEW] Server snapshots must not read client-only draft state
+Desk full suite atafafbe9 passed1614/1619, with five SSR WorkspaceScreen cases failing because partial server models have no getAssistantPreviewSnapshot. AssistantDraft used the client snapshot getter as its server getter, so React treated the missing method as missing getServerSnapshot. Provide a stable empty server snapshot: no live view/draft/paint evidence exists during SSR. Client subscription and snapshot behavior stay unchanged. Add actual WorkspaceScreen server rendering with a populated client-only getter and subscription/paint counters; require no draft, no client read, no subscription and no paint report. Retain the failed full receipt; current build/focus/full pending, no real call or installation.

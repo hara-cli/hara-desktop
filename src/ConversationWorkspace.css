@@ -325,3 +325,6 @@ html .conversation-first .workbench-inbox .inbox-contact.is-active {
   .conversation-first .chat.im .scroll { padding-inline: 20px; }
   .conversation-first .conversation-person small { max-width: min(35vw, 200px); }
 }
+
+.wsd-preview-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.wsd-preview-label { font-size: .8em; font-weight: 400; color: var(--text-muted, #8a8a8a); }

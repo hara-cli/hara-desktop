@@ -84,14 +84,14 @@ function view({ empty = false, state = "completed", approval = false, directory 
     workspaceId: empty ? null : "A", agentId: empty ? null : "main", roster: empty ? [] : agents, draft: "", loading: false, sending: false, pendingUnknown: false, error: "", syncNotice: "",
     workspace: empty ? null : { workspaceId: "A", resourceGeneration: "generation-A", label: "My Workspace", selectedAgentId: "main", agents, syntheticOnly: false, executionMode: "workspace",
       connections: { revision: 1, defaultConnectionId: "local", connections: [{ id: "local", label: "Local fake", status: "active", defaultModel: "fake" }] },
-      approvals: approval ? [{ id: "card", workspaceId: "A", resourceGeneration: "generation-A", agentId: "main", expiresAt: "2099-01-01T00:00:00Z", draft: { username: "reviewer", displayName: "Reviewer", title: "Local reviewer", instructions: "Only this Workspace", runtimeId: "pi" } }] : [],
+      approvals: approval ? [{ id: "card", workspaceId: "A", resourceGeneration: "generation-A", agentId: "main", expiresAt: "2099-01-01T00:00:00Z", draft: { username: "reviewer", displayName: "Reviewer", title: "Local reviewer", instructions: "Only this Workspace", runtimeId: "pi", project: "", permissionTier: "full-protected" } }] : [],
       conversation: { revision: 1, state, taskState: state === "completed" ? "completed" : "blocked", taskId: "task", runId: "run", sessionId: "S", objective: "Local fixture", pastTaskCount: 1, usage, runUsage: usage,
         completion: state === "completed" ? { state: "verified" } : null, history: [{ role: "assistant", text: "Local fixture reply", tools: ["workspace_verify"] }, { role: "tool", results: [{ id: "receipt", name: "workspace_verify", content: error ? "verification failed" : "verified", isError: error }] }] } } };
 }
 function renderScreen(value, mode = "workspace", locale = "zh-Hant") {
   const descriptor=Object.getOwnPropertyDescriptor(globalThis,"localStorage");
   Object.defineProperty(globalThis,"localStorage",{configurable:true,value:{getItem:key=>key==="hara.locale"?locale:null}});
-  try { return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {} }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} }); }
+  try { return screenModule.exports.render({ model: { getSnapshot: () => value, subscribe: () => () => {}, runtimeStageReports: () => [], supportsNativeSessions: () => false, supportsAgentArchive: () => false }, disconnected: "", root: "/private/synthetic", mode, onReconnect() {} }); }
   finally { if(descriptor)Object.defineProperty(globalThis,"localStorage",descriptor);else delete globalThis.localStorage; }
 }
 test("production keeps lab copy out of the sidebar; explicit Lab is a distinct annotated entry", () => {
@@ -102,19 +102,22 @@ test("production keeps lab copy out of the sidebar; explicit Lab is a distinct a
 });
 test("real workspace screen retains colleague decisions, collapsed execution and verified task closure", () => {
   const html = renderScreen(view({ state:"blocked", approval: true, error: true }));
-  for (const marker of [/主 Hara/, /Coder/, /與 Hara 討論新同事/, /確認建立同事/, /讓 Reviewer 加入這個空間/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
+  for (const marker of [/hd-main-card/, /總調度/, /Coder/, /aria-label="新增" aria-expanded="false" aria-haspopup="menu"/, /確認建立同事/, /value="Reviewer"/, /wsd-colleague-draft/, /<details class="wsd-execution">/, /1 個操作 · <span>查看詳情/, /設定/, /傳訊息給 Hara/]) assert.ok(marker.test(html),String(marker));
   const success = renderScreen(view());
-  assert.match(success, /已核驗結果/);
+  assert.match(success, /Local fixture reply/);
+  assert.doesNotMatch(success, /已核驗結果|wsd-timing-chip| ✓/, "legacy history without T9 never gains timing completion proof");
   assert.doesNotMatch(success, /wsd-execution|1 個操作 · <span>查看詳情/);
-  assert.doesNotMatch(html, /core\.groups|群组|群組|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
-  assert.equal(html.includes('aria-label="建立群"'), true);
+  assert.doesNotMatch(html, /core\.groups|MailboxSettings|DeskUsersPanel|DeskMailComposer|組織工作台|组织工作台|WorkspaceCollaboration|deliverables|WORKSPACE LAB/);
+  // Sidebar C keeps creation actions inside its closed New menu.
+  assert.equal(html.includes('aria-label="建立群"'), false);
+  assert.doesNotMatch(html, /hd-new-menu/, "creation popup starts closed");
   assert.equal(/即將推出|即将推出|Channels for group work with several colleagues are coming/.test(html), false);
 });
 test("real workspace screen preserves explicit resume and never opens a legacy surface for blocked tasks", () => {
   const html = renderScreen(view({ state: "blocked" })); assert.match(html, /上次任務尚未完成/); assert.match(html, /繼續原任務/);
   assert.doesNotMatch(html, /群组|MailboxSettings|WorkspaceCollaboration|WORKSPACE LAB/);
 });
-test("scoped schedules and skills remain reachable through Settings without legacy pages", () => {
+test("scoped skills remain reachable through Settings without legacy pages", () => {
   const html = renderScreen(view());assert.match(html,/aria-label="設定"/);
   assert.doesNotMatch(html,/wsd-feature-nav/);
   const source = read("src/WorkspaceLocalDev.tsx");
@@ -123,7 +126,10 @@ test("scoped schedules and skills remain reachable through Settings without lega
   assert.match(source, /\{settings \? <WorkspaceSettings/);
   assert.doesNotMatch(source, /className="wsd-settings"|setFeature/);
   const settings = read("src/WorkspaceSettings.tsx");
-  assert.match(settings, /"schedules", "skills"/);
+  assert.match(settings, /"connections", "runtimes", "schedules", "plugins", "skills"/);
+  // Jeff chat-scheduling authorization adds scoped Settings management; legacy Automations stays out.
+  assert.match(settings, /page === "schedules" \|\| page === "skills"/);
+  assert.doesNotMatch(settings, /<AutomationsPage|workspace\.collaboration/);
   assert.match(settings, /<WorkspaceFeaturePanel model=\{model\} workspace=\{workspace\} kind=\{page\}/);
   assert.doesNotMatch(source, /AutomationsPage|CapabilityDirectory|<App\b|workspace\.collaboration/);
 });

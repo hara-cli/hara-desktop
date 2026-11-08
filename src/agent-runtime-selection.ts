@@ -1,4 +1,8 @@
 import type { AgentInfo, AgentRuntimeId, AgentRuntimeOption } from "./client";
+import { formatMessage, isLocale, messageText, type Locale } from "./i18n-runtime.ts";
+
+/** Accepts the legacy "zh" alias plus the full three-language set. */
+type LabelLocale = Locale | "zh";
 
 /** Renderer preflight only. The engine independently authenticates the audience, owner and revisions.
  * Availability is advertised by the actual general-Agent driver registry, not CLI detection or a model. */
@@ -11,8 +15,22 @@ export function agentRuntimeSelection(agent: AgentInfo, runtimeId: AgentRuntimeI
   return { ref: agent.ref, runtimeId, expectedRevision: binding.revision, expectedAgentRevision: agent.revision };
 }
 
-export function agentRuntimeLabel(id: AgentRuntimeId, locale: "en" | "zh"): string {
-  if (id === "hara") return locale === "zh" ? "Hara · 现有相容引擎" : "Hara · compatibility engine";
-  if (id === "pi") return locale === "zh" ? "Pi · 内建" : "Pi · built-in";
-  return { codex: "Codex", claude: "Claude Code", opencode: "OpenCode", agy: "Antigravity" }[id];
+/**
+ * Engine display names. `hara` and `pi` are translated; the rest are product names and
+ * stay as written (audit §1.1 listed them as "engine name is Simplified" only because
+ * the two authored labels were Simplified for every Chinese reader).
+ */
+export function agentRuntimeLabel(id: AgentRuntimeId, locale: LabelLocale): string {
+  const normalized: Locale = isLocale(locale) ? locale : "zh-Hans";
+  if (id === "hara") return messageText(normalized, "ws.runtimeName.haraCompatFixed");
+  if (id === "pi") return messageText(normalized, "ws.runtimeName.piBuiltInFixed");
+  return { codex: "Codex", claude: "Claude Code", opencode: "OpenCode", agy: "Antigravity", gemini: "Gemini CLI", kimi: "Kimi Code", copilot: "GitHub Copilot", cursor: "Cursor", grok: "Grok Build" }[id];
+}
+
+/** Display-only policy notice; permissions remain in the Host. */
+export function runtimePersonalExtensionsNotice(runtimeId: string, locale: LabelLocale): string {
+  const normalized: Locale = isLocale(locale) ? locale : "zh-Hans";
+  return ["kimi", "copilot", "cursor", "grok"].includes(runtimeId)
+    ? formatMessage(normalized, "ws.runtimeExpansion.extensionsInherited")
+    : "";
 }

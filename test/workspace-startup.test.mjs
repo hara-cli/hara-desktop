@@ -13,7 +13,7 @@ function fixture() {
       clients.push(client);return client;
     },
     model(_client, _info, settingsOnly) {
-      const model = { view: { directory: null, workspace: null }, settingsOnly, getSnapshot() { return this.view; },
+      const model = { view: { directory: null, workspace: null }, previewClears: 0, assistantPreview(value) { assert.equal(value, null); this.previewClears++; }, settingsOnly, getSnapshot() { return this.view; },
         async loadDirectory() { calls.push("directory");await handlers.directory?.();this.view.directory = { activeWorkspaceId: "A", workspaces: [{ workspaceId: "A", active: true }] }; },
         async selectWorkspace(id) { calls.push("snapshot:" + id);await handlers.select?.();this.view.workspace = { workspaceId: id }; },
         setSettingsFactory(fn) { this.settings = fn; }, workspaceChanged() { calls.push("changed"); } };
@@ -61,7 +61,7 @@ test("late handshake completion and old disconnect callbacks cannot overwrite th
 });
 test("a live disconnect keeps the visible model but never reconnects or resumes by itself", async () => {
   const f = fixture();await f.startup.start();const model = f.startup.getSnapshot().model;
-  f.clients[0].disconnected();assert.equal(f.startup.getSnapshot().phase, "disconnected");assert.equal(f.startup.getSnapshot().model, model);
+  f.clients[0].disconnected();assert.equal(model.previewClears, 1);assert.equal(f.startup.getSnapshot().phase, "disconnected");assert.equal(f.startup.getSnapshot().model, model);
   await tick();assert.equal(f.calls.filter(item => item === "native-attach").length, 1);f.startup.stop();
 });
 test("disconnect during a delayed workspace load cannot publish a dead model or trap the next reconnect behind the old promise", async () => {
