@@ -141,7 +141,9 @@ test("form renders one Apply, the engine list with statuses and no untranslated 
         { runtimeId: "opencode", label: "OpenCode", use: "unavailable", unavailableReason: "not_installed", installed: false, registered: false, version: null, state: "not_installed", generalAgentDriverAvailable: false }] } };
     const html = render(h(module.exports.Form, { agent: workspace.agents[0], workspace, model: { supportsConnectionModels: () => false }, locale, permissionSupported: true, onApplyPermissionTier: async () => {}, onRuntimeDirectory() {} }));
     assert.equal((html.match(/class="vg-rf-apply"/g) ?? []).length, 1);
-    assert.ok(html.includes(t("ws.rf.status.confirm_first_use")));
+    // Jeff 2026-11-08: a selectable engine's option is its name only; its status appears once, in the chip below.
+    assert.match(html, /<option value="claude">Claude Code<\/option>/);
+    assert.ok(!html.includes(t("ws.rf.status.confirm_first_use")));
     assert.ok(html.includes(t("ws.rf.status.unavailable", { reason: t("ws.rf.reason.not_installed") })));
     assert.match(html, /<option value="opencode" disabled="">/);
     assert.doesNotMatch(html, /ws\.rf\./);
