@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { ROOT, INPUT, TARGETS, identity, realHome, context, receipt, assertReceipt, readJson, save,
+import { ROOT, INPUT, TARGETS, identity, realHome, context, receipt, assertReceipt, readJson, save, saveRetainedNotary,
   sync, run, fileHash, downloadArtifact, verifyUpdater, restoreBuildBinaries } from './candidate-common.mjs';
 import { readUpdaterKey, withUpdaterFile } from './with-updater-file.mjs';
 import { validateTar, validateExtractedTree } from './candidate-archive.mjs';
@@ -16,6 +16,11 @@ import { candidateSigningConfiguration } from './candidate-operator-config.mjs';
 
 const IDENTITY = 'Developer ID Application: Wuxi Nanhara Technologies Co., Ltd. (4GMBSXJ67T)';
 const mac = target => target.endsWith('apple-darwin');
+export function userKeychainMetadata() {
+  // Keep commandEvidence's HOME synthetic; only security's user-domain lookup uses the account HOME.
+  const userSecurity = args => sync('/usr/bin/env', [`HOME=${realHome}`, '/usr/bin/security', ...args]);
+  return { search: userSecurity(['list-keychains', '-d', 'user']), default: userSecurity(['default-keychain', '-d', 'user']) };
+}
 export function assertSigner(e, settings, configuredName) {
   assert(typeof configuredName === 'string' && configuredName.length > 0, 'configured signer name required');
   assert.equal(e.RUNNER_NAME, configuredName);
@@ -53,7 +58,7 @@ async function withSigning(c, operation) {
   const rows = sync('/bin/ps', ['-axo', 'comm=']).split('\n');
   assert(!rows.some(r => /\/(?:codesign|notarytool|productsign)$/.test(r.trim())), 'another signing operation is active');
   fs.writeFileSync(LEASE, JSON.stringify(receipt({ owner: 'candidate-lane', token, pid: process.pid })), { flag: 'wx', mode: 0o600 });
-  const metadata = () => ({ search: sync('/usr/bin/security', ['list-keychains', '-d', 'user']), default: sync('/usr/bin/security', ['default-keychain', '-d', 'user']) });
+  const metadata = userKeychainMetadata;
   let before, mayNeedRelock = false;
   try {
     before = metadata();
@@ -79,6 +84,7 @@ export async function durableNotary(file, target, kind, output, config = candida
   const digest = fileHash(file), directory = path.join(retained, target, kind, digest);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const statePath = path.join(directory, 'notary.json'); let state;
+  const persist = value => saveRetainedNotary(statePath, value, config.runnerDirectory);
   if (fs.existsSync(statePath)) {
     state = readJson(statePath); assert.equal(state.inputSha256, digest); assert.equal(state.identity, identity);
     assert.match(state.submissionId ?? '', /^[a-f0-9-]{36}$/i, 'prior submission outcome unknown: never submit again');
@@ -86,10 +92,10 @@ export async function durableNotary(file, target, kind, output, config = candida
     const frozen = path.join(directory, `submission.${kind === 'app' ? 'zip' : 'dmg'}`);
     fs.copyFileSync(file, frozen, fs.constants.COPYFILE_EXCL); fs.chmodSync(frozen, 0o600); assert.equal(fileHash(frozen), digest);
     state = receipt({ kind, target, inputSha256: digest, frozen, status: 'submission-starting-outcome-unknown' });
-    save(statePath, state); // Durable intent before the non-idempotent POST; never auto-replay it.
+    persist(state); // Durable intent under runner _candidate-notary (outside evidence whitelist) before the non-idempotent POST.
     const raw = await run(`Submit ${target} ${kind} notarization once`, '/usr/bin/xcrun', ['notarytool', 'submit', frozen, ...NOTARY_ARGS, '--no-wait', '--output-format', 'json'], { capture: true, timeout: 20 * 60000 });
     const submitted = parseNotaryResponse(raw, 'candidate notary submission');
-    state = { ...state, submissionId: submitted.id, status: submitted.status ?? 'In Progress' }; save(statePath, state);
+    state = { ...state, submissionId: submitted.id, status: submitted.status ?? 'In Progress' }; persist(state);
   }
   const deadline = Date.now() + 60 * 60000;
   while (state.status !== 'Accepted') {
@@ -97,11 +103,11 @@ export async function durableNotary(file, target, kind, output, config = candida
     const raw = await run(`Query ${target} ${kind} notarization`, '/usr/bin/xcrun', ['notarytool', 'info', state.submissionId, ...NOTARY_ARGS, '--output-format', 'json'], { capture: true, timeout: 120000 });
     const info = parseNotaryResponse(raw, 'candidate notary query'); assert.equal(info.id, state.submissionId);
     assert(['In Progress', 'Accepted'].includes(info.status), 'Apple rejected candidate; stop and retain evidence');
-    state = { ...state, status: info.status }; save(statePath, state);
+    state = { ...state, status: info.status }; persist(state);
     if (state.status !== 'Accepted') await new Promise(resolve => setTimeout(resolve, 15000));
   }
   const { frozen, ...publicState } = state; // Retained local recovery path is not an uploaded artifact.
-  save(output, publicState); return publicState;
+  save(output, publicState); return publicState; // Public notary receipt stays inside evidence whitelist.
 }
 async function importBundle(c, phase, target, directory) {
   const transport = await downloadArtifact(phase, target, path.join(c.base, `${phase}-${target}`));

@@ -33,6 +33,9 @@ jobs:
   prepare_release:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
+    env:
+      # Ignored by Git so the later clean-tree source-pack gate still sees an unchanged checkout.
+      CI_EVIDENCE_LEAF: release-evidence-${{ github.run_id }}-${{ github.run_attempt }}-prepare
     outputs:
       desktop_sha: ${{ steps.release_source.outputs.desktop_sha }}
       cli_sha: ${{ steps.release_source.outputs.cli_sha }}
@@ -113,7 +116,17 @@ jobs:
         shell: bash
         run: ./scripts/npm-ci-retry.sh
       - name: Run release-pipeline regression tests
-        run: npm test
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { provisionCiEvidence, withCiEnvironment } from './scripts/ci-evidence.mjs';
+          import { ROOT, run } from './scripts/candidate-common.mjs';
+          const evidenceRoot = path.join(process.env.GITHUB_WORKSPACE, process.env.CI_EVIDENCE_LEAF);
+          const c = provisionCiEvidence({ evidenceRoot, output: path.join(evidenceRoot, 'tmp', 'regressions') });
+          await withCiEnvironment(c, () => run('Release prepare original full suite', 'bash', ['-c', 'exec npm test'],
+            { cwd: ROOT, env: c.env, capture: true, logFile: path.join(c.base, 'tests.log') }));
+          NODE
       - name: Pin exact Desktop and CLI source commits
         id: release_source
         shell: bash
@@ -763,6 +776,9 @@ jobs:
     timeout-minutes: 180
     env:
       HARA_RELEASE_SOURCE_ROOT: ${{ github.workspace }}/source-${{ github.run_id }}-${{ github.run_attempt }}
+      # Beside, not inside, the run-scoped source root: outside the Desktop checkout and retained
+      # after that root is removed.
+      CI_EVIDENCE_LEAF: release-evidence-${{ github.run_id }}-${{ github.run_attempt }}-signing
     steps:
       - name: Materialize exact release sources from the digest-bound Release archive
         shell: bash
@@ -1097,7 +1113,17 @@ jobs:
 
       - name: Re-run release-pipeline regression tests on the signing host
         working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
-        run: npm test
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { provisionCiEvidence, withCiEnvironment } from './scripts/ci-evidence.mjs';
+          import { ROOT, run } from './scripts/candidate-common.mjs';
+          const evidenceRoot = path.join(process.env.GITHUB_WORKSPACE, process.env.CI_EVIDENCE_LEAF);
+          const c = provisionCiEvidence({ evidenceRoot, output: path.join(evidenceRoot, 'tmp', 'regressions') });
+          await withCiEnvironment(c, () => run('Release signing-host original full suite', 'bash', ['-c', 'exec npm test'],
+            { cwd: ROOT, env: c.env, capture: true, logFile: path.join(c.base, 'tests.log') }));
+          NODE
 
       - name: Preflight approved updater file without Keychain authorization
         working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
