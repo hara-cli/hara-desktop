@@ -2,9 +2,19 @@ import { QuestionMarkCircleIcon } from "@heroicons/react/24/outline";
 import type { Key, makeT } from "./i18n";
 import type { WorkspaceDevAsyncAsk, WorkspaceDevQuestion, WorkspaceQuestionConversation } from "./workspace-dev-state";
 import { connectionRecoveryReason } from "./workspace-resume";
+import { formatMessage } from "./i18n-runtime.ts";
 
 type Translate = ReturnType<typeof makeT>;
-const OTHER_INPUT_OPTIONS = new Set(["Other (type an answer)", "其它（输入）", "其它（輸入）"]);
+/**
+ * The "type an answer" label is translated, so Core can echo it back in any script.
+ * Values come from `ws.question.otherInput`; the two literal strings cover older
+ * sessions that still carry the pre-B1 wording.
+ */
+const OTHER_INPUT_OPTIONS = new Set([
+  "Other (type an answer)", "其它（输入）", "其它（輸入）",
+  formatMessage("zh-Hans", "ws.question.otherInput"),
+  formatMessage("zh-Hant", "ws.question.otherInput"),
+]);
 const answerChoices = (options: string[]) => options.filter(option => !OTHER_INPUT_OPTIONS.has(option.trim()));
 /** The custom-input action never submits its label as a user decision. */
 export function WorkspaceQuestionOptions({ id, options, t, disabled, onAnswer, onTypeAnswer }: {
@@ -20,14 +30,18 @@ export function WorkspaceQuestionOptions({ id, options, t, disabled, onAnswer, o
 
 // Core's built-in question copy is fixed when the question is created, in the session's language. Show the
 // viewer's language for those exact templates; any other model-written question stays verbatim.
-const CORE_QUESTION_TEMPLATES: Record<WorkspaceDevQuestion["reason"], string[]> = {
-  lookup_missing: ["Two lookups did not identify the target. Which colleague or item do you mean? Please provide its name, former name or location.", "两次查找仍未确认目标。你指的是哪位同事或哪项内容？请补充名字、原名或位置。"],
-  lookup_ambiguous: ["Several evidenced matches remain. Which one do you mean?", "找到了多个可能的对象。你指的是哪一个？"],
-  tool_problem: ["This step failed twice. Progress is saved. What should be corrected or clarified before continuing?", "当前步骤连续遇到问题，进度已保留。你希望先处理哪个卡点，或补充什么信息？"],
-  budget_warning: ["This task is near its budget limit. Continue from the saved point within the original remaining allowance? Your answer will not reset the budget.", "本次任务快到预算上限，已保留当前位置。是否在原剩余额度内继续？回答不会重置预算。"],
-  runaway_guard: ["Execution reached the runaway-loop safety checkpoint. Progress is saved. Check whether it is advancing, then choose Continue or Stop.", "连续执行已达到防死循环熔断点，进度已保留。请检查是否仍在推进，再选择继续或停止。"],
-  explicit: ["Please provide the information needed to continue this step.", "请补充继续当前步骤所需的信息。"],
-};
+/**
+ * Core fixes the built-in question copy when the question is created, in the session's
+ * language. Compare against every locale we ship so a Traditional reader whose Core
+ * wrote Simplified still matches (audit §1.1, §3.2). Any other model-written question is
+ * shown verbatim. B2 replaces this lookup with an explicit reason code.
+ */
+const CORE_QUESTION_REASONS: WorkspaceDevQuestion["reason"][] = ["lookup_missing", "lookup_ambiguous", "tool_problem", "budget_warning", "runaway_guard", "explicit"];
+const CORE_QUESTION_TEMPLATES = Object.fromEntries(
+  CORE_QUESTION_REASONS.map(reason => [reason, [
+    ...new Set(["en", "zh-Hans", "zh-Hant"].map(locale => formatMessage(locale, `ws.question.template.${reason}`))),
+  ]]),
+) as Record<WorkspaceDevQuestion["reason"], string[]>;
 export function workspaceQuestionText(t: Translate, question: Pick<WorkspaceDevQuestion, "reason" | "question">): string {
   return CORE_QUESTION_TEMPLATES[question.reason]?.includes(question.question.trim()) ? t(`ws.question.template.${question.reason}`) : question.question;
 }

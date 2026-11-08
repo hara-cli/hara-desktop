@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { detectLocalePreference, makeT, normalizeLocale, resolveLocale, saveLocale, type LocalePreference } from "./i18n";
+import { applyDocumentLanguage, detectLocalePreference, makeT, normalizeLocale, resolveLocale, saveLocale, type LocalePreference } from "./i18n";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state";
 import { buildWorkspaceShell, loadSidebarSections, workspaceTaskHistoryKey, type SidebarSectionId } from "./workspace-shell-state";
 
@@ -25,6 +25,8 @@ export function useWorkspaceLocale() {
     window.addEventListener("hara:locale-changed", changed); window.addEventListener("storage", storage); window.addEventListener("languagechange", system);
     return () => { window.removeEventListener("hara:locale-changed", changed); window.removeEventListener("storage", storage); window.removeEventListener("languagechange", system); };
   }, []);
+  // `<html lang>` follows the renderer language (audit §2), not just `.hs`.
+  useEffect(() => { applyDocumentLanguage(choice.locale); }, [choice.locale]);
   return { ...choice, t: useMemo(() => makeT(choice.locale), [choice.locale]), changeLocale: saveLocale };
 }
 export function useSectionState(workspaceId: string) {

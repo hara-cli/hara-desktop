@@ -26,7 +26,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   onRegisterRuntime(runtimeId: string, fingerprint: string, loginSource: RuntimeLoginSource): Promise<void>;
   onRuntimeDirectory(): void;
 }) {
-  const zh = locale !== "en", t = makeT(locale);
+  const t = makeT(locale);
   const pi = agent.runtime.id === "pi";
   const connection = workspace.connections?.connections.find(row => row.id === (workspace.connections.activeConnectionId ?? workspace.connections.defaultConnectionId) && row.status === "active");
   const owner = JSON.stringify([workspace.workspaceId, workspace.resourceGeneration, agent.agentId]);
@@ -89,7 +89,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
   const effortLevels = selectedModel?.supportedReasoningEfforts ?? [];
   const showEffort = runtimeEffortVisible(agent.runtime.id, effortLevels);
   const currentLoginSource = installation?.loginSource ?? "isolated";
-  if (compact) return <div className="vg-runtime-strip" aria-label={zh ? "本同事运行配置" : "This colleague runtime"}>
+  if (compact) return <div className="vg-runtime-strip" aria-label={t("ws.runtimeAccess.compactAria")}>
     {agent.runtime.id === "kimi" ? <span role="note">{t("ws.runtimes.extensionsInherited")}</span> : null}
     <span>{t("ws.permissions.label")} <strong>{t(agent.permissionTier === "full-protected" ? "ws.permissions.full" : agent.permissionTier === "controlled" ? "ws.permissions.controlled" : "ws.permissions.unknown")}</strong></span><span>Runtime <strong>{agent.runtime.label}</strong></span><span>{t("ws.runtimeAccess.model")} <strong>{models?.models.find(row => row.id === models.selectedModelId)?.label ?? (pi ? connection?.defaultModel : null) ?? "—"}</strong></span>
     {showEffort ? <span>{t("ws.runtimeAccess.effort")} <strong>{effortChoice(models?.selectedEffort) || t("ws.runtimeAccess.auto")}</strong></span> : null}<span>{t("ws.runtimeAccess.loginSource")} <strong>{t(currentLoginSource === "host" ? "ws.runtimeAccess.host" : "ws.runtimeAccess.isolated")}</strong></span>
@@ -132,13 +132,13 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
     <section className="vg-context-card vg-p0-card vg-runtime-model-card"><h3>{t("ws.runtimeAccess.modelTitle")}</h3>
       {loading || scanning ? <p role="status">{t("ws.connectionModels.loading")}</p> : !models || !models.models.length ? <p role={option?.available ? "alert" : undefined}>{option?.available
         ? (modelError
-          ? <>{zh ? "模型目录暂不可用" : "Model list unavailable"} · {workspaceMessageText(t, modelError)}</>
-          : pi && !connection ? t("ws.connectionModels.connectFirst") : pi && !connectionModelSupported ? t("ws.connectionModels.upgrade") : (zh ? "模型目录暂不可用" : "Model list unavailable"))
-        : (zh ? "请先绑定可用引擎" : "Bind an available runtime first")}</p> : null}
+          ? <>{t("ws.runtimeAccess.modelListUnavailable")} · {workspaceMessageText(t, modelError)}</>
+          : pi && !connection ? t("ws.connectionModels.connectFirst") : pi && !connectionModelSupported ? t("ws.connectionModels.upgrade") : t("ws.runtimeAccess.modelListUnavailable"))
+        : t("ws.runtimeAccess.bindFirst")}</p> : null}
       {models?.source === "live" ? <p role="status" className="vg-muted">{t("ws.runtimeExpansion.modelsLive")}</p> : null}
       {models?.source === "documented" ? <p role="status" className="vg-muted">{t(pi ? "ws.connectionModels.documented" : "ws.runtimes.documentedModels")}</p> : null}
       <label>{t("ws.runtimeAccess.model")}<select aria-label={t("ws.runtimeAccess.modelTitle")} value={models ? selected : ""} disabled={busy || loading || scanning || !models?.models.length} onChange={event => { setSelected(event.target.value); setEffort(event.target.value === models?.selectedModelId ? effortChoice(models?.selectedEffort) : ""); }}>
-        <option value="">{zh ? "选择模型" : "Choose a model"}</option>{models?.models.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
+        <option value="">{t("ws.runtimeAccess.chooseModel")}</option>{models?.models.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
       </select></label>
       {selected && showEffort && (effortLevels.length ? <label>{t("ws.runtimeAccess.effort")}<select aria-label={t("ws.runtimeAccess.effort")} value={effort} disabled={busy || loading || scanning} onChange={event => setEffort(event.target.value)}><option value="">{t("ws.runtimeAccess.auto")}</option>{effortLevels.map(level => <option key={level} value={level}>{level}</option>)}</select><small>{t(effort ? "ws.runtimeAccess.effortSlow" : "ws.runtimeAccess.autoHint")}</small></label> : <p>{t("ws.runtimeAccess.effortUnknown")}</p>)}
       <button disabled={busy || loading || scanning || !models || !selected || (selected === models.selectedModelId && effort === effortChoice(models.selectedEffort)) || !models.models.some(row => row.id === selected)}
@@ -149,7 +149,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
               await onApplyConnectionModel(models.connectionId, selected, models.revision, effort || null);
             } else await onApplyModel(agent.runtime.id, selected, models.revision, effort || null);
             if (liveScope.current === scope) setReload(value => value + 1);
-          })}>{zh ? "应用模型" : "Apply model"}</button>
+          })}>{t("ws.runtimeAccess.applyModel")}</button>
       {modelError && (models || !option?.available) ? <p role="alert">{workspaceMessageText(t, modelError)}</p> : null}
     </section>
     {target && change ? <ShellDialog label={t("ws.runtimeAccess.confirm")} onClose={() => { if (!saveFence.current) setChange(null); }} className="wsd-approval-dialog wsd-runtime-change-dialog">
@@ -169,7 +169,7 @@ export default function WorkspaceRuntimeAccess({ agent, workspace, locale, compa
             if (change.runtimeId === agent.runtime.id || liveScope.current !== change.scope || !liveOptions.current?.some(row => row.id === change.runtimeId && row.available)) throw new Error("ws.runtimeAccess.stale");
             await onApplyRuntime(change.runtimeId, restart);
             setChange(null); setModelView(null); setReload(value => value + 1);
-          })}>{zh ? "确认更换引擎" : "Confirm runtime change"}</button></div>
+          })}>{t("ws.runtimeAccess.confirmChange")}</button></div>
       </section></ShellDialog> : null}
     {local?.scope === scope ? <ShellDialog label={t("ws.runtimes.confirmLocal")} onClose={() => { if (!saveFence.current) setLocal(null); }} className="wsd-approval-dialog wsd-runtime-change-dialog">
       <section className="hs-card wsd-approval"><h3>{t("ws.runtimes.registerTitle", { name: local.label })}</h3><p>{t("ws.runtimes.bindLead")}</p>

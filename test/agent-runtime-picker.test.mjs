@@ -1,5 +1,6 @@
 import { makeT } from "../src/i18n.ts";
 import * as runtimeExpansion from "../src/runtime-expansion.ts";
+import { formatList, toLocale } from "../src/i18n-runtime.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -19,7 +20,7 @@ function picker(workspace = false, draft) {
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
   const exports = {};
   new Function("require", "exports", outputText)((name) => name === "./agent-runtime-selection"
-    ? { agentRuntimeLabel, agentRuntimeSelection, runtimePersonalExtensionsNotice } : name === "./runtime-expansion" ? runtimeExpansion : name === "./i18n" ? { makeT }
+    ? { agentRuntimeLabel, agentRuntimeSelection, runtimePersonalExtensionsNotice } : name === "./runtime-expansion" ? runtimeExpansion : name === "./i18n" ? { makeT } : name === "./i18n-runtime.ts" ? { formatList, toLocale }
     : name === "react" && draft ? { ...React, useState: () => [draft, () => {}] } : require(name), exports);
   return workspace ? exports.WorkspaceAgentRuntimePicker : exports.default;
 }

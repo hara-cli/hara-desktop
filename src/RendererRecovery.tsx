@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import HaraLogo from "./mark";
 import "./renderer-recovery.css";
+import { detectLocale, makeT } from "./i18n";
 
 declare global {
   interface Window {
@@ -61,20 +62,21 @@ export class RendererErrorBoundary extends React.Component<
 
 /** Pure recovery surface, also usable when the workspace module never loaded. */
 export function RendererRecoveryView() {
-  const zh = navigator.language.toLowerCase().startsWith("zh");
+  // This surface must work even if the workspace module never loaded, so it reads the
+  // locale preference directly instead of taking a `t` prop. It used to branch on a
+  // bare `navigator.language.startsWith("zh")`, which gave Traditional readers Simplified.
+  const t = makeT(detectLocale());
   return (
       <main className="renderer-recovery" role="alert">
         <section className="renderer-recovery-card">
           <div className="renderer-recovery-mark" aria-hidden="true"><HaraLogo size={38} /></div>
           <p className="renderer-recovery-kicker">HARA · DESKTOP</p>
-          <h1>{zh ? "界面没有正常启动" : "The interface did not start"}</h1>
+          <h1>{t("ws.recovery.title")}</h1>
           <p>
-            {zh
-              ? "你的会话、项目和模型密钥没有被删除。请重新加载界面；Hara 会继续连接原来的本地引擎。"
-              : "Your sessions, projects, and model keys were not deleted. Reload the interface to reconnect to the same local engine."}
+            {t("ws.recovery.body")}
           </p>
           <button type="button" onClick={() => window.location.reload()}>
-            {zh ? "重新加载 Hara" : "Reload Hara"}
+            {t("ws.recovery.reload")}
           </button>
         </section>
       </main>

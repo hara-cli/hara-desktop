@@ -283,9 +283,14 @@ test("Agent execution settings inherit Space defaults and stay company-governed"
   assert.match(app, /onSave=\{\(profile, execution\) => void saveAgentProfile\(profile, execution\)\}/);
   assert.match(editor, /agent\.owner === "personal" && agent\.ref !== "main"/,
     "only a non-main Personal Agent may edit its local execution override");
-  assert.match(editor, /主 Agent 始终跟随当前空间的默认连接、模型与思考强度/);
-  assert.match(editor, /公司 Agent 的模型与思考强度由公司管理员在 Hara Control 统一管理/);
-  assert.match(editor, /跟随空间默认[\s\S]*模型自动/);
+  // Copy moved to the locale JSON in B1; the component must reference the keys.
+  assert.match(editor, /t\("ws\.profile\.mainExecutionNote"\)/);
+  assert.match(editor, /t\("ws\.profile\.companyExecutionNote"\)/);
+  assert.match(editor, /t\("ws\.profile\.followSpaceDefaultReasoning"/);
+  assert.match(editor, /t\("ws\.profile\.modelAutomatic"\)/);
+  const hans = JSON.parse(readFileSync(`${root}/src/locales/zh-Hans/ws.json`, "utf8"));
+  assert.match(hans["ws.profile.mainExecutionNote"], /主 Agent 始终跟随当前空间的默认连接、模型与思考强度/);
+  assert.match(hans["ws.profile.companyExecutionNote"], /公司 Agent 的模型与思考强度由公司管理员在 Hara Control 统一管理/);
   assert.match(editor, /model: agentModel \|\| null,[\s\S]*reasoningEffort: agentEffort \|\| null/);
   assert.match(css, /\.agent-profile-execution-grid select \{[\s\S]*background:\s*var\(--bg\);[\s\S]*color:\s*var\(--fg\);/,
     "the Agent selectors remain legible in both light and dark themes");

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "baseline": "en",
+  "languages": [
+    {
+      "tag": "en",
+      "nativeName": "English",
+      "status": "stable",
+      "dir": "ltr",
+      "font": "ui-sans-serif, system-ui, -apple-system, \"Helvetica Neue\", Arial, sans-serif",
+      "match": [
+        {
+          "language": "en",
+          "script": null
+        }
+      ],
+      "fallback": []
+    },
+    {
+      "tag": "zh-Hans",
+      "nativeName": "简体中文",
+      "status": "stable",
+      "dir": "ltr",
+      "font": "\"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+      "match": [
+        {
+          "language": "zh",
+          "script": "Hans"
+        }
+      ],
+      "fallback": [
+        "en"
+      ]
+    },
+    {
+      "tag": "zh-Hant",
+      "nativeName": "繁體中文",
+      "status": "beta",
+      "dir": "ltr",
+      "font": "\"PingFang TC\", \"Hiragino Sans CNS\", \"Microsoft JhengHei\", sans-serif",
+      "match": [
+        {
+          "language": "zh",
+          "script": "Hant"
+        }
+      ],
+      "fallback": [
+        "en"
+      ]
+    }
+  ],
+  "reservedOverrides": [
+    {
+      "tag": "zh-HK",
+      "parent": "zh-Hant",
+      "status": "reserved",
+      "fallback": [
+        "zh-Hant",
+        "en"
+      ]
+    }
+  ],
+  "namespaces": [
+    "common",
+    "vg",
+    "ws"
+  ]
+}
