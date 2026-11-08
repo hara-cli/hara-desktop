@@ -67,6 +67,7 @@ export function WorkspaceRosterMenu({ agent, x, y, locale, pinned, hidden = fals
         {item(r(pinned ? "unpin" : "pin"), onPin, <BookmarkIcon />)}{item(r(unread ? "read" : "unread"), onUnread, <EnvelopeIcon />)}
         <button type="button" ref={folderTrigger} role="menuitem" aria-haspopup="menu" aria-expanded={submenu} onClick={() => setSubmenu(value => !value)}><span aria-hidden="true"><FolderIcon /></span><span>{r("folder")}</span><span aria-hidden="true"><ChevronRightIcon /></span></button>
         <hr />{item(r(targetKind === "group" ? "renameGroup" : "renameColleague"), onRename, <PencilSquareIcon />)}{item(r(targetKind === "group" ? "manageGroup" : "manageColleague"), onManage, <AdjustmentsHorizontalIcon />, false, "⌘I")}
+        {targetKind !== "group" && onNewSession ? item(r("newSession"), onNewSession, <ArrowTopRightOnSquareIcon />) : null}
         <hr />{item(r(hidden ? "show" : "hide"), onHide, hidden ? <EyeIcon /> : <EyeSlashIcon />)}
         {targetKind !== "group" && onArchive ? item(r("deleteColleague"), onArchive, <TrashIcon />, true) : null}
       </>}
