@@ -16,12 +16,3 @@ export function parseRuntimePlatform(value: unknown): WorkspaceRuntimePlatform {
   // A malformed or unknown platform never advertises the full tier.
   return NO_PROTECTION;
 }
-
-export const PLATFORM_REASON_KEYS: Readonly<Record<string, string>> = Object.freeze({
-  permission_tier_unavailable_on_platform: "ws.permissions.unavailableHere",
-  native_engine_unsupported_on_platform: "ws.engine.unsupportedPlatform",
-});
-export function platformReasonKey(error: unknown): string | undefined {
-  const reason = error && typeof error === "object" && "platformReason" in error ? (error as { platformReason?: unknown }).platformReason : undefined;
-  return typeof reason === "string" ? PLATFORM_REASON_KEYS[reason] : undefined;
-}
