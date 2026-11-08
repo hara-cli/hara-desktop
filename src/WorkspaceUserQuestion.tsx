@@ -2,9 +2,19 @@ import { QuestionMarkCircleIcon } from "@heroicons/react/24/outline";
 import type { Key, makeT } from "./i18n";
 import type { WorkspaceDevAsyncAsk, WorkspaceDevQuestion, WorkspaceQuestionConversation } from "./workspace-dev-state";
 import { connectionRecoveryReason } from "./workspace-resume";
+import { formatMessage } from "./i18n-runtime.ts";
 
 type Translate = ReturnType<typeof makeT>;
-const OTHER_INPUT_OPTIONS = new Set(["Other (type an answer)", "其它（输入）", "其它（輸入）"]);
+/**
+ * The "type an answer" label is translated, so Core can echo it back in any script.
+ * Values come from `ws.question.otherInput`; the two literal strings cover older
+ * sessions that still carry the pre-B1 wording.
+ */
+const OTHER_INPUT_OPTIONS = new Set([
+  "Other (type an answer)", "其它（输入）", "其它（輸入）",
+  formatMessage("zh-Hans", "ws.question.otherInput"),
+  formatMessage("zh-Hant", "ws.question.otherInput"),
+]);
 const answerChoices = (options: string[]) => options.filter(option => !OTHER_INPUT_OPTIONS.has(option.trim()));
 /** The custom-input action never submits its label as a user decision. */
 export function WorkspaceQuestionOptions({ id, options, t, disabled, onAnswer, onTypeAnswer }: {
@@ -20,7 +30,9 @@ export function WorkspaceQuestionOptions({ id, options, t, disabled, onAnswer, o
 
 // Core's built-in question copy is fixed when the question is created, in the session's language. Show the
 // viewer's language for those exact templates; any other model-written question stays verbatim.
-const CORE_QUESTION_TEMPLATES: Record<WorkspaceDevQuestion["reason"], string[]> = {
+// B2: Core marks its built-in questions with messageKey. Older snapshots without it fall back to the exact Core
+// literals (en / zh-Hans) or any shipped locale's rendering of the same template (B0); other questions stay verbatim.
+const CORE_QUESTION_LITERALS: Record<WorkspaceDevQuestion["reason"], string[]> = {
   lookup_missing: ["Two lookups did not identify the target. Which colleague or item do you mean? Please provide its name, former name or location.", "两次查找仍未确认目标。你指的是哪位同事或哪项内容？请补充名字、原名或位置。"],
   lookup_ambiguous: ["Several evidenced matches remain. Which one do you mean?", "找到了多个可能的对象。你指的是哪一个？"],
   tool_problem: ["This step failed twice. Progress is saved. What should be corrected or clarified before continuing?", "当前步骤连续遇到问题，进度已保留。你希望先处理哪个卡点，或补充什么信息？"],
@@ -28,6 +40,10 @@ const CORE_QUESTION_TEMPLATES: Record<WorkspaceDevQuestion["reason"], string[]> 
   runaway_guard: ["Execution reached the runaway-loop safety checkpoint. Progress is saved. Check whether it is advancing, then choose Continue or Stop.", "连续执行已达到防死循环熔断点，进度已保留。请检查是否仍在推进，再选择继续或停止。"],
   explicit: ["Please provide the information needed to continue this step.", "请补充继续当前步骤所需的信息。"],
 };
+const CORE_QUESTION_REASONS = Object.keys(CORE_QUESTION_LITERALS) as WorkspaceDevQuestion["reason"][];
+const CORE_QUESTION_TEMPLATES = Object.fromEntries(CORE_QUESTION_REASONS.map(reason => [reason, [...new Set([
+  ...CORE_QUESTION_LITERALS[reason], ...["en", "zh-Hans", "zh-Hant"].map(locale => formatMessage(locale, `ws.question.template.${reason}`)),
+])]])) as Record<WorkspaceDevQuestion["reason"], string[]>;
 export function workspaceQuestionText(t: Translate, question: Pick<WorkspaceDevQuestion, "reason" | "question" | "messageKey">): string {
   return question.messageKey === `core.question.${question.reason}` || CORE_QUESTION_TEMPLATES[question.reason]?.includes(question.question.trim()) ? t(`ws.question.template.${question.reason}`) : question.question;
 }

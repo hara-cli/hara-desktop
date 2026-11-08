@@ -2,12 +2,13 @@ import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useEffect, useState } from "react";
 import { Avatar } from "./WorkspaceShell";
 import { makeT } from "./i18n";
+import { toLocale } from "./i18n-runtime.ts";
 import { redesignText } from "./desktop-redesign-copy";
 import type { LocalChannelsView, WorkspaceLocalChannelsModel, LocalChannelAutonomyPatch } from "./workspace-local-channels";
 import type { WorkspaceDevAgent } from "./workspace-dev-state";
 
 function ReplyPreferences({ view, model, agents, locale, disabled }: { view: LocalChannelsView; model: WorkspaceLocalChannelsModel; agents: WorkspaceDevAgent[]; locale: string; disabled: boolean }) {
-  const t = makeT(locale === "zh-Hans" || locale === "zh-Hant" ? locale : "en"), r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key);
+  const t = makeT(toLocale(locale)), r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key);
   const channel = view.channel?.channel, autonomy = channel?.autonomy, current = JSON.stringify(autonomy);
   const [baseline, setBaseline] = useState(current), [draft, setDraft] = useState(autonomy), [error, setError] = useState(false);
   const dirty = JSON.stringify(draft) !== baseline;
@@ -30,13 +31,13 @@ export default function WorkspaceGroupInspector({ name, memberIds, agents, local
   name: string; memberIds: string[]; agents: WorkspaceDevAgent[]; locale: "en" | "zh-Hans" | "zh-Hant";
   inert: boolean; onClose(): void; onMembers(): void; view?: LocalChannelsView; model?: WorkspaceLocalChannelsModel; disabled?: boolean;
 }) {
-  const r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key), zh = locale !== "en", tr = locale === "zh-Hant";
+  const r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key), t = makeT(locale);
   return <aside id="workspace-inspector" className="vg-inspector vg-group-manage" aria-label={`${name} · ${r("manageGroup")}`} inert={inert}>
-    <header><h2>{name} · {r("manage")}</h2><button className="hs-icon" aria-label={r("close")} onClick={onClose}><XMarkIcon className="hico" /></button></header>
+    <header><h2>{name} · {r("manage")}</h2><button className="hs-icon" aria-label={t("ws.group.close")} onClick={onClose}><XMarkIcon className="hico" /></button></header>
     <div className="vg-colleague-identity"><strong>{name}</strong><span>{redesignText(locale, memberIds.length === 1 ? "groupMember" : "groupMembers", { n: memberIds.length })}</span></div>
-    <details className="hd-manage-section" open><summary>{zh ? tr ? "成員" : "成员" : "Members"}<small>{memberIds.length}</small></summary><section className="vg-context-card">
+    <details className="hd-manage-section" open><summary>{t("ws.group.members")}<small>{memberIds.length}</small></summary><section className="vg-context-card">
       <div className="vg-group-members">{memberIds.map(id => { const agent = agents.find(row => row.agentId === id); return <div key={id}><Avatar agent={agent} /><span><strong>{agent?.identity.displayName ?? r("colleagues")}</strong><small>{agent?.state === "archived" ? r("deleted") : agent?.identity.title ?? r("colleagues")}</small></span></div>; })}</div>
-      <button className="vg-manage-link" disabled={disabled} onClick={onMembers}>{zh ? tr ? "管理成員" : "管理成员" : "Manage members"} ↗</button></section></details>
+      <button className="vg-manage-link" disabled={disabled} onClick={onMembers}>{t("ws.group.manageMembers")} ↗</button></section></details>
     {view && model ? <ReplyPreferences key={JSON.stringify([view.scope, view.channelId])} view={view} model={model} agents={agents} locale={locale} disabled={disabled} /> : null}
   </aside>;
 }

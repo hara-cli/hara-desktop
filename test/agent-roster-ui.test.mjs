@@ -23,9 +23,15 @@ test("Desktop keeps dismissed Agent history legible while removing the Agent fro
   assert.match(profile, /\{!isRootOrchestrator && agent\.allowedActions\?\.includes\("archive"\) && onArchive \?/);
   assert.doesNotMatch(profile, /\{editable && agent\.allowedActions\?\.includes\("archive"\)/);
   assert.match(profile, /systemRole === "root_orchestrator"/);
-  assert.match(profile, /这是你的主 Agent，不属于雇佣列表/);
-  assert.match(profile, /载入默认人格/);
-  assert.match(profile, /点击“保存名片”后才会生效/);
+  // B1 moved this copy into the locale JSON; the component references the keys.
+  const hans = JSON.parse(readFileSync(new URL("src/locales/zh-Hans/ws.json", root), "utf8"));
+  assert.match(profile, /t\("ws\.profile\.rootNote"\)/);
+  assert.match(profile, /t\("ws\.profile\.loadDefaultIdentity"\)/);
+  assert.match(profile, /t\("ws\.profile\.defaultLoadedNotice"\)/);
+  const hant = JSON.parse(readFileSync(new URL("src/locales/zh-Hant/ws.json", root), "utf8"));
+  assert.match(hans["ws.profile.rootNote"], /这是你的主 Agent，不属于雇佣列表/);
+  assert.match(hant["ws.profile.rootNote"], /這是你的主 Agent，不屬於僱用清單/);
+  assert.match(hant["ws.profile.defaultLoadedNotice"], /已載入 Hara 預設人格草稿/);
   assert.match(contact, /inbox-agent-root-badge/);
   assert.match(app, /visibleHiredAgentCount/);
   assert.match(app, /historyCount=\{inboxSessionsForAgent\(spaceSessions, detailsAgent\.ref\)\.length\}/);

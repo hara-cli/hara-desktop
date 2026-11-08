@@ -36,7 +36,7 @@ test("selected colleague inspector owns schedule management in all three locales
     assert.match(html, /Visual summary/);
     assert.doesNotMatch(html, /Private other colleague schedule|Another task/);
     for (const label of (locale === "en" ? ["Scheduled Tasks", "Edit", "Pause", "Delete", "Create in chat; manage only this colleague here."]
-      : locale === "zh-Hant" ? ["排程", "編輯", "停用", "刪除", "在聊天裡建立；這裡只管理這位同事的排程。"] : ["定时", "编辑", "停用", "删除", "在聊天里创建；这里只管理这位同事的定时。"])) assert.ok(html.includes(label), `${locale}: ${label}`);
+      : locale === "zh-Hant" ? ["定時", "編輯", "停用", "刪除", "在聊天裡建立；這裡只管理這位同事的定時。"] : ["定时", "编辑", "停用", "删除", "在聊天里创建；这里只管理这位同事的定时。"])) assert.ok(html.includes(label), `${locale}: ${label}`);
   }
 });
 

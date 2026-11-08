@@ -85,8 +85,13 @@ test("crash reports require explicit consent and enumerate the privacy boundary"
   assert.match(crashPrompt, /pending_crash_report/);
   assert.match(crashPrompt, /discard_pending_crash_report/);
   assert.match(crashPrompt, /submit_crash_report/);
-  assert.match(crashPrompt, /No chats, file contents, API keys, cookies/);
-  assert.match(crashPrompt, /不会上传对话、文件内容、API Key、Cookie/);
+  // The privacy boundary now lives in the locale JSON (ws.crash.excluded); B1 moved it
+  // out of the component so all three languages stay in step.
+  const locales = ["en", "zh-Hans", "zh-Hant"].map(lang => JSON.parse(readFileSync(new URL(`../src/locales/${lang}/ws.json`, import.meta.url), "utf8"))["ws.crash.excluded"]);
+  assert.match(locales[0], /No chats, file contents, API keys, cookies/);
+  assert.match(locales[1], /不会上传对话、文件内容、API Key、Cookie/);
+  assert.match(locales[2], /不會上傳對話、檔案內容、API Key、Cookie/);
+  assert.match(crashPrompt, /ws\.crash\.excluded/);
   assert.doesNotMatch(crashPrompt, /setInterval|autoSubmit|componentStack/);
 });
 

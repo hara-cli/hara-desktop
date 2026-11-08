@@ -7,12 +7,13 @@ import { makeT } from "../src/i18n.ts";
 import * as runtimeSelection from "../src/agent-runtime-selection.ts";
 import * as runtimeExpansion from "../src/runtime-expansion.ts";
 import { parseRuntimeFailure, runtimeLoginCommand, runtimeDiagnosticSummary } from "../src/runtime-failure.ts";
+import { formatList, toLocale } from "../src/i18n-runtime.ts";
 const require = createRequire(import.meta.url), React = require("react"), { renderToStaticMarkup } = require("react-dom/server");
 function load(file, mocks = {}) {
   const source = readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
   const exports = {};
-  new Function("require", "exports", outputText)(name => mocks[name] ?? (name === "./agent-runtime-selection" ? runtimeSelection : name === "./i18n" ? { makeT } : name === "./runtime-expansion" ? runtimeExpansion : require(name)), exports);
+  new Function("require", "exports", outputText)(name => mocks[name] ?? (name === "./agent-runtime-selection" ? runtimeSelection : name === "./i18n" ? { makeT } : name === "./i18n-runtime.ts" ? { formatList, toLocale } : name === "./runtime-expansion" ? runtimeExpansion : require(name)), exports);
   return exports;
 }
 const picker = load("AgentRuntimePicker.tsx");

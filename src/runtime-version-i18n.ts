@@ -1,17 +1,4 @@
-export const RUNTIME_VERSION_KEYS = [
-  ["ws.runtimeVersion.title", "CLI version history", "CLI 版本记录", "CLI 版本記錄"],
-  ["ws.runtimeVersion.last", "Last successful CLI version", "上次成功使用的 CLI 版本", "上次成功使用的 CLI 版本"],
-  ["ws.runtimeVersion.current", "Current CLI version", "当前 CLI 版本", "目前 CLI 版本"],
-  ["ws.runtimeVersion.unknownVersion", "Unknown version", "版本未知", "版本未知"],
-  ["ws.runtimeVersion.noSuccess", "No successful use recorded", "尚无成功使用记录", "尚無成功使用記錄"],
-  ["ws.runtimeVersion.no_history", "No earlier successful use is recorded for this runtime.", "此运行时尚无成功使用记录。", "此執行環境尚無成功使用記錄。"],
-  ["ws.runtimeVersion.upgraded", "CLI upgraded from {from} to {to}.", "CLI 从 {from} 升级到 {to}。", "CLI 從 {from} 升級到 {to}。"],
-  ["ws.runtimeVersion.downgraded", "CLI downgraded from {from} to {to}.", "CLI 从 {from} 降级到 {to}。", "CLI 從 {from} 降級到 {to}。"],
-  ["ws.runtimeVersion.same", "CLI version is unchanged at {to}.", "CLI 版本仍为 {to}。", "CLI 版本仍為 {to}。"],
-  ["ws.runtimeVersion.unknown", "A version could not be determined. Compatibility is unknown.", "有版本信息未能确认，兼容性未知。", "有版本資訊未能確認，相容性未知。"],
-  ["ws.runtimeVersion.previously_succeeded", "This version and executable completed an earlier run. Full feature compatibility remains unverified.", "此版本与程序曾成功完成一轮执行；全部功能的兼容性仍未经验证。", "此版本與程式曾成功完成一輪執行；全部功能的相容性仍未經驗證。"],
-  ["ws.runtimeVersion.unverified", "Successful use with this version and the current executable has not been verified.", "尚未验证此版本与当前程序能成功执行。", "尚未驗證此版本與目前程式能成功執行。"],
-  ["ws.runtimeVersion.binaryChanged", "The executable changed since the last successful use. A changed executable requires a new trust confirmation.", "程序已在上次成功使用后更换；更换程序仍须重新确认信任。", "程式已在上次成功使用後更換；更換程式仍須重新確認信任。"],
-  ["ws.runtimeVersion.retrust", "Confirm trust in Runtime settings before using this executable.", "使用此程序前，请在运行时设置中确认信任。", "使用此程式前，請在執行環境設定中確認信任。"],
-  ["ws.runtimeVersion.invalid", "Version information could not be confirmed. Compatibility is unknown; check again in engine settings.", "版本信息还未确认，兼容性未知；请到引擎设置重新检查。", "版本資訊尚未確認，相容性未知；請到引擎設定重新檢查。"],
-] as const;
+/** Runtime version drift and trust copy. Values live in `src/locales/<lang>/<namespace>.json`; this keeps the legacy tuple shape. */
+import { tuplesFor, type TranslationTuple } from "./i18n-catalog.ts";
+
+export const RUNTIME_VERSION_KEYS: readonly TranslationTuple[] = tuplesFor("RUNTIME_VERSION_KEYS");
