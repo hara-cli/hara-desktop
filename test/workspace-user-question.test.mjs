@@ -8,10 +8,10 @@ import { WorkspaceRpcWaitError } from "../src/workspace-dev-errors.ts";
 import { workspaceConversationReplying } from "../src/workspace-resume.ts";
 import { makeT } from "../src/i18n.ts";
 const require = createRequire(import.meta.url);
-const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceUserQuestion.tsx";export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceLocalChannels.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
+const bundled = await build({ stdin: { contents: 'export * from "./src/WorkspaceUserQuestion.tsx";export * from "./src/WorkspaceRpcErrorNotice.tsx";export * from "./src/WorkspaceTaskRecovery.tsx";export * from "./src/WorkspaceLocalChannels.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundled.outputFiles[0].text)(require, module, module.exports);
-const { WorkspaceUserQuestion, WorkspaceAsyncQuestions, WorkspaceQuestionOptions, WorkspaceTaskActivity, WorkspaceTaskRecovery, LocalChannelThread, workspaceQuestionStep } = module.exports;
+const { WorkspaceRpcErrorNotice, WorkspaceUserQuestion, WorkspaceAsyncQuestions, WorkspaceQuestionOptions, WorkspaceTaskActivity, WorkspaceTaskRecovery, LocalChannelThread, workspaceQuestionStep } = module.exports;
 const { createElement: h } = require("react"), { renderToStaticMarkup: render } = require("react-dom/server");
 const q = { id: "question-1", reason: "lookup_missing", question: "Which <colleague> & item?", options: ["Alpha <script>", "Beta"], taskId: "task-1", runId: "run-1" };
 const conversation = { state: "awaiting_user", taskState: "paused", pendingQuestion: q, resumeAdmission: { allowed: true, reason: null } };
@@ -339,5 +339,25 @@ test("the high loop-safety checkpoint renders explicit Continue and Stop without
     assert(html.includes(t("ws.question.reason.runaway_guard"))); assert(html.includes(t("ws.question.template.runaway_guard")));
     assert(html.includes(">Continue</button>")); assert(html.includes(">Stop</button>"));
     assert.equal(html.includes(t("ws.question.reason.budget_warning")), false);
+  }
+});
+
+
+test("host question keys follow reason after a locale switch; explicit model questions stay verbatim", () => {
+  for (const locale of ["en", "zh-Hans"]) {
+    const t = makeT(locale), fixed = { ...conversation, pendingQuestion: { ...q, reason: "tool_problem", messageKey: "core.question.tool_problem", question: "Stored in the old interface language" } };
+    const html = render(h(WorkspaceUserQuestion, { conversation: fixed, t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
+    assert(html.includes(t("ws.question.template.tool_problem"))); assert(!html.includes("Stored in the old interface language"));
+    const custom = render(h(WorkspaceUserQuestion, { conversation, t, disabled: false, supported: true, onAnswer() {}, onRepair() {} }));
+    assert(custom.includes("Which &lt;colleague&gt; &amp; item?"));
+  }
+});
+
+
+test("generic RPC failures have localized copy and escaped technical details collapsed by default", () => {
+  for (const locale of ["en", "zh-Hans"]) {
+    const html = render(h(WorkspaceRpcErrorNotice, { value: "core.error.request_failed", technicalDetail: "safe <img onerror=bad>", locale, t: makeT(locale), className: "fixture" }));
+    assert(html.includes(locale === "en" ? "The operation failed." : "操作失败。"));
+    assert(html.includes("<details>")); assert(!/<details[^>]*\bopen/.test(html)); assert(html.includes("&lt;img onerror=bad&gt;")); assert(!html.includes("<img"));
   }
 });
