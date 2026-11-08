@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { makeT } from "../src/i18n.ts";
-import { DEFAULT_RUNTIME_PLATFORM, parseRuntimePlatform, platformReasonKey } from "../src/runtime-platform.ts";
+import { DEFAULT_RUNTIME_PLATFORM, parseRuntimePlatform } from "../src/runtime-platform.ts";
+import { WorkspacePublicRpcError, workspaceErrorState } from "../src/core-i18n.ts";
 
 // Platform write protection: never imply a sandbox where the Host platform has none.
 test("the Core runtime platform field is parsed strictly and never advertises the full tier by accident", () => {
@@ -15,10 +16,18 @@ test("the Core runtime platform field is parsed strictly and never advertises th
     assert.deepEqual(parseRuntimePlatform(malformed), none, JSON.stringify(malformed));
 });
 
-test("platform refusals map to closed i18n keys and unknown reasons stay unmapped", () => {
-  assert.equal(platformReasonKey({ platformReason: "permission_tier_unavailable_on_platform" }), "ws.permissions.unavailableHere");
-  assert.equal(platformReasonKey({ platformReason: "native_engine_unsupported_on_platform" }), "ws.engine.unsupportedPlatform");
-  for (const value of [{ platformReason: "other" }, { platformReason: 1 }, {}, null, "permission_tier_unavailable_on_platform"]) assert.equal(platformReasonKey(value), undefined);
+test("platform refusals render through their closed Core public codes in English and Simplified Chinese", () => {
+  for (const code of ["permission_tier_unavailable_on_platform", "native_engine_unsupported_on_platform"]) {
+    const data = { code, params: {}, technicalDetail: "fixture detail" };
+    const en = new WorkspacePublicRpcError(-32602, data, "legacy", "en"), hans = new WorkspacePublicRpcError(-32602, data, "legacy", "zh-Hans");
+    assert.equal(en.publicCode, code); assert.equal(en.messageKey, "core.error." + code);
+    assert.deepEqual(workspaceErrorState(en), { error: "core.error." + code, errorTechnicalDetail: "fixture detail" });
+    assert.doesNotMatch(en.message, /[\u3400-\u9fff]/u, "English copy has no Chinese");
+    assert.match(hans.message, /[\u3400-\u9fff]/u);
+    assert.doesNotMatch(hans.message.replace(/macOS|Pi/gu, ""), /[A-Za-z]{4,}/u, "Simplified Chinese copy has no English leftovers");
+  }
+  for (const data of [{ code: "other", params: {} }, { platformReason: "permission_tier_unavailable_on_platform" }, {}, null])
+    assert.equal(new WorkspacePublicRpcError(-32602, data, "legacy", "en").publicCode, "request_failed", JSON.stringify(data));
 });
 
 test("the no-protection notice and the explicit switch exist in English and Simplified Chinese without leaking the other script", () => {
