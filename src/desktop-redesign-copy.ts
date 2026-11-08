@@ -32,6 +32,8 @@ const copy = {
   undo: ["撤销", "Undo", "復原"], dismiss: ["关闭", "Dismiss", "關閉"],
   hiddenNotice: ["已隐藏「{name}」，在侧栏底部可以找回", "Hid “{name}”. Find it at the bottom of the sidebar.", "已隱藏「{name}」，可在側欄底部找回"],
   workspaces: ["工作空间", "Workspaces", "工作空間"], newWorkspace: ["新建工作空间…", "New Workspace…", "新增工作空間…"],
+  newWorkspaceUnavailable: ["需要 Hara 账号 · 即将推出", "Requires a Hara account · Coming soon", "需要 Hara 帳號 · 即將推出"],
+  workspacesAndAccount: ["工作空间与账号", "Workspace and account", "工作空間與帳號"],
   renameWorkspace: ["重命名当前工作空间…", "Rename This Workspace…", "重新命名目前工作空間…"],
   account: ["账号与登录", "Account & Sign-in", "帳號與登入"], connected: ["已连接 · 本机", "Connected · This Mac", "已連線 · 本機"],
   disconnected: ["未连接", "Not connected", "未連線"], offline: ["连接已断开，正在重试… 输入的内容会保留，连上后再发送。", "Connection lost. Retrying… Your draft is kept; send once connected.", "連線已中斷，正在重試… 輸入的內容會保留，連上後再傳送。"],

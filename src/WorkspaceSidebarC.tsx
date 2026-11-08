@@ -13,7 +13,7 @@ interface Props {
   onSearch(value: string): void; onSelect(id: string, kind: "colleague" | "group"): void;
   onContextMenu(event: Pick<MouseEvent<HTMLButtonElement>, "clientX" | "clientY" | "currentTarget">, id: string, kind: "colleague" | "group"): void;
   onPreference(id: string, change: RosterPreference): void; onNeedsYou(): void; onColleagues(): void;
-  onWorkspace(id: string): void; onNewWorkspace(): void; onDiscuss(): void; onNewGroup?(): void;
+  onWorkspace(id: string): void; onDiscuss(): void; onNewGroup?(): void;
   onSettings(): void; onAccount(): void; onRenameWorkspace?(): void;
   rename?: { id: string; name: string; pending: boolean; duplicate?: boolean } | null;
   onRenameChange?(name: string): void; onRenameCommit?(): void; onRenameCancel?(): void; duplicateLabel?: string;
@@ -25,6 +25,8 @@ export function WorkspaceSidebarC(props: Props) {
   const [tooltip, setTooltip] = useState<{ text: string; left: number; top: number } | null>(null), tipId = useId();
   const list = useRef<HTMLElement>(null), popover = useRef<HTMLDivElement>(null), workspaceButton = useRef<HTMLButtonElement>(null), plus = useRef<HTMLButtonElement>(null);
   const grouped = rosterGroups(entries, preferences, search);
+  // Only an existing multi-workspace install can switch; creating another workspace needs a Hara account.
+  const switchable = (props.directory?.workspaces.filter(workspace => workspace.active).length ?? 0) > 1;
   // Colleague rows: the name alone on the first line; the second line is the latest message, else the colleague's
   // title, else omitted. Group rows keep their member count and the empty-conversation notice.
   const rowDetail = (entry: SidebarEntry) => entry.kind === "colleague" ? entry.preview || entry.role : entry.preview || r("noMessages");
@@ -79,7 +81,7 @@ export function WorkspaceSidebarC(props: Props) {
     <div className="hs-titlebar-drag" data-tauri-drag-region="" aria-hidden="true" />
     <div className="hd-sidebar-tools"><label><MagnifyingGlassIcon className="hico" /><input type="search" aria-label={r("search")} placeholder={r("search")} value={search} onChange={event => props.onSearch(event.target.value)} /></label>
       <button type="button" className="hs-icon" ref={plus} aria-label={r("new")} aria-expanded={popup === "new"} aria-haspopup="menu" onClick={() => setPopup(value => value === "new" ? null : "new")}><PlusIcon className="hico" /></button></div>
-    {popup === "new" ? <div ref={popover} className="hd-sidebar-popup hd-new-menu" onKeyDown={popupKeys} role="menu" aria-label={r("new")}>{popupAction(r("newColleague"), props.onDiscuss)}{props.onNewGroup ? popupAction(r("newGroup"), props.onNewGroup) : null}{popupAction(r("newWorkspace"), props.onNewWorkspace)}</div> : null}
+    {popup === "new" ? <div ref={popover} className="hd-sidebar-popup hd-new-menu" onKeyDown={popupKeys} role="menu" aria-label={r("new")}>{popupAction(r("newColleague"), props.onDiscuss)}{props.onNewGroup ? popupAction(r("newGroup"), props.onNewGroup) : null}</div> : null}
     <nav ref={list} className="hd-sidebar-list" aria-label={r("search")}>
       {main ? <button type="button" className="hs-row hs-main wsd-contact hd-main-card" aria-label={main.identity.displayName} aria-current={props.mainActive ? "page" : undefined} disabled={props.loading} onClick={() => props.onSelect(main.agentId, "colleague")} onContextMenu={event => context(event, main.agentId, "colleague")} onKeyDown={event => keyboardContext(event, main.agentId, "colleague")}>
         <Avatar agent={main} /><span className="hd-row-text"><span className="hd-row-heading"><strong className="hd-row-name">{main.identity.displayName}</strong><span className="hd-row-role">{r("orchestrator")}</span></span><span className="hd-row-preview">{(props.mainPreview || r("orchestrator")).replace(/\s+/gu, " ").slice(0, 160)}</span></span>
@@ -90,12 +92,12 @@ export function WorkspaceSidebarC(props: Props) {
       {grouped.recent.length ? <section aria-label={r("recent")}>{!grouped.searching ? <h3 className="hd-roster-heading">{r("recent")}</h3> : null}{grouped.recent.map(entry => row(entry))}</section> : grouped.searching ? <p className="hs-empty">{r("empty")}</p> : null}
       {!grouped.searching && grouped.hidden.length ? <section className="hd-hidden-list"><button type="button" className="hd-hidden-toggle" aria-expanded={hidden} onClick={() => setHidden(value => !value)}><EyeSlashIcon className="hico" />{r("hiddenCount", { n: grouped.hidden.length })}<ChevronDownIcon className={`hico${hidden ? "" : " collapsed"}`} /></button>{hidden ? grouped.hidden.map(entry => row(entry, true)) : null}</section> : null}
     </nav>
-    <footer className="hd-user-area"><button type="button" ref={workspaceButton} className="hd-workspace-trigger" aria-haspopup="menu" aria-expanded={popup === "workspace"} aria-label={r("workspaces")} onClick={() => setPopup(value => value === "workspace" ? null : "workspace")}>
+    <footer className="hd-user-area"><button type="button" ref={workspaceButton} className="hd-workspace-trigger" aria-haspopup="menu" aria-expanded={popup === "workspace"} aria-label={r("workspacesAndAccount")} onClick={() => setPopup(value => value === "workspace" ? null : "workspace")}>
       <span className="hs-ava hd-user-avatar"><span aria-hidden="true">{props.userLabel.slice(0, 1)}</span><i role="img" className={props.disconnected ? "offline" : ""} aria-label={r(props.disconnected ? "disconnected" : "connected")} /><span className="hd-connection-tooltip" role="tooltip">{r(props.disconnected ? "disconnected" : "connected")}</span></span>
-      <span className="hd-user-info"><strong>{props.userLabel}</strong><small>{props.workspaceName} ⌃⌄</small></span></button>
+      <span className="hd-user-info"><strong>{props.userLabel}</strong><small>{props.workspaceName}{switchable ? " ⌃⌄" : ""}</small></span></button>
       <button type="button" className="hs-icon" aria-label={`${r("colleagues")} ${props.count}`} onClick={props.onColleagues}><UsersIcon className="hico" /><span>{props.count}</span></button><button type="button" className="hs-icon" aria-label={props.settingsLabel} onClick={props.onSettings}><Cog6ToothIcon className="hico" /></button>
     </footer>
-    {popup === "workspace" ? <div ref={popover} className="hd-sidebar-popup hd-workspace-menu" onKeyDown={popupKeys} role="menu" aria-label={r("workspaces")}><div className="hd-menu-name">{r("workspaces")}</div>{props.directory?.workspaces.filter(workspace => workspace.active).map(workspace => <button type="button" role="menuitemradio" aria-checked={workspace.workspaceId === props.workspaceId} key={workspace.workspaceId} onClick={() => { setPopup(null); props.onWorkspace(workspace.workspaceId); }}>{workspace.label}{workspace.workspaceId === props.workspaceId ? " ✓" : ""}</button>)}<hr />{props.onRenameWorkspace ? popupAction(r("renameWorkspace"), props.onRenameWorkspace) : null}{popupAction(r("newWorkspace"), props.onNewWorkspace)}{popupAction(r("account"), props.onAccount)}<hr /><div className="hd-menu-name">{r(props.disconnected ? "disconnected" : "connected")}</div></div> : null}
+    {popup === "workspace" ? <div ref={popover} className="hd-sidebar-popup hd-workspace-menu" onKeyDown={popupKeys} role="menu" aria-label={r("workspaces")}><div className="hd-menu-name">{r("workspaces")}</div>{props.directory?.workspaces.filter(workspace => workspace.active).map(workspace => <button type="button" role="menuitemradio" aria-checked={workspace.workspaceId === props.workspaceId} key={workspace.workspaceId} onClick={() => { setPopup(null); props.onWorkspace(workspace.workspaceId); }}>{workspace.label}{workspace.workspaceId === props.workspaceId ? " ✓" : ""}</button>)}<hr />{props.onRenameWorkspace ? popupAction(r("renameWorkspace"), props.onRenameWorkspace) : null}<button type="button" role="menuitem" className="hd-menu-unavailable" aria-disabled="true" aria-describedby={`${tipId}-new-workspace`}>{r("newWorkspace")}<small id={`${tipId}-new-workspace`}>{r("newWorkspaceUnavailable")}</small></button>{popupAction(r("account"), props.onAccount)}<hr /><div className="hd-menu-name">{r(props.disconnected ? "disconnected" : "connected")}</div></div> : null}
     {tooltip && !props.menuOpen ? <div id={tipId} className="hd-name-tooltip" role="tooltip" style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.text}</div> : null}
   </aside>;
 }

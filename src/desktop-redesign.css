@@ -92,3 +92,7 @@
 .hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary::-webkit-details-marker{display:none}
 .hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary::before{content:"›";font-weight:400;transition:transform .12s}
 .hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)[open]>summary::before{transform:rotate(90deg)}
+/* Local edition keeps one personal workspace (Jeff 2026-11-08): New Workspace stays in the switcher menu, unavailable, with its reason. */
+.hd-sidebar-popup .hd-menu-unavailable{flex-direction:column;align-items:flex-start;gap:2px;color:var(--hd-faint);cursor:default}
+.hd-sidebar-popup .hd-menu-unavailable small{font-size:11px;color:var(--hd-faint)}
+.hd-sidebar-popup .hd-menu-unavailable:hover,.hd-sidebar-popup .hd-menu-unavailable:focus-visible{background:var(--hd-hover);color:var(--hd-faint)}
