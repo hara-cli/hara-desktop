@@ -1429,5 +1429,8 @@
   "ws.execution.workspace_instruction_update": "修改同事守則",
   "ws.execution.workspace_memory_write": "儲存私有記憶",
   "ws.execution.workspace_memory_promote": "共享記憶",
-  "ws.execution.group_create": "建立群聊"
+  "ws.execution.group_create": "建立群聊",
+  "ws.rf.formStatus.confirmUpdate": "已升級到 {version}，點「套用」後確認使用",
+  "ws.rf.formStatus.confirmUpdateUnknown": "已升級，點「套用」後確認使用",
+  "ws.rf.formStatus.confirmFirstUse": "首次使用，點「套用」後確認"
 }

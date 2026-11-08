@@ -1429,5 +1429,8 @@
   "ws.execution.workspace_instruction_update": "Update colleague guidance",
   "ws.execution.workspace_memory_write": "Remember privately",
   "ws.execution.workspace_memory_promote": "Share a memory note",
-  "ws.execution.group_create": "Create a group"
+  "ws.execution.group_create": "Create a group",
+  "ws.rf.formStatus.confirmUpdate": "Updated to {version}. Click Apply to confirm and use it.",
+  "ws.rf.formStatus.confirmUpdateUnknown": "Updated. Click Apply to confirm and use it.",
+  "ws.rf.formStatus.confirmFirstUse": "First use. Click Apply to confirm."
 }

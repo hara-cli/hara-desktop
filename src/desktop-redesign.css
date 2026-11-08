@@ -96,3 +96,13 @@
 .hd-sidebar-popup .hd-menu-unavailable{flex-direction:column;align-items:flex-start;gap:2px;color:var(--hd-faint);cursor:default}
 .hd-sidebar-popup .hd-menu-unavailable small{font-size:11px;color:var(--hd-faint)}
 .hd-sidebar-popup .hd-menu-unavailable:hover,.hd-sidebar-popup .hd-menu-unavailable:focus-visible{background:var(--hd-hover);color:var(--hd-faint)}
+/* Management panel fix 1 (Jeff 2026-11-08): the footer state is one line of 12px text with a 6px dot, never wrapped; it
+   truncates with an ellipsis beside Revert/Apply and the full text stays in the title tooltip. */
+/* The form is a one-column grid. An auto column grows to its widest unbreakable line, so a one-line label would widen the
+   whole panel instead of truncating; keep the column to the panel width. */
+.hs.hd-redesign.vg-app .vg-rf.vg-runtime-access{grid-template-columns:minmax(0,1fr)}
+.hs.hd-redesign.vg-app .vg-rf .vg-rf-foot{min-width:0}
+.hs.hd-redesign.vg-app .vg-rf .vg-rf-foot>.vg-rf-chip,.hs.hd-redesign.vg-app .vg-rf .vg-rf-foot>.vg-rf-footnote{display:block;flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.hs.hd-redesign.vg-app .vg-rf .vg-rf-foot>.vg-rf-chip.dirty{padding:0;border:0;border-radius:0;font-size:12px;color:var(--hd-ink)}
+.hs.hd-redesign.vg-app .vg-rf .vg-rf-foot>.vg-rf-chip.dirty::before{content:"";display:inline-block;width:6px;height:6px;margin-right:6px;border-radius:50%;background:var(--hara-status-approval);vertical-align:middle}
+.hs.hd-redesign.vg-app .vg-rf .vg-rf-meta>.vg-rf-chip{max-width:100%;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:inline-block}
