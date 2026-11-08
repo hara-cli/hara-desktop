@@ -520,7 +520,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     const snapshot = shell.snapshots.find(value => value.selectedAgentId === row.agentId);
     const last = snapshot ? [...snapshot.conversation.history].reverse().find(message => message.role === "assistant" || message.role === "user" && !isInternalUserText(message.content)) : undefined;
     const timestamp = snapshot?.conversation.updatedAt ?? last?.createdAt;
-    return { agent: row, preview: last?.role === "user" ? userVisibleText(last.content) : last?.role === "assistant" ? last.text : r("noMessages"), timestamp,
+    return { agent: row, preview: last?.role === "user" ? userVisibleText(last.content) : last?.role === "assistant" ? last.text : "", timestamp,
       order: Date.parse(timestamp ?? "") || shell.activity[row.agentId]?.observedAt || 0 };
   }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity, t]);
   const closeSettings = () => { setSettings(false); };
