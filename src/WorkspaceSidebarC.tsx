@@ -25,6 +25,9 @@ export function WorkspaceSidebarC(props: Props) {
   const [tooltip, setTooltip] = useState<{ text: string; left: number; top: number } | null>(null), tipId = useId();
   const list = useRef<HTMLElement>(null), popover = useRef<HTMLDivElement>(null), workspaceButton = useRef<HTMLButtonElement>(null), plus = useRef<HTMLButtonElement>(null);
   const grouped = rosterGroups(entries, preferences, search);
+  // Colleague rows: the name alone on the first line; the second line is the latest message, else the colleague's
+  // title, else omitted. Group rows keep their member count and the empty-conversation notice.
+  const rowDetail = (entry: SidebarEntry) => entry.kind === "colleague" ? entry.preview || entry.role : entry.preview || r("noMessages");
   useEffect(() => {
     if (!popup) return;
     popover.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
@@ -65,7 +68,7 @@ export function WorkspaceSidebarC(props: Props) {
         onClick={() => props.onSelect(entry.id, entry.kind)} onContextMenu={event => context(event, entry.id, entry.kind)} onKeyDown={event => keyboardContext(event, entry.id, entry.kind)}
         onPointerEnter={event => showTooltip(event.currentTarget, entry.name)} onPointerLeave={() => setTooltip(null)} onFocus={event => showTooltip(event.currentTarget, entry.name)} onBlur={() => setTooltip(null)}>
         {entry.agent ? <Avatar agent={entry.agent} /> : <span className="hs-ava hd-group-avatar" aria-hidden="true"><UsersIcon className="hico" /></span>}
-        <span className="hd-row-text"><span className="hd-row-heading"><strong className="hd-row-name">{entry.name}</strong>{entry.role ? <span className="hd-row-role">· {entry.role}</span> : null}</span><span className="hd-row-preview">{(entry.preview || r("noMessages")).replace(/\s+/gu, " ").slice(0, 160)}</span></span>
+        <span className="hd-row-text"><span className="hd-row-heading"><strong className="hd-row-name">{entry.name}</strong>{entry.kind !== "colleague" && entry.role ? <span className="hd-row-role">· {entry.role}</span> : null}</span>{rowDetail(entry) ? <span className={entry.kind === "colleague" && !entry.preview ? "hd-row-preview hd-row-title" : "hd-row-preview"}>{rowDetail(entry).replace(/\s+/gu, " ").slice(0, 160)}</span> : null}</span>
         <span className="hd-row-meta">{time ? <time dateTime={entry.timestamp}>{time}</time> : null}{unread > 0 ? <span className="hd-unread" aria-label={r("unreadCount", { n: unread })}>{unread > 99 ? "99+" : unread}</span> : null}{grouped.searching && preferences[entry.id]?.hidden ? <small>{r("hidden")}</small> : null}</span>
       </button>
       {recovering ? <button type="button" className="hd-show-hidden" onClick={() => props.onPreference(entry.id, { hidden: false })}>{r("show")}</button> : null}
