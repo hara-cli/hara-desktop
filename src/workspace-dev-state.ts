@@ -35,6 +35,9 @@ export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGe
   status?: "pending" | "approved" | "rejected" | "expired"; risk?: "high" | "normal"; paid?: boolean; externalSend?: boolean; destructive?: boolean;
 } & ({ kind?: "agent_create"; draft: ColleagueCreateDraft; projectOptions?: string[]; catalogRevision?: number }
   | { kind: "extension_call"; draft: { sourceName: string; toolName: string; target: string; action: "read" | "exec" } }
+  | { kind: "instruction_update"; draft: { file: "AGENTS.md" | "CLAUDE.md" | "CLAUDE.local.md"; previousSha256: string | null; content: string } }
+  | { kind: "memory_promote"; draft: { scope: "project" | "global"; content: string } }
+  | { kind: "group_create"; draft: { name: string; memberIds: string[]; memberNames: string[] }; catalogRevision: number; channelRevision: number }
   | { kind: "schedule_create"; draft: { title: string; task: string; timing: string; tz: string } });
 export interface WorkspaceDevArchiveStatus { workspaceId: string; resourceGeneration: string; agentId: string; configRevision: number; agentEpoch: number; scheduledTasks: number;
   runs: { runId: string; taskId: string; title: string; kind: "chat" | "group"; state: "running" | "draining" }[] }
@@ -56,6 +59,7 @@ export function workspaceAsyncAsks(conversation: { pendingInteractions?: Workspa
 }
 export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; selectedAgentId: string;
   runtimeOptions?: AgentRuntimeOption[];
+  colleagueHome?: { path: string; legacyPath: string; created: boolean; available: boolean; memoryScope: "private"; codexMigrationPending: boolean };
   colleagueLimit?: number;
   inheritance?: WorkspaceInheritanceView;
   agents: WorkspaceDevAgent[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace";
@@ -77,8 +81,8 @@ export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration:
     contextCompactions?: ContextCompactionView[];
     permissionTier?: RuntimePermissionTier;
     nativeRisks?: { id: string; runId: string; kind: "outside-workspace-delete" | "external-publish"; state: "observed"; at: string }[];
-    nativeSession?: { runtimeId: "codex"; revision: number; status: "empty" | "ready" | "recovery_needed" | "new_session_required";
-      contextTokens: number | null; contextLimit: number; lastAttempt: { input: number; output: number; cachedInput: number }; lastResetRequestId: string | null };
+    nativeSession?: { runtimeId: "codex" | "pi" | "claude"; revision: number; status: "empty" | "ready" | "recovery_needed" | "new_session_required";
+      contextTokens: number | null; contextLimit: number | null; lastAttempt: { input: number; output: number; cachedInput: number }; lastResetRequestId: string | null };
     resumeAdmission?: { allowed: boolean; reason: string | null } } }
 interface PendingMessage { method: "workspace.session.send" | "workspace.session.resume" | "workspace.session.answer"; payload: Record<string, unknown>;
   message: string; state: "sending" | "unknown"; fromDraft?: boolean }
@@ -235,6 +239,7 @@ export class WorkspaceDevModel {
     if (!this.rpc.supportsCapability?.("workspace.media.states.v1")) return { state: "ready", media: await this.registerMedia(path, expectedScope) };
     const result = await this.rpc.request<WorkspaceMediaDescription>("workspace.media.describe", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration, path });
     if (expectedScope !== this.mediaScope || !result || !["ready", "outside", "missing", "failed"].includes(result.state)) throw new Error("Workspace media unavailable");
+    if (result.state === "failed" && result.reason !== undefined && !["symlink", "path_spelling"].includes(result.reason)) throw new Error("Workspace media unavailable");
     if (result.state === "ready" && (!result.media || !/^[a-f0-9]{64}$/u.test(result.media.id) || !workspaceMediaMimeAllowed(result.media.mime) || !Number.isSafeInteger(result.media.bytes) || result.media.bytes < 1)) throw new Error("Workspace media unavailable");
     return result;
   }
@@ -852,8 +857,8 @@ export class WorkspaceDevModel {
    * rewrite accompanies the reset. Unknown transport outcomes stay latched until a scoped readback. */
   async newNativeSession(): Promise<void> {
     const w = this.view.workspace, key = this.key(), native = w?.conversation.nativeSession;
-    if (!w || !key || !native || !this.supportsNativeSessions() || native.runtimeId !== "codex"
-      || w.agents.find(row => row.agentId === w.selectedAgentId)?.runtime.id !== "codex"
+    if (!w || !key || !native || !this.supportsNativeSessions() || !["codex", "pi", "claude"].includes(native.runtimeId)
+      || w.agents.find(row => row.agentId === w.selectedAgentId)?.runtime.id !== native.runtimeId
       || this.view.sending || this.view.pendingUnknown || this.runtimeChanges.has(key) || this.pending.has(key) || this.nativeResets.has(key)
       || ["running", "draining"].includes(w.conversation.state) || w.conversation.pendingQuestion || w.conversation.pendingInteractions?.length) return;
     const epoch = this.epoch, reset = { requestId: this.nonce(), state: "sending" as "sending" | "unknown" };
@@ -985,7 +990,7 @@ export class WorkspaceDevModel {
     this.approvalDecisions.add(decisionKey);
     const epoch = this.epoch;
     try { await this.rpc.request("workspace.approval.respond", { workspaceId: card.workspaceId, expectedGeneration: card.resourceGeneration, approvalId: card.id, approved,
-      ...(approved && card.kind !== "schedule_create" && card.kind !== "extension_call" && draft ? { draft } : {}) });
+      ...(approved && (card.kind === undefined || card.kind === "agent_create") && draft ? { draft } : {}) });
       if (epoch === this.epoch) await this.refresh();
     } catch (error) {
       if (epoch !== this.epoch) return;

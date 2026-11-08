@@ -57,18 +57,18 @@ import { useWorkspaceUpdater, WorkspaceUpdateNotice } from "./WorkspaceSoftwareU
 const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
 
 type Translate = ReturnType<typeof makeT>;
-const TOOL_LABELS: Record<string, Key> = Object.fromEntries(["task_intake", "task_checkpoint", "todo_write", "workspace_read", "workspace_write", "workspace_verify", "agent_list", "agent_create", "agent_contact", "schedule_create", "schedule_list", "schedule_cancel"]
+const TOOL_LABELS: Record<string, Key> = Object.fromEntries(["task_intake", "task_checkpoint", "todo_write", "workspace_read", "workspace_write", "workspace_verify", "workspace_instruction_update", "workspace_memory_write", "workspace_memory_promote", "agent_list", "agent_create", "group_create", "agent_contact", "schedule_create", "schedule_list", "schedule_cancel"]
   .map(name => [name, `ws.execution.${name}` as Key]));
 export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDialog = false, locale = "en", onRestoreArchived }: { card: WorkspaceDevApproval;
   model: { respond(card: WorkspaceDevApproval, approved: boolean, draft?: ColleagueCreateDraft): Promise<void>;
     getSnapshot(): { workspace: { approvals: WorkspaceDevApproval[]; runtimeOptions?: { id: string; label: string; available: boolean }[]; agents?: WorkspaceDevAgent[] } | null };
     runtimePlatform?(): WorkspaceRuntimePlatform };
   t: Translate; disabled?: boolean; onSettled?: () => void; inDialog?: boolean; locale?: string; onRestoreArchived?: (agent: WorkspaceDevAgent) => Promise<void> }) {
-  const schedule = card.kind === "schedule_create", colleague = !schedule && card.kind !== "extension_call";
+  const schedule = card.kind === "schedule_create", group = card.kind === "group_create", colleague = card.kind === undefined || card.kind === "agent_create";
   // Self-contained: an older model without platform data keeps the macOS tiers it shipped with.
   const platform: WorkspaceRuntimePlatform = model.runtimePlatform?.() ?? { writeProtection: "seatbelt", permissionTiers: ["full-protected", "controlled"] };
   const [pending, setPending] = useState(false), fence = useRef(false);
-  const [draft, setDraft] = useState<ColleagueCreateDraft | null>(() => card.kind === "schedule_create" || card.kind === "extension_call" ? null : { ...card.draft });
+  const [draft, setDraft] = useState<ColleagueCreateDraft | null>(() => card.kind === undefined || card.kind === "agent_create" ? { ...card.draft } : null);
   const runtimeOptions = model.getSnapshot().workspace?.runtimeOptions?.filter(row => row.available && row.id !== "hara") ?? [];
   const duplicateName = colleague && draft?.displayName.trim() && model.getSnapshot().workspace?.agents?.some(row => row.state === "active"
     && row.identity.displayName.trim().toLocaleLowerCase() === draft.displayName.trim().toLocaleLowerCase());
@@ -76,7 +76,7 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
     && row.identity.displayName.trim().toLocaleLowerCase() === draft.displayName.trim().toLocaleLowerCase()) : undefined;
   const [restoreFailed, setRestoreFailed] = useState(false);
   const r = (key: Parameters<typeof redesignText>[1], values?: Record<string, string | number>) => redesignText(locale, key, values);
-  const heading = (label: string) => <header className="hd-card-head">{schedule ? <CalendarDaysIcon aria-hidden="true" /> : colleague ? <UserPlusIcon aria-hidden="true" /> : <ShieldCheckIcon aria-hidden="true" />}<strong>{label}</strong><span className="hd-card-state">{r("pending")}</span></header>;
+  const heading = (label: string) => <header className="hd-card-head">{schedule ? <CalendarDaysIcon aria-hidden="true" /> : colleague ? <UserPlusIcon aria-hidden="true" /> : group ? <UsersIcon aria-hidden="true" /> : <ShieldCheckIcon aria-hidden="true" />}<strong>{label}</strong><span className="hd-card-state">{r("pending")}</span></header>;
   const edit = (key: keyof ColleagueCreateDraft, value: string) => setDraft(previous => previous ? { ...previous, [key]: value } : previous);
   const decide = async (approved: boolean) => {
     if (fence.current || disabled || approved && colleague && (!draft?.username.trim() || !draft.displayName.trim() || !draft.title.trim() || !runtimeOptions.some(row => row.id === draft.runtimeId))) return;
@@ -91,6 +91,21 @@ export function ApprovalCard({ card, model, t, disabled = false, onSettled, inDi
     <pre>{card.draft.target}</pre><p>{t("ws.extensionApproval.boundary")}</p>
     <div className="wsd-card-actions"><button className="hs-btn sec" disabled={pending || disabled} onClick={() => void decide(false)}>{t("ws.extensionApproval.decline")}</button>
       <button className="hs-btn pri" disabled={pending || disabled} onClick={() => void decide(true)}>{t("ws.extensionApproval.confirm")}</button></div>
+  </section>;
+  if (card.kind === "instruction_update" || card.kind === "memory_promote") return <section className="hs-card wsd-approval" role="group" aria-label={r(card.kind === "instruction_update" ? "instructionApproval" : "memoryApproval")} id={`${inDialog ? "approval-dialog" : "approval"}-${card.id}`} tabIndex={-1}>
+    {heading(r(card.kind === "instruction_update" ? "instructionApproval" : "memoryApproval"))}
+    {card.kind === "instruction_update" ? <h3>{card.draft.file}</h3> : <p>{r("sharedWorkspaceMemory")}</p>}
+    <pre className="hd-proposal-content">{card.draft.content}</pre>
+    <p className="hd-card-boundary">{r(card.kind === "instruction_update" ? "instructionBoundary" : "memoryBoundary")}</p>
+    <div className="wsd-card-actions"><button className="hs-btn sec" disabled={pending || disabled} onClick={() => void decide(false)}>{r("groupDecline")}</button>
+      <button className="hs-btn pri" disabled={pending || disabled} onClick={() => void decide(true)}>{r("confirmChange")}</button></div>
+  </section>;
+  if (card.kind === "group_create") return <section className="hs-card wsd-approval" role="group" aria-label={r("groupApproval")} id={`${inDialog ? "approval-dialog" : "approval"}-${card.id}`} tabIndex={-1}>
+    {heading(r("groupApproval"))}<h3>{card.draft.name}</h3>
+    <p>{t("ws.channels.members")}</p><ul>{card.draft.memberIds.map((id, index) => <li key={id}>{card.draft.memberNames[index] ?? id}</li>)}</ul>
+    <p className="hd-card-boundary">{r("groupBoundary")}</p>
+    <div className="wsd-card-actions"><button className="hs-btn sec" disabled={pending || disabled} onClick={() => void decide(false)}>{r("groupDecline")}</button>
+      <button className="hs-btn pri" disabled={pending || disabled || card.draft.memberIds.length < 2} onClick={() => void decide(true)}>{r("groupConfirm")}</button></div>
   </section>;
   return <section className="hs-card wsd-approval" role="group" aria-label={t(schedule ? "ws.scheduleApproval.label" : "ws.approval.label")} id={`${inDialog ? "approval-dialog" : "approval"}-${card.id}`} tabIndex={-1}>
     {heading(t(schedule ? "ws.scheduleApproval.label" : "ws.approval.label"))}
@@ -512,7 +527,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     try { const file = await chooseFile({ multiple: false, directory: false, filters: [{ name: r("attach"), extensions: ["gif", "png", "jpg", "jpeg", "webp", "mp4", "m4v", "mov", "webm", "pdf", "zip", "xlsx", "md", "txt"] }] });
       if (typeof file !== "string" || selectedScope !== model.mediaScope) return;
       const description = await model.describeMedia(file, selectedScope);
-      if (description.state !== "ready") { setUndoNotice({ id: ++toastCounter.current, scope, text: r(description.state === "outside" ? "outside" : description.state === "missing" ? "moved" : "fileRefFailed") }); return; }
+      if (description.state !== "ready") { setUndoNotice({ id: ++toastCounter.current, scope, text: r(description.state === "outside" ? "outside" : description.state === "missing" ? "moved" : description.reason === "symlink" ? "mediaSymlink" : description.reason === "path_spelling" ? "mediaSpelling" : "fileRefFailed") }); return; }
       const next = `${model.getSnapshot().draft.trimEnd()}\n${file}\n`; if (next.length > 24000) throw new Error("Draft exceeds limit");
       model.setDraft(next); input.current?.focus();
     } catch { setUndoNotice({ id: ++toastCounter.current, scope, text: r("fileRefFailed") }); }
@@ -730,7 +745,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       onRename={() => setInlineRename({ id: menuAgent.agentId, name: menuAgent.identity.displayName, kind: menuGroup ? "group" : "colleague", pending: false })}
       onHide={() => hideRoster(menuAgent)}
       onArchive={!menuGroup && menuAgent.kind !== "main" && model.supportsAgentArchive() && !archiveBusy ? () => void archiveRoster(menuAgent) : undefined}
-      onNewSession={menuAgent.kind === "main" && model.supportsNativeSessions() && shell.snapshots.some(row => row.selectedAgentId === menuAgent.agentId && !!row.conversation.nativeSession) ? () => { void openAgent(menuAgent.agentId).then(() => { const current = model.getSnapshot().workspace; if (current?.selectedAgentId === menuAgent.agentId && !["running", "draining"].includes(current.conversation.state)) { if (model.supportsNativeSessions() && current.conversation.nativeSession) void model.newNativeSession(); } }); } : undefined} /> : null}
+      onNewSession={!menuGroup && model.supportsNativeSessions() && shell.snapshots.some(row => row.selectedAgentId === menuAgent.agentId && row.conversation.nativeSession?.runtimeId === menuAgent.runtime.id) ? () => { void openAgent(menuAgent.agentId).then(() => { const current = model.getSnapshot().workspace; if (current?.selectedAgentId === menuAgent.agentId && !["running", "draining"].includes(current.conversation.state)) { if (model.supportsNativeSessions() && current.conversation.nativeSession) void model.newNativeSession(); } }); } : undefined} /> : null}
     {archiveConfirm?.scope === scope ? <ShellDialog label={r("archiveConfirmTitle", { name: archiveConfirm.agent.identity.displayName })} onClose={() => { if (!archiveBusy) setArchiveConfirm(null); }} className="wsd-roster-dialog hd-archive-dialog">
       <h2>{r("archiveConfirmTitle", { name: archiveConfirm.agent.identity.displayName })}</h2><p>{r("archiveConfirmBody", { n: archiveConfirm.status.runs.length })}</p>
       <ul>{archiveConfirm.status.runs.map(run => <li key={run.runId} data-archive-run={run.runId}><strong>{run.title || r(run.kind === "group" ? "archiveGroupTask" : "archiveChatTask")}</strong><small>{r(run.kind === "group" ? "archiveGroupTask" : "archiveChatTask")} · {run.taskId.slice(0, 8)}</small></li>)}</ul>
