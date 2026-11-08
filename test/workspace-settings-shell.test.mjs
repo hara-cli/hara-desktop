@@ -31,14 +31,18 @@ function settings(page, kind = "personal") {
 }
 test("settings left rail has two scopes, an accessible close action and no drawer/template or unapproved browser settings", () => {
   const html = settings("overview");
-  for (const value of ['aria-label="设置导航"', 'aria-current="page"', 'aria-haspopup="menu"', 'aria-label="关闭设置"', "仅本空间", "所有空间", "连接", "运行时", "定时任务", "技能", "外观与语言", "软件更新"]) assert.equal(html.includes(value), true, value);
+  for (const value of ['aria-label="设置导航"', 'aria-current="page"', 'aria-haspopup="menu"', 'aria-label="关闭设置"', "仅本空间", "所有空间", "连接", "引擎", "定时任务", "技能", "外观与语言", "软件更新"]) assert.equal(html.includes(value), true, value);
   assert.equal(/wsd-settings|模板|浏览器扩展|>成员<|WORKSPACE LAB/.test(html), false);
   assert.equal(settings("overview", "team").includes(">成员<"), true);
 });
 test("workspace and device page scope chips are distinct; appearance preserves the approved three-language switch", () => {
   assert.equal(settings("general").includes("仅本空间"), true);
-  const appearance = settings("appearance"); assert.equal(appearance.includes("这台 Mac · 所有空间"), true); assert.equal(appearance.includes('aria-label="语言"'), true); for (const locale of ["en", "zh-Hans", "zh-Hant"]) assert.ok(appearance.includes(`value="${locale}"`));
-
+  const appearance = settings("appearance"); assert.equal(appearance.includes("这台 Mac · 所有空间"), true); assert.equal(appearance.includes('aria-label="语言"'), true);
+  // Jeff 2026-11-08 revision: this release offers English and Simplified only. Traditional
+  // ships as beta in the locale JSON (contract test covers it) but stays out of the picker.
+  for (const locale of ["en", "zh-Hans"]) assert.ok(appearance.includes(`value="${locale}"`), locale);
+  assert.equal(appearance.includes('value="zh-Hant"'), false, "beta zh-Hant must not be offered yet");
+  assert.ok(appearance.includes("跟随系统"));
 });
 test("preview updates row is present but disabled/off, and version copy contains only safe build metadata", () => {
   const html = settings("updates"); assert.equal(html.includes("接收预览版，以后提供"), true); assert.equal(/aria-label="接收预览版，以后提供" aria-checked="false" disabled=""/.test(html), true);

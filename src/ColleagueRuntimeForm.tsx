@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import type { AgentRuntimeId } from "./client";
 import { makeT, type Key } from "./i18n";
 import { agentRuntimeLabel } from "./agent-runtime-selection";
+import { formatList } from "./i18n-runtime.ts";
 import { inheritsPersonalExtensions } from "./runtime-expansion";
 import { WorkspaceRuntimeVersion } from "./WorkspaceRuntimeVersion";
 import { runtimeVersionFor } from "./runtime-version-drift";
@@ -50,9 +51,9 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
   agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; model: WorkspaceDevModel; locale: "en" | "zh-Hans" | "zh-Hant";
   permissionSupported?: boolean; onApplyPermissionTier?(tier: RuntimePermissionTier): Promise<void>; onRuntimeDirectory(): void; onConnections?(): void;
 }) {
-  const t = makeT(locale), zh = locale !== "en";
+  const t = makeT(locale);
   const r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key);
-  const engineName = (id: string) => agentRuntimeLabel(id as AgentRuntimeId, zh ? "zh" : "en");
+  const engineName = (id: string) => agentRuntimeLabel(id as AgentRuntimeId, locale);
   const connection = workspace.connections?.connections.find(row => row.id === (workspace.connections.activeConnectionId ?? workspace.connections.defaultConnectionId) && row.status === "active");
   const scope = JSON.stringify([workspace.workspaceId, workspace.resourceGeneration, agent.agentId, agent.configRevision, agent.agentEpoch, agent.runtime.id, connection?.id ?? null, workspace.connections?.revision ?? null]);
   const liveScope = useRef(scope); liveScope.current = scope;
@@ -118,7 +119,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
   const effortLabel = (choice: string) => choice === AUTO_EFFORT ? t("ws.rf.effort.auto") : choice === ENGINE_DEFAULT_EFFORT ? t("ws.rf.effort.engineDefault")
     : ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(choice) ? t(`ws.rf.effort.${choice}` as Key) : choice;
   const statusText = (value: ReturnType<typeof engineStatus>) => value ? t(value.key as Key, { reason: value.reasonKey ? t(value.reasonKey as Key) : "" }) : "";
-  const fieldText = fields.map(field => t(`ws.rf.field.${field}` as Key)).join(zh ? "、" : ", ");
+  const fieldText = formatList(locale, fields.map(field => t(`ws.rf.field.${field}` as Key)));
   const shared = form?.sharedWith.filter(row => row.agentId !== agent.agentId) ?? [];
   const chooseModel = (id: string) => {
     const next = inventory?.models.find(row => row.id === id);
@@ -208,7 +209,7 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
           </select>
         </label> : inventory!.models.length ? <p className="vg-muted" data-effort-hidden="true">{t("ws.rf.effortNone")}</p> : null}
         {dropped ? <p role="status" className="vg-rf-warn">{t("ws.rf.effortDropped", { model: dropped.model, level: effortLabel(dropped.level) })}</p> : null}
-        {shared.length && draftRuntime !== "pi" ? <p className="vg-muted" data-shared-setting="true">{t("ws.rf.shared", { engine: engineName(draftRuntime), names: shared.map(row => row.displayName).join(zh ? "、" : ", ") })}</p> : null}
+        {shared.length && draftRuntime !== "pi" ? <p className="vg-muted" data-shared-setting="true">{t("ws.rf.shared", { engine: engineName(draftRuntime), names: formatList(locale, shared.map(row => row.displayName)) })}</p> : null}
       </> : null}
       {use === "unavailable" || use === "detecting" ? <div className="vg-rf-actions">
         <button type="button" disabled={busy || scanning} onClick={() => void rescan()}>{t(scanning ? "ws.rf.status.detecting" : "ws.rf.recheck")}</button>

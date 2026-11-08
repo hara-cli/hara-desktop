@@ -38,14 +38,14 @@ test("invalid native transport metadata never opens a socket or falls back", () 
 });
 test("unsupported/legacy capability closes rather than calling old initialization/config", async () => {
   const client = new WorkspaceDevConnectionClient(info(), () => {}), socket = Socket.instances.at(-1);
-  const ready = client.initialize(info().token); const rejected = assert.rejects(ready, /不支援/); socket.open(); await tick();
+  const ready = client.initialize(info().token); const rejected = assert.rejects(ready, error => error.messageKey === "ws.rpc.unsupportedDev"); socket.open(); await tick();
   socket.reply(socket.sent[0].id, { capabilities: ["legacy"], syntheticOnly: false }); await rejected;
   assert.equal(socket.closes, 1); assert.deepEqual(socket.sent.map(row => row.method), ["initialize"]);
 });
 test("mixed-version and malformed capability responses never grant missing features", async () => {
   for (const capabilities of [["workspace.v2", "workspace.native-session.v1"], ["workspace.v1", { future: true }], "workspace.v1"]) {
     const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "workspace" }, () => {}), socket = Socket.instances.at(-1);
-    const ready = assert.rejects(client.initialize(info().token), /不支援/); socket.open(); await tick();
+    const ready = assert.rejects(client.initialize(info().token), error => error.messageKey === "ws.rpc.unsupportedDev"); socket.open(); await tick();
     socket.reply(socket.sent[0].id, { capabilities, syntheticOnly: false, executionMode: "workspace" }); await ready;
     assert.equal(client.supportsCapability("workspace.native-session.v1"), false);
     assert.deepEqual(socket.sent.map(row => row.method), ["initialize"]);
@@ -96,7 +96,7 @@ test("real-key attachment requires matching private native mode and exact new ca
   ]) {
     const client = new WorkspaceDevConnectionClient({ ...info(), syntheticOnly: false, executionMode: "ark-real-key" }, () => {});
     const socket = Socket.instances.at(-1), ready = client.initialize(info().token);
-    const checked = result.syntheticOnly === false && result.capabilities.length === 2 ? ready : assert.rejects(ready, /不支援/);
+    const checked = result.syntheticOnly === false && result.capabilities.length === 2 ? ready : assert.rejects(ready, error => error.messageKey === "ws.rpc.unsupportedDev");
     socket.open(); await tick(); socket.reply(socket.sent[0].id, result); await checked; client.close();
   }
 });
@@ -114,7 +114,7 @@ test("15-second transport expiry is typed unknown, late ACK is ignored and no mu
 test("a synchronous transport send failure cleans its timer without reconnecting or retrying", async () => {
   const f = await setup(), originalSend = f.socket.send;
   f.socket.send = () => { throw new Error("synthetic socket failure"); };
-  await assert.rejects(f.client.request("workspace.session.send", {}), /勿重送/);
+  await assert.rejects(f.client.request("workspace.session.send", {}), error => error.messageKey === "ws.rpc.transportLost");
   f.socket.send = originalSend;
   const lookup = f.client.request("workspace.session.receipt", {}); f.socket.reply(f.socket.sent.at(-1).id, { state: "unknown" }); await lookup;
   assert.equal(Socket.instances.length, 1); assert.equal(f.socket.sent.some(row => row.method === "workspace.session.send"), false);
@@ -122,8 +122,8 @@ test("a synchronous transport send failure cleans its timer without reconnecting
 test("closing while waiting for a socket fails initialization immediately without a timer retry or business request", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const client = new WorkspaceDevConnectionClient(info(), () => {}), socket = Socket.instances.at(-1);
-  const first = assert.rejects(client.initialize(info().token), /無法連接/);socket.close();await first;
-  await assert.rejects(client.initialize(info().token), /已關閉/);t.mock.timers.tick(10000);
+  const first = assert.rejects(client.initialize(info().token), error => error.messageKey === "ws.rpc.connectFailed");socket.close();await first;
+  await assert.rejects(client.initialize(info().token), error => error.messageKey === "ws.rpc.localClosed");t.mock.timers.tick(10000);
   assert.deepEqual(socket.sent, []);assert.equal(Socket.instances.length, 1);
 });
 test("optional clock calibration runs once and only annotates message submission", async () => {

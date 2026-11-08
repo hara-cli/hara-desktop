@@ -5,7 +5,7 @@ import { WorkspaceExtensions } from "./WorkspaceExtensions";
 import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useWorkspaceLocale, workspacePlatform } from "./workspace-shell-hooks";
 import { ArrowPathIcon, CalendarDaysIcon, ChevronDownIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { type Key, type LocalePreference } from "./i18n";
+import { selectableLanguages, type Key, type LocalePreference } from "./i18n";
 import HaraLogo from "./mark";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot } from "./workspace-dev-state";
 import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
@@ -129,7 +129,11 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
       {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.filter(id => id !== "members").map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}</h2><p>{id === "connections" ? t(connectionCount === 1 ? "ws.settings.connectionOne" : "ws.settings.connectionCount", { n: connectionCount }) : id === "runtimes" ? t("ws.settings.runtimeSummary") : t(pages[id].detail)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
         <h3>{t("ws.settings.device")} · {t("ws.settings.allSpaces")}</h3><div className="wss-overview">{(["appearance", "updates"] as const).map(id => <button key={id} onClick={() => navigate(id)}><h2>{t(pages[id].name)}</h2><p>{id === "appearance" ? t("ws.settings.themeSummary") : ["available", "ready"].includes(updates.phase) ? t("ws.settings.updateAvailable", { version: updates.version ?? "" }) : t("ws.settings.updateSummary")}</p><span>{t("ws.settings.open")}</span></button>)}</div></> : null}
-      {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option><option value="en">English</option><option value="zh-Hans">简体中文</option><option value="zh-Hant">繁體中文</option></select></label></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
+      {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option>
+            {/* Options come from the registry; only `stable` languages are offered (Jeff decision Q7).
+                zh-Hant is beta for this release: the translations ship in the locale JSON and the
+                contract test still checks them, but the picker must not offer them yet. */}
+            {selectableLanguages().map(language => <option key={language.tag} value={language.tag}>{language.nativeName}</option>)}</select></label></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
         : page === "overview" ? null : !workspace ? <p role="status">{t(view.loading ? "ws.settings.loading" : "ws.settings.createFirst")}</p> : <fieldset className="wss-content" key={key} disabled={Boolean(readonly)}>
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
           {page === "colleagues" ? <WorkspaceDeletedColleagues key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} locale={locale} /> : null}

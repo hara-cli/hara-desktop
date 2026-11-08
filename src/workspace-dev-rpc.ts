@@ -2,7 +2,7 @@ import { currentClientLocale, WorkspacePublicRpcError } from "./core-i18n.ts";
 import { parseWorkspaceAssistantPreview, type WorkspaceAssistantPreview } from "./assistant-preview.ts";
 import { parseMessageTimingInput, type MessageTimingInput } from "./message-timing.ts";
 import type { WorkspaceDevRpc } from "./workspace-dev-state";
-import { WorkspaceRpcWaitError } from "./workspace-dev-errors.ts";
+import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
 import { DEFAULT_RUNTIME_PLATFORM, parseRuntimePlatform, type WorkspaceRuntimePlatform } from "./runtime-platform.ts";
 export interface WorkspaceDevConnection { port: number; token: string; instanceId: string; root: string; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
 /** One listener per socket, bounded pending requests, no token persistence/logging or legacy fallback. */
@@ -23,7 +23,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
     this.realKey = info.syntheticOnly === false && info.executionMode === "ark-real-key";
     this.production = info.syntheticOnly === false && info.executionMode === "workspace";
     if (!Number.isSafeInteger(info.port) || info.port < 1 || info.port > 65535 || !/^[a-f0-9]{64}$/.test(info.token)
-      || (!this.realKey && !this.production && info.syntheticOnly !== true) || (info.syntheticOnly === true && info.executionMode && info.executionMode !== "synthetic")) throw new Error("不是受支援的本機 Workspace。");
+      || (!this.realKey && !this.production && info.syntheticOnly !== true) || (info.syntheticOnly === true && info.executionMode && info.executionMode !== "synthetic")) throw new WorkspaceViewError("ws.rpc.contractMismatch");
     this.socket = new WebSocket(`ws://127.0.0.1:${info.port}`);
     this.socket.addEventListener("message", event => {
       if (this.socket.readyState !== WebSocket.OPEN) return;
@@ -43,16 +43,16 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
     });
     this.socket.addEventListener("close", () => {
       this.capabilities.clear(); this.clock = null; this.platform = DEFAULT_RUNTIME_PLATFORM; this.onPreview(null);
-      for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error("Workspace 連接已中斷")); }
+      for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new WorkspaceViewError("ws.rpc.disconnected")); }
       this.pending.clear(); this.onDisconnect();
     });
   }
   async initialize(token: string): Promise<void> {
-    if (this.socket.readyState === WebSocket.CLOSED) throw new Error("本機 Workspace 連接已關閉");
+    if (this.socket.readyState === WebSocket.CLOSED) throw new WorkspaceViewError("ws.rpc.localClosed");
     if (this.socket.readyState !== WebSocket.OPEN) await new Promise<void>((resolve, reject) => {
       const clean = () => { clearTimeout(timer);this.socket.removeEventListener("open", opened);this.socket.removeEventListener("error", failed);this.socket.removeEventListener("close", failed); };
       const opened = () => { clean();resolve(); };
-      const failed = () => { clean();reject(new Error("本機 Workspace Dev 無法連接")); };
+      const failed = () => { clean();reject(new WorkspaceViewError("ws.rpc.connectFailed")); };
       const timer = setTimeout(failed, 10000);this.socket.addEventListener("open", opened, { once: true });this.socket.addEventListener("error", failed, { once: true });this.socket.addEventListener("close", failed, { once: true });
     });
     const result = await this.request<{ capabilities: string[]; syntheticOnly: boolean; executionMode?: string; runtimePlatform?: unknown }>("initialize", { token, clientCapabilities: ["workspace.extensions.manager.v1", "workspace.extensions.owner-review.v1", "workspace.assistant-preview.v1"] });
@@ -62,7 +62,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       : !capabilities.includes("workspace.local-dev.v2") || (this.realKey
       ? result.syntheticOnly !== false || result.executionMode !== "ark-real-key" || !capabilities.includes("workspace.real-key-slice.v1")
       : result.syntheticOnly !== true || (result.executionMode && result.executionMode !== "synthetic"))) {
-      this.close(); throw new Error("引擎不支援這個獨立 Workspace Dev；沒有切換到舊連接。"); }
+      this.close(); throw new WorkspaceViewError("ws.rpc.unsupportedDev"); }
     this.capabilities = new Set(capabilities);
     this.platform = parseRuntimePlatform(result.runtimePlatform);
     if (this.capabilities.has("workspace.message-timing.v1")) {
@@ -83,7 +83,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
     return this.clock ? { hostAtMs: performance.now() + this.clock.offset, errorMs: this.clock.errorMs } : null;
   }
   request<T>(method: string, params: Record<string, unknown>): Promise<T> {
-    if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("Workspace 尚未連接"));
+    if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new WorkspaceViewError("ws.rpc.notConnected"));
     return new Promise<T>((resolve, reject) => {
       const id = ++this.serial;
       const timer = setTimeout(() => { this.pending.delete(id); reject(new WorkspaceRpcWaitError(method)); }, 15000);
@@ -91,7 +91,7 @@ export class WorkspaceDevConnectionClient implements WorkspaceDevRpc {
       const timing = this.timingNow();
       const payload = timing && ["workspace.session.send", "workspace.session.resume", "workspace.session.answer"].includes(method) ? { ...params, timing } : params;
       try { this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params: method === "initialize" || this.capabilities.has("workspace.i18n.v1") ? { ...payload, clientLocale: currentClientLocale() } : payload })); }
-      catch { clearTimeout(timer); this.pending.delete(id); reject(new Error("Workspace 傳輸中斷；請只讀核對原請求，勿重送")); }
+      catch { clearTimeout(timer); this.pending.delete(id); reject(new WorkspaceViewError("ws.rpc.transportLost")); }
     });
   }
   close(): void { this.socket.close(); }

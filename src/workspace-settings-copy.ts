@@ -1,6 +1,6 @@
 import { workspaceCoreMessage, currentClientLocale } from "./core-i18n.ts";
 import type { Key, makeT } from "./i18n";
-import { WORKSPACE_KEYS, WORKSPACE_EXTRA_KEYS } from "./workspace-i18n.ts";
+import { WORKSPACE_KEY_SET } from "./i18n-catalog.ts";
 
 const runtimeLabels: Record<string, Key> = {
   downloading: "ws.runtimes.downloading", registered: "ws.runtimes.installed",
@@ -12,9 +12,9 @@ const stateLabels: Record<string, Key> = {
   failed: "ws.schedules.failed", cancelled: "ws.schedules.cancelled",
   skipped: "ws.schedules.skipped", accepted: "ws.schedules.accepted",
 };
-const messageKeys = new Set<string>();
-for (const row of WORKSPACE_KEYS) messageKeys.add(row[0]);
-for (const row of WORKSPACE_EXTRA_KEYS) messageKeys.add(row[0]);
+// Membership comes from the locale JSON, not from the tuple views, so keys added by
+// later batches (ws.rpc.*, ws.usage.*, ws.scheduleDraft.*) are recognised as well.
+const messageKeys = WORKSPACE_KEY_SET;
 
 /** Unknown protocol states stay visible for diagnosis; content supplied by users is never translated. */
 export function settingsStateText(t: ReturnType<typeof makeT>, state: string): string {

@@ -6,9 +6,10 @@ import { MAX_AGENT_AVATAR_BYTES } from "./agent-visual";
 import { IconClose } from "./icons";
 import "./AgentProfileEditor.css";
 import type { WorkspaceDevAgent } from "./workspace-dev-state";
+import { formatMessage, type Locale as ShellLocale } from "./i18n-runtime.ts";
 
 export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
-  agent: WorkspaceDevAgent; locale: "en" | "zh"; onClose(): void;
+  agent: WorkspaceDevAgent; locale: ShellLocale; onClose(): void;
   onSave(profile: { displayName: string; title: string; emoji: string; avatar: string }): Promise<void>;
 }) {
   const [displayName, setDisplayName] = useState(agent.identity.displayName);
@@ -17,7 +18,7 @@ export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
   const [avatar, setAvatar] = useState(agent.identity.avatar ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const zh = locale === "zh";
+  const t = (key: string, values?: Record<string, string | number>) => formatMessage(locale, key, values);
   const save = async () => {
     setBusy(true); setError("");
     try { await onSave({ displayName: displayName.trim(), title: title.trim(), emoji: emoji.trim(), avatar }); onClose(); }
@@ -25,21 +26,21 @@ export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
     finally { setBusy(false); }
   };
   return <div className="agent-profile-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <section className="agent-profile-editor" role="dialog" aria-modal="true" aria-label={zh ? "此同事的名片" : "This colleague's profile"}>
-      <header><h2>{zh ? "此同事的名片" : "This colleague's profile"}</h2><button type="button" disabled={busy} onClick={onClose}>{zh ? "关闭" : "Close"}</button></header>
+    <section className="agent-profile-editor" role="dialog" aria-modal="true" aria-label={t("ws.profileSheet.title")}>
+      <header><h2>{t("ws.profileSheet.title")}</h2><button type="button" disabled={busy} onClick={onClose}>{t("ws.close")}</button></header>
       <div className="agent-profile-form">
-        <label>{zh ? "显示名" : "Display name"}<input value={displayName} maxLength={64} onChange={event => setDisplayName(event.target.value)} /></label>
-        <label>{zh ? "职责" : "Role"}<input value={title} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
-        <label>{zh ? "表情头像" : "Emoji"}<input value={emoji} maxLength={24} onChange={event => setEmoji(event.target.value)} /></label>
-        <label>{zh ? "图片头像" : "Image avatar"}<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => {
+        <label>{t("ws.profileSheet.displayName")}<input value={displayName} maxLength={64} onChange={event => setDisplayName(event.target.value)} /></label>
+        <label>{t("ws.profileSheet.role")}<input value={title} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
+        <label>{t("ws.profileSheet.emoji")}<input value={emoji} maxLength={24} onChange={event => setEmoji(event.target.value)} /></label>
+        <label>{t("ws.profileSheet.imageAvatar")}<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => {
           const file = event.target.files?.[0]; if (!file) return;
-          if (file.size > MAX_AGENT_AVATAR_BYTES) { setError(zh ? "头像需小于 128 KB。" : "Avatar must be 128 KB or smaller."); return; }
+          if (file.size > MAX_AGENT_AVATAR_BYTES) { setError(t("ws.profileSheet.avatarTooLarge")); return; }
           const reader = new FileReader(); reader.onload = () => setAvatar(typeof reader.result === "string" ? reader.result : "");
-          reader.onerror = () => setError(zh ? "头像读取失败" : "Could not read avatar"); reader.readAsDataURL(file);
+          reader.onerror = () => setError(t("ws.profileSheet.avatarReadFailed")); reader.readAsDataURL(file);
         }} /></label>
-        {avatar ? <button type="button" disabled={busy} onClick={() => setAvatar("")}>{zh ? "移除图片头像" : "Remove image avatar"}</button> : null}
+        {avatar ? <button type="button" disabled={busy} onClick={() => setAvatar("")}>{t("ws.profileSheet.avatarRemove")}</button> : null}
         {error ? <p role="alert">{error}</p> : null}
-        <button type="button" disabled={busy || !displayName.trim()} onClick={() => void save()}>{busy ? (zh ? "保存中…" : "Saving…") : (zh ? "保存" : "Save")}</button>
+        <button type="button" disabled={busy || !displayName.trim()} onClick={() => void save()}>{busy ? t("ws.profileSheet.saving") : t("ws.profileSheet.save")}</button>
       </div>
     </section>
   </div>;
@@ -90,6 +91,7 @@ export default function AgentProfileEditor({
   runtimeOptions,
   onSaveRuntime,
 }: AgentProfileEditorProps) {
+  const t = (key: string, values?: Record<string, string | number>) => formatMessage(locale, key, values);
   const identity = agent.identity;
   const [displayName, setDisplayName] = useState(identity?.displayName || agent.name);
   const [title, setTitle] = useState(identity?.title || "");
@@ -116,17 +118,11 @@ export default function AgentProfileEditor({
   const effectiveModel = agentModel || defaultModel || availableModelEntries[0]?.id || agent.model || "";
   const effortLevels = modelEntries.find((entry) => entry.id === effectiveModel)?.effortLevels ?? [];
 
+  // Effort names come from ws.profile.effort.*, aligned with ws.rf.effort.* (decision 5).
   const effortLabel = (effort: string): string => {
-    const labels: Record<string, [string, string]> = {
-      off: ["关闭", "Off"],
-      minimal: ["最少", "Minimal"],
-      low: ["低", "Low"],
-      medium: ["中", "Medium"],
-      high: ["高", "High"],
-      xhigh: ["超高", "Extra high"],
-      max: ["最大", "Maximum"],
-    };
-    return labels[effort]?.[locale === "zh" ? 0 : 1] ?? effort;
+    const key = `ws.profile.effort.${effort}`;
+    const known = ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(effort);
+    return known ? formatMessage(locale, key) : effort;
   };
 
   const changeAgentModel = (model: string) => {
@@ -163,16 +159,16 @@ export default function AgentProfileEditor({
     setLocalNotice("");
     if (!file) return;
     if (!/^image\/(?:png|jpeg|webp|gif)$/.test(file.type)) {
-      setLocalError(locale === "zh" ? "头像仅支持 PNG、JPEG、WebP 或 GIF。" : "Use a PNG, JPEG, WebP, or GIF avatar.");
+      setLocalError(t("ws.profile.avatarTypeUnsupported"));
       return;
     }
     if (file.size > MAX_AGENT_AVATAR_BYTES) {
-      setLocalError(locale === "zh" ? "头像需小于 128 KB。" : "Avatar images must be 128 KB or smaller.");
+      setLocalError(t("ws.profile.avatarTooLarge"));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => setAvatar(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => setLocalError(locale === "zh" ? "无法读取头像文件。" : "Could not read the avatar file.");
+    reader.onerror = () => setLocalError(t("ws.profile.avatarReadFailed"));
     reader.readAsDataURL(file);
   };
 
@@ -187,9 +183,7 @@ export default function AgentProfileEditor({
     setAccent(DEFAULT_ROOT_IDENTITY.accent ?? "#ff695f");
     setCharacter(DEFAULT_ROOT_IDENTITY.character ?? "");
     setLocalError("");
-    setLocalNotice(locale === "zh"
-      ? "已载入 Hara 默认人格草稿；点击“保存名片”后才会生效。"
-      : "Hara's default identity is loaded as a draft. Save the profile to apply it.");
+    setLocalNotice(t("ws.profile.defaultLoadedNotice"));
   };
 
   return (
@@ -201,36 +195,28 @@ export default function AgentProfileEditor({
           <div className="agent-profile-preview">
             <AgentPortrait agentRef={agent.ref} name={agent.name} identity={preview} systemRole={agent.systemRole} size="large" />
             <span>
-              <small>{isRootOrchestrator
-                ? (locale === "zh" ? "Hara 主调度 · 永久身份" : "Hara root orchestrator · permanent identity")
-                : agent.owner === "organization" ? (locale === "zh" ? "公司 Agent" : "Company Agent") : (locale === "zh" ? "个人 Agent" : "Personal Agent")}</small>
-              <strong id="agent-profile-title">{locale === "zh" ? "Agent 名片" : "Agent Profile"}</strong>
+              <small>{isRootOrchestrator ? t("ws.profile.kindRoot") : agent.owner === "organization" ? t("ws.profile.kindCompany") : t("ws.profile.kindPersonal")}</small>
+              <strong id="agent-profile-title">{t("ws.profile.title")}</strong>
               <em>@{agent.ref}</em>
             </span>
           </div>
-          <button type="button" className="agent-profile-close" aria-label={locale === "zh" ? "关闭" : "Close"} disabled={saving} onClick={onClose}><IconClose size={18} /></button>
+          <button type="button" className="agent-profile-close" aria-label={t("ws.close")} disabled={saving} onClick={onClose}><IconClose size={18} /></button>
         </header>
 
         {isRootOrchestrator ? (
           <div className="agent-profile-root">
             <b aria-hidden>✦</b>
             <span>
-              <strong>{locale === "zh" ? "这是你的主 Agent，不属于雇佣列表" : "This is your Main Agent, not a hire"}</strong>
-              <small>{editable
-                ? locale === "zh"
-                  ? "可以修改昵称、头像与人格表达，但主调度身份不能解除。它负责拆解任务、组织 Agent，并持续关联 Codex / Claude Code 的编码会话。"
-                  : "You can personalize its name, avatar, and character, but its coordinator role cannot be removed. It delegates work and keeps Codex / Claude Code coding sessions linked."
-                : locale === "zh"
-                  ? "这位主调度由当前公司空间管理，身份不能解除。它仍负责承接对话、拆解任务与组织可用的 Agent。"
-                  : "This root coordinator is managed by the active company Space and cannot be removed. It still owns the conversation, breaks down work, and coordinates available Agents."}</small>
+              <strong>{t("ws.profile.rootNote")}</strong>
+              <small>{editable ? t("ws.profile.rootEditableNote") : t("ws.profile.rootGovernedNote")}</small>
             </span>
           </div>
         ) : !editable ? (
           <div className="agent-profile-governed">
             <b aria-hidden>⌾</b>
             <span>
-              <strong>{locale === "zh" ? "此资料由公司管理员管理" : "Managed by a company administrator"}</strong>
-              <small>{locale === "zh" ? "你仍可与该 Agent 对话；名称、头像与简介需要拥有相应权限的公司管理员维护。" : "You can still chat with this Agent. Its name, avatar, and bio require a company administrator with the corresponding permission."}</small>
+              <strong>{t("ws.profile.adminManaged")}</strong>
+              <small>{t("ws.profile.adminManagedNote")}</small>
             </span>
           </div>
         ) : null}
@@ -239,93 +225,83 @@ export default function AgentProfileEditor({
           <div className="agent-profile-avatar-field">
             <AgentPortrait agentRef={agent.ref} name={agent.name} identity={preview} systemRole={agent.systemRole} size="large" />
             <span>
-              <button type="button" disabled={!editable || saving} onClick={() => fileRef.current?.click()}>{locale === "zh" ? "更换头像" : "Change avatar"}</button>
-              {avatar ? <button type="button" className="ghost" disabled={!editable || saving} onClick={() => setAvatar("")}>{locale === "zh" ? "移除" : "Remove"}</button> : null}
+              <button type="button" disabled={!editable || saving} onClick={() => fileRef.current?.click()}>{t("ws.profile.changeAvatar")}</button>
+              {avatar ? <button type="button" className="ghost" disabled={!editable || saving} onClick={() => setAvatar("")}>{t("ws.profile.remove")}</button> : null}
               <small>PNG / JPEG / WebP / GIF · 128 KB</small>
             </span>
             <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => chooseAvatar(event.target.files?.[0])} />
           </div>
           <div className="agent-profile-grid">
             <label>
-              <span>{locale === "zh" ? "昵称" : "Display name"}</span>
+              <span>{t("ws.profile.fieldName")}</span>
               <input maxLength={64} disabled={!editable || saving} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
             </label>
             <label>
-              <span>{locale === "zh" ? "职位" : "Title"}</span>
+              <span>{t("ws.profile.fieldTitle")}</span>
               <input maxLength={80} disabled={!editable || saving} value={title} onChange={(event) => setTitle(event.target.value)} />
             </label>
             <label className="is-wide">
-              <span>{locale === "zh" ? "简介" : "Bio"}</span>
+              <span>{t("ws.profile.fieldBio")}</span>
               <textarea maxLength={220} rows={3} disabled={!editable || saving} value={bio} onChange={(event) => setBio(event.target.value)} />
             </label>
             <label>
-              <span>{locale === "zh" ? "性格标签" : "Traits"}</span>
-              <input disabled={!editable || saving} value={traits} placeholder={locale === "zh" ? "直接, 好奇, 严谨" : "direct, curious, rigorous"} onChange={(event) => setTraits(event.target.value)} />
+              <span>{t("ws.profile.fieldTraits")}</span>
+              <input disabled={!editable || saving} value={traits} placeholder={t("ws.profile.fieldTraitsPlaceholder")} onChange={(event) => setTraits(event.target.value)} />
             </label>
             <label>
-              <span>{locale === "zh" ? "标志 Emoji" : "Emoji"}</span>
+              <span>{t("ws.profile.fieldEmoji")}</span>
               <input maxLength={24} disabled={!editable || saving} value={emoji} onChange={(event) => setEmoji(event.target.value)} />
             </label>
             <label>
-              <span>{locale === "zh" ? "视觉主题" : "Visual theme"}</span>
+              <span>{t("ws.profile.fieldTheme")}</span>
               <input maxLength={72} disabled={!editable || saving} value={theme} onChange={(event) => setTheme(event.target.value)} />
             </label>
             <label>
-              <span>{locale === "zh" ? "角色原型" : "Character"}</span>
+              <span>{t("ws.profile.fieldCharacter")}</span>
               <input maxLength={32} disabled={!editable || saving} value={character} placeholder="architect" onChange={(event) => setCharacter(event.target.value)} />
             </label>
             <label>
-              <span>{locale === "zh" ? "强调色" : "Accent"}</span>
+              <span>{t("ws.profile.fieldAccent")}</span>
               <span className="agent-profile-color"><input type="color" disabled={!editable || saving} value={/^#[0-9a-f]{6}$/i.test(accent) ? accent : "#ff695f"} onChange={(event) => setAccent(event.target.value)} /><input maxLength={7} disabled={!editable || saving} value={accent} onChange={(event) => setAccent(event.target.value)} /></span>
             </label>
           </div>
         </div>
 
         <AgentRuntimePicker agent={agent} options={runtimeOptions} locale={locale} saving={saving} onApply={onSaveRuntime} />
-        <section className="agent-profile-execution" aria-label={locale === "zh" ? "模型与思考" : "Model and reasoning"}>
+        <section className="agent-profile-execution" aria-label={t("ws.profile.modelSection")}>
           <header>
             <span>
-              <strong>{locale === "zh" ? "模型与思考" : "Model and reasoning"}</strong>
-              <small>{locale === "zh"
-                ? "默认继承当前空间；只影响该 Agent 以后新建的对话。"
-                : "Defaults follow the current Space and affect only new conversations for this Agent."}</small>
+              <strong>{t("ws.profile.modelSection")}</strong>
+              <small>{t("ws.profile.modelSectionNote")}</small>
             </span>
           </header>
           {agent.ref === "main" ? (
-            <p className="agent-profile-execution-note">{locale === "zh"
-              ? "主 Agent 始终跟随当前空间的默认连接、模型与思考强度；它可在个人空间调度 Hara、Codex 与 Claude Code，并用持久会话回链继续同一次原生工作。"
-              : "The Main Agent follows the active Space defaults. In Personal Space it can coordinate Hara, Codex, and Claude Code while preserving a durable link to the same native session."}</p>
+            <p className="agent-profile-execution-note">{t("ws.profile.mainExecutionNote")}</p>
           ) : agent.owner === "organization" ? (
-            <p className="agent-profile-execution-note">{locale === "zh"
-              ? "公司 Agent 的模型与思考强度由公司管理员在 Hara Control 统一管理。"
-              : "A company administrator manages this Agent's model and reasoning effort in Hara Control."}</p>
+            <p className="agent-profile-execution-note">{t("ws.profile.companyExecutionNote")}</p>
           ) : null}
           <div className="agent-profile-execution-grid">
             <label>
-              <span>{locale === "zh" ? "模型" : "Model"}</span>
+              <span>{t("ws.rf.model")}</span>
               <select
                 value={agentModel}
                 disabled={!executionEditable || saving}
                 onChange={(event) => changeAgentModel(event.target.value)}
               >
-                <option value="">{locale === "zh"
-                  ? `跟随空间默认${defaultModel ? ` · ${defaultModel}` : ""}`
-                  : `Follow Space default${defaultModel ? ` · ${defaultModel}` : ""}`}</option>
+                <option value="">{defaultModel ? t("ws.profile.followSpaceDefaultWithModel", { model: defaultModel }) : t("ws.profile.followSpaceDefaultPlain")}</option>
                 {knownModels.map((model) => <option value={model} key={model}>{model}</option>)}
               </select>
             </label>
             <label>
-              <span>{locale === "zh" ? "思考强度" : "Reasoning effort"}</span>
+              <span>{t("ws.rf.effort")}</span>
               <select
                 value={agentEffort}
                 disabled={!executionEditable || saving || effortLevels.length === 0}
                 onChange={(event) => setAgentEffort(event.target.value)}
               >
                 <option value="">{effortLevels.length === 0
-                  ? (locale === "zh" ? "该模型使用固定策略" : "This model uses a fixed policy")
-                  : locale === "zh"
-                    ? `跟随空间默认 · ${defaultReasoningEffort ? effortLabel(defaultReasoningEffort) : "模型自动"}`
-                    : `Follow Space default · ${defaultReasoningEffort ? effortLabel(defaultReasoningEffort) : "Model automatic"}`}</option>
+                  ? t("ws.profile.fixedPolicy")
+                  : t("ws.profile.followSpaceDefaultReasoning", { effort: defaultReasoningEffort ? effortLabel(defaultReasoningEffort) : t("ws.profile.modelAutomatic") })}</option>
                 {agentEffort && !effortLevels.includes(agentEffort)
                   ? <option value={agentEffort}>{agentEffort}</option>
                   : null}
@@ -339,13 +315,13 @@ export default function AgentProfileEditor({
         {(localError || error) ? <p className="agent-profile-error">{localError || error}</p> : null}
         <footer>
           {!isRootOrchestrator && agent.allowedActions?.includes("archive") && onArchive ? (
-            <button type="button" className="agent-profile-dismiss" disabled={saving} onClick={onArchive}>{locale === "zh" ? "解除雇佣" : "Dismiss Agent"}</button>
+            <button type="button" className="agent-profile-dismiss" disabled={saving} onClick={onArchive}>{t("ws.profile.dismiss")}</button>
           ) : null}
           {isRootOrchestrator && editable ? (
-            <button type="button" className="agent-profile-reset" disabled={saving} onClick={loadDefaultRootIdentity}>{locale === "zh" ? "载入默认人格" : "Load default identity"}</button>
+            <button type="button" className="agent-profile-reset" disabled={saving} onClick={loadDefaultRootIdentity}>{t("ws.profile.loadDefaultIdentity")}</button>
           ) : null}
           <span className="agent-profile-footer-spacer" />
-          <button type="button" className="ghost" disabled={saving} onClick={onClose}>{editable ? (locale === "zh" ? "取消" : "Cancel") : (locale === "zh" ? "关闭" : "Close")}</button>
+          <button type="button" className="ghost" disabled={saving} onClick={onClose}>{editable ? t("ws.profile.cancel") : t("ws.profile.close")}</button>
           {editable ? <button type="button" disabled={saving || !displayName.trim()} onClick={() => onSave({
               displayName: displayName.trim(),
               ...(title.trim() ? { title: title.trim() } : {}),
@@ -359,7 +335,7 @@ export default function AgentProfileEditor({
             }, executionEditable ? {
               model: agentModel || null,
               reasoningEffort: agentEffort || null,
-            } : undefined)}>{saving ? (locale === "zh" ? "保存中…" : "Saving…") : (locale === "zh" ? "保存名片" : "Save profile")}</button> : null}
+            } : undefined)}>{saving ? t("ws.profile.saving") : t("ws.profile.save")}</button> : null}
         </footer>
       </section>
     </div>

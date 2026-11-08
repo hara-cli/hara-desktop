@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import bundledEngineVersionText from "../src-tauri/binaries/SIDECAR_VERSION?raw";
-import { detectLegacyLocale as detectLocale } from "./i18n";
+import { detectLocale, makeT } from "./i18n";
+import type { Locale } from "./i18n-runtime.ts";
 import "./crash-report-prompt.css";
 
 type CrashDraft = {
@@ -25,80 +26,38 @@ type CrashReceipt = {
 
 const engineVersion = bundledEngineVersionText.trim();
 
-const COPY = {
-  zh: {
-    kicker: "HARA · 故障信标",
-    title: "帮助我们定位上一次异常退出",
-    body: "Hara 在本机留下了一份小型诊断草稿。只有你确认后才会上传；忽略后会立即删除。",
-    included: "将上传的内容",
-    excluded: "不会上传对话、文件内容、API Key、Cookie、完整本机路径或供应商请求。",
-    app: "Desktop 版本",
-    engine: "内置引擎版本",
-    system: "系统",
-    event: "故障类型",
-    time: "发生时间",
-    fingerprint: "去重指纹",
-    context: "安全上下文",
-    noContext: "没有额外上下文",
-    description: "当时正在做什么？（可选）",
-    placeholder: "例如：在项目中点击“新会话”后窗口退出。请勿粘贴密钥、聊天内容或客户数据。",
-    warning: "提交即表示你同意将上方字段和这段补充说明发送至南荒科技，用于故障排查。",
-    discard: "不上传并删除",
-    submit: "同意并上传",
-    submitting: "正在安全上传…",
-    success: "报告已收到",
-    successBody: "感谢。相同故障会自动合并，不会重复制造工单。",
-    close: "完成",
-    retry: "上传失败，请检查网络后重试。草稿仍只保存在本机。",
-    discardFailed: "暂时无法删除本机草稿，请重新启动 Hara 后重试。",
-  },
-  en: {
-    kicker: "HARA · CRASH BEACON",
-    title: "Help us diagnose the last unexpected exit",
-    body: "Hara kept a small diagnostic draft on this device. It is uploaded only after you approve it, and deleted if you decline.",
-    included: "What will be uploaded",
-    excluded: "No chats, file contents, API keys, cookies, full local paths, or provider payloads are included.",
-    app: "Desktop version",
-    engine: "Bundled engine",
-    system: "System",
-    event: "Failure type",
-    time: "Occurred",
-    fingerprint: "Deduplication fingerprint",
-    context: "Safe context",
-    noContext: "No additional context",
-    description: "What were you doing? (optional)",
-    placeholder: "For example: the window exited after I clicked New session. Do not paste keys, chat content, or customer data.",
-    warning: "By submitting, you consent to send the fields above and this note to Nanhara Technology for troubleshooting.",
-    discard: "Delete without uploading",
-    submit: "Approve & upload",
-    submitting: "Uploading safely…",
-    success: "Report received",
-    successBody: "Thank you. Matching failures are merged automatically instead of creating duplicate issues.",
-    close: "Done",
-    retry: "Upload failed. Check your connection and retry; the draft remains only on this device.",
-    discardFailed: "The local draft could not be deleted. Restart Hara and try again.",
-  },
+/**
+ * Crash-consent copy lives in the locale JSON (ws.crash.*) so the three languages stay
+ * in step and the shell's fallback chain applies. The previous inline COPY table was
+ * Simplified + English only, and it formatted the timestamp with a fixed zh-CN locale
+ * for every Chinese reader (audit §1.1, §5).
+ */
+const COPY_KEYS = {
+  kicker: "ws.crash.kicker", title: "ws.crash.title", body: "ws.crash.body",
+  included: "ws.crash.included", excluded: "ws.crash.excluded", app: "ws.crash.app",
+  engine: "ws.crash.engine", system: "ws.crash.system", event: "ws.crash.event",
+  time: "ws.crash.time", fingerprint: "ws.crash.fingerprint", context: "ws.crash.context",
+  noContext: "ws.crash.noContext", description: "ws.crash.description", placeholder: "ws.crash.placeholder",
+  warning: "ws.crash.warning", discard: "ws.crash.discard", submit: "ws.crash.submit",
+  submitting: "ws.crash.submitting", success: "ws.crash.success", successBody: "ws.crash.successBody",
+  close: "ws.crash.close", retry: "ws.crash.retry", discardFailed: "ws.crash.discardFailed",
 } as const;
+type CopyField = keyof typeof COPY_KEYS;
 
-function kindLabel(kind: CrashDraft["kind"], locale: "zh" | "en") {
-  const labels = {
-    zh: {
-      unclean_exit: "上一次运行未正常关闭",
-      renderer_exception: "界面异常",
-      renderer_unresponsive: "界面无响应",
-    },
-    en: {
-      unclean_exit: "Previous run did not close normally",
-      renderer_exception: "Renderer exception",
-      renderer_unresponsive: "Renderer unresponsive",
-    },
-  } as const;
-  return labels[locale][kind];
+const KIND_KEYS: Record<CrashDraft["kind"], string> = {
+  unclean_exit: "ws.crash.kind.uncleanExit",
+  renderer_exception: "ws.crash.kind.rendererException",
+  renderer_unresponsive: "ws.crash.kind.rendererUnresponsive",
+};
+
+function kindLabel(kind: CrashDraft["kind"], t: ReturnType<typeof makeT>) {
+  return t(KIND_KEYS[kind] as Parameters<ReturnType<typeof makeT>>[0]);
 }
 
 export function CrashReportHost() {
-  const locale = detectLocale();
-  const copy = COPY[locale];
+  const locale: Locale = detectLocale();
+  const t = makeT(locale);
+  const copy = (field: CopyField) => t(COPY_KEYS[field] as Parameters<typeof t>[0]);
   const [draft, setDraft] = useState<CrashDraft | null>(null);
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -122,7 +81,7 @@ export function CrashReportHost() {
   const occurredAt = useMemo(() => {
     if (!draft) return "";
     const date = new Date(draft.occurredAtMs);
-    return Number.isFinite(date.getTime()) ? date.toLocaleString(locale === "zh" ? "zh-CN" : "en") : "—";
+    return Number.isFinite(date.getTime()) ? date.toLocaleString(locale) : "—";
   }, [draft, locale]);
 
   const discard = async () => {
@@ -173,48 +132,48 @@ export function CrashReportHost() {
     <div className="crash-consent-backdrop" role="presentation">
       <section className="crash-consent-card" role="dialog" aria-modal="true" aria-labelledby="crash-consent-title">
         <div className="crash-consent-beacon" aria-hidden="true"><span /></div>
-        <p className="crash-consent-kicker">{copy.kicker}</p>
+        <p className="crash-consent-kicker">{copy("kicker")}</p>
         {receipt ? (
           <>
-            <h2 id="crash-consent-title">{copy.success}</h2>
-            <p className="crash-consent-lead">{copy.successBody}</p>
+            <h2 id="crash-consent-title">{copy("success")}</h2>
+            <p className="crash-consent-lead">{copy("successBody")}</p>
             <p className="crash-consent-receipt"><span>ID</span><code>{receipt.reportId}</code></p>
             <div className="crash-consent-actions single">
-              <button type="button" onClick={() => setReceipt(null)}>{copy.close}</button>
+              <button type="button" onClick={() => setReceipt(null)}>{copy("close")}</button>
             </div>
           </>
         ) : draft ? (
           <>
-            <h2 id="crash-consent-title">{copy.title}</h2>
-            <p className="crash-consent-lead">{copy.body}</p>
+            <h2 id="crash-consent-title">{copy("title")}</h2>
+            <p className="crash-consent-lead">{copy("body")}</p>
             <div className="crash-consent-manifest">
-              <strong>{copy.included}</strong>
+              <strong>{copy("included")}</strong>
               <dl>
-                <div><dt>{copy.app}</dt><dd>{draft.appVersion}</dd></div>
-                <div><dt>{copy.engine}</dt><dd>{engineVersion || "—"}</dd></div>
-                <div><dt>{copy.system}</dt><dd>{draft.platform} · {draft.arch}</dd></div>
-                <div><dt>{copy.event}</dt><dd>{kindLabel(draft.kind, locale)}</dd></div>
-                <div><dt>{copy.time}</dt><dd>{occurredAt}</dd></div>
-                <div><dt>{copy.fingerprint}</dt><dd><code>{draft.fingerprint}</code></dd></div>
-                <div><dt>{copy.context}</dt><dd>{draft.context.length ? draft.context.join(" · ") : copy.noContext}</dd></div>
+                <div><dt>{copy("app")}</dt><dd>{draft.appVersion}</dd></div>
+                <div><dt>{copy("engine")}</dt><dd>{engineVersion || "—"}</dd></div>
+                <div><dt>{copy("system")}</dt><dd>{draft.platform} · {draft.arch}</dd></div>
+                <div><dt>{copy("event")}</dt><dd>{kindLabel(draft.kind, t)}</dd></div>
+                <div><dt>{copy("time")}</dt><dd>{occurredAt}</dd></div>
+                <div><dt>{copy("fingerprint")}</dt><dd><code>{draft.fingerprint}</code></dd></div>
+                <div><dt>{copy("context")}</dt><dd>{draft.context.length ? draft.context.join(" · ") : copy("noContext")}</dd></div>
               </dl>
-              <p>{copy.excluded}</p>
+              <p>{copy("excluded")}</p>
             </div>
             <label className="crash-consent-description">
-              <span>{copy.description}</span>
+              <span>{copy("description")}</span>
               <textarea
                 value={description}
                 maxLength={1200}
                 rows={3}
-                placeholder={copy.placeholder}
+                placeholder={copy("placeholder")}
                 onChange={(event) => setDescription(event.target.value)}
               />
             </label>
-            <p className="crash-consent-warning">{copy.warning}</p>
-            {notice && <p className="crash-consent-error" role="alert">{notice === "upload" ? copy.retry : copy.discardFailed}</p>}
+            <p className="crash-consent-warning">{copy("warning")}</p>
+            {notice && <p className="crash-consent-error" role="alert">{notice === "upload" ? copy("retry") : copy("discardFailed")}</p>}
             <div className="crash-consent-actions">
-              <button type="button" className="ghost" disabled={submitting} onClick={() => void discard()}>{copy.discard}</button>
-              <button type="button" disabled={submitting} onClick={() => void submit()}>{submitting ? copy.submitting : copy.submit}</button>
+              <button type="button" className="ghost" disabled={submitting} onClick={() => void discard()}>{copy("discard")}</button>
+              <button type="button" disabled={submitting} onClick={() => void submit()}>{submitting ? copy("submitting") : copy("submit")}</button>
             </div>
           </>
         ) : null}
