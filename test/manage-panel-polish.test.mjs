@@ -28,3 +28,12 @@ test("panel disclosures share the rotating chevron used by the manage sections",
   assert.match(css, /:is\(\.vg-rf-details,\.wsd-runtime-details\)>summary::before\{content:"›"/u);
   assert.match(css, /:is\(\.vg-rf-details,\.wsd-runtime-details\)\[open\]>summary::before\{transform:rotate\(90deg\)\}/u);
 });
+
+test("the form's action buttons use the secondary button style; Install stays a link", () => {
+  const rule = css.match(/\.hs\.hd-redesign\.vg-app \.vg-rf \.vg-rf-actions button:not\(\.vg-runtime-install\)\{([^}]*)\}/u)?.[1];
+  assert.ok(rule, "a rule overrides the generic .vg-runtime-access button style for .vg-rf-actions");
+  for (const declaration of ["justify-content:center", "width:auto", "text-align:center", "background:transparent", "border:1px solid var(--hd-line)"])
+    assert.ok(rule.includes(declaration), declaration);
+  assert.match(form, /<div className="vg-rf-actions">[^\n]*t\("ws\.rf\.piRefreshModels"\)/u);
+  assert.match(form, /<button type="button" className="vg-runtime-install"/u);
+});
