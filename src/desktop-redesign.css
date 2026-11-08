@@ -85,6 +85,9 @@
 /* Management panel (Jeff 2026-11-08): Revert is a centred secondary button beside Apply, and every disclosure in the panel uses the same rotating chevron. */
 .hs.hd-redesign.vg-app .vg-rf .vg-rf-foot .vg-rf-revert{width:auto;min-width:88px;margin-left:auto;padding:9px 14px;border:1px solid var(--hd-line);border-radius:8px;background:transparent;color:var(--hd-ink);text-align:center}
 .hs.hd-redesign.vg-app .vg-rf .vg-rf-foot .vg-rf-revert:hover:not(:disabled){background:var(--hd-hover)}
+/* The form's action buttons (Pi connections, Refresh models, Recheck) also inherited the full-width, left-aligned .vg-runtime-access button look; they use the same secondary style. The Install link keeps its link style. */
+.hs.hd-redesign.vg-app .vg-rf .vg-rf-actions button:not(.vg-runtime-install){display:inline-flex;align-items:center;justify-content:center;width:auto;min-width:88px;padding:9px 14px;border:1px solid var(--hd-line);border-radius:8px;background:transparent;color:var(--hd-ink);text-align:center}
+.hs.hd-redesign.vg-app .vg-rf .vg-rf-actions button:not(.vg-runtime-install):hover:not(:disabled){background:var(--hd-hover)}
 .hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary{display:flex;align-items:center;gap:6px;list-style:none;cursor:pointer}
 .hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary::-webkit-details-marker{display:none}
 .hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary::before{content:"›";font-weight:400;transition:transform .12s}
