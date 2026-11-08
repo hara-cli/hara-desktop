@@ -176,10 +176,12 @@ export default function ColleagueRuntimeForm({ agent, workspace, model, locale, 
       <label className="vg-rf-field">{t("ws.rf.engine")}
         <select aria-label={t("ws.rf.engine")} value={draftRuntime} disabled={busy || scanning} onChange={event => { setDraftRuntime(event.target.value); setNotice(""); setError(""); }}>
           {!options.some(row => row.id === agent.runtime.id) ? <option value={agent.runtime.id}>{engineName(agent.runtime.id)}</option> : null}
+          {/* Option text is the engine name; the selected engine's status shows once, in the chip below. Only an
+              unselectable engine keeps its reason, since nothing else explains why it is disabled. */}
           {options.map(row => {
             const rowStatus = engineStatus(workspace.runtimes?.options.find(item => item.runtimeId === row.id)?.use, workspace.runtimes?.options.find(item => item.runtimeId === row.id)?.unavailableReason);
             const selectable = row.selectable ?? row.available;
-            return <option key={row.id} value={row.id} disabled={!selectable && row.id !== agent.runtime.id}>{engineName(row.id)}{row.id !== "pi" && row.id !== "hara" && rowStatus && rowStatus.key !== "ws.rf.status.ready" ? ` · ${statusText(rowStatus)}` : ""}</option>;
+            return <option key={row.id} value={row.id} disabled={!selectable && row.id !== agent.runtime.id}>{engineName(row.id)}{!selectable && row.id !== agent.runtime.id && rowStatus ? ` · ${statusText(rowStatus)}` : ""}</option>;
           })}
         </select>
       </label>

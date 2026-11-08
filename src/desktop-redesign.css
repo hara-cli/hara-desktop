@@ -82,3 +82,10 @@
 
 .vg-platform-note{margin:8px 0 0;font-size:12px;line-height:1.6;color:var(--hd-warn,var(--muted))}
 .vg-platform-alert{display:grid;gap:8px;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--hd-warn-soft,rgba(202,138,4,.12));color:var(--hd-ink,var(--ink));font-size:12.5px;line-height:1.6}.vg-platform-alert p{margin:0}.vg-platform-alert .hs-btn{justify-self:start}
+/* Management panel (Jeff 2026-11-08): Revert is a centred secondary button beside Apply, and every disclosure in the panel uses the same rotating chevron. */
+.hs.hd-redesign.vg-app .vg-rf .vg-rf-foot .vg-rf-revert{width:auto;min-width:88px;margin-left:auto;padding:9px 14px;border:1px solid var(--hd-line);border-radius:8px;background:transparent;color:var(--hd-ink);text-align:center}
+.hs.hd-redesign.vg-app .vg-rf .vg-rf-foot .vg-rf-revert:hover:not(:disabled){background:var(--hd-hover)}
+.hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary{display:flex;align-items:center;gap:6px;list-style:none;cursor:pointer}
+.hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary::-webkit-details-marker{display:none}
+.hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary::before{content:"›";font-weight:400;transition:transform .12s}
+.hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)[open]>summary::before{transform:rotate(90deg)}
