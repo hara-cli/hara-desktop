@@ -168,6 +168,7 @@ if [ "${HARA_RELEASE_BUILD:-0}" = "1" ]; then
 else
   (cd "$BUILD_CLI" && npm run build >/dev/null)
 fi
+node "$DESKTOP_ROOT/scripts/sync-core-i18n.mjs" "$BUILD_CLI"
 build_sidecar_binary
 verify_or_repair_macos_adhoc_signature "$OUT" "the compiled source sidecar"
 

@@ -1,3 +1,6 @@
+import { WorkspaceRpcErrorNotice } from "./WorkspaceRpcErrorNotice.tsx";
+import { localizedWorkspaceView } from "./workspace-default-labels.ts";
+import { currentClientLocale } from "./core-i18n.ts";
 import { open as chooseFile } from "@tauri-apps/plugin-dialog";
 import { conversationMarkdown, findTranscriptMatch } from "./workspace-conversation-actions";
 import { WorkspaceSidebarC, type SidebarEntry } from "./WorkspaceSidebarC";
@@ -253,7 +256,7 @@ const emptyWaitTimingSnapshot = () => null;
 
 export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, onOpenBrowser }: { model: WorkspaceDevModel; disconnected: string; onReconnect: () => void; root: string;
   mode: "workspace" | "lab"; onOpenBrowser?: () => void }) {
-  const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
+  const rawView = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   const localWait = useSyncExternalStore(model.subscribeWaitTiming, model.getWaitTimingSnapshot, emptyWaitTimingSnapshot);
   const channels = useMemo(() => new WorkspaceLocalChannelsModel(model), [model]);
   const channelView = useSyncExternalStore(channels.subscribe, channels.getSnapshot, channels.getSnapshot);
@@ -261,6 +264,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const channelApprovalActions = useMemo(() => ({ respond: (card: WorkspaceDevApproval, approved: boolean) => channels.respond(card, approved),
     getSnapshot: () => ({ workspace: { approvals: channels.getSnapshot().channel?.approvals ?? [] } }) }), [channels]);
   const { locale, t } = useWorkspaceLocale();
+  const view = useMemo(() => localizedWorkspaceView(rawView, locale), [rawView, locale]);
   const [settings, setSettingsState] = useState(false), [creating, setCreating] = useState(false), [name, setName] = useState(() => t("ws.space.default"));
   const [search, setSearch] = useState("");
   const [route, setRoute] = useState(() => normalizeShellRoute(typeof location === "undefined" ? "" : location.hash));
@@ -644,7 +648,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       </header>
       {findOpen ? <div className="hd-find-bar" role="search"><input type="search" aria-label={r("find")} value={findQuery} autoFocus onChange={event => setFindQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); setFindOpen(false); } else if (event.key === "Enter") { event.preventDefault(); findMessage(findResult.index + (event.shiftKey ? -1 : 1)); } }} /><span role="status">{findResult.count ? `${findResult.index + 1} / ${findResult.count}` : "0"}</span><button type="button" disabled={!findResult.count} aria-label={locale === "en" ? "Previous match" : locale === "zh-Hant" ? "上一筆" : "上一处"} onClick={() => findMessage(findResult.index - 1)}><ChevronUpIcon className="hico" /></button><button type="button" disabled={!findResult.count} aria-label={locale === "en" ? "Next match" : locale === "zh-Hant" ? "下一筆" : "下一处"} onClick={() => findMessage(findResult.index + 1)}><ChevronDownIcon className="hico" /></button><button type="button" onClick={() => setFindOpen(false)} aria-label={r("close")}>×</button></div> : null}
       {disconnected ? <div className="wsd-notice hd-offline-banner" role="status"><span>{r("offline")}</span><button type="button" className="hs-btn sec" onClick={onReconnect}>{r("retryNow")}</button></div> : null}
-      {view.error ? <div className="wsd-notice is-error" role="alert">{workspaceMessageText(t, view.error)}</div> : null}
+      <WorkspaceRpcErrorNotice value={view.error} technicalDetail={view.errorTechnicalDetail} locale={locale} t={t} className="wsd-notice is-error" />
       {view.syncNotice ? <div className="wsd-notice" role="status">{workspaceMessageText(t, view.syncNotice)}</div> : null}
       {agent?.kind === "colleague" && !inChannel && selectedUsage.notice ? <div className="wsd-notice hs-usage-attention" role="status">{selectedUsage.notice}</div> : null}
       {shell.incomplete && agent?.kind !== "main" && !inChannel ? <div className="wsd-notice" role="status" data-overview-incomplete>{t("ws.tasks.unavailable")}<button className="hs-btn sec" onClick={shell.refresh}>{t("ws.tasks.retry")}</button></div> : null}
@@ -762,7 +766,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
 }
 export default function WorkspaceLocalDev({ mode = "workspace" }: { mode?: "workspace" | "lab" }) {
   const { t } = useWorkspaceLocale();
-  const startup = useMemo(() => new WorkspaceStartupModel(() => invoke<WorkspaceDevConnection>(mode === "lab" ? "workspace_dev_connection" : "workspace_connection")), [mode]);
+  const startup = useMemo(() => new WorkspaceStartupModel(() => invoke<WorkspaceDevConnection>(mode === "lab" ? "workspace_dev_connection" : "workspace_connection", mode === "lab" ? {} : { clientLocale: currentClientLocale().tag })), [mode]);
   const view = useSyncExternalStore(startup.subscribe, startup.getSnapshot, startup.getSnapshot);
   useEffect(() => { void startup.start();return () => startup.stop(); }, [startup]);
   if (!view.model) return <WorkspaceBoot view={view} t={t} mode={mode} onReconnect={() => void startup.start()} />;

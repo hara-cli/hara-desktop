@@ -24,7 +24,7 @@ test("formal entry is independent of Vite/DEV flags; legacy is native-selected r
   assert.match(read("src/LegacyDesktopEntry.tsx"), /lazy\(\(\) => import\("\.\/App"\)\)/);
   assert.doesNotMatch(entry, /import\.meta\.env|location\.|localStorage|<Legacy[^]*?catch/);
   assert.match(native, /None \| Some\("0"\) => Ok\("workspace"\)/); assert.match(native, /HARA_DESKTOP_LEGACY_ENTRY/);
-  assert.match(native, /workspace_connection\(\)/); assert.match(native, /observe_owned_workspace_start\(&mut pending/);
+  assert.match(native, /workspace_connection\(client_locale: Option<String>\)/); assert.match(native, /observe_owned_workspace_start\(&mut pending/);
 });
 test("isolated Core source override cannot enter a release/signing refresh", () => {
   const source = read("scripts/refresh-sidecar.sh");

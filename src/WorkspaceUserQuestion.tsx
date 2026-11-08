@@ -28,8 +28,8 @@ const CORE_QUESTION_TEMPLATES: Record<WorkspaceDevQuestion["reason"], string[]> 
   runaway_guard: ["Execution reached the runaway-loop safety checkpoint. Progress is saved. Check whether it is advancing, then choose Continue or Stop.", "连续执行已达到防死循环熔断点，进度已保留。请检查是否仍在推进，再选择继续或停止。"],
   explicit: ["Please provide the information needed to continue this step.", "请补充继续当前步骤所需的信息。"],
 };
-export function workspaceQuestionText(t: Translate, question: Pick<WorkspaceDevQuestion, "reason" | "question">): string {
-  return CORE_QUESTION_TEMPLATES[question.reason]?.includes(question.question.trim()) ? t(`ws.question.template.${question.reason}`) : question.question;
+export function workspaceQuestionText(t: Translate, question: Pick<WorkspaceDevQuestion, "reason" | "question" | "messageKey">): string {
+  return question.messageKey === `core.question.${question.reason}` || CORE_QUESTION_TEMPLATES[question.reason]?.includes(question.question.trim()) ? t(`ws.question.template.${question.reason}`) : question.question;
 }
 
 const CORE_STEP_KEYS: Readonly<Record<string, Key>> = {
