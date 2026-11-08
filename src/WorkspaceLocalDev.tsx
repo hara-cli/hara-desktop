@@ -302,7 +302,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const listBotModels = useCallback((runtimeId: string) => model.listRuntimeModels(runtimeId), [model]);
   const listConnectionModels = useCallback((agentId: string, connectionId: string) => model.listConnectionModels(agentId, connectionId), [model]);
   const colleagues = useMemo(() => agents.filter(row => row.kind === "colleague" && row.state !== "archived"), [agents]);
-  const shell = useWorkspaceOverview(model, workspace);
+  // readOverview admits only the controller's own snapshot object; the localized projection is a renderer-only copy.
+  const shell = useWorkspaceOverview(model, rawView.workspace);
   // Agent loading temporarily clears the snapshot. Keep view-only notices within this exact
   // Workspace generation; model/RPC methods still require a current authoritative snapshot.
   const retainedScope = useRef({ workspaceId: "", value: "" });
