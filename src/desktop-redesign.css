@@ -92,3 +92,11 @@
 .hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary::-webkit-details-marker{display:none}
 .hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)>summary::before{content:"›";font-weight:400;transition:transform .12s}
 .hs.hd-redesign.vg-app :is(.vg-rf-details,.wsd-runtime-details)[open]>summary::before{transform:rotate(90deg)}
+/* Sidebar (design §10, Jeff Q7–Q9): rows breathe with whitespace instead of rules; "Recent" yields to a gap when it separates nothing; the unavailable New Workspace item explains itself. */
+.hs.hd-redesign.vg-app .hd-sidebar .hd-roster-row{height:44px;min-height:44px;padding:5px 8px}
+.hs.hd-redesign.vg-app .hd-sidebar .hd-roster-row .hd-row-text{gap:2px}
+.hd-row-wrap+.hd-row-wrap{margin-top:2px}
+.hd-roster-gap{height:12px}
+.hd-sidebar-popup .hd-menu-unavailable{flex-direction:column;align-items:flex-start;gap:2px;color:var(--hd-faint);cursor:default}
+.hd-sidebar-popup .hd-menu-unavailable small{font-size:11px;color:var(--hd-faint)}
+.hd-sidebar-popup .hd-menu-unavailable:hover,.hd-sidebar-popup .hd-menu-unavailable:focus-visible{background:var(--hd-hover);color:var(--hd-faint)}
