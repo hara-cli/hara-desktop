@@ -9,7 +9,7 @@ import {LOCALE_REGISTRY_SHA256} from '../src/locales/registry.generated.ts';
 const dir=new URL('../src/locales/',import.meta.url),read=name=>fs.readFileSync(new URL(name,dir),'utf8'),hash=text=>createHash('sha256').update(text.replace(/\r\n/g,'\n')).digest('hex');
 test('CI 7/8: every Core code has stable locale keys; all copied resources match provenance and normalized registry hash',()=>{
  const manifest=JSON.parse(read('CORE_I18N_SOURCE.json'));for(const[name,digest]of Object.entries(manifest.files))assert.equal(hash(read(name)),digest,name);
- assert.equal(hash(read('registry.json')),LOCALE_REGISTRY_SHA256);const errors=JSON.parse(read('errors.json')),en=JSON.parse(read('en/errors.json')),zh=JSON.parse(read('zh-Hans/errors.json'));assert.equal(errors.errors.length,100);
+ assert.equal(hash(read('registry.json')),LOCALE_REGISTRY_SHA256);const errors=JSON.parse(read('errors.json')),en=JSON.parse(read('en/errors.json')),zh=JSON.parse(read('zh-Hans/errors.json'));assert.equal(errors.errors.length,102);
  for(const row of errors.errors){assert.equal(typeof en[row.key],'string');assert.equal(typeof zh[row.key],'string');assert.equal(workspaceCoreMessage(row.key,'en'),en[row.key]);}
  assert.deepEqual(LOCALE_REGISTRY.languages.filter(row=>row.status==='stable').map(row=>row.tag),['en','zh-Hans']);assert.deepEqual(localeDescriptor('zh-Hant').fallback,['en']);
 });
