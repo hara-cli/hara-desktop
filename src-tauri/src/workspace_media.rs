@@ -237,13 +237,27 @@ mod tests {
         assert!(request_id(&Request::builder().method("POST").uri(format!("hara-media://localhost/{id}")).body(vec![]).unwrap()).is_none());
         assert!(!valid_id(&"A".repeat(64))); assert!(!valid_id("/Users/person/file.gif"));
     }
+    // `remember` sets the process-wide media connection. Tests that point it at their own loopback
+    // fixture must not interleave (cargo runs tests in parallel), or one test's request reaches the
+    // other's fixture and its own listener waits forever.
+    static SERVED: std::sync::Mutex<()> = std::sync::Mutex::new(());
     fn served(response: Vec<u8>, range: Option<&str>, head: bool) -> Response<Vec<u8>> {
         use std::io::{Read, Write};
+        let _serial = SERVED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap(); let port = server.local_addr().unwrap().port();
         let token = "b".repeat(64); remember(port, &token);
         let expected_range = range.map(str::to_string);
         let thread = std::thread::spawn(move || {
-            let (mut socket, _) = server.accept().unwrap(); socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+            // Bounded accept: a request that never arrives fails within 10s instead of hanging the suite.
+            server.set_nonblocking(true).unwrap(); let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let mut socket = loop {
+                match server.accept() {
+                    Ok((socket, _)) => break socket,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock && std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(10)),
+                    Err(error) => panic!("media fixture on port {port} received no request within 10s: {error:?}"),
+                }
+            };
+            socket.set_nonblocking(false).unwrap(); socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
             let mut request = Vec::new(); let mut byte = [0];
             while !request.ends_with(b"\r\n\r\n") { assert_eq!(socket.read(&mut byte).unwrap(), 1); request.push(byte[0]); assert!(request.len() < 8192); }
             let request = String::from_utf8(request).unwrap().to_lowercase();
