@@ -33,7 +33,7 @@ test('signing log files are absolute, unique and inside the requested evidence d
   const directory = '/private/fixture/evidence/signing-diagnostics';
   const a = signingLogFile(directory, 'Sign exact native-built executable/App'), b = signingLogFile(directory, 'Sign exact native-built executable/App');
   assert.notEqual(a, b);
-  for (const file of [a, b]) { assert.equal(path.dirname(file), directory); assert.match(path.basename(file), /^\d{3}-sign-exact-native-built-executable-app-[0-9a-f]{8}\.log$/); }
+  for (const file of [a, b]) { assert.equal(path.dirname(file), path.normalize(directory)); assert.match(path.basename(file), /^\d{3}-sign-exact-native-built-executable-app-[0-9a-f]{8}\.log$/); }
   assert.throws(() => signingLogFile('relative/dir', 'x'), /absolute/);
   assert.throws(() => signingLogFile(undefined, 'x'), /absolute/);
 });
@@ -48,7 +48,7 @@ test('signingRun always captures into a private logFile and echoes redacted outp
   } finally { process.stdout.write = original; }
   assert.equal(fake.calls.length, 1);
   assert.equal(fake.calls[0].options.capture, true); assert.deepEqual(fake.calls[0].options.env, { A: '1' });
-  assert.equal(path.dirname(fake.calls[0].options.logFile), '/private/fixture/evidence/signing-diagnostics');
+  assert.equal(path.dirname(fake.calls[0].options.logFile), path.normalize('/private/fixture/evidence/signing-diagnostics'));
   assert.deepEqual(written, ['accepted\nsource=Notarized Developer ID\n']);
 });
 
@@ -134,7 +134,7 @@ test('signingRecorder keeps full attempt evidence privately and a summary for th
   const record = signingRecorder('/private/fixture/evidence/signing-diagnostics', summary, { write: (file, value) => written.push({ file, value }) });
   record({ label: 'Sign exact native-built executable/App', file: '/fixture/x/Hara.app', identity: IDENTITY, maxRetries: 2,
     attempts: [{ attempt: 1, outcome: 'timestamp-service-unavailable' }, { attempt: 2, outcome: 'success' }], outcome: 'success', retriesUsed: 1 });
-  assert.equal(written.length, 1); assert.equal(path.dirname(written[0].file), '/private/fixture/evidence/signing-diagnostics');
+  assert.equal(written.length, 1); assert.equal(path.dirname(written[0].file), path.normalize('/private/fixture/evidence/signing-diagnostics'));
   assert.match(path.basename(written[0].file), /^\d{3}-codesign-attempts-[0-9a-f]{8}\.json$/);
   assert.equal(written[0].value.attempts.length, 2);
   assert.deepEqual(summary, [{ label: 'Sign exact native-built executable/App', file: 'Hara.app', attempts: 2, retriesUsed: 1, outcome: 'success' }]);
@@ -194,5 +194,5 @@ test('notary diagnostics: a private key is redacted; key identifier, issuer and 
     assert.match(output, /\[REDACTED PRIVATE KEY\]/);
     assert.match(output, /Error: invalid key/);
   }
-  assert.equal((fs.statSync(path.join(logDir, name)).mode & 0o777), 0o600);
+  if (process.platform !== 'win32') assert.equal((fs.statSync(path.join(logDir, name)).mode & 0o777), 0o600); // POSIX modes only
 });
