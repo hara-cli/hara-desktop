@@ -35,7 +35,7 @@ test('candidate versions and updater public-key identity stay bound without read
   assert.equal(config.version, INPUT.desktop.version);
 });
 
-const APPROVED_APP = { commit: 'f850621e53a5bf6768ec7256fcd42e9f88ba6974', tree: '567b646fd53a61a04ac73ae866bf3a8f706d3393', version: '1.2.0' };
+const APPROVED_APP = { commit: '0f5eff41df9ea0299eb5c517d3e4dd154fbef534', tree: 'ecb366c910e6224f601d61be33f7208f28f52b0b', version: '1.2.0' };
 const APPROVED_CORE = { commit: 'a1921ccab59248e83afcf18289084e531f9021dc', tree: '9eda6e01e73a11cbfdb3e3d123f4c70763e4b489', version: '1.2.0' };
 const JOBS = ['admission', 'credential_preflight', 'native_build', 'sign_apps', 'native_dmg', 'sign_payloads', 'native_verify'];
 const MATRIX_JOBS = ['native_build', 'native_dmg', 'native_verify'];
