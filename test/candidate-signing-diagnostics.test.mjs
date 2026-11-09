@@ -176,3 +176,23 @@ test('every codesign/notarytool/stapler/spctl call in the signing script goes th
   assert.match(source, /phase: 'app-signed'[^\n]*codesignAttempts,/);
   assert.match(source, /nativeTarget: prior\.nativeTarget, codesignAttempts \}/);
 });
+
+test('notary diagnostics: a private key is redacted; key identifier, issuer and key path are not secrets and are already in the step env header', async () => {
+  const scope = candidateEvidence(), logDir = path.join(scope.fixture('notary-diagnostics'), 'signing-diagnostics');
+  const pem = '-----BEGIN PRIVATE KEY-----\nMIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgSYNTHETIC\n-----END PRIVATE KEY-----';
+  const child = `console.log(JSON.stringify({message:"Error: invalid key", keyId:"ABCDE12345", issuer:"00000000-0000-0000-0000-000000000000", key:"/private/ops/AuthKey_ABCDE12345.p8"}));console.error(${JSON.stringify(pem)});process.exitCode=1`;
+  const runner = (label, _command, _args, options) => run(label, process.execPath, ['-e', child], options);
+  const stderr = []; const original = process.stderr.write;
+  process.stderr.write = chunk => { stderr.push(String(chunk)); return true; };
+  try {
+    await assert.rejects(() => signingRun('Submit aarch64-apple-darwin app notarization once', '/usr/bin/xcrun', ['notarytool', 'submit'], { logDir, runner }), /reason=exit/);
+  } finally { process.stderr.write = original; }
+  const [name] = fs.readdirSync(logDir).filter(n => n.endsWith('.log'));
+  const text = fs.readFileSync(path.join(logDir, name), 'utf8');
+  for (const output of [text, stderr.join('')]) {
+    assert(!output.includes('MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgSYNTHETIC'), 'private key body must never reach evidence or the job log');
+    assert.match(output, /\[REDACTED PRIVATE KEY\]/);
+    assert.match(output, /Error: invalid key/);
+  }
+  assert.equal((fs.statSync(path.join(logDir, name)).mode & 0o777), 0o600);
+});
