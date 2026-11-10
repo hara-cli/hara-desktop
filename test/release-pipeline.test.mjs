@@ -1177,11 +1177,12 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(assembleJob, /gh release upload[\s\S]*release-source-archive/);
   assert.match(assembleJob, /sha256sum -c source-packs\.sha256/);
   assert.match(assembleJob, /rm -f "\$SOURCE_ARCHIVE"/);
-  assert.match(signJob, /Materialize exact release sources from the digest-bound Release archive/);
+  assert.match(signJob, /Materialize exact release sources from the local SSH mirror/);
   assert.match(signJob, /source-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.match(signJob, /needs: \[prepare_release, create_draft, assemble_draft, promotion_preflight\]/);
   assert.match(signJob, /"\$@" <&0 &/);
-  assert.doesNotMatch(signJob, /\bgit\b.*\bfetch\b/);
+  // Code is fetched only from the local SSH mirror (test/release-flow-a.test.mjs pins this).
+  assert.doesNotMatch(signJob, /\bgit\b[^\n]*\bfetch\b[^\n]*https?:/);
   assert.doesNotMatch(signJob, /SOURCE_ARTIFACT_ID:/);
   assert.match(signJob, /RELEASE_ID: \$\{\{ needs\.create_draft\.outputs\.release_id \}\}/);
   assert.match(signJob, /SOURCE_ARTIFACT_DIGEST: \$\{\{ needs\.prepare_release\.outputs\.source_artifact_digest \}\}/);
@@ -1198,7 +1199,6 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.doesNotMatch(signJob, /gh release verify "\$RELEASE_TAG"/);
   assert.match(signJob, /public attestation verification is delegated to the read-only hosted job/);
   assert.match(signJob, /\.digest == \$digest/);
-  assert.match(signJob, /releases\/assets\/\$SOURCE_ASSET_ID/);
   assert.match(signJob, /header = "Authorization: Bearer %s"/);
   assert.match(signJob, /GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
   assert.match(signJob, /--http1\.1/);
@@ -1207,14 +1207,8 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.doesNotMatch(signJob, /gh run download/);
   assert.match(signJob, /run_with_deadline 120 \/usr\/bin\/env GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
   assert.match(signJob, /--retry-max-time 90/);
-  assert.match(signJob, /run_with_deadline 600 \/usr\/bin\/env GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
-  assert.match(signJob, /--retry-max-time 540/);
-  assert.match(signJob, /--continue-at -/);
-  assert.match(signJob, /--output "\$ARTIFACT_PARTIAL"/);
-  assert.match(signJob, /shasum -a 256 "\$ARTIFACT_PARTIAL"/);
-  assert.match(signJob, /shasum -a 256 -c source-packs\.sha256/);
-  assert.match(signJob, /index-pack --stdin < "\$pack_file"/);
-  assert.match(signJob, /printf '%s\\n' "\$commit_sha" > "\$target_dir\/\.git\/shallow"/);
+  assert.doesNotMatch(signJob, /run_with_deadline 600/);
+  assert.match(signJob, /fetch --quiet --no-tags --depth 1 "file:\/\/\$mirror" "\$commit_sha"/);
   assert.match(signJob, /rev-parse "\$commit_sha\^\{tree\}"/);
   assert.match(signJob, /printf '%s\\n' "\$NODE_BIN" "\$BUN_BIN" "\$CARGO_BIN" >> "\$GITHUB_PATH"/);
   assert.match(signJob, /expected_root="\$GITHUB_WORKSPACE\/source-\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT"/);
@@ -1935,7 +1929,7 @@ test("release CDN reads force HTTP/1.1 and stop zero-byte stalls within bounded 
 
   assert.match(
     workflow,
-    /Materialize exact release sources[\s\S]*?\/usr\/bin\/curl[\s\S]*?--http1\.1[\s\S]*?--connect-timeout 20[\s\S]*?--max-time 570[\s\S]*?--speed-limit 1024[\s\S]*?--speed-time 60/,
+    /Materialize exact release sources[\s\S]*?\/usr\/bin\/curl[\s\S]*?--http1\.1[\s\S]*?--connect-timeout 20[\s\S]*?--max-time 100[\s\S]*?--speed-limit 128[\s\S]*?--speed-time 30/,
   );
   assert.match(promotion, /release_public_curl\(\)/);
   assert.match(
@@ -1982,14 +1976,14 @@ test("a post-publication rerun switches to immutable verification without rewrit
   assert.match(branch, /verify_signed_dmg public .*x86_64-apple-darwin/);
   assert.match(branch, /exit 0/);
   const sourceGate = workflow.slice(
-    workflow.indexOf("Materialize exact release sources from the digest-bound Release archive"),
+    workflow.indexOf("Materialize exact release sources from the local SSH mirror"),
     workflow.indexOf("- name: Install protected signing toolchain"),
   );
   assert.match(sourceGate, /\.draft == false and[\s\S]*?\.immutable == true/);
   assert.doesNotMatch(sourceGate, /gh release verify/);
   const digestGate = sourceGate.indexOf('.digest == $digest');
-  const sourceDownload = sourceGate.indexOf('releases/assets/$SOURCE_ASSET_ID');
-  assert.ok(digestGate >= 0 && sourceDownload > digestGate);
+  const sourceMaterialization = sourceGate.indexOf('materialize_from_mirror \\');
+  assert.ok(digestGate >= 0 && sourceMaterialization > digestGate);
   assert.match(sourceGate, /public attestation verification is delegated to the read-only hosted job/);
 });
 

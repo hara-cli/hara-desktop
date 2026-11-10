@@ -1,0 +1,298 @@
+# Pre-tag rehearsal of build.yml's native package matrix for one exact commit (Jeff 2026-11-10,
+# release flow A). Hosted runners only, read-only token, no environment and no secrets: updater
+# artifacts are signed with a throwaway key generated on the runner. Nothing is uploaded to a
+# Release. The build steps are copied from build.yml and test/release-flow-a.test.mjs fails if
+# they drift; the only intended differences are the throwaway updater key, fetching the pinned
+# Core commit by SHA (its stable tag is created after this rehearsal), and omitting the
+# release-assembly steps.
+name: prepackage
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact commit to rehearse (must be the head of the dispatched ref)
+        required: true
+        type: string
+      release_tag:
+        description: Stable tag this commit is intended to receive (vX.Y.Z)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
+  # Hosted runners can carry a machine-level npm mirror. Release inputs must come from the same
+  # official registry used by the audit and local preflight, independent of runner image defaults.
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+  # The pinned CLI tag may contain registry URLs written by an older developer npm configuration.
+  # Rewrite every lockfile registry host to the official registry at fetch time.
+  NPM_CONFIG_REPLACE_REGISTRY_HOST: always
+  # SHA-256 of bun.exe inside Bun's official bun-v1.3.9 windows-x64-baseline archive.
+  BUN_WINDOWS_BASELINE_SHA256: "39f12024edc27d3706baa7b72a06156896b536af61472e0f9a6fe9c5e25b97cc"
+
+concurrency:
+  group: hara-desktop-prepackage-${{ inputs.sha }}
+  cancel-in-progress: false
+
+jobs:
+  prepare_release:
+    name: Pin the exact commit for an unsigned packaging rehearsal
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      CI_EVIDENCE_LEAF: prepackage-evidence-${{ github.run_id }}-${{ github.run_attempt }}-prepare
+    outputs:
+      desktop_sha: ${{ steps.release_source.outputs.desktop_sha }}
+      cli_sha: ${{ steps.release_source.outputs.cli_sha }}
+      cli_version: ${{ steps.release_source.outputs.cli_version }}
+    steps:
+      - name: Require the dispatched head commit and a stable tag name
+        shell: bash
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] || { echo "prepackage is dispatch-only" >&2; exit 1; }
+          [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha must be a full commit id" >&2; exit 1; }
+          [ "$INPUT_SHA" = "$GITHUB_SHA" ] || { echo "sha must be the head of the dispatched ref: $GITHUB_SHA" >&2; exit 1; }
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "release_tag must be vX.Y.Z" >&2; exit 1; }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: ".node-version"
+      - name: Validate tag and release metadata
+        env:
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ env.RELEASE_TAG }}
+        run: node scripts/check-release-metadata.mjs
+      - name: Install locked prepare-release Desktop dependencies with bounded registry retries
+        shell: bash
+        run: ./scripts/npm-ci-retry.sh
+      - name: Run release-pipeline regression tests
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { provisionCiEvidence, withCiEnvironment } from './scripts/ci-evidence.mjs';
+          import { ROOT, run } from './scripts/candidate-common.mjs';
+          const evidenceRoot = path.join(process.env.GITHUB_WORKSPACE, process.env.CI_EVIDENCE_LEAF);
+          const c = provisionCiEvidence({ evidenceRoot, output: path.join(evidenceRoot, 'tmp', 'regressions') });
+          await withCiEnvironment(c, () => run('Release prepare original full suite', 'bash', ['-c', 'exec npm test'],
+            { cwd: ROOT, env: c.env, capture: true, logFile: path.join(c.base, 'tests.log') }));
+          NODE
+      - name: Pin exact Desktop and CLI source commits
+        id: release_source
+        shell: bash
+        run: |
+          set -euo pipefail
+          DESKTOP_SHA="$(git rev-parse HEAD)"
+          [ "$DESKTOP_SHA" = "$GITHUB_SHA" ]
+          CLI_VERSION="$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_VERSION)"
+          CLI_SHA="$(tr -d '[:space:]' < src-tauri/binaries/SIDECAR_COMMIT)"
+          [[ "$CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$CLI_SHA" =~ ^[0-9a-f]{40}$ ]]
+          CLI_DIR="$RUNNER_TEMP/hara-cli-source"
+          git init --quiet "$CLI_DIR"
+          git -C "$CLI_DIR" remote add origin https://github.com/hara-cli/hara.git
+          git -C "$CLI_DIR" fetch --quiet --depth 1 origin "$CLI_SHA"
+          git -C "$CLI_DIR" checkout --quiet --detach "$CLI_SHA"
+          [ "$(node -p 'require(process.argv[1]).version' "$CLI_DIR/package.json")" = "$CLI_VERSION" ]
+          {
+            echo "desktop_sha=$DESKTOP_SHA"
+            echo "cli_sha=$CLI_SHA"
+            echo "cli_version=$CLI_VERSION"
+          } >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: [prepare_release]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Dedicated native runners make sidecar execution evidence meaningful. Cross-target
+          # compilation never substitutes for --version/--help/serve --help on the real host.
+          - platform: macos-15
+            target: aarch64-apple-darwin
+          - platform: macos-15-intel
+            target: x86_64-apple-darwin
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: ${{ needs.prepare_release.outputs.desktop_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: ".node-version"
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
+          targets: ${{ matrix.target }}
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.0.2
+        with:
+          bun-version-file: ".bun-version"
+          # Bun 1.3.9's Windows cross-target downloader repeatedly fails while extracting the valid
+          # baseline runtime package. Run the release with the pinned baseline executable itself so
+          # `bun-windows-x64-baseline` is the native target and no second runtime download is needed.
+          bun-download-url: ${{ matrix.target == 'x86_64-pc-windows-msvc' && 'https://github.com/oven-sh/bun/releases/download/bun-v1.3.9/bun-windows-x64-baseline.zip' || '' }}
+      - name: Verify pinned Windows baseline Bun bytes
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA256="$(sha256sum "$(command -v bun)" | awk '{print $1}')"
+          [ "$ACTUAL_SHA256" = "$BUN_WINDOWS_BASELINE_SHA256" ] || {
+            echo "Windows baseline Bun digest mismatch: $ACTUAL_SHA256" >&2
+            exit 1
+          }
+      - name: Validate pinned build toolchain
+        shell: bash
+        run: bash scripts/check-build-toolchain.sh
+      - name: Validate desktop, tag, and sidecar metadata
+        env:
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ env.RELEASE_TAG }}
+        run: node scripts/check-release-metadata.mjs
+      - name: Linux system dependencies and package extractors
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 \
+            libarchive-tools
+      - name: Install locked Desktop dependencies with bounded registry retries
+        shell: bash
+        run: ./scripts/npm-ci-retry.sh
+      - name: Audit production dependencies with transient-only retries
+        shell: bash
+        run: ./scripts/npm-audit-retry.sh
+      - name: Build and execute-smoke pinned hara sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLI_VERSION="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/src-tauri/binaries/SIDECAR_VERSION")"
+          PINNED_CLI_VERSION="${{ needs.prepare_release.outputs.cli_version }}"
+          CLI_SHA="${{ needs.prepare_release.outputs.cli_sha }}"
+          [ "$CLI_VERSION" = "$PINNED_CLI_VERSION" ] || {
+            echo "SIDECAR_VERSION changed after source pinning: $CLI_VERSION != $PINNED_CLI_VERSION" >&2
+            exit 1
+          }
+          [[ "$CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "invalid SIDECAR_VERSION: $CLI_VERSION" >&2
+            exit 1
+          }
+          CLI_DIR="$RUNNER_TEMP/hara-cli"
+          git init --quiet "$CLI_DIR"
+          git -C "$CLI_DIR" remote add origin https://github.com/hara-cli/hara.git
+          git -C "$CLI_DIR" fetch --quiet --depth 1 origin "$CLI_SHA"
+          [ "$(git -C "$CLI_DIR" rev-parse 'FETCH_HEAD^{commit}')" = "$CLI_SHA" ] || {
+            echo "hara-cli tag moved after source pinning" >&2
+            exit 1
+          }
+          git -C "$CLI_DIR" checkout --quiet --detach "$CLI_SHA"
+          cd "$CLI_DIR"
+          [ "$(node -p 'require("./package.json").version')" = "$CLI_VERSION" ] || {
+            echo "hara-cli tag/package version mismatch" >&2
+            exit 1
+          }
+          npm ci
+          npm run build
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin)      BUN_TARGET=bun-darwin-arm64 ;;
+            x86_64-apple-darwin)       BUN_TARGET=bun-darwin-x64-baseline ;;
+            # setup-bun installed and SHA-256-verified the native baseline executable above. Passing
+            # the same target again makes Bun 1.3.9 download a second compiler runtime and can time
+            # out; an omitted target compiles from the already verified native baseline runtime.
+            x86_64-pc-windows-msvc)    BUN_TARGET="" ;;
+            x86_64-unknown-linux-gnu)  BUN_TARGET=bun-linux-x64-baseline ;;
+            *) echo "unsupported sidecar target: ${{ matrix.target }}" >&2; exit 1 ;;
+          esac
+          EXT=""
+          case "${{ matrix.target }}" in
+            *windows*) EXT=".exe" ;;
+          esac
+          for attempt in 1 2 3; do
+            rm -f dist/bin/hara-sidecar dist/bin/hara-sidecar.exe
+            if [ -n "$BUN_TARGET" ]; then
+              BUILD_COMMAND=(bun scripts/build-binary.ts dist/bin/hara-sidecar "$BUN_TARGET" dist/cli.js desktop-sidecar)
+            else
+              BUILD_COMMAND=(bun scripts/build-binary.ts dist/bin/hara-sidecar "" dist/cli.js desktop-sidecar)
+            fi
+            if "${BUILD_COMMAND[@]}"; then
+              break
+            fi
+            [ "$attempt" -lt 3 ] || {
+              echo "sidecar compilation failed after $attempt attempts" >&2
+              exit 1
+            }
+            echo "sidecar compilation attempt $attempt failed; retrying a possibly incomplete Bun target download" >&2
+            sleep $((attempt * 5))
+          done
+          [ "$(git -C "$CLI_DIR" rev-parse HEAD)" = "$CLI_SHA" ] || {
+            echo "hara-cli HEAD changed while building the sidecar" >&2
+            exit 1
+          }
+          CLI_STATUS="$(git -C "$CLI_DIR" status --porcelain)"
+          [ -z "$CLI_STATUS" ] || {
+            echo "hara-cli source changed while building the sidecar" >&2
+            git -C "$CLI_DIR" status --short >&2
+            exit 1
+          }
+          node "$GITHUB_WORKSPACE/scripts/sidecar-smoke.mjs" \
+            "dist/bin/hara-sidecar${EXT}" "$CLI_VERSION" "${{ matrix.target }}"
+          mkdir -p "$GITHUB_WORKSPACE/src-tauri/binaries"
+          cp "dist/bin/hara-sidecar${EXT}" \
+            "$GITHUB_WORKSPACE/src-tauri/binaries/hara-${{ matrix.target }}${EXT}"
+          # Tauri resolves every externalBin before compilation. Hydrate the checksum-pinned Herdr
+          # runtime for this exact matrix target beside hara, rather than relying on a developer
+          # workstation artifact that is intentionally absent from the release checkout.
+          node "$GITHUB_WORKSPACE/scripts/refresh-herdr-runtime.mjs" "${{ matrix.target }}"
+          node "$GITHUB_WORKSPACE/scripts/check-runtime-distribution.mjs"
+      - name: Generate a throwaway updater key for this rehearsal
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Never the release key: a fresh key that exists only on this hosted runner, so the real
+          # updater-signing and package-smoke verification path runs without any secret.
+          KEY="$RUNNER_TEMP/rehearsal-updater.key"
+          [ ! -e "$KEY" ]
+          node node_modules/@tauri-apps/cli/tauri.js signer generate --ci -p "" -w "$KEY" >/dev/null
+          node -e '
+            const fs = require("node:fs");
+            const file = "src-tauri/tauri.conf.json", conf = JSON.parse(fs.readFileSync(file, "utf8"));
+            conf.plugins.updater.pubkey = fs.readFileSync(process.argv[1], "utf8").trim();
+            fs.writeFileSync(file, JSON.stringify(conf, null, 2) + "\n");
+          ' "$KEY.pub"
+          VALUE="$(cat "$KEY")"
+          [ -n "$VALUE" ] && [ "$(printf '%s' "$VALUE" | wc -l | tr -d ' ')" = "0" ]
+          echo "::add-mask::$VALUE"
+          echo "REHEARSAL_UPDATER_KEY=$VALUE" >> "$GITHUB_ENV"
+      - name: Build local packages (no release API access)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.REHEARSAL_UPDATER_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          NO_STRIP: "true"
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
+            # linuxdeploy is unreliable for this large sidecar; updater-supported deb+rpm ship.
+            npm run tauri build -- --target "${{ matrix.target }}" --bundles deb,rpm
+          else
+            npm run tauri build -- --target "${{ matrix.target }}"
+          fi
+      - name: Package smoke (sidecar extracted from real installer/updater packages)
+        shell: bash
+        env:
+          TAURI_TARGET: ${{ matrix.target }}
+        run: node scripts/package-smoke.mjs
