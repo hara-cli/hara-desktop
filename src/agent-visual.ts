@@ -94,3 +94,21 @@ export function agentAvatarAccent(agentRef: string, identity?: Pick<AgentPublicI
     ...identity, version: 1, source: "derived", displayName: agentRef, accent: undefined,
   }).accent;
 }
+
+/** Closed palette for public appearance controls; arbitrary imported accents still use the same safe fallback. */
+export const AGENT_ACCENT_PALETTE = Object.freeze(PALETTES.map(palette => palette.accent));
+const CONVERSATION_ACCENT_DEEP = {
+  "#ff695f": "#c04f47", "#4f9c8f": "#407f75", "#d99a32": "#966b23", "#6e88c8": "#5d74aa",
+  "#a67bc2": "#87649e", "#d1667b": "#b25768", "#438db3": "#397898", "#7f9a45": "#637936",
+} satisfies Record<typeof PALETTES[number]["accent"], string>;
+
+export function agentConversationAccent(agentRef: string, identity?: Pick<AgentPublicIdentity, "accent" | "character">, main = false): { accent: string; deep: string } {
+  if (main) return { accent: "#7C3AED", deep: "#7C3AED" };
+  const accent = agentAvatarAccent(agentRef, identity) as keyof typeof CONVERSATION_ACCENT_DEEP;
+  return { accent, deep: CONVERSATION_ACCENT_DEEP[accent] };
+}
+
+export function agentAvatarInitials(name: string): string {
+  const value = name.trim();
+  return /^\p{Script=Han}/u.test(value) ? [...value][0] : agentInitials(value);
+}

@@ -112,7 +112,7 @@ test("main selection, uploaded avatars and preview descriptions remain accessibl
   assert.match(mainRow, /aria-describedby=/u);
   assert.match(html, /role="group" aria-label="Conversation shortcuts"/u);
   const uploaded = render({ entries: [{ ...entry, agent: { ...agent, identity: { ...agent.identity, avatar: "/avatars/synthetic.png" } } }] });
-  assert.match(uploaded, /<img src="\/avatars\/synthetic.png" alt=""\/>/u);
+  assert.ok(/<img src="\/avatars\/synthetic.png" alt=""[^>]*\/>/u.test(uploaded), "Stored avatars remain decorative images when safe rendering attributes are added");
   assert.match(uploaded, /class="hd-visually-hidden">No messages yet/u);
 });
 

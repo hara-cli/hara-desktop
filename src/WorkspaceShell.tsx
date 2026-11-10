@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { ChevronRightIcon, ClipboardDocumentCheckIcon, InboxStackIcon, UsersIcon } from "@heroicons/react/24/outline";
-import HaraLogo from "./mark";
+import { WorkspaceAgentAvatar } from "./WorkspaceAgentAvatar";
 import type { makeT } from "./i18n";
 import type { WorkspaceDevAgent } from "./workspace-dev-state";
 import type { AwaitItem, SidebarSectionId, TaskGroup } from "./workspace-shell-state";
@@ -8,13 +8,8 @@ import type { useWorkspaceOverview } from "./workspace-shell-hooks";
 type Translate = ReturnType<typeof makeT>;
 export type ShellOverview = ReturnType<typeof useWorkspaceOverview>;
 
-const avatarColors = ["#496d59", "#475f88", "#6b5848", "#725780", "#3d7178", "#8c4b5d"];
 export function Avatar({ agent, large = false }: { agent?: WorkspaceDevAgent; large?: boolean }) {
-  const tone = [...(agent?.agentId ?? "")].reduce((value, character) => value + character.charCodeAt(0), 0) % avatarColors.length;
-  return <span aria-hidden="true" className={`hs-ava wsd-avatar ${agent?.kind === "main" ? "hara is-main" : ""} ${large ? "lg is-large" : ""}`}
-    style={agent?.kind === "main" ? undefined : { background: avatarColors[tone] }}>
-    {agent?.kind === "main" ? <HaraLogo size={large ? 28 : 24} /> : agent?.identity.displayName.slice(0, 1) ?? "H"}
-  </span>;
+  return <WorkspaceAgentAvatar agent={agent} large={large} />;
 }
 /** Identity stays available without repeating it on every private message. */
 export function WorkspaceConversationCapsule({ name, detail, avatar, label, expanded, disabled, onOpen }: {

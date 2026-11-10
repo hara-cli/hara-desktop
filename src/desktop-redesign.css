@@ -197,3 +197,10 @@
 .hs.hd-redesign.vg-app .hs-chat{position:relative}
 .hd-skip-composer{position:absolute;top:62px;left:24px;z-index:24;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;color:var(--hd-ink);background:var(--hd-menu);border-radius:8px}
 .hd-skip-composer:focus{width:auto;height:auto;padding:8px 12px;clip-path:none;outline:2px solid var(--hara-brand-primary);outline-offset:2px}
+
+/* S2: the selected conversation colours only the user's own controls and messages. */
+.hs.hd-redesign.vg-app .hs-chat .is-user .hs-bub{background:var(--chat-accent-deep,var(--hara-brand-primary));color:#fff}
+.hs.hd-redesign.vg-app .hs-chat .hs-send:not(:disabled){background:var(--chat-accent-deep,var(--hara-brand-primary));color:#fff}
+.hs.hd-redesign.vg-app .hs-chat .hs-field:focus-within{border-color:var(--chat-accent-deep,var(--hara-brand-primary));box-shadow:0 0 0 1px var(--chat-accent-deep,var(--hara-brand-primary)),0 0 0 3px color-mix(in srgb,var(--chat-accent,var(--hara-brand-primary)) 18%,transparent)}
+.hs.hd-redesign.vg-app .vg-colleague-manage input[type="checkbox"]{accent-color:var(--chat-accent-deep,var(--hara-brand-primary))}
+.hs.hd-redesign.vg-app .hd-colleague-avatar img{display:block;width:100%;height:100%;object-fit:cover}

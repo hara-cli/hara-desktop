@@ -1,3 +1,4 @@
+import { agentConversationAccent } from "./agent-visual";
 import { WorkspaceMessage } from "./WorkspaceMessage";
 import { messageTimeSeparator, messageTimeLabel } from "./conversation-message-layout";
 
@@ -23,7 +24,7 @@ import { WorkspaceDraftTiming, WorkspaceOptimisticMessage, WorkspaceTimingChip, 
 import { currentWaitReport, type WaitConversation } from "./wait-timing";
 import type { MessageTimingReport } from "./message-timing.ts";
 import { runtimeVersionFor } from "./runtime-version-drift";
-import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { GlobeAltIcon,
   ViewColumnsIcon, MagnifyingGlassIcon, UserPlusIcon, UsersIcon, XMarkIcon, EllipsisHorizontalIcon, PencilSquareIcon, CalendarDaysIcon, ShieldCheckIcon, ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
@@ -307,6 +308,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const routedScope = useRef<string | null>(null);
   const channelRouteSelection = useRef<string | null>(null);
   const workspace = view.workspace, agents = workspace?.agents ?? view.roster, agent = agents.find(row => row.agentId === view.agentId);
+  const themedAgent = route.section === "chat" ? agent : undefined;
+  const chatColors = agentConversationAccent(themedAgent?.agentId ?? "main", themedAgent?.identity, !themedAgent || themedAgent.kind === "main");
+  const conversationStyle = { "--chat-accent": chatColors.accent, "--chat-accent-deep": chatColors.deep,
+    "--hd-user": chatColors.deep, "--mine": chatColors.deep, "--mine-ink": "#ffffff" } as CSSProperties;
   const stageReports = useMemo(() => model.runtimeStageReports(), [model, workspace]);
   const followPreview = useCallback(() => { if (nearBottom.current) end.current?.scrollIntoView({ block: "end", behavior: "auto" }); }, []);
   const exportStageReport = useCallback((report: RuntimeStageReport) => model.exportRuntimeDiagnostic(report), [model]);
@@ -645,7 +650,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     await openAgent(target.agentId);
     if (model.getSnapshot().workspace?.selectedAgentId === target.agentId) { setBrowser(false); setInspector(true); setRenameAgentId(rename ? target.agentId : null); }
   };
-  return <div className="hs wsd-app vg-app hd-redesign" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : showColleagueInspector || showGroupInspector || showContextInspector ? " has-inspector" : ""}`}>
+  return <div className="hs wsd-app vg-app hd-redesign" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div style={conversationStyle} className={`hs-win${browser ? " has-browser" : showColleagueInspector || showGroupInspector || showContextInspector ? " has-inspector" : ""}`}>
     <WorkspaceSidebarC locale={locale} workspaceId={view.workspaceId} workspaceName={workspace?.label ?? t("vg.workspace")} directory={view.directory} main={mainAgent} mainPreview={mainActivity.preview} mainEntry={mainEntry}
       mainActive={route.section === "chat" && view.agentId === mainAgent?.agentId} selectedId={inChannel ? `channel:${channelView.channelId}` : route.section === "chat" ? view.agentId : null}
       rename={inlineRename ? { ...inlineRename, duplicate: agents.some(row => row.state === "active" && row.agentId !== inlineRename.id && row.identity.displayName.trim().toLocaleLowerCase() === inlineRename.name.trim().toLocaleLowerCase()) } : null}
