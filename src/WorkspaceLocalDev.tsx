@@ -284,6 +284,9 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const theme = useStableWorkspaceTheme(model);
   const [settingsPage, setSettingsPage] = useState<SettingsPage>("overview"), [browser, setBrowser] = useState(false);
   const [inspector, setInspector] = useState(false);
+  const [inspectorSettingsRequest, setInspectorSettingsRequest] = useState<{ scope: string; agentId: string; serial: number } | null>(null);
+  const inspectorRequestSerial = useRef(0);
+  useEffect(() => { if (!inspector) setInspectorSettingsRequest(null); }, [inspector]);
   const [moreOpen, setMoreOpen] = useState(false), [findOpen, setFindOpen] = useState(false), [findQuery, setFindQuery] = useState("");
   const [findResult, setFindResult] = useState({ count: 0, index: 0 });
   const [exporting, setExporting] = useState(false);
@@ -756,10 +759,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           {!busy && view.pendingUnknown ? <button type="button" className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={Boolean(disconnected)}>{t("ws.composer.verify")}</button> : null}
           <button type="button" className="hs-send wsd-send" onClick={submitComposer} disabled={asyncTarget ? !canAnswerAsync : !canSend} aria-label={t(asyncTarget ? "ws.question.async.send" : "ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>
         </div></div>
-        {view.runtimeBlocked && !question && !busy ? <p role="status">{t("ws.runtimeAccess.runBlocked")} <button type="button" className="hs-btn sec" onClick={() => setInspector(true)}>{t("ws.runtimeAccess.openInspector")}</button></p> : null}
+        {view.runtimeBlocked && !question && !busy ? <p role="status">{t("ws.runtimeAccess.runBlocked")} <button type="button" className="hs-btn sec" onClick={() => { if (view.agentId) { setInspectorSettingsRequest({ scope, agentId: view.agentId, serial: ++inspectorRequestSerial.current }); setInspector(true); } }}>{t("ws.runtimeAccess.openInspector")}</button></p> : null}
         {view.draft.trim() ? <p className="hs-hint"><span>{t("ws.composer.hint.keys")}</span></p> : null}</footer> : null}
     </main>
-    {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} extensionsModel={model} initialProfileOpen={renameAgentId === agent.agentId} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); }} onRefresh={() => void refreshFeatures()}
+    {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} extensionsModel={model} initialProfileOpen={renameAgentId === agent.agentId} settingsRequest={inspectorSettingsRequest?.scope === scope && inspectorSettingsRequest.agentId === agent.agentId ? inspectorSettingsRequest.serial : undefined} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); manageButton.current?.focus(); }} onRefresh={() => void refreshFeatures()}
       listModels={listBotModels} listConnectionModels={listConnectionModels} connectionModelSupported={model.supportsConnectionModels?.() === true} permissionSupported={model.supportsRuntimePermissions?.() === true} onApplyPermissionTier={tier => model.setAgentPermissionTier(agent, tier)} onApplyRuntime={(runtimeId, sessionRestart) => model.setAgentRuntime(agent, runtimeId, sessionRestart)}
       onApplyModel={(runtimeId, modelId, revision, effort) => model.selectRuntimeModel(runtimeId, modelId, revision, effort)}
       onApplyConnectionModel={(connectionId, modelId, revision, effort) => model.selectConnectionModel(connectionId, modelId, revision, effort)}

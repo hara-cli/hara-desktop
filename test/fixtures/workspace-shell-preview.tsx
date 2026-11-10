@@ -19,6 +19,7 @@ const agents = [
 ] as WorkspaceDevSnapshot['agents'];
 const calls: {method:string;params:Record<string,unknown>}[] = [];
 const failures = new Set<string>();
+if (scenario==='inspector-polish' && params.get('features')==='failed') failures.add('workspace.features.list');
 const snapshots = new Map<string,WorkspaceDevSnapshot>();
 const makeCard = (id:string,agentId:string,urgent=true):WorkspaceDevApproval => ({id,agentId,workspaceId:'A',resourceGeneration:'g-A',expiresAt:new Date(currentTime+(urgent?10:60)*60000).toISOString(),
   draft:{username:'release-helper',displayName:'Release Helper',title:'Draft release notes',instructions:'Work only in this synthetic workspace. Ask for confirmation before any external action.',runtimeId:'pi'}});
@@ -66,6 +67,16 @@ if (scenario === 'message-polish') {
 }
 
 
+if (scenario === 'inspector-polish') {
+  for (const snapshot of snapshots.values()) {
+    snapshot.agents=structuredClone(agents).map(agent=>({...agent,configRevision:1,agentEpoch:1,...(agent.agentId==='person-0'?{runtime:{id:'codex',label:'Codex',available:true}}:{})}));
+    snapshot.runtimeOptions=[{id:'codex',label:'Codex',available:true,recommended:true},{id:'claude',label:'Claude Code',available:true,recommended:false},{id:'pi',label:'Pi',available:true,recommended:false}];
+    snapshot.runtimes={builtIn:'pi',options:['codex','claude'].map(runtimeId=>({runtimeId,label:runtimeId,installed:true,registered:true,version:'0.1.0',state:'registered',use:'ready' as const,generalAgentDriverAvailable:true,path:`/synthetic/${runtimeId}`,fingerprint:'a'.repeat(64)})),operations:[]};
+    snapshot.colleagueHome={path:`/synthetic/${snapshot.workspaceId}/${snapshot.selectedAgentId}`,legacyPath:`/synthetic/legacy/${snapshot.workspaceId}/${snapshot.selectedAgentId}`,created:true,available:true,memoryScope:'private',codexMigrationPending:false};
+    snapshot.conversation.state='completed';snapshot.conversation.taskState='completed';snapshot.conversation.runId=null;
+    snapshot.conversation.objective='Review the synthetic inspector layout';
+  }
+}
 if (scenario === 'composer-polish') snapshots.get('A:main')!.conversation.history = Array.from({length:30},(_,index) => index % 2
   ? {role:'assistant' as const,text:`Synthetic response ${index}: preserve the reading position and the current draft.`,tools:[],createdAt:stamp(30-index)}
   : {role:'user' as const,content:`Synthetic question ${index}`,createdAt:stamp(30-index)});
@@ -136,7 +147,7 @@ if (scenario === 'message-group') {
 const persistChannels=()=>localStorage.setItem(channelStorageKey,JSON.stringify(channelData));
 const channelTimers=new Map<string,ReturnType<typeof setTimeout>>();
 let slowChannel=false,unknownChannelAck=false;
-const rpc={supportsCapability:(capability:string)=>capability==='workspace.local-channels.v1'||scenario==='channels'&&['workspace.local-channels.peer.v1','workspace.channel-pass.v1'].includes(capability),async request<T>(method:string, values:Record<string,unknown>):Promise<T>{
+const rpc={supportsCapability:(capability:string)=>capability==='workspace.local-channels.v1'||scenario==='inspector-polish'&&['workspace.colleague-schedules.v1','workspace.runtime-form.v1'].includes(capability)||scenario==='channels'&&['workspace.local-channels.peer.v1','workspace.channel-pass.v1'].includes(capability),async request<T>(method:string, values:Record<string,unknown>):Promise<T>{
   calls.push({method,params:values});const workspaceId=String(values.workspaceId??'A'), agentId=String(values.agentId??'main');
   if(failures.has(method))throw new Error('Synthetic read/write failure');
   let result:unknown;
@@ -197,6 +208,8 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
   else if(method==='workspace.runtime.propose')result={id:'fixture-proposal',runtimeId:values.runtimeId,label:'Missing fixture',version:'0.0.0',origin:'https://example.invalid',sha256:'a'.repeat(64),maxBytes:1024,target:{platform:'darwin',arch:'arm64'}};
   else if(method==='workspace.runtime.approve'&&values.approved===false)result={};
   else if(method==='workspace.skill.read')result={id:values.id,content:'Reviewed synthetic skill text'};
+  else if(method==='workspace.runtime.formOptions'&&scenario==='inspector-polish')result={runtimeId:values.runtimeId,use:'ready',version:'0.1.0',path:`/synthetic/${values.runtimeId}`,fingerprint:'a'.repeat(64),loginSource:'host',models:[{id:'synthetic-model',label:'Synthetic model',supportedReasoningEfforts:['low','medium','high'],defaultReasoningEffort:'medium'}],defaultModelId:'synthetic-model',modelSource:'official',effortSupported:true,selected:{modelId:'synthetic-model',effort:'medium'},revision:1,sharedWith:[]};
+  else if(method==='workspace.features.list'&&scenario==='inspector-polish')result={workspaceId,revision:1,skills:[{id:'synthetic-review-skill',description:'Reviewed synthetic workspace skill',enabled:true,version:'a'.repeat(64),availableVersion:'a'.repeat(64),locked:true,source:'private'}],schedules:[{id:'inspector-job',agentId:'person-0',name:'Synthetic daily review',schedule:{kind:'cron',expr:'0 9 * * *'},tz:'Asia/Taipei',enabled:true,task:'Review this synthetic fixture'},{id:'other-job',agentId:'person-1',name:'Other colleague private schedule',schedule:{kind:'cron',expr:'0 8 * * *'},enabled:true,task:'Do not show in the selected colleague panel'}],scheduler:{schedules:[{id:'inspector-job',nextRunAt:currentTime+3600000,awaitingHandoff:false,lastRun:null}]}};
   else if(method==='workspace.features.list')result={workspaceId,revision:1,skills:productionFixture ? [{id:'fixture-skill',description:'Reviewed fixture description',enabled:true,version:'a'.repeat(64),availableVersion:'b'.repeat(64),locked:true,source:'global'}] : [],
     schedules:productionFixture ? [{id:'fixture-schedule',name:'Fixture schedule',schedule:{kind:'cron',expr:'0 8 * * *'},enabled:true}] : [],
     scheduler:{schedules:productionFixture ? [{id:'fixture-schedule',nextRunAt:currentTime+3600000,awaitingHandoff:false,lastRun:{state:'completed',reason:null,occurredAt:currentTime-3600000}}] : []}};
@@ -204,10 +217,11 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
   return result as T;
 }};
 const model=new WorkspaceDevModel(rpc,()=>crypto.randomUUID(),!productionFixture,productionFixture?'workspace':'synthetic');
-await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat'||scenario==='message-polish'||scenario==='appearance-polish')await model.selectAgent('person-0');
+await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat'||scenario==='message-polish'||scenario==='appearance-polish'||scenario==='inspector-polish')await model.selectAgent('person-0');
 (window as any).__HARA_SHELL_FIXTURE__={model,calls,setFailure(method:string,enabled:boolean){if(enabled)failures.add(method);else failures.delete(method);},async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
   async backgroundActivity(agentId:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text:'',tools:['synthetic-background'],createdAt:new Date().toISOString()},{role:'tool',results:[{id:'synthetic-background',name:'synthetic',content:'Synthetic background receipt',isError:false}]});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();model.invalidateOverview();await model.refresh();},
 
+  async inspectorBlocked(value:boolean){const workspaceId=model.getSnapshot().workspaceId;for(const snapshot of snapshots.values())if(snapshot.workspaceId===workspaceId){const row=snapshot.runtimeOptions?.find(row=>row.id==='codex');if(row){row.available=!value;row.reason=value?'not_registered':undefined;}}await model.refresh();},
   async composerState(state:'idle'|'running'|'draining'|'completed') { const snapshot=snapshots.get(`${model.getSnapshot().workspaceId}:${model.getSnapshot().agentId}`)!;
     snapshot.conversation.state=state; snapshot.conversation.taskState=state==='idle'?null:state;
     snapshot.conversation.runId=state==='idle'?null:`run-${snapshot.selectedAgentId}`;snapshot.conversation.taskId=state==='idle'?null:`task-${snapshot.selectedAgentId}`;await model.refresh(); },

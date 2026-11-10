@@ -17,16 +17,16 @@ const groupBundle = await build({ entryPoints: [fileURLToPath(new URL("../src/Wo
 const groupModule = { exports: {} };
 new Function("require", "module", "exports", groupBundle.outputFiles[0].text)(require, groupModule, groupModule.exports);
 
-test("selected colleague inspector owns schedule management in all three locales", () => {
+test("Settings intent opens the selected colleague runtime and schedule management in all three locales", () => {
   const agent = { agentId: "dora", kind: "colleague", state: "idle", identity: { displayName: "Dora", title: "Design" }, runtime: { id: "pi", label: "Pi", available: true } };
   const features = { revision: 2, workspaceId: "fixture", skills: [], schedules: [
     { id: "dora-9", agentId: "dora", name: "Visual summary", enabled: true, schedule: { kind: "cron", expr: "0 9 * * 1-5" }, tz: "Asia/Taipei", task: "Summarize visuals" },
     { id: "elon-8", agentId: "elon", name: "Private other colleague schedule", enabled: true, schedule: { kind: "cron", expr: "0 8 * * *" }, task: "Another task" },
   ], scheduler: { schedules: [] } };
-  const workspace = { runtimeOptions: [{ id: "pi", label: "Pi", available: true, recommended: true }, { id: "opencode", label: "OpenCode", available: false, reason: "adapter_pending_p05", recommended: false }],
+  const workspace = { workspaceId: "fixture", selectedAgentId: agent.agentId, runtimeOptions: [{ id: "pi", label: "Pi", available: true, recommended: true }, { id: "opencode", label: "OpenCode", available: false, reason: "adapter_pending_p05", recommended: false }],
     connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "sonnet" }] } };
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
-    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features, locale, error: "", inert: false, supported: true,
+    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features, locale, settingsRequest: 1, error: "", inert: false, supported: true,
       onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] }),
       async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
     assert.match(html, locale === "en" ? /Manage Dora/ : /Dora · 管理/);
@@ -40,7 +40,7 @@ test("selected colleague inspector owns schedule management in all three locales
   }
 });
 
-test("workspace selected-colleague route retains schedule actions outside Settings", () => {
+test("selected-colleague inspector retains schedule actions without opening app Settings", () => {
   const shell = readFileSync(new URL("../src/WorkspaceLocalDev.tsx", import.meta.url), "utf8");
   assert.match(shell, /showColleagueInspector && agent && workspace \? <WorkspaceColleagueInspector/);
   for (const action of ["workspace.features.update", "workspace.schedule.save", "workspace.schedule.delete"]) {
@@ -50,9 +50,9 @@ test("workspace selected-colleague route retains schedule actions outside Settin
 
 test("main Hara shares the Runtime and model entry without colleague schedules", () => {
   const agent = { agentId: "hara", kind: "main", state: "idle", identity: { displayName: "Hara" }, runtime: { id: "pi", label: "Pi", available: true } };
-  const workspace = { runtimeOptions: [{ id: "pi", label: "Pi", available: true, recommended: true }],
+  const workspace = { workspaceId: "fixture", selectedAgentId: agent.agentId, runtimeOptions: [{ id: "pi", label: "Pi", available: true, recommended: true }],
     connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "gpt-6" }] } };
-  const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: true,
+  const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, settingsRequest: 1, features: null, locale: "en", error: "", inert: false, supported: true,
     onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "pi", revision: 1, selectedModelId: null, models: [] }),
     async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
   assert.match(html, /Manage Hara/);
@@ -67,7 +67,7 @@ test("main Hara and a Pi colleague display the same active connection model card
     connections: { revision: 2, defaultConnectionId: "primary", activeConnectionId: "primary", connections: [{ id: "primary", status: "active", defaultModel: "qwen3.7-plus" }] } };
   for (const kind of ["main", "colleague"]) {
     const agent = { agentId: kind, kind, state: "active", identity: { displayName: kind === "main" ? "Hara" : "Dora" }, runtime: { id: "pi", label: "Pi", available: true } };
-    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "zh-Hans", error: "", inert: false, supported: false,
+    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace: { ...workspace, selectedAgentId: agent.agentId }, settingsRequest: 1, features: null, locale: "zh-Hans", error: "", inert: false, supported: false,
       connectionModelSupported: true, listConnectionModels: async () => ({ connectionId: "primary", revision: 2, source: "documented", selectedModelId: "qwen3.7-plus", models: [] }),
       onApplyConnectionModel: async () => {}, onClose() {}, onRefresh() {}, listModels: async () => { throw Error("Pi must use connection model catalog"); },
       async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
@@ -79,9 +79,9 @@ test("main Hara and a Pi colleague display the same active connection model card
 test("only an unavailable registered runtime offers one directory deep link", () => {
   const agent = { agentId: "dora", kind: "colleague", state: "active", identity: { displayName: "Dora" },
     runtime: { id: "codex", label: "Codex", available: false } };
-  const workspace = { runtimeOptions: [{ id: "codex", label: "Codex", available: false, reason: "not_registered", recommended: false }],
+  const workspace = { workspaceId: "fixture", selectedAgentId: agent.agentId, runtimeOptions: [{ id: "codex", label: "Codex", available: false, reason: "not_registered", recommended: false }],
     connections: { defaultConnectionId: "primary", connections: [{ id: "primary", defaultModel: "not-this-bot" }] } };
-  const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: false,
+  const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, settingsRequest: 1, features: null, locale: "en", error: "", inert: false, supported: false,
     onClose() {}, onRefresh() {}, listModels: async () => { throw new Error("must not read unbound models"); },
     async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
   assert.equal((html.match(/Install in Settings/g) ?? []).length, 1);
@@ -93,8 +93,8 @@ test("only an unavailable registered runtime offers one directory deep link", ()
 test("directory deep link is limited to not_registered and not_installed", () => {
   const agent = { agentId: "dora", kind: "colleague", state: "active", identity: { displayName: "Dora" }, runtime: { id: "codex", label: "Codex", available: false } };
   for (const reason of ["not_registered", "not_installed", "integrity_failed", "adapter_pending_p05", "unknown"]) {
-    const workspace = { runtimeOptions: [{ id: "codex", label: "Codex", available: false, reason }], connections: { defaultConnectionId: null, connections: [] } };
-    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: false,
+    const workspace = { workspaceId: "fixture", selectedAgentId: agent.agentId, runtimeOptions: [{ id: "codex", label: "Codex", available: false, reason }], connections: { defaultConnectionId: null, connections: [] } };
+    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, settingsRequest: 1, features: null, locale: "en", error: "", inert: false, supported: false,
       onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "codex", revision: 1, selectedModelId: null, models: [] }),
       async onApplyRuntime() {}, async onApplyModel() {}, onRuntimeDirectory() {}, async onSaveProfile() {}, async onToggle() {}, async onSave() {}, async onDelete() {} }));
     assert.equal(html.includes("Install in Settings"), reason === "not_registered" || reason === "not_installed", reason);
@@ -105,9 +105,9 @@ test("main and colleague inspectors retain identical visible, disabled same-valu
   for (const kind of ["main", "colleague"]) {
     const agent = { agentId: kind, kind, state: "active", configRevision: 2, agentEpoch: 1,
       identity: { displayName: kind === "main" ? "Hara" : "Dora" }, runtime: { id: "codex", label: "Codex", available: true } };
-    const workspace = { runtimeOptions: [{ id: "codex", label: "Codex", available: true }, { id: "agy", label: "Antigravity", available: false, reason: "not_installed" }],
+    const workspace = { workspaceId: "fixture", selectedAgentId: agent.agentId, runtimeOptions: [{ id: "codex", label: "Codex", available: true }, { id: "agy", label: "Antigravity", available: false, reason: "not_installed" }],
       connections: { defaultConnectionId: null, connections: [] }, runtimes: { options: [{ runtimeId: "agy", label: "Antigravity", state: "detected", registered: false }] } };
-    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, features: null, locale: "en", error: "", inert: false, supported: false,
+    const html = renderToStaticMarkup(createElement(module.exports.default, { agent, workspace, settingsRequest: 1, features: null, locale: "en", error: "", inert: false, supported: false,
       onClose() {}, onRefresh() {}, listModels: async () => ({ runtimeId: "codex", revision: 1, selectedModelId: null, models: [] }),
       async onApplyRuntime() {}, async onApplyModel() {}, async onRescan() {}, async onRegisterRuntime() {}, onRuntimeDirectory() {}, async onSaveProfile() {} }));
     assert.match(html, /<select[^>]*aria-label="Engine"/);
