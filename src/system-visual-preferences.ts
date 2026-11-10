@@ -27,7 +27,9 @@ export function watchSystemVisualPreferences(onChange: (value: SystemVisualPrefe
     const value = parseSystemVisuals(input);
     native = Object.fromEntries(Object.keys(UNKNOWN_SYSTEM_VISUALS).map(key => {
       const flag = key as keyof SystemVisualPreferences;
-      return [flag, value[flag] === null ? native[flag] === true ? true : null : value[flag]];
+      // Missing/failed observations are not setting changes. Retain both known true and
+      // known false; only a successful boolean observation may change the material.
+      return [flag, value[flag] ?? native[flag]];
     })) as unknown as SystemVisualPreferences;
     nativeCache = { ...native }; publish();
   };

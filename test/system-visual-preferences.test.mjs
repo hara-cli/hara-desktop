@@ -48,9 +48,31 @@ test("media changes update motion immediately and failed native reads retain obs
   stop();
 });
 
-test("a failed read degrades an observed false to unknown rather than claiming protection is off", async () => {
-  const env = environment(), values = [];let fail = false;
-  const stop = watchSystemVisualPreferences(value => values.push(value), async () => { if (fail) throw new Error("Unavailable"); return known; }, env.surface, env.page);
-  await tick();assert.equal(values.at(-1).reduceTransparency, false);fail = true;env.fire(env.events, "focus");await tick();
-  assert.equal(values.at(-1).reduceTransparency, null);assert.equal(resolveAppearance(DEFAULT_APPEARANCE, values.at(-1)).transparency, "off");stop();
+test("failed and unavailable reads keep the last successful material without blocking later accessibility changes", async () => {
+  const env = environment(), values = [];let response = known;
+  const read = async () => { if (response instanceof Error) throw response; return response; };
+  const stop = watchSystemVisualPreferences(value => values.push(value), read, env.surface, env.page);
+  try {
+    await tick();assert.equal(values.at(-1).reduceTransparency, false);
+    const observed = values.length;response = new Error("IPC unavailable");
+    for (let retry = 0; retry < 3; retry++) { env.fire(env.events, "focus");await tick(); }
+    assert.ok(values.slice(observed).every(value => resolveAppearance(DEFAULT_APPEARANCE, value).transparency === "standard"), "A failed IPC must not flash known glass back to a solid surface");
+    assert.equal(values.at(-1).reduceTransparency, false);
+    response = UNKNOWN_SYSTEM_VISUALS;env.fire(env.events, "focus");await tick();assert.equal(values.at(-1).reduceTransparency, false, "Unavailable fields do not revoke a successful observation");
+    response = { ...known, reduceTransparency: true };env.fire(env.events, "focus");await tick();assert.equal(resolveAppearance(DEFAULT_APPEARANCE, values.at(-1)).transparency, "off", "A successful accessibility update still wins immediately");
+    response = new Error("IPC unavailable again");env.fire(env.events, "focus");await tick();assert.equal(values.at(-1).reduceTransparency, true);
+    response = known;env.fire(env.events, "focus");await tick();assert.equal(resolveAppearance(DEFAULT_APPEARANCE, values.at(-1)).transparency, "standard", "An explicit later false may clear a prior protection");
+  } finally { stop(); }
+  response = new Error("IPC unavailable after remount");const remount = environment(), cached = [];
+  const stopAgain = watchSystemVisualPreferences(value => cached.push(value), read, remount.surface, remount.page);
+  try { assert.equal(cached[0].reduceTransparency, false);await tick();assert.ok(cached.every(value => resolveAppearance(DEFAULT_APPEARANCE, value).transparency === "standard")); }
+  finally { stopAgain(); }
+});
+
+test("a first failed IPC has no successful value to reuse and keeps the system default solid", async () => {
+  const { watchSystemVisualPreferences: freshWatch } = await import(new URL("../src/system-visual-preferences.ts?first-ipc-failure", import.meta.url));
+  const env = environment(), values = [];
+  const stop = freshWatch(value => values.push(value), async () => { throw new Error("First IPC unavailable"); }, env.surface, env.page);
+  try { await tick();assert.equal(values.at(-1).reduceTransparency, null);assert.ok(values.every(value => resolveAppearance(DEFAULT_APPEARANCE, value).transparency === "off")); }
+  finally { stop(); }
 });
