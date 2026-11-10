@@ -192,3 +192,8 @@
 .hs.hd-redesign.vg-app .hd-channel-composer textarea{grid-column:1}
 .hs.hd-redesign.vg-app .hd-channel-composer .hd-composer-send-actions{grid-column:2}
 @media(prefers-reduced-motion:reduce){.hd-conversation-capsule,.hd-composer-plus,.hd-composer-send-actions button{transition:none!important}}
+
+/* Keyboard users can bypass long message/action lists without changing the conversation route. */
+.hs.hd-redesign.vg-app .hs-chat{position:relative}
+.hd-skip-composer{position:absolute;top:62px;left:24px;z-index:24;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;color:var(--hd-ink);background:var(--hd-menu);border-radius:8px}
+.hd-skip-composer:focus{width:auto;height:auto;padding:8px 12px;clip-path:none;outline:2px solid var(--hara-brand-primary);outline-offset:2px}

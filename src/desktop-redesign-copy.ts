@@ -56,6 +56,7 @@ const copy = {
   copyId: ["复制对话 ID", "Copy Conversation ID", "拷貝對話 ID"], copied: ["✓ 已复制", "✓ Copied", "✓ 已拷貝"], copyFailed: ["复制失败，请重试", "Couldn’t copy; retry", "拷貝失敗，請重試"],
   piAvailable: ["内建 · 可用", "Built-in · Available", "內建 · 可用"],
   piDetails: ["Pi 内建在 Hara 里，没有单独的 CLI，随 Hara 一起更新。", "Pi is built into Hara. It has no separate CLI and updates with Hara.", "Pi 內建於 Hara，沒有獨立的 CLI，隨 Hara 一起更新。"],
+  skipToComposer: ["跳到消息输入框", "Skip to message input", "跳到訊息輸入框"],
   composerActions: ["附件与快捷操作", "Attachments and quick actions", "附件與快捷操作"],
   attach: ["添加文件引用", "Attach a file reference", "加入檔案參照"], mention: ["提及同事", "Mention a colleague", "提及同事"],
   loading: ["加载中", "Loading", "載入中"], mediaFailed: ["图片没能加载", "Couldn’t load image", "圖片無法載入"], videoFailed: ["视频没能加载", "Couldn’t load video", "影片無法載入"],

@@ -125,6 +125,9 @@ try {
   assert.ok(geometry.capsule.right <= geometry.actions.x-5,'Title and actions must not overlap');assert.ok(geometry.scroll.y <= geometry.header.y+1,'Messages must scroll under the floating header');
   if(width===1280)assert.ok(Math.abs(geometry.capsule.x+geometry.capsule.width/2-(geometry.header.x+geometry.header.width/2))<1,'Capsule is centred within the conversation');
   assert.equal(await evaluate("!!document.querySelector('.hs-stop')"),false);
+  await evaluate("document.querySelector('.hd-skip-composer').focus()");await settled();
+  assert.ok(await evaluate("document.querySelector('.hd-skip-composer').getBoundingClientRect().width>100"));await key('Enter');
+  assert.equal(await evaluate(`document.activeElement===document.querySelector('${inputSelector}')`),true);assert.equal(await evaluate('location.hash'),'','Skip link must not change the conversation route');
   await click('.hd-composer-plus');await ready("document.activeElement?.getAttribute('role')==='menuitem'",'The first quick action receives focus');
   const contrast=await composerContrast();assert.deepEqual(contrast.issues,[]);
   await key('ArrowDown');assert.match(await evaluate('document.activeElement.textContent'),new RegExp(redesignText(locale,'mention')));
