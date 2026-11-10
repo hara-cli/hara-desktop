@@ -69,6 +69,14 @@ if (scenario === 'message-polish') {
 if (scenario === 'composer-polish') snapshots.get('A:main')!.conversation.history = Array.from({length:30},(_,index) => index % 2
   ? {role:'assistant' as const,text:`Synthetic response ${index}: preserve the reading position and the current draft.`,tools:[],createdAt:stamp(30-index)}
   : {role:'user' as const,content:`Synthetic question ${index}`,createdAt:stamp(30-index)});
+if (scenario === 'appearance-polish') {
+  const accents=['#ff695f','#4f9c8f','#d99a32','#6e88c8','#a67bc2','#d1667b','#438db3','#7f9a45'];
+  for (const snapshot of snapshots.values()) {
+    snapshot.agents=structuredClone(agents).map((agent,index)=>({...agent,configRevision:1,agentEpoch:1,identity:{...agent.identity,accent:accents[Math.max(0,index-1)%8],character:'specialist'}}));
+    snapshot.conversation.state='completed';snapshot.conversation.taskState='completed';snapshot.conversation.runId=null;
+    snapshot.conversation.history=[{role:'user',content:'Synthetic colour and avatar request.',createdAt:stamp(2)},{role:'assistant',text:'A [synthetic reference](https://example.invalid/appearance) keeps the standard link colour.',tools:[],createdAt:stamp(1)}];
+  }
+}
 if(productionFixture) snapshots.get('A:main')!.conversation.history = Array.from({length:24},(_,index)=>index%2
   ? {role:'assistant' as const,text:`Native settings scroll reply ${index}`,tools:[],createdAt:stamp(24-index)}
   : {role:'user' as const,content:`Native settings scroll message ${index}`,createdAt:stamp(24-index)});
@@ -167,6 +175,13 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
   } else if(method==='workspace.channels.cancel'){
     const id=String(values.channelId),snapshot=channelData.snapshots[id];clearTimeout(channelTimers.get(id));channelTimers.delete(id);snapshot.state='cancelled';
     for(const turn of snapshot.turns)if(turn.state==='running'){turn.state='cancelled';for(const row of turn.replies)if(row.state==='queued')row.state='cancelled';}persistChannels();result={state:'draining'};
+  } else if(method==='workspace.agents.updatePersona'){
+    const target=snapshots.get(`${workspaceId}:${agentId}`)!.agents.find(row=>row.agentId===agentId)!;
+    const input=values.input as {profile:Record<string,unknown>};
+    if(target.configRevision!==values.configRevision||target.agentEpoch!==values.agentEpoch)throw new Error('Synthetic stale persona revision');
+    if(!input?.profile||typeof input.profile.displayName!=='string'||Object.keys(input.profile).some(key=>!['displayName','title','emoji','avatar'].includes(key)))throw new Error('Synthetic legacy Core profile whitelist');
+    for(const snapshot of snapshots.values())if(snapshot.workspaceId===workspaceId){const row=snapshot.agents.find(row=>row.agentId===agentId)!;row.identity={...row.identity,...input.profile} as typeof row.identity;row.configRevision=(row.configRevision??0)+1;}
+    result={agent:structuredClone(target)};
   } else if(method==='workspace.session.send'){
     const snapshot=snapshots.get(`${workspaceId}:${agentId}`)!;
     snapshot.conversation.history.push({role:'user',content:String(values.message),createdAt:new Date().toISOString()});snapshot.conversation.revision++;
@@ -189,13 +204,14 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
   return result as T;
 }};
 const model=new WorkspaceDevModel(rpc,()=>crypto.randomUUID(),!productionFixture,productionFixture?'workspace':'synthetic');
-await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat'||scenario==='message-polish')await model.selectAgent('person-0');
+await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat'||scenario==='message-polish'||scenario==='appearance-polish')await model.selectAgent('person-0');
 (window as any).__HARA_SHELL_FIXTURE__={model,calls,setFailure(method:string,enabled:boolean){if(enabled)failures.add(method);else failures.delete(method);},async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
   async backgroundActivity(agentId:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text:'',tools:['synthetic-background'],createdAt:new Date().toISOString()},{role:'tool',results:[{id:'synthetic-background',name:'synthetic',content:'Synthetic background receipt',isError:false}]});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();model.invalidateOverview();await model.refresh();},
 
   async composerState(state:'idle'|'running'|'draining'|'completed') { const snapshot=snapshots.get(`${model.getSnapshot().workspaceId}:${model.getSnapshot().agentId}`)!;
     snapshot.conversation.state=state; snapshot.conversation.taskState=state==='idle'?null:state;
     snapshot.conversation.runId=state==='idle'?null:`run-${snapshot.selectedAgentId}`;snapshot.conversation.taskId=state==='idle'?null:`task-${snapshot.selectedAgentId}`;await model.refresh(); },
+  async appearanceUpdate(agentId:string,change:Partial<WorkspaceDevSnapshot['agents'][number]['identity']>){const workspaceId=model.getSnapshot().workspaceId;for(const snapshot of snapshots.values())if(snapshot.workspaceId===workspaceId){const row=snapshot.agents.find(row=>row.agentId===agentId)!;row.identity={...row.identity,...change};row.configRevision=(row.configRevision??0)+1;}model.invalidateOverview();await model.refresh();},
   channelSlow(value:boolean){slowChannel=value;},channelLoseAck(){unknownChannelAck=true;},
   async channelHistory(id:string,turns:LocalChannelSnapshot['turns'],messages:LocalChannelSnapshot['messages']){const snapshot=channelData.snapshots[id];snapshot.turns=turns;snapshot.messages=messages;snapshot.state='completed';snapshot.revision++;persistChannels();await model.refresh();},
   async channelIncoming(id:string,text:string){const snapshot=channelData.snapshots[id],turnId=crypto.randomUUID();snapshot.turns.push({id:turnId,state:'completed',replies:[]});snapshot.messages.push({id:turnId,turnId,agentId:null,displayName:'',createdAt:new Date().toISOString(),message:{role:'user',content:text}});snapshot.revision++;persistChannels();await model.refresh();},

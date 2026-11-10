@@ -1,3 +1,9 @@
+import { makeT } from "./i18n";
+import { workspaceMessageText } from "./workspace-settings-copy";
+import { AvatarImageError, prepareAgentAvatar } from "./agent-avatar-image";
+import { WorkspaceAgentAvatar } from "./WorkspaceAgentAvatar";
+import { ShellDialog } from "./WorkspaceShell";
+import { redesignText } from "./desktop-redesign-copy";
 import { useEffect, useRef, useState } from "react";
 import type { AgentInfo, AgentPublicIdentity, AgentRuntimeId, AgentRuntimeOption, ModelCatalogEntry } from "./client";
 import AgentRuntimePicker from "./AgentRuntimePicker";
@@ -5,45 +11,68 @@ import { AgentPortrait } from "./AgentPortrait";
 import { MAX_AGENT_AVATAR_BYTES } from "./agent-visual";
 import { IconClose } from "./icons";
 import "./AgentProfileEditor.css";
-import type { WorkspaceDevAgent } from "./workspace-dev-state";
+import type { WorkspaceDevAgent, WorkspaceAgentProfilePatch } from "./workspace-dev-state";
 import { formatMessage, type Locale as ShellLocale } from "./i18n-runtime.ts";
 
 export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
   agent: WorkspaceDevAgent; locale: ShellLocale; onClose(): void;
-  onSave(profile: { displayName: string; title: string; emoji: string; avatar: string }): Promise<void>;
+  onSave(profile: WorkspaceAgentProfilePatch): Promise<void>;
 }) {
   const [displayName, setDisplayName] = useState(agent.identity.displayName);
   const [title, setTitle] = useState(agent.identity.title ?? "");
   const [emoji, setEmoji] = useState(agent.identity.emoji ?? "");
   const [avatar, setAvatar] = useState(agent.identity.avatar ?? "");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false), [imageBusy, setImageBusy] = useState(false);
   const [error, setError] = useState("");
-  const t = (key: string, values?: Record<string, string | number>) => formatMessage(locale, key, values);
+  const imageVersion = useRef(0), imageRequest = useRef<AbortController | null>(null), form = useRef<HTMLDivElement>(null);
+  const authority = useRef({ id: agent.agentId, revision: agent.configRevision, epoch: agent.agentEpoch });
+  const original = useRef({ displayName: agent.identity.displayName, title: agent.identity.title ?? "", emoji: agent.identity.emoji ?? "", avatar: agent.identity.avatar ?? "" });
+  const changed = displayName.trim() !== original.current.displayName || title.trim() !== original.current.title || emoji.trim() !== original.current.emoji || avatar !== original.current.avatar;
+  const stale = authority.current.id !== agent.agentId || authority.current.revision !== agent.configRevision || authority.current.epoch !== agent.agentEpoch;
+  useEffect(() => () => { imageVersion.current++; imageRequest.current?.abort(); }, []);
+  const t = makeT(locale);
+  const r = (key: Parameters<typeof redesignText>[1]) => redesignText(locale, key);
+  const close = () => { if (!busy) onClose(); };
   const save = async () => {
+    if (busy || imageBusy || stale || !changed || !displayName.trim()) return;
+    form.current?.closest<HTMLElement>("[role=dialog]")?.focus();
     setBusy(true); setError("");
-    try { await onSave({ displayName: displayName.trim(), title: title.trim(), emoji: emoji.trim(), avatar }); onClose(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    try {
+      const patch: WorkspaceAgentProfilePatch = {};
+      if (displayName.trim() !== original.current.displayName) patch.displayName = displayName.trim();
+      if (title.trim() !== original.current.title) patch.title = title.trim();
+      if (emoji.trim() !== original.current.emoji) patch.emoji = emoji.trim();
+      if (avatar !== original.current.avatar) patch.avatar = avatar;
+      await onSave(patch); onClose();
+    }
+    catch (cause) { setError(workspaceMessageText(t, cause instanceof Error ? cause.message : String(cause))); }
     finally { setBusy(false); }
   };
-  return <div className="agent-profile-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <section className="agent-profile-editor" role="dialog" aria-modal="true" aria-label={t("ws.profileSheet.title")}>
-      <header><h2>{t("ws.profileSheet.title")}</h2><button type="button" disabled={busy} onClick={onClose}>{t("ws.close")}</button></header>
-      <div className="agent-profile-form">
-        <label>{t("ws.profileSheet.displayName")}<input value={displayName} maxLength={64} onChange={event => setDisplayName(event.target.value)} /></label>
-        <label>{t("ws.profileSheet.role")}<input value={title} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
-        <label>{t("ws.profileSheet.emoji")}<input value={emoji} maxLength={24} onChange={event => setEmoji(event.target.value)} /></label>
-        <label>{t("ws.profileSheet.imageAvatar")}<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => {
-          const file = event.target.files?.[0]; if (!file) return;
-          if (file.size > MAX_AGENT_AVATAR_BYTES) { setError(t("ws.profileSheet.avatarTooLarge")); return; }
-          const reader = new FileReader(); reader.onload = () => setAvatar(typeof reader.result === "string" ? reader.result : "");
-          reader.onerror = () => setError(t("ws.profileSheet.avatarReadFailed")); reader.readAsDataURL(file);
-        }} /></label>
-        {avatar ? <button type="button" disabled={busy} onClick={() => setAvatar("")}>{t("ws.profileSheet.avatarRemove")}</button> : null}
-        {error ? <p role="alert">{error}</p> : null}
-        <button type="button" disabled={busy || !displayName.trim()} onClick={() => void save()}>{busy ? t("ws.profileSheet.saving") : t("ws.profileSheet.save")}</button>
-      </div>
-    </section>
-  </div>;
+  const pickImage = async (file: File) => {
+    const version = ++imageVersion.current; imageRequest.current?.abort(); const request = new AbortController(); imageRequest.current = request; setImageBusy(true); setError("");
+    try { const prepared = await prepareAgentAvatar(file, request.signal); if (imageVersion.current === version) setAvatar(prepared); }
+    catch (cause) { if (imageVersion.current === version) setError(cause instanceof AvatarImageError && cause.code === "tooLarge" ? t("ws.profileSheet.avatarTooLarge")
+      : cause instanceof AvatarImageError && cause.code === "format" ? r("avatarImageFormat") : cause instanceof AvatarImageError && cause.code === "dimensions" ? r("avatarImageDimensions") : t("ws.profileSheet.avatarReadFailed")); }
+    finally { if (imageVersion.current === version) setImageBusy(false); }
+  };
+  const previewAgent = { ...agent, identity: { ...agent.identity, displayName: displayName.trim() || agent.identity.displayName, avatar } };
+  return <ShellDialog label={t("ws.profileSheet.title")} className="agent-profile-editor workspace-profile-sheet" onClose={close} dismissOnBackdrop workspaceOverlay>
+    <header><h2>{t("ws.profileSheet.title")}</h2><button type="button" className="hs-icon" aria-label={t("ws.close")} disabled={busy} onClick={close}><IconClose /></button></header>
+    <div className="agent-profile-form" ref={form}>
+      <div className="workspace-profile-avatar-preview"><WorkspaceAgentAvatar agent={previewAgent} large /><p>{r("avatarSquareHint")}</p></div>
+      <label>{t("ws.profileSheet.displayName")}<input value={displayName} readOnly={busy} maxLength={64} onChange={event => setDisplayName(event.target.value)} /></label>
+      <label>{t("ws.profileSheet.role")}<input value={title} readOnly={busy} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
+      <label>{t("ws.profileSheet.emoji")}<input value={emoji} readOnly={busy} maxLength={24} onChange={event => setEmoji(event.target.value)} /></label>
+      <label>{t("ws.profileSheet.imageAvatar")}<input type="file" accept="image/png,image/jpeg" disabled={busy} onChange={event => {
+        const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void pickImage(file);
+      }} /></label>
+      {avatar ? <button type="button" className="hs-btn sec" disabled={busy} onClick={() => { imageVersion.current++; imageRequest.current?.abort(); setImageBusy(false); setAvatar(""); setError(""); }}>{t("ws.profileSheet.avatarRemove")}</button> : null}
+      {imageBusy ? <p role="status">{r("avatarImagePreparing")}</p> : null}
+      {stale ? <p role="status">{r("profileChanged")}</p> : null}
+      {error ? <p role="alert">{error}</p> : null}
+      <button type="button" className="hs-btn pri" disabled={busy || imageBusy || stale || !changed || !displayName.trim()} onClick={() => void save()}>{busy ? t("ws.profileSheet.saving") : t("ws.profileSheet.save")}</button>
+    </div>
+  </ShellDialog>;
 }
 
 type EditableIdentity = Omit<AgentPublicIdentity, "version" | "source">;

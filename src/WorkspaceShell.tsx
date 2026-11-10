@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRightIcon, ClipboardDocumentCheckIcon, InboxStackIcon, UsersIcon } from "@heroicons/react/24/outline";
 import { WorkspaceAgentAvatar } from "./WorkspaceAgentAvatar";
 import type { makeT } from "./i18n";
@@ -34,16 +35,20 @@ export function SidebarSection({ id, title, expanded, onToggle, badge = 0, badge
     <div className="hs-sec-b" id={`sec-${id}`} inert={!expanded} aria-hidden={!expanded}><div>{children}</div></div>
   </section>;
 }
-export function ShellDialog({ label, children, onClose, className = "" }: { label: string; children: ReactNode; onClose: () => void; className?: string }) {
-  const ref = useRef<HTMLElement>(null);
+export function ShellDialog({ label, children, onClose, className = "", dismissOnBackdrop = false, workspaceOverlay = false }: { label: string; children: ReactNode; onClose: () => void; className?: string; dismissOnBackdrop?: boolean; workspaceOverlay?: boolean }) {
+  const ref = useRef<HTMLElement>(null), anchor = useRef<HTMLSpanElement>(null);
+  const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => { if (workspaceOverlay) setOverlayHost(anchor.current?.closest<HTMLElement>(".hs-win") ?? null); }, [workspaceOverlay]);
   useEffect(() => {
+    if (workspaceOverlay && !overlayHost) return;
     const previous = document.activeElement as HTMLElement | null;
     (ref.current?.querySelector<HTMLElement>("[autofocus],button,input,select,textarea") ?? ref.current)?.focus();
     return () => { if (previous?.isConnected) previous.focus(); };
-  }, []);
-  return <div className="wsd-modal-backdrop"><section ref={ref} className={`wsd-modal ${className}`} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1}
+  }, [workspaceOverlay, overlayHost]);
+  const dialog = <div className={`wsd-modal-backdrop${workspaceOverlay ? " wsd-modal-workspace-overlay" : ""}`} onMouseDown={event => { if (dismissOnBackdrop && event.target === event.currentTarget) onClose(); }}><section ref={ref} className={`wsd-modal ${className}`} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1}
     onKeyDown={event => {
-      if (event.key === "Escape") { event.preventDefault(); onClose(); }
+      if ((event.metaKey || event.ctrlKey) && ["i", ","].includes(event.key.toLowerCase())) { event.preventDefault(); event.stopPropagation(); return; }
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); return; }
       if (event.key !== "Tab") return;
       const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]')).filter(node => node.getClientRects().length > 0);
       const first = controls[0], last = controls[controls.length - 1];
@@ -51,6 +56,8 @@ export function ShellDialog({ label, children, onClose, className = "" }: { labe
       if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }}>{children}</section></div>;
+  // Keep workspace tokens while escaping a narrow inspector's clipping/stacking context.
+  return workspaceOverlay ? <><span hidden ref={anchor} />{overlayHost ? createPortal(dialog, overlayHost) : null}</> : dialog;
 }
 export function AwaitBar({ shell, t, onOpen, onApprove, onAll }: { shell: ShellOverview; t: Translate; onOpen: (item: AwaitItem) => void; onApprove: (item: AwaitItem) => void; onAll: () => void }) {
   if (!shell.homeAwaitBar.count && !shell.incomplete && !shell.loading) return null;

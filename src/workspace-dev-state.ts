@@ -29,6 +29,8 @@ export interface WorkspaceDevAgent { titleSource?: "default"; titleKey?: "core.n
   permissionTierUnavailable?: true;
   archivedAt?: string; pausedScheduleCount?: number;
   identity: { displayName: string; title?: string; shortTitle?: string; emoji?: string; avatar?: string; accent?: string; character?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
+/** Renderer edits only fields admitted by the current public persona RPC. Unchanged fields stay absent. */
+export interface WorkspaceAgentProfilePatch { displayName?: string; title?: string; emoji?: string; avatar?: string }
 export interface ColleagueCreateDraft { username: string; displayName: string; title: string; instructions: string;
   project: string; runtimeId: AgentRuntimeId; permissionTier: RuntimePermissionTier }
 export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;
@@ -758,8 +760,15 @@ export class WorkspaceDevModel {
       throw new WorkspaceViewError("ws.notice.scopeChanged");
     return result;
   }
-  async updateAgentPersona(agent: WorkspaceDevAgent, profile: { displayName: string; title?: string; emoji?: string; avatar?: string }): Promise<void> {
-    if (!agent.configRevision || !agent.agentEpoch) throw new WorkspaceViewError("ws.notice.invalidView");
+  async updateAgentPersona(agent: WorkspaceDevAgent, patch: WorkspaceAgentProfilePatch): Promise<void> {
+    if (!agent.configRevision || !agent.agentEpoch || !patch || typeof patch !== "object" || Array.isArray(patch)
+      || Object.entries(patch).some(([key, value]) => !["displayName", "title", "emoji", "avatar"].includes(key) || value !== undefined && typeof value !== "string")) throw new WorkspaceViewError("ws.notice.invalidView");
+    const values = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+    if (!Object.keys(values).length) return;
+    const current = this.view.workspace?.agents.find(row => row.agentId === agent.agentId);
+    if (!current || current.configRevision !== agent.configRevision || current.agentEpoch !== agent.agentEpoch) throw new WorkspaceViewError("ws.notice.scopeChanged");
+    // Fill the RPC-required name from the raw snapshot, not a localized presentation label.
+    const profile = { displayName: current.identity.displayName, ...values };
     await this.workspaceRequest("workspace.agents.updatePersona", { agentId: agent.agentId, input: { profile }, configRevision: agent.configRevision, agentEpoch: agent.agentEpoch });
     await this.refresh();
   }

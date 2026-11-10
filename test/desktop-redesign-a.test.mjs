@@ -74,3 +74,12 @@ test("all redesign copy keys have three complete languages and matching placehol
   const params=Object.fromEntries(names(templates[0]).map(name=>[name,"Fixture"]));for(const locale of["en","zh-Hans","zh-Hant"])assert.doesNotMatch(redesignText(locale,key,params),/\{\w+\}/u,key);
  }
 });
+
+test("avatar-only persona patches keep raw names and do not overwrite unrelated public fields",async()=>{
+ const f=fixture();await f.model.selectWorkspace("A");const current=f.model.getSnapshot().workspace.agents.find(row=>row.agentId==='colleague');
+ await f.model.updateAgentPersona({...current,identity:{...current.identity,displayName:'Localized presentation'}},{avatar:'/avatars/synthetic.png'});
+ const change=f.calls.find(row=>row.method==='workspace.agents.updatePersona');assert.deepEqual(change.params.input.profile,{displayName:current.identity.displayName,avatar:'/avatars/synthetic.png'});
+ const before=f.calls.filter(row=>row.method==='workspace.agents.updatePersona').length;await f.model.updateAgentPersona(current,{});assert.equal(f.calls.filter(row=>row.method==='workspace.agents.updatePersona').length,before);
+ await assert.rejects(f.model.updateAgentPersona(current,{accent:'#ff695f'}));assert.equal(f.calls.filter(row=>row.method==='workspace.agents.updatePersona').length,before,'Unsupported colour fields do not bypass the legacy RPC contract');
+ await assert.rejects(f.model.updateAgentPersona({...current,configRevision:2},{avatar:''}));assert.equal(f.calls.filter(row=>row.method==='workspace.agents.updatePersona').length,before);
+});

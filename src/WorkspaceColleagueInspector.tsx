@@ -5,12 +5,13 @@ import { WorkspaceExtensions } from "./WorkspaceExtensions";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
 import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
-import type { WorkspaceDevAgent, WorkspaceFeatureView } from "./workspace-dev-state";
+import type { WorkspaceDevAgent, WorkspaceFeatureView, WorkspaceAgentProfilePatch } from "./workspace-dev-state";
 import WorkspaceRuntimeAccess from "./WorkspaceRuntimeAccess";
 import ColleagueRuntimeForm from "./ColleagueRuntimeForm";
 import type { WorkspaceDevSnapshot, WorkspaceRuntimeModels, WorkspaceConnectionModels, WorkspaceSessionRestart, RuntimeLoginSource, RuntimePermissionTier } from "./workspace-dev-state";
 import type { AgentRuntimeId } from "./client";
 import { WorkspaceAgentProfileSheet } from "./AgentProfileEditor";
+import { WorkspaceAgentAvatar } from "./WorkspaceAgentAvatar";
 
 type Schedule = WorkspaceFeatureView["schedules"][number];
 
@@ -41,7 +42,7 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   onRegisterRuntime(runtimeId: string, fingerprint: string, loginSource: RuntimeLoginSource): Promise<void>;
   onRuntimeDirectory(): void;
   onConnections?(): void;
-  onSaveProfile(profile: { displayName: string; title: string; emoji: string; avatar: string }): Promise<void>;
+  onSaveProfile(profile: WorkspaceAgentProfilePatch): Promise<void>;
 }) {
   // B1: every authored string is a key now; the old `c(hans, en, hant)` helper existed
   // only because the copy was inline, and it is gone along with the ternaries.
@@ -67,7 +68,7 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   };
   return <aside id="workspace-inspector" className="vg-inspector vg-colleague-manage" aria-label={t("ws.colleague.manage.ariaManage", { name: agent.identity.displayName })} inert={inert}>
     <header><h2>{agent.identity.displayName} · {r("manage")}</h2><button className="hs-icon" aria-label={t("ws.colleague.manage.close")} onClick={onClose}><XMarkIcon className="hico" /></button></header>
-    <div className="vg-colleague-identity"><strong>{agent.identity.displayName}</strong><span>{agent.kind === "main" ? r("orchestrator") : agent.identity.title || r("colleagues")}</span></div>
+    <div className="vg-colleague-identity hd-profile-identity"><button type="button" className="hd-profile-avatar" aria-label={t("ws.colleague.manage.editProfile")} onClick={() => setProfileOpen(true)}><WorkspaceAgentAvatar agent={agent} /></button><div><strong>{agent.identity.displayName}</strong><span>{agent.kind === "main" ? r("orchestrator") : agent.identity.title || r("colleagues")}</span></div></div>
     {extensionsModel?.supportsRuntimeForm?.() ? <ColleagueRuntimeForm agent={agent} workspace={workspace} model={extensionsModel} locale={locale} permissionSupported={permissionSupported} onApplyPermissionTier={onApplyPermissionTier} onRuntimeDirectory={onRuntimeDirectory} onConnections={onConnections} />
       : <WorkspaceRuntimeAccess agent={agent} workspace={workspace} locale={locale} listModels={listModels} listConnectionModels={listConnectionModels} connectionModelSupported={connectionModelSupported} onApplyRuntime={onApplyRuntime} permissionSupported={permissionSupported} onApplyPermissionTier={onApplyPermissionTier} onApplyModel={onApplyModel} onApplyConnectionModel={onApplyConnectionModel} onRescan={onRescan} onRegisterRuntime={onRegisterRuntime} onRuntimeDirectory={onRuntimeDirectory} platform={extensionsModel?.runtimePlatform?.()} />}
     <details className="hd-manage-section"><summary>{r("profile")}<small>{agent.kind === "main" ? r("orchestrator") : agent.identity.title}</small></summary><section className="vg-context-card"><h3>{r("profile")}</h3><dl><dt>{t("ws.colleague.manage.displayName")}</dt><dd>{agent.identity.displayName}</dd><dt>{t("ws.colleague.manage.role")}</dt><dd>{agent.kind === "main" ? r("orchestrator") : agent.identity.title || "—"}</dd><dt>{t("ws.colleague.manage.runtime")}</dt><dd>{agent.runtime.label}</dd></dl><button onClick={() => setProfileOpen(true)}>{t("ws.colleague.manage.editProfile")}</button></section></details>

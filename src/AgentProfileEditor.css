@@ -289,3 +289,28 @@
   .agent-profile-grid label.is-wide { grid-column: auto; }
   .agent-profile-execution-grid { grid-template-columns: 1fr; }
 }
+
+/* Workspace appearance uses the approved shell tokens, while the compatibility editor retains its theme. */
+.hs .workspace-profile-sheet{--bg2:var(--hd-surface);--fg:var(--hd-ink);--dim:var(--hd-muted);--line:var(--hd-line);width:min(480px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:0;background:var(--hd-surface);color:var(--hd-ink);border-radius:16px;box-shadow:var(--hd-shadow)}
+.hs .workspace-profile-sheet>header{padding:16px 20px;background:none}
+.hs .workspace-profile-sheet .agent-profile-form{padding:16px 20px}
+.workspace-profile-avatar-preview{display:flex;align-items:center;gap:14px}
+.hs .workspace-profile-avatar-preview .hs-ava{width:64px;height:64px;min-width:64px;font-size:22px}
+.workspace-profile-avatar-preview p{margin:0;color:var(--hd-muted);font-size:12px;line-height:18px}
+.hs .workspace-profile-sheet input{font-size:14px;color:var(--hd-ink);background:var(--hd-sunk)}
+.hs .workspace-profile-sheet input[type=file]{font-size:12px}
+.hs .workspace-profile-sheet button{min-height:36px}
+
+.hs .workspace-profile-sheet>header{align-items:center;padding:12px 20px}
+.hs .workspace-profile-sheet>header h2{margin:0;font-size:16px;line-height:24px}
+.hs .workspace-profile-sheet>header .hs-icon{min-width:36px}
+.hs .workspace-profile-sheet [role=alert]{color:var(--hd-fail);font-size:12px;line-height:18px}
+
+.hs .wsd-modal-workspace-overlay{z-index:100}
+
+.hs.hd-redesign.vg-app .vg-colleague-identity.hd-profile-identity{display:grid;grid-template-columns:48px minmax(0,1fr);align-items:center;gap:12px}
+.hd-profile-identity>div{display:grid;gap:4px;min-width:0}
+.hd-profile-identity strong,.hd-profile-identity>div>span{overflow-wrap:anywhere}
+.hd-profile-avatar{border:0;background:none;padding:0;width:48px;height:48px;border-radius:50%;cursor:pointer}
+.hd-profile-avatar .hd-colleague-avatar{width:48px;height:48px;font-size:16px}
+.hd-profile-avatar:focus-visible{outline:2px solid var(--chat-accent-deep,var(--hara-brand-primary));outline-offset:3px}
