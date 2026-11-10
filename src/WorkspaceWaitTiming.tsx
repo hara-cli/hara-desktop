@@ -10,6 +10,8 @@ import type { WorkspaceDevModel } from "./workspace-dev-state";
 import { currentWaitReport, deriveWaitingView, failureActions, formatWaitElapsed, timingFor, timingSummary,
   type LocalWaitTiming, type TimingAction, type WaitConversation } from "./wait-timing";
 import "./wait-timing.css";
+import { HaraMascot } from "./HaraMascot";
+import { mascotStateForWaitPhase } from "./hara-mascot";
 type T = ReturnType<typeof makeT>;
 const noPreview = () => null;
 const TOOL_NAMES: Record<string, string> = { read_file: "read", workspace_read: "read", write_file: "write", workspace_write: "write", edit_file: "edit", ls: "list", grep: "search", glob: "search", web_search: "search", agent_list: "lookup", task_intake: "lookup", workspace_verify: "lookup", agent_create: "create", ask_user: "ask", ask_user_question: "ask" };
@@ -56,7 +58,7 @@ export function compactFailureHandled(c: WaitConversation, report?: RuntimeStage
   return Boolean(report?.errorKind && ["error", "blocked", "needs_recovery"].includes(c.state)
     && c.nativeSession?.status !== "recovery_needed" && c.nativeSession?.status !== "new_session_required");
 }
-export function WorkspaceWaiting({ model, t, name, runtime, disabled, onSettings }: { model: WorkspaceDevModel; t: T; name: string; runtime: string; disabled: boolean; onSettings(action: TimingAction): void }) {
+export function WorkspaceWaiting({ model, t, name, runtime, disabled, onSettings, mascot = false }: { model: WorkspaceDevModel; t: T; name: string; runtime: string; disabled: boolean; onSettings(action: TimingAction): void; /** Main Hara only: show the 24px mascot face as the status mark. */ mascot?: boolean }) {
   const { local, preview, view, w, report, derived } = useWaiting(model);
   const [newSession, setNewSession] = useState(false), dialog = useRef<HTMLDialogElement>(null);
   const [cooldownNow, setCooldownNow] = useState(Date.now);
@@ -77,10 +79,11 @@ export function WorkspaceWaiting({ model, t, name, runtime, disabled, onSettings
   const inDraft = Boolean(preview);
   return <>
     {failure ? <div className="wsd-wait-failure" role="status" data-wait-failure={report!.errorKind}>
-      <p>{t(`ws.wait.failure.${report!.errorKind}` as Parameters<T>[0])}</p><div className="wsd-wait-actions">{actions.map(action => <button type="button" className="hs-btn sec" key={action} disabled={disabled || action === "retry" && cooldown > 0} onClick={() => act(action)}>{t(`ws.wait.action.${action}`)}</button>)}</div>
+      {mascot ? <div className="wsd-wait-mascot"><HaraMascot state="error" variant="face" size={24} decorative /><p>{t(`ws.wait.failure.${report!.errorKind}` as Parameters<T>[0])}</p></div>
+        : <p>{t(`ws.wait.failure.${report!.errorKind}` as Parameters<T>[0])}</p>}<div className="wsd-wait-actions">{actions.map(action => <button type="button" className="hs-btn sec" key={action} disabled={disabled || action === "retry" && cooldown > 0} onClick={() => act(action)}>{t(`ws.wait.action.${action}`)}</button>)}</div>
       {cooldown > 0 ? <small>{t("ws.runtimeDiagnostic.cooldown", { seconds: Math.ceil(cooldown / 1000) })}</small> : null}
     </div> : derived.visible && !inDraft ? <div className="wsd-wait" data-wait-phase={derived.phase}>
-      <div className="wsd-wait-line"><span className="wsd-wait-dot" aria-hidden="true" /><span role="status">{name} · {phaseText}</span>
+      <div className="wsd-wait-line">{mascot ? <HaraMascot state={mascotStateForWaitPhase(derived.phase)} variant="face" size={24} decorative /> : <span className="wsd-wait-dot" aria-hidden="true" />}<span role="status">{name} · {phaseText}</span>
         {local && derived.showSeconds ? <WaitElapsed local={local} now={model.waitClock.now} frozen={derived.phase === "finalizing" ? local.repliedElapsedMs : null} label={t("ws.wait.elapsed")} /> : <span className="wsd-wait-spacer" />}
         {derived.phase === "unknown" ? <button type="button" className="hs-btn sec" disabled={disabled} onClick={() => act("verify")}>{t("ws.wait.action.verify")}</button>
           : <button type="button" className={"hs-btn sec wsd-wait-stop" + (["silent", "no_first"].includes(derived.hint ?? "") ? " is-emphasized" : "")} onClick={() => act("stop")} disabled={!canStop}>{t("ws.wait.action.stop")}</button>}

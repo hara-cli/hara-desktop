@@ -29,7 +29,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { GlobeAltIcon,
   ViewColumnsIcon, MagnifyingGlassIcon, UserPlusIcon, UsersIcon, XMarkIcon, EllipsisHorizontalIcon, PencilSquareIcon, CalendarDaysIcon, ShieldCheckIcon, ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
-import HaraLogo from "./mark";
+import { HaraMascot } from "./HaraMascot";
 import { Md } from "./markdown";
 import { makeT, type Key } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
@@ -703,12 +703,12 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           approval={card => <ApprovalCard card={card} model={channelApprovalActions} t={t} locale={locale} disabled={!!disconnected} />} />
           : route.section === "colleagues" && workspace ? <ColleaguesPage shell={shell} agents={colleagues} tab={route.tab} setTab={tab => navigate("colleagues", tab)} t={t} openAgent={id => void openAgent(id)} openItem={item => openItem(item)} discuss={() => void discuss()}
             onContextMenu={(event, target) => { event.preventDefault(); setRosterMenu({ workspaceId: workspace.workspaceId, agentId: target.agentId, x: event.clientX, y: event.clientY }); }} />
-          : !workspace && view.loading && view.workspaceId ? <p role="status">{t("common.loading")}</p> : !workspace ? <section className="wsd-welcome"><HaraLogo size={48} /><h1>{t("ws.welcome.title")}</h1><p>{t("ws.welcome.body")}</p>
+          : !workspace && view.loading && view.workspaceId ? <p role="status">{t("common.loading")}</p> : !workspace ? <section className="wsd-welcome"><HaraMascot state="idle" size={160} label={t("ws.mascot.idle")} /><h1>{t("ws.welcome.title")}</h1><p>{t("ws.welcome.body")}</p>
             {!view.directory?.workspaces.some(row => row.active) ? <button className="hs-btn pri" onClick={() => setCreating(true)} disabled={view.loading}>{t("ws.welcome.create")}</button> : null}<small>{t(production ? "ws.welcome.note" : "ws.lab.note")}</small></section>
           : <div className="hs-col wsd-thread">
             {!hasConnection ? <section className="wsd-connect-card"><h2>{t("ws.connection.title")}</h2><p>{t(production ? "ws.connection.body" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</p>
               <button className="hs-btn pri" onClick={() => void connect()}>{t(production ? "ws.connection.configure" : realKey ? "ws.connection.approved" : "ws.connection.synthetic")}</button></section> : null}
-            {hasConnection && !workspace.conversation.history.length ? <div className="hs-hello"><h2>{t("ws.home.title")}</h2><p>{t("ws.home.hint")}</p><div className="hs-chips"><button className="hs-chip" onClick={() => void discuss()}><UserPlusIcon className="hico" />{t("ws.home.chip.colleague")}</button>
+            {hasConnection && !workspace.conversation.history.length ? <div className="hs-hello">{!agent || agent.kind === "main" ? <HaraMascot state="idle" size={128} label={t("ws.mascot.idle")} /> : null}<h2>{t("ws.home.title")}</h2><p>{t("ws.home.hint")}</p><div className="hs-chips"><button className="hs-chip" onClick={() => void discuss()}><UserPlusIcon className="hico" />{t("ws.home.chip.colleague")}</button>
               <button className="hs-chip" onClick={() => model.setDraft(t("ws.home.chip.tasks"))}>{t("ws.home.chip.tasks")}</button></div></div> : null}
             {workspace.conversation.nativeRisks?.length ? <aside className="wsd-notice" aria-label={t("ws.permissions.risks")}>
               <strong>{t("ws.permissions.risks")}</strong><ul>{workspace.conversation.nativeRisks.map(event => <li key={event.id}>{t(event.kind === "external-publish" ? "ws.permissions.publish" : "ws.permissions.delete")} · {t("ws.permissions.observed")}</li>)}</ul>
@@ -745,7 +745,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {question ? <WorkspaceUserQuestion key={`${scope}:${question.id}`} conversation={workspace.conversation} t={t}
               disabled={Boolean(disconnected) || view.sending || view.pendingUnknown} supported={model.supportsUserQuestions?.() === true}
               onTypeAnswer={() => input.current?.focus()} onAnswer={(questionId, answer) => void model.answer(questionId, answer)} onPause={questionId => void model.pauseQuestion(questionId)} onRepair={() => { setSettingsPage("connections"); setSettings(true); }} /> : null}
-            <WorkspaceWaiting key={`${scope}:${workspace.conversation.sessionId}`} model={model} t={t} name={agent?.identity.displayName ?? "Hara"} runtime={agent?.runtime.label ?? "Hara"} disabled={Boolean(disconnected) || view.runtimeChanging}
+            <WorkspaceWaiting key={`${scope}:${workspace.conversation.sessionId}`} model={model} t={t} name={agent?.identity.displayName ?? "Hara"} mascot={!agent || agent.kind === "main"} runtime={agent?.runtime.label ?? "Hara"} disabled={Boolean(disconnected) || view.runtimeChanging}
               onSettings={() => openSettingsPage("runtimes")} /><div ref={end} />
           </div>}
       </div>
