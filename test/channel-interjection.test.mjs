@@ -201,7 +201,7 @@ test("busy queue UI permits enqueue and recipient edits alongside Stop, while in
   await f.model.send([first], { questionId: "question", body: "answer" }); assert.equal(sends(f).length, 0);
   for (const model of [{ ...uiModel, supportsQueue: () => false }, uiModel]) {
     const legacy = composer({ ...view, channel: { ...view.channel, pendingCount: undefined, queueNeedsResume: undefined } }, t, { model });
-    assert.equal(submitTag(legacy), ""); assert.equal(legacy.includes("Resume queue"), false);
+    assert.ok(submitTag(legacy).includes("disabled"), "without the queue contract, busy send stays visible but cannot enqueue"); assert.equal(legacy.includes("Resume queue"), false);
   }
 });
 

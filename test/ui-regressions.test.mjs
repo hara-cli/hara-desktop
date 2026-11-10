@@ -1634,7 +1634,8 @@ test("the composer has per-session attachments, bounded folders, and capability-
   assert.match(app, /切换 Agent 工作区/, "persistent workspace and one-turn folder context are distinguished");
   assert.match(app, /canSend=\{activeDraftCanSend\}/, "an attachment-only compatible turn can be sent");
   const inputRow = readFileSync(`${root}/src/ComposerInputRow.tsx`, "utf8");
-  assert.match(inputRow, /disabled=\{!canSend\}/);
+  assert.match(inputRow, /const sendEnabled = canSend && !busy/);
+  assert.match(inputRow, /disabled=\{!sendEnabled\}/);
   assert.match(app, /activeAttachmentIssue/, "incompatible image routes block send without deleting the draft");
   assert.match(app, /自动调度也不保证图片会交给多模态模型/,
     "an unverified auto route explains that text routing is not an image-capability guarantee");

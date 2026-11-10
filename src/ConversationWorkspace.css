@@ -328,3 +328,7 @@ html .conversation-first .workbench-inbox .inbox-contact.is-active {
 
 .wsd-preview-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .wsd-preview-label { font-size: .8em; font-weight: 400; color: var(--text-muted, #8a8a8a); }
+
+/* Keep send and stop distinct, including in the conversation-first compatibility view. */
+.conversation-first .chat.im .composer-input-row textarea{font-size:14px;line-height:22px;min-height:44px;max-height:146px}
+.conversation-first .chat.im .composer-send{border-radius:999px;flex:none}

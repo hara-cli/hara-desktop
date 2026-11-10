@@ -64,6 +64,11 @@ if (scenario === 'message-polish') {
   (window as any).__HARA_COPIED_MESSAGES__=[];
   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(text:string)=>{(window as any).__HARA_COPIED_MESSAGES__.push(text);}}});
 }
+
+
+if (scenario === 'composer-polish') snapshots.get('A:main')!.conversation.history = Array.from({length:30},(_,index) => index % 2
+  ? {role:'assistant' as const,text:`Synthetic response ${index}: preserve the reading position and the current draft.`,tools:[],createdAt:stamp(30-index)}
+  : {role:'user' as const,content:`Synthetic question ${index}`,createdAt:stamp(30-index)});
 if(productionFixture) snapshots.get('A:main')!.conversation.history = Array.from({length:24},(_,index)=>index%2
   ? {role:'assistant' as const,text:`Native settings scroll reply ${index}`,tools:[],createdAt:stamp(24-index)}
   : {role:'user' as const,content:`Native settings scroll message ${index}`,createdAt:stamp(24-index)});
@@ -164,7 +169,9 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
     for(const turn of snapshot.turns)if(turn.state==='running'){turn.state='cancelled';for(const row of turn.replies)if(row.state==='queued')row.state='cancelled';}persistChannels();result={state:'draining'};
   } else if(method==='workspace.session.send'){
     const snapshot=snapshots.get(`${workspaceId}:${agentId}`)!;
-    snapshot.conversation.history.push({role:'user',content:String(values.message),createdAt:new Date().toISOString()});snapshot.conversation.revision++;result={runId:'fixture-run'};
+    snapshot.conversation.history.push({role:'user',content:String(values.message),createdAt:new Date().toISOString()});snapshot.conversation.revision++;
+    if(scenario==='composer-polish'){snapshot.conversation.state='running';snapshot.conversation.taskState='running';snapshot.conversation.runId='fixture-run';snapshot.conversation.taskId='fixture-task';}
+    result={runId:'fixture-run'};
   } else if(method==='workspace.connection.synthetic'){
     for(const snapshot of snapshots.values())if(snapshot.workspaceId===workspaceId)snapshot.connections.defaultConnectionId='fixture';result={};
   } else if(method==='workspace.session.cancel'){
@@ -185,6 +192,10 @@ const model=new WorkspaceDevModel(rpc,()=>crypto.randomUUID(),!productionFixture
 await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat'||scenario==='message-polish')await model.selectAgent('person-0');
 (window as any).__HARA_SHELL_FIXTURE__={model,calls,setFailure(method:string,enabled:boolean){if(enabled)failures.add(method);else failures.delete(method);},async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
   async backgroundActivity(agentId:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text:'',tools:['synthetic-background'],createdAt:new Date().toISOString()},{role:'tool',results:[{id:'synthetic-background',name:'synthetic',content:'Synthetic background receipt',isError:false}]});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();model.invalidateOverview();await model.refresh();},
+
+  async composerState(state:'idle'|'running'|'draining'|'completed') { const snapshot=snapshots.get(`${model.getSnapshot().workspaceId}:${model.getSnapshot().agentId}`)!;
+    snapshot.conversation.state=state; snapshot.conversation.taskState=state==='idle'?null:state;
+    snapshot.conversation.runId=state==='idle'?null:`run-${snapshot.selectedAgentId}`;snapshot.conversation.taskId=state==='idle'?null:`task-${snapshot.selectedAgentId}`;await model.refresh(); },
   channelSlow(value:boolean){slowChannel=value;},channelLoseAck(){unknownChannelAck=true;},
   async channelHistory(id:string,turns:LocalChannelSnapshot['turns'],messages:LocalChannelSnapshot['messages']){const snapshot=channelData.snapshots[id];snapshot.turns=turns;snapshot.messages=messages;snapshot.state='completed';snapshot.revision++;persistChannels();await model.refresh();},
   async channelIncoming(id:string,text:string){const snapshot=channelData.snapshots[id],turnId=crypto.randomUUID();snapshot.turns.push({id:turnId,state:'completed',replies:[]});snapshot.messages.push({id:turnId,turnId,agentId:null,displayName:'',createdAt:new Date().toISOString(),message:{role:'user',content:text}});snapshot.revision++;persistChannels();await model.refresh();},

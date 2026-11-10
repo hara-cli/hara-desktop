@@ -1,4 +1,6 @@
 import { userVisibleText } from "./user-visible-text";
+
+import { useComposerAutoSize } from "./ComposerInputRow";
 import { WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { HashtagIcon, MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -247,7 +249,7 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
     .filter(row => row.name.toLocaleLowerCase().includes(mention)).slice(0, 8), [mention, members, colleaguesById]);
   const pickMention = (name: string) => { model.setDraft(insertChannelMention(view.draft, name)); input.current?.focus(); };
   useEffect(() => { setRecipientSearch(""); input.current?.focus(); }, [view.channelId]);
-  useLayoutEffect(() => { if (input.current) { input.current.style.height = "auto"; input.current.style.height = `${Math.min(160, Math.max(32, input.current.scrollHeight))}px`; } }, [view.draft, view.channelId]);
+  useComposerAutoSize(input, view.draft, JSON.stringify([view.scope, view.channelId, Boolean(channel)]));
   if (!channel) return null;
   const answering = (channel.questions ?? []).some(row => recipients.includes(row.agentId));
   const busy = ["running", "draining"].includes(channel.state), needsConnection = recipients.length > 0 && !hasConnection;
@@ -278,11 +280,12 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
       {mentionMatches.map(row => <button key={row.id} type="button" role="option" aria-selected={false} className="hs-btn sec" data-mention-id={row.id}
         onMouseDown={event => event.preventDefault()} onClick={() => pickMention(row.name)}>@{row.name}</button>)}
       <small>{t(recipients.length ? "ws.channels.mentionHint" : "ws.channels.mentionNotesOnly")}</small></div> : null}
-    <div className="hs-field"><textarea ref={input} aria-label={t("ws.channels.placeholder", { name: channel.channel.name })} placeholder={t("ws.channels.placeholder", { name: channel.channel.name })} value={view.draft} rows={1} maxLength={4000} disabled={disconnected}
+    <div className="hs-field wsd-composer hd-channel-composer"><textarea ref={input} aria-label={t("ws.channels.placeholder", { name: channel.channel.name })} placeholder={t("ws.channels.placeholder", { name: channel.channel.name })} value={view.draft} rows={1} maxLength={4000} disabled={disconnected}
       onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.submitDraft(recipients); } }} />
-      {busy ? <button className="hs-stop" title={queueSupported ? t("ws.channels.queueCancelHint") : undefined} onClick={() => void model.cancel()} disabled={disconnected || channel.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button> : null}
+      <div className="hd-composer-send-actions">{busy ? <button type="button" className="hs-stop" title={queueSupported ? t("ws.channels.queueCancelHint") : undefined} onClick={() => void model.cancel()} disabled={disconnected || channel.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button> : null}
       {view.pending?.state === "unknown" ? <button className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={disconnected}>{t("ws.composer.verify")}</button>
-        : !busy || queueSupported ? <button className="hs-send" data-channel-submit={willQueue ? "queue" : "send"} aria-label={t(willQueue ? "ws.channels.enqueue" : "ws.composer.send")} title={t(willQueue ? "ws.channels.enqueue" : "ws.composer.send")} disabled={!canSend} onClick={() => void model.submitDraft(recipients)}><PaperAirplaneIcon className="hico" />{willQueue ? <span>{t("ws.channels.enqueue")}</span> : null}</button> : null}
+        : <button type="button" className="hs-send" data-channel-submit={willQueue ? "queue" : "send"} aria-label={t(willQueue ? "ws.channels.enqueue" : "ws.composer.send")} title={t(willQueue ? "ws.channels.enqueue" : "ws.composer.send")} disabled={!canSend} onClick={() => void model.submitDraft(recipients)}><PaperAirplaneIcon className="hico" />{willQueue ? <span>{t("ws.channels.enqueue")}</span> : null}</button>}
+      </div>
     </div><p className="hs-hint"><span>{t(answering ? "ws.question.composerHint" : "ws.channels.localNote")}</span><span>{t("ws.composer.hint.keys")}</span></p>
   </footer>;
 }

@@ -16,6 +16,16 @@ export function Avatar({ agent, large = false }: { agent?: WorkspaceDevAgent; la
     {agent?.kind === "main" ? <HaraLogo size={large ? 28 : 24} /> : agent?.identity.displayName.slice(0, 1) ?? "H"}
   </span>;
 }
+/** Identity stays available without repeating it on every private message. */
+export function WorkspaceConversationCapsule({ name, detail, avatar, label, expanded, disabled, onOpen }: {
+  name: string; detail?: string; avatar: ReactNode; label: string; expanded: boolean; disabled?: boolean; onOpen: () => void;
+}) {
+  return <button type="button" className="hd-conversation-capsule" aria-label={`${name} · ${label}`}
+    aria-expanded={expanded} aria-controls="workspace-inspector" disabled={disabled} title={detail ? `${name} · ${detail}` : name} onClick={onOpen}>
+    {avatar}<span className="hs-header-person"><strong>{name}</strong></span>
+  </button>;
+}
+
 export function SidebarSection({ id, title, expanded, onToggle, badge = 0, badgeLabel, pending = false, icon, action, children, t }:
   { id: SidebarSectionId; title: string; expanded: boolean; onToggle: () => void; badge?: number; badgeLabel?: string; pending?: boolean;
     icon: ReactNode; action?: ReactNode; children: ReactNode; t: Translate }) {

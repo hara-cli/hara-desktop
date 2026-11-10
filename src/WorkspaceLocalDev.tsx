@@ -1,5 +1,8 @@
 import { WorkspaceMessage } from "./WorkspaceMessage";
 import { messageTimeSeparator, messageTimeLabel } from "./conversation-message-layout";
+
+import { useComposerAutoSize } from "./ComposerInputRow";
+import { WorkspaceComposerTools } from "./WorkspaceComposerTools";
 import { WorkspaceRpcErrorNotice } from "./WorkspaceRpcErrorNotice.tsx";
 import { localizedWorkspaceView } from "./workspace-default-labels.ts";
 import { currentClientLocale } from "./core-i18n.ts";
@@ -23,7 +26,7 @@ import { runtimeVersionFor } from "./runtime-version-drift";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { GlobeAltIcon,
-  ViewColumnsIcon, MagnifyingGlassIcon, UserPlusIcon, UsersIcon, XMarkIcon, EllipsisHorizontalIcon, PencilSquareIcon, PaperClipIcon, AtSymbolIcon, CalendarDaysIcon, ShieldCheckIcon, ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+  ViewColumnsIcon, MagnifyingGlassIcon, UserPlusIcon, UsersIcon, XMarkIcon, EllipsisHorizontalIcon, PencilSquareIcon, CalendarDaysIcon, ShieldCheckIcon, ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import { PaperAirplaneIcon, StopIcon } from "@heroicons/react/24/solid";
 import HaraLogo from "./mark";
 import { Md } from "./markdown";
@@ -40,7 +43,7 @@ import type { WorkspaceRuntimePlatform } from "./runtime-platform.ts";
 import { WorkspaceDevModel, workspaceAsyncAsks, type ColleagueCreateDraft, type WorkspaceDevMessage, type WorkspaceDevAgent, type WorkspaceDevApproval, type WorkspaceFeatureView, type WorkspaceDevArchiveStatus } from "./workspace-dev-state";
 import { parseColleagueScheduleRequest, type ColleagueScheduleDraft } from "./colleague-schedule.js";
 import { useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
-import { Avatar, ColleaguesPage, ShellDialog } from "./WorkspaceShell";
+import { Avatar, ColleaguesPage, ShellDialog, WorkspaceConversationCapsule } from "./WorkspaceShell";
 import { useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
 import { conversationTimeline, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
 import { captureWorkspaceReadingPosition } from "./workspace-chat-scroll";
@@ -488,7 +491,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   useEffect(() => { if (!moreOpen) return; moreRef.current?.querySelector<HTMLButtonElement>('[role="menu"] button')?.focus();
     const outside = (event: PointerEvent) => { if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false); };
     document.addEventListener("pointerdown", outside); return () => document.removeEventListener("pointerdown", outside); }, [moreOpen]);
-  useLayoutEffect(() => { const node = input.current; if (!node) return; node.style.height = "auto"; node.style.height = `${Math.min(160, Math.max(32, node.scrollHeight))}px`; }, [view.draft, workspace?.selectedAgentId, route.section, workspace?.conversation.pendingQuestion?.id]);
+  useComposerAutoSize(input, view.draft, JSON.stringify([scope, workspace?.selectedAgentId, route.section, workspace?.conversation.pendingQuestion?.id]));
   useEffect(() => { selectedRow.current?.scrollIntoView({ block: "nearest" }); }, [view.agentId, view.workspaceId, route.section]);
   useEffect(() => {
     if (!focusApproval || !workspace) return;
@@ -653,9 +656,14 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       onNeedsYou={() => navigate("colleagues", "tasks")} onColleagues={() => navigate("colleagues", "people")} onWorkspace={id => { closeSettings(); setSearch(""); setApprovalDialog(null); navigate("chat"); void model.selectWorkspace(id); }}
       onDiscuss={() => void discuss()} onNewGroup={channelView.supported && !disconnected ? () => setChannelDialog("create") : undefined}
       onSettings={() => setSettings(true)} onAccount={() => openSettingsPage("general")} onRenameWorkspace={workspace ? () => { setWorkspaceRename(workspace.workspaceId); setWorkspaceNameDraft(workspace.label); } : undefined} />
-    <main className="hs-chat wsd-chat" inert={modalOpen} onPointerDown={() => { if (inspector && window.innerWidth < 1100) setInspector(false); }}>
-      <header className="hs-head wsd-header hd-header">{inChannel ? <span className="hs-ava" aria-hidden="true"><UsersIcon className="hico" /></span> : <Avatar agent={agent} />}<div className="hs-header-person"><strong>{route.section === "workspace" ? t("vg.workspace") : inChannel ? selectedChannel?.name ?? t("ws.channels.local") : route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}</strong>
-        <small>{inChannel ? selectedChannel?.memberIds.map(id => agents.find(row => row.agentId === id)?.identity.displayName).filter(Boolean).join(" · ") : agent ? `${agent.kind === "main" ? r("orchestrator") : agent.identity.title ?? t("ws.role.colleague")} · ${agent.runtime.id === "pi" ? "Pi" : agent.runtime.label}` : t("ws.welcome.title")}</small></div><span className="sp" />
+    <main className="hs-chat wsd-chat" inert={modalOpen} onPointerDown={event => { if (inspector && window.innerWidth < 1100 && !(event.target as Element).closest(".hd-header")) setInspector(false); }}>
+      <header className="hs-head wsd-header hd-header">
+        <WorkspaceConversationCapsule
+          name={route.section === "workspace" ? t("vg.workspace") : inChannel ? selectedChannel?.name ?? t("ws.channels.local") : route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}
+          detail={inChannel ? selectedChannel?.memberIds.map(id => agents.find(row => row.agentId === id)?.identity.displayName).filter(Boolean).join(" · ") : agent ? `${agent.kind === "main" ? r("orchestrator") : agent.identity.title ?? t("ws.role.colleague")} · ${agent.runtime.id === "pi" ? "Pi" : agent.runtime.label}` : undefined}
+          avatar={inChannel ? <span className="hs-ava" aria-hidden="true"><UsersIcon className="hico" /></span> : <Avatar agent={agent} />}
+          label={r("manage")} expanded={inspector && !browser} disabled={!workspace} onOpen={() => { setBrowser(false); setInspector(true); }} />
+        <div className="hd-header-actions">
         {!inChannel && workspace && route.section === "chat" && model.supportsNativeSessions() && workspace.conversation.nativeSession ? <button type="button" className="hs-icon" aria-label={r("newSession")} data-new-native-session={model.supportsNativeSessions() && workspace.conversation.nativeSession ? "true" : undefined}
           disabled={Boolean(disconnected) || view.sending || view.runtimeChanging || view.pendingUnknown || busy || Boolean(question) || Boolean(workspace.conversation.pendingInteractions?.length)}
           onClick={() => { if (model.supportsNativeSessions() && workspace.conversation.nativeSession) void model.newNativeSession(); }}><PencilSquareIcon className="hico" /></button> : null}
@@ -667,6 +675,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             {inChannel ? <><button type="button" role="menuitem" disabled={!selectedChannel || !!disconnected} onClick={() => { setMoreOpen(false); setChannelDialog("members"); }}>{t("ws.channels.members")}</button><button type="button" role="menuitem" onClick={() => { setMoreOpen(false); setChannelDialog("invite"); }}>{t("ws.channels.invite")}</button></> : null}
           </div> : null}</div>
         <span className="hd-header-divider" aria-hidden="true" />{workspace ? <button type="button" ref={manageButton} className="hs-icon" aria-label={r(inspector && !browser ? "hideManage" : "manage")} aria-keyshortcuts="Meta+I Control+I" aria-expanded={inspector && !browser} aria-controls="workspace-inspector" onClick={() => { if (browser) { setBrowser(false); setInspector(true); } else setInspector(value => !value); }}><ViewColumnsIcon className="hico" /></button> : null}
+        </div>
       </header>
       {findOpen ? <div className="hd-find-bar" role="search"><input type="search" aria-label={r("find")} value={findQuery} autoFocus onChange={event => setFindQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); setFindOpen(false); } else if (event.key === "Enter") { event.preventDefault(); findMessage(findResult.index + (event.shiftKey ? -1 : 1)); } }} /><span role="status">{findResult.count ? `${findResult.index + 1} / ${findResult.count}` : "0"}</span><button type="button" disabled={!findResult.count} aria-label={t("ws.find.previous")} onClick={() => findMessage(findResult.index - 1)}><ChevronUpIcon className="hico" /></button><button type="button" disabled={!findResult.count} aria-label={t("ws.find.next")} onClick={() => findMessage(findResult.index + 1)}><ChevronDownIcon className="hico" /></button><button type="button" onClick={() => setFindOpen(false)} aria-label={r("close")}>×</button></div> : null}
       {disconnected ? <div className="wsd-notice hd-offline-banner" role="status"><span>{r("offline")}</span><button type="button" className="hs-btn sec" onClick={onReconnect}>{r("retryNow")}</button></div> : null}
@@ -732,11 +741,15 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           onTypeAnswer={() => input.current?.focus()} disabled={Boolean(disconnected)} onAnswer={(questionId, answer) => void model.answerAsync(questionId, answer)} /><div className="hs-field wsd-composer"><textarea ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
         placeholder={!hasConnection ? t("ws.composer.noConnection") : t(question ? "ws.question.composerPlaceholder" : "ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} disabled={!hasConnection || view.runtimeChanging} rows={1}
         onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submitComposer(); } }} />
-        <div className="hd-composer-tools"><button type="button" aria-label={r("attach")} disabled={!hasConnection || !!disconnected || attaching} onClick={() => void attachReference()}><PaperClipIcon className="hico" /></button><button type="button" aria-label={r("mention")} aria-expanded={mentionOpen} aria-haspopup="menu" disabled={!hasConnection || view.runtimeChanging} onClick={() => setMentionOpen(value => !value)}><AtSymbolIcon className="hico" /></button></div>
+        <WorkspaceComposerTools key={`${scope}:${view.agentId}`} label={r("composerActions")} attachLabel={r("attach")} mentionLabel={r("mention")}
+          attachDisabled={!hasConnection || !!disconnected || attaching} mentionDisabled={!hasConnection || view.runtimeChanging}
+          onAttach={() => void attachReference()} onMention={() => setMentionOpen(value => !value)} />
         {mentionOpen ? <div ref={mentionMenu} className="hd-mention-menu" role="menu" aria-label={r("mention")} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setMentionOpen(false); input.current?.focus(); } else if (["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")], index = buttons.indexOf(document.activeElement as HTMLButtonElement); buttons[(index + (event.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length]?.focus(); } }}>{colleagues.map(person => <button type="button" role="menuitem" key={person.agentId} onClick={() => { model.setDraft(`${model.getSnapshot().draft}@${person.identity.displayName} `); setMentionOpen(false); input.current?.focus(); }}>{person.identity.displayName}<small>{person.identity.title}</small></button>)}</div> : null}
-        {busy ? <button className="hs-stop" onClick={() => void model.cancel()} disabled={Boolean(disconnected) || workspace.conversation.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button>
-          : view.pendingUnknown ? <button className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={Boolean(disconnected)}>{t("ws.composer.verify")}</button> : <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canSend} aria-label={t("ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>}
-          {asyncTarget ? <button className="hs-send wsd-send" onClick={submitComposer} disabled={!canAnswerAsync} aria-label={t("ws.question.async.send")}><PaperAirplaneIcon className="hico" /></button> : null}</div>
+        <div className="hd-composer-send-actions">
+          {busy ? <button type="button" className="hs-stop" onClick={() => void model.cancel()} disabled={Boolean(disconnected) || workspace.conversation.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button> : null}
+          {!busy && view.pendingUnknown ? <button type="button" className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={Boolean(disconnected)}>{t("ws.composer.verify")}</button> : null}
+          <button type="button" className="hs-send wsd-send" onClick={submitComposer} disabled={asyncTarget ? !canAnswerAsync : !canSend} aria-label={t(asyncTarget ? "ws.question.async.send" : "ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>
+        </div></div>
         {view.runtimeBlocked && !question && !busy ? <p role="status">{t("ws.runtimeAccess.runBlocked")} <button type="button" className="hs-btn sec" onClick={() => setInspector(true)}>{t("ws.runtimeAccess.openInspector")}</button></p> : null}
         {view.draft.trim() ? <p className="hs-hint"><span>{t("ws.composer.hint.keys")}</span></p> : null}</footer> : null}
     </main>

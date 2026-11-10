@@ -19,10 +19,12 @@ const bundle = await build({
     import AgentDetailsDrawer from "./src/AgentDetailsDrawer.tsx";
     import NewConversationMenu from "./src/NewConversationMenu.tsx";
     import SpaceSwitcher from "./src/SpaceSwitcher.tsx";
+    import {WorkspaceConversationCapsule} from "./src/WorkspaceShell.tsx";
     import {ComposerInputRow} from "./src/ComposerInputRow.tsx";
     export const contact = (agent, locale) => render(h(AgentContact,{agent,locale,preview:"已检查示例页面",working:false,unread:true,selected:true,time:"12:42",onOpen(){},onDetails(){}}));
     export const details = (agent, locale, count=3) => render(h(AgentDetailsDrawer,{agent,locale,historyCount:count,onClose(){},onHistory(){},onManage(){}}));
     export const menu = (agents, locale) => render(h(NewConversationMenu,{agents,locale,canCreateAgent:true,onSelectAgent(){},onCreateAgent(){},onNewTopic(){}}));
+    export const capsule = (name, expanded, disabled) => render(h(WorkspaceConversationCapsule,{name,detail:"Synthetic role · Pi",avatar:h("span",null,"H"),label:"Manage",expanded,disabled,onOpen(){}}));
     export const composer = (busy, canSend) => render(h(ComposerInputRow,{inputRef:{current:null},value:"",busy,canSend,sendLabel:"Send",stopLabel:"Stop",onSend(){},onStop(){}}, h("textarea",{rows:1,defaultValue:"draft"})));
     export const inbox = (entries, locale) => render(h(AgentInboxList,{entries,locale,renderContact:({agent})=>h(AgentContact,{key:agent.ref,agent,locale,preview:"preview",working:false,unread:false,selected:false,onOpen(){},onDetails(){}})}));
     export const workspace = (directory, locale, switching=false) => render(h(SpaceSwitcher,{directory,locale,switching,onSelect(){}}));
@@ -31,7 +33,7 @@ const bundle = await build({
 });
 const compiled = join(fixture, "components.cjs");
 writeFileSync(compiled, bundle.outputFiles[0].contents);
-const { contact, details, menu, composer, inbox, workspace } = createRequire(import.meta.url)(compiled);
+const { contact, details, menu, composer, inbox, workspace, capsule } = createRequire(import.meta.url)(compiled);
 
 test("even a solo Workspace has a readable context selector, without an enterprise hierarchy", () => {
   const directory = {activeId:"personal",activeProfileId:"token-plan",activeSource:"default",switchLocked:false,
@@ -121,7 +123,8 @@ test("collapsed New menu is a single labeled entry, and the composer preserves s
   assert.match(composer(false, false), /disabled=""/);
   assert.doesNotMatch(composer(false, true), /disabled=""/);
   assert.match(composer(true, false), /composer-send stop/);
-  assert.doesNotMatch(composer(true, false), /disabled=""/);
+  assert.match(composer(true, true), /class="composer-send"[^>]*disabled=""/, "busy keeps send visible and disabled independently of stop");
+  assert.equal((composer(true, true).match(/<button/g) ?? []).length, 2);
   assert.match(composer(false, true), /rows="1"/);
 });
 
@@ -145,4 +148,11 @@ test("App wires only existing chat/create/history flows and keeps the component 
     "opening an authorized historical topic returns the narrow view to chat");
   assert.match(app, /zone === "chat" && workbenchInboxMode === "agents" && active \? " has-active-conversation"/,
     "single-pane contact navigation must not hide the external-session center");
+});
+
+test("conversation identity opens only the existing named inspector and escapes its public name", () => {
+  const html = capsule("A <script>name</script>", true, false);
+  assert.match(html, /aria-expanded="true"/);assert.match(html, /aria-controls="workspace-inspector"/);
+  assert.match(html, /A &lt;script&gt;name&lt;\/script&gt;/);assert.doesNotMatch(html, /<script>/);
+  assert.match(capsule("Hara", false, true), /disabled=""/);
 });

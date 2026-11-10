@@ -163,3 +163,32 @@
 .hs.hd-redesign.vg-app .hd-chat-message .hd-message-body:has(pre),.hs.hd-redesign.vg-app .hd-chat-message .hd-message-body:has(table){width:100%}
 .hs.hd-redesign.vg-app .hd-chat-message.is-user .hd-message-body{max-width:70%}
 .hs.hd-redesign.vg-app .hd-chat-message.is-user .hd-message-body>.hs-bub{max-width:100%}
+
+/* S4: floating identity and a compact composer. Host send/cancel and question admission stay authoritative. */
+.hs.hd-redesign.vg-app .hd-header{position:relative;z-index:20;flex:none;display:flex;justify-content:flex-end;height:56px;min-height:56px;margin-bottom:-56px;border:0;background:transparent;padding:11px 16px;pointer-events:none;container:conversation-header / inline-size}
+.hs.hd-redesign.vg-app .hd-header + .hs-scroll{padding-top:76px;scroll-padding-top:76px}
+.hs.hd-redesign.vg-app .hd-header + :not(.hs-scroll){margin-top:56px}
+.hd-header-actions{display:flex;align-items:center;gap:6px;min-width:0;pointer-events:auto}
+.hs.hd-redesign.vg-app .hd-conversation-capsule{position:absolute;left:50%;top:11px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;min-width:50px;max-width:min(260px,calc(100% - 280px));height:34px;min-height:34px;padding:3px 11px 3px 4px;border:1px solid var(--hd-line);border-radius:999px;background:var(--hara-glass-a-bg,var(--hd-surface));color:var(--hd-ink);box-shadow:0 2px 8px rgba(26,21,48,.06);font:inherit;pointer-events:auto}
+.hs.hd-redesign.vg-app .hd-conversation-capsule .hs-ava{width:24px;height:24px;min-width:24px;border-radius:50%}
+.hs.hd-redesign.vg-app .hd-conversation-capsule .hs-ava svg{width:20px;height:20px}
+.hd-conversation-capsule .hs-header-person{min-width:0}.hd-conversation-capsule strong{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd-conversation-capsule:focus-visible{outline:2px solid var(--hara-brand-primary);outline-offset:3px}
+@container conversation-header (max-width:420px){.hs.hd-redesign.vg-app .hd-conversation-capsule{left:12px;transform:none;max-width:calc(100% - 156px)}}
+.hs.hd-redesign.vg-app .hs-field.wsd-composer{grid-template-columns:32px minmax(0,1fr) auto;grid-template-rows:auto;gap:8px;min-height:52px;padding:3px 7px;border-radius:22px}
+.hs.hd-redesign.vg-app .wsd-composer textarea{box-sizing:border-box;grid-column:2;grid-row:1;min-height:44px;max-height:154px;min-width:0;width:100%;padding:11px 0;font-size:14px;line-height:22px;overflow-y:hidden}
+.hs.hd-redesign.vg-app .wsd-composer textarea::placeholder{color:var(--hd-muted)}
+.hs.hd-redesign.vg-app .hd-composer-tools{position:relative;grid-column:1;grid-row:1;align-self:end;display:block;margin-bottom:6px}
+.hs.hd-redesign.vg-app .hd-composer-tools>.hd-composer-plus{width:32px;height:32px;display:grid;place-items:center;padding:6px;border-radius:50%;color:var(--hd-muted)}
+.hs.hd-redesign.vg-app .hd-composer-plus:hover:not(:disabled){background:var(--hd-hover);color:var(--hd-ink)}
+.hd-composer-menu{position:absolute;left:0;bottom:calc(100% + 12px);z-index:80;min-width:240px;max-width:calc(100vw - 32px);padding:5px;border:1px solid var(--hd-line);border-radius:12px;background:var(--hd-menu);box-shadow:var(--hd-shadow)}
+.hs.hd-redesign.vg-app .hd-composer-menu>button{display:flex;align-items:center;gap:8px;width:100%;height:auto;min-height:36px;padding:8px 10px;border-radius:7px;text-align:left;color:var(--hd-ink);font:inherit;font-size:12px}
+.hd-composer-menu>button:hover:not(:disabled),.hd-composer-menu>button:focus-visible{background:var(--hd-selected)}
+.hd-composer-send-actions{grid-column:3;grid-row:1;align-self:end;display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.hs.hd-redesign.vg-app .hd-composer-send-actions :is(.hs-send,.hs-stop){grid-column:auto;grid-row:auto;height:32px;min-height:32px;min-width:32px;align-self:auto;flex:none}
+.hs.hd-redesign.vg-app .hd-composer-send-actions .hs-send{border-radius:50%}
+.hs.hd-redesign.vg-app .hd-composer-send-actions .hs-stop{border-radius:16px;color:var(--hd-ink);padding:0 10px;background:var(--hd-selected);font-size:12px}
+.hs.hd-redesign.vg-app .hs-field.wsd-composer.hd-channel-composer{grid-template-columns:minmax(0,1fr) auto}
+.hs.hd-redesign.vg-app .hd-channel-composer textarea{grid-column:1}
+.hs.hd-redesign.vg-app .hd-channel-composer .hd-composer-send-actions{grid-column:2}
+@media(prefers-reduced-motion:reduce){.hd-conversation-capsule,.hd-composer-plus,.hd-composer-send-actions button{transition:none!important}}
