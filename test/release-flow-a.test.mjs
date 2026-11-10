@@ -35,7 +35,8 @@ const releaseBuild = job(build, "build", "assemble_draft");
 const releasePrepare = job(build, "prepare_release", "create_draft");
 const signJob = job(build, "sign_and_promote", "verify_public_release");
 const rehearsalPrepare = job(prepackage, "prepare_release", "build");
-const rehearsalBuild = job(prepackage, "build");
+const rehearsalBuild = job(prepackage, "build", "signer_path");
+const rehearsalSigner = job(prepackage, "signer_path");
 
 test("prepackage copies build.yml's package matrix and differs only in the reviewed places", () => {
   const omitted = new Set([
@@ -82,6 +83,22 @@ test("prepackage copies build.yml's package matrix and differs only in the revie
     assert.ok(original, name);
     assert.ok(steps(rehearsalPrepare).includes(original), `${name} must be byte-identical to build.yml`);
   }
+});
+
+test("prepackage rehearses the signer's release sidecar refresh and requires an unchanged tree", () => {
+  // build-mac-signed.sh runs this refresh and then refuses a changed tree; v1.2.0 failed there.
+  const signer = readFileSync(join(root, "scripts/build-mac-signed.sh"), "utf8");
+  assert.match(signer, /HARA_RELEASE_BUILD=1 HARA_SIDECAR_TARGET="\$TARGET" \.\/scripts\/refresh-sidecar\.sh/);
+  assert.match(signer, /source changed during the signed release build[\s\S]*?git status --porcelain --untracked-files=all >&2[\s\S]*?git diff --stat >&2[\s\S]*?exit 1/);
+  assert.match(rehearsalSigner, /needs: \[prepare_release\]/);
+  assert.match(rehearsalSigner, /runs-on: macos-15\n/);
+  assert.match(rehearsalSigner, /path: hara-desktop/);
+  assert.match(rehearsalSigner, /CLI_DIR="\$GITHUB_WORKSPACE\/hara-cli"/);
+  assert.match(rehearsalSigner, /"refs\/tags\/v\$\{CLI_VERSION\}\^\{commit\}"\)" = "\$CLI_SHA"/);
+  const refresh = rehearsalSigner.indexOf("HARA_RELEASE_BUILD=1 HARA_SIDECAR_TARGET=aarch64-apple-darwin ./scripts/refresh-sidecar.sh");
+  const clean = rehearsalSigner.indexOf('[ -z "$(git status --porcelain)" ] && [ "$(git rev-parse HEAD)" = "$PINNED_DESKTOP_SHA" ]');
+  assert.ok(refresh > 0 && clean > refresh, "the clean-tree check must follow the release refresh");
+  assert.match(rehearsalSigner, /git status --porcelain --untracked-files=all >&2/);
 });
 
 test("prepackage is dispatch-only, hosted-only and cannot read secrets or write", () => {

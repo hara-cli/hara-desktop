@@ -9,13 +9,34 @@ import vm from 'node:vm';
 const read = file => fs.readFileSync(path.join(ROOT, file));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 
+// The candidate flow was retired by Jeff on 2026-11-10 (release flow A, inbox
+// 2026-11-10-jeff-decision-release-flow-a.md). candidate-inputs.json now only keeps its historical
+// binding to the approved 1.2.0 application/Core. Desktop version and lock bytes are enforced against
+// the live tree only while that tree is still the candidate-bound version; a newer flow A release must
+// instead leave the binding pinned to the approved inputs. Core, sidecar, toolchain and updater-key
+// identity stay enforced unconditionally.
+const liveVersion = () => JSON.parse(read('package.json')).version;
+const candidateBound = () => liveVersion() === INPUT.desktop.version;
+function newerVersion(left, right) {
+  const [a, b] = [left, right].map(value => { assert.match(value, /^\d+\.\d+\.\d+$/); return value.split('.').map(Number); });
+  for (let index = 0; index < 3; index++) if (a[index] !== b[index]) return a[index] > b[index];
+  return false;
+}
+function assertRetiredCandidateBinding() {
+  assert.ok(newerVersion(liveVersion(), INPUT.desktop.version),
+    `live Desktop ${liveVersion()} must be newer than the retired candidate binding ${INPUT.desktop.version}`);
+  assert.deepEqual(INPUT.desktop, APPROVED_APP);
+  assert.deepEqual(INPUT.core, APPROVED_CORE);
+}
+
 test('candidate Core identity exactly matches the committed sidecar, not an earlier plan', () => {
   const commit = read('src-tauri/binaries/SIDECAR_COMMIT').toString().trim();
   assert.match(commit, /^[a-f0-9]{40}$/);
   assert.equal(INPUT.core.commit, commit);
   assert.match(INPUT.core.tree, /^[a-f0-9]{40}$/);
   assert.equal(INPUT.core.version, read('src-tauri/binaries/SIDECAR_VERSION').toString().trim());
-  assert.equal(INPUT.desktop.version, JSON.parse(read('package.json')).version);
+  if (candidateBound()) assert.equal(INPUT.desktop.version, liveVersion());
+  else assertRetiredCandidateBinding();
   // The application source is frozen independently; orchestration adds its binding afterwards.
   // Requiring INPUT.desktop.commit === HEAD here would create an impossible self-reference.
   assert.match(INPUT.desktop.commit, /^[a-f0-9]{40}$/);
@@ -23,7 +44,9 @@ test('candidate Core identity exactly matches the committed sidecar, not an earl
 });
 
 test('candidate lock hashes are hashes of the exact committed lock bytes, including the sidecar newline', () => {
-  for (const [file, field] of [['package-lock.json', 'npm'], ['src-tauri/Cargo.lock', 'cargo'], ['src-tauri/binaries/SIDECAR_COMMIT', 'sidecar']]) {
+  assert.equal(INPUT.locks.sidecar, hash(read('src-tauri/binaries/SIDECAR_COMMIT')), 'sidecar candidate lock drift');
+  if (!candidateBound()) return assertRetiredCandidateBinding();
+  for (const [file, field] of [['package-lock.json', 'npm'], ['src-tauri/Cargo.lock', 'cargo']]) {
     assert.equal(INPUT.locks[field], hash(read(file)), `${field} candidate lock drift`);
   }
 });
@@ -32,7 +55,9 @@ test('candidate versions and updater public-key identity stay bound without read
   for (const tool of ['node', 'bun', 'rust']) assert.equal(INPUT.toolchain[tool], read(`.${tool}-version`).toString().trim());
   const config = JSON.parse(read('src-tauri/tauri.conf.json'));
   assert.equal(INPUT.updaterPublicKeySha256, hash(config.plugins.updater.pubkey));
-  assert.equal(config.version, INPUT.desktop.version);
+  assert.equal(config.version, liveVersion());
+  if (candidateBound()) assert.equal(config.version, INPUT.desktop.version);
+  else assertRetiredCandidateBinding();
 });
 
 const APPROVED_APP = { commit: '0f5eff41df9ea0299eb5c517d3e4dd154fbef534', tree: 'ecb366c910e6224f601d61be33f7208f28f52b0b', version: '1.2.0' };

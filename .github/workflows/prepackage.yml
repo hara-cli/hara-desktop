@@ -296,3 +296,65 @@ jobs:
         env:
           TAURI_TARGET: ${{ matrix.target }}
         run: node scripts/package-smoke.mjs
+
+  signer_path:
+    # The protected signer runs `HARA_RELEASE_BUILD=1 refresh-sidecar.sh` and then requires an
+    # unchanged source tree (build-mac-signed.sh). Hosted builds compile the sidecar inline, so
+    # before 1.2.1 that path was never exercised ahead of a tag (v1.2.0 failed there after
+    # notarization). Rehearse it here with no credentials and the same sibling Core layout.
+    name: Rehearse the signer's release sidecar refresh without credentials
+    needs: [prepare_release]
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: ${{ needs.prepare_release.outputs.desktop_sha }}
+          path: hara-desktop
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: "hara-desktop/.node-version"
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: "1.97.0"
+          targets: aarch64-apple-darwin
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.0.2
+        with:
+          bun-version-file: "hara-desktop/.bun-version"
+      - name: Materialize the sibling Core checkout at its pinned stable tag
+        shell: bash
+        env:
+          CLI_VERSION: ${{ needs.prepare_release.outputs.cli_version }}
+          CLI_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
+        run: |
+          set -euo pipefail
+          CLI_DIR="$GITHUB_WORKSPACE/hara-cli"
+          git init --quiet "$CLI_DIR"
+          git -C "$CLI_DIR" remote add origin https://github.com/hara-cli/hara.git
+          git -C "$CLI_DIR" fetch --quiet --no-tags --depth 1 origin "refs/tags/v${CLI_VERSION}:refs/tags/v${CLI_VERSION}"
+          [ "$(git -C "$CLI_DIR" rev-parse "refs/tags/v${CLI_VERSION}^{commit}")" = "$CLI_SHA" ] || {
+            echo "Core v${CLI_VERSION} does not resolve to the pinned $CLI_SHA" >&2
+            exit 1
+          }
+          git -C "$CLI_DIR" checkout --quiet --detach "$CLI_SHA"
+      - name: Install locked Desktop dependencies with bounded registry retries
+        working-directory: hara-desktop
+        shell: bash
+        run: ./scripts/npm-ci-retry.sh
+      - name: Run the signer's release sidecar refresh and require an unchanged source tree
+        working-directory: hara-desktop
+        shell: bash
+        env:
+          PINNED_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
+        run: |
+          set -euo pipefail
+          HARA_RELEASE_BUILD=1 HARA_SIDECAR_TARGET=aarch64-apple-darwin ./scripts/refresh-sidecar.sh
+          [ -z "$(git status --porcelain)" ] && [ "$(git rev-parse HEAD)" = "$PINNED_DESKTOP_SHA" ] || {
+            echo "error: the signer's release sidecar refresh changed the Desktop source tree" >&2
+            echo "HEAD $(git rev-parse HEAD 2>&1), expected $PINNED_DESKTOP_SHA" >&2
+            git status --porcelain --untracked-files=all >&2 || true
+            git diff --stat >&2 || true
+            exit 1
+          }
+          echo "signer path rehearsal: source tree unchanged at $PINNED_DESKTOP_SHA"
