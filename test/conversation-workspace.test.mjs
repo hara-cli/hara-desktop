@@ -153,6 +153,7 @@ test("App wires only existing chat/create/history flows and keeps the component 
 test("conversation identity opens only the existing named inspector and escapes its public name", () => {
   const html = capsule("A <script>name</script>", true, false);
   assert.match(html, /aria-expanded="true"/);assert.match(html, /aria-controls="workspace-inspector"/);
+  const description = html.match(/aria-describedby="([^"]+)"/)?.[1];assert.ok(description);assert.ok(html.includes(`id="${description}"`));assert.match(html, />Synthetic role · Pi<\/span>/);
   assert.match(html, /A &lt;script&gt;name&lt;\/script&gt;/);assert.doesNotMatch(html, /<script>/);
   assert.match(capsule("Hara", false, true), /disabled=""/);
 });

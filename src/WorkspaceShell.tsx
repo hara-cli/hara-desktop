@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { ChevronRightIcon, ClipboardDocumentCheckIcon, InboxStackIcon, UsersIcon } from "@heroicons/react/24/outline";
 import HaraLogo from "./mark";
 import type { makeT } from "./i18n";
@@ -20,9 +20,11 @@ export function Avatar({ agent, large = false }: { agent?: WorkspaceDevAgent; la
 export function WorkspaceConversationCapsule({ name, detail, avatar, label, expanded, disabled, onOpen }: {
   name: string; detail?: string; avatar: ReactNode; label: string; expanded: boolean; disabled?: boolean; onOpen: () => void;
 }) {
+  const detailId = useId();
   return <button type="button" className="hd-conversation-capsule" aria-label={`${name} · ${label}`}
-    aria-expanded={expanded} aria-controls="workspace-inspector" disabled={disabled} title={detail ? `${name} · ${detail}` : name} onClick={onOpen}>
+    aria-expanded={expanded} aria-describedby={detail ? detailId : undefined} aria-controls="workspace-inspector" disabled={disabled} title={detail ? `${name} · ${detail}` : name} onClick={onOpen}>
     {avatar}<span className="hs-header-person"><strong>{name}</strong></span>
+    {detail ? <span className="hd-visually-hidden" id={detailId}>{detail}</span> : null}
   </button>;
 }
 

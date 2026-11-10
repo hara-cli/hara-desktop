@@ -94,7 +94,7 @@ const receipts=[];
 const inputSelector='.wsd-composer-wrap textarea';
 async function capture(name){const value=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(value.data,'base64'),{mode:0o600});}
 async function click(selector){await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);await settled();}
-async function key(key,extra={}){const code=key==='Enter'?13:key==='Escape'?27:0;await send('Input.dispatchKeyEvent',{type:'keyDown',key,code:key,windowsVirtualKeyCode:code,...extra});await send('Input.dispatchKeyEvent',{type:'keyUp',key,code:key,windowsVirtualKeyCode:code,...extra});await settled();}
+async function key(key,extra={}){const code=({Enter:13,Escape:27,Tab:9,ArrowDown:40,ArrowUp:38,Home:36,End:35})[key]??0;await send('Input.dispatchKeyEvent',{type:'keyDown',key,code:key,windowsVirtualKeyCode:code,...extra});await send('Input.dispatchKeyEvent',{type:'keyUp',key,code:key,windowsVirtualKeyCode:code,...extra});await settled();}
 async function composerContrast(){return evaluate(`(() => {
  const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const c=canvas.getContext('2d',{willReadFrequently:true});
  const parse=v=>{c.clearRect(0,0,1,1);c.fillStyle=v;c.fillRect(0,0,1,1);return [...c.getImageData(0,0,1,1).data].map(n=>n/255)};
@@ -109,9 +109,9 @@ async function composerContrast(){return evaluate(`(() => {
  const input=document.querySelector('${inputSelector}');check(input,getComputedStyle(input).color,'input text');check(input,getComputedStyle(input,'::placeholder').color,'placeholder');
  return {min:Math.min(...rows.map(row=>row.ratio)),rows,issues:rows.filter(row=>row.ratio<4.5)};
 })()`)}
-async function navigate(width,locale,theme){
+async function navigate(width,locale,theme,scenario='composer-polish'){
  step=`composer/${width}/${locale}/${theme}`;await send('Emulation.setDeviceMetricsOverride',{width,height:860,deviceScaleFactor:1,mobile:false});
- const url=new URL('test/fixtures/workspace-shell-preview.html',base);url.search=new URLSearchParams({locale,theme,scenario:'composer-polish',reset:'1'}).toString();
+ const url=new URL('test/fixtures/workspace-shell-preview.html',base);url.search=new URLSearchParams({locale,theme,scenario,reset:'1'}).toString();
  const began=Date.now();await navigateCdp(send,socket,{url:url.href,sessionId,step,timeoutMs:receipts.length===0?30000:12000});
  navigationEvents.push({at:Date.now(),method:'fixture-navigation-duration',elapsedMs:Date.now()-began});
  await ready("!!window.__HARA_SHELL_FIXTURE__ && !!document.querySelector('.hd-conversation-capsule') && !!document.querySelector('.wsd-composer-wrap textarea')",'Composer fixture must mount');await settled();
@@ -125,7 +125,10 @@ try {
   assert.ok(geometry.capsule.right <= geometry.actions.x-5,'Title and actions must not overlap');assert.ok(geometry.scroll.y <= geometry.header.y+1,'Messages must scroll under the floating header');
   if(width===1280)assert.ok(Math.abs(geometry.capsule.x+geometry.capsule.width/2-(geometry.header.x+geometry.header.width/2))<1,'Capsule is centred within the conversation');
   assert.equal(await evaluate("!!document.querySelector('.hs-stop')"),false);
-  await evaluate("document.querySelector('.hd-skip-composer').focus()");await settled();
+  const detail=await evaluate("document.getElementById(document.querySelector('.hd-conversation-capsule').getAttribute('aria-describedby'))?.textContent");assert.match(detail,/Pi/);
+  await evaluate("document.querySelector('.hd-conversation-capsule').focus()");let skipTabSteps=0;
+  while(skipTabSteps<8 && !await evaluate("document.activeElement?.classList.contains('hd-skip-composer')")){await key('Tab');skipTabSteps++;}
+  assert.ok(await evaluate("document.activeElement?.classList.contains('hd-skip-composer')"),'Real Tab from the header reaches the skip link before message actions');await settled();
   assert.ok(await evaluate("document.querySelector('.hd-skip-composer').getBoundingClientRect().width>100"));await key('Enter');
   assert.equal(await evaluate(`document.activeElement===document.querySelector('${inputSelector}')`),true);assert.equal(await evaluate('location.hash'),'','Skip link must not change the conversation route');
   await click('.hd-composer-plus');await ready("document.activeElement?.getAttribute('role')==='menuitem'",'The first quick action receives focus');
@@ -162,7 +165,7 @@ try {
   await evaluate("window.__HARA_SHELL_FIXTURE__.model.setDraft('Synthetic Enter sends once')");await settled();await evaluate(`document.querySelector('${inputSelector}').focus()`);await key('Enter');
   await ready("window.__HARA_SHELL_FIXTURE__.calls.filter(row=>row.method==='workspace.session.send').length===1",'Normal Enter submits exactly once');
   await ready(`document.querySelector('${inputSelector}').value===''`,'Only accepted send clears its own draft');
-  await capture(`s4-${locale}-${theme}-${width}`);receipts.push({width,locale,theme,geometry,tall,contrast,imeSendCount:sendsBefore,cancels,focus:'Running-turn updates and width changes preserved focus and selection; quick-menu Escape restored focus',draft:'Switching colleagues restores the exact draft; accepted Enter clears only that draft'});
+  await capture(`s4-${locale}-${theme}-${width}`);receipts.push({width,locale,theme,geometry,tall,contrast,skipTabSteps,detail,imeSendCount:sendsBefore,cancels,focus:'Running-turn updates and width changes preserved focus and selection; quick-menu Escape restored focus',draft:'Switching colleagues restores the exact draft; accepted Enter clears only that draft'});
  }
 
  for(const theme of ['light','dark']){
@@ -200,6 +203,9 @@ try {
   assert.match(await evaluate("document.querySelector('.wsd-thread').textContent"),/Synthetic preview delta/);
   await capture(`s4-streaming-${theme}`);receipts.push({stream:true,theme,acceptedFrames:2,focusPreserved:true,selection:[3,7],modelCalls:0});
  }
+ await navigate(720,'en','light','no-connection');
+ assert.equal(await evaluate("document.querySelector('.wsd-composer-wrap textarea').disabled"),true);assert.equal(await evaluate("!!document.querySelector('.hd-skip-composer')"),false,'No dead skip link when the input is disabled');
+ await capture('s4-disabled-input');receipts.push({disabledComposer:true,deadSkipLink:false});
  assert.deepEqual(errors,[]);writeFileSync(join(output,'browser-report.json'),JSON.stringify({ok:true,modelCalls:0,receipts,errors,navigationTimings:navigationEvents.filter(event=>event.method==='fixture-navigation-duration')},null,2)+'\n',{mode:0o600});console.log(JSON.stringify({ok:true,cases:receipts.length,output}));
 }catch(error){writeFileSync(join(output,'failure.json'),JSON.stringify({step,error:String(error),errors,navigationEvents,page:await evaluate('({url:location.href,text:document.body.innerText})').catch(()=>null)},null,2)+'\n',{mode:0o600});await capture('failure').catch(()=>{});throw error;
 }finally{try{socket?.close()}catch{}for(const request of pending.values()){clearTimeout(request.timer);request.fail(new Error('Composer browser gate closed'));}pending.clear();await stopOwnedBrowser(chrome);writeFileSync(join(output,'cleanup.json'),JSON.stringify({chromeExited:chrome.exitCode!==null||chrome.signalCode!==null,profileRetainedForCloseout:profile})+'\n',{mode:0o600});}
