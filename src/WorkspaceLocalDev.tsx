@@ -671,6 +671,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     <main className="hs-chat wsd-chat" inert={modalOpen} onPointerDown={event => { if (inspector && window.innerWidth < 1100 && !(event.target as Element).closest(".hd-header")) setInspector(false); }}>
       <header className="hs-head wsd-header hd-header">
         <WorkspaceConversationCapsule
+          mainIdentity={agent?.kind === "main"} empty={Boolean(workspace && !workspace.conversation.history.length)}
           name={route.section === "workspace" ? t("vg.workspace") : inChannel ? selectedChannel?.name ?? t("ws.channels.local") : route.section === "colleagues" ? t("ws.nav.colleagues") : agent?.identity.displayName ?? "Hara"}
           detail={inChannel ? selectedChannel?.memberIds.map(id => agents.find(row => row.agentId === id)?.identity.displayName).filter(Boolean).join(" · ") : agent ? `${agent.kind === "main" ? r("orchestrator") : agent.identity.title ?? t("ws.role.colleague")} · ${agent.runtime.id === "pi" ? "Pi" : agent.runtime.label}` : undefined}
           avatar={inChannel ? <span className="hs-ava" aria-hidden="true"><UsersIcon className="hico" /></span> : <Avatar agent={agent} />}

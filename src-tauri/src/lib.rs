@@ -11,6 +11,7 @@ use tauri_plugin_updater::UpdaterExt;
 #[cfg(test)]
 mod brand_asset_tests;
 mod command_line_probe;
+mod system_visual_preferences;
 mod workspace_media;
 mod update_channel;
 #[cfg(windows)]
@@ -3761,6 +3762,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            system_visual_preferences::system_visual_preferences,
             read_discovery,
             workspace_dev_connection,
             workspace_entry_mode,

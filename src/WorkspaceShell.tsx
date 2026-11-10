@@ -1,3 +1,4 @@
+import { HaraIdentityAura } from "./HaraIdentityAura";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRightIcon, ClipboardDocumentCheckIcon, InboxStackIcon, UsersIcon } from "@heroicons/react/24/outline";
@@ -13,13 +14,13 @@ export function Avatar({ agent, large = false }: { agent?: WorkspaceDevAgent; la
   return <WorkspaceAgentAvatar agent={agent} large={large} />;
 }
 /** Identity stays available without repeating it on every private message. */
-export function WorkspaceConversationCapsule({ name, detail, avatar, label, expanded, disabled, onOpen }: {
-  name: string; detail?: string; avatar: ReactNode; label: string; expanded: boolean; disabled?: boolean; onOpen: () => void;
+export function WorkspaceConversationCapsule({ name, detail, avatar, label, expanded, disabled, onOpen, mainIdentity = false, empty = false }: {
+  name: string; detail?: string; avatar: ReactNode; label: string; expanded: boolean; disabled?: boolean; onOpen: () => void; mainIdentity?: boolean; empty?: boolean;
 }) {
   const detailId = useId();
   return <button type="button" className="hd-conversation-capsule" aria-label={`${name} · ${label}`}
     aria-expanded={expanded} aria-describedby={detail ? detailId : undefined} aria-controls="workspace-inspector" disabled={disabled} title={detail ? `${name} · ${detail}` : name} onClick={onOpen}>
-    {avatar}<span className="hs-header-person"><strong>{name}</strong></span>
+    {mainIdentity ? <HaraIdentityAura active={empty && !disabled} decorative>{avatar}</HaraIdentityAura> : avatar}<span className="hs-header-person"><strong>{name}</strong></span>
     {detail ? <span className="hd-visually-hidden" id={detailId}>{detail}</span> : null}
   </button>;
 }

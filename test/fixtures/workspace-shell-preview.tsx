@@ -1,5 +1,6 @@
 // DEV-only real-component fixture. No Tauri bridge, credentials, filesystem or model access.
 import React from 'react';
+import { APPEARANCE_KEY, applyAppearance, parseAppearance, parseSystemVisuals } from '../../src/violet-appearance';
 import { createRoot } from 'react-dom/client';
 import { WorkspaceScreen } from '../../src/WorkspaceLocalDev';
 import { WorkspaceDevModel, type WorkspaceDevApproval, type WorkspaceDevSnapshot } from '../../src/workspace-dev-state';
@@ -10,6 +11,7 @@ const productionFixture = scenario === 'native-settings' || scenario === 'channe
 const locale = params.get('locale') ?? 'zh-Hant';
 if (locale === 'system') localStorage.removeItem('hara.locale'); else if (locale !== 'saved') localStorage.setItem('hara.locale', locale);
 if (params.get('reset') !== '0') { localStorage.removeItem('hara.sidebar.sections.A'); localStorage.removeItem('hara.sidebar.sections.B'); }
+if (scenario === 'glass-polish') localStorage.setItem(APPEARANCE_KEY, JSON.stringify({darkTheme:params.get('visual')==='obsidian'?'obsidian':'violet-glass',transparency:params.get('material')??'standard',motion:'standard'}));
 const currentTime = Date.now(), stamp = (minutes: number) => new Date(currentTime - minutes*60000).toISOString();
 const agents = [
   {agentId:'main',kind:'main',state:'active',identity:{displayName:'Hara'},runtime:{id:'pi',label:'Pi',available:true}},
@@ -75,6 +77,11 @@ if (scenario === 'inspector-polish') {
     snapshot.colleagueHome={path:`/synthetic/${snapshot.workspaceId}/${snapshot.selectedAgentId}`,legacyPath:`/synthetic/legacy/${snapshot.workspaceId}/${snapshot.selectedAgentId}`,created:true,available:true,memoryScope:'private',codexMigrationPending:false};
     snapshot.conversation.state='completed';snapshot.conversation.taskState='completed';snapshot.conversation.runId=null;
     snapshot.conversation.objective='Review the synthetic inspector layout';
+  }
+}
+if (scenario === 'glass-polish') {
+  for (const snapshot of snapshots.values()) {snapshot.conversation.state='completed';snapshot.conversation.taskState='completed';snapshot.conversation.runId=null;
+    snapshot.conversation.history=Array.from({length:24},(_,index)=>index%2?{role:'assistant' as const,text:`Synthetic glass response ${index}: keep the reading surface, links and selected draft independent.`,tools:[],createdAt:stamp(24-index)}:{role:'user' as const,content:`Synthetic glass question ${index}`,createdAt:stamp(24-index)});
   }
 }
 if (scenario === 'composer-polish') snapshots.get('A:main')!.conversation.history = Array.from({length:30},(_,index) => index % 2
@@ -222,6 +229,9 @@ await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat
   async backgroundActivity(agentId:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text:'',tools:['synthetic-background'],createdAt:new Date().toISOString()},{role:'tool',results:[{id:'synthetic-background',name:'synthetic',content:'Synthetic background receipt',isError:false}]});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();model.invalidateOverview();await model.refresh();},
 
   async inspectorBlocked(value:boolean){const workspaceId=model.getSnapshot().workspaceId;for(const snapshot of snapshots.values())if(snapshot.workspaceId===workspaceId){const row=snapshot.runtimeOptions?.find(row=>row.id==='codex');if(row){row.available=!value;row.reason=value?'not_registered':undefined;}}await model.refresh();},
+  glassVisuals(preferences:unknown,system:unknown){applyAppearance(parseAppearance(preferences),parseSystemVisuals(system));return {saved:localStorage.getItem(APPEARANCE_KEY),dataset:{...document.documentElement.dataset}};},
+  async glassWorking(working:boolean){const snapshot=snapshots.get(`${model.getSnapshot().workspaceId}:main`)!;snapshot.conversation.state=working?'running':'completed';snapshot.conversation.taskState=snapshot.conversation.state;snapshot.conversation.runId=working?'synthetic-glass-run':null;await model.refresh();},
+  async glassEmpty(empty:boolean){const snapshot=snapshots.get(`${model.getSnapshot().workspaceId}:main`)!;snapshot.conversation.state='idle';snapshot.conversation.taskState=null;snapshot.conversation.runId=null;snapshot.conversation.history=empty?[]:[{role:'assistant',text:'Synthetic completed glass conversation.',tools:[],createdAt:stamp(1)}];await model.refresh();},
   async composerState(state:'idle'|'running'|'draining'|'completed') { const snapshot=snapshots.get(`${model.getSnapshot().workspaceId}:${model.getSnapshot().agentId}`)!;
     snapshot.conversation.state=state; snapshot.conversation.taskState=state==='idle'?null:state;
     snapshot.conversation.runId=state==='idle'?null:`run-${snapshot.selectedAgentId}`;snapshot.conversation.taskId=state==='idle'?null:`task-${snapshot.selectedAgentId}`;await model.refresh(); },

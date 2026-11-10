@@ -148,7 +148,6 @@
 .wss-overlay button:focus-visible,.vg-app button:focus-visible{outline:2px solid var(--hara-text-link);outline-offset:2px}
 @keyframes vg-dialog-in{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
 /* Enhanced glass adapts to the light palette instead of repainting it dark. */
-:root[data-theme="light"][data-transparency="enhanced"]{--hara-glass-a-bg:rgba(255,255,255,.58);--hara-glass-b-bg:rgba(255,255,255,.76)}
 @media(max-width:1120px){.hs.vg-app .hs-win.has-inspector,.hs.vg-app .hs-win.has-browser{grid-template-columns:288px minmax(0,1fr) 280px}.hs.vg-app .hs-win{grid-template-columns:288px minmax(0,1fr)}.vg-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.hs.vg-app .hs-scroll{padding:20px}}
 @media(max-width:900px){.hs.vg-app .hs-win.has-inspector{grid-template-columns:288px minmax(0,1fr)}.hs.vg-app .vg-inspector{position:absolute;z-index:20;right:0;top:0;bottom:34px;width:280px;box-shadow:var(--hara-glass-b-shadow)}.hs.vg-app .hs-win{grid-template-columns:288px minmax(0,1fr)}}
 @media(max-width:620px){.hs.vg-app .hs-win,.hs.vg-app .hs-win.has-inspector,.hs.vg-app .hs-win.has-browser{grid-template-columns:288px minmax(0,1fr)}.hs.vg-app .hs-head{padding:12px}.hs.vg-app .hs-header-person small{display:none}.hs.vg-app .hs-ghost{font-size:0;gap:0}.hs.vg-app .hs-scroll,.hs.vg-app .hs-compose{padding:12px}.vg-theme-options{grid-template-columns:1fr}.vg-theme-swatch{height:40px}}
@@ -186,3 +185,49 @@
 .vg-rf-dialog .wsd-card-actions button{width:auto;text-align:center;padding:8px 14px;border:1px solid var(--hara-border-default);border-radius:8px;background:var(--hara-bg-content);color:var(--hara-text-primary);font:inherit;cursor:pointer}
 .vg-rf-dialog .wsd-card-actions .wsd-primary{background:#7C3AED;border-color:#7C3AED;color:#fff}
 .vg-rf-dialog .wsd-card-actions button:disabled{opacity:.45;cursor:not-allowed}
+
+/* S6 · the window background belongs to Hara, independent of colleague accents. */
+.hs.wsd-app.hd-redesign.vg-app .hs-win{background-color:var(--hara-aurora-base);background-image:var(--hara-aurora)}
+.hs.wsd-app.hd-redesign.vg-app .hd-sidebar,.hs.wsd-app.hd-redesign.vg-app .vg-inspector{background:var(--hara-glass-side);--hd-faint:var(--hara-text-tertiary-glass);--faint:var(--hara-text-tertiary-glass)}
+.hs.wsd-app.hd-redesign.vg-app .hs-chat{margin:var(--hara-read-inset);border-radius:16px;background:var(--hara-glass-read);overflow:hidden}
+.hs.wsd-app.hd-redesign.vg-app{--hd-sunk:var(--hara-assistant-surface)}
+:root[data-visual-theme="obsidian"]:not([data-theme="light"]) .hs.wsd-app.hd-redesign.vg-app{--hd-win:#0b0911;--hd-side:#111014;--hd-surface:#1a1820;--hd-raised:#26222d;--hd-menu:#26222d;--hd-ink:#f4f2f8;--hd-muted:#c2bdcc;--hd-faint:#aaa2b5;--hd-selected:#2c2735;--hd-line:rgba(255,255,255,.12)}
+.hs.wsd-app.hd-redesign.vg-app :is(.hd-sidebar,.hs-scroll,.hs-compose,.vg-inspector,.hd-header){backdrop-filter:none;-webkit-backdrop-filter:none}
+.hs.wsd-app.hd-redesign.vg-app .hs-compose{background:none}
+.hs.wsd-app.hd-redesign.vg-app .hd-conversation-capsule,.hs.wsd-app.hd-redesign.vg-app .hs-field.wsd-composer{
+  background:var(--hara-glass-a-bg);border-color:var(--hara-glass-edge);box-shadow:var(--hara-glass-highlight),0 2px 8px rgba(26,21,48,.06);
+  backdrop-filter:blur(var(--hara-glass-a-blur)) saturate(var(--hara-glass-a-saturation));-webkit-backdrop-filter:blur(var(--hara-glass-a-blur)) saturate(var(--hara-glass-a-saturation));
+  --hd-faint:var(--hd-muted);--faint:var(--hd-muted);
+}
+.hs.wsd-app.hd-redesign.vg-app .wsd-composer textarea::placeholder{color:var(--hd-muted);opacity:1}
+.hs.wsd-app.hd-redesign.vg-app :is(.hd-composer-menu,.wsd-modal,.agent-profile-editor),.vg-roster-menu.hd-roster-menu,.wss-dialog,.vg-rf-dialog{
+  background:var(--hara-glass-b-bg);border-color:var(--hara-glass-edge);box-shadow:var(--hara-glass-highlight),var(--hara-glass-b-shadow);
+  backdrop-filter:blur(var(--hara-glass-b-blur));-webkit-backdrop-filter:blur(var(--hara-glass-b-blur));--hd-faint:var(--hd-muted,var(--hara-text-secondary));--faint:var(--hd-muted,var(--hara-text-secondary));--hara-text-tertiary:var(--hara-text-secondary);
+}
+.wss-overlay,.agent-profile-overlay,.hs .wsd-modal-backdrop{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--hara-scrim)}
+.vg-rf-dialog::backdrop{background:var(--hara-scrim);backdrop-filter:none;-webkit-backdrop-filter:none}
+/* A single iris belongs to the visible main Hara identity, never to rows or text surfaces. */
+.hs.wsd-app.hd-redesign.vg-app .hd-conversation-capsule .hs-ava.is-main{position:relative;overflow:visible}
+.hs.wsd-app.hd-redesign.vg-app .hd-conversation-capsule:not(:disabled) .hs-ava.is-main::before{content:"";position:absolute;inset:-2px;border:1.5px solid transparent;border-radius:50%;background:var(--hara-iris) border-box;mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0);mask-composite:exclude;-webkit-mask-composite:xor;pointer-events:none;filter:saturate(.85)}
+.hs.wsd-app.hd-redesign.vg-app .hs-chat:has(.hs-stop) .hd-conversation-capsule:not(:disabled) .hs-ava.is-main::before{animation:hd-hara-iris var(--hara-dur-iris) linear infinite}
+@keyframes hd-hara-iris{to{transform:rotate(360deg)}}
+:root[data-window-active="false"] .hd-conversation-capsule:not(:disabled) .hs-ava.is-main::before,:root[data-low-power="true"] .hd-conversation-capsule:not(:disabled) .hs-ava.is-main::before{animation-play-state:paused!important}
+:root:is([data-motion="off"],[data-motion="reduced"]) .hs.vg-app *,:root:is([data-motion="off"],[data-motion="reduced"]) .hs.vg-app *::before,:root:is([data-motion="off"],[data-motion="reduced"]) .hs.vg-app *::after{animation:none!important;transition:none!important}
+:root[data-contrast="more"] .hs.wsd-app.hd-redesign.vg-app{--hd-line:var(--hara-line-strong)}
+:root[data-contrast="more"] .hs.wsd-app.hd-redesign.vg-app .hd-chat-message .hs-bub{border:1px solid var(--hara-line-strong)}
+
+:root[data-transparency="off"] :is(.hd-conversation-capsule,.wsd-composer,.hd-composer-menu,.wsd-modal,.agent-profile-editor,.vg-roster-menu,.wss-dialog,.vg-rf-dialog,.glass-a,.glass-b,.glass-c){backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+@media (prefers-reduced-transparency:reduce),(forced-colors:active){
+  :root{--hara-aurora:none!important;--hara-glass-side:var(--hara-glass-side-solid)!important;--hara-glass-read:var(--hara-glass-read-solid)!important;--hara-glass-a-bg:var(--hara-glass-a-solid)!important;--hara-glass-b-bg:var(--hara-glass-b-solid)!important}
+  .hs.wsd-app.hd-redesign.vg-app :is(.hd-conversation-capsule,.wsd-composer,.hd-composer-menu,.wsd-modal,.agent-profile-editor),.vg-roster-menu,.wss-dialog,.vg-rf-dialog{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+}
+
+.hd-identity-aura{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none;isolation:isolate}
+.hd-identity-aura[data-hara-empty]::after{content:"";position:absolute;inset:-5px;z-index:-1;pointer-events:none;border-radius:50%;background:repeating-radial-gradient(circle,transparent 0 3px,var(--hara-ripple) 3px 4px,transparent 4px 7px);mask-image:radial-gradient(circle,#000 35%,transparent 72%)}
+.hd-identity-aura[data-ripple-first]::after{animation:hd-empty-ripple 1200ms ease-out both}
+@keyframes hd-empty-ripple{from{transform:scale(.65);opacity:0}to{transform:scale(1);opacity:1}}
+:root:is([data-window-active="false"],[data-low-power="true"]) .hd-identity-aura::after{animation-play-state:paused!important}
+
+:root[data-transparency="off"] .hd-identity-aura::after{display:none;animation:none!important}
+
+.hs.wsd-app.hd-redesign.vg-app .hd-composer-menu,.vg-roster-menu.hd-roster-menu{border-radius:14px}

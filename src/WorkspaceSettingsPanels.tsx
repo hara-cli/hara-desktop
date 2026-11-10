@@ -6,6 +6,7 @@ import { bindThemePreference, loadThemePreference, saveThemePreference, type The
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { settingsStateText } from "./workspace-settings-copy";
 import { makeT, type Key, type Locale } from "./i18n";
+import { watchSystemVisualPreferences } from "./system-visual-preferences";
 import { applyAppearance, loadAppearance, saveAppearance, type VioletAppearance } from "./violet-appearance";
 import { WorkspaceSchedulePicker } from "./WorkspaceSchedulePicker";
 import { emptySchedulePicker, pickerToSchedule, scheduleToPicker, type SchedulePickerValue } from "./workspace-schedule-picker";
@@ -13,7 +14,7 @@ import { emptySchedulePicker, pickerToSchedule, scheduleToPicker, type ScheduleP
 export function useStableWorkspaceTheme(model: WorkspaceDevModel) {
   const [preference, setPreference] = useState<ThemePreference>(loadThemePreference);
   const [appearance, setAppearance] = useState(loadAppearance);
-  useEffect(() => applyAppearance(appearance), [appearance]);
+  useEffect(() => { applyAppearance(appearance); return watchSystemVisualPreferences(system => applyAppearance(appearance, system)); }, [appearance]);
   const [settings, setSettings] = useState<WorkspacePreferenceView | null>(null), [notice, setNotice] = useState<"" | Key>("");
   const busy = useRef(false);
   useEffect(() => { let active = true; void model.preferences().then(value => { if (active) { setSettings(value); setPreference(value.theme); saveThemePreference(value.theme); } })
@@ -53,7 +54,7 @@ export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<ty
     <label>{t("ws.theme.title")}<select aria-label={t("ws.theme.title")} value={theme.preference} disabled={!theme.settings || theme.settings.readOnly}
     onChange={event => void theme.change(event.target.value as ThemePreference)}><option value="system">{t("ws.theme.system")}</option><option value="light">{t("ws.theme.light")}</option><option value="dark">{t("ws.theme.dark")}</option></select></label>
     <small>{t("ws.theme.note")}</small>
-    {(["transparency", "motion"] as const).map(kind => <div className="vg-material-pref" key={kind}><h3>{t(kind === "motion" ? "vg.motion" : "vg.transparency")}</h3><div role="group" aria-label={t(kind === "motion" ? "vg.motion" : "vg.transparency")}>{(kind === "motion" ? ["off", "reduced", "standard"] as const : ["off", "standard", "enhanced"] as const).map(value => <button key={value} type="button" aria-pressed={appearance[kind] === value} onClick={() => theme.changeAppearance({ [kind]: value })}>{t(`vg.${value}`)}</button>)}</div></div>)}
+    {(["transparency", "motion"] as const).map(kind => <div className="vg-material-pref" key={kind}><h3>{t(kind === "motion" ? "vg.motion" : "vg.transparency")}</h3><div role="group" aria-label={t(kind === "motion" ? "vg.motion" : "vg.transparency")}>{(kind === "motion" ? ["system", "off", "reduced", "standard"] as const : ["system", "off", "standard", "enhanced"] as const).map(value => <button key={value} type="button" aria-pressed={appearance[kind] === value} onClick={() => theme.changeAppearance({ [kind]: value })}>{t(value === "system" ? "ws.theme.system" : `vg.${value}`)}</button>)}</div></div>)}
     <p className="vg-brand-note"><span aria-hidden />{t("vg.brand")} · #7C3AED</p>
     <label>{t("ws.display.mode")}<select aria-label={t("ws.display.mode")} value={theme.settings?.executionDetails ?? "brief"} disabled={!theme.settings || theme.settings.readOnly}
       onChange={event => void theme.changeDetails(event.target.value as "brief" | "detailed", theme.settings?.collapseDetails !== false)}><option value="brief">{t("ws.display.brief")}</option><option value="detailed">{t("ws.display.detailed")}</option></select></label>

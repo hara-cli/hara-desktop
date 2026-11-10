@@ -204,3 +204,46 @@ test("shared interface icons inherit semantic color and replace font-dependent c
   assert.match(external, /<IconCommandLine/);
   assert.doesNotMatch(`${talent}\n${profile}\n${external}`, />\s*[×⌕↻]\s*</u);
 });
+
+// S6: evaluate the declared alpha materials, not just their opaque fallback colors.
+const glassTokensSource = readFileSync(`${root}/src/violet-tokens.css`, "utf8").split("/* S6 materials.")[1];
+const glassWorkspaceSource = readFileSync(`${root}/src/violet-workspace.css`, "utf8").split("/* S6 ·")[1];
+const glassDesktopSource = readFileSync(`${root}/src/desktop-redesign.css`, "utf8");
+const glassBlock = (source, marker) => {
+  const start = source.indexOf(marker); assert.ok(start >= 0, marker);
+  const body = source.slice(source.indexOf("{", start) + 1, source.indexOf("}", start));
+  return Object.fromEntries([...body.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)].map(([, key, value]) => [key, value.trim()]));
+};
+const glassColor = value => {
+  if (value.startsWith("#")) return [...value.slice(1).match(/../g).map(part => parseInt(part, 16)), 1];
+  const rgba = value.match(/^rgba\(([^)]+)\)$/); assert.ok(rgba, value);
+  return rgba[1].split(",").map(Number);
+};
+const glassOver = (foreground, background) => foreground.slice(0, 3).map((part, index) => part * foreground[3] + background[index] * (1 - foreground[3]));
+const glassRatio = (foreground, background) => {
+  const luminance = value => value.slice(0, 3).map(part => part / 255).map(part => part <= .04045 ? part / 12.92 : ((part + .055) / 1.055) ** 2.4).reduce((sum, part, index) => sum + part * [.2126, .7152, .0722][index], 0);
+  const a = luminance(foreground), b = luminance(background); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+};
+for (const mode of ["light", "dark", "obsidian"]) test(`glass ${mode} text survives aurora peaks and arbitrary floating-layer backdrops`, t => {
+  const tokens = { ...glassBlock(glassTokensSource, ":root {") };
+  if (mode === "light") Object.assign(tokens, glassBlock(glassTokensSource, ':root[data-theme="light"]'));
+  if (mode === "obsidian") Object.assign(tokens, glassBlock(glassTokensSource, ':root[data-visual-theme="obsidian"]'));
+  const ink = mode === "light" ? glassBlock(glassDesktopSource, ':root[data-theme="light"]') : mode === "obsidian" ? glassBlock(glassWorkspaceSource, ':root[data-visual-theme="obsidian"]') : glassBlock(glassDesktopSource, ".hs.hd-redesign.vg-app {");
+  const fg = glassColor(ink["--hd-ink"]), muted = glassColor(ink["--hd-muted"]), faint = glassColor(ink["--hd-faint"]);
+  const layers = [...tokens["--hara-aurora"].matchAll(/radial-gradient\(ellipse (\d+)% (\d+)% at (\d+)% (\d+)%,var\((--[\w-]+)\),transparent (\d+)%\)/g)].map(([, rx, ry, x, y, color, stop]) => ({ rx: Number(rx) / 100, ry: Number(ry) / 100, x: Number(x) / 100, y: Number(y) / 100, color: glassColor(tokens[color]), stop: Number(stop) / 100 }));
+  assert.equal(layers.length, 3);
+  const minima = { sideFg: Infinity, sideMuted: Infinity, sideFaint: Infinity, readFg: Infinity, readMuted: Infinity, readFaint: Infinity, floatFg: Infinity, floatMuted: Infinity, assistantBoundary: Infinity };
+  for (let x = 0; x <= 20; x++) for (let y = 0; y <= 20; y++) {
+    let aurora = glassColor(tokens["--hara-aurora-base"]);
+    for (const layer of [...layers].reverse()) { const distance = Math.hypot((x / 20 - layer.x) / layer.rx, (y / 20 - layer.y) / layer.ry); aurora = glassOver([...layer.color.slice(0, 3), layer.color[3] * Math.max(0, 1 - distance / layer.stop)], aurora); }
+    const side = glassOver(glassColor(tokens["--hara-glass-side"]), aurora), read = glassOver(glassColor(tokens["--hara-glass-read"]), aurora);
+    for (const [key, color, background] of [["sideFg", fg, side], ["sideMuted", muted, side], ["sideFaint", glassColor(tokens["--hara-text-tertiary-glass"]), side], ["readFg", fg, read], ["readMuted", muted, read], ["readFaint", faint, read]]) minima[key] = Math.min(minima[key], glassRatio(color, background));
+    minima.assistantBoundary = Math.min(minima.assistantBoundary, glassRatio(glassColor(tokens["--hara-assistant-surface"]), read));
+  }
+  for (const token of ["--hara-glass-a-bg", "--hara-glass-b-bg"]) for (const backdrop of ["#000000", "#ffffff", "#7c3aed", "#facc15"]) {
+    const composite = glassOver(glassColor(tokens[token]), glassColor(backdrop)); minima.floatFg = Math.min(minima.floatFg, glassRatio(fg, composite)); minima.floatMuted = Math.min(minima.floatMuted, glassRatio(muted, composite));
+  }
+  for (const [key, value] of Object.entries(minima)) { if (key === "assistantBoundary") { if (mode !== "light") assert.ok(value >= 1.10, `${mode} assistant boundary ${value}`); } else assert.ok(value >= 4.5, `${mode} ${key}: ${value}`); }
+  assert.ok(glassRatio(fg, glassColor(tokens["--hara-assistant-surface"])) >= 4.5);
+  t.diagnostic(JSON.stringify(Object.fromEntries(Object.entries(minima).map(([key, value]) => [key, Number(value.toFixed(3))]))));
+});
