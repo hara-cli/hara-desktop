@@ -86,3 +86,9 @@ export function renderableAgentAvatar(identity?: AgentPublicIdentity): string | 
   }
   return undefined;
 }
+
+/** Sidebar initials use dark ink; imported accents must use the contrast-verified palette. */
+export function agentAvatarAccent(agentRef: string, accent?: unknown): string {
+  const value = typeof accent === "string" ? accent.trim().toLowerCase() : "";
+  return PALETTES.some(palette => palette.accent === value) ? value : agentVisualTokens(agentRef).accent;
+}

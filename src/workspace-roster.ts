@@ -45,3 +45,10 @@ export function rosterGroupMembers<T extends RosterAvatarMember>(members: readon
   recentSpeakerIds.forEach(id => { if (!order.has(id)) order.set(id, order.size); });
   return [...members].sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
 }
+
+/** Names and full titles are already accessible on the row; only omitted visual text needs a tooltip. */
+export function rosterTooltipText(entry: Pick<RosterEntry, "kind" | "name" | "role" | "shortRole">, nameTruncated: boolean, isMain = false): string | null {
+  const title = entry.role.trim().replace(/\s+/gu, " ");
+  const omittedTitle = entry.kind === "colleague" && !isMain && title && rosterShortRole(title, entry.shortRole) !== title;
+  return [nameTruncated ? entry.name : "", omittedTitle ? title : ""].filter(Boolean).join(" · ") || null;
+}

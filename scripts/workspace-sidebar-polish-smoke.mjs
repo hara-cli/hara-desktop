@@ -72,7 +72,7 @@ async function connect() {
   await send("Emulation.setUserAgentOverride", { userAgent: version.userAgent, platform: "MacIntel" });
 }
 function send(method, params = {}, scoped = true) {
-  return requestCdp(socket, pending, { id: ++requestId, method, params, sessionId: scoped ? sessionId : undefined, step });
+  return requestCdp(socket, pending, { id: ++requestId, method, params, sessionId: scoped ? sessionId : undefined, step, timeoutMs: method === "Page.navigate" && receipts.length === 0 ? 30000 : 15000 });
 }
 async function evaluate(expression) {
   const result = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
@@ -93,7 +93,7 @@ async function navigate(width, locale, theme) {
   await send('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:false});
   const url = new URL('test/fixtures/workspace-shell-preview.html',base);
   url.search = new URLSearchParams({locale,theme,scenario:'sidebar-polish',reset:'1'}).toString();
-  await navigateCdp(send,socket,{url:url.href,sessionId,step});
+  await navigateCdp(send,socket,{url:url.href,sessionId,step,timeoutMs:receipts.length===0?30000:12000});
   await ready("!!window.__HARA_SHELL_FIXTURE__ && document.querySelector('[data-roster-id=person-1] .hd-unread')?.textContent==='4' && !!document.querySelector('[data-roster-id=person-1] .hd-row-needs-you')",'Scoped overview and unread must settle');
   await settled();
 }
@@ -143,6 +143,13 @@ try {
   await ready(`document.querySelector('${row('person-1')}')?.getAttribute('aria-current')==='page' && !document.querySelector('${row('person-1')} .hd-unread')`,'Reading clears unread');
   assert.ok(await evaluate(`!!document.querySelector('${row('person-1')} .hd-row-needs-you')`),'Reading must keep the outstanding approval');
   const count=await evaluate("document.querySelector('.hd-needs-you .hd-unread').textContent");assert.equal(count,'3');
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hd-main-card'),'::after').display"),'none','Unselected Hara keeps the no-divider design');
+  await evaluate(`document.querySelector('${row('person-1')}').focus()`);await pause(650);
+  assert.equal(await evaluate("!!document.querySelector('.hd-name-tooltip')"),false,'A fully visible short title does not need a tooltip');
+  await evaluate("document.querySelector('.hd-main-card').focus()");await pause(650);
+  assert.equal(await evaluate("!!document.querySelector('.hd-name-tooltip')"),false,'Hara does not repeat its fully visible name and role');
+  assert.ok(await evaluate(`(()=>{const node=document.querySelector('${row('person-1')}');return document.getElementById(node.getAttribute('aria-describedby'))?.textContent.includes('The composer');})()`),'Preview and time remain available as the row description');
+
   const groupId='00000000-0000-4000-8000-000000000004',groupRow=row(`channel:${groupId}`);
   await click(groupRow);
   await ready("!!document.querySelector('.wsd-channel-thread') || !!document.querySelector('.hs-channel-log') || location.hash.includes('00000000-0000-4000-8000-000000000004')",'Group must open');

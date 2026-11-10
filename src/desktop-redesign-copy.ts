@@ -8,6 +8,10 @@ const copy = {
   manageColleague: ["管理同事…", "Manage Colleague…", "管理同事…"], manageGroup: ["管理群…", "Manage Group…", "管理群組…"], manageHara: ["管理 Hara…", "Manage Hara…", "管理 Hara…"],
   hide: ["从侧栏隐藏", "Hide from Sidebar", "從側欄隱藏"], show: ["显示", "Show", "顯示"],
   deleteColleague: ["删除同事", "Delete Colleague", "刪除同事"], newSession: ["开新会话", "New Session", "開新對話"],
+  conversationShortcuts: ["固定对话入口", "Conversation shortcuts", "固定對話入口"],
+  needsYouOne: ["{n} 项待你处理", "{n} item needs your attention", "{n} 項待你處理"],
+  mutedUnreadOne: ["已静音 · {n} 条未读", "Muted · {n} unread message", "已靜音 · {n} 則未讀"],
+  unreadOne: ["{n} 条未读", "{n} unread message", "{n} 則未讀"],
   needsYouCount: ["{n} 项待你处理", "{n} items need your attention", "{n} 項待你處理"],
   mutedUnread: ["已静音 · {n} 条未读", "Muted · {n} unread messages", "已靜音 · {n} 則未讀"],
   unreadCount: ["{n} 条未读", "{n} unread messages", "{n} 則未讀"],
@@ -90,6 +94,8 @@ const copy = {
 } as const;
 export type RedesignCopyKey = keyof typeof copy;
 export function redesignText(locale: string, key: RedesignCopyKey, values: Record<string, string | number> = {}): string {
-  const template = copy[key][locale === "en" ? 1 : locale === "zh-Hant" ? 2 : 0];
+  const singular = locale === "en" && Number(values.n) === 1;
+  const resolved = singular && key === "needsYouCount" ? "needsYouOne" : singular && key === "mutedUnread" ? "mutedUnreadOne" : singular && key === "unreadCount" ? "unreadOne" : key;
+  const template = copy[resolved][locale === "en" ? 1 : locale === "zh-Hant" ? 2 : 0];
   return template.replace(/\{(\w+)\}/g, (match, name: string) => Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match);
 }

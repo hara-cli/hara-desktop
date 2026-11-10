@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { rosterConversationActivity, rosterGroupMembers, rosterShortRole } from "../src/workspace-roster.ts";
+import { rosterConversationActivity, rosterGroupMembers, rosterShortRole, rosterTooltipText } from "../src/workspace-roster.ts";
+
+import { agentAvatarAccent, agentVisualTokens } from "../src/agent-visual.ts";
+import { redesignText } from "../src/desktop-redesign-copy.ts";
 
 const require = createRequire(import.meta.url);
 const bundle = await build({ entryPoints: [fileURLToPath(new URL("../src/WorkspaceSidebarC.tsx", import.meta.url))],
@@ -74,4 +77,41 @@ test("composite group avatars retain stable member colours and order recent spea
     assert.equal((html.match(/<i style="background:/gu) ?? []).length, Math.min(n, n > 4 ? 3 : 4));
     if (n > 4) assert.match(html, /<b>\+3<\/b>/u);
   }
+});
+
+test("imported dark or malformed avatar colours fall back to this colleague's stable palette colour", () => {
+  for (const id of ["fixture-a", "fixture-b"]) {
+    const fallback = agentVisualTokens(id).accent;
+    for (const value of [undefined, null, 42, "invalid", "#333333", "#000000", "#ffffff", "#438db3; color: red"]) assert.equal(agentAvatarAccent(id, value), fallback);
+    assert.equal(agentAvatarAccent(id, "#438DB3"), "#438db3");
+  }
+});
+test("full titles get a tooltip only when omitted; groups and main Hara only need one for a truncated name", () => {
+  const short = { kind: "colleague", name: "Mia", role: "Designer" };
+  assert.equal(rosterTooltipText(short, false), null);
+  assert.equal(rosterTooltipText(short, true), "Mia");
+  const long = { ...short, role: "Responsible for synthetic visual checks", shortRole: "Reviewer" };
+  assert.equal(rosterTooltipText(long, false), long.role);
+  assert.equal(rosterTooltipText(long, true), `Mia · ${long.role}`);
+  assert.equal(rosterTooltipText({ ...long, kind: "group", role: "6 members" }, false), null);
+  assert.equal(rosterTooltipText({ ...long, kind: "group", role: "6 members" }, true), "Mia");
+  assert.equal(rosterTooltipText(long, false, true), null);
+  assert.equal(rosterTooltipText(long, true, true), "Mia");
+});
+test("English single-item markers use singular wording and Traditional Chinese SSR stays localized", () => {
+  assert.equal(redesignText("en", "needsYouCount", { n: 1 }), "1 item needs your attention");
+  assert.equal(redesignText("en", "mutedUnread", { n: 1 }), "Muted · 1 unread message");
+  assert.equal(redesignText("en", "unreadCount", { n: 1 }), "1 unread message");
+  assert.match(render({ locale: "zh-Hant" }), /尚無訊息/u);
+});
+test("main selection, uploaded avatars and preview descriptions remain accessible independently of the visual tooltip", () => {
+  const main = { ...agent, agentId: "main", kind: "main", identity: { displayName: "Hara" } };
+  const html = render({ main, mainActive: true });
+  const mainRow = html.match(/data-roster-id="main"[\s\S]*?<\/button>/u)?.[0] ?? "";
+  assert.match(mainRow, /aria-current="page"/u);
+  assert.match(mainRow, /aria-describedby=/u);
+  assert.match(html, /role="group" aria-label="Conversation shortcuts"/u);
+  const uploaded = render({ entries: [{ ...entry, agent: { ...agent, identity: { ...agent.identity, avatar: "/avatars/synthetic.png" } } }] });
+  assert.match(uploaded, /<img src="\/avatars\/synthetic.png" alt=""\/>/u);
+  assert.match(uploaded, /class="hd-visually-hidden">No messages yet/u);
 });

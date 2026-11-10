@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type MouseEvent, type 
 import { Cog6ToothIcon, MagnifyingGlassIcon, PlusIcon, UsersIcon, ChevronDownIcon, InboxIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { SidebarAvatar } from "./SidebarAvatar";
 import { redesignText } from "./desktop-redesign-copy";
-import { rosterGroups, rosterShortRole, folderPreferenceKey, type RosterEntry, type RosterPreference } from "./workspace-roster";
+import { rosterGroups, rosterShortRole, rosterTooltipText, folderPreferenceKey, type RosterEntry, type RosterPreference } from "./workspace-roster";
 import type { WorkspaceDevAgent, WorkspaceDevDirectory } from "./workspace-dev-state";
 export interface SidebarEntry extends RosterEntry { agent?: WorkspaceDevAgent }
 interface Props {
@@ -58,12 +58,13 @@ export function WorkspaceSidebarC(props: Props) {
   const showTooltip = (node: HTMLButtonElement, entry: SidebarEntry) => {
     hideTooltip();
     const label = node.querySelector<HTMLElement>(".hd-row-name");
-    if (props.menuOpen || !entry.role && (!label || label.scrollWidth <= label.clientWidth)) return;
+    const text = rosterTooltipText(entry, Boolean(label && label.scrollWidth > label.clientWidth), entry.agent?.kind === "main");
+    if (props.menuOpen || !text) return;
     tipTimer.current = setTimeout(() => {
       tipTimer.current = null;
       if (!node.isConnected) return;
       const rect = node.getBoundingClientRect();
-      setTooltip({ id: entry.id, text: [entry.name, entry.role].filter(Boolean).join(" · "),
+      setTooltip({ id: entry.id, text,
         left: Math.max(8, Math.min(window.innerWidth - 300, rect.left + 10)), top: Math.max(8, rect.top - 44) });
     }, 600);
   };
@@ -80,6 +81,7 @@ export function WorkspaceSidebarC(props: Props) {
     const unread = Math.max(entry.unread, preferences[entry.id]?.unread ? 1 : 0), date = entry.timestamp ? new Date(entry.timestamp) : null;
     const time = date && Number.isFinite(date.getTime()) ? date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) : date.toLocaleDateString(locale, { month: "numeric", day: "numeric" }) : "";
     const isMain = entry.agent?.kind === "main", muted = preferences[entry.id]?.muted === true;
+    const descriptionId = `${tipId}-row-${encodeURIComponent(entry.id)}`;
     const attention = entry.needsYou ?? 0, shortRole = entry.kind === "group" ? entry.role : rosterShortRole(entry.role, entry.shortRole);
     const label = [entry.name, entry.role, unread > 0 ? r(muted ? "mutedUnread" : "unreadCount", { n: unread }) : "", attention > 0 ? r("needsYouCount", { n: attention }) : "", preferences[entry.id]?.hidden ? r("hidden") : ""].filter(Boolean).join(", ");
     if (props.rename?.id === entry.id) return <div key={entry.id} className="hd-inline-rename" role="group" aria-label={r(entry.kind === "group" ? "renameGroup" : "renameColleague")}>
@@ -88,7 +90,7 @@ export function WorkspaceSidebarC(props: Props) {
     </div>;
     return <div key={entry.id} className="hd-row-wrap">
       <button type="button" className={`hs-row wsd-contact hd-roster-row${isMain ? " hs-main hd-main-card" : ""}`} data-roster-id={entry.id} data-group-id={entry.kind === "group" ? entry.id.slice(8) : undefined} aria-label={label}
-        disabled={props.loading} aria-current={(isMain ? props.mainActive : props.selectedId === entry.id) ? "page" : undefined} aria-describedby={tooltip?.id === entry.id && !props.menuOpen ? tipId : undefined}
+        disabled={props.loading} aria-current={(isMain ? props.mainActive : props.selectedId === entry.id) ? "page" : undefined} aria-describedby={descriptionId}
         onClick={() => props.onSelect(entry.id, entry.kind)} onContextMenu={event => context(event, entry.id, entry.kind)} onKeyDown={event => keyboardContext(event, entry.id, entry.kind)}
         onPointerEnter={event => showTooltip(event.currentTarget, entry)} onPointerLeave={hideTooltip} onFocus={event => showTooltip(event.currentTarget, entry)} onBlur={hideTooltip}>
         <SidebarAvatar agent={entry.agent} members={entry.members} />
@@ -103,6 +105,7 @@ export function WorkspaceSidebarC(props: Props) {
             {attention > 0 ? <span className="hd-row-needs-you" aria-label={r("needsYouCount", { n: attention })}><InboxIcon className="hico" /></span> : null}
           </span>
         </span>
+        <span id={descriptionId} className="hd-visually-hidden">{(entry.preview.trim() || r("noMessages")).replace(/\s+/gu, " ").slice(0, 160)}{time ? ` · ${time}` : ""}</span>
       </button>
       {recovering ? <button type="button" className="hd-show-hidden" onClick={() => props.onPreference(entry.id, { hidden: false })}>{r("show")}</button> : null}
     </div>;
@@ -113,7 +116,7 @@ export function WorkspaceSidebarC(props: Props) {
     <div className="hd-sidebar-tools"><label><MagnifyingGlassIcon className="hico" /><input type="search" aria-label={r("search")} placeholder={r("search")} value={search} onChange={event => props.onSearch(event.target.value)} /></label>
       <button type="button" className="hs-icon" ref={plus} aria-label={r("new")} aria-expanded={popup === "new"} aria-haspopup="menu" onClick={() => setPopup(value => value === "new" ? null : "new")}><PlusIcon className="hico" /></button></div>
     {popup === "new" ? <div ref={popover} className="hd-sidebar-popup hd-new-menu" onKeyDown={popupKeys} role="menu" aria-label={r("new")}>{popupAction(r("newColleague"), props.onDiscuss)}{props.onNewGroup ? popupAction(r("newGroup"), props.onNewGroup) : null}</div> : null}
-    <div className="hd-sidebar-anchor">
+    <div className="hd-sidebar-anchor" role="group" aria-label={r("conversationShortcuts")}>
       {main ? row(props.mainEntry ?? { id: main.agentId, kind: "colleague", name: main.identity.displayName, role: r("orchestrator"), preview: props.mainPreview, order: 0, unread: 0, agent: main }) : null}
       <button type="button" className="hd-needs-you" onClick={props.onNeedsYou}><InboxIcon className="hico" /><span>{r("needsYou")}</span>{props.needsYou ? <span className="hd-unread">{props.needsYou}</span> : null}</button>
     </div>
@@ -129,6 +132,6 @@ export function WorkspaceSidebarC(props: Props) {
       <button type="button" className="hs-icon" aria-label={`${r("colleagues")} ${props.count}`} onClick={props.onColleagues}><UsersIcon className="hico" /><span>{props.count}</span></button><button type="button" className="hs-icon" aria-label={props.settingsLabel} onClick={props.onSettings}><Cog6ToothIcon className="hico" /></button>
     </footer>
     {popup === "workspace" ? <div ref={popover} className="hd-sidebar-popup hd-workspace-menu" onKeyDown={popupKeys} role="menu" aria-label={r("workspaces")}><div className="hd-menu-name">{r("workspaces")}</div>{props.directory?.workspaces.filter(workspace => workspace.active).map(workspace => <button type="button" role="menuitemradio" aria-checked={workspace.workspaceId === props.workspaceId} key={workspace.workspaceId} onClick={() => { setPopup(null); props.onWorkspace(workspace.workspaceId); }}>{workspace.label}{workspace.workspaceId === props.workspaceId ? " ✓" : ""}</button>)}<hr />{props.onRenameWorkspace ? popupAction(r("renameWorkspace"), props.onRenameWorkspace) : null}<button type="button" role="menuitem" className="hd-menu-unavailable" aria-disabled="true" aria-describedby={`${tipId}-new-workspace`}>{r("newWorkspace")}<small id={`${tipId}-new-workspace`}>{r("newWorkspaceUnavailable")}</small></button>{popupAction(r("account"), props.onAccount)}<hr /><div className="hd-menu-name">{r(props.disconnected ? "disconnected" : "connected")}</div></div> : null}
-    {tooltip && !props.menuOpen ? <div id={tipId} className="hd-name-tooltip" role="tooltip" style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.text}</div> : null}
+    {tooltip && !props.menuOpen ? <div id={tipId} className="hd-name-tooltip" role="tooltip" aria-hidden="true" style={{ left: tooltip.left, top: tooltip.top }}>{tooltip.text}</div> : null}
   </aside>;
 }
