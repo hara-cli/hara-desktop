@@ -50,11 +50,11 @@ test("the reply summary gives the full selected count and empty channels can sav
 });
 test("actual group transcript identifies each colleague, escapes content and preserves failed replies", () => {
   const t = makeT("zh-Hans");
-  const html = render(h(LocalChannelThread, { view, colleagues, t, retry() {}, transcript: (history, agent) => h(Transcript, { history, agent, t }), approval() {} }));
+  const html = render(h(LocalChannelThread, { view, colleagues, t, retry() {}, transcript: (history, agent, previousMessageAt) => h(Transcript, { history, agent, t, showAuthor: true, previousMessageAt }), approval() {} }));
   assert.ok(html.includes("Colleague 0")); assert.ok(html.includes("Colleague 1")); assert.equal((html.match(/hs-msg me/g) ?? []).length, 1);
   assert.ok(html.includes("Discuss &lt;script&gt;this&lt;/script&gt;")); assert.equal(html.includes("<script>"), false);
   const failed = { ...view, channel: { ...view.channel, state: "interrupted", turns: [{ id: "turn", state: "interrupted", replies: [{ agentId: "person-0", displayName: "Colleague 0", state: "failed" }] }] } };
-  const error = render(h(LocalChannelThread, { view: failed, colleagues, t, retry() {}, transcript: (history, agent) => h(Transcript, { history, agent, t }), approval() {} }));
+  const error = render(h(LocalChannelThread, { view: failed, colleagues, t, retry() {}, transcript: (history, agent, previousMessageAt) => h(Transcript, { history, agent, t, showAuthor: true, previousMessageAt }), approval() {} }));
   assert.ok(error.includes(t("ws.channels.failedReply", { name: "Colleague 0" }))); assert.ok(error.includes(t("ws.channels.interrupted")));
 });
 test("unknown channel acceptance shows read-only verification and freezes sends while retaining the draft", () => {

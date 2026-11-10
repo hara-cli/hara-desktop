@@ -1,3 +1,5 @@
+import { WorkspaceMessage } from "./WorkspaceMessage";
+import { messageTimeSeparator, messageTimeLabel } from "./conversation-message-layout";
 import { WorkspaceRpcErrorNotice } from "./WorkspaceRpcErrorNotice.tsx";
 import { localizedWorkspaceView } from "./workspace-default-labels.ts";
 import { currentClientLocale } from "./core-i18n.ts";
@@ -40,7 +42,7 @@ import { parseColleagueScheduleRequest, type ColleagueScheduleDraft } from "./co
 import { useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
 import { Avatar, ColleaguesPage, ShellDialog } from "./WorkspaceShell";
 import { useWorkspaceLocale, useWorkspaceOverview, workspacePlatform } from "./workspace-shell-hooks";
-import { conversationTimeline, messageContinues, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
+import { conversationTimeline, normalizeShellRoute, pendingApprovals, transcriptBlocks, type AwaitItem } from "./workspace-shell-state";
 import { captureWorkspaceReadingPosition } from "./workspace-chat-scroll";
 import { colleagueUsageView } from "./workspace-account-usage";
 import { WorkspaceLocalChannelsModel } from "./workspace-local-channels";
@@ -159,13 +161,14 @@ function SettledApprovalCard({ state, name, agentId, t, locale, onOpenAgent }: {
     <p>{t(copy, { name: label })}</p>
   </section>;
 }
-export function Transcript({ history, agent, t, media, onOpenAgent, locale = "en", detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false, alwaysShowTimingDiagnostics = false, messageTimings = [], conversation, contextCompactions, compactions = contextCompactions ?? [] }: {
-  locale?: string; media?: WorkspaceMediaAccess; onOpenAgent?: (id: string) => void; conversation?: WaitConversation; contextCompactions?: readonly ContextCompactionView[]; compactions?: readonly ContextCompactionView[];
+export function Transcript({ history, agent, t, media, onOpenAgent, locale = "en", showAuthor = false, previousMessageAt: initialMessageAt, detailed = false, stages = [], historyOffset = 0, onExportStage, stageDisabled = false, alwaysShowTimingDiagnostics = false, messageTimings = [], conversation, contextCompactions, compactions = contextCompactions ?? [] }: {
+  locale?: string; showAuthor?: boolean; previousMessageAt?: string; media?: WorkspaceMediaAccess; onOpenAgent?: (id: string) => void; conversation?: WaitConversation; contextCompactions?: readonly ContextCompactionView[]; compactions?: readonly ContextCompactionView[];
   messageTimings?: readonly MessageTimingReport[];
   history: WorkspaceDevMessage[]; agent?: WorkspaceDevAgent; t: Translate; detailed?: boolean; stages?: RuntimeStageReport[];
   alwaysShowTimingDiagnostics?: boolean; historyOffset?: number; onExportStage?: (report: RuntimeStageReport) => Promise<RuntimeDiagnosticReceipt>; stageDisabled?: boolean;
 }) {
   let previous: WorkspaceDevMessage | undefined;
+  let previousMessageAt = initialMessageAt;
   const stageBoundaries = runtimeStagesBefore(stages, history, historyOffset);
   const [diagnostics, setDiagnostics] = useState<{ attemptId: string; request: number } | null>(null);
   const assistantReports = new Map<number, RuntimeStageReport[]>(), withoutAssistant = new Set<string>();
@@ -207,15 +210,19 @@ export function Transcript({ history, agent, t, media, onOpenAgent, locale = "en
           <pre className={result.isError ? "is-error" : ""}>{result.content.slice(0, 5000)}</pre></div>)}</div></details></div>;
     }
     const { message, index } = item;
-    const continuation = messageContinues(previous, message) || !!previous && previous.role === message.role && previous.createdAt === undefined && message.createdAt === undefined; previous = message;
-    if (message.role === "user" && isInternalUserText(message.content)) return null;
-    if (message.role === "user") return <div className="wsd-message-group" key={`user-${index}`}><div className={`hs-msg me wsd-message is-user ${continuation ? "cont" : ""}`}><div className="hs-bub wsd-bubble">{userVisibleText(message.content)}</div></div>{message.createdAt ? <div className="hd-message-meta is-user"><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time></div> : null}</div>;
-    return <div className={`wsd-message-group ${continuation ? "cont" : ""}`} key={`assistant-${index}`}>
-      {!continuation ? <div className="hs-who">{agent?.identity.displayName ?? "Hara"}</div> : null}
-      <div className={`hs-msg wsd-message is-agent ${continuation ? "cont" : ""}`}><Avatar agent={agent} /><div className="hs-bub wsd-bubble"><Md text={message.text} media={media} locale={locale} mediaUnavailableLabel={t("ws.media.unavailable")} revealMediaLabel={t("ws.media.reveal")}
-        copyCodeLabel={t("copyCode")} copiedLabel={t("taskCopied")} copyFailedLabel={t("copyFailed")} /></div></div>
-      {message.createdAt || assistantReports.has(index) ? <div className="hd-message-meta">{message.createdAt || assistantReports.get(index)?.[0]?.provenance?.startedAt ? <time dateTime={message.createdAt ?? assistantReports.get(index)?.[0]?.provenance?.startedAt}>{new Date((message.createdAt ?? assistantReports.get(index)?.[0]?.provenance?.startedAt)!).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })} · </time> : null}{assistantReports.get(index)?.map(chip)}</div> : null}
-    </div>;
+    const separator = messageTimeSeparator(message.createdAt, previousMessageAt);
+    const continuation = !!previous && previous.role === message.role && !separator;
+    previous = message;
+    if (message.createdAt && Number.isFinite(Date.parse(message.createdAt))) previousMessageAt = message.createdAt;
+    const text = message.role === "user" ? userVisibleText(message.content) : message.text;
+    const metadata = message.role === "assistant" ? assistantReports.get(index)?.map(chip) : undefined;
+    return <Fragment key={`${message.role}-${index}`}>
+      {separator ? <div className="hd-time-separator"><time dateTime={message.createdAt}>{messageTimeLabel(message.createdAt!, locale)}</time></div> : null}
+      <WorkspaceMessage text={text} user={message.role === "user"} continuation={continuation} showAuthor={showAuthor} agent={agent} locale={locale} metadata={metadata} t={t}>
+        {message.role === "user" ? text : <Md text={text} media={media} locale={locale} mediaUnavailableLabel={t("ws.media.unavailable")} revealMediaLabel={t("ws.media.reveal")}
+          copyCodeLabel={t("copyCode")} copiedLabel={t("taskCopied")} copyFailedLabel={t("copyFailed")} />}
+      </WorkspaceMessage>
+    </Fragment>;
   };
   return <>{transcriptBlocks(history).map(item => <Fragment key={`${item.kind}-${item.index}`}>
     {renderCompactions(item.index + historyOffset)}
@@ -226,7 +233,7 @@ export function Transcript({ history, agent, t, media, onOpenAgent, locale = "en
 /** A server render has no live view or paint evidence. */
 const emptyAssistantPreviewSnapshot = () => null;
 /** Preview owns its subscription so a prose batch does not rerender the full transcript. */
-export function AssistantDraft({ model, agent, t, follow }: { model: WorkspaceDevModel; agent?: WorkspaceDevAgent; t: Translate; follow(): void }) {
+export function AssistantDraft({ model, t, follow }: { model: WorkspaceDevModel; agent?: WorkspaceDevAgent; t: Translate; follow(): void }) {
   const preview = useSyncExternalStore(model.subscribeAssistantPreview, model.getAssistantPreviewSnapshot, emptyAssistantPreviewSnapshot);
   const bubble = useRef<HTMLDivElement>(null), painted = useRef<string | null>(null);
   useLayoutEffect(() => { if (preview) follow(); }, [preview?.seq, follow]);
@@ -249,8 +256,8 @@ export function AssistantDraft({ model, agent, t, follow }: { model: WorkspaceDe
   }, [model, preview?.attemptId, preview?.itemId]);
   if (!preview) return null;
   return <div className="wsd-message-group wsd-assistant-draft" data-attempt-id={preview.attemptId} data-preview-seq={preview.seq}>
-    <div className="hs-who">{agent?.identity.displayName ?? "Hara"} <WorkspaceDraftTiming model={model} t={t} /></div>
-    <div className="hs-msg wsd-message is-agent"><Avatar agent={agent} /><div ref={bubble} className="hs-bub wsd-bubble wsd-preview-text" aria-label={t("ws.preview.label")}>{preview.text}</div></div>
+    <div className="hs-msg wsd-message is-agent"><div ref={bubble} className="hs-bub wsd-bubble wsd-preview-text" aria-label={t("ws.preview.label")}>{preview.text}</div></div>
+    <div className="hd-message-meta"><WorkspaceDraftTiming model={model} t={t} /></div>
   </div>;
 }
 const emptyWaitTimingSnapshot = () => null;
@@ -349,7 +356,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const showContextInspector = inspector && !browser && route.section !== "chat" && !inChannel;
   const selectedChannel = inChannel ? channelView.channel?.channel ?? channelView.catalog?.channels.find(row => row.id === route.channelId) : undefined;
   const detailedChannel = theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false;
-  const renderChannelTranscript = useCallback((messages: WorkspaceDevMessage[], author?: WorkspaceDevAgent) => <Transcript media={model} locale={locale} history={messages} agent={author} t={t} detailed={detailedChannel} />, [model, t, detailedChannel, locale]);
+  const renderChannelTranscript = useCallback((messages: WorkspaceDevMessage[], author?: WorkspaceDevAgent, previousMessageAt?: string) => <Transcript media={model} locale={locale} history={messages} agent={author} t={t} showAuthor previousMessageAt={previousMessageAt} detailed={detailedChannel} />, [model, t, detailedChannel, locale]);
   const channelFollowing = useCallback((following: boolean) => { nearBottom.current = following; }, []);
   useEffect(() => { void channels.bind(workspace?.workspaceId ?? "", workspace?.resourceGeneration ?? ""); setChannelDialog(null); }, [channels, scope]);
   useEffect(() => { if (workspace) void channels.refresh(); }, [channels, workspace]);

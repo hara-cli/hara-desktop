@@ -28,7 +28,7 @@ test("summary hint stays inline and collapsed in all three languages while origi
     const t = makeT(locale), html = renderToStaticMarkup(createElement(module.exports.Transcript, { history, t, contextCompactions: [r] }));
     assert.ok(html.includes(t("ws.compaction.completed"))); assert.ok(html.includes("ORIGINAL-HISTORY")); assert.ok(html.includes("CURRENT-USER"));
     assert.ok(html.includes(t("ws.compaction.reference"))); assert.ok(html.includes(t("ws.compaction.unknown")));
-    assert.equal(html.includes('open=""'), false); assert.equal(html.includes('role="dialog"'), false); assert.equal(html.includes("<button"), false);
+    assert.equal(html.includes('open=""'), false); assert.equal(html.includes('role="dialog"'), false); const compactionOnly = renderToStaticMarkup(createElement(module.exports.WorkspaceContextCompaction, { value: r, t })); assert.equal(compactionOnly.includes("<button"), false);
     assert.ok(html.indexOf("ORIGINAL-HISTORY") < html.indexOf("wsd-context-compaction")); assert.ok(html.indexOf("wsd-context-compaction") < html.indexOf("CURRENT-USER"));
   }
 });

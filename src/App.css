@@ -9307,3 +9307,9 @@ button.provider-preset.enterprise.on {
     }
   }
 }
+
+/* S1: the conversation header carries identity; message surfaces and actions remain keyboard reachable. */
+.chat .assistant-message{position:relative;max-width:min(100%,760px)}
+.chat.im .assistant-message{max-width:min(100%,760px)}
+.chat .assistant-message>.msg{box-sizing:border-box;border:0;border-radius:16px;padding:10px 14px;font-size:14px;line-height:22px}
+.chat .assistant-message .md{font-size:14px;line-height:22px}

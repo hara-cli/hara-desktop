@@ -14,6 +14,11 @@ const copy = {
   unreadOne: ["{n} 条未读", "{n} unread message", "{n} 則未讀"],
   needsYouCount: ["{n} 项待你处理", "{n} items need your attention", "{n} 項待你處理"],
   mutedUnread: ["已静音 · {n} 条未读", "Muted · {n} unread messages", "已靜音 · {n} 則未讀"],
+
+  yourMessage: ["你的消息", "Your message", "你的訊息"], messageFrom: ["{name} 的消息", "Message from {name}", "{name} 的訊息"],
+  copyMessage: ["复制消息", "Copy message", "複製訊息"],
+  messageActions: ["消息操作", "Message actions", "訊息操作"], messageMore: ["更多消息操作", "More message actions", "更多訊息操作"],
+  replyInTopic: ["回复话题", "Reply in a topic", "回覆話題"], copyPlainText: ["复制纯文本", "Copy plain text", "複製純文字"], selectMessageText: ["选择正文", "Select message text", "選取內文"],
   unreadCount: ["{n} 条未读", "{n} unread messages", "{n} 則未讀"],
   needsYou: ["待你处理", "Needs You", "待你處理"], pinned: ["置顶", "Pinned", "置頂"], recent: ["最近", "Recent", "最近"],
   hiddenCount: ["已隐藏 {n} 个", "{n} Hidden", "已隱藏 {n} 個"], hidden: ["已隐藏", "Hidden", "已隱藏"],

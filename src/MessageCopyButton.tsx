@@ -11,6 +11,7 @@ interface MessageCopyButtonProps {
   copiedLabel: string;
   failedLabel: string;
   className?: string;
+  showLabel?: boolean;
 }
 
 export function MessageCopyButton({
@@ -19,6 +20,7 @@ export function MessageCopyButton({
   copiedLabel,
   failedLabel,
   className = "",
+  showLabel = false,
 }: MessageCopyButtonProps) {
   const [state, setState] = useState<CopyState>("idle");
   const timerRef = useRef<number | null>(null);
@@ -53,7 +55,7 @@ export function MessageCopyButton({
       onClick={copy}
     >
       <IconCopy size={14} />
-      {state !== "idle" ? <span aria-live="polite">{label}</span> : null}
+      {state !== "idle" || showLabel ? <span aria-live={state !== "idle" ? "polite" : undefined}>{label}</span> : null}
     </button>
   );
 }

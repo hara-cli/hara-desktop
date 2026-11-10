@@ -131,3 +131,30 @@
 .hs.hd-redesign.vg-app .hd-sidebar .hd-group-avatar{box-shadow:inset 0 0 0 1px var(--hd-line)}
 
 .hs.hd-redesign.vg-app .hd-sidebar .hs-main::after{display:none}
+
+/* S1 · direct messages keep identity in the header; visible message metadata stays outside the block. */
+.hs.hd-redesign.vg-app{--msg-block-max:760px;--msg-block-radius:16px;--msg-body:14px;--msg-leading:22px}
+.hs.hd-redesign.vg-app .hd-chat-message{position:relative;margin:16px 0 0;min-width:0;max-width:100%}
+.hs.hd-redesign.vg-app .hd-chat-message.cont{margin-top:4px}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-msg{margin:0;gap:10px;min-width:0}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub{box-sizing:border-box;width:fit-content;max-width:var(--msg-block-max);min-width:0;border:0;border-radius:var(--msg-block-radius);padding:10px 14px;background:var(--hd-sunk);font-size:var(--msg-body);line-height:var(--msg-leading)}
+.hs.hd-redesign.vg-app .hd-chat-message.is-user .hs-bub{max-width:70%;border-radius:18px 18px 6px 18px;background:var(--hd-user);white-space:pre-wrap;overflow-wrap:anywhere}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub:has(table),.hs.hd-redesign.vg-app .hd-chat-message .hs-bub:has(pre){width:100%}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub>.md{min-width:0;font-size:14px;line-height:22px}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub .md>:first-child{margin-top:0}.hs.hd-redesign.vg-app .hd-chat-message .hs-bub .md>:last-child{margin-bottom:0}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub pre,.hs.hd-redesign.vg-app .hd-chat-message .hs-bub .md-table-wrap{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-ava{width:24px;height:24px;min-width:24px;align-self:flex-start}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-who{margin:0 0 4px;padding-left:34px;font-size:12px;line-height:18px}
+.hd-message-role{color:var(--hd-faint);font-size:12px;font-weight:400}
+.hs.hd-redesign.vg-app .hd-chat-message .hd-message-meta,.hs.hd-redesign.vg-app .wsd-assistant-draft .hd-message-meta{padding:4px 0 0;font-size:11px;line-height:16px;min-height:0}
+.hs.hd-redesign.vg-app .hd-chat-message.has-author:not(.is-user) .hd-message-meta{padding-left:34px}
+.hd-time-separator{display:flex;justify-content:center;margin:20px 0 16px;color:var(--hd-faint);font-size:11.5px;line-height:18px}
+.hs.hd-redesign.vg-app .wsd-assistant-draft .hs-msg{margin:0}.hs.hd-redesign.vg-app .wsd-assistant-draft .hs-bub{max-width:760px;border:0;border-radius:16px;background:var(--hd-sunk);font-size:14px;line-height:22px;padding:10px 14px}
+.hs.hd-redesign.vg-app .hd-chat-message.is-user .hd-message-actions{right:6px}
+
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub pre,.hs.hd-redesign.vg-app .hd-chat-message .hs-bub pre code{white-space:pre;overflow-wrap:normal;word-break:normal}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub table{width:100%;border-collapse:collapse}
+
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub pre,.hs.hd-redesign.vg-app .hd-chat-message .hs-bub pre code{font-size:inherit;line-height:inherit}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub .md:has(table){overflow-x:auto}
+.hs.hd-redesign.vg-app .hd-chat-message .hs-bub table{display:table;min-width:100%;width:100%}

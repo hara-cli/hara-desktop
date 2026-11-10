@@ -49,6 +49,21 @@ if (scenario === 'sidebar-polish') {
   }
   localStorage.setItem('hara.roster.A', JSON.stringify({ 'person-2': { muted: true } }));
 }
+if (scenario === 'message-polish') {
+  const snapshot = snapshots.get('A:person-0')!, start = Date.now() - 3*60*60*1000;
+  const at = (minutes:number) => new Date(start + minutes*60000).toISOString();
+  snapshot.conversation.state = snapshot.conversation.taskState = 'completed';
+  snapshot.conversation.history = [
+    {role:'user',content:'Please compare the synthetic release checks.',createdAt:at(0)},
+    {role:'assistant',text:'The synthetic checks are ready. Two follow-up notes remain.',tools:[],createdAt:at(1)},
+    {role:'assistant',text:'| Check | Result |\n| --- | --- |\n| Layout | Passed |\n| Keyboard | Passed |',tools:[],createdAt:at(2)},
+    {role:'assistant',text:'```ts\nconst syntheticReceipt = "' + 'bounded-local-code-'.repeat(14) + '";\n```',tools:[],createdAt:at(33)},
+    {role:'user',content:'Keep this long synthetic request in a bounded bubble. '.repeat(9),createdAt:at(34)},
+    {role:'assistant',text:'**Ready for review.** This reply has a [synthetic link](https://example.invalid/receipt) and readable paragraph spacing.\n\n- Check the two themes.\n- Keep keyboard actions reachable.',tools:[],createdAt:at(35)},
+  ];
+  (window as any).__HARA_COPIED_MESSAGES__=[];
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(text:string)=>{(window as any).__HARA_COPIED_MESSAGES__.push(text);}}});
+}
 if(productionFixture) snapshots.get('A:main')!.conversation.history = Array.from({length:24},(_,index)=>index%2
   ? {role:'assistant' as const,text:`Native settings scroll reply ${index}`,tools:[],createdAt:stamp(24-index)}
   : {role:'user' as const,content:`Native settings scroll message ${index}`,createdAt:stamp(24-index)});
@@ -148,7 +163,7 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
   return result as T;
 }};
 const model=new WorkspaceDevModel(rpc,()=>crypto.randomUUID(),!productionFixture,productionFixture?'workspace':'synthetic');
-await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat')await model.selectAgent('person-0');
+await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat'||scenario==='message-polish')await model.selectAgent('person-0');
 (window as any).__HARA_SHELL_FIXTURE__={model,calls,setFailure(method:string,enabled:boolean){if(enabled)failures.add(method);else failures.delete(method);},async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
   async backgroundActivity(agentId:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text:'',tools:['synthetic-background'],createdAt:new Date().toISOString()},{role:'tool',results:[{id:'synthetic-background',name:'synthetic',content:'Synthetic background receipt',isError:false}]});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();model.invalidateOverview();await model.refresh();},
   channelSlow(value:boolean){slowChannel=value;},channelLoseAck(){unknownChannelAck=true;},

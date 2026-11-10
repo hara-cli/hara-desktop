@@ -177,6 +177,6 @@ test("authentication failures check account access without requiring a new local
 
 test("brief hidden tool metadata keeps a continuous sender while visible cards separate it",()=>{
  const history=[{role:"assistant",text:"First visible reply",tools:["workspace_read"]},{role:"tool",results:[{id:"call",name:"workspace_read",content:"Synthetic read",isError:false}]},{role:"assistant",text:"Second visible reply",tools:[]}];
- const render=detailed=>renderToStaticMarkup(React.createElement(module.exports.Transcript,{history,t:makeT("en"),detailed}));
+ const render=detailed=>renderToStaticMarkup(React.createElement(module.exports.Transcript,{history,t:makeT("en"),detailed,showAuthor:true}));
  assert.equal((render(false).match(/class="hs-who"/g)??[]).length,1);assert.equal((render(true).match(/class="hs-who"/g)??[]).length,2);
 });

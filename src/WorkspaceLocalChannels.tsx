@@ -1,3 +1,4 @@
+import { userVisibleText } from "./user-visible-text";
 import { WorkspaceUserQuestion } from "./WorkspaceUserQuestion";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { HashtagIcon, MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -114,7 +115,7 @@ export function channelHistoryRows(snapshot: LocalChannelSnapshot): ChannelHisto
   });
 }
 export function LocalChannelThread({ view, colleagues, t, retry, transcript, approval, model, scrollRoot, onFollowChange, onRepair, disabled = false }: { view: LocalChannelsView; colleagues: WorkspaceDevAgent[]; t: Translate; retry: () => void;
-  transcript: (messages: WorkspaceDevMessage[], agent?: WorkspaceDevAgent) => ReactNode; approval: (card: WorkspaceDevApproval) => ReactNode;
+  transcript: (messages: WorkspaceDevMessage[], agent?: WorkspaceDevAgent, previousMessageAt?: string) => ReactNode; approval: (card: WorkspaceDevApproval) => ReactNode;
   model?: Pick<WorkspaceLocalChannelsModel, "setHistoryAnchor"> & Partial<Pick<WorkspaceLocalChannelsModel, "answer" | "pauseQuestion" | "supportsUserQuestions" | "supportsPass" | "supportsQueue" | "supportsAutonomy" | "speakPassed" | "setRecipients">>; onRepair?: () => void; disabled?: boolean; scrollRoot?: RefObject<HTMLDivElement | null>; onFollowChange?: (following: boolean) => void }) {
   const channel = view.channel, rows = useMemo(() => channel ? channelHistoryRows(channel) : [], [channel]);
   const anchor = view.historyAnchor ?? null, page = useMemo(() => channelHistoryPage(rows, anchor), [rows, anchor]);
@@ -144,6 +145,7 @@ export function LocalChannelThread({ view, colleagues, t, retry, transcript, app
   const actionLocked = disabled || view.saving || Boolean(view.pending) || Boolean(view.queueAction) || view.queueUnknown === true
     || (!queueSupported && ["running", "draining"].includes(channel?.state ?? "")) || (queueSupported && (channel?.pendingCount ?? 0) >= 5);
   const rendered = useMemo(() => {
+    let previousMessageAt: string | undefined;
     const visible = new Map<string, ChannelHistoryRow[]>();
     for (const row of page.rows) { const group = visible.get(row.turnId); if (group) group.push(row); else visible.set(row.turnId, [row]); }
     return [...visible].map(([turnId, items]) => <section className="hs-channel-turn" key={turnId} aria-label={t("ws.channels.local")}>
@@ -164,7 +166,9 @@ export function LocalChannelThread({ view, colleagues, t, retry, transcript, app
         const agent = current ? { ...current, identity: { ...current.identity, displayName: group.displayName } } : group.agentId ? {
           agentId: group.agentId, kind: "colleague" as const, state: "archived", identity: { displayName: group.displayName }, runtime: { id: "pi", label: "Pi", available: false },
         } : undefined;
-        return <div key={row.id} data-channel-speaker={group.agentId ?? "user"} data-channel-history-id={row.id}>{autonomySupported && row.proactive ? <span className="hs-channel-proactive" data-channel-proactive="true">{t("ws.channels.proactive")}</span> : null}{transcript(group.history, agent)}</div>;
+        const before = previousMessageAt;
+        for (const message of group.history) if (message.role !== "tool" && userVisibleText(message.role === "user" ? message.content : message.text).trim() && message.createdAt && Number.isFinite(Date.parse(message.createdAt))) previousMessageAt = message.createdAt;
+        return <div key={row.id} data-channel-speaker={group.agentId ?? "user"} data-channel-history-id={row.id}>{autonomySupported && row.proactive ? <span className="hs-channel-proactive" data-channel-proactive="true">{t("ws.channels.proactive")}</span> : null}{transcript(group.history, agent, before)}</div>;
       })}
     </section>);
   }, [page, colleaguesById, transcript, t, autonomySupported, passSupported, actionLocked, model, channel, view.scope, view.historyAnchor]);

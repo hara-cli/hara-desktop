@@ -33,7 +33,7 @@ test("the actual transcript renders one localized disclosure and preserves escap
   for (const [locale, label] of [["en", "3 operations · "], ["zh-Hans", "3 个操作 · "], ["zh-Hant", "3 個操作 · "]]) {
     const render = detailed => renderToStaticMarkup(createElement(module.exports.Transcript, { history, t: makeT(locale), detailed }));
     const html = render(false);
-    assert.equal((html.match(/<details/g) ?? []).length, 1); assert.equal(html.includes(label), true);
+    assert.equal((html.match(/<details class="wsd-execution"/g) ?? []).length, 1); assert.equal(html.includes(label), true);
     assert.equal(html.includes('open=""'), false); assert.equal(html.includes('class="is-error"'), true);
     assert.equal(html.includes("&lt;script&gt;local only&lt;/script&gt;"), true); assert.equal(html.includes("<script>"), false);
     assert.equal(render(true).includes('open=""'), true);
