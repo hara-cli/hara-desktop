@@ -7,7 +7,7 @@ import { WorkspaceSidebarC, type SidebarEntry } from "./WorkspaceSidebarC";
 import { WorkspaceUndoToast, type UndoNotice } from "./WorkspaceUndoToast";
 import { redesignText } from "./desktop-redesign-copy";
 import { rosterConversationActivity, rosterGroupMembers, type RosterPreference } from "./workspace-roster";
-import { agentVisualTokens } from "./agent-visual";
+import { agentAvatarAccent } from "./agent-visual";
 import "./desktop-redesign.css";
 import type { WorkspaceMediaAccess } from "./workspace-media";
 import { isInternalUserText, userVisibleText } from "./user-visible-text";
@@ -575,7 +575,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const rosterEntries: SidebarEntry[] = [
     ...dmRows.map(row => ({ id: row.agent.agentId, kind: "colleague" as const, name: row.agent.identity.displayName, role: row.agent.identity.title ?? "", shortRole: row.agent.identity.shortTitle, needsYou: shell.waiting.filter(item => item.agentId === row.agent.agentId).length, preview: row.preview, timestamp: row.timestamp, order: row.order, unread: shell.activity[row.agent.agentId]?.unread ?? 0, agent: row.agent })),
     ...(channelView.catalog?.channels ?? []).map(row => { const timestamp = row.lastMessageAt ?? row.createdAt, key = `channel:${row.id}`, read = activeRosterPrefs[key]?.readCount;
-      return { id: key, kind: "group" as const, name: row.name, role: r(row.memberIds.length === 1 ? "groupMember" : "groupMembers", { n: row.memberIds.length }), members: rosterGroupMembers(row.memberIds.map(id => { const member = agents.find(agent => agent.agentId === id); return { id, accent: agentVisualTokens(id, member ? { ...member.identity, version: 1, source: "derived" } : undefined).accent }; }), groupSpeakers.scope === scope ? groupSpeakers.ids[row.id] : []), preview: row.activityAvailable === false ? r("activityUnavailable") : row.preview || r("noMessages"), timestamp, order: Date.parse(timestamp) || 0,
+      return { id: key, kind: "group" as const, name: row.name, role: r(row.memberIds.length === 1 ? "groupMember" : "groupMembers", { n: row.memberIds.length }), members: rosterGroupMembers(row.memberIds.map(id => { const member = agents.find(agent => agent.agentId === id); return { id, accent: agentAvatarAccent(id, member?.identity) }; }), groupSpeakers.scope === scope ? groupSpeakers.ids[row.id] : []), preview: row.activityAvailable === false ? r("activityUnavailable") : row.preview || r("noMessages"), timestamp, order: Date.parse(timestamp) || 0,
         unread: inChannel && channelView.channelId === row.id ? 0 : typeof read === "number" && typeof row.messageCount === "number" ? Math.max(0, row.messageCount - read) : 0 }; }),
   ];
   useEffect(() => {

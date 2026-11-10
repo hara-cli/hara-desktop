@@ -40,6 +40,7 @@ for (const workspaceId of ['A','B']) for (const [index,agent] of agents.entries(
 if (scenario === 'sidebar-polish') {
   for (const agent of agents) {
     if (agent.agentId === 'person-0') Object.assign(agent.identity, { displayName: 'Alexandra Synthetic Long Name', title: 'Responsible for synthetic interface verification', shortTitle: 'Reviewer', accent: '#438db3' });
+    if (agent.agentId === 'person-3') Object.assign(agent.identity, { character: 'specialist' });
     if (agent.agentId === 'person-1') Object.assign(agent.identity, { displayName: '林安', title: 'Operations', accent: '#4f9c8f' });
   }
   for (const snapshot of snapshots.values()) {

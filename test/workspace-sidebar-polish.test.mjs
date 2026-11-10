@@ -82,8 +82,8 @@ test("composite group avatars retain stable member colours and order recent spea
 test("imported dark or malformed avatar colours fall back to this colleague's stable palette colour", () => {
   for (const id of ["fixture-a", "fixture-b"]) {
     const fallback = agentVisualTokens(id).accent;
-    for (const value of [undefined, null, 42, "invalid", "#333333", "#000000", "#ffffff", "#438db3; color: red"]) assert.equal(agentAvatarAccent(id, value), fallback);
-    assert.equal(agentAvatarAccent(id, "#438DB3"), "#438db3");
+    for (const value of [undefined, null, 42, "invalid", "#333333", "#000000", "#ffffff", "#438db3; color: red"]) assert.equal(agentAvatarAccent(id, { accent: value }), fallback);
+    assert.equal(agentAvatarAccent(id, { accent: "#438DB3" }), "#438db3");
   }
 });
 test("full titles get a tooltip only when omitted; groups and main Hara only need one for a truncated name", () => {
@@ -114,4 +114,16 @@ test("main selection, uploaded avatars and preview descriptions remain accessibl
   const uploaded = render({ entries: [{ ...entry, agent: { ...agent, identity: { ...agent.identity, avatar: "/avatars/synthetic.png" } } }] });
   assert.match(uploaded, /<img src="\/avatars\/synthetic.png" alt=""\/>/u);
   assert.match(uploaded, /class="hd-visually-hidden">No messages yet/u);
+});
+
+test("character-only identities keep the same palette colour in private rows, group tiles and portraits", () => {
+  for (let index = 0; index < 50; index++) {
+    const id = `salted-${index}`, identity = { displayName: "Synthetic specialist", character: "specialist" };
+    const expected = agentVisualTokens(id, identity).accent;
+    const html = render({ entries: [
+      { ...entry, id, name: identity.displayName, agent: { ...agent, agentId: id, identity } },
+      { ...entry, id: `channel:${index}`, kind: "group", agent: undefined, members: [{ id, accent: expected }] },
+    ] });
+    assert.equal((html.match(new RegExp(`background:${expected}`, "gu")) ?? []).length, 2, id);
+  }
 });

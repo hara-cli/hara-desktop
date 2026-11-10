@@ -88,7 +88,9 @@ export function renderableAgentAvatar(identity?: AgentPublicIdentity): string | 
 }
 
 /** Sidebar initials use dark ink; imported accents must use the contrast-verified palette. */
-export function agentAvatarAccent(agentRef: string, accent?: unknown): string {
-  const value = typeof accent === "string" ? accent.trim().toLowerCase() : "";
-  return PALETTES.some(palette => palette.accent === value) ? value : agentVisualTokens(agentRef).accent;
+export function agentAvatarAccent(agentRef: string, identity?: Pick<AgentPublicIdentity, "accent" | "character">): string {
+  const value = typeof identity?.accent === "string" ? identity.accent.trim().toLowerCase() : "";
+  return PALETTES.some(palette => palette.accent === value) ? value : agentVisualTokens(agentRef, {
+    ...identity, version: 1, source: "derived", displayName: agentRef, accent: undefined,
+  }).accent;
 }

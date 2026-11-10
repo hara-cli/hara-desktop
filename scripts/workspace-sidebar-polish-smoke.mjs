@@ -131,6 +131,8 @@ try {
     assert.equal(await evaluate(`document.querySelector('${row('person-4')} .hd-row-preview').textContent`),redesignText(locale,'noMessages'));
     assert.ok(await evaluate(`!!document.querySelector('${row('person-2')} .hd-unread-dot')`));
     assert.equal(await evaluate(`document.querySelectorAll('.hd-group-avatar').length`),4);
+    assert.ok(await evaluate(`(()=>{const avatar=document.querySelector('[data-group-id="00000000-0000-4000-8000-000000000004"] .hd-group-avatar i:last-child'),person=document.querySelector('[data-roster-id="person-3"] .hd-colleague-avatar');return getComputedStyle(avatar).backgroundColor===getComputedStyle(person).backgroundColor})()`),'Character-only colleague has the same colour in a private row and group');
+
     await capture(`s3-${locale}-${theme}-${width}`);
     receipts.push({width,locale,theme,geometry:measured});
   }
@@ -157,6 +159,9 @@ try {
   const firstMemberColour=`getComputedStyle(document.querySelector('${groupRow} .hd-group-avatar i')).backgroundColor`;
   const writerColour=await evaluate(`getComputedStyle(document.querySelector('${row('person-3')} .hd-colleague-avatar')).backgroundColor`);
   await ready(`${firstMemberColour}===${JSON.stringify(writerColour)}`,'Most recent group speaker moves to the first avatar tile');
+  const expectedColours=await evaluate(`["person-3","person-0","person-1","person-2"].map(id=>getComputedStyle(document.querySelector('[data-roster-id="'+id+'"] .hd-colleague-avatar')).backgroundColor)`);
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('${groupRow} .hd-group-avatar i')].map(node=>getComputedStyle(node).backgroundColor)`),expectedColours,'Full member order changes even if two colleagues happen to share a colour');
+
   await click(row('person-0'));
   assert.equal(await evaluate(firstMemberColour),writerColour,'Leaving the group retains observed speaker order');
 
