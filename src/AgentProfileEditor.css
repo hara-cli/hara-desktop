@@ -312,5 +312,6 @@
 .hd-profile-identity>div{display:grid;gap:4px;min-width:0}
 .hd-profile-identity strong,.hd-profile-identity>div>span{overflow-wrap:anywhere}
 .hd-profile-avatar{border:0;background:none;padding:0;width:48px;height:48px;border-radius:50%;cursor:pointer}
-.hd-profile-avatar .hd-colleague-avatar{width:48px;height:48px;font-size:16px}
+.hd-profile-avatar-static{display:grid;place-items:center;width:48px;height:48px}
+.hd-profile-avatar .hd-colleague-avatar,.hd-profile-avatar-static .hs-ava{width:48px;height:48px;font-size:16px}
 .hd-profile-avatar:focus-visible{outline:2px solid var(--chat-accent-deep,var(--hara-brand-primary));outline-offset:3px}

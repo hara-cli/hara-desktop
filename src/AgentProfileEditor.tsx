@@ -18,6 +18,7 @@ export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
   agent: WorkspaceDevAgent; locale: ShellLocale; onClose(): void;
   onSave(profile: WorkspaceAgentProfilePatch): Promise<void>;
 }) {
+  const canEditAvatar = agent.kind !== "main";
   const [displayName, setDisplayName] = useState(agent.identity.displayName);
   const [title, setTitle] = useState(agent.identity.title ?? "");
   const [emoji, setEmoji] = useState(agent.identity.emoji ?? "");
@@ -27,7 +28,7 @@ export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
   const imageVersion = useRef(0), imageRequest = useRef<AbortController | null>(null), form = useRef<HTMLDivElement>(null);
   const authority = useRef({ id: agent.agentId, revision: agent.configRevision, epoch: agent.agentEpoch });
   const original = useRef({ displayName: agent.identity.displayName, title: agent.identity.title ?? "", emoji: agent.identity.emoji ?? "", avatar: agent.identity.avatar ?? "" });
-  const changed = displayName.trim() !== original.current.displayName || title.trim() !== original.current.title || emoji.trim() !== original.current.emoji || avatar !== original.current.avatar;
+  const changed = displayName.trim() !== original.current.displayName || title.trim() !== original.current.title || emoji.trim() !== original.current.emoji || (canEditAvatar && avatar !== original.current.avatar);
   const stale = authority.current.id !== agent.agentId || authority.current.revision !== agent.configRevision || authority.current.epoch !== agent.agentEpoch;
   useEffect(() => () => { imageVersion.current++; imageRequest.current?.abort(); }, []);
   const t = makeT(locale);
@@ -42,13 +43,14 @@ export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
       if (displayName.trim() !== original.current.displayName) patch.displayName = displayName.trim();
       if (title.trim() !== original.current.title) patch.title = title.trim();
       if (emoji.trim() !== original.current.emoji) patch.emoji = emoji.trim();
-      if (avatar !== original.current.avatar) patch.avatar = avatar;
+      if (canEditAvatar && avatar !== original.current.avatar) patch.avatar = avatar;
       await onSave(patch); onClose();
     }
     catch (cause) { setError(workspaceMessageText(t, cause instanceof Error ? cause.message : String(cause))); }
     finally { setBusy(false); }
   };
   const pickImage = async (file: File) => {
+    if (!canEditAvatar) return;
     const version = ++imageVersion.current; imageRequest.current?.abort(); const request = new AbortController(); imageRequest.current = request; setImageBusy(true); setError("");
     try { const prepared = await prepareAgentAvatar(file, request.signal); if (imageVersion.current === version) setAvatar(prepared); }
     catch (cause) { if (imageVersion.current === version) setError(cause instanceof AvatarImageError && cause.code === "tooLarge" ? t("ws.profileSheet.avatarTooLarge")
@@ -59,14 +61,16 @@ export function WorkspaceAgentProfileSheet({ agent, locale, onClose, onSave }: {
   return <ShellDialog label={t("ws.profileSheet.title")} className="agent-profile-editor workspace-profile-sheet" onClose={close} dismissOnBackdrop workspaceOverlay>
     <header><h2>{t("ws.profileSheet.title")}</h2><button type="button" className="hs-icon" aria-label={t("ws.close")} disabled={busy} onClick={close}><IconClose /></button></header>
     <div className="agent-profile-form" ref={form}>
-      <div className="workspace-profile-avatar-preview"><WorkspaceAgentAvatar agent={previewAgent} large /><p>{r("avatarSquareHint")}</p></div>
+      <div className="workspace-profile-avatar-preview"><WorkspaceAgentAvatar agent={previewAgent} large /><p>{r(canEditAvatar ? "avatarSquareHint" : "mainAvatarFixed")}</p></div>
       <label>{t("ws.profileSheet.displayName")}<input value={displayName} readOnly={busy} maxLength={64} onChange={event => setDisplayName(event.target.value)} /></label>
       <label>{t("ws.profileSheet.role")}<input value={title} readOnly={busy} maxLength={80} onChange={event => setTitle(event.target.value)} /></label>
       <label>{t("ws.profileSheet.emoji")}<input value={emoji} readOnly={busy} maxLength={24} onChange={event => setEmoji(event.target.value)} /></label>
-      <label>{t("ws.profileSheet.imageAvatar")}<input type="file" accept="image/png,image/jpeg" disabled={busy} onChange={event => {
-        const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void pickImage(file);
-      }} /></label>
-      {avatar ? <button type="button" className="hs-btn sec" disabled={busy} onClick={() => { imageVersion.current++; imageRequest.current?.abort(); setImageBusy(false); setAvatar(""); setError(""); }}>{t("ws.profileSheet.avatarRemove")}</button> : null}
+      {canEditAvatar ? <>
+        <label>{t("ws.profileSheet.imageAvatar")}<input type="file" accept="image/png,image/jpeg" disabled={busy} onChange={event => {
+          const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void pickImage(file);
+        }} /></label>
+        {avatar ? <button type="button" className="hs-btn sec" disabled={busy} onClick={() => { imageVersion.current++; imageRequest.current?.abort(); setImageBusy(false); setAvatar(""); setError(""); }}>{t("ws.profileSheet.avatarRemove")}</button> : null}
+      </> : null}
       {imageBusy ? <p role="status">{r("avatarImagePreparing")}</p> : null}
       {stale ? <p role="status">{r("profileChanged")}</p> : null}
       {error ? <p role="alert">{error}</p> : null}

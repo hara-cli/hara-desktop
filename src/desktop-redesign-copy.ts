@@ -53,6 +53,7 @@ const copy = {
   manage: ["管理", "Manage", "管理"], hideManage: ["收起管理", "Hide Manage Panel", "收起管理"], advanced: ["高级", "Advanced", "進階"],
   engine: ["引擎与模型", "Engine & Model", "引擎與模型"], memory: ["记忆", "Memory", "記憶"], permissions: ["执行权限", "Permissions", "執行權限"],
   avatarSquareHint: ["PNG 或 JPG，128 KB 以内；图片会居中裁成方形。", "PNG or JPG, up to 128 KB. Images are cropped to a centred square.", "PNG 或 JPG，128 KB 以內；圖片會置中裁成正方形。"],
+  mainAvatarFixed: ["主 Hara 使用固定品牌头像。", "Main Hara uses the fixed brand avatar.", "主 Hara 使用固定品牌頭像。"],
   avatarImageFormat: ["请选择 PNG 或 JPG 图片。", "Choose a PNG or JPG image.", "請選擇 PNG 或 JPG 圖片。"],
   avatarImageDimensions: ["图片尺寸太大，请选择较小的图片。", "Image dimensions are too large. Choose a smaller image.", "圖片尺寸太大，請選擇較小的圖片。"],
   avatarImagePreparing: ["正在裁剪图片…", "Cropping image…", "正在裁剪圖片…"],

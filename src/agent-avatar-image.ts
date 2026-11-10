@@ -15,6 +15,37 @@ export function squareAvatarCrop(width: number, height: number) {
   return { x: (width - side) / 2, y: (height - side) / 2, side, output: Math.min(256, side) };
 }
 
+/** Inspect declared dimensions before handing compressed bytes to the browser decoder. */
+export function avatarImageDimensions(bytes: Uint8Array): { width: number; height: number } {
+  const mime = avatarImageMime(bytes);
+  if (!mime) throw new AvatarImageError("format");
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const bounded = (width: number, height: number) => { squareAvatarCrop(width, height); return { width, height }; };
+  if (mime === "image/png") {
+    if (bytes.length < 33 || view.getUint32(8) !== 13 || bytes[12] !== 73 || bytes[13] !== 72 || bytes[14] !== 68 || bytes[15] !== 82) throw new AvatarImageError("decode");
+    return bounded(view.getUint32(16), view.getUint32(20));
+  }
+  let offset = 2;
+  while (offset < bytes.length) {
+    if (bytes[offset++] !== 0xff) break;
+    while (offset < bytes.length && bytes[offset] === 0xff) offset++;
+    if (offset >= bytes.length) break;
+    const marker = bytes[offset++];
+    // There is no frame header after the entropy stream or end marker.
+    if (marker === 0 || marker === 0xd8 || marker === 0xd9 || marker === 0xda) break;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 2 > bytes.length) break;
+    const length = view.getUint16(offset);
+    if (length < 2 || offset + length > bytes.length) break;
+    if (marker === 0xc0 || marker === 0xc2) {
+      if (length < 8 || bytes[offset + 7] < 1 || length < 8 + 3 * bytes[offset + 7]) break;
+      return bounded(view.getUint16(offset + 5), view.getUint16(offset + 3));
+    }
+    offset += length;
+  }
+  throw new AvatarImageError("decode");
+}
+
 /** Decodes only an explicitly selected, bounded PNG/JPEG. No URL, filesystem path or network read. */
 export async function prepareAgentAvatar(file: Pick<File, "size" | "arrayBuffer">, signal?: AbortSignal): Promise<string> {
   const active = () => { if (signal?.aborted) throw new DOMException("Avatar selection cancelled", "AbortError"); };
@@ -27,6 +58,7 @@ export async function prepareAgentAvatar(file: Pick<File, "size" | "arrayBuffer"
   if (bytes.length > MAX_AGENT_AVATAR_BYTES) throw new AvatarImageError("tooLarge");
   const mime = avatarImageMime(bytes);
   if (!mime) throw new AvatarImageError("format");
+  avatarImageDimensions(bytes);
   let binary = "";
   for (let start = 0; start < bytes.length; start += 8192) binary += String.fromCharCode(...bytes.subarray(start, start + 8192));
   const input = `data:${mime};base64,${btoa(binary)}`, image = new Image();
