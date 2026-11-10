@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { redesignText } from "../src/desktop-redesign-copy.ts";
 import { makeT } from "../src/i18n.ts";
 import { messageTimeSeparator, messageTimeLabel, messageShortRole } from "../src/conversation-message-layout.ts";
 const require=createRequire(import.meta.url);
@@ -35,4 +36,11 @@ test('group messages keep one author cue per consecutive block and accept the pr
 test('internal reminders and blank tool prose never acquire visible message actions or separators',()=>{
  const html=render({history:[{role:'user',content:'<system-reminder>PRIVATE</system-reminder>',createdAt:at(0)},{role:'assistant',text:'',tools:['synthetic'],createdAt:at(1)},{role:'tool',results:[{id:'synthetic',name:'read',content:'PRIVATE TOOL',isError:false}]}]});
  assert.doesNotMatch(html,/PRIVATE|hd-chat-message|hd-message-actions|hd-time-separator/u);
+});
+
+test('topic reply stays absent in every locale until the host contract is wired',()=>{
+ for(const locale of ['en','zh-Hans','zh-Hant']){
+  const html=render({locale,t:makeT(locale)});
+  assert.equal(html.includes(redesignText(locale,'replyInTopic')),false,'No visible or accessible topic reply action without onReply');
+ }
 });

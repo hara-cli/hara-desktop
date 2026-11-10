@@ -12,7 +12,7 @@ import { rosterConversationActivity, rosterGroupMembers, type RosterPreference }
 import { agentAvatarAccent } from "./agent-visual";
 import "./desktop-redesign.css";
 import type { WorkspaceMediaAccess } from "./workspace-media";
-import { isInternalUserText, userVisibleText } from "./user-visible-text";
+import { userVisibleText } from "./user-visible-text";
 import type { AgentRuntimeId } from "./client";
 import { WorkspaceContextCompaction } from "./WorkspaceContextCompaction";
 import type { ContextCompactionView } from "./context-compaction";
@@ -233,7 +233,7 @@ export function Transcript({ history, agent, t, media, onOpenAgent, locale = "en
 /** A server render has no live view or paint evidence. */
 const emptyAssistantPreviewSnapshot = () => null;
 /** Preview owns its subscription so a prose batch does not rerender the full transcript. */
-export function AssistantDraft({ model, t, follow }: { model: WorkspaceDevModel; agent?: WorkspaceDevAgent; t: Translate; follow(): void }) {
+export function AssistantDraft({ model, t, follow }: { model: WorkspaceDevModel; t: Translate; follow(): void }) {
   const preview = useSyncExternalStore(model.subscribeAssistantPreview, model.getAssistantPreviewSnapshot, emptyAssistantPreviewSnapshot);
   const bubble = useRef<HTMLDivElement>(null), painted = useRef<string | null>(null);
   useLayoutEffect(() => { if (preview) follow(); }, [preview?.seq, follow]);
@@ -694,7 +694,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
             <Transcript media={model} locale={locale} onOpenAgent={id => { if (agents.some(row => row.agentId === id && row.state === "active")) void openAgent(id); }} history={workspace.conversation.history.slice(view.localHistoryStart)} agent={agent} t={t} detailed={theme.settings?.executionDetails === "detailed" && theme.settings?.collapseDetails === false}
               conversation={workspace.conversation} compactions={workspace.conversation.contextCompactions} messageTimings={workspace.conversation.messageTimings} alwaysShowTimingDiagnostics={theme.settings?.alwaysShowTimingDiagnostics === true} stages={stageReports} historyOffset={view.localHistoryStart} onExportStage={exportStageReport} stageDisabled={Boolean(disconnected) || view.loading} />
             <WorkspaceOptimisticMessage model={model} t={t} />
-            {!disconnected ? <AssistantDraft model={model} agent={agent} t={t} follow={followPreview} /> : null}
+            {!disconnected ? <AssistantDraft model={model} t={t} follow={followPreview} /> : null}
             {pendingSchedule?.scope === scope && pendingSchedule.agentId === agent?.agentId ? <section className="vg-chat-schedule-card" aria-label={t("ws.scheduleDraft.title")}>
               <header><strong>{t("ws.scheduleDraft.title")}</strong><small>{t("ws.scheduleDraft.colleague")} · {agent.identity.displayName}</small></header>
               <label>{t("ws.scheduleDraft.name")}<input maxLength={60} value={pendingSchedule.draft.name} disabled={scheduleBusy} onChange={(event) => setPendingSchedule({ ...pendingSchedule, draft: { ...pendingSchedule.draft, name: event.target.value } })} /></label>

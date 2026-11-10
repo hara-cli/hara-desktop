@@ -1,3 +1,5 @@
+import { rosterShortRole } from "./workspace-roster.ts";
+
 const HALF_HOUR = 30 * 60 * 1000;
 function time(value?: string): number | null {
   const parsed = Date.parse(value ?? "");
@@ -19,8 +21,6 @@ export function messageTimeLabel(value: string, locale: string, now = new Date()
   if (day.getTime() === yesterday.getTime()) return `${locale.startsWith("zh") ? "昨天" : "Yesterday"} ${clock}`;
   return `${date.toLocaleDateString(locale, { month: "short", day: "numeric", ...(date.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) })} ${clock}`;
 }
-export function messageShortRole(identity?: { title?: string }): string {
-  const short = identity && "shortTitle" in identity && typeof identity.shortTitle === "string" ? identity.shortTitle : "";
-  const value = (short.trim() || identity?.title?.trim() || "").replace(/\s+/gu, " ");
-  return [...value].length <= 12 ? value : "";
+export function messageShortRole(identity?: { title?: string; shortTitle?: string }): string {
+  return rosterShortRole(identity?.title ?? "", identity?.shortTitle);
 }
