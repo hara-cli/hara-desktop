@@ -56,7 +56,7 @@ test("Recent is shown only when pinned rows or folders sit above it", () => {
 });
 
 test("roster rows use 44px with 2px between rows instead of separators", () => {
-  assert.match(css, /\.hs\.hd-redesign\.vg-app \.hd-sidebar \.hd-roster-row\{height:44px;min-height:44px;padding:5px 8px\}/u);
-  assert.match(css, /\.hs\.hd-redesign\.vg-app \.hd-sidebar \.hd-roster-row \.hd-row-text\{gap:2px\}/u);
+  assert.match(css, /\.hs\.hd-redesign\.vg-app \.hd-sidebar \.hd-roster-row\{box-sizing:border-box;height:44px;min-height:44px;padding:4px 8px;gap:10px\}/u);
+  assert.match(css, /\.hs\.hd-redesign\.vg-app \.hd-sidebar \.hd-roster-row \.hd-row-text\{gap:0\}/u);
   assert.match(css, /\.hd-row-wrap\+\.hd-row-wrap\{margin-top:2px\}/u);
 });

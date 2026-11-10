@@ -6,7 +6,8 @@ import { conversationMarkdown, findTranscriptMatch } from "./workspace-conversat
 import { WorkspaceSidebarC, type SidebarEntry } from "./WorkspaceSidebarC";
 import { WorkspaceUndoToast, type UndoNotice } from "./WorkspaceUndoToast";
 import { redesignText } from "./desktop-redesign-copy";
-import type { RosterPreference } from "./workspace-roster";
+import { rosterConversationActivity, rosterGroupMembers, type RosterPreference } from "./workspace-roster";
+import { agentVisualTokens } from "./agent-visual";
 import "./desktop-redesign.css";
 import type { WorkspaceMediaAccess } from "./workspace-media";
 import { isInternalUserText, userVisibleText } from "./user-visible-text";
@@ -518,11 +519,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const dialogCard = approvalDialog?.scope === scope ? liveApprovals.find(card => card.id === approvalDialog.id) : undefined;
   const dmRows = useMemo(() => colleagues.map(row => {
     const snapshot = shell.snapshots.find(value => value.selectedAgentId === row.agentId);
-    const last = snapshot ? [...snapshot.conversation.history].reverse().find(message => message.role === "assistant" || message.role === "user" && !isInternalUserText(message.content)) : undefined;
-    const timestamp = snapshot?.conversation.updatedAt ?? last?.createdAt;
-    return { agent: row, preview: last?.role === "user" ? userVisibleText(last.content) : last?.role === "assistant" ? last.text : "", timestamp,
-      order: Date.parse(timestamp ?? "") || shell.activity[row.agentId]?.observedAt || 0 };
-  }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity, t]);
+    const last = rosterConversationActivity(snapshot?.conversation.history ?? []);
+    return { agent: row, preview: last.preview, timestamp: last.timestamp,
+      order: Date.parse(last.timestamp ?? "") || shell.activity[row.agentId]?.observedAt || 0 };
+  }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity]);
   const closeSettings = () => { setSettings(false); };
   const openSettingsPage = (page: SettingsPage) => { setSettingsPage(page); setSettings(true); };
   const modalOpen = settings || creating || !!workspaceRename || !!channelDialog || !!rosterMove || approvalDialog?.scope === scope || archiveConfirm?.scope === scope;
@@ -560,10 +560,22 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     if (model.getSnapshot().workspaceId !== workspaceId) return;
     closeSettings(); navigate("chat"); model.setDraft(t("skillCreationPrompt"));
   };
+  // Keep only speaker identities in memory; leaving a group does not shuffle its avatar back.
+  const [groupSpeakers, setGroupSpeakers] = useState<{ scope: string; ids: Record<string, string[]> }>({ scope: "", ids: {} });
+  useEffect(() => {
+    const channel = channelView.channel;
+    if (!channel || channelView.scope !== scope) return;
+    const ids = [...new Set([...channel.messages].reverse().flatMap(row => row.agentId && rosterConversationActivity([row.message]).preview ? [row.agentId] : []))];
+    setGroupSpeakers(previous => {
+      const current = previous.scope === scope ? previous.ids : {};
+      if (JSON.stringify(current[channel.channel.id]) === JSON.stringify(ids)) return previous;
+      return { scope, ids: { ...current, [channel.channel.id]: ids } };
+    });
+  }, [channelView.channel, channelView.scope, scope]);
   const rosterEntries: SidebarEntry[] = [
-    ...dmRows.map(row => ({ id: row.agent.agentId, kind: "colleague" as const, name: row.agent.identity.displayName, role: row.agent.identity.title ?? "", preview: row.preview, timestamp: row.timestamp, order: row.order, unread: shell.activity[row.agent.agentId]?.unread ?? 0, agent: row.agent })),
+    ...dmRows.map(row => ({ id: row.agent.agentId, kind: "colleague" as const, name: row.agent.identity.displayName, role: row.agent.identity.title ?? "", shortRole: row.agent.identity.shortTitle, needsYou: shell.waiting.filter(item => item.agentId === row.agent.agentId).length, preview: row.preview, timestamp: row.timestamp, order: row.order, unread: shell.activity[row.agent.agentId]?.unread ?? 0, agent: row.agent })),
     ...(channelView.catalog?.channels ?? []).map(row => { const timestamp = row.lastMessageAt ?? row.createdAt, key = `channel:${row.id}`, read = activeRosterPrefs[key]?.readCount;
-      return { id: key, kind: "group" as const, name: row.name, role: r(row.memberIds.length === 1 ? "groupMember" : "groupMembers", { n: row.memberIds.length }), preview: row.activityAvailable === false ? r("activityUnavailable") : row.preview || r("noMessages"), timestamp, order: Date.parse(timestamp) || 0,
+      return { id: key, kind: "group" as const, name: row.name, role: r(row.memberIds.length === 1 ? "groupMember" : "groupMembers", { n: row.memberIds.length }), members: rosterGroupMembers(row.memberIds.map(id => { const member = agents.find(agent => agent.agentId === id); return { id, accent: agentVisualTokens(id, member ? { ...member.identity, version: 1, source: "derived" } : undefined).accent }; }), groupSpeakers.scope === scope ? groupSpeakers.ids[row.id] : []), preview: row.activityAvailable === false ? r("activityUnavailable") : row.preview || r("noMessages"), timestamp, order: Date.parse(timestamp) || 0,
         unread: inChannel && channelView.channelId === row.id ? 0 : typeof read === "number" && typeof row.messageCount === "number" ? Math.max(0, row.messageCount - read) : 0 }; }),
   ];
   useEffect(() => {
@@ -579,8 +591,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const menuAgent = workspace && rosterMenu?.workspaceId === workspace.workspaceId ? menuGroup ? { agentId: rosterMenu.agentId, kind: "colleague" as const, state: "active", identity: { displayName: menuGroup.name }, runtime: { id: "pi", label: "Pi", available: true } } : agents.find(row => row.agentId === rosterMenu?.agentId) : undefined;
   const folderOptions = [...new Set(Object.values(activeRosterPrefs).map(pref => pref.section).filter((value): value is string => Boolean(value)))].sort();
   const mainAgent = agents.find(row => row.kind === "main");
-  const mainSnapshot = shell.snapshots.find(row => row.selectedAgentId === mainAgent?.agentId), mainLast = mainSnapshot?.conversation.history[mainSnapshot.conversation.history.length - 1];
-  const mainPreview = mainLast?.role === "assistant" ? mainLast.text : mainLast?.role === "user" ? userVisibleText(mainLast.content) : r("orchestrator");
+  const mainSnapshot = shell.snapshots.find(row => row.selectedAgentId === mainAgent?.agentId);
+  const mainActivity = rosterConversationActivity(mainSnapshot?.conversation.history ?? []);
+  const mainEntry: SidebarEntry | undefined = mainAgent ? { id: mainAgent.agentId, kind: "colleague", name: mainAgent.identity.displayName, role: r("orchestrator"), preview: mainActivity.preview, timestamp: mainActivity.timestamp, order: 0,
+    unread: shell.activity[mainAgent.agentId]?.unread ?? 0, needsYou: shell.waiting.filter(item => item.agentId === mainAgent.agentId).length, agent: mainAgent } : undefined;
   const hideRoster = (target: WorkspaceDevAgent) => {
     const hidden = !activeRosterPrefs[target.agentId]?.hidden; updateRosterPref(target.agentId, { hidden });
     if (hidden) setUndoNotice({ id: ++toastCounter.current, scope, text: r("hiddenNotice", { name: target.identity.displayName }), undo: () => updateRosterPref(target.agentId, { hidden: false }) });
@@ -622,7 +636,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     if (model.getSnapshot().workspace?.selectedAgentId === target.agentId) { setBrowser(false); setInspector(true); setRenameAgentId(rename ? target.agentId : null); }
   };
   return <div className="hs wsd-app vg-app hd-redesign" lang={locale} data-platform={workspacePlatform()} data-workspace-mode={mode}><div className="hs-frame"><div className={`hs-win${browser ? " has-browser" : showColleagueInspector || showGroupInspector || showContextInspector ? " has-inspector" : ""}`}>
-    <WorkspaceSidebarC locale={locale} workspaceId={view.workspaceId} workspaceName={workspace?.label ?? t("vg.workspace")} directory={view.directory} main={mainAgent} mainPreview={mainPreview}
+    <WorkspaceSidebarC locale={locale} workspaceId={view.workspaceId} workspaceName={workspace?.label ?? t("vg.workspace")} directory={view.directory} main={mainAgent} mainPreview={mainActivity.preview} mainEntry={mainEntry}
       mainActive={route.section === "chat" && view.agentId === mainAgent?.agentId} selectedId={inChannel ? `channel:${channelView.channelId}` : route.section === "chat" ? view.agentId : null}
       rename={inlineRename ? { ...inlineRename, duplicate: agents.some(row => row.state === "active" && row.agentId !== inlineRename.id && row.identity.displayName.trim().toLocaleLowerCase() === inlineRename.name.trim().toLocaleLowerCase()) } : null}
       duplicateLabel={t("ws.approval.duplicateName")} onRenameChange={name => setInlineRename(previous => previous ? { ...previous, name } : null)} onRenameCommit={() => void commitRename()} onRenameCancel={() => setInlineRename(null)}

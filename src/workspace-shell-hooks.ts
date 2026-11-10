@@ -1,3 +1,4 @@
+import { rosterConversationActivity } from "./workspace-roster";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { applyDocumentLanguage, detectLocalePreference, makeT, normalizeLocale, resolveLocale, saveLocale, type LocalePreference } from "./i18n";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceTaskRecord } from "./workspace-dev-state";
@@ -69,8 +70,8 @@ export function useWorkspaceOverview(model: WorkspaceDevModel, workspace: Worksp
     const result: typeof activity = {};
     for (const row of snapshots) {
       const key = `${scope}:${row.selectedAgentId}`, history = row.conversation.history;
-      const last = [...history].reverse().find(message => message.role !== "tool");
-      const fingerprint = JSON.stringify([history.length, last]);
+      const last = rosterConversationActivity(history);
+      const fingerprint = last.fingerprint;
       const previous = observations.current.get(key), changed = previous && previous.fingerprint !== fingerprint;
       const observedAt = changed ? Date.now() : previous?.observedAt ?? 0;
       const unread = row.selectedAgentId === workspace?.selectedAgentId ? 0

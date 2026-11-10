@@ -8,6 +8,8 @@ const copy = {
   manageColleague: ["管理同事…", "Manage Colleague…", "管理同事…"], manageGroup: ["管理群…", "Manage Group…", "管理群組…"], manageHara: ["管理 Hara…", "Manage Hara…", "管理 Hara…"],
   hide: ["从侧栏隐藏", "Hide from Sidebar", "從側欄隱藏"], show: ["显示", "Show", "顯示"],
   deleteColleague: ["删除同事", "Delete Colleague", "刪除同事"], newSession: ["开新会话", "New Session", "開新對話"],
+  needsYouCount: ["{n} 项待你处理", "{n} items need your attention", "{n} 項待你處理"],
+  mutedUnread: ["已静音 · {n} 条未读", "Muted · {n} unread messages", "已靜音 · {n} 則未讀"],
   unreadCount: ["{n} 条未读", "{n} unread messages", "{n} 則未讀"],
   needsYou: ["待你处理", "Needs You", "待你處理"], pinned: ["置顶", "Pinned", "置頂"], recent: ["最近", "Recent", "最近"],
   hiddenCount: ["已隐藏 {n} 个", "{n} Hidden", "已隱藏 {n} 個"], hidden: ["已隐藏", "Hidden", "已隱藏"],

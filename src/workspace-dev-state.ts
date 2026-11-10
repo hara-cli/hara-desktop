@@ -28,7 +28,7 @@ export interface WorkspaceDevAgent { titleSource?: "default"; titleKey?: "core.n
   /** Core decision B: the stored tier cannot run on this Host platform until the user switches it. */
   permissionTierUnavailable?: true;
   archivedAt?: string; pausedScheduleCount?: number;
-  identity: { displayName: string; title?: string; emoji?: string; avatar?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
+  identity: { displayName: string; title?: string; shortTitle?: string; emoji?: string; avatar?: string; accent?: string; character?: string }; runtime: { id: string; label: string; available: boolean }; brand?: "hara" }
 export interface ColleagueCreateDraft { username: string; displayName: string; title: string; instructions: string;
   project: string; runtimeId: AgentRuntimeId; permissionTier: RuntimePermissionTier }
 export type WorkspaceDevApproval = { id: string; workspaceId: string; resourceGeneration: string; agentId: string; expiresAt: string;

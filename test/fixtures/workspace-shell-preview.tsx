@@ -37,6 +37,17 @@ for (const workspaceId of ['A','B']) for (const [index,agent] of agents.entries(
     ...(productionFixture ? {runtimes:{builtIn:'pi',options:[{runtimeId:'codex',label:'Local fixture',installed:true,registered:false,version:'0.0.0',state:'detected',generalAgentDriverAvailable:false,path:'/synthetic/codex',fingerprint:'fixture-fingerprint'},
       {runtimeId:'opencode',label:'Missing fixture',installed:false,registered:false,version:null,state:'not_installed',generalAgentDriverAvailable:false}],operations:[]}} : {}),approvals,conversation});
 }
+if (scenario === 'sidebar-polish') {
+  for (const agent of agents) {
+    if (agent.agentId === 'person-0') Object.assign(agent.identity, { displayName: 'Alexandra Synthetic Long Name', title: 'Responsible for synthetic interface verification', shortTitle: 'Reviewer', accent: '#438db3' });
+    if (agent.agentId === 'person-1') Object.assign(agent.identity, { displayName: '林安', title: 'Operations', accent: '#4f9c8f' });
+  }
+  for (const snapshot of snapshots.values()) {
+    if (['person-1','person-2'].includes(snapshot.selectedAgentId)) snapshot.conversation.unreadCount = 4;
+    if (snapshot.selectedAgentId === 'person-4') snapshot.conversation.history = [];
+  }
+  localStorage.setItem('hara.roster.A', JSON.stringify({ 'person-2': { muted: true } }));
+}
 if(productionFixture) snapshots.get('A:main')!.conversation.history = Array.from({length:24},(_,index)=>index%2
   ? {role:'assistant' as const,text:`Native settings scroll reply ${index}`,tools:[],createdAt:stamp(24-index)}
   : {role:'user' as const,content:`Native settings scroll message ${index}`,createdAt:stamp(24-index)});
@@ -66,6 +77,14 @@ if(params.get('reset')!=='0')localStorage.removeItem(channelStorageKey);
 const channelData: {catalogs:Record<string,LocalChannelCatalog>;snapshots:Record<string,LocalChannelSnapshot>} = JSON.parse(localStorage.getItem(channelStorageKey)??'null') ?? {
   catalogs:Object.fromEntries(['A','B'].map(workspaceId=>[workspaceId,{workspaceId,resourceGeneration:`g-${workspaceId}`,revision:0,channels:[]}])),snapshots:{},
 };
+if (scenario === 'sidebar-polish') {
+  const catalog = channelData.catalogs.A;
+  for (const size of [2,3,4,6]) {
+    const row = { id: `00000000-0000-4000-8000-00000000000${size}`, name: `Synthetic team ${size}`, memberIds: agents.filter(row => row.kind === 'colleague' && row.state === 'active').slice(0,size).map(row => row.agentId), createdAt: stamp(50+size), lastMessageAt: stamp(50+size), preview: 'Synthetic group receipt', messageCount: 1 };
+    catalog.channels.push(row);
+    channelData.snapshots[row.id] = { workspaceId:'A', resourceGeneration:'g-A', channel:row, revision:1, state:'completed', messages:[{id:'synthetic-group-message',turnId:'synthetic-group-turn',agentId:row.memberIds[0],displayName:'Synthetic colleague',createdAt:row.lastMessageAt,message:{role:'assistant',text:row.preview,tools:[]}}], turns:[], approvals:[] };
+  }
+}
 const persistChannels=()=>localStorage.setItem(channelStorageKey,JSON.stringify(channelData));
 const channelTimers=new Map<string,ReturnType<typeof setTimeout>>();
 let slowChannel=false,unknownChannelAck=false;
@@ -130,6 +149,7 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
 const model=new WorkspaceDevModel(rpc,()=>crypto.randomUUID(),!productionFixture,productionFixture?'workspace':'synthetic');
 await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat')await model.selectAgent('person-0');
 (window as any).__HARA_SHELL_FIXTURE__={model,calls,setFailure(method:string,enabled:boolean){if(enabled)failures.add(method);else failures.delete(method);},async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
+  async backgroundActivity(agentId:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text:'',tools:['synthetic-background'],createdAt:new Date().toISOString()},{role:'tool',results:[{id:'synthetic-background',name:'synthetic',content:'Synthetic background receipt',isError:false}]});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();model.invalidateOverview();await model.refresh();},
   channelSlow(value:boolean){slowChannel=value;},channelLoseAck(){unknownChannelAck=true;},
   async channelHistory(id:string,turns:LocalChannelSnapshot['turns'],messages:LocalChannelSnapshot['messages']){const snapshot=channelData.snapshots[id];snapshot.turns=turns;snapshot.messages=messages;snapshot.state='completed';snapshot.revision++;persistChannels();await model.refresh();},
   async channelIncoming(id:string,text:string){const snapshot=channelData.snapshots[id],turnId=crypto.randomUUID();snapshot.turns.push({id:turnId,state:'completed',replies:[]});snapshot.messages.push({id:turnId,turnId,agentId:null,displayName:'',createdAt:new Date().toISOString(),message:{role:'user',content:text}});snapshot.revision++;persistChannels();await model.refresh();},
