@@ -330,6 +330,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   else if (view.workspaceId !== retainedScope.current.workspaceId) retainedScope.current = { workspaceId: view.workspaceId ?? "", value: "" };
   const scope = retainedScope.current.value;
   const scopeRef = useRef(scope); scopeRef.current = scope;
+  const inspectorAgentId = agent?.agentId;
+  const consumeInspectorSettingsRequest = useCallback((serial: number) => {
+    setInspectorSettingsRequest(current => current && current.scope === scope && current.agentId === inspectorAgentId && current.serial === serial ? null : current);
+  }, [scope, inspectorAgentId]);
   useEffect(() => { setArchiveConfirm(null); }, [scope]);
   const hostChannelSelected = useRef(false);
   const activeRosterPrefs = rosterPrefsWorkspaceId === workspace?.workspaceId ? rosterPrefs : {};
@@ -762,7 +766,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
         {view.runtimeBlocked && !question && !busy ? <p role="status">{t("ws.runtimeAccess.runBlocked")} <button type="button" className="hs-btn sec" onClick={() => { if (view.agentId) { setInspectorSettingsRequest({ scope, agentId: view.agentId, serial: ++inspectorRequestSerial.current }); setInspector(true); } }}>{t("ws.runtimeAccess.openInspector")}</button></p> : null}
         {view.draft.trim() ? <p className="hs-hint"><span>{t("ws.composer.hint.keys")}</span></p> : null}</footer> : null}
     </main>
-    {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} extensionsModel={model} initialProfileOpen={renameAgentId === agent.agentId} settingsRequest={inspectorSettingsRequest?.scope === scope && inspectorSettingsRequest.agentId === agent.agentId ? inspectorSettingsRequest.serial : undefined} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); manageButton.current?.focus(); }} onRefresh={() => void refreshFeatures()}
+    {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} extensionsModel={model} initialProfileOpen={renameAgentId === agent.agentId} settingsRequest={inspectorSettingsRequest?.scope === scope && inspectorSettingsRequest.agentId === agent.agentId ? inspectorSettingsRequest.serial : undefined} onSettingsRequestConsumed={consumeInspectorSettingsRequest} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); manageButton.current?.focus(); }} onRefresh={() => void refreshFeatures()}
       listModels={listBotModels} listConnectionModels={listConnectionModels} connectionModelSupported={model.supportsConnectionModels?.() === true} permissionSupported={model.supportsRuntimePermissions?.() === true} onApplyPermissionTier={tier => model.setAgentPermissionTier(agent, tier)} onApplyRuntime={(runtimeId, sessionRestart) => model.setAgentRuntime(agent, runtimeId, sessionRestart)}
       onApplyModel={(runtimeId, modelId, revision, effort) => model.selectRuntimeModel(runtimeId, modelId, revision, effort)}
       onApplyConnectionModel={(connectionId, modelId, revision, effort) => model.selectConnectionModel(connectionId, modelId, revision, effort)}

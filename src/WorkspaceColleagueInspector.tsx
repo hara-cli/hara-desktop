@@ -16,7 +16,7 @@ import { WorkspaceAgentAvatar } from "./WorkspaceAgentAvatar";
 
 type Schedule = WorkspaceFeatureView["schedules"][number];
 
-export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, extensionsModel, initialProfileOpen = false, settingsRequest, onClose, onRefresh, onToggle, onSave, onDelete, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, permissionSupported = false, onApplyPermissionTier, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory, onConnections, onSaveProfile }: {
+export default function WorkspaceColleagueInspector({ agent, workspace, features, locale, error, inert, supported, extensionsModel, initialProfileOpen = false, settingsRequest, onSettingsRequestConsumed, onClose, onRefresh, onToggle, onSave, onDelete, listModels, listConnectionModels, connectionModelSupported, onApplyRuntime, permissionSupported = false, onApplyPermissionTier, onApplyModel, onApplyConnectionModel, onRescan, onRegisterRuntime, onRuntimeDirectory, onConnections, onSaveProfile }: {
   agent: WorkspaceDevAgent;
   workspace: WorkspaceDevSnapshot;
   features: WorkspaceFeatureView | null;
@@ -27,6 +27,7 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   extensionsModel?: WorkspaceDevModel;
   initialProfileOpen?: boolean;
   settingsRequest?: number;
+  onSettingsRequestConsumed?(serial: number): void;
   onClose(): void;
   onRefresh(): void;
   onToggle(schedule: Schedule): Promise<void>;
@@ -64,7 +65,11 @@ export default function WorkspaceColleagueInspector({ agent, workspace, features
   const [tab, setTab] = useState<Tab>(initialProfileOpen || settingsRequest !== undefined ? "settings" : "activity");
   const [settingsMounted, setSettingsMounted] = useState(initialProfileOpen || settingsRequest !== undefined);
   const activate = (next: Tab) => { if (next === "settings") setSettingsMounted(true); setTab(next); };
-  useEffect(() => { if (settingsRequest !== undefined) activate("settings"); }, [settingsRequest]);
+  useEffect(() => {
+    if (settingsRequest === undefined) return;
+    setSettingsMounted(true); setTab("settings");
+    onSettingsRequestConsumed?.(settingsRequest);
+  }, [settingsRequest, onSettingsRequestConsumed]);
   useLayoutEffect(() => { if (tab === "settings" && jumpToSchedule.current && scheduleTarget.current) { scheduleTarget.current.open = true; scheduleTarget.current.scrollIntoView({ block: "start" }); jumpToSchedule.current = false; } }, [tab, settingsMounted]);
 
   const run = async (action: () => Promise<void>) => {
