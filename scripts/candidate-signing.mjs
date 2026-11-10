@@ -259,6 +259,7 @@ export async function signFinal(c) {
       }
       const out = path.join(c.base, `final-output-${target}`); fs.mkdirSync(out, { mode: 0o700 });
       const archive = path.join(out, 'bundle.tar.gz'); await runLocalTar('Archive immutable final package set', 'create', archive, directory, ['bundle'], { env: c.env });
+      await validateTar(archive); // fail where the archive is made, not in candidate-verify
       save(path.join(out, 'receipt.json'), receipt({ phase: 'final', target, signing, archive: { name: 'bundle.tar.gz', size: fs.statSync(archive).size, sha256: fileHash(archive) } }));
     }
   });

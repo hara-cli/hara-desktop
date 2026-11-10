@@ -61,6 +61,7 @@ async function archive(c, phase, inputDirectory, extra = {}) {
   const out = path.join(c.base, phase + '-output'); assert(!fs.existsSync(out)); fs.mkdirSync(out, { mode: 0o700 });
   const file = path.join(out, 'bundle.tar.gz');
   await runLocalTar('Archive immutable native payload', 'create', file, inputDirectory, ['bundle'], { env: c.env });
+  await validateTar(file); // fail where the archive is made, not in a later consumer
   save(path.join(out, 'receipt.json'), receipt({ phase, target: c.target, archive: { name: 'bundle.tar.gz', size: fs.statSync(file).size, sha256: fileHash(file) }, ...extra }));
   console.log(`CANDIDATE_OUTPUT=${out}`); return out;
 }
