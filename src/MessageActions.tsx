@@ -4,6 +4,14 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import { redesignText } from "./desktop-redesign-copy";
 import "./MessageActions.css";
 
+/** Copy content rather than renderer controls such as the code-copy button. */
+function plainMessageText(node: HTMLElement | null, fallback: string): string {
+  if (!node) return fallback;
+  const clone = node.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll("button, summary, details:not([open])").forEach(element => element.remove());
+  return clone.textContent?.trim() || fallback;
+}
+
 export function MessageActions({ text, body, locale, copyLabel, copiedLabel, failedLabel, onReply }: {
   text: string; body: RefObject<HTMLElement | null>; locale: string; copyLabel: string; copiedLabel: string; failedLabel: string; onReply?: () => void;
 }) {
@@ -31,7 +39,7 @@ export function MessageActions({ text, body, locale, copyLabel, copiedLabel, fai
     }}>
       <summary className="hd-message-action" aria-label={r("messageMore")}><EllipsisHorizontalIcon /></summary>
       <div className="hd-message-options">
-        <MessageCopyButton text={open ? body.current?.innerText ?? text : text} copyLabel={r("copyPlainText")} copiedLabel={copiedLabel} failedLabel={failedLabel} showLabel />
+        <MessageCopyButton text={open ? plainMessageText(body.current, text) : text} copyLabel={r("copyPlainText")} copiedLabel={copiedLabel} failedLabel={failedLabel} showLabel />
         <button type="button" onClick={selectText}>{r("selectMessageText")}</button>
       </div>
     </details>

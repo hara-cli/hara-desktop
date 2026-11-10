@@ -15,9 +15,11 @@ export function WorkspaceMessage({ text, user = false, continuation = false, sho
     {showAuthor && !user && !continuation ? <div className="hs-who">{agent?.identity.displayName ?? "Hara"}{role ? <span className="hd-message-role"> · {role}</span> : null}</div> : null}
     <div className={`hs-msg${user ? " me" : ""} wsd-message${user ? " is-user" : " is-agent"}${continuation ? " cont" : ""}`}>
       {showAuthor && !user ? <Avatar agent={agent} /> : null}
-      <div ref={body} className="hs-bub wsd-bubble">{children}</div>
+      <div className="hd-message-body">
+        <div ref={body} className="hs-bub wsd-bubble">{children}</div>
+        <MessageActions text={text} body={body} locale={locale} copyLabel={redesignText(locale, "copyMessage")} copiedLabel={t("taskCopied")} failedLabel={t("copyFailed")} onReply={onReply} />
+      </div>
     </div>
     {metadata ? <div className="hd-message-meta">{metadata}</div> : null}
-    <MessageActions text={text} body={body} locale={locale} copyLabel={redesignText(locale, "copyMessage")} copiedLabel={t("taskCopied")} failedLabel={t("copyFailed")} onReply={onReply} />
   </article>;
 }

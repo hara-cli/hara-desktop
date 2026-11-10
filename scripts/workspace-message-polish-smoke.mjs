@@ -99,6 +99,25 @@ async function navigate(width,locale,theme){
 }
 async function capture(name){const value=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(join(output,`${name}.png`),Buffer.from(value.data,'base64'),{mode:0o600});}
 async function click(selector){await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);await settled();}
+async function messageContrast(selector='.wsd-thread') {
+ return evaluate(`(() => {
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const context=canvas.getContext('2d',{willReadFrequently:true});
+  const parse=colour=>{context.clearRect(0,0,1,1);context.fillStyle=colour;context.fillRect(0,0,1,1);return [...context.getImageData(0,0,1,1).data].map(n=>n/255)};
+  const over=(fg,bg)=>[0,1,2].map(i=>fg[i]*fg[3]+bg[i]*(1-fg[3])).concat([1]);
+  const background=node=>{const chain=[];for(let current=node;current;current=current.parentElement)chain.push(parse(getComputedStyle(current).backgroundColor));return chain.reverse().reduce((bg,fg)=>over(fg,bg),[1,1,1,1])};
+  const luminance=value=>value.slice(0,3).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4).reduce((sum,n,i)=>sum+n*[.2126,.7152,.0722][i],0);
+  const root=document.querySelector(${JSON.stringify(selector)});if(!root)throw new Error('Contrast root missing');
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),issues=[];let node,count=0,min=Infinity;
+  while(node=walker.nextNode()){
+   const element=node.parentElement,style=getComputedStyle(element);if(!node.textContent.trim()||!element.getClientRects().length||style.visibility==='hidden'||element.closest('[aria-hidden=true]'))continue;
+   if(element.closest('.hd-message-actions')&&!root.closest('.hd-message-actions'))continue;
+   const box=element.getBoundingClientRect();if(box.width===0||box.height===0)continue;
+   const bg=background(element),fg=over(parse(style.color),bg),a=luminance(fg),b=luminance(bg),ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+   count++;min=Math.min(min,ratio);if(ratio<4.5)issues.push({text:node.textContent.trim().slice(0,60),ratio});
+  }
+  return {count,min,issues};
+ })()`);
+}
 try{
  await connect();
  for(const [width,locale,theme] of [[1280,'en','light'],[1280,'zh-Hant','dark'],[720,'zh-Hans','light'],[720,'en','dark']]){
@@ -113,6 +132,8 @@ try{
   const target=await evaluate(`(()=>{const r=document.querySelector('${last} .hs-bub').getBoundingClientRect();return {x:r.left+20,y:r.top+12};})()`);
   await send('Input.dispatchMouseEvent',{type:'mouseMoved',...target});await pause(180);
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('${last} .hd-message-actions')).opacity`),'1');
+  const actionEdge=await evaluate(`(()=>{const b=document.querySelector('${last} .hs-bub').getBoundingClientRect(),a=document.querySelector('${last} .hd-message-actions').getBoundingClientRect();return {bubbleRight:b.right,actionsRight:a.right};})()`);
+  assert.ok(Math.abs(actionEdge.bubbleRight-actionEdge.actionsRight-6)<=1,'Actions follow the actual bubble edge');
   await capture(`s1-actions-${locale}-${theme}-${width}`);
   await click(`${last} .hd-message-actions>.message-copy-button`);
   assert.match(await evaluate('window.__HARA_COPIED_MESSAGES__.at(-1)'),/\*\*Ready for review/u);
@@ -125,8 +146,20 @@ try{
   assert.ok(await evaluate(`document.activeElement===document.querySelector('${last} summary')`));
   await click(`${last} summary`);await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   assert.equal(await evaluate(`document.querySelector('${last} details').open`),false);
-  await evaluate('document.activeElement.blur();window.getSelection().removeAllRanges()');await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:2,y:2});await pause(180);
-  await capture(`s1-${locale}-${theme}-${width}`);receipts.push({width,locale,theme,geometry,actions:'Markdown/plain copies isolated in fixture memory; selection and Escape preserve keyboard focus'});
+  const codeRoot=await evaluate("document.querySelector('pre').closest('.hd-chat-message').outerHTML.includes('hd-message-actions')");assert.equal(codeRoot,true);
+  await evaluate("document.querySelector('pre').closest('.hd-chat-message').querySelector('summary').click()");await settled();
+  await evaluate("document.querySelector('pre').closest('.hd-chat-message').querySelector('.hd-message-options .message-copy-button').click()");await settled();
+  const codeCopy=await evaluate('window.__HARA_COPIED_MESSAGES__.at(-1)');assert.match(codeCopy,/const syntheticReceipt/u);assert.doesNotMatch(codeCopy,/Copy code/u);
+  await evaluate("document.querySelector('pre').closest('.hd-chat-message').querySelector('details').open=false;document.activeElement.blur();window.getSelection().removeAllRanges()");await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:2,y:2});await pause(180);
+  const contrast=await messageContrast();assert.deepEqual(contrast.issues,[]);await capture(`s1-${locale}-${theme}-${width}`);receipts.push({width,locale,theme,geometry,contrast,actions:'Markdown/plain copies isolated in fixture memory; selection and Escape preserve keyboard focus'});
+ }
+ for(const theme of ['light','dark']){
+  step=`group/${theme}`;await send('Emulation.setDeviceMetricsOverride',{width:900,height:900,deviceScaleFactor:1,mobile:false});
+  const url=new URL('test/fixtures/workspace-shell-preview.html',base);url.search=new URLSearchParams({locale:'en',theme,scenario:'message-group',reset:'1'}).toString();
+  await navigateCdp(send,socket,{url:url.href,sessionId,step});await ready("document.querySelectorAll('.hs-channel-thread .hd-chat-message').length===6",'Group messages must mount');await settled();
+  const group=await evaluate(`(()=>{const root=document.querySelector('.hs-channel-thread');return {headers:root.querySelectorAll('.hs-who').length,separators:root.querySelectorAll('.hd-time-separator').length,avatars:[...root.querySelectorAll('.hd-chat-message .hs-ava')].map(node=>({width:node.getBoundingClientRect().width,visibility:getComputedStyle(node).visibility})),roles:[...root.querySelectorAll('.hd-message-role')].map(node=>node.textContent)}})()`);
+  assert.equal(group.headers,3);assert.equal(group.separators,2);assert.equal(group.avatars.filter(row=>row.visibility!=='hidden').length,3);assert.ok(group.avatars.every(row=>row.width===24));assert.ok(group.roles.some(role=>role.includes('Engineering')));
+  const contrast=await messageContrast();assert.deepEqual(contrast.issues,[]);await capture(`s1-group-${theme}`);receipts.push({group:true,theme,layout:group,contrast});
  }
  assert.deepEqual(errors,[]);writeFileSync(join(output,'browser-report.json'),JSON.stringify({ok:true,modelCalls:0,receipts,errors,navigationTimings:navigationEvents.filter(event=>event.method==='fixture-navigation-duration')},null,2)+'\n',{mode:0o600});console.log(JSON.stringify({ok:true,cases:receipts.length,output}));
 }catch(error){writeFileSync(join(output,'failure.json'),JSON.stringify({step,error:String(error),errors,navigationEvents,page:await evaluate('({url:location.href,text:document.body.innerText})').catch(()=>null)},null,2)+'\n',{mode:0o600});await capture('failure').catch(()=>{});throw error;

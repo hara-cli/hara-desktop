@@ -1,5 +1,5 @@
-.hd-message-actions{position:absolute;right:6px;top:-28px;z-index:4;display:flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--hd-line,var(--border));border-radius:9px;background:var(--hd-menu,var(--bg2));color:var(--hd-muted,var(--dim));box-shadow:0 2px 8px #00000010;opacity:0;pointer-events:none;transition:opacity .12s}
-.wsd-message-group:hover>.hd-message-actions,.wsd-message-group:focus-within>.hd-message-actions,.assistant-message:hover>.hd-message-actions,.assistant-message:focus-within>.hd-message-actions,.hd-message-actions:has(details[open]){opacity:1;pointer-events:auto}
+.hd-message-actions{position:absolute;right:6px;top:-28px;z-index:4;width:fit-content;display:flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--hd-line,var(--border));border-radius:9px;background:var(--hd-menu,var(--bg2));color:var(--hd-muted,var(--dim));box-shadow:0 2px 8px #00000010;opacity:0;pointer-events:none;transition:opacity .12s}
+.wsd-message-group:hover .hd-message-actions,.wsd-message-group:focus-within .hd-message-actions,.assistant-message:hover>.hd-message-actions,.assistant-message:focus-within>.hd-message-actions,.hd-message-actions:has(details[open]){opacity:1;pointer-events:auto}
 .hd-message-action{display:grid;place-items:center;box-sizing:border-box;width:28px;height:28px;border:0;border-radius:6px;background:none;color:inherit;cursor:pointer;list-style:none}
 .hd-message-action::-webkit-details-marker{display:none}.hd-message-action>svg{width:15px;height:15px}
 .hd-message-actions .message-copy-button{width:28px;height:28px;color:inherit}.hd-message-actions .message-copy-button[data-state]:not([data-state="idle"]){width:auto}
@@ -7,5 +7,5 @@
 .hd-message-more{position:relative}.hd-message-options{position:absolute;top:calc(100% + 6px);right:-3px;z-index:5;display:grid;gap:2px;padding:5px;width:200px;max-width:calc(100vw - 24px);border:1px solid var(--hd-line,var(--border));border-radius:9px;background:var(--hd-menu,var(--bg2));box-shadow:0 5px 20px #0002}
 .hd-message-options button,.hd-message-options .message-copy-button{display:flex;justify-content:flex-start;box-sizing:border-box;width:100%;min-height:32px;height:auto;padding:7px 9px;border:0;border-radius:5px;background:none;color:inherit;text-align:left;font:inherit;font-size:12px;cursor:pointer}
 .hd-message-options button:hover,.hd-message-options button:focus-visible{background:var(--hd-hover,var(--bg3));color:var(--hd-ink,var(--fg))}
-@media(hover:none),(pointer:coarse){.hd-message-actions{position:relative;top:auto;right:auto;align-self:flex-end;opacity:1;pointer-events:auto;margin-top:4px}}
+@media(hover:none),(pointer:coarse){.hd-message-actions{position:relative;top:auto;right:auto;align-self:flex-end;margin-left:auto;opacity:1;pointer-events:auto;margin-top:4px}}
 @media(prefers-reduced-motion:reduce){.hd-message-actions{transition:none}}

@@ -158,3 +158,8 @@
 .hs.hd-redesign.vg-app .hd-chat-message .hs-bub pre,.hs.hd-redesign.vg-app .hd-chat-message .hs-bub pre code{font-size:inherit;line-height:inherit}
 .hs.hd-redesign.vg-app .hd-chat-message .hs-bub .md:has(table){overflow-x:auto}
 .hs.hd-redesign.vg-app .hd-chat-message .hs-bub table{display:table;min-width:100%;width:100%}
+
+.hs.hd-redesign.vg-app .hd-chat-message .hd-message-body{position:relative;box-sizing:border-box;min-width:0;max-width:100%;width:fit-content;flex:0 1 auto}
+.hs.hd-redesign.vg-app .hd-chat-message .hd-message-body:has(pre),.hs.hd-redesign.vg-app .hd-chat-message .hd-message-body:has(table){width:100%}
+.hs.hd-redesign.vg-app .hd-chat-message.is-user .hd-message-body{max-width:70%}
+.hs.hd-redesign.vg-app .hd-chat-message.is-user .hd-message-body>.hs-bub{max-width:100%}

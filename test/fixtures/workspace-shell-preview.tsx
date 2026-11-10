@@ -101,6 +101,25 @@ if (scenario === 'sidebar-polish') {
     channelData.snapshots[row.id] = { workspaceId:'A', resourceGeneration:'g-A', channel:row, revision:1, state:'completed', messages:[{id:'synthetic-group-message',turnId:'synthetic-group-turn',agentId:row.memberIds[0],displayName:'Synthetic colleague',createdAt:row.lastMessageAt,message:{role:'assistant',text:row.preview,tools:[]}}], turns:[], approvals:[] };
   }
 }
+if (scenario === 'message-group') {
+  const id='00000000-0000-4000-8000-000000000010', start=Date.now()-3*60*60*1000;
+  const at=(minutes:number)=>new Date(start+minutes*60000).toISOString();
+  const row={id,name:'Synthetic visual group',memberIds:['person-0','person-1'],createdAt:at(0),lastMessageAt:at(40),preview:'Later group receipt',messageCount:6};
+  channelData.catalogs.A.channels=[row];
+  const messages:LocalChannelSnapshot['messages']=[
+    {id:'group-user-1',turnId:'group-turn-1',agentId:null,displayName:'',createdAt:at(0),message:{role:'user',content:'Synthetic group question',createdAt:at(0)}},
+    {id:'group-a-1',turnId:'group-turn-1',agentId:'person-0',displayName:'Coder',createdAt:at(1),message:{role:'assistant',text:'First group response.',tools:[],createdAt:at(1)}},
+    {id:'group-a-2',turnId:'group-turn-1',agentId:'person-0',displayName:'Coder',createdAt:at(2),message:{role:'assistant',text:'A consecutive response from the same colleague.',tools:[],createdAt:at(2)}},
+    {id:'group-b-1',turnId:'group-turn-1',agentId:'person-1',displayName:'Ops',createdAt:at(3),message:{role:'assistant',text:'A different colleague keeps their own name and role.',tools:[],createdAt:at(3)}},
+    {id:'group-user-2',turnId:'group-turn-2',agentId:null,displayName:'',createdAt:at(10),message:{role:'user',content:'One more synthetic check.',createdAt:at(10)}},
+    {id:'group-a-3',turnId:'group-turn-2',agentId:'person-0',displayName:'Coder',createdAt:at(40),message:{role:'assistant',text:'Later group receipt.',tools:[],createdAt:at(40)}},
+  ];
+  channelData.snapshots[id]={workspaceId:'A',resourceGeneration:'g-A',channel:row,revision:1,state:'completed',messages,approvals:[],turns:[
+    {id:'group-turn-1',state:'completed',replies:[{agentId:'person-0',displayName:'Coder',state:'completed'},{agentId:'person-1',displayName:'Ops',state:'completed'}]},
+    {id:'group-turn-2',state:'completed',replies:[{agentId:'person-0',displayName:'Coder',state:'completed'}]},
+  ]};
+  location.hash=`#channels/${id}`;
+}
 const persistChannels=()=>localStorage.setItem(channelStorageKey,JSON.stringify(channelData));
 const channelTimers=new Map<string,ReturnType<typeof setTimeout>>();
 let slowChannel=false,unknownChannelAck=false;
