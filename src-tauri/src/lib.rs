@@ -1411,11 +1411,36 @@ fn legacy_source_home(os_home: &Path, debug: bool, isolated_candidate: bool, req
 // Outcome-unknown startup is retained. Retrying attachment must not spawn a second Core.
 static WORKSPACE_START_LOCK: std::sync::Mutex<Option<OwnedWorkspaceStartup>> = std::sync::Mutex::new(None);
 
+// Startup diagnostics (HARA-FB-001698): fixed native failure text, never tokens or renderer input, kept
+// next to the account's .hara data. Core's stderr goes to a file (not a pipe) because the engine may
+// outlive Desktop; it is replaced on each new engine start.
+const MAX_WORKSPACE_STARTUP_LOG_BYTES: u64 = 256 * 1024;
+fn private_log_file(path: &Path, truncate: bool) -> Option<fs::File> {
+    if fs::symlink_metadata(path).is_ok_and(|metadata| !metadata.is_file()) { return None; }
+    let mut options = fs::OpenOptions::new();
+    options.create(true);
+    if truncate { options.write(true).truncate(true); } else { options.append(true); }
+    #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
+    options.open(path).ok()
+}
+fn append_workspace_startup_log_at(data: &Path, message: &str) {
+    if !data.is_dir() { return; }
+    let path = data.join("workspace-startup.log");
+    let rotate = fs::metadata(&path).is_ok_and(|metadata| metadata.len() > MAX_WORKSPACE_STARTUP_LOG_BYTES);
+    let Some(mut file) = private_log_file(&path, rotate) else { return };
+    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|value| value.as_secs()).unwrap_or(0);
+    let _ = writeln!(file, "{time} desktop={} os={} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, message.replace(['\r', '\n'], " "));
+}
+fn append_workspace_startup_log(message: &str) {
+    if let Ok(data) = hara_data_dir() { append_workspace_startup_log_at(&data, message); }
+}
+
 fn observe_owned_workspace_start(pending: &mut Option<OwnedWorkspaceStartup>, wait: std::time::Duration) -> Result<WorkspaceDevConnection, String> {
     let deadline = std::time::Instant::now() + wait;
     loop {
         let owned = pending.as_mut().ok_or("No owned Workspace startup")?;
-        if owned.child.try_wait().map_err(|_| "Cannot inspect owned Workspace startup")?.is_some() {
+        if let Some(status) = owned.child.try_wait().map_err(|_| "Cannot inspect owned Workspace startup")? {
+            if let Some(data) = owned.root.parent() { append_workspace_startup_log_at(data, &format!("engine exited before connecting: {status}")); }
             *pending = None; return Err("Workspace Core startup failed; original data preserved".into());
         }
         if let Ok(value) = workspace_connection_at(&owned.root) {
@@ -1541,8 +1566,10 @@ fn connect_or_start_workspace(client_locale: Option<String>) -> Result<Workspace
     if let Some(shell) = shell { command.env("HARA_WORKSPACE_HOST_SHELL", shell); }
     if let Some(value) = search_path { command.env("PATH", value); }
     if let Some(value) = system_root { command.env("SystemRoot", value); }
+    let stderr = root.parent().and_then(|data| private_log_file(&data.join("workspace-core-stderr.log"), true))
+        .map(std::process::Stdio::from).unwrap_or_else(std::process::Stdio::null);
     command.args(["workspace", "serve", "--root"]).arg(&root).args(["--port", "0"])
-        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(stderr);
     #[cfg(unix)] { use std::os::unix::process::CommandExt; command.process_group(0); }
     #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
     let child = command.spawn().map_err(|_| "Cannot start Workspace Core")?;
@@ -1552,7 +1579,8 @@ fn connect_or_start_workspace(client_locale: Option<String>) -> Result<Workspace
 
 #[tauri::command]
 async fn workspace_connection(client_locale: Option<String>) -> Result<WorkspaceDevConnection, String> {
-    let connection = tauri::async_runtime::spawn_blocking(move || connect_or_start_workspace(client_locale)).await.map_err(|_| "Workspace startup worker unavailable".to_string())??;
+    let result = tauri::async_runtime::spawn_blocking(move || connect_or_start_workspace(client_locale)).await.map_err(|_| "Workspace startup worker unavailable".to_string())?;
+    let connection = result.inspect_err(|error| append_workspace_startup_log(&format!("connection failed: {error}")))?;
     workspace_media::remember(connection.port, &connection.token);
     Ok(connection)
 }
@@ -1576,6 +1604,29 @@ fn workspace_engine_stopped() -> bool {
     match workspace_root().or_else(|_| hara_data_dir().map(|data| data.join("workspaces-v1"))) {
         Ok(root) => workspace_engine_stopped_at(&root),
         Err(_) => false,
+    }
+}
+
+#[cfg(all(test, unix))]
+mod workspace_startup_log_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn startup_log_is_private_single_line_bounded_and_skips_missing_data() {
+        let data = std::env::temp_dir().canonicalize().unwrap().join(format!("hara-startup-log-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        append_workspace_startup_log_at(&data, "not written");
+        assert!(!data.exists(), "logging never creates the data directory");
+        fs::create_dir(&data).unwrap();
+        append_workspace_startup_log_at(&data, "connection failed: Workspace Dev requires canonical non-symlink directories\ninjected");
+        let path = data.join("workspace-startup.log");
+        let text = fs::read_to_string(&path).unwrap();
+        assert_eq!(text.lines().count(), 1); assert!(text.contains("connection failed: Workspace Dev requires") && text.contains("desktop="));
+        assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        fs::write(&path, vec![b'x'; (MAX_WORKSPACE_STARTUP_LOG_BYTES + 1) as usize]).unwrap();
+        append_workspace_startup_log_at(&data, "after rotation");
+        assert!(fs::metadata(&path).unwrap().len() < 1024);
+        fs::remove_dir_all(&data).unwrap();
     }
 }
 

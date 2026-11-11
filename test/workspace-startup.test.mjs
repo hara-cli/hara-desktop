@@ -81,5 +81,7 @@ test("only exact known native errors get specific diagnostics; other contents ca
   assert.equal(workspaceStartupDiagnostic("Cannot start Workspace Core", "connecting"), "CORE_START_FAILED");
   assert.equal(workspaceStartupDiagnostic("Workspace Core startup failed; original data preserved", "connecting"), "CORE_EXITED");
   assert.equal(workspaceStartupDiagnostic("Workspace startup is not yet confirmed; attachment may be retried without restarting or resending tasks", "connecting"), "CORE_START_PENDING");
+  // HARA-FB-001698: a refused Workspace folder is not a generic connection failure.
+  for (const error of ["Workspace Dev requires canonical non-symlink directories", "Cannot create private Workspace directory", "Cannot resolve the account Home"]) assert.equal(workspaceStartupDiagnostic(error, "connecting"), "CORE_ROOT_REFUSED");
   for (const error of ["Cannot start Workspace Core: /private/real-path", new Error("Bearer secret"), { code: "private", message: "raw" }, null]) assert.equal(workspaceStartupDiagnostic(error, "connecting"), "CORE_CONNECT_FAILED");
 });
