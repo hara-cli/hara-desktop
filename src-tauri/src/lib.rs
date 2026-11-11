@@ -1557,6 +1557,63 @@ async fn workspace_connection(client_locale: Option<String>) -> Result<Workspace
     Ok(connection)
 }
 
+// The updater may install without the engine's idle lease only when Desktop can show that no Workspace
+// engine is running or starting for the formal root. Any doubt answers false (HARA-FB-001698).
+fn workspace_engine_stopped_at(root: &Path) -> bool {
+    let discovery = root.join("home/.hara/workspace-runtime/serve-v2.json");
+    match fs::symlink_metadata(&discovery) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(_) => false,
+        Ok(_) => matches!(read_private_discovery_at(&discovery), Ok((_, record)) if !process_is_alive(record.pid)),
+    }
+}
+
+#[tauri::command]
+fn workspace_engine_stopped() -> bool {
+    let Ok(pending) = WORKSPACE_START_LOCK.try_lock() else { return false };
+    if pending.is_some() { return false; }
+    // A refused root never reached spawn; still inspect the default location rather than assume.
+    match workspace_root().or_else(|_| hara_data_dir().map(|data| data.join("workspaces-v1"))) {
+        Ok(root) => workspace_engine_stopped_at(&root),
+        Err(_) => false,
+    }
+}
+
+#[cfg(all(test, unix))]
+mod workspace_engine_stopped_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn runtime_root() -> PathBuf {
+        let root = std::env::temp_dir().canonicalize().unwrap().join(format!("hara-engine-stopped-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(root.join("home/.hara/workspace-runtime")).unwrap();
+        fs::set_permissions(root.join("home/.hara/workspace-runtime"), fs::Permissions::from_mode(0o700)).unwrap();
+        root
+    }
+    fn discovery(root: &Path, pid: u32) {
+        let path = root.join("home/.hara/workspace-runtime/serve-v2.json");
+        fs::write(&path, serde_json::to_vec(&serde_json::json!({"pid": pid})).unwrap()).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    }
+
+    #[test]
+    fn only_a_missing_or_dead_engine_counts_as_stopped() {
+        let root = runtime_root();
+        assert!(workspace_engine_stopped_at(&root));
+        discovery(&root, std::process::id());
+        assert!(!workspace_engine_stopped_at(&root), "a live engine keeps the idle lease requirement");
+        let mut child = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+        let dead = child.id(); child.wait().unwrap();
+        discovery(&root, dead);
+        assert!(workspace_engine_stopped_at(&root));
+        let path = root.join("home/.hara/workspace-runtime/serve-v2.json");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(!workspace_engine_stopped_at(&root), "an unsafe discovery is never treated as stopped");
+        fs::remove_dir_all(&root).unwrap();
+    }
+}
+
 fn workspace_lab_preflight(
     identifier: &str,
     enabled: bool,
@@ -3851,6 +3908,7 @@ pub fn run() {
             desktop_update_info,
             desktop_check_update,
             desktop_restart_for_update,
+            workspace_engine_stopped,
             classify_attachment_paths,
             write_temp_image,
             read_presentation_image,

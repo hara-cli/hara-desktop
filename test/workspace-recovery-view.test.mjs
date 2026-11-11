@@ -83,6 +83,14 @@ test("boot shows a fixed diagnostic and attempt receipt, then disables reconnect
   }
 });
 
+test("the engine-free update slot appears only on a failed formal Workspace startup (HARA-FB-001698)", () => {
+  const t = makeT("en"), update = h("i", { id: "boot-update-slot" });
+  for (const [phase, mode, shown] of [["failed", "workspace", true], ["connecting", "workspace", false], ["loading", "workspace", false], ["failed", "lab", false]]) {
+    const html = render(h(WorkspaceBoot, { t, mode, onReconnect() {}, update, view: { phase, attempt: 1, diagnostic: phase === "failed" ? "CORE_CONNECT_FAILED" : null, model: null, root: "" } }));
+    assert.equal(html.includes("boot-update-slot"), shown, `${mode}/${phase}`);
+  }
+});
+
 test("a stopped task explains physical cleanup and keeps continuation locked until the next idle snapshot", () => {
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const state of ["running", "draining"]) {
     const t = makeT(locale), conversation = { state, taskState: "blocked", blockReason: "Synthetic stop", resumeAdmission: { allowed: true, reason: null } };
