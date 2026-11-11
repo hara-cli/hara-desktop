@@ -11,7 +11,7 @@ const productionFixture = scenario === 'native-settings' || scenario === 'channe
 const locale = params.get('locale') ?? 'zh-Hant';
 if (locale === 'system') localStorage.removeItem('hara.locale'); else if (locale !== 'saved') localStorage.setItem('hara.locale', locale);
 if (params.get('reset') !== '0') { localStorage.removeItem('hara.sidebar.sections.A'); localStorage.removeItem('hara.sidebar.sections.B'); }
-if (scenario === 'glass-polish') localStorage.setItem(APPEARANCE_KEY, JSON.stringify({darkTheme:params.get('visual')==='obsidian'?'obsidian':'violet-glass',transparency:params.get('material')??'standard',motion:'standard'}));
+if (scenario === 'glass-polish' || scenario === 'glass-welcome') localStorage.setItem(APPEARANCE_KEY, JSON.stringify({darkTheme:params.get('visual')==='obsidian'?'obsidian':'violet-glass',transparency:params.get('material')??'standard',motion:'standard'}));
 const currentTime = Date.now(), stamp = (minutes: number) => new Date(currentTime - minutes*60000).toISOString();
 const agents = [
   {agentId:'main',kind:'main',state:'active',identity:{displayName:'Hara'},runtime:{id:'pi',label:'Pi',available:true}},
@@ -158,7 +158,7 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
   calls.push({method,params:values});const workspaceId=String(values.workspaceId??'A'), agentId=String(values.agentId??'main');
   if(failures.has(method))throw new Error('Synthetic read/write failure');
   let result:unknown;
-  if(method==='workspace.list')result={revision:1,activeWorkspaceId:'A',syntheticOnly:!productionFixture,executionMode:productionFixture?'workspace':'synthetic',workspaces:['A','B'].map(id=>({workspaceId:id,label:id==='A'?'My workspace':'Studio',active:true,role:'owner'}))};
+  if(method==='workspace.list')result=scenario==='glass-welcome'?{revision:1,activeWorkspaceId:null,syntheticOnly:true,executionMode:'synthetic',workspaces:[]}:{revision:1,activeWorkspaceId:'A',syntheticOnly:!productionFixture,executionMode:productionFixture?'workspace':'synthetic',workspaces:['A','B'].map(id=>({workspaceId:id,label:id==='A'?'My workspace':'Studio',active:true,role:'owner'}))};
   else if(method==='workspace.preferences.get')result={revision:1,theme,readOnly:false,recovered:false};
   else if(method==='workspace.preferences.set'){theme=values.theme as typeof theme;result={revision:2,theme,readOnly:false,recovered:false};}
   else if(['workspace.select','workspace.settings.select','workspace.agent.select','workspace.snapshot'].includes(method)){
@@ -224,7 +224,7 @@ const rpc={supportsCapability:(capability:string)=>capability==='workspace.local
   return result as T;
 }};
 const model=new WorkspaceDevModel(rpc,()=>crypto.randomUUID(),!productionFixture,productionFixture?'workspace':'synthetic');
-await model.loadDirectory();await model.selectWorkspace('A');if(scenario==='chat'||scenario==='message-polish'||scenario==='appearance-polish'||scenario==='inspector-polish')await model.selectAgent('person-0');
+await model.loadDirectory();if(scenario!=='glass-welcome')await model.selectWorkspace('A');if(scenario==='chat'||scenario==='message-polish'||scenario==='appearance-polish'||scenario==='inspector-polish')await model.selectAgent('person-0');
 (window as any).__HARA_SHELL_FIXTURE__={model,calls,setFailure(method:string,enabled:boolean){if(enabled)failures.add(method);else failures.delete(method);},async incoming(agentId:string,text:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text,tools:[],createdAt:new Date().toISOString()});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();await model.refresh();},
   async backgroundActivity(agentId:string){const snapshot=snapshots.get(`A:${agentId}`)!;snapshot.conversation.history.push({role:'assistant',text:'',tools:['synthetic-background'],createdAt:new Date().toISOString()},{role:'tool',results:[{id:'synthetic-background',name:'synthetic',content:'Synthetic background receipt',isError:false}]});snapshot.conversation.revision++;snapshot.conversation.updatedAt=new Date().toISOString();model.invalidateOverview();await model.refresh();},
 
