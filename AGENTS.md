@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+> **Design:** read `DESIGN.md` before writing any UI. Design tokens come from the Hara design source of truth (`uiux/design-language/hara/DESIGN.md`) and change only through `node scripts/sync-design-tokens.mjs`; never edit the generated token files by hand.
+
 ## Scope & Structure
 
 Hara Desktop is a Tauri shell around the Hara CLI server; agent logic and permission decisions remain in `hara serve`. React/TypeScript UI code is in `src/`, Rust host code and Tauri metadata in `src-tauri/`, release/build helpers in `scripts/`, and tests in `test/`. Read `WORKFLOW.md` before changing sidecar, updater, signing, or release behavior.
