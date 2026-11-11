@@ -5,3 +5,10 @@ package-lock.json text eol=lf
 src-tauri/Cargo.lock text eol=lf
 src-tauri/binaries/SIDECAR_COMMIT text eol=lf
 src-tauri/examples/verify_updater_signature.rs text eol=lf
+
+# Hara design tokens are hashed by scripts/sync-design-tokens.mjs; keep their committed bytes on Windows.
+DESIGN.md text eol=lf
+*.generated.css text eol=lf
+*.generated.ts text eol=lf
+*.generated.json text eol=lf
+scripts/sync-design-tokens.mjs text eol=lf

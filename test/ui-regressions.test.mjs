@@ -1973,9 +1973,12 @@ test("the capability center consumes one semantic light and dark design contract
     assert.match(foundation, new RegExp(`${token}:`), `${token} needs a night value`);
     assert.match(daylight, new RegExp(`${token}:`), `${token} needs a daylight value`);
   }
-  assert.match(design, /Theme ownership/);
-  assert.match(design, /Semantic token contract/);
-  assert.match(design, /Capability Center pattern/);
+  // The App.css contract lives in the frozen legacy section of the thin DESIGN.md; remove both together.
+  const frozen = design.indexOf("## 旧版界面（冻结）");
+  assert.ok(frozen > 0, "DESIGN.md keeps the frozen legacy App.css contract section");
+  for (const heading of ["Theme ownership", "Semantic token contract", "Capability Center pattern"]) {
+    assert.ok(design.indexOf(heading, frozen) > frozen, `${heading} belongs to the frozen legacy section`);
+  }
 });
 
 test("switching places cannot reuse a conversation from the wrong place", () => {

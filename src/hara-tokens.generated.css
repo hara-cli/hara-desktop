@@ -1,0 +1,219 @@
+/*
+ * Hara design tokens · version 2.1.1 · sourceSha 1a02f9eb24575e6d50d3de9e1a6c33091d477600386c71e731717a91fb977f89
+ * GENERATED from uiux/design-language/hara/DESIGN.md by build_tokens.mjs — do not edit by hand.
+ */
+
+:root {
+  /* colors.brand */
+  --hara-violet-50: #F5F3FF;
+  --hara-violet-100: #EDE9FE;
+  --hara-violet-200: #DDD6FE;
+  --hara-violet-300: #C4B5FD;
+  --hara-violet-400: #A78BFA;
+  --hara-violet-500: #8B5CF6;
+  --hara-violet-600: #7C3AED;
+  --hara-violet-700: #6D28D9;
+  --hara-violet-800: #5B21B6;
+  --hara-violet-900: #4C1D95;
+  --hara-brand-primary: #7C3AED;
+  --hara-brand-hover: #8B5CF6;
+  --hara-brand-pressed: #6D28D9;
+  --hara-brand-deep: #5B21B6;
+  --hara-on-brand: #FFFFFF;
+  /* colors.status */
+  --hara-status-idle: #796B8E;
+  --hara-status-planning: #8B5CF6;
+  --hara-status-running: #3B82F6;
+  --hara-status-waiting: #EAB308;
+  --hara-status-approval: #F97316;
+  --hara-status-completed: #22C55E;
+  --hara-status-failed: #EF4444;
+  /* typography */
+  --hara-font-ui: -apple-system, "SF Pro Text", "PingFang SC", "PingFang TC", "Noto Sans CJK SC", "Segoe UI", sans-serif;
+  --hara-font-display: "SF Pro Display", -apple-system, "PingFang SC", sans-serif;
+  --hara-font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --hara-font-size-caption: 11px;
+  --hara-font-size-meta: 11.5px;
+  --hara-font-size-small: 12px;
+  --hara-font-size-body-sm: 12.5px;
+  --hara-font-size-body: 13.5px;
+  --hara-font-size-chat: 14px;
+  --hara-line-height-chat: 22px;
+  --hara-font-size-title-sm: 16px;
+  --hara-font-size-title-md: 18px;
+  --hara-font-size-title-lg: 20px;
+  --hara-font-size-title: 22px;
+  --hara-font-weight-regular: 400;
+  --hara-font-weight-medium: 500;
+  --hara-font-weight-semibold: 600;
+  --hara-font-weight-active: 650;
+  /* rounded */
+  --hara-radius-sm: 8px;
+  --hara-radius-row: 10px;
+  --hara-radius-md: 12px;
+  --hara-radius-card: 14px;
+  --hara-radius-pane: 16px;
+  --hara-radius-lg: 20px;
+  --hara-radius-pill: 999px;
+  /* spacing */
+  --hara-space-1: 4px;
+  --hara-space-2: 8px;
+  --hara-space-3: 12px;
+  --hara-space-4: 16px;
+  --hara-space-5: 20px;
+  --hara-space-6: 24px;
+  --hara-space-8: 32px;
+  --hara-space-12: 48px;
+  --hara-space-16: 64px;
+  /* sizes */
+  --hara-btn-sm: 32px;
+  --hara-btn-md: 36px;
+  --hara-btn-lg: 40px;
+  --hara-input-md: 36px;
+  --hara-input-lg: 40px;
+  --hara-nav-item: 36px;
+  --hara-sidebar-row: 44px;
+  --hara-sidebar-item: 36px;
+  --hara-status-badge: 20px;
+  --hara-tabs: 36px;
+  --hara-avatar-sm: 32px;
+  --hara-avatar-md: 40px;
+  --hara-avatar-lg: 48px;
+  --hara-hit-min-desktop: 32px;
+  --hara-hit-min-mobile: 44px;
+  --hara-focus-ring-width: 2px;
+  /* motion */
+  --hara-dur-hover: 120ms;
+  --hara-dur-press: 100ms;
+  --hara-dur-tab: 160ms;
+  --hara-dur-dialog: 220ms;
+  --hara-dur-sidebar: 200ms;
+  --hara-dur-toast: 180ms;
+  --hara-dur-thinking: 1600ms;
+  --hara-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --hara-ease-out: cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* theme: violet-glass */
+:root {
+  color-scheme: dark;
+  --hara-bg-base: #141318;
+  --hara-bg-sidebar: #19181F;
+  --hara-bg-content: #1D1C23;
+  --hara-bg-surface: #24232B;
+  --hara-bg-elevated: #2B2A34;
+  --hara-bg-hover: #302F39;
+  --hara-bg-selected: #35303F;
+  --hara-text-primary: #DFDCE5;
+  --hara-text-secondary: #B4B0BF;
+  --hara-text-tertiary: #9F9BA8;
+  --hara-text-disabled: #73707C;
+  --hara-text-link: #BDA4F5;
+  --hara-chat-mine: #3A314A;
+  --hara-chat-mine-ink: #E2DDEB;
+  --hara-border-default: rgba(195, 187, 209, 0.10);
+  --hara-border-active: rgba(167, 139, 250, 0.38);
+  --hara-border-subtle: rgba(195, 187, 209, 0.06);
+  --hara-scrim: rgba(10, 9, 13, 0.50);
+  --hara-glow: rgba(124, 58, 237, 0.04);
+  --hara-menu: #2A1E3D;
+  --hara-focus-ring: #A78BFA;
+  --hara-success: #4ADE80;
+  --hara-success-soft: rgba(34, 197, 94, 0.14);
+  --hara-warning: #FACC15;
+  --hara-warning-soft: rgba(234, 179, 8, 0.13);
+  --hara-danger: #F87171;
+  --hara-danger-soft: rgba(239, 68, 68, 0.13);
+  --hara-info: #93C5FD;
+  --hara-info-soft: rgba(59, 130, 246, 0.16);
+  --hara-glass-a-bg: rgba(28, 27, 34, 0.88);
+  --hara-glass-a-blur: 12px;
+  --hara-glass-a-border: rgba(195, 187, 209, 0.08);
+  --hara-glass-b-bg: rgba(39, 38, 47, 0.94);
+  --hara-glass-b-blur: 24px;
+  --hara-glass-b-border: rgba(195, 187, 209, 0.16);
+  --hara-glass-b-shadow: 0 16px 48px rgba(0, 0, 0, 0.28), 0 0 24px rgba(124, 58, 237, 0.03);
+  --hara-glass-c-bg: rgba(53, 48, 63, 0.94);
+  --hara-glass-c-blur: 28px;
+  --hara-glass-c-border: rgba(167, 139, 250, 0.38);
+  --hara-glass-c-shadow: 0 20px 56px rgba(0, 0, 0, 0.32), 0 0 40px rgba(124, 58, 237, 0.08);
+  --hara-bg-grad: radial-gradient(100% 70% at 80% 8%, #29262F 0%, #1D1C23 42%, #141318 100%);
+}
+
+/* theme: obsidian */
+:root[data-visual-theme="obsidian"]:not([data-theme="light"]),
+.theme-obsidian {
+  color-scheme: dark;
+  --hara-bg-base: #0A0A0C;
+  --hara-bg-sidebar: #111114;
+  --hara-bg-content: #16161A;
+  --hara-bg-surface: #1C1C22;
+  --hara-bg-elevated: #24242C;
+  --hara-bg-hover: #2C2C36;
+  --hara-bg-selected: #32284A;
+  --hara-text-primary: #F4F4F5;
+  --hara-text-secondary: #A1A1AA;
+  --hara-text-tertiary: #8B8B92;
+  --hara-text-disabled: #52525B;
+  --hara-text-link: #A78BFA;
+  --hara-chat-mine: #34313E;
+  --hara-chat-mine-ink: #E2DFE8;
+  --hara-border-default: rgba(255, 255, 255, 0.08);
+  --hara-border-active: rgba(167, 139, 250, 0.40);
+  --hara-border-subtle: rgba(255, 255, 255, 0.05);
+  --hara-scrim: rgba(0, 0, 0, 0.55);
+  --hara-glow: rgba(124, 58, 237, 0.04);
+  --hara-menu: #24242C;
+  --hara-glass-a-bg: rgba(28, 28, 34, 0.82);
+  --hara-glass-a-border: rgba(255, 255, 255, 0.08);
+  --hara-glass-b-bg: rgba(36, 36, 44, 0.92);
+  --hara-glass-b-border: rgba(167, 139, 250, 0.18);
+  --hara-glass-b-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 0 16px rgba(124, 58, 237, 0.04);
+  --hara-glass-c-bg: rgba(50, 40, 74, 0.94);
+  --hara-glass-c-border: rgba(167, 139, 250, 0.42);
+  --hara-bg-grad: radial-gradient(100% 70% at 80% 8%, #1C1C22 0%, #16161A 45%, #0A0A0C 100%);
+}
+
+/* theme: daylight */
+:root[data-theme="light"],
+.theme-daylight {
+  color-scheme: light;
+  --hara-bg-base: #F5F3FF;
+  --hara-bg-sidebar: #EDE9FE;
+  --hara-bg-content: #FAFAFF;
+  --hara-bg-surface: #FFFFFF;
+  --hara-bg-elevated: #FFFFFF;
+  --hara-bg-hover: #EDE9FE;
+  --hara-bg-selected: #DDD6FE;
+  --hara-text-primary: #1A1530;
+  --hara-text-secondary: #5B5675;
+  --hara-text-tertiary: #726587;
+  --hara-text-disabled: #A99ABD;
+  --hara-text-link: #6D28D9;
+  --hara-chat-mine: #E6DFF2;
+  --hara-chat-mine-ink: #392F4B;
+  --hara-border-default: rgba(91, 86, 117, 0.16);
+  --hara-border-active: rgba(124, 58, 237, 0.48);
+  --hara-border-subtle: rgba(91, 86, 117, 0.10);
+  --hara-scrim: rgba(26, 21, 48, 0.32);
+  --hara-glow: rgba(124, 58, 237, 0.12);
+  --hara-menu: #FFFFFF;
+  --hara-focus-ring: #6D28D9;
+  --hara-success: #157F3C;
+  --hara-success-soft: rgba(22, 163, 74, 0.10);
+  --hara-warning: #9A5B05;
+  --hara-warning-soft: rgba(202, 138, 4, 0.12);
+  --hara-danger: #B91C1C;
+  --hara-danger-soft: rgba(220, 38, 38, 0.08);
+  --hara-info: #1D4ED8;
+  --hara-info-soft: rgba(37, 99, 235, 0.10);
+  --hara-glass-a-bg: rgba(255, 255, 255, 0.72);
+  --hara-glass-a-border: rgba(124, 58, 237, 0.12);
+  --hara-glass-b-bg: rgba(255, 255, 255, 0.88);
+  --hara-glass-b-border: rgba(124, 58, 237, 0.22);
+  --hara-glass-b-shadow: 0 16px 48px rgba(76, 29, 149, 0.18), 0 2px 8px rgba(26, 21, 48, 0.06);
+  --hara-glass-c-bg: rgba(237, 233, 254, 0.95);
+  --hara-glass-c-border: rgba(124, 58, 237, 0.40);
+  --hara-glass-c-shadow: 0 20px 56px rgba(76, 29, 149, 0.22), 0 0 32px rgba(124, 58, 237, 0.18);
+  --hara-bg-grad: radial-gradient(120% 80% at 10% 0%, #E9E5FF 0%, #F7F5FF 45%, #EEF0FF 100%);
+}
