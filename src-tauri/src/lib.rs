@@ -933,15 +933,14 @@ fn development_home_override(
         std::env::var_os("USERPROFILE").map(PathBuf::from),
         cfg!(windows),
     ) {
-        if real_home.canonicalize().ok().as_ref() == Some(&home) {
+        if dunce::canonicalize(&real_home).ok().as_ref() == Some(&home) {
             return Err("development home must not be the installed application's home".into());
         }
     }
     let metadata = fs::symlink_metadata(&home).map_err(|_| "development home is unavailable")?;
     if !metadata.is_dir()
         || metadata.file_type().is_symlink()
-        || home
-            .canonicalize()
+        || dunce::canonicalize(&home)
             .map_err(|_| "development home cannot be resolved")?
             != home
     {
@@ -1176,8 +1175,8 @@ fn checked_workspace_dev_directory(path: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path).map_err(|_| "Workspace Dev directory unavailable")?;
     if !metadata.is_dir()
         || metadata.file_type().is_symlink()
-        || path
-            .canonicalize()
+        // dunce: on Windows std returns \\?\C:\..., which never equals the plain path (HARA-FB-001698).
+        || dunce::canonicalize(path)
             .map_err(|_| "Workspace Dev directory cannot be resolved")?
             != path
     {
@@ -1317,7 +1316,18 @@ fn workspace_root() -> Result<PathBuf, String> {
     if let Some(root) = std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").map(PathBuf::from) {
         checked_workspace_dev_directory(&root)?; return Ok(root);
     }
-    let data = hara_data_dir()?; create_private_workspace_directory(&data)?;
+    formal_workspace_root_at(hara_data_dir()?)
+}
+
+fn formal_workspace_root_at(data: PathBuf) -> Result<PathBuf, String> {
+    // Windows: resolve the account Home's on-disk form (8.3 short names, casing) once, so the canonical
+    // checks below compare like with like. Unix keeps refusing a symlinked Home exactly as before.
+    #[cfg(windows)]
+    let data = match data.parent() {
+        Some(home) => dunce::canonicalize(home).map_err(|_| "Cannot resolve the account Home")?.join(".hara"),
+        None => data,
+    };
+    create_private_workspace_directory(&data)?;
     let root = data.join("workspaces-v1"); create_private_workspace_directory(&root)?; Ok(root)
 }
 
@@ -1368,7 +1378,7 @@ fn redesign_candidate_preflight(identifier: &str) -> Result<(), String> {
     let root = std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").map(PathBuf::from)
         .ok_or("Redesign candidate requires its explicit private Workspace root")?;
     checked_workspace_dev_directory(&root)?;
-    let temporary = std::env::temp_dir().canonicalize().map_err(|_| "Cannot verify candidate temporary root")?;
+    let temporary = dunce::canonicalize(std::env::temp_dir()).map_err(|_| "Cannot verify candidate temporary root")?;
     let home = user_home()?;
     checked_workspace_dev_directory(&home)?;
     if !root.starts_with(&temporary) || !home.starts_with(&temporary) || root == home || root.parent() != home.parent() {
@@ -1385,7 +1395,7 @@ fn legacy_source_home(os_home: &Path, debug: bool, isolated_candidate: bool, req
     if isolated_candidate {
         let source = requested.ok_or("Isolated candidate requires an explicit legacy fixture source")?;
         checked_workspace_dev_directory(&source)?;
-        let temporary = std::env::temp_dir().canonicalize().map_err(|_| "Cannot verify candidate fixture root")?;
+        let temporary = dunce::canonicalize(std::env::temp_dir()).map_err(|_| "Cannot verify candidate fixture root")?;
         if source == os_home || !source.starts_with(&temporary) { return Err("Candidate legacy source must be a private temporary fixture".into()); }
         let marker: serde_json::Value = serde_json::from_str(&read_private_native_document_at(&source.join(".hara/local-inheritance-fixture-v1.json"))?)
             .map_err(|_| "Invalid candidate legacy source fixture marker")?;
@@ -1469,6 +1479,20 @@ mod windows_workspace_root_tests {
         assert!(create_private_workspace_directory(&link).is_err());
         fs::remove_dir(&link).unwrap();
         fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn formal_root_resolves_short_name_homes() {
+        // The hosted runner's %TEMP% uses an 8.3 short name (RUNNER~1), like some real account Homes.
+        let home = std::env::temp_dir().join(format!("hara-win-short-home-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir(&home).unwrap();
+        let root = formal_workspace_root_at(home.join(".hara")).unwrap();
+        assert_eq!(root, dunce::canonicalize(&home).unwrap().join(".hara").join("workspaces-v1"));
+        assert!(!root.to_string_lossy().starts_with(r"\\?\"));
+        checked_workspace_dev_directory(&root).unwrap();
+        assert_eq!(formal_workspace_root_at(home.join(".hara")).unwrap(), root); // next launch
+        fs::remove_dir_all(dunce::canonicalize(&home).unwrap()).unwrap();
     }
 }
 
