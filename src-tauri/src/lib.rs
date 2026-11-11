@@ -1519,6 +1519,30 @@ mod windows_workspace_root_tests {
         assert_eq!(formal_workspace_root_at(home.join(".hara")).unwrap(), root); // next launch
         fs::remove_dir_all(dunce::canonicalize(&home).unwrap()).unwrap();
     }
+
+    // prepackage only: Desktop's exact startup path (root -> spawn -> discovery -> connection) with the
+    // real Core sidecar that run just built, under an isolated HOME/USERPROFILE carrying a smoke marker.
+    #[test]
+    #[ignore = "prepackage only: real Core sidecar on PATH and an isolated smoke Home"]
+    fn real_sidecar_workspace_startup() {
+        let home = user_home().unwrap();
+        assert!(home.join("hara-smoke-home.marker").is_file(), "refusing to start an engine outside the isolated smoke Home");
+        let mut result = connect_or_start_workspace(Some("en".into()));
+        for _ in 0..8 {
+            match &result {
+                Err(error) if error.starts_with("Workspace startup is not yet confirmed") => result = connect_or_start_workspace(Some("en".into())),
+                _ => break,
+            }
+        }
+        let connection = result.unwrap();
+        assert_eq!(connection.execution_mode, "workspace");
+        assert!(connection.port > 0 && connection.token.len() == 64);
+        let root = workspace_root().unwrap();
+        assert_eq!(PathBuf::from(&connection.root), root);
+        std::net::TcpStream::connect(("127.0.0.1", connection.port)).unwrap();
+        let (_, record) = read_private_discovery_at(&root.join("home/.hara/workspace-runtime/serve-v2.json")).unwrap();
+        let _ = std::process::Command::new("taskkill").args(["/PID", &record.pid.to_string(), "/T", "/F"]).status();
+    }
 }
 
 fn validated_workspace_locale(value: Option<&str>) -> Result<&str, String> {

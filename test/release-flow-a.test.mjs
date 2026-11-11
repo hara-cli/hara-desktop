@@ -44,7 +44,9 @@ test("prepackage copies build.yml's package matrix and differs only in the revie
     "Collect canonical release assets after smoke",
     "Upload verified matrix assets for single-writer assembly",
   ]);
-  const added = new Set(["Generate a throwaway updater key for this rehearsal"]);
+  const added = new Set(["Generate a throwaway updater key for this rehearsal",
+    // HARA-FB-001698: Windows Workspace startup gates run before the tag, not in the signed release.
+    "Windows real-sidecar Workspace startup (prepackage only)", "Windows post-install Workspace smoke (prepackage only)"]);
   const expected = steps(releaseBuild).filter((step) => !omitted.has(stepName(step)));
   const actual = steps(rehearsalBuild).filter((step) => !added.has(stepName(step)));
   assert.deepEqual(actual.map(stepName), expected.map(stepName), "same steps in the same order");

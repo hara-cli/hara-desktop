@@ -296,6 +296,29 @@ jobs:
         env:
           TAURI_TARGET: ${{ matrix.target }}
         run: node scripts/package-smoke.mjs
+      - name: Windows real-sidecar Workspace startup (prepackage only)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          # HARA-FB-001698: Windows had never started the formal Workspace engine before a release.
+          $ErrorActionPreference = 'Stop'
+          # Keep Cargo/rustup on the runner's own Home before isolating HOME/USERPROFILE for the test.
+          if (-not $env:CARGO_HOME) { $env:CARGO_HOME = Join-Path $env:USERPROFILE '.cargo' }
+          if (-not $env:RUSTUP_HOME) { $env:RUSTUP_HOME = Join-Path $env:USERPROFILE '.rustup' }
+          $smokeHome = Join-Path $env:USERPROFILE "hara-sidecar-smoke-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory $smokeHome | Out-Null
+          New-Item -ItemType File (Join-Path $smokeHome 'hara-smoke-home.marker') | Out-Null
+          $bin = Join-Path $env:RUNNER_TEMP 'hara-smoke-bin'
+          New-Item -ItemType Directory $bin | Out-Null
+          Copy-Item "src-tauri\binaries\hara-${{ matrix.target }}.exe" (Join-Path $bin 'hara.exe')
+          $env:HOME = $smokeHome; $env:USERPROFILE = $smokeHome; $env:PATH = "$bin;$env:PATH"
+          cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --lib --locked `
+            windows_workspace_root_tests::real_sidecar_workspace_startup -- --ignored --test-threads=1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows post-install Workspace smoke (prepackage only)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: node scripts/windows-install-smoke.mjs "src-tauri/target/${{ matrix.target }}/release" "$RUNNER_TEMP/windows-install-smoke"
 
   signer_path:
     # The protected signer runs `HARA_RELEASE_BUILD=1 refresh-sidecar.sh` and then requires an
