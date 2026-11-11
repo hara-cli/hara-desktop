@@ -1,6 +1,6 @@
 /* Hara mascot placements. Clear space around the figure is at least 1/4 of its height. */
 .hara-mascot { display: block; flex: none; user-select: none; -webkit-user-drag: none; }
-.hs .hs-hello .hara-mascot { margin: 28px 0 -10px; }
+.hs .hs-hello .hara-mascot { margin: 28px 0 -6px; }
 .hs .wsd-welcome .hara-mascot { margin-bottom: 8px; }
 .wsd-wait-line .hara-mascot.is-face { width: 24px; height: 24px; margin: -4px 0; border-radius: 6px; }
 .wsd-wait-failure .wsd-wait-mascot { display: flex; gap: 9px; align-items: center; }
