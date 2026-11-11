@@ -8,6 +8,8 @@ test('ordinary CI exercises original Windows regressions and native Intel Core w
   assert.match(workflow,/SIDECAR_COMMIT/);assert.match(workflow,/steps\.core-lock\.outputs\.commit/);
   assert.match(workflow,/regression-windows:[\s\S]*ci-regression\.mjs/);
   assert.match(workflow,/windows-regression-diagnostics/);
+  // HARA-FB-001698: Windows must run the native Workspace root tests, not only cargo check.
+  assert.match(workflow,/native-windows-tests:[\s\S]*?cargo test --manifest-path src-tauri\/Cargo\.toml --target x86_64-pc-windows-msvc --lib --locked \\\n\s+windows_workspace_root_tests:: -- --test-threads=1/);
   assert.match(workflow,/GIT_CONFIG_COUNT: '1'\s+GIT_CONFIG_KEY_0: core\.autocrlf\s+GIT_CONFIG_VALUE_0: 'false'/);
   assert(!/self-hosted|environment:|secrets\.|contents: write|workflow_dispatch/.test(workflow));
   assert.match(fs.readFileSync(ROOT+'scripts/ci-core-platform.mjs','utf8'),/assertNoRosettaProbe/);

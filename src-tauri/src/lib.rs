@@ -1432,6 +1432,46 @@ mod workspace_locale_tests {
     }
 }
 
+// HARA-FB-001698: the formal Workspace root lives under %USERPROFILE%, a plain drive path such as
+// C:\Users\name\.hara. These run only on Windows CI (never locally on macOS/Linux).
+#[cfg(all(test, windows))]
+mod windows_workspace_root_tests {
+    use super::*;
+
+    fn profile_base(label: &str) -> PathBuf {
+        let profile = PathBuf::from(std::env::var_os("USERPROFILE").expect("USERPROFILE"));
+        let base = profile.join(format!("hara-win-root-test-{label}-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir(&base).unwrap();
+        base
+    }
+
+    #[test]
+    fn plain_profile_paths_are_accepted_like_workspace_root() {
+        let base = profile_base("plain");
+        let data = base.join(".hara");
+        create_private_workspace_directory(&data).unwrap();
+        let root = data.join("workspaces-v1");
+        create_private_workspace_directory(&root).unwrap();
+        create_private_workspace_directory(&root).unwrap(); // an existing directory on the next launch
+        checked_workspace_dev_directory(&root).unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn junctions_are_still_refused() {
+        let base = profile_base("junction");
+        let target = base.join("target");
+        fs::create_dir(&target).unwrap();
+        let link = base.join("link");
+        assert!(std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(&link).arg(&target).status().unwrap().success());
+        assert!(checked_workspace_dev_directory(&link).is_err());
+        assert!(create_private_workspace_directory(&link).is_err());
+        fs::remove_dir(&link).unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+}
+
 fn validated_workspace_locale(value: Option<&str>) -> Result<&str, String> {
     let locale = value.unwrap_or("en");
     let registry: serde_json::Value = serde_json::from_str(include_str!("../../src/locales/registry.json"))
