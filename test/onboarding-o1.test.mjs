@@ -82,7 +82,7 @@ test("no Core capability → no request; with the capability the entry is still 
   assert.equal(without.calls.some(call => call.method.startsWith("workspace.onboarding.")), false);
   assert.equal(ONBOARDING_STEPS_READY, false, "step 3 waits for C5, so the guide has no entry yet");
   assert.equal(modelFixture(["workspace.onboarding.v1"]).model.supportsOnboarding(), false);
-  assert.match(read("../src/onboarding-steps.ts"), /ONBOARDING_STEP_VIEWS: OnboardingStepViews = \{ 1: OnboardingEngineStep \};/, "only step 1 has shipped; steps 2 and 3 are still missing");
+  assert.match(read("../src/onboarding-steps.ts"), /ONBOARDING_STEP_VIEWS: OnboardingStepViews = \{ 1: OnboardingEngineStep, 2: OnboardingThirdPartyStep \};/, "steps 1 and 2 have shipped; step 3 waits for C5");
 });
 
 const common = (patch = {}) => ({ step: 1, readOnly: false, busy: false, notice: "", onLater() {}, ...patch });

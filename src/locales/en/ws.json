@@ -1537,5 +1537,16 @@
   "ws.onboarding.engine.proxy": "Network proxy",
   "ws.onboarding.engine.proxyNote": "Only fill this if your network must go through a proxy to reach model services. Empty = use your system network settings (default).",
   "ws.onboarding.engine.networkFailed": "First check this Mac is online. If your network must use a proxy to reach the model service, set it under {advanced}. If unsure, leave it empty.",
-  "ws.onboarding.engine.detectFailed": "Couldn’t check the engines on this Mac. Press Check again."
+  "ws.onboarding.engine.detectFailed": "Couldn’t check the engines on this Mac. Press Check again.",
+  "ws.onboarding.third.title": "Connect tools you already use?",
+  "ws.onboarding.third.sub": "You can skip this. Add them anytime in Settings › Plugins & MCP.",
+  "ws.onboarding.third.boundary": "MCP servers, plugins and hooks configured in other tools are never brought into Hara automatically.",
+  "ws.onboarding.third.later": "Not now",
+  "ws.onboarding.third.review": "Review & turn on…",
+  "ws.onboarding.third.list": "Tools found on this Mac",
+  "ws.onboarding.third.listNote": "Listed only; nothing is loaded or started",
+  "ws.onboarding.third.off": "Off",
+  "ws.onboarding.third.kindWorkspace": "This workspace",
+  "ws.onboarding.third.toolCount": "{n} tools",
+  "ws.onboarding.third.loadFailed": "Couldn’t read the tool list."
 }
