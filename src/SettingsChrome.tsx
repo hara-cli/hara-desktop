@@ -14,9 +14,11 @@ import { loadAdvancedOpen, saveAdvancedOpen } from "./settings-advanced-state";
  * - `SettingsAttention`: the amber bar pinned to the top for states that need the user.
  */
 /** `persist={false}` is for folds inside a transient dialog: they always start collapsed and are not remembered. */
-export function SettingsAdvanced({ page, items, customized = [], persist = true, children }: { page: string; items: string[]; customized?: string[]; persist?: boolean; children: ReactNode }) {
+/** `forceOpen`: opens the section when something inside needs attention (e.g. onboarding's proxy after a network failure). */
+export function SettingsAdvanced({ page, items, customized = [], persist = true, forceOpen = false, children }: { page: string; items: string[]; customized?: string[]; persist?: boolean; forceOpen?: boolean; children: ReactNode }) {
   const { t } = useWorkspaceLocale();
-  const [open, setOpen] = useState(() => persist && loadAdvancedOpen(page));
+  const [open, setOpen] = useState(() => forceOpen || persist && loadAdvancedOpen(page));
+  useEffect(() => { if (forceOpen) setOpen(true); }, [forceOpen]);
   const list = (values: string[]) => values.join(t("ws.settings.listSeparator"));
   return <details className="wss-advanced" data-settings-advanced={page} open={open} onToggle={event => {
     const next = event.currentTarget.open; if (next === open) return; setOpen(next); if (persist) saveAdvancedOpen(page, next);

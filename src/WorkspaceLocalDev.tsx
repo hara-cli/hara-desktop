@@ -65,6 +65,7 @@ import "./violet-workspace.css";
 import WorkspaceSettings, { type SettingsPage } from "./WorkspaceSettings";
 import { useWorkspaceUpdater, WorkspaceUpdateNotice } from "./WorkspaceSoftwareUpdate";
 import { OnboardingResumeCard, useWorkspaceOnboarding, WorkspaceOnboarding } from "./WorkspaceOnboarding";
+import { ONBOARDING_STEP_VIEWS } from "./onboarding-steps";
 const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
 
 type Translate = ReturnType<typeof makeT>;
@@ -366,7 +367,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const accountUsage = new Map((workspace?.accountUsage ?? []).map(row => [row.agentId, row]));
   const selectedUsage = colleagueUsageView(accountUsage.get(view.agentId ?? ""), locale);
   const updates = useWorkspaceUpdater(model, production);
-  const onboarding = useWorkspaceOnboarding(model, workspace);
+  const onboarding = useWorkspaceOnboarding(model, workspace, ONBOARDING_STEP_VIEWS);
   const inChannel = route.section === "channel";
   const showColleagueInspector = inspector && !browser && route.section === "chat" && !!agent && (agent.kind === "colleague" || agent.kind === "main");
   const showGroupInspector = inspector && !browser && inChannel;
@@ -812,7 +813,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       <h2>{r("newFolder")}</h2><label>{r("folderName")}<input value={sectionName} maxLength={60} onChange={event => setSectionName(event.target.value)} /></label>
       <div className="wsd-card-actions"><button onClick={() => setRosterMove(null)}>{t("ws.cancel")}</button><button className="hs-btn pri" disabled={!sectionName.trim()} onClick={() => { updateRosterPref(rosterMove.agentId, { section: sectionName.trim() }); setRosterMove(null); }}>{r("move")}</button></div>
     </ShellDialog> : null}
-    {onboarding.surface === "sheet" && !settings ? <WorkspaceOnboarding state={onboarding} /> : null}
+    {onboarding.surface === "sheet" && !settings && workspace ? <WorkspaceOnboarding state={onboarding} model={model} workspace={workspace} steps={ONBOARDING_STEP_VIEWS} /> : null}
     {settings ? <WorkspaceSettings key={`settings:${view.workspaceId}`} mainModel={model} initialPage={settingsPage} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
       onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} /> : null}
   </div></div></div>;

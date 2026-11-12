@@ -82,7 +82,7 @@ test("no Core capability → no request; with the capability the entry is still 
   assert.equal(without.calls.some(call => call.method.startsWith("workspace.onboarding.")), false);
   assert.equal(ONBOARDING_STEPS_READY, false, "step 3 waits for C5, so the guide has no entry yet");
   assert.equal(modelFixture(["workspace.onboarding.v1"]).model.supportsOnboarding(), false);
-  assert.deepEqual(module.exports.ONBOARDING_STEP_VIEWS, {}, "no step bodies ship in O1");
+  assert.match(read("../src/onboarding-steps.ts"), /ONBOARDING_STEP_VIEWS: OnboardingStepViews = \{ 1: OnboardingEngineStep \};/, "only step 1 has shipped; steps 2 and 3 are still missing");
 });
 
 const common = (patch = {}) => ({ step: 1, readOnly: false, busy: false, notice: "", onLater() {}, ...patch });
@@ -125,10 +125,10 @@ test("the controller renders the current step's own body and nothing for a step 
 
 test("mounted in the workspace: sheet as a modal (main is inert), resume card only in the Hara chat", () => {
   const app = read("../src/WorkspaceLocalDev.tsx");
-  assert.match(app, /const onboarding = useWorkspaceOnboarding\(model, workspace\);/);
+  assert.match(app, /const onboarding = useWorkspaceOnboarding\(model, workspace, ONBOARDING_STEP_VIEWS\);/);
   assert.match(app, /const modalOpen = settings \|\| onboarding\.surface === "sheet" \|\|/);
   assert.match(app, /onboarding\.surface === "resume" && onboarding\.progress && \(!agent \|\| agent\.kind === "main"\) \? <OnboardingResumeCard/);
-  assert.match(app, /onboarding\.surface === "sheet" && !settings \? <WorkspaceOnboarding state=\{onboarding\} \/>/);
+  assert.match(app, /onboarding\.surface === "sheet" && !settings && workspace \? <WorkspaceOnboarding state=\{onboarding\} model=\{model\} workspace=\{workspace\} steps=\{ONBOARDING_STEP_VIEWS\} \/>/);
   const hook = read("../src/WorkspaceOnboarding.tsx");
   assert.match(hook, /if \(progress\.readOnly\) \{ setProgress\(\{ \.\.\.progress, \.\.\.patch \}\); return true; \}/, "read-only never writes");
   assert.doesNotMatch(hook, /createBatch|agents\.create|preferences\.set|listModels|extensions\./, "progress never creates colleagues, changes preferences or probes engines");

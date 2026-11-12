@@ -18,7 +18,7 @@ function runtimeUseText(t: (key: Key, values?: Record<string, string | number>) 
   return use === "ready" ? t("ws.runtimes.status.enabled") : use === "confirm_first_use" ? t("ws.runtimes.status.installedNotEnabled")
     : use === "confirm_update" || use === "detecting" ? t(`ws.rf.status.${use}` as Key) : null;
 }
-const manualRuntimeGuide = (id: string) => id === "gemini" ? "https://geminicli.com/docs/get-started/installation/"
+export const manualRuntimeGuide = (id: string) => id === "gemini" ? "https://geminicli.com/docs/get-started/installation/"
   : id === "kimi" ? "https://moonshotai.github.io/kimi-code/en/guides/getting-started.html" : null;
 
 function RuntimeSetupDialog({ label, pending, onClose, children }: { label: string; pending: boolean; onClose(): void; children: ReactNode }) {

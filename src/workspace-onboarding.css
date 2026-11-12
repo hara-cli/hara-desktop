@@ -27,5 +27,41 @@
 .wob-resume{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hara-space-3);margin:0 0 var(--hara-space-4);padding:var(--hara-space-3) var(--hara-space-4);border:1px solid var(--wsd-line);border-left:3px solid var(--hara-brand-primary);border-radius:var(--hara-radius-card);background:var(--wsd-surface)}
 .wob-resume p{flex:1 1 200px;margin:0;font-size:var(--hara-font-size-body-sm)}
 .wob-resume-actions{display:flex;gap:var(--hara-space-2)}
+/* The body scrolls; its blocks keep their height instead of being squeezed when Advanced opens. */
+.wob-body>*{flex-shrink:0}
+/* Controls inside the sheet (connection and proxy forms come from Settings, whose styles are scoped there). */
+.wob-sheet button:not(.wob-later){min-height:32px;padding:0 var(--hara-space-3);border:1px solid var(--wsd-line);border-radius:var(--hara-radius-md);background:var(--wsd-surface);color:var(--wsd-ink);font:inherit;font-size:var(--hara-font-size-small);cursor:pointer}
+.wob-sheet button.hs-btn.pri,.wob-sheet button.wsd-primary{background:var(--hara-brand-primary);border-color:var(--hara-brand-primary);color:var(--hara-on-brand);font-weight:var(--hara-font-weight-semibold)}
+.wob-sheet button:not(:disabled):hover{background:var(--hara-bg-hover)}
+.wob-sheet button.hs-btn.pri:not(:disabled):hover,.wob-sheet button.wsd-primary:not(:disabled):hover{background:var(--hara-brand-hover)}
+.wob-sheet button:disabled{opacity:.45;cursor:not-allowed}
+.wob-sheet button:focus-visible,.wob-sheet input:focus-visible,.wob-sheet select:focus-visible,.wob-sheet a:focus-visible{outline:var(--hara-focus-ring-width) solid var(--hara-focus-ring);outline-offset:2px}
+.wob-sheet form{display:grid;gap:var(--hara-space-3);max-width:620px}
+.wob-sheet form h4{margin:0;font-size:var(--hara-font-size-body-sm)}
+.wob-sheet form p,.wob-sheet form small{margin:0;color:var(--wsd-muted);font-size:var(--hara-font-size-caption);line-height:1.5}
+.wob-sheet form label{display:grid;gap:var(--hara-space-1);font-size:var(--hara-font-size-small)}
+.wob-sheet form input,.wob-sheet form select{min-height:var(--hara-input-md);padding:0 var(--hara-space-3);border:1px solid var(--wsd-line);border-radius:var(--hara-radius-md);background:var(--wsd-surface);color:var(--wsd-ink);font:inherit}
+.wob-sheet .wsd-card-actions{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:var(--hara-space-2);margin:0}
+/* Step 1: engine list (hd-ob-engine). */
+.wob-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--hara-space-2);margin:0;font-size:var(--hara-font-size-body-sm);font-weight:var(--hara-font-weight-semibold)}
+.wob-h small,.wob-note{color:var(--wsd-muted);font-size:var(--hara-font-size-caption);font-weight:var(--hara-font-weight-regular)}
+.wob-note{margin:0;line-height:1.5}
+.wob-list{border:1px solid var(--wsd-line);border-radius:var(--hara-radius-card);overflow:hidden}
+.wob-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hara-space-3);padding:var(--hara-space-2) var(--hara-space-4);min-height:52px;border-top:1px solid var(--wsd-line);cursor:default}
+.wob-row:first-child{border-top:0}
+.wob-row.is-selected{background:var(--hara-bg-selected)}
+.wob-row.is-dim .wob-row-text{opacity:.6}
+.wob-row input[type=radio]{flex-shrink:0;accent-color:var(--hara-brand-primary);width:16px;height:16px;margin:0}
+.wob-row-text{flex:1 1 220px;min-width:0}
+.wob-row-text b{font-size:var(--hara-font-size-body-sm)}
+.wob-row-text small{display:block;color:var(--wsd-muted);font-size:var(--hara-font-size-caption);margin-top:2px}
+.wob-row a{font-size:var(--hara-font-size-small);color:var(--hara-text-link)}
+.wob-row-form{padding:var(--hara-space-3) var(--hara-space-4);border-top:1px solid var(--wsd-line)}
+.wob-chip{display:inline-block;padding:1px var(--hara-space-2);border-radius:var(--hara-radius-pill);font-size:var(--hara-font-size-caption);background:var(--hara-bg-hover);color:var(--wsd-muted);vertical-align:1px}
+.wob-chip.is-ok{background:var(--hara-success-soft);color:var(--hara-success)}
+.wob-chip.is-warn{background:var(--hara-warning-soft);color:var(--wsd-ink)}
+.wob-chip.is-fail{background:var(--hara-danger-soft);color:var(--hara-danger)}
+.wob-chip.is-draft{background:var(--hara-info-soft);color:var(--wsd-ink)}
+.wob-warn{margin:0;padding:var(--hara-space-2) var(--hara-space-3);border-radius:var(--hara-radius-md);background:var(--hara-warning-soft);font-size:var(--hara-font-size-small);line-height:1.5}
 /* The full mascot has a 128px floor (DESIGN.md); narrow windows drop it rather than shrink it. */
 @media (max-width:600px){.wob-scrim{padding:var(--hara-space-2)}.wob-mascot{display:none}.wob-top{padding:var(--hara-space-3) var(--hara-space-4)}.wob-steps,.wob-body,.wob-foot{padding-left:var(--hara-space-4);padding-right:var(--hara-space-4)}.wob-steps li{flex-direction:column;align-items:flex-start;gap:var(--hara-space-1)}}

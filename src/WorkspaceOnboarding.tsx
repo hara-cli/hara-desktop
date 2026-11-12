@@ -58,10 +58,8 @@ export function OnboardingSheet({ step, readOnly, busy, notice, onLater, onBack,
   </div>;
 }
 
-export interface OnboardingStepProps { progress: OnboardingProgress; sheet: OnboardingSheetCommon; next: (patch?: Partial<OnboardingFields>) => void }
+export interface OnboardingStepProps { progress: OnboardingProgress; sheet: OnboardingSheetCommon; next: (patch?: Partial<OnboardingFields>) => void; model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot }
 export type OnboardingStepViews = Partial<Record<OnboardingStep, ComponentType<OnboardingStepProps>>>;
-/** Shipped step bodies. Empty until O2/O3/step 3 land; the guide is gated off until then (ONBOARDING_STEPS_READY). */
-export const ONBOARDING_STEP_VIEWS: OnboardingStepViews = {};
 
 export function OnboardingResumeCard({ progress, notice = "", onContinue, onStop }: { progress: OnboardingProgress; notice?: "" | Key; onContinue: () => void; onStop: () => void }) {
   const { t } = useWorkspaceLocale();
@@ -78,7 +76,7 @@ export function OnboardingResumeCard({ progress, notice = "", onContinue, onStop
 }
 
 /** Loads G4 progress for the open workspace and decides between nothing, the sheet and the resume card. */
-export function useWorkspaceOnboarding(model: WorkspaceDevModel, workspace: WorkspaceDevSnapshot | null | undefined, steps: OnboardingStepViews = ONBOARDING_STEP_VIEWS) {
+export function useWorkspaceOnboarding(model: WorkspaceDevModel, workspace: WorkspaceDevSnapshot | null | undefined, steps: OnboardingStepViews) {
   // Stub models in older tests and lab entries may not have the method; no method means no guide.
   const supported = typeof model.supportsOnboarding === "function" && model.supportsOnboarding();
   const workspaceId = workspace?.workspaceId, generation = workspace?.resourceGeneration;
@@ -118,7 +116,7 @@ export function useWorkspaceOnboarding(model: WorkspaceDevModel, workspace: Work
   };
 }
 
-export function WorkspaceOnboarding({ state, steps = ONBOARDING_STEP_VIEWS }: { state: ReturnType<typeof useWorkspaceOnboarding>; steps?: OnboardingStepViews }) {
+export function WorkspaceOnboarding({ state, model, workspace, steps }: { state: ReturnType<typeof useWorkspaceOnboarding>; model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; steps: OnboardingStepViews }) {
   const { progress } = state;
   const Step = progress ? steps[progress.step] : undefined, visible = state.surface === "sheet" && !!Step;
   // Focus returns to where it was before the sheet opened (review of #82, G-1). When it was opened from the resume card,
@@ -130,5 +128,5 @@ export function WorkspaceOnboarding({ state, steps = ONBOARDING_STEP_VIEWS }: { 
   }, [visible]);
   if (!visible || !progress || !Step) return null;
   const sheet: OnboardingSheetCommon = { step: progress.step, readOnly: progress.readOnly, busy: state.busy, notice: state.notice, onLater: state.later, onBack: progress.step > 1 ? state.back : undefined };
-  return <Step progress={progress} sheet={sheet} next={state.next} />;
+  return <Step progress={progress} sheet={sheet} next={state.next} model={model} workspace={workspace} />;
 }
