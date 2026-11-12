@@ -1555,5 +1555,13 @@
   "ws.onboarding.rerun.note": "從第一步重新走一遍，帶上現在的設定；已經建好的同事不會重複建立。",
   "ws.onboarding.rerun.action": "重新執行",
   "ws.onboarding.rerun.readOnly": "你在這個空間只能檢視，不能重新執行引導。",
-  "ws.onboarding.rerun.failed": "沒能重新開始引導，請再試一次。"
+  "ws.onboarding.rerun.failed": "沒能重新開始引導，請再試一次。",
+  "ws.runtimes.default.title": "新同事預設用",
+  "ws.runtimes.default.note": "只影響之後新建的同事，現有同事不變。選擇時不會檢查或啟動引擎。",
+  "ws.runtimes.default.piFirst": "Pi 優先（預設）",
+  "ws.runtimes.default.unavailable": "{name}（現在不可用）",
+  "ws.runtimes.default.saved": "已儲存。之後新建的同事才會用它。",
+  "ws.runtimes.default.saveUnknown": "還不確定是否儲存，請重新開啟設定核對後再選。",
+  "ws.runtimes.default.loadFailed": "讀不到預設引擎，請重新開啟設定再試。",
+  "ws.runtimes.default.readOnly": "這裡只能查看，不能修改。"
 }

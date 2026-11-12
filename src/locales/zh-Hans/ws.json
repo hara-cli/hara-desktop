@@ -1555,5 +1555,13 @@
   "ws.onboarding.rerun.note": "从第一步重新走一遍，带上现在的设置；已经建好的同事不会重复建。",
   "ws.onboarding.rerun.action": "重新运行",
   "ws.onboarding.rerun.readOnly": "你在这个空间只能查看，不能重新运行引导。",
-  "ws.onboarding.rerun.failed": "没能重新开始引导，请再试一次。"
+  "ws.onboarding.rerun.failed": "没能重新开始引导，请再试一次。",
+  "ws.runtimes.default.title": "新同事默认用",
+  "ws.runtimes.default.note": "只影响之后新建的同事，已有同事不变。选择时不会检查或启动引擎。",
+  "ws.runtimes.default.piFirst": "Pi 优先（默认）",
+  "ws.runtimes.default.unavailable": "{name}（现在不可用）",
+  "ws.runtimes.default.saved": "已保存。之后新建的同事才会用它。",
+  "ws.runtimes.default.saveUnknown": "还不确定是否保存，请重新打开设置核对后再选。",
+  "ws.runtimes.default.loadFailed": "读不到默认引擎，请重新打开设置再试。",
+  "ws.runtimes.default.readOnly": "这里只能查看，不能修改。"
 }
