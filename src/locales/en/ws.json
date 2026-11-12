@@ -1435,5 +1435,11 @@
   "ws.execution.workspace_instruction_update": "Update colleague guidance",
   "ws.execution.workspace_memory_write": "Remember privately",
   "ws.execution.workspace_memory_promote": "Share a memory note",
-  "ws.execution.group_create": "Create a group"
+  "ws.execution.group_create": "Create a group",
+  "ws.settings.advanced": "Advanced",
+  "ws.settings.advanced.usually": "Usually no need to change",
+  "ws.settings.advanced.customized": "Customized: {items}",
+  "ws.settings.listSeparator": ", ",
+  "ws.settings.rowMenu": "More actions for {name}",
+  "ws.settings.attention": "Needs attention"
 }

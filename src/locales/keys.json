@@ -663,7 +663,13 @@
     "ws.schedules.accepted",
     "ws.schedules.cancelled",
     "ws.schedules.interrupted",
-    "ws.schedules.failed"
+    "ws.schedules.failed",
+    "ws.settings.advanced",
+    "ws.settings.advanced.usually",
+    "ws.settings.advanced.customized",
+    "ws.settings.listSeparator",
+    "ws.settings.rowMenu",
+    "ws.settings.attention"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -1944,6 +1950,12 @@
     "ws.notice.requestRejected",
     "ws.notice.receiptUnavailable",
     "ws.notice.approvalPending",
-    "ws.notice.cancelPending"
+    "ws.notice.cancelPending",
+    "ws.settings.advanced",
+    "ws.settings.advanced.usually",
+    "ws.settings.advanced.customized",
+    "ws.settings.listSeparator",
+    "ws.settings.rowMenu",
+    "ws.settings.attention"
   ]
 }

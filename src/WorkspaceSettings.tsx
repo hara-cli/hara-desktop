@@ -13,6 +13,7 @@ import { WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, ty
 import { WorkspaceSoftwareUpdate, type DesktopVersionInfo } from "./WorkspaceSoftwareUpdate";
 import { hasUpdateAttention, type WorkspaceUpdater } from "./workspace-updater-state";
 import { SettingsLeaveGuard, type SettingsLeaveAction } from "./settings-leave-guard";
+import { settingsAttentionPages } from "./settings-advanced-state";
 import "./workspace-settings.css";
 
 export type SettingsPage = "colleagues" | "overview" | "connections" | "runtimes" | "schedules" | "plugins" | "skills" | "members" | "general" | "appearance" | "updates";
@@ -113,7 +114,8 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
   }, [scopeOpen]);
   const switchScope = (workspaceId: string) => { if (workspaceId !== view.workspaceId) requestLeave({ kind: "scope", workspaceId }); else setScopeOpen(false); };
   const workspacePages: SettingsPage[] = ["colleagues", "connections", "runtimes", "schedules", "plugins", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
-  const navItem = (id: SettingsPage) => <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}><span aria-hidden>{createElement(pages[id].icon, { className: "hico" })}</span><span>{t(pages[id].name)}</span>{id === "updates" && hasUpdateAttention(updates) ? <i className="wss-update-dot" /> : null}</button>;
+  const attention = settingsAttentionPages({ updateAttention: hasUpdateAttention(updates) });
+  const navItem = (id: SettingsPage) => <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}><span aria-hidden>{createElement(pages[id].icon, { className: "hico" })}</span><span>{t(pages[id].name)}</span>{attention.has(id) ? <i className="wss-update-dot" role="img" aria-label={t("ws.settings.attention")} /> : null}</button>;
   const key = workspace ? `${workspace.workspaceId}:${workspace.resourceGeneration}:${page}` : "loading";
   return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}>
     <aside className="wss-nav" inert={Boolean(decision)}><button className="wss-close" aria-label={t("vg.closeSettings")} onClick={close}><XMarkIcon className="hico" /></button><h1>{t("ws.settings")}</h1><nav aria-label={t("ws.settings.navigation")}>

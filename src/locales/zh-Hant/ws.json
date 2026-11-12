@@ -1435,5 +1435,11 @@
   "ws.execution.workspace_instruction_update": "修改同事守則",
   "ws.execution.workspace_memory_write": "儲存私有記憶",
   "ws.execution.workspace_memory_promote": "共享記憶",
-  "ws.execution.group_create": "建立群聊"
+  "ws.execution.group_create": "建立群聊",
+  "ws.settings.advanced": "進階",
+  "ws.settings.advanced.usually": "一般不用改",
+  "ws.settings.advanced.customized": "已自訂：{items}",
+  "ws.settings.listSeparator": "、",
+  "ws.settings.rowMenu": "{name}的更多操作",
+  "ws.settings.attention": "需要處理"
 }
