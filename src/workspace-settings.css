@@ -146,6 +146,7 @@
 .wsd-default-runtime select{border:1px solid var(--wsd-line);border-radius:var(--hara-radius-sm);padding:7px 8px;background:var(--surface);color:var(--ink);font:inherit;max-width:100%}
 .wsd-default-runtime>.wss-scope-chip{justify-self:start}
 /* S2b: skills rows. */
-.wsd-skill-head{display:flex;align-items:center;gap:var(--hara-space-2)}.wsd-skill-head strong{flex:1;min-width:0;overflow-wrap:anywhere}
+/* Narrow windows: the id keeps its width and the mark / ⋯ wrap below instead of squeezing it (review of #95, M2). */
+.wsd-skill-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hara-space-2)}.wsd-skill-head strong{flex:1 1 120px;min-width:0;overflow-wrap:anywhere}
 .wsd-skill-new{padding:1px var(--hara-space-2);border-radius:var(--hara-radius-pill);background:var(--hara-info-soft);font-size:var(--hara-font-size-caption)}
 .wsd-skill-summary{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

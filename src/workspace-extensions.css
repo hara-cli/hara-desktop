@@ -50,3 +50,5 @@
 .wse-source > header { flex-wrap: wrap; }
 .wse-source > header > div { flex: 1 1 120px; }
 .wse-source > header strong { overflow-wrap: anywhere; }
+/* The status pill may wrap its own text rather than run into the card edge (review of #95, L4). */
+.wse-source > header .wse-status { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }

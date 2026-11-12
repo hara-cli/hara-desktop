@@ -77,7 +77,8 @@ export function WorkspaceExtensions({ model, workspaceId, generation, agent, onD
   // Settings IA audit (S2b): a source that changed after review is pinned at the top; the bar takes you to its card,
   // whose review flow is unchanged. Never loads or starts anything.
   const attention = !agent && current ? current.sources.filter(source => source.status === "needs-review").map(source => ({ id: `extension:${source.sourceId}`,
-    text: t("ws.extensions.attentionReview", { name: source.name }), action: { label: t("ws.extensions.attentionOpen"), onClick: () => {
+    // Read-only viewers cannot review, so their bar asks the owner and has no button that would do nothing (review of #95, L1).
+    text: t(current.readOnly ? "ws.extensions.attentionReviewOwner" : "ws.extensions.attentionReview", { name: source.name }), action: current.readOnly ? undefined : { label: t("ws.extensions.attentionOpen"), onClick: () => {
       const card = document.getElementById(`wse-${source.sourceId}`); card?.scrollIntoView({ block: "center" }); card?.querySelector<HTMLElement>(".wse-review")?.focus(); } } })) : [];
   return <section className="wse" aria-label={t(agent ? "ws.extensions.assignmentTitle" : "ws.extensions.title")}>
     <header className="wse-heading"><h3>{t(agent ? "ws.extensions.assignmentTitle" : "ws.extensions.title")}</h3>

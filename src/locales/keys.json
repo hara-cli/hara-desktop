@@ -294,7 +294,6 @@
     "ws.mcpReview.inspection_failed",
     "ws.mcpReview.schema_unsupported",
     "ws.mcpReview.drain_unknown",
-    "ws.extensions.managerNote",
     "ws.extensions.callable",
     "ws.extensions.lastCall",
     "ws.extensions.outcome.server_reported_success",
@@ -317,8 +316,6 @@
     "ws.extensions.title",
     "ws.extensions.assignmentTitle",
     "ws.extensions.detail",
-    "ws.extensions.note",
-    "ws.extensions.timing",
     "ws.extensions.unavailable",
     "ws.extensions.empty",
     "ws.extensions.loading",
@@ -336,7 +333,6 @@
     "ws.extensions.confirm",
     "ws.extensions.cancel",
     "ws.extensions.selected",
-    "ws.extensions.colleagues",
     "ws.extensions.enabled",
     "ws.extensions.disabled",
     "ws.extensions.saved",
@@ -732,7 +728,9 @@
     "ws.extensions.attentionOpen",
     "ws.extensions.reloadShort",
     "ws.skills.newVersion",
-    "ws.skills.howItWorks"
+    "ws.skills.howItWorks",
+    "ws.extensions.attentionReviewOwner",
+    "ws.skills.details"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -1304,7 +1302,6 @@
     "ws.mcpReview.inspection_failed",
     "ws.mcpReview.schema_unsupported",
     "ws.mcpReview.drain_unknown",
-    "ws.extensions.managerNote",
     "ws.extensions.callable",
     "ws.extensions.lastCall",
     "ws.extensions.outcome.server_reported_success",
@@ -1327,8 +1324,6 @@
     "ws.extensions.title",
     "ws.extensions.assignmentTitle",
     "ws.extensions.detail",
-    "ws.extensions.note",
-    "ws.extensions.timing",
     "ws.extensions.unavailable",
     "ws.extensions.empty",
     "ws.extensions.loading",
@@ -1346,7 +1341,6 @@
     "ws.extensions.confirm",
     "ws.extensions.cancel",
     "ws.extensions.selected",
-    "ws.extensions.colleagues",
     "ws.extensions.enabled",
     "ws.extensions.disabled",
     "ws.extensions.saved",
@@ -2156,6 +2150,8 @@
     "ws.extensions.attentionOpen",
     "ws.extensions.reloadShort",
     "ws.skills.newVersion",
-    "ws.skills.howItWorks"
+    "ws.skills.howItWorks",
+    "ws.extensions.attentionReviewOwner",
+    "ws.skills.details"
   ]
 }

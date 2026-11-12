@@ -241,6 +241,25 @@ test("S2b skills: id stays the name, «New version» visible, edit in ⋯, sourc
   const panels = readFileSync(new URL("../src/WorkspaceSettingsPanels.tsx", import.meta.url), "utf8");
   assert.match(panels, /<strong>\{row\.id\}<\/strong>\{newer \? <span className="wsd-skill-new">\{t\("ws\.skills\.newVersion"\)\}<\/span> : null\}/);
   assert.match(panels, /<SettingsRowMenu label=\{row\.id\} disabled=\{pending\} items=\{\[\{ id: "edit", label: t\("ws\.skills\.edit"\), onSelect: \(\) => void editSkill\(row\.id\) \}\]\} \/>/);
-  assert.match(panels, /<details className="wsd-runtime-details"><summary>\{t\("ws\.runtimes\.details"\)\}<\/summary>[\s\S]*row\.version\.slice\(0, 12\)/);
+  assert.match(panels, /<details className="wsd-runtime-details"><summary>\{t\("ws\.skills\.details"\)\}<\/summary>[\s\S]*row\.version\.slice\(0, 12\)/);
   assert.match(panels, /<SettingsAdvanced page="skills" items=\{\[t\("ws\.skills\.howItWorks"\)\]\}><p>\{t\("ws\.skills\.note"\)\}<\/p><\/SettingsAdvanced>/);
+});
+
+test("review of #95: read-only viewers get a bar that asks the owner, with no button that would do nothing (L1)", async () => {
+  const t = makeT("en"), f = mount(mock({ extensions: async id => view(id, { readOnly: true, sources: [source({ status: "needs-review" })] }) })); await f.flush();
+  const bar = f.nodes().find(node => Array.isArray(node.props.items));
+  assert.deepEqual(bar.props.items.map(item => [item.text, item.action]), [[t("ws.extensions.attentionReviewOwner", { name: "Docs" }), undefined]]);
+});
+
+for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`review of #95, M1: the one-line note says removing access blocks new calls, not that it «takes effect» (${locale})`, () => {
+  const t = makeT(locale), want = { "zh-Hans": "撤权后立即阻止新的调用", en: "removing access immediately blocks new calls", "zh-Hant": "撤權後立即阻止新的呼叫" }[locale];
+  for (const key of ["ws.extensions.noteLine", "ws.extensions.managerNoteLine"]) assert.ok(t(key).includes(want), `${key}: ${t(key)}`);
+});
+
+test("review of #95, L2: the four retired keys are gone from all locales and keys.json", () => {
+  const keys = readFileSync(new URL("../src/locales/keys.json", import.meta.url), "utf8");
+  for (const locale of ["zh-Hans", "en", "zh-Hant"]) {
+    const strings = JSON.parse(readFileSync(new URL(`../src/locales/${locale}/ws.json`, import.meta.url), "utf8"));
+    for (const key of ["ws.extensions.note", "ws.extensions.managerNote", "ws.extensions.timing", "ws.extensions.colleagues"]) { assert.equal(key in strings, false, `${locale} ${key}`); assert.equal(keys.includes(`"${key}"`), false, key); }
+  }
 });

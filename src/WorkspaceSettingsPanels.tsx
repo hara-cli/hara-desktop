@@ -192,7 +192,7 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
           {row.description ? <p className="wsd-skill-summary" title={row.description}>{row.description}</p> : null}
           <label><ToggleSwitch label={t("ws.skills.allow")} disabled={pending} checked={row.enabled} onCheckedChange={checked => void update(row.id, checked, row.version)} />{t("ws.skills.allow")}</label>
           {newer ? <button disabled={pending} onClick={() => setUpgrade(row)}>{t("ws.skills.review")}</button> : null}
-          <details className="wsd-runtime-details"><summary>{t("ws.runtimes.details")}</summary>
+          <details className="wsd-runtime-details"><summary>{t("ws.skills.details")}</summary>
             {row.description ? <p>{row.description}</p> : null}
             <small>{t(row.source === "private" ? "ws.skills.private" : "ws.skills.global")} · {row.version.slice(0, 12)} · {t(row.locked ? "ws.skills.pinned" : "ws.skills.disabled")}</small></details>
         </div>; })}
