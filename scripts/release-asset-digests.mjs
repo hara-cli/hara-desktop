@@ -10,6 +10,7 @@
 //   check-final <assets.json> <record> <localdir> <replaced...>
 //                                                     after upload: replaced assets equal local bytes
 //   small <assets.json>                               print metadata reduced to the small files the signer needs
+//   check-local <dir> <record> <replaced...>          every downloaded non-replaced file equals the record
 //
 // <record> is a file path, or "-env" to read HARA_DRAFT_ASSET_DIGESTS.
 import { createHash } from "node:crypto";
@@ -137,6 +138,25 @@ export function checkFinal(metadata, recordValue, localDirectory, replaced) {
   return { unchanged: record.size - replaced.length, replaced: replaced.length };
 }
 
+// The small files are downloaded between the two metadata checks; bind their bytes to the record
+// directly so nothing can be swapped in between.
+export function checkLocal(directory, recordValue, replaced) {
+  const record = parseRecord(recordValue);
+  const root = resolve(directory);
+  let checked = 0;
+  for (const name of readdirSync(root).filter((entry) => !entry.startsWith(".")).sort()) {
+    if (replaced.includes(name)) continue;
+    const expected = record.get(name);
+    if (!expected) throw new Error(`downloaded ${name} is not part of the verified draft`);
+    const path = join(root, name);
+    if (!regularFile(path) || lstatSync(path).size !== expected.size || sha256File(path) !== expected.sha256) {
+      throw new Error(`downloaded ${name} differs from the verified draft record`);
+    }
+    checked += 1;
+  }
+  return checked;
+}
+
 export function smallAssets(metadata) {
   const assets = Array.isArray(metadata) ? metadata : metadata?.assets;
   if (!Array.isArray(assets)) throw new Error("release metadata must contain an assets array");
@@ -175,6 +195,9 @@ if (invoked) {
       const [metadata, record, local, ...replaced] = rest;
       const result = checkFinal(readJson(metadata), readRecord(record), local, replaced);
       console.log(`release-asset-digests: ${result.unchanged} unchanged + ${result.replaced} replaced assets match by GitHub digest`);
+    } else if (command === "check-local" && rest.length >= 3) {
+      const [directory, record, ...replaced] = rest;
+      console.log(`release-asset-digests: ${checkLocal(directory, readRecord(record), replaced)} downloaded files equal the verified draft record`);
     } else if (command === "small" && rest.length === 1) {
       process.stdout.write(`${JSON.stringify(smallAssets(readJson(rest[0])))}\n`);
     } else {

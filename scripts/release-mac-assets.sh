@@ -84,7 +84,11 @@ done
 # 19-250 KB/s). Measure an 8 MiB public range through every candidate before any release transfer
 # and stop here, with nothing uploaded, when none reaches the throughput floor.
 RELEASE_GITHUB_PROXY="$(node scripts/release-proxy-select.mjs "${RELEASE_PROXY_CANDIDATES[@]}")" || {
-  echo "error: no protected GitHub release route reached the throughput floor; nothing was transferred" >&2
+  if [ "$?" -eq 1 ]; then
+    echo "error: no protected GitHub release route reached the throughput floor; nothing was transferred" >&2
+  else
+    echo "error: GitHub release route selection is misconfigured (see above); nothing was transferred" >&2
+  fi
   exit 1
 }
 echo "GitHub release route: $RELEASE_GITHUB_PROXY (fastest measured candidate)"
@@ -240,6 +244,8 @@ release_download_small() {
       release_gh_api_download "$REPO" "$small" "$stage" >>"$log" 2>&1 &&
       node scripts/release-download-cache.mjs "$small" "$stage" --complete >>"$log" 2>&1; then
       cat "$log"
+      # Bind the downloaded bytes to the assembly record too (not only to GitHub's current digest).
+      node scripts/release-asset-digests.mjs check-local "$stage" -env "${REPLACED_ASSETS[@]}"
       cp -p "$stage"/* "$target"/
       rm -rf "$stage"
       rm -f "$log" "$metadata" "$small"

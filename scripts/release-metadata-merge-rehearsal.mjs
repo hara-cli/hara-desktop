@@ -84,6 +84,7 @@ const small = JSON.parse(run(["scripts/release-asset-digests.mjs", "small", draf
 const signer = join(work, "signer");
 mkdirSync(signer);
 for (const { name } of small.assets) copyFileSync(join(draft, name), join(signer, name));
+run(["scripts/release-asset-digests.mjs", "check-local", signer, "-env", ...replaced], { env, label: "signer: downloaded small files equal the record" });
 const smallBytes = small.assets.reduce((total, asset) => total + asset.size, 0);
 console.log(`  signer holds ${small.assets.length} small files (${smallBytes} bytes); large assets are digest-bound only`);
 run(["scripts/updater-manifest.mjs", "validate", signer, tag, "--digest-bound", "-env"], { env, label: "signer: validate draft latest.json (digest-bound)" });
@@ -112,6 +113,11 @@ run(["scripts/release-asset-digests.mjs", "check-draft", mutate(draftMetadata, (
 run(["scripts/release-asset-digests.mjs", "check-draft", mutate(draftMetadata, (a) => { a.splice(a.findIndex((x) => x.name === linux), 1); }), "-env", ...replaced], { env, expectFailure: true, reason: /missing=\[Hara_[^\]]+_amd64\.deb\]/u, label: "negative: missing asset" });
 run(["scripts/release-asset-digests.mjs", "check-final", mutate(finalMetadata, (a) => { const x = a.find((y) => y.name === "Hara_x64.app.tar.gz"); x.digest = flip(x.digest); }), "-env", signer, ...replaced], { env, expectFailure: true, reason: /uploaded Hara_x64\.app\.tar\.gz does not match the local signed bytes/u, label: "negative: uploaded Mac bytes differ from local" });
 run(["scripts/release-asset-digests.mjs", "check-final", mutate(finalMetadata, (a) => { const x = a.find((y) => y.name === linux); x.digest = flip(x.digest); }), "-env", signer, ...replaced], { env, expectFailure: true, reason: /amd64\.deb differs from the verified draft record/u, label: "negative: non-Mac asset changed during upload" });
+const swapped = join(work, "swapped");
+mkdirSync(swapped);
+copyFileSync(join(signer, `${linux}.sig`), join(swapped, `${linux}.sig`));
+writeFileSync(join(swapped, `${linux}.sig`), "swapped between metadata checks\n", { flag: "a" });
+run(["scripts/release-asset-digests.mjs", "check-local", swapped, "-env", ...replaced], { env, expectFailure: true, reason: /downloaded Hara_[^ ]+_amd64\.deb\.sig differs from the verified draft record/u, label: "negative: small file swapped after the metadata check" });
 const partialRecord = JSON.stringify(JSON.parse(record).filter((entry) => entry.name !== linux));
 run(["scripts/updater-manifest.mjs", "validate", signer, tag, "--digest-bound", "-env"], { env: { HARA_DRAFT_ASSET_DIGESTS: partialRecord }, expectFailure: true, reason: /release asset set mismatch; missing=\[Hara_[^\]]+_amd64\.deb\]/u, label: "negative: binary neither local nor in the record" });
 run(["scripts/release-asset-digests.mjs", "check-draft", draftMetadata, "-env", ...replaced], { env: { HARA_DRAFT_ASSET_DIGESTS: "" }, expectFailure: true, reason: /HARA_DRAFT_ASSET_DIGESTS is empty/u, label: "negative: missing assembly record" });

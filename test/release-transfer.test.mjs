@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import {
   checkDraft,
   checkFinal,
+  checkLocal,
   parseRecord,
   recordDirectory,
   smallAssets,
@@ -128,6 +129,26 @@ test("check-final requires uploaded assets to equal the local signed bytes and t
   } finally {
     rmSync(directory, { recursive: true, force: true });
     rmSync(local, { recursive: true, force: true });
+  }
+});
+
+test("downloaded small files must equal the assembly record, not only GitHub's current digest", () => {
+  const { directory, files } = fixtureDraft();
+  const downloaded = mkdtempSync(join(tmpdir(), "hara-digest-local-"));
+  try {
+    const record = JSON.stringify(recordDirectory(directory));
+    writeFileSync(join(downloaded, "linux.deb.sig"), files["linux.deb.sig"]);
+    writeFileSync(join(downloaded, "mac.tar.gz.sig"), "already re-signed\n");
+    writeFileSync(join(downloaded, ".linux.deb.sig.part"), "partial");
+    assert.equal(checkLocal(downloaded, record, replaced), 1, "replaced files and partials are skipped");
+    writeFileSync(join(downloaded, "linux.deb.sig"), "swapped between the two metadata checks\n");
+    assert.throws(() => checkLocal(downloaded, record, replaced), /downloaded linux\.deb\.sig differs from the verified draft record/);
+    writeFileSync(join(downloaded, "linux.deb.sig"), files["linux.deb.sig"]);
+    writeFileSync(join(downloaded, "stray.sig"), "x");
+    assert.throws(() => checkLocal(downloaded, record, replaced), /stray\.sig is not part of the verified draft/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(downloaded, { recursive: true, force: true });
   }
 });
 
@@ -250,6 +271,20 @@ test("the merge script stops before any release transfer when no route reaches t
     assert.equal(badCandidate.status, 1);
     assert.match(badCandidate.stderr, /HARA_GITHUB_RELEASE_PROXY_CANDIDATES entries must be loopback/);
 
+    const misconfigured = spawnSync("/bin/bash", ["scripts/release-mac-assets.sh", tag], {
+      cwd: root, encoding: "utf8", timeout: 30_000,
+      env: { PATH: `${bin}:${process.env.PATH}`, HOME: sandbox,
+        GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "hara-cli/hara-desktop", GITHUB_EVENT_NAME: "push",
+        GITHUB_REF_PROTECTED: "true", GITHUB_RUN_ID: "42", HARA_PROTECTED_SIGNING_JOB: "42",
+        HARA_PROMOTION_WORKFLOW_LOCK: "42", HARA_PROMOTION_TAG: tag,
+        GITHUB_WORKFLOW_REF: `hara-cli/hara-desktop/.github/workflows/build.yml@refs/tags/${tag}`,
+        GH_TOKEN: "test-token", HARA_DRAFT_ASSET_DIGESTS: "[]",
+        HARA_GITHUB_RELEASE_PROXY: "socks5h://127.0.0.1:29", HARA_GITHUB_RELEASE_MIN_BYTES_PER_SECOND: "1024" },
+    });
+    assert.equal(misconfigured.status, 1);
+    assert.match(misconfigured.stderr, /route selection is misconfigured/, "a bad floor is not reported as a slow network");
+    assert.doesNotMatch(misconfigured.stderr, /no protected GitHub release route reached/);
+
     const noRecord = spawnSync("/bin/bash", ["scripts/release-mac-assets.sh", tag], {
       cwd: root, encoding: "utf8", timeout: 30_000,
       env: { PATH: `${bin}:${process.env.PATH}`, HOME: sandbox,
@@ -359,7 +394,7 @@ test("workflow and verifiers wire the metadata-only merge and the full hosted pu
   const updaters = readFileSync(join(root, "scripts/verify-release-updaters.mjs"), "utf8");
 
   assert.match(build, /asset_digests: \$\{\{ steps\.verified_draft\.outputs\.asset_digests \}\}/);
-  assert.match(build, /id: verified_draft[\s\S]*?release-asset-digests\.mjs record "\$VERIFY_DIR"[\s\S]*?jq -e 'length == 17'[\s\S]*?updater-manifest\.mjs validate "\$VERIFY_DIR"[\s\S]*?echo "asset_digests=\$ASSET_DIGESTS" >> "\$GITHUB_OUTPUT"/);
+  assert.match(build, /id: verified_draft[\s\S]*?cmp -s "\$downloaded" "\$RUNNER_TEMP\/release-assets\/\$name"[\s\S]*?differs from the matrix-verified input[\s\S]*?release-asset-digests\.mjs record "\$VERIFY_DIR"[\s\S]*?jq -e 'length == 17'[\s\S]*?updater-manifest\.mjs validate "\$VERIFY_DIR"[\s\S]*?echo "asset_digests=\$ASSET_DIGESTS" >> "\$GITHUB_OUTPUT"/);
   assert.match(build, /HARA_DRAFT_ASSET_DIGESTS: \$\{\{ needs\.assemble_draft\.outputs\.asset_digests \}\}/);
   assert.match(build, /sign_and_promote:\n[\s\S]*?needs: \[prepare_release, create_draft, assemble_draft, promotion_preflight\]/);
 
@@ -378,6 +413,7 @@ test("workflow and verifiers wire the metadata-only merge and the full hosted pu
   assert.ok(probe < draftCheck && draftCheck < small && small < build_ && build_ < localUpdaters &&
     localUpdaters < localDmg && localDmg < upload && upload < finalCheck && finalCheck < latestReadBack && latestReadBack < publish);
   assert.match(merge, /require_source_archive_digest "\$WORK\/draft-assets\.json"/);
+  assert.match(merge, /release-asset-digests\.mjs check-local "\$stage" -env "\$\{REPLACED_ASSETS\[@\]\}"\n      cp -p "\$stage"/);
   assert.match(merge, /require_source_archive_digest "\$WORK\/signed-assets\.json"/);
 
   assert.match(edge, /while IFS= read -r asset_name; do\n  \[ -e "\$FULL_DIR\/\$asset_name" \] \|\| download_attested_asset/);

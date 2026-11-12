@@ -657,6 +657,16 @@ jobs:
             cd "$SOURCE_VERIFY_DIR"
             sha256sum -c source-packs.sha256
           )
+          # The record below is the root of the signer's digest-only merge, so bind it to the bytes the
+          # matrix builds cryptographically verified: every downloaded asset must equal its input.
+          for downloaded in "$VERIFY_DIR"/*; do
+            name="$(basename "$downloaded")"
+            [ "$name" = "Hara_${RELEASE_TAG#v}_source-packs.zip" ] && continue
+            cmp -s "$downloaded" "$RUNNER_TEMP/release-assets/$name" || {
+              echo "draft asset $name differs from the matrix-verified input" >&2
+              exit 1
+            }
+          done
           ASSET_DIGESTS="$(node scripts/release-asset-digests.mjs record "$VERIFY_DIR")"
           jq -e 'length == 17' <<<"$ASSET_DIGESTS" >/dev/null
           rm -f "$SOURCE_ARCHIVE"
