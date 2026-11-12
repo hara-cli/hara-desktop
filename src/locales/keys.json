@@ -695,7 +695,16 @@
     "ws.schedules.advanced.source",
     "ws.schedules.advanced.rules",
     "ws.connections.attention.cleanup",
-    "ws.schedules.byAgent"
+    "ws.schedules.byAgent",
+    "ws.settings.summary.colleagues",
+    "ws.settings.summary.connectionCurrent",
+    "ws.settings.summary.runtimes",
+    "ws.settings.general.copyPath",
+    "ws.settings.general.pathCopied",
+    "ws.settings.appearance.timing",
+    "ws.settings.appearance.brand",
+    "ws.updates.cadenceShort",
+    "ws.updates.versionForReports"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -2008,6 +2017,15 @@
     "ws.schedules.advanced.source",
     "ws.schedules.advanced.rules",
     "ws.connections.attention.cleanup",
-    "ws.schedules.byAgent"
+    "ws.schedules.byAgent",
+    "ws.settings.summary.colleagues",
+    "ws.settings.summary.connectionCurrent",
+    "ws.settings.summary.runtimes",
+    "ws.settings.general.copyPath",
+    "ws.settings.general.pathCopied",
+    "ws.settings.appearance.timing",
+    "ws.settings.appearance.brand",
+    "ws.updates.cadenceShort",
+    "ws.updates.versionForReports"
   ]
 }

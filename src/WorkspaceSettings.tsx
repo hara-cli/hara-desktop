@@ -9,12 +9,12 @@ import { selectableLanguages, type Key, type LocalePreference } from "./i18n";
 import HaraLogo from "./mark";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot } from "./workspace-dev-state";
 import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
-import { WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, type useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
+import { WorkspaceAppearanceAdvanced, WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, type useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
 import { WorkspaceSoftwareUpdate, type DesktopVersionInfo } from "./WorkspaceSoftwareUpdate";
 import { hasUpdateAttention, type WorkspaceUpdater } from "./workspace-updater-state";
 import { SettingsLeaveGuard, type SettingsLeaveAction } from "./settings-leave-guard";
 import { settingsAttentionPages } from "./settings-advanced-state";
-import { SettingsAttention, type SettingsAttentionItem } from "./SettingsChrome";
+import { SettingsAdvanced, SettingsAttention, type SettingsAttentionItem } from "./SettingsChrome";
 import "./workspace-settings.css";
 
 export type SettingsPage = "colleagues" | "overview" | "connections" | "runtimes" | "schedules" | "plugins" | "skills" | "members" | "general" | "appearance" | "updates";
@@ -114,9 +114,21 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
     document.addEventListener("pointerdown", outside); return () => document.removeEventListener("pointerdown", outside);
   }, [scopeOpen]);
   const switchScope = (workspaceId: string) => { if (workspaceId !== view.workspaceId) requestLeave({ kind: "scope", workspaceId }); else setScopeOpen(false); };
-  const workspacePages: SettingsPage[] = ["colleagues", "connections", "runtimes", "schedules", "plugins", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
+  // «Members» is not released yet, so it has no entry (settings IA audit; DESIGN.md §11.6).
+  const workspacePages: SettingsPage[] = ["colleagues", "connections", "runtimes", "schedules", "plugins", "skills", "general"];
   const attention = settingsAttentionPages({ updateAttention: hasUpdateAttention(updates), connections: workspace?.connections });
   const attentionDot = (id: SettingsPage) => attention.has(id) ? <i className="wss-update-dot" role="img" aria-label={t("ws.settings.attention")} /> : null;
+  // One-line state for each overview card, from data the page already has (no extra RPC); other cards keep their description.
+  const overviewSummary = (id: SettingsPage): string => {
+    if (!workspace) return t(pages[id].detail);
+    if (id === "colleagues") return t("ws.settings.summary.colleagues", { n: workspace.agents.filter(agent => agent.kind === "colleague" && agent.state !== "archived").length });
+    if (id === "connections") { const current = workspace.connections.connections.find(row => row.status === "active" && row.id === (workspace.connections.activeConnectionId ?? workspace.connections.defaultConnectionId));
+      const count = t(connectionCount === 1 ? "ws.settings.connectionOne" : "ws.settings.connectionCount", { n: connectionCount });
+      return current ? t("ws.settings.summary.connectionCurrent", { count, name: current.label }) : count; }
+    if (id === "runtimes") return t("ws.settings.summary.runtimes", { n: (workspace.runtimes?.options ?? []).filter(option => option.registered).length });
+    if (id === "general") return `${t(selected?.kind === "team" ? "ws.settings.team" : "ws.settings.personal")} · ${t(selected?.role === "owner" ? "ws.settings.general.owner" : selected?.role === "admin" ? "ws.settings.general.admin" : "ws.settings.general.member")}`;
+    return t(pages[id].detail);
+  };
   const navItem = (id: SettingsPage) => <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}><span aria-hidden>{createElement(pages[id].icon, { className: "hico" })}</span><span>{t(pages[id].name)}</span>{attentionDot(id)}</button>;
   const key = workspace ? `${workspace.workspaceId}:${workspace.resourceGeneration}:${page}` : "loading";
   return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}>
@@ -132,13 +144,13 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
       <WorkspaceRpcErrorNotice value={view.error} technicalDetail={view.errorTechnicalDetail} locale={locale} t={t} className="wss-callout" />
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
       {page === "runtimes" && production && workspace ? <SettingsAttention items={runtimeAttention(workspace, model, t, Boolean(readonly))} /> : null}
-      {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.filter(id => id !== "members").map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}{attentionDot(id)}</h2><p>{id === "connections" ? t(connectionCount === 1 ? "ws.settings.connectionOne" : "ws.settings.connectionCount", { n: connectionCount }) : id === "runtimes" ? t("ws.settings.runtimeSummary") : t(pages[id].detail)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
+      {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}{attentionDot(id)}</h2><p>{overviewSummary(id)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
         <h3>{t("ws.settings.device")} · {t("ws.settings.allSpaces")}</h3><div className="wss-overview">{(["appearance", "updates"] as const).map(id => <button key={id} onClick={() => navigate(id)}><h2>{t(pages[id].name)}{attentionDot(id)}</h2><p>{id === "appearance" ? t("ws.settings.themeSummary") : ["available", "ready"].includes(updates.phase) ? t("ws.settings.updateAvailable", { version: updates.version ?? "" }) : t("ws.settings.updateSummary")}</p><span>{t("ws.settings.open")}</span></button>)}</div></> : null}
       {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option>
             {/* Options come from the registry; only `stable` languages are offered (Jeff decision Q7).
                 zh-Hant is beta for this release: the translations ship in the locale JSON and the
                 contract test still checks them, but the picker must not offer them yet. */}
-            {selectableLanguages().map(language => <option key={language.tag} value={language.tag}>{language.nativeName}</option>)}</select></label></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
+            {selectableLanguages().map(language => <option key={language.tag} value={language.tag}>{language.nativeName}</option>)}</select></label><WorkspaceAppearanceAdvanced theme={theme} locale={locale} /></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
         : page === "overview" ? null : !workspace ? <p role="status">{t(view.loading ? "ws.settings.loading" : "ws.settings.createFirst")}</p> : <fieldset className="wss-content" key={key} disabled={Boolean(readonly)}>
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
           {page === "colleagues" ? <WorkspaceDeletedColleagues key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} locale={locale} /> : null}
@@ -161,7 +173,12 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
 }
 function General({ workspace, root, role, kind }: { workspace: WorkspaceDevSnapshot; root: string; role: string; kind: string }) {
   const { t } = useWorkspaceLocale();
-  return <section className="wss-page-card"><h2>{workspace.label}</h2><dl><dt>{t("ws.settings.general.id")}</dt><dd>{workspace.workspaceId}</dd><dt>{t("ws.settings.general.kind")}</dt><dd>{t(kind === "team" ? "ws.settings.team" : "ws.settings.personal")}</dd><dt>{t("ws.settings.general.role")}</dt><dd>{t(role === "owner" ? "ws.settings.general.owner" : role === "admin" ? "ws.settings.general.admin" : "ws.settings.general.member")}</dd><dt>{t("ws.settings.localData")}</dt><dd><code>{root}/project/{workspace.workspaceId}</code></dd><dt>{t("ws.settings.general.history")}</dt><dd>{workspace.conversation.pastTaskCount ?? 0}</dd><dt>{t("ws.settings.general.calls")}</dt><dd>{workspace.conversation.usage.modelCalls}{t("ws.settings.general.notBill")}</dd></dl><p>{t(kind === "personal" ? "ws.settings.general.personalNote" : "ws.settings.general.teamNote")}</p></section>;
+  const [copied, setCopied] = useState(false), path = `${root}/project/${workspace.workspaceId}`;
+  return <section className="wss-page-card"><h2>{workspace.label}</h2><dl><dt>{t("ws.settings.general.kind")}</dt><dd>{t(kind === "team" ? "ws.settings.team" : "ws.settings.personal")}</dd><dt>{t("ws.settings.general.role")}</dt><dd>{t(role === "owner" ? "ws.settings.general.owner" : role === "admin" ? "ws.settings.general.admin" : "ws.settings.general.member")}</dd><dt>{t("ws.settings.general.history")}</dt><dd>{workspace.conversation.pastTaskCount ?? 0}</dd><dt>{t("ws.settings.general.calls")}</dt><dd>{workspace.conversation.usage.modelCalls}{t("ws.settings.general.notBill")}</dd></dl><p>{t(kind === "personal" ? "ws.settings.general.personalNote" : "ws.settings.general.teamNote")}</p>
+    <SettingsAdvanced page="general" items={[t("ws.settings.general.id"), t("ws.settings.localData")]}>
+      <dl><dt>{t("ws.settings.general.id")}</dt><dd>{workspace.workspaceId}</dd><dt>{t("ws.settings.localData")}</dt><dd><code>{path}</code></dd></dl>
+      <button type="button" onClick={() => void navigator.clipboard.writeText(path).then(() => setCopied(true)).catch(() => setCopied(false))}>{t(copied ? "ws.settings.general.pathCopied" : "ws.settings.general.copyPath")}</button>
+    </SettingsAdvanced></section>;
 }
 /** Engine page: a running download is pinned above the page with its cancel action (settings IA audit, runtimes). */
 function runtimeAttention(workspace: WorkspaceDevSnapshot, model: WorkspaceDevModel, t: ReturnType<typeof useWorkspaceLocale>["t"], readonly: boolean): SettingsAttentionItem[] {

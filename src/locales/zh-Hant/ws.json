@@ -1467,5 +1467,14 @@
   "ws.schedules.advanced.source": "來源",
   "ws.schedules.advanced.rules": "規則",
   "ws.connections.attention.cleanup": "{name} 的舊 Key 還沒清理。只有按這個按鈕才會重試清理，不會重跑任務。",
-  "ws.schedules.byAgent": "交給 {name}"
+  "ws.schedules.byAgent": "交給 {name}",
+  "ws.settings.summary.colleagues": "{n} 位同事",
+  "ws.settings.summary.connectionCurrent": "{count} · 目前 {name}",
+  "ws.settings.summary.runtimes": "Pi 已內建 · {n} 個已啟用",
+  "ws.settings.general.copyPath": "複製路徑",
+  "ws.settings.general.pathCopied": "已複製",
+  "ws.settings.appearance.timing": "耗時診斷",
+  "ws.settings.appearance.brand": "品牌色",
+  "ws.updates.cadenceShort": "檢查頻率",
+  "ws.updates.versionForReports": "版本詳情（回報問題時用）"
 }

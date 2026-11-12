@@ -53,18 +53,29 @@ export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<ty
   return <section aria-label={t("ws.settings.appearance")}>
     <div className="vg-theme-options" role="group" aria-label={t("vg.appearance")}>{(["violet-glass", "obsidian", "daylight"] as const).map(value => <button type="button" key={value} className={`vg-theme-card ${value}`} aria-pressed={theme.preference !== "system" && currentTheme === value}
       disabled={!theme.settings || theme.settings.readOnly} onClick={() => void theme.chooseTheme(value)}><span className="vg-theme-swatch" aria-hidden /><strong>{value === "violet-glass" ? "Violet Glass" : value === "obsidian" ? "Obsidian" : "Daylight"}</strong><small>{t(value === "violet-glass" ? "vg.theme.violet" : value === "obsidian" ? "vg.theme.obsidian" : "vg.theme.daylight")}</small></button>)}</div>
-    <label>{t("ws.theme.title")}<select aria-label={t("ws.theme.title")} value={theme.preference} disabled={!theme.settings || theme.settings.readOnly}
-    onChange={event => void theme.change(event.target.value as ThemePreference)}><option value="system">{t("ws.theme.system")}</option><option value="light">{t("ws.theme.light")}</option><option value="dark">{t("ws.theme.dark")}</option></select></label>
+    {/* One place for the theme: three cards plus «Follow system». All three stored values stay reachable:
+        on = system; off = the card that matches what is showing now (settings IA audit, appearance). */}
+    <div className="wss-setting-row"><span>{t("ws.theme.system")}</span><ToggleSwitch label={t("ws.theme.system")} checked={theme.preference === "system"} disabled={!theme.settings || theme.settings.readOnly}
+      onCheckedChange={checked => void (checked ? theme.change("system") : theme.chooseTheme(systemPrefersLight() ? "daylight" : appearance.darkTheme))} /></div>
     <small>{t("ws.theme.note")}</small>
-    {(["transparency", "motion"] as const).map(kind => <div className="vg-material-pref" key={kind}><h3>{t(kind === "motion" ? "vg.motion" : "vg.transparency")}</h3><div role="group" aria-label={t(kind === "motion" ? "vg.motion" : "vg.transparency")}>{(kind === "motion" ? ["system", "off", "reduced", "standard"] as const : ["system", "off", "standard", "enhanced"] as const).map(value => <button key={value} type="button" aria-pressed={appearance[kind] === value} onClick={() => theme.changeAppearance({ [kind]: value })}>{t(value === "system" ? "ws.theme.system" : `vg.${value}`)}</button>)}</div></div>)}
-    <p className="vg-brand-note"><span aria-hidden />{t("vg.brand")} · #7C3AED</p>
     <label>{t("ws.display.mode")}<select aria-label={t("ws.display.mode")} value={theme.settings?.executionDetails ?? "brief"} disabled={!theme.settings || theme.settings.readOnly}
       onChange={event => void theme.changeDetails(event.target.value as "brief" | "detailed", theme.settings?.collapseDetails !== false)}><option value="brief">{t("ws.display.brief")}</option><option value="detailed">{t("ws.display.detailed")}</option></select></label>
     <div className="wss-setting-row"><span>{t("ws.display.collapse")}</span><ToggleSwitch label={t("ws.display.collapse")} checked={theme.settings?.collapseDetails !== false} disabled={!theme.settings || theme.settings.readOnly}
       onCheckedChange={checked => void theme.changeDetails(theme.settings?.executionDetails ?? "brief", checked)} /></div>
-    <div className="wss-setting-row"><span>{t("ws.stages.alwaysShow")}</span><ToggleSwitch label={t("ws.stages.alwaysShow")} checked={theme.settings?.alwaysShowTimingDiagnostics === true} disabled={!theme.settings || theme.settings.readOnly}
-      onCheckedChange={checked => void theme.changeTimingDiagnostics(checked)} /></div>
     {theme.notice ? <p role="status">{t(theme.notice)}</p> : null}</section>;
+}
+const systemPrefersLight = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: light)").matches;
+/** Appearance «Advanced»: transparency, motion, timing diagnostics and the brand colour note; defaults unchanged. */
+export function WorkspaceAppearanceAdvanced({ theme, locale }: { theme: ReturnType<typeof useStableWorkspaceTheme>; locale?: Locale }) {
+  const current = useWorkspaceLocale(), t = locale ? makeT(locale) : current.t;
+  const appearance = theme.appearance ?? loadAppearance(), timing = theme.settings?.alwaysShowTimingDiagnostics === true;
+  const customized = [...(appearance.transparency !== "system" ? [t("vg.transparency")] : []), ...(appearance.motion !== "system" ? [t("vg.motion")] : []), ...(timing ? [t("ws.stages.alwaysShow")] : [])];
+  return <SettingsAdvanced page="appearance" items={[t("vg.transparency"), t("vg.motion"), t("ws.settings.appearance.timing"), t("ws.settings.appearance.brand")]} customized={customized}>
+    {(["transparency", "motion"] as const).map(kind => <div className="vg-material-pref" key={kind}><h3>{t(kind === "motion" ? "vg.motion" : "vg.transparency")}</h3><div role="group" aria-label={t(kind === "motion" ? "vg.motion" : "vg.transparency")}>{(kind === "motion" ? ["system", "off", "reduced", "standard"] as const : ["system", "off", "standard", "enhanced"] as const).map(value => <button key={value} type="button" aria-pressed={appearance[kind] === value} onClick={() => theme.changeAppearance({ [kind]: value })}>{t(value === "system" ? "ws.theme.system" : `vg.${value}`)}</button>)}</div></div>)}
+    <div className="wss-setting-row"><span>{t("ws.stages.alwaysShow")}</span><ToggleSwitch label={t("ws.stages.alwaysShow")} checked={timing} disabled={!theme.settings || theme.settings.readOnly}
+      onCheckedChange={checked => void theme.changeTimingDiagnostics(checked)} /></div>
+    <p className="vg-brand-note"><span aria-hidden />{t("vg.brand")} · #7C3AED</p>
+  </SettingsAdvanced>;
 }
 export function WorkspaceConnections({ model, workspace, onDirty }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onDirty?: (value: boolean) => void }) {
   const { t } = useWorkspaceLocale();

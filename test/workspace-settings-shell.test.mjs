@@ -33,7 +33,8 @@ test("settings left rail has two scopes, an accessible close action and no drawe
   const html = settings("overview");
   for (const value of ['aria-label="设置导航"', 'aria-current="page"', 'aria-haspopup="menu"', 'aria-label="关闭设置"', "仅本空间", "所有空间", "连接", "引擎", "定时任务", "技能", "外观与语言", "软件更新"]) assert.equal(html.includes(value), true, value);
   assert.equal(/wsd-settings|模板|浏览器扩展|>成员<|WORKSPACE LAB/.test(html), false);
-  assert.equal(settings("overview", "team").includes(">成员<"), true);
+  // Jeff 2026-11-11 (settings IA audit): «Members» is unreleased, so team workspaces show no entry either.
+  assert.equal(settings("overview", "team").includes(">成员<"), false);
 });
 test("workspace and device page scope chips are distinct; appearance preserves the approved three-language switch", () => {
   assert.equal(settings("general").includes("仅本空间"), true);
@@ -44,10 +45,13 @@ test("workspace and device page scope chips are distinct; appearance preserves t
   assert.equal(appearance.includes('value="zh-Hant"'), false, "beta zh-Hant must not be offered yet");
   assert.ok(appearance.includes("跟随系统"));
 });
-test("preview updates row is present but disabled/off, and version copy contains only safe build metadata", () => {
-  const html = settings("updates"); assert.equal(html.includes("接收预览版，以后提供"), true); assert.equal(/aria-label="接收预览版，以后提供" aria-checked="false" disabled=""/.test(html), true);
-  for (const value of ["Desktop", "引擎", "candidate", "aarch64", "复制版本信息"]) assert.equal(html.includes(value), true);
-  assert.equal(html.includes("1.0.0"), true, "the prepared Desktop/Core version is visible without changing the installed app");
+test("the unreleased preview row is hidden; version details (for bug reports) sit under Advanced with only safe build metadata", () => {
+  const html = settings("updates");
+  // Jeff 2026-11-11 (settings IA audit): «Receive previews» is unreleased, so it has no entry.
+  assert.equal(html.includes("接收预览版"), false);
+  const fold = html.slice(html.indexOf('data-settings-advanced="updates"'));
+  assert.ok(fold.includes("版本详情（反馈问题时用）"));
+  for (const value of ["Desktop", "引擎", "candidate", "aarch64", "复制版本信息", "1.0.0"]) assert.equal(fold.includes(value), true, value);
   assert.equal(/API Key|agent|Codex|Claude|OpenCode/.test(html), false);
 });
 test("settings-only model uses a separate view selection route, with no catalog selection or automatic mutation", async () => {

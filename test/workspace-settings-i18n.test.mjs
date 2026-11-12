@@ -101,7 +101,8 @@ test("every updater phase, notice and candidate page uses the current locale wit
       const html = render("WorkspaceSoftwareUpdate", { controller: updater(value), info }, locale);
       assert.ok(html.includes(t(`ws.updates.${title}`, { version: value.version })));
       assert.ok(html.includes(escape(t("ws.updates.signatureFailed"))));
-      assert.ok(html.includes(`aria-label="${escape(t("ws.updates.previewFuture"))}" aria-checked="false" disabled=""`));
+      // Jeff 2026-11-11 (settings IA audit): «Receive previews» is unreleased, so it has no entry at all.
+      assert.equal(html.includes(escape(t("ws.updates.previewFuture"))), false);
       localized(html, locale);
       if (["available", "ready"].includes(phase)) localized(render("WorkspaceUpdateNotice", { controller: updater(value), onView() {} }, locale), locale);
     }

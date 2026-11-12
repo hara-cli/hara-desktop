@@ -1467,5 +1467,14 @@
   "ws.schedules.advanced.source": "Source",
   "ws.schedules.advanced.rules": "Rules",
   "ws.connections.attention.cleanup": "{name}'s old key hasn't been cleaned up. Only this button retries the cleanup; no task runs again.",
-  "ws.schedules.byAgent": "By {name}"
+  "ws.schedules.byAgent": "By {name}",
+  "ws.settings.summary.colleagues": "{n} colleagues",
+  "ws.settings.summary.connectionCurrent": "{count} · current: {name}",
+  "ws.settings.summary.runtimes": "Pi built in · {n} enabled",
+  "ws.settings.general.copyPath": "Copy path",
+  "ws.settings.general.pathCopied": "Copied",
+  "ws.settings.appearance.timing": "Timing diagnostics",
+  "ws.settings.appearance.brand": "Brand colour",
+  "ws.updates.cadenceShort": "Check schedule",
+  "ws.updates.versionForReports": "Version details (for bug reports)"
 }

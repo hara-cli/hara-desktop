@@ -137,7 +137,8 @@ test("local runtime registration requires and forwards an explicit login source"
 });
 test("three-way appearance setting and scoped features are actual rendered controls",()=>{
  const html=render("WorkspaceThemeSettings",{theme:{preference:"system",settings:{readOnly:false},notice:"",change(){}}});
- for(const value of ["system","light","dark"])assert.match(html,new RegExp(`value="${value}"`));assert.match(html,/跟隨系統/);
+ // Jeff 2026-11-11 (settings IA audit): one place for the theme — three cards plus a «Follow system» switch; all three values stay reachable.
+ assert.match(html,/跟隨系統<\/span><button[^>]*role="switch"[^>]*aria-checked="true"/);for(const card of ["violet-glass","obsidian","daylight"])assert.match(html,new RegExp(`vg-theme-card ${card}`));assert.doesNotMatch(html,/<select aria-label="主題"/);
  for(const kind of ["schedules","skills"]){const feature=render("WorkspaceFeaturePanel",{model:{},workspace:snapshot("A"),kind,onClose(){}});assert.match(feature,new RegExp(`aria-label="本空間${kind==="skills"?"技能":"定時任務"}"`));assert.match(feature,/A · 只顯示目前工作空間/);}
 });
 test("model mutations pin scope/revision, require explicit approval fields and do not retain key values",async()=>{

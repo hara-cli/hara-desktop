@@ -133,7 +133,7 @@ test("late local-file receipts are fenced across resource, session, run and atte
   }
 });
 const require = createRequire(import.meta.url), root = fileURLToPath(new URL("../", import.meta.url));
-const bundle = await build({ stdin: { contents: 'export { Transcript } from "./src/WorkspaceLocalDev.tsx"; export { WorkspaceRuntimeStages } from "./src/WorkspaceRuntimeStages.tsx";export { WorkspaceThemeSettings } from "./src/WorkspaceSettingsPanels.tsx";',
+const bundle = await build({ stdin: { contents: 'export { Transcript } from "./src/WorkspaceLocalDev.tsx"; export { WorkspaceRuntimeStages } from "./src/WorkspaceRuntimeStages.tsx";export { WorkspaceThemeSettings, WorkspaceAppearanceAdvanced } from "./src/WorkspaceSettingsPanels.tsx";',
   resolveDir: root, loader: "tsx" }, bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"],
   loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
@@ -254,7 +254,8 @@ test("the always-show switch is off by default and has explicit labels in all th
   for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const enabled of [undefined, true]) {
     const t = makeT(locale), theme = { preference: "system", appearance: { darkTheme: "violet-glass", motion: "standard", transparency: "standard" },
       settings: { theme: "system", readOnly: false, alwaysShowTimingDiagnostics: enabled }, notice: "", change() {}, chooseTheme() {}, changeAppearance() {}, changeDetails() {}, changeTimingDiagnostics() {} };
-    const html = renderToStaticMarkup(React.createElement(module.exports.WorkspaceThemeSettings, { theme, locale }));
+    // S3 (settings IA audit): the switch lives in the appearance page's Advanced section; still off by default.
+    const html = renderToStaticMarkup(React.createElement(module.exports.WorkspaceAppearanceAdvanced, { theme, locale }));
     const toggle = (html.match(/<button[^>]*>/g) ?? []).find(tag => tag.includes('aria-label="' + t("ws.stages.alwaysShow") + '"'));
     assert(toggle, locale); assert(toggle.includes('aria-checked="' + (enabled === true ? "true" : "false") + '"'));
   }

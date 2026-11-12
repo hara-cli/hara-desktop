@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { SettingsAdvanced } from "./SettingsChrome";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { checkDesktopUpdate, DesktopUpdaterArchitectureError } from "./desktop-updater";
@@ -50,7 +51,6 @@ export function WorkspaceSoftwareUpdate({ controller, info }: { controller: Work
     downloading: "ws.updates.downloading", ready: "ws.updates.ready", error: "ws.updates.failed",
   };
   return <section className="wss-updates" aria-label={t("ws.settings.page.updates")}>
-    <p>{t("ws.updates.cadence")}</p>
     <article className={`wss-update-card is-${value.phase}`} data-update-state={value.phase} aria-live="polite"><span className="wss-update-symbol" aria-hidden>{value.phase === "latest" ? "✓" : value.phase === "error" ? "!" : "↻"}</span>
       <div><h2>{t(titles[value.phase], { version: value.version })}</h2><p>{value.phase === "ready" ? t("ws.updates.readyNote") : value.phase === "downloading" ? t("ws.updates.working") : value.phase === "checking" ? t("ws.updates.checkNote") : t("ws.updates.current", { version: info?.desktop ?? t("ws.updates.reading") })}</p>
         {value.phase === "available" && value.notes ? <details><summary>{t("ws.updates.notes")}</summary><pre>{value.notes}</pre></details> : null}
@@ -63,9 +63,12 @@ export function WorkspaceSoftwareUpdate({ controller, info }: { controller: Work
     {value.message ? <p role="status" className="wss-callout">{workspaceMessageText(t, value.message)}</p> : null}
     <div className="wss-setting-row"><div><strong>{t("ws.updates.auto")}</strong><p>{t("ws.updates.lastChecked", { time: value.preferences.lastChecked ? new Date(value.preferences.lastChecked).toLocaleString(locale) : t("ws.updates.neverChecked") })}</p></div>
       <ToggleSwitch label={t("ws.updates.auto")} checked={value.preferences.autoCheck} onCheckedChange={checked => void controller.setAutoCheck(checked)} /></div>
-    <div className="wss-setting-row"><div><strong>{t("ws.updates.preview")}</strong><p>{t("ws.updates.future")}</p></div><ToggleSwitch label={t("ws.updates.previewFuture")} checked={false} disabled /></div>
-    <section className="wss-version"><h3>{t("ws.updates.version")}</h3><dl><dt>Desktop</dt><dd>{info?.desktop ?? "—"}</dd><dt>{t("ws.updates.engine")}</dt><dd>{info?.engine ?? "—"}</dd><dt>{t("ws.updates.channel")}</dt><dd>{info?.channel ?? "—"}</dd><dt>{t("ws.updates.arch")}</dt><dd>{info?.arch ?? "—"}</dd></dl>
+    {/* «Receive previews» is not released yet, so it has no entry (settings IA audit; DESIGN.md §11.6). */}
+    <SettingsAdvanced page="updates" items={[t("ws.updates.cadenceShort"), t("ws.updates.versionForReports")]}>
+      <p>{t("ws.updates.cadence")}</p>
+    <section className="wss-version"><h3>{t("ws.updates.versionForReports")}</h3><dl><dt>Desktop</dt><dd>{info?.desktop ?? "—"}</dd><dt>{t("ws.updates.engine")}</dt><dd>{info?.engine ?? "—"}</dd><dt>{t("ws.updates.channel")}</dt><dd>{info?.channel ?? "—"}</dd><dt>{t("ws.updates.arch")}</dt><dd>{info?.arch ?? "—"}</dd></dl>
       <button disabled={!info} onClick={() => { if (!info) return; void navigator.clipboard.writeText(`Hara Desktop ${info.desktop}\nCore ${info.engine}\n${info.channel} / ${info.arch}`).then(() => setCopied(true)).catch(() => setCopied(false)); }}>{t(copied ? "ws.updates.copied" : "ws.updates.copy")}</button></section>
+    </SettingsAdvanced>
   </section>;
 }
 export function WorkspaceUpdateNotice({ controller, onView }: { controller: WorkspaceUpdater; onView: () => void }) {
