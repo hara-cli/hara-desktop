@@ -145,6 +145,9 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
       <WorkspaceRpcErrorNotice value={view.error} technicalDetail={view.errorTechnicalDetail} locale={locale} t={t} className="wss-callout" />
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
       {page === "runtimes" && production && workspace ? <SettingsAttention items={runtimeAttention(workspace, model, t, Boolean(readonly))} /> : null}
+      {/* Host-level preference (Core stores it with the theme): it applies to every workspace on this Mac, so it sits outside
+          the workspace's read-only fieldset and is labelled with its scope, like Appearance (review of #78, M1). */}
+      {page === "runtimes" && production && workspace && model.supportsDefaultRuntime?.() ? <WorkspaceDefaultRuntime model={model} workspace={workspace} /> : null}
       {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}{attentionDot(id)}</h2><p>{overviewSummary(id)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
         <h3>{t("ws.settings.device")} · {t("ws.settings.allSpaces")}</h3><div className="wss-overview">{(["appearance", "updates"] as const).map(id => <button key={id} onClick={() => navigate(id)}><h2>{t(pages[id].name)}{attentionDot(id)}</h2><p>{id === "appearance" ? t("ws.settings.themeSummary") : ["available", "ready"].includes(updates.phase) ? t("ws.settings.updateAvailable", { version: updates.version ?? "" }) : t("ws.settings.updateSummary")}</p><span>{t("ws.settings.open")}</span></button>)}</div></> : null}
       {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option>
@@ -158,7 +161,6 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
           {page === "colleagues" ? <WorkspaceDeletedColleagues key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} locale={locale} /> : null}
           {page === "connections" ? production ? <WorkspaceConnections model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.connectionsLab")}</p> : null}
-          {page === "runtimes" && production && model.supportsDefaultRuntime?.() ? <WorkspaceDefaultRuntime model={model} workspace={workspace} /> : null}
           {page === "runtimes" ? production ? <WorkspaceRuntimeSettings model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.runtimeLab")}</p> : null}
           {page === "plugins" ? <WorkspaceExtensions model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} onDirty={leaveGuard.setDirty} /> : null}
           {page === "schedules" || page === "skills" ? <WorkspaceFeaturePanel model={model} workspace={workspace} kind={page} onDirty={leaveGuard.setDirty}

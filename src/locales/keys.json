@@ -707,12 +707,13 @@
     "ws.updates.versionForReports",
     "ws.runtimes.default.title",
     "ws.runtimes.default.note",
-    "ws.runtimes.default.piFirst",
     "ws.runtimes.default.unavailable",
     "ws.runtimes.default.saved",
     "ws.runtimes.default.saveUnknown",
     "ws.runtimes.default.loadFailed",
-    "ws.runtimes.default.readOnly"
+    "ws.runtimes.default.readOnly",
+    "ws.runtimes.default.pi",
+    "ws.runtimes.default.scope"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -2037,11 +2038,12 @@
     "ws.updates.versionForReports",
     "ws.runtimes.default.title",
     "ws.runtimes.default.note",
-    "ws.runtimes.default.piFirst",
     "ws.runtimes.default.unavailable",
     "ws.runtimes.default.saved",
     "ws.runtimes.default.saveUnknown",
     "ws.runtimes.default.loadFailed",
-    "ws.runtimes.default.readOnly"
+    "ws.runtimes.default.readOnly",
+    "ws.runtimes.default.pi",
+    "ws.runtimes.default.scope"
   ]
 }

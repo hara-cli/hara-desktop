@@ -1479,10 +1479,11 @@
   "ws.updates.versionForReports": "版本詳情（回報問題時用）",
   "ws.runtimes.default.title": "新同事預設用",
   "ws.runtimes.default.note": "只影響之後新建的同事，現有同事不變。選擇時不會檢查或啟動引擎。",
-  "ws.runtimes.default.piFirst": "Pi 優先（預設）",
   "ws.runtimes.default.unavailable": "{name}（現在不可用）",
   "ws.runtimes.default.saved": "已儲存。之後新建的同事才會用它。",
   "ws.runtimes.default.saveUnknown": "還不確定是否儲存，請重新開啟設定核對後再選。",
   "ws.runtimes.default.loadFailed": "讀不到預設引擎，請重新開啟設定再試。",
-  "ws.runtimes.default.readOnly": "這裡只能查看，不能修改。"
+  "ws.runtimes.default.readOnly": "這裡只能查看，不能修改。",
+  "ws.runtimes.default.pi": "Pi（預設）",
+  "ws.runtimes.default.scope": "儲存在這台 Mac，對所有空間生效。"
 }
