@@ -1549,5 +1549,10 @@
   "ws.onboarding.third.toolCount": "{n} tools",
   "ws.onboarding.third.loadFailed": "Couldn’t read the tool list.",
   "ws.onboarding.third.toolCountOne": "1 tool",
-  "ws.onboarding.third.backToList": "Back to the list"
+  "ws.onboarding.third.backToList": "Back to the list",
+  "ws.onboarding.rerun.title": "Getting started",
+  "ws.onboarding.rerun.note": "Go through it again from step 1 with your current settings; colleagues already created won’t be created again.",
+  "ws.onboarding.rerun.action": "Run again",
+  "ws.onboarding.rerun.readOnly": "You can only view this workspace, so you can’t run the guide again.",
+  "ws.onboarding.rerun.failed": "Couldn’t restart the guide. Please try again."
 }

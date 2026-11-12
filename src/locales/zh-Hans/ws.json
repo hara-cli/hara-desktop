@@ -1549,5 +1549,10 @@
   "ws.onboarding.third.toolCount": "{n} 个工具",
   "ws.onboarding.third.loadFailed": "没能读取工具列表。",
   "ws.onboarding.third.toolCountOne": "1 个工具",
-  "ws.onboarding.third.backToList": "返回列表"
+  "ws.onboarding.third.backToList": "返回列表",
+  "ws.onboarding.rerun.title": "新手引导",
+  "ws.onboarding.rerun.note": "从第一步重新走一遍，带上现在的设置；已经建好的同事不会重复建。",
+  "ws.onboarding.rerun.action": "重新运行",
+  "ws.onboarding.rerun.readOnly": "你在这个空间只能查看，不能重新运行引导。",
+  "ws.onboarding.rerun.failed": "没能重新开始引导，请再试一次。"
 }
