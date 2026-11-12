@@ -25,21 +25,23 @@ const workspace = { workspaceId: "A", resourceGeneration: "g", label: "A", selec
   runtimes: { options: [{ runtimeId: "codex", label: "Codex", registered: true, state: "registered" }, { runtimeId: "copilot", label: "GitHub Copilot", registered: true, state: "registered", generalAgentDriverAvailable: false },
     { runtimeId: "claude", label: "Claude Code", registered: false, state: "detected" }], operations: [] } };
 
-test("the default-engine choice is offered only when Core advertises G1", () => {
+const g1 = (patch = {}) => ({ schemaVersion: 1, workspaceId: "A", defaultRuntimeId: null, revision: 1, readOnly: false, recovered: false, ...patch });
+test("the per-workspace default engine is offered only when Core advertises workspace.default-runtime.v1, inside the workspace fieldset", () => {
   const shell = supported => { const value = { workspaceId: "A", workspace, directory: { workspaces: [{ workspaceId: "A", label: "A", role: "owner", active: true, kind: "personal" }] }, error: "" };
-    const model = { getSnapshot: () => value, subscribe: () => () => {}, supportsDefaultRuntime: () => supported, preferences: async () => ({ revision: 1, theme: "system", readOnly: false, recovered: false }), detectRuntimes: async () => {}, runtimeProxy: async () => ({}) };
+    const model = { getSnapshot: () => value, subscribe: () => () => {}, supportsDefaultRuntime: () => supported, defaultRuntime: () => new Promise(() => {}), preferences: async () => ({ revision: 1, theme: "system", readOnly: false, recovered: false }), detectRuntimes: async () => {}, runtimeProxy: async () => ({}) };
     return render(createElement(module.exports.SettingsContent, { model, mainModel: model, initialPage: "runtimes", root: "/x", production: true, updater: { getSnapshot: () => ({ phase: "latest", preferences: {} }), subscribe: () => () => {} }, versionInfo: null, onClose() {}, onCreateSkill() {}, theme: { preference: "system", settings: { readOnly: false }, notice: "", change() {}, changeDetails() {} } })); };
-  assert.equal(shell(false).includes("wsd-default-runtime"), false, "no entry without the Core capability");
+  assert.equal(shell(false).includes("wsd-default-runtime"), false, "no entry without the Core capability (old Cores)");
   const html = shell(true), t = makeT("zh-Hans");
   assert.ok(html.indexOf("wsd-default-runtime") < html.indexOf("wsd-runtime-settings"), "heads the engines page");
-  assert.ok(html.indexOf("wsd-default-runtime") < html.indexOf('<fieldset class="wss-content"'), "host-level, so outside the workspace's read-only fieldset");
+  assert.ok(html.indexOf('<fieldset class="wss-content"') < html.indexOf("wsd-default-runtime"), "per workspace, so inside the read-only fieldset (members cannot change it)");
   const section = html.slice(html.indexOf('class="wsd-default-runtime"'));
-  assert.ok(section.includes(`${t("ws.settings.device")} · ${t("ws.settings.allSpaces")}`) && section.includes(t("ws.runtimes.default.scope")), "labelled as this Mac · all workspaces");
-  assert.ok(html.includes(t("ws.runtimes.default.title")) && html.includes(t("ws.runtimes.default.note")));
+  assert.ok(section.includes(`<small>${t("ws.runtimes.default.scope")}</small>`), "says it is saved for this workspace (the page already carries «This workspace only»)");
+  assert.equal(section.slice(0, section.indexOf("</section>")).includes("wss-scope-chip"), false, "no second scope chip");
+  assert.equal(section.includes(t("ws.settings.allSpaces")), false);
 });
 
 for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`options are «Pi (default)» (null) and enabled engines that can drive colleagues (${locale})`, () => {
-  const t = makeT(locale), html = render(createElement(module.exports.WorkspaceDefaultRuntime, { model: { preferences: () => new Promise(() => {}) }, workspace }), locale);
+  const t = makeT(locale), html = render(createElement(module.exports.WorkspaceDefaultRuntime, { model: { defaultRuntime: () => new Promise(() => {}) }, workspace }), locale);
   assert.ok(html.includes(`<option value="" selected="">${t("ws.runtimes.default.pi")}</option>`), "null means the existing Pi-first behaviour and is the default");
   assert.equal(html.includes('value="pi"'), false, "a separate «Pi» would behave exactly like the default, so there is only one");
   assert.ok(html.includes('<option value="codex">Codex</option>'));
@@ -48,16 +50,48 @@ for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`options are «Pi (defau
   assert.match(html, /<select[^>]*disabled=""/, "disabled until the saved value has loaded");
 });
 
-test("saving sends only the G1 fields with a fresh revision and never probes or starts an engine", async () => {
-  const calls = [], rpc = { supportsCapability: capability => capability === "workspace.preferences.default-runtime.v1", async request(method, params) { calls.push({ method, params }); return { revision: 5, theme: "system", readOnly: false, recovered: false, defaultRuntimeId: params.defaultRuntimeId ?? null }; } };
-  const model = new WorkspaceDevModel(rpc, () => "fixture", false, "workspace", true);
-  assert.equal(model.supportsDefaultRuntime(), true);
-  await model.saveDefaultRuntime("codex", 4); await model.saveDefaultRuntime(null, 5);
-  assert.deepEqual(calls, [{ method: "workspace.preferences.set", params: { defaultRuntimeId: "codex", expectedRevision: 4 } }, { method: "workspace.preferences.set", params: { defaultRuntimeId: null, expectedRevision: 5 } }]);
-  const without = new WorkspaceDevModel({ async request() { throw new Error("must not be called"); } }, () => "fixture", false, "workspace", true);
-  await assert.rejects(() => without.saveDefaultRuntime("codex", 1), "no capability → no request");
-  assert.match(source, /const fresh = await model\.preferences\(\); setValue\(await model\.saveDefaultRuntime\(next, fresh\.revision\)\)/, "uses the current shared revision");
-  assert.doesNotMatch(source, /listModels|detectRuntimes|registerLocalRuntime|approveRuntime/);
+function modelFixture(capabilities, handlers = {}) {
+  const calls = [];
+  const snapshot = id => ({ workspaceId: id, resourceGeneration: `generation-${id}`, label: id, syntheticOnly: false, executionMode: "workspace", selectedAgentId: "main", agents: [], approvals: [],
+    connections: { revision: 0, defaultConnectionId: null, connections: [] }, conversation: { history: [], state: "idle" } });
+  const model = new WorkspaceDevModel({ supportsCapability: name => capabilities.includes(name), async request(method, params) {
+    calls.push({ method, params });
+    if (method === "workspace.list") return { revision: 1, syntheticOnly: false, executionMode: "workspace", workspaces: ["A", "B"].map(workspaceId => ({ workspaceId, active: true })) };
+    if (handlers[method]) return handlers[method](params);
+    return snapshot(params.workspaceId);
+  } }, () => "request", false, "workspace");
+  return { model, calls };
+}
+
+test("G1 RPCs are workspace-scoped with exactly the contract fields; stale scopes and old Cores send nothing", async () => {
+  const f = modelFixture(["workspace.default-runtime.v1"], {
+    "workspace.defaultRuntime.get": params => g1({ workspaceId: params.workspaceId }),
+    "workspace.defaultRuntime.set": params => g1({ workspaceId: params.workspaceId, defaultRuntimeId: params.defaultRuntimeId, revision: params.expectedRevision + 1 }) });
+  await f.model.selectWorkspace("A");
+  assert.equal(f.model.supportsDefaultRuntime(), true);
+  assert.deepEqual(await f.model.defaultRuntime("A", "generation-A"), g1());
+  assert.deepEqual(await f.model.saveDefaultRuntime("codex", 1, "A", "generation-A"), g1({ defaultRuntimeId: "codex", revision: 2 }));
+  assert.deepEqual(f.calls.filter(call => call.method.startsWith("workspace.defaultRuntime.")), [
+    { method: "workspace.defaultRuntime.get", params: { workspaceId: "A", expectedGeneration: "generation-A" } },
+    { method: "workspace.defaultRuntime.set", params: { expectedRevision: 1, defaultRuntimeId: "codex", workspaceId: "A", expectedGeneration: "generation-A" } }]);
+  await assert.rejects(() => f.model.defaultRuntime("B", "generation-B"), "stale scope rejected before sending");
+  assert.equal(f.calls.some(call => call.method === "workspace.preferences.set"), false, "the old host-level preference is never written");
+  const old = modelFixture(["workspace.preferences.default-runtime.v1"]); await old.model.selectWorkspace("A");
+  assert.equal(old.model.supportsDefaultRuntime(), false, "the superseded host-level capability does not count");
+  await assert.rejects(() => old.model.saveDefaultRuntime("codex", 1, "A", "generation-A"));
+  assert.equal(old.calls.some(call => call.method.startsWith("workspace.defaultRuntime.")), false);
+});
+
+test("a reply for another workspace or of the wrong shape is rejected", async () => {
+  const f = modelFixture(["workspace.default-runtime.v1"], { "workspace.defaultRuntime.get": () => g1({ workspaceId: "B" }) });
+  await f.model.selectWorkspace("A");
+  await assert.rejects(() => f.model.defaultRuntime("A", "generation-A"));
+});
+
+test("saving uses the current revision, reloads on failure, and never probes or starts an engine", () => {
+  assert.match(source, /const fresh = await model\.defaultRuntime\(workspaceId, generation\); setValue\(await model\.saveDefaultRuntime\(next, fresh\.revision, workspaceId, generation\)\)/);
+  assert.match(source, /catch \{ setNotice\("ws\.runtimes\.default\.saveFailed"\); void reload\(\)\.catch\(\(\) => \{\}\); \}/, "stale revision → reload and ask again, no blind overwrite");
+  assert.doesNotMatch(source, /listModels|detectRuntimes|registerLocalRuntime|approveRuntime|preferences/);
 });
 
 test("a saved \"pi\" shows as «Pi (default)», since the fallback chain makes them identical", () => {

@@ -13,8 +13,8 @@ import type { WorkspaceDevSnapshot } from "./workspace-dev-state";
  * Honest status: «Ready» only after the user pressed Check and the engine (or Pi's connection) actually listed models
  * just now; an enabled engine that has not been checked reads «Enabled», like the engines page (Jeff 2026-11-12).
  * Nothing here installs, registers or confirms an engine, and no credential is read: first use is still confirmed when
- * a colleague is created. The choice is saved as G4 `engineChoice`; writing the G1 default waits for the
- * per-workspace G1 contract (#78).
+ * a colleague is created. «Use X, next» writes the per-workspace G1 default (shared with Settings › Engines; Pi is saved
+ * as null, i.e. Pi-first) when Core advertises it, then saves G4 `engineChoice`. A failed G1 write stays on this step.
  */
 type Check = { state: "checking" } | { state: "ok"; models: number } | { state: "failed"; network: boolean };
 type Tone = "ok" | "warn" | "fail" | "draft" | "";
@@ -74,18 +74,31 @@ export function OnboardingEngineStep({ progress, sheet, next, model, workspace }
   const selectable = rows.filter(row => row.selectable);
   const initial = progress.engineChoice && selectable.some(row => row.id === progress.engineChoice) ? progress.engineChoice
     : (selectable.find(row => checks[row.id]?.state === "ok") ?? selectable[0])?.id ?? null;
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<string | null>(null), [writing, setWriting] = useState(false), [defaultFailed, setDefaultFailed] = useState(false);
   const selected = chosen && selectable.some(row => row.id === chosen) ? chosen : initial;
   const selectedRow = rows.find(row => row.id === selected);
   const networkFailed = Object.values(checks).some(value => value.state === "failed" && value.network);
   const none = !selectable.length && !detecting;
+  const choose = async () => {
+    if (!selected) return;
+    setDefaultFailed(false);
+    if (model.supportsDefaultRuntime?.()) {
+      setWriting(true);
+      try {
+        const current = await model.defaultRuntime(workspace.workspaceId, workspace.resourceGeneration);
+        if (!current.readOnly) await model.saveDefaultRuntime(selected === "pi" ? null : selected, current.revision, workspace.workspaceId, workspace.resourceGeneration);
+      } catch { if (live.current === scope) setDefaultFailed(true); return; }
+      finally { if (live.current === scope) setWriting(false); }
+    }
+    next({ engineChoice: selected });
+  };
   return <OnboardingSheet {...sheet} mascot={networkFailed ? "error" : none ? "wait" : detecting ? "think" : "idle"}
     title={t(none ? "ws.onboarding.engine.noneTitle" : "ws.onboarding.engine.title")} sub={t(none ? "ws.onboarding.engine.noneSub" : "ws.onboarding.engine.sub")}
     note={t(selectable.length ? "ws.onboarding.engine.scope" : "ws.onboarding.engine.skipNote")}
     actions={<>
       <button type="button" disabled={detecting || sheet.busy} onClick={detect}>{t(detecting ? "ws.onboarding.engine.status.checking" : "ws.onboarding.engine.checkAgain")}</button>
       {!selectable.length ? <button type="button" disabled={sheet.busy} onClick={() => next({ engineChoice: null })}>{t("ws.onboarding.engine.skip")}</button> : null}
-      <button type="button" className="hs-btn pri" disabled={!selectedRow || sheet.busy} onClick={() => next({ engineChoice: selected })}>
+      <button type="button" className="hs-btn pri" disabled={!selectedRow || sheet.busy || writing} onClick={() => void choose()}>
         {selectedRow ? t("ws.onboarding.engine.use", { name: selectedRow.name }) : t("ws.onboarding.engine.next")}</button>
     </>}>
     {!connected.length ? <div className="wob-list wob-hara-model">
@@ -93,6 +106,7 @@ export function OnboardingEngineStep({ progress, sheet, next, model, workspace }
         {!connecting ? <button type="button" className="hs-btn pri" disabled={sheet.readOnly} onClick={() => setConnecting(true)}>{t("ws.onboarding.engine.connect")}</button> : null}</div>
       {connecting ? <div className="wob-row-form"><WorkspaceConnectionForm model={model} firstKey={!workspace.connections.connections.some(connection => connection.keySaved)} onSaved={() => setConnecting(false)} onCancel={() => setConnecting(false)} /></div> : null}
     </div> : null}
+    {defaultFailed ? <p className="wob-notice is-error" role="alert">{t("ws.onboarding.engine.guideSaveFailed")}</p> : null}
     {detectFailed ? <p className="wob-notice is-error" role="alert">{t("ws.onboarding.engine.detectFailed")}</p> : null}
     {networkFailed ? <p className="wob-warn" role="alert">{t("ws.onboarding.engine.networkFailed", { advanced: t("ws.settings.advanced") })}</p> : null}
     <h3 className="wob-h">{t("ws.onboarding.engine.list")}<small>{t("ws.onboarding.engine.listNote")}</small></h3>

@@ -77,9 +77,12 @@ for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`step 1 renders the Hara
   assert.equal(withConnection.includes(esc(t("ws.onboarding.engine.hara"))), false, "the row disappears once connected");
 });
 
-test("step 1 never installs, registers, approves or creates anything, and writes only G4 engineChoice", () => {
-  assert.doesNotMatch(source, /registerLocalRuntime|approveRuntime|proposeRuntime|createBatch|agents\.create|saveDefaultRuntime|preferences/);
-  assert.match(source, /onClick=\{\(\) => next\(\{ engineChoice: selected \}\)\}/);
+test("step 1 never installs, registers, approves or creates anything; it writes G1 (when Core has it) and G4 engineChoice", () => {
+  assert.doesNotMatch(source, /registerLocalRuntime|approveRuntime|proposeRuntime|createBatch|agents\.create|preferences/);
+  assert.match(source, /onClick=\{\(\) => void choose\(\)\}/);
+  assert.match(source, /if \(!current\.readOnly\) await model\.saveDefaultRuntime\(selected === "pi" \? null : selected, current\.revision, workspace\.workspaceId, workspace\.resourceGeneration\);/, "writes the same per-workspace G1 as Settings; Pi is saved as null (Pi-first)");
+  assert.match(source, /\} catch \{ if \(live\.current === scope\) setDefaultFailed\(true\); return; \}/, "a failed G1 write stays on step 1");
+  assert.match(source, /if \(model\.supportsDefaultRuntime\?\.\(\)\) \{/, "old Cores: only G4 engineChoice is saved");
   assert.match(source, /onClick=\{\(\) => next\(\{ engineChoice: null \}\)\}/, "skip keeps no choice");
   assert.equal((source.match(/listRuntimeModels|listConnectionModels/g) ?? []).length, 2, "models are listed only from the explicit Check");
   assert.match(source, /<SettingsAdvanced page="onboarding\.engine" persist=\{false\} forceOpen=\{networkFailed\}/, "Advanced opens itself only after a network failure");
