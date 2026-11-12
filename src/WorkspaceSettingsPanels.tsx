@@ -5,6 +5,7 @@ import type { LegacyConnectionPreview, WorkspaceDevModel, WorkspaceDevSnapshot, 
 import { bindThemePreference, loadThemePreference, saveThemePreference, type ThemePreference } from "./theme";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { settingsStateText } from "./workspace-settings-copy";
+import { scheduleHumanText } from "./settings-schedule-text";
 import { SettingsAdvanced, SettingsAttention, SettingsRowMenu, type SettingsAttentionItem } from "./SettingsChrome";
 import { makeT, type Key, type Locale } from "./i18n";
 import { watchSystemVisualPreferences } from "./system-visual-preferences";
@@ -93,7 +94,7 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
     ...(migrationPending ? [] : active.filter(row => row.keyState === "invalid" || row.credentialRequired).map(connection => ({ id: `key-${connection.id}`,
       text: t(connection.keyState === "invalid" ? "ws.connections.attention.invalidKey" : "ws.connections.attention.keyRequired", { name: connection.label }),
       action: { label: t("ws.connections.attention.updateKey"), disabled: pending || readOnly, onClick: () => edit(connection) } }))),
-    ...workspace.connections.connections.filter(row => row.cleanupPending).map(connection => ({ id: `cleanup-${connection.id}`, text: `${connection.label} · ${t("ws.connections.cleanupPending")} · ${t("ws.connections.cleanupNote")}`,
+    ...workspace.connections.connections.filter(row => row.cleanupPending).map(connection => ({ id: `cleanup-${connection.id}`, text: t("ws.connections.attention.cleanup", { name: connection.label }),
       action: { label: t("ws.connections.cleanup"), disabled: pending || readOnly, onClick: () => cleanup(connection) } })),
   ];
   return <section aria-label={t("ws.connections.title")}><SettingsAttention items={attention} /><h3>{t("ws.connections.heading")}</h3>
@@ -122,6 +123,8 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
     </SettingsAdvanced>
   </section>;
 }
+/** Schedules not created in chat or on this page are still run by the legacy scheduler. */
+function isLegacySchedule(row: { source?: string }): boolean { return row.source !== "chat" && row.source !== "workspace"; }
 export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty, onCreateSkill }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; kind: "schedules" | "skills"; onClose?: () => void; onDirty?: (value: boolean) => void; onCreateSkill?: () => void }) {
   const { locale, t } = useWorkspaceLocale();
   const [value, setValue] = useState<WorkspaceFeatureView | null>(null), [notice, setNotice] = useState<"" | Key>(""), [pending, setPending] = useState(false);
@@ -160,6 +163,9 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
     try { setValue(await model.workspaceRequest<WorkspaceFeatureView>("workspace.schedule.delete", { id: scheduleDelete.id, expectedRevision: value.revision, approved: true })); setScheduleDelete(null); setNotice(""); }
     catch { setNotice("ws.features.saveUnknown"); } finally { busy.current = false; setPending(false); }
   };
+  const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const agentName = (agentId?: string) => workspace.agents.find(agent => agent.agentId === agentId)?.identity.displayName ?? "—";
+  const sourceText = (source?: string) => t(source === "chat" ? "ws.schedules.chatSource" : source === "workspace" ? "ws.schedules.manualSource" : "ws.schedules.legacySource");
   return <section className="wsd-feature-panel" aria-label={t(kind === "skills" ? "ws.skills.title" : "ws.schedules.title")}>{onClose ? <button onClick={onClose}>{t("ws.settings.back")}</button> : null}
     <h2>{t(kind === "skills" ? "ws.settings.page.skills" : "ws.settings.page.schedules")}</h2><p>{t("ws.features.scope", { workspace: workspace.label })}</p>
     {!value ? <p role="status">{t(notice || "ws.settings.loading")}</p> : kind === "skills" ? <>
@@ -175,21 +181,25 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
       {editor ? <section className="wsd-approval" role="dialog" aria-label={t("ws.skills.editPrivate")}><h3>{t("ws.skills.privateTitle", { name: editor.id })}</h3><p>{t("ws.skills.editNote")}</p>
         <textarea aria-label={t("ws.skills.instructions")} value={editor.content} maxLength={64000} onChange={event => setEditor(current => current ? { ...current, content: event.target.value } : null)} />
         <button disabled={pending} onClick={() => setEditor(null)}>{t("ws.cancel")}</button><button disabled={pending} onClick={() => void saveSkill()}>{t("ws.skills.save")}</button></section> : null}</> : <>
-      <p className="wss-callout">{t("ws.schedules.legacyNote")}</p>
-      <p className="wss-callout">{t("ws.schedules.colleagueNote")}</p>
+      <SettingsAttention items={value.schedules.some(isLegacySchedule) ? [{ id: "legacy", text: t("ws.schedules.legacyNote") }] : []} />
       <button disabled={pending || !workspace.agents.some(agent => agent.state === "active")} onClick={() => { setScheduleEditor({ id: crypto.randomUUID(), name: "", task: "", picker: emptySchedulePicker(),
         agentId: workspace.agents.find(agent => agent.agentId === workspace.selectedAgentId && agent.state === "active")?.agentId ?? workspace.agents.find(agent => agent.state === "active")?.agentId ?? "",
         enabled: true, creating: true }); setRepeatConfirm(false); setNotice(""); }}>{t("ws.schedules.add")}</button>
-      {!value.schedules.length ? <p>{t("ws.schedules.empty")}</p> : value.schedules.map(row => { const status = value.scheduler?.schedules.find(item => item.id === row.id); return <div className="wsd-connection" key={row.id}><strong>{row.name}</strong><code>{row.schedule.expr ?? row.schedule.display}</code>
-        <small>{t(row.source === "chat" ? "ws.schedules.chatSource" : row.source === "workspace" ? "ws.schedules.manualSource" : "ws.schedules.legacySource")}</small>
-        {row.anchor ? <small>{t("ws.schedules.anchor", { conversation: row.anchor.conversationId, message: row.anchor.messageId.slice(0, 8) })}</small> : null}
+      <p className="wsd-schedule-hint">{t("ws.schedules.chatHint")}</p>
+      {!value.schedules.length ? <p>{t("ws.schedules.empty")}</p> : value.schedules.map(row => { const status = value.scheduler?.schedules.find(item => item.id === row.id); return <div className="wsd-connection wsd-schedule-row" key={row.id}><div className="wsd-schedule-main"><strong>{row.name}</strong><small className="wsd-schedule-when">{scheduleHumanText(row.schedule, row.tz ?? localTz, t)} · {t("ws.schedules.assignee")} {agentName(row.agentId)}</small>
         <small>{t(row.enabled ? "ws.schedules.enabled" : "ws.schedules.off")}</small>
-        <small>{status?.awaitingHandoff ? t("ws.schedules.handoff") : status?.lastRun ? t("ws.schedules.last", { state: settingsStateText(t, status.lastRun.state), reason: status.lastRun.reason ? ` · ${status.lastRun.reason}` : "" }) : t("ws.schedules.never")}</small>
+        <small className={status?.lastRun?.state === "failed" ? "wsd-schedule-failed" : undefined}>{status?.awaitingHandoff ? t("ws.schedules.handoff") : status?.lastRun ? t("ws.schedules.last", { state: settingsStateText(t, status.lastRun.state), reason: status.lastRun.reason ? ` · ${status.lastRun.reason}` : "" }) : t("ws.schedules.never")}</small>
         <small>{t("ws.schedules.next", { time: status?.nextRunAt ? new Date(status.nextRunAt).toLocaleString(locale) : "—" })}</small>
-        {status?.lastRun ? <details><summary>{t("ws.schedules.history")}</summary><p>{new Date(status.lastRun.occurredAt).toLocaleString(locale)} · {settingsStateText(t, status.lastRun.state)}</p></details> : null}
-        {row.agentId && row.task && (row.source === "chat" || row.source === "workspace") ? <div className="wsd-card-actions">
-          <button disabled={pending} onClick={() => { setScheduleEditor({ id: row.id, name: row.name, task: row.task!, picker: scheduleToPicker(row.schedule, row.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone), agentId: row.agentId!, enabled: row.enabled, creating: false }); setRepeatConfirm(false); }}>{t("ws.schedules.edit")}</button>
-          <button disabled={pending} onClick={() => setScheduleDelete({ id: row.id, name: row.name })}>{t("ws.schedules.delete")}</button></div> : null}</div>; })}
+        </div>{row.agentId && row.task && (row.source === "chat" || row.source === "workspace") ? <SettingsRowMenu label={row.name} disabled={pending} items={[
+          { id: "edit", label: t("ws.schedules.edit"), onSelect: () => { setScheduleEditor({ id: row.id, name: row.name, task: row.task!, picker: scheduleToPicker(row.schedule, row.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone), agentId: row.agentId!, enabled: row.enabled, creating: false }); setRepeatConfirm(false); } },
+          { id: "delete", label: t("ws.schedules.deleteMenu"), danger: true, onSelect: () => setScheduleDelete({ id: row.id, name: row.name }) }]} /> : null}</div>; })}
+      <SettingsAdvanced page="schedules" items={[t("ws.schedules.advanced.expr"), t("ws.schedules.advanced.source"), t("ws.schedules.history"), t("ws.schedules.advanced.rules")]}>
+        {value.schedules.length ? <dl className="wsd-schedule-technical">{value.schedules.map(row => { const status = value.scheduler?.schedules.find(item => item.id === row.id); return <div key={row.id}>
+          <dt>{row.name}</dt><dd><code>{row.schedule.expr ?? row.schedule.display ?? row.schedule.kind}</code>{row.tz ? ` · ${row.tz}` : ""} · {sourceText(row.source)}</dd>
+          {row.anchor ? <dd>{t("ws.schedules.anchor", { conversation: row.anchor.conversationId, message: row.anchor.messageId.slice(0, 8) })}</dd> : null}
+          {status?.lastRun ? <dd>{t("ws.schedules.history")}: {new Date(status.lastRun.occurredAt).toLocaleString(locale)} · {settingsStateText(t, status.lastRun.state)}</dd> : null}</div>; })}</dl> : null}
+        <p>{t("ws.schedules.colleagueNote")}</p>{value.schedules.some(isLegacySchedule) ? null : <p>{t("ws.schedules.legacyNote")}</p>}
+      </SettingsAdvanced>
       {scheduleEditor ? <section className="wsd-approval" role="dialog" aria-label={t(scheduleEditor.creating ? "ws.schedules.add" : "ws.schedules.edit")}><h3>{t(scheduleEditor.creating ? "ws.schedules.add" : "ws.schedules.edit")}</h3>
         <label>{t("ws.schedules.name")}<input value={scheduleEditor.name} onChange={event => { setScheduleEditor({ ...scheduleEditor, name: event.target.value }); setRepeatConfirm(false); }} /></label>
         {scheduleEditor.creating ? <label>{t("ws.schedules.assignee")}<select value={scheduleEditor.agentId} onChange={event => { setScheduleEditor({ ...scheduleEditor, agentId: event.target.value }); setRepeatConfirm(false); }}>{workspace.agents.filter(agent => agent.state === "active").map(agent => <option key={agent.agentId} value={agent.agentId}>{agent.identity.displayName}</option>)}</select></label> : null}

@@ -1454,5 +1454,17 @@
   "ws.connections.advanced.urls": "服务地址",
   "ws.connections.advanced.keyStorage": "Key 存储说明",
   "ws.connections.advanced.scope": "作用范围",
-  "ws.connections.keyNoteShort": "Key 只存在这台 Mac 的钥匙串里，保存后看不到原文。"
+  "ws.connections.keyNoteShort": "Key 只存在这台 Mac 的钥匙串里，保存后看不到原文。",
+  "ws.schedules.human.once": "{date} {time} 一次",
+  "ws.schedules.human.daily": "每天 {time}",
+  "ws.schedules.human.weekdays": "每个工作日 {time}",
+  "ws.schedules.human.weekly": "{days} {time}",
+  "ws.schedules.human.minutes": "每 {n} 分钟",
+  "ws.schedules.human.hours": "每 {n} 小时",
+  "ws.schedules.chatHint": "也可以在聊天里请 Hara 或同事建，结果回到原对话。",
+  "ws.schedules.deleteMenu": "删除…",
+  "ws.schedules.advanced.expr": "时间表达式",
+  "ws.schedules.advanced.source": "来源",
+  "ws.schedules.advanced.rules": "规则",
+  "ws.connections.attention.cleanup": "{name} 的旧 Key 还没清理。只有按这个按钮才会重试清理，不会重跑任务。"
 }

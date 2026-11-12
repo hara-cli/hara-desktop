@@ -1,5 +1,6 @@
 import type { Key } from "./i18n";
 import type { SchedulePickerValue } from "./workspace-schedule-picker";
+import { SettingsAdvanced } from "./SettingsChrome";
 
 export function WorkspaceSchedulePicker({ value, onChange, t }: { value: SchedulePickerValue; onChange(value: SchedulePickerValue): void; t(key: Key): string }) {
   const update = (patch: Partial<SchedulePickerValue>) => onChange({ ...value, ...patch });
@@ -16,7 +17,8 @@ export function WorkspaceSchedulePicker({ value, onChange, t }: { value: Schedul
       {value.mode === "weekly" ? <fieldset><legend>{t("ws.schedules.weekdays")}</legend>{[0, 1, 2, 3, 4, 5, 6].map(day => <label key={day}><input type="checkbox" checked={value.weekdays.includes(day)} onChange={event => update({ weekdays: event.target.checked ? [...value.weekdays, day] : value.weekdays.filter(item => item !== day) })} />{t((`ws.schedules.weekday.${day}`) as Key)}</label>)}</fieldset> : null}
       {value.mode === "interval" ? <label>{t("ws.schedules.every")}<input type="number" min={value.intervalUnit === "minutes" ? 15 : 1} step="1" value={value.interval} onChange={event => update({ interval: event.target.value })} />
         <select value={value.intervalUnit} onChange={event => update({ intervalUnit: event.target.value as SchedulePickerValue["intervalUnit"] })}><option value="minutes">{t("ws.schedules.minutes")}</option><option value="hours">{t("ws.schedules.hours")}</option></select></label> : null}
-      <label>{t("ws.schedules.tz")}<input value={value.tz} onChange={event => update({ tz: event.target.value })} /></label>
+      <SettingsAdvanced page="schedules.form" persist={false} items={[t("ws.schedules.tz")]} customized={value.tz !== Intl.DateTimeFormat().resolvedOptions().timeZone ? [`${t("ws.schedules.tz")} ${value.tz}`] : []}>
+        <label>{t("ws.schedules.tz")}<input value={value.tz} onChange={event => update({ tz: event.target.value })} /></label></SettingsAdvanced>
       <p>{t("ws.schedules.localTimeNote")}</p>
     </> : null}
   </div>;

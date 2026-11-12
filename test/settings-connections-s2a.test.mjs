@@ -47,7 +47,7 @@ for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`states that need the us
   const invalid = page(workspace([row("one", { keyState: "invalid" }), row("two", { cleanupPending: true })]), locale);
   assert.ok(invalid.indexOf('data-settings-attention="key-one"') < invalid.indexOf(`<h3>${t("ws.connections.heading")}</h3>`), "pinned above the list");
   assert.ok(invalid.includes(esc(t("ws.connections.attention.invalidKey", { name: "OpenRouter" }))) && invalid.includes(`>${t("ws.connections.attention.updateKey")}</button>`));
-  assert.ok(invalid.includes('data-settings-attention="cleanup-two"') && invalid.includes(`>${t("ws.connections.cleanup")}</button>`));
+  assert.ok(invalid.includes('data-settings-attention="cleanup-two"') && invalid.includes(esc(t("ws.connections.attention.cleanup", { name: "Local" }))) && invalid.includes(`>${t("ws.connections.cleanup")}</button>`));
   const migration = page(workspace([row("one", { keySaved: false })], { migrationPending: true, readOnly: false }), locale);
   assert.ok(migration.includes('data-settings-attention="migration"') && migration.includes(esc(t("ws.connections.migrationPending"))));
   assert.equal((migration.match(new RegExp(t("ws.connections.migrationPending").slice(0, 12), "g")) ?? []).length, 1, "the migration notice is not repeated");

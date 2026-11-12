@@ -1454,5 +1454,17 @@
   "ws.connections.advanced.urls": "服務位址",
   "ws.connections.advanced.keyStorage": "Key 儲存說明",
   "ws.connections.advanced.scope": "作用範圍",
-  "ws.connections.keyNoteShort": "Key 只存在這台 Mac 的鑰匙圈裡，儲存後看不到原文。"
+  "ws.connections.keyNoteShort": "Key 只存在這台 Mac 的鑰匙圈裡，儲存後看不到原文。",
+  "ws.schedules.human.once": "{date} {time} 一次",
+  "ws.schedules.human.daily": "每天 {time}",
+  "ws.schedules.human.weekdays": "每個工作日 {time}",
+  "ws.schedules.human.weekly": "{days} {time}",
+  "ws.schedules.human.minutes": "每 {n} 分鐘",
+  "ws.schedules.human.hours": "每 {n} 小時",
+  "ws.schedules.chatHint": "也可以在聊天裡請 Hara 或同事建，結果回到原對話。",
+  "ws.schedules.deleteMenu": "刪除…",
+  "ws.schedules.advanced.expr": "時間表達式",
+  "ws.schedules.advanced.source": "來源",
+  "ws.schedules.advanced.rules": "規則",
+  "ws.connections.attention.cleanup": "{name} 的舊 Key 還沒清理。只有按這個按鈕才會重試清理，不會重跑任務。"
 }

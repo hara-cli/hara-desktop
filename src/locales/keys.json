@@ -682,7 +682,19 @@
     "ws.connections.advanced.urls",
     "ws.connections.advanced.keyStorage",
     "ws.connections.advanced.scope",
-    "ws.connections.keyNoteShort"
+    "ws.connections.keyNoteShort",
+    "ws.schedules.human.once",
+    "ws.schedules.human.daily",
+    "ws.schedules.human.weekdays",
+    "ws.schedules.human.weekly",
+    "ws.schedules.human.minutes",
+    "ws.schedules.human.hours",
+    "ws.schedules.chatHint",
+    "ws.schedules.deleteMenu",
+    "ws.schedules.advanced.expr",
+    "ws.schedules.advanced.source",
+    "ws.schedules.advanced.rules",
+    "ws.connections.attention.cleanup"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -1982,6 +1994,18 @@
     "ws.connections.advanced.urls",
     "ws.connections.advanced.keyStorage",
     "ws.connections.advanced.scope",
-    "ws.connections.keyNoteShort"
+    "ws.connections.keyNoteShort",
+    "ws.schedules.human.once",
+    "ws.schedules.human.daily",
+    "ws.schedules.human.weekdays",
+    "ws.schedules.human.weekly",
+    "ws.schedules.human.minutes",
+    "ws.schedules.human.hours",
+    "ws.schedules.chatHint",
+    "ws.schedules.deleteMenu",
+    "ws.schedules.advanced.expr",
+    "ws.schedules.advanced.source",
+    "ws.schedules.advanced.rules",
+    "ws.connections.attention.cleanup"
   ]
 }
