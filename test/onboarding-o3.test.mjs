@@ -37,3 +37,14 @@ test("step 2 only reads the list; turning a source on goes through the existing 
   assert.match(source, /onClick=\{\(\) => next\(\{ thirdPartySkipped: true \}\)\}/, "«Not now» records the skip");
   assert.match(source, /onClick=\{\(\) => next\(\{ thirdPartySkipped: false \}\)\}/);
 });
+
+for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`tool counts read naturally for one and for several (review of #84, M1) (${locale})`, () => {
+  const t = makeT(locale);
+  assert.equal(t("ws.onboarding.third.toolCountOne"), { "zh-Hans": "1 个工具", en: "1 tool", "zh-Hant": "1 個工具" }[locale]);
+  assert.equal(t("ws.onboarding.third.toolCount", { n: 2 }), { "zh-Hans": "2 个工具", en: "2 tools", "zh-Hant": "2 個工具" }[locale]);
+  assert.match(source, /source\.tools\.length === 1 \? t\("ws\.onboarding\.third\.toolCountOne"\) : t\("ws\.onboarding\.third\.toolCount", \{ n: source\.tools\.length \}\)/);
+});
+
+test("the panel has a way back to the read-only list, which reloads (review of #84, L3)", () => {
+  assert.match(source, /onClick=\{\(\) => \{ setReviewing\(false\); load\(\); \}\}>\{t\("ws\.onboarding\.third\.backToList"\)\}/);
+});

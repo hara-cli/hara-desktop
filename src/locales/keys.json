@@ -2099,6 +2099,8 @@
     "ws.onboarding.third.off",
     "ws.onboarding.third.kindWorkspace",
     "ws.onboarding.third.toolCount",
-    "ws.onboarding.third.loadFailed"
+    "ws.onboarding.third.loadFailed",
+    "ws.onboarding.third.toolCountOne",
+    "ws.onboarding.third.backToList"
   ]
 }
