@@ -31,7 +31,7 @@ test("schedules read in plain words in the schedule's own time zone, in three la
 });
 
 test("rows show who and when; cron, source, anchor and history move under the page's Advanced", () => {
-  assert.match(panels, /<small className="wsd-schedule-when">\{scheduleHumanText\(row\.schedule, row\.tz \?\? localTz, t\)\} · \{t\("ws\.schedules\.assignee"\)\} \{agentName\(row\.agentId\)\}<\/small>/);
+  assert.match(panels, /<small className="wsd-schedule-when">\{scheduleHumanText\(row\.schedule, row\.tz \?\? localTz, t\)\} · \{t\("ws\.schedules\.byAgent", \{ name: agentName\(row\.agentId\) \}\)\}<\/small>/);
   assert.doesNotMatch(panels, /<code>\{row\.schedule\.expr \?\? row\.schedule\.display\}<\/code>/, "the raw expression is not on the row");
   const fold = panels.slice(panels.indexOf('<SettingsAdvanced page="schedules"'));
   for (const pattern of [/row\.schedule\.expr \?\? row\.schedule\.display/, /sourceText\(row\.source\)/, /ws\.schedules\.anchor/, /status\.lastRun\.occurredAt/, /ws\.schedules\.colleagueNote/]) assert.match(fold.slice(0, 2000), pattern);
@@ -44,6 +44,12 @@ test("edit and delete are row-end menu items that keep the original editor, conf
   assert.match(panels, /\{ id: "edit", label: t\("ws\.schedules\.edit"\), onSelect: \(\) => \{ setScheduleEditor\(\{ id: row\.id/);
   assert.match(panels, /"workspace\.schedule\.delete", \{ id: scheduleDelete\.id, expectedRevision: value\.revision, approved: true \}/);
   assert.match(panels, /if \(schedule\.kind !== "once" && !confirmed\) \{ setRepeatConfirm\(true\); return; \}/, "repeating schedules still need confirmation");
+});
+
+test("the inline «who» reads as a statement, not the form's imperative label", () => {
+  assert.equal(makeT("en")("ws.schedules.byAgent", { name: "Alice" }), "By Alice");
+  assert.equal(makeT("zh-Hans")("ws.schedules.byAgent", { name: "小明" }), "交给 小明");
+  assert.equal(makeT("zh-Hant")("ws.schedules.byAgent", { name: "小明" }), "交給 小明");
 });
 
 test("the legacy-scheduler notice is a pinned bar only while legacy schedules exist", () => {

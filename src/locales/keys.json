@@ -694,7 +694,8 @@
     "ws.schedules.advanced.expr",
     "ws.schedules.advanced.source",
     "ws.schedules.advanced.rules",
-    "ws.connections.attention.cleanup"
+    "ws.connections.attention.cleanup",
+    "ws.schedules.byAgent"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -2006,6 +2007,7 @@
     "ws.schedules.advanced.expr",
     "ws.schedules.advanced.source",
     "ws.schedules.advanced.rules",
-    "ws.connections.attention.cleanup"
+    "ws.connections.attention.cleanup",
+    "ws.schedules.byAgent"
   ]
 }

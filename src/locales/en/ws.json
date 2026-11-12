@@ -1466,5 +1466,6 @@
   "ws.schedules.advanced.expr": "Schedule expression",
   "ws.schedules.advanced.source": "Source",
   "ws.schedules.advanced.rules": "Rules",
-  "ws.connections.attention.cleanup": "{name}'s old key hasn't been cleaned up. Only this button retries the cleanup; no task runs again."
+  "ws.connections.attention.cleanup": "{name}'s old key hasn't been cleaned up. Only this button retries the cleanup; no task runs again.",
+  "ws.schedules.byAgent": "By {name}"
 }

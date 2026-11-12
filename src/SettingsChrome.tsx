@@ -71,7 +71,7 @@ export interface SettingsAttentionItem { id: string; text: string; tone?: "atten
 export function SettingsAttention({ items }: { items: SettingsAttentionItem[] }) {
   if (!items.length) return null;
   return <div className="wss-attention-list">{items.map(item => <div key={item.id} className={`wss-attention${item.tone === "progress" ? " is-progress" : ""}`} role="status" data-settings-attention={item.id}>
-    {item.tone === "progress" ? <ArrowDownTrayIcon className="hico" aria-hidden /> : <ExclamationTriangleIcon className="hico" aria-hidden />}<span>{item.text}</span>
+    <span className="wss-attention-text">{item.tone === "progress" ? <ArrowDownTrayIcon className="hico" aria-hidden /> : <ExclamationTriangleIcon className="hico" aria-hidden />}<span>{item.text}</span></span>
     {item.action ? <button type="button" disabled={item.action.disabled} onClick={item.action.onClick}>{item.action.label}</button> : null}
   </div>)}</div>;
 }

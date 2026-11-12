@@ -1466,5 +1466,6 @@
   "ws.schedules.advanced.expr": "時間表達式",
   "ws.schedules.advanced.source": "來源",
   "ws.schedules.advanced.rules": "規則",
-  "ws.connections.attention.cleanup": "{name} 的舊 Key 還沒清理。只有按這個按鈕才會重試清理，不會重跑任務。"
+  "ws.connections.attention.cleanup": "{name} 的舊 Key 還沒清理。只有按這個按鈕才會重試清理，不會重跑任務。",
+  "ws.schedules.byAgent": "交給 {name}"
 }

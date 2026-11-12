@@ -8,7 +8,7 @@ import { makeT } from "../src/i18n.ts";
 import { connectionsNeedAttention, settingsAttentionPages } from "../src/settings-advanced-state.ts";
 
 const require = createRequire(import.meta.url), root = fileURLToPath(new URL("../", import.meta.url));
-const bundle = await build({ stdin: { contents: 'export {WorkspaceConnections} from "./src/WorkspaceSettingsPanels.tsx"; export {WorkspaceConnectionForm} from "./src/WorkspaceRuntimeSettings.tsx";', resolveDir: root, loader: "tsx" },
+const bundle = await build({ stdin: { contents: 'export {WorkspaceConnections} from "./src/WorkspaceSettingsPanels.tsx"; export {WorkspaceConnectionForm} from "./src/WorkspaceRuntimeSettings.tsx"; export {SettingsContent} from "./src/WorkspaceSettings.tsx";', resolveDir: root, loader: "tsx" },
   bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });
 const module = { exports: {} }; new Function("require", "module", "exports", bundle.outputFiles[0].text)(require, module, module.exports);
 const { createElement } = require("react"), { renderToStaticMarkup } = require("react-dom/server");
@@ -72,4 +72,20 @@ test("the add/edit form keeps one short key line; the long notes live under Adva
     assert.equal(form.includes(esc(t("ws.connections.keyNote"))) || form.includes(esc(t("ws.connections.scopeNote"))), false);
   }
   assert.match(panels, /<details className="wsd-legacy-import" open=\{active\.length === 0\}>/);
+});
+
+test("the overview cards carry the same attention dots as the left rail (connections and software update)", () => {
+  const ws = workspace([row("one", { keyState: "invalid" })]);
+  const value = { workspaceId: "A", workspace: ws, directory: { workspaces: [{ workspaceId: "A", label: "A", role: "owner", active: true, kind: "personal" }] }, error: "" };
+  const shellModel = { ...model, getSnapshot: () => value, subscribe: () => () => {} };
+  const updates = phase => ({ getSnapshot: () => ({ phase, version: "9.9.9", notes: "", downloaded: 0, total: 0, notice: true, message: "", preferences: { autoCheck: true, lastChecked: null }, installing: false }), subscribe: () => () => {} });
+  const overview = phase => render(createElement(module.exports.SettingsContent, { model: shellModel, mainModel: shellModel, initialPage: "overview", root: "/private/fixture", production: true,
+    updater: updates(phase), versionInfo: null, onClose() {}, onCreateSkill() {}, theme: { preference: "system", settings: { readOnly: false }, notice: "", change() {}, changeDetails() {} } }));
+  const t = makeT("zh-Hans"), dot = `<i class="wss-update-dot" role="img" aria-label="${t("ws.settings.attention")}"></i>`;
+  const html = overview("ready"), cards = html.slice(html.indexOf('class="wss-overview"'));
+  assert.ok(cards.includes(`<h2>${t("ws.settings.page.connections")}${dot}</h2>`), "connections card has the dot");
+  assert.ok(cards.includes(`<h2>${t("ws.settings.page.updates")}${dot}</h2>`), "software update card has the dot");
+  assert.equal(cards.includes(`<h2>${t("ws.settings.page.runtimes")}${dot}</h2>`), false, "pages without attention have none");
+  const calm = overview("latest").slice(html.indexOf('class="wss-overview"'));
+  assert.equal(calm.includes(`<h2>${t("ws.settings.page.updates")}${dot}</h2>`), false);
 });

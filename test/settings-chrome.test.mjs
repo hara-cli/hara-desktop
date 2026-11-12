@@ -89,7 +89,7 @@ test("nav attention dots come from one derived source and keep today's update be
   assert.deepEqual([...settingsAttentionPages({ updateAttention: false })], []);
   const shell = readFileSync(new URL("../src/WorkspaceSettings.tsx", import.meta.url), "utf8");
   assert.match(shell, /settingsAttentionPages\(\{ updateAttention: hasUpdateAttention\(updates\), connections: workspace\?\.connections \}\)/);
-  assert.match(shell, /attention\.has\(id\) \? <i className="wss-update-dot" role="img" aria-label=\{t\("ws\.settings\.attention"\)\} \/>/);
+  assert.match(shell, /const attentionDot = \(id: SettingsPage\) => attention\.has\(id\) \? <i className="wss-update-dot" role="img" aria-label=\{t\("ws\.settings\.attention"\)\} \/> : null;/);
 });
 
 test("chrome colours come from DESIGN.md tokens that follow the theme (menu, danger, warning) and amber is kept for attention only", () => {
@@ -99,7 +99,7 @@ test("chrome colours come from DESIGN.md tokens that follow the theme (menu, dan
   assert.match(rule(".wss-row-menu-list{"), /background:var\(--hara-menu\)/);
   assert.match(rule('[role="menuitem"].is-danger{'), /color:var\(--hara-danger\)/);
   assert.match(rule(".wss-attention{"), /background:var\(--hara-warning-soft\)/);
-  assert.match(rule(".wss-attention>.hico{"), /color:var\(--hara-warning\)/);
+  assert.match(rule(".wss-attention .hico{"), /color:var\(--hara-warning\)/);
   assert.doesNotMatch(rule(".wss-advanced-custom{"), /warning|waiting|EAB308/, "Customized is informational, not an alert colour");
   const chrome = css.slice(css.indexOf("/* S0 settings chrome"));
   assert.doesNotMatch(chrome, /status-failed|status-waiting|#EAB308|#EF4444|border-radius:\d+px/, "no fixed status colours or off-scale radii");
