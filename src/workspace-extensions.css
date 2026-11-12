@@ -38,3 +38,15 @@
 .wse-review-revoke { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid var(--wsd-line, #ffffff18); }
 .wse-review-revoke p { flex-basis: 100%; }
 @media (max-width: 520px) { .wse-review-detail dl { grid-template-columns: minmax(0, 1fr); gap: 4px; } .wse-review-detail dd { margin-bottom: 8px; } }
+/* S2b: one-line tool summary, per-source details fold. DESIGN tokens only. */
+.wse-tools{margin:var(--hara-space-2) 0}
+.wse-tools>summary{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hara-space-2);cursor:pointer;font-size:var(--hara-font-size-small);color:var(--wsd-muted)}
+.wse-tools>summary .wse-choose{color:var(--hara-text-link)}
+.wse-tools[open]>summary{margin-bottom:var(--hara-space-2)}
+.wse-details>summary{cursor:pointer;font-size:var(--hara-font-size-caption);color:var(--wsd-muted)}
+.wse-details>small{display:block;margin-top:var(--hara-space-1);overflow-wrap:anywhere}
+.wse-details .wse-diagnostics{margin-top:var(--hara-space-2)}
+/* Narrow windows: the name keeps a sensible width and the status pill wraps below instead of squeezing it. */
+.wse-source > header { flex-wrap: wrap; }
+.wse-source > header > div { flex: 1 1 120px; }
+.wse-source > header strong { overflow-wrap: anywhere; }

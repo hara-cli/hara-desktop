@@ -27,7 +27,7 @@ function mount(model, patch = {}) {
     useEffect(action, deps) { const index = cursor++, old = slots[index]; if (!old || deps.some((dep, n) => !Object.is(dep, old.deps[n]))) effects.push(() => { old?.cleanup?.(); slots[index] = { deps, cleanup: action() }; }); },
   };
   const exports = {};
-  new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks } : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t: makeT(props.locale ?? "en"), locale: props.locale ?? "en" }) } : name.endsWith(".css") ? {} : require(name), exports);
+  new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks } : name === "./SettingsChrome" ? { SettingsAdvanced: props => props.children, SettingsAttention: () => null } : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t: makeT(props.locale ?? "en"), locale: props.locale ?? "en" }) } : name.endsWith(".css") ? {} : require(name), exports);
   const render = (next = {}) => { props = { ...props, ...next }; cursor = 0; dirty = false; tree = exports.WorkspaceExtensions(props); effects.splice(0).forEach(effect => effect()); return tree; };
   const flush = async () => { await tick(); for (let count = 0; count < 24 && dirty; count++) { render(); await tick(); } };
   const nodes = () => { const list = []; const walk = value => { if (Array.isArray(value)) value.forEach(walk); else if (value && typeof value === "object" && value.props) { list.push(value); walk(value.props.children); } }; walk(tree); return list; };
@@ -203,4 +203,44 @@ test("malformed or inconsistent invocation diagnostics fail closed instead of cl
     assert.throws(() => extensionView(view("A", { sources: [{ ...callable, ...patch }] }), "A", "generation-A"));
   }
   assert.throws(() => extensionView(view("A", { readOnly: true, sources: [callable] }), "A", "generation-A"));
+});
+
+test("S2b: tools fold into «a of b tools selected · used by n» and open by themselves on first enable; diagnostics sit in Details", async () => {
+  const t = makeT("en"), f = mount(mock()); await f.flush();
+  const tools = () => f.nodes().find(node => node.type === "details" && node.props.className === "wse-tools");
+  assert.equal(f.text().includes(`${t("ws.extensions.toolSummary", { a: 0, b: 2 })} · ${t("ws.extensions.usedBy", { n: 0 })}`), true);
+  assert.equal(tools().props.open, false, "folded until needed");
+  f.toggle(0, true); assert.equal(tools().props.open, true, "switching the source on opens its tool list");
+  const details = f.nodes().find(node => node.type === "details" && node.props.className === "wse-details");
+  assert.ok(f.text().includes("stdio · stdio · node") || JSON.stringify(details.props.children).includes("stdio"), "transport and start command are inside Details");
+  f.unmount();
+});
+
+test("S2b: one tool / one colleague read naturally", async () => {
+  const t = makeT("en"), f = mount(mock({ extensions: async id => view(id, { sources: [source({ tools: [{ toolId: "read", name: "Read docs", description: "" }], assignedAgentCount: 1 })] }) })); await f.flush();
+  assert.ok(f.text().includes(`${t("ws.extensions.toolSummaryOne", { a: 0 })} · ${t("ws.extensions.usedByOne")}`), f.text());
+  assert.equal(t("ws.extensions.toolSummaryOne", { a: 1 }), "1 of 1 tool selected");
+});
+
+test("S2b: a source that changed after review is pinned at the top and the bar goes to its card", async () => {
+  const t = makeT("en"), f = mount(mock({ extensions: async id => view(id, { sources: [source({ status: "needs-review" }), source({ sourceId: "global:host:ok", name: "Fine" })] }) })); await f.flush();
+  const bar = f.nodes().find(node => Array.isArray(node.props.items));
+  assert.deepEqual(bar.props.items.map(item => item.text), [t("ws.extensions.attentionReview", { name: "Docs" })]);
+  assert.equal(bar.props.items[0].action.label, t("ws.extensions.attentionOpen"));
+  assert.ok(f.nodes().some(node => node.type === "article" && node.props.id === `wse-${sourceId}`), "the card carries the id the bar scrolls to");
+});
+
+test("S2b: «Reload» is under Advanced in Settings, in the header when loading failed or in a colleague's panel; the two notes are one line", () => {
+  assert.match(component, /\{supported && \(agent \|\| needsReload\) \? reload : null\}/);
+  assert.match(component, /\{!agent && supported && !needsReload \? <SettingsAdvanced page="extensions" items=\{\[t\("ws\.extensions\.reloadShort"\)\]\}>\{reload\}<\/SettingsAdvanced> : null\}/);
+  assert.match(component, /<p className="wse-note">\{t\(model\.supportsExtensionManager\?\.\(\) \? "ws\.extensions\.managerNoteLine" : "ws\.extensions\.noteLine"\)\}<\/p>/);
+  assert.doesNotMatch(component, /ws\.extensions\.timing/);
+});
+
+test("S2b skills: id stays the name, «New version» visible, edit in ⋯, source and hash in Details, long note under Advanced", () => {
+  const panels = readFileSync(new URL("../src/WorkspaceSettingsPanels.tsx", import.meta.url), "utf8");
+  assert.match(panels, /<strong>\{row\.id\}<\/strong>\{newer \? <span className="wsd-skill-new">\{t\("ws\.skills\.newVersion"\)\}<\/span> : null\}/);
+  assert.match(panels, /<SettingsRowMenu label=\{row\.id\} disabled=\{pending\} items=\{\[\{ id: "edit", label: t\("ws\.skills\.edit"\), onSelect: \(\) => void editSkill\(row\.id\) \}\]\} \/>/);
+  assert.match(panels, /<details className="wsd-runtime-details"><summary>\{t\("ws\.runtimes\.details"\)\}<\/summary>[\s\S]*row\.version\.slice\(0, 12\)/);
+  assert.match(panels, /<SettingsAdvanced page="skills" items=\{\[t\("ws\.skills\.howItWorks"\)\]\}><p>\{t\("ws\.skills\.note"\)\}<\/p><\/SettingsAdvanced>/);
 });

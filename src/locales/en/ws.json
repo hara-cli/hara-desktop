@@ -1565,5 +1565,18 @@
   "ws.runtimes.default.pi": "Pi (default)",
   "ws.runtimes.default.scope": "Saved for this workspace; other workspaces have their own.",
   "ws.runtimes.default.saveFailed": "It wasn’t saved. The current choice has been reloaded; please choose again.",
-  "ws.onboarding.engine.guideSaveFailed": "Couldn’t make it the default for new colleagues. Try again, or choose Later."
+  "ws.onboarding.engine.guideSaveFailed": "Couldn’t make it the default for new colleagues. Try again, or choose Later.",
+  "ws.extensions.noteLine": "Connections start off and nothing here starts them or calls tools; new access applies on the next run, and removing it takes effect immediately.",
+  "ws.extensions.managerNoteLine": "Reviewed tools go through Hara permissions and a confirmation for each call; new access applies on the next run, and removing it takes effect immediately.",
+  "ws.extensions.toolSummary": "{a} of {b} tools selected",
+  "ws.extensions.toolSummaryOne": "{a} of 1 tool selected",
+  "ws.extensions.usedBy": "used by {n} colleagues",
+  "ws.extensions.usedByOne": "used by 1 colleague",
+  "ws.extensions.chooseTools": "Choose tools",
+  "ws.extensions.details": "Details",
+  "ws.extensions.attentionReview": "{name} changed at its source; review its tools again.",
+  "ws.extensions.attentionOpen": "Review",
+  "ws.extensions.reloadShort": "Reload",
+  "ws.skills.newVersion": "New version",
+  "ws.skills.howItWorks": "How skills work"
 }

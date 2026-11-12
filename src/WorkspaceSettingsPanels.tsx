@@ -181,12 +181,22 @@ export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty
     <h2>{t(kind === "skills" ? "ws.settings.page.skills" : "ws.settings.page.schedules")}</h2><p>{t("ws.features.scope", { workspace: workspace.label })}</p>
     {!value ? <p role="status">{t(notice || "ws.settings.loading")}</p> : kind === "skills" ? <>
       {onCreateSkill ? <button onClick={onCreateSkill}>{t("ws.skills.create")}</button> : null}
-      <p>{t("ws.skills.note")}</p>
-      {!value.skills.length ? <p>{t("ws.skills.empty")}</p> : value.skills.map(row => <div className="wsd-connection" key={row.id}><strong>{row.id}</strong><p>{row.description}</p>
-        <small>{t(row.source === "private" ? "ws.skills.private" : "ws.skills.global")} · {row.version.slice(0, 12)} · {t(row.locked ? "ws.skills.pinned" : "ws.skills.disabled")}</small>
-        <label><ToggleSwitch label={t("ws.skills.allow")} disabled={pending} checked={row.enabled} onCheckedChange={checked => void update(row.id, checked, row.version)} />{t("ws.skills.allow")}</label>
-        {row.locked ? <button disabled={pending} onClick={() => void editSkill(row.id)}>{t("ws.skills.edit")}</button> : null}
-        {row.locked && row.source === "global" && row.availableVersion !== row.version ? <button disabled={pending} onClick={() => setUpgrade(row)}>{t("ws.skills.review")}</button> : null}</div>)}
+      {/* Settings IA audit (S2b): Core skill rows have no name field, so the id stays the name (nothing invented).
+          A one-line summary, the switch and a «New version» mark stay visible; source, version hash and the full
+          description go in a «Details» fold; editing the private copy is in the row's ⋯ menu. */}
+      {!value.skills.length ? <p>{t("ws.skills.empty")}</p> : value.skills.map(row => {
+        const newer = row.locked && row.source === "global" && row.availableVersion !== row.version;
+        return <div className="wsd-connection wsd-skill-row" key={row.id}>
+          <div className="wsd-skill-head"><strong>{row.id}</strong>{newer ? <span className="wsd-skill-new">{t("ws.skills.newVersion")}</span> : null}
+            {row.locked ? <SettingsRowMenu label={row.id} disabled={pending} items={[{ id: "edit", label: t("ws.skills.edit"), onSelect: () => void editSkill(row.id) }]} /> : null}</div>
+          {row.description ? <p className="wsd-skill-summary" title={row.description}>{row.description}</p> : null}
+          <label><ToggleSwitch label={t("ws.skills.allow")} disabled={pending} checked={row.enabled} onCheckedChange={checked => void update(row.id, checked, row.version)} />{t("ws.skills.allow")}</label>
+          {newer ? <button disabled={pending} onClick={() => setUpgrade(row)}>{t("ws.skills.review")}</button> : null}
+          <details className="wsd-runtime-details"><summary>{t("ws.runtimes.details")}</summary>
+            {row.description ? <p>{row.description}</p> : null}
+            <small>{t(row.source === "private" ? "ws.skills.private" : "ws.skills.global")} · {row.version.slice(0, 12)} · {t(row.locked ? "ws.skills.pinned" : "ws.skills.disabled")}</small></details>
+        </div>; })}
+      <SettingsAdvanced page="skills" items={[t("ws.skills.howItWorks")]}><p>{t("ws.skills.note")}</p></SettingsAdvanced>
       {upgrade ? <section className="wsd-approval" role="dialog" aria-label={t("ws.skills.confirmUpdate")}><h3>{t("ws.skills.updateTitle", { name: upgrade.id })}</h3><p>{t("ws.skills.updateNote", { from: upgrade.version.slice(0, 12), to: upgrade.availableVersion.slice(0, 12) })}</p>
         <button disabled={pending} onClick={() => setUpgrade(null)}>{t("ws.cancel")}</button><button disabled={pending} onClick={() => void update(upgrade.id, upgrade.enabled, upgrade.availableVersion)}>{t("ws.skills.update")}</button></section> : null}
       {editor ? <section className="wsd-approval" role="dialog" aria-label={t("ws.skills.editPrivate")}><h3>{t("ws.skills.privateTitle", { name: editor.id })}</h3><p>{t("ws.skills.editNote")}</p>

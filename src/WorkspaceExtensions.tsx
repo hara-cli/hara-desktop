@@ -4,6 +4,7 @@ import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
 import type { ExtensionChange, ExtensionProposal, WorkspaceExtensionSource, WorkspaceExtensionsView } from "./workspace-extensions.ts";
 import type { McpReviewDetail, McpReviewList } from "./workspace-mcp-review.ts";
+import { SettingsAdvanced, SettingsAttention } from "./SettingsChrome";
 import "./workspace-extensions.css";
 
 type Draft = { enabled: boolean; allowedTools: string[] };
@@ -18,7 +19,7 @@ export function WorkspaceExtensions({ model, workspaceId, generation, agent, onD
   const { t, locale } = useWorkspaceLocale();
   const supported = model.supportsExtensions?.() === true;
   const [view, setView] = useState<WorkspaceExtensionsView | null>(null), [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [ownerLocked, setOwnerLocked] = useState(false);
+  const [ownerLocked, setOwnerLocked] = useState(false), [openTools, setOpenTools] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [needsReload, setNeedsReload] = useState(false);
   const [notice, setNotice] = useState<"" | Key>(""), [proposal, setProposal] = useState<ExtensionProposal | null>(null);
   const scope = `${workspaceId}:${generation}:${agent?.agentId ?? ""}:${agent?.agentEpoch ?? ""}`;
@@ -72,10 +73,18 @@ export function WorkspaceExtensions({ model, workspaceId, generation, agent, onD
   };
   const statusKey = (source: WorkspaceExtensionSource): Key => source.status === "unavailable" ? "ws.extensions.unavailableSource" : `ws.extensions.${source.status}`;
   const proposedSource = current?.sources.find(source => source.sourceId === proposal?.change.sourceId);
+  const reload = <button type="button" disabled={loading || busy || ownerLocked || !!proposal} onClick={() => void load()}>{t("ws.extensions.reload")}</button>;
+  // Settings IA audit (S2b): a source that changed after review is pinned at the top; the bar takes you to its card,
+  // whose review flow is unchanged. Never loads or starts anything.
+  const attention = !agent && current ? current.sources.filter(source => source.status === "needs-review").map(source => ({ id: `extension:${source.sourceId}`,
+    text: t("ws.extensions.attentionReview", { name: source.name }), action: { label: t("ws.extensions.attentionOpen"), onClick: () => {
+      const card = document.getElementById(`wse-${source.sourceId}`); card?.scrollIntoView({ block: "center" }); card?.querySelector<HTMLElement>(".wse-review")?.focus(); } } })) : [];
   return <section className="wse" aria-label={t(agent ? "ws.extensions.assignmentTitle" : "ws.extensions.title")}>
     <header className="wse-heading"><h3>{t(agent ? "ws.extensions.assignmentTitle" : "ws.extensions.title")}</h3>
-      {supported ? <button type="button" disabled={loading || busy || ownerLocked || !!proposal} onClick={() => void load()}>{t("ws.extensions.reload")}</button> : null}</header>
-    <p className="wse-note">{t(model.supportsExtensionManager?.() ? "ws.extensions.managerNote" : "ws.extensions.note")}</p><p className="wse-note">{t("ws.extensions.timing")}</p>
+      {/* In Settings «Reload» is a low-frequency action under Advanced, except when loading failed and it is the way out. */}
+      {supported && (agent || needsReload) ? reload : null}</header>
+    <SettingsAttention items={attention} />
+    <p className="wse-note">{t(model.supportsExtensionManager?.() ? "ws.extensions.managerNoteLine" : "ws.extensions.noteLine")}</p>
     {!supported ? <p role="status">{t("ws.extensions.unavailable")}</p> : loading ? <p role="status">{t("ws.extensions.loading")}</p> : null}
     {notice ? <p role={notice === "ws.extensions.saved" ? "status" : "alert"}>{t(notice)}</p> : null}
     {current?.readOnly ? <p role="status">{t("ws.extensions.readOnly")}</p> : null}
@@ -84,29 +93,38 @@ export function WorkspaceExtensions({ model, workspaceId, generation, agent, onD
       const draft = drafts[source.sourceId] ?? savedDraft(source, !!agent), baseline = savedDraft(source, !!agent);
       const changed = JSON.stringify(draft) !== JSON.stringify(baseline) || source.status === "needs-review";
       const rowDisabled = disabled || !!agent && !source.workspaceEnabled && !baseline.enabled;
-      return <article key={source.sourceId} className="wse-source">
-        <header><div><strong>{source.name}</strong><small>{t(`ws.extensions.${source.kind}`)} · {source.transport}</small></div><span className="wse-status">{t(source.callable ? "ws.extensions.callable" : statusKey(source))}</span></header>
-        <p>{source.description}</p><small>{source.executableSummary}</small>
-        {source.lastCall ? <details className="wse-diagnostics"><summary>{t("ws.extensions.lastCall")}</summary>
-          <p>{source.tools.find(tool => tool.toolId === source.lastCall!.toolId)?.name ?? source.lastCall.toolId}</p>
-          <p>{t(`ws.extensions.outcome.${source.lastCall.outcome}`)}</p><small>{new Date(source.lastCall.at).toLocaleString(locale)} · {source.lastCall.durationMs} ms</small>
-          {source.lastCall.code ? <p>{t(source.lastCall.code === "mcp_schema_stale" || source.lastCall.code === "mcp_source_stale" ? "ws.extensions.callStale" : "ws.extensions.callFailed")}</p> : null}
-        </details> : null}
+      // The tool list folds into one line; it opens by itself the first time the source is switched on (S2b).
+      const toolsOpen = openTools[source.sourceId] ?? (draft.enabled && !baseline.enabled);
+      const summary = source.tools.length === 1 ? t("ws.extensions.toolSummaryOne", { a: draft.allowedTools.length }) : t("ws.extensions.toolSummary", { a: draft.allowedTools.length, b: source.tools.length });
+      return <article key={source.sourceId} id={`wse-${source.sourceId}`} className="wse-source">
+        <header><div><strong>{source.name}</strong><small>{t(`ws.extensions.${source.kind}`)}</small></div><span className="wse-status">{t(source.callable ? "ws.extensions.callable" : statusKey(source))}</span></header>
+        {source.description ? <p>{source.description}</p> : null}
         <label className="wse-switch"><input type="checkbox" checked={draft.enabled} disabled={rowDisabled}
           onChange={event => edit(source, { ...draft, enabled: event.target.checked })} />{t(agent ? "ws.extensions.agentSwitch" : "ws.extensions.workspaceSwitch")}</label>
         {agent && !source.workspaceEnabled ? <p className="wse-note">{t("ws.extensions.spaceFirst")}</p> : null}
+        <details className="wse-tools" open={toolsOpen} onToggle={event => { const open = event.currentTarget.open; if (open !== toolsOpen) setOpenTools(current => ({ ...current, [source.sourceId]: open })); }}>
+          <summary><span>{summary}{!agent ? ` · ${source.assignedAgentCount === 1 ? t("ws.extensions.usedByOne") : t("ws.extensions.usedBy", { n: source.assignedAgentCount })}` : ""}</span><span className="wse-choose">{t("ws.extensions.chooseTools")}</span></summary>
         <fieldset disabled={disabled || !!agent && !source.workspaceEnabled}><legend>{t("ws.extensions.tools")}</legend>
           {source.tools.length ? source.tools.map(tool => <label key={tool.toolId} className="wse-tool"><input type="checkbox" checked={draft.allowedTools.includes(tool.toolId)}
             disabled={!!agent && !source.allowedTools.includes(tool.toolId)} onChange={event => edit(source, { ...draft, allowedTools: (event.target.checked ? [...draft.allowedTools, tool.toolId] : draft.allowedTools.filter(id => id !== tool.toolId)).sort() })} />
             <span><strong>{tool.name}</strong><small>{tool.description}</small></span></label>) : <p className="wse-note">{t("ws.extensions.noTools")}</p>}
-        </fieldset>
-        <footer><span>{t("ws.extensions.selected", { count: draft.allowedTools.length })}{!agent ? ` · ${t("ws.extensions.colleagues", { count: source.assignedAgentCount })}` : ""}</span>
-          <button type="button" disabled={disabled || !changed} onClick={() => void review(source)}>{t("ws.extensions.review")}</button></footer>
+        </fieldset></details>
+        {/* Transport, start command and the most recent call are diagnostics: one «Details» fold per source (S2b). */}
+        <details className="wse-details"><summary>{t("ws.extensions.details")}</summary>
+          <small>{source.transport} · {source.executableSummary}</small>
+          {source.lastCall ? <div className="wse-diagnostics"><strong>{t("ws.extensions.lastCall")}</strong>
+            <p>{source.tools.find(tool => tool.toolId === source.lastCall!.toolId)?.name ?? source.lastCall.toolId}</p>
+            <p>{t(`ws.extensions.outcome.${source.lastCall.outcome}`)}</p><small>{new Date(source.lastCall.at).toLocaleString(locale)} · {source.lastCall.durationMs} ms</small>
+            {source.lastCall.code ? <p>{t(source.lastCall.code === "mcp_schema_stale" || source.lastCall.code === "mcp_source_stale" ? "ws.extensions.callStale" : "ws.extensions.callFailed")}</p> : null}
+          </div> : null}
+        </details>
+        <footer><button type="button" className="wse-review" disabled={disabled || !changed} onClick={() => void review(source)}>{t("ws.extensions.review")}</button></footer>
       </article>;
     })}
     {!agent && model.supportsMcpOwnerReview?.() ? <WorkspaceMcpOwnerReview model={model} workspaceId={workspaceId} generation={generation}
       blocked={loading || busy || needsReload || !!proposal || !!current?.sources.some(source => JSON.stringify(drafts[source.sourceId] ?? savedDraft(source, false)) !== JSON.stringify(savedDraft(source, false)))}
       onBusy={setOwnerLocked} onChanged={sourceId => load(sourceId)} /> : null}
+    {!agent && supported && !needsReload ? <SettingsAdvanced page="extensions" items={[t("ws.extensions.reloadShort")]}>{reload}</SettingsAdvanced> : null}
     {proposal && proposedSource ? <section className="wse-confirm" role="group" aria-label={t("ws.extensions.confirmTitle")}>
       <h4>{t("ws.extensions.confirmTitle")}</h4><p><strong>{proposedSource.name}</strong> · {t(proposal.change.enabled ? "ws.extensions.enabled" : "ws.extensions.disabled")}</p>
       <p>{t("ws.extensions.selected", { count: proposal.change.allowedTools.length })}</p>

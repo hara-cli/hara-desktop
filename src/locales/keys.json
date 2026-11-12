@@ -719,7 +719,20 @@
     "ws.runtimes.default.loadFailed",
     "ws.runtimes.default.readOnly",
     "ws.runtimes.default.pi",
-    "ws.runtimes.default.scope"
+    "ws.runtimes.default.scope",
+    "ws.extensions.noteLine",
+    "ws.extensions.managerNoteLine",
+    "ws.extensions.toolSummary",
+    "ws.extensions.toolSummaryOne",
+    "ws.extensions.usedBy",
+    "ws.extensions.usedByOne",
+    "ws.extensions.chooseTools",
+    "ws.extensions.details",
+    "ws.extensions.attentionReview",
+    "ws.extensions.attentionOpen",
+    "ws.extensions.reloadShort",
+    "ws.skills.newVersion",
+    "ws.skills.howItWorks"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -2130,6 +2143,19 @@
     "ws.runtimes.default.readOnly",
     "ws.runtimes.default.pi",
     "ws.runtimes.default.scope",
-    "ws.onboarding.engine.guideSaveFailed"
+    "ws.onboarding.engine.guideSaveFailed",
+    "ws.extensions.noteLine",
+    "ws.extensions.managerNoteLine",
+    "ws.extensions.toolSummary",
+    "ws.extensions.toolSummaryOne",
+    "ws.extensions.usedBy",
+    "ws.extensions.usedByOne",
+    "ws.extensions.chooseTools",
+    "ws.extensions.details",
+    "ws.extensions.attentionReview",
+    "ws.extensions.attentionOpen",
+    "ws.extensions.reloadShort",
+    "ws.skills.newVersion",
+    "ws.skills.howItWorks"
   ]
 }
