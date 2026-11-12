@@ -6,6 +6,12 @@ import ts from "typescript";
 import { makeT } from "../src/i18n.ts";
 import * as expansion from "../src/runtime-expansion.ts";
 const require = createRequire(import.meta.url), React = require("react"), { renderToStaticMarkup } = require("react-dom/server");
+// WorkspaceRuntimeSettings now imports the shared settings chrome (S0); give the standalone loader the real module.
+const settingsChrome = { exports: {} };
+{ const { build } = await import("esbuild"), { fileURLToPath } = await import("node:url");
+  const out = await build({ stdin: { contents: 'export * from "./src/SettingsChrome.tsx";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "tsx" },
+    bundle: true, format: "cjs", platform: "node", jsx: "automatic", external: ["react"], loader: { ".css": "empty" }, write: false });
+  new Function("require", "module", "exports", out.outputFiles[0].text)(createRequire(import.meta.url), settingsChrome, settingsChrome.exports); }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const source = readFileSync(new URL("../src/WorkspaceRuntimeSettings.tsx", import.meta.url), "utf8");
 const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
@@ -27,6 +33,7 @@ function mount(locale, initialState) {
   };
   const exports = {}, t = makeT(locale);
   new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks }
+    : name === "./SettingsChrome" ? settingsChrome.exports
     : name === "./runtime-expansion" ? expansion : name === "./WorkspaceRuntimeProxy" ? { WorkspaceRuntimeProxy: () => null }
     : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t, locale }) }
     : name === "./workspace-settings-copy" ? { runtimeOperationText: (_t, state) => state } : require(name), exports);

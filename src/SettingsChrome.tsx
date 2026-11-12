@@ -13,12 +13,13 @@ import { loadAdvancedOpen, saveAdvancedOpen } from "./settings-advanced-state";
  *   existing confirmation step; nothing is performed from the menu directly.
  * - `SettingsAttention`: the amber bar pinned to the top for states that need the user.
  */
-export function SettingsAdvanced({ page, items, customized = [], children }: { page: string; items: string[]; customized?: string[]; children: ReactNode }) {
+/** `persist={false}` is for folds inside a transient dialog: they always start collapsed and are not remembered. */
+export function SettingsAdvanced({ page, items, customized = [], persist = true, children }: { page: string; items: string[]; customized?: string[]; persist?: boolean; children: ReactNode }) {
   const { t } = useWorkspaceLocale();
-  const [open, setOpen] = useState(() => loadAdvancedOpen(page));
+  const [open, setOpen] = useState(() => persist && loadAdvancedOpen(page));
   const list = (values: string[]) => values.join(t("ws.settings.listSeparator"));
   return <details className="wss-advanced" data-settings-advanced={page} open={open} onToggle={event => {
-    const next = event.currentTarget.open; if (next === open) return; setOpen(next); saveAdvancedOpen(page, next);
+    const next = event.currentTarget.open; if (next === open) return; setOpen(next); if (persist) saveAdvancedOpen(page, next);
   }}>
     <summary><ChevronRightIcon className="hico wss-advanced-chevron" aria-hidden /><strong>{t("ws.settings.advanced")}</strong>
       {items.length ? <span className="wss-advanced-items">· {list(items)}</span> : null}<span className="wss-advanced-spacer" />

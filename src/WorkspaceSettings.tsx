@@ -14,6 +14,7 @@ import { WorkspaceSoftwareUpdate, type DesktopVersionInfo } from "./WorkspaceSof
 import { hasUpdateAttention, type WorkspaceUpdater } from "./workspace-updater-state";
 import { SettingsLeaveGuard, type SettingsLeaveAction } from "./settings-leave-guard";
 import { settingsAttentionPages } from "./settings-advanced-state";
+import { SettingsAttention, type SettingsAttentionItem } from "./SettingsChrome";
 import "./workspace-settings.css";
 
 export type SettingsPage = "colleagues" | "overview" | "connections" | "runtimes" | "schedules" | "plugins" | "skills" | "members" | "general" | "appearance" | "updates";
@@ -129,6 +130,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
       <span className="wss-scope-chip">{device ? `${t("ws.settings.device")} · ${t("ws.settings.allSpaces")}` : t("ws.settings.currentOnly")}</span></header><p className="wss-description">{t(pages[page].detail)}</p>
       <WorkspaceRpcErrorNotice value={view.error} technicalDetail={view.errorTechnicalDetail} locale={locale} t={t} className="wss-callout" />
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
+      {page === "runtimes" && production && workspace ? <SettingsAttention items={runtimeAttention(workspace, model, t, Boolean(readonly))} /> : null}
       {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.filter(id => id !== "members").map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}</h2><p>{id === "connections" ? t(connectionCount === 1 ? "ws.settings.connectionOne" : "ws.settings.connectionCount", { n: connectionCount }) : id === "runtimes" ? t("ws.settings.runtimeSummary") : t(pages[id].detail)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
         <h3>{t("ws.settings.device")} · {t("ws.settings.allSpaces")}</h3><div className="wss-overview">{(["appearance", "updates"] as const).map(id => <button key={id} onClick={() => navigate(id)}><h2>{t(pages[id].name)}</h2><p>{id === "appearance" ? t("ws.settings.themeSummary") : ["available", "ready"].includes(updates.phase) ? t("ws.settings.updateAvailable", { version: updates.version ?? "" }) : t("ws.settings.updateSummary")}</p><span>{t("ws.settings.open")}</span></button>)}</div></> : null}
       {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option>
@@ -159,4 +161,10 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
 function General({ workspace, root, role, kind }: { workspace: WorkspaceDevSnapshot; root: string; role: string; kind: string }) {
   const { t } = useWorkspaceLocale();
   return <section className="wss-page-card"><h2>{workspace.label}</h2><dl><dt>{t("ws.settings.general.id")}</dt><dd>{workspace.workspaceId}</dd><dt>{t("ws.settings.general.kind")}</dt><dd>{t(kind === "team" ? "ws.settings.team" : "ws.settings.personal")}</dd><dt>{t("ws.settings.general.role")}</dt><dd>{t(role === "owner" ? "ws.settings.general.owner" : role === "admin" ? "ws.settings.general.admin" : "ws.settings.general.member")}</dd><dt>{t("ws.settings.localData")}</dt><dd><code>{root}/project/{workspace.workspaceId}</code></dd><dt>{t("ws.settings.general.history")}</dt><dd>{workspace.conversation.pastTaskCount ?? 0}</dd><dt>{t("ws.settings.general.calls")}</dt><dd>{workspace.conversation.usage.modelCalls}{t("ws.settings.general.notBill")}</dd></dl><p>{t(kind === "personal" ? "ws.settings.general.personalNote" : "ws.settings.general.teamNote")}</p></section>;
+}
+/** Engine page: a running download is pinned above the page with its cancel action (settings IA audit, runtimes). */
+function runtimeAttention(workspace: WorkspaceDevSnapshot, model: WorkspaceDevModel, t: ReturnType<typeof useWorkspaceLocale>["t"], readonly: boolean): SettingsAttentionItem[] {
+  return (workspace.runtimes?.operations ?? []).filter(operation => operation.state === "downloading").map(operation => ({ id: `download-${operation.id}`,
+    text: t("ws.runtimes.attention.downloading", { name: workspace.runtimes?.options.find(option => option.runtimeId === operation.runtimeId)?.label ?? operation.runtimeId }),
+    action: { label: t("ws.runtimes.cancelInstall"), disabled: readonly, onClick: () => void model.cancelRuntime(operation.id) } }));
 }

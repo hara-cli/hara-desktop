@@ -1441,5 +1441,9 @@
   "ws.settings.advanced.customized": "已自訂：{items}",
   "ws.settings.listSeparator": "、",
   "ws.settings.rowMenu": "{name}的更多操作",
-  "ws.settings.attention": "需要處理"
+  "ws.settings.attention": "需要處理",
+  "ws.runtimes.status.enabled": "已啟用",
+  "ws.runtimes.status.installedNotEnabled": "已安裝 · 未啟用",
+  "ws.runtimes.otherMissing": "其他引擎 · {n} 個沒裝",
+  "ws.runtimes.attention.downloading": "正在下載並檢查 {name}…"
 }

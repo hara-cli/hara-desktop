@@ -1441,5 +1441,9 @@
   "ws.settings.advanced.customized": "Customized: {items}",
   "ws.settings.listSeparator": ", ",
   "ws.settings.rowMenu": "More actions for {name}",
-  "ws.settings.attention": "Needs attention"
+  "ws.settings.attention": "Needs attention",
+  "ws.runtimes.status.enabled": "Enabled",
+  "ws.runtimes.status.installedNotEnabled": "Installed · not enabled",
+  "ws.runtimes.otherMissing": "Other engines · {n} not installed",
+  "ws.runtimes.attention.downloading": "Downloading and checking {name}…"
 }

@@ -669,7 +669,11 @@
     "ws.settings.advanced.customized",
     "ws.settings.listSeparator",
     "ws.settings.rowMenu",
-    "ws.settings.attention"
+    "ws.settings.attention",
+    "ws.runtimes.status.enabled",
+    "ws.runtimes.status.installedNotEnabled",
+    "ws.runtimes.otherMissing",
+    "ws.runtimes.attention.downloading"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -1956,6 +1960,10 @@
     "ws.settings.advanced.customized",
     "ws.settings.listSeparator",
     "ws.settings.rowMenu",
-    "ws.settings.attention"
+    "ws.settings.attention",
+    "ws.runtimes.status.enabled",
+    "ws.runtimes.status.installedNotEnabled",
+    "ws.runtimes.otherMissing",
+    "ws.runtimes.attention.downloading"
   ]
 }
