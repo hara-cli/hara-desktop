@@ -13,6 +13,7 @@ import type { RuntimeVersionStatus } from "./runtime-version-drift.ts";
 import { parseRuntimeDiagnosticReceipt, parseRuntimeStageReports, sameRuntimeStageIdentity, type RuntimeDiagnosticReceipt, type RuntimeStageReport } from "./runtime-stage-events.ts";
 // Pure view state for the opt-in native Workspace Dev. A view/default is never execution authority.
 import { runtimeProxyView, type WorkspaceRuntimeProxyView } from "./workspace-runtime-proxy.ts";
+import { ONBOARDING_CAPABILITY, ONBOARDING_STEPS_READY, onboardingView, type OnboardingFields, type OnboardingProgress } from "./workspace-onboarding-state.ts";
 import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
 import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
@@ -584,6 +585,20 @@ export class WorkspaceDevModel {
     this.assertRuntimeProxyScope(workspaceId, generation);
     const value = await this.workspaceRequest<unknown>("workspace.runtime.proxy.set", { proxyUrl, expectedRevision });
     return runtimeProxyView(value, workspaceId, generation);
+  }
+  /** Core G4. The guide has an entry only when Core advertises it and Desk has all three steps (see ONBOARDING_STEPS_READY). */
+  supportsOnboarding(): boolean { return ONBOARDING_STEPS_READY && this.rpc.supportsCapability?.(ONBOARDING_CAPABILITY) === true; }
+  async onboarding(workspaceId: string, generation: string): Promise<OnboardingProgress> {
+    this.assertRuntimeProxyScope(workspaceId, generation);
+    if (this.rpc.supportsCapability?.(ONBOARDING_CAPABILITY) !== true) throw new WorkspaceViewError("ws.onboarding.unavailable");
+    return onboardingView(await this.workspaceRequest<unknown>("workspace.onboarding.get"));
+  }
+  /** Saves progress only; never creates colleagues or changes engine preferences (contract G4). */
+  async saveOnboarding(fields: OnboardingFields, expectedRevision: number, workspaceId: string, generation: string): Promise<OnboardingProgress> {
+    this.assertRuntimeProxyScope(workspaceId, generation);
+    if (this.rpc.supportsCapability?.(ONBOARDING_CAPABILITY) !== true) throw new WorkspaceViewError("ws.onboarding.unavailable");
+    const { runId, step, engineChoice, thirdPartySkipped, dismissed, completedAt } = fields;
+    return onboardingView(await this.workspaceRequest<unknown>("workspace.onboarding.set", { expectedRevision, runId, step, engineChoice, thirdPartySkipped, dismissed, completedAt }));
   }
   async detectRuntimes(): Promise<void> {
     const key = this.runtimeBindingKey(), epoch = this.epoch;

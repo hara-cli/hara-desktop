@@ -1476,5 +1476,22 @@
   "ws.settings.appearance.timing": "Timing diagnostics",
   "ws.settings.appearance.brand": "Brand colour",
   "ws.updates.cadenceShort": "Check schedule",
-  "ws.updates.versionForReports": "Version details (for bug reports)"
+  "ws.updates.versionForReports": "Version details (for bug reports)",
+  "ws.onboarding.label": "Getting started",
+  "ws.onboarding.later": "Later",
+  "ws.onboarding.back": "Back",
+  "ws.onboarding.optional": "optional",
+  "ws.onboarding.progress": "Getting started: step {n} of 3",
+  "ws.onboarding.stepDone": " (done)",
+  "ws.onboarding.step.engine": "Default engine",
+  "ws.onboarding.step.thirdParty": "Third-party",
+  "ws.onboarding.step.colleagues": "Colleagues",
+  "ws.onboarding.readOnly": "You can only view this workspace, so progress isn't saved.",
+  "ws.onboarding.saveFailed": "Progress wasn't saved. It has been reloaded; please try again.",
+  "ws.onboarding.unavailable": "This version of Hara doesn't support the getting-started guide yet.",
+  "ws.onboarding.resumeOne": "1 step left: {step}",
+  "ws.onboarding.resumeMany": "{n} steps left · next: {step}",
+  "ws.onboarding.continue": "Continue",
+  "ws.onboarding.stop": "Don't show again",
+  "ws.onboarding.hide": "Hide for now"
 }
