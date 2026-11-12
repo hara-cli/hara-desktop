@@ -1536,5 +1536,16 @@
   "ws.onboarding.engine.proxy": "网络代理",
   "ws.onboarding.engine.proxyNote": "只有你的网络必须经过代理才能访问模型服务时才填。留空 = 沿用系统网络设置（默认）。",
   "ws.onboarding.engine.networkFailed": "先确认这台 Mac 能正常上网。如果你的网络必须经过代理才能访问模型服务，可以在「{advanced}」里填代理地址；不确定就别填。",
-  "ws.onboarding.engine.detectFailed": "没能检查这台 Mac 上的引擎，请点「重新检查」。"
+  "ws.onboarding.engine.detectFailed": "没能检查这台 Mac 上的引擎，请点「重新检查」。",
+  "ws.onboarding.third.title": "要不要接上你常用的工具？",
+  "ws.onboarding.third.sub": "这一步可以跳过。以后随时在「设置 › 插件与 MCP」里加。",
+  "ws.onboarding.third.boundary": "你在其他工具里配置的 MCP、插件和 hooks 不会自动带进 Hara。",
+  "ws.onboarding.third.later": "稍后再说",
+  "ws.onboarding.third.review": "查看并开启…",
+  "ws.onboarding.third.list": "这台 Mac 上找到的工具",
+  "ws.onboarding.third.listNote": "只列出来，不会加载或启动",
+  "ws.onboarding.third.off": "未开启",
+  "ws.onboarding.third.kindWorkspace": "本空间",
+  "ws.onboarding.third.toolCount": "{n} 个工具",
+  "ws.onboarding.third.loadFailed": "没能读取工具列表。"
 }

@@ -2086,6 +2086,17 @@
     "ws.onboarding.engine.proxy",
     "ws.onboarding.engine.proxyNote",
     "ws.onboarding.engine.networkFailed",
-    "ws.onboarding.engine.detectFailed"
+    "ws.onboarding.engine.detectFailed",
+    "ws.onboarding.third.title",
+    "ws.onboarding.third.sub",
+    "ws.onboarding.third.boundary",
+    "ws.onboarding.third.later",
+    "ws.onboarding.third.review",
+    "ws.onboarding.third.list",
+    "ws.onboarding.third.listNote",
+    "ws.onboarding.third.off",
+    "ws.onboarding.third.kindWorkspace",
+    "ws.onboarding.third.toolCount",
+    "ws.onboarding.third.loadFailed"
   ]
 }
