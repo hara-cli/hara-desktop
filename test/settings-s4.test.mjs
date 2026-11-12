@@ -17,3 +17,10 @@ test("DESIGN.md terminology: English says «engine», never «runtime»; Chinese
 test("General is keyed by workspace and page, so «Copied» does not carry over to another workspace (review of #77)", () => {
   assert.match(read("../src/WorkspaceSettings.tsx"), /page === "general" \? <General key=\{key\} workspace=\{workspace\}/);
 });
+
+test("Chinese copy has no stray spaces around 引擎 next to Chinese characters (review of #94, M1)", () => {
+  for (const locale of ["zh-Hans", "zh-Hant"]) {
+    const offenders = Object.entries(strings(locale)).filter(([, value]) => /[一-鿿] 引擎|引擎 [一-鿿]/.test(value)).map(([key]) => key);
+    assert.deepEqual(offenders, [], locale);
+  }
+});
