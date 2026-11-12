@@ -113,7 +113,15 @@ export interface WorkspaceRuntimeModels { source?: "live" | "documented"; source
 export interface WorkspaceConnectionModels extends Omit<WorkspaceRuntimeModels, "runtimeId"> { connectionId: string; source: "live" | "documented" }
 export interface WorkspaceModelConnection { id: string; label: string; status: string; defaultModel: string; defaultReasoning?: string | null; provider?: "openai" | "anthropic"; baseURL?: string; keySaved?: boolean; keyState?: "saved" | "invalid" | "pending"; credentialRequired?: boolean; cleanupPending?: boolean }
 export interface LegacyConnectionPreview { id: string; label: string; provider: "openai" | "anthropic"; baseURL: string; defaultModel: string; keySaved: boolean; source: string }
-export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean; defaultRuntimeId?: string | null; executionDetails?: "brief" | "detailed"; collapseDetails?: boolean; alwaysShowTimingDiagnostics?: boolean; updates?: UpdatePreferences }
+/** Per-workspace G1 record (`workspace.defaultRuntime.get/set`, Core reply 2026-11-13). Read-only is decided by the Host. */
+export interface WorkspaceDefaultRuntimeView { schemaVersion: 1; workspaceId: string; defaultRuntimeId: string | null; revision: number; readOnly: boolean; recovered: boolean }
+export function defaultRuntimeView(raw: unknown, workspaceId: string): WorkspaceDefaultRuntimeView {
+  const value = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
+  if (!value || value.schemaVersion !== 1 || value.workspaceId !== workspaceId || !Number.isSafeInteger(value.revision) || !(value.defaultRuntimeId === null || typeof value.defaultRuntimeId === "string")
+    || typeof value.readOnly !== "boolean" || typeof value.recovered !== "boolean") throw new WorkspaceViewError("ws.notice.invalidView");
+  return { schemaVersion: 1, workspaceId, defaultRuntimeId: value.defaultRuntimeId as string | null, revision: value.revision as number, readOnly: value.readOnly, recovered: value.recovered };
+}
+export interface WorkspacePreferenceView { revision: number; theme: "system" | "light" | "dark"; readOnly: boolean; recovered: boolean; executionDetails?: "brief" | "detailed"; collapseDetails?: boolean; alwaysShowTimingDiagnostics?: boolean; updates?: UpdatePreferences }
 export interface WorkspaceFeatureView { revision: number; workspaceId: string; schedules: { id: string; name: string; source?: string; anchor?: { conversationId: string; messageId: string; agentId: string }; schedule: { kind: string; expr?: string; display?: string; runAt?: number; everyMs?: number }; enabled: boolean; agentId?: string; task?: string; tz?: string }[]; skills: { id: string; description: string; enabled: boolean; version: string; availableVersion: string; locked: boolean; source: "global" | "private" }[];
   scheduler?: { schedules: { id: string; nextRunAt: number | null; awaitingHandoff: boolean; lastRun: { state: string; reason: string | null; occurredAt: number } | null }[] } }
 
@@ -794,11 +802,20 @@ export class WorkspaceDevModel {
   }
   async preferences(): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.get", {}); }
   async savePreference(theme: string, expectedRevision: number): Promise<WorkspacePreferenceView> { return this.rpc.request("workspace.preferences.set", { theme, expectedRevision }); }
-  /** G1 (Core contract workspace-onboarding-v1): engine for colleagues created later; null restores Pi-first. Never probes or starts an engine. */
-  supportsDefaultRuntime(): boolean { return this.rpc.supportsCapability?.("workspace.preferences.default-runtime.v1") === true; }
-  async saveDefaultRuntime(defaultRuntimeId: string | null, expectedRevision: number): Promise<WorkspacePreferenceView> {
+  /**
+   * G1, per workspace (Jeff 2026-11-12; Core contract reply 2026-11-13): engine for colleagues created later in this workspace;
+   * null restores Pi-first. Never probes or starts an engine. Old Cores do not advertise the capability, so the entry is hidden.
+   */
+  supportsDefaultRuntime(): boolean { return this.rpc.supportsCapability?.("workspace.default-runtime.v1") === true; }
+  async defaultRuntime(workspaceId: string, generation: string): Promise<WorkspaceDefaultRuntimeView> {
+    this.assertRuntimeProxyScope(workspaceId, generation);
     if (!this.supportsDefaultRuntime()) throw new WorkspaceViewError("ws.notice.invalidView");
-    return this.rpc.request("workspace.preferences.set", { defaultRuntimeId, expectedRevision });
+    return defaultRuntimeView(await this.workspaceRequest<unknown>("workspace.defaultRuntime.get"), workspaceId);
+  }
+  async saveDefaultRuntime(defaultRuntimeId: string | null, expectedRevision: number, workspaceId: string, generation: string): Promise<WorkspaceDefaultRuntimeView> {
+    this.assertRuntimeProxyScope(workspaceId, generation);
+    if (!this.supportsDefaultRuntime()) throw new WorkspaceViewError("ws.notice.invalidView");
+    return defaultRuntimeView(await this.workspaceRequest<unknown>("workspace.defaultRuntime.set", { expectedRevision, defaultRuntimeId }), workspaceId);
   }
   async saveDisplayPreference(executionDetails: "brief" | "detailed", collapseDetails: boolean): Promise<WorkspacePreferenceView> {
     const current = await this.preferences(); return this.rpc.request("workspace.preferences.set", { theme: current.theme, expectedRevision: current.revision, executionDetails, collapseDetails });

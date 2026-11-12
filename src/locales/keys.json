@@ -715,7 +715,7 @@
     "ws.runtimes.default.note",
     "ws.runtimes.default.unavailable",
     "ws.runtimes.default.saved",
-    "ws.runtimes.default.saveUnknown",
+    "ws.runtimes.default.saveFailed",
     "ws.runtimes.default.loadFailed",
     "ws.runtimes.default.readOnly",
     "ws.runtimes.default.pi",
@@ -2125,10 +2125,11 @@
     "ws.runtimes.default.note",
     "ws.runtimes.default.unavailable",
     "ws.runtimes.default.saved",
-    "ws.runtimes.default.saveUnknown",
+    "ws.runtimes.default.saveFailed",
     "ws.runtimes.default.loadFailed",
     "ws.runtimes.default.readOnly",
     "ws.runtimes.default.pi",
-    "ws.runtimes.default.scope"
+    "ws.runtimes.default.scope",
+    "ws.onboarding.engine.guideSaveFailed"
   ]
 }
