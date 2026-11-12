@@ -55,8 +55,9 @@ export function SettingsRowMenu({ label, items, disabled = false }: { label: str
   };
   return <span className="wss-row-menu">
     <button ref={trigger} type="button" className="wss-row-menu-trigger" aria-label={t("ws.settings.rowMenu", { name: label })} aria-haspopup="menu" aria-expanded={open}
-      aria-controls={open ? menuId : undefined} disabled={disabled || !items.length} onClick={() => setOpen(value => !value)}
-      onKeyDown={event => { if (event.key === "ArrowDown" && !open) { event.preventDefault(); setOpen(true); } }}><EllipsisHorizontalIcon className="hico" aria-hidden /></button>
+      aria-controls={open ? menuId : undefined} disabled={disabled || !items.some(item => !item.disabled)} onClick={() => setOpen(value => !value)}
+      onKeyDown={event => { if (event.key === "ArrowDown" && !open) { event.preventDefault(); setOpen(true); }
+        else if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); close(); } }}><EllipsisHorizontalIcon className="hico" aria-hidden /></button>
     {open ? <div ref={menu} id={menuId} role="menu" aria-label={t("ws.settings.rowMenu", { name: label })} className={`wss-row-menu-list${upward ? " is-up" : ""}`} onKeyDown={onMenuKey}>
       {items.map(item => <button key={item.id} type="button" role="menuitem" tabIndex={-1} className={item.danger ? "is-danger" : undefined} disabled={item.disabled}
         onClick={() => { close(); item.onSelect(); }}>{item.label}</button>)}

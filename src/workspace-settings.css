@@ -1,3 +1,7 @@
+/* DESIGN.md 2.1.1 tokens, layered: unlayered declarations (violet-tokens.css and every existing --hara-* value)
+   always win, so this only supplies tokens that are not defined yet (danger, menu, warning, info-soft, radius-row…).
+   It changes no existing value; the full token migration still replaces violet-tokens.css later. */
+@import "./hara-tokens.generated.css" layer(hara-tokens);
 .wss-app{grid-template-columns:256px minmax(0,1fr);background:var(--wsd-paper)}
 .wss-nav{display:flex;flex-direction:column;min-height:0;padding:24px 14px 18px;border-right:1px solid var(--wsd-line);background:var(--wsd-sidebar);overflow:auto}
 .wss-nav .wss-back{align-self:flex-start;border:0;background:transparent;padding:5px 10px;margin:0 0 20px}.wss-nav>h1{font-size:23px;margin:0 12px 14px;letter-spacing:-.5px}
@@ -88,7 +92,7 @@
 .wss-content .wsd-root.wsd-runtime-path,.wsd-runtime-proof .wsd-root.wsd-runtime-path{font-size:11px;color:var(--wsd-muted,var(--muted));overflow-wrap:anywhere}
 /* S0 settings chrome: one «Advanced» per page, row-end «⋯», pinned attention bar (DESIGN.md §10–§11). */
 .wss-advanced{margin-top:20px;border-top:1px solid var(--wsd-line);padding-top:4px;min-width:0}
-.wss-advanced>summary{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;min-height:36px;padding:6px 4px;border-radius:8px;cursor:pointer;list-style:none;font-size:13px;color:var(--wsd-ink)}
+.wss-advanced>summary{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;min-height:36px;padding:6px 4px;border-radius:var(--hara-radius-sm);cursor:pointer;list-style:none;font-size:13px;color:var(--wsd-ink)}
 .wss-advanced>summary::-webkit-details-marker{display:none}
 .wss-advanced>summary:hover{background:var(--hara-bg-hover,transparent)}
 .wss-advanced>summary:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -97,19 +101,19 @@
 .wss-advanced-items{color:var(--wsd-muted);min-width:0;overflow-wrap:anywhere}
 .wss-advanced-spacer{flex:1}
 .wss-advanced>summary small{font-size:12px;color:var(--wsd-muted)}
-.wss-advanced-custom{font-size:11px;padding:2px 8px;border-radius:999px;color:var(--wsd-ink);background:color-mix(in srgb,var(--hara-status-waiting,#EAB308) 22%,transparent)}
+.wss-advanced-custom{font-size:11px;padding:2px 8px;border-radius:var(--hara-radius-pill);color:var(--hara-text-secondary,var(--wsd-muted));background:var(--hara-bg-hover);border:1px solid var(--hara-border-default,var(--wsd-line))}
 .wss-advanced-body{display:grid;gap:12px;padding:8px 4px 4px;min-width:0}
 .wss-row-menu{position:relative;display:inline-flex;flex-shrink:0}
-.hs.wss-app .wss-row-menu>button.wss-row-menu-trigger{display:inline-grid;place-items:center;width:32px;height:32px;min-height:32px;padding:0;border-radius:8px;justify-self:auto}
+.hs.wss-app .wss-row-menu>button.wss-row-menu-trigger{display:inline-grid;place-items:center;width:32px;height:32px;min-height:32px;padding:0;border-radius:var(--hara-radius-sm);justify-self:auto}
 .wss-row-menu-trigger .hico{width:16px;height:16px}
-.wss-row-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:20;display:grid;min-width:180px;max-width:250px;max-height:min(320px,60vh);overflow:auto;padding:4px;border:1px solid var(--wsd-line);border-radius:10px;background:var(--hara-bg-elevated,var(--wsd-card));box-shadow:0 10px 30px rgba(0,0,0,.24)}
+.wss-row-menu-list{position:absolute;right:0;top:calc(100% + 4px);z-index:20;display:grid;min-width:180px;max-width:250px;max-height:min(320px,60vh);overflow:auto;padding:4px;border:1px solid var(--wsd-line);border-radius:var(--hara-radius-row);background:var(--hara-menu);box-shadow:0 10px 30px rgba(0,0,0,.24)}
 .wss-row-menu-list.is-up{top:auto;bottom:calc(100% + 4px)}
-.hs.wss-app .wss-row-menu .wss-row-menu-list>button[role="menuitem"]{display:flex;width:100%;justify-content:flex-start;justify-self:stretch;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:7px;font-size:13px;color:var(--wsd-ink)}
+.hs.wss-app .wss-row-menu .wss-row-menu-list>button[role="menuitem"]{display:flex;width:100%;justify-content:flex-start;justify-self:stretch;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:var(--hara-radius-sm);font-size:13px;color:var(--wsd-ink)}
 .hs.wss-app .wss-row-menu .wss-row-menu-list>button[role="menuitem"]:not(:disabled):is(:hover,:focus-visible){background:var(--hara-bg-hover,var(--row-hover));outline:none}
-.hs.wss-app .wss-row-menu .wss-row-menu-list>button[role="menuitem"].is-danger{color:var(--hara-status-failed,#EF4444)}
+.hs.wss-app .wss-row-menu .wss-row-menu-list>button[role="menuitem"].is-danger{color:var(--hara-danger)}
 .wss-attention-list{display:grid;gap:8px;margin:0 0 16px}
-.wss-attention{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;font-size:12.5px;color:var(--wsd-ink);background:color-mix(in srgb,var(--hara-status-waiting,#EAB308) 16%,transparent);border:1px solid color-mix(in srgb,var(--hara-status-waiting,#EAB308) 40%,transparent)}
-.wss-attention>.hico{width:15px;height:15px;flex-shrink:0;color:var(--hara-status-waiting,#EAB308)}
+.wss-attention{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--hara-radius-row);font-size:12.5px;color:var(--wsd-ink);background:var(--hara-warning-soft);border:1px solid color-mix(in srgb,var(--hara-warning) 35%,transparent)}
+.wss-attention>.hico{width:15px;height:15px;flex-shrink:0;color:var(--hara-warning)}
 .wss-attention>span{flex:1;min-width:0;overflow-wrap:anywhere}
 .hs.wss-app .wss-attention>button{flex-shrink:0;min-height:30px;padding:5px 10px;border:1px solid var(--control);border-radius:var(--r-md);background:var(--surface);color:var(--ink);font-size:12px}
 .hs.wss-app .wss-attention>button:not(:disabled):hover{background:var(--row-hover)}

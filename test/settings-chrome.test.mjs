@@ -72,6 +72,7 @@ test("row-end menu is a labelled, closed menu button that only exposes items whe
   assert.ok(html.includes('aria-haspopup="menu"') && html.includes('aria-expanded="false"'));
   assert.equal(/role="menu"|删除/.test(html), false, "destructive items are not rendered inline");
   assert.ok(render(createElement(module.exports.SettingsRowMenu, { label: "x", items: [] })).includes('disabled=""'), "an empty menu cannot open");
+  assert.ok(render(createElement(module.exports.SettingsRowMenu, { label: "x", items: [{ id: "a", label: "a", disabled: true, onSelect() {} }] })).includes('disabled=""'), "a menu whose items are all disabled cannot open (it could not be closed from the keyboard)");
   const source = readFileSync(new URL("../src/SettingsChrome.tsx", import.meta.url), "utf8");
   for (const pattern of [/"Escape"/, /"ArrowDown"/, /"ArrowUp"/, /"Home"/, /"End"/, /trigger\.current\?\.focus\(\)/, /is-up/])
     assert.match(source, pattern, "keyboard, focus return and flip are implemented");
@@ -89,4 +90,17 @@ test("nav attention dots come from one derived source and keep today's update be
   const shell = readFileSync(new URL("../src/WorkspaceSettings.tsx", import.meta.url), "utf8");
   assert.match(shell, /settingsAttentionPages\(\{ updateAttention: hasUpdateAttention\(updates\) \}\)/);
   assert.match(shell, /attention\.has\(id\) \? <i className="wss-update-dot" role="img" aria-label=\{t\("ws\.settings\.attention"\)\} \/>/);
+});
+
+test("chrome colours come from DESIGN.md tokens that follow the theme (menu, danger, warning) and amber is kept for attention only", () => {
+  const css = readFileSync(new URL("../src/workspace-settings.css", import.meta.url), "utf8");
+  assert.match(css, /^\/\*[\s\S]*?\*\/\n@import "\.\/hara-tokens\.generated\.css" layer\(hara-tokens\);/, "tokens are layered so existing --hara-* values keep precedence");
+  const rule = selector => css.slice(css.indexOf(selector)).split("}")[0];
+  assert.match(rule(".wss-row-menu-list{"), /background:var\(--hara-menu\)/);
+  assert.match(rule('[role="menuitem"].is-danger{'), /color:var\(--hara-danger\)/);
+  assert.match(rule(".wss-attention{"), /background:var\(--hara-warning-soft\)/);
+  assert.match(rule(".wss-attention>.hico{"), /color:var\(--hara-warning\)/);
+  assert.doesNotMatch(rule(".wss-advanced-custom{"), /warning|waiting|EAB308/, "Customized is informational, not an alert colour");
+  const chrome = css.slice(css.indexOf("/* S0 settings chrome"));
+  assert.doesNotMatch(chrome, /status-failed|status-waiting|#EAB308|#EF4444|border-radius:\d+px/, "no fixed status colours or off-scale radii");
 });
