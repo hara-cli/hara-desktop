@@ -502,6 +502,11 @@ jobs:
       contents: write
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    outputs:
+      # 1.2.3: name, size and SHA-256 of every asset in the exact remote draft revalidated below. The
+      # protected signer binds the non-Mac assets to this record by GitHub's server-side digests
+      # instead of downloading them again.
+      asset_digests: ${{ steps.verified_draft.outputs.asset_digests }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
@@ -633,6 +638,7 @@ jobs:
           node scripts/github-release-download.mjs \
             "$RELEASE_TAG" "$GITHUB_REPOSITORY" "$VERIFY_DIR"
       - name: Revalidate downloaded draft and source archive without a release token
+        id: verified_draft
         shell: bash
         env:
           SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
@@ -651,6 +657,8 @@ jobs:
             cd "$SOURCE_VERIFY_DIR"
             sha256sum -c source-packs.sha256
           )
+          ASSET_DIGESTS="$(node scripts/release-asset-digests.mjs record "$VERIFY_DIR")"
+          jq -e 'length == 17' <<<"$ASSET_DIGESTS" >/dev/null
           rm -f "$SOURCE_ARCHIVE"
           node scripts/updater-manifest.mjs validate "$VERIFY_DIR" "$RELEASE_TAG"
           node scripts/release-source-provenance.mjs validate \
@@ -658,6 +666,7 @@ jobs:
             "$RELEASE_TAG" \
             "${{ needs.prepare_release.outputs.desktop_sha }}" \
             "${{ needs.prepare_release.outputs.cli_sha }}"
+          echo "asset_digests=$ASSET_DIGESTS" >> "$GITHUB_OUTPUT"
       - name: Confirm the remote release remains a hidden draft
         shell: bash
         env:
@@ -1107,6 +1116,7 @@ jobs:
           HARA_DRAFT_ASSEMBLED_RUN_ID: ${{ github.run_id }}
           HARA_PROTECTED_SIGNING_JOB: ${{ github.run_id }}
           HARA_RELEASE_SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
+          HARA_DRAFT_ASSET_DIGESTS: ${{ needs.assemble_draft.outputs.asset_digests }}
           HARA_DEFER_PUBLIC_EDGE_VERIFY: "1"
         run: ./scripts/release-mac-assets.sh "$RELEASE_TAG"
 
@@ -1180,7 +1190,7 @@ jobs:
             exit 1
           }
 
-      - name: Verify attested public DMGs, Gatekeeper trust, and latest.json
+      - name: Verify attested public DMGs, Gatekeeper trust, latest.json and every public asset
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

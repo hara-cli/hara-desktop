@@ -632,13 +632,19 @@ test("release asset transfers retry only bounded GitHub transport failures with 
 
   const script = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
   assert.match(script, /readonly RELEASE_TRANSFER_ATTEMPTS=3/);
+  assert.match(script, /readonly RELEASE_DOWNLOAD_ATTEMPTS=6/);
+  assert.match(script, /readonly RELEASE_UPLOAD_ATTEMPTS=5/);
+  assert.match(script, /local -a table=\(15 30 60 120 240\)/);
   assert.match(script, /attempt <= RELEASE_TRANSFER_ATTEMPTS/g);
   assert.match(script, /release_view_with_retry\(\)/);
   assert.match(script, /release state read hit a transient GitHub transport failure/);
   assert.match(script, /release_github_transport/);
   assert.match(script, /HARA_GITHUB_RELEASE_PROXY/);
   assert.match(script, /HARA_GITHUB_RELEASE_FALLBACK_PROXY/);
-  assert.match(script, /release_github_proxy_works/);
+  assert.match(script, /HARA_GITHUB_RELEASE_PROXY_CANDIDATES/);
+  assert.match(script, /release-proxy-select\.mjs "\$\{RELEASE_PROXY_CANDIDATES\[@\]\}"/);
+  assert.match(script, /release_failover_github_proxy\(\)/);
+  assert.doesNotMatch(script, /release_github_proxy_works/, "a small 200 is no longer accepted as a usable route");
   assert.match(script, /export NO_PROXY=/);
   assert.match(script, /export no_proxy=/);
   assert.match(script, /export HTTPS_PROXY="\$RELEASE_GITHUB_PROXY"/);
@@ -652,35 +658,30 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   assert.match(script, /mktemp -d "\$WORK\/release-download\.XXXXXX"/);
   assert.match(script, /chmod 600 "\$log"/);
   assert.match(script, /github-release-transfer-retry\.mjs "\$log"/);
-  assert.match(script, /release_download_with_api_fallback\(\)/);
   assert.match(script, /github-release-api-download\.mjs/);
-  assert.match(script, /digest-verified per-asset API downloads/);
-  assert.match(script, /release view "\$TAG" -R "\$REPO" --json assets/);
-  assert.match(script, /release-download-cache\.mjs "\$metadata" "\$stage"/);
-  assert.match(script, /--skip-existing/);
+  assert.match(script, /release-asset-digests\.mjs small "\$metadata"/);
+  assert.match(script, /release-download-cache\.mjs "\$small" "\$stage"/);
   assert.match(script, /--complete/);
-  assert.match(script, /release_download_all "\$ASSET_DIR" "hidden draft download"/);
-  assert.match(script, /release_download_all "\$REMOTE_DIR" "signed draft verification download"/);
-  assert.match(script, /release_download_all "\$PUBLIC_DIR" "public immutable release download"/);
+  assert.match(script, /release_download_small "\$ASSET_DIR" "hidden draft signature download"/);
+  assert.match(script, /release_download_small "\$REMOTE_DIR" "signed draft signature download"/);
+  assert.match(script, /release_download_small "\$PUBLIC_DIR" "public immutable release signature download"/);
+  // 1.2.3: the signer never downloads the draft or the public release in bulk.
+  assert.doesNotMatch(script, /release_download_all|github-release-download\.mjs|gh release download|--skip-existing|--pattern/);
   assert.match(script, /release_upload_signed_assets/);
-  assert.match(script, /release_upload_signed_asset "\$asset_path"/);
+  assert.match(script, /release_upload_signed_asset "\$ASSET_DIR\/\$asset_name"/);
   assert.match(script, /release_remote_asset_matches "\$asset_path"/);
   assert.match(script, /release-asset-digest-match\.mjs "\$metadata" "\$source"/);
-  assert.match(
-    script,
-    /release_gh_download "\$TAG" "\$REPO" "\$stage"[\s\S]*?--pattern "\$asset_name"/,
-  );
-  assert.match(script, /cmp -s "\$source" "\$stage\/\$asset_name"/);
+  assert.match(script, /run-with-deadline\.mjs "\$deadline"[\s\S]*?gh release upload "\$TAG" -R "\$REPO" --clobber "\$asset_path"/);
   assert.match(script, /ReleaseAsset\.name already exists/);
   assert.match(script, /retrying only this --clobber asset/);
-  assert.match(script, /for asset_path in "\$\{assets\[@\]\}"/);
+  assert.match(script, /for asset_name in "\$\{REPLACED_ASSETS\[@\]\}"/);
   assert.match(script, /retrying only this asset/);
   assert.doesNotMatch(
     script,
     /retrying the complete clobber set/,
     "a partial upload must never replay all signed assets",
   );
-  assert.match(script, /retrying with only digest-verified completed assets/);
+  assert.match(script, /resuming verified\/partial files/);
   assert.doesNotMatch(script, /retrying from a fresh private staging directory/);
 });
 
@@ -771,10 +772,11 @@ test("release API fallback accepts only repository-bound assets and exact downlo
           "2",
           "--connect-timeout",
           "20",
+          // timeoutMs 1_000 minus the 30 s margin, floored at 1 s (release-transfer.test.mjs covers sizes)
           "--max-time",
-          "570",
+          "1",
           "--speed-limit",
-          "1024",
+          "32768",
           "--speed-time",
           "60",
           "--continue-at",
@@ -1214,7 +1216,8 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(signJob, /expected_root="\$GITHUB_WORKSPACE\/source-\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT"/);
   assert.match(signJob, /\[ "\$HARA_RELEASE_SOURCE_ROOT" = "\$expected_root" \]/);
   assert.match(promotion, /HARA_RELEASE_SOURCE_ARTIFACT_DIGEST/);
-  assert.match(promotion, /remove_verified_source_archive/);
+  // 1.2.3: the source archive is bound by GitHub's server-side digest instead of a download.
+  assert.match(promotion, /require_source_archive_digest\(\)/);
   assert.match(promotion, /trusted prepare-job digest/);
   assert.match(signJob, /HARA_DEFER_PUBLIC_EDGE_VERIFY: "1"/);
   assert.match(publicJob, /needs: \[prepare_release, sign_and_promote\]/);
@@ -1348,10 +1351,10 @@ test("foreign Intel static validation is limited to the exact protected tag sign
     promotion,
     /if \[ "\$expected_target" = "x86_64-apple-darwin" \]; then[\s\S]*HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts\/mac-dmg-smoke\.mjs[\s\S]*else[\s\S]*node scripts\/mac-dmg-smoke\.mjs "\$dmg_path" "\$expected_target"/,
   );
-  assert.match(promotion, /verify_signed_dmg public .*aarch64-apple-darwin/);
-  assert.match(promotion, /verify_signed_dmg public .*x86_64-apple-darwin/);
-  assert.match(promotion, /verify_signed_dmg remote .*aarch64-apple-darwin/);
-  assert.match(promotion, /verify_signed_dmg remote .*x86_64-apple-darwin/);
+  // 1.2.3: both DMGs are verified as the exact bytes about to be uploaded (then bound by digest);
+  // public DMGs are verified by the hosted verify_public_release job.
+  assert.match(promotion, /verify_signed_dmg upload .*aarch64-apple-darwin/);
+  assert.match(promotion, /verify_signed_dmg upload .*x86_64-apple-darwin/);
   assert.doesNotMatch(promotion, /HARA_ALLOW_ROSETTA_SMOKE/);
 });
 
@@ -1970,10 +1973,12 @@ test("a post-publication rerun switches to immutable verification without rewrit
   assert.match(branch, /HARA_DEFER_PUBLIC_EDGE_VERIFY/);
   assert.match(branch, /release_gh release verify/);
   assert.match(branch, /GitHub release attestation verification is delegated/);
-  assert.match(branch, /release_download_all/);
-  assert.match(branch, /updater-manifest\.mjs validate/);
-  assert.match(branch, /verify_signed_dmg public .*aarch64-apple-darwin/);
-  assert.match(branch, /verify_signed_dmg public .*x86_64-apple-darwin/);
+  assert.match(branch, /release-asset-digests\.mjs check-draft "\$WORK\/public-assets\.json" -env/);
+  assert.match(branch, /require_source_archive_digest "\$WORK\/public-assets\.json"/);
+  assert.match(branch, /release_download_small "\$PUBLIC_DIR"/);
+  assert.match(branch, /updater-manifest\.mjs validate "\$PUBLIC_DIR" "\$TAG" --digest-bound -env/);
+  // Public Mac bytes are verified by the hosted verify_public_release job (full public download).
+  assert.doesNotMatch(branch, /release_download_all|verify_signed_dmg public/);
   assert.match(branch, /exit 0/);
   const sourceGate = workflow.slice(
     workflow.indexOf("Materialize exact release sources from the local SSH mirror"),

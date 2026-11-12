@@ -36,7 +36,7 @@ const releasePrepare = job(build, "prepare_release", "create_draft");
 const signJob = job(build, "sign_and_promote", "verify_public_release");
 const rehearsalPrepare = job(prepackage, "prepare_release", "build");
 const rehearsalBuild = job(prepackage, "build", "signer_path");
-const rehearsalSigner = job(prepackage, "signer_path");
+const rehearsalSigner = job(prepackage, "signer_path", "merge_metadata_path");
 
 test("prepackage copies build.yml's package matrix and differs only in the reviewed places", () => {
   const omitted = new Set([

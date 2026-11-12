@@ -381,3 +381,43 @@ jobs:
             exit 1
           }
           echo "signer path rehearsal: source tree unchanged at $PINNED_DESKTOP_SHA"
+
+  merge_metadata_path:
+    # 1.2.3: the protected signer no longer downloads the hidden draft. It binds the non-Mac assets to
+    # the assembly job's digest record by GitHub's server-side SHA-256, reads only the small
+    # signature/manifest files and uploads only the signed Mac assets plus latest.json. Rehearse that
+    # exact command sequence (and its refusals) before the tag, with a throwaway updater key and no
+    # GitHub access.
+    name: Rehearse the signer's metadata-only release merge without credentials
+    needs: [prepare_release]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
+        with:
+          ref: ${{ needs.prepare_release.outputs.desktop_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: ".node-version"
+      - name: Install locked Desktop dependencies with bounded registry retries
+        shell: bash
+        run: ./scripts/npm-ci-retry.sh
+      - name: Rehearse the metadata-only merge, its digest refusals and the transfer helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="$RUNNER_TEMP/merge-rehearsal-updater.key"
+          [ ! -e "$KEY" ]
+          node node_modules/@tauri-apps/cli/tauri.js signer generate --ci -p "" -w "$KEY" >/dev/null
+          node -e '
+            const fs = require("node:fs");
+            const file = "src-tauri/tauri.conf.json", conf = JSON.parse(fs.readFileSync(file, "utf8"));
+            conf.plugins.updater.pubkey = fs.readFileSync(process.argv[1], "utf8").trim();
+            fs.writeFileSync(file, JSON.stringify(conf, null, 2) + "\n");
+          ' "$KEY.pub"
+          WORK="$RUNNER_TEMP/merge-rehearsal"
+          mkdir "$WORK"
+          node scripts/release-metadata-merge-rehearsal.mjs "$WORK" "$KEY" "$RELEASE_TAG"
+          node --test test/release-transfer.test.mjs

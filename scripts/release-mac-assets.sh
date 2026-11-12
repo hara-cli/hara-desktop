@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # Replace the hidden draft's unsigned CI Mac assets with BOTH controlled, signed/notarized builds,
-# regenerate latest.json from their exact signatures, re-download and verify the complete draft,
-# then (and only then) promote it to stable.
+# regenerate latest.json from their exact signatures, prove the complete draft by GitHub's
+# server-side SHA-256 digests, then (and only then) promote it to stable.
+#
+# 1.2.3 metadata-only merge: the hosted assembly job already downloaded and revalidated the exact
+# draft and recorded every asset digest (HARA_DRAFT_ASSET_DIGESTS). This host never downloads the
+# large non-Mac assets again; it reads release metadata plus the small signature/manifest files,
+# uploads only the signed Mac assets and latest.json, and checks them by digest. The hosted
+# verify_public_release job downloads the complete public release afterwards.
 #
 # Invoked only by build.yml's protected signing job after the same tag-triggered workflow assembles
 # the verified draft and runs both signed builds. Direct local promotion is intentionally rejected.
@@ -18,8 +24,10 @@ SOURCE_ARTIFACT_DIGEST="${HARA_RELEASE_SOURCE_ARTIFACT_DIGEST:-}"
 unset HARA_RELEASE_SOURCE_ARTIFACT_DIGEST
 RELEASE_GITHUB_PRIMARY_PROXY="${HARA_GITHUB_RELEASE_PROXY:-}"
 RELEASE_GITHUB_FALLBACK_PROXY="${HARA_GITHUB_RELEASE_FALLBACK_PROXY:-}"
+RELEASE_GITHUB_PROXY_CANDIDATES="${HARA_GITHUB_RELEASE_PROXY_CANDIDATES:-}"
 unset HARA_GITHUB_RELEASE_PROXY
 unset HARA_GITHUB_RELEASE_FALLBACK_PROXY
+unset HARA_GITHUB_RELEASE_PROXY_CANDIDATES
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
   echo "error: stable promotion requires a vX.Y.Z tag: $TAG" >&2
   exit 1
@@ -46,6 +54,10 @@ esac
   echo "error: protected release contents token is missing" >&2
   exit 1
 }
+[ -n "${HARA_DRAFT_ASSET_DIGESTS:-}" ] || {
+  echo "error: the assembly job's verified draft digest record (HARA_DRAFT_ASSET_DIGESTS) is missing" >&2
+  exit 1
+}
 validate_release_github_proxy() {
   [[ "$1" =~ ^(http|socks5|socks5h)://127\.0\.0\.1:[0-9]{2,5}$ ]]
 }
@@ -59,22 +71,34 @@ if [ -n "$RELEASE_GITHUB_FALLBACK_PROXY" ]; then
     exit 1
   }
 fi
-release_github_proxy_works() {
-  NO_PROXY= no_proxy= /usr/bin/curl --disable --proxy "$1" --proto '=https' \
-    --fail --silent --show-error --connect-timeout 8 --max-time 15 \
-    --output /dev/null https://api.github.com/zen
-}
-RELEASE_GITHUB_PROXY="$RELEASE_GITHUB_PRIMARY_PROXY"
-if ! release_github_proxy_works "$RELEASE_GITHUB_PROXY"; then
-  if [ -z "$RELEASE_GITHUB_FALLBACK_PROXY" ] ||
-    ! release_github_proxy_works "$RELEASE_GITHUB_FALLBACK_PROXY"; then
-    echo "error: both protected GitHub release routes are unavailable" >&2
+RELEASE_PROXY_CANDIDATES=("$RELEASE_GITHUB_PRIMARY_PROXY")
+[ -z "$RELEASE_GITHUB_FALLBACK_PROXY" ] || RELEASE_PROXY_CANDIDATES+=("$RELEASE_GITHUB_FALLBACK_PROXY")
+for candidate in $RELEASE_GITHUB_PROXY_CANDIDATES; do
+  validate_release_github_proxy "$candidate" || {
+    echo "error: HARA_GITHUB_RELEASE_PROXY_CANDIDATES entries must be loopback HTTP/SOCKS proxies" >&2
     exit 1
+  }
+  RELEASE_PROXY_CANDIDATES+=("$candidate")
+done
+# A small HTTPS 200 is not evidence of a usable route (v1.2.2: every route answered while moving
+# 19-250 KB/s). Measure an 8 MiB public range through every candidate before any release transfer
+# and stop here, with nothing uploaded, when none reaches the throughput floor.
+RELEASE_GITHUB_PROXY="$(node scripts/release-proxy-select.mjs "${RELEASE_PROXY_CANDIDATES[@]}")" || {
+  echo "error: no protected GitHub release route reached the throughput floor; nothing was transferred" >&2
+  exit 1
+}
+echo "GitHub release route: $RELEASE_GITHUB_PROXY (fastest measured candidate)"
+# After repeated transport failures, move to the next-fastest qualifying route (the 1081 tunnel
+# dropped mid-transfer in v1.2.2 attempts 1-2). Stay on the current route when none qualifies.
+release_failover_github_proxy() {
+  local previous="$RELEASE_GITHUB_PROXY" chosen
+  if chosen="$(node scripts/release-proxy-select.mjs --exclude "$previous" "${RELEASE_PROXY_CANDIDATES[@]}")"; then
+    RELEASE_GITHUB_PROXY="$chosen"
+    echo "warning: switching GitHub release route $previous -> $chosen after repeated transport failures" >&2
+  else
+    echo "warning: no other GitHub release route reaches the floor; staying on $previous" >&2
   fi
-  echo "warning: primary GitHub release route is unavailable; using the configured fallback" >&2
-  RELEASE_GITHUB_PROXY="$RELEASE_GITHUB_FALLBACK_PROXY"
-fi
-readonly RELEASE_GITHUB_PROXY
+}
 release_github_transport() {
   (
     # The runner itself must bypass the proxy for Actions Broker traffic, but that broad NO_PROXY
@@ -94,30 +118,11 @@ release_gh() {
     release_github_transport gh "$@"
   )
 }
-release_gh_download() {
-  (
-    export GH_TOKEN="$RELEASE_GH_TOKEN"
-    release_github_transport node scripts/github-release-download.mjs "$@"
-  )
-}
 release_gh_api_download() {
   (
     export GH_TOKEN="$RELEASE_GH_TOKEN"
     release_github_transport node scripts/github-release-api-download.mjs "$@"
   )
-}
-release_download_with_api_fallback() {
-  local metadata="$1"
-  local stage="$2"
-  local log="$3"
-  if release_gh_download "$TAG" "$REPO" "$stage" --skip-existing >>"$log" 2>&1; then
-    return 0
-  fi
-  if ! node scripts/github-release-transfer-retry.mjs "$log"; then
-    return 1
-  fi
-  echo "warning: bulk release download hit a transient GitHub transport failure; trying digest-verified per-asset API downloads" >>"$log"
-  release_gh_api_download "$REPO" "$metadata" "$stage" >>"$log" 2>&1
 }
 release_view_with_retry() {
   local attempt output log
@@ -185,8 +190,18 @@ WORK="$(mktemp -d)"
 ASSET_DIR="$WORK/assets"
 REMOTE_DIR="$WORK/remote"
 PUBLIC_DIR="$WORK/public"
+mkdir -p "$ASSET_DIR" "$REMOTE_DIR" "$PUBLIC_DIR"
 trap 'rm -rf "$WORK"' EXIT
 readonly RELEASE_TRANSFER_ATTEMPTS=3
+readonly RELEASE_DOWNLOAD_ATTEMPTS=6
+readonly RELEASE_UPLOAD_ATTEMPTS=5
+# Backoff between transfer attempts: 15, 30, 60, 120, then 240 seconds.
+release_backoff_seconds() {
+  local -a table=(15 30 60 120 240)
+  local index=$(($1 - 1))
+  [ "$index" -lt "${#table[@]}" ] || index=$((${#table[@]} - 1))
+  echo "${table[$index]}"
+}
 readonly RELEASE_PUBLIC_CONNECT_TIMEOUT_SECONDS=20
 readonly RELEASE_PUBLIC_MAX_TIME_SECONDS=600
 readonly RELEASE_PUBLIC_LOW_SPEED_BYTES=1024
@@ -205,33 +220,30 @@ release_public_curl() {
     "$@"
 }
 
-release_download_all() {
+# Download only the small files this host needs (updater signatures, latest.json and source
+# provenance), each accepted only when its bytes match GitHub's size and SHA-256. Partials are kept
+# between attempts so an interrupted file resumes instead of restarting.
+release_download_small() {
   local target="$1"
   local label="$2"
-  local attempt stage log metadata metadata_next
+  local attempt stage log metadata small delay
   stage="$(mktemp -d "$WORK/release-download.XXXXXX")"
   metadata="$(mktemp "$WORK/release-assets.XXXXXX")"
-  metadata_next="$(mktemp "$WORK/release-assets-next.XXXXXX")"
-  chmod 600 "$metadata" "$metadata_next"
-  for ((attempt = 1; attempt <= RELEASE_TRANSFER_ATTEMPTS; attempt++)); do
+  small="$(mktemp "$WORK/release-small-assets.XXXXXX")"
+  chmod 600 "$metadata" "$small"
+  for ((attempt = 1; attempt <= RELEASE_DOWNLOAD_ATTEMPTS; attempt++)); do
     log="$(mktemp "$WORK/release-download-log.XXXXXX")"
     chmod 600 "$log"
-    if release_gh release view "$TAG" -R "$REPO" --json assets >"$metadata_next" 2>"$log" &&
-      chmod 600 "$metadata_next" &&
-      mv "$metadata_next" "$metadata" &&
-      metadata_next="$(mktemp "$WORK/release-assets-next.XXXXXX")" &&
-      chmod 600 "$metadata_next" &&
-      node scripts/release-download-cache.mjs "$metadata" "$stage" >>"$log" 2>&1 &&
-      release_download_with_api_fallback "$metadata" "$stage" "$log" &&
-      node scripts/release-download-cache.mjs "$metadata" "$stage" --complete >>"$log" 2>&1; then
+    if release_view_with_retry --json assets >"$metadata" 2>>"$log" &&
+      node scripts/release-asset-digests.mjs small "$metadata" >"$small" 2>>"$log" &&
+      node scripts/release-download-cache.mjs "$small" "$stage" >>"$log" 2>&1 &&
+      release_gh_api_download "$REPO" "$small" "$stage" >>"$log" 2>&1 &&
+      node scripts/release-download-cache.mjs "$small" "$stage" --complete >>"$log" 2>&1; then
       cat "$log"
-      rm -rf "$target"
-      mv "$stage" "$target"
-      rm -f "$log" "$metadata" "$metadata_next"
+      cp -p "$stage"/* "$target"/
+      rm -rf "$stage"
+      rm -f "$log" "$metadata" "$small"
       return 0
-    fi
-    if [ -s "$metadata" ]; then
-      node scripts/release-download-cache.mjs "$metadata" "$stage" >>"$log" 2>&1 || true
     fi
     cat "$log" >&2
     if ! node scripts/github-release-transfer-retry.mjs "$log"; then
@@ -239,30 +251,34 @@ release_download_all() {
       echo "error: $label failed without a retryable GitHub transport error" >&2
       return 1
     fi
-    if [ "$attempt" -eq "$RELEASE_TRANSFER_ATTEMPTS" ]; then
-      rm -f "$log"
-      echo "error: $label exhausted $RELEASE_TRANSFER_ATTEMPTS transient GitHub transport attempts" >&2
+    rm -f "$log"
+    if [ "$attempt" -eq "$RELEASE_DOWNLOAD_ATTEMPTS" ]; then
+      echo "error: $label exhausted $RELEASE_DOWNLOAD_ATTEMPTS transient GitHub transport attempts" >&2
       return 1
     fi
-    rm -f "$log"
-    echo "warning: $label hit a transient GitHub transport failure ($attempt/$RELEASE_TRANSFER_ATTEMPTS); retrying with only digest-verified completed assets" >&2
-    sleep $((attempt * 5))
+    [ "$attempt" -lt 2 ] || release_failover_github_proxy
+    delay="$(release_backoff_seconds "$attempt")"
+    echo "warning: $label hit a transient GitHub transport failure ($attempt/$RELEASE_DOWNLOAD_ATTEMPTS); resuming verified/partial files after ${delay}s" >&2
+    sleep "$delay"
   done
 }
 
-remove_verified_source_archive() {
-  local directory="$1"
+# Read release metadata (names, sizes, GitHub SHA-256 digests) without downloading asset bytes.
+release_read_assets() {
+  release_view_with_retry --json assets >"$1"
+  chmod 600 "$1"
+}
+
+# The source archive is bound to the prepare job's digest by GitHub's server-side SHA-256.
+require_source_archive_digest() {
+  local metadata="$1"
   local label="$2"
-  local archive="$directory/$SOURCE_ARCHIVE_NAME"
-  [ -s "$archive" ] || {
-    echo "error: $label is missing the exact source archive: $SOURCE_ARCHIVE_NAME" >&2
-    return 1
-  }
-  [ "$(shasum -a 256 "$archive" | awk '{print $1}')" = "$EXPECTED_SOURCE_ARTIFACT_SHA" ] || {
+  jq -e --arg name "$SOURCE_ARCHIVE_NAME" --arg digest "sha256:$EXPECTED_SOURCE_ARTIFACT_SHA" '
+    [.assets[] | select(.name == $name)] | length == 1 and .[0].digest == $digest
+  ' "$metadata" >/dev/null || {
     echo "error: $label source archive does not match the trusted prepare-job digest" >&2
     return 1
   }
-  rm -f "$archive"
 }
 
 verify_signed_dmg() {
@@ -281,36 +297,25 @@ verify_signed_dmg() {
 
 release_remote_asset_matches() {
   local source="$1"
-  local asset_name attempt_idx stage probe_log metadata
+  local asset_name attempt_idx probe_log metadata
   asset_name="$(basename "$source")"
   for ((attempt_idx = 1; attempt_idx <= RELEASE_TRANSFER_ATTEMPTS; attempt_idx++)); do
-    stage="$(mktemp -d "$WORK/release-reconcile.XXXXXX")"
     probe_log="$(mktemp "$WORK/release-reconcile-log.XXXXXX")"
     metadata="$(mktemp "$WORK/release-reconcile-assets.XXXXXX")"
     chmod 600 "$probe_log" "$metadata"
 
+    # GitHub's server-side SHA-256 is authoritative; the asset is never downloaded back.
     if release_gh release view "$TAG" -R "$REPO" --json assets >"$metadata" 2>"$probe_log" &&
       node scripts/release-asset-digest-match.mjs "$metadata" "$source" >>"$probe_log" 2>&1; then
       cat "$probe_log"
-      rm -rf "$stage"
-      rm -f "$probe_log" "$metadata"
-      return 0
-    fi
-    if release_gh_download "$TAG" "$REPO" "$stage" \
-      --pattern "$asset_name" >>"$probe_log" 2>&1 &&
-      [ -f "$stage/$asset_name" ] &&
-      cmp -s "$source" "$stage/$asset_name"; then
-      cat "$probe_log"
-      rm -rf "$stage"
       rm -f "$probe_log" "$metadata"
       return 0
     fi
 
     [ "$attempt_idx" -lt "$RELEASE_TRANSFER_ATTEMPTS" ] || cat "$probe_log" >&2
-    rm -rf "$stage"
     rm -f "$probe_log" "$metadata"
     [ "$attempt_idx" -lt "$RELEASE_TRANSFER_ATTEMPTS" ] || break
-    echo "warning: $asset_name is not yet reconciled in the hidden draft ($attempt_idx/$RELEASE_TRANSFER_ATTEMPTS); retrying metadata and download evidence" >&2
+    echo "warning: $asset_name is not yet reconciled in the hidden draft ($attempt_idx/$RELEASE_TRANSFER_ATTEMPTS); retrying metadata digest evidence" >&2
     sleep $((attempt_idx * 2))
   done
   return 1
@@ -318,13 +323,18 @@ release_remote_asset_matches() {
 
 release_upload_signed_asset() {
   local asset_path="$1"
-  local asset_name attempt_idx upload_log
+  local asset_name attempt_idx upload_log deadline delay
   asset_name="$(basename "$asset_path")"
-  for ((attempt_idx = 1; attempt_idx <= RELEASE_TRANSFER_ATTEMPTS; attempt_idx++)); do
+  deadline="$(node -e 'import("./scripts/run-with-deadline.mjs").then((m) => console.log(m.transferDeadlineSeconds(Number(process.argv[1]))))' "$(stat -f %z "$asset_path")")"
+  for ((attempt_idx = 1; attempt_idx <= RELEASE_UPLOAD_ATTEMPTS; attempt_idx++)); do
     upload_log="$(mktemp "$WORK/release-upload-log.XXXXXX")"
     chmod 600 "$upload_log"
-    if release_gh release upload "$TAG" -R "$REPO" --clobber \
-      "$asset_path" >"$upload_log" 2>&1; then
+    # gh has no upload timeout; a stalled route is killed at a size-aware deadline.
+    if (
+      export GH_TOKEN="$RELEASE_GH_TOKEN"
+      release_github_transport node scripts/run-with-deadline.mjs "$deadline" \
+        gh release upload "$TAG" -R "$REPO" --clobber "$asset_path"
+    ) >"$upload_log" 2>&1; then
       cat "$upload_log"
       rm -f "$upload_log"
       return 0
@@ -340,13 +350,13 @@ release_upload_signed_asset() {
       return 0
     fi
     if grep -Fq "ReleaseAsset.name already exists" "$upload_log"; then
-      if [ "$attempt_idx" -eq "$RELEASE_TRANSFER_ATTEMPTS" ]; then
+      if [ "$attempt_idx" -eq "$RELEASE_UPLOAD_ATTEMPTS" ]; then
         rm -f "$upload_log"
         echo "error: signed draft upload for $asset_name kept returning a name conflict without matching remote bytes" >&2
         return 1
       fi
       rm -f "$upload_log"
-      echo "warning: signed draft upload for $asset_name reached an eventually consistent name conflict ($attempt_idx/$RELEASE_TRANSFER_ATTEMPTS); retrying only this --clobber asset" >&2
+      echo "warning: signed draft upload for $asset_name reached an eventually consistent name conflict ($attempt_idx/$RELEASE_UPLOAD_ATTEMPTS); retrying only this --clobber asset" >&2
       sleep $((attempt_idx * 5))
       continue
     fi
@@ -355,30 +365,33 @@ release_upload_signed_asset() {
       echo "error: signed draft upload for $asset_name failed without a retryable GitHub transport error" >&2
       return 1
     fi
-    if [ "$attempt_idx" -eq "$RELEASE_TRANSFER_ATTEMPTS" ]; then
+    if [ "$attempt_idx" -eq "$RELEASE_UPLOAD_ATTEMPTS" ]; then
       rm -f "$upload_log"
-      echo "error: signed draft upload for $asset_name exhausted $RELEASE_TRANSFER_ATTEMPTS transient GitHub transport attempts" >&2
+      echo "error: signed draft upload for $asset_name exhausted $RELEASE_UPLOAD_ATTEMPTS transient GitHub transport attempts" >&2
       return 1
     fi
     rm -f "$upload_log"
-    echo "warning: signed draft upload for $asset_name hit a transient GitHub transport failure ($attempt_idx/$RELEASE_TRANSFER_ATTEMPTS); retrying only this asset" >&2
-    sleep $((attempt_idx * 5))
+    [ "$attempt_idx" -lt 2 ] || release_failover_github_proxy
+    delay="$(release_backoff_seconds "$attempt_idx")"
+    echo "warning: signed draft upload for $asset_name hit a transient GitHub transport failure ($attempt_idx/$RELEASE_UPLOAD_ATTEMPTS); retrying only this asset after ${delay}s" >&2
+    sleep "$delay"
   done
 }
 
+# The only assets this host writes: both signed/notarized Mac builds and the rebuilt manifest.
+REPLACED_ASSETS=(
+  "Hara_${VER}_aarch64.dmg"
+  "Hara_aarch64.app.tar.gz"
+  "Hara_aarch64.app.tar.gz.sig"
+  "Hara_${VER}_x64.dmg"
+  "Hara_x64.app.tar.gz"
+  "Hara_x64.app.tar.gz.sig"
+  "latest.json"
+)
 release_upload_signed_assets() {
-  local asset_path
-  local assets=(
-    "$ASSET_DIR/Hara_${VER}_aarch64.dmg"
-    "$ASSET_DIR/Hara_aarch64.app.tar.gz"
-    "$ASSET_DIR/Hara_aarch64.app.tar.gz.sig"
-    "$ASSET_DIR/Hara_${VER}_x64.dmg"
-    "$ASSET_DIR/Hara_x64.app.tar.gz"
-    "$ASSET_DIR/Hara_x64.app.tar.gz.sig"
-    "$ASSET_DIR/latest.json"
-  )
-  for asset_path in "${assets[@]}"; do
-    release_upload_signed_asset "$asset_path"
+  local asset_name
+  for asset_name in "${REPLACED_ASSETS[@]}"; do
+    release_upload_signed_asset "$ASSET_DIR/$asset_name"
   done
 }
 
@@ -452,18 +465,16 @@ if [ "$RELEASE_STATE" = $'false\ttrue\tfalse' ]; then
   else
     release_gh release verify "$TAG" -R "$REPO"
   fi
-  release_download_all "$PUBLIC_DIR" "public immutable release download"
-  remove_verified_source_archive "$PUBLIC_DIR" "public immutable release"
-  node scripts/updater-manifest.mjs validate "$PUBLIC_DIR" "$TAG"
+  # Metadata-only reverification: the published asset set and every non-Mac digest must equal the
+  # assembly record, the source archive its prepare-job digest; the small updater files are read and
+  # latest.json validated. Public Mac bytes are verified by the hosted verify_public_release job.
+  release_read_assets "$WORK/public-assets.json"
+  node scripts/release-asset-digests.mjs check-draft "$WORK/public-assets.json" -env "${REPLACED_ASSETS[@]}"
+  require_source_archive_digest "$WORK/public-assets.json" "public immutable release"
+  release_download_small "$PUBLIC_DIR" "public immutable release signature download"
+  node scripts/updater-manifest.mjs validate "$PUBLIC_DIR" "$TAG" --digest-bound -env
   node scripts/release-source-provenance.mjs validate \
     "$PUBLIC_DIR/release-source-provenance.json" "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
-  node scripts/verify-release-updaters.mjs "$PUBLIC_DIR"
-  node scripts/mac-updater-smoke.mjs \
-    "$PUBLIC_DIR/Hara_aarch64.app.tar.gz" aarch64-apple-darwin --require-signatures
-  HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-updater-smoke.mjs \
-    "$PUBLIC_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
-  verify_signed_dmg public "$PUBLIC_DIR/Hara_${VER}_aarch64.dmg" aarch64-apple-darwin
-  verify_signed_dmg public "$PUBLIC_DIR/Hara_${VER}_x64.dmg" x86_64-apple-darwin
   if [ "${HARA_DEFER_PUBLIC_EDGE_VERIFY:-0}" = "1" ]; then
     echo "Public edge verification is delegated to the read-only hosted macOS job."
   else
@@ -537,10 +548,11 @@ done
   exit 1
 }
 
-mkdir -p "$ASSET_DIR" "$REMOTE_DIR" "$PUBLIC_DIR"
-release_download_all "$ASSET_DIR" "hidden draft download"
-remove_verified_source_archive "$ASSET_DIR" "hidden draft"
-node scripts/updater-manifest.mjs validate "$ASSET_DIR" "$TAG"
+release_read_assets "$WORK/draft-assets.json"
+node scripts/release-asset-digests.mjs check-draft "$WORK/draft-assets.json" -env "${REPLACED_ASSETS[@]}"
+require_source_archive_digest "$WORK/draft-assets.json" "hidden draft"
+release_download_small "$ASSET_DIR" "hidden draft signature download"
+node scripts/updater-manifest.mjs validate "$ASSET_DIR" "$TAG" --digest-bound -env
 node scripts/release-source-provenance.mjs validate \
   "$ASSET_DIR/release-source-provenance.json" "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
 PUB_DATE="$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).pub_date' "$ASSET_DIR/latest.json")"
@@ -553,23 +565,34 @@ cp "$ARM_BASE/macos/Hara.app.tar.gz.sig" "$ASSET_DIR/Hara_aarch64.app.tar.gz.sig
 cp "$X64_DMG" "$ASSET_DIR/Hara_${VER}_x64.dmg"
 cp "$X64_BASE/macos/Hara.app.tar.gz" "$ASSET_DIR/Hara_x64.app.tar.gz"
 cp "$X64_BASE/macos/Hara.app.tar.gz.sig" "$ASSET_DIR/Hara_x64.app.tar.gz.sig"
-node scripts/updater-manifest.mjs build "$ASSET_DIR" "$TAG" "$PUB_DATE"
+rm -f "$ASSET_DIR/latest.json"
+node scripts/updater-manifest.mjs build "$ASSET_DIR" "$TAG" "$PUB_DATE" --digest-bound -env
+# Verify the exact bytes about to be uploaded: both Mac updater signatures cryptographically, the
+# updater archives and the stapled, Gatekeeper-accepted DMGs.
+node scripts/verify-release-updaters.mjs "$ASSET_DIR" Hara_aarch64.app.tar.gz Hara_x64.app.tar.gz
+node scripts/mac-updater-smoke.mjs \
+  "$ASSET_DIR/Hara_aarch64.app.tar.gz" aarch64-apple-darwin --require-signatures
+HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-updater-smoke.mjs \
+  "$ASSET_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
+verify_signed_dmg upload "$ASSET_DIR/Hara_${VER}_aarch64.dmg" aarch64-apple-darwin
+verify_signed_dmg upload "$ASSET_DIR/Hara_${VER}_x64.dmg" x86_64-apple-darwin
 
 release_upload_signed_assets
 
-# Validate the bytes retrieved from the remote draft, not merely the local upload inputs.
-release_download_all "$REMOTE_DIR" "signed draft verification download"
-remove_verified_source_archive "$REMOTE_DIR" "signed draft"
-node scripts/updater-manifest.mjs validate "$REMOTE_DIR" "$TAG"
+# Validate the remote draft by GitHub's server-side digests, not merely the local upload inputs:
+# every replaced asset must equal the local bytes verified above and every other asset must still
+# equal the assembly record. Only the small signature/manifest files are read back.
+release_read_assets "$WORK/signed-assets.json"
+node scripts/release-asset-digests.mjs check-final "$WORK/signed-assets.json" -env "$ASSET_DIR" "${REPLACED_ASSETS[@]}"
+require_source_archive_digest "$WORK/signed-assets.json" "signed draft"
+release_download_small "$REMOTE_DIR" "signed draft signature download"
+cmp -s "$ASSET_DIR/latest.json" "$REMOTE_DIR/latest.json" || {
+  echo "error: the draft's latest.json does not match the manifest built from the signed assets" >&2
+  exit 1
+}
+node scripts/updater-manifest.mjs validate "$REMOTE_DIR" "$TAG" --digest-bound -env
 node scripts/release-source-provenance.mjs validate \
   "$REMOTE_DIR/release-source-provenance.json" "$TAG" "$TAG_COMMIT" "$CLI_TAG_COMMIT"
-node scripts/verify-release-updaters.mjs "$REMOTE_DIR"
-node scripts/mac-updater-smoke.mjs \
-  "$REMOTE_DIR/Hara_aarch64.app.tar.gz" aarch64-apple-darwin --require-signatures
-HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts/mac-updater-smoke.mjs \
-  "$REMOTE_DIR/Hara_x64.app.tar.gz" x86_64-apple-darwin --require-signatures
-verify_signed_dmg remote "$REMOTE_DIR/Hara_${VER}_aarch64.dmg" aarch64-apple-darwin
-verify_signed_dmg remote "$REMOTE_DIR/Hara_${VER}_x64.dmg" x86_64-apple-darwin
 [ "$(release_view_with_retry --json isDraft --jq .isDraft)" = "true" ] || {
   echo "error: draft state changed during signed-asset verification" >&2
   exit 1
