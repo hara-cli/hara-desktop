@@ -55,6 +55,7 @@
 .wob-row-text{flex:1 1 220px;min-width:0}
 .wob-row-text b{font-size:var(--hara-font-size-body-sm)}
 .wob-row-text small{display:block;color:var(--wsd-muted);font-size:var(--hara-font-size-caption);margin-top:2px}
+.wob-row-text small.is-warn{color:var(--wsd-ink);background:var(--hara-warning-soft);border-radius:var(--hara-radius-sm);padding:2px var(--hara-space-2);margin-top:var(--hara-space-1);width:fit-content;max-width:100%}
 .wob-row a{font-size:var(--hara-font-size-small);color:var(--hara-text-link)}
 .wob-row-form{padding:var(--hara-space-3) var(--hara-space-4);border-top:1px solid var(--wsd-line)}
 .wob-chip{display:inline-block;padding:1px var(--hara-space-2);border-radius:var(--hara-radius-pill);font-size:var(--hara-font-size-caption);background:var(--hara-bg-hover);color:var(--wsd-muted);vertical-align:1px}

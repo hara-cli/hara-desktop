@@ -2060,7 +2060,6 @@
     "ws.onboarding.engine.status.needsConnection",
     "ws.onboarding.engine.status.missing",
     "ws.onboarding.engine.status.checking",
-    "ws.onboarding.engine.status.failed",
     "ws.onboarding.engine.status.unavailable",
     "ws.onboarding.engine.listed",
     "ws.onboarding.engine.networkShort",

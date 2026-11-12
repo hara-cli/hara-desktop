@@ -18,7 +18,7 @@ import type { WorkspaceDevSnapshot } from "./workspace-dev-state";
  */
 type Check = { state: "checking" } | { state: "ok"; models: number } | { state: "failed"; network: boolean };
 type Tone = "ok" | "warn" | "fail" | "draft" | "";
-interface Row { id: string; name: string; status: Key; tone: Tone; detail?: string; selectable: boolean; dim?: boolean; check?: boolean; link?: string }
+interface Row { id: string; name: string; status: Key; tone: Tone; detail?: string; detailTone?: "warn"; selectable: boolean; dim?: boolean; check?: boolean; link?: string }
 
 export const NETWORK_ERROR = /network|timed? ?out|timeout|ECONN|ENOTFOUND|EAI_AGAIN|ENETUNREACH|fetch failed|socket|proxy|TLS|certificate/i;
 type Runtime = NonNullable<WorkspaceDevSnapshot["runtimes"]>["options"][number];
@@ -30,7 +30,8 @@ export function engineRows(workspace: WorkspaceDevSnapshot, checks: Record<strin
     const value = checks[id];
     return !value ? null : value.state === "checking" ? { status: "ws.onboarding.engine.status.checking", tone: "draft" }
       : value.state === "ok" ? { status: "ws.onboarding.engine.status.ready", tone: "ok", detail: t("ws.onboarding.engine.listed", { n: value.models }) }
-      : { status: "ws.onboarding.engine.status.failed", tone: "fail", detail: t(value.network ? "ws.onboarding.engine.networkShort" : "ws.onboarding.engine.failedShort") };
+      // DESIGN 2.1.2 §11.4: a failed check still reads «Enabled»; the reason and next step go in the row, in warning colour (review of #83, M1).
+      : { status: "ws.runtimes.status.enabled", tone: "", detail: t(value.network ? "ws.onboarding.engine.networkShort" : "ws.onboarding.engine.failedShort"), detailTone: "warn" };
   };
   const pi: Row = connected
     ? { id: "pi", name: t("ws.onboarding.engine.piName"), status: "ws.runtimes.status.enabled", tone: "", detail: t("ws.onboarding.engine.piConnected"), selectable: true, check: true, ...fromCheck("pi") }
@@ -98,7 +99,7 @@ export function OnboardingEngineStep({ progress, sheet, next, model, workspace }
     <div className="wob-list" role="radiogroup" aria-label={t("ws.onboarding.engine.list")}>
       {rows.map(row => <label key={row.id} className={`wob-row${row.id === selected ? " is-selected" : ""}${row.dim ? " is-dim" : ""}`} data-engine={row.id}>
         <input type="radio" name={name} value={row.id} checked={row.id === selected} disabled={!row.selectable || sheet.busy} onChange={() => setChosen(row.id)} />
-        <span className="wob-row-text"><b>{row.name}</b> <span className={`wob-chip${row.tone ? ` is-${row.tone}` : ""}`} data-status={row.status}>{t(row.status)}</span>{row.detail ? <small>{row.detail}</small> : null}</span>
+        <span className="wob-row-text"><b>{row.name}</b> <span className={`wob-chip${row.tone ? ` is-${row.tone}` : ""}`} data-status={row.status}>{t(row.status)}</span>{row.detail ? <small className={row.detailTone ? `is-${row.detailTone}` : undefined}>{row.detail}</small> : null}</span>
         {row.check ? <button type="button" disabled={checks[row.id]?.state === "checking" || sheet.busy} onClick={event => { event.preventDefault(); check(row.id); }}>
           {t(checks[row.id]?.state === "failed" ? "ws.onboarding.engine.retry" : "ws.onboarding.engine.check")}</button> : null}
         {row.link ? <a href={row.link} target="_blank" rel="noopener noreferrer">{t("ws.onboarding.engine.howToInstall")}</a> : null}

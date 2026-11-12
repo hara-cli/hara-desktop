@@ -150,7 +150,7 @@ test("review of #82 — G-1: Tab stays inside the sheet, shortcuts are held, foc
 
 test("review of #82 — G-2: no shipped view for the current step → no modal, no inert workspace", () => {
   const source = read("../src/WorkspaceOnboarding.tsx");
-  assert.match(source, /const surface = open && hasView \? "sheet"/);
+  assert.match(source, /const surface = !hasView \|\| hidden \? "none" : open \? "sheet"/, "no view → neither sheet nor a resume card whose Continue would do nothing (#83 L1)");
   assert.match(source, /open: \(\) => \{ if \(progress && workspaceId && hasView\)/);
   const state = { surface: "sheet", progress: progress({ step: 2 }), busy: false, notice: "", later() {}, back() {}, next() {} };
   assert.equal(render(createElement(module.exports.WorkspaceOnboarding, { state, steps: { 1: () => null } })), "");
