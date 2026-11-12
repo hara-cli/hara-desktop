@@ -140,3 +140,26 @@ test("onboarding CSS uses DESIGN tokens for radius and status colours", () => {
   assert.doesNotMatch(css, /border-radius:\d+px|#[0-9a-fA-F]{3,8}\b|rgba?\(/);
   assert.match(css, /@media \(max-width:600px\)\{.*\.wob-mascot\{display:none\}/, "the full mascot is dropped below its 128px floor instead of shrunk");
 });
+
+test("review of #82 — G-1: Tab stays inside the sheet, shortcuts are held, focus returns on close", () => {
+  const source = read("../src/WorkspaceOnboarding.tsx");
+  assert.match(source, /if \(event\.key !== "Tab"\) return;/);
+  assert.match(source, /\["i", ","\]\.includes\(event\.key\.toLowerCase\(\)\)/, "⌘I / ⌘, do not open other panes behind the sheet");
+  assert.match(source, /const previous = document\.activeElement as HTMLElement \| null;\s*return \(\) => \{ \(previous\?\.isConnected && previous !== document\.body \? previous : document\.querySelector<HTMLElement>\("\.wob-resume \.hs-btn\.pri"\)\)\?\.focus\(\); \};/);
+});
+
+test("review of #82 — G-2: no shipped view for the current step → no modal, no inert workspace", () => {
+  const source = read("../src/WorkspaceOnboarding.tsx");
+  assert.match(source, /const surface = open && hasView \? "sheet"/);
+  assert.match(source, /open: \(\) => \{ if \(progress && workspaceId && hasView\)/);
+  const state = { surface: "sheet", progress: progress({ step: 2 }), busy: false, notice: "", later() {}, back() {}, next() {} };
+  assert.equal(render(createElement(module.exports.WorkspaceOnboarding, { state, steps: { 1: () => null } })), "");
+});
+
+test("review of #82 — L1: a failed «Don't show again» brings the card back with the error", () => {
+  const source = read("../src/WorkspaceOnboarding.tsx");
+  assert.match(source, /stop: \(\) => \{ setHidden\(true\); void save\(\{ dismissed: true \}\)\.then\(ok => \{ if \(!ok\) setHidden\(false\); \}\); \}/);
+  const t = makeT("zh-Hans"), html = render(createElement(module.exports.OnboardingResumeCard, { progress: progress(), notice: "ws.onboarding.saveFailed", onContinue() {}, onStop() {} }));
+  assert.ok(html.includes(`role="alert">${esc(t("ws.onboarding.saveFailed"))}`));
+  assert.match(read("../src/WorkspaceLocalDev.tsx"), /<OnboardingResumeCard progress=\{onboarding\.progress\} notice=\{onboarding\.notice\}/);
+});
