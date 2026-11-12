@@ -38,12 +38,13 @@ export function OnboardingThirdPartyStep({ sheet, next, model, workspace }: Onbo
       : sources === null ? <p className="wob-note" role="status">{t("ws.onboarding.engine.status.checking")}</p>
       : !sources.length ? <p className="wob-note">{t("ws.extensions.empty")}</p>
       // The panel lists the same sources with their review card, so it replaces the read-only list instead of going stale below it.
-      : reviewing ? <div className="wob-panel"><WorkspaceExtensions model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} /></div>
+      : reviewing ? <div className="wob-panel"><button type="button" className="wob-back-to-list" onClick={() => { setReviewing(false); load(); }}>{t("ws.onboarding.third.backToList")}</button><WorkspaceExtensions model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} /></div>
       : <>
         <h3 className="wob-h">{t("ws.onboarding.third.list")}<small>{t("ws.onboarding.third.listNote")}</small></h3>
         <ul className="wob-list wob-sources">{sources.map(source => <li key={source.sourceId} className="wob-row" data-source={source.sourceId}>
           <span className="wob-row-text"><b>{source.name}</b> <span className={`wob-chip${source.workspaceEnabled ? " is-ok" : ""}`}>{t(source.workspaceEnabled ? "ws.extensions.enabled" : "ws.onboarding.third.off")}</span>
-            <small>{t(KIND[source.kind])} · {t("ws.onboarding.third.toolCount", { n: source.tools.length })}{source.description ? ` · ${source.description}` : ""}</small></span>
+            {/* No plural support in i18n, so one tool has its own string (review of #84, M1). Long descriptions stay on one line (L1). */}
+            <small title={source.description || undefined}>{t(KIND[source.kind])} · {source.tools.length === 1 ? t("ws.onboarding.third.toolCountOne") : t("ws.onboarding.third.toolCount", { n: source.tools.length })}{source.description ? ` · ${source.description}` : ""}</small></span>
         </li>)}</ul>
         <div><button type="button" disabled={sheet.busy || sheet.readOnly} onClick={() => setReviewing(true)}>{t("ws.onboarding.third.review")}</button></div>
       </>}

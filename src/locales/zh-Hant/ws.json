@@ -1547,5 +1547,7 @@
   "ws.onboarding.third.off": "未開啟",
   "ws.onboarding.third.kindWorkspace": "本空間",
   "ws.onboarding.third.toolCount": "{n} 個工具",
-  "ws.onboarding.third.loadFailed": "沒能讀取工具列表。"
+  "ws.onboarding.third.loadFailed": "沒能讀取工具列表。",
+  "ws.onboarding.third.toolCountOne": "1 個工具",
+  "ws.onboarding.third.backToList": "返回列表"
 }
