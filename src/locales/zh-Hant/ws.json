@@ -1477,5 +1477,22 @@
   "ws.settings.appearance.timing": "耗時診斷",
   "ws.settings.appearance.brand": "品牌色",
   "ws.updates.cadenceShort": "檢查頻率",
-  "ws.updates.versionForReports": "版本詳情（回報問題時用）"
+  "ws.updates.versionForReports": "版本詳情（回報問題時用）",
+  "ws.onboarding.label": "新手引導",
+  "ws.onboarding.later": "以後再說",
+  "ws.onboarding.back": "返回",
+  "ws.onboarding.optional": "可略過",
+  "ws.onboarding.progress": "新手引導：第 {n} 步，共 3 步",
+  "ws.onboarding.stepDone": "（已完成）",
+  "ws.onboarding.step.engine": "預設引擎",
+  "ws.onboarding.step.thirdParty": "第三方",
+  "ws.onboarding.step.colleagues": "新建同事",
+  "ws.onboarding.readOnly": "你在這個空間只能檢視，引導進度不會儲存。",
+  "ws.onboarding.saveFailed": "進度沒儲存上，已重新讀取，請再試一次。",
+  "ws.onboarding.unavailable": "這個版本的 Hara 還不支援新手引導。",
+  "ws.onboarding.resumeOne": "還差 1 步：{step}",
+  "ws.onboarding.resumeMany": "還差 {n} 步，下一步：{step}",
+  "ws.onboarding.continue": "繼續",
+  "ws.onboarding.stop": "不再提示",
+  "ws.onboarding.hide": "先收起"
 }

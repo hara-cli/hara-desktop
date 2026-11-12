@@ -64,6 +64,7 @@ import "./violet-tokens.css";
 import "./violet-workspace.css";
 import WorkspaceSettings, { type SettingsPage } from "./WorkspaceSettings";
 import { useWorkspaceUpdater, WorkspaceUpdateNotice } from "./WorkspaceSoftwareUpdate";
+import { OnboardingResumeCard, useWorkspaceOnboarding, WorkspaceOnboarding } from "./WorkspaceOnboarding";
 const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
 
 type Translate = ReturnType<typeof makeT>;
@@ -365,6 +366,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const accountUsage = new Map((workspace?.accountUsage ?? []).map(row => [row.agentId, row]));
   const selectedUsage = colleagueUsageView(accountUsage.get(view.agentId ?? ""), locale);
   const updates = useWorkspaceUpdater(model, production);
+  const onboarding = useWorkspaceOnboarding(model, workspace);
   const inChannel = route.section === "channel";
   const showColleagueInspector = inspector && !browser && route.section === "chat" && !!agent && (agent.kind === "colleague" || agent.kind === "main");
   const showGroupInspector = inspector && !browser && inChannel;
@@ -547,7 +549,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   }).sort((a, b) => b.order - a.order), [colleagues, shell.snapshots, shell.activity]);
   const closeSettings = () => { setSettings(false); };
   const openSettingsPage = (page: SettingsPage) => { setSettingsPage(page); setSettings(true); };
-  const modalOpen = settings || creating || !!workspaceRename || !!channelDialog || !!rosterMove || approvalDialog?.scope === scope || archiveConfirm?.scope === scope;
+  const modalOpen = settings || onboarding.surface === "sheet" || creating || !!workspaceRename || !!channelDialog || !!rosterMove || approvalDialog?.scope === scope || archiveConfirm?.scope === scope;
   useEffect(() => { if (mentionOpen) mentionMenu.current?.querySelector<HTMLButtonElement>("button")?.focus(); }, [mentionOpen]);
   const attachReference = async () => {
     if (attaching || disconnected) return; setAttaching(true); const selectedScope = model.mediaScope;
@@ -707,6 +709,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           : !workspace && view.loading && view.workspaceId ? <p role="status">{t("common.loading")}</p> : !workspace ? <section className="wsd-welcome"><HaraMascot state="idle" size={160} label={t("ws.mascot.idle")} /><h1>{t("ws.welcome.title")}</h1><p>{t("ws.welcome.body")}</p>
             {!view.directory?.workspaces.some(row => row.active) ? <button className="hs-btn pri" onClick={() => setCreating(true)} disabled={view.loading}>{t("ws.welcome.create")}</button> : null}<small>{t(production ? "ws.welcome.note" : "ws.lab.note")}</small></section>
           : <div className="hs-col wsd-thread">
+            {onboarding.surface === "resume" && onboarding.progress && (!agent || agent.kind === "main") ? <OnboardingResumeCard progress={onboarding.progress} onContinue={onboarding.open} onStop={onboarding.stop} /> : null}
             {!hasConnection ? <section className="wsd-connect-card"><h2>{t("ws.connection.title")}</h2><p>{t(production ? "ws.connection.body" : realKey ? "ws.lab.real" : "ws.lab.synthetic")}</p>
               <button className="hs-btn pri" onClick={() => void connect()}>{t(production ? "ws.connection.configure" : realKey ? "ws.connection.approved" : "ws.connection.synthetic")}</button></section> : null}
             {hasConnection && !workspace.conversation.history.length ? <div className="hs-hello">{!agent || agent.kind === "main" ? <HaraMascot state="idle" size={128} label={t("ws.mascot.idle")} /> : null}<h2>{t("ws.home.title")}</h2><p>{t("ws.home.hint")}</p><div className="hs-chips"><button className="hs-chip" onClick={() => void discuss()}><UserPlusIcon className="hico" />{t("ws.home.chip.colleague")}</button>
@@ -809,6 +812,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       <h2>{r("newFolder")}</h2><label>{r("folderName")}<input value={sectionName} maxLength={60} onChange={event => setSectionName(event.target.value)} /></label>
       <div className="wsd-card-actions"><button onClick={() => setRosterMove(null)}>{t("ws.cancel")}</button><button className="hs-btn pri" disabled={!sectionName.trim()} onClick={() => { updateRosterPref(rosterMove.agentId, { section: sectionName.trim() }); setRosterMove(null); }}>{r("move")}</button></div>
     </ShellDialog> : null}
+    {onboarding.surface === "sheet" && !settings ? <WorkspaceOnboarding state={onboarding} /> : null}
     {settings ? <WorkspaceSettings key={`settings:${view.workspaceId}`} mainModel={model} initialPage={settingsPage} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
       onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} /> : null}
   </div></div></div>;

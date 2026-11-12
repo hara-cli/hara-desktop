@@ -1,0 +1,31 @@
+@import "./hara-tokens.generated.css" layer(hara-tokens);
+/* Getting-started guide (hd-ob-*). Workspace surface/ink variables follow the app theme; radii, brand and status use DESIGN tokens only. */
+.wob-scrim{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:var(--hara-space-6);background:var(--hara-scrim)}
+.wob-sheet{width:min(960px,100%);max-height:min(752px,100%);display:flex;flex-direction:column;overflow:hidden;background:var(--wsd-surface);color:var(--wsd-ink);border:1px solid var(--wsd-line);border-radius:var(--hara-radius-lg);box-shadow:var(--hara-glass-c-shadow)}
+.wob-top{display:flex;align-items:center;gap:var(--hara-space-4);padding:var(--hara-space-1) var(--hara-space-5);border-bottom:1px solid var(--wsd-line)}
+.wob-mascot{flex-shrink:0}
+.wob-title{flex:1;min-width:0}
+.wob-title h2{margin:0;font-family:var(--hara-font-display);font-size:var(--hara-font-size-title);font-weight:var(--hara-font-weight-semibold)}
+/* The heading takes focus programmatically on each step so screen readers announce it; it is not a control, so no ring. */
+.wob-sheet .wob-title h2:focus,.wob-sheet .wob-title h2:focus-visible{outline:none;box-shadow:none}
+.wob-title p{margin:var(--hara-space-1) 0 0;color:var(--wsd-muted);font-size:var(--hara-font-size-body-sm)}
+.wob-later{align-self:flex-start;margin-top:var(--hara-space-3);background:none;border:0;color:var(--wsd-muted);font-size:var(--hara-font-size-small);padding:var(--hara-space-1) var(--hara-space-2);border-radius:var(--hara-radius-sm);min-height:var(--hara-hit-min-desktop)}
+.wob-later:hover{background:var(--hara-bg-hover);color:var(--wsd-ink)}
+.wob-steps{list-style:none;display:flex;gap:var(--hara-space-2);margin:0;padding:var(--hara-space-3) var(--hara-space-5) 0}
+.wob-steps li{flex:1;min-width:0;display:flex;align-items:center;gap:var(--hara-space-2);padding-bottom:var(--hara-space-2);border-bottom:2px solid var(--wsd-line);color:var(--wsd-muted);font-size:var(--hara-font-size-small)}
+.wob-steps li i{font-style:normal;flex-shrink:0;width:20px;height:20px;border-radius:var(--hara-radius-pill);display:inline-flex;align-items:center;justify-content:center;font-size:var(--hara-font-size-caption);font-weight:var(--hara-font-weight-semibold);border:1px solid var(--wsd-line)}
+.wob-steps li.is-current{color:var(--wsd-ink);font-weight:var(--hara-font-weight-semibold);border-bottom-color:var(--hara-brand-primary)}
+.wob-steps li.is-current i{background:var(--hara-brand-primary);border-color:var(--hara-brand-primary);color:var(--hara-on-brand)}
+.wob-steps li.is-done i{background:var(--hara-success-soft);border-color:transparent;color:var(--hara-success)}
+.wob-steps small{font-weight:var(--hara-font-weight-regular)}
+.wob-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wob-body{flex:1;min-height:0;overflow:auto;padding:var(--hara-space-4) var(--hara-space-5);display:flex;flex-direction:column;gap:var(--hara-space-3)}
+.wob-notice{margin:0;padding:var(--hara-space-2) var(--hara-space-3);border-radius:var(--hara-radius-md);background:var(--hara-info-soft);font-size:var(--hara-font-size-small)}
+.wob-notice.is-error{background:var(--hara-danger-soft)}
+.wob-foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hara-space-3);padding:var(--hara-space-3) var(--hara-space-5);border-top:1px solid var(--wsd-line)}
+.wob-foot-note{flex:1 1 220px;min-width:0;color:var(--wsd-muted);font-size:var(--hara-font-size-caption)}
+.wob-resume{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hara-space-3);margin:0 0 var(--hara-space-4);padding:var(--hara-space-3) var(--hara-space-4);border:1px solid var(--wsd-line);border-left:3px solid var(--hara-brand-primary);border-radius:var(--hara-radius-card);background:var(--wsd-surface)}
+.wob-resume p{flex:1 1 200px;margin:0;font-size:var(--hara-font-size-body-sm)}
+.wob-resume-actions{display:flex;gap:var(--hara-space-2)}
+/* The full mascot has a 128px floor (DESIGN.md); narrow windows drop it rather than shrink it. */
+@media (max-width:600px){.wob-scrim{padding:var(--hara-space-2)}.wob-mascot{display:none}.wob-top{padding:var(--hara-space-3) var(--hara-space-4)}.wob-steps,.wob-body,.wob-foot{padding-left:var(--hara-space-4);padding-right:var(--hara-space-4)}.wob-steps li{flex-direction:column;align-items:flex-start;gap:var(--hara-space-1)}}

@@ -2028,6 +2028,23 @@
     "ws.settings.appearance.timing",
     "ws.settings.appearance.brand",
     "ws.updates.cadenceShort",
-    "ws.updates.versionForReports"
+    "ws.updates.versionForReports",
+    "ws.onboarding.label",
+    "ws.onboarding.later",
+    "ws.onboarding.back",
+    "ws.onboarding.optional",
+    "ws.onboarding.progress",
+    "ws.onboarding.stepDone",
+    "ws.onboarding.step.engine",
+    "ws.onboarding.step.thirdParty",
+    "ws.onboarding.step.colleagues",
+    "ws.onboarding.readOnly",
+    "ws.onboarding.saveFailed",
+    "ws.onboarding.unavailable",
+    "ws.onboarding.resumeOne",
+    "ws.onboarding.resumeMany",
+    "ws.onboarding.continue",
+    "ws.onboarding.stop",
+    "ws.onboarding.hide"
   ]
 }
