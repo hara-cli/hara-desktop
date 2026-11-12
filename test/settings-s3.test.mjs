@@ -28,8 +28,8 @@ const workspace = (patch = {}) => ({ workspaceId: "ws_123", resourceGeneration: 
   approvals: [], conversation: { history: [], state: "idle", pastTaskCount: 3, usage: { modelCalls: 7 }, runUsage: { modelCalls: 0 } }, ...patch });
 const updater = { getSnapshot: () => ({ phase: "latest", version: "", notes: "", downloaded: 0, total: 0, notice: false, message: "", preferences: { autoCheck: true, lastChecked: null }, installing: false }), subscribe: () => () => {} };
 const theme = (patch = {}) => ({ preference: "system", settings: { readOnly: false, alwaysShowTimingDiagnostics: false }, notice: "", change() {}, changeDetails() {}, chooseTheme() {}, changeAppearance() {}, changeTimingDiagnostics() {}, appearance: { darkTheme: "violet-glass", transparency: "system", motion: "system" }, ...patch });
-function settings(page, { locale = "zh-Hans", kind = "personal", ws = workspace() } = {}) {
-  const value = { workspaceId: ws.workspaceId, workspace: ws, directory: { workspaces: [{ workspaceId: ws.workspaceId, label: ws.label, role: "owner", active: true, kind }] }, error: "" };
+function settings(page, { locale = "zh-Hans", kind = "personal", ws = workspace(), role = "owner" } = {}) {
+  const value = { workspaceId: ws.workspaceId, workspace: ws, directory: { workspaces: [{ workspaceId: ws.workspaceId, label: ws.label, role, active: true, kind }] }, error: "" };
   const model = { getSnapshot: () => value, subscribe: () => () => {}, supportsAgentArchive: () => true };
   return render(createElement(module.exports.SettingsContent, { model, mainModel: model, initialPage: page, root: "/private/fixture", production: false, updater, versionInfo: { desktop: "1.3.0", engine: "1.3.0", channel: "stable", arch: "aarch64" }, onClose() {}, onCreateSkill() {}, theme: theme() }), locale);
 }
@@ -88,4 +88,16 @@ test("software update: status and auto-check stay visible; cadence and version d
   assert.ok(html.slice(0, fold).includes("自动检查更新") || html.slice(0, fold).includes(makeT("zh-Hans")("ws.updates.auto")));
   assert.ok(html.slice(fold).includes(makeT("zh-Hans")("ws.updates.cadence")) && html.slice(fold).includes("版本详情（反馈问题时用）"));
   assert.equal(html.includes("接收预览版"), false);
+});
+
+test("a read-only member can still open General's Advanced and copy the path (review L2)", () => {
+  const t = makeT("zh-Hans"), html = settings("general", { role: "member" });
+  const copy = (html.match(/<button[^>]*>[^<]*<\/button>/g) ?? []).find(tag => tag.includes(t("ws.settings.general.copyPath")));
+  assert.ok(copy && !copy.includes("disabled"), copy);
+  assert.equal(/<fieldset[^>]*disabled=""[^>]*>[\s\S]*data-settings-advanced="general"/.test(html), false, "General is not inside the read-only fieldset");
+});
+
+test("attention dots use the warning token, not the brand colour (review L1)", () => {
+  const css = readFileSync(new URL("../src/workspace-settings.css", import.meta.url), "utf8");
+  assert.match(css, /\.hs\.wss-app \.wss-update-dot\{background:var\(--hara-warning\)\}/);
 });

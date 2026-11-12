@@ -151,7 +151,9 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
                 zh-Hant is beta for this release: the translations ship in the locale JSON and the
                 contract test still checks them, but the picker must not offer them yet. */}
             {selectableLanguages().map(language => <option key={language.tag} value={language.tag}>{language.nativeName}</option>)}</select></label><WorkspaceAppearanceAdvanced theme={theme} locale={locale} /></div> : page === "updates" ? <WorkspaceSoftwareUpdate controller={updater} info={versionInfo} />
-        : page === "overview" ? null : !workspace ? <p role="status">{t(view.loading ? "ws.settings.loading" : "ws.settings.createFirst")}</p> : <fieldset className="wss-content" key={key} disabled={Boolean(readonly)}>
+        : page === "overview" ? null : !workspace ? <p role="status">{t(view.loading ? "ws.settings.loading" : "ws.settings.createFirst")}</p>
+          // General has nothing to edit; it sits outside the read-only fieldset so every member can still copy the path.
+          : page === "general" ? <General workspace={workspace} root={root} role={selected?.role ?? "owner"} kind={selected?.kind ?? "personal"} /> : <fieldset className="wss-content" key={key} disabled={Boolean(readonly)}>
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
           {page === "colleagues" ? <WorkspaceDeletedColleagues key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} locale={locale} /> : null}
           {page === "connections" ? production ? <WorkspaceConnections model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.connectionsLab")}</p> : null}
@@ -159,7 +161,6 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
           {page === "plugins" ? <WorkspaceExtensions model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} onDirty={leaveGuard.setDirty} /> : null}
           {page === "schedules" || page === "skills" ? <WorkspaceFeaturePanel model={model} workspace={workspace} kind={page} onDirty={leaveGuard.setDirty}
             onCreateSkill={page === "skills" ? () => requestLeave({ kind: "skill", workspaceId: workspace.workspaceId }) : undefined} /> : null}
-          {page === "general" ? <General workspace={workspace} root={root} role={selected?.role ?? "owner"} kind={selected?.kind ?? "personal"} /> : null}
           {page === "members" ? <p>{t("ws.settings.membersUnavailable")}</p> : null}
         </fieldset>}
     </main>

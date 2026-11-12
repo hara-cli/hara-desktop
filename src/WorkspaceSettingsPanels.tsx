@@ -57,7 +57,7 @@ export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<ty
         on = system; off = the card that matches what is showing now (settings IA audit, appearance). */}
     <div className="wss-setting-row"><span>{t("ws.theme.system")}</span><ToggleSwitch label={t("ws.theme.system")} checked={theme.preference === "system"} disabled={!theme.settings || theme.settings.readOnly}
       onCheckedChange={checked => void (checked ? theme.change("system") : theme.chooseTheme(systemPrefersLight() ? "daylight" : appearance.darkTheme))} /></div>
-    <small>{t("ws.theme.note")}</small>
+    <small className="wss-theme-note">{t("ws.theme.note")}</small>
     <label>{t("ws.display.mode")}<select aria-label={t("ws.display.mode")} value={theme.settings?.executionDetails ?? "brief"} disabled={!theme.settings || theme.settings.readOnly}
       onChange={event => void theme.changeDetails(event.target.value as "brief" | "detailed", theme.settings?.collapseDetails !== false)}><option value="brief">{t("ws.display.brief")}</option><option value="detailed">{t("ws.display.detailed")}</option></select></label>
     <div className="wss-setting-row"><span>{t("ws.display.collapse")}</span><ToggleSwitch label={t("ws.display.collapse")} checked={theme.settings?.collapseDetails !== false} disabled={!theme.settings || theme.settings.readOnly}
