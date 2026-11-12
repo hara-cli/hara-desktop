@@ -1565,5 +1565,5 @@
   "ws.runtimes.default.pi": "Pi (default)",
   "ws.runtimes.default.scope": "Saved for this workspace; other workspaces have their own.",
   "ws.runtimes.default.saveFailed": "It wasn’t saved. The current choice has been reloaded; please choose again.",
-  "ws.onboarding.engine.guideSaveFailed": "Couldn’t make it the default for new colleagues. Try again, or skip for now."
+  "ws.onboarding.engine.guideSaveFailed": "Couldn’t make it the default for new colleagues. Try again, or choose Later."
 }
