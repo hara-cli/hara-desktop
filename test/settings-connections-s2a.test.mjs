@@ -74,6 +74,17 @@ test("the add/edit form keeps one short key line; the long notes live under Adva
   assert.match(panels, /<details className="wsd-legacy-import" open=\{active\.length === 0\}>/);
 });
 
+test("adding the first key warns that macOS may ask for Keychain permission; later adds and edits do not (review of #76, L3)", () => {
+  for (const locale of ["zh-Hans", "en", "zh-Hant"]) {
+    const t = makeT(locale), hint = esc(t("ws.connections.keyNoteFirst"));
+    assert.ok(t("ws.connections.keyNoteFirst").startsWith(t("ws.connections.keyNoteShort")), "same key line, one more sentence");
+    assert.ok(render(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: true }), locale).includes(`<small>${hint}</small>`));
+    assert.equal(render(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: false }), locale).includes(hint), false);
+    assert.equal(render(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: true, existing: row("one") }), locale).includes(hint), false, "editing never prompts again");
+  }
+  assert.match(panels, /firstKey=\{!workspace\.connections\.connections\.some\(connection => connection\.keySaved\)\}/);
+});
+
 test("the overview cards carry the same attention dots as the left rail (connections and software update)", () => {
   const ws = workspace([row("one", { keyState: "invalid" })]);
   const value = { workspaceId: "A", workspace: ws, directory: { workspaces: [{ workspaceId: "A", label: "A", role: "owner", active: true, kind: "personal" }] }, error: "" };

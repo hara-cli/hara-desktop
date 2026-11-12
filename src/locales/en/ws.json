@@ -1455,6 +1455,7 @@
   "ws.connections.advanced.keyStorage": "Key storage",
   "ws.connections.advanced.scope": "Scope",
   "ws.connections.keyNoteShort": "Keys stay in this Mac's Keychain and can't be viewed after saving.",
+  "ws.connections.keyNoteFirst": "Keys stay in this Mac's Keychain and can't be viewed after saving. macOS may ask for permission the first time you save.",
   "ws.schedules.human.once": "Once on {date} at {time}",
   "ws.schedules.human.daily": "Every day at {time}",
   "ws.schedules.human.weekdays": "Every weekday at {time}",

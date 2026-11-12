@@ -57,7 +57,8 @@ function IsolatedLoginChoice({ runtimeId, loginSource, children }: { runtimeId: 
   return <SettingsAdvanced page="runtimes.loginSource" persist={false} items={[t("ws.runtimeAccess.isolated")]} customized={loginSource === "isolated" ? [t("ws.runtimeAccess.isolated")] : []}>{children}</SettingsAdvanced>;
 }
 
-export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, onDirty }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void }) {
+/** `firstKey`: no connection in this workspace has saved a key yet, so macOS may show a Keychain prompt on save (review of #76, L3). */
+export function WorkspaceConnectionForm({ model, existing, firstKey = false, onSaved, onCancel, onDirty }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; firstKey?: boolean; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void }) {
   const { t } = useWorkspaceLocale();
   const [label, setLabel] = useState(existing?.label ?? ""), [provider, setProvider] = useState<"openai" | "anthropic">(existing?.provider ?? "openai");
   const [baseURL, setBaseURL] = useState(existing?.baseURL ?? ""), [defaultModel, setDefaultModel] = useState(existing?.defaultModel ?? ""), [apiKey, setKey] = useState("");
@@ -73,7 +74,7 @@ export function WorkspaceConnectionForm({ model, existing, onSaved, onCancel, on
     <label>{t("ws.connections.baseURL")}<input type="url" value={baseURL} onChange={event => setBaseURL(event.target.value)} placeholder="https://…" autoComplete="off" required /></label>
     <label>{t("ws.connections.model")}<input value={defaultModel} onChange={event => setDefaultModel(event.target.value)} autoComplete="off" required /></label>
     <label>{t("ws.connections.apiKey")}{existing && !existing.credentialRequired ? t("ws.connections.keepKey") : ""}<input type="password" value={apiKey} onChange={event => setKey(event.target.value)} autoComplete="new-password" spellCheck={false} required={!existing || existing.credentialRequired} /></label>
-    <small>{t("ws.connections.keyNoteShort")}</small>
+    <small>{t(firstKey && !existing ? "ws.connections.keyNoteFirst" : "ws.connections.keyNoteShort")}</small>
     <div className="wsd-card-actions">{onCancel ? <button type="button" disabled={saving} onClick={() => { setKey(""); onDirty?.(false); onCancel(); }}>{t("ws.cancel")}</button> : null}
     <button className="wsd-primary" disabled={saving}>{t(saving ? "ws.connections.saving" : "ws.connections.save")}</button></div>
   </form>;

@@ -1455,6 +1455,7 @@
   "ws.connections.advanced.keyStorage": "Key 儲存說明",
   "ws.connections.advanced.scope": "作用範圍",
   "ws.connections.keyNoteShort": "Key 只存在這台 Mac 的鑰匙圈裡，儲存後看不到原文。",
+  "ws.connections.keyNoteFirst": "Key 只存在這台 Mac 的鑰匙圈裡，儲存後看不到原文。首次儲存時系統可能請求授權。",
   "ws.schedules.human.once": "{date} {time} 一次",
   "ws.schedules.human.daily": "每天 {time}",
   "ws.schedules.human.weekdays": "每個工作日 {time}",

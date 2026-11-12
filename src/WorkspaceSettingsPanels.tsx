@@ -119,7 +119,7 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
           { id: "delete", label: t("ws.connections.deleteMenu"), danger: true, onSelect: () => setConfirmDelete(connection) }]} /></div>
     </div>)}
     <button disabled={pending || readOnly} onClick={() => { setAdding(current => !current); setEditing(null); }}>{t("ws.connections.add")}</button>
-    {!readOnly && (adding || editing || workspace.connections.connections.length === 0) ? <WorkspaceConnectionForm key={editing?.id ?? "new"} model={model} existing={editing ?? undefined} onDirty={onDirty} onCancel={() => { setEditing(null); setAdding(false); }} onSaved={() => { setEditing(null); setAdding(false); }} /> : null}
+    {!readOnly && (adding || editing || workspace.connections.connections.length === 0) ? <WorkspaceConnectionForm key={editing?.id ?? "new"} model={model} existing={editing ?? undefined} firstKey={!workspace.connections.connections.some(connection => connection.keySaved)} onDirty={onDirty} onCancel={() => { setEditing(null); setAdding(false); }} onSaved={() => { setEditing(null); setAdding(false); }} /> : null}
     {legacy.length ? <details className="wsd-legacy-import" open={active.length === 0}><summary>{t("ws.connections.legacyFound")}</summary><p>{t("ws.connections.importNote")}</p>
       {legacy.map(row => <div className="wsd-connection" key={row.id}><strong>{row.label}</strong><small>{row.provider} · {row.defaultModel}</small><code>{row.baseURL}</code><small>{t("ws.connections.mask", { state: t("ws.connections.pending") })}</small>
         <button disabled={pending || readOnly || !row.keySaved} onClick={() => setConfirmImport(row)}>{t("ws.connections.import")}</button></div>)}</details> : null}
