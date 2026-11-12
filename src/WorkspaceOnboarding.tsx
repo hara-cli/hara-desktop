@@ -4,7 +4,7 @@ import type { MascotState } from "./hara-mascot";
 import type { Key } from "./i18n";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot } from "./workspace-dev-state";
-import { markOnboardingSeen, onboardingFields, onboardingSeen, onboardingSurface, ONBOARDING_STEPS, rerunFields, stepsLeft,
+import { markOnboardingSeen, onboardingFields, onboardingSeen, onboardingSurface, ONBOARDING_STEPS, rerunFields, stepsLeft, type OnboardingRerunResult,
   type OnboardingFields, type OnboardingProgress, type OnboardingStep } from "./workspace-onboarding-state";
 import "./workspace-onboarding.css";
 
@@ -107,24 +107,26 @@ export function useWorkspaceOnboarding(model: WorkspaceDevModel, workspace: Work
   // …and no resume card either, since its Continue could not open anything (review of #83, L1).
   const surface = !hasView || hidden ? "none" : open ? "sheet" : onboardingSurface(progress, { seen: true, colleagues: colleagues.current });
   return {
-    progress, surface, busy, notice, available: supported,
+    progress, surface, busy, notice, available: supported, workspaceId,
     open: () => { if (progress && workspaceId && hasView) { markOnboardingSeen(workspaceId, progress.runId); setNotice(""); setOpen(true); } },
     later: () => { setOpen(false); setNotice(""); },
     // If the write fails the card comes back with the error, so the user isn't told it is gone when it isn't (review of #82, L1).
     stop: () => { setHidden(true); void save({ dismissed: true }).then(ok => { if (!ok) setHidden(false); }); },
     /**
      * «Settings › Getting started › Run again»: a fresh run from step 1 that keeps the current engine choice (contract G4
-     * rerun). Resolves false when it could not start (read-only, old Core, write failed), so Settings can say so and stay open.
+     * rerun). Resolves with the reason when it did not start, so Settings can say the right thing and stay open.
      */
-    rerun: async (): Promise<boolean> => {
-      if (!supported || !workspaceId || !generation || busy) return false;
+    rerun: async (): Promise<OnboardingRerunResult> => {
+      if (busy) return "busy";
+      if (!supported || !workspaceId || !generation) return "failed";
       setBusy(true); setNotice("");
       try {
         const current = progress ?? await model.onboarding(workspaceId, generation);
-        if (current.readOnly) return false;
+        // The record decides read-only, also when progress had not loaded yet (review of #85, L1).
+        if (current.readOnly) { setProgress(current); return "readOnly"; }
         const saved = await model.saveOnboarding(rerunFields(current, crypto.randomUUID()), current.revision, workspaceId, generation);
-        setProgress(saved); setHidden(false); markOnboardingSeen(workspaceId, saved.runId); setOpen(true); return true;
-      } catch { void model.onboarding(workspaceId, generation).then(setProgress).catch(() => {}); return false; }
+        setProgress(saved); setHidden(false); markOnboardingSeen(workspaceId, saved.runId); setOpen(true); return "started";
+      } catch { void model.onboarding(workspaceId, generation).then(setProgress).catch(() => {}); return "failed"; }
       finally { setBusy(false); }
     },
     next: (patch: Partial<OnboardingFields> = {}) => { if (progress) void save({ ...patch, step: Math.min(3, progress.step + 1) as OnboardingStep }); },

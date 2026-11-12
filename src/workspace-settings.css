@@ -136,6 +136,6 @@
 .wsd-connection-urls dt,.wsd-schedule-technical dt{font-size:12px;font-weight:600}
 .wsd-connection-urls dd,.wsd-schedule-technical dd{margin:2px 0 0;font-size:12px;color:var(--wsd-muted);overflow-wrap:anywhere}
 /* O4: «Getting started · Run again» on the overview. */
-.wss-onboarding-rerun>div{flex:1;min-width:0}.wss-onboarding-rerun p{margin:4px 0 0;color:var(--wsd-muted);font-size:var(--hara-font-size-small)}
+.wss-onboarding-rerun>div{flex:1;min-width:0}.wss-onboarding-rerun p{margin:var(--hara-space-1) 0 0;color:var(--wsd-muted);font-size:var(--hara-font-size-small)}
 .hs.wss-app .wss-onboarding-rerun button{flex-shrink:0;white-space:nowrap;padding:0 var(--hara-space-4);border:1px solid var(--wsd-line);border-radius:var(--hara-radius-md);background:var(--wsd-surface);cursor:pointer}
 .hs.wss-app .wss-onboarding-rerun button:not(:disabled):hover{background:var(--hara-bg-hover)}.hs.wss-app .wss-onboarding-rerun button:disabled{opacity:.45;cursor:not-allowed}
