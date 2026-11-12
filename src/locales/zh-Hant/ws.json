@@ -1565,5 +1565,5 @@
   "ws.runtimes.default.pi": "Pi（預設）",
   "ws.runtimes.default.scope": "儲存在這個空間；其他空間各自設定。",
   "ws.runtimes.default.saveFailed": "沒有儲存成功，已重新讀取目前的選擇，請再選一次。",
-  "ws.onboarding.engine.guideSaveFailed": "沒能把它設成新同事的預設引擎，請再試一次，或先略過。"
+  "ws.onboarding.engine.guideSaveFailed": "沒能把它設成新同事的預設引擎。請再試一次，或點「以後再說」。"
 }

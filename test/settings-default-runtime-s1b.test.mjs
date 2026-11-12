@@ -35,7 +35,7 @@ test("the per-workspace default engine is offered only when Core advertises work
   assert.ok(html.indexOf("wsd-default-runtime") < html.indexOf("wsd-runtime-settings"), "heads the engines page");
   assert.ok(html.indexOf('<fieldset class="wss-content"') < html.indexOf("wsd-default-runtime"), "per workspace, so inside the read-only fieldset (members cannot change it)");
   const section = html.slice(html.indexOf('class="wsd-default-runtime"'));
-  assert.ok(section.includes(`<small>${t("ws.runtimes.default.scope")}</small>`), "says it is saved for this workspace (the page already carries «This workspace only»)");
+  assert.ok(new RegExp(`<small id="[^"]+">${t("ws.runtimes.default.scope")}</small>`).test(section), "says it is saved for this workspace (the page already carries «This workspace only»)");
   assert.equal(section.slice(0, section.indexOf("</section>")).includes("wss-scope-chip"), false, "no second scope chip");
   assert.equal(section.includes(t("ws.settings.allSpaces")), false);
 });
@@ -89,11 +89,24 @@ test("a reply for another workspace or of the wrong shape is rejected", async ()
 });
 
 test("saving uses the current revision, reloads on failure, and never probes or starts an engine", () => {
-  assert.match(source, /const fresh = await model\.defaultRuntime\(workspaceId, generation\); setValue\(await model\.saveDefaultRuntime\(next, fresh\.revision, workspaceId, generation\)\)/);
-  assert.match(source, /catch \{ setNotice\("ws\.runtimes\.default\.saveFailed"\); void reload\(\)\.catch\(\(\) => \{\}\); \}/, "stale revision → reload and ask again, no blind overwrite");
+  assert.match(source, /try \{ setValue\(await model\.saveDefaultRuntime\(next, value\.revision, workspaceId, generation\)\);/, "writes against the revision on screen (optimistic lock, review of #92 M1)");
+  assert.doesNotMatch(source, /const fresh = await model\.defaultRuntime/, "never re-reads right before writing");
+  assert.match(source, /catch \{ setNotice\("ws\.runtimes\.default\.saveFailed"\); void reload\(\); \}/, "stale revision → reload and ask again, no blind overwrite");
+  assert.match(source, /\.then\(setValue\)\.catch\(\(\) => setNotice\("ws\.runtimes\.default\.loadFailed"\)\)/, "a failed reload says so (L2)");
+  assert.match(source, /<select aria-describedby=\{`\$\{noteId\} \$\{scopeId\}`\}/, "screen readers hear the note and scope (L3)");
   assert.doesNotMatch(source, /listModels|detectRuntimes|registerLocalRuntime|approveRuntime|preferences/);
 });
 
 test("a saved \"pi\" shows as «Pi (default)», since the fallback chain makes them identical", () => {
   assert.match(source, /const current = value\?\.defaultRuntimeId && value\.defaultRuntimeId !== "pi" \? value\.defaultRuntimeId : null;/);
+});
+
+test("a change made elsewhere is a conflict, not an overwrite: the stale revision is rejected and nothing is written (review of #92, M1)", async () => {
+  let stored = g1({ revision: 4, defaultRuntimeId: "claude" });
+  const f = modelFixture(["workspace.default-runtime.v1"], {
+    "workspace.defaultRuntime.get": () => stored,
+    "workspace.defaultRuntime.set": params => { if (params.expectedRevision !== stored.revision) throw new Error("Settings changed; refresh before writing"); stored = g1({ defaultRuntimeId: params.defaultRuntimeId, revision: stored.revision + 1 }); return stored; } });
+  await f.model.selectWorkspace("A");
+  await assert.rejects(() => f.model.saveDefaultRuntime("codex", 3, "A", "generation-A"), /refresh before writing/, "the screen showed revision 3; the guide had moved it to 4");
+  assert.equal(stored.defaultRuntimeId, "claude", "the other change survives");
 });
