@@ -9,6 +9,7 @@ import { selectableLanguages, type Key, type LocalePreference } from "./i18n";
 import HaraLogo from "./mark";
 import type { WorkspaceDevModel, WorkspaceDevSnapshot } from "./workspace-dev-state";
 import WorkspaceRuntimeSettings from "./WorkspaceRuntimeSettings";
+import { WorkspaceDefaultRuntime } from "./WorkspaceDefaultRuntime";
 import { WorkspaceAppearanceAdvanced, WorkspaceConnections, WorkspaceFeaturePanel, WorkspaceThemeSettings, type useStableWorkspaceTheme } from "./WorkspaceSettingsPanels";
 import { WorkspaceSoftwareUpdate, type DesktopVersionInfo } from "./WorkspaceSoftwareUpdate";
 import { hasUpdateAttention, type WorkspaceUpdater } from "./workspace-updater-state";
@@ -157,6 +158,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
           {readonly ? <p className="wss-callout">{t("ws.settings.readOnly")}</p> : null}
           {page === "colleagues" ? <WorkspaceDeletedColleagues key={`${workspace.workspaceId}:${workspace.resourceGeneration}`} model={model} workspace={workspace} locale={locale} /> : null}
           {page === "connections" ? production ? <WorkspaceConnections model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.connectionsLab")}</p> : null}
+          {page === "runtimes" && production && model.supportsDefaultRuntime?.() ? <WorkspaceDefaultRuntime model={model} workspace={workspace} /> : null}
           {page === "runtimes" ? production ? <WorkspaceRuntimeSettings model={model} workspace={workspace} onDirty={leaveGuard.setDirty} /> : <p>{t("ws.settings.runtimeLab")}</p> : null}
           {page === "plugins" ? <WorkspaceExtensions model={model} workspaceId={workspace.workspaceId} generation={workspace.resourceGeneration} onDirty={leaveGuard.setDirty} /> : null}
           {page === "schedules" || page === "skills" ? <WorkspaceFeaturePanel model={model} workspace={workspace} kind={page} onDirty={leaveGuard.setDirty}

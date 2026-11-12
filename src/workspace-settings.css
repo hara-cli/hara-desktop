@@ -135,3 +135,8 @@
 .wsd-connection-urls,.wsd-schedule-technical{display:grid;gap:10px;margin:0}
 .wsd-connection-urls dt,.wsd-schedule-technical dt{font-size:12px;font-weight:600}
 .wsd-connection-urls dd,.wsd-schedule-technical dd{margin:2px 0 0;font-size:12px;color:var(--wsd-muted);overflow-wrap:anywhere}
+/* S1b: «New colleagues use» heads the engines page. */
+.wsd-default-runtime{display:grid;gap:6px;padding:14px 16px;margin:0 0 16px;border:1px solid var(--wsd-line);border-radius:var(--hara-radius-row);min-width:0}
+.wsd-default-runtime>label{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.wsd-default-runtime small{color:var(--wsd-muted);font-size:12px}
+.wsd-default-runtime select{border:1px solid var(--wsd-line);border-radius:var(--hara-radius-sm);padding:7px 8px;background:var(--surface);color:var(--ink);font:inherit;max-width:100%}

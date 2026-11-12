@@ -704,7 +704,15 @@
     "ws.settings.appearance.timing",
     "ws.settings.appearance.brand",
     "ws.updates.cadenceShort",
-    "ws.updates.versionForReports"
+    "ws.updates.versionForReports",
+    "ws.runtimes.default.title",
+    "ws.runtimes.default.note",
+    "ws.runtimes.default.piFirst",
+    "ws.runtimes.default.unavailable",
+    "ws.runtimes.default.saved",
+    "ws.runtimes.default.saveUnknown",
+    "ws.runtimes.default.loadFailed",
+    "ws.runtimes.default.readOnly"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -2026,6 +2034,14 @@
     "ws.settings.appearance.timing",
     "ws.settings.appearance.brand",
     "ws.updates.cadenceShort",
-    "ws.updates.versionForReports"
+    "ws.updates.versionForReports",
+    "ws.runtimes.default.title",
+    "ws.runtimes.default.note",
+    "ws.runtimes.default.piFirst",
+    "ws.runtimes.default.unavailable",
+    "ws.runtimes.default.saved",
+    "ws.runtimes.default.saveUnknown",
+    "ws.runtimes.default.loadFailed",
+    "ws.runtimes.default.readOnly"
   ]
 }
