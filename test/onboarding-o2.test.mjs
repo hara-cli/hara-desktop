@@ -89,3 +89,7 @@ test("network failures are told apart from other failures", () => {
   for (const text of ["fetch failed", "ETIMEDOUT", "connect ECONNREFUSED 127.0.0.1:443", "getaddrinfo ENOTFOUND api.example", "Request timed out"]) assert.ok(NETWORK_ERROR.test(text), text);
   for (const text of ["Not signed in", "invalid model", "unsupported"]) assert.equal(NETWORK_ERROR.test(text), false, text);
 });
+
+test("the guide's connection form gets the first-key Keychain hint like Settings (review of #83, L2; #81)", () => {
+  assert.match(source, /<WorkspaceConnectionForm model=\{model\} firstKey=\{!workspace\.connections\.connections\.some\(connection => connection\.keySaved\)\}/);
+});

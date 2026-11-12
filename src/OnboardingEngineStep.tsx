@@ -91,7 +91,7 @@ export function OnboardingEngineStep({ progress, sheet, next, model, workspace }
     {!connected.length ? <div className="wob-list wob-hara-model">
       <div className="wob-row"><span className="wob-row-text"><b>{t("ws.onboarding.engine.hara")}</b> <span className="wob-chip is-warn">{t("ws.onboarding.engine.haraMissing")}</span><small>{t("ws.onboarding.engine.haraNote")}</small></span>
         {!connecting ? <button type="button" className="hs-btn pri" disabled={sheet.readOnly} onClick={() => setConnecting(true)}>{t("ws.onboarding.engine.connect")}</button> : null}</div>
-      {connecting ? <div className="wob-row-form"><WorkspaceConnectionForm model={model} onSaved={() => setConnecting(false)} onCancel={() => setConnecting(false)} /></div> : null}
+      {connecting ? <div className="wob-row-form"><WorkspaceConnectionForm model={model} firstKey={!workspace.connections.connections.some(connection => connection.keySaved)} onSaved={() => setConnecting(false)} onCancel={() => setConnecting(false)} /></div> : null}
     </div> : null}
     {detectFailed ? <p className="wob-notice is-error" role="alert">{t("ws.onboarding.engine.detectFailed")}</p> : null}
     {networkFailed ? <p className="wob-warn" role="alert">{t("ws.onboarding.engine.networkFailed", { advanced: t("ws.settings.advanced") })}</p> : null}
