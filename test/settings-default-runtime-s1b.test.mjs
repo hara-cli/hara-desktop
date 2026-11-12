@@ -32,13 +32,17 @@ test("the default-engine choice is offered only when Core advertises G1", () => 
   assert.equal(shell(false).includes("wsd-default-runtime"), false, "no entry without the Core capability");
   const html = shell(true), t = makeT("zh-Hans");
   assert.ok(html.indexOf("wsd-default-runtime") < html.indexOf("wsd-runtime-settings"), "heads the engines page");
+  assert.ok(html.indexOf("wsd-default-runtime") < html.indexOf('<fieldset class="wss-content"'), "host-level, so outside the workspace's read-only fieldset");
+  const section = html.slice(html.indexOf('class="wsd-default-runtime"'));
+  assert.ok(section.includes(`${t("ws.settings.device")} · ${t("ws.settings.allSpaces")}`) && section.includes(t("ws.runtimes.default.scope")), "labelled as this Mac · all workspaces");
   assert.ok(html.includes(t("ws.runtimes.default.title")) && html.includes(t("ws.runtimes.default.note")));
 });
 
-for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`options are Pi-first (null), Pi and enabled engines that can drive colleagues (${locale})`, () => {
+for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`options are «Pi (default)» (null) and enabled engines that can drive colleagues (${locale})`, () => {
   const t = makeT(locale), html = render(createElement(module.exports.WorkspaceDefaultRuntime, { model: { preferences: () => new Promise(() => {}) }, workspace }), locale);
-  assert.ok(html.includes(`<option value="" selected="">${t("ws.runtimes.default.piFirst")}</option>`), "null means the existing Pi-first behaviour and is the default");
-  assert.ok(html.includes('<option value="pi">Pi</option>') && html.includes('<option value="codex">Codex</option>'));
+  assert.ok(html.includes(`<option value="" selected="">${t("ws.runtimes.default.pi")}</option>`), "null means the existing Pi-first behaviour and is the default");
+  assert.equal(html.includes('value="pi"'), false, "a separate «Pi» would behave exactly like the default, so there is only one");
+  assert.ok(html.includes('<option value="codex">Codex</option>'));
   assert.equal(html.includes('value="claude"'), false, "not-enabled engines are not offered");
   assert.equal(html.includes('value="copilot"'), false, "engines that cannot drive colleagues are not offered");
   assert.match(html, /<select[^>]*disabled=""/, "disabled until the saved value has loaded");
@@ -54,4 +58,8 @@ test("saving sends only the G1 fields with a fresh revision and never probes or 
   await assert.rejects(() => without.saveDefaultRuntime("codex", 1), "no capability → no request");
   assert.match(source, /const fresh = await model\.preferences\(\); setValue\(await model\.saveDefaultRuntime\(next, fresh\.revision\)\)/, "uses the current shared revision");
   assert.doesNotMatch(source, /listModels|detectRuntimes|registerLocalRuntime|approveRuntime/);
+});
+
+test("a saved \"pi\" shows as «Pi (default)», since the fallback chain makes them identical", () => {
+  assert.match(source, /const current = value\?\.defaultRuntimeId && value\.defaultRuntimeId !== "pi" \? value\.defaultRuntimeId : null;/);
 });

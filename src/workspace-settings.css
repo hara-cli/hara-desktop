@@ -144,3 +144,4 @@
 .wsd-default-runtime>label{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .wsd-default-runtime small{color:var(--wsd-muted);font-size:12px}
 .wsd-default-runtime select{border:1px solid var(--wsd-line);border-radius:var(--hara-radius-sm);padding:7px 8px;background:var(--surface);color:var(--ink);font:inherit;max-width:100%}
+.wsd-default-runtime>.wss-scope-chip{justify-self:start}
