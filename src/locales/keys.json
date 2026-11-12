@@ -705,7 +705,12 @@
     "ws.settings.appearance.timing",
     "ws.settings.appearance.brand",
     "ws.updates.cadenceShort",
-    "ws.updates.versionForReports"
+    "ws.updates.versionForReports",
+    "ws.onboarding.rerun.title",
+    "ws.onboarding.rerun.note",
+    "ws.onboarding.rerun.action",
+    "ws.onboarding.rerun.readOnly",
+    "ws.onboarding.rerun.failed"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -2101,6 +2106,11 @@
     "ws.onboarding.third.toolCount",
     "ws.onboarding.third.loadFailed",
     "ws.onboarding.third.toolCountOne",
-    "ws.onboarding.third.backToList"
+    "ws.onboarding.third.backToList",
+    "ws.onboarding.rerun.title",
+    "ws.onboarding.rerun.note",
+    "ws.onboarding.rerun.action",
+    "ws.onboarding.rerun.readOnly",
+    "ws.onboarding.rerun.failed"
   ]
 }

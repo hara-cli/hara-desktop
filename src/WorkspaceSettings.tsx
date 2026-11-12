@@ -33,7 +33,9 @@ const pages: Record<SettingsPage, { name: Key; icon: typeof HomeIcon; detail: Ke
 };
 export interface WorkspaceSettingsProps { mainModel: WorkspaceDevModel; initialPage: SettingsPage; root: string; production: boolean;
   theme: ReturnType<typeof useStableWorkspaceTheme>; updater: WorkspaceUpdater; versionInfo: DesktopVersionInfo | null;
-  onClose(): void; onCreateSkill(workspaceId: string): void }
+  onClose(): void; onCreateSkill(workspaceId: string): void;
+  /** Present only when the guide is available (Core G4 + all steps shipped); «Run again» resolves false if it could not start. */
+  onboarding?: { readOnly: boolean; rerun(): Promise<boolean> } }
 /** Keep the live shell mounted/inert below the modal. Escape belongs to SettingsLeaveGuard. */
 export function SettingsOverlay({ children, ready, onClose }: { children: ReactNode; ready: boolean; onClose(): void }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -68,7 +70,7 @@ export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
   return <SettingsOverlay ready={ready} onClose={props.onClose}>{ready ? <SettingsContent {...props} model={session?.model ?? props.mainModel} />
     : <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}><aside className="wss-nav"><button className="wss-close" aria-label={t("vg.closeSettings")} onClick={props.onClose}><XMarkIcon className="hico" /></button><h1>{t("ws.settings")}</h1></aside><main className="wss-main"><p role="status">{t(error || "ws.settings.opening")}</p></main></div>}</SettingsOverlay>;
 }
-export function SettingsContent({ model, initialPage, root, production, theme, updater, versionInfo, onClose, onCreateSkill }: WorkspaceSettingsProps & { model: WorkspaceDevModel }) {
+export function SettingsContent({ model, initialPage, root, production, theme, updater, versionInfo, onClose, onCreateSkill, onboarding }: WorkspaceSettingsProps & { model: WorkspaceDevModel }) {
   const { locale, preference, t, changeLocale } = useWorkspaceLocale();
   const rawView = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot), view = localizedWorkspaceView(rawView, locale), updates = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot);
   const [page, setPage] = useState<SettingsPage>(initialPage), [scopeOpen, setScopeOpen] = useState(false), [leaveNotice, setLeaveNotice] = useState<"" | Key>("");
@@ -145,6 +147,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
       {page === "runtimes" && production && workspace ? <SettingsAttention items={runtimeAttention(workspace, model, t, Boolean(readonly))} /> : null}
       {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}{attentionDot(id)}</h2><p>{overviewSummary(id)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
+        {onboarding ? <OnboardingRerunRow onboarding={onboarding} /> : null}
         <h3>{t("ws.settings.device")} · {t("ws.settings.allSpaces")}</h3><div className="wss-overview">{(["appearance", "updates"] as const).map(id => <button key={id} onClick={() => navigate(id)}><h2>{t(pages[id].name)}{attentionDot(id)}</h2><p>{id === "appearance" ? t("ws.settings.themeSummary") : ["available", "ready"].includes(updates.phase) ? t("ws.settings.updateAvailable", { version: updates.version ?? "" }) : t("ws.settings.updateSummary")}</p><span>{t("ws.settings.open")}</span></button>)}</div></> : null}
       {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option>
             {/* Options come from the registry; only `stable` languages are offered (Jeff decision Q7).
@@ -186,4 +189,16 @@ function runtimeAttention(workspace: WorkspaceDevSnapshot, model: WorkspaceDevMo
   return (workspace.runtimes?.operations ?? []).filter(operation => operation.state === "downloading").map(operation => ({ id: `download-${operation.id}`, tone: "progress" as const,
     text: t("ws.runtimes.attention.downloading", { name: workspace.runtimes?.options.find(option => option.runtimeId === operation.runtimeId)?.label ?? operation.runtimeId }),
     action: { label: t("ws.runtimes.cancelInstall"), disabled: readonly, onClick: () => void model.cancelRuntime(operation.id) } }));
+}
+
+/** «Getting started · Run again» on the overview (design §2 branches: re-enter; plan O4). */
+function OnboardingRerunRow({ onboarding }: { onboarding: { readOnly: boolean; rerun(): Promise<boolean> } }) {
+  const { t } = useWorkspaceLocale();
+  const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
+  return <div className="wss-setting-row wss-onboarding-rerun"><div><strong>{t("ws.onboarding.rerun.title")}</strong>
+    <p>{t(onboarding.readOnly ? "ws.onboarding.rerun.readOnly" : "ws.onboarding.rerun.note")}</p>
+    {failed ? <p role="alert">{t("ws.onboarding.rerun.failed")}</p> : null}</div>
+    <button type="button" disabled={busy || onboarding.readOnly} onClick={() => { setBusy(true); setFailed(false);
+      void onboarding.rerun().then(ok => setFailed(!ok)).catch(() => setFailed(true)).finally(() => setBusy(false)); }}>{t("ws.onboarding.rerun.action")}</button>
+  </div>;
 }
