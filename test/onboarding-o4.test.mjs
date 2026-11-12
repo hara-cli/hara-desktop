@@ -29,18 +29,32 @@ const overview = (locale, onboarding) => { const value = { workspaceId: "A", wor
 for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`overview: «Getting started · Run again» only when the guide is available; read-only viewers cannot rerun (${locale})`, () => {
   const t = makeT(locale);
   assert.equal(overview(locale, undefined).includes("wss-onboarding-rerun"), false, "no entry before the guide ships (unreleased features show no entry)");
-  const html = overview(locale, { readOnly: false, rerun: async () => true });
+  const html = overview(locale, { workspaceId: "A", readOnly: false, rerun: async () => "started" });
   assert.ok(html.includes(esc(t("ws.onboarding.rerun.title"))) && html.includes(esc(t("ws.onboarding.rerun.note"))) && html.includes(`<button type="button">${esc(t("ws.onboarding.rerun.action"))}</button>`));
   assert.ok(html.indexOf("wss-onboarding-rerun") < html.indexOf(`<h3>${esc(t("ws.settings.device"))} ·`), "sits with the workspace cards, before This Mac");
-  const member = overview(locale, { readOnly: true, rerun: async () => true });
+  const member = overview(locale, { workspaceId: "A", readOnly: true, rerun: async () => "started" });
   assert.ok(member.includes(esc(t("ws.onboarding.rerun.readOnly"))) && member.includes(`<button type="button" disabled="">${esc(t("ws.onboarding.rerun.action"))}</button>`));
 });
 
 test("rerun: fresh run from step 1 keeping the engine choice; read-only or failures keep Settings open", () => {
   const hook = read("../src/WorkspaceOnboarding.tsx"), app = read("../src/WorkspaceLocalDev.tsx");
   assert.match(hook, /const saved = await model\.saveOnboarding\(rerunFields\(current, crypto\.randomUUID\(\)\), current\.revision, workspaceId, generation\);/);
-  assert.match(hook, /if \(current\.readOnly\) return false;/);
-  assert.match(hook, /setProgress\(saved\); setHidden\(false\); markOnboardingSeen\(workspaceId, saved\.runId\); setOpen\(true\); return true;/);
-  assert.match(app, /onboarding=\{onboarding\.available \? \{ readOnly: onboarding\.progress\?\.readOnly === true, rerun: async \(\) => \{ const ok = await onboarding\.rerun\(\); if \(ok\) closeSettings\(\); return ok; \} \} : undefined\}/);
+  assert.match(hook, /if \(current\.readOnly\) \{ setProgress\(current\); return "readOnly"; \}/, "read-only is decided by the record even if progress had not loaded (L1)");
+  assert.match(hook, /if \(busy\) return "busy";/);
+  assert.match(hook, /setProgress\(saved\); setHidden\(false\); markOnboardingSeen\(workspaceId, saved\.runId\); setOpen\(true\); return "started";/);
+  assert.match(app, /onboarding=\{onboarding\.available && onboarding\.workspaceId \? \{ workspaceId: onboarding\.workspaceId, readOnly: onboarding\.progress\?\.readOnly === true, rerun: async \(\) => \{ const result = await onboarding\.rerun\(\); if \(result === "started"\) closeSettings\(\); return result; \} \} : undefined\}/);
   assert.match(hook, /available: supported,/, "available follows the same gate as the guide (Core G4 + ONBOARDING_STEPS_READY)");
+});
+
+test("Settings switched to another workspace: no «Run again», since the guide belongs to the main window's workspace (review of #85, M1)", () => {
+  assert.equal(overview("zh-Hans", { workspaceId: "B", readOnly: false, rerun: async () => "started" }).includes("wss-onboarding-rerun"), false);
+  assert.ok(overview("zh-Hans", { workspaceId: "A", readOnly: false, rerun: async () => "started" }).includes("wss-onboarding-rerun"));
+});
+
+test("the row reacts to the reason: read-only shows the read-only text, busy shows nothing, failed shows the alert (review of #85, L1/L2)", () => {
+  const settings = read("../src/WorkspaceSettings.tsx");
+  assert.match(settings, /const readOnly = onboarding\.readOnly \|\| result === "readOnly";/);
+  assert.match(settings, /setResult\(value === "busy" \? null : value\)/);
+  assert.match(settings, /\{result === "failed" \? <p role="alert">/);
+  assert.match(read("../src/workspace-settings.css"), /\.wss-onboarding-rerun p\{margin:var\(--hara-space-1\) 0 0;/, "no hard-coded spacing (L3)");
 });

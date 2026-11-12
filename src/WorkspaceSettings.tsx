@@ -3,6 +3,7 @@ import { localizedWorkspaceView } from "./workspace-default-labels.ts";
 import { WorkspaceDeletedColleagues } from "./WorkspaceDeletedColleagues";
 import { WorkspaceExtensions } from "./WorkspaceExtensions";
 import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import type { OnboardingRerunResult } from "./workspace-onboarding-state";
 import { useWorkspaceLocale, workspacePlatform } from "./workspace-shell-hooks";
 import { ArrowPathIcon, CalendarDaysIcon, ChevronDownIcon, Cog6ToothIcon, ComputerDesktopIcon, HomeIcon, LinkIcon, PaintBrushIcon, SparklesIcon, UsersIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { selectableLanguages, type Key, type LocalePreference } from "./i18n";
@@ -35,7 +36,9 @@ export interface WorkspaceSettingsProps { mainModel: WorkspaceDevModel; initialP
   theme: ReturnType<typeof useStableWorkspaceTheme>; updater: WorkspaceUpdater; versionInfo: DesktopVersionInfo | null;
   onClose(): void; onCreateSkill(workspaceId: string): void;
   /** Present only when the guide is available (Core G4 + all steps shipped); «Run again» resolves false if it could not start. */
-  onboarding?: { readOnly: boolean; rerun(): Promise<boolean> } }
+  /** `workspaceId`: the workspace the guide belongs to (the main window's); Settings shows the row only while it shows that workspace. */
+  onboarding?: SettingsOnboarding }
+export interface SettingsOnboarding { workspaceId: string; readOnly: boolean; rerun(): Promise<OnboardingRerunResult> }
 /** Keep the live shell mounted/inert below the modal. Escape belongs to SettingsLeaveGuard. */
 export function SettingsOverlay({ children, ready, onClose }: { children: ReactNode; ready: boolean; onClose(): void }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -147,7 +150,8 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
       {page === "runtimes" && production && workspace ? <SettingsAttention items={runtimeAttention(workspace, model, t, Boolean(readonly))} /> : null}
       {page === "overview" ? <><h3>{workspace?.label ?? t("ws.settings.workspace")}</h3><div className="wss-overview">{workspacePages.map(id => <button key={id} onClick={() => navigate(id)}><span className="wss-overview-icon">{createElement(pages[id].icon, { className: "hico" })}</span><h2>{t(pages[id].name)}{attentionDot(id)}</h2><p>{overviewSummary(id)}</p><span>{t("ws.settings.manage")} {t(pages[id].name)}</span></button>)}</div>
-        {onboarding ? <OnboardingRerunRow onboarding={onboarding} /> : null}
+        {/* Settings can switch workspace; the guide belongs to the main window's, so the row only shows for that one (review of #85, M1). */}
+        {onboarding && onboarding.workspaceId === view.workspaceId ? <OnboardingRerunRow key={onboarding.workspaceId} onboarding={onboarding} /> : null}
         <h3>{t("ws.settings.device")} · {t("ws.settings.allSpaces")}</h3><div className="wss-overview">{(["appearance", "updates"] as const).map(id => <button key={id} onClick={() => navigate(id)}><h2>{t(pages[id].name)}{attentionDot(id)}</h2><p>{id === "appearance" ? t("ws.settings.themeSummary") : ["available", "ready"].includes(updates.phase) ? t("ws.settings.updateAvailable", { version: updates.version ?? "" }) : t("ws.settings.updateSummary")}</p><span>{t("ws.settings.open")}</span></button>)}</div></> : null}
       {page === "appearance" ? <div className="wss-page-card"><WorkspaceThemeSettings theme={theme} locale={locale} /><label>{t("ws.settings.language")}<select aria-label={t("ws.settings.language")} value={preference} onChange={event => changeLocale(event.target.value as LocalePreference)}><option value="system">{t("ws.locale.system")}</option>
             {/* Options come from the registry; only `stable` languages are offered (Jeff decision Q7).
@@ -192,13 +196,15 @@ function runtimeAttention(workspace: WorkspaceDevSnapshot, model: WorkspaceDevMo
 }
 
 /** «Getting started · Run again» on the overview (design §2 branches: re-enter; plan O4). */
-function OnboardingRerunRow({ onboarding }: { onboarding: { readOnly: boolean; rerun(): Promise<boolean> } }) {
+function OnboardingRerunRow({ onboarding }: { onboarding: SettingsOnboarding }) {
   const { t } = useWorkspaceLocale();
-  const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState(false), [result, setResult] = useState<OnboardingRerunResult | null>(null);
+  const readOnly = onboarding.readOnly || result === "readOnly";
   return <div className="wss-setting-row wss-onboarding-rerun"><div><strong>{t("ws.onboarding.rerun.title")}</strong>
-    <p>{t(onboarding.readOnly ? "ws.onboarding.rerun.readOnly" : "ws.onboarding.rerun.note")}</p>
-    {failed ? <p role="alert">{t("ws.onboarding.rerun.failed")}</p> : null}</div>
-    <button type="button" disabled={busy || onboarding.readOnly} onClick={() => { setBusy(true); setFailed(false);
-      void onboarding.rerun().then(ok => setFailed(!ok)).catch(() => setFailed(true)).finally(() => setBusy(false)); }}>{t("ws.onboarding.rerun.action")}</button>
+    <p>{t(readOnly ? "ws.onboarding.rerun.readOnly" : "ws.onboarding.rerun.note")}</p>
+    {result === "failed" ? <p role="alert">{t("ws.onboarding.rerun.failed")}</p> : null}</div>
+    <button type="button" disabled={busy || readOnly} onClick={() => { setBusy(true); setResult(null);
+      // «busy» (a save already running) is not a failure, so it shows nothing (review of #85, L2).
+      void onboarding.rerun().then(value => setResult(value === "busy" ? null : value)).catch(() => setResult("failed")).finally(() => setBusy(false)); }}>{t("ws.onboarding.rerun.action")}</button>
   </div>;
 }

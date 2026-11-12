@@ -35,6 +35,8 @@ export const onboardingFields = (value: OnboardingProgress): OnboardingFields =>
 export const rerunFields = (value: OnboardingProgress, runId: string): OnboardingFields =>
   ({ runId, step: 1, engineChoice: value.engineChoice, thirdPartySkipped: false, dismissed: false, completedAt: null });
 
+/** Why «Run again» did or did not start (review of #85, L1/L2). */
+export type OnboardingRerunResult = "started" | "readOnly" | "busy" | "failed";
 export type OnboardingSurface = "none" | "sheet" | "resume";
 /**
  * What the workspace shows. The sheet opens by itself only the first time a run is seen and only while Hara

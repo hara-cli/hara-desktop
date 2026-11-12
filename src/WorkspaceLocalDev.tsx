@@ -814,7 +814,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       <div className="wsd-card-actions"><button onClick={() => setRosterMove(null)}>{t("ws.cancel")}</button><button className="hs-btn pri" disabled={!sectionName.trim()} onClick={() => { updateRosterPref(rosterMove.agentId, { section: sectionName.trim() }); setRosterMove(null); }}>{r("move")}</button></div>
     </ShellDialog> : null}
     {onboarding.surface === "sheet" && !settings && workspace ? <WorkspaceOnboarding state={onboarding} model={model} workspace={workspace} steps={ONBOARDING_STEP_VIEWS} /> : null}
-    {settings ? <WorkspaceSettings key={`settings:${view.workspaceId}`} onboarding={onboarding.available ? { readOnly: onboarding.progress?.readOnly === true, rerun: async () => { const ok = await onboarding.rerun(); if (ok) closeSettings(); return ok; } } : undefined} mainModel={model} initialPage={settingsPage} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
+    {settings ? <WorkspaceSettings key={`settings:${view.workspaceId}`} onboarding={onboarding.available && onboarding.workspaceId ? { workspaceId: onboarding.workspaceId, readOnly: onboarding.progress?.readOnly === true, rerun: async () => { const result = await onboarding.rerun(); if (result === "started") closeSettings(); return result; } } : undefined} mainModel={model} initialPage={settingsPage} root={root} production={production} theme={theme} updater={updates.controller} versionInfo={updates.info}
       onClose={closeSettings} onCreateSkill={id => void draftSkill(id)} /> : null}
   </div></div></div>;
 }
