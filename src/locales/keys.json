@@ -674,7 +674,15 @@
     "ws.runtimes.status.installedNotEnabled",
     "ws.runtimes.otherMissing",
     "ws.runtimes.attention.downloading",
-    "ws.runtimes.otherChecking"
+    "ws.runtimes.otherChecking",
+    "ws.connections.attention.invalidKey",
+    "ws.connections.attention.keyRequired",
+    "ws.connections.attention.updateKey",
+    "ws.connections.deleteMenu",
+    "ws.connections.advanced.urls",
+    "ws.connections.advanced.keyStorage",
+    "ws.connections.advanced.scope",
+    "ws.connections.keyNoteShort"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -1966,6 +1974,14 @@
     "ws.runtimes.status.installedNotEnabled",
     "ws.runtimes.otherMissing",
     "ws.runtimes.attention.downloading",
-    "ws.runtimes.otherChecking"
+    "ws.runtimes.otherChecking",
+    "ws.connections.attention.invalidKey",
+    "ws.connections.attention.keyRequired",
+    "ws.connections.attention.updateKey",
+    "ws.connections.deleteMenu",
+    "ws.connections.advanced.urls",
+    "ws.connections.advanced.keyStorage",
+    "ws.connections.advanced.scope",
+    "ws.connections.keyNoteShort"
   ]
 }

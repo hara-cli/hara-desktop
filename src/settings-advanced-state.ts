@@ -39,11 +39,24 @@ export function saveAdvancedOpen(page: string, open: boolean, store: StorageLike
 export interface SettingsAttentionInput {
   /** Software update needs the user (download ready, restart pending…); see `hasUpdateAttention`. */
   updateAttention: boolean;
+  /** Current workspace's model connections, when loaded. */
+  connections?: ConnectionAttentionSource;
+}
+export interface ConnectionAttentionSource {
+  migrationPending?: boolean; recovered?: boolean;
+  connections: { status?: string; keyState?: string; credentialRequired?: boolean; cleanupPending?: boolean }[];
+}
+/** Same conditions as the pinned bars on the connections page: migration to confirm, invalid or missing key, cleanup pending. */
+export function connectionsNeedAttention(value: ConnectionAttentionSource | undefined): boolean {
+  if (!value) return false;
+  if (value.migrationPending && !value.recovered) return true;
+  return value.connections.some(row => row.cleanupPending || !value.migrationPending && row.status === "active" && (row.keyState === "invalid" || row.credentialRequired));
 }
 
 /** Pages whose nav item (and overview card) carry an attention dot. */
 export function settingsAttentionPages(input: SettingsAttentionInput): ReadonlySet<string> {
   const pages = new Set<string>();
   if (input.updateAttention) pages.add("updates");
+  if (connectionsNeedAttention(input.connections)) pages.add("connections");
   return pages;
 }

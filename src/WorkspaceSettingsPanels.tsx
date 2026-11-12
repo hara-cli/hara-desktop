@@ -5,6 +5,7 @@ import type { LegacyConnectionPreview, WorkspaceDevModel, WorkspaceDevSnapshot, 
 import { bindThemePreference, loadThemePreference, saveThemePreference, type ThemePreference } from "./theme";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { settingsStateText } from "./workspace-settings-copy";
+import { SettingsAdvanced, SettingsAttention, SettingsRowMenu, type SettingsAttentionItem } from "./SettingsChrome";
 import { makeT, type Key, type Locale } from "./i18n";
 import { watchSystemVisualPreferences } from "./system-visual-preferences";
 import { applyAppearance, loadAppearance, saveAppearance, type VioletAppearance } from "./violet-appearance";
@@ -79,23 +80,35 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
     try { await action(); setConfirmDelete(null); setConfirmImport(null); }
     catch { setNotice("ws.connections.unknown"); }
     finally { fence.current = false; setPending(false); } };
-  return <section aria-label={t("ws.connections.title")}><h3>{t("ws.connections.heading")}</h3>
-    {readOnly ? <p role="alert">{migrationPending ? t("ws.connections.migrationPending")
+  const active = workspace.connections.connections.filter(row => row.status === "active");
+  const retryMigration = () => void perform(async () => {
+    await model.workspaceRequest("workspace.connection.migration.retry", { expectedRevision: workspace.connections.revision, approved: true }); await model.refresh();
+  });
+  const cleanup = (connection: WorkspaceModelConnection) => void perform(async () => { await model.workspaceRequest("workspace.connection.cleanup", { connectionId: connection.id, expectedRevision: workspace.connections.revision, approved: true }); await model.refresh(); });
+  const edit = (connection: WorkspaceModelConnection) => { setEditing(connection); setAdding(false); };
+  // States that need the user are pinned on top with their one action (settings IA audit, connections).
+  const attention: SettingsAttentionItem[] = [
+    ...(migrationPending && !workspace.connections.recovered ? [{ id: "migration", text: t("ws.connections.migrationPending"), action: { disabled: pending, onClick: retryMigration,
+      label: workspace.connections.connections.some(row => row.keySaved === false) ? t("ws.connections.confirmMigrate", { n: workspace.connections.connections.filter(row => !row.credentialRequired).length, workspace: workspace.label }) : t("ws.connections.retryMigration") } }] : []),
+    ...(migrationPending ? [] : active.filter(row => row.keyState === "invalid" || row.credentialRequired).map(connection => ({ id: `key-${connection.id}`,
+      text: t(connection.keyState === "invalid" ? "ws.connections.attention.invalidKey" : "ws.connections.attention.keyRequired", { name: connection.label }),
+      action: { label: t("ws.connections.attention.updateKey"), disabled: pending || readOnly, onClick: () => edit(connection) } }))),
+    ...workspace.connections.connections.filter(row => row.cleanupPending).map(connection => ({ id: `cleanup-${connection.id}`, text: `${connection.label} · ${t("ws.connections.cleanupPending")} · ${t("ws.connections.cleanupNote")}`,
+      action: { label: t("ws.connections.cleanup"), disabled: pending || readOnly, onClick: () => cleanup(connection) } })),
+  ];
+  return <section aria-label={t("ws.connections.title")}><SettingsAttention items={attention} /><h3>{t("ws.connections.heading")}</h3>
+    {readOnly && !(migrationPending && !workspace.connections.recovered) ? <p role="alert">{migrationPending ? t("ws.connections.migrationPending")
       : unavailable ? t("ws.connections.unavailable") : workspace.connections.recovered ? t("ws.connections.recovered") : t("ws.connections.newerStore")}</p> : null}
-    {migrationPending && !workspace.connections.recovered ? <button disabled={pending} onClick={() => void perform(async () => {
-      await model.workspaceRequest("workspace.connection.migration.retry", { expectedRevision: workspace.connections.revision, approved: true }); await model.refresh();
-    })}>{workspace.connections.connections.some(row => row.keySaved === false) ? t("ws.connections.confirmMigrate", { n: workspace.connections.connections.filter(row => !row.credentialRequired).length, workspace: workspace.label }) : t("ws.connections.retryMigration")}</button> : null}
-    {workspace.connections.connections.filter(row => row.status === "active").map(connection => <div className="wsd-connection" key={connection.id}>
-      <strong>{connection.label}{connection.id === (workspace.connections.activeConnectionId ?? workspace.connections.defaultConnectionId) ? <span className="wsd-pill">{t(migrationPending || connection.credentialRequired ? "ws.connections.originalPending" : "ws.connections.current")}</span> : null}</strong>
-      <small>{t(connection.provider === "anthropic" ? "ws.connections.anthropic" : "ws.connections.openai")} · {connection.defaultModel}</small><code className="wsd-root">{connection.baseURL}</code><small>{t("ws.connections.mask", { state: t(connection.keyState === "invalid" ? "ws.connections.invalidKey" : connection.credentialRequired ? "ws.connections.keyRequired" : connection.keySaved === false || migrationPending ? "ws.connections.pending" : "ws.connections.savedKey") })}</small>
+    {active.map(connection => <div className="wsd-connection wsd-connection-row" key={connection.id}>
+      <div className="wsd-connection-main"><strong>{connection.label}{connection.id === (workspace.connections.activeConnectionId ?? workspace.connections.defaultConnectionId) ? <span className="wsd-pill">{t(migrationPending || connection.credentialRequired ? "ws.connections.originalPending" : "ws.connections.current")}</span> : null}</strong>
+      <small>{t(connection.provider === "anthropic" ? "ws.connections.anthropic" : "ws.connections.openai")} · {connection.defaultModel}</small><small>{t("ws.connections.mask", { state: t(connection.keyState === "invalid" ? "ws.connections.invalidKey" : connection.credentialRequired ? "ws.connections.keyRequired" : connection.keySaved === false || migrationPending ? "ws.connections.pending" : "ws.connections.savedKey") })}</small></div>
       <div className="wsd-card-actions"><button disabled={pending || readOnly || connection.id === workspace.connections.defaultConnectionId} onClick={() => void perform(() => model.changeConnection(connection.id))}>{t("ws.connections.setCurrent")}</button>
-        <button disabled={pending || readOnly} onClick={() => { setEditing(connection); setAdding(false); }}>{t("ws.connections.edit")}</button><button disabled={pending || readOnly} onClick={() => setConfirmDelete(connection)}>{t("ws.connections.delete")}</button></div>
+        <SettingsRowMenu label={connection.label} disabled={pending || readOnly} items={[{ id: "edit", label: t("ws.connections.edit"), onSelect: () => edit(connection) },
+          { id: "delete", label: t("ws.connections.deleteMenu"), danger: true, onSelect: () => setConfirmDelete(connection) }]} /></div>
     </div>)}
-    {workspace.connections.connections.filter(row => row.cleanupPending).map(connection => <div className="wsd-connection" key={`cleanup-${connection.id}`}><strong>{connection.label} · {t("ws.connections.cleanupPending")}</strong><p>{t("ws.connections.cleanupNote")}</p>
-      <button disabled={pending || readOnly} onClick={() => void perform(async () => { await model.workspaceRequest("workspace.connection.cleanup", { connectionId: connection.id, expectedRevision: workspace.connections.revision, approved: true }); await model.refresh(); })}>{t("ws.connections.cleanup")}</button></div>)}
     <button disabled={pending || readOnly} onClick={() => { setAdding(current => !current); setEditing(null); }}>{t("ws.connections.add")}</button>
     {!readOnly && (adding || editing || workspace.connections.connections.length === 0) ? <WorkspaceConnectionForm key={editing?.id ?? "new"} model={model} existing={editing ?? undefined} onDirty={onDirty} onCancel={() => { setEditing(null); setAdding(false); }} onSaved={() => { setEditing(null); setAdding(false); }} /> : null}
-    {legacy.length ? <details className="wsd-legacy-import"><summary>{t("ws.connections.legacyFound")}</summary><p>{t("ws.connections.importNote")}</p>
+    {legacy.length ? <details className="wsd-legacy-import" open={active.length === 0}><summary>{t("ws.connections.legacyFound")}</summary><p>{t("ws.connections.importNote")}</p>
       {legacy.map(row => <div className="wsd-connection" key={row.id}><strong>{row.label}</strong><small>{row.provider} · {row.defaultModel}</small><code>{row.baseURL}</code><small>{t("ws.connections.mask", { state: t("ws.connections.pending") })}</small>
         <button disabled={pending || readOnly || !row.keySaved} onClick={() => setConfirmImport(row)}>{t("ws.connections.import")}</button></div>)}</details> : null}
     {confirmImport ? <section className="wsd-approval" role="dialog" aria-label={t("ws.connections.confirmImport")}><h3>{t("ws.connections.importTitle", { name: confirmImport.label })}</h3><p>{confirmImport.provider} · {confirmImport.defaultModel}</p><code>{confirmImport.baseURL}</code><p>{t("ws.connections.importConfirmNote")}</p>
@@ -103,6 +116,10 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
     {confirmDelete ? <section className="wsd-approval" role="dialog" aria-label={t("ws.connections.confirmDelete")}><h3>{t("ws.connections.deleteTitle", { name: confirmDelete.label })}</h3><p>{t("ws.connections.deleteNote")}</p>
       <button disabled={pending} onClick={() => setConfirmDelete(null)}>{t("ws.cancel")}</button><button disabled={pending || readOnly} onClick={() => void perform(() => model.changeConnection(confirmDelete.id, true))}>{t("ws.connections.deleteConfirm")}</button></section> : null}
     {notice ? <p role="status">{t(notice)}</p> : null}
+    <SettingsAdvanced page="connections" items={[t("ws.connections.advanced.urls"), t("ws.connections.advanced.keyStorage"), t("ws.connections.advanced.scope")]}>
+      {active.length ? <dl className="wsd-connection-urls">{active.map(connection => <div key={connection.id}><dt>{connection.label}</dt><dd><code className="wsd-root">{connection.baseURL}</code></dd></div>)}</dl> : null}
+      <p>{t("ws.connections.keyNote")}</p><p>{t("ws.connections.scopeNote")}</p>
+    </SettingsAdvanced>
   </section>;
 }
 export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty, onCreateSkill }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; kind: "schedules" | "skills"; onClose?: () => void; onDirty?: (value: boolean) => void; onCreateSkill?: () => void }) {

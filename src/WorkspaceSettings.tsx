@@ -115,7 +115,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
   }, [scopeOpen]);
   const switchScope = (workspaceId: string) => { if (workspaceId !== view.workspaceId) requestLeave({ kind: "scope", workspaceId }); else setScopeOpen(false); };
   const workspacePages: SettingsPage[] = ["colleagues", "connections", "runtimes", "schedules", "plugins", "skills", ...(selected?.kind === "team" ? ["members" as const] : []), "general"];
-  const attention = settingsAttentionPages({ updateAttention: hasUpdateAttention(updates) });
+  const attention = settingsAttentionPages({ updateAttention: hasUpdateAttention(updates), connections: workspace?.connections });
   const navItem = (id: SettingsPage) => <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}><span aria-hidden>{createElement(pages[id].icon, { className: "hico" })}</span><span>{t(pages[id].name)}</span>{attention.has(id) ? <i className="wss-update-dot" role="img" aria-label={t("ws.settings.attention")} /> : null}</button>;
   const key = workspace ? `${workspace.workspaceId}:${workspace.resourceGeneration}:${page}` : "loading";
   return <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}>

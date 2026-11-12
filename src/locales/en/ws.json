@@ -1446,5 +1446,13 @@
   "ws.runtimes.status.installedNotEnabled": "Installed · not enabled",
   "ws.runtimes.otherMissing": "Other engines · {n} not installed",
   "ws.runtimes.attention.downloading": "Downloading and checking {name}…",
-  "ws.runtimes.otherChecking": "Other engines · checking…"
+  "ws.runtimes.otherChecking": "Other engines · checking…",
+  "ws.connections.attention.invalidKey": "{name}'s key is no longer valid; colleagues can't reach this model.",
+  "ws.connections.attention.keyRequired": "{name} has no key yet; add one to use it.",
+  "ws.connections.attention.updateKey": "Update key",
+  "ws.connections.deleteMenu": "Delete…",
+  "ws.connections.advanced.urls": "Service URLs",
+  "ws.connections.advanced.keyStorage": "Key storage",
+  "ws.connections.advanced.scope": "Scope",
+  "ws.connections.keyNoteShort": "Keys stay in this Mac's Keychain and can't be viewed after saving."
 }

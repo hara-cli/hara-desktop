@@ -1446,5 +1446,13 @@
   "ws.runtimes.status.installedNotEnabled": "已安裝 · 未啟用",
   "ws.runtimes.otherMissing": "其他引擎 · {n} 個沒裝",
   "ws.runtimes.attention.downloading": "正在下載並檢查 {name}…",
-  "ws.runtimes.otherChecking": "其他引擎 · 正在檢查…"
+  "ws.runtimes.otherChecking": "其他引擎 · 正在檢查…",
+  "ws.connections.attention.invalidKey": "{name} 的 Key 失效了，同事暫時連不上這個模型。",
+  "ws.connections.attention.keyRequired": "{name} 還沒有 Key，加入後才能使用。",
+  "ws.connections.attention.updateKey": "更新 Key",
+  "ws.connections.deleteMenu": "刪除…",
+  "ws.connections.advanced.urls": "服務位址",
+  "ws.connections.advanced.keyStorage": "Key 儲存說明",
+  "ws.connections.advanced.scope": "作用範圍",
+  "ws.connections.keyNoteShort": "Key 只存在這台 Mac 的鑰匙圈裡，儲存後看不到原文。"
 }

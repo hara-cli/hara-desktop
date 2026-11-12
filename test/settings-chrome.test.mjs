@@ -88,7 +88,7 @@ test("nav attention dots come from one derived source and keep today's update be
   assert.deepEqual([...settingsAttentionPages({ updateAttention: true })], ["updates"]);
   assert.deepEqual([...settingsAttentionPages({ updateAttention: false })], []);
   const shell = readFileSync(new URL("../src/WorkspaceSettings.tsx", import.meta.url), "utf8");
-  assert.match(shell, /settingsAttentionPages\(\{ updateAttention: hasUpdateAttention\(updates\) \}\)/);
+  assert.match(shell, /settingsAttentionPages\(\{ updateAttention: hasUpdateAttention\(updates\), connections: workspace\?\.connections \}\)/);
   assert.match(shell, /attention\.has\(id\) \? <i className="wss-update-dot" role="img" aria-label=\{t\("ws\.settings\.attention"\)\} \/>/);
 });
 
