@@ -710,7 +710,15 @@
     "ws.onboarding.rerun.note",
     "ws.onboarding.rerun.action",
     "ws.onboarding.rerun.readOnly",
-    "ws.onboarding.rerun.failed"
+    "ws.onboarding.rerun.failed",
+    "ws.runtimes.default.title",
+    "ws.runtimes.default.note",
+    "ws.runtimes.default.piFirst",
+    "ws.runtimes.default.unavailable",
+    "ws.runtimes.default.saved",
+    "ws.runtimes.default.saveUnknown",
+    "ws.runtimes.default.loadFailed",
+    "ws.runtimes.default.readOnly"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -2111,6 +2119,14 @@
     "ws.onboarding.rerun.note",
     "ws.onboarding.rerun.action",
     "ws.onboarding.rerun.readOnly",
-    "ws.onboarding.rerun.failed"
+    "ws.onboarding.rerun.failed",
+    "ws.runtimes.default.title",
+    "ws.runtimes.default.note",
+    "ws.runtimes.default.piFirst",
+    "ws.runtimes.default.unavailable",
+    "ws.runtimes.default.saved",
+    "ws.runtimes.default.saveUnknown",
+    "ws.runtimes.default.loadFailed",
+    "ws.runtimes.default.readOnly"
   ]
 }

@@ -1555,5 +1555,13 @@
   "ws.onboarding.rerun.note": "Go through it again from step 1 with your current settings; colleagues already created won’t be created again.",
   "ws.onboarding.rerun.action": "Run again",
   "ws.onboarding.rerun.readOnly": "You can only view this workspace, so you can’t run the guide again.",
-  "ws.onboarding.rerun.failed": "Couldn’t restart the guide. Please try again."
+  "ws.onboarding.rerun.failed": "Couldn’t restart the guide. Please try again.",
+  "ws.runtimes.default.title": "New colleagues use",
+  "ws.runtimes.default.note": "Only affects colleagues you create later; existing colleagues keep their engine. Choosing doesn't check or start the engine.",
+  "ws.runtimes.default.piFirst": "Pi first (default)",
+  "ws.runtimes.default.unavailable": "{name} (not available now)",
+  "ws.runtimes.default.saved": "Saved. Only colleagues created from now on use it.",
+  "ws.runtimes.default.saveUnknown": "Not sure it was saved yet. Reopen settings to check before choosing again.",
+  "ws.runtimes.default.loadFailed": "Couldn't read the default engine. Reopen settings to retry.",
+  "ws.runtimes.default.readOnly": "This setting is read-only here."
 }
