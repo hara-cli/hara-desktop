@@ -156,7 +156,7 @@ for (const restart of ["keep", "fresh"]) test("confirmation " + restart + " refr
   const f = mount(); await f.flush();
   f.picker().props.onApply("codex"); f.render();
   if (restart === "fresh") { f.all().filter(node => node.type === "input")[1].props.onChange(); f.render(); }
-  const confirm = f.button("Confirm runtime change");
+  const confirm = f.button("Confirm engine change");
   confirm.props.onClick(); confirm.props.onClick(); await f.flush();
   assert.deepEqual(f.changes, [["codex", restart]], "duplicate click has one effect");
   assert.equal(f.requests[0], "pi"); assert.equal(f.requests.at(-1), "codex");
@@ -179,11 +179,11 @@ test("empty, detected and missing have different guidance; rescan does not insta
       { runtimeId: "claude", label: "Claude Code", state: "not_installed" },
     ] } }, onRescan: async () => { scans++; } });
   await f.flush();
-  assert.ok(f.text().includes("No usable runtime"));
+  assert.ok(f.text().includes("No usable engine"));
   assert.ok(f.text().includes(makeT("en")("ws.runtimeAccess.detected", { runtime: "Codex" })));
   assert.ok(f.text().includes("Claude Code · No usable installation"));
   assert.deepEqual(f.requests, []);
-  f.button("Rescan local runtimes").props.onClick(); await f.flush();
+  f.button("Rescan local engines").props.onClick(); await f.flush();
   assert.equal(scans, 1); assert.deepEqual(f.changes, []); assert.deepEqual(f.registrations, []);
   f.button(makeT("en")("ws.runtimeAccess.register")).props.onClick(); f.render();
   assert.equal(f.registrations.length, 0); assert.ok(f.dialog());
@@ -205,14 +205,14 @@ test("reject mismatched catalogs, expired confirmations and unavailable targets"
   const f = mount({ listModels: async () => ({ runtimeId: "claude", revision: 1, selectedModelId: "wrong", models: [{ id: "wrong", label: "Wrong model" }] }) });
   await f.flush(); assert.ok(f.text().includes("does not match")); assert.equal(f.text().includes("Wrong model"), false);
   f.picker().props.onApply("codex"); f.render();
-  const confirm = f.button("Confirm runtime change");
+  const confirm = f.button("Confirm engine change");
   f.render({ agent: { ...f.props().agent, configRevision: 3 } });
   assert.equal(f.dialog(), undefined);
   confirm.props.onClick(); await f.flush(); assert.deepEqual(f.changes, []);
   f.picker().props.onApply("codex"); f.render();
   f.render({ workspace: { ...f.props().workspace, runtimeOptions: [{ id: "codex", label: "Codex", available: false, reason: "not_installed" }] } });
-  assert.equal(f.button("Confirm runtime change").props.disabled, true);
-  f.button("Confirm runtime change").props.onClick(); await f.flush(); assert.deepEqual(f.changes, []);
+  assert.equal(f.button("Confirm engine change").props.disabled, true);
+  f.button("Confirm engine change").props.onClick(); await f.flush(); assert.deepEqual(f.changes, []);
 });
 
 test("both Hara and colleagues use the same confirmation and active work blocks fresh", async () => {
@@ -253,7 +253,7 @@ test("available binding hides detected discovery cards; listModels failures surf
     if (typeof node === "string" || typeof node === "number") return String(node);
     return node?.props ? heading(node.props.children) : "";
   };
-  assert.equal(f.all().some(node => node.type === "h3" && heading(node) === "Runtime"), false);
+  assert.equal(f.all().some(node => node.type === "h3" && heading(node) === "Engine"), false);
 
   const fail = mount({ listModels: async () => { throw new Error("codex model inventory failed"); } });
   await fail.flush();
@@ -284,7 +284,7 @@ for (const kind of ["main", "colleague"]) test(kind + " inventory failure keeps 
   assert.equal(f.button("Apply model").props.disabled, true);
   assert.equal(f.text().includes(makeT("en")("ws.runtimeAccess.register")), false);
   assert.equal(f.text().includes("Install in Settings"), false);
-  const rescan = f.button("Rescan local runtimes");
+  const rescan = f.button("Rescan local engines");
   assert.equal(rescan.props.className, "vg-runtime-rescan");
   rescan.props.onClick(); await f.flush();
   assert.equal(scans, 1);
@@ -292,7 +292,7 @@ for (const kind of ["main", "colleague"]) test(kind + " inventory failure keeps 
   assert.ok(f.text().includes("Recovered model"));
   assert.equal(f.text().includes(makeT("en")("ws.runtimeAccess.register")), false);
   assert.equal(f.text().includes("Install in Settings"), false);
-  assert.ok(f.picker()); assert.equal(f.button("Rescan local runtimes").props.className, rescan.props.className);
+  assert.ok(f.picker()); assert.equal(f.button("Rescan local engines").props.className, rescan.props.className);
 });
 
 test("failure recovery links only the current missing installation, never integrity or inventory", async () => {
@@ -334,7 +334,7 @@ test("recovery actions use a full-width brand primary over a text secondary with
 test("rescan invalidates an older inventory response even if the rescan fails", async () => {
   const pending = deferred();
   const f = mount({ listModels: () => pending.promise, onRescan: async () => { throw new Error("fixture rescan failed"); } });
-  f.button("Rescan local runtimes").props.onClick(); await f.flush();
+  f.button("Rescan local engines").props.onClick(); await f.flush();
   pending.resolve({ runtimeId: "pi", revision: 1, selectedModelId: "old", models: [{ id: "old", label: "Stale model" }] });
   await f.flush();
   assert.equal(f.all().find(node => node.type === "select" && node.props["aria-label"] === "This Hara colleague's model").props.disabled, true);

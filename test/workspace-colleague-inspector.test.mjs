@@ -112,7 +112,7 @@ test("main and colleague inspectors retain identical visible, disabled same-valu
       async onApplyRuntime() {}, async onApplyModel() {}, async onRescan() {}, async onRegisterRuntime() {}, onRuntimeDirectory() {}, async onSaveProfile() {} }));
     assert.match(html, /<select[^>]*aria-label="Engine"/);
     assert.match(html, /<button[^>]*disabled=""[^>]*>Use this engine<\/button>/);
-    assert.match(html, /Rescan local runtimes/);
+    assert.match(html, /Rescan local engines/);
     assert.match(html, /<select[^>]*aria-label="This Hara colleague&#x27;s model"[^>]*disabled=""/);
     assert.doesNotMatch(html, /Install in Settings|>Enable<|Antigravity found/);
   }
