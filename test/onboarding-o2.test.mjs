@@ -39,8 +39,11 @@ test("no engine reads «Ready» until a check just listed its models; unchecked 
   assert.equal(rows.pi.status, "ws.runtimes.status.enabled", "Pi with a connection is enabled, not ready, until checked");
   const checked = byId(engineRows(connected, { codex: { state: "ok", models: 12 }, pi: { state: "failed", network: true } }, false, t));
   assert.equal(checked.codex.status, "ws.onboarding.engine.status.ready"); assert.equal(checked.codex.detail, t("ws.onboarding.engine.listed", { n: 12 }));
-  assert.equal(checked.pi.status, "ws.onboarding.engine.status.failed"); assert.equal(checked.pi.detail, t("ws.onboarding.engine.networkShort"));
-  assert.equal(byId(engineRows(connected, { codex: { state: "ok", models: 0 } }, false, t)).codex.status, "ws.onboarding.engine.status.ready", "the step maps zero models to failed before storing it");
+  assert.deepEqual([checked.pi.status, checked.pi.tone, checked.pi.detail, checked.pi.detailTone], ["ws.runtimes.status.enabled", "", t("ws.onboarding.engine.networkShort"), "warn"],
+    "DESIGN 2.1.2 §11.4: a failed check still reads «Enabled» with the reason in warning colour (review of #83, M1)");
+  assert.ok(t("ws.onboarding.engine.networkShort").length && t("ws.onboarding.engine.failedShort").length);
+  assert.equal(byId(engineRows(connected, { codex: { state: "failed", network: false } }, false, t)).codex.detail, t("ws.onboarding.engine.failedShort"));
+  assert.equal(checked.pi.selectable, true, "a failed engine can still be chosen; the detail says so (L3)");
   assert.match(source, /result\.models\.length \? \{ state: "ok", models: result\.models\.length \} : \{ state: "failed", network: false \}/);
 });
 
