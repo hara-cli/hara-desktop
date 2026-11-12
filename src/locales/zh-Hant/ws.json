@@ -1445,5 +1445,6 @@
   "ws.runtimes.status.enabled": "已啟用",
   "ws.runtimes.status.installedNotEnabled": "已安裝 · 未啟用",
   "ws.runtimes.otherMissing": "其他引擎 · {n} 個沒裝",
-  "ws.runtimes.attention.downloading": "正在下載並檢查 {name}…"
+  "ws.runtimes.attention.downloading": "正在下載並檢查 {name}…",
+  "ws.runtimes.otherChecking": "其他引擎 · 正在檢查…"
 }

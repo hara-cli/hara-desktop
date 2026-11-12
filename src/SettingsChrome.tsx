@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ChevronRightIcon, EllipsisHorizontalIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { ArrowDownTrayIcon, ChevronRightIcon, EllipsisHorizontalIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { loadAdvancedOpen, saveAdvancedOpen } from "./settings-advanced-state";
 
@@ -66,11 +66,12 @@ export function SettingsRowMenu({ label, items, disabled = false }: { label: str
   </span>;
 }
 
-export interface SettingsAttentionItem { id: string; text: string; action?: { label: string; onClick(): void; disabled?: boolean } }
+/** `tone: "progress"` is for work in progress the user may cancel (a download); it is pinned like an alert but is not one. */
+export interface SettingsAttentionItem { id: string; text: string; tone?: "attention" | "progress"; action?: { label: string; onClick(): void; disabled?: boolean } }
 export function SettingsAttention({ items }: { items: SettingsAttentionItem[] }) {
   if (!items.length) return null;
-  return <div className="wss-attention-list">{items.map(item => <div key={item.id} className="wss-attention" role="status" data-settings-attention={item.id}>
-    <ExclamationTriangleIcon className="hico" aria-hidden /><span>{item.text}</span>
+  return <div className="wss-attention-list">{items.map(item => <div key={item.id} className={`wss-attention${item.tone === "progress" ? " is-progress" : ""}`} role="status" data-settings-attention={item.id}>
+    {item.tone === "progress" ? <ArrowDownTrayIcon className="hico" aria-hidden /> : <ExclamationTriangleIcon className="hico" aria-hidden />}<span>{item.text}</span>
     {item.action ? <button type="button" disabled={item.action.disabled} onClick={item.action.onClick}>{item.action.label}</button> : null}
   </div>)}</div>;
 }

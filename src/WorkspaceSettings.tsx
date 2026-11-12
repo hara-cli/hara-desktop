@@ -164,7 +164,7 @@ function General({ workspace, root, role, kind }: { workspace: WorkspaceDevSnaps
 }
 /** Engine page: a running download is pinned above the page with its cancel action (settings IA audit, runtimes). */
 function runtimeAttention(workspace: WorkspaceDevSnapshot, model: WorkspaceDevModel, t: ReturnType<typeof useWorkspaceLocale>["t"], readonly: boolean): SettingsAttentionItem[] {
-  return (workspace.runtimes?.operations ?? []).filter(operation => operation.state === "downloading").map(operation => ({ id: `download-${operation.id}`,
+  return (workspace.runtimes?.operations ?? []).filter(operation => operation.state === "downloading").map(operation => ({ id: `download-${operation.id}`, tone: "progress" as const,
     text: t("ws.runtimes.attention.downloading", { name: workspace.runtimes?.options.find(option => option.runtimeId === operation.runtimeId)?.label ?? operation.runtimeId }),
     action: { label: t("ws.runtimes.cancelInstall"), disabled: readonly, onClick: () => void model.cancelRuntime(operation.id) } }));
 }

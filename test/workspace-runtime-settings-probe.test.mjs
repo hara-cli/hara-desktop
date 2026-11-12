@@ -75,3 +75,14 @@ for (const locale of ["en", "zh-Hans", "zh-Hant"]) {
     } finally { f.dispose(); }
   });
 }
+
+for (const locale of ["en", "zh-Hans", "zh-Hant"]) test(`the not-installed fold says «checking» until this page's own detection finishes (${locale})`, async () => {
+  const f = mount(locale, "not_installed");
+  try {
+    const before = f.render();
+    assert.ok(before.includes(`<summary>${f.t("ws.runtimes.otherChecking")}</summary>`), "no «N not installed» verdict while detection is still running");
+    assert.equal(before.includes(f.t("ws.runtimes.otherMissing", { n: 1 })), false);
+    const after = await f.flush(); assert.deepEqual(f.calls, ["detect"]);
+    assert.ok(after.includes(`<summary>${f.t("ws.runtimes.otherMissing", { n: 1 })}</summary>`), "the count appears once detection has completed");
+  } finally { f.dispose(); }
+});

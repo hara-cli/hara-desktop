@@ -43,8 +43,10 @@ for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`settings never claims a
 for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`engines that are not installed fold into one row (${locale})`, () => {
   const t = makeT(locale);
   const html = runtimes(workspace([option("codex", { state: "registered", registered: true, installed: true, use: "ready" }), option("opencode"), option("copilot")]), locale);
-  const summary = t("ws.runtimes.otherMissing", { n: 2 });
+  // First render is before this page's own detection completes: no verdict yet (the count is covered in workspace-runtime-settings-probe).
+  const summary = t("ws.runtimes.otherChecking");
   assert.ok(html.includes(`<details class="wsd-runtime-details wsd-runtime-missing"><summary>${summary}</summary>`), summary);
+  assert.equal(html.includes(t("ws.runtimes.otherMissing", { n: 2 })), false);
   const folded = html.slice(html.indexOf("wsd-runtime-missing"));
   assert.ok(folded.includes("OpenCode") && folded.includes("GitHub Copilot"), "missing engines and their install actions stay reachable inside");
   assert.equal(folded.includes(">Codex<"), false, "enabled engines stay outside the fold");
@@ -78,6 +80,7 @@ test("a running download is pinned at the top of the engine page with its cancel
     versionInfo: null, onClose() {}, onCreateSkill() {}, theme: { preference: "system", settings: { readOnly: false }, notice: "", change() {}, changeDetails() {} } }));
   const bar = shell.slice(shell.indexOf('data-settings-attention="download-op1"'));
   assert.ok(bar.includes(t("ws.runtimes.attention.downloading", { name: "Codex" })) && bar.includes(`>${t("ws.runtimes.cancelInstall")}</button>`));
+  assert.ok(shell.includes('class="wss-attention is-progress" role="status" data-settings-attention="download-op1"'), "a download is progress, not an alert");
   assert.ok(shell.indexOf("download-op1") < shell.indexOf("wsd-runtime-settings"), "pinned above the page content");
 });
 

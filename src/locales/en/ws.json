@@ -1445,5 +1445,6 @@
   "ws.runtimes.status.enabled": "Enabled",
   "ws.runtimes.status.installedNotEnabled": "Installed · not enabled",
   "ws.runtimes.otherMissing": "Other engines · {n} not installed",
-  "ws.runtimes.attention.downloading": "Downloading and checking {name}…"
+  "ws.runtimes.attention.downloading": "Downloading and checking {name}…",
+  "ws.runtimes.otherChecking": "Other engines · checking…"
 }
