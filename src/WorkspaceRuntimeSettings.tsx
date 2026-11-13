@@ -5,6 +5,7 @@ import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { runtimeOperationText } from "./workspace-settings-copy";
 import { SettingsAdvanced, SettingsRowMenu } from "./SettingsChrome";
 import { SettingsActionResult } from "./SettingsActionDialog";
+import { SettingsConnectionModelField } from "./SettingsConnectionModelField";
 import { type Key } from "./i18n";
 import type { RuntimeApprovalCard, RuntimeLoginSource, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceModelConnection } from "./workspace-dev-state";
 
@@ -108,7 +109,7 @@ function IsolatedLoginChoice({ runtimeId, loginSource, children }: { runtimeId: 
 }
 
 /** `firstKey`: no connection in this workspace has saved a key yet, so macOS may show a Keychain prompt on save (review of #76, L3). */
-export function WorkspaceConnectionForm({ model, existing, firstKey = false, onSaved, onCancel, onDirty, onPending }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; firstKey?: boolean; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void; onPending?: (value: boolean) => void }) {
+export function WorkspaceConnectionForm({ model, existing, firstKey = false, settingsModels, onSaved, onCancel, onDirty, onPending }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; firstKey?: boolean; settingsModels?: WorkspaceDevSnapshot; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void; onPending?: (value: boolean) => void }) {
   const { t } = useWorkspaceLocale();
   const [label, setLabel] = useState(existing?.label ?? ""), [provider, setProvider] = useState<"openai" | "anthropic">(existing?.provider ?? "openai");
   const [baseURL, setBaseURL] = useState(existing?.baseURL ?? ""), [defaultModel, setDefaultModel] = useState(existing?.defaultModel ?? ""), [apiKey, setKey] = useState("");
@@ -141,7 +142,8 @@ export function WorkspaceConnectionForm({ model, existing, firstKey = false, onS
     <label>{t("ws.connections.name")}<input value={label} disabled={saving || unknown} onChange={event => setLabel(event.target.value)} maxLength={80} required /></label>
     <label>{t("ws.connections.protocol")}<select value={provider} disabled={saving || unknown} onChange={event => setProvider(event.target.value as "openai" | "anthropic")}><option value="openai">{t("ws.connections.openai")}</option><option value="anthropic">{t("ws.connections.anthropic")}</option></select></label>
     <label>{t("ws.connections.baseURL")}<input type="url" value={baseURL} disabled={saving || unknown} onChange={event => setBaseURL(event.target.value)} placeholder="https://…" autoComplete="off" required /></label>
-    <label>{t("ws.connections.model")}<input value={defaultModel} disabled={saving || unknown} onChange={event => setDefaultModel(event.target.value)} autoComplete="off" required /></label>
+    {settingsModels ? <SettingsConnectionModelField model={model} workspace={settingsModels} existing={existing} draft={{ provider, baseURL, keyEdited: apiKey !== "" }} value={defaultModel} disabled={saving || unknown} onChange={setDefaultModel} />
+      : <label>{t("ws.connections.model")}<input value={defaultModel} disabled={saving || unknown} onChange={event => setDefaultModel(event.target.value)} autoComplete="off" required /></label>}
     <label>{t("ws.connections.apiKey")}{existing && !existing.credentialRequired ? t("ws.connections.keepKey") : ""}<input type="password" value={apiKey} disabled={saving || unknown} onChange={event => setKey(event.target.value)} autoComplete="new-password" spellCheck={false} required={!existing || existing.credentialRequired} /></label>
     <small>{t(firstKey && !existing ? "ws.connections.keyNoteFirst" : "ws.connections.keyNoteShort")}</small>
     <SettingsActionResult text={reloadFailed ? t("ws.connections.reloadFailed") : unknown ? t(existing ? "ws.connections.editUnknown" : "ws.connections.saveUnknown") : ""} error />

@@ -4,6 +4,11 @@ import { isImeCompositionKey } from "./ime";
 
 interface ModelComboboxProps {
   value: string;
+  /** Inline keeps the list inside a native modal top layer. Existing callers retain their portal. */
+  presentation?: "portal" | "inline";
+  inputId?: string;
+  describedBy?: string;
+  required?: boolean;
   options: readonly string[];
   disabled?: boolean;
   /** When false, typing only filters verified options and can never commit an arbitrary model id. */
@@ -32,6 +37,10 @@ const normalizeSearch = (value: string): string => value.trim().toLocaleLowerCas
 
 export function ModelCombobox({
   value,
+  presentation = "portal",
+  inputId,
+  describedBy,
+  required = false,
   options,
   disabled = false,
   allowCustom = true,
@@ -87,7 +96,7 @@ export function ModelCombobox({
   }, [activeIndex, choices.length]);
 
   useLayoutEffect(() => {
-    if (!open) {
+    if (!open || presentation === "inline") {
       setFloatingStyle(null);
       return;
     }
@@ -124,7 +133,12 @@ export function ModelCombobox({
       window.removeEventListener("resize", positionList);
       window.removeEventListener("scroll", positionList, true);
     };
-  }, [open]);
+  }, [open, presentation]);
+
+  const activeChoiceId = choices[activeIndex]?.id;
+  useLayoutEffect(() => {
+    if (presentation === "inline" && open && activeChoiceId) document.getElementById(activeChoiceId)?.scrollIntoView({ block: "nearest" });
+  }, [activeChoiceId, open, presentation]);
 
   const commit = (choice: ModelChoice) => {
     onChange(choice.value);
@@ -140,6 +154,38 @@ export function ModelCombobox({
     setActiveIndex(-1);
     inputRef.current?.focus();
   };
+
+  const list = open && (presentation === "inline" || floatingStyle) && typeof document !== "undefined" ? (
+        <div id={listboxId} className={`model-combobox-list${presentation === "inline" ? " model-combobox-list-inline" : ""}`} role="listbox" aria-label={ariaLabel} style={presentation === "inline" ? undefined : floatingStyle ?? undefined}>
+          {choices.length ? choices.map((choice, index) => (
+            <button
+              type="button"
+              id={choice.id}
+              key={choice.id}
+              role="option"
+              aria-selected={choice.value === value}
+              className={`${index === activeIndex ? "active" : ""} ${choice.custom ? "custom" : ""}`}
+              tabIndex={-1}
+              onMouseEnter={presentation === "portal" ? () => setActiveIndex(index) : undefined}
+              onMouseMove={presentation === "inline" ? () => setActiveIndex(index) : undefined}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => commit(choice)}
+            >
+              <span className="model-combobox-option-copy">
+                <strong title={!choice.custom && formatOption?.(choice.value) !== choice.value ? choice.value : undefined}>
+                  {choice.custom
+                    ? `${customOptionLabel}: ${choice.value}`
+                    : formatOption?.(choice.value) ?? choice.value}
+                </strong>
+                {!choice.custom && describeOption?.(choice.value) ? <small>{describeOption(choice.value)}</small> : null}
+              </span>
+              <small className="model-combobox-option-state">{choice.custom ? customBadge : choice.value === value ? "✓" : ""}</small>
+            </button>
+          )) : (
+            <div className="model-combobox-empty">{emptyLabel}</div>
+          )}
+        </div>
+  ) : null;
 
   return (
     <div
@@ -158,6 +204,9 @@ export function ModelCombobox({
       <div className="model-combobox-control">
         <input
           ref={inputRef}
+          id={inputId}
+          aria-describedby={describedBy}
+          required={required}
           role="combobox"
           aria-label={ariaLabel}
           aria-autocomplete="list"
@@ -212,6 +261,7 @@ export function ModelCombobox({
             }
             if (event.key === "Escape" && open) {
               event.preventDefault();
+              if (presentation === "inline") event.stopPropagation();
               setQuery(value);
               setOpen(false);
               setActiveIndex(-1);
@@ -240,37 +290,7 @@ export function ModelCombobox({
         </button>
       </div>
 
-      {open && floatingStyle && typeof document !== "undefined" && createPortal(
-        <div id={listboxId} className="model-combobox-list" role="listbox" aria-label={ariaLabel} style={floatingStyle}>
-          {choices.length ? choices.map((choice, index) => (
-            <button
-              type="button"
-              id={choice.id}
-              key={choice.id}
-              role="option"
-              aria-selected={choice.value === value}
-              className={`${index === activeIndex ? "active" : ""} ${choice.custom ? "custom" : ""}`}
-              tabIndex={-1}
-              onMouseEnter={() => setActiveIndex(index)}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => commit(choice)}
-            >
-              <span className="model-combobox-option-copy">
-                <strong title={!choice.custom && formatOption?.(choice.value) !== choice.value ? choice.value : undefined}>
-                  {choice.custom
-                    ? `${customOptionLabel}: ${choice.value}`
-                    : formatOption?.(choice.value) ?? choice.value}
-                </strong>
-                {!choice.custom && describeOption?.(choice.value) ? <small>{describeOption(choice.value)}</small> : null}
-              </span>
-              <small className="model-combobox-option-state">{choice.custom ? customBadge : choice.value === value ? "✓" : ""}</small>
-            </button>
-          )) : (
-            <div className="model-combobox-empty">{emptyLabel}</div>
-          )}
-        </div>,
-        document.body,
-      )}
+      {presentation === "inline" ? list : list && createPortal(list, document.body)}
     </div>
   );
 }

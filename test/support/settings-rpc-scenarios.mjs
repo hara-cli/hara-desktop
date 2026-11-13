@@ -96,7 +96,7 @@ export async function recordSettingsRpc(WorkspaceDevModel) {
 }
 
 /** Settings screens whose model calls are compared with the baseline (the files the S0–S4 cleanup touched). */
-export const SETTINGS_FILES = ["SettingsChrome.tsx", "WorkspaceDefaultRuntime.tsx", "WorkspaceDeletedColleagues.tsx", "WorkspaceExtensions.tsx", "WorkspaceRuntimeSettings.tsx", "WorkspaceRuntimeProxy.tsx",
+export const SETTINGS_FILES = ["SettingsConnectionModelField.tsx", "SettingsChrome.tsx", "WorkspaceDefaultRuntime.tsx", "WorkspaceDeletedColleagues.tsx", "WorkspaceExtensions.tsx", "WorkspaceRuntimeSettings.tsx", "WorkspaceRuntimeProxy.tsx",
   "WorkspaceSchedulePicker.tsx", "WorkspaceSettings.tsx", "WorkspaceSettingsPanels.tsx", "WorkspaceSoftwareUpdate.tsx", "settings-advanced-state.ts", "settings-schedule-text.ts"];
 const RECEIVERS = /^(model|mainModel|updater|settingsModel|props\.model)$/;
 /**
