@@ -1,6 +1,6 @@
 import { DEFAULT_RUNTIME_PLATFORM, type WorkspaceRuntimePlatform } from "./runtime-platform.ts";
 import { workspaceErrorState } from "./core-i18n.ts";
-import { workspaceMediaMimeAllowed } from "./workspace-media.ts";
+import { MAX_PASTE_IMAGE_BYTES, PASTE_IMAGE_TYPES, pasteImageChunks, workspaceMediaMimeAllowed } from "./workspace-media.ts";
 import type { WorkspaceMedia, WorkspaceMediaDescription } from "./workspace-media";
 import { LocalWaitClock, waitScope } from "./wait-timing.ts";
 import { parseContextCompactions, type ContextCompactionView } from "./context-compaction.ts";
@@ -247,6 +247,25 @@ export class WorkspaceDevModel {
     if (this.view.workspace?.workspaceId !== workspace.workspaceId || this.view.workspace?.resourceGeneration !== workspace.resourceGeneration
       || !result || !/^[a-f0-9]{64}$/u.test(result.id) || !workspaceMediaMimeAllowed(result.mime) || !Number.isSafeInteger(result.bytes) || result.bytes < 1) throw new Error("Workspace media unavailable");
     return result;
+  }
+  supportsMediaImport(): boolean { return this.rpc.supportsCapability?.("workspace.media.import.v1") === true; }
+  /** Sends a pasted image to Core in ordered chunks; Core stores it under the managed project's attachments/. */
+  async importPastedImage(bytes: Uint8Array, mime: string, expectedScope = this.mediaScope): Promise<{ path: string; media: WorkspaceMedia }> {
+    const workspace = this.view.workspace;
+    if (!workspace || expectedScope !== this.mediaScope || !this.supportsMediaImport()) throw new Error("Workspace media unavailable");
+    if (!PASTE_IMAGE_TYPES.includes(mime) || !bytes.length) throw new Error("image_type");
+    if (bytes.length > MAX_PASTE_IMAGE_BYTES) throw new Error("image_too_large");
+    const chunks = pasteImageChunks(bytes), importId = crypto.randomUUID();
+    let result: unknown;
+    for (let index = 0; index < chunks.length; index++) {
+      if (expectedScope !== this.mediaScope) throw new Error("Workspace media unavailable");
+      result = await this.rpc.request("workspace.media.import", { workspaceId: workspace.workspaceId, expectedGeneration: workspace.resourceGeneration, importId, mime, index, total: chunks.length, bytes: bytes.length, chunkBase64: chunks[index] });
+      if (index < chunks.length - 1 && (result as { received?: unknown } | null)?.received !== index + 1) throw new Error("Workspace media unavailable");
+    }
+    const done = result as { path?: unknown; media?: WorkspaceMedia } | null;
+    if (expectedScope !== this.mediaScope || !done || typeof done.path !== "string" || !done.path || !done.path.endsWith(`${{ "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp" }[mime]}`) || !/[\\/]attachments[\\/][a-f0-9]{64}\.(?:png|jpg|gif|webp)$/u.test(done.path)
+      || !done.media || !/^[a-f0-9]{64}$/u.test(done.media.id) || done.media.mime !== mime || done.media.bytes !== bytes.length) throw new Error("Workspace media unavailable");
+    return { path: done.path, media: done.media };
   }
   async describeMedia(path: string, expectedScope = this.mediaScope): Promise<WorkspaceMediaDescription> {
     const workspace = this.view.workspace;

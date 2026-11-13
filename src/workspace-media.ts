@@ -16,3 +16,34 @@ export const workspaceMediaUrl = (id: string) => {
   return convertFileSrc(id, "hara-media");
 };
 export const revealWorkspaceMedia = (id: string) => invoke<void>("workspace_media_reveal", { id });
+/** Pasted images (workspace.media.import.v1) follow the image attachment rules: these four types, at most 3.6 MB. */
+export const PASTE_IMAGE_TYPES: readonly string[] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+export const MAX_PASTE_IMAGE_BYTES = 3_600_000;
+/** Each chunk stays well under the Workspace RPC frame (128 KiB) once base64-encoded. */
+export const PASTE_CHUNK_BYTES = 64 * 1024;
+export function pasteImageChunks(bytes: Uint8Array): string[] {
+  const chunks: string[] = [];
+  for (let at = 0; at < bytes.length; at += PASTE_CHUNK_BYTES) {
+    const part = bytes.subarray(at, at + PASTE_CHUNK_BYTES); let binary = "";
+    for (let i = 0; i < part.length; i += 8192) binary += String.fromCharCode(...part.subarray(i, i + 8192));
+    chunks.push(btoa(binary));
+  }
+  return chunks;
+}
+/** The clipboard image to paste, or null when it carries text (text paste keeps its normal behaviour). */
+export function pastedImageFile(data: Pick<DataTransfer, "items"> | null | undefined): File | null {
+  const items = [...(data?.items ?? [])];
+  if (items.some(item => item.kind === "string" && item.type === "text/plain")) return null;
+  return items.find(item => item.kind === "file" && item.type.startsWith("image/"))?.getAsFile() ?? null;
+}
+/** Room kept in the 24000-character draft for the path Core returns (absolute project path + 64-hex name). */
+export const PASTE_PATH_ROOM = 600;
+export type PasteNoticeKey = "pasteUnsupported" | "pasteType" | "pasteTooLarge" | "pasteBusy" | "pasteDraftFull" | "pasteInterrupted" | "pasteFailed" | "pastingImage" | "pastedImage";
+/** Says what actually went wrong: too large, the workspace changed mid-upload, a refused type, or a plain failure. */
+export function pasteFailureNotice(error: unknown, scopeChanged: boolean): PasteNoticeKey {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("image_too_large")) return "pasteTooLarge";
+  if (scopeChanged || message.includes("generation changed")) return "pasteInterrupted";
+  if (message.includes("image_type")) return "pasteType";
+  return "pasteFailed";
+}

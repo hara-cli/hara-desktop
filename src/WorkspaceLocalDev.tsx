@@ -67,6 +67,7 @@ import { useWorkspaceUpdater, WorkspaceBootUpdate, WorkspaceUpdateNotice } from 
 import { OnboardingResumeCard, useWorkspaceOnboarding, WorkspaceOnboarding } from "./WorkspaceOnboarding";
 import { ONBOARDING_STEP_VIEWS } from "./onboarding-steps";
 import { isImeCompositionKey, sendsOnEnter } from "./ime";
+import { MAX_PASTE_IMAGE_BYTES, PASTE_IMAGE_TYPES, PASTE_PATH_ROOM, pasteFailureNotice, pastedImageFile, type PasteNoticeKey } from "./workspace-media";
 const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
 
 type Translate = ReturnType<typeof makeT>;
@@ -293,7 +294,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const [moreOpen, setMoreOpen] = useState(false), [findOpen, setFindOpen] = useState(false), [findQuery, setFindQuery] = useState("");
   const [findResult, setFindResult] = useState({ count: 0, index: 0 });
   const [exporting, setExporting] = useState(false);
-  const [mentionOpen, setMentionOpen] = useState(false), [attaching, setAttaching] = useState(false);
+  const [mentionOpen, setMentionOpen] = useState(false), [attaching, setAttaching] = useState(false), [pasteStatus, setPasteStatus] = useState("");
   const mentionMenu = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null), manageButton = useRef<HTMLButtonElement>(null);
   const [undoNotice, setUndoNotice] = useState<UndoNotice | null>(null), [archiveBusy, setArchiveBusy] = useState(false);
@@ -564,6 +565,27 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     } catch { setUndoNotice({ id: ++toastCounter.current, scope, text: r("fileRefFailed") }); }
     finally { setAttaching(false); }
   };
+  const pasteImage = async (file: File) => {
+    // Every outcome is shown (a quiet toast) and said once (the composer's always-present live line), never dropped silently.
+    const tell = (key: PasteNoticeKey) => { const text = r(key);
+      // Clear, then write, so a repeated message is read again; the toast is quiet so it is not read twice.
+      setPasteStatus(""); setTimeout(() => setPasteStatus(text), 60); setUndoNotice({ id: ++toastCounter.current, scope, text, quiet: true }); };
+    if (!model.supportsMediaImport()) { tell("pasteUnsupported"); return; }
+    if (!PASTE_IMAGE_TYPES.includes(file.type)) { tell("pasteType"); return; }
+    if (file.size > MAX_PASTE_IMAGE_BYTES) { tell("pasteTooLarge"); return; }
+    if (attaching) { tell("pasteBusy"); return; }
+    if (disconnected) { tell("pasteFailed"); return; }
+    // Room for the returned path (absolute project path + 64-hex name) is checked before anything is sent.
+    if (model.getSnapshot().draft.trimEnd().length + PASTE_PATH_ROOM > 24000) { tell("pasteDraftFull"); return; }
+    setAttaching(true); tell("pastingImage"); const selectedScope = model.mediaScope;
+    try { const { path } = await model.importPastedImage(new Uint8Array(await file.arrayBuffer()), file.type, selectedScope);
+      if (selectedScope !== model.mediaScope) { tell("pasteInterrupted"); return; }
+      const next = `${model.getSnapshot().draft.trimEnd()}\n${path}\n`;
+      if (next.length > 24000) { tell("pasteDraftFull"); return; }
+      model.setDraft(next); input.current?.focus(); tell("pastedImage");
+    } catch (error) { tell(pasteFailureNotice(error, selectedScope !== model.mediaScope)); }
+    finally { setAttaching(false); }
+  };
   const findMessage = (index: number) => { if (scroll.current) setFindResult(findTranscriptMatch(scroll.current, findQuery, index)); };
   useEffect(() => { if (findOpen) findMessage(0); }, [findOpen, findQuery, workspace?.conversation.revision, channelView.channel?.revision]);
   const exportConversation = async () => {
@@ -759,7 +781,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       {workspace && route.section === "chat" ? <footer className="hs-compose wsd-composer-wrap" data-composer={question ? "question" : undefined}><WorkspaceAsyncQuestions asks={asyncAsks} t={t}
           onTypeAnswer={() => input.current?.focus()} disabled={Boolean(disconnected)} onAnswer={(questionId, answer) => void model.answerAsync(questionId, answer)} /><div className="hs-field wsd-composer"><textarea id="workspace-composer-input" ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
         placeholder={!hasConnection ? t("ws.composer.noConnection") : t(question ? "ws.question.composerPlaceholder" : "ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} disabled={!hasConnection || view.runtimeChanging} rows={1}
-        onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (sendsOnEnter(event.nativeEvent)) { event.preventDefault(); submitComposer(); } }} />
+        onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (sendsOnEnter(event.nativeEvent)) { event.preventDefault(); submitComposer(); } }}
+        onPaste={event => { const image = pastedImageFile(event.clipboardData); if (!image) return; event.preventDefault(); void pasteImage(image); }} />
         <WorkspaceComposerTools key={`${scope}:${view.agentId}`} label={r("composerActions")} attachLabel={r("attach")} mentionLabel={r("mention")}
           attachDisabled={!hasConnection || !!disconnected || attaching} mentionDisabled={!hasConnection || view.runtimeChanging}
           onAttach={() => void attachReference()} onMention={() => setMentionOpen(value => !value)} />
@@ -770,6 +793,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           <button type="button" className="hs-send wsd-send" onClick={submitComposer} disabled={asyncTarget ? !canAnswerAsync : !canSend} aria-label={t(asyncTarget ? "ws.question.async.send" : "ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>
         </div></div>
         {view.runtimeBlocked && !question && !busy ? <p role="status">{t("ws.runtimeAccess.runBlocked")} <button type="button" className="hs-btn sec" onClick={() => { if (view.agentId) { setInspectorSettingsRequest({ scope, agentId: view.agentId, serial: ++inspectorRequestSerial.current }); setInspector(true); } }}>{t("ws.runtimeAccess.openInspector")}</button></p> : null}
+        <span className="sr-only" aria-live="polite" data-paste-status>{pasteStatus}</span>
         {view.draft.trim() ? <p className="hs-hint"><span>{t("ws.composer.hint.keys")}</span></p> : null}</footer> : null}
     </main>
     {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} extensionsModel={model} initialProfileOpen={renameAgentId === agent.agentId} settingsRequest={inspectorSettingsRequest?.scope === scope && inspectorSettingsRequest.agentId === agent.agentId ? inspectorSettingsRequest.serial : undefined} onSettingsRequestConsumed={consumeInspectorSettingsRequest} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); manageButton.current?.focus(); }} onRefresh={() => void refreshFeatures()}
