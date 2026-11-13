@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useLayoutEffect, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { makeT, type Key, type Locale } from "./i18n";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
 import type { WorkScopeTarget } from "./workspace-work-scope";
@@ -81,30 +81,41 @@ function keepDialogFocus(event: KeyboardEvent<HTMLDialogElement>) {
 }
 function EditDialog({ writer, capture, session, action, locale, onClose }: { writer: WorkspaceWorkScopeWriter; capture: WorkScopeWriteCapture; session: WorkScopeEditSession; action: "duty.update" | "boundary.update"; locale: Locale; onClose(applied: boolean): void }) {
   const t = makeT(locale), id = useId(), dialog = useRef<HTMLDialogElement>(null), heading = useRef<HTMLHeadingElement>(null), alive = useRef(true), busyRef = useRef(false);
-  const controller = useRef(new AbortController()), previewRef = useRef<WorkScopePreview | null>(null);
+  const controller = useRef(new AbortController()), previewRef = useRef<WorkScopePreview | null>(null), discardRef = useRef(false);
   const [working, setWorking] = useState(session), [profile, setProfile] = useState(() => ({ ...session.policy.duty.publicProfile, owns: session.policy.duty.publicProfile.owns.join("\n"), rejects: session.policy.duty.publicProfile.rejects.join("\n") }));
   const [boundary, setBoundary] = useState<BoundaryChanges>(() => { const { resources, tools, budget, approvalRequired, runtimeRequirements } = session.policy.boundary; return { resources, tools, budget, approvalRequired, runtimeRequirements }; });
   const [preview, setPreview] = useState<WorkScopePreview | null>(null), [result, setResult] = useState<WorkScopeOutcome | null>(null), [busy, setBusy] = useState(false), [discard, setDiscard] = useState(false);
   const [error, setError] = useState<Key | null>(null), [notice, setNotice] = useState(false), [expired, setExpired] = useState(false);
   const dirty = action === "duty.update" ? !workScopeEqual(profile, { ...session.policy.duty.publicProfile, owns: session.policy.duty.publicProfile.owns.join("\n"), rejects: session.policy.duty.publicProfile.rejects.join("\n") })
     : !workScopeEqual(boundary, (({ resources, tools, budget, approvalRequired, runtimeRequirements }) => ({ resources, tools, budget, approvalRequired, runtimeRequirements }))(session.policy.boundary));
-  useEffect(() => {
+  useLayoutEffect(() => {
     alive.current = true; controller.current = new AbortController();
     const element = dialog.current!; element.showModal(); heading.current?.focus();
     return () => { alive.current = false; controller.current.abort(); if (previewRef.current) writer.cancel(previewRef.current); element.close(); };
   }, [writer]);
   useEffect(() => {
     if (!preview || result) { setExpired(false); return; }
-    const remaining = Date.parse(preview.expiresAt) - Date.now(); setExpired(remaining <= 0);
-    const timer = window.setTimeout(() => setExpired(true), Math.max(0, remaining)); return () => window.clearTimeout(timer);
-  }, [preview, result]);
+    const remaining = Date.parse(preview.expiresAt) - Date.now();
+    const expire = () => { writer.cancel(preview); setExpired(true); }; // A possibly submitted ticket is retained by cancel().
+    if (remaining <= 0) { expire(); return; }
+    setExpired(false); const timer = window.setTimeout(expire, remaining); return () => window.clearTimeout(timer);
+  }, [writer, preview, result]);
   useEffect(() => { heading.current?.focus(); }, [preview, result, error, discard]);
   useEffect(() => {
     if (!dirty && !busy && !result) return;
     const leaving = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", leaving); return () => window.removeEventListener("beforeunload", leaving);
   }, [dirty, busy, result]);
-  function close() { if (busyRef.current) return; if (result) { onClose(result.state === "applied" || result.state === "superseded"); return; } if (dirty || preview) setDiscard(true); else onClose(false); }
+  const requestDiscard = () => { discardRef.current = true; setDiscard(true); };
+  function close() { if (busyRef.current) return; if (result) { onClose(result.state === "applied" || result.state === "superseded"); return; } if (dirty || preview) requestDiscard(); else onClose(false); }
+  function nativeClose(event: React.SyntheticEvent<HTMLDialogElement>) {
+    event.stopPropagation(); const panel = event.currentTarget;
+    // Chromium/WebView2 may force-close on a second non-cancelable Escape. Cleanup/StrictMode close events do not reopen.
+    if (!alive.current || panel.open || !panel.isConnected) return;
+    if (busyRef.current || discardRef.current) { panel.showModal(); heading.current?.focus(); return; }
+    if (!result && (dirty || preview)) { requestDiscard(); panel.showModal(); heading.current?.focus(); return; }
+    close();
+  }
   async function perform(task: () => Promise<void>) {
     if (busyRef.current) return; busyRef.current = true; setBusy(true); setError(null);
     try { await task(); } catch (error) { if (alive.current) setError((error as { code?: string }).code === "STALE_REVISION" ? "ws.workScope.write.stale" : "ws.workScope.write.failed"); }
@@ -129,12 +140,12 @@ function EditDialog({ writer, capture, session, action, locale, onClose }: { wri
   }); };
   const query = () => { if (!result) return; void perform(async () => { const value = await writer.refresh(capture, result.reference, controller.current.signal); if (alive.current) setResult(value); }); };
   const catalog = working.catalog;
-  return <dialog ref={dialog} className="hd-work-scope-dialog" onKeyDown={keepDialogFocus} aria-labelledby={`${id}-title`} aria-describedby={`${id}-note`} onCancel={event => { event.preventDefault(); close(); }}>
+  return <dialog ref={dialog} className="hd-work-scope-dialog" onKeyDown={keepDialogFocus} aria-labelledby={`${id}-title`} aria-describedby={`${id}-note`} onCancel={event => { event.stopPropagation(); event.preventDefault(); close(); }} onClose={nativeClose}>
     <header><h3 id={`${id}-title`} ref={heading} tabIndex={-1}>{t(result ? "ws.workScope.write.resultTitle" : preview ? "ws.workScope.write.reviewTitle" : action === "duty.update" ? "ws.workScope.write.editDuty" : "ws.workScope.write.editBoundary")}</h3>
       <p id={`${id}-note`}>{t(action === "duty.update" ? "ws.workScope.write.dutyNote" : "ws.workScope.write.boundaryNote")}</p></header>
     <div className="hd-work-scope-sr" role="status" aria-live="polite" aria-atomic="true">{busy ? t(result ? "ws.workScope.write.checking" : preview ? "ws.workScope.write.submitting" : "ws.workScope.write.preparing") : result ? t(statusKey(result)) : ""}</div>
     {error ? <p className="hd-work-scope-warning" role="alert">{t(error)}</p> : null}
-    {discard ? <div className="hd-work-scope-warning" role="alert"><p>{t("ws.workScope.write.discardNote")}</p><div className="hd-work-scope-actions"><button type="button" className="hs-btn sec" onClick={() => setDiscard(false)}>{t("ws.workScope.write.keepEditing")}</button><button type="button" className="hs-btn sec" onClick={() => onClose(false)}>{t("ws.workScope.write.discard")}</button></div></div>
+    {discard ? <div className="hd-work-scope-warning" role="alert"><p>{t("ws.workScope.write.discardNote")}</p><div className="hd-work-scope-actions"><button type="button" className="hs-btn sec" onClick={() => { discardRef.current = false; setDiscard(false); }}>{t("ws.workScope.write.keepEditing")}</button><button type="button" className="hs-btn sec" onClick={() => onClose(false)}>{t("ws.workScope.write.discard")}</button></div></div>
       : result ? <><Outcome value={result} locale={locale} /><div className="hd-work-scope-actions">{result.state === "pending" || result.state === "unknown" ? <button type="button" className="hs-btn pri" disabled={busy} onClick={query}>{t(busy ? "ws.workScope.write.checking" : "ws.workScope.write.checkOriginal")}</button> : null}
         <button type="button" className="hs-btn sec" disabled={busy} onClick={close}>{t("ws.workScope.write.close")}</button></div></>
       : preview ? <><p className="hd-work-scope-notice">{t("ws.workScope.write.notSubmitted")}</p>
