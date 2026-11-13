@@ -5,6 +5,7 @@ import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { runtimeOperationText } from "./workspace-settings-copy";
 import { SettingsAdvanced, SettingsRowMenu } from "./SettingsChrome";
 import { SettingsActionResult } from "./SettingsActionDialog";
+import { settingsTranslator } from "./settings-device-copy";
 import { SettingsConnectionModelField } from "./SettingsConnectionModelField";
 import { type Key } from "./i18n";
 import type { RuntimeApprovalCard, RuntimeLoginSource, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceModelConnection } from "./workspace-dev-state";
@@ -109,7 +110,7 @@ function IsolatedLoginChoice({ runtimeId, loginSource, children }: { runtimeId: 
 }
 
 /** `firstKey`: no connection in this workspace has saved a key yet, so macOS may show a Keychain prompt on save (review of #76, L3). */
-export function WorkspaceConnectionForm({ model, existing, firstKey = false, settingsModels, onSaved, onCancel, onDirty, onPending }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; firstKey?: boolean; settingsModels?: WorkspaceDevSnapshot; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void; onPending?: (value: boolean) => void }) {
+export function WorkspaceConnectionForm({ model, existing, firstKey = false, settingsModels, keyNote, onSaved, onCancel, onDirty, onPending }: { model: WorkspaceDevModel; existing?: WorkspaceModelConnection; firstKey?: boolean; settingsModels?: WorkspaceDevSnapshot; keyNote?: string; onSaved?: () => void; onCancel?: () => void; onDirty?: (value: boolean) => void; onPending?: (value: boolean) => void }) {
   const { t } = useWorkspaceLocale();
   const [label, setLabel] = useState(existing?.label ?? ""), [provider, setProvider] = useState<"openai" | "anthropic">(existing?.provider ?? "openai");
   const [baseURL, setBaseURL] = useState(existing?.baseURL ?? ""), [defaultModel, setDefaultModel] = useState(existing?.defaultModel ?? ""), [apiKey, setKey] = useState("");
@@ -145,7 +146,7 @@ export function WorkspaceConnectionForm({ model, existing, firstKey = false, set
     {settingsModels ? <SettingsConnectionModelField model={model} workspace={settingsModels} existing={existing} draft={{ provider, baseURL, keyEdited: apiKey !== "" }} value={defaultModel} disabled={saving || unknown} onChange={setDefaultModel} />
       : <label>{t("ws.connections.model")}<input value={defaultModel} disabled={saving || unknown} onChange={event => setDefaultModel(event.target.value)} autoComplete="off" required /></label>}
     <label>{t("ws.connections.apiKey")}{existing && !existing.credentialRequired ? t("ws.connections.keepKey") : ""}<input type="password" value={apiKey} disabled={saving || unknown} onChange={event => setKey(event.target.value)} autoComplete="new-password" spellCheck={false} required={!existing || existing.credentialRequired} /></label>
-    <small>{t(firstKey && !existing ? "ws.connections.keyNoteFirst" : "ws.connections.keyNoteShort")}</small>
+    <small>{keyNote ?? t(firstKey && !existing ? "ws.connections.keyNoteFirst" : "ws.connections.keyNoteShort")}</small>
     <SettingsActionResult text={reloadFailed ? t("ws.connections.reloadFailed") : unknown ? t(existing ? "ws.connections.editUnknown" : "ws.connections.saveUnknown") : ""} error />
     <div className="wsd-card-actions">{onCancel ? <button type="button" data-settings-cancel disabled={saving} onClick={() => { if (saveFence.current) return; setKey(""); onDirty?.(false); onCancel(); }}>{t("ws.cancel")}</button> : null}
       {unknown ? <button type="button" disabled={saving} onClick={() => void reload()}>{t("ws.connections.reloadAfterUnknown")}</button>
@@ -154,7 +155,7 @@ export function WorkspaceConnectionForm({ model, existing, firstKey = false, set
 }
 
 export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onDirty?: (value: boolean) => void }) {
-  const { t, locale } = useWorkspaceLocale();
+  const { t: baseT, locale } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   const [loginSource, setLoginSource] = useState<RuntimeLoginSource>("host");
   const [card, setCard] = useState<RuntimeApprovalCard | null>(null), [pending, setPending] = useState(false), [notice, setNotice] = useState<"" | Key>("");
   const [detecting, setDetecting] = useState(true), [checked, setChecked] = useState(false);

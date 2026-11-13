@@ -34,14 +34,14 @@ const render=(name,props)=>{
 };
 test("connection settings render safe metadata and editable blank-key semantics, never a saved key value",()=>{
  const html=render("WorkspaceConnections",{model:{},workspace:snapshot("A")});
- for(const marker of [/目前連接/,/Fixture/,/Key •••••••••••• · 已存入鑰匙圈/,/新增連接/,/編輯/,/刪除/])assert.ok(marker.test(html),`connection display contract: ${marker}`);
+ for(const marker of [/目前連接/,/Fixture/,/Key •••••••••••• · 已有儲存記錄/,/新增連接/,/編輯/,/刪除/])assert.ok(marker.test(html),`connection display contract: ${marker}`);
  assert.doesNotMatch(html,/type="password"/); // edit opens only on the user's action
  const form=render("WorkspaceConnectionForm",{model:{},existing:snapshot("A").connections.connections[0]});
  assert.match(form,/留空不修改/);assert.match(form,/type="password"[^>]*value=""/);assert.doesNotMatch(form,/type="password"[^>]*required/);
 });
 test("pending connection migration is read-only without losing the space or displaying a damaged-data claim",()=>{
  const workspace=snapshot("A");workspace.connections={revision:0,defaultConnectionId:null,connections:[],readOnly:true,migrationPending:true,recovered:false};
- const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/連接升級待完成/);assert.match(html,/查看歷史與使用空間其他功能/);
+ const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/連線升級待確認/);assert.match(html,/歷史記錄與其他空間功能可繼續使用/);
  assert.doesNotMatch(html,/未允許或不可用/); // A first-time prefill is not evidence that the OS denied access.
  assert.match(html,/我已確認系統憑據儲存，重試升級/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|資料損壞|設定為唯讀（較新版本/);
  const source=read("src/WorkspaceSettingsPanels.tsx");assert.match(source,/model\.workspaceRequest\("workspace\.connection\.migration\.retry", \{ expectedRevision: workspace\.connections\.revision, approved: true \}\)/);
@@ -53,13 +53,13 @@ test("invalid and pending credential statuses use the same fixed-length mask wit
 test("a keyless legacy preview is editable but cannot pretend a saved credential or keep a blank key",()=>{
  const workspace=snapshot("A"),connection=workspace.connections.connections[0];connection.keySaved=false;connection.credentialRequired=true;connection.keyState="pending";
  workspace.connections.activeConnectionId=connection.id;workspace.connections.defaultConnectionId=null;
- const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原預設 · 待授權/);assert.match(html,/請編輯新增 Key/);assert.doesNotMatch(html,/已存入鑰匙圈|連接升級待完成/);
+ const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原預設 · 待授權/);assert.match(html,/請編輯新增 Key/);assert.doesNotMatch(html,/已存入鑰匙圈|連線升級待確認/);
  const form=render("WorkspaceConnectionForm",{model:{},existing:connection});assert.match(form,/type="password"[^>]*required/);assert.doesNotMatch(form,/API Key（留空不修改）/);
 });
 test("unavailable connections and backup-only recovery retain distinct non-destructive notices",()=>{
  for(const flags of [{unavailable:true},{recovered:true},{migrationPending:true,recovered:true}]){
   const workspace=snapshot("A");workspace.connections={revision:0,defaultConnectionId:null,connections:[],readOnly:true,...flags};
-  const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原檔|原設定/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|我已確認系統憑據存儲，重試升級/);
+  const html=render("WorkspaceConnections",{model:{},workspace});assert.match(html,/原檔|原(?:始)?設定/);assert.match(html,/<button disabled="">新增連接<\/button>/);assert.doesNotMatch(html,/type="password"|我已確認系統憑據存儲，重試升級/);
  }
 });
 test("detected runtimes offer workspace binding and missing runtimes alone offer installation",()=>{

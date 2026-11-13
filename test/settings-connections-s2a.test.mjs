@@ -1,3 +1,4 @@
+import { settingsTranslator } from "../src/settings-device-copy.ts";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -26,7 +27,7 @@ const esc = value => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").repl
 const page = (ws, locale) => render(createElement(module.exports.WorkspaceConnections, { model, workspace: ws }), locale);
 
 for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`connection rows keep the main task visible and move URLs and long notes into Advanced (${locale})`, () => {
-  const t = makeT(locale), html = page(workspace([row("one"), row("two")]), locale);
+  const t = settingsTranslator(makeT(locale)), html = page(workspace([row("one"), row("two")]), locale);
   const fold = html.indexOf('data-settings-advanced="connections"'), before = html.slice(0, fold), inside = html.slice(fold);
   for (const text of ["OpenRouter", t("ws.connections.setCurrent"), t("ws.connections.add")]) assert.ok(before.includes(text), text);
   assert.equal(before.includes("one.example.invalid"), false, "service URL is not shown on the row");
@@ -43,7 +44,7 @@ test("delete from the row menu still goes through the original confirmation and 
 });
 
 for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`states that need the user are pinned bars with one action (${locale})`, () => {
-  const t = makeT(locale);
+  const t = settingsTranslator(makeT(locale));
   const invalid = page(workspace([row("one", { keyState: "invalid" }), row("two", { cleanupPending: true })]), locale);
   assert.ok(invalid.indexOf('data-settings-attention="key-one"') < invalid.indexOf(`<h3>${t("ws.connections.heading")}</h3>`), "pinned above the list");
   assert.ok(invalid.includes(esc(t("ws.connections.attention.invalidKey", { name: "OpenRouter" }))) && invalid.includes(`>${t("ws.connections.attention.updateKey")}</button>`));

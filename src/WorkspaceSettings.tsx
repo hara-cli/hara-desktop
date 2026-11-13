@@ -1,3 +1,4 @@
+import { settingsTranslator } from "./settings-device-copy";
 import { SettingsActionResult } from "./SettingsActionDialog";
 import { WorkspaceRpcErrorNotice } from "./WorkspaceRpcErrorNotice.tsx";
 import { localizedWorkspaceView } from "./workspace-default-labels.ts";
@@ -45,7 +46,7 @@ export interface SettingsOnboarding { workspaceId: string; readOnly: boolean; re
 export function SettingsOverlay({ children, ready, onClose }: { children: ReactNode; ready: boolean; onClose(): void }) {
   const panel = useRef<HTMLDivElement>(null);
   const previous = useRef(typeof document === "undefined" ? null : document.activeElement as HTMLElement | null);
-  const { t } = useWorkspaceLocale();
+  const { t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   useEffect(() => () => { const target = previous.current; queueMicrotask(() => { if (target?.isConnected) target.focus(); }); }, []);
   useLayoutEffect(() => { (panel.current?.querySelector<HTMLElement>("button:not(:disabled)") ?? panel.current)?.focus(); }, [ready]);
   return <div className="wss-overlay"><div ref={panel} className="wss-dialog" role="dialog" aria-modal="true" aria-label={t("ws.settings")} tabIndex={-1}
@@ -61,7 +62,7 @@ export function SettingsOverlay({ children, ready, onClose }: { children: ReactN
     }}>{children}</div></div>;
 }
 export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
-  const { locale, t } = useWorkspaceLocale();
+  const { locale, t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   const [session, setSession] = useState<{ model: WorkspaceDevModel; close(): void } | null>(null), [error, setError] = useState<"" | Key>("");
   const initialWorkspace = useRef(props.mainModel.getSnapshot().workspaceId);
   useEffect(() => { if (!props.production) return; let active = true, owned: { model: WorkspaceDevModel; close(): void } | undefined;
@@ -76,7 +77,7 @@ export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
     : <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}><aside className="wss-nav"><button className="wss-close" aria-label={t("vg.closeSettings")} onClick={props.onClose}><XMarkIcon className="hico" /></button><h1>{t("ws.settings")}</h1></aside><main className="wss-main"><p role="status">{t(error || "ws.settings.opening")}</p></main></div>}</SettingsOverlay>;
 }
 export function SettingsContent({ model, initialPage, root, production, theme, updater, versionInfo, onClose, onCreateSkill, onboarding }: WorkspaceSettingsProps & { model: WorkspaceDevModel }) {
-  const { locale, preference, t, changeLocale } = useWorkspaceLocale();
+  const { locale, preference, t: baseT, changeLocale } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   const rawView = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot), view = localizedWorkspaceView(rawView, locale), updates = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot);
   const [page, setPage] = useState<SettingsPage>(initialPage), [scopeOpen, setScopeOpen] = useState(false), [leaveNotice, setLeaveNotice] = useState<"" | Key>("");
   const scopeTrigger = useRef<HTMLButtonElement>(null), scopeMenu = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null);
@@ -187,7 +188,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
   </div>;
 }
 function General({ workspace, root, role, kind }: { workspace: WorkspaceDevSnapshot; root: string; role: string; kind: string }) {
-  const { t } = useWorkspaceLocale();
+  const { t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   const [copied, setCopied] = useState(false), [copyFailed, setCopyFailed] = useState(false), path = `${root}/project/${workspace.workspaceId}`;
   const copyPath = async () => {
     setCopyFailed(false);
@@ -209,7 +210,7 @@ function runtimeAttention(workspace: WorkspaceDevSnapshot, model: WorkspaceDevMo
 
 /** «Getting started · Run again» on the overview (design §2 branches: re-enter; plan O4). */
 function OnboardingRerunRow({ onboarding }: { onboarding: SettingsOnboarding }) {
-  const { t } = useWorkspaceLocale();
+  const { t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   const [busy, setBusy] = useState(false), [result, setResult] = useState<OnboardingRerunResult | null>(null);
   const readOnly = onboarding.readOnly || result === "readOnly";
   return <div className="wss-setting-row wss-onboarding-rerun"><div><strong>{t("ws.onboarding.rerun.title")}</strong>

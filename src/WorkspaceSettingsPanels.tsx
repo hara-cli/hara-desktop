@@ -5,6 +5,7 @@ import { WorkspaceConnectionForm } from "./WorkspaceRuntimeSettings";
 import type { LegacyConnectionPreview, WorkspaceDevModel, WorkspaceDevSnapshot, WorkspaceFeatureView, WorkspaceModelConnection, WorkspacePreferenceView } from "./workspace-dev-state";
 import { bindThemePreference, loadThemePreference, saveThemePreference, type ThemePreference } from "./theme";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
+import { settingsTranslator } from "./settings-device-copy";
 import { settingsStateText } from "./workspace-settings-copy";
 import { scheduleHumanText } from "./settings-schedule-text";
 import { SettingsAdvanced, SettingsAttention, SettingsRowMenu, type SettingsAttentionItem } from "./SettingsChrome";
@@ -48,7 +49,7 @@ export function useStableWorkspaceTheme(model: WorkspaceDevModel) {
   return { preference, settings, notice, change, changeDetails, changeTimingDiagnostics, appearance, changeAppearance, chooseTheme };
 }
 export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<typeof useStableWorkspaceTheme>; locale?: Locale }) {
-  const current = useWorkspaceLocale(), t = locale ? makeT(locale) : current.t;
+  const current = useWorkspaceLocale(), t = settingsTranslator(locale ? makeT(locale) : current.t);
   const appearance = theme.appearance ?? loadAppearance();
   const currentTheme = theme.preference === "light" ? "daylight" : appearance.darkTheme;
   return <section aria-label={t("ws.settings.appearance")}>
@@ -68,7 +69,7 @@ export function WorkspaceThemeSettings({ theme, locale }: { theme: ReturnType<ty
 const systemPrefersLight = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: light)").matches;
 /** Appearance «Advanced»: transparency, motion, timing diagnostics and the brand colour note; defaults unchanged. */
 export function WorkspaceAppearanceAdvanced({ theme, locale }: { theme: ReturnType<typeof useStableWorkspaceTheme>; locale?: Locale }) {
-  const current = useWorkspaceLocale(), t = locale ? makeT(locale) : current.t;
+  const current = useWorkspaceLocale(), t = settingsTranslator(locale ? makeT(locale) : current.t);
   const appearance = theme.appearance ?? loadAppearance(), timing = theme.settings?.alwaysShowTimingDiagnostics === true;
   const customized = [...(appearance.transparency !== "system" ? [t("vg.transparency")] : []), ...(appearance.motion !== "system" ? [t("vg.motion")] : []), ...(timing ? [t("ws.stages.alwaysShow")] : [])];
   return <SettingsAdvanced page="appearance" items={[t("vg.transparency"), t("vg.motion"), t("ws.settings.appearance.timing"), t("ws.settings.appearance.brand")]} customized={customized}>
@@ -79,7 +80,7 @@ export function WorkspaceAppearanceAdvanced({ theme, locale }: { theme: ReturnTy
   </SettingsAdvanced>;
 }
 export function WorkspaceConnections({ model, workspace, onDirty }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; onDirty?: (value: boolean) => void }) {
-  const { t } = useWorkspaceLocale();
+  const { t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   const [editing, setEditing] = useState<WorkspaceModelConnection | null>(null), [adding, setAdding] = useState(false);
   const [legacy, setLegacy] = useState<LegacyConnectionPreview[]>([]), [confirmImport, setConfirmImport] = useState<LegacyConnectionPreview | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<WorkspaceModelConnection | null>(null), [notice, setNotice] = useState<"" | Key>("");
@@ -122,7 +123,7 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
     <button disabled={pending || readOnly} onClick={() => { setNotice(""); setAdding(current => !current); setEditing(null); }}>{t("ws.connections.add")}</button>
     {!readOnly && (adding || editing) ? <SettingsActionDialog key={editing?.id ?? "new"} label={t(editing ? "ws.connections.edit" : "ws.connections.add")} pending={pending} initialFocus="field" onClose={() => { if (!pending && !fence.current) { setEditing(null); setAdding(false); } }}>
       <h3>{t(editing ? "ws.connections.edit" : "ws.connections.add")}</h3>
-      <WorkspaceConnectionForm model={model} existing={editing ?? undefined} settingsModels={workspace} firstKey={!workspace.connections.connections.some(connection => connection.keySaved)} onDirty={onDirty} onPending={value => { fence.current = value; setPending(value); }}
+      <WorkspaceConnectionForm model={model} existing={editing ?? undefined} settingsModels={workspace} keyNote={t(!editing && !workspace.connections.connections.some(connection => connection.keySaved) ? "ws.connections.keyNoteFirst" : "ws.connections.keyNoteShort")} firstKey={!workspace.connections.connections.some(connection => connection.keySaved)} onDirty={onDirty} onPending={value => { fence.current = value; setPending(value); }}
         onCancel={() => { fence.current = false; setEditing(null); setAdding(false); setPending(false); }} onSaved={() => { fence.current = false; setEditing(null); setAdding(false); setPending(false); setNotice("ws.connections.updated"); }} />
     </SettingsActionDialog> : null}
     {legacy.length ? <details className="wsd-legacy-import" open={active.length === 0}><summary>{t("ws.connections.legacyFound")}</summary><p>{t("ws.connections.importNote")}</p>
@@ -142,7 +143,7 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
 /** Schedules not created in chat or on this page are still run by the legacy scheduler. */
 function isLegacySchedule(row: { source?: string }): boolean { return row.source !== "chat" && row.source !== "workspace"; }
 export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty, onCreateSkill }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; kind: "schedules" | "skills"; onClose?: () => void; onDirty?: (value: boolean) => void; onCreateSkill?: () => void }) {
-  const { locale, t } = useWorkspaceLocale();
+  const { locale, t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   const [value, setValue] = useState<WorkspaceFeatureView | null>(null), [notice, setNotice] = useState<"" | Key>(""), [pending, setPending] = useState(false);
   const [editor, setEditor] = useState<{ id: string; content: string } | null>(null);
   const [scheduleEditor, setScheduleEditor] = useState<{ id: string; name: string; task: string; picker: SchedulePickerValue; agentId: string; enabled: boolean; creating: boolean } | null>(null);

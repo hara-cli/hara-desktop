@@ -1,3 +1,4 @@
+import { settingsTranslator } from "../src/settings-device-copy.ts";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -38,7 +39,7 @@ test("settings left rail has two scopes, an accessible close action and no drawe
 });
 test("workspace and device page scope chips are distinct; appearance preserves the approved three-language switch", () => {
   assert.equal(settings("general").includes("仅本空间"), true);
-  const appearance = settings("appearance"); assert.equal(appearance.includes("这台 Mac · 所有空间"), true); assert.equal(appearance.includes('aria-label="语言"'), true);
+  const appearance = settings("appearance"); assert.equal(appearance.includes(settingsTranslator(makeT("zh-Hans"))("ws.settings.device")+" · 所有空间"), true); assert.equal(appearance.includes('aria-label="语言"'), true);
   // Jeff 2026-11-08 revision: this release offers English and Simplified only. Traditional
   // ships as beta in the locale JSON (contract test covers it) but stays out of the picker.
   for (const locale of ["en", "zh-Hans"]) assert.ok(appearance.includes(`value="${locale}"`), locale);
