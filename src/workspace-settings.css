@@ -154,3 +154,4 @@
 .hs.wss-app .wsd-runtime-ready-note{color:var(--muted);font-size:var(--hara-font-size-caption)}
 .hs.wss-app .wsd-runtime-row .wsd-runtime-actions{display:flex;align-items:center;gap:var(--hara-space-2);justify-self:end}
 @media (max-width:700px){.hs.wss-app .wsd-runtime-row .wsd-runtime-actions{justify-self:start}}
+.hs.wss-app .wsd-runtime-row .wsd-runtime-check[aria-disabled="true"]{opacity:.55;cursor:progress}

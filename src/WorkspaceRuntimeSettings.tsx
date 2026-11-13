@@ -24,7 +24,8 @@ function runtimeUseText(t: (key: Key, values?: Record<string, string | number>) 
  * Pi is checked through this workspace's model connection; other engines through their own model listing, which uses
  * the engine's sign-in. Nothing is installed, registered or confirmed, and no credential is read.
  */
-export type EngineCheck = { state: "checking" } | { state: "ok"; models: number } | { state: "failed"; network: boolean };
+/** `missing`: Pi has no model connection to check (review of #98, L3). */
+export type EngineCheck = { state: "checking" } | { state: "ok"; models: number } | { state: "failed"; network: boolean; missing?: true };
 export const NETWORK_ERROR = /network|timed? ?out|timeout|ECONN|ENOTFOUND|EAI_AGAIN|ENETUNREACH|fetch failed|socket|proxy|TLS|certificate/i;
 
 /** Pi can be checked only when the workspace has a live connection and Core lists connection models. */
@@ -38,7 +39,7 @@ export async function runEngineCheck(model: Pick<WorkspaceDevModel, "listRuntime
     if (id === "pi") {
       const main = workspace.agents.find(agent => agent.kind === "main");
       const connection = workspace.connections?.defaultConnectionId ?? workspace.connections?.connections.find(row => row.status !== "deleted")?.id;
-      if (!main || !connection || !piCheckable(model, workspace)) return { state: "failed", network: false };
+      if (!main || !connection || !piCheckable(model, workspace)) return { state: "failed", network: false, missing: true };
       models = (await model.listConnectionModels(main.agentId, connection)).models;
     } else models = (await model.listRuntimeModels(id)).models;
     return models.length ? { state: "ok", models: models.length } : { state: "failed", network: false };
@@ -121,26 +122,37 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
   // models were listed just now; a failed check keeps «Enabled» and says why in the row.
   const checkScope = `${workspace.workspaceId}:${workspace.resourceGeneration}`, liveCheckScope = useRef(checkScope);
   liveCheckScope.current = checkScope;
-  const [checks, setChecks] = useState<Record<string, EngineCheck>>({});
+  const [checks, setChecks] = useState<Record<string, EngineCheck & { at?: number }>>({});
   useEffect(() => { setChecks({}); }, [checkScope]);
   const check = (id: string) => {
+    if (checks[id]?.state === "checking" || pending) return;
     setChecks(current => ({ ...current, [id]: { state: "checking" } }));
-    void runEngineCheck(model, workspace, id).then(result => { if (liveCheckScope.current === checkScope) setChecks(current => ({ ...current, [id]: result })); });
+    void runEngineCheck(model, workspace, id).then(result => { if (liveCheckScope.current === checkScope) setChecks(current => ({ ...current, [id]: { ...result, at: Date.now() } })); });
   };
+  // The time of the check, not a «just now» that stays forever (review of #98, L2).
+  const checkedAt = (at?: number) => new Date(at ?? Date.now()).toLocaleTimeString(locale === "en" ? "en" : locale === "zh-Hant" ? "zh-TW" : "zh-CN", { hour: "2-digit", minute: "2-digit" });
   const checkStatus = (id: string, enabled: string | null) => {
     const value = checks[id];
-    return value?.state === "ok" ? `${t("ws.onboarding.engine.status.ready")} · ${t("ws.onboarding.engine.listed", { n: value.models })}`
+    return value?.state === "ok" ? `${t("ws.onboarding.engine.status.ready")} · ${t("ws.runtimes.check.listedAt", { n: value.models, time: checkedAt(value.at) })}`
       : value?.state === "checking" ? t("ws.onboarding.engine.status.checking") : enabled;
   };
+  /**
+   * Screen readers hear the check (review of #98, M1): the status line is a live region that is always present, and the
+   * reason sits in a second region that exists before it is filled, since WebKit/VoiceOver skip regions inserted with text.
+   */
   const checkWarning = (id: string) => {
     const value = checks[id];
-    if (value?.state !== "failed") return null;
-    const text = value.network ? t("ws.runtimes.check.network", { proxy: t("ws.runtimeProxy.title") })
+    const text = value?.state !== "failed" ? null : value.missing ? t("ws.onboarding.engine.status.needsConnection")
+      : value.network ? t("ws.runtimes.check.network", { proxy: t("ws.runtimeProxy.title") })
       : id === "pi" ? t("ws.runtimes.check.piFailed", { connections: t("ws.settings.page.connections") }) : t("ws.runtimes.check.failed");
-    return <small className="wsd-runtime-check-warn" role="status" data-check="failed">{text}</small>;
+    return <span className="wsd-runtime-check-live" aria-live="polite" data-check-live={id}>{text ? <small className="wsd-runtime-check-warn" data-check="failed">{text}</small> : null}</span>;
   };
-  const checkButton = (id: string, label: string) => <button type="button" className="wsd-runtime-check" data-check-engine={id} aria-label={`${t("ws.onboarding.engine.check")} ${label}`}
-    disabled={checks[id]?.state === "checking" || pending} onClick={() => check(id)}>{t(checks[id]?.state === "failed" ? "ws.onboarding.engine.retry" : "ws.onboarding.engine.check")}</button>;
+  // aria-disabled keeps focus on the button while it checks; a disabled button drops focus to the page in WebKit (M1).
+  const checkButton = (id: string, label: string) => {
+    const waiting = checks[id]?.state === "checking" || pending;
+    return <button type="button" className="wsd-runtime-check" data-check-engine={id} aria-label={`${t("ws.onboarding.engine.check")} ${label}`}
+      aria-disabled={waiting || undefined} onClick={() => check(id)}>{t(checks[id]?.state === "failed" ? "ws.onboarding.engine.retry" : "ws.onboarding.engine.check")}</button>;
+  };
   const [login, setLogin] = useState<{ shell: string; command: string } | null>(null), [loginBusy, setLoginBusy] = useState(false), [loginFailed, setLoginFailed] = useState(false);
   const loginScope = `${workspace.workspaceId}:${workspace.resourceGeneration}`, liveLoginScope = useRef(loginScope);
   liveLoginScope.current = loginScope;
@@ -162,7 +174,7 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
     <button disabled={detecting || pending} onClick={() => { setDetecting(true); setChecked(false); setNotice(""); void model.detectRuntimes().then(() => setChecked(true)).catch(() => setNotice("ws.runtimes.detectFailed")).finally(() => setDetecting(false)); }}>{t(detecting ? "ws.runtimes.detecting" : "ws.runtimes.detect")}</button>
     {workspace.runtimes?.detection?.completedAt ? <p role="status" className="wsd-runtime-checked">{t("ws.rf.lastChecked", { time: new Date(workspace.runtimes.detection.completedAt).toLocaleTimeString(locale === "en" ? "en" : locale === "zh-Hant" ? "zh-TW" : "zh-CN", { hour: "2-digit", minute: "2-digit" }) })}{workspace.runtimes.detection.running || workspace.runtimes.detection.incomplete.length ? ` · ${t("ws.rf.stillChecking")}` : ""}</p> : null}
     <div className="wsd-runtime-list"><div className="wsd-connection wsd-runtime-row" data-engine="pi"><div><strong>Pi</strong><small>{t("ws.runtimes.builtIn")}</small><small>{t("ws.runtimes.piNote")}</small>
-      <small data-runtime-status="pi">{piCheckable(model, workspace) ? checkStatus("pi", t("ws.runtimes.status.enabled")) : t("ws.onboarding.engine.status.needsConnection")}</small>{checkWarning("pi")}</div>
+      <small data-runtime-status="pi" aria-live={piCheckable(model, workspace) ? "polite" : undefined}>{piCheckable(model, workspace) ? checkStatus("pi", t("ws.runtimes.status.enabled")) : t("ws.onboarding.engine.status.needsConnection")}</small>{checkWarning("pi")}</div>
       {piCheckable(model, workspace) ? checkButton("pi", "Pi") : null}</div>
     {runtimeOptions.filter(runtime => !missingRuntimes.includes(runtime)).map(renderRuntime)}
     {missingRuntimes.length ? <details className="wsd-runtime-details wsd-runtime-missing"><summary>{detecting || !checked ? t("ws.runtimes.otherChecking") : t("ws.runtimes.otherMissing", { n: missingRuntimes.length })}</summary>{missingRuntimes.map(renderRuntime)}</details> : null}</div>
@@ -207,7 +219,7 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
       const checkable = runtime.registered && runtime.use === "ready";
       const users = (workspace.agents ?? []).filter(agent => agent.state !== "archived" && agent.runtime.id === runtime.runtimeId).map(agent => agent.identity.displayName);
       return <div className="wsd-connection wsd-runtime-row" key={runtime.runtimeId} role="group" aria-label={runtime.label} tabIndex={-1}>
-      <div><strong>{runtime.label}</strong>{inheritsPersonalExtensions(runtime.runtimeId) ? <small data-runtime-acceptance="unverified">{t("ws.runtimeExpansion.unverified")}</small> : null}<small data-runtime-use={runtime.use} data-runtime-status={runtime.runtimeId}>{formStatus ? `${checkable ? checkStatus(runtime.runtimeId, formStatus) : formStatus}${runtime.version ? ` · ${runtime.version}` : ""}` : runtime.registered ? t("ws.runtimes.registered", { version: runtime.version ?? "" }) : runtime.state === "detected" ? t("ws.runtimes.detected", { version: runtime.version ?? "" }) : runtime.state === "integrity_failed" ? t("ws.runtimes.integrityFailed") : runtime.state === "detection_failed" ? t("ws.runtimes.detectFailed") : runtime.state === "detecting" || detecting || !checked ? t("ws.runtimes.checking") : t("ws.runtimes.missing")}</small>{checkable ? checkWarning(runtime.runtimeId) : null}
+      <div><strong>{runtime.label}</strong>{inheritsPersonalExtensions(runtime.runtimeId) ? <small data-runtime-acceptance="unverified">{t("ws.runtimeExpansion.unverified")}</small> : null}<small data-runtime-use={runtime.use} data-runtime-status={runtime.runtimeId} aria-live={checkable ? "polite" : undefined}>{formStatus ? `${checkable ? checkStatus(runtime.runtimeId, formStatus) : formStatus}${runtime.version ? ` · ${runtime.version}` : ""}` : runtime.registered ? t("ws.runtimes.registered", { version: runtime.version ?? "" }) : runtime.state === "detected" ? t("ws.runtimes.detected", { version: runtime.version ?? "" }) : runtime.state === "integrity_failed" ? t("ws.runtimes.integrityFailed") : runtime.state === "detection_failed" ? t("ws.runtimes.detectFailed") : runtime.state === "detecting" || detecting || !checked ? t("ws.runtimes.checking") : t("ws.runtimes.missing")}</small>{checkable ? checkWarning(runtime.runtimeId) : null}
       {users.length ? <small data-runtime-users="true">{t("ws.rf.usedBy", { names: users.join("、") })}</small> : null}
       {manualRuntimeInstallUrl(runtime.runtimeId) ? <small>{t("ws.runtimeExpansion.hostLogin")}</small> : null}
 

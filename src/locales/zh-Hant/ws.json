@@ -1497,7 +1497,7 @@
   "ws.onboarding.engine.noneSub": "同事需要一個引擎才能工作。接上一個模型服務，或裝一個你常用的命令列工具；也可以先往下走。",
   "ws.onboarding.engine.list": "這台 Mac 上的引擎",
   "ws.onboarding.engine.listNote": "來自本機檢查，不會讀取或複製你的登入憑據",
-  "ws.onboarding.engine.readyNote": "「可以用」= 已安裝、已確認，並且剛才用本機登入成功列出了模型。",
+  "ws.onboarding.engine.readyNote": "「可以用」= 已安裝、已確認，並且剛才成功列出了模型。",
   "ws.onboarding.engine.free": "不需要 Hara 帳號，也不需要付費。",
   "ws.onboarding.engine.scope": "改預設只影響之後新建的同事，已有同事的引擎不變。",
   "ws.onboarding.engine.skipNote": "先往下走也行：同事會先存成草稿，引擎好了再建立。",
@@ -1655,5 +1655,6 @@
   "ws.onboarding.team.summaryRetry": "已建好的不會重複建立，重試只會處理沒建成的。",
   "ws.runtimes.check.failed": "檢查沒通過：沒有列出模型。請確認這個引擎已經登入，然後重試。",
   "ws.runtimes.check.network": "檢查沒通過：連不上模型服務（網路問題）。先確認這台 Mac 能上網；如果網路必須經過代理，在本頁的「{proxy}」裡填寫。",
-  "ws.runtimes.check.piFailed": "檢查沒通過：這個空間的模型連接沒有列出模型。請到「設定 › {connections}」裡檢查位址和 Key。"
+  "ws.runtimes.check.piFailed": "檢查沒通過：這個空間的模型連接沒有列出模型。請到「設定 › {connections}」裡檢查位址和 Key。",
+  "ws.runtimes.check.listedAt": "已列出 {n} 個模型 · {time} 檢查"
 }

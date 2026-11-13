@@ -41,8 +41,8 @@ test("the shared check: «Ready» only when models were listed; empty or failing
   assert.deepEqual(await M.runEngineCheck(model(log), workspace(), "pi"), { state: "ok", models: 2 }, "Pi is checked through the workspace's model connection");
   assert.deepEqual(log, ["list:codex", "list:codex", "list:codex", "list:codex", "conn:main:c1"]);
   const none = [];
-  assert.deepEqual(await M.runEngineCheck(model(none), workspace([]), "pi"), { state: "failed", network: false });
-  assert.deepEqual(await M.runEngineCheck(model(none, { connectionModels: false }), workspace(), "pi"), { state: "failed", network: false });
+  assert.deepEqual(await M.runEngineCheck(model(none), workspace([]), "pi"), { state: "failed", network: false, missing: true }, "no connection is said as such (review of #98, L3)");
+  assert.deepEqual(await M.runEngineCheck(model(none, { connectionModels: false }), workspace(), "pi"), { state: "failed", network: false, missing: true });
   assert.deepEqual(none, [], "no connection, or an old Core: nothing is sent");
   assert.equal(M.piCheckable(model([]), workspace([{ id: "x", status: "deleted" }])), false);
 });
@@ -52,8 +52,8 @@ for (const locale of LOCALES) test(`opening Engines lists no models: enabled eng
   const html = render(createElement(M.WorkspaceRuntimeSettings, { model: model(log), workspace: workspace() }), locale);
   assert.deepEqual(log, [], "rendering sends nothing");
   assert.ok(![...html.matchAll(/data-runtime-status="[^"]+">([^<]*)</g)].some(m => m[1].startsWith(esc(t("ws.onboarding.engine.status.ready")))), "no status reads «Ready» before a check");
-  assert.match(html, new RegExp(`data-runtime-status="codex">${esc(t("ws.runtimes.status.enabled"))} · 0\\.50\\.0<`));
-  assert.match(html, new RegExp(`data-runtime-status="pi">${esc(t("ws.runtimes.status.enabled"))}<`));
+  assert.match(html, new RegExp(`data-runtime-status="codex" aria-live="polite">${esc(t("ws.runtimes.status.enabled"))} · 0\\.50\\.0<`));
+  assert.match(html, new RegExp(`data-runtime-status="pi" aria-live="polite">${esc(t("ws.runtimes.status.enabled"))}<`));
   assert.deepEqual([...html.matchAll(/data-check-engine="([^"]+)"/g)].map(m => m[1]), ["pi", "codex"], "Check only on enabled engines");
   assert.ok(html.includes(`aria-label="${esc(`${t("ws.onboarding.engine.check")} Codex`)}"`));
   assert.ok(html.includes(esc(t("ws.onboarding.engine.readyNote"))));
@@ -70,9 +70,30 @@ for (const locale of LOCALES) test(`failure copy says why and what to do, and na
 });
 
 test("a failed check keeps «Enabled» and adds the reason; Ready needs a successful check (source)", () => {
-  assert.match(source, /value\?\.state === "ok" \? `\$\{t\("ws\.onboarding\.engine\.status\.ready"\)\} · \$\{t\("ws\.onboarding\.engine\.listed", \{ n: value\.models \}\)\}`/);
+  assert.match(source, /value\?\.state === "ok" \? `\$\{t\("ws\.onboarding\.engine\.status\.ready"\)\} · \$\{t\("ws\.runtimes\.check\.listedAt"/);
   assert.match(source, /: value\?\.state === "checking" \? t\("ws\.onboarding\.engine\.status\.checking"\) : enabled;/, "failed falls through to «Enabled»");
   assert.match(source, /const checkable = runtime\.registered && runtime\.use === "ready";/);
   assert.match(source, /useEffect\(\(\) => \{ setChecks\(\{\}\); \}, \[checkScope\]\);/, "results never carry over to another workspace");
   assert.match(source, /if \(liveCheckScope\.current === checkScope\) setChecks/, "a late answer for another workspace is dropped");
+});
+
+for (const locale of LOCALES) test(`screen readers hear the check: live status line, a reason region that exists before it is filled, focus kept while checking (review of #98, M1) (${locale})`, () => {
+  const html = render(createElement(M.WorkspaceRuntimeSettings, { model: model([]), workspace: workspace() }), locale);
+  for (const id of ["pi", "codex"]) {
+    assert.match(html, new RegExp(`data-runtime-status="${id}" aria-live="polite"`), `${id} status is a live region`);
+    assert.match(html, new RegExp(`<span class="wsd-runtime-check-live" aria-live="polite" data-check-live="${id}"></span>`), `${id} reason region is present and empty before any check`);
+  }
+  assert.doesNotMatch(html, /data-runtime-status="claude"[^>]*aria-live/, "rows without Check stay quiet");
+  assert.doesNotMatch(html, /<button[^>]*data-check-engine="[^"]+"[^>]*disabled=""/, "Check is never natively disabled");
+  assert.doesNotMatch(source, /wsd-runtime-check-warn" role="status"/);
+  assert.match(source, /aria-disabled=\{waiting \|\| undefined\} onClick=\{\(\) => check\(id\)\}/);
+  assert.match(source, /if \(checks\[id\]\?\.state === "checking" \|\| pending\) return;/, "a waiting button ignores presses");
+  assert.doesNotMatch(readFileSync(new URL("../src/workspace-settings.css", import.meta.url), "utf8"), /wsd-runtime-check-live[^{]*\{[^}]*display:\s*none/, "the region stays in the accessibility tree");
+});
+
+for (const locale of LOCALES) test(`«Ready» shows when it was checked, and the note fits Pi too (review of #98, L1/L2) (${locale})`, () => {
+  const t = makeT(locale);
+  assert.ok(t("ws.runtimes.check.listedAt", { n: 3, time: "13:05" }).includes("13:05"));
+  assert.doesNotMatch(t("ws.onboarding.engine.readyNote"), /sign-in|登录|登入/);
+  assert.match(source, /t\("ws\.runtimes\.check\.listedAt", \{ n: value\.models, time: checkedAt\(value\.at\) \}\)/);
 });

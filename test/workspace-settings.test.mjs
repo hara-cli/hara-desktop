@@ -73,7 +73,7 @@ test("detected runtimes offer workspace binding and missing runtimes alone offer
  // DESIGN.md 2.1.2 §11.4: models are listed only by the explicit «Check» (runEngineCheck from a button), never on open or to pick a model.
  assert.doesNotMatch(source,/model\.selectRuntimeModel|wsd-runtime-model-step/);
  assert.equal((source.match(/model\.listRuntimeModels\(/g)??[]).length,1);assert.equal((source.match(/runEngineCheck\(model, workspace, id\)/g)??[]).length,1);
- assert.match(source,/disabled=\{checks\[id\]\?\.state === "checking" \|\| pending\} onClick=\{\(\) => check\(id\)\}/);
+ assert.match(source,/aria-disabled=\{waiting \|\| undefined\} onClick=\{\(\) => check\(id\)\}/);
  assert.doesNotMatch(source,/model\.changeConnection|selectedConnection|runtime-model-connection/);
 });
 test("host-login Codex hides isolated sign-in guidance",()=>{

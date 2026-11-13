@@ -1497,7 +1497,7 @@
   "ws.onboarding.engine.noneSub": "Colleagues need an engine to work. Connect a model service or install a command-line agent you use — or keep going for now.",
   "ws.onboarding.engine.list": "Engines on this Mac",
   "ws.onboarding.engine.listNote": "From a local check; your sign-in credentials are never read or copied",
-  "ws.onboarding.engine.readyNote": "“Ready” means installed, confirmed, and it just listed models with your Mac sign-in.",
+  "ws.onboarding.engine.readyNote": "“Ready” means installed, confirmed, and it just listed models.",
   "ws.onboarding.engine.free": "No Hara account or payment needed.",
   "ws.onboarding.engine.scope": "Changing the default only affects colleagues you create later.",
   "ws.onboarding.engine.skipNote": "You can continue: colleagues are kept as drafts and created once an engine is ready.",
@@ -1655,5 +1655,6 @@
   "ws.onboarding.team.summaryRetry": " Created colleagues won't be created again; Retry only handles the ones that failed.",
   "ws.runtimes.check.failed": "Check didn't pass: no models were listed. Make sure this engine is signed in, then retry.",
   "ws.runtimes.check.network": "Check didn't pass: couldn't reach the model service (network). Make sure this Mac is online. If your network needs a proxy, set it in “{proxy}” on this page.",
-  "ws.runtimes.check.piFailed": "Check didn't pass: this workspace's model connection listed no models. Check its address and key in Settings › {connections}."
+  "ws.runtimes.check.piFailed": "Check didn't pass: this workspace's model connection listed no models. Check its address and key in Settings › {connections}.",
+  "ws.runtimes.check.listedAt": "{n} models listed · checked at {time}"
 }
