@@ -11,6 +11,6 @@ export const workScopeToolLabelKey = (toolId: string): Key => tools.get(toolId) 
 export function workScopeDirectoryName(label: string | null, path: string | null): string | null {
   const name = label?.trim();
   if (name && !/^(?:[\\/]|[A-Za-z]:(?:[\\/]|$))/.test(name)) return name;
-  const leaf = (path ?? name)?.replace(/[\\/]+$/, "").split(/[\\/]/).at(-1);
+  const leaf = (path ?? name)?.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
   return leaf && !/^[A-Za-z]:$/.test(leaf) ? leaf : null;
 }
