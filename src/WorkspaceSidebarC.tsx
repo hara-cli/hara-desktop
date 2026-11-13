@@ -4,6 +4,7 @@ import { SidebarAvatar } from "./SidebarAvatar";
 import { redesignText } from "./desktop-redesign-copy";
 import { rosterGroups, rosterShortRole, rosterTooltipText, folderPreferenceKey, type RosterEntry, type RosterPreference } from "./workspace-roster";
 import type { WorkspaceDevAgent, WorkspaceDevDirectory } from "./workspace-dev-state";
+import { isImeCompositionKey } from "./ime";
 export interface SidebarEntry extends RosterEntry { agent?: WorkspaceDevAgent }
 interface Props {
   locale: string; workspaceId: string | null; workspaceName: string; directory: WorkspaceDevDirectory | null;
@@ -85,7 +86,7 @@ export function WorkspaceSidebarC(props: Props) {
     const attention = entry.needsYou ?? 0, shortRole = entry.kind === "group" ? entry.role : rosterShortRole(entry.role, entry.shortRole);
     const label = [entry.name, entry.role, unread > 0 ? r(muted ? "mutedUnread" : "unreadCount", { n: unread }) : "", attention > 0 ? r("needsYouCount", { n: attention }) : "", preferences[entry.id]?.hidden ? r("hidden") : ""].filter(Boolean).join(", ");
     if (props.rename?.id === entry.id) return <div key={entry.id} className="hd-inline-rename" role="group" aria-label={r(entry.kind === "group" ? "renameGroup" : "renameColleague")}>
-      <input aria-label={r(entry.kind === "group" ? "renameGroup" : "renameColleague")} autoFocus maxLength={80} value={props.rename.name} disabled={props.rename.pending} onChange={event => props.onRenameChange?.(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); props.onRenameCancel?.(); } else if (event.key === "Enter" && !event.nativeEvent.isComposing && props.rename?.name.trim()) { event.preventDefault(); props.onRenameCommit?.(); } }} />
+      <input aria-label={r(entry.kind === "group" ? "renameGroup" : "renameColleague")} autoFocus maxLength={80} value={props.rename.name} disabled={props.rename.pending} onChange={event => props.onRenameChange?.(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); props.onRenameCancel?.(); } else if (event.key === "Enter" && !isImeCompositionKey(event.nativeEvent) && props.rename?.name.trim()) { event.preventDefault(); props.onRenameCommit?.(); } }} />
       {props.rename.duplicate ? <small role="status">{props.duplicateLabel}</small> : null}
     </div>;
     return <div key={entry.id} className="hd-row-wrap">

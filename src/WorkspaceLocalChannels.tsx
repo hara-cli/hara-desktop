@@ -11,6 +11,7 @@ import type { WorkspaceDevAgent, WorkspaceDevApproval, WorkspaceDevMessage } fro
 import { channelMentionQuery, insertChannelMention, type LocalChannelsView, type LocalChannelSnapshot, type WorkspaceLocalChannelsModel } from "./workspace-local-channels";
 import { channelHistoryPage } from "./workspace-channel-history";
 import "./workspace-local-channels.css";
+import { isImeCompositionKey, sendsOnEnter } from "./ime";
 type Translate = ReturnType<typeof makeT>;
 export const channelMemberLabel = (t: Translate, count: number) => t(count === 1 ? "ws.channels.memberOne" : "ws.channels.memberCount", { n: count });
 
@@ -46,7 +47,7 @@ export function LocalChannelDialog({ mode, view, model, colleagues, t, onClose, 
       <p>{t(mode === "invite" ? "ws.channels.inviteBody" : "ws.channels.createBody")}</p></header>
     {mode !== "invite" ? <div className="hs-channel-dialog-body">
       <label>{t("ws.channels.name")}<input autoFocus aria-label={t("ws.channels.name")} placeholder={t("ws.channels.namePlaceholder")} value={name} maxLength={80} disabled={busy}
-        onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing && name.trim() && !busy) { event.preventDefault(); void save(); } }} /></label>
+        onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !isImeCompositionKey(event.nativeEvent) && name.trim() && !busy) { event.preventDefault(); void save(); } }} /></label>
       <fieldset disabled={busy} className="hs-channel-picker"><legend>{t("ws.channels.selectMembers")}</legend>
         {colleagues.length ? <><label className="hs-channel-search"><MagnifyingGlassIcon className="hico" /><input type="search" aria-label={t("ws.channels.searchMembers")} placeholder={t("ws.channels.searchMembers")} value={search} onChange={event => setSearch(event.target.value)} /></label>
           <div className="hs-channel-picker-actions"><span>{channelMemberLabel(t, memberIds.length)}</span><button type="button" className="hs-btn sec" onClick={() => setMembers(colleagues.filter(row => row.state !== "archived").map(row => row.agentId))}>{t("ws.channels.all")}</button><button type="button" className="hs-btn sec" onClick={() => setMembers([])}>{t("ws.channels.none")}</button></div>
@@ -281,7 +282,7 @@ export function LocalChannelComposer({ view, model, colleagues, t, disconnected,
         onMouseDown={event => event.preventDefault()} onClick={() => pickMention(row.name)}>@{row.name}</button>)}
       <small>{t(recipients.length ? "ws.channels.mentionHint" : "ws.channels.mentionNotesOnly")}</small></div> : null}
     <div className="hs-field wsd-composer hd-channel-composer"><textarea id="workspace-composer-input" ref={input} aria-label={t("ws.channels.placeholder", { name: channel.channel.name })} placeholder={t("ws.channels.placeholder", { name: channel.channel.name })} value={view.draft} rows={1} maxLength={4000} disabled={disconnected}
-      onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (canSend) void model.submitDraft(recipients); } }} />
+      onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (sendsOnEnter(event.nativeEvent)) { event.preventDefault(); if (canSend) void model.submitDraft(recipients); } }} />
       <div className="hd-composer-send-actions">{busy ? <button type="button" className="hs-stop" title={queueSupported ? t("ws.channels.queueCancelHint") : undefined} onClick={() => void model.cancel()} disabled={disconnected || channel.state === "draining"}><StopIcon className="hico" />{t("ws.composer.stop")}</button> : null}
       {view.pending?.state === "unknown" ? <button className="hs-btn sec" onClick={() => void model.verifyPending()} disabled={disconnected}>{t("ws.composer.verify")}</button>
         : <button type="button" className="hs-send" data-channel-submit={willQueue ? "queue" : "send"} aria-label={t(willQueue ? "ws.channels.enqueue" : "ws.composer.send")} title={t(willQueue ? "ws.channels.enqueue" : "ws.composer.send")} disabled={!canSend} onClick={() => void model.submitDraft(recipients)}><PaperAirplaneIcon className="hico" />{willQueue ? <span>{t("ws.channels.enqueue")}</span> : null}</button>}
