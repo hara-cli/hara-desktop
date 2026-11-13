@@ -1,3 +1,4 @@
+import { SettingsActionResult } from "./SettingsActionDialog";
 import { WorkspaceRpcErrorNotice } from "./WorkspaceRpcErrorNotice.tsx";
 import { localizedWorkspaceView } from "./workspace-default-labels.ts";
 import { WorkspaceDeletedColleagues } from "./WorkspaceDeletedColleagues";
@@ -145,7 +146,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
         {scopeOpen ? <div ref={scopeMenu} role="menu" aria-label={t("ws.settings.scope")}><p>{t("ws.settings.scopeNote")}</p>{view.directory?.workspaces.filter(row => row.active).map(row => <button key={row.workspaceId} role="menuitemradio" aria-checked={row.workspaceId === view.workspaceId} onClick={() => switchScope(row.workspaceId)}>{row.label}</button>)}</div> : null}</div>
       {workspacePages.map(navItem)}<div className="wss-nav-group"><strong>{t("ws.settings.device")}</strong><small>{t("ws.settings.allSpaces")}</small></div>{navItem("appearance")}{navItem("updates")}
     </nav><footer><HaraLogo size={19} /><span>Hara {versionInfo?.desktop ?? ""}<small>{t("ws.settings.savedHere")}</small></span></footer></aside>
-    <main className="wss-main" ref={body} inert={Boolean(decision)}><header className="wss-heading"><div><p>{t("ws.settings")} / {device ? t("ws.settings.device") : `${t("ws.settings.workspace")} / ${workspace?.label ?? "—"}`}</p><h1>{t(pages[page].name)}</h1></div>
+    <main className="wss-main" ref={body} tabIndex={-1} inert={Boolean(decision)}><header className="wss-heading"><div><p>{t("ws.settings")} / {device ? t("ws.settings.device") : `${t("ws.settings.workspace")} / ${workspace?.label ?? "—"}`}</p><h1>{t(pages[page].name)}</h1></div>
       <span className="wss-scope-chip">{device ? `${t("ws.settings.device")} · ${t("ws.settings.allSpaces")}` : t("ws.settings.currentOnly")}</span></header><p className="wss-description">{t(pages[page].detail)}</p>
       <WorkspaceRpcErrorNotice value={view.error} technicalDetail={view.errorTechnicalDetail} locale={locale} t={t} className="wss-callout" />
       {leaveNotice ? <p className="wss-callout" role="status">{t(leaveNotice)}</p> : null}
@@ -184,11 +185,16 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
 }
 function General({ workspace, root, role, kind }: { workspace: WorkspaceDevSnapshot; root: string; role: string; kind: string }) {
   const { t } = useWorkspaceLocale();
-  const [copied, setCopied] = useState(false), path = `${root}/project/${workspace.workspaceId}`;
+  const [copied, setCopied] = useState(false), [copyFailed, setCopyFailed] = useState(false), path = `${root}/project/${workspace.workspaceId}`;
+  const copyPath = async () => {
+    setCopyFailed(false);
+    try { await navigator.clipboard.writeText(path); setCopied(true); }
+    catch { setCopied(false); setCopyFailed(true); }
+  };
   return <section className="wss-page-card"><h2>{workspace.label}</h2><dl><dt>{t("ws.settings.general.kind")}</dt><dd>{t(kind === "team" ? "ws.settings.team" : "ws.settings.personal")}</dd><dt>{t("ws.settings.general.role")}</dt><dd>{t(role === "owner" ? "ws.settings.general.owner" : role === "admin" ? "ws.settings.general.admin" : "ws.settings.general.member")}</dd><dt>{t("ws.settings.general.history")}</dt><dd>{workspace.conversation.pastTaskCount ?? 0}</dd><dt>{t("ws.settings.general.calls")}</dt><dd>{workspace.conversation.usage.modelCalls}{t("ws.settings.general.notBill")}</dd></dl><p>{t(kind === "personal" ? "ws.settings.general.personalNote" : "ws.settings.general.teamNote")}</p>
     <SettingsAdvanced page="general" items={[t("ws.settings.general.id"), t("ws.settings.localData")]}>
       <dl><dt>{t("ws.settings.general.id")}</dt><dd>{workspace.workspaceId}</dd><dt>{t("ws.settings.localData")}</dt><dd><code>{path}</code></dd></dl>
-      <button type="button" onClick={() => void navigator.clipboard.writeText(path).then(() => setCopied(true)).catch(() => setCopied(false))}>{t(copied ? "ws.settings.general.pathCopied" : "ws.settings.general.copyPath")}</button>
+      <button type="button" onClick={() => void copyPath()}>{t(copied ? "ws.settings.general.pathCopied" : "ws.settings.general.copyPath")}</button><SettingsActionResult text={copyFailed ? t("ws.settings.copyFailed") : ""} error />
     </SettingsAdvanced></section>;
 }
 /** Engine page: a running download is pinned above the page with its cancel action (settings IA audit, runtimes). */

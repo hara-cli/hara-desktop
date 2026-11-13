@@ -38,7 +38,7 @@ for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`connection rows keep th
 });
 
 test("delete from the row menu still goes through the original confirmation and RPC", () => {
-  assert.match(panels, /\{ id: "delete", label: t\("ws\.connections\.deleteMenu"\), danger: true, onSelect: \(\) => setConfirmDelete\(connection\) \}/);
+  assert.match(panels, /\{ id: "delete", label: t\("ws\.connections\.deleteMenu"\), danger: true, onSelect: \(\) => \{ setNotice\(""\); setConfirmDelete\(connection\); \} \}/);
   assert.match(panels, /onClick=\{\(\) => void perform\(\(\) => model\.changeConnection\(confirmDelete\.id, true\)\)\}>\{t\("ws\.connections\.deleteConfirm"\)\}/);
 });
 

@@ -14,6 +14,7 @@ const read = file => { const url = new URL(`../src/${file}`, import.meta.url); r
 
 /** Calls the cleanup added on purpose, by model method, each with its reason. Anything else new fails. */
 const ADDED = {
+  getSnapshot: "Settings interaction: read the local snapshot after an explicit reload of an unknown save; this getter sends no RPC",
   supportsDefaultRuntime: "S1b/G1: the per-workspace default engine is shown only when Core advertises workspace.default-runtime.v1",
   defaultRuntime: "S1b/G1: read the per-workspace default engine (Core contract 2026-11-13)",
   saveDefaultRuntime: "S1b/G1: save it with the optimistic lock (value.revision)",

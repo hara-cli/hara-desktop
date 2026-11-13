@@ -155,3 +155,20 @@
 .hs.wss-app .wsd-runtime-row .wsd-runtime-actions{display:flex;align-items:center;gap:var(--hara-space-2);justify-self:end}
 @media (max-width:700px){.hs.wss-app .wsd-runtime-row .wsd-runtime-actions{justify-self:start}}
 .hs.wss-app .wsd-runtime-row .wsd-runtime-check[aria-disabled="true"]{opacity:.55;cursor:progress}
+
+/* Action dialogs use the native top layer, so a long settings list cannot hide a confirmation. */
+.hs.wss-app .wss-action-dialog{position:fixed;inset:0;margin:auto;width:min(620px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:calc(100dvh - 48px);overflow:auto;overscroll-behavior:contain;padding:var(--hara-space-6);border:1px solid var(--hara-glass-c-border);border-radius:var(--hara-radius-lg);background:var(--hara-glass-c-bg);color:var(--hara-text-primary);box-shadow:var(--hara-glass-c-shadow);font:inherit}
+.wss-action-dialog::backdrop{background:var(--hara-scrim)}
+.hs.wss-app .wss-action-dialog>h3{margin:0 0 var(--hara-space-4);font-size:var(--hara-font-size-title-md);line-height:1.5}
+.hs.wss-app .wss-action-dialog .wsd-connection-form{max-width:none;margin:0}
+.hs.wss-app .wss-action-dialog .wsd-card-actions{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:var(--hara-space-2);padding-top:var(--hara-space-4);background:var(--hara-bg-elevated)}
+.hs.wss-app .wss-action-dialog :is(label,input,select,textarea){max-width:100%}
+.hs.wss-app .wss-action-result{padding:var(--hara-space-3) var(--hara-space-4);border:1px solid var(--hara-border-default);border-radius:var(--hara-radius-md);background:var(--hara-success-soft);color:var(--hara-text-primary);overflow-wrap:anywhere;scroll-margin-block:var(--hara-space-4)}
+.hs.wss-app .wss-action-result.is-error{background:var(--hara-danger-soft);border-color:var(--hara-danger)}
+
+.hs.wss-app .wss-action-dialog:not([open]){display:none}
+
+.hs.wss-app .wss-action-fields{display:grid;gap:var(--hara-space-3);min-width:0;margin:0;padding:0;border:0}
+
+.hs.wss-app .wss-action-dialog button.wss-action-danger{background:var(--hara-danger);border-color:var(--hara-danger);color:var(--hara-bg-base)}
+.hs.wss-app .wss-action-dialog button.wss-action-danger:not(:disabled):hover{background:var(--hara-danger);border-color:var(--hara-danger);filter:brightness(.94)}

@@ -1704,5 +1704,16 @@
   "ws.workScope.approval.paid": "Spending money",
   "ws.workScope.approval.publish": "Publishing",
   "ws.workScope.approval.credentials": "Using accounts or keys",
-  "ws.workScope.approval.expand": "Expanding the work scope"
+  "ws.workScope.approval.expand": "Expanding the work scope",
+  "ws.connections.updated": "Connection settings saved.",
+  "ws.connections.deleted": "Connection deleted.",
+  "ws.connections.reloadAfterUnknown": "Reload connections to check",
+  "ws.connections.reloadFailed": "Could not reload connections. The save result is still unconfirmed. Try reloading again.",
+  "ws.features.saved": "Settings saved.",
+  "ws.skills.copySaved": "Private skill copy saved.",
+  "ws.schedules.saved": "Schedule saved.",
+  "ws.schedules.deleted": "Schedule deleted.",
+  "ws.runtimeProxy.placeholder": "http://127.0.0.1:port",
+  "ws.settings.copyFailed": "Could not copy. Select the path and copy it manually.",
+  "ws.updates.copyFailed": "Could not copy. Select the version details and copy them manually."
 }

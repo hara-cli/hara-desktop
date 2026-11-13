@@ -1,3 +1,4 @@
+import { SettingsActionDialog, SettingsActionResult } from "./SettingsActionDialog";
 import { useEffect, useRef, useState } from "react";
 import type { Key } from "./i18n";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
@@ -126,12 +127,12 @@ export function WorkspaceExtensions({ model, workspaceId, generation, agent, onD
       blocked={loading || busy || needsReload || !!proposal || !!current?.sources.some(source => JSON.stringify(drafts[source.sourceId] ?? savedDraft(source, false)) !== JSON.stringify(savedDraft(source, false)))}
       onBusy={setOwnerLocked} onChanged={sourceId => load(sourceId)} /> : null}
     {!agent && supported && !needsReload ? <SettingsAdvanced page="extensions" items={[t("ws.extensions.reloadShort")]}>{reload}</SettingsAdvanced> : null}
-    {proposal && proposedSource ? <section className="wse-confirm" role="group" aria-label={t("ws.extensions.confirmTitle")}>
+    {proposal && proposedSource ? <SettingsActionDialog label={t("ws.extensions.confirmTitle")} pending={busy} onClose={() => { if (!busy && !pending.current) void decide(false); }}>
       <h4>{t("ws.extensions.confirmTitle")}</h4><p><strong>{proposedSource.name}</strong> · {t(proposal.change.enabled ? "ws.extensions.enabled" : "ws.extensions.disabled")}</p>
       <p>{t("ws.extensions.selected", { count: proposal.change.allowedTools.length })}</p>
       <ul>{proposal.change.allowedTools.map(id => <li key={id}>{proposedSource.tools.find(tool => tool.toolId === id)?.name ?? id}</li>)}</ul>
-      <div><button type="button" disabled={busy} onClick={() => void decide(false)}>{t("ws.extensions.cancel")}</button><button type="button" className="wsd-primary" disabled={busy} onClick={() => void decide(true)}>{t("ws.extensions.confirm")}</button></div>
-    </section> : null}
+      <SettingsActionResult text={notice ? t(notice) : ""} error /><div className="wsd-card-actions"><button type="button" data-settings-cancel disabled={busy} onClick={() => void decide(false)}>{t("ws.extensions.cancel")}</button><button type="button" className="wsd-primary" disabled={busy} onClick={() => void decide(true)}>{t("ws.extensions.confirm")}</button></div>
+    </SettingsActionDialog> : null}
   </section>;
 }
 

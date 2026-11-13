@@ -1704,5 +1704,16 @@
   "ws.workScope.approval.paid": "付费操作",
   "ws.workScope.approval.publish": "对外发布",
   "ws.workScope.approval.credentials": "使用账号或密钥",
-  "ws.workScope.approval.expand": "扩大工作范围"
+  "ws.workScope.approval.expand": "扩大工作范围",
+  "ws.connections.updated": "连接设置已保存。",
+  "ws.connections.deleted": "连接已删除。",
+  "ws.connections.reloadAfterUnknown": "重新读取连接列表核对",
+  "ws.connections.reloadFailed": "未能重新读取连接，保存结果仍未确认，请稍后再试。",
+  "ws.features.saved": "设置已保存。",
+  "ws.skills.copySaved": "技能私人副本已保存。",
+  "ws.schedules.saved": "定时任务已保存。",
+  "ws.schedules.deleted": "定时任务已删除。",
+  "ws.runtimeProxy.placeholder": "http://127.0.0.1:端口",
+  "ws.settings.copyFailed": "复制失败，请选中路径手动复制。",
+  "ws.updates.copyFailed": "复制失败，请选中版本信息手动复制。"
 }

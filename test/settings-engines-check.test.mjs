@@ -87,7 +87,7 @@ for (const locale of LOCALES) test(`screen readers hear the check: live status l
   assert.doesNotMatch(html, /<button[^>]*data-check-engine="[^"]+"[^>]*disabled=""/, "Check is never natively disabled");
   assert.doesNotMatch(source, /wsd-runtime-check-warn" role="status"/);
   assert.match(source, /aria-disabled=\{waiting \|\| undefined\} onClick=\{\(\) => check\(id\)\}/);
-  assert.match(source, /if \(checks\[id\]\?\.state === "checking" \|\| pending\) return;/, "a waiting button ignores presses");
+  assert.match(source, /if \(currentCheck\(id\)\?\.state === "checking" \|\| pending\) return;/, "a waiting button ignores presses");
   assert.doesNotMatch(readFileSync(new URL("../src/workspace-settings.css", import.meta.url), "utf8"), /wsd-runtime-check-live[^{]*\{[^}]*display:\s*none/, "the region stays in the accessibility tree");
 });
 
@@ -104,4 +104,27 @@ for (const locale of LOCALES) test(`one listed model reads in the singular (revi
   assert.equal(t("ws.onboarding.engine.listedOne"), { en: "1 model listed · checked just now", "zh-Hans": "已列出 1 个模型 · 刚刚检查", "zh-Hant": "已列出 1 個模型 · 剛剛檢查" }[locale]);
   assert.match(source, /value\.models === 1 \? t\("ws\.runtimes\.check\.listedAtOne"/);
   assert.match(readFileSync(new URL("../src/OnboardingEngineStep.tsx", import.meta.url), "utf8"), /value\.models === 1 \? t\("ws\.onboarding\.engine\.listedOne"\)/);
+});
+
+
+test("revoked connections are not usable for Pi checks and never cause a model-list request", async () => {
+  const log = [], ws = workspace([{ id: "revoked", status: "revoked", keyState: "saved" }]);
+  assert.equal(M.piCheckable(model(log), ws), false);
+  assert.deepEqual(await M.runEngineCheck(model(log), ws, "pi"), { state: "failed", network: false, missing: true });
+  assert.deepEqual(log, []);
+});
+
+test("a connection or engine configuration change invalidates a previous Ready result; detection timestamps do not", () => {
+  const ws = workspace(), initial = M.engineCheckScope(ws);
+  for (const mutate of [
+    value => value.connections.revision++,
+    value => value.connections.defaultConnectionId = "other",
+    value => value.connections.connections[0].keyState = "invalid",
+    value => value.runtimes.options[0].fingerprint = "new-binary",
+    value => value.runtimes.options[0].loginSource = "isolated",
+    value => value.runtimes.options[0].use = "confirm_update",
+    value => value.resourceGeneration = "next-generation",
+  ]) { const next = structuredClone(ws); mutate(next); assert.notEqual(M.engineCheckScope(next), initial); }
+  const detection = structuredClone(ws); detection.runtimes.detection = { completedAt: Date.now(), running: true };
+  assert.equal(M.engineCheckScope(detection), initial, "background metadata does not erase a successful user check");
 });

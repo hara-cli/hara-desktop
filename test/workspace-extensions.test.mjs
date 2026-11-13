@@ -17,6 +17,11 @@ const view = (workspaceId = "A", patch = {}) => ({ workspaceId, resourceGenerati
 const proposal = (change, revision = 0, workspaceId = "A") => ({ proposalId: "11111111-1111-4111-8111-111111111111", workspaceId, resourceGeneration: `generation-${workspaceId}`, revision, change });
 const component = readFileSync(new URL("../src/WorkspaceExtensions.tsx", import.meta.url), "utf8");
 const { outputText } = ts.transpileModule(component, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
+// Load the real dialog/result module; this controller harness traverses its children without mounting a DOM.
+// Modal focus and visibility are covered by the browser interaction smoke.
+const dialogsSource = readFileSync(new URL("../src/SettingsActionDialog.tsx", import.meta.url), "utf8");
+const dialogs = {};
+new Function("require", "exports", ts.transpileModule(dialogsSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText)(require, dialogs);
 function mount(model, patch = {}) {
   const slots = [], effects = [], dirtyEvents = []; let cursor = 0, dirty = false, tree;
   let props = { model, workspaceId: "A", generation: "generation-A", onDirty: value => dirtyEvents.push(value), ...patch };
@@ -27,7 +32,7 @@ function mount(model, patch = {}) {
     useEffect(action, deps) { const index = cursor++, old = slots[index]; if (!old || deps.some((dep, n) => !Object.is(dep, old.deps[n]))) effects.push(() => { old?.cleanup?.(); slots[index] = { deps, cleanup: action() }; }); },
   };
   const exports = {};
-  new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks } : name === "./SettingsChrome" ? { SettingsAdvanced: props => props.children, SettingsAttention: () => null } : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t: makeT(props.locale ?? "en"), locale: props.locale ?? "en" }) } : name.endsWith(".css") ? {} : require(name), exports);
+  new Function("require", "exports", outputText)(name => name === "./SettingsActionDialog" ? dialogs : name === "react" ? { ...React, ...hooks } : name === "./SettingsChrome" ? { SettingsAdvanced: props => props.children, SettingsAttention: () => null } : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t: makeT(props.locale ?? "en"), locale: props.locale ?? "en" }) } : name.endsWith(".css") ? {} : require(name), exports);
   const render = (next = {}) => { props = { ...props, ...next }; cursor = 0; dirty = false; tree = exports.WorkspaceExtensions(props); effects.splice(0).forEach(effect => effect()); return tree; };
   const flush = async () => { await tick(); for (let count = 0; count < 24 && dirty; count++) { render(); await tick(); } };
   const nodes = () => { const list = []; const walk = value => { if (Array.isArray(value)) value.forEach(walk); else if (value && typeof value === "object" && value.props) { list.push(value); walk(value.props.children); } }; walk(tree); return list; };

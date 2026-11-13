@@ -162,10 +162,10 @@ test("late metadata and failed key writes cannot leak into a different workspace
 });
 test("actual confirmation action fences same-frame repeated clicks; cancellation remains a local card action",async()=>{
  const actions=[],fence={current:false};let finish;
- const perform=callback("perform",{fence,setPending:x=>actions.push(["pending",x]),setNotice:x=>actions.push(["notice",x]),setConfirmDelete:x=>actions.push(["delete",x]),setConfirmImport:x=>actions.push(["import",x])});
+ const perform=callback("perform",{fence,confirmDelete:null,setPending:x=>actions.push(["pending",x]),setNotice:x=>actions.push(["notice",x]),setConfirmDelete:x=>actions.push(["delete",x]),setConfirmImport:x=>actions.push(["import",x])});
  const one=perform(()=>new Promise(resolve=>{actions.push(["rpc"]);finish=resolve;}));await perform(async()=>actions.push(["duplicate"]));assert.equal(actions.some(x=>x[0]==="duplicate"),false);
- finish();await one;assert.equal(fence.current,false);assert.equal(actions.filter(x=>x[0]==="rpc").length,1);
- assert.match(read("src/WorkspaceSettingsPanels.tsx"),/onClick=\{\(\) => setConfirmDelete\(null\)\}/);
+ finish();await one;assert.equal(fence.current,false);assert.equal(actions.filter(x=>x[0]==="rpc").length,1);assert(actions.some(x=>x[0]==="notice"&&x[1]==="ws.connections.updated"));
+ assert.match(read("src/WorkspaceSettingsPanels.tsx"),/onClick=\{\(\) => \{ setConfirmDelete\(null\); setNotice\(""\); \}\}/);
 });
 test("actual feature handler sends locked version and workspace revision once without widening permissions",async()=>{
  const calls=[],busy={current:false},states=[];
