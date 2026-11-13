@@ -4,7 +4,10 @@
 // `gh release download` path hits a transient CDN failure. Every completed file is accepted only
 // after its size and GitHub-declared SHA-256 match, then copied into place exclusively.
 // Existing targets and partial downloads are retained for diagnosis; nothing is deleted.
-import { createHash, randomUUID } from "node:crypto";
+// 1.2.3: the partial file name is stable per asset, so a retry resumes with an HTTP Range request
+// instead of starting over; a transfer is abandoned only after it stalls below 32 KiB/s for 60 s,
+// and the hard deadline scales with the asset size.
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
   closeSync,
@@ -21,6 +24,14 @@ import { pathToFileURL } from "node:url";
 
 export const RELEASE_API_ASSET_TIMEOUT_MS = 10 * 60_000;
 export const RELEASE_API_CURL_MAX_TIME_SECONDS = 570;
+export const RELEASE_API_STALL_BYTES_PER_SECOND = 32 * 1024;
+export const RELEASE_API_STALL_SECONDS = 60;
+
+// Never less than the historical 10 minutes; otherwise the size at 100 KiB/s with 50% slack.
+export function releaseApiAssetTimeoutMs(size, minimumMs = RELEASE_API_ASSET_TIMEOUT_MS) {
+  if (!Number.isSafeInteger(size) || size < 0) throw new Error("release API asset size is invalid");
+  return Math.max(minimumMs, Math.ceil((size / (100 * 1024)) * 1.5) * 1_000);
+}
 
 const SAFE_REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const SAFE_ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,254}$/u;
@@ -89,12 +100,15 @@ export function releaseApiAssets(metadata, repository) {
   });
 }
 
-export function releaseApiDownloadArguments(apiUrl, outputPath) {
+export function releaseApiDownloadArguments(apiUrl, outputPath, maxTimeSeconds = RELEASE_API_CURL_MAX_TIME_SECONDS) {
   if (!/^https:\/\/api\.github\.com\/repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases\/assets\/\d+$/u.test(apiUrl ?? "")) {
     throw new Error("release API asset endpoint is invalid");
   }
   if (typeof outputPath !== "string" || !outputPath || outputPath.includes("\0")) {
     throw new Error("release API asset output path is invalid");
+  }
+  if (!Number.isSafeInteger(maxTimeSeconds) || maxTimeSeconds <= 0) {
+    throw new Error("release API asset curl deadline is invalid");
   }
   return [
     "--disable",
@@ -115,11 +129,11 @@ export function releaseApiDownloadArguments(apiUrl, outputPath) {
     "--connect-timeout",
     "20",
     "--max-time",
-    String(RELEASE_API_CURL_MAX_TIME_SECONDS),
+    String(maxTimeSeconds),
     "--speed-limit",
-    "1024",
+    String(RELEASE_API_STALL_BYTES_PER_SECOND),
     "--speed-time",
-    "60",
+    String(RELEASE_API_STALL_SECONDS),
     "--continue-at",
     "-",
     "--output",
@@ -137,7 +151,8 @@ function curlAuthenticationConfig(token) {
   return `header = "Authorization: Bearer ${token}"\nheader = "Accept: application/octet-stream"\n`;
 }
 
-function runAssetDownload(asset, root, { execute, timeoutMs, token }) {
+function runAssetDownload(asset, root, { execute, timeoutMs: minimumMs, token }) {
+  const timeoutMs = releaseApiAssetTimeoutMs(asset.size, minimumMs);
   const target = join(root, asset.name);
   if (fileMatches(target, asset)) return Promise.resolve({ skipped: true });
   // lstat also finds dangling symlinks, which existsSync would treat as missing.
@@ -146,14 +161,31 @@ function runAssetDownload(asset, root, { execute, timeoutMs, token }) {
   catch (error) { if (error.code !== "ENOENT") throw error; missing = true; }
   if (!missing) throw new Error(`release API asset target already exists; retained without overwrite: ${asset.name}`);
 
-  const partial = join(root, `.${asset.name}.${process.pid}.${randomUUID()}.part`);
-  closeSync(openSync(partial, "wx", 0o600));
+  // Stable per asset: a later attempt resumes these bytes (curl --continue-at -). A partial that is
+  // already longer than GitHub's size can never become valid and is refused rather than truncated.
+  const partial = join(root, `.${asset.name}.part`);
+  let resumeFrom = 0;
+  try {
+    const info = lstatSync(partial);
+    if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) {
+      throw new Error(`release API partial download is not a private regular file: ${asset.name}`);
+    }
+    if (info.size > asset.size) {
+      throw new Error(`release API partial download is longer than the asset; retained for diagnosis: ${asset.name}`);
+    }
+    resumeFrom = info.size;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    closeSync(openSync(partial, "wx", 0o600));
+  }
+  if (resumeFrom > 0) console.log(`release-api-download: resuming ${asset.name} at byte ${resumeFrom}`);
   const curlEnvironment = { ...process.env };
   delete curlEnvironment.GH_TOKEN;
   delete curlEnvironment.GITHUB_TOKEN;
   curlEnvironment.NO_PROXY = "";
   curlEnvironment.no_proxy = "";
-  const child = execute("/usr/bin/curl", releaseApiDownloadArguments(asset.apiUrl, partial), {
+  const curlMaxTime = Math.max(1, Math.floor(timeoutMs / 1_000) - 30);
+  const child = execute("/usr/bin/curl", releaseApiDownloadArguments(asset.apiUrl, partial, curlMaxTime), {
     env: curlEnvironment,
     stdio: ["pipe", "ignore", "inherit"],
   });

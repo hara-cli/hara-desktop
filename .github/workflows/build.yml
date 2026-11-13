@@ -33,10 +33,15 @@ jobs:
   prepare_release:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
+    env:
+      # Ignored by Git so the later clean-tree source-pack gate still sees an unchanged checkout.
+      CI_EVIDENCE_LEAF: release-evidence-${{ github.run_id }}-${{ github.run_attempt }}-prepare
     outputs:
       desktop_sha: ${{ steps.release_source.outputs.desktop_sha }}
       cli_sha: ${{ steps.release_source.outputs.cli_sha }}
       cli_version: ${{ steps.release_source.outputs.cli_version }}
+      desktop_tree: ${{ steps.release_source.outputs.desktop_tree }}
+      cli_tree: ${{ steps.release_source.outputs.cli_tree }}
       source_artifact_id: ${{ steps.source_pack_upload.outputs.artifact-id }}
       source_artifact_digest: ${{ steps.source_pack_upload.outputs.artifact-digest }}
     steps:
@@ -113,7 +118,17 @@ jobs:
         shell: bash
         run: ./scripts/npm-ci-retry.sh
       - name: Run release-pipeline regression tests
-        run: npm test
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { provisionCiEvidence, withCiEnvironment } from './scripts/ci-evidence.mjs';
+          import { ROOT, run } from './scripts/candidate-common.mjs';
+          const evidenceRoot = path.join(process.env.GITHUB_WORKSPACE, process.env.CI_EVIDENCE_LEAF);
+          const c = provisionCiEvidence({ evidenceRoot, output: path.join(evidenceRoot, 'tmp', 'regressions') });
+          await withCiEnvironment(c, () => run('Release prepare original full suite', 'bash', ['-c', 'exec npm test'],
+            { cwd: ROOT, env: c.env, capture: true, logFile: path.join(c.base, 'tests.log') }));
+          NODE
       - name: Pin exact Desktop and CLI source commits
         id: release_source
         shell: bash
@@ -182,6 +197,8 @@ jobs:
             echo "desktop_sha=$DESKTOP_SHA"
             echo "cli_sha=$CLI_SHA"
             echo "cli_version=$CLI_VERSION"
+            echo "desktop_tree=$(git rev-parse "$DESKTOP_SHA^{tree}")"
+            echo "cli_tree=$(git -C "$CLI_DIR" rev-parse "$CLI_SHA^{tree}")"
           } >>"$GITHUB_OUTPUT"
           echo "Pinned desktop $DESKTOP_SHA and hara-cli $CLI_SHA"
       - name: Build compact packs for the exact Desktop and CLI source snapshots
@@ -485,6 +502,11 @@ jobs:
       contents: write
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    outputs:
+      # 1.2.3: name, size and SHA-256 of every asset in the exact remote draft revalidated below. The
+      # protected signer binds the non-Mac assets to this record by GitHub's server-side digests
+      # instead of downloading them again.
+      asset_digests: ${{ steps.verified_draft.outputs.asset_digests }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.0
         with:
@@ -616,6 +638,7 @@ jobs:
           node scripts/github-release-download.mjs \
             "$RELEASE_TAG" "$GITHUB_REPOSITORY" "$VERIFY_DIR"
       - name: Revalidate downloaded draft and source archive without a release token
+        id: verified_draft
         shell: bash
         env:
           SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
@@ -634,6 +657,18 @@ jobs:
             cd "$SOURCE_VERIFY_DIR"
             sha256sum -c source-packs.sha256
           )
+          # The record below is the root of the signer's digest-only merge, so bind it to the bytes the
+          # matrix builds cryptographically verified: every downloaded asset must equal its input.
+          for downloaded in "$VERIFY_DIR"/*; do
+            name="$(basename "$downloaded")"
+            [ "$name" = "Hara_${RELEASE_TAG#v}_source-packs.zip" ] && continue
+            cmp -s "$downloaded" "$RUNNER_TEMP/release-assets/$name" || {
+              echo "draft asset $name differs from the matrix-verified input" >&2
+              exit 1
+            }
+          done
+          ASSET_DIGESTS="$(node scripts/release-asset-digests.mjs record "$VERIFY_DIR")"
+          jq -e 'length == 17' <<<"$ASSET_DIGESTS" >/dev/null
           rm -f "$SOURCE_ARCHIVE"
           node scripts/updater-manifest.mjs validate "$VERIFY_DIR" "$RELEASE_TAG"
           node scripts/release-source-provenance.mjs validate \
@@ -641,6 +676,7 @@ jobs:
             "$RELEASE_TAG" \
             "${{ needs.prepare_release.outputs.desktop_sha }}" \
             "${{ needs.prepare_release.outputs.cli_sha }}"
+          echo "asset_digests=$ASSET_DIGESTS" >> "$GITHUB_OUTPUT"
       - name: Confirm the remote release remains a hidden draft
         shell: bash
         env:
@@ -763,8 +799,11 @@ jobs:
     timeout-minutes: 180
     env:
       HARA_RELEASE_SOURCE_ROOT: ${{ github.workspace }}/source-${{ github.run_id }}-${{ github.run_attempt }}
+      # Beside, not inside, the run-scoped source root: outside the Desktop checkout and retained
+      # after that root is removed.
+      CI_EVIDENCE_LEAF: release-evidence-${{ github.run_id }}-${{ github.run_attempt }}-signing
     steps:
-      - name: Materialize exact release sources from the digest-bound Release archive
+      - name: Materialize exact release sources from the local SSH mirror
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -772,6 +811,8 @@ jobs:
           PINNED_DESKTOP_SHA: ${{ needs.prepare_release.outputs.desktop_sha }}
           PINNED_CLI_SHA: ${{ needs.prepare_release.outputs.cli_sha }}
           PINNED_CLI_VERSION: ${{ needs.prepare_release.outputs.cli_version }}
+          PINNED_DESKTOP_TREE: ${{ needs.prepare_release.outputs.desktop_tree }}
+          PINNED_CLI_TREE: ${{ needs.prepare_release.outputs.cli_tree }}
           SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
         run: |
           set -euo pipefail
@@ -790,8 +831,6 @@ jobs:
           }
 
           mkdir -p "$HARA_RELEASE_SOURCE_ROOT"
-          ARTIFACT_ZIP="$HARA_RELEASE_SOURCE_ROOT/source-packs.zip"
-          ARTIFACT_PARTIAL="${ARTIFACT_ZIP}.partial"
           RELEASE_METADATA="$HARA_RELEASE_SOURCE_ROOT/release.json"
           RELEASE_METADATA_PARTIAL="${RELEASE_METADATA}.partial"
           SOURCE_METADATA="$HARA_RELEASE_SOURCE_ROOT/source-release-asset.json"
@@ -899,89 +938,36 @@ jobs:
             echo "Verified immutable Release metadata and digest-bound source archive; public attestation verification is delegated to the read-only hosted job."
           fi
 
-          SOURCE_ASSET_ID="$(jq -r .id "$SOURCE_METADATA")"
-          SOURCE_ASSET_SIZE="$(jq -r .size "$SOURCE_METADATA")"
-          SOURCE_ASSET_API_URL="$(jq -r .url "$SOURCE_METADATA")"
-          [[ "$SOURCE_ASSET_ID" =~ ^[0-9]+$ ]]
-          [[ "$SOURCE_ASSET_SIZE" =~ ^[1-9][0-9]*$ ]]
-          [ "$SOURCE_ASSET_API_URL" = \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$SOURCE_ASSET_ID" ] || {
-            echo "source Release asset API URL is outside the expected repository" >&2
+          # The signer no longer downloads the source archive over HTTPS: Mini-to-GitHub transfers of
+          # this size were repeatedly cut off (ERROR-LOG 2026-11-10). The Release metadata above still
+          # binds this run to the exact hidden draft, protected tag and prepare-job digest; the code
+          # comes from operator-maintained bare mirrors (git clone --mirror / git fetch --prune over
+          # SSH) and must match the prepare job's pinned commit AND tree. Any miss fails closed: there
+          # is deliberately no fallback to another source.
+          [[ "$PINNED_DESKTOP_TREE" =~ ^[0-9a-f]{40}$ ]] && [[ "$PINNED_CLI_TREE" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "the prepare job did not publish pinned source trees" >&2
             exit 1
           }
-
-          : > "$ARTIFACT_PARTIAL"
-          DOWNLOAD_COMPLETE=0
-          for download_attempt in 1 2 3; do
-            {
-              printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN"
-              printf 'header = "Accept: application/octet-stream"\n'
-              printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
-            } | run_with_deadline 600 /usr/bin/env GH_TOKEN='' GITHUB_TOKEN='' /usr/bin/curl \
-              --disable \
-              --http1.1 \
-              --proto '=https' \
-              --proto-redir '=https' \
-              --fail \
-              --location \
-              --silent \
-              --show-error \
-              --retry 5 \
-              --retry-all-errors \
-              --retry-delay 2 \
-              --retry-max-time 540 \
-              --connect-timeout 20 \
-              --max-time 570 \
-              --speed-limit 1024 \
-              --speed-time 60 \
-              --continue-at - \
-              --output "$ARTIFACT_PARTIAL" \
-              --config - \
-              "$SOURCE_ASSET_API_URL" || true
-            if [ "$(stat -f %z "$ARTIFACT_PARTIAL")" = "$SOURCE_ASSET_SIZE" ] && \
-              [ "$(shasum -a 256 "$ARTIFACT_PARTIAL" | awk '{print $1}')" = "$EXPECTED_ARTIFACT_SHA" ]; then
-              mv "$ARTIFACT_PARTIAL" "$ARTIFACT_ZIP"
-              DOWNLOAD_COMPLETE=1
-              break
-            fi
-            [ "$download_attempt" -lt 3 ] || break
-            echo "source Release archive transfer incomplete ($download_attempt/3); resuming after a bounded delay" >&2
-            sleep $((download_attempt * 3))
-          done
-          [ "$DOWNLOAD_COMPLETE" = "1" ] || {
-            rm -f "$ARTIFACT_PARTIAL"
-            echo "could not download the exact source Release archive after bounded resumable attempts" >&2
-            exit 1
-          }
-
-          PACK_DIR="$HARA_RELEASE_SOURCE_ROOT/packs"
-          mkdir -p "$PACK_DIR"
-          /usr/bin/ditto -x -k "$ARTIFACT_ZIP" "$PACK_DIR"
-          (
-            cd "$PACK_DIR"
-            shasum -a 256 -c source-packs.sha256
-          )
-          jq -e \
-            --arg release_tag "$RELEASE_TAG" \
-            --arg desktop_sha "$PINNED_DESKTOP_SHA" \
-            --arg cli_version "$PINNED_CLI_VERSION" \
-            --arg cli_sha "$PINNED_CLI_SHA" '
-              .format == 1 and
-              .release_tag == $release_tag and
-              .desktop_sha == $desktop_sha and
-              .cli_version == $cli_version and
-              .cli_sha == $cli_sha and
-              (.desktop_tree | test("^[0-9a-f]{40}$")) and
-              (.cli_tree | test("^[0-9a-f]{40}$"))
-            ' "$PACK_DIR/source-packs.json" >/dev/null
-
-          materialize_snapshot() {
-            local pack_file="$1" target_dir="$2" commit_sha="$3" tree_sha="$4" tag="$5" remote_url="$6"
+          MIRROR_ROOT="$HOME/.hara-runners/mirrors"
+          materialize_from_mirror() {
+            local mirror="$1" target_dir="$2" commit_sha="$3" tree_sha="$4" tag="$5" remote_url="$6"
+            [ -d "$mirror" ] && [ "$(/usr/bin/git -C "$mirror" rev-parse --is-bare-repository 2>/dev/null)" = "true" ] || {
+              echo "local release mirror is missing: $mirror (create it with git clone --mirror over SSH)" >&2
+              exit 1
+            }
+            /usr/bin/git -C "$mirror" cat-file -e "$commit_sha^{commit}" 2>/dev/null || {
+              echo "local release mirror $mirror lacks $commit_sha; run git -C $mirror fetch --prune, then re-run this job" >&2
+              exit 1
+            }
+            [ "$(/usr/bin/git -C "$mirror" rev-parse "$commit_sha^{tree}")" = "$tree_sha" ] || {
+              echo "local release mirror $mirror resolves $commit_sha to an unexpected tree" >&2
+              exit 1
+            }
             mkdir -p "$target_dir"
             /usr/bin/git init -q "$target_dir"
             /usr/bin/git -C "$target_dir" config core.autocrlf false
-            /usr/bin/git -C "$target_dir" index-pack --stdin < "$pack_file" >/dev/null
-            printf '%s\n' "$commit_sha" > "$target_dir/.git/shallow"
+            /usr/bin/git -C "$target_dir" fetch --quiet --no-tags --depth 1 "file://$mirror" "$commit_sha"
+            [ "$(/usr/bin/git -C "$target_dir" rev-parse 'FETCH_HEAD^{commit}')" = "$commit_sha" ]
             /usr/bin/git -C "$target_dir" update-ref "refs/tags/$tag" "$commit_sha"
             /usr/bin/git -C "$target_dir" remote add origin "$remote_url"
             /usr/bin/git -C "$target_dir" checkout --quiet --detach "$commit_sha"
@@ -989,17 +975,15 @@ jobs:
             [ "$(/usr/bin/git -C "$target_dir" rev-parse "$commit_sha^{tree}")" = "$tree_sha" ]
             [ -z "$(/usr/bin/git -C "$target_dir" status --porcelain)" ]
           }
-          DESKTOP_TREE="$(jq -r .desktop_tree "$PACK_DIR/source-packs.json")"
-          CLI_TREE="$(jq -r .cli_tree "$PACK_DIR/source-packs.json")"
-          materialize_snapshot \
-            "$PACK_DIR/desktop.pack" \
+          materialize_from_mirror \
+            "$MIRROR_ROOT/hara-desktop.git" \
             "$HARA_RELEASE_SOURCE_ROOT/hara-desktop" \
-            "$PINNED_DESKTOP_SHA" "$DESKTOP_TREE" "$RELEASE_TAG" \
+            "$PINNED_DESKTOP_SHA" "$PINNED_DESKTOP_TREE" "$RELEASE_TAG" \
             "https://github.com/hara-cli/hara-desktop.git"
-          materialize_snapshot \
-            "$PACK_DIR/cli.pack" \
+          materialize_from_mirror \
+            "$MIRROR_ROOT/hara.git" \
             "$HARA_RELEASE_SOURCE_ROOT/hara-cli" \
-            "$PINNED_CLI_SHA" "$CLI_TREE" "v$PINNED_CLI_VERSION" \
+            "$PINNED_CLI_SHA" "$PINNED_CLI_TREE" "v$PINNED_CLI_VERSION" \
             "https://github.com/hara-cli/hara.git"
 
           NODE_VERSION="$(tr -d '[:space:]' < "$HARA_RELEASE_SOURCE_ROOT/hara-desktop/.node-version")"
@@ -1097,7 +1081,17 @@ jobs:
 
       - name: Re-run release-pipeline regression tests on the signing host
         working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
-        run: npm test
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import path from 'node:path';
+          import { provisionCiEvidence, withCiEnvironment } from './scripts/ci-evidence.mjs';
+          import { ROOT, run } from './scripts/candidate-common.mjs';
+          const evidenceRoot = path.join(process.env.GITHUB_WORKSPACE, process.env.CI_EVIDENCE_LEAF);
+          const c = provisionCiEvidence({ evidenceRoot, output: path.join(evidenceRoot, 'tmp', 'regressions') });
+          await withCiEnvironment(c, () => run('Release signing-host original full suite', 'bash', ['-c', 'exec npm test'],
+            { cwd: ROOT, env: c.env, capture: true, logFile: path.join(c.base, 'tests.log') }));
+          NODE
 
       - name: Preflight approved updater file without Keychain authorization
         working-directory: ${{ env.HARA_RELEASE_SOURCE_ROOT }}/hara-desktop
@@ -1132,6 +1126,7 @@ jobs:
           HARA_DRAFT_ASSEMBLED_RUN_ID: ${{ github.run_id }}
           HARA_PROTECTED_SIGNING_JOB: ${{ github.run_id }}
           HARA_RELEASE_SOURCE_ARTIFACT_DIGEST: ${{ needs.prepare_release.outputs.source_artifact_digest }}
+          HARA_DRAFT_ASSET_DIGESTS: ${{ needs.assemble_draft.outputs.asset_digests }}
           HARA_DEFER_PUBLIC_EDGE_VERIFY: "1"
         run: ./scripts/release-mac-assets.sh "$RELEASE_TAG"
 
@@ -1205,7 +1200,7 @@ jobs:
             exit 1
           }
 
-      - name: Verify attested public DMGs, Gatekeeper trust, and latest.json
+      - name: Verify attested public DMGs, Gatekeeper trust, latest.json and every public asset
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

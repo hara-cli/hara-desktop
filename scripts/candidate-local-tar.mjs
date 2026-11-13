@@ -20,7 +20,10 @@ export function localTarInvocation(operation, archive, directory, entries = [], 
     && !entry.split('/').some(part => !part || part === '.' || part === '..'), 'relative tar entry required');
   // path.relative() cannot cross drives. -C accepts an absolute directory; only -f must lack a colon.
   const localDirectory = platform === 'win32' ? paths.normalize(directory).replaceAll('\\', '/') : directory;
-  return { cwd: paths.dirname(archive), args: [operation === 'create' ? '-czf' : '-xzf', `./${name}`, '-C', localDirectory, '--', ...entries] };
+  // macOS bsdtar otherwise stores extended attributes (e.g. com.apple.provenance on a self-hosted signer)
+  // as AppleDouble `._*` siblings; a top-level `._bundle` is outside the validated archive root.
+  const metadata = platform === 'darwin' && operation === 'create' ? ['--no-mac-metadata', '--no-xattrs'] : [];
+  return { cwd: paths.dirname(archive), args: [...metadata, operation === 'create' ? '-czf' : '-xzf', `./${name}`, '-C', localDirectory, '--', ...entries] };
 }
 
 export async function runLocalTar(label, operation, archive, directory, entries = [], options = {}) {

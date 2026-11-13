@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireStableTag } from "./release-policy.mjs";
+import { parseRecord } from "./release-asset-digests.mjs";
 import { assertUpdaterSignatureKey } from "./updater-signature.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -56,10 +57,17 @@ function assertFile(path, label) {
   }
 }
 
+// --digest-bound: large binaries need not be present locally when the verified draft record binds
+// them by name, size and SHA-256 (release-asset-digests.mjs). Signatures and latest.json are always
+// read from local bytes.
+let digestBound = new Set();
+
 function assertExactAssetSet(directory, manifestAllowed) {
-  const actual = readdirSync(directory, { withFileTypes: true })
+  const local = readdirSync(directory, { withFileTypes: true })
     .filter((entry) => entry.isFile())
-    .map((entry) => entry.name)
+    .map((entry) => entry.name);
+  const bound = [...digestBound].filter((name) => !local.includes(name) && expectedAssetFiles.includes(name));
+  const actual = [...local, ...bound]
     .filter((name) => manifestAllowed || name !== "latest.json")
     .sort();
   const expected = manifestAllowed ? [...expectedAssetFiles, "latest.json"].sort() : expectedAssetFiles;
@@ -68,7 +76,10 @@ function assertExactAssetSet(directory, manifestAllowed) {
   if (missing.length || extra.length) {
     die(`release asset set mismatch; missing=[${missing.join(", ")}], extra=[${extra.join(", ")}]`);
   }
-  for (const name of expectedAssetFiles) assertFile(join(directory, name), `release asset ${name}`);
+  for (const name of expectedAssetFiles) {
+    if (bound.includes(name)) continue;
+    assertFile(join(directory, name), `release asset ${name}`);
+  }
 }
 
 function signatureFor(directory, artifact) {
@@ -121,11 +132,26 @@ const channelIndex = args.indexOf("--channel");
 let channel = "stable";
 if (channelIndex !== -1) { channel = args[channelIndex + 1]; args.splice(channelIndex, 2); }
 if (!["stable", "candidate"].includes(channel) || args.includes("--channel")) die("--channel must be stable or candidate");
+const boundIndex = args.indexOf("--digest-bound");
+if (boundIndex !== -1) {
+  const source = args[boundIndex + 1];
+  args.splice(boundIndex, 2);
+  if (!source || args.includes("--digest-bound")) die("--digest-bound requires one record path or -env");
+  let record;
+  try {
+    const text = source === "-env" ? process.env.HARA_DRAFT_ASSET_DIGESTS ?? "" : readFileSync(resolve(source), "utf8");
+    record = parseRecord(text);
+  } catch (error) {
+    die(`--digest-bound record is invalid: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  digestBound = new Set([...record.keys()].filter((name) => !name.endsWith(".sig") && name !== "latest.json"));
+}
 const [command, directoryArgument, tag, fourth] = args;
 if (!command || !directoryArgument || !tag || !["build", "validate"].includes(command)) {
   console.error("usage:");
   console.error("  node scripts/updater-manifest.mjs build <asset-directory> <tag> <pub-date> [--channel stable|candidate]");
   console.error("  node scripts/updater-manifest.mjs validate <asset-directory> <tag> [manifest-path] [--channel stable|candidate]");
+  console.error("  (either command) --digest-bound <record.json|-env>: accept non-signature binaries bound by the verified draft record");
   process.exit(2);
 }
 

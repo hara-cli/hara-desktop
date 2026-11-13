@@ -37,3 +37,30 @@ test("the form's action buttons use the secondary button style; Install stays a 
   assert.match(form, /<div className="vg-rf-actions">[^\n]*t\("ws\.rf\.piRefreshModels"\)/u);
   assert.match(form, /<button type="button" className="vg-runtime-install"/u);
 });
+
+// Jeff 2026-11-08, fixes 1 and 4 for 1.2.0.
+test("fix 1: the unsaved state is one unbordered line with a dot that truncates with a tooltip, never wrapping", () => {
+  assert.match(css, /\.hs\.hd-redesign\.vg-app \.vg-rf\.vg-runtime-access\{grid-template-columns:minmax\(0,1fr\)\}/u, "the form column cannot grow past the panel");
+  assert.match(css, /\.hs\.hd-redesign\.vg-app \.vg-rf \.vg-rf-foot\{min-width:0\}/u);
+  const line = css.match(/\.hs\.hd-redesign\.vg-app \.vg-rf \.vg-rf-foot>\.vg-rf-chip,\.hs\.hd-redesign\.vg-app \.vg-rf \.vg-rf-foot>\.vg-rf-footnote\{([^}]*)\}/u)?.[1] ?? "";
+  for (const declaration of ["min-width:0", "overflow:hidden", "white-space:nowrap", "text-overflow:ellipsis", "flex:1 1 auto"]) assert.ok(line.includes(declaration), declaration);
+  const dirty = css.match(/\.vg-rf-foot>\.vg-rf-chip\.dirty\{([^}]*)\}/u)?.[1] ?? "";
+  for (const declaration of ["border:0", "padding:0", "font-size:12px"]) assert.ok(dirty.includes(declaration), declaration);
+  assert.match(css, /\.vg-rf-foot>\.vg-rf-chip\.dirty::before\{content:"";display:inline-block;width:6px;height:6px;[^}]*border-radius:50%/u);
+  assert.match(form, /className="vg-rf-chip dirty" role="status" title=\{t\("ws\.rf\.unsaved", \{ fields: fieldText \}\)\}/u);
+});
+
+test("fix 4: update and first-use states say once, below the engine, to confirm with Apply (en, zh-Hans)", () => {
+  const copy = lang => JSON.parse(read(`src/locales/${lang}/ws.json`));
+  const en = copy("en"), hans = copy("zh-Hans"), hant = copy("zh-Hant");
+  assert.equal(en["ws.rf.formStatus.confirmUpdate"], "Updated to {version}. Click Apply to confirm and use it.");
+  assert.equal(hans["ws.rf.formStatus.confirmUpdate"], "已升级到 {version}，点「应用」后确认使用");
+  assert.equal(en["ws.rf.formStatus.confirmFirstUse"], "First use. Click Apply to confirm.");
+  assert.equal(hans["ws.rf.formStatus.confirmFirstUse"], "首次使用，点「应用」后确认");
+  assert.equal(hans["ws.rf.formStatus.confirmUpdateUnknown"], "已升级，点「应用」后确认使用");
+  for (const key of ["ws.rf.formStatus.confirmUpdate", "ws.rf.formStatus.confirmUpdateUnknown", "ws.rf.formStatus.confirmFirstUse"]) assert.ok(hant[key], `zh-Hant ${key}`);
+  assert.ok(hans["ws.rf.formStatus.confirmUpdate"].includes(hans["ws.rf.apply"]) && en["ws.rf.formStatus.confirmUpdate"].includes(en["ws.rf.apply"]), "the copy names the actual Apply button");
+  assert.match(form, /use === "confirm_update" \? currentVersion \? t\("ws\.rf\.formStatus\.confirmUpdate", \{ version: currentVersion \}\) : t\("ws\.rf\.formStatus\.confirmUpdateUnknown"\)/u);
+  assert.match(form, /title=\{chipText\}>\{chipText\}<\/span>/u);
+  assert.doesNotMatch(form, /confirmNeeded \? <span className="vg-rf-chip warn" role="status">\{statusText\(status\)\}/u, "the footer no longer repeats the status");
+});

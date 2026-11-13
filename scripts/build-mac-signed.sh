@@ -344,6 +344,10 @@ node scripts/notarize-artifact.mjs \
 node scripts/mac-dmg-smoke.mjs "$DMG" "$TARGET" --require-signatures
 [ -z "$(git status --porcelain)" ] && [ "$(git rev-parse HEAD)" = "$DESKTOP_COMMIT" ] || {
   echo "error: hara-desktop source changed during the signed release build" >&2
+  # Name the evidence before the run-scoped checkout is removed (v1.2.0 failed here silently).
+  echo "HEAD $(git rev-parse HEAD 2>&1), expected $DESKTOP_COMMIT" >&2
+  git status --porcelain --untracked-files=all >&2 || true
+  git diff --stat >&2 || true
   exit 1
 }
 node scripts/release-provenance.mjs write \

@@ -12,6 +12,14 @@ const nativeFailures = new Map([
   ["Existing Workspace engine cannot be safely attached", "CORE_ATTACHMENT_REFUSED"],
   ["Another owned Workspace startup is still pending; no new engine was launched", "CORE_START_PENDING"],
   ["Workspace startup worker unavailable", "CORE_WORKER_UNAVAILABLE"],
+  // The private Workspace folder was refused or could not be prepared; the engine was never started.
+  ["Workspace Dev requires canonical non-symlink directories", "CORE_ROOT_REFUSED"],
+  ["Workspace Dev directory unavailable", "CORE_ROOT_REFUSED"],
+  ["Workspace Dev directory cannot be resolved", "CORE_ROOT_REFUSED"],
+  ["Workspace Dev directories must be owned by this user with mode 0700", "CORE_ROOT_REFUSED"],
+  ["Cannot create private Workspace directory", "CORE_ROOT_REFUSED"],
+  ["Cannot inspect Workspace directory", "CORE_ROOT_REFUSED"],
+  ["Cannot resolve the account Home", "CORE_ROOT_REFUSED"],
 ]);
 /** Only fixed codes reach the view. Native strings, tokens, paths and RPC bodies are never reflected. */
 export function workspaceStartupDiagnostic(error: unknown, phase: WorkspaceStartupPhase): string {

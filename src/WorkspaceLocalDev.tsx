@@ -63,7 +63,7 @@ import WorkspaceGroupInspector from "./WorkspaceGroupInspector";
 import "./violet-tokens.css";
 import "./violet-workspace.css";
 import WorkspaceSettings, { type SettingsPage } from "./WorkspaceSettings";
-import { useWorkspaceUpdater, WorkspaceUpdateNotice } from "./WorkspaceSoftwareUpdate";
+import { useWorkspaceUpdater, WorkspaceBootUpdate, WorkspaceUpdateNotice } from "./WorkspaceSoftwareUpdate";
 import { OnboardingResumeCard, useWorkspaceOnboarding, WorkspaceOnboarding } from "./WorkspaceOnboarding";
 import { ONBOARDING_STEP_VIEWS } from "./onboarding-steps";
 import { isImeCompositionKey, sendsOnEnter } from "./ime";
@@ -824,6 +824,6 @@ export default function WorkspaceLocalDev({ mode = "workspace" }: { mode?: "work
   const startup = useMemo(() => new WorkspaceStartupModel(() => invoke<WorkspaceDevConnection>(mode === "lab" ? "workspace_dev_connection" : "workspace_connection", mode === "lab" ? {} : { clientLocale: currentClientLocale().tag })), [mode]);
   const view = useSyncExternalStore(startup.subscribe, startup.getSnapshot, startup.getSnapshot);
   useEffect(() => { void startup.start();return () => startup.stop(); }, [startup]);
-  if (!view.model) return <WorkspaceBoot view={view} t={t} mode={mode} onReconnect={() => void startup.start()} />;
+  if (!view.model) return <WorkspaceBoot view={view} t={t} mode={mode} onReconnect={() => void startup.start()} update={<WorkspaceBootUpdate />} />;
   return <WorkspaceScreen model={view.model} disconnected={view.phase === "disconnected" ? t("ws.disconnected") : ""} root={view.root} mode={mode} onReconnect={() => void startup.start()} />;
 }

@@ -55,6 +55,13 @@ export function reconcileReleaseDownloadCache(directory, metadata, { complete = 
     const path = join(root, entry);
     const wanted = expected.get(entry);
     const info = lstatSync(path);
+    // 1.2.3: keep a resumable partial (github-release-api-download.mjs) of an expected asset until
+    // the set is complete; it is never counted as a verified asset.
+    const partialOf = /^\.(.+)\.part$/u.exec(entry)?.[1];
+    if (!complete && partialOf && expected.has(partialOf) && info.isFile() && !info.isSymbolicLink() &&
+      info.nlink === 1 && info.size <= expected.get(partialOf).size) {
+      continue;
+    }
     if (
       !wanted ||
       !info.isFile() ||

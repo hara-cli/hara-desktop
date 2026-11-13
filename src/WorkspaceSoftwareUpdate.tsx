@@ -9,25 +9,34 @@ import type { Key } from "./i18n";
 import { workspaceMessageText } from "./workspace-settings-copy";
 import { ToggleSwitch } from "./ToggleSwitch";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
+import { createEngineFreeUpdater, engineUnreachable, readLocalUpdatePreferences, withEngineOffline, writeLocalUpdatePreferences } from "./workspace-update-offline";
 
 export interface DesktopVersionInfo { desktop: string; engine: string; channel: string; arch: string; isolatedCandidate?: boolean }
+const updaterErrorKey = (error: unknown) => error instanceof DesktopUpdaterArchitectureError ? "ws.updates.archMismatch"
+  : /signature|minisign|verification/i.test(String(error)) ? "ws.updates.signatureFailed"
+  : "ws.updates.networkFailed";
+const engineStopped = () => invoke<boolean>("workspace_engine_stopped");
+const webStorage = () => { try { return localStorage; } catch { return null; } };
 export function useWorkspaceUpdater(model: WorkspaceDevModel, enabled: boolean) {
   const [controller] = useState(() => new WorkspaceUpdater({
     check: () => checkDesktopUpdate(),
     load: async () => {
-      const value = (await model.preferences()).updates ?? updateDefaults();
+      // A lost engine must not silently switch automatic checks off (HARA-FB-001698).
+      let value: ReturnType<typeof updateDefaults>; try { value = (await model.preferences()).updates ?? updateDefaults(); }
+      catch (error) { if (engineUnreachable(error)) return readLocalUpdatePreferences(webStorage()); throw error; }
       // Migrate only the known, non-secret snooze preference from the current webview cache.
       if (!value.snooze) try { const old = JSON.parse(localStorage.getItem(UPDATE_SNOOZE_KEY) ?? "null");
         if (old && typeof old.version === "string" && /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(old.version) && typeof old.until === "number") value.snooze = { version: old.version, until: old.until };
       } catch { /* Invalid cache never overrides stable preferences. */ }
       return value;
     },
-    save: async value => { await model.saveUpdatePreferences(value); try { localStorage.setItem(UPDATE_SNOOZE_KEY, JSON.stringify(value.snooze)); } catch { /* Stable host store is authoritative. */ } },
-    activity: () => model.activity(), prepare: () => model.prepareUpdate(), release: id => model.releaseUpdate(id),
+    save: async value => { writeLocalUpdatePreferences(webStorage(), value); await model.saveUpdatePreferences(value); try { localStorage.setItem(UPDATE_SNOOZE_KEY, JSON.stringify(value.snooze)); } catch { /* Stable host store is authoritative. */ } },
+    // A live engine keeps its idle lease; only an unreachable engine that Desktop shows stopped is bypassed.
+    activity: () => withEngineOffline(() => model.activity(), { running: 0 }, engineStopped),
+    prepare: () => withEngineOffline(() => model.prepareUpdate(), { id: "" }, engineStopped),
+    release: id => id ? model.releaseUpdate(id) : Promise.resolve(),
     restart: () => invoke("desktop_restart_for_update"),
-    error: error => error instanceof DesktopUpdaterArchitectureError ? "ws.updates.archMismatch"
-      : /signature|minisign|verification/i.test(String(error)) ? "ws.updates.signatureFailed"
-      : "ws.updates.networkFailed",
+    error: updaterErrorKey,
   }));
   const [info, setInfo] = useState<DesktopVersionInfo | null>(null);
   const infoRef = useRef<DesktopVersionInfo | null>(null);
@@ -37,6 +46,32 @@ export function useWorkspaceUpdater(model: WorkspaceDevModel, enabled: boolean) 
     return () => { active = false; window.removeEventListener("focus", wake); document.removeEventListener("visibilitychange", wake); controller.dispose(); };
   }, [controller, enabled]);
   return { controller, info };
+}
+/** Startup-failure screen: check, download and install without any engine RPC (HARA-FB-001698). */
+export function WorkspaceBootUpdate() {
+  const [controller] = useState(() => createEngineFreeUpdater({ check: () => checkDesktopUpdate(), engineStopped,
+    restart: () => invoke("desktop_restart_for_update"), storage: webStorage(), error: updaterErrorKey }));
+  const value = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const { t } = useWorkspaceLocale();
+  useEffect(() => { let active = true;
+    if (isTauri()) void invoke<DesktopVersionInfo>("desktop_update_info").then(async info => {
+      if (!active || info.isolatedCandidate) return; await controller.start();
+      if (active && controller.getSnapshot().preferences.autoCheck) void controller.check(false);
+    }).catch(() => {});
+    return () => { active = false; controller.dispose(); };
+  }, [controller]);
+  const title: Record<typeof value.phase, Key> = { latest: value.preferences.lastChecked ? "ws.updates.latest" : "ws.updates.checkTitle", checking: "ws.updates.checking",
+    available: "ws.updates.available", downloading: "ws.updates.downloading", ready: "ws.updates.ready", error: "ws.updates.failed" };
+  return <section className="wsd-boot-update" data-update-state={value.phase} aria-live="polite">
+    <p>{t(title[value.phase], { version: value.version })}</p>
+    {value.phase === "downloading" ? <progress max={value.total ?? 1} value={value.total ? value.downloaded : undefined} aria-label={t("ws.updates.progress")} /> : null}
+    {value.message ? <p role="status">{workspaceMessageText(t, value.message)}</p> : null}
+    <div className="wsd-card-actions">
+      {["latest", "error"].includes(value.phase) ? <button type="button" className="hs-btn sec" onClick={() => void controller.check(true)}>{t("ws.updates.check")}</button> : null}
+      {value.phase === "available" ? <button type="button" className="hs-btn" onClick={() => void controller.download()}>{t("ws.updates.download")}</button> : null}
+      {value.phase === "ready" ? <button type="button" className="hs-btn" disabled={value.installing} onClick={() => void controller.restart()}>{t(value.installing ? "ws.updates.installing" : "ws.updates.restart")}</button> : null}
+    </div>
+  </section>;
 }
 export function WorkspaceSoftwareUpdate({ controller, info }: { controller: WorkspaceUpdater; info: DesktopVersionInfo | null }) {
   const value = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);

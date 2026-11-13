@@ -42,6 +42,34 @@ invalidate old observations. Rerun attempts cannot reuse old-attempt proof.
 
 ## Operator sequence
 
+### Local aarch64 preflight before every kick
+
+Kick order: **local aarch64 preflight green → fast-forward controlled-ref push → publish
+Gate A proof → designated reviewer approves the environment.** On an Apple Silicon Mac
+(native arm64; Rosetta/x64 refused), from the clean reviewed orchestration checkout with
+`CANDIDATE_DESKTOP_DIR`/`CANDIDATE_CORE_DIR` at the pinned application/Core sources:
+
+```sh
+node scripts/candidate-local-aarch64-preflight.mjs run /absolute/private/preflight-root
+node scripts/candidate-local-aarch64-preflight.mjs check /absolute/private/preflight-root
+node scripts/candidate-controlled-ref-push.mjs /absolute/private/preflight-root --confirm-kick "$(git rev-parse HEAD)" [--dry-run]
+CANDIDATE_LOCAL_PREFLIGHT_ROOT=/absolute/private/preflight-root node scripts/candidate-policy-admin.mjs publish RUN_ID /absolute/private/proof-directory
+```
+
+`run` reuses the hosted native stages `hydrate → tests → sidecar → build` (unsigned, no
+keys or publication) under an ordinary-CI private evidence binding, without faking Actions
+context. Only when every stage passes does it write a 0600 receipt bound to orchestration
+HEAD/tree, input identity, application/Core pins, target and host. `check`, the push helper
+and `publish`/`prepare` refuse, before any remote access, a missing receipt, a receipt for
+another SHA/tree/inputs, a missing or failed stage, an unsafe file mode, or a receipt older
+than 12 hours. The refusal names the reason and the `run` command. The push helper requires
+`--confirm-kick` equal to HEAD and an existing controlled ref that HEAD fast-forwards. It
+never forces or pushes tags. A same-SHA push is refused because it cannot start a new run.
+
+The receipt is a local fail-closed operator gate, not admission, signing or release
+authority. Hosted `candidate.yml` still builds and verifies every platform, and it never
+invokes these helpers.
+
 Use the pinned tools and clean reviewed orchestration checkout. Initialize and pin
 the independent proof key once, without overwriting an existing key. After an
 approved controlled-ref push creates a run, publish its exact observation promptly:
@@ -56,6 +84,25 @@ is private evidence only, not admission. No workflow invokes this writer.
 
 Every signing phase rechecks live policy/proof before key access. If the lifetime
 expires, independently re-observe the same active run/attempt; do not blindly rerun.
+
+### Proof lifetime and environment approval
+
+The proof lifetime (`adminProof.ttlSeconds`, at most two hours) starts at `publish`
+and must still be running when `credential_preflight` reads it, so:
+
+1. Approve the protected environment **within the proof lifetime**. Before approving,
+   compare the `expiresAt` printed by `publish` with the current time; if too little
+   remains for the queued jobs to reach preflight, do not approve yet.
+2. If the environment cannot be approved in time, **re-publish** an observation for the
+   same still-active run/attempt, or start a new O / `gh run rerun` attempt and publish
+   for that attempt. Never reuse or edit an expired comment, never attest a completed
+   run, and never lengthen the lifetime to cover a late approval.
+3. Preflight reports `administrator proof EXPIRED (TTL elapsed)` with `issuedAt`,
+   `expiresAt`, `now` and the seconds overdue when the newest signed, fully bound
+   observation only aged out. That is not policy drift and not a codesign PEM, Keychain,
+   updater-file or Developer ID problem; do not touch signing material. A wider
+   read-only comment lookback is used solely to name such an expired observation and
+   never authorizes a run. `policy-changed` and `missing` are reported separately.
 Keep the operator-configured UI/signing hold in place while screen-dependent work
 is unavailable. Release it only under the operator's explicit handoff. Never
 auto-approve an environment, click a security prompt or change global Keychain

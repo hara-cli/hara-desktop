@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { localTarInvocation, runLocalTar } from '../scripts/candidate-local-tar.mjs';
 import { validateTar, validateExtractedTree } from '../scripts/candidate-archive.mjs';
@@ -13,8 +14,53 @@ test('all platforms pass only a local archive basename to -f, including Windows 
     const flag = operation === 'create' ? '-czf' : '-xzf';
     assert.deepEqual(localTarInvocation(operation, 'D:\\output space\\bundle.tar.gz', 'C:\\source space\\release', entries, 'win32'),
       { cwd: 'D:\\output space', args: [flag, './bundle.tar.gz', '-C', 'C:/source space/release', '--', ...entries] });
-    for (const platform of ['darwin', 'linux']) assert.deepEqual(localTarInvocation(operation, '/output space/bundle.tar.gz', '/source space/release', entries, platform),
+    assert.deepEqual(localTarInvocation(operation, '/output space/bundle.tar.gz', '/source space/release', entries, 'linux'),
       { cwd: '/output space', args: [flag, './bundle.tar.gz', '-C', '/source space/release', '--', ...entries] });
+    // bsdtar on macOS otherwise writes AppleDouble `._*` siblings (e.g. `._bundle`) for extended attributes.
+    const mac = operation === 'create' ? ['--no-mac-metadata', '--no-xattrs'] : [];
+    assert.deepEqual(localTarInvocation(operation, '/output space/bundle.tar.gz', '/source space/release', entries, 'darwin'),
+      { cwd: '/output space', args: [...mac, flag, './bundle.tar.gz', '-C', '/source space/release', '--', ...entries] });
+  }
+});
+
+function rawTarNames(file) {
+  const bytes = zlib.gunzipSync(fs.readFileSync(file)), names = [];
+  for (let offset = 0; offset + 512 <= bytes.length;) {
+    const header = bytes.subarray(offset, offset + 512); if (header.every(b => b === 0)) break;
+    names.push(header.subarray(0, 100).toString('utf8').replace(/\0.*$/s, ''));
+    offset += 512 + Math.ceil(parseInt(header.subarray(124, 136).toString('ascii').replace(/\0.*$/s, '').trim() || '0', 8) / 512) * 512;
+  }
+  return names;
+}
+
+test('darwin archives of extended-attribute payloads carry no AppleDouble siblings and pass validation', { skip: process.platform !== 'darwin', timeout: 10000 }, async () => {
+  const scope = candidateEvidence(), output = scope.fixture('candidate-tar-xattr-output'), input = scope.fixture('candidate-tar-xattr-source');
+  const bundle = scope.mkdir(path.join(input, 'bundle')), file = path.join(bundle, 'dmg/Hara.dmg');
+  scope.mkdir(path.dirname(file)); fs.writeFileSync(scope.checked(file, { missing: true }), 'payload', { flag: 'wx', mode: 0o600 });
+  // Regression for candidate run 42769059165: the self-hosted signer's files carry xattrs and the
+  // archiving environment does not set COPYFILE_DISABLE, so the invocation itself must suppress them.
+  const env = scope.environment();
+  assert.equal(env.COPYFILE_DISABLE, undefined, 'the regression must not be masked by COPYFILE_DISABLE');
+  for (const target of [bundle, file]) {
+    const set = scope.guardSync(env, () => spawnSync('/usr/bin/xattr', ['-w', 'com.hara.candidate-test', 'x', target], { env, encoding: 'utf8', timeout: 5000 }));
+    assert.equal(set.status, 0, set.stderr);
+  }
+  const archive = path.join(output, 'bundle.tar.gz');
+  await runLocalTar('Synthetic xattr package archive', 'create', archive, input, ['bundle'], { env });
+  const names = rawTarNames(archive);
+  assert.deepEqual(names.filter(name => /(?:^|\/)\._/.test(name)), [], 'AppleDouble entries must not be archived');
+  assert(names.every(name => name === 'bundle/' || name.startsWith('bundle/')), `entries outside bundle/: ${names.join(', ')}`);
+  await validateTar(archive);
+  scope.assertEnvironment(env);
+});
+
+test('every archive the pipeline creates is validated immediately after creation', () => {
+  for (const [name, label] of [['native', 'Archive immutable native payload'], ['signing', 'Archive immutable final package set']]) {
+    const source = fs.readFileSync(new URL(`../scripts/candidate-${name}.mjs`, import.meta.url), 'utf8');
+    const create = source.indexOf(`runLocalTar('${label}', 'create'`);
+    assert(create > 0, `${name} must create ${label}`);
+    const line = source.slice(create, source.indexOf('\n', create)), next = source.slice(source.indexOf('\n', create) + 1, source.indexOf('\n', source.indexOf('\n', create) + 1));
+    assert(/await validateTar\(/.test(line + next), `${name} must validate ${label} right after creating it`);
   }
 });
 

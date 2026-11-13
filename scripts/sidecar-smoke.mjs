@@ -11,6 +11,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertPiRuntimeManifest } from "./check-runtime-distribution.mjs";
 
 const COMMAND_TIMEOUT_MS = 30_000;
+// A freshly compiled standalone .exe on a Windows runner can spend well over 10s in first-run
+// scanning before `hara serve` answers its first frame (live37). Keep POSIX budgets unchanged so a
+// slow start there still fails; Windows gets a bounded cold-start budget, not a disabled check.
+const WINDOWS_HOST = process.platform === "win32";
+const SERVE_DISCOVERY_TIMEOUT_MS = WINDOWS_HOST ? 45_000 : 15_000;
+const SERVE_INITIALIZE_TIMEOUT_MS = WINDOWS_HOST ? 45_000 : 10_000;
+const SERVE_CAPABILITY_COMMAND_TIMEOUT_MS = WINDOWS_HOST ? 150_000 : COMMAND_TIMEOUT_MS;
 
 export function nativeTarget() {
   if (process.platform === "darwin") {
@@ -63,13 +70,20 @@ function shortError(error) {
   return pieces.join("\n").replaceAll(/\s+/g, " ").slice(0, 800);
 }
 
-function run(binary, args, capture = false, env = process.env, cwd) {
+// The capability child already prints its own diagnosis on stderr; prefer that over the
+// "Command failed: <argv> <stderr>" message, which repeats it and pushes the serve tail out of view.
+function serveCapabilityError(error) {
+  const detail = error?.stderr?.toString().trim() || shortError(error);
+  return detail.replaceAll(/\s+/g, " ").slice(-3_000);
+}
+
+function run(binary, args, capture = false, env = process.env, cwd, timeout = COMMAND_TIMEOUT_MS) {
   return execFileSync(binary, args, {
     cwd,
     encoding: "utf8",
     env,
     stdio: capture ? ["ignore", "pipe", "pipe"] : "ignore",
-    timeout: COMMAND_TIMEOUT_MS,
+    timeout,
     windowsHide: true,
   });
 }
@@ -111,10 +125,20 @@ const waitForChildExit = (processHandle, timeoutMs) => {
 
 const rpcCall = (socket, id, method, params, timeoutMs = 10_000) =>
   new Promise((resolveCall, reject) => {
-    const timeout = setTimeout(() => {
+    const settle = () => {
+      clearTimeout(timeout);
       socket.removeEventListener("message", onMessage);
-      reject(new Error(`${method} response timed out`));
+      socket.removeEventListener("close", onClose);
+    };
+    const timeout = setTimeout(() => {
+      settle();
+      reject(new Error(`${method} response timed out after ${timeoutMs}ms`));
     }, timeoutMs);
+    // A Serve crash closes the socket; fail with that instead of waiting out the whole budget.
+    const onClose = () => {
+      settle();
+      reject(new Error(`Serve WebSocket closed before ${method} response`));
+    };
     const onMessage = (event) => {
       let message;
       try {
@@ -123,11 +147,11 @@ const rpcCall = (socket, id, method, params, timeoutMs = 10_000) =>
         return;
       }
       if (message.id !== id) return;
-      clearTimeout(timeout);
-      socket.removeEventListener("message", onMessage);
+      settle();
       resolveCall(message);
     };
     socket.addEventListener("message", onMessage);
+    socket.addEventListener("close", onClose);
     socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
   });
 
@@ -157,6 +181,8 @@ async function smokeServeCapabilities(binary, expectedVersion) {
     stderr = `${stderr}${String(chunk)}`.slice(-8_000);
   });
   let socket;
+  let phase = "discovery";
+  const startedAt = Date.now();
   try {
     const record = await waitFor(() => {
       if (child.exitCode !== null) {
@@ -168,7 +194,7 @@ async function smokeServeCapabilities(binary, expectedVersion) {
       } catch {
         return null;
       }
-    }, 15_000, "Serve discovery timed out");
+    }, SERVE_DISCOVERY_TIMEOUT_MS, "Serve discovery timed out");
     if (
       record.version !== expectedVersion
       || record.port !== port
@@ -177,6 +203,7 @@ async function smokeServeCapabilities(binary, expectedVersion) {
       || record.token.length < 16
     ) throw new Error("Serve discovery identity did not match the sidecar process");
 
+    phase = "websocket";
     socket = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise((resolveOpen, reject) => {
       const timeout = setTimeout(() => reject(new Error("Serve WebSocket open timed out")), 10_000);
@@ -189,7 +216,8 @@ async function smokeServeCapabilities(binary, expectedVersion) {
         reject(new Error("Serve WebSocket open failed"));
       }, { once: true });
     });
-    const initialized = await rpcCall(socket, 1, "initialize", { token: record.token });
+    phase = "initialize";
+    const initialized = await rpcCall(socket, 1, "initialize", { token: record.token }, SERVE_INITIALIZE_TIMEOUT_MS);
     if (initialized.error || initialized.result?.version !== expectedVersion) {
       throw new Error("Serve initialize failed");
     }
@@ -204,12 +232,14 @@ async function smokeServeCapabilities(binary, expectedVersion) {
     if (!features.has("external.sessions.runtime-remove.v1")) {
       throw new Error("actual sidecar is missing external.sessions.runtime-remove.v1");
     }
+    phase = "desk.connections.list";
     const connections = await rpcCall(socket, 2, "desk.connections.list", {});
     if (
       connections.error
       || !Array.isArray(connections.result?.connections)
       || typeof connections.result?.legacyUnbound !== "boolean"
     ) throw new Error("actual sidecar Desk inventory RPC failed");
+    phase = "shutdown";
     const shutdown = await rpcCall(socket, 3, "server.shutdown", {});
     if (shutdown.error || shutdown.result?.accepted !== true) {
       throw new Error("actual sidecar authenticated shutdown failed");
@@ -224,6 +254,12 @@ async function smokeServeCapabilities(binary, expectedVersion) {
     }
     if (existsSync(discoveryPath)) throw new Error("actual sidecar left a stale Serve discovery file");
     console.log("✓ actual sidecar advertises and serves native organization Desk capabilities");
+  } catch (error) {
+    const tail = (stderr || stdout).trim().slice(-2_000) || "(no serve output)";
+    throw new Error(
+      `${error?.message ?? error} [phase=${phase} elapsedMs=${Date.now() - startedAt} `
+      + `exit=${child.exitCode ?? "running"}] serve output: ${tail}`,
+    );
   } finally {
     try {
       socket?.close();
@@ -380,9 +416,10 @@ export function smokeSidecar({ binary, expectedVersion, expectedTarget = nativeT
         true,
         env,
         smokeHome,
+        SERVE_CAPABILITY_COMMAND_TIMEOUT_MS,
       );
     } catch (error) {
-      throw new Error(`${label} native Desk capability smoke failed: ${shortError(error)}`);
+      throw new Error(`${label} native Desk capability smoke failed: ${serveCapabilityError(error)}`);
     }
 
     // v0.122.2 only crashed on Bun hosts where SAB was unavailable. Recreate that runtime boundary
