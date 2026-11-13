@@ -69,6 +69,7 @@ function control(raw: unknown, target: WorkScopeTarget): Readonly<{ epoch: numbe
   return Object.freeze({ epoch: agent.epoch, dismissed: agent.dismissed });
 }
 const writers = new WeakMap<object, WorkspaceWorkScopeSource>();
+let writerSequence = 0;
 /** No default clock, transport or persistence authority can be obtained from a model's RPC method. */
 export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSource, port: WorkScopeCommandPort, references: WorkScopeReferenceStore): WorkspaceWorkScopeWriter {
   if (!isWorkspaceWorkScopeSource(readSource)) return fail();
@@ -76,6 +77,8 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
   if (Object.values(methods).some(value => typeof value !== "function")) return fail();
   const refMethods = fields(references, ["list", "put", "remove"]);
   if (Object.values(refMethods).some(value => typeof value !== "function")) return fail();
+  if (writerSequence >= Number.MAX_SAFE_INTEGER) return fail("COUNTER_EXHAUSTED", "workScope.writerKey");
+  const instanceKey = `w${++writerSequence}`;
   type Capture = { read: WorkScopeCapture; identity: WorkScopeIdentity; namespace: string };
   type Session = { capture: WorkScopeWriteCapture; before: WorkScopePolicySnapshot; epoch: number; consumed: boolean; catalog: WorkScopeEditCatalog | null };
   type Ticket = { session: Session; command: AgentBoundaryCommand; proposal: WorkScopeProposal; reference: WorkScopeReference; promise?: Promise<WorkScopeOutcome>; cancelled: boolean };
@@ -97,6 +100,7 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
     if (value.state !== "saved") return fail("BOUNDARY_CONFIRMATION_REQUIRED");
     return value;
   }
+  const samePolicy = (left: WorkScopePolicySnapshot, right: WorkScopePolicySnapshot) => { const { revision: _left, ...a } = left, { revision: _right, ...b } = right; return workScopeEqual(a, b); };
   const currentProposal = (value: WorkScopePolicySnapshot) => parseWorkScopeProposal({ duty: value.duty, boundary: value.boundary, rights: value.rights });
   async function referenceCheck(capture: WorkScopeWriteCapture, raw: WorkScopeReference, signal?: AbortSignal) {
     const saved = check(capture, signal), reference = parseWorkScopeReference(raw), contextDigest = await workScopeSha256(canonical(saved.identity.context)); check(capture, signal);
@@ -112,7 +116,8 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
     if (receipt.commandId !== reference.commandId || receipt.rootRequestId !== reference.rootRequestId || receipt.agentId !== reference.agentId
       || receipt.intentDigest !== reference.intentDigest) return fail("COMMAND_ID_CONFLICT");
     let state: WorkScopeOutcome["state"] = receipt.status === "unknown" ? "unknown" : receipt.status === "rejected" ? "rejected" : "pending";
-    if (receipt.status === "applied") {
+    if (receipt.execution.effect !== "none" || receipt.execution.drain === "unknown") state = "unknown";
+    else if (receipt.status === "applied") {
       const fresh = await policy(capture, signal), digest = await workScopeProposalDigest(currentProposal(fresh)); check(capture, signal);
       state = digest === reference.proposalDigest ? "applied" : "superseded";
     }
@@ -132,7 +137,7 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
   }
   async function unchanged(session: Session, signal?: AbortSignal, requireCatalog = false) {
     const saved = check(session.capture, signal), fresh = await policy(session.capture, signal);
-    if (!fresh.rights.manage || !workScopeEqual(fresh, session.before)) return fail("STALE_REVISION");
+    if (!fresh.rights.manage || !samePolicy(fresh, session.before)) return fail("STALE_REVISION");
     const raw = await port.inspect(saved.identity.target, signal); check(session.capture, signal);
     const state = control(raw, saved.identity.target);
     if (state.dismissed || state.epoch !== session.epoch) return fail("STALE_REVISION");
@@ -148,7 +153,7 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
       try {
         const read = readSource.capture(target); if (!read) return null;
         const identity = readSource.identity(read); if (!identity.capabilities.includes("workspace.agent-command-control.v1")) return null;
-        const result = Object.freeze({ key: read.key }) as WorkScopeWriteCapture;
+        const result = Object.freeze({ key: `${instanceKey}:${read.key}` }) as WorkScopeWriteCapture;
         captures.set(result, { read, identity, namespace: workScopeReferenceNamespace(identity) }); check(result); return result;
       } catch { return null; }
     },
@@ -165,7 +170,7 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
       const raw = await port.inspect(saved.identity.target, signal); check(capture, signal);
       const state = control(raw, saved.identity.target); if (state.dismissed) return null;
       // A proposal or another window may have changed the policy while original receipts were read.
-      const after = await policy(capture, signal); if (!workScopeEqual(fresh, after)) return fail("STALE_REVISION");
+      const after = await policy(capture, signal); if (!samePolicy(fresh, after)) return fail("STALE_REVISION");
       const catalog = port.catalog ? parseWorkScopeEditCatalog(await port.catalog(saved.identity.target, fresh, signal), fresh) : null; check(capture, signal);
       const view = Object.freeze({ key: capture.key, policy: fresh, catalog, pending: Object.freeze(pending) }) as WorkScopeEditSession;
       sessions.set(view, { capture, before: fresh, epoch: state.epoch, consumed: false, catalog }); return view;
@@ -187,9 +192,9 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
       const digest = await workScopeProposalDigest(proposal); check(session.capture, signal);
       if (!globalThis.crypto?.randomUUID) return fail("RUNTIME_UNSUPPORTED");
       const commandId = `c5_${crypto.randomUUID()}`, rootRequestId = `c5_${crypto.randomUUID()}`;
-      const operation = input.action === "duty.update" ? { action: "duty.update" as const, proposedDutyDigest: digest }
-        : { action: "boundary.update" as const, proposedBoundaryDigest: digest };
-      const raw = await port.draft(saved.identity.target, { commandId, rootRequestId, operation, lifetimeMs: 30000 }, signal); check(session.capture, signal);
+      const operation = Object.freeze(input.action === "duty.update" ? { action: "duty.update" as const, proposedDutyDigest: digest }
+        : { action: "boundary.update" as const, proposedBoundaryDigest: digest });
+      const raw = await port.draft(saved.identity.target, Object.freeze({ commandId, rootRequestId, operation, lifetimeMs: 30000 }), signal); check(session.capture, signal);
       const command = parseAgentBoundaryDocument(raw);
       if (command.kind !== "command") return fail(); assertAgentBoundaryContext(command, saved.identity.context);
       if (command.commandId !== commandId || command.rootRequestId !== rootRequestId || command.agentId !== saved.identity.target.agentId
@@ -226,6 +231,8 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
           return Object.freeze({ reference: ticket.reference, receipt: null, state: "unknown" as const });
         }
       })();
+      // A known pre-submission refusal releases only this in-memory preview. Persisted references, if any, remain authoritative for UI recovery.
+      void ticket.promise.catch(() => { const saved = captures.get(ticket.session.capture); if (saved && active.get(saved.namespace) === preview) active.delete(saved.namespace); });
       return ticket.promise;
     },
     cancel(preview) {

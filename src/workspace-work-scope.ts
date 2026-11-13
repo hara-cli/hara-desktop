@@ -78,10 +78,13 @@ const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.m
   : value && typeof value === "object" ? `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`).join(",")}}` : JSON.stringify(value);
 const contextDraft = createAgentDutyDraft({ title: "context syntax", description: "Not a duty assignment", owns: [], rejects: [] });
 const sources = new WeakSet<object>();
+let sourceSequence = 0;
 /** Trusted composition seam only. C12 must supply the actual authenticated Host bridge; this is NOT authentication. */
 export function createWorkspaceWorkScopeSource(bridge: WorkScopeHostBridge): WorkspaceWorkScopeSource {
   const funcs = fields(bridge, ["capture", "read", "subscribe"], ["describeResources"]);
   if (["capture", "read", "subscribe"].some(key => typeof funcs[key] !== "function") || funcs.describeResources !== undefined && typeof funcs.describeResources !== "function") return fail();
+  if (sourceSequence >= Number.MAX_SAFE_INTEGER) throw new AgentBoundaryContractError("COUNTER_EXHAUSTED", "workScope.sourceKey");
+  const instanceKey = `r${++sourceSequence}`;
   const captures = new WeakMap<object, { target: WorkScopeTarget; binding: WorkScopeBinding; context: AgentBoundaryContext; key: string }>();
   const identities = new Map<string, { identity: string; uiKey: string }>(); let serial = 0;
   function observed(target: WorkScopeTarget) {
@@ -120,7 +123,7 @@ export function createWorkspaceWorkScopeSource(bridge: WorkScopeHostBridge): Wor
         identities.set(targetKey, { identity: saved.key, uiKey: String(++serial) });
         if (identities.size > 128) identities.delete(identities.keys().next().value!);
       }
-      const capture = Object.freeze({ key: identities.get(targetKey)!.uiKey }) as WorkScopeCapture; captures.set(capture, saved); return capture;
+      const capture = Object.freeze({ key: `${instanceKey}:${identities.get(targetKey)!.uiKey}` }) as WorkScopeCapture; captures.set(capture, saved); return capture;
     },
     current(capture: WorkScopeCapture) { try { check(capture); return true; } catch { return false; } },
     identity(capture: WorkScopeCapture): WorkScopeIdentity {

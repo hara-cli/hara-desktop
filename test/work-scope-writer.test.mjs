@@ -180,3 +180,42 @@ test("C5 a changed Host catalog or management revocation cannot use an already r
   const g = fixture(); g.state.policy.rights.manage = false;
   const reader = await g.writer.load(g.capture()); assert.equal(reader, null); assert.equal(g.calls.inspect, 0); assert.equal(g.calls.draft, 0);
 });
+
+test("C5 a known pre-submission refusal does not strand a future freshly reviewed preview", async () => {
+  const f = fixture(), first = await previewDuty(f); f.inspector.agent.epoch++;
+  await assert.rejects(f.writer.submit(first), errorCode("STALE_REVISION")); assert.equal(f.calls.submit, 0); assert.equal(f.stored.size, 0);
+  const next = await previewDuty(f); assert.notEqual(next.commandId, first.commandId);
+  assert.equal((await f.writer.submit(next)).state, "applied"); assert.equal(f.calls.submit, 1);
+});
+
+test("C5 unrelated root ledger progress does not invalidate an unchanged target policy and control epoch", async () => {
+  const f = fixture(), preview = await previewDuty(f); f.state.revision += 7;
+  assert.equal((await f.writer.submit(preview)).state, "applied"); assert.equal(f.calls.submit, 1);
+});
+
+test("C5 a syntactically valid rehashed provenance or operation still cannot replace the observed Host draft", async () => {
+  for (const mutate of [command => { command.provenance.proofRef = "other-connection"; }, command => { command.expected.controlEpoch++; }, command => { command.operation.proposedDutyDigest = "a".repeat(64); }]) {
+    const f = fixture(); f.patchDraft(async command => { command = structuredClone(command); mutate(command); command.intentDigest = await workScopeCommandDigest(command); return command; });
+    await assert.rejects(previewDuty(f), anyContractError); assert.equal(f.calls.submit, 0);
+  }
+});
+test("C5 an accepted/completed effect in a policy receipt cannot retire an uncertain original reference", async () => {
+  for (const status of ["rejected", "applied"]) for (const effect of ["accepted", "completed"]) {
+    const f = fixture(); f.setSubmit(command => ({ ...f.receiptFor(command, status), execution: { drain: "not_requested", drainProofRef: null, effect, effectId: "original-effect" } }));
+    const result = await f.writer.submit(await previewDuty(f)); assert.equal(result.state, "unknown"); assert.equal(result.receipt.execution.effect, effect); assert.equal(f.stored.size, 1);
+    await assert.rejects(previewDuty(f), errorCode("CONTROL_HELD")); assert.equal(f.calls.submit, 1);
+  }
+});
+
+test("C5 the outgoing draft wrapper and expected operation are immutable before the Host port is called", async () => {
+  const f = fixture(), original = f.port.draft;
+  f.port.draft = async (target, input) => { assert.ok(Object.isFrozen(input)); assert.ok(Object.isFrozen(input.operation));
+    assert.throws(() => { input.operation.proposedDutyDigest = "f".repeat(64); }, TypeError); return original(target, input); };
+  assert.ok(await previewDuty(f)); assert.equal(f.calls.submit, 0);
+});
+
+test("C5 distinct writer instances sharing one read source cannot reuse a form's opaque lifetime key", async () => {
+  const f = fixture(), other = createWorkspaceWorkScopeWriter(f.source, f.port, f.references), oldCapture = f.capture(), nextCapture = other.capture(f.target);
+  assert.notEqual(oldCapture.key, nextCapture.key, "writer replacement must synchronously discard the old writer session/form");
+  await assert.rejects(other.load(oldCapture), anyContractError);
+});
