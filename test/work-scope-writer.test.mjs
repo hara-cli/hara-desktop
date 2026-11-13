@@ -219,3 +219,63 @@ test("C5 distinct writer instances sharing one read source cannot reuse a form's
   assert.notEqual(oldCapture.key, nextCapture.key, "writer replacement must synchronously discard the old writer session/form");
   await assert.rejects(other.load(oldCapture), anyContractError);
 });
+
+
+function missingReceiptFixture() {
+  const f = fixture(); let observed = Date.now(), response;
+  f.setCapabilities(["workspace.agent-boundaries.authority.v1", "workspace.agent-command-control.v1", "workspace.agent-command-receipt-lookup.v1"]);
+  f.port.lookupReceipt = async (_target, commandId) => response ?? ({ schemaVersion: 1, kind: "command-receipt-lookup", state: "not_seen", context: f.state.context,
+    agentId: f.target.agentId, commandId, observedAt: new Date(observed).toISOString(), receipt: null });
+  return { ...f, observeAt(value) { observed = value; }, lookupReply(value) { response = value; } };
+}
+test("C5 M1 persisted but unsent intent retires only after exact Core not-seen expiry, reload never resubmits", async () => {
+  const f = missingReceiptFixture(); f.setSubmit(() => { throw Error("never sent"); });
+  const preview = await previewDuty(f), unknown = await f.writer.submit(preview);
+  assert.equal(unknown.state, "unknown"); assert.equal(f.stored.size, 1);
+  const early = await f.writer.refresh(f.capture(), unknown.reference); assert.equal(early.state, "unknown"); assert.equal(f.stored.size, 1);
+  f.observeAt(Date.parse(preview.expiresAt) + 1001);
+  const expired = await f.writer.refresh(f.capture(), unknown.reference);
+  assert.equal(expired.state, "not_applied"); assert.equal(expired.receipt, null); assert.equal(f.stored.size, 0);
+  const restored = createWorkspaceWorkScopeWriter(f.source, f.port, f.references), capture = restored.capture(f.target), loaded = await restored.load(capture);
+  assert.equal(loaded.pending.length, 0); assert.equal(f.calls.submit, 1); assert.equal(f.calls.draft, 1);
+  const next = await restored.preview(loaded, { action: "duty.update", draft: f.draft() });
+  assert.notEqual(next.commandId, preview.commandId); assert.equal(f.calls.submit, 1); restored.cancel(next);
+});
+test("C5 M1 a fence failure after durable put stays recoverable and no command reaches submit", async () => {
+  const f = missingReceiptFixture(), set = f.storage.setItem.bind(f.storage);
+  const preview = await previewDuty(f); f.storage.setItem = (key, value) => { set(key, value); f.close(); };
+  await assert.rejects(f.writer.submit(preview)); assert.equal(f.calls.submit, 0); assert.equal(f.stored.size, 1);
+  f.storage.setItem = set; f.reconnect(); f.observeAt(Date.parse(preview.expiresAt) + 1001);
+  const restored = createWorkspaceWorkScopeWriter(f.source, f.port, f.references), loaded = await restored.load(restored.capture(f.target));
+  assert.equal(loaded.pending[0].state, "not_applied"); assert.equal(f.stored.size, 0); assert.equal(f.calls.submit, 0);
+});
+test("C5 M1 local fast clock, unavailable old Core, and legacy references cannot prove non-application", async t => {
+  const f = missingReceiptFixture(); f.setSubmit(() => { throw Error("unsent"); });
+  const preview = await previewDuty(f), unknown = await f.writer.submit(preview);
+  const clock = t.mock.method(Date, "now", () => Date.parse(preview.expiresAt) + 999999);
+  try { assert.equal((await f.writer.refresh(f.capture(), unknown.reference)).state, "unknown"); assert.equal(f.stored.size, 1); }
+  finally { clock.mock.restore(); }
+  f.observeAt(Date.parse(preview.expiresAt) + 1001);
+  f.setCapabilities(["workspace.agent-boundaries.authority.v1", "workspace.agent-command-control.v1"]);
+  assert.equal((await f.writer.refresh(f.capture(), unknown.reference)).state, "unknown"); assert.equal(f.stored.size, 1);
+  f.setCapabilities(["workspace.agent-boundaries.authority.v1", "workspace.agent-command-control.v1", "workspace.agent-command-receipt-lookup.v1"]);
+  const [key, bytes] = [...f.stored.entries()][0], legacy = JSON.parse(bytes); legacy.schemaVersion = 1; delete legacy.issuedAt; delete legacy.notAfter; f.stored.set(key, JSON.stringify(legacy));
+  const loaded = await f.writer.load(f.capture()); assert.equal(loaded.pending[0].state, "unknown"); assert.equal(f.stored.size, 1); assert.equal(f.calls.submit, 1);
+});
+test("C5 M1 known UNKNOWN/accepted receipts are retained after expiry and malformed absence cannot clear references", async () => {
+  for (const status of ["accepted", "unknown"]) {
+    const f = missingReceiptFixture(); let command;
+    f.setSubmit(value => { command = value; return f.receiptFor(value, status); });
+    const preview = await previewDuty(f), pending = await f.writer.submit(preview);
+    f.observeAt(Date.parse(preview.expiresAt) + 1001);
+    f.lookupReply({ schemaVersion: 1, kind: "command-receipt-lookup", state: "seen", context: f.state.context, agentId: f.target.agentId,
+      commandId: command.commandId, observedAt: new Date(Date.parse(preview.expiresAt) + 1001).toISOString(), receipt: f.receiptFor(command, status) });
+    assert.equal((await f.writer.refresh(f.capture(), pending.reference)).state, status === "accepted" ? "pending" : "unknown"); assert.equal(f.stored.size, 1);
+    await assert.rejects(previewDuty(f), errorCode("CONTROL_HELD")); assert.equal(f.calls.submit, 1);
+    for (const patch of [{ commandId: "other-command" }, { agentId: "other-agent" }, { context: {} }, { observedAt: "bad-date" }, { approved: true }]) {
+      f.lookupReply({ schemaVersion: 1, kind: "command-receipt-lookup", state: "not_seen", context: f.state.context, agentId: f.target.agentId,
+        commandId: command.commandId, observedAt: new Date(Date.parse(preview.expiresAt) + 1001).toISOString(), receipt: null, ...patch });
+      assert.equal((await f.writer.refresh(f.capture(), pending.reference)).state, "unknown"); assert.equal(f.stored.size, 1);
+    }
+  }
+});
