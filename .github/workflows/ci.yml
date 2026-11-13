@@ -61,6 +61,16 @@ jobs:
             { cwd: ROOT, env: c.env, capture: true, logFile: path.join(c.base, 'tests.log') }));
           NODE
 
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: quality-regression-diagnostics
+          path: |
+            ${{ github.workspace }}/${{ env.CI_EVIDENCE_LEAF }}/tmp/regressions/tests.log
+            ${{ github.workspace }}/${{ env.CI_EVIDENCE_LEAF }}/tmp/regressions/tests.log.result.json
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Build the production renderer
         run: npm run build
 
