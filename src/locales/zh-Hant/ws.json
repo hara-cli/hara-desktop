@@ -1587,7 +1587,6 @@
   "ws.onboarding.team.focus.sales": "銷售與客戶",
   "ws.onboarding.team.focus.operations": "財務、人事與營運",
   "ws.onboarding.team.focus.other": "其他",
-  "ws.onboarding.team.custom": "簡單說說（可不填）",
   "ws.onboarding.team.q2": "想讓同事幫你做哪些事？",
   "ws.onboarding.team.q2Note": "可多選，沒選的 Hara 依常見搭配補上。",
   "ws.onboarding.team.help.ui": "做介面和修介面",
@@ -1637,7 +1636,6 @@
   "ws.onboarding.team.noEngine": "先在第一步選好預設引擎才能建立；在那之前草案會先留著。",
   "ws.onboarding.team.unsupported": "目前版本還不能批次建立同事，草案會先留著。",
   "ws.onboarding.team.creating": "正在建立…",
-  "ws.onboarding.team.result": "建好了 {created} 位，{failed} 位沒建成。已建好的不會重複建立，重試只會處理沒建成的。",
   "ws.onboarding.team.resultAll": "{n} 位同事都建好了。",
   "ws.onboarding.team.resultAllOne": "同事建好了。",
   "ws.onboarding.team.retry": "重試沒建成的",
@@ -1648,5 +1646,11 @@
   "ws.onboarding.team.reason.permission_tier_unavailable": "這台 Mac 不支援這個權限檔。",
   "ws.onboarding.team.reason.catalog_changed": "空間裡的同事剛有變化，重試即可。",
   "ws.onboarding.team.reason.batch_limit": "這一輪已經建了 8 位，不能再多。",
-  "ws.onboarding.team.reason.invalid_request": "這一位沒能建立，可以重試或移除。"
+  "ws.onboarding.team.reason.invalid_request": "這一位沒能建立。",
+  "ws.onboarding.team.summaryCreated": "建好了 {n} 位",
+  "ws.onboarding.team.summaryTaken": "{n} 位已存在",
+  "ws.onboarding.team.summaryFailed": "{n} 位沒建成",
+  "ws.onboarding.team.summarySep": "，",
+  "ws.onboarding.team.summaryEnd": "。",
+  "ws.onboarding.team.summaryRetry": "已建好的不會重複建立，重試只會處理沒建成的。"
 }

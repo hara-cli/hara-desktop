@@ -102,6 +102,7 @@ export function teamDuty(username: string, locale: Locale): AgentDutyPublicProfi
     owns: split(duty.owns, locale), rejects: split(duty.rejects, locale) }).publicProfile;
 }
 
+/** `custom` is kept for drafts saved before review of #97 (L2); the local rules never read free text, so the step no longer asks for it. */
 export interface TeamAnswers { focus: TeamFocus | null; custom: string; helps: string[]; size: TeamSize }
 export const EMPTY_ANSWERS: TeamAnswers = { focus: null, custom: "", helps: [], size: "team" };
 
@@ -126,8 +127,8 @@ export function nextSuggestion(focus: TeamFocus | null, taken: readonly string[]
  */
 export const DUTY_SECTION: Record<Locale, { head: string; owns: string; rejects: string; note: string }> = {
   en: { head: "Duties (draft; to be confirmed when duty cards arrive)", owns: "Owns", rejects: "Does not", note: "This text describes the role only. It grants no tools, folders or permissions." },
-  "zh-Hans": { head: "职责（草案，C5 上线后迁移确认）", owns: "负责", rejects: "不负责", note: "这段文字只描述分工，不授予任何工具、目录或权限。" },
-  "zh-Hant": { head: "職責（草案，C5 上線後遷移確認）", owns: "負責", rejects: "不負責", note: "這段文字只描述分工，不授予任何工具、目錄或權限。" },
+  "zh-Hans": { head: "职责（草案，职责卡上线后再确认）", owns: "负责", rejects: "不负责", note: "这段文字只描述分工，不授予任何工具、目录或权限。" },
+  "zh-Hant": { head: "職責（草案，職責卡上線後再確認）", owns: "負責", rejects: "不負責", note: "這段文字只描述分工，不授予任何工具、目錄或權限。" },
 };
 export function teamInstructions(username: string, duty: AgentDutyPublicProfile, locale: Locale): string {
   const blueprint = teamBlueprint(username), label = DUTY_SECTION[locale], sep = locale === "en" ? ": " : "：", join = locale === "en" ? "; " : "；";
@@ -135,9 +136,9 @@ export function teamInstructions(username: string, duty: AgentDutyPublicProfile,
   return [talentBlueprintInstructions(blueprint), "", label.head, `- ${label.owns}${sep}${duty.owns.join(join)}`, `- ${label.rejects}${sep}${duty.rejects.join(join)}`, `- ${label.note}`].join("\n");
 }
 
-export type TeamRowResult = { status: "created" | "exists"; agentId?: string } | { status: "failed"; reason: string };
+export type TeamRowResult = { status: "created" | "exists"; agentId?: string } | { status: "taken" } | { status: "failed"; reason: string };
 export interface TeamDraftRow { draftKey: string; username: string; checked: boolean; engine: "follow" | string }
-export interface TeamDraft { runId: string; phase: "ask" | "draft" | "result"; answers: TeamAnswers; rows: TeamDraftRow[]; results: Record<string, TeamRowResult> }
+export interface TeamDraft { runId: string; phase: "ask" | "draft" | "result"; answers: TeamAnswers; rows: TeamDraftRow[]; results: Record<string, TeamRowResult>; sent?: boolean }
 
 export const teamRow = (username: string): TeamDraftRow => ({ draftKey: username, username, checked: true, engine: "follow" });
 export function draftFromAnswers(runId: string, answers: TeamAnswers): TeamDraft {
@@ -146,7 +147,7 @@ export function draftFromAnswers(runId: string, answers: TeamAnswers): TeamDraft
 
 /** G2 rows for the checked drafts that are not done yet. «follow» omits runtimeId, so Core uses the workspace default (G1). */
 export function batchRows(draft: TeamDraft, locale: Locale, existing: ReadonlySet<string>) {
-  return draft.rows.filter(row => row.checked && !existing.has(row.username) && !["created", "exists"].includes(draft.results[row.draftKey]?.status ?? "")).map(row => {
+  return draft.rows.filter(row => row.checked && !existing.has(row.username) && !["created", "exists", "taken"].includes(draft.results[row.draftKey]?.status ?? "")).map(row => {
     const blueprint = teamBlueprint(row.username)!, duty = teamDuty(row.username, locale);
     return { draftKey: row.draftKey, username: row.username, profile: { version: 1 as const, ...talentBlueprintIdentity(blueprint, talentLocale(locale)), source: "hara" as const },
       description: duty.title, instructions: teamInstructions(row.username, duty, locale), ...(row.engine === "follow" ? {} : { runtimeId: row.engine }) };
@@ -158,14 +159,30 @@ export const TEAM_DRAFT_KEY = "hara.onboarding.team.v1";
 const readAll = (): Record<string, TeamDraft> => {
   try { const value = JSON.parse(localStorage.getItem(TEAM_DRAFT_KEY) ?? "null"); return value && typeof value === "object" && !Array.isArray(value) ? value : {}; } catch { return {}; }
 };
+const RESULT = (value: unknown): boolean => {
+  const result = value as Record<string, unknown> | null;
+  if (!result || typeof result !== "object") return false;
+  return result.status === "created" || result.status === "exists" ? result.agentId === undefined || typeof result.agentId === "string"
+    : result.status === "taken" || result.status === "failed" && typeof result.reason === "string";
+};
+/** Whitelists everything read back, so an older or hand-edited draft starts over instead of breaking the step (review of #97, L3). */
 function validDraft(value: unknown, runId: string): value is TeamDraft {
-  const draft = value as TeamDraft | null;
+  const draft = value as TeamDraft | null, answers = draft?.answers;
   return !!draft && draft.runId === runId && ["ask", "draft", "result"].includes(draft.phase) && Array.isArray(draft.rows) && draft.rows.length <= TEAM_LIMIT
-    && draft.rows.every(row => row && typeof row.draftKey === "string" && teamBlueprint(row.username) !== null && typeof row.checked === "boolean" && typeof row.engine === "string")
-    && !!draft.answers && Array.isArray(draft.answers.helps) && !!draft.results && typeof draft.results === "object";
+    && draft.rows.every(row => row && row.draftKey === row.username && teamBlueprint(row.username) !== null && typeof row.checked === "boolean" && typeof row.engine === "string")
+    && new Set(draft.rows.map(row => row.draftKey)).size === draft.rows.length
+    && !!answers && (answers.focus === null || TEAM_FOCUSES.includes(answers.focus)) && (answers.size === "one" || answers.size === "team")
+    && Array.isArray(answers.helps) && answers.helps.every(help => !!answers.focus && TEAM_HELPS[answers.focus].some(item => item.id === help))
+    && (draft.sent === undefined || typeof draft.sent === "boolean")
+    && !!draft.results && typeof draft.results === "object" && !Array.isArray(draft.results)
+    && Object.entries(draft.results).every(([key, result]) => draft.rows.some(row => row.draftKey === key) && RESULT(result));
 }
 export function loadTeamDraft(workspaceId: string, runId: string): TeamDraft | null {
   const value = readAll()[workspaceId]; return validDraft(value, runId) ? value : null;
+}
+/** Called when the guide completes; a later «Run again» starts a new run anyway. */
+export function clearTeamDraft(workspaceId: string): void {
+  try { const all = readAll(); delete all[workspaceId]; localStorage.setItem(TEAM_DRAFT_KEY, JSON.stringify(all)); } catch { /* Nothing to clear. */ }
 }
 export function saveTeamDraft(workspaceId: string, draft: TeamDraft): void {
   try { localStorage.setItem(TEAM_DRAFT_KEY, JSON.stringify({ ...readAll(), [workspaceId]: draft })); } catch { /* Without storage the draft simply is not restored. */ }

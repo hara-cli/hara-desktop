@@ -75,8 +75,7 @@
 .wob-option{display:inline-flex;align-items:center;gap:var(--hara-space-2);min-height:var(--hara-hit-min-desktop);padding:0 var(--hara-space-3);border:1px solid var(--wsd-line);border-radius:var(--hara-radius-pill);font-size:var(--hara-font-size-small);cursor:pointer}
 .wob-option.is-selected{border-color:var(--hara-brand-primary);background:var(--hara-bg-selected)}
 .wob-option input{margin:0;accent-color:var(--hara-brand-primary)}
-.wob-custom{display:grid;gap:var(--hara-space-1);max-width:420px;font-size:var(--hara-font-size-small)}
-.wob-custom input,.wob-team-engine select{min-height:var(--hara-input-md);padding:0 var(--hara-space-3);border:1px solid var(--wsd-line);border-radius:var(--hara-radius-md);background:var(--wsd-surface);color:var(--wsd-ink);font:inherit}
+.wob-team-engine select{min-height:var(--hara-input-md);padding:0 var(--hara-space-3);border:1px solid var(--wsd-line);border-radius:var(--hara-radius-md);background:var(--wsd-surface);color:var(--wsd-ink);font:inherit}
 .wob-team-card{align-items:flex-start;padding-top:var(--hara-space-3);padding-bottom:var(--hara-space-3)}
 .wob-team-card input[type=checkbox]{flex-shrink:0;margin:var(--hara-space-1) 0 0;width:16px;height:16px;accent-color:var(--hara-brand-primary)}
 .wob-team-face{flex-shrink:0;width:32px;height:32px;display:inline-grid;place-items:center;border-radius:var(--hara-radius-pill);background:var(--hara-bg-hover);font-size:18px}

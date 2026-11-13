@@ -1587,7 +1587,6 @@
   "ws.onboarding.team.focus.sales": "Sales & customers",
   "ws.onboarding.team.focus.operations": "Finance, HR & operations",
   "ws.onboarding.team.focus.other": "Something else",
-  "ws.onboarding.team.custom": "Describe it (optional)",
   "ws.onboarding.team.q2": "What should colleagues help with?",
   "ws.onboarding.team.q2Note": "Pick any; Hara fills in the usual rest.",
   "ws.onboarding.team.help.ui": "Build and fix screens",
@@ -1637,7 +1636,6 @@
   "ws.onboarding.team.noEngine": "Pick a default engine in step 1 to create colleagues. Until then the draft is kept.",
   "ws.onboarding.team.unsupported": "This version of Hara can't create colleagues in a batch yet. The draft is kept.",
   "ws.onboarding.team.creating": "Creating…",
-  "ws.onboarding.team.result": "{created} created, {failed} not created. Created colleagues won't be created again; Retry only handles the ones that failed.",
   "ws.onboarding.team.resultAll": "All {n} colleagues are ready.",
   "ws.onboarding.team.resultAllOne": "Your colleague is ready.",
   "ws.onboarding.team.retry": "Retry the ones that failed",
@@ -1648,5 +1646,11 @@
   "ws.onboarding.team.reason.permission_tier_unavailable": "This permission level isn't available on this Mac.",
   "ws.onboarding.team.reason.catalog_changed": "Colleagues in this workspace just changed. Retry.",
   "ws.onboarding.team.reason.batch_limit": "This run has already created 8 colleagues.",
-  "ws.onboarding.team.reason.invalid_request": "Hara couldn't create this one. Retry, or remove it."
+  "ws.onboarding.team.reason.invalid_request": "Hara couldn't create this one.",
+  "ws.onboarding.team.summaryCreated": "{n} created",
+  "ws.onboarding.team.summaryTaken": "{n} already here",
+  "ws.onboarding.team.summaryFailed": "{n} not created",
+  "ws.onboarding.team.summarySep": ", ",
+  "ws.onboarding.team.summaryEnd": ".",
+  "ws.onboarding.team.summaryRetry": " Created colleagues won't be created again; Retry only handles the ones that failed."
 }

@@ -77,7 +77,9 @@ for (const locale of LOCALES) test(`G2 rows: «follow» omits runtimeId so Core 
     for (const item of [...duty.owns, ...duty.rejects]) assert.ok(row.instructions.includes(item), item);
     assert.doesNotMatch(row.instructions.slice(row.instructions.indexOf(label.head)), /approved|grant:|permissionTier|allowTools/i, "the duty section asks for nothing");
   }
-  assert.equal(M.DUTY_SECTION["zh-Hans"].head, "职责（草案，C5 上线后迁移确认）");
+  assert.equal(M.DUTY_SECTION["zh-Hans"].head, "职责（草案，职责卡上线后再确认）");
+  assert.equal(M.DUTY_SECTION["zh-Hant"].head, "職責（草案，職責卡上線後再確認）");
+  for (const value of Object.values(M.DUTY_SECTION)) assert.doesNotMatch(JSON.stringify(value), /\bC\d+\b/, "no internal code names for users or models (review of #97, M2)");
 });
 
 test("createBatch replies are checked against the rows sent; anything unexpected throws", () => {
@@ -155,13 +157,28 @@ test("«Just one» reads «Create 1 colleague»; skipping step 1 or an old Core 
 for (const locale of LOCALES) test(`results: created / already here / not created with the reason; Retry only for failures (${locale})`, () => {
   const t = makeT(locale);
   const draft = { runId: RUN, phase: "result", answers: { focus: "software", custom: "", helps: [], size: "team" }, rows: ["frontend-developer", "backend-architect", "code-reviewer", "test-automation"].map(M.teamRow),
-    results: { "frontend-developer": { status: "created", agentId: "1" }, "backend-architect": { status: "exists" }, "code-reviewer": { status: "created", agentId: "3" }, "test-automation": { status: "failed", reason: "runtime_unconfirmed" } } };
+    results: { "frontend-developer": { status: "created", agentId: "1" }, "backend-architect": { status: "exists", agentId: "2" }, "code-reviewer": { status: "created", agentId: "3" }, "test-automation": { status: "failed", reason: "runtime_unconfirmed" } } };
   const html = render({}, locale, stored(draft));
-  assert.ok(html.includes(esc(t("ws.onboarding.team.result", { created: 3, failed: 1 }))));
+  assert.ok(html.includes(esc(M.resultSummary(t, 3, 0, 1))), "Core «exists» is this run's earlier commit, so it counts as created");
+  assert.ok(html.includes(esc(t("ws.onboarding.team.summaryRetry").trim())));
   assert.ok(html.includes(esc(t("ws.onboarding.team.reason.runtime_unconfirmed"))) && html.includes(esc(t("ws.onboarding.team.retry"))));
   assert.equal((html.match(/data-result="failed"/g) ?? []).length, 1);
   const allDone = render({}, locale, stored({ ...draft, results: { ...draft.results, "test-automation": { status: "created", agentId: "4" } } }));
   assert.ok(allDone.includes(esc(t("ws.onboarding.team.resultAll", { n: 4 })))); assert.ok(!allDone.includes(esc(t("ws.onboarding.team.retry"))));
+  // A name another colleague already uses is «already here», never «created» (review of #97, M1).
+  const taken = render({}, locale, stored({ ...draft, results: { ...draft.results, "code-reviewer": { status: "taken" }, "test-automation": { status: "created", agentId: "4" } } }));
+  assert.ok(taken.includes(esc(M.resultSummary(t, 3, 1, 0))) && !taken.includes(esc(t("ws.onboarding.team.resultAll", { n: 4 }))));
+  assert.match(taken, /data-draft="code-reviewer"[\s\S]*?data-result="exists"/);
+  assert.equal((taken.match(/data-result="created"/g) ?? []).length, 3);
+});
+
+test("result summaries count created, already here and not created apart, in every language", () => {
+  const expect = {
+    en: ["2 created, 1 already here.", "1 already here, 1 not created. Created colleagues won't be created again; Retry only handles the ones that failed.", "All 3 colleagues are ready.", "Your colleague is ready."],
+    "zh-Hans": ["建好了 2 位，1 位已存在。", "1 位已存在，1 位没建成。已建好的不会重复建，重试只会处理没建成的。", "3 位同事都建好了。", "同事建好了。"],
+    "zh-Hant": ["建好了 2 位，1 位已存在。", "1 位已存在，1 位沒建成。已建好的不會重複建立，重試只會處理沒建成的。", "3 位同事都建好了。", "同事建好了。"] };
+  for (const locale of LOCALES) { const t = makeT(locale);
+    assert.deepEqual([M.resultSummary(t, 2, 1, 0), M.resultSummary(t, 0, 1, 1), M.resultSummary(t, 3, 0, 0), M.resultSummary(t, 1, 0, 0)], expect[locale], locale); }
 });
 
 test("the draft is kept per workspace and run; another run starts from the questions", () => {
@@ -173,18 +190,44 @@ test("the draft is kept per workspace and run; another run starts from the quest
     assert.equal(M.loadTeamDraft("B", RUN), null);
     store[M.TEAM_DRAFT_KEY] = JSON.stringify({ A: { ...draft, rows: [{ ...M.teamRow("chief-of-staff"), username: "not-in-library" }] } });
     assert.equal(M.loadTeamDraft("A", RUN), null, "a tampered draft is ignored");
+    // Older or hand-edited values start over instead of breaking the questions (review of #97, L3).
+    for (const bad of [{ answers: { ...M.EMPTY_ANSWERS, focus: "astrology" } }, { answers: { ...M.EMPTY_ANSWERS, size: "many" } }, { answers: { focus: "sales", custom: "", helps: ["ui"], size: "team" } },
+      { results: { "chief-of-staff": { status: "maybe" } } }, { results: { "someone-else": { status: "created" } } }, { results: [] }, { sent: "yes" },
+      { rows: [M.teamRow("chief-of-staff"), M.teamRow("chief-of-staff")] }, { rows: [{ ...M.teamRow("chief-of-staff"), draftKey: "other" }] }]) {
+      store[M.TEAM_DRAFT_KEY] = JSON.stringify({ A: { ...draft, ...bad } });
+      assert.equal(M.loadTeamDraft("A", RUN), null, JSON.stringify(bad));
+    }
+    store[M.TEAM_DRAFT_KEY] = JSON.stringify({ A: { ...draft, sent: true, results: { "chief-of-staff": { status: "taken" } } }, B: draft });
+    assert.ok(M.loadTeamDraft("A", RUN));
+    M.clearTeamDraft("A");
+    assert.equal(M.loadTeamDraft("A", RUN), null); assert.ok(M.loadTeamDraft("B", RUN), "only this workspace's draft is cleared");
   });
 });
 
 test("the step creates only through createBatch with the run's G4 runId, and finishing records completion", () => {
   assert.match(source, /model\.createColleagues\(progress\.runId, rows, expected, wsId, workspace\.resourceGeneration\)/);
   assert.doesNotMatch(source, /agents\.create\b|agent_create|duty\.update|saveDefaultRuntime|proposeExtensions/);
-  assert.match(source, /const finish = \(\) => next\(\{ completedAt: new Date\(\)\.toISOString\(\) \}\)/);
-  assert.match(source, /row\.reason === "username_taken" \? \{ status: "exists" \}/);
+  assert.match(source, /const finish = \(\) => \{ clearTeamDraft\(wsId\); next\(\{ completedAt: new Date\(\)\.toISOString\(\) \}\); \};/);
+  assert.match(source, /row\.reason === "username_taken" \? \{ status: "taken" \}/);
 });
 
 test("finishing from inside the open sheet closes it: completion wins over the open flag", () => {
   const hook = readFileSync(new URL("../src/WorkspaceOnboarding.tsx", import.meta.url), "utf8");
   assert.match(hook, /const finished = onboardingSurface\(progress, \{ seen: true, colleagues: 0 \}\) === "none";/);
   assert.match(hook, /const surface = !hasView \|\| hidden \|\| finished \? "none" : open \? "sheet"/);
+});
+
+for (const locale of LOCALES) test(`once a request has gone out, answers and rows are locked so no committed key drops out of the results (review of #97, L4) (${locale})`, () => {
+  const t = makeT(locale), draft = { runId: RUN, phase: "draft", sent: true, answers: { focus: "software", custom: "", helps: [], size: "team" }, results: {}, rows: ["frontend-developer", "backend-architect"].map(M.teamRow) };
+  const html = render({}, locale, stored(draft));
+  assert.match(html, new RegExp(`<button type="button" disabled="">${esc(t("ws.onboarding.team.backToQuestions"))}</button>`));
+  assert.ok(!html.includes(`>${esc(t("ws.onboarding.team.remove"))}</button>`));
+  const fresh = render({}, locale, stored({ ...draft, sent: undefined }));
+  assert.match(fresh, new RegExp(`<button type="button">${esc(t("ws.onboarding.team.backToQuestions"))}</button>`));
+  assert.match(source, /setDraft\(current => \(\{ \.\.\.current, sent: true \}\)\);\n    setCreating\(true\)/);
+  assert.equal(t("ws.onboarding.team.reason.invalid_request"), { en: "Hara couldn't create this one.", "zh-Hans": "这一位没能建立。", "zh-Hant": "這一位沒能建立。" }[locale], "no «Remove» promised where there is none (L1)");
+});
+
+test("the step no longer asks for free text the local rules cannot use (review of #97, L2)", () => {
+  assert.doesNotMatch(source, /wob-custom|ws\.onboarding\.team\.custom/);
 });

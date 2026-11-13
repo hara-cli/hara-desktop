@@ -4,7 +4,7 @@ import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { OnboardingSheet, type OnboardingStepProps } from "./WorkspaceOnboarding";
 import { engineRows } from "./OnboardingEngineStep";
 import {
-  EMPTY_ANSWERS, TEAM_FOCUSES, TEAM_HELPS, TEAM_LIMIT, batchRows, draftFromAnswers, loadTeamDraft, nextSuggestion, saveTeamDraft, teamBlueprint, teamDuty, teamRow,
+  EMPTY_ANSWERS, TEAM_FOCUSES, clearTeamDraft, TEAM_HELPS, TEAM_LIMIT, batchRows, draftFromAnswers, loadTeamDraft, nextSuggestion, saveTeamDraft, teamBlueprint, teamDuty, teamRow,
   type TeamDraft, type TeamFocus, type TeamRowResult,
 } from "./onboarding-team";
 
@@ -20,7 +20,17 @@ const REASON: Record<string, Key> = {
   permission_tier_unavailable: "ws.onboarding.team.reason.permission_tier_unavailable", catalog_changed: "ws.onboarding.team.reason.catalog_changed",
   batch_limit: "ws.onboarding.team.reason.batch_limit", invalid_request: "ws.onboarding.team.reason.invalid_request",
 };
-const done = (result: TeamRowResult | undefined) => result?.status === "created" || result?.status === "exists";
+// «created» and Core's «exists» (this run committed it earlier, e.g. after a lost reply) were both made by this guide;
+// «taken» is a name another colleague here already uses, so it is never counted as created (review of #97, M1).
+const made = (result: TeamRowResult | undefined) => result?.status === "created" || result?.status === "exists";
+const done = (result: TeamRowResult | undefined) => made(result) || result?.status === "taken";
+
+/** Created / already here / not created are counted apart, so the summary never claims a colleague this run did not make. */
+export function resultSummary(t: (key: Key, values?: Record<string, string | number>) => string, created: number, taken: number, failed: number): string {
+  if (!taken && !failed) return created === 1 ? t("ws.onboarding.team.resultAllOne") : t("ws.onboarding.team.resultAll", { n: created });
+  const parts = [created ? t("ws.onboarding.team.summaryCreated", { n: created }) : "", taken ? t("ws.onboarding.team.summaryTaken", { n: taken }) : "", failed ? t("ws.onboarding.team.summaryFailed", { n: failed }) : ""].filter(Boolean);
+  return parts.join(t("ws.onboarding.team.summarySep")) + t("ws.onboarding.team.summaryEnd") + (failed ? t("ws.onboarding.team.summaryRetry") : "");
+}
 
 export function OnboardingColleaguesStep({ progress, sheet, next, model, workspace }: OnboardingStepProps) {
   const { t, locale } = useWorkspaceLocale();
@@ -41,11 +51,14 @@ export function OnboardingColleaguesStep({ progress, sheet, next, model, workspa
   // Step 1 «Skip for now» leaves no engine choice: the draft can be kept but not created (design §2 branches).
   const blocked: "" | Key = !supported ? "ws.onboarding.team.unsupported" : progress.engineChoice === null ? "ws.onboarding.team.noEngine" : "";
   const pending = draft.rows.filter(row => row.checked && !existing.has(row.username) && !done(draft.results[row.draftKey]));
-  const finish = () => next({ completedAt: new Date().toISOString() });
+  const finish = () => { clearTeamDraft(wsId); next({ completedAt: new Date().toISOString() }); };
 
   const create = async () => {
     const rows = batchRows(draft, locale, existing), expected = revision ?? workspace.agentRevision;
     if (!rows.length || expected === undefined || blocked || sheet.readOnly) return;
+    // Once a request has gone out, the rows stay: answers cannot be redrawn and rows cannot be removed, so a key Core may
+    // already hold under this run is never dropped from the results (review of #97, L4).
+    setDraft(current => ({ ...current, sent: true }));
     setCreating(true); setFailedAll(false);
     try {
       const view = await model.createColleagues(progress.runId, rows, expected, wsId, workspace.resourceGeneration);
@@ -54,7 +67,7 @@ export function OnboardingColleaguesStep({ progress, sheet, next, model, workspa
       setDraft(current => {
         const results = { ...current.results };
         // A name taken by someone already here reads «Already here», not a failure the user has to fix.
-        for (const row of view.results) results[row.draftKey] = row.status === "failed" ? row.reason === "username_taken" ? { status: "exists" } : { status: "failed", reason: row.reason } : { status: row.status, agentId: row.agentId };
+        for (const row of view.results) results[row.draftKey] = row.status === "failed" ? row.reason === "username_taken" ? { status: "taken" } : { status: "failed", reason: row.reason } : { status: row.status, agentId: row.agentId };
         return { ...current, phase: "result", results };
       });
     } catch { if (live.current === scope) setFailedAll(true); }
@@ -65,7 +78,7 @@ export function OnboardingColleaguesStep({ progress, sheet, next, model, workspa
   const card = (row: TeamDraft["rows"][number], view: "draft" | "result") => {
     const blueprint = teamBlueprint(row.username)!, duty = teamDuty(row.username, locale), result = draft.results[row.draftKey];
     const here = existing.has(row.username) && !done(result), locked = here || done(result) || creating || sheet.busy;
-    const name = blueprint.name[locale === "en" ? "en" : "zh"], chip = done(result) ? (result!.status === "created" ? "created" : "exists") : here ? "exists" : result?.status === "failed" ? "failed" : "";
+    const name = blueprint.name[locale === "en" ? "en" : "zh"], chip = made(result) ? "created" : result?.status === "taken" || here ? "exists" : result?.status === "failed" ? "failed" : "";
     return <li key={row.draftKey} className={`wob-row wob-team-card${row.checked && !here ? " is-selected" : ""}`} data-draft={row.draftKey}>
       {view === "draft" ? <input type="checkbox" aria-label={t("ws.onboarding.team.pick", { name })} checked={row.checked && !here} disabled={locked || sheet.readOnly}
         onChange={event => setDraft(current => ({ ...current, rows: current.rows.map(item => item.draftKey === row.draftKey ? { ...item, checked: event.target.checked } : item) }))} /> : null}
@@ -81,7 +94,7 @@ export function OnboardingColleaguesStep({ progress, sheet, next, model, workspa
           <option value="follow">{followLabel}</option>
           {engines.map(engine => <option key={engine.id} value={engine.id}>{engine.name}</option>)}
         </select></label> : null}
-      {view === "draft" && !result && !creating ? <button type="button" className="wob-team-remove" disabled={sheet.busy || sheet.readOnly} aria-label={`${t("ws.onboarding.team.remove")} ${name}`}
+      {view === "draft" && !result && !creating && !draft.sent ? <button type="button" className="wob-team-remove" disabled={sheet.busy || sheet.readOnly} aria-label={`${t("ws.onboarding.team.remove")} ${name}`}
         onClick={() => setDraft(current => ({ ...current, rows: current.rows.filter(item => item.draftKey !== row.draftKey) }))}>{t("ws.onboarding.team.remove")}</button> : null}
     </li>;
   };
@@ -97,7 +110,6 @@ export function OnboardingColleaguesStep({ progress, sheet, next, model, workspa
       <fieldset className="wob-ask"><legend className="wob-h">{t("ws.onboarding.team.q1")}</legend>
         <div className="wob-options">{TEAM_FOCUSES.map(focus => <label key={focus} className={`wob-option${answers.focus === focus ? " is-selected" : ""}`}>
           <input type="radio" name={focusName} value={focus} checked={answers.focus === focus} onChange={() => answer({ focus: focus as TeamFocus, helps: [] })} />{t(`ws.onboarding.team.focus.${focus}` as Key)}</label>)}</div>
-        {answers.focus === "other" ? <label className="wob-custom"><span>{t("ws.onboarding.team.custom")}</span><input type="text" maxLength={120} value={answers.custom} onChange={event => answer({ custom: event.target.value })} /></label> : null}
       </fieldset>
       {answers.focus ? <fieldset className="wob-ask"><legend className="wob-h">{t("ws.onboarding.team.q2")}<small>{t("ws.onboarding.team.q2Note")}</small></legend>
         <div className="wob-options">{helps.map(help => <label key={help.id} className={`wob-option${answers.helps.includes(help.id) ? " is-selected" : ""}`}>
@@ -112,14 +124,15 @@ export function OnboardingColleaguesStep({ progress, sheet, next, model, workspa
 
   if (draft.phase === "result") {
     const shown = draft.rows.filter(row => draft.results[row.draftKey]);
-    const created = shown.filter(row => done(draft.results[row.draftKey])).length, failed = shown.filter(row => draft.results[row.draftKey]?.status === "failed").length;
+    const count = (test: (result: TeamRowResult | undefined) => boolean) => shown.filter(row => test(draft.results[row.draftKey])).length;
+    const created = count(made), taken = count(result => result?.status === "taken"), failed = count(result => result?.status === "failed");
     return <OnboardingSheet {...sheet} mascot={failed ? "error" : "done"} title={t("ws.onboarding.team.title")} sub={t("ws.onboarding.team.sub")} note={t("ws.onboarding.team.dutyNote")}
       actions={<>
         {failed ? <button type="button" disabled={creating || sheet.busy || !!blocked || sheet.readOnly} onClick={() => void create()}>{t(creating ? "ws.onboarding.team.creating" : "ws.onboarding.team.retry")}</button> : null}
         <button type="button" className="hs-btn pri" disabled={creating || sheet.busy} onClick={finish}>{t("ws.onboarding.team.enter")}</button>
       </>}>
       {failedAll ? <p className="wob-notice is-error" role="alert">{t("ws.onboarding.team.failedAll")}</p> : null}
-      <p className="wob-notice" role="status">{failed ? t("ws.onboarding.team.result", { created, failed }) : created === 1 ? t("ws.onboarding.team.resultAllOne") : t("ws.onboarding.team.resultAll", { n: created })}</p>
+      <p className="wob-notice" role="status">{resultSummary(t, created, taken, failed)}</p>
       <ul className="wob-list wob-team">{shown.map(row => card(row, "result"))}</ul>
     </OnboardingSheet>;
   }
@@ -127,7 +140,7 @@ export function OnboardingColleaguesStep({ progress, sheet, next, model, workspa
   const more = nextSuggestion(draft.answers.focus, draft.rows.map(row => row.username));
   return <OnboardingSheet {...sheet} mascot="idle" title={t("ws.onboarding.team.title")} sub={t("ws.onboarding.team.sub")} note={t("ws.onboarding.team.dutyNote")}
     actions={<>
-      <button type="button" disabled={creating || sheet.busy} onClick={() => setDraft(current => ({ ...current, phase: "ask" }))}>{t("ws.onboarding.team.backToQuestions")}</button>
+      <button type="button" disabled={creating || sheet.busy || draft.sent === true} onClick={() => setDraft(current => ({ ...current, phase: "ask" }))}>{t("ws.onboarding.team.backToQuestions")}</button>
       <button type="button" disabled={creating || sheet.busy} onClick={finish}>{t("ws.onboarding.team.enter")}</button>
       <button type="button" className="hs-btn pri" disabled={!pending.length || !!blocked || creating || sheet.busy || sheet.readOnly || workspace.agentRevision === undefined} onClick={() => void create()}>
         {creating ? t("ws.onboarding.team.creating") : pending.length === 1 ? t("ws.onboarding.team.createOne") : t("ws.onboarding.team.create", { n: pending.length })}</button>
