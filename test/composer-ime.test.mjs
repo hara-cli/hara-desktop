@@ -35,3 +35,10 @@ test("every workspace Enter handler uses the shared IME rule, not isComposing al
   assert.match(dev, /id="workspace-composer-input"[\s\S]*?onKeyDown=\{event => \{ if \(sendsOnEnter\(event\.nativeEvent\)\) \{ event\.preventDefault\(\); submitComposer\(\); \} \}\}/, "the colleague composer");
   assert.match(readFileSync(new URL("../src/WorkspaceLocalChannels.tsx", import.meta.url), "utf8"), /onKeyDown=\{event => \{ if \(sendsOnEnter\(event\.nativeEvent\)\) \{ event\.preventDefault\(\); if \(canSend\)/, "the group composer");
 });
+
+test("the legacy rename box and the model picker ignore keys while an IME is composing (review of #101, L1)", () => {
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(app, /onKeyDown=\{\(e\) => \{\n\s+if \(isImeCompositionKey\(e\.nativeEvent\)\) return;\n\s+if \(e\.key === "Enter"\) void commitRename\(\);/);
+  const combo = readFileSync(new URL("../src/ModelCombobox.tsx", import.meta.url), "utf8");
+  assert.match(combo, /onKeyDown=\{\(event\) => \{\n\s+if \(isImeCompositionKey\(event\.nativeEvent\)\) return;\n\s+if \(event\.key === "ArrowDown"\)/);
+});

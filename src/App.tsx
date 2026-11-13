@@ -7649,6 +7649,7 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => setEditTitle(e.target.value)}
             onKeyDown={(e) => {
+              if (isImeCompositionKey(e.nativeEvent)) return;
               if (e.key === "Enter") void commitRename();
               if (e.key === "Escape") setEditingId(null);
             }}

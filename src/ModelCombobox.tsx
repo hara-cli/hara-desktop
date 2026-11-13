@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { isImeCompositionKey } from "./ime";
 
 interface ModelComboboxProps {
   value: string;
@@ -181,6 +182,7 @@ export function ModelCombobox({
             setActiveIndex(-1);
           }}
           onKeyDown={(event) => {
+            if (isImeCompositionKey(event.nativeEvent)) return;
             if (event.key === "ArrowDown") {
               event.preventDefault();
               if (!open) openCatalog();
