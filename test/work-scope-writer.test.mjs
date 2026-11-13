@@ -1,0 +1,182 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createWorkspaceWorkScopeSource, bindWorkspaceWorkScopeSource } from "../src/workspace-work-scope.ts";
+import { createWorkspaceWorkScopeWriter, bindWorkspaceWorkScopeWriter, workScopeWriter } from "../src/work-scope-writer.ts";
+import { createWorkScopeReferenceStore, workScopeReferenceNamespace } from "../src/work-scope-references.ts";
+import { parseAgentBoundaryDocument } from "../src/agent-boundary-contract.ts";
+import { createAgentDutyDraft } from "../src/agent-duty-draft.ts";
+import { workScopeCommandDigest, workScopeProposalDigest } from "../src/work-scope-proposal.ts";
+import { parseWorkScopeEditCatalog } from "../src/work-scope-catalog.ts";
+const vectors = JSON.parse(readFileSync(new URL("./fixtures/agent-policy-proposal-v1.json", import.meta.url), "utf8"));
+const errorCode = code => error => error.code === code;
+const anyContractError = error => typeof error.code === "string";
+function fixture() {
+  const proposal = structuredClone(vectors.vectors[0].proposal); proposal.rights = { manage: true, invoke: true, privateRead: false, nodeUse: false };
+  proposal.boundary.resources = [{ resourceId: "folder", access: ["read", "write"] }];
+  proposal.boundary.tools = { allow: ["workspace_read", "workspace_write"].map(toolId => ({ toolId, connectorId: null, catalogRevision: 1 })), deny: [], readOnly: false };
+  proposal.boundary.budget = { budgetRef: "budget", maxModelCalls: 3, maxToolEffects: 4 }; proposal.boundary.approvalRequired = ["write", "policy_expand"];
+  const context = proposal.duty.context, target = { workspaceId: context.scope.workspaceId, generation: context.resourceBinding.generation,
+    agentId: proposal.duty.agentId, agentEpoch: 1, configRevision: 1 }, provenance = { channel: "local_human", proofRef: "proof-owner-1" };
+  const state = { context, provenance, revision: 1, agent: { agentId: target.agentId, agentEpoch: 1, configRevision: 1 }, configured: true, current: true,
+    policy: { ...proposal, agentId: target.agentId, revision: 1, agentEpoch: 1, configRevision: 1, resources: [{ resourceId: "folder", revision: 1 }] },
+    executors: [], identityReservations: { account: null, device: null, membership: null, remoteExecution: false }, runtimeEnforced: false };
+  let connected = true, connectionEpoch = 1, capabilities = ["workspace.agent-boundaries.authority.v1", "workspace.agent-command-control.v1"], fence;
+  const listeners = new Set(), calls = { inspect: 0, draft: 0, submit: 0, receipt: [] }, stored = new Map(), receipts = new Map();
+  const storage = { get length() { return stored.size; }, key(i) { return [...stored.keys()][i] ?? null; }, getItem(k) { return stored.get(k) ?? null; },
+    setItem(k, v) { stored.set(k, v); }, removeItem(k) { stored.delete(k); } };
+  const references = createWorkScopeReferenceStore(storage), source = createWorkspaceWorkScopeSource({
+    capture() { return connected ? { connectionId: "owner-socket", connectionEpoch, capabilities, context, provenance,
+      assertCurrent() { if (!connected) throw new Error("offline"); } } : null; }, read: async () => structuredClone(state),
+    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+  });
+  const inspector = { sourceAvailableHere: true, pendingDrainObservations: 0, agent: { agentId: target.agentId, epoch: 3, hold: null, dismissed: false }, runs: [] };
+  const catalog = { context, target, resources: [{ resourceId: "folder", revision: 1, label: "Project folder", path: "/synthetic/project", access: ["read", "write"] }],
+    tools: proposal.boundary.tools.allow.map(ref => ({ ref, label: ref.toolId })),
+    limits: { budgetRef: "budget", maxModelCalls: 6, maxToolEffects: 8, requiredApprovals: ["policy_expand"], requiredChecks: ["current_grant_check"] } };
+  let draftPatch = value => value, submitEffect, draftWait;
+  const receiptFor = (command, status = "applied") => parseAgentBoundaryDocument({ schemaVersion: 1, mode: "personal", kind: "command-receipt", context,
+    commandId: command.commandId, rootRequestId: command.rootRequestId, agentId: command.agentId, intentDigest: command.intentDigest, status,
+    control: { epoch: inspector.agent.epoch, holdId: null }, execution: { drain: "not_requested", drainProofRef: null, effect: "none", effectId: null },
+    error: status === "rejected" ? { code: "STALE_REVISION", retry: "refresh_state" } : null });
+  const apply = (command, value) => {
+    state.policy.duty = structuredClone(value.duty); state.policy.boundary = structuredClone(value.boundary); state.policy.rights = structuredClone(value.rights);
+    state.policy.revision++; state.revision++; inspector.agent.epoch++; const receipt = receiptFor(command); receipts.set(command.commandId, receipt); return receipt;
+  };
+  const port = {
+    assertCurrent(identity) { assert.deepEqual(identity.context, context); if (!connected) throw new Error("offline"); return fence; },
+    async inspect() { calls.inspect++; return structuredClone(inspector); },
+    async draft(_target, input) {
+      calls.draft++; if (draftWait) await draftWait;
+      const issued = Date.now();
+      const command = { schemaVersion: 1, mode: "personal", kind: "command", context, commandId: input.commandId, rootRequestId: input.rootRequestId,
+        agentId: target.agentId, actorChain: { requestedBy: context.humanSubjectId, actingAgent: target.agentId, approvedBy: null, executingNode: context.nodeId }, provenance,
+        expected: { dutyRevision: state.policy.duty.dutyRevision, boundaryRevision: state.policy.boundary.boundaryRevision, controlEpoch: inspector.agent.epoch },
+        issuedAt: new Date(issued).toISOString(), notAfter: new Date(issued + input.lifetimeMs).toISOString(), operation: input.operation, intentDigest: "0".repeat(64) };
+      command.intentDigest = await workScopeCommandDigest(command); return draftPatch(command);
+    },
+    async submit(_target, command, value) { calls.submit++; return submitEffect ? submitEffect(command, value) : apply(command, value); },
+    async receipt(_target, commandId) { calls.receipt.push(commandId); if (!receipts.has(commandId)) throw new Error("unidentified"); return receipts.get(commandId); },
+    async catalog() { return structuredClone(catalog); },
+  };
+  const writer = createWorkspaceWorkScopeWriter(source, port, references), capture = () => writer.capture(target);
+  return { writer, source, port, target, capture, state, calls, storage, stored, receipts, references, inspector, catalog, apply, receiptFor,
+    draft: () => createAgentDutyDraft({ ...state.policy.duty.publicProfile, title: "Reviewed new responsibility", owns: ["Summarize project files"] }),
+    patchDraft(fn) { draftPatch = fn; }, setSubmit(fn) { submitEffect = fn; }, waitDraft(value) { draftWait = value; },
+    close() { connected = false; for (const fn of listeners) fn(); }, reconnect() { connected = true; connectionEpoch++; for (const fn of listeners) fn(); },
+    setCapabilities(value) { capabilities = value; }, setFence(value) { fence = value; } };
+}
+const previewDuty = async f => f.writer.preview(await f.writer.load(f.capture()), { action: "duty.update", draft: f.draft() });
+const changes = f => { const { resources, tools, budget, approvalRequired, runtimeRequirements } = structuredClone(f.state.policy.boundary); return { resources, tools, budget, approvalRequired, runtimeRequirements }; };
+
+test("C5 writer cannot be enabled by JSON, a generic model or a capability advertisement", async () => {
+  const f = fixture(), model = { supportsCapability: () => true, request() { assert.fail("not a credentialed port"); } };
+  assert.equal(workScopeWriter(model), null);
+  assert.throws(() => createWorkspaceWorkScopeWriter({}, f.port, f.references), anyContractError);
+  assert.throws(() => bindWorkspaceWorkScopeWriter(model, JSON.parse(JSON.stringify(f.writer))), anyContractError);
+  assert.throws(() => bindWorkspaceWorkScopeWriter(model, f.writer), anyContractError);
+  const unbind = bindWorkspaceWorkScopeSource(model, f.source), unwrite = bindWorkspaceWorkScopeWriter(model, f.writer);
+  assert.equal(workScopeWriter(model), f.writer); unbind(); assert.equal(workScopeWriter(model), null); unwrite();
+  f.setCapabilities(["workspace.agent-boundaries.authority.v1"]); assert.equal(f.capture(), null);
+  assert.deepEqual(f.calls, { inspect: 0, draft: 0, submit: 0, receipt: [] });
+  for (const value of [true, { approved: true }, Promise.resolve(undefined)]) { f.setCapabilities(["workspace.agent-boundaries.authority.v1", "workspace.agent-command-control.v1"]); f.setFence(value); assert.equal(f.capture(), null); }
+});
+test("C5 exact immutable duty preview has no effect until confirmed; duplicate confirmation submits once", async () => {
+  const f = fixture(), before = structuredClone(f.state.policy), preview = await previewDuty(f);
+  assert.equal(f.calls.submit, 0); assert.equal(f.stored.size, 0); assert.equal(preview.action, "duty.update");
+  assert.deepEqual(preview.proposal.boundary, before.boundary); assert.deepEqual(preview.proposal.rights, before.rights);
+  assert.equal(preview.proposal.duty.dutyRevision, before.duty.dutyRevision + 1); assert.ok(preview.changes.every(change => change.direction === "text"));
+  assert.throws(() => { preview.proposal.duty.publicProfile.title = "changed after review"; }, TypeError);
+  await assert.rejects(f.writer.submit(JSON.parse(JSON.stringify(preview))), anyContractError);
+  const first = f.writer.submit(preview), second = f.writer.submit(preview); assert.equal(first, second);
+  const result = await first; assert.equal(result.state, "applied"); assert.equal(result.receipt.status, "applied"); assert.equal(f.calls.submit, 1); assert.equal(f.stored.size, 0);
+  assert.deepEqual(f.state.policy.rights, before.rights); assert.equal(f.state.policy.rights.privateRead, false, "Management does not require granting privateRead");
+});
+test("C5 command preview rejects forged Host source, identity, epoch, operation and intent digest", async () => {
+  for (const patch of [
+    command => ({ ...command, provenance: { ...command.provenance, proofRef: "forged" } }),
+    command => ({ ...command, expected: { ...command.expected, controlEpoch: command.expected.controlEpoch + 1 } }),
+    command => ({ ...command, operation: { action: "boundary.update", proposedBoundaryDigest: "a".repeat(64) } }),
+    command => ({ ...command, commandId: "different-id" }), command => ({ ...command, intentDigest: "a".repeat(64) }),
+    command => ({ ...command, actorChain: { ...command.actorChain, requestedBy: "other-human" } }),
+  ]) { const f = fixture(); f.patchDraft(patch); await assert.rejects(previewDuty(f), anyContractError); assert.equal(f.calls.submit, 0); assert.equal(f.stored.size, 0); }
+});
+test("C5 boundary editing is limited to current Host registry, resources, supported tools and ceilings", async () => {
+  const f = fixture(), before = structuredClone(f.state.policy), session = await f.writer.load(f.capture()), value = changes(f);
+  value.tools.readOnly = true; value.resources[0].access = ["read"];
+  const preview = await f.writer.preview(session, { action: "boundary.update", boundary: value });
+  assert.deepEqual(preview.proposal.duty, before.duty); assert.deepEqual(preview.proposal.rights, before.rights);
+  assert.ok(preview.changes.every(change => change.direction === "narrow")); assert.equal((await f.writer.submit(preview)).state, "applied");
+  for (const edit of [value => { value.budget.maxToolEffects = 9; }, value => { value.resources[0].access = ["execute"]; },
+    value => { value.approvalRequired = []; }, value => { value.runtimeRequirements = []; },
+    value => { value.tools.allow.push({ toolId: "exec", connectorId: null, catalogRevision: 1 }); },
+    value => { value.resources.push({ resourceId: "unattested", access: ["read"] }); }]) {
+    const bad = fixture(), change = changes(bad); edit(change); await assert.rejects(bad.writer.preview(await bad.writer.load(bad.capture()), { action: "boundary.update", boundary: change }), anyContractError); assert.equal(bad.calls.submit, 0);
+  }
+  const missing = fixture(); delete missing.port.catalog; const noCatalog = createWorkspaceWorkScopeWriter(missing.source, missing.port, missing.references), capture = noCatalog.capture(missing.target), view = await noCatalog.load(capture);
+  await assert.rejects(noCatalog.preview(view, { action: "boundary.update", boundary: changes(missing) }), errorCode("RUNTIME_UNSUPPORTED"));
+  assert.ok(await noCatalog.preview(view, { action: "duty.update", draft: missing.draft() }));
+});
+test("C5 catalog rejects stale metadata, unsupported connectors/tools, forged labels and duplicate choices", async () => {
+  const f = fixture(), policy = await f.source.policy(f.source.capture(f.target));
+  for (const mutate of [row => row.resources[0].revision++, row => row.target.configRevision++, row => row.resources[0].label = "unsafe\nlabel",
+    row => row.resources.push(row.resources[0]), row => row.tools[0].ref.connectorId = "connector", row => row.tools[0].ref.toolId = "agent",
+    row => row.resources[0].access.push("execute"), row => row.limits.budgetRef = "other-budget"]) {
+    const catalog = structuredClone(f.catalog); mutate(catalog); assert.throws(() => parseWorkScopeEditCatalog(catalog, policy), anyContractError);
+  }
+});
+test("C5 revoked/stale policy, control epoch, expiry or capture cannot silently replace reviewed intent", async () => {
+  for (const change of [f => { f.state.policy.rights.manage = false; }, f => { f.state.policy.revision++; }, f => { f.inspector.agent.epoch++; }, f => f.close()]) {
+    const f = fixture(), preview = await previewDuty(f); change(f); await assert.rejects(f.writer.submit(preview), anyContractError); assert.equal(f.calls.submit, 0);
+  }
+  const f = fixture(), preview = await previewDuty(f), now = Date.now; Date.now = () => Date.parse(preview.expiresAt) + 1;
+  try { await assert.rejects(f.writer.submit(preview), errorCode("STALE_REVISION")); } finally { Date.now = now; } assert.equal(f.calls.submit, 0);
+});
+test("C5 accepted is pending; transport loss persists only references and reload queries the original command", async () => {
+  const f = fixture(); let savedCommand, savedProposal;
+  f.setSubmit((command, proposal) => { savedCommand = command; savedProposal = proposal; assert.equal(f.stored.size, 1, "Reference is durable before the possible submission"); throw new Error("response lost"); });
+  const preview = await previewDuty(f), first = await f.writer.submit(preview); assert.equal(first.state, "unknown"); assert.equal(first.receipt, null);
+  const saved = [...f.stored.values()][0]; assert.ok(saved.includes(preview.commandId));
+  for (const privateValue of [savedProposal.duty.publicProfile.title, "publicProfile", "boundaryRevision", "proofRef", "ownerCredential", "context\""]) assert.equal(saved.includes(privateValue), false, privateValue);
+  await assert.rejects(previewDuty(f), errorCode("CONTROL_HELD")); assert.equal(f.calls.draft, 1);
+  f.receipts.set(savedCommand.commandId, f.receiptFor(savedCommand, "accepted"));
+  f.reconnect(); const restoredWriter = createWorkspaceWorkScopeWriter(f.source, f.port, f.references), capture = restoredWriter.capture(f.target);
+  const restored = await restoredWriter.load(capture); assert.equal(restored.pending[0].state, "pending"); assert.equal(restored.pending[0].receipt.status, "accepted"); assert.equal(f.stored.size, 1);
+  f.receipts.set(savedCommand.commandId, f.receiptFor(savedCommand, "unknown")); assert.equal((await restoredWriter.refresh(capture, first.reference)).state, "unknown"); assert.equal(f.stored.size, 1);
+  f.apply(savedCommand, savedProposal); assert.equal((await restoredWriter.refresh(capture, first.reference)).state, "applied");
+  assert.equal(f.calls.submit, 1); assert.ok(f.calls.receipt.every(id => id === preview.commandId)); assert.equal(f.stored.size, 0);
+});
+test("C5 unexpected or mismatched receipts preserve unknown references; rejected and superseded are honest terminal observations", async () => {
+  const f = fixture(); let command, proposal; f.setSubmit((c, p) => { command = c; proposal = p; return { ...f.receiptFor(c, "applied"), commandId: "other-id" }; });
+  const unknown = await f.writer.submit(await previewDuty(f)); assert.equal(unknown.state, "unknown"); assert.equal(f.stored.size, 1);
+  f.receipts.set(command.commandId, f.receiptFor(command, "rejected")); assert.equal((await f.writer.refresh(f.capture(), unknown.reference)).state, "rejected"); assert.equal(f.stored.size, 0);
+  const g = fixture(); g.setSubmit((c, p) => { g.apply(c, p); g.state.policy.duty = { ...g.state.policy.duty, dutyRevision: p.duty.dutyRevision + 1, publicProfile: { ...p.duty.publicProfile, title: "Changed by another approved command" } }; return g.receiptFor(c); });
+  const historical = await g.writer.submit(await previewDuty(g)); assert.equal(historical.state, "superseded"); assert.equal(historical.receipt.status, "applied"); assert.equal(g.stored.size, 0);
+});
+test("C5 storage quota and corrupt/unidentifiable references fail closed without a second command", async () => {
+  const f = fixture(); f.storage.setItem = () => { throw new Error("quota"); };
+  const preview = await previewDuty(f); await assert.rejects(f.writer.submit(preview), /quota/); assert.equal(f.calls.submit, 0);
+  const g = fixture(), identity = g.source.identity(g.source.capture(g.target)), prefix = workScopeReferenceNamespace(identity); g.stored.set(prefix + "broken", "{");
+  await assert.rejects(g.writer.load(g.capture()), errorCode("CONTROL_HELD")); assert.equal(g.calls.draft, 0); assert.equal(g.calls.submit, 0); assert.equal(g.stored.size, 1);
+});
+test("C5 cancellation and late results cannot affect another capture or resurrect an old preview", async () => {
+  const f = fixture(), preview = await previewDuty(f); f.writer.cancel(preview); await assert.rejects(f.writer.submit(preview), anyContractError); assert.equal(f.calls.submit, 0);
+  const g = fixture(); let release; g.waitDraft(new Promise(resolve => { release = resolve; }));
+  const view = await g.writer.load(g.capture()), pending = g.writer.preview(view, { action: "duty.update", draft: g.draft() });
+  while (!g.calls.draft) await new Promise(resolve => setTimeout(resolve, 1)); g.reconnect(); release(); await assert.rejects(pending, anyContractError); assert.equal(g.calls.submit, 0);
+});
+test("C5 refresh cannot read a reference from another scope, human, Agent or context", async () => {
+  const f = fixture(); f.setSubmit(() => { throw new Error("lost"); }); const result = await f.writer.submit(await previewDuty(f));
+  for (const patch of [{ agentId: "other-agent" }, { generation: "different-generation" }, { workspaceId: "other-workspace" }, { scopeKey: "a".repeat(64) }, { contextDigest: "b".repeat(64) }])
+    await assert.rejects(f.writer.refresh(f.capture(), { ...result.reference, ...patch }), errorCode("CONTEXT_MISMATCH"));
+  assert.equal(f.calls.receipt.length, 0); assert.equal(f.stored.size, 1);
+});
+
+test("C5 a changed Host catalog or management revocation cannot use an already reviewed boundary", async () => {
+  const f = fixture(), session = await f.writer.load(f.capture()), value = changes(f); value.tools.readOnly = true;
+  const preview = await f.writer.preview(session, { action: "boundary.update", boundary: value });
+  f.catalog.limits.maxToolEffects--;
+  await assert.rejects(f.writer.submit(preview), errorCode("STALE_REVISION")); assert.equal(f.calls.submit, 0);
+  const g = fixture(); g.state.policy.rights.manage = false;
+  const reader = await g.writer.load(g.capture()); assert.equal(reader, null); assert.equal(g.calls.inspect, 0); assert.equal(g.calls.draft, 0);
+});

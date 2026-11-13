@@ -182,6 +182,8 @@ export function createWorkspaceWorkScopeSource(bridge: WorkScopeHostBridge): Wor
   } as WorkspaceWorkScopeSource;
   sources.add(source); return Object.freeze(source);
 }
+/** Composition identity only; it does not authenticate a caller or issue a grant. */
+export const isWorkspaceWorkScopeSource = (value: unknown): value is WorkspaceWorkScopeSource => !!value && typeof value === "object" && sources.has(value);
 interface Bound { source: WorkspaceWorkScopeSource; dispose: () => void }
 const bindings = new WeakMap<WorkspaceDevModel, Bound>(), versions = new WeakMap<WorkspaceDevModel, number>(), listeners = new WeakMap<WorkspaceDevModel, Set<() => void>>();
 function changed(model: WorkspaceDevModel) {
