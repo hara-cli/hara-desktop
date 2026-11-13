@@ -7,7 +7,7 @@
  */
 export const BASELINE = "fa844bf";
 const CAPABILITIES = ["workspace.agents.archive.v1", "workspace.extensions.v1", "workspace.extensions.manager.v1", "workspace.extensions.owner-review.v1"];
-const snapshot = id => ({ workspaceId: id, resourceGeneration: `generation-${id}`, label: id, syntheticOnly: false, executionMode: "workspace", selectedAgentId: "main", approvals: [],
+export const snapshot = id => ({ workspaceId: id, resourceGeneration: `generation-${id}`, label: id, syntheticOnly: false, executionMode: "workspace", selectedAgentId: "main", approvals: [],
   agents: [{ agentId: "main", kind: "main", state: "active", configRevision: 1, agentEpoch: 1, identity: { displayName: "Hara" }, runtime: { id: "pi", label: "Pi", available: true } },
     { agentId: "c1", kind: "colleague", state: "active", configRevision: 4, agentEpoch: 2, identity: { displayName: "Coder" }, runtime: { id: "codex", label: "Codex", available: true } },
     { agentId: "c2", kind: "colleague", state: "archived", archivedAt: "2026-11-01T00:00:00Z", configRevision: 7, agentEpoch: 3, identity: { displayName: "Writer" }, runtime: { id: "pi", label: "Pi", available: true } }],

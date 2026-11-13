@@ -67,6 +67,7 @@ import { useWorkspaceUpdater, WorkspaceUpdateNotice } from "./WorkspaceSoftwareU
 import { OnboardingResumeCard, useWorkspaceOnboarding, WorkspaceOnboarding } from "./WorkspaceOnboarding";
 import { ONBOARDING_STEP_VIEWS } from "./onboarding-steps";
 import { isImeCompositionKey, sendsOnEnter } from "./ime";
+import { MAX_PASTE_IMAGE_BYTES, PASTE_IMAGE_TYPES, pastedImageFile } from "./workspace-media";
 const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
 
 type Translate = ReturnType<typeof makeT>;
@@ -564,6 +565,19 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     } catch { setUndoNotice({ id: ++toastCounter.current, scope, text: r("fileRefFailed") }); }
     finally { setAttaching(false); }
   };
+  const pasteImage = async (file: File) => {
+    const tell = (key: "pasteUnsupported" | "pasteType" | "pasteTooLarge" | "pasteFailed") => setUndoNotice({ id: ++toastCounter.current, scope, text: r(key) });
+    if (!model.supportsMediaImport()) { tell("pasteUnsupported"); return; }
+    if (!PASTE_IMAGE_TYPES.includes(file.type)) { tell("pasteType"); return; }
+    if (file.size > MAX_PASTE_IMAGE_BYTES) { tell("pasteTooLarge"); return; }
+    if (attaching || disconnected) return; setAttaching(true); const selectedScope = model.mediaScope;
+    try { const { path } = await model.importPastedImage(new Uint8Array(await file.arrayBuffer()), file.type, selectedScope);
+      if (selectedScope !== model.mediaScope) return;
+      const next = `${model.getSnapshot().draft.trimEnd()}\n${path}\n`; if (next.length > 24000) throw new Error("Draft exceeds limit");
+      model.setDraft(next); input.current?.focus();
+    } catch (error) { tell(error instanceof Error && error.message.includes("image_too_large") ? "pasteTooLarge" : "pasteFailed"); }
+    finally { setAttaching(false); }
+  };
   const findMessage = (index: number) => { if (scroll.current) setFindResult(findTranscriptMatch(scroll.current, findQuery, index)); };
   useEffect(() => { if (findOpen) findMessage(0); }, [findOpen, findQuery, workspace?.conversation.revision, channelView.channel?.revision]);
   const exportConversation = async () => {
@@ -759,7 +773,8 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
       {workspace && route.section === "chat" ? <footer className="hs-compose wsd-composer-wrap" data-composer={question ? "question" : undefined}><WorkspaceAsyncQuestions asks={asyncAsks} t={t}
           onTypeAnswer={() => input.current?.focus()} disabled={Boolean(disconnected)} onAnswer={(questionId, answer) => void model.answerAsync(questionId, answer)} /><div className="hs-field wsd-composer"><textarea id="workspace-composer-input" ref={input} aria-label={t("ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} value={view.draft}
         placeholder={!hasConnection ? t("ws.composer.noConnection") : t(question ? "ws.question.composerPlaceholder" : "ws.composer.placeholder", { name: agent?.identity.displayName ?? "Hara" })} disabled={!hasConnection || view.runtimeChanging} rows={1}
-        onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (sendsOnEnter(event.nativeEvent)) { event.preventDefault(); submitComposer(); } }} />
+        onChange={event => model.setDraft(event.target.value)} onKeyDown={event => { if (sendsOnEnter(event.nativeEvent)) { event.preventDefault(); submitComposer(); } }}
+        onPaste={event => { const image = pastedImageFile(event.clipboardData); if (!image) return; event.preventDefault(); void pasteImage(image); }} />
         <WorkspaceComposerTools key={`${scope}:${view.agentId}`} label={r("composerActions")} attachLabel={r("attach")} mentionLabel={r("mention")}
           attachDisabled={!hasConnection || !!disconnected || attaching} mentionDisabled={!hasConnection || view.runtimeChanging}
           onAttach={() => void attachReference()} onMention={() => setMentionOpen(value => !value)} />
