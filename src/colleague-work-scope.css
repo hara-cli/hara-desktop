@@ -28,3 +28,41 @@
 .hd-work-scope-card :is(button, summary, h3):focus-visible { outline: var(--hara-focus-ring-width) solid var(--hara-focus-ring); outline-offset: var(--hara-space-1); }
 .hd-work-scope-card > footer { margin-top: var(--hara-space-4); padding-top: var(--hara-space-3); border-top: 1px solid var(--hara-border-subtle); color: var(--hara-text-secondary); font-size: var(--hara-font-size-body-sm); }
 @media (prefers-reduced-motion: reduce) { .hd-work-scope-card * { scroll-behavior: auto; } }
+.hd-work-scope-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.hd-work-scope-writer { margin-top: var(--hara-space-4); }
+.hd-work-scope-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--hara-space-2); margin-top: var(--hara-space-4); }
+.hd-work-scope-dialog { box-sizing: border-box; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: var(--hara-space-5); border: 1px solid var(--hara-border-active); border-radius: var(--hara-radius-card); background: var(--hara-bg-surface); color: var(--hara-text-primary); font: var(--hara-font-size-body)/1.55 var(--hara-font-ui); overflow: auto; overflow-wrap: anywhere; }
+.hd-work-scope-dialog::backdrop { background: var(--hara-scrim); }
+.hd-work-scope-dialog h3 { margin: 0; font-size: var(--hara-font-size-title-sm); font-weight: var(--hara-font-weight-semibold); }
+.hd-work-scope-dialog > header p { color: var(--hara-text-secondary); margin: var(--hara-space-2) 0 var(--hara-space-4); }
+.hd-work-scope-fields { border: 0; margin: var(--hara-space-4) 0; padding: 0; min-width: 0; display: grid; gap: var(--hara-space-3); }
+.hd-work-scope-fields legend { margin-bottom: var(--hara-space-3); font-weight: var(--hara-font-weight-semibold); }
+.hd-work-scope-fields label { display: grid; gap: var(--hara-space-1); min-width: 0; }
+.hd-work-scope-fields :is(input:not([type="checkbox"]), textarea, select) { box-sizing: border-box; width: 100%; min-height: 38px; border: 1px solid var(--hara-border-active); border-radius: var(--hara-radius-row); padding: var(--hara-space-2); background: var(--hara-bg-base); color: var(--hara-text-primary); font: inherit; }
+.hd-work-scope-fields textarea { resize: vertical; }
+.hd-work-scope-fields small { color: var(--hara-text-secondary); font-size: var(--hara-font-size-small); }
+.hd-work-scope-fields .hd-work-scope-check, .hd-work-scope-checks label { display: flex; align-items: center; flex-wrap: wrap; gap: var(--hara-space-2); }
+.hd-work-scope-checks { display: flex; flex-wrap: wrap; gap: var(--hara-space-3); }
+.hd-work-scope-fields input[type="checkbox"] { width: 18px; height: 18px; flex: none; accent-color: var(--hara-brand-primary); }
+.hd-work-scope-choice { padding-bottom: var(--hara-space-3); border-bottom: 1px solid var(--hara-border-subtle); }
+.hd-work-scope-choice p { margin: var(--hara-space-1) 0 var(--hara-space-2); color: var(--hara-text-secondary); }
+.hd-work-scope-dialog .hd-work-scope-advanced { margin-bottom: var(--hara-space-4); }
+.hd-work-scope-differences { list-style: none; padding: 0; margin: var(--hara-space-4) 0; }
+.hd-work-scope-difference { padding: var(--hara-space-3) 0; border-top: 1px solid var(--hara-border-subtle); }
+.hd-work-scope-difference h5 { margin: 0 0 var(--hara-space-2); font-size: var(--hara-font-size-body); font-weight: var(--hara-font-weight-semibold); }
+.hd-work-scope-change { display: inline-block; margin-left: var(--hara-space-1); padding: 0 var(--hara-space-2); border-radius: var(--hara-radius-pill); font-size: var(--hara-font-size-small); font-weight: var(--hara-font-weight-medium); background: var(--hara-info-soft); color: var(--hara-info); }
+.hd-work-scope-change.expand { color: var(--hara-warning); background: var(--hara-warning-soft); }
+.hd-work-scope-difference dl { display: grid; grid-template-columns: minmax(0, 80px) minmax(0, 1fr); gap: var(--hara-space-2); margin: 0; }
+.hd-work-scope-difference dt { color: var(--hara-text-secondary); }
+.hd-work-scope-difference dd { margin: 0; white-space: pre-wrap; }
+.hd-work-scope-result { color: var(--hara-info); background: var(--hara-info-soft); border-radius: var(--hara-radius-row); padding: var(--hara-space-3); margin: var(--hara-space-3) 0; }
+.hd-work-scope-result.is-warning { color: var(--hara-warning); background: var(--hara-warning-soft); }
+.hd-work-scope-result p { margin: 0 0 var(--hara-space-2); }
+.hd-work-scope-result code { font-family: var(--hara-font-mono); font-size: var(--hara-font-size-small); }
+.hd-work-scope-dialog :is(button, input, textarea, select, summary, h3):focus-visible { outline: var(--hara-focus-ring-width) solid var(--hara-focus-ring); outline-offset: var(--hara-space-1); }
+@media (max-width: 520px) { .hd-work-scope-dialog { padding: var(--hara-space-3); } .hd-work-scope-difference dl { grid-template-columns: minmax(0, 1fr); } }
+.hd-work-scope-card .hd-work-scope-actions .hs-btn, .hd-work-scope-dialog .hd-work-scope-actions .hs-btn { min-height: 38px; height: auto; border: 1px solid var(--hara-border-default); border-radius: var(--hara-radius-row); padding: var(--hara-space-2) var(--hara-space-3); color: var(--hara-text-primary); background: var(--hara-bg-surface); font: var(--hara-font-weight-medium) var(--hara-font-size-body-sm)/1.4 var(--hara-font-ui); cursor: pointer; }
+.hd-work-scope-card .hd-work-scope-actions .hs-btn.pri, .hd-work-scope-dialog .hd-work-scope-actions .hs-btn.pri { color: var(--hara-on-brand); background: var(--hara-brand-primary); border-color: var(--hara-brand-primary); }
+.hd-work-scope-card .hd-work-scope-actions .hs-btn:hover, .hd-work-scope-dialog .hd-work-scope-actions .hs-btn:hover { background: var(--hara-bg-hover); }
+.hd-work-scope-card .hd-work-scope-actions .hs-btn.pri:hover, .hd-work-scope-dialog .hd-work-scope-actions .hs-btn.pri:hover { background: var(--hara-brand-primary); }
+.hd-work-scope-dialog .hd-work-scope-actions .hs-btn:disabled, .hd-work-scope-card .hd-work-scope-actions .hs-btn:disabled { cursor: default; opacity: .65; }

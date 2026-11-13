@@ -1,0 +1,1397 @@
+{
+  "sourceRef": "b01e492adf30b3b6d0d5c31385122ce3dca601a3",
+  "domain": "hara-agent-policy-proposal-v1\u0000",
+  "vectors": [
+    {
+      "name": "current-policy",
+      "proposal": {
+        "duty": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "duty-profile",
+          "agentId": "agent-fixture",
+          "dutyRevision": 1,
+          "publicProfile": {
+            "title": "Fixture colleague",
+            "description": "Synthetic duty.\n合成职责；描述不授予执行权限。",
+            "owns": [
+              "fixture-finance"
+            ],
+            "rejects": [
+              "fixture-production"
+            ]
+          }
+        },
+        "boundary": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "execution-boundary",
+          "agentId": "agent-fixture",
+          "boundaryRevision": 1,
+          "resources": [
+            {
+              "resourceId": "project-fixture",
+              "access": [
+                "read"
+              ]
+            }
+          ],
+          "tools": {
+            "allow": [
+              {
+                "toolId": "file.read",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "deny": [
+              {
+                "toolId": "shell.execute",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "readOnly": true
+          },
+          "budget": {
+            "budgetRef": "budget-fixture",
+            "maxModelCalls": 8,
+            "maxToolEffects": 16
+          },
+          "approvalRequired": [
+            "write",
+            "execute",
+            "external_send",
+            "paid",
+            "publish",
+            "credentials",
+            "policy_expand"
+          ],
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ]
+        },
+        "rights": {
+          "manage": true,
+          "invoke": false,
+          "privateRead": false,
+          "nodeUse": false
+        }
+      },
+      "digest": "5050fc64174b1890d0d528243ee4e970691b2de00e2932a0681687af26cdaf8f"
+    },
+    {
+      "name": "object-key-order",
+      "proposal": {
+        "rights": {
+          "nodeUse": false,
+          "privateRead": false,
+          "invoke": false,
+          "manage": true
+        },
+        "boundary": {
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ],
+          "approvalRequired": [
+            "write",
+            "execute",
+            "external_send",
+            "paid",
+            "publish",
+            "credentials",
+            "policy_expand"
+          ],
+          "budget": {
+            "maxToolEffects": 16,
+            "maxModelCalls": 8,
+            "budgetRef": "budget-fixture"
+          },
+          "tools": {
+            "readOnly": true,
+            "deny": [
+              {
+                "catalogRevision": 1,
+                "connectorId": null,
+                "toolId": "shell.execute"
+              }
+            ],
+            "allow": [
+              {
+                "catalogRevision": 1,
+                "connectorId": null,
+                "toolId": "file.read"
+              }
+            ]
+          },
+          "resources": [
+            {
+              "access": [
+                "read"
+              ],
+              "resourceId": "project-fixture"
+            }
+          ],
+          "boundaryRevision": 1,
+          "agentId": "agent-fixture",
+          "kind": "execution-boundary",
+          "context": {
+            "collaboration": {
+              "delegation": null,
+              "role": null,
+              "membershipVersion": null,
+              "membershipId": null,
+              "organizationId": null
+            },
+            "localGrant": {
+              "nodeId": "node-fixture",
+              "humanSubjectId": "human-fixture",
+              "grantRevision": 1,
+              "grantId": "grant-fixture"
+            },
+            "deviceId": null,
+            "nodeId": "node-fixture",
+            "humanSubjectId": "human-fixture",
+            "resourceBinding": {
+              "generation": "22222222-2222-4222-8222-222222222222",
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "schemaVersion": 1
+            },
+            "scope": {
+              "authority": {
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111",
+                "kind": "local"
+              },
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "schemaVersion": 1
+            }
+          },
+          "mode": "personal",
+          "schemaVersion": 1
+        },
+        "duty": {
+          "publicProfile": {
+            "rejects": [
+              "fixture-production"
+            ],
+            "owns": [
+              "fixture-finance"
+            ],
+            "description": "Synthetic duty.\n合成职责；描述不授予执行权限。",
+            "title": "Fixture colleague"
+          },
+          "dutyRevision": 1,
+          "agentId": "agent-fixture",
+          "kind": "duty-profile",
+          "context": {
+            "collaboration": {
+              "delegation": null,
+              "role": null,
+              "membershipVersion": null,
+              "membershipId": null,
+              "organizationId": null
+            },
+            "localGrant": {
+              "nodeId": "node-fixture",
+              "humanSubjectId": "human-fixture",
+              "grantRevision": 1,
+              "grantId": "grant-fixture"
+            },
+            "deviceId": null,
+            "nodeId": "node-fixture",
+            "humanSubjectId": "human-fixture",
+            "resourceBinding": {
+              "generation": "22222222-2222-4222-8222-222222222222",
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "schemaVersion": 1
+            },
+            "scope": {
+              "authority": {
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111",
+                "kind": "local"
+              },
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "schemaVersion": 1
+            }
+          },
+          "mode": "personal",
+          "schemaVersion": 1
+        }
+      },
+      "digest": "5050fc64174b1890d0d528243ee4e970691b2de00e2932a0681687af26cdaf8f"
+    },
+    {
+      "name": "unicode-newlines",
+      "proposal": {
+        "duty": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "duty-profile",
+          "agentId": "agent-fixture",
+          "dutyRevision": 1,
+          "publicProfile": {
+            "title": "資料複核 🌱",
+            "description": "résumé\nLine two\t<plain text>",
+            "owns": [
+              "整理資料",
+              "Archive summaries"
+            ],
+            "rejects": [
+              "No publication"
+            ]
+          }
+        },
+        "boundary": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "execution-boundary",
+          "agentId": "agent-fixture",
+          "boundaryRevision": 1,
+          "resources": [
+            {
+              "resourceId": "project-fixture",
+              "access": [
+                "read"
+              ]
+            }
+          ],
+          "tools": {
+            "allow": [
+              {
+                "toolId": "file.read",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "deny": [
+              {
+                "toolId": "shell.execute",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "readOnly": true
+          },
+          "budget": {
+            "budgetRef": "budget-fixture",
+            "maxModelCalls": 8,
+            "maxToolEffects": 16
+          },
+          "approvalRequired": [
+            "write",
+            "execute",
+            "external_send",
+            "paid",
+            "publish",
+            "credentials",
+            "policy_expand"
+          ],
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ]
+        },
+        "rights": {
+          "manage": true,
+          "invoke": false,
+          "privateRead": false,
+          "nodeUse": false
+        }
+      },
+      "digest": "f1592191432e5ab7f347b5ffe34c378d0a6c893002c5653b6c846d21e2279bc6"
+    },
+    {
+      "name": "empty-lists-zero-budget",
+      "proposal": {
+        "duty": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "duty-profile",
+          "agentId": "agent-fixture",
+          "dutyRevision": 1,
+          "publicProfile": {
+            "title": "Fixture colleague",
+            "description": "Synthetic duty.\n合成职责；描述不授予执行权限。",
+            "owns": [
+              "fixture-finance"
+            ],
+            "rejects": [
+              "fixture-production"
+            ]
+          }
+        },
+        "boundary": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "execution-boundary",
+          "agentId": "agent-fixture",
+          "boundaryRevision": 1,
+          "resources": [],
+          "tools": {
+            "allow": [],
+            "deny": [],
+            "readOnly": true
+          },
+          "budget": {
+            "budgetRef": "budget-fixture",
+            "maxModelCalls": 0,
+            "maxToolEffects": 0
+          },
+          "approvalRequired": [],
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ]
+        },
+        "rights": {
+          "manage": true,
+          "invoke": false,
+          "privateRead": false,
+          "nodeUse": false
+        }
+      },
+      "digest": "bee23a1fb171933e2b3173ba062b48f1cd62f19b3a4e19f9847025db32fd2104"
+    },
+    {
+      "name": "rights-differ",
+      "proposal": {
+        "duty": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "duty-profile",
+          "agentId": "agent-fixture",
+          "dutyRevision": 1,
+          "publicProfile": {
+            "title": "Fixture colleague",
+            "description": "Synthetic duty.\n合成职责；描述不授予执行权限。",
+            "owns": [
+              "fixture-finance"
+            ],
+            "rejects": [
+              "fixture-production"
+            ]
+          }
+        },
+        "boundary": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "execution-boundary",
+          "agentId": "agent-fixture",
+          "boundaryRevision": 1,
+          "resources": [
+            {
+              "resourceId": "project-fixture",
+              "access": [
+                "read"
+              ]
+            }
+          ],
+          "tools": {
+            "allow": [
+              {
+                "toolId": "file.read",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "deny": [
+              {
+                "toolId": "shell.execute",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "readOnly": true
+          },
+          "budget": {
+            "budgetRef": "budget-fixture",
+            "maxModelCalls": 8,
+            "maxToolEffects": 16
+          },
+          "approvalRequired": [
+            "write",
+            "execute",
+            "external_send",
+            "paid",
+            "publish",
+            "credentials",
+            "policy_expand"
+          ],
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ]
+        },
+        "rights": {
+          "manage": true,
+          "invoke": true,
+          "privateRead": false,
+          "nodeUse": true
+        }
+      },
+      "digest": "b73dc0a960bc4e0db3d40cdec39eb623c794f9202f06fed1a862a5a1ebfd4477"
+    },
+    {
+      "name": "budget-differs",
+      "proposal": {
+        "duty": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "duty-profile",
+          "agentId": "agent-fixture",
+          "dutyRevision": 1,
+          "publicProfile": {
+            "title": "Fixture colleague",
+            "description": "Synthetic duty.\n合成职责；描述不授予执行权限。",
+            "owns": [
+              "fixture-finance"
+            ],
+            "rejects": [
+              "fixture-production"
+            ]
+          }
+        },
+        "boundary": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "execution-boundary",
+          "agentId": "agent-fixture",
+          "boundaryRevision": 1,
+          "resources": [
+            {
+              "resourceId": "project-fixture",
+              "access": [
+                "read"
+              ]
+            }
+          ],
+          "tools": {
+            "allow": [
+              {
+                "toolId": "file.read",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "deny": [
+              {
+                "toolId": "shell.execute",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "readOnly": true
+          },
+          "budget": {
+            "budgetRef": "budget-fixture",
+            "maxModelCalls": 15,
+            "maxToolEffects": 16
+          },
+          "approvalRequired": [
+            "write",
+            "execute",
+            "external_send",
+            "paid",
+            "publish",
+            "credentials",
+            "policy_expand"
+          ],
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ]
+        },
+        "rights": {
+          "manage": true,
+          "invoke": false,
+          "privateRead": false,
+          "nodeUse": false
+        }
+      },
+      "digest": "ec99c705ac9e4f4539d3c08f246a61589fa699c8b9cc93b3ec8c719519c64976"
+    },
+    {
+      "name": "approval-order",
+      "proposal": {
+        "duty": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "duty-profile",
+          "agentId": "agent-fixture",
+          "dutyRevision": 1,
+          "publicProfile": {
+            "title": "Fixture colleague",
+            "description": "Synthetic duty.\n合成职责；描述不授予执行权限。",
+            "owns": [
+              "fixture-finance"
+            ],
+            "rejects": [
+              "fixture-production"
+            ]
+          }
+        },
+        "boundary": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "execution-boundary",
+          "agentId": "agent-fixture",
+          "boundaryRevision": 1,
+          "resources": [
+            {
+              "resourceId": "project-fixture",
+              "access": [
+                "read"
+              ]
+            }
+          ],
+          "tools": {
+            "allow": [
+              {
+                "toolId": "file.read",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "deny": [
+              {
+                "toolId": "shell.execute",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "readOnly": true
+          },
+          "budget": {
+            "budgetRef": "budget-fixture",
+            "maxModelCalls": 8,
+            "maxToolEffects": 16
+          },
+          "approvalRequired": [
+            "policy_expand",
+            "paid",
+            "write"
+          ],
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ]
+        },
+        "rights": {
+          "manage": true,
+          "invoke": false,
+          "privateRead": false,
+          "nodeUse": false
+        }
+      },
+      "digest": "e893509062cbfd1e26ad5d7d0cae633a0b276d5092a206ca098f158b5e4f75bc"
+    },
+    {
+      "name": "connector-reference",
+      "proposal": {
+        "duty": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "duty-profile",
+          "agentId": "agent-fixture",
+          "dutyRevision": 1,
+          "publicProfile": {
+            "title": "Fixture colleague",
+            "description": "Synthetic duty.\n合成职责；描述不授予执行权限。",
+            "owns": [
+              "fixture-finance"
+            ],
+            "rejects": [
+              "fixture-production"
+            ]
+          }
+        },
+        "boundary": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "execution-boundary",
+          "agentId": "agent-fixture",
+          "boundaryRevision": 1,
+          "resources": [
+            {
+              "resourceId": "project-fixture",
+              "access": [
+                "read"
+              ]
+            }
+          ],
+          "tools": {
+            "allow": [
+              {
+                "toolId": "workspace_read",
+                "connectorId": "registered-connector",
+                "catalogRevision": 2
+              }
+            ],
+            "deny": [
+              {
+                "toolId": "shell.execute",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "readOnly": true
+          },
+          "budget": {
+            "budgetRef": "budget-fixture",
+            "maxModelCalls": 8,
+            "maxToolEffects": 16
+          },
+          "approvalRequired": [
+            "write",
+            "execute",
+            "external_send",
+            "paid",
+            "publish",
+            "credentials",
+            "policy_expand"
+          ],
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ]
+        },
+        "rights": {
+          "manage": true,
+          "invoke": false,
+          "privateRead": false,
+          "nodeUse": false
+        }
+      },
+      "digest": "ed1c9a609aa482897a683d9e3b5c2688a947932e6e7187ed5bfbc59c8b6b287a"
+    },
+    {
+      "name": "duty-order",
+      "proposal": {
+        "duty": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "duty-profile",
+          "agentId": "agent-fixture",
+          "dutyRevision": 1,
+          "publicProfile": {
+            "title": "Fixture colleague",
+            "description": "Synthetic duty.\n合成职责；描述不授予执行权限。",
+            "owns": [
+              "second",
+              "first"
+            ],
+            "rejects": [
+              "fixture-production"
+            ]
+          }
+        },
+        "boundary": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "human-fixture",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "human-fixture",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "execution-boundary",
+          "agentId": "agent-fixture",
+          "boundaryRevision": 1,
+          "resources": [
+            {
+              "resourceId": "project-fixture",
+              "access": [
+                "read"
+              ]
+            }
+          ],
+          "tools": {
+            "allow": [
+              {
+                "toolId": "file.read",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "deny": [
+              {
+                "toolId": "shell.execute",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "readOnly": true
+          },
+          "budget": {
+            "budgetRef": "budget-fixture",
+            "maxModelCalls": 8,
+            "maxToolEffects": 16
+          },
+          "approvalRequired": [
+            "write",
+            "execute",
+            "external_send",
+            "paid",
+            "publish",
+            "credentials",
+            "policy_expand"
+          ],
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ]
+        },
+        "rights": {
+          "manage": true,
+          "invoke": false,
+          "privateRead": false,
+          "nodeUse": false
+        }
+      },
+      "digest": "809075f7d20a8c4225fa8eff5a0c1d76dc5b76686fa0ba9815d81c0272a7fb8b"
+    },
+    {
+      "name": "different-principal",
+      "proposal": {
+        "duty": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "other-human",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "other-human",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "duty-profile",
+          "agentId": "agent-fixture",
+          "dutyRevision": 1,
+          "publicProfile": {
+            "title": "Fixture colleague",
+            "description": "Synthetic duty.\n合成职责；描述不授予执行权限。",
+            "owns": [
+              "fixture-finance"
+            ],
+            "rejects": [
+              "fixture-production"
+            ]
+          }
+        },
+        "boundary": {
+          "schemaVersion": 1,
+          "mode": "personal",
+          "context": {
+            "scope": {
+              "schemaVersion": 1,
+              "workspaceId": "ws_11111111-1111-4111-8111-111111111111",
+              "authority": {
+                "kind": "local",
+                "localAuthorityId": "11111111-1111-4111-8111-111111111111"
+              }
+            },
+            "resourceBinding": {
+              "schemaVersion": 1,
+              "scopeKey": "6e3d43c3b95830e485050d1cdd61f110b535a4efa37c2ec153d6cab46f532297",
+              "generation": "22222222-2222-4222-8222-222222222222"
+            },
+            "humanSubjectId": "other-human",
+            "nodeId": "node-fixture",
+            "deviceId": null,
+            "localGrant": {
+              "grantId": "grant-fixture",
+              "grantRevision": 1,
+              "humanSubjectId": "other-human",
+              "nodeId": "node-fixture"
+            },
+            "collaboration": {
+              "organizationId": null,
+              "membershipId": null,
+              "membershipVersion": null,
+              "role": null,
+              "delegation": null
+            }
+          },
+          "kind": "execution-boundary",
+          "agentId": "agent-fixture",
+          "boundaryRevision": 1,
+          "resources": [
+            {
+              "resourceId": "project-fixture",
+              "access": [
+                "read"
+              ]
+            }
+          ],
+          "tools": {
+            "allow": [
+              {
+                "toolId": "file.read",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "deny": [
+              {
+                "toolId": "shell.execute",
+                "connectorId": null,
+                "catalogRevision": 1
+              }
+            ],
+            "readOnly": true
+          },
+          "budget": {
+            "budgetRef": "budget-fixture",
+            "maxModelCalls": 8,
+            "maxToolEffects": 16
+          },
+          "approvalRequired": [
+            "write",
+            "execute",
+            "external_send",
+            "paid",
+            "publish",
+            "credentials",
+            "policy_expand"
+          ],
+          "runtimeRequirements": [
+            "resource_isolation",
+            "effect_journal",
+            "current_grant_check"
+          ]
+        },
+        "rights": {
+          "manage": true,
+          "invoke": false,
+          "privateRead": false,
+          "nodeUse": false
+        }
+      },
+      "digest": "8237e261404bf8337c4e97e1ff693b0543ad7dfa25ba326d0e2e4a429008950a"
+    }
+  ]
+}

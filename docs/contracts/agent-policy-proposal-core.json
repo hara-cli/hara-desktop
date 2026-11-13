@@ -1,0 +1,10 @@
+{
+  "ref": "b01e492adf30b3b6d0d5c31385122ce3dca601a3",
+  "sourceFiles": {
+    "src/workspace/local-state.ts": "81325e56f540bd9c548c14d34c192dc0c7b48ea90cce9a74b74ae75704ddc598",
+    "src/workspace/agent-command-state.ts": "98d7ad8822faf4ef9cf84cb52c653169ead7fc04524c73fbb9c57fcc6778f908"
+  },
+  "plain": "export function plain(value: unknown): value is Record<string, unknown> {\n  return !!value && typeof value === \"object\" && !Array.isArray(value)\n    && [Object.prototype, null].includes(Object.getPrototypeOf(value));\n}",
+  "canonical": "export function canonical(value: unknown): string {\n  if (Array.isArray(value)) return `[${value.map(canonical).join(\",\")}]`;\n  if (plain(value)) return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(\",\")}}`;\n  return JSON.stringify(value);\n}",
+  "digest": "(value: unknown): string => createHash(\"sha256\").update(\"hara-agent-policy-proposal-v1\\0\").update(canonical(value)).digest(\"hex\")"
+}

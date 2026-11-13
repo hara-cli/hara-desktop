@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createWorkspaceWorkScopeSource, bindWorkspaceWorkScopeSource, workScopeSource, workScopeVersion, subscribeWorkScope, visibleWorkScope } from "../src/workspace-work-scope.ts";
+import { workScopeToolLabelKey } from "../src/work-scope-labels.ts";
 const docs = JSON.parse(readFileSync(new URL("./fixtures/agent-boundaries-v1.json", import.meta.url), "utf8")).valid;
 const originalDuty = docs.find(row => row.document.kind === "duty-profile").document;
 const originalBoundary = docs.find(row => row.document.kind === "execution-boundary").document;
@@ -133,4 +134,53 @@ test("C5 M1 changed capture key excludes prior ready/error before any effect run
   assert.equal(visibleWorkScope(error, "1:1"), error);
   assert.deepEqual(visibleWorkScope(null, "1:1"), { key: "1:1", state: "loading" });
   assert.equal(f.calls, 1, "Visibility selection performs no additional read or effect");
+});
+
+test("C5 proposal snapshot reuses authenticated C0 validation while the card projection remains private-data free", async () => {
+  const f = fixture(), capture = f.source.capture(f.target), policy = await f.source.policy(capture);
+  assert.equal(policy.state, "saved"); assert.deepEqual(policy.duty.publicProfile, f.state.policy.duty.publicProfile);
+  assert.deepEqual(policy.rights, f.state.policy.rights); assert.ok(Object.isFrozen(policy.rights)); assert.ok(Object.isFrozen(policy.resources));
+  const view = await f.source.read(capture); assert.equal("context" in view, false); assert.equal("rights" in view, false); assert.equal("provenance" in view, false);
+  await assert.rejects(f.source.policy(JSON.parse(JSON.stringify(capture))), unavailable);
+});
+test("C5 identity metadata observes removed C3 capability immediately and cannot be round-tripped as a capture", () => {
+  const f = fixture(), original = f.bridge.capture; let extra = true;
+  f.bridge.capture = () => ({ ...original(), capabilities: ["workspace.agent-boundaries.authority.v1", ...(extra ? ["workspace.agent-command-control.v1"] : [])] });
+  const capture = f.source.capture(f.target); assert.ok(f.source.identity(capture).capabilities.includes("workspace.agent-command-control.v1"));
+  extra = false; assert.equal(f.source.identity(capture).capabilities.includes("workspace.agent-command-control.v1"), false);
+  assert.throws(() => f.source.identity(JSON.parse(JSON.stringify(capture))), unavailable); assert.equal(f.calls, 0);
+});
+
+test("C5 production hook actually returns the tested synchronous visibility selector", async () => {
+  const ts = (await import("typescript")).default;
+  const source = ts.createSourceFile("use-colleague-work-scope.ts", readFileSync(new URL("../src/use-colleague-work-scope.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
+  const returned = [];
+  const visit = node => { if (ts.isReturnStatement(node) && node.expression) returned.push(node.expression); ts.forEachChild(node, visit); }; visit(source);
+  assert.ok(returned.some(node => {
+    let found = false; const walk = child => { if (ts.isPropertyAssignment(child) && child.name.getText(source) === "value" && ts.isCallExpression(child.initializer)
+      && child.initializer.expression.getText(source) === "visibleWorkScope" && child.initializer.arguments.map(arg => arg.getText(source)).join(",") === "state,key") found = true; ts.forEachChild(child, walk); }; walk(node); return found;
+  }), "The hook return value must use visibleWorkScope(state, key), not bypass the tested guard");
+});
+
+test("C5 independent authenticated source/model instances cannot collide on the synchronous paint key", async () => {
+  const first = fixture(), second = fixture(), modelA = {}, modelB = {};
+  first.state.policy.duty.publicProfile.title = "PRIVATE_FIRST_CONNECTION";
+  second.state.provenance.proofRef = "second-owned-connection-proof";
+  second.state.policy.revision++; second.state.revision++; second.state.policy.duty.dutyRevision++;
+  second.state.policy.duty.publicProfile.title = "PRIVATE_SECOND_CONNECTION";
+  const a = bindWorkspaceWorkScopeSource(modelA, first.source), b = bindWorkspaceWorkScopeSource(modelB, second.source);
+  try {
+    const oldCapture = first.source.capture(first.target), newCapture = second.source.capture(second.target);
+    const oldKey = `${workScopeVersion(modelA)}:${oldCapture.key}`, newKey = `${workScopeVersion(modelB)}:${newCapture.key}`;
+    const view = await first.source.read(oldCapture);
+    assert.notEqual(oldKey, newKey, "source-local serial1 plus model-local version1 is not a globally unique paint key");
+    const visible = visibleWorkScope({ key: oldKey, state: "ready", view }, newKey);
+    assert.equal(visible.state, "loading"); assert.equal("view" in visible, false); assert.equal(JSON.stringify(visible).includes("PRIVATE_FIRST_CONNECTION"), false);
+    assert.equal((await second.source.read(newCapture)).profile.title, "PRIVATE_SECOND_CONNECTION");
+  } finally { a(); b(); }
+});
+
+test("C5 unknown tool labels stay generic, including names inherited by ordinary objects", () => {
+  assert.equal(workScopeToolLabelKey("workspace_read"), "ws.workScope.tool.read");
+  for (const id of ["future-local-tool", "constructor", "toString", "hasOwnProperty"]) assert.equal(workScopeToolLabelKey(id), "ws.workScope.tool.other");
 });
