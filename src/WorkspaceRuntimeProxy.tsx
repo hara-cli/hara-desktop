@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { SettingsAdvanced } from "./SettingsChrome";
 import { type Key } from "./i18n";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { normalizeRuntimeProxyUrl, type WorkspaceRuntimeProxyView } from "./workspace-runtime-proxy.ts";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
 
-export function WorkspaceRuntimeProxy({ model, workspaceId, generation, onDirty }: {
-  model: WorkspaceDevModel; workspaceId: string; generation: string; onDirty?: (value: boolean) => void;
+export function WorkspaceRuntimeProxy({ model, workspaceId, generation, onDirty, advanced = false }: {
+  model: WorkspaceDevModel; workspaceId: string; generation: string; onDirty?: (value: boolean) => void; advanced?: boolean;
 }) {
   const { t } = useWorkspaceLocale();
   const [settings, setSettings] = useState<WorkspaceRuntimeProxyView | null>(null);
@@ -45,10 +46,10 @@ export function WorkspaceRuntimeProxy({ model, workspaceId, generation, onDirty 
     } catch { if (mounted.current && lifecycle.current === lifecycleId && currentScope.current === scope) { setNeedsReload(true); setNotice("ws.runtimeProxy.saveUnknown"); } }
     finally { if (mounted.current && lifecycle.current === lifecycleId && currentScope.current === scope) { pending.current = false; setSaving(false); } }
   };
-  return <form className="wsd-connection-form" aria-label={t("ws.runtimeProxy.title")} onSubmit={event => { event.preventDefault(); void save(draft); }}>
+  const form = <form className="wsd-connection-form" aria-label={t("ws.runtimeProxy.title")} onSubmit={event => { event.preventDefault(); void save(draft); }}>
     <h4>{t("ws.runtimeProxy.title")}</h4><p>{t("ws.runtimeProxy.note")}</p>
     <label>{t("ws.runtimeProxy.address")}<input type="url" value={current ? draft : ""} disabled={disabled} maxLength={2048}
-      placeholder="http://127.0.0.1:18888" autoComplete="off" spellCheck={false} onChange={event => {
+      placeholder={t("ws.runtimeProxy.placeholder")} autoComplete="off" spellCheck={false} onChange={event => {
         setDraft(event.target.value); setNotice(""); onDirty?.(event.target.value !== (current?.proxyUrl ?? ""));
       }} /></label>
     <small>{t("ws.runtimeProxy.inherit")}</small><small>{t("ws.runtimeProxy.route")}</small>
@@ -60,4 +61,5 @@ export function WorkspaceRuntimeProxy({ model, workspaceId, generation, onDirty 
       <button className="wsd-primary" disabled={disabled}>{t(saving ? "ws.runtimeProxy.saving" : "ws.runtimeProxy.save")}</button>
     </div>
   </form>;
+  return advanced ? <SettingsAdvanced page="runtimes" items={[t("ws.runtimeProxy.title")]} customized={current?.proxyUrl ? [t("ws.runtimeProxy.title")] : []}>{form}</SettingsAdvanced> : form;
 }
