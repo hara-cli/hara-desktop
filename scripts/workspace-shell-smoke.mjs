@@ -629,7 +629,7 @@ try{
  try{socket?.close();}catch{}
  for(const request of pending.values()){clearTimeout(request.timer);request.fail(new Error('Browser gate closed'));}pending.clear();
  await stopOwnedBrowser(chrome);
- let removed=false;for(let attempt=0;!settingsNavOnly&&attempt<15;attempt++){try{rmSync(profile,{recursive:true,force:true});removed=true;break;}catch{await pause(100);}}
- writeFileSync(join(output,'cleanup.json'),JSON.stringify({completed,chromeExited:chrome.exitCode!==null||chrome.signalCode!==null,profileRemoved:removed,profileKeptForReview:settingsNavOnly,profile:removed?'removed':profile})+'\n',{mode:0o600});
- if(!removed&&!settingsNavOnly)throw new Error(`Owned browser profile cleanup incomplete: ${profile}`);
+ let removed=false;for(let attempt=0;attempt<15;attempt++){try{rmSync(profile,{recursive:true,force:true});removed=true;break;}catch{await pause(100);}}
+ writeFileSync(join(output,'cleanup.json'),JSON.stringify({completed,chromeExited:chrome.exitCode!==null||chrome.signalCode!==null,profileRemoved:removed,profile:removed?'removed':profile})+'\n',{mode:0o600});
+ if(!removed)throw new Error(`Owned browser profile cleanup incomplete: ${profile}`);
 }
