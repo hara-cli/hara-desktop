@@ -9,10 +9,16 @@ import { makeT } from "../src/i18n.ts";
 import { settingsDevicePlatform, settingsTranslator } from "../src/settings-device-copy.ts";
 
 for (const [raw,expected] of [["MacIntel","mac"],["MacARM64","mac"],["darwin","mac"],["Win32","windows"],["Windows","windows"],["Linux x86_64","other"],["Android","other"],["Unknown","other"],["","other"]]) test(`device label classification: ${raw || "empty"}`, () => assert.equal(settingsDevicePlatform(raw),expected));
+const permission = {
+ en: "Your system may ask for Keychain permission the first time you save.",
+ "zh-Hans": "首次保存时，系统可能请求钥匙串授权。",
+ "zh-Hant": "首次儲存時，系統可能要求鑰匙圈授權。",
+};
+const authorizationKeys = new Set(["ws.connections.keyNoteFirst", "ws.connections.keyNote"]);
 const translated = ["ws.settings.savedHere","ws.settings.detail.overview","ws.settings.detail.appearance","ws.theme.note","ws.updates.archMismatch","ws.runtimeAccess.host","ws.runtimeAccess.hostRecommended","ws.runtimeAccess.hostRecommendedRuntime","ws.runtimeAccess.switchHost","ws.runtimes.check.network","ws.connections.confirmMigrate","ws.connections.deleteNote","ws.connections.importConfirmNote","ws.connections.keyNote","ws.connections.migrationPending","ws.connections.savedKey","ws.connections.keyNoteShort","ws.connections.keyNoteFirst"];
 for (const locale of ["en","zh-Hans","zh-Hant"]) for (const platform of ["mac","windows","other"]) test(`Settings copy is backend-neutral and keeps true platform restrictions: ${locale}/${platform}`, () => {
  const raw=makeT(locale),t=settingsTranslator(raw,platform),values={runtime:"Fixture Engine",proxy:"Fixture Proxy",workspace:"Synthetic Workspace",n:2};
- for (const key of translated){const value=t(key,values);assert.notEqual(value,key);assert.doesNotMatch(value,/Keychain|macOS|Mac|钥匙串|鑰匙圈|DPAPI/i,key);}
+ for (const key of translated){const value=t(key,values);assert.notEqual(value,key);assert.doesNotMatch(platform === "mac" && authorizationKeys.has(key) ? value.replace(permission[locale], "") : value,/Keychain|macOS|Mac|钥匙串|鑰匙圈|DPAPI/i,key);}
  assert.equal(t("ws.settings.device"),raw(platform==="mac"?"ws.settings.device":platform==="windows"?"ws.settings.deviceCopy.windows":"ws.settings.deviceCopy.other"));
  if(platform==="windows")assert.match(t("ws.settings.device"),/Windows/);else if(platform==="mac")assert.match(t("ws.settings.device"),/Mac/);else assert.doesNotMatch(t("ws.settings.device"),/Mac|Windows/);
  assert.ok(t("ws.runtimeAccess.hostRecommendedRuntime",values).includes(values.runtime));assert.ok(t("ws.runtimes.check.network",values).includes(values.proxy));
@@ -41,27 +47,26 @@ for(const locale of ["en","zh-Hans","zh-Hant"])test(`actual form default stays u
  }finally{if(storage)Object.defineProperty(globalThis,"localStorage",storage);else delete globalThis.localStorage;if(nav)Object.defineProperty(globalThis,"navigator",nav);else delete globalThis.navigator;}
 });
 
-const permission = {
- en: "Your system may ask for permission the first time you save.",
- "zh-Hans": "首次保存时，系统可能请求授权。",
- "zh-Hant": "首次儲存時，系統可能要求授權。",
-};
 const privacy = {
  en: "Hara does not write saved keys to settings or logs.",
  "zh-Hans": "Hara不会将保存的Key写入设置或日志。",
  "zh-Hant": "Hara不會將儲存的Key寫入設定或日誌。",
 };
-for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const platform of ["mac", "windows", "other"]) test(`first-save authorization is explained without repeating it on edit or later saves (${locale}/${platform})`, () => {
- const t = settingsTranslator(makeT(locale), platform), sentence = permission[locale];
- assert.ok(t("ws.connections.keyNoteFirst").includes(sentence), "first save keeps the system permission notice");
- assert.ok(t("ws.connections.keyNote").includes(sentence), "Advanced retains the permission explanation");
- assert.ok(!t("ws.connections.keyNoteShort").includes(sentence), "the short note for later saves has no first-save warning");
+for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const platform of ["mac", "windows", "other"]) test(`first-save authorization is Mac-only, with no notice on edit or later saves (${locale}/${platform})`, () => {
+ const t = settingsTranslator(makeT(locale), platform), sentence = permission[locale], isMac = platform === "mac";
+ for (const key of ["ws.connections.keyNoteFirst", "ws.connections.keyNote"]) {
+  if (isMac) assert.ok(t(key).includes(sentence), "Mac first save and Advanced retain Keychain authorization notice");
+  else assert.doesNotMatch(t(key), /permission|授权|授權/i, "Windows/Linux don't advertise a system authorization prompt");
+ }
+ assert.doesNotMatch(t("ws.connections.keyNoteShort"), /permission|授权|授權/i, "the short note never carries a first-save warning");
  const model = {}, existing = { id: "c1", label: "Synthetic", provider: "openai", baseURL: "https://fixture.example.invalid/v1", defaultModel: "model-fixture", credentialRequired: false };
  const first = renderToStaticMarkup(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: true, keyNote: t("ws.connections.keyNoteFirst") }));
- assert.ok(first.includes(esc(sentence)), "actual Settings form displays the first-save permission notice");
+ const firstNote = first.match(/<small>(.*?)<\/small>/s)?.[1];assert.ok(firstNote);
+ if (isMac) assert.ok(firstNote.includes(esc(sentence)), "actual Mac form displays Keychain authorization notice");
+ else assert.doesNotMatch(firstNote, /permission|授权|授權/i, "actual Windows/Linux form has no authorization notice");
  for (const props of [{ firstKey: false }, { firstKey: true, existing }]) {
   const html = renderToStaticMarkup(createElement(module.exports.WorkspaceConnectionForm, { model, ...props, keyNote: t("ws.connections.keyNoteShort") }));
-  assert.ok(!html.includes(esc(sentence)), "edit and non-first-save forms don't repeat the first-save notice");
+  const note = html.match(/<small>(.*?)<\/small>/s)?.[1];assert.ok(note);assert.doesNotMatch(note, /permission|授权|授權/i, "edit and non-first-save forms don't repeat first-save warnings");
  }
 });
 for (const locale of ["en", "zh-Hans", "zh-Hant"]) test(`Settings retains the platform-independent settings/log privacy statement (${locale})`, () => {
@@ -69,5 +74,5 @@ for (const locale of ["en", "zh-Hans", "zh-Hant"]) test(`Settings retains the pl
 });
 test("Simplified Chinese saved-record copy uses 保存 rather than 儲存 terminology", () => {
  const t = settingsTranslator(makeT("zh-Hans"), "windows");
- for (const key of ["ws.connections.keyNote", "ws.connections.savedKey"]) { assert.doesNotMatch(t(key), /储存/); assert.match(t(key), /保存/); }
+ for (const key of ["ws.connections.keyNote", "ws.connections.savedKey"]) { assert.doesNotMatch(t(key), /储存/); assert.match(t(key), /已保存|存储/); }
 });

@@ -29,7 +29,13 @@ const COPY: Partial<Record<Key, Key>> = {
 };
 /** Settings-only copy until Core supplies its authenticated backend descriptor. Onboarding keeps its own copy. */
 export function settingsTranslator(t: Translator, platform = settingsDevicePlatform()): Translator {
-  return (key, values) => t(key === "ws.settings.device"
-    ? platform === "mac" ? "ws.settings.device" : platform === "windows" ? "ws.settings.deviceCopy.windows" : "ws.settings.deviceCopy.other"
-    : Object.hasOwn(COPY, key) ? COPY[key]! : key, values);
+  return (key, values) => {
+    const displayKey = key === "ws.settings.device"
+      ? platform === "mac" ? "ws.settings.device" : platform === "windows" ? "ws.settings.deviceCopy.windows" : "ws.settings.deviceCopy.other"
+      : Object.hasOwn(COPY, key) ? COPY[key]! : key;
+    const note = t(displayKey, values);
+    // A possible Mac system prompt is a display warning, not proof of Host storage capability.
+    return platform === "mac" && (key === "ws.connections.keyNoteFirst" || key === "ws.connections.keyNote")
+      ? t("ws.settings.deviceCopy.withMacPermission", { note }) : note;
+  };
 }
