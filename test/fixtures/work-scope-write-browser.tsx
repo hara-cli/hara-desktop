@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import WorkspaceColleagueInspector from "../../src/WorkspaceColleagueInspector";
 import { createWorkspaceWorkScopeSource, bindWorkspaceWorkScopeSource } from "../../src/workspace-work-scope";
 import { createWorkspaceWorkScopeWriter, bindWorkspaceWorkScopeWriter } from "../../src/work-scope-writer";
+import { createAgentDutyDraft } from "../../src/agent-duty-draft";
 import { createWorkScopeReferenceStore } from "../../src/work-scope-references";
 import "../../src/desktop-redesign.css";
 import "../../src/violet-tokens.css";
@@ -30,6 +31,7 @@ const writer = createWorkspaceWorkScopeWriter(source, {
   assertCurrent(identity) { if (!live || identity.connectionId !== bootstrap.connectionId || identity.connectionEpoch !== epoch || JSON.stringify(identity.context) !== JSON.stringify(bootstrap.view.context)
     || JSON.stringify(identity.provenance) !== JSON.stringify(bootstrap.view.provenance)) throw Error("Retired Host owner connection"); },
   inspect: target => rpc("inspect", { target }), draft: (target, input) => rpc("draft", { target, input }), submit: (target, command, proposal) => rpc("submit", { target, command, proposal }),
+  lookupReceipt: (target, commandId) => rpc("lookup", { target, commandId }),
   receipt: (target, commandId) => rpc("receipt", { target, commandId }), catalog: target => rpc("catalog", { target }),
 }, createWorkScopeReferenceStore(window.localStorage));
 function draw() {
@@ -43,6 +45,12 @@ function draw() {
     onRescan={async () => {}} onRegisterRuntime={async () => {}} onRuntimeDirectory={() => {}} onSaveProfile={async () => {}} />);
 }
 (window as any).__C5W = {
+  async probeReleasedNamespace() {
+    const capture = writer.capture(selected); if (!capture) throw Error("Missing current fixture capture");
+    const session = await writer.load(capture); if (!session) throw Error("Missing management");
+    const preview = await writer.preview(session, { action: "duty.update", draft: createAgentDutyDraft({ ...session.policy.duty.publicProfile, title: "Explicit namespace release probe" }) });
+    writer.cancel(preview); return { commandId: preview.commandId, submissions: writeRequests };
+  },
   async mount(mode = "owner") {
     writeBinding?.(); binding?.(); writeBinding = undefined; binding = undefined; live = false;
     bootstrap = await rpc("bootstrap", { mode }); selected = { ...bootstrap.target }; epoch = bootstrap.connectionEpoch; live = mode !== "no-cap";

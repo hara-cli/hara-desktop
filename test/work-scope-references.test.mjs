@@ -50,3 +50,16 @@ test("C5 reference identity is property-order independent; concurrent enumeratio
     getItem: key => storage.getItem(key), setItem: (key,value) => storage.setItem(key,value), removeItem: key => storage.removeItem(key) });
   assert.throws(() => racing.list(prefix), held); assert.deepEqual(store.list(prefix), [ref("command-b")]);
 });
+
+
+test("C5 v2 references require paired original ISO deadlines; legacy v1 stays readable without guessing expiry", () => {
+  const base = { schemaVersion: 1, workspaceId: "workspace", generation: "generation", scopeKey: "1".repeat(64), agentId: "agent", contextDigest: "2".repeat(64),
+    commandId: "command", rootRequestId: "root", intentDigest: "3".repeat(64), proposalDigest: "4".repeat(64), action: "duty.update" };
+  const issuedAt = "2026-11-13T00:00:00.000Z", notAfter = "2026-11-13T00:00:30.000Z";
+  assert.equal(parseWorkScopeReference(base).schemaVersion, 1);
+  assert.equal(parseWorkScopeReference({ ...base, schemaVersion: 2, issuedAt, notAfter }).notAfter, notAfter);
+  for (const patch of [{ schemaVersion: 2 }, { schemaVersion: 2, issuedAt }, { schemaVersion: 2, issuedAt, notAfter: issuedAt },
+    { schemaVersion: 2, issuedAt, notAfter: "2026-11-13T00:01:00.000Z" }, { schemaVersion: 1, issuedAt, notAfter }]) {
+    assert.throws(() => parseWorkScopeReference({ ...base, ...patch }), held);
+  }
+});

@@ -55,7 +55,7 @@ async function nodeWriter() {
   const source = createWorkspaceWorkScopeSource({ capture: target => JSON.stringify(target) === JSON.stringify(boot.target) ? identity : null, read: host.read, subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); } });
   const memory = new Map(), storage = { get length() { return memory.size; }, key: n => [...memory.keys()][n] ?? null, getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
   const writer = createWorkspaceWorkScopeWriter(source, { assertCurrent(value) { assert.equal(value.connectionId, boot.connectionId); assert.deepEqual(value.context, boot.view.context); },
-    inspect: host.inspect, draft: host.draft, submit: host.submit, receipt: host.receipt, catalog: host.catalog }, createWorkScopeReferenceStore(storage));
+    inspect: host.inspect, draft: host.draft, submit: host.submit, receipt: host.receipt, lookupReceipt: host.lookupReceipt, catalog: host.catalog }, createWorkScopeReferenceStore(storage));
   return { writer, capture: () => writer.capture(boot.target), memory };
 }
 try {
@@ -100,6 +100,7 @@ try {
         else if (url.pathname === "/inspect") value = await host.inspect(data.target);
         else if (url.pathname === "/draft") value = await host.draft(data.target, data.input);
         else if (url.pathname === "/submit") value = await host.submit(data.target, data.command, data.proposal);
+        else if (url.pathname === "/lookup") value = await host.lookupReceipt(data.target, data.commandId);
         else if (url.pathname === "/receipt") value = await host.receipt(data.target, data.commandId);
         else { res.writeHead(404).end(); return; }
         const body = JSON.stringify(value); host.assertPublicArtifacts(Buffer.from(body)); res.setHeader("Content-Type", "application/json"); res.end(body);
@@ -163,6 +164,9 @@ try {
       await pause(16000); await ready(`document.querySelector('${dialog} [role=alert]')?.textContent.includes('expired')`,"Unsubmitted review expired");
     });
     assert.equal(await evaluate(`document.querySelector('${dialog} > .hd-work-scope-actions button.pri').disabled`),true); assert.equal(host.counters.submits,0);
+    const namespaceProbe = await evaluate("window.__C5W.probeReleasedNamespace()");
+    assert.equal(host.counters.submits, 0); assert(namespaceProbe.commandId);
+    cases.push({ case: "expiry-releases-active-without-closing-original-dialog", submissions: 0, probeCommandId: namespaceProbe.commandId });
     const expiredDrafts=host.counters.drafts; await click(`${dialog} > .hd-work-scope-actions button:first-child`); await ready(`!!document.querySelector('${dialog} form')`,"Explicit return reads current state"); await review(); assert.equal(host.counters.drafts,expiredDrafts+1); assert.equal(host.counters.submits,0);
     cases.push({case:"actual-30s-unsubmitted-expiry-requires-explicit-new-review",submissions:0});
     await evaluate("void(window.__C5W_LIVE=document.querySelector('.hd-work-scope-card > [role=status]'))");
@@ -206,6 +210,21 @@ try {
     await openDuty(); await input('input[name="duty-title"]', "Responsibilities preserve old outcomes"); await review(); await confirm(); await closeResult();
     const final = await host.facts(); assert.deepEqual(final.main.runs.find(run => run.commandId === probe.main.commandId), main); assert.deepEqual(final.sibling.runs.find(run => run.commandId === probe.sibling.commandId), sibling);
     cases.push({ case: "real-DOM-C2-C3-narrowing-retains-UNKNOWN-sibling", fileSha256: cut.beforeFileSha256, forbiddenExists: false, mainEffect: main.effect, siblingHold: sibling.hold, paidModels: 0, raw: writeJson("browser-effects", { before: probe.before, cut, final }) });
+    step = "unsent-reference-expiry-reload";
+    const beforeUnsentSubmits = host.counters.submits; host.dropBeforeSendNext();
+    await openDuty(); await input('input[name="duty-title"]', "Never sent to Core"); await review(); await confirm();
+    const unsent = (await evaluate("window.__C5W.stats().references"))[0];
+    assert.equal(unsent.schemaVersion, 2); assert(unsent.notAfter); assert.equal(host.counters.submits, beforeUnsentSubmits);
+    const draftCount = host.counters.drafts, reconnectUnsent = await host.reconnect();
+    await navigateCdp(send, socket, { url: endpoint + "/?reload=unsent", sessionId, step, timeoutMs: 30000 }); await ready("window.__C5W_READY", "Unsent reference document reloaded"); await mounted(); await evaluate("window.__C5W.locale('en')");
+    await ready(`!!document.querySelector('${editor} button')`, "Original reference controls ready");
+    assert.equal((await evaluate("window.__C5W.stats().references")).length, 1);
+    await pause(Math.max(0, Date.parse(unsent.notAfter) + 1100 - Date.now()));
+    await evaluate(`(()=>{const button=[...document.querySelectorAll('${editor} button')].find(el=>el.textContent===${JSON.stringify(english["ws.workScope.write.checkOriginal"])});if(!button)throw Error('Original query missing');button.click()})()`);
+    await ready("window.__C5W.stats().references.length===0", "Core not-seen expiry proof retires only the original reference"); await loaded();
+    assert.equal(host.counters.submits, beforeUnsentSubmits); assert.equal(host.counters.drafts, draftCount); assert(host.counters.receipts.includes(unsent.commandId));
+    const newProbe = await evaluate("window.__C5W.probeReleasedNamespace()"); assert.notEqual(newProbe.commandId, unsent.commandId); assert.equal(host.counters.submits, beforeUnsentSubmits);
+    cases.push({ case: "real-Core-unsent-expired-reference-reloads-unlocks-without-resubmit", commandId: unsent.commandId, reconnectUnsent, noNewSubmit: true, raw: writeJson("unsent-reference-proof", { reference: unsent, counters: host.counters }) });
     step = "revocation"; await openDuty(); await input('input[name="duty-title"]', "Must not leak after target switch"); const submits = host.counters.submits; await evaluate("window.__C5W.target({agentId:'different-target'})"); await ready(`!document.querySelector('${dialog}')&&!document.querySelector('.hd-work-scope-card')`, "Target switch clears entire private view"); assert.equal(host.counters.submits, submits);
     cases.push({ case: "real-DOM-target-switch-clears-editor-and-card", screenshot: await screenshot("write-target-cleared") });
     assert.deepEqual(errors, []); assert.deepEqual([...observedOrigins], [endpoint]);
