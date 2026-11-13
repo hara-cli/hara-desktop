@@ -52,8 +52,8 @@ export async function runEngineCheck(model: Pick<WorkspaceDevModel, "listRuntime
 /** A successful check belongs to this exact connection and enabled-engine configuration. */
 export function engineCheckScope(workspace: WorkspaceDevSnapshot): string {
   return JSON.stringify([workspace.workspaceId, workspace.resourceGeneration,
-    workspace.connections.revision, workspace.connections.defaultConnectionId,
-    workspace.connections.connections.map(row => [row.id, row.status, row.keyState, row.defaultModel]),
+    workspace.connections?.revision, workspace.connections?.defaultConnectionId,
+    (workspace.connections?.connections ?? []).map(row => [row.id, row.status, row.keyState, row.defaultModel]),
     (workspace.runtimes?.options ?? []).map(row => [row.runtimeId, row.registered, row.fingerprint, row.version, row.loginSource, row.use]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))]);
 }
 

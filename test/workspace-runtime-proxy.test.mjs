@@ -1,3 +1,4 @@
+import { sharedSettingsUi } from "./support/shared-settings-ui.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -26,7 +27,7 @@ function mount(model, patch = {}) {
     }); },
   };
   const exports = {};
-  new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks }
+  new Function("require", "exports", outputText)(name => name === "./SettingsChrome" ? sharedSettingsUi(name) : name === "react" ? { ...React, ...hooks }
     : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t: makeT(props.locale ?? "en") }) }
     : name === "./workspace-runtime-proxy.ts" ? { normalizeRuntimeProxyUrl } : require(name), exports);
   function render(next = {}) { props = { ...props, ...next }; cursor = 0; dirty = false; tree = exports.WorkspaceRuntimeProxy(props); effects.splice(0).forEach(effect => effect()); return tree; }

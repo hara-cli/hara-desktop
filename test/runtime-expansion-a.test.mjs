@@ -1,3 +1,4 @@
+import { sharedSettingsUi } from "./support/shared-settings-ui.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -19,7 +20,7 @@ function load(file, mocks = {}) {
   const source = readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8");
   const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
   const exports = {};
-  new Function("require", "exports", outputText)(name => mocks[name] ?? (name === "./SettingsChrome" ? settingsChrome.exports : name === "./agent-runtime-selection" ? runtimeSelection : name === "./i18n" ? { makeT } : name === "./i18n-runtime.ts" ? { formatList, toLocale } : name === "./runtime-expansion" ? runtimeExpansion : require(name)), exports);
+  new Function("require", "exports", outputText)(name => mocks[name] ?? (name === "./SettingsActionDialog" ? sharedSettingsUi(name) : name === "./SettingsChrome" ? settingsChrome.exports : name === "./agent-runtime-selection" ? runtimeSelection : name === "./i18n" ? { makeT } : name === "./i18n-runtime.ts" ? { formatList, toLocale } : name === "./runtime-expansion" ? runtimeExpansion : require(name)), exports);
   return exports;
 }
 const picker = load("AgentRuntimePicker.tsx");

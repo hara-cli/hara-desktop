@@ -128,3 +128,10 @@ test("a connection or engine configuration change invalidates a previous Ready r
   const detection = structuredClone(ws); detection.runtimes.detection = { completedAt: Date.now(), running: true };
   assert.equal(M.engineCheckScope(detection), initial, "background metadata does not erase a successful user check");
 });
+
+
+test("engine check identity tolerates a metadata-only runtime view without connection data", () => {
+  const view = { workspaceId: "A", resourceGeneration: "g", runtimes: { options } };
+  assert.doesNotThrow(() => M.engineCheckScope(view));
+  assert.notEqual(M.engineCheckScope(view), M.engineCheckScope({ ...view, resourceGeneration: "next" }));
+});
