@@ -16,6 +16,7 @@ if(base.protocol!=="http:" || base.hostname!=="127.0.0.1" || base.pathname!=="/"
 if(!process.argv[3])throw new Error("An explicit evidence directory is required");
 const output=resolve(process.argv[3]);mkdirSync(output,{recursive:true,mode:0o700});
 const channelsOnly=process.argv[4]==='--channels-only';
+const settingsNavOnly=process.argv[4]==='--settings-nav-only';
 const chromePath = [process.env.CHROME_PATH, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"]
   .find((value) => value && existsSync(value));
 if (!chromePath) throw new Error("Chrome/Chromium is required for the component browser gate");
@@ -166,11 +167,40 @@ async function contrast(){return evaluate(`(()=>{
   if(ratio<(large?3:4.5))issues.push({text:node.textContent.trim().slice(0,70),ratio,color:style.color,bg});
  }
  return {count:n,min,issues};})()`);}
+// Read rendered text geometry, rather than matching a CSS declaration. Run this
+// in the normal shell gate too; the focused mode avoids unrelated shell checks.
+async function settingsNavSpacingCases(){
+ for(const theme of ['light','dark'])for(const locale of ['en','zh-Hans','zh-Hant'])for(const width of [900,1440]){
+  step=`settings-nav/${theme}/${locale}/${width}`;
+  await send('Emulation.setDeviceMetricsOverride',{width,height:800,deviceScaleFactor:1,mobile:false});
+  const url=new URL('test/fixtures/settings-nav-preview.html',base);url.search=new URLSearchParams({locale,theme}).toString();
+  await navigateCdp(send,socket,{url:url.href,sessionId,step});
+  await ready("window.__HARA_SETTINGS_NAV_FIXTURE__?.synthetic===true && !!document.querySelector('.wss-nav nav')",'Real Settings navigation must load with synthetic data');
+  await settled();
+  const measured=await evaluate(`(()=>{
+   const textRects=node=>{if(!node?.getClientRects().length)return [];const range=document.createRange();range.selectNodeContents(node);return Array.from(range.getClientRects(),r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom}));};
+   return {viewport:innerWidth,body:document.documentElement.scrollWidth,groups:Array.from(document.querySelectorAll('.wss-nav-group'),group=>({label:group.querySelector('strong')?.textContent,hint:group.querySelector('small')?.textContent,labelRects:textRects(group.querySelector('strong')),hintRects:textRects(group.querySelector('small'))}))};
+  })()`);
+  assert.equal(measured.viewport,width);assert.ok(measured.body<=width,'Settings must not overflow horizontally');
+  assert.equal(measured.groups.length,2,'Both workspace and device scope groups must render');
+  for(const group of measured.groups){
+   assert.ok(group.labelRects.length&&group.hintRects.length,`${locale}/${width}: scope labels must remain visible`);
+   for(const label of group.labelRects)for(const hint of group.hintRects){
+    const verticalOverlap=Math.min(label.bottom,hint.bottom)-Math.max(label.top,hint.top);
+    if(verticalOverlap>0.5)assert.ok(hint.left-label.right>=6,`Settings scope text needs at least 6px: ${JSON.stringify({theme,locale,width,group,gap:hint.left-label.right})}`);
+   }
+  }
+  receipts.push({theme,locale,width,settingsNavSpacing:measured});
+  await capture(`settings-nav-${theme}-${locale}-${width}`);
+ }
+}
 const receipts=[];
 let completed=false;
 let screenshots=0;
 try{
  await connect();
+ if(!channelsOnly)await settingsNavSpacingCases();
+ if(!settingsNavOnly){
  // Startup must remain legible before the lazy shell defines every theme token.
  for(const theme of ['light','dark']){
   step=`boot-hover-fallback/${theme}`;
@@ -585,6 +615,7 @@ try{
  assert.equal(await evaluate("getComputedStyle(document.querySelector('.hs-send')).backgroundColor"),'rgb(231, 228, 222)');
  await navigate({scenario:'tasks'});assert.equal(await evaluate('location.hash'),'#colleagues/tasks');
  }
+ } // The focused Settings mode leaves the other shell scenarios untouched.
  assert.equal(errors.length,0,JSON.stringify(errors));completed=true;
  writeFileSync(join(output,'browser-report.json'),JSON.stringify({ok:true,receipts,errors},null,2)+'\n',{mode:0o600});
  process.stdout.write(JSON.stringify({ok:true,checks:receipts.length,screenshots,output})+'\n');
@@ -598,7 +629,7 @@ try{
  try{socket?.close();}catch{}
  for(const request of pending.values()){clearTimeout(request.timer);request.fail(new Error('Browser gate closed'));}pending.clear();
  await stopOwnedBrowser(chrome);
- let removed=false;for(let attempt=0;attempt<15;attempt++){try{rmSync(profile,{recursive:true,force:true});removed=true;break;}catch{await pause(100);}}
- writeFileSync(join(output,'cleanup.json'),JSON.stringify({completed,chromeExited:chrome.exitCode!==null||chrome.signalCode!==null,profileRemoved:removed,profile:removed?'removed':profile})+'\n',{mode:0o600});
- if(!removed)throw new Error(`Owned browser profile cleanup incomplete: ${profile}`);
+ let removed=false;for(let attempt=0;!settingsNavOnly&&attempt<15;attempt++){try{rmSync(profile,{recursive:true,force:true});removed=true;break;}catch{await pause(100);}}
+ writeFileSync(join(output,'cleanup.json'),JSON.stringify({completed,chromeExited:chrome.exitCode!==null||chrome.signalCode!==null,profileRemoved:removed,profileKeptForReview:settingsNavOnly,profile:removed?'removed':profile})+'\n',{mode:0o600});
+ if(!removed&&!settingsNavOnly)throw new Error(`Owned browser profile cleanup incomplete: ${profile}`);
 }
