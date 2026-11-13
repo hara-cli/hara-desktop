@@ -910,7 +910,8 @@
     "ws.settings.deviceCopy.migrationPending",
     "ws.settings.deviceCopy.savedKey",
     "ws.settings.deviceCopy.keyShort",
-    "ws.settings.deviceCopy.keyFirst"
+    "ws.settings.deviceCopy.keyFirst",
+    "ws.settings.deviceCopy.withMacPermission"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -2393,6 +2394,7 @@
     "ws.settings.deviceCopy.migrationPending",
     "ws.settings.deviceCopy.savedKey",
     "ws.settings.deviceCopy.keyShort",
-    "ws.settings.deviceCopy.keyFirst"
+    "ws.settings.deviceCopy.keyFirst",
+    "ws.settings.deviceCopy.withMacPermission"
   ]
 }
