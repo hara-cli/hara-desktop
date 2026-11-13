@@ -1,6 +1,6 @@
 // C5 read-only disclosure consumer. No default binding; JSON/capability flags cannot create a source.
 import { AgentBoundaryContractError, parseAgentBoundaryDocument, assertAgentBoundaryContext,
-  type AgentBoundaryContext, type AgentBoundaryCommand, type AgentExecutionBoundary } from "./agent-boundary-contract.ts";
+  type AgentBoundaryContext, type AgentBoundaryCommand, type AgentDutyProfile, type AgentExecutionBoundary } from "./agent-boundary-contract.ts";
 import { createAgentDutyDraft, agentDutyDraftProposal, type AgentDutyPublicProfile } from "./agent-duty-draft.ts";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
 export interface WorkScopeTarget { readonly workspaceId: string; readonly generation: string; readonly agentId: string; readonly agentEpoch: number; readonly configRevision: number }
@@ -26,6 +26,20 @@ export interface SavedWorkScope {
   readonly revisions: { policy: number; duty: number; boundary: number };
   readonly limits: { modelCalls: number; toolEffects: number };
 }
+/** Private, authenticated-read data for composing a C3 proposal. None of these JSON fields is a grant. */
+export interface WorkScopePolicySnapshot {
+  readonly state: "saved"; readonly revision: number; readonly policyRevision: number;
+  readonly target: WorkScopeTarget; readonly context: AgentBoundaryContext;
+  readonly provenance: AgentBoundaryCommand["provenance"];
+  readonly rights: Readonly<{ manage: boolean; invoke: boolean; privateRead: boolean; nodeUse: boolean }>;
+  readonly duty: AgentDutyProfile; readonly boundary: AgentExecutionBoundary;
+  readonly resources: readonly Readonly<{ resourceId: string; revision: number }>[];
+}
+export interface WorkScopeIdentity {
+  readonly target: WorkScopeTarget; readonly connectionId: string; readonly connectionEpoch: number;
+  readonly capabilities: readonly string[]; readonly context: AgentBoundaryContext;
+  readonly provenance: AgentBoundaryCommand["provenance"];
+}
 export type WorkScopeView = SavedWorkScope | Readonly<{ state: "unconfirmed" }>;
 export type WorkScopeReadState = Readonly<{ key: string; state: "loading" | "error" }>
   | Readonly<{ key: string; state: "ready"; view: WorkScopeView }>;
@@ -38,6 +52,8 @@ export interface WorkspaceWorkScopeSource {
   readonly [sourceBrand]: true;
   capture(target: WorkScopeTarget): WorkScopeCapture | null;
   current(capture: WorkScopeCapture): boolean;
+  identity(capture: WorkScopeCapture): WorkScopeIdentity;
+  policy(capture: WorkScopeCapture, signal?: AbortSignal): Promise<WorkScopePolicySnapshot | Readonly<{ state: "unconfirmed" }>>;
   read(capture: WorkScopeCapture, signal?: AbortSignal): Promise<WorkScopeView>;
   subscribe(listener: () => void): () => void;
 }
@@ -107,8 +123,15 @@ export function createWorkspaceWorkScopeSource(bridge: WorkScopeHostBridge): Wor
       const capture = Object.freeze({ key: identities.get(targetKey)!.uiKey }) as WorkScopeCapture; captures.set(capture, saved); return capture;
     },
     current(capture: WorkScopeCapture) { try { check(capture); return true; } catch { return false; } },
+    identity(capture: WorkScopeCapture): WorkScopeIdentity {
+      const saved = check(capture), live = observed(saved.target);
+      if (!live || live.key !== saved.key) return fail();
+      return Object.freeze({ target: saved.target, connectionId: live.binding.connectionId, connectionEpoch: live.binding.connectionEpoch,
+        capabilities: Object.freeze([...live.binding.capabilities]), context: live.context,
+        provenance: Object.freeze({ ...live.binding.provenance }) });
+    },
     subscribe(listener: () => void) { const cleanup = bridge.subscribe(listener); if (typeof cleanup !== "function") return fail(); return cleanup; },
-    async read(capture: WorkScopeCapture, signal?: AbortSignal): Promise<WorkScopeView> {
+    async policy(capture: WorkScopeCapture, signal?: AbortSignal): Promise<WorkScopePolicySnapshot | Readonly<{ state: "unconfirmed" }>> {
       if (signal?.aborted) return fail();
       const saved = check(capture), raw = await bridge.read(saved.target, signal); check(capture);
       if (signal?.aborted) return fail();
@@ -129,7 +152,17 @@ export function createWorkspaceWorkScopeSource(bridge: WorkScopeHostBridge): Wor
       assertAgentBoundaryContext(duty, saved.context); assertAgentBoundaryContext(boundary, saved.context);
       const refs = items(policy.resources).map(raw => { const ref = fields(raw, ["resourceId", "revision"]); if (!id(ref.resourceId) || !positive(ref.revision)) return fail(); return { resourceId: ref.resourceId, revision: ref.revision }; });
       if (new Set(refs.map(ref => ref.resourceId)).size !== refs.length || boundary.resources.some(ref => !refs.some(row => row.resourceId === ref.resourceId))) return fail();
-      const requested = Object.freeze(refs.filter(ref => boundary.resources.some(row => row.resourceId === ref.resourceId)).map(ref => Object.freeze(ref)));
+      return Object.freeze({ state: "saved", target: saved.target, context: saved.context,
+        provenance: Object.freeze({ ...saved.binding.provenance }), revision: row.revision as number, policyRevision: policy.revision as number,
+        rights: Object.freeze({ manage: rights.manage as boolean, invoke: rights.invoke as boolean, privateRead: rights.privateRead as boolean, nodeUse: rights.nodeUse as boolean }),
+        duty, boundary, resources: Object.freeze(refs.map(ref => Object.freeze(ref))) });
+    },
+    async read(capture: WorkScopeCapture, signal?: AbortSignal): Promise<WorkScopeView> {
+      const saved = check(capture), snapshot = await source.policy(capture, signal); check(capture);
+      if (signal?.aborted) return fail();
+      if (snapshot.state === "unconfirmed") return snapshot;
+      const { duty, boundary } = snapshot;
+      const requested = Object.freeze(snapshot.resources.filter(ref => boundary.resources.some(row => row.resourceId === ref.resourceId)));
       const descriptions = bridge.describeResources ? items(await bridge.describeResources(saved.target, requested, signal)) : [];
       check(capture); if (signal?.aborted) return fail();
       const labels = new Map<string, { label: string; path: string | null }>();
@@ -143,7 +176,7 @@ export function createWorkspaceWorkScopeSource(bridge: WorkScopeHostBridge): Wor
       return Object.freeze({ state: "saved", profile: duty.publicProfile, tools: boundary.tools, approvals: boundary.approvalRequired,
         resources: Object.freeze(boundary.resources.map(ref => Object.freeze({ resourceId: ref.resourceId, access: ref.access,
           label: labels.get(ref.resourceId)?.label ?? null, path: labels.get(ref.resourceId)?.path ?? null }))),
-        revisions: Object.freeze({ policy: policy.revision as number, duty: duty.dutyRevision, boundary: boundary.boundaryRevision }),
+        revisions: Object.freeze({ policy: snapshot.policyRevision, duty: duty.dutyRevision, boundary: boundary.boundaryRevision }),
         limits: Object.freeze({ modelCalls: boundary.budget.maxModelCalls, toolEffects: boundary.budget.maxToolEffects }) });
     },
   } as WorkspaceWorkScopeSource;

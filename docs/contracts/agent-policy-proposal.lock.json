@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "sourceRef": "b01e492adf30b3b6d0d5c31385122ce3dca601a3",
+  "sourceFiles": {
+    "src/workspace/local-state.ts": "81325e56f540bd9c548c14d34c192dc0c7b48ea90cce9a74b74ae75704ddc598",
+    "src/workspace/agent-command-state.ts": "98d7ad8822faf4ef9cf84cb52c653169ead7fc04524c73fbb9c57fcc6778f908"
+  },
+  "allowedTransformation": "two pure function declarations byte-identical; domain literal emitted separately; WebCrypto adapter is not Core authority",
+  "files": {
+    "docs/contracts/agent-policy-proposal-core.json": "8fb3609e9e10ecbcda44b9e5102de3a030176889a505ce1e9f6dd5464790ec65",
+    "test/fixtures/agent-policy-proposal-v1.json": "85a7341947869d50c5abeefbdb2ad8d75dfe5d699abf003534307b040ac686c9",
+    "src/contracts/agent-policy-canonical-v1.ts": "58ba137ff2a6e680df06506a61464c1716824dd55b5f4f4b751d81f4ae5d9f71"
+  }
+}

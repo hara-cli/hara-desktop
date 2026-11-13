@@ -134,3 +134,18 @@ test("C5 M1 changed capture key excludes prior ready/error before any effect run
   assert.deepEqual(visibleWorkScope(null, "1:1"), { key: "1:1", state: "loading" });
   assert.equal(f.calls, 1, "Visibility selection performs no additional read or effect");
 });
+
+test("C5 proposal snapshot reuses authenticated C0 validation while the card projection remains private-data free", async () => {
+  const f = fixture(), capture = f.source.capture(f.target), policy = await f.source.policy(capture);
+  assert.equal(policy.state, "saved"); assert.deepEqual(policy.duty.publicProfile, f.state.policy.duty.publicProfile);
+  assert.deepEqual(policy.rights, f.state.policy.rights); assert.ok(Object.isFrozen(policy.rights)); assert.ok(Object.isFrozen(policy.resources));
+  const view = await f.source.read(capture); assert.equal("context" in view, false); assert.equal("rights" in view, false); assert.equal("provenance" in view, false);
+  await assert.rejects(f.source.policy(JSON.parse(JSON.stringify(capture))), unavailable);
+});
+test("C5 identity metadata observes removed C3 capability immediately and cannot be round-tripped as a capture", () => {
+  const f = fixture(), original = f.bridge.capture; let extra = true;
+  f.bridge.capture = () => ({ ...original(), capabilities: ["workspace.agent-boundaries.authority.v1", ...(extra ? ["workspace.agent-command-control.v1"] : [])] });
+  const capture = f.source.capture(f.target); assert.ok(f.source.identity(capture).capabilities.includes("workspace.agent-command-control.v1"));
+  extra = false; assert.equal(f.source.identity(capture).capabilities.includes("workspace.agent-command-control.v1"), false);
+  assert.throws(() => f.source.identity(JSON.parse(JSON.stringify(capture))), unavailable); assert.equal(f.calls, 0);
+});
