@@ -46,7 +46,7 @@ export interface SettingsOnboarding { workspaceId: string; readOnly: boolean; re
 export function SettingsOverlay({ children, ready, onClose }: { children: ReactNode; ready: boolean; onClose(): void }) {
   const panel = useRef<HTMLDivElement>(null);
   const previous = useRef(typeof document === "undefined" ? null : document.activeElement as HTMLElement | null);
-  const { t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
+  const { t } = useWorkspaceLocale();
   useEffect(() => () => { const target = previous.current; queueMicrotask(() => { if (target?.isConnected) target.focus(); }); }, []);
   useLayoutEffect(() => { (panel.current?.querySelector<HTMLElement>("button:not(:disabled)") ?? panel.current)?.focus(); }, [ready]);
   return <div className="wss-overlay"><div ref={panel} className="wss-dialog" role="dialog" aria-modal="true" aria-label={t("ws.settings")} tabIndex={-1}
@@ -62,7 +62,7 @@ export function SettingsOverlay({ children, ready, onClose }: { children: ReactN
     }}>{children}</div></div>;
 }
 export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
-  const { locale, t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
+  const { locale, t } = useWorkspaceLocale();
   const [session, setSession] = useState<{ model: WorkspaceDevModel; close(): void } | null>(null), [error, setError] = useState<"" | Key>("");
   const initialWorkspace = useRef(props.mainModel.getSnapshot().workspaceId);
   useEffect(() => { if (!props.production) return; let active = true, owned: { model: WorkspaceDevModel; close(): void } | undefined;
@@ -188,7 +188,7 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
   </div>;
 }
 function General({ workspace, root, role, kind }: { workspace: WorkspaceDevSnapshot; root: string; role: string; kind: string }) {
-  const { t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
+  const { t } = useWorkspaceLocale();
   const [copied, setCopied] = useState(false), [copyFailed, setCopyFailed] = useState(false), path = `${root}/project/${workspace.workspaceId}`;
   const copyPath = async () => {
     setCopyFailed(false);
@@ -210,7 +210,7 @@ function runtimeAttention(workspace: WorkspaceDevSnapshot, model: WorkspaceDevMo
 
 /** «Getting started · Run again» on the overview (design §2 branches: re-enter; plan O4). */
 function OnboardingRerunRow({ onboarding }: { onboarding: SettingsOnboarding }) {
-  const { t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
+  const { t } = useWorkspaceLocale();
   const [busy, setBusy] = useState(false), [result, setResult] = useState<OnboardingRerunResult | null>(null);
   const readOnly = onboarding.readOnly || result === "readOnly";
   return <div className="wss-setting-row wss-onboarding-rerun"><div><strong>{t("ws.onboarding.rerun.title")}</strong>

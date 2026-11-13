@@ -1739,7 +1739,6 @@
   "ws.connections.models.sourceChanged": "The protocol, address or key has changed. Enter the model name manually, or save the connection before reading its list.",
   "ws.connections.models.unavailable": "This connection is not available for listing models. You can still enter a model name.",
   "ws.connections.models.upgrade": "You can enter a model name. Update Hara Core to read this connection’s models.",
-  "ws.settings.deviceCopy.mac": "This Mac",
   "ws.settings.deviceCopy.windows": "This Windows PC",
   "ws.settings.deviceCopy.other": "This device",
   "ws.settings.deviceCopy.savedHere": "Settings stay on this device. Workspace data stays in its own workspace.",

@@ -13,7 +13,7 @@ const translated = ["ws.settings.savedHere","ws.settings.detail.overview","ws.se
 for (const locale of ["en","zh-Hans","zh-Hant"]) for (const platform of ["mac","windows","other"]) test(`Settings copy is backend-neutral and keeps true platform restrictions: ${locale}/${platform}`, () => {
  const raw=makeT(locale),t=settingsTranslator(raw,platform),values={runtime:"Fixture Engine",proxy:"Fixture Proxy",workspace:"Synthetic Workspace",n:2};
  for (const key of translated){const value=t(key,values);assert.notEqual(value,key);assert.doesNotMatch(value,/Keychain|macOS|Mac|钥匙串|鑰匙圈|DPAPI/i,key);}
- assert.equal(t("ws.settings.device"),raw(platform==="mac"?"ws.settings.deviceCopy.mac":platform==="windows"?"ws.settings.deviceCopy.windows":"ws.settings.deviceCopy.other"));
+ assert.equal(t("ws.settings.device"),raw(platform==="mac"?"ws.settings.device":platform==="windows"?"ws.settings.deviceCopy.windows":"ws.settings.deviceCopy.other"));
  if(platform==="windows")assert.match(t("ws.settings.device"),/Windows/);else if(platform==="mac")assert.match(t("ws.settings.device"),/Mac/);else assert.doesNotMatch(t("ws.settings.device"),/Mac|Windows/);
  assert.ok(t("ws.runtimeAccess.hostRecommendedRuntime",values).includes(values.runtime));assert.ok(t("ws.runtimes.check.network",values).includes(values.proxy));
  assert.ok(t("ws.connections.confirmMigrate",values).includes(values.workspace));assert.ok(t("ws.connections.confirmMigrate",values).includes("2"));

@@ -1739,7 +1739,6 @@
   "ws.connections.models.sourceChanged": "协议、地址或Key已修改。请手填模型名称，或保存连接后再读取列表。",
   "ws.connections.models.unavailable": "当前无法读取此连接的模型列表，仍可手填模型名称。",
   "ws.connections.models.upgrade": "可以手填模型名称；更新Hara Core后可读取此连接的模型列表。",
-  "ws.settings.deviceCopy.mac": "这台Mac",
   "ws.settings.deviceCopy.windows": "这台Windows电脑",
   "ws.settings.deviceCopy.other": "这台设备",
   "ws.settings.deviceCopy.savedHere": "设置保存在这台设备；空间资料各自独立。",

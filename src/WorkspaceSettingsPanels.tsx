@@ -143,7 +143,7 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
 /** Schedules not created in chat or on this page are still run by the legacy scheduler. */
 function isLegacySchedule(row: { source?: string }): boolean { return row.source !== "chat" && row.source !== "workspace"; }
 export function WorkspaceFeaturePanel({ model, workspace, kind, onClose, onDirty, onCreateSkill }: { model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot; kind: "schedules" | "skills"; onClose?: () => void; onDirty?: (value: boolean) => void; onCreateSkill?: () => void }) {
-  const { locale, t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
+  const { locale, t } = useWorkspaceLocale();
   const [value, setValue] = useState<WorkspaceFeatureView | null>(null), [notice, setNotice] = useState<"" | Key>(""), [pending, setPending] = useState(false);
   const [editor, setEditor] = useState<{ id: string; content: string } | null>(null);
   const [scheduleEditor, setScheduleEditor] = useState<{ id: string; name: string; task: string; picker: SchedulePickerValue; agentId: string; enabled: boolean; creating: boolean } | null>(null);

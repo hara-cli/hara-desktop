@@ -30,6 +30,6 @@ const COPY: Partial<Record<Key, Key>> = {
 /** Settings-only copy until Core supplies its authenticated backend descriptor. Onboarding keeps its own copy. */
 export function settingsTranslator(t: Translator, platform = settingsDevicePlatform()): Translator {
   return (key, values) => t(key === "ws.settings.device"
-    ? platform === "mac" ? "ws.settings.deviceCopy.mac" : platform === "windows" ? "ws.settings.deviceCopy.windows" : "ws.settings.deviceCopy.other"
+    ? platform === "mac" ? "ws.settings.device" : platform === "windows" ? "ws.settings.deviceCopy.windows" : "ws.settings.deviceCopy.other"
     : Object.hasOwn(COPY, key) ? COPY[key]! : key, values);
 }
