@@ -1,0 +1,22 @@
+{
+  "contract": "hara.agent-duty-draft.v1",
+  "canonicalRepository": "hara-cli/hara",
+  "canonicalCommit": "d7a2b3f3fa1c0d58b9481b5153679cd387d95c5e",
+  "canonicalSource": "src/workspace/agent-duty-draft.ts",
+  "sourceSha256": "8049c5508f56d38dbdf61cf402c05727c5b07ff6ba1426e1752d852c0172dfd2",
+  "canonicalFreezeSource": "src/workspace/local-state.ts",
+  "canonicalFreezeFileSha256": "81325e56f540bd9c548c14d34c192dc0c7b48ea90cce9a74b74ae75704ddc598",
+  "freezeFunctionSha256": "386a14b7f1c6efc5cdded8f45523749a02c0c0f1620fd433c3d6cd525ce8eb63",
+  "c0SourceSha256": "e7be8bfd4f48f1f89f90b872f800eff436e8e22b73a7960a1a91e9a074576670",
+  "allowedTransforms": {
+    "c0Import": {
+      "from": "from \"./agent-boundaries-contract.js\";",
+      "to": "from \"./agent-boundaries-v1.ts\";"
+    },
+    "deepFreezeImport": "import { deepFreeze } from \"./local-state.js\";\n",
+    "deepFreezeInline": "exact pinned function with leading export removed; no other source edits"
+  },
+  "mirrorSha256": "87dea3c69945c59f3b6848705fe9a796280dd2bcafaefc69f3151d7d32785224",
+  "fixturesSha256": "c1185f2dba8796adeb1eb05b7aa701334caa00035a1981819f205aef87b98e35",
+  "runtimeEnabled": false
+}

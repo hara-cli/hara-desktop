@@ -1,0 +1,7 @@
+export function deepFreeze<T>(value: T): Readonly<T> {
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value)) deepFreeze(item);
+    Object.freeze(value);
+  }
+  return value;
+}
