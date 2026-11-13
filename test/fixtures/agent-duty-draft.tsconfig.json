@@ -3,12 +3,12 @@
     "noEmit": true,
     "strict": true,
     "skipLibCheck": true,
-    "target": "ES2022",
+    "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "lib": [
-      "ES2022",
+      "ES2020",
       "DOM"
     ]
   },
