@@ -157,6 +157,8 @@ test("late metadata and failed key writes cannot leak into a different workspace
  const old=f.model.legacyConnections();await f.model.selectWorkspace("B");finish([{id:"old-A"}]);await assert.rejects(old,{messageKey:"ws.notice.scopeChanged"});
  f.handlers["workspace.connection.edit"]=()=>{throw new Error("fixture-secret-in-provider-error");};assert.equal(await f.model.editConnection("one",{apiKey:"fake"}),false);
  assert(!JSON.stringify(f.model.getSnapshot()).includes("fixture-secret"));assert.equal(f.calls.filter(row=>row.method==="workspace.connection.edit").length,1);
+ assert.equal(f.model.getSnapshot().error,"ws.connections.editUnknown");await f.model.refresh();assert.equal(f.model.getSnapshot().error,"");
+ assert.equal(f.calls.filter(row=>row.method==="workspace.connection.edit").length,1,"readback clears the global error without resending the write");
  await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A","host"),{messageKey:"ws.notice.localConfirmationExpired"});
  assert.equal(f.calls.some(row=>row.method==="workspace.runtime.registerLocal"),false);
 });

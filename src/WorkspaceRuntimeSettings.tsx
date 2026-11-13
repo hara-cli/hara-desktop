@@ -10,7 +10,7 @@ import type { RuntimeApprovalCard, RuntimeLoginSource, WorkspaceDevModel, Worksp
 
 
 // Core runtime-form status line (kept local: this module is also loaded standalone by tests).
-// Settings never probes models (that would start the engine with the Mac's login), so it never says
+// Settings never probes models on open (that would start the engine with its sign-in), so it never says
 // «ready to use»: Core `ready` only means files and login source were confirmed. «Ready» is reserved
 // for a successful model listing (DESIGN.md §11.4; coordinator decision 2026-11-12).
 const UNAVAILABLE_REASONS = ["not_installed", "unsafe_file", "legacy_unsupported", "adapter_pending", "detection_failed", "host_login_required"];
@@ -39,7 +39,8 @@ export async function runEngineCheck(model: Pick<WorkspaceDevModel, "listRuntime
     let models: unknown[];
     if (id === "pi") {
       const main = workspace.agents.find(agent => agent.kind === "main");
-      const connection = workspace.connections?.defaultConnectionId ?? workspace.connections?.connections.find(row => row.status === "active")?.id;
+      const connections = (workspace.connections?.connections ?? []).filter(row => row.status === "active");
+      const connection = connections.find(row => row.id === workspace.connections?.defaultConnectionId)?.id ?? connections[0]?.id;
       if (!main || !connection || !piCheckable(model, workspace)) return { state: "failed", network: false, missing: true };
       models = (await model.listConnectionModels(main.agentId, connection)).models;
     } else models = (await model.listRuntimeModels(id)).models;
@@ -61,18 +62,24 @@ export const manualRuntimeGuide = (id: string) => id === "gemini" ? "https://gem
   : id === "kimi" ? "https://moonshotai.github.io/kimi-code/en/guides/getting-started.html" : null;
 
 function RuntimeSetupDialog({ label, pending, onClose, children }: { label: string; pending: boolean; onClose(): void; children: ReactNode }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null), active = useRef(false);
+  const focusFirst = (panel: HTMLDialogElement) => (panel.querySelector<HTMLElement>("input:checked:not(:disabled),button:not(:disabled)") ?? panel).focus({ preventScroll: true });
   useLayoutEffect(() => {
+    active.current = true;
     const panel = dialog.current!, previous = document.activeElement as HTMLElement | null;
     const row = previous?.closest<HTMLElement>(".wsd-runtime-row");
     panel.showModal();
-    (panel.querySelector<HTMLElement>("input:checked:not(:disabled),button:not(:disabled)") ?? panel).focus({ preventScroll: true });
+    focusFirst(panel);
     return () => {
-      panel.close();
+      active.current = false; panel.close();
       const target = previous?.isConnected ? previous : row?.isConnected ? row : null;
       target?.focus({ preventScroll: true });
     };
   }, []);
+  useLayoutEffect(() => {
+    const panel = dialog.current;
+    if (pending && panel?.open && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
+  }, [pending]);
   return <dialog ref={dialog} className="wsd-approval wsd-runtime-bind-dialog wsd-runtime-setup-dialog" aria-modal="true" aria-label={label} aria-busy={pending}
     onKeyDown={event => {
       event.stopPropagation();
@@ -83,7 +90,11 @@ function RuntimeSetupDialog({ label, pending, onClose, children }: { label: stri
       if (!first) { event.preventDefault(); event.currentTarget.focus(); }
       else if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    }} onCancel={event => { event.preventDefault(); if (!pending) onClose(); }}>
+    }} onCancel={event => { event.stopPropagation(); event.preventDefault(); if (!pending) onClose(); }} onClose={event => {
+      event.stopPropagation(); const panel = event.currentTarget;
+      if (!active.current || panel.open || !panel.isConnected) return;
+      if (pending) { panel.showModal(); focusFirst(panel); } else onClose();
+    }}>
     {children}
   </dialog>;
 }
@@ -182,7 +193,7 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
   const checkButton = (id: string, label: string) => {
     const waiting = currentCheck(id)?.state === "checking" || pending;
     return <button type="button" className="wsd-runtime-check" data-check-engine={id} aria-label={`${t("ws.onboarding.engine.check")} ${label}`}
-      aria-disabled={waiting || undefined} onClick={() => check(id)}>{t(checks[id]?.state === "failed" ? "ws.onboarding.engine.retry" : "ws.onboarding.engine.check")}</button>;
+      aria-disabled={waiting || undefined} onClick={() => check(id)}>{t(currentCheck(id)?.state === "failed" ? "ws.onboarding.engine.retry" : "ws.onboarding.engine.check")}</button>;
   };
   const [login, setLogin] = useState<{ shell: string; command: string } | null>(null), [loginBusy, setLoginBusy] = useState(false), [loginFailed, setLoginFailed] = useState(false);
   const loginScope = `${workspace.workspaceId}:${workspace.resourceGeneration}`, liveLoginScope = useRef(loginScope);

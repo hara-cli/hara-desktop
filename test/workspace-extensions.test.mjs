@@ -6,7 +6,7 @@ import ts from "typescript";
 import { makeT } from "../src/i18n.ts";
 import { WorkspaceDevModel } from "../src/workspace-dev-state.ts";
 import { extensionView } from "../src/workspace-extensions.ts";
-const require = createRequire(import.meta.url), React = require("react");
+const require = createRequire(import.meta.url), React = require("react"), { renderToStaticMarkup } = require("react-dom/server");
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const sourceId = "global:host:docs", sourceRevision = "a".repeat(64);
@@ -36,7 +36,9 @@ function mount(model, patch = {}) {
   const render = (next = {}) => { props = { ...props, ...next }; cursor = 0; dirty = false; tree = exports.WorkspaceExtensions(props); effects.splice(0).forEach(effect => effect()); return tree; };
   const flush = async () => { await tick(); for (let count = 0; count < 24 && dirty; count++) { render(); await tick(); } };
   const nodes = () => { const list = []; const walk = value => { if (Array.isArray(value)) value.forEach(walk); else if (value && typeof value === "object" && value.props) { list.push(value); walk(value.props.children); } }; walk(tree); return list; };
-  const text = value => Array.isArray(value) ? value.map(text).join("") : value && typeof value === "object" && value.props ? text(value.props.children) : typeof value === "string" || typeof value === "number" ? String(value) : "";
+  // Notices are real child components now; render that leaf instead of losing its text prop.
+  const text = value => Array.isArray(value) ? value.map(text).join("") : value?.type === dialogs.SettingsActionResult ? renderToStaticMarkup(value).replace(/<[^>]*>/g, "")
+    : value && typeof value === "object" && value.props ? text(value.props.children) : typeof value === "string" || typeof value === "number" ? String(value) : "";
   const button = label => { const node = nodes().find(node => node.type === "button" && text(node) === label); assert.ok(node, label); return node; };
   const checks = () => nodes().filter(node => node.type === "input");
   const toggle = (index, checked) => { checks()[index].props.onChange({ target: { checked } }); render(); };

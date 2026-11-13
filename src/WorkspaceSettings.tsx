@@ -106,6 +106,9 @@ export function SettingsContent({ model, initialPage, root, production, theme, u
   const close = () => requestLeave({ kind: "close" });
   useEffect(() => { if (decision) cancelLeave.current?.focus(); else if (returnFocus.current?.isConnected) returnFocus.current.focus(); }, [decision]);
   useEffect(() => { const key = (event: KeyboardEvent) => {
+    // A pending native modal may temporarily lose its disabled button's focus to body.
+    // Its Escape/close watcher still owns this key; never close the surrounding Settings.
+    if (body.current?.querySelector("dialog[open]")) return;
     if (decision) {
       if (event.key === "Escape") { event.preventDefault(); keepEditing(); }
       else if (event.key === "Tab") { event.preventDefault(); (document.activeElement === cancelLeave.current ? discardLeave : cancelLeave).current?.focus(); }

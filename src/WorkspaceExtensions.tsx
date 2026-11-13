@@ -88,7 +88,7 @@ export function WorkspaceExtensions({ model, workspaceId, generation, agent, onD
     <SettingsAttention items={attention} />
     <p className="wse-note">{t(model.supportsExtensionManager?.() ? "ws.extensions.managerNoteLine" : "ws.extensions.noteLine")}</p>
     {!supported ? <p role="status">{t("ws.extensions.unavailable")}</p> : loading ? <p role="status">{t("ws.extensions.loading")}</p> : null}
-    {notice ? <p role={notice === "ws.extensions.saved" ? "status" : "alert"}>{t(notice)}</p> : null}
+    <SettingsActionResult text={!proposal && notice ? t(notice) : ""} error={notice !== "ws.extensions.saved"} />
     {current?.readOnly ? <p role="status">{t("ws.extensions.readOnly")}</p> : null}
     {current && !current.sources.length ? <p className="wse-empty">{t("ws.extensions.empty")}</p> : null}
     {current?.sources.map(source => {

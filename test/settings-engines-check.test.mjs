@@ -73,6 +73,8 @@ test("a failed check keeps «Enabled» and adds the reason; Ready needs a succes
   assert.match(source, /value\?\.state === "ok" \? `\$\{t\("ws\.onboarding\.engine\.status\.ready"\)\} · \$\{value\.models === 1 \? t\("ws\.runtimes\.check\.listedAtOne"/);
   assert.match(source, /: value\?\.state === "checking" \? t\("ws\.onboarding\.engine\.status\.checking"\) : enabled;/, "failed falls through to «Enabled»");
   assert.match(source, /const checkable = runtime\.registered && runtime\.use === "ready";/);
+  assert.match(source, /const checkScope = engineCheckScope\(workspace\)/, "the component uses the configuration identity, not just workspace/generation");
+  assert.match(source, /t\(currentCheck\(id\)\?\.state === "failed" \?/, "button text ignores results for an old scope too");
   assert.match(source, /useEffect\(\(\) => \{ setChecks\(\{\}\); \}, \[checkScope\]\);/, "results never carry over to another workspace");
   assert.match(source, /if \(liveCheckScope\.current === checkScope\) setChecks/, "a late answer for another workspace is dropped");
 });
@@ -134,4 +136,20 @@ test("engine check identity tolerates a metadata-only runtime view without conne
   const view = { workspaceId: "A", resourceGeneration: "g", runtimes: { options } };
   assert.doesNotThrow(() => M.engineCheckScope(view));
   assert.notEqual(M.engineCheckScope(view), M.engineCheckScope({ ...view, resourceGeneration: "next" }));
+});
+
+test("Pi falls back from a revoked, deleted or missing default to an active connection", async () => {
+  for (const status of ["revoked", "deleted", "missing"]) {
+    const log = [], ws = workspace([{ id: "first-active", status: "active" }, ...(status === "missing" ? [] : [{ id: "old-default", status }])]);
+    ws.connections.defaultConnectionId = "old-default";
+    assert.deepEqual(await M.runEngineCheck(model(log), ws, "pi"), { state: "ok", models: 2 });
+    assert.deepEqual(log, ["conn:main:first-active"]);
+  }
+});
+
+test("Pi still prefers a valid active default over another active connection", async () => {
+  const log = [], ws = workspace([{ id: "first", status: "active" }, { id: "default", status: "active" }]);
+  ws.connections.defaultConnectionId = "default";
+  assert.deepEqual(await M.runEngineCheck(model(log), ws, "pi"), { state: "ok", models: 2 });
+  assert.deepEqual(log, ["conn:main:default"]);
 });
