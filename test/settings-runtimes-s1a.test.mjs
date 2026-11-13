@@ -84,6 +84,12 @@ test("a running download is pinned at the top of the engine page with its cancel
   assert.ok(shell.indexOf("download-op1") < shell.indexOf("wsd-runtime-settings"), "pinned above the page content");
 });
 
-test("the 1.2.2 proxy fold (6a9757d) arrives with the main merge; S1c later swaps it for SettingsAdvanced", () => {
-  assert.match(source, /\n    <details className="wsd-runtime-details wsd-runtime-proxy-advanced"><summary>\{t\("ws\.runtimeProxy\.advanced"\)\}<\/summary>\n      <WorkspaceRuntimeProxy key=\{`\$\{workspace\.workspaceId\}:\$\{workspace\.resourceGeneration\}`\} model=\{model\} workspaceId=\{workspace\.workspaceId\} generation=\{workspace\.resourceGeneration\} onDirty=\{onDirty\} \/><\/details>\n    <button disabled=\{detecting \|\| pending\}/);
+test("network proxy is the engine page's single Advanced section, after the engine list", () => {
+  const html = runtimes(workspace([]));
+  assert.equal((html.match(/data-settings-advanced="runtimes"/g) ?? []).length, 1);
+  const fold = html.slice(html.indexOf('data-settings-advanced="runtimes"'));
+  assert.equal(/^data-settings-advanced="runtimes" open/.test(fold), false, "closed by default");
+  assert.ok(fold.includes('placeholder="http://127.0.0.1:端口"'));
+  assert.equal(html.includes("127.0.0.1:18888"), false, "no real local port to copy");
+  assert.ok(html.indexOf("wsd-runtime-list") < html.indexOf('data-settings-advanced="runtimes"'));
 });

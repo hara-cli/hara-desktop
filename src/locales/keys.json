@@ -861,8 +861,18 @@
     "ws.workScope.approval.publish",
     "ws.workScope.approval.credentials",
     "ws.workScope.approval.expand",
-    "ws.runtimeProxy.advanced",
-    "ws.runtimeProxy.placeholder"
+    "ws.runtimeProxy.placeholder",
+    "ws.connections.updated",
+    "ws.connections.deleted",
+    "ws.connections.reloadAfterUnknown",
+    "ws.connections.reloadFailed",
+    "ws.features.saved",
+    "ws.skills.copySaved",
+    "ws.schedules.saved",
+    "ws.schedules.deleted",
+    "ws.settings.copyFailed",
+    "ws.updates.copyFailed",
+    "ws.action.retry"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -2294,9 +2304,19 @@
     "ws.skills.howItWorks",
     "ws.extensions.attentionReviewOwner",
     "ws.skills.details",
-    "ws.runtimeProxy.advanced",
     "ws.runtimeProxy.placeholder",
     "ws.boot.rootRefused",
-    "ws.boot.logHint"
+    "ws.boot.logHint",
+    "ws.connections.updated",
+    "ws.connections.deleted",
+    "ws.connections.reloadAfterUnknown",
+    "ws.connections.reloadFailed",
+    "ws.features.saved",
+    "ws.skills.copySaved",
+    "ws.schedules.saved",
+    "ws.schedules.deleted",
+    "ws.settings.copyFailed",
+    "ws.updates.copyFailed",
+    "ws.action.retry"
   ]
 }

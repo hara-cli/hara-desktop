@@ -1,3 +1,4 @@
+import { SettingsActionResult } from "./SettingsActionDialog";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { SettingsAdvanced } from "./SettingsChrome";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
@@ -74,11 +75,16 @@ export function WorkspaceBootUpdate() {
 }
 export function WorkspaceSoftwareUpdate({ controller, info }: { controller: WorkspaceUpdater; info: DesktopVersionInfo | null }) {
   const value = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false), [copyFailed, setCopyFailed] = useState(false);
   const { locale, t } = useWorkspaceLocale();
+  const copyVersion = async () => {
+    if (!info) return; setCopyFailed(false);
+    try { await navigator.clipboard.writeText(`Hara Desktop ${info.desktop}\nCore ${info.engine}\n${info.channel} / ${info.arch}`); setCopied(true); }
+    catch { setCopied(false); setCopyFailed(true); }
+  };
   if (info?.isolatedCandidate) return <section className="wss-page-card"><h2>{t("ws.updates.candidate")}</h2><p>{t("ws.updates.candidateNote")}</p>
     <dl><dt>Desktop</dt><dd>{info.desktop}</dd><dt>{t("ws.updates.engine")}</dt><dd>{info.engine}</dd><dt>{t("ws.updates.channel")}</dt><dd>{info.channel}</dd><dt>{t("ws.updates.arch")}</dt><dd>{info.arch}</dd></dl>
-    <button onClick={() => void navigator.clipboard.writeText(`Hara Desktop ${info.desktop}\nCore ${info.engine}\n${info.channel} / ${info.arch}`).then(() => setCopied(true)).catch(() => setCopied(false))}>{t(copied ? "ws.updates.copied" : "ws.updates.copy")}</button></section>;
+    <button onClick={() => void copyVersion()}>{t(copied ? "ws.updates.copied" : "ws.updates.copy")}</button><SettingsActionResult text={copyFailed ? t("ws.updates.copyFailed") : ""} error /></section>;
   const percent = value.total ? Math.min(100, Math.floor(value.downloaded / value.total * 100)) : null;
   const titles: Record<typeof value.phase, Key> = {
     latest: value.preferences.lastChecked ? "ws.updates.latest" : "ws.updates.checkTitle",
@@ -102,7 +108,7 @@ export function WorkspaceSoftwareUpdate({ controller, info }: { controller: Work
     <SettingsAdvanced page="updates" items={[t("ws.updates.cadenceShort"), t("ws.updates.versionForReports")]}>
       <p>{t("ws.updates.cadence")}</p>
     <section className="wss-version"><h3>{t("ws.updates.versionForReports")}</h3><dl><dt>Desktop</dt><dd>{info?.desktop ?? "—"}</dd><dt>{t("ws.updates.engine")}</dt><dd>{info?.engine ?? "—"}</dd><dt>{t("ws.updates.channel")}</dt><dd>{info?.channel ?? "—"}</dd><dt>{t("ws.updates.arch")}</dt><dd>{info?.arch ?? "—"}</dd></dl>
-      <button disabled={!info} onClick={() => { if (!info) return; void navigator.clipboard.writeText(`Hara Desktop ${info.desktop}\nCore ${info.engine}\n${info.channel} / ${info.arch}`).then(() => setCopied(true)).catch(() => setCopied(false)); }}>{t(copied ? "ws.updates.copied" : "ws.updates.copy")}</button></section>
+      <button disabled={!info} onClick={() => void copyVersion()}>{t(copied ? "ws.updates.copied" : "ws.updates.copy")}</button><SettingsActionResult text={copyFailed ? t("ws.updates.copyFailed") : ""} error /></section>
     </SettingsAdvanced>
   </section>;
 }

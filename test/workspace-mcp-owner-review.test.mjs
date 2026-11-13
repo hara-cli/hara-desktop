@@ -1,3 +1,4 @@
+import { sharedSettingsUi } from "./support/shared-settings-ui.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -29,7 +30,7 @@ function mount(model, patch = {}) {
     useEffect(action, deps) { const index = cursor++, old = slots[index]; if (!old || deps.some((dep, n) => !Object.is(dep, old.deps[n]))) effects.push(() => { old?.cleanup?.(); slots[index] = { deps, cleanup: action() }; }); },
   };
   const exports = {};
-  new Function("require", "exports", outputText)(name => name === "react" ? { ...React, ...hooks } : name === "./SettingsChrome" ? { SettingsAdvanced: props => props.children, SettingsAttention: () => null } : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t: makeT(props.locale ?? "en"), locale: props.locale ?? "en" }) } : name.endsWith(".css") ? {} : require(name), exports);
+  new Function("require", "exports", outputText)(name => name === "./SettingsActionDialog" ? sharedSettingsUi(name) : name === "react" ? { ...React, ...hooks } : name === "./SettingsChrome" ? { SettingsAdvanced: props => props.children, SettingsAttention: () => null } : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t: makeT(props.locale ?? "en"), locale: props.locale ?? "en" }) } : name.endsWith(".css") ? {} : require(name), exports);
   const render = (next = {}) => { props = { ...props, ...next }; cursor = 0; dirty = false; tree = exports.WorkspaceMcpOwnerReview(props); effects.splice(0).forEach(effect => effect()); return tree; };
   const flush = async () => { await tick(); for (let count = 0; count < 24 && dirty; count++) { render(); await tick(); } };
   const nodes = () => { const list = []; const walk = value => { if (Array.isArray(value)) value.forEach(walk); else if (value && typeof value === "object" && value.props) { list.push(value); walk(value.props.children); } }; walk(tree); return list; };

@@ -1437,8 +1437,6 @@
   "ws.rf.formStatus.confirmFirstUse": "首次使用，点「应用」后确认",
   "ws.boot.rootRefused": "无法准备本机工作空间文件夹，引擎未启动。原有资料已保留。请反馈应用版本、系统与诊断码。",
   "ws.boot.logHint": "详细记录保存在用户文件夹下的 .hara/workspace-startup.log。",
-  "ws.runtimeProxy.advanced": "高级：网络代理（一般不用填）",
-  "ws.runtimeProxy.placeholder": "http://127.0.0.1:端口",
   "ws.settings.advanced": "高级",
   "ws.settings.advanced.usually": "一般不用改",
   "ws.settings.advanced.customized": "已自定义：{items}",
@@ -1711,5 +1709,16 @@
   "ws.workScope.approval.paid": "付费操作",
   "ws.workScope.approval.publish": "对外发布",
   "ws.workScope.approval.credentials": "使用账号或密钥",
-  "ws.workScope.approval.expand": "扩大工作范围"
+  "ws.workScope.approval.expand": "扩大工作范围",
+  "ws.connections.updated": "连接设置已保存。",
+  "ws.connections.deleted": "连接已删除。",
+  "ws.connections.reloadAfterUnknown": "重新读取连接列表核对",
+  "ws.connections.reloadFailed": "未能重新读取连接，保存结果仍未确认，请稍后再试。",
+  "ws.features.saved": "设置已保存。",
+  "ws.skills.copySaved": "技能私人副本已保存。",
+  "ws.schedules.saved": "定时任务已保存。",
+  "ws.schedules.deleted": "定时任务已删除。",
+  "ws.runtimeProxy.placeholder": "http://127.0.0.1:端口",
+  "ws.settings.copyFailed": "复制失败，请选中路径手动复制。",
+  "ws.updates.copyFailed": "复制失败，请选中版本信息手动复制。"
 }

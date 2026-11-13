@@ -74,7 +74,7 @@ test("row-end menu is a labelled, closed menu button that only exposes items whe
   assert.ok(render(createElement(module.exports.SettingsRowMenu, { label: "x", items: [] })).includes('disabled=""'), "an empty menu cannot open");
   assert.ok(render(createElement(module.exports.SettingsRowMenu, { label: "x", items: [{ id: "a", label: "a", disabled: true, onSelect() {} }] })).includes('disabled=""'), "a menu whose items are all disabled cannot open (it could not be closed from the keyboard)");
   const source = readFileSync(new URL("../src/SettingsChrome.tsx", import.meta.url), "utf8");
-  for (const pattern of [/"Escape"/, /"ArrowDown"/, /"ArrowUp"/, /"Home"/, /"End"/, /trigger\.current\?\.focus\(\)/, /is-up/])
+  for (const pattern of [/"Escape"/, /"ArrowDown"/, /"ArrowUp"/, /"Home"/, /"End"/, /trigger\.current\?\.focus\(\{ preventScroll: true \}\)/, /is-up/])
     assert.match(source, pattern, "keyboard, focus return and flip are implemented");
 });
 

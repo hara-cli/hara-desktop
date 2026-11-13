@@ -35,19 +35,33 @@ export interface SettingsRowMenuItem { id: string; label: string; onSelect(): vo
 export function SettingsRowMenu({ label, items, disabled = false }: { label: string; items: SettingsRowMenuItem[]; disabled?: boolean }) {
   const { t } = useWorkspaceLocale();
   const [open, setOpen] = useState(false), [upward, setUpward] = useState(false);
+  const [bounds, setBounds] = useState<{ width: number; right: number; height: number } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null), menuId = useId();
   const enabled = () => Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []);
-  const close = (focus = true) => { setOpen(false); if (focus) trigger.current?.focus(); };
+  const close = (focus = true) => { setOpen(false); if (focus) trigger.current?.focus({ preventScroll: true }); };
   useLayoutEffect(() => {
-    if (!open || !menu.current || !trigger.current) return;
-    const below = window.innerHeight - trigger.current.getBoundingClientRect().bottom, height = menu.current.getBoundingClientRect().height;
-    setUpward(below < height + 8 && trigger.current.getBoundingClientRect().top > below);
-    enabled()[0]?.focus();
-  }, [open]);
+    if (!open) { setBounds(null); return; }
+    if (!menu.current || !trigger.current) return;
+    const anchor = trigger.current.getBoundingClientRect();
+    const clip = trigger.current.closest<HTMLElement>("dialog,.wss-main")?.getBoundingClientRect();
+    const left = Math.max(0, clip?.left ?? 0), right = Math.min(window.innerWidth, clip?.right ?? window.innerWidth);
+    const top = Math.max(0, clip?.top ?? 0), bottom = Math.min(window.innerHeight, clip?.bottom ?? window.innerHeight);
+    const width = Math.max(1, Math.min(menu.current.getBoundingClientRect().width, right - left - 16));
+    const x = Math.max(left + 8, Math.min(anchor.right - width, right - 8 - width));
+    const below = bottom - anchor.bottom, above = anchor.top - top, height = menu.current.getBoundingClientRect().height;
+    const upward = below < height + 8 && above > below;
+    setUpward(upward);
+    const next = { width, right: anchor.right - x - width, height: Math.max(1, (upward ? above : below) - 8) };
+    setBounds(current => current && current.width === next.width && current.right === next.right && current.height === next.height ? current : next);
+    // Re-measure wrapped items after narrowing; do not steal focus from a menu item already selected.
+    if (!menu.current.contains(document.activeElement)) enabled()[0]?.focus({ preventScroll: true });
+  }, [open, bounds?.width]);
   useEffect(() => {
     if (!open) return;
     const outside = (event: PointerEvent) => { if (!menu.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) close(false); };
-    document.addEventListener("pointerdown", outside); return () => document.removeEventListener("pointerdown", outside);
+    const resized = () => close();
+    document.addEventListener("pointerdown", outside); window.addEventListener("resize", resized);
+    return () => { document.removeEventListener("pointerdown", outside); window.removeEventListener("resize", resized); };
   }, [open]);
   const onMenuKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const controls = enabled(), index = controls.indexOf(document.activeElement as HTMLButtonElement);
@@ -61,7 +75,7 @@ export function SettingsRowMenu({ label, items, disabled = false }: { label: str
       aria-controls={open ? menuId : undefined} disabled={disabled || !items.some(item => !item.disabled)} onClick={() => setOpen(value => !value)}
       onKeyDown={event => { if (event.key === "ArrowDown" && !open) { event.preventDefault(); setOpen(true); }
         else if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); close(); } }}><EllipsisHorizontalIcon className="hico" aria-hidden /></button>
-    {open ? <div ref={menu} id={menuId} role="menu" aria-label={t("ws.settings.rowMenu", { name: label })} className={`wss-row-menu-list${upward ? " is-up" : ""}`} onKeyDown={onMenuKey}>
+    {open ? <div ref={menu} id={menuId} role="menu" aria-label={t("ws.settings.rowMenu", { name: label })} className={`wss-row-menu-list${upward ? " is-up" : ""}`} style={bounds ? { width: bounds.width, minWidth: 0, right: bounds.right, maxHeight: bounds.height, overflowY: "auto" } : undefined} onKeyDown={onMenuKey}>
       {items.map(item => <button key={item.id} type="button" role="menuitem" tabIndex={-1} className={item.danger ? "is-danger" : undefined} disabled={item.disabled}
         onClick={() => { close(); item.onSelect(); }}>{item.label}</button>)}
     </div> : null}

@@ -157,15 +157,17 @@ test("late metadata and failed key writes cannot leak into a different workspace
  const old=f.model.legacyConnections();await f.model.selectWorkspace("B");finish([{id:"old-A"}]);await assert.rejects(old,{messageKey:"ws.notice.scopeChanged"});
  f.handlers["workspace.connection.edit"]=()=>{throw new Error("fixture-secret-in-provider-error");};assert.equal(await f.model.editConnection("one",{apiKey:"fake"}),false);
  assert(!JSON.stringify(f.model.getSnapshot()).includes("fixture-secret"));assert.equal(f.calls.filter(row=>row.method==="workspace.connection.edit").length,1);
+ assert.equal(f.model.getSnapshot().error,"ws.connections.editUnknown");await f.model.refresh();assert.equal(f.model.getSnapshot().error,"");
+ assert.equal(f.calls.filter(row=>row.method==="workspace.connection.edit").length,1,"readback clears the global error without resending the write");
  await assert.rejects(f.model.registerLocalRuntime("codex","fingerprint","A","generation-A","host"),{messageKey:"ws.notice.localConfirmationExpired"});
  assert.equal(f.calls.some(row=>row.method==="workspace.runtime.registerLocal"),false);
 });
 test("actual confirmation action fences same-frame repeated clicks; cancellation remains a local card action",async()=>{
  const actions=[],fence={current:false};let finish;
- const perform=callback("perform",{fence,setPending:x=>actions.push(["pending",x]),setNotice:x=>actions.push(["notice",x]),setConfirmDelete:x=>actions.push(["delete",x]),setConfirmImport:x=>actions.push(["import",x])});
+ const perform=callback("perform",{fence,confirmDelete:null,setPending:x=>actions.push(["pending",x]),setNotice:x=>actions.push(["notice",x]),setConfirmDelete:x=>actions.push(["delete",x]),setConfirmImport:x=>actions.push(["import",x])});
  const one=perform(()=>new Promise(resolve=>{actions.push(["rpc"]);finish=resolve;}));await perform(async()=>actions.push(["duplicate"]));assert.equal(actions.some(x=>x[0]==="duplicate"),false);
- finish();await one;assert.equal(fence.current,false);assert.equal(actions.filter(x=>x[0]==="rpc").length,1);
- assert.match(read("src/WorkspaceSettingsPanels.tsx"),/onClick=\{\(\) => setConfirmDelete\(null\)\}/);
+ finish();await one;assert.equal(fence.current,false);assert.equal(actions.filter(x=>x[0]==="rpc").length,1);assert(actions.some(x=>x[0]==="notice"&&x[1]==="ws.connections.updated"));
+ assert.match(read("src/WorkspaceSettingsPanels.tsx"),/onClick=\{\(\) => \{ setConfirmDelete\(null\); setNotice\(""\); \}\}/);
 });
 test("actual feature handler sends locked version and workspace revision once without widening permissions",async()=>{
  const calls=[],busy={current:false},states=[];

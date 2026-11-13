@@ -1437,8 +1437,6 @@
   "ws.rf.formStatus.confirmFirstUse": "First use. Click Apply to confirm.",
   "ws.boot.rootRefused": "The local workspace folder could not be prepared, so the engine was not started. Existing data is retained. Report the app version, system and diagnostic code.",
   "ws.boot.logHint": "Details are saved in .hara/workspace-startup.log in your user folder.",
-  "ws.runtimeProxy.advanced": "Advanced: network proxy (usually leave empty)",
-  "ws.runtimeProxy.placeholder": "http://127.0.0.1:port",
   "ws.settings.advanced": "Advanced",
   "ws.settings.advanced.usually": "Usually no need to change",
   "ws.settings.advanced.customized": "Customized: {items}",
@@ -1711,5 +1709,16 @@
   "ws.workScope.approval.paid": "Spending money",
   "ws.workScope.approval.publish": "Publishing",
   "ws.workScope.approval.credentials": "Using accounts or keys",
-  "ws.workScope.approval.expand": "Expanding the work scope"
+  "ws.workScope.approval.expand": "Expanding the work scope",
+  "ws.connections.updated": "Connection settings saved.",
+  "ws.connections.deleted": "Connection deleted.",
+  "ws.connections.reloadAfterUnknown": "Reload connections to check",
+  "ws.connections.reloadFailed": "Could not reload connections. The save result is still unconfirmed. Try reloading again.",
+  "ws.features.saved": "Settings saved.",
+  "ws.skills.copySaved": "Private skill copy saved.",
+  "ws.schedules.saved": "Schedule saved.",
+  "ws.schedules.deleted": "Schedule deleted.",
+  "ws.runtimeProxy.placeholder": "http://127.0.0.1:port",
+  "ws.settings.copyFailed": "Could not copy. Select the path and copy it manually.",
+  "ws.updates.copyFailed": "Could not copy. Select the version details and copy them manually."
 }

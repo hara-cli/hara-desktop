@@ -40,8 +40,8 @@ test("rows show who and when; cron, source, anchor and history move under the pa
 });
 
 test("edit and delete are row-end menu items that keep the original editor, confirmation and RPCs", () => {
-  assert.match(panels, /\{ id: "delete", label: t\("ws\.schedules\.deleteMenu"\), danger: true, onSelect: \(\) => setScheduleDelete\(\{ id: row\.id, name: row\.name \}\) \}/);
-  assert.match(panels, /\{ id: "edit", label: t\("ws\.schedules\.edit"\), onSelect: \(\) => \{ setScheduleEditor\(\{ id: row\.id/);
+  assert.match(panels, /\{ id: "delete", label: t\("ws\.schedules\.deleteMenu"\), danger: true, onSelect: \(\) => \{ setNotice\(""\); setScheduleDelete\(\{ id: row\.id, name: row\.name \}\); \} \}/);
+  assert.match(panels, /\{ id: "edit", label: t\("ws\.schedules\.edit"\), onSelect: \(\) => \{ setNotice\(""\); setScheduleEditor\(\{ id: row\.id/);
   assert.match(panels, /"workspace\.schedule\.delete", \{ id: scheduleDelete\.id, expectedRevision: value\.revision, approved: true \}/);
   assert.match(panels, /if \(schedule\.kind !== "once" && !confirmed\) \{ setRepeatConfirm\(true\); return; \}/, "repeating schedules still need confirmation");
 });
