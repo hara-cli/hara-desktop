@@ -177,19 +177,22 @@
 .hs.wss-app .wss-action-empty{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 
 /* Catalog lists stay inside the native action dialog, with its own scrolling and tokens. */
-.wsd-connection-models{display:grid;gap:var(--hara-space-2);min-width:0}
-.wsd-connection-models .model-combobox{position:relative;min-width:0}
-.wsd-connection-models .model-combobox-control{position:relative}
-.wsd-connection-models .model-combobox-control input{width:100%;padding-right:38px}
-.wsd-connection-models .model-combobox-toggle{position:absolute;top:1px;right:1px;bottom:1px;width:34px;min-height:0;padding:0;display:grid;place-items:center;border:0;border-left:1px solid var(--hara-border-default);border-radius:0 var(--hara-radius-sm) var(--hara-radius-sm) 0;background:var(--hara-bg-elevated);color:var(--hara-text-secondary)}
-.wsd-connection-models .model-combobox-toggle span{width:7px;height:7px;border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:rotate(45deg)}
-.wsd-connection-models .model-combobox-list-inline{position:static;inset:auto;max-height:200px;margin-top:var(--hara-space-2);padding:var(--hara-space-1);overflow:auto;border:1px solid var(--hara-border-default);border-radius:var(--hara-radius-sm);background:var(--hara-menu);color:var(--hara-text-primary);box-shadow:none;z-index:auto}
-.wsd-connection-models .model-combobox-list button{display:flex;align-items:center;justify-content:space-between;gap:var(--hara-space-2);width:100%;max-width:100%;min-height:36px;text-align:left;background:transparent;color:var(--hara-text-primary);border:0;border-radius:var(--hara-radius-sm);padding:var(--hara-space-2)}
-.wsd-connection-models .model-combobox-list button:hover,.wsd-connection-models .model-combobox-list button.active,.wsd-connection-models .model-combobox-list button[aria-selected="true"]{background:var(--hara-bg-hover)}
-.wsd-connection-models .model-combobox-option-copy{display:grid;min-width:0;gap:var(--hara-space-1)}
-.wsd-connection-models .model-combobox-option-copy strong,.wsd-connection-models .model-combobox-option-copy small{white-space:normal;overflow-wrap:anywhere;color:inherit}
-.wsd-connection-models .model-combobox-option-state,.wsd-connection-models .model-combobox-empty{color:var(--hara-text-secondary);white-space:normal;overflow-wrap:anywhere}
-.wsd-connection-models>.wsd-model-list-read{justify-self:start}
-.wsd-connection-models>.wsd-model-list-read[aria-disabled="true"]{opacity:.6;cursor:default}
+.hs.wss-app .wsd-connection-models{display:grid;gap:var(--hara-space-2);min-width:0}
+.hs.wss-app .wsd-connection-models .model-combobox{position:relative;min-width:0}
+.hs.wss-app .wsd-connection-models .model-combobox-control{position:relative}
+.hs.wss-app .wsd-connection-models .model-combobox-control input{width:100%;padding-right:38px}
+.hs.wss-app .wsd-connection-models button.model-combobox-toggle{position:absolute;top:1px;right:1px;bottom:1px;width:34px;min-height:0;padding:0;display:grid;place-items:center;border:0;border-left:1px solid var(--hara-border-default);border-radius:0 var(--hara-radius-sm) var(--hara-radius-sm) 0;background:var(--hara-bg-elevated);color:var(--hara-text-secondary)}
+.hs.wss-app .wsd-connection-models .model-combobox-toggle span{width:7px;height:7px;border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:rotate(45deg)}
+.hs.wss-app .wsd-connection-models .model-combobox-list-inline{position:static;inset:auto;max-height:200px;margin-top:var(--hara-space-2);padding:var(--hara-space-1);overflow:auto;border:1px solid var(--hara-border-default);border-radius:var(--hara-radius-sm);background:var(--hara-menu);color:var(--hara-text-primary);box-shadow:none;z-index:auto}
+.hs.wss-app .wsd-connection-models .model-combobox-list button{display:flex;align-items:center;justify-content:space-between;gap:var(--hara-space-2);width:100%;max-width:100%;min-height:36px;text-align:left;background:transparent;color:var(--hara-text-primary);border:0;border-radius:var(--hara-radius-sm);padding:var(--hara-space-2)}
+.hs.wss-app .wsd-connection-models .model-combobox-list button:hover,.hs.wss-app .wsd-connection-models .model-combobox-list button.active,.hs.wss-app .wsd-connection-models .model-combobox-list button[aria-selected="true"]{background:var(--hara-bg-hover)}
+.hs.wss-app .wsd-connection-models .model-combobox-option-copy{display:grid;min-width:0;gap:var(--hara-space-1)}
+.hs.wss-app .wsd-connection-models .model-combobox-option-copy strong,.hs.wss-app .wsd-connection-models .model-combobox-option-copy small{white-space:normal;overflow-wrap:anywhere;color:inherit}
+.hs.wss-app .wsd-connection-models .model-combobox-option-state,.hs.wss-app .wsd-connection-models .model-combobox-empty{color:var(--hara-text-secondary);white-space:normal;overflow-wrap:anywhere}
+.hs.wss-app .wsd-connection-models>.wsd-model-list-read{justify-self:start}
+.hs.wss-app .wsd-connection-models>.wsd-model-list-read[aria-disabled="true"]{opacity:.6;cursor:default}
 
-.wsd-connection-models>.wsd-model-custom{justify-self:start;padding:2px var(--hara-space-2);border:1px solid var(--hara-border-default);border-radius:var(--hara-radius-pill);color:var(--hara-text-secondary);font-size:var(--hara-font-size-caption)}
+.hs.wss-app .wsd-connection-models>.wsd-model-custom{justify-self:start;padding:2px var(--hara-space-2);border:1px solid var(--hara-border-default);border-radius:var(--hara-radius-pill);color:var(--hara-text-secondary);font-size:var(--hara-font-size-caption)}
+
+/* The per-theme glass token can outrank the root preference; this modal must still be solid. */
+:root[data-transparency="off"] .hs.wss-app dialog.wsd-approval.wss-action-dialog[aria-modal="true"]{background:var(--hara-bg-selected);backdrop-filter:none;-webkit-backdrop-filter:none}
