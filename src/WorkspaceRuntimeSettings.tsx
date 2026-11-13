@@ -133,7 +133,7 @@ export default function WorkspaceRuntimeSettings({ model, workspace, onDirty }: 
   const checkedAt = (at?: number) => new Date(at ?? Date.now()).toLocaleTimeString(locale === "en" ? "en" : locale === "zh-Hant" ? "zh-TW" : "zh-CN", { hour: "2-digit", minute: "2-digit" });
   const checkStatus = (id: string, enabled: string | null) => {
     const value = checks[id];
-    return value?.state === "ok" ? `${t("ws.onboarding.engine.status.ready")} · ${t("ws.runtimes.check.listedAt", { n: value.models, time: checkedAt(value.at) })}`
+    return value?.state === "ok" ? `${t("ws.onboarding.engine.status.ready")} · ${value.models === 1 ? t("ws.runtimes.check.listedAtOne", { time: checkedAt(value.at) }) : t("ws.runtimes.check.listedAt", { n: value.models, time: checkedAt(value.at) })}`
       : value?.state === "checking" ? t("ws.onboarding.engine.status.checking") : enabled;
   };
   /**

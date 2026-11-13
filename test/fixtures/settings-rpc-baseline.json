@@ -1,0 +1,710 @@
+{
+ "baseline": "fa844bf",
+ "generatedBy": "node test/support/record-settings-rpc.mjs <export of the baseline commit>",
+ "note": "outcome «error» means the synthetic reply did not pass the model's reply check after the call was sent; the recorded call is what matters.",
+ "modelCalls": [
+  "model.activity()",
+  "model.approveExtensions(proposal, approved)",
+  "model.approveRuntime(card, approved, loginSource)",
+  "model.cancelMcpReview(old, workspaceId, generation)",
+  "model.cancelMcpReview(record.current, workspaceId, generation)",
+  "model.cancelRuntime(operation.id)",
+  "model.changeConnection(confirmDelete.id, true)",
+  "model.changeConnection(connection.id)",
+  "model.codexLoginInstructions()",
+  "model.configureConnection(input)",
+  "model.decideMcpReview(action, detail.recordId, workspaceId, generation)",
+  "model.describeMcpReview(recordId, workspaceId, generation)",
+  "model.detectRuntimes()",
+  "model.editConnection(existing.id, input)",
+  "model.extensions(workspaceId, generation, agent)",
+  "model.importConnection(confirmImport.id)",
+  "model.legacyConnections()",
+  "model.mcpReviews(workspaceId, generation)",
+  "model.preferences()",
+  "model.prepareUpdate()",
+  "model.proposeExtensions(change, current.revision, workspaceId, generation)",
+  "model.proposeRuntime(id)",
+  "model.refresh()",
+  "model.registerLocalRuntime(local.runtimeId, local.fingerprint, workspace.workspaceId, workspace.resourceGeneration, loginSource)",
+  "model.releaseUpdate(id)",
+  "model.runtimeProxy(workspaceId, generation)",
+  "model.saveDisplayPreference(executionDetails, collapseDetails)",
+  "model.savePreference(value, current.revision)",
+  "model.saveRuntimeProxy(proxyUrl, current.revision, workspaceId, generation)",
+  "model.saveTimingDiagnosticsPreference(value)",
+  "model.saveUpdatePreferences(value)",
+  "model.selectWorkspace(action.workspaceId)",
+  "model.setAgentArchived(agent, false)",
+  "model.supportsAgentArchive()",
+  "model.supportsExtensionManager()",
+  "model.supportsExtensions()",
+  "model.supportsMcpOwnerReview()",
+  "model.workspaceRequest(\"workspace.connection.cleanup\", { connectionId: connection.id, expectedRevision: workspace.connections.revision, approved: true })",
+  "model.workspaceRequest(\"workspace.connection.migration.retry\", { expectedRevision: workspace.connections.revision, approved: true })",
+  "model.workspaceRequest(\"workspace.features.list\")",
+  "model.workspaceRequest(\"workspace.features.update\", { kind: kind === \"skills\" ? \"skill\" : \"schedule\", id, enabled, expectedRevision: value.revision, ...(version ? { version } : {}) })",
+  "model.workspaceRequest(\"workspace.schedule.delete\", { id: scheduleDelete.id, expectedRevision: value.revision, approved: true })",
+  "model.workspaceRequest(\"workspace.schedule.save\", { input: { id, name: name.trim(), task: task.trim(), tz: picker.tz.trim(), agentId, enabled, schedule }, expectedRevision: value.revision, approved: true })",
+  "model.workspaceRequest(\"workspace.skill.fork\", { id: editor.id, content: editor.content, expectedRevision: value.revision, approved: true })",
+  "model.workspaceRequest(\"workspace.skill.read\", { id })"
+ ],
+ "rpc": [
+  {
+   "name": "activity",
+   "calls": [
+    {
+     "method": "workspace.activity",
+     "params": {}
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "preferences",
+   "calls": [
+    {
+     "method": "workspace.preferences.get",
+     "params": {}
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "savePreference",
+   "calls": [
+    {
+     "method": "workspace.preferences.set",
+     "params": {
+      "theme": "dark",
+      "expectedRevision": 3
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "saveDisplayPreference",
+   "calls": [
+    {
+     "method": "workspace.preferences.get",
+     "params": {}
+    },
+    {
+     "method": "workspace.preferences.set",
+     "params": {
+      "executionDetails": "brief",
+      "collapseDetails": true
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "saveTimingDiagnosticsPreference",
+   "calls": [
+    {
+     "method": "workspace.preferences.get",
+     "params": {}
+    },
+    {
+     "method": "workspace.preferences.set",
+     "params": {
+      "alwaysShowTimingDiagnostics": true
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "saveUpdatePreferences",
+   "calls": [
+    {
+     "method": "workspace.preferences.get",
+     "params": {}
+    },
+    {
+     "method": "workspace.preferences.set",
+     "params": {
+      "updates": {
+       "channel": "stable",
+       "autoCheck": true
+      }
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "prepareUpdate",
+   "calls": [
+    {
+     "method": "workspace.update.prepare",
+     "params": {
+      "approved": true
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "releaseUpdate",
+   "calls": [
+    {
+     "method": "workspace.update.release",
+     "params": {
+      "id": "u-1"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "detectRuntimes",
+   "calls": [
+    {
+     "method": "workspace.runtime.detect",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "proposeThenApproveRuntime",
+   "calls": [
+    {
+     "method": "workspace.runtime.propose",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A",
+      "runtimeId": "opencode"
+     }
+    },
+    {
+     "method": "workspace.runtime.approve",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A",
+      "proposalId": "prop-1",
+      "approved": true,
+      "loginSource": "host"
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "proposeThenDeclineRuntime",
+   "calls": [
+    {
+     "method": "workspace.runtime.propose",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A",
+      "runtimeId": "opencode"
+     }
+    },
+    {
+     "method": "workspace.runtime.approve",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A",
+      "proposalId": "prop-1",
+      "approved": false,
+      "loginSource": "isolated"
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "registerLocalRuntime",
+   "calls": [
+    {
+     "method": "workspace.runtime.registerLocal",
+     "params": {
+      "runtimeId": "codex",
+      "fingerprint": "fp-1",
+      "approved": true,
+      "loginSource": "host",
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "cancelRuntime",
+   "calls": [
+    {
+     "method": "workspace.runtime.cancel",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A",
+      "operationId": "op-1"
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "codexLoginInstructions",
+   "calls": [
+    {
+     "method": "workspace.runtime.loginInstructions",
+     "params": {
+      "runtimeId": "codex",
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
+   "name": "runtimeProxy",
+   "calls": [
+    {
+     "method": "workspace.runtime.proxy.get",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "saveRuntimeProxy",
+   "calls": [
+    {
+     "method": "workspace.runtime.proxy.set",
+     "params": {
+      "proxyUrl": "http://127.0.0.1:7890",
+      "expectedRevision": 1,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "clearRuntimeProxy",
+   "calls": [
+    {
+     "method": "workspace.runtime.proxy.set",
+     "params": {
+      "proxyUrl": null,
+      "expectedRevision": 2,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "legacyConnections",
+   "calls": [
+    {
+     "method": "workspace.connection.legacy",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "configureConnection",
+   "calls": [
+    {
+     "method": "workspace.connection.add",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A",
+      "expectedRevision": 5,
+      "input": {
+       "label": "One",
+       "provider": "openai",
+       "baseURL": "https://x.invalid",
+       "defaultModel": "m",
+       "apiKey": "sk-synthetic"
+      }
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "editConnection",
+   "calls": [
+    {
+     "method": "workspace.connection.edit",
+     "params": {
+      "connectionId": "conn-1",
+      "input": {
+       "label": "Renamed"
+      },
+      "expectedRevision": 5,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "selectConnection",
+   "calls": [
+    {
+     "method": "workspace.connection.select",
+     "params": {
+      "connectionId": "conn-1",
+      "expectedRevision": 5,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "removeConnection",
+   "calls": [
+    {
+     "method": "workspace.connection.delete",
+     "params": {
+      "connectionId": "conn-1",
+      "expectedRevision": 5,
+      "approved": true,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "importConnection",
+   "calls": [
+    {
+     "method": "workspace.connection.import",
+     "params": {
+      "sourceId": "legacy-1",
+      "approved": true,
+      "expectedRevision": 5,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.snapshot",
+     "params": {
+      "workspaceId": "A",
+      "agentId": "main"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "extensions",
+   "calls": [
+    {
+     "method": "workspace.extensions.list",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
+   "name": "proposeThenApproveExtensions",
+   "calls": [
+    {
+     "method": "workspace.extensions.propose",
+     "params": {
+      "change": {
+       "target": "workspace",
+       "sourceId": "g1",
+       "sourceRevision": "r1",
+       "enabled": true,
+       "allowedTools": [
+        "write",
+        "read"
+       ]
+      },
+      "expectedRevision": 3,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.extensions.approve",
+     "params": {
+      "proposalId": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+      "approved": true,
+      "expectedRevision": 3,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
+   "name": "proposeThenDeclineExtensions",
+   "calls": [
+    {
+     "method": "workspace.extensions.propose",
+     "params": {
+      "change": {
+       "target": "workspace",
+       "sourceId": "g1",
+       "sourceRevision": "r1",
+       "enabled": false,
+       "allowedTools": []
+      },
+      "expectedRevision": 3,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.extensions.approve",
+     "params": {
+      "proposalId": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+      "approved": false,
+      "expectedRevision": 3,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
+   "name": "mcpReviews",
+   "calls": [
+    {
+     "method": "workspace.extensions.review.list",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "describeMcpReview",
+   "calls": [
+    {
+     "method": "workspace.extensions.review.list",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.extensions.review.describe",
+     "params": {
+      "recordId": "11111111-2222-4333-8444-555555555555",
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
+   "name": "inspectMcpReview",
+   "calls": [
+    {
+     "method": "workspace.extensions.review.list",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.extensions.review.inspect",
+     "params": {
+      "recordId": "11111111-2222-4333-8444-555555555555",
+      "confirmed": true,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
+   "name": "approveMcpReview",
+   "calls": [
+    {
+     "method": "workspace.extensions.review.list",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.extensions.review.approve",
+     "params": {
+      "recordId": "11111111-2222-4333-8444-555555555555",
+      "confirmed": true,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
+   "name": "revokeMcpReview",
+   "calls": [
+    {
+     "method": "workspace.extensions.review.list",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.extensions.review.revoke",
+     "params": {
+      "recordId": "11111111-2222-4333-8444-555555555555",
+      "confirmed": true,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
+   "name": "cancelMcpReview",
+   "calls": [
+    {
+     "method": "workspace.extensions.review.list",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    },
+    {
+     "method": "workspace.extensions.review.cancel",
+     "params": {
+      "recordId": "11111111-2222-4333-8444-555555555555",
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "archiveColleague",
+   "calls": [
+    {
+     "method": "workspace.agents.setArchived",
+     "params": {
+      "agentId": "c1",
+      "archived": true,
+      "configRevision": 4,
+      "agentEpoch": 2,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
+   "name": "featuresList",
+   "calls": [
+    {
+     "method": "workspace.features.list",
+     "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  }
+ ]
+}

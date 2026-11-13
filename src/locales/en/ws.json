@@ -1656,5 +1656,7 @@
   "ws.runtimes.check.failed": "Check didn't pass: no models were listed. Make sure this engine is signed in, then retry.",
   "ws.runtimes.check.network": "Check didn't pass: couldn't reach the model service (network). Make sure this Mac is online. If your network needs a proxy, set it in “{proxy}” on this page.",
   "ws.runtimes.check.piFailed": "Check didn't pass: this workspace's model connection listed no models. Check its address and key in Settings › {connections}.",
-  "ws.runtimes.check.listedAt": "{n} models listed · checked at {time}"
+  "ws.runtimes.check.listedAt": "{n} models listed · checked at {time}",
+  "ws.onboarding.engine.listedOne": "1 model listed · checked just now",
+  "ws.runtimes.check.listedAtOne": "1 model listed · checked at {time}"
 }

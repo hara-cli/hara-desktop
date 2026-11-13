@@ -1656,5 +1656,7 @@
   "ws.runtimes.check.failed": "檢查沒通過：沒有列出模型。請確認這個引擎已經登入，然後重試。",
   "ws.runtimes.check.network": "檢查沒通過：連不上模型服務（網路問題）。先確認這台 Mac 能上網；如果網路必須經過代理，在本頁的「{proxy}」裡填寫。",
   "ws.runtimes.check.piFailed": "檢查沒通過：這個空間的模型連接沒有列出模型。請到「設定 › {connections}」裡檢查位址和 Key。",
-  "ws.runtimes.check.listedAt": "已列出 {n} 個模型 · {time} 檢查"
+  "ws.runtimes.check.listedAt": "已列出 {n} 個模型 · {time} 檢查",
+  "ws.onboarding.engine.listedOne": "已列出 1 個模型 · 剛剛檢查",
+  "ws.runtimes.check.listedAtOne": "已列出 1 個模型 · {time} 檢查"
 }

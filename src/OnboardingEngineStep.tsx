@@ -29,7 +29,7 @@ export function engineRows(workspace: WorkspaceDevSnapshot, checks: Record<strin
   const fromCheck = (id: string): Partial<Row> | null => {
     const value = checks[id];
     return !value ? null : value.state === "checking" ? { status: "ws.onboarding.engine.status.checking", tone: "draft" }
-      : value.state === "ok" ? { status: "ws.onboarding.engine.status.ready", tone: "ok", detail: t("ws.onboarding.engine.listed", { n: value.models }) }
+      : value.state === "ok" ? { status: "ws.onboarding.engine.status.ready", tone: "ok", detail: value.models === 1 ? t("ws.onboarding.engine.listedOne") : t("ws.onboarding.engine.listed", { n: value.models }) }
       // DESIGN 2.1.2 §11.4: a failed check still reads «Enabled»; the reason and next step go in the row, in warning colour (review of #83, M1).
       : { status: "ws.runtimes.status.enabled", tone: "", detail: t(value.network ? "ws.onboarding.engine.networkShort" : "ws.onboarding.engine.failedShort"), detailTone: "warn" };
   };

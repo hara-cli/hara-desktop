@@ -1656,5 +1656,7 @@
   "ws.runtimes.check.failed": "检查没通过：没有列出模型。请确认这个引擎已经登录，然后重试。",
   "ws.runtimes.check.network": "检查没通过：连不上模型服务（网络问题）。先确认这台 Mac 能上网；如果网络必须经过代理，在本页的「{proxy}」里填写。",
   "ws.runtimes.check.piFailed": "检查没通过：这个空间的模型连接没有列出模型。请到「设置 › {connections}」里检查地址和 Key。",
-  "ws.runtimes.check.listedAt": "已列出 {n} 个模型 · {time} 检查"
+  "ws.runtimes.check.listedAt": "已列出 {n} 个模型 · {time} 检查",
+  "ws.onboarding.engine.listedOne": "已列出 1 个模型 · 刚刚检查",
+  "ws.runtimes.check.listedAtOne": "已列出 1 个模型 · {time} 检查"
 }

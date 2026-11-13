@@ -70,7 +70,7 @@ for (const locale of LOCALES) test(`failure copy says why and what to do, and na
 });
 
 test("a failed check keeps «Enabled» and adds the reason; Ready needs a successful check (source)", () => {
-  assert.match(source, /value\?\.state === "ok" \? `\$\{t\("ws\.onboarding\.engine\.status\.ready"\)\} · \$\{t\("ws\.runtimes\.check\.listedAt"/);
+  assert.match(source, /value\?\.state === "ok" \? `\$\{t\("ws\.onboarding\.engine\.status\.ready"\)\} · \$\{value\.models === 1 \? t\("ws\.runtimes\.check\.listedAtOne"/);
   assert.match(source, /: value\?\.state === "checking" \? t\("ws\.onboarding\.engine\.status\.checking"\) : enabled;/, "failed falls through to «Enabled»");
   assert.match(source, /const checkable = runtime\.registered && runtime\.use === "ready";/);
   assert.match(source, /useEffect\(\(\) => \{ setChecks\(\{\}\); \}, \[checkScope\]\);/, "results never carry over to another workspace");
@@ -96,4 +96,12 @@ for (const locale of LOCALES) test(`«Ready» shows when it was checked, and the
   assert.ok(t("ws.runtimes.check.listedAt", { n: 3, time: "13:05" }).includes("13:05"));
   assert.doesNotMatch(t("ws.onboarding.engine.readyNote"), /sign-in|登录|登入/);
   assert.match(source, /t\("ws\.runtimes\.check\.listedAt", \{ n: value\.models, time: checkedAt\(value\.at\) \}\)/);
+});
+
+for (const locale of LOCALES) test(`one listed model reads in the singular (review of #98, L) (${locale})`, () => {
+  const t = makeT(locale);
+  assert.equal(t("ws.runtimes.check.listedAtOne", { time: "13:05" }), { en: "1 model listed · checked at 13:05", "zh-Hans": "已列出 1 个模型 · 13:05 检查", "zh-Hant": "已列出 1 個模型 · 13:05 檢查" }[locale]);
+  assert.equal(t("ws.onboarding.engine.listedOne"), { en: "1 model listed · checked just now", "zh-Hans": "已列出 1 个模型 · 刚刚检查", "zh-Hant": "已列出 1 個模型 · 剛剛檢查" }[locale]);
+  assert.match(source, /value\.models === 1 \? t\("ws\.runtimes\.check\.listedAtOne"/);
+  assert.match(readFileSync(new URL("../src/OnboardingEngineStep.tsx", import.meta.url), "utf8"), /value\.models === 1 \? t\("ws\.onboarding\.engine\.listedOne"\)/);
 });
