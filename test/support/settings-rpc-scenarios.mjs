@@ -9,7 +9,8 @@ export const BASELINE = "fa844bf";
 const CAPABILITIES = ["workspace.agents.archive.v1", "workspace.extensions.v1", "workspace.extensions.manager.v1", "workspace.extensions.owner-review.v1"];
 const snapshot = id => ({ workspaceId: id, resourceGeneration: `generation-${id}`, label: id, syntheticOnly: false, executionMode: "workspace", selectedAgentId: "main", approvals: [],
   agents: [{ agentId: "main", kind: "main", state: "active", configRevision: 1, agentEpoch: 1, identity: { displayName: "Hara" }, runtime: { id: "pi", label: "Pi", available: true } },
-    { agentId: "c1", kind: "colleague", state: "active", configRevision: 4, agentEpoch: 2, identity: { displayName: "Coder" }, runtime: { id: "codex", label: "Codex", available: true } }],
+    { agentId: "c1", kind: "colleague", state: "active", configRevision: 4, agentEpoch: 2, identity: { displayName: "Coder" }, runtime: { id: "codex", label: "Codex", available: true } },
+    { agentId: "c2", kind: "colleague", state: "archived", archivedAt: "2026-11-01T00:00:00Z", configRevision: 7, agentEpoch: 3, identity: { displayName: "Writer" }, runtime: { id: "pi", label: "Pi", available: true } }],
   connections: { revision: 5, defaultConnectionId: "conn-1", connections: [{ id: "conn-1", label: "One", provider: "openai", baseURL: "https://x.invalid", defaultModel: "m", status: "active" }] },
   conversation: { history: [], state: "idle", revision: 1, sessionId: "s", taskId: null, runId: null } });
 const RECORD = "11111111-2222-4333-8444-555555555555", PROPOSAL = "66666666-7777-4888-8999-aaaaaaaaaaaa";
@@ -60,7 +61,18 @@ export const SCENARIOS = [
   ["revokeMcpReview", async m => { await m.mcpReviews("A", "generation-A"); return m.decideMcpReview("revoke", RECORD, "A", "generation-A"); }],
   ["cancelMcpReview", async m => { await m.mcpReviews("A", "generation-A"); return m.cancelMcpReview(RECORD, "A", "generation-A"); }],
   ["archiveColleague", m => m.setAgentArchived(m.getSnapshot().workspace.agents[1], true)],
+  ["restoreColleague", m => m.setAgentArchived(m.getSnapshot().workspace.agents[2], false)],
+  // The Settings panels send these through workspaceRequest; the arguments are written exactly as the panels write them
+  // (WorkspaceSettingsPanels.tsx), so the recording adds what workspaceRequest itself attaches (workspace and generation).
   ["featuresList", m => m.workspaceRequest("workspace.features.list")],
+  ["scheduleSave", m => m.workspaceRequest("workspace.schedule.save", { input: { id: "s-1", name: "Daily", task: "Summarize", tz: "Asia/Taipei", agentId: "c1", enabled: true, schedule: { kind: "cron", expr: "0 9 * * *" } }, expectedRevision: 2, approved: true })],
+  ["scheduleDelete", m => m.workspaceRequest("workspace.schedule.delete", { id: "s-1", expectedRevision: 2, approved: true })],
+  ["scheduleToggle", m => m.workspaceRequest("workspace.features.update", { kind: "schedule", id: "s-1", enabled: false, expectedRevision: 2 })],
+  ["skillToggle", m => m.workspaceRequest("workspace.features.update", { kind: "skill", id: "writing", enabled: true, expectedRevision: 2, version: "1.2.0" })],
+  ["skillRead", m => m.workspaceRequest("workspace.skill.read", { id: "writing" })],
+  ["skillFork", m => m.workspaceRequest("workspace.skill.fork", { id: "writing", content: "# Writing\n", expectedRevision: 2, approved: true })],
+  ["connectionCleanup", m => m.workspaceRequest("workspace.connection.cleanup", { connectionId: "conn-1", expectedRevision: 5, approved: true })],
+  ["migrationRetry", m => m.workspaceRequest("workspace.connection.migration.retry", { expectedRevision: 5, approved: true })],
 ];
 
 /** Runs every scenario on a fresh model and returns [{ name, calls: [{ method, params }], outcome }]. */
@@ -87,7 +99,13 @@ export async function recordSettingsRpc(WorkspaceDevModel) {
 export const SETTINGS_FILES = ["SettingsChrome.tsx", "WorkspaceDefaultRuntime.tsx", "WorkspaceDeletedColleagues.tsx", "WorkspaceExtensions.tsx", "WorkspaceRuntimeSettings.tsx", "WorkspaceRuntimeProxy.tsx",
   "WorkspaceSchedulePicker.tsx", "WorkspaceSettings.tsx", "WorkspaceSettingsPanels.tsx", "WorkspaceSoftwareUpdate.tsx", "settings-advanced-state.ts", "settings-schedule-text.ts"];
 const RECEIVERS = /^(model|mainModel|updater|settingsModel|props\.model)$/;
-/** Every `model.method(args)` call (argument text normalised) in the Settings screens of a source tree, sorted. */
+/**
+ * Every `model.method(args)` call (argument text normalised) in the Settings screens of a source tree, sorted.
+ * Limits (review of #99, L1/L2): this compares the argument *text*, not values computed upstream, and only calls on the
+ * receivers above. Indirect entries such as `theme.change*` and `controller.setAutoCheck` reach Core through
+ * savePreference / saveUpdatePreferences, which the recorded scenarios cover. Screen behaviour is left to part 2
+ * (screenshot regression) and the browser checks.
+ */
 export function settingsModelCalls(ts, readSource) {
   const calls = new Set();
   for (const file of SETTINGS_FILES) {

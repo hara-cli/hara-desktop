@@ -694,11 +694,168 @@
    "outcome": "error"
   },
   {
+   "name": "restoreColleague",
+   "calls": [
+    {
+     "method": "workspace.agents.setArchived",
+     "params": {
+      "agentId": "c2",
+      "archived": false,
+      "configRevision": 7,
+      "agentEpoch": 3,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "error"
+  },
+  {
    "name": "featuresList",
    "calls": [
     {
      "method": "workspace.features.list",
      "params": {
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "scheduleSave",
+   "calls": [
+    {
+     "method": "workspace.schedule.save",
+     "params": {
+      "input": {
+       "id": "s-1",
+       "name": "Daily",
+       "task": "Summarize",
+       "tz": "Asia/Taipei",
+       "agentId": "c1",
+       "enabled": true,
+       "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * *"
+       }
+      },
+      "expectedRevision": 2,
+      "approved": true,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "scheduleDelete",
+   "calls": [
+    {
+     "method": "workspace.schedule.delete",
+     "params": {
+      "id": "s-1",
+      "expectedRevision": 2,
+      "approved": true,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "scheduleToggle",
+   "calls": [
+    {
+     "method": "workspace.features.update",
+     "params": {
+      "kind": "schedule",
+      "id": "s-1",
+      "enabled": false,
+      "expectedRevision": 2,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "skillToggle",
+   "calls": [
+    {
+     "method": "workspace.features.update",
+     "params": {
+      "kind": "skill",
+      "id": "writing",
+      "enabled": true,
+      "expectedRevision": 2,
+      "version": "1.2.0",
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "skillRead",
+   "calls": [
+    {
+     "method": "workspace.skill.read",
+     "params": {
+      "id": "writing",
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "skillFork",
+   "calls": [
+    {
+     "method": "workspace.skill.fork",
+     "params": {
+      "id": "writing",
+      "content": "# Writing\n",
+      "expectedRevision": 2,
+      "approved": true,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "connectionCleanup",
+   "calls": [
+    {
+     "method": "workspace.connection.cleanup",
+     "params": {
+      "connectionId": "conn-1",
+      "expectedRevision": 5,
+      "approved": true,
+      "workspaceId": "A",
+      "expectedGeneration": "generation-A"
+     }
+    }
+   ],
+   "outcome": "ok"
+  },
+  {
+   "name": "migrationRetry",
+   "calls": [
+    {
+     "method": "workspace.connection.migration.retry",
+     "params": {
+      "expectedRevision": 5,
+      "approved": true,
       "workspaceId": "A",
       "expectedGeneration": "generation-A"
      }

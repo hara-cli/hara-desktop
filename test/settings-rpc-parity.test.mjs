@@ -42,3 +42,29 @@ test("the Settings screens still make every model call they made before; new cal
   assert.deepEqual(added.filter(call => !ADDED[method(call)]), [], "unexplained new model calls");
   for (const call of added) assert.ok(ADDED[method(call)].length > 20, call);
 });
+
+test("calls added after the baseline keep their exact contract shape (review of #99, L3)", async () => {
+  const calls = [];
+  const model = new WorkspaceDevModel({ supportsCapability: name => ["workspace.default-runtime.v1", "workspace.connection-models.v1"].includes(name), async request(method, params) {
+    calls.push({ method, params: JSON.parse(JSON.stringify(params ?? {})) });
+    if (method === "workspace.list") return { revision: 1, syntheticOnly: false, executionMode: "workspace", activeWorkspaceId: "A", workspaces: [{ workspaceId: "A", active: true }] };
+    if (method === "workspace.select" || method === "workspace.snapshot") return { workspaceId: "A", resourceGeneration: "generation-A", label: "A", syntheticOnly: false, executionMode: "workspace", selectedAgentId: "main", approvals: [],
+      agents: [{ agentId: "main", kind: "main", state: "active", identity: { displayName: "Hara" }, runtime: { id: "pi", label: "Pi", available: true } }], connections: { revision: 1, defaultConnectionId: "conn-1", connections: [] }, conversation: { history: [], state: "idle" } };
+    if (method.startsWith("workspace.defaultRuntime.")) return { schemaVersion: 1, workspaceId: "A", defaultRuntimeId: params.defaultRuntimeId ?? null, revision: 3, readOnly: false, recovered: false };
+    if (method === "workspace.connection.listModels") return { connectionId: params.connectionId, source: "live", revision: 1, selectedModelId: null, models: [] };
+    return { runtimeId: params.runtimeId, revision: 1, selectedModelId: null, models: [] };
+  } }, () => "request", false, "workspace");
+  await model.selectWorkspace("A"); calls.length = 0;
+  await model.defaultRuntime("A", "generation-A");
+  await model.saveDefaultRuntime("codex", 3, "A", "generation-A");
+  await model.saveDefaultRuntime(null, 3, "A", "generation-A");
+  await model.listRuntimeModels("codex").catch(() => {});
+  await model.listConnectionModels("main", "conn-1");
+  const scope = { workspaceId: "A", expectedGeneration: "generation-A" };
+  assert.deepEqual(calls.filter(call => call.method !== "workspace.snapshot"), [
+    { method: "workspace.defaultRuntime.get", params: scope },
+    { method: "workspace.defaultRuntime.set", params: { expectedRevision: 3, defaultRuntimeId: "codex", ...scope } },
+    { method: "workspace.defaultRuntime.set", params: { expectedRevision: 3, defaultRuntimeId: null, ...scope } },
+    { method: "workspace.runtime.listModels", params: { runtimeId: "codex", ...scope } },
+    { method: "workspace.connection.listModels", params: { agentId: "main", connectionId: "conn-1", ...scope } }]);
+});
