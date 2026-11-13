@@ -244,6 +244,39 @@ test("C5 M1 persisted but unsent intent retires only after exact Core not-seen e
   const next = await restored.preview(loaded, { action: "duty.update", draft: f.draft() });
   assert.notEqual(next.commandId, preview.commandId); assert.equal(f.calls.submit, 1); restored.cancel(next);
 });
+test("C5 M1 exact Core grace boundary stays held until notAfter plus 1001ms", async () => {
+  const f = missingReceiptFixture(); f.setSubmit(() => { throw Error("unsent"); });
+  const preview = await previewDuty(f), unknown = await f.writer.submit(preview), saved = [...f.stored.entries()];
+  assert.equal(unknown.state, "unknown"); assert.equal(f.stored.size, 1);
+  f.observeAt(Date.parse(preview.expiresAt) + 1000);
+  const boundary = await f.writer.refresh(f.capture(), unknown.reference);
+  assert.equal(boundary.state, "unknown", "the exact +1000ms boundary must keep the original reference held");
+  assert.equal(boundary.receipt, null); assert.deepEqual([...f.stored.entries()], saved);
+  await assert.rejects(previewDuty(f), errorCode("CONTROL_HELD"));
+  assert.equal(f.calls.draft, 1); assert.equal(f.calls.submit, 1);
+  f.observeAt(Date.parse(preview.expiresAt) + 1001);
+  const beyond = await f.writer.refresh(f.capture(), unknown.reference);
+  assert.equal(beyond.state, "not_applied"); assert.equal(beyond.receipt, null); assert.equal(f.stored.size, 0);
+  assert.equal(f.calls.draft, 1); assert.equal(f.calls.submit, 1, "expiry recovery never submits again");
+});
+test("C5 M1 not_seen with a valid non-null receipt cannot retire the original reference", async () => {
+  const f = missingReceiptFixture(); let command;
+  f.setSubmit(value => { command = value; throw Error("unsent"); });
+  const preview = await previewDuty(f), unknown = await f.writer.submit(preview), saved = [...f.stored.entries()];
+  const response = { schemaVersion: 1, kind: "command-receipt-lookup", state: "not_seen", context: f.state.context,
+    agentId: f.target.agentId, commandId: command.commandId, observedAt: new Date(Date.parse(preview.expiresAt) + 1001).toISOString(),
+    receipt: f.receiptFor(command, "accepted") };
+  f.lookupReply(response);
+  const contradictory = await f.writer.refresh(f.capture(), unknown.reference);
+  assert.equal(contradictory.state, "unknown", "not_seen with an otherwise valid receipt is not an absence proof");
+  assert.equal(contradictory.receipt, null); assert.deepEqual([...f.stored.entries()], saved);
+  await assert.rejects(previewDuty(f), errorCode("CONTROL_HELD"));
+  assert.equal(f.calls.draft, 1); assert.equal(f.calls.submit, 1);
+  f.lookupReply({ ...response, receipt: null });
+  const genuineAbsence = await f.writer.refresh(f.capture(), unknown.reference);
+  assert.equal(genuineAbsence.state, "not_applied"); assert.equal(genuineAbsence.receipt, null); assert.equal(f.stored.size, 0);
+  assert.equal(f.calls.draft, 1); assert.equal(f.calls.submit, 1, "rejecting contradictory evidence never causes replay");
+});
 test("C5 M1 a fence failure after durable put stays recoverable and no command reaches submit", async () => {
   const f = missingReceiptFixture(), set = f.storage.setItem.bind(f.storage);
   const preview = await previewDuty(f); f.storage.setItem = (key, value) => { set(key, value); f.close(); };
