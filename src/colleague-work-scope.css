@@ -1,0 +1,30 @@
+@import "./hara-tokens.generated.css" layer(hara-tokens);
+.hd-work-scope-card { margin: 0 0 var(--hara-space-4); padding: var(--hara-space-4); border: 1px solid var(--hara-border-default); border-radius: var(--hara-radius-card); background: var(--hara-bg-surface); color: var(--hara-text-primary); font-family: var(--hara-font-ui); font-size: var(--hara-font-size-body); line-height: 1.55; overflow-wrap: anywhere; }
+.hd-work-scope-card > header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--hara-space-2); }
+.hd-work-scope-card > header h3 { margin: 0; color: var(--hara-text-primary); font: var(--hara-font-weight-semibold) var(--hara-font-size-title-sm)/1.4 var(--hara-font-ui); }
+.hd-work-scope-badge { flex: none; padding: 0 var(--hara-space-2); border-radius: var(--hara-radius-pill); color: var(--hara-info); background: var(--hara-info-soft); font-size: var(--hara-font-size-small); }
+.hd-work-scope-section { margin-top: var(--hara-space-4); padding-top: var(--hara-space-3); border-top: 1px solid var(--hara-border-subtle); }
+.hd-work-scope-card h4 { margin: 0 0 var(--hara-space-2); color: var(--hara-text-secondary); font-size: var(--hara-font-size-body-sm); font-weight: var(--hara-font-weight-semibold); }
+.hd-work-scope-duty-title { display: block; font-weight: var(--hara-font-weight-semibold); }
+.hd-work-scope-description { margin: var(--hara-space-1) 0 var(--hara-space-2); white-space: pre-wrap; }
+.hd-work-scope-card ul { margin: 0; padding-left: var(--hara-space-4); }
+.hd-work-scope-card li + li { margin-top: var(--hara-space-1); }
+.hd-work-scope-card dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: var(--hara-space-1) var(--hara-space-2); margin: 0; }
+.hd-work-scope-card dt { color: var(--hara-text-secondary); }
+.hd-work-scope-card dd { margin: 0; color: var(--hara-text-primary); }
+.hd-work-scope-card .hd-work-scope-directories { list-style: none; padding: 0; margin-top: var(--hara-space-3); }
+.hd-work-scope-directories li { display: grid; gap: var(--hara-space-1); }
+.hd-work-scope-directories strong { font-weight: var(--hara-font-weight-medium); }
+.hd-work-scope-directories span, .hd-work-scope-muted { color: var(--hara-text-secondary); }
+.hd-work-scope-path { font-family: var(--hara-font-mono); font-size: var(--hara-font-size-small); }
+.hd-work-scope-notice { margin: var(--hara-space-3) 0 0; color: var(--hara-text-secondary); }
+.hd-work-scope-warning { margin-top: var(--hara-space-3); padding: var(--hara-space-3); border-radius: var(--hara-radius-row); background: var(--hara-warning-soft); color: var(--hara-warning); }
+.hd-work-scope-warning button { min-height: 36px; padding: var(--hara-space-1) var(--hara-space-3); border: 1px solid var(--hara-border-default); border-radius: var(--hara-radius-row); background: var(--hara-bg-surface); color: var(--hara-text-primary); font: inherit; cursor: pointer; }
+.hd-work-scope-warning p { margin: 0 0 var(--hara-space-2); }
+.hd-work-scope-advanced { margin-top: var(--hara-space-4); color: var(--hara-text-secondary); }
+.hd-work-scope-advanced summary { padding: var(--hara-space-2) 0; cursor: pointer; }
+.hd-work-scope-advanced p { margin: var(--hara-space-2) 0 0; font-size: var(--hara-font-size-small); }
+.hd-work-scope-card code { font-family: var(--hara-font-mono); }
+.hd-work-scope-card :is(button, summary, h3):focus-visible { outline: var(--hara-focus-ring-width) solid var(--hara-focus-ring); outline-offset: var(--hara-space-1); }
+.hd-work-scope-card > footer { margin-top: var(--hara-space-4); padding-top: var(--hara-space-3); border-top: 1px solid var(--hara-border-subtle); color: var(--hara-text-secondary); font-size: var(--hara-font-size-body-sm); }
+@media (prefers-reduced-motion: reduce) { .hd-work-scope-card * { scroll-behavior: auto; } }
