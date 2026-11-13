@@ -36,3 +36,14 @@ export function pastedImageFile(data: Pick<DataTransfer, "items"> | null | undef
   if (items.some(item => item.kind === "string" && item.type === "text/plain")) return null;
   return items.find(item => item.kind === "file" && item.type.startsWith("image/"))?.getAsFile() ?? null;
 }
+/** Room kept in the 24000-character draft for the path Core returns (absolute project path + 64-hex name). */
+export const PASTE_PATH_ROOM = 600;
+export type PasteNoticeKey = "pasteUnsupported" | "pasteType" | "pasteTooLarge" | "pasteBusy" | "pasteDraftFull" | "pasteInterrupted" | "pasteFailed" | "pastingImage" | "pastedImage";
+/** Says what actually went wrong: too large, the workspace changed mid-upload, a refused type, or a plain failure. */
+export function pasteFailureNotice(error: unknown, scopeChanged: boolean): PasteNoticeKey {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("image_too_large")) return "pasteTooLarge";
+  if (scopeChanged || message.includes("generation changed")) return "pasteInterrupted";
+  if (message.includes("image_type")) return "pasteType";
+  return "pasteFailed";
+}

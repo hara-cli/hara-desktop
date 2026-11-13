@@ -67,7 +67,7 @@ import { useWorkspaceUpdater, WorkspaceUpdateNotice } from "./WorkspaceSoftwareU
 import { OnboardingResumeCard, useWorkspaceOnboarding, WorkspaceOnboarding } from "./WorkspaceOnboarding";
 import { ONBOARDING_STEP_VIEWS } from "./onboarding-steps";
 import { isImeCompositionKey, sendsOnEnter } from "./ime";
-import { MAX_PASTE_IMAGE_BYTES, PASTE_IMAGE_TYPES, pastedImageFile } from "./workspace-media";
+import { MAX_PASTE_IMAGE_BYTES, PASTE_IMAGE_TYPES, PASTE_PATH_ROOM, pasteFailureNotice, pastedImageFile, type PasteNoticeKey } from "./workspace-media";
 const BrowserExtension = lazy(() => import("./WorkspaceBrowserExtension"));
 
 type Translate = ReturnType<typeof makeT>;
@@ -294,7 +294,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
   const [moreOpen, setMoreOpen] = useState(false), [findOpen, setFindOpen] = useState(false), [findQuery, setFindQuery] = useState("");
   const [findResult, setFindResult] = useState({ count: 0, index: 0 });
   const [exporting, setExporting] = useState(false);
-  const [mentionOpen, setMentionOpen] = useState(false), [attaching, setAttaching] = useState(false);
+  const [mentionOpen, setMentionOpen] = useState(false), [attaching, setAttaching] = useState(false), [pasteStatus, setPasteStatus] = useState("");
   const mentionMenu = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null), manageButton = useRef<HTMLButtonElement>(null);
   const [undoNotice, setUndoNotice] = useState<UndoNotice | null>(null), [archiveBusy, setArchiveBusy] = useState(false);
@@ -566,16 +566,22 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     finally { setAttaching(false); }
   };
   const pasteImage = async (file: File) => {
-    const tell = (key: "pasteUnsupported" | "pasteType" | "pasteTooLarge" | "pasteFailed") => setUndoNotice({ id: ++toastCounter.current, scope, text: r(key) });
+    // Every outcome is shown (toast) and said (the composer's always-present live line), never dropped silently.
+    const tell = (key: PasteNoticeKey) => { const text = r(key); setPasteStatus(text); setUndoNotice({ id: ++toastCounter.current, scope, text }); };
     if (!model.supportsMediaImport()) { tell("pasteUnsupported"); return; }
     if (!PASTE_IMAGE_TYPES.includes(file.type)) { tell("pasteType"); return; }
     if (file.size > MAX_PASTE_IMAGE_BYTES) { tell("pasteTooLarge"); return; }
-    if (attaching || disconnected) return; setAttaching(true); const selectedScope = model.mediaScope;
+    if (attaching) { tell("pasteBusy"); return; }
+    if (disconnected) { tell("pasteFailed"); return; }
+    // Room for the returned path (absolute project path + 64-hex name) is checked before anything is sent.
+    if (model.getSnapshot().draft.trimEnd().length + PASTE_PATH_ROOM > 24000) { tell("pasteDraftFull"); return; }
+    setAttaching(true); tell("pastingImage"); const selectedScope = model.mediaScope;
     try { const { path } = await model.importPastedImage(new Uint8Array(await file.arrayBuffer()), file.type, selectedScope);
-      if (selectedScope !== model.mediaScope) return;
-      const next = `${model.getSnapshot().draft.trimEnd()}\n${path}\n`; if (next.length > 24000) throw new Error("Draft exceeds limit");
-      model.setDraft(next); input.current?.focus();
-    } catch (error) { tell(error instanceof Error && error.message.includes("image_too_large") ? "pasteTooLarge" : "pasteFailed"); }
+      if (selectedScope !== model.mediaScope) { tell("pasteInterrupted"); return; }
+      const next = `${model.getSnapshot().draft.trimEnd()}\n${path}\n`;
+      if (next.length > 24000) { tell("pasteDraftFull"); return; }
+      model.setDraft(next); input.current?.focus(); tell("pastedImage");
+    } catch (error) { tell(pasteFailureNotice(error, selectedScope !== model.mediaScope)); }
     finally { setAttaching(false); }
   };
   const findMessage = (index: number) => { if (scroll.current) setFindResult(findTranscriptMatch(scroll.current, findQuery, index)); };
@@ -785,6 +791,7 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
           <button type="button" className="hs-send wsd-send" onClick={submitComposer} disabled={asyncTarget ? !canAnswerAsync : !canSend} aria-label={t(asyncTarget ? "ws.question.async.send" : "ws.composer.send")}><PaperAirplaneIcon className="hico" /></button>
         </div></div>
         {view.runtimeBlocked && !question && !busy ? <p role="status">{t("ws.runtimeAccess.runBlocked")} <button type="button" className="hs-btn sec" onClick={() => { if (view.agentId) { setInspectorSettingsRequest({ scope, agentId: view.agentId, serial: ++inspectorRequestSerial.current }); setInspector(true); } }}>{t("ws.runtimeAccess.openInspector")}</button></p> : null}
+        <span className="sr-only" aria-live="polite" data-paste-status>{pasteStatus}</span>
         {view.draft.trim() ? <p className="hs-hint"><span>{t("ws.composer.hint.keys")}</span></p> : null}</footer> : null}
     </main>
     {showColleagueInspector && agent && workspace ? <WorkspaceColleagueInspector key={`${workspace.workspaceId}:${workspace.resourceGeneration}:${agent.agentId}:${renameAgentId === agent.agentId ? "rename" : "manage"}`} extensionsModel={model} initialProfileOpen={renameAgentId === agent.agentId} settingsRequest={inspectorSettingsRequest?.scope === scope && inspectorSettingsRequest.agentId === agent.agentId ? inspectorSettingsRequest.serial : undefined} onSettingsRequestConsumed={consumeInspectorSettingsRequest} agent={agent} workspace={workspace} features={features} supported={scheduleSupported} locale={locale} error={featuresError} inert={Boolean(modalOpen)} onClose={() => { setInspector(false); setRenameAgentId(null); manageButton.current?.focus(); }} onRefresh={() => void refreshFeatures()}

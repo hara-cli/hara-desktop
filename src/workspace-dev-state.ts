@@ -263,7 +263,7 @@ export class WorkspaceDevModel {
       if (index < chunks.length - 1 && (result as { received?: unknown } | null)?.received !== index + 1) throw new Error("Workspace media unavailable");
     }
     const done = result as { path?: unknown; media?: WorkspaceMedia } | null;
-    if (expectedScope !== this.mediaScope || !done || typeof done.path !== "string" || !done.path || !/[\\/]attachments[\\/][a-f0-9]{64}\.(?:png|jpg|gif|webp)$/u.test(done.path)
+    if (expectedScope !== this.mediaScope || !done || typeof done.path !== "string" || !done.path || !done.path.endsWith(`${{ "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp" }[mime]}`) || !/[\\/]attachments[\\/][a-f0-9]{64}\.(?:png|jpg|gif|webp)$/u.test(done.path)
       || !done.media || !/^[a-f0-9]{64}$/u.test(done.media.id) || done.media.mime !== mime || done.media.bytes !== bytes.length) throw new Error("Workspace media unavailable");
     return { path: done.path, media: done.media };
   }
