@@ -2,6 +2,7 @@ import { SettingsActionResult } from "./SettingsActionDialog";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { SettingsAdvanced } from "./SettingsChrome";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
+import { settingsTranslator } from "./settings-device-copy";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { checkDesktopUpdate, DesktopUpdaterArchitectureError } from "./desktop-updater";
 import { WorkspaceUpdater, updateDefaults, UPDATE_SNOOZE_KEY } from "./workspace-updater-state";
@@ -76,7 +77,7 @@ export function WorkspaceBootUpdate() {
 export function WorkspaceSoftwareUpdate({ controller, info }: { controller: WorkspaceUpdater; info: DesktopVersionInfo | null }) {
   const value = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [copied, setCopied] = useState(false), [copyFailed, setCopyFailed] = useState(false);
-  const { locale, t } = useWorkspaceLocale();
+  const { locale, t: baseT } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   const copyVersion = async () => {
     if (!info) return; setCopyFailed(false);
     try { await navigator.clipboard.writeText(`Hara Desktop ${info.desktop}\nCore ${info.engine}\n${info.channel} / ${info.arch}`); setCopied(true); }

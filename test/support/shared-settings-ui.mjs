@@ -1,3 +1,4 @@
+import * as settingsDeviceCopy from "../../src/settings-device-copy.ts";
 import { buildSync } from "esbuild";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -7,6 +8,7 @@ import { fileURLToPath } from "node:url";
 // Native dialog visibility and focus are exercised by the browser interaction regression.
 const modules = new Map();
 export function sharedSettingsUi(name) {
+  if (name === "./settings-device-copy") return settingsDeviceCopy;
   if (!["./SettingsActionDialog", "./SettingsChrome", "./SettingsConnectionModelField"].includes(name)) throw new Error("Unknown shared settings UI module");
   if (!modules.has(name)) {
     const url = new URL(`../../src/${name.slice(2)}.tsx`, import.meta.url);
