@@ -84,6 +84,6 @@ test("a running download is pinned at the top of the engine page with its cancel
   assert.ok(shell.indexOf("download-op1") < shell.indexOf("wsd-runtime-settings"), "pinned above the page content");
 });
 
-test("the 1.2.2 proxy fold lines are left exactly as on integrate (merged back separately in S1c)", () => {
-  assert.match(source, /\n    <WorkspaceRuntimeProxy key=\{`\$\{workspace\.workspaceId\}:\$\{workspace\.resourceGeneration\}`\} model=\{model\} workspaceId=\{workspace\.workspaceId\} generation=\{workspace\.resourceGeneration\} onDirty=\{onDirty\} \/>\n    <button disabled=\{detecting \|\| pending\}/);
+test("the 1.2.2 proxy fold (6a9757d) arrives with the main merge; S1c later swaps it for SettingsAdvanced", () => {
+  assert.match(source, /\n    <details className="wsd-runtime-details wsd-runtime-proxy-advanced"><summary>\{t\("ws\.runtimeProxy\.advanced"\)\}<\/summary>\n      <WorkspaceRuntimeProxy key=\{`\$\{workspace\.workspaceId\}:\$\{workspace\.resourceGeneration\}`\} model=\{model\} workspaceId=\{workspace\.workspaceId\} generation=\{workspace\.resourceGeneration\} onDirty=\{onDirty\} \/><\/details>\n    <button disabled=\{detecting \|\| pending\}/);
 });
