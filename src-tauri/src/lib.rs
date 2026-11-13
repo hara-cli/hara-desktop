@@ -934,15 +934,14 @@ fn development_home_override(
         std::env::var_os("USERPROFILE").map(PathBuf::from),
         cfg!(windows),
     ) {
-        if real_home.canonicalize().ok().as_ref() == Some(&home) {
+        if dunce::canonicalize(&real_home).ok().as_ref() == Some(&home) {
             return Err("development home must not be the installed application's home".into());
         }
     }
     let metadata = fs::symlink_metadata(&home).map_err(|_| "development home is unavailable")?;
     if !metadata.is_dir()
         || metadata.file_type().is_symlink()
-        || home
-            .canonicalize()
+        || dunce::canonicalize(&home)
             .map_err(|_| "development home cannot be resolved")?
             != home
     {
@@ -1177,8 +1176,8 @@ fn checked_workspace_dev_directory(path: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path).map_err(|_| "Workspace Dev directory unavailable")?;
     if !metadata.is_dir()
         || metadata.file_type().is_symlink()
-        || path
-            .canonicalize()
+        // dunce: on Windows std returns \\?\C:\..., which never equals the plain path (HARA-FB-001698).
+        || dunce::canonicalize(path)
             .map_err(|_| "Workspace Dev directory cannot be resolved")?
             != path
     {
@@ -1318,7 +1317,18 @@ fn workspace_root() -> Result<PathBuf, String> {
     if let Some(root) = std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").map(PathBuf::from) {
         checked_workspace_dev_directory(&root)?; return Ok(root);
     }
-    let data = hara_data_dir()?; create_private_workspace_directory(&data)?;
+    formal_workspace_root_at(hara_data_dir()?)
+}
+
+fn formal_workspace_root_at(data: PathBuf) -> Result<PathBuf, String> {
+    // Windows: resolve the account Home's on-disk form (8.3 short names, casing) once, so the canonical
+    // checks below compare like with like. Unix keeps refusing a symlinked Home exactly as before.
+    #[cfg(windows)]
+    let data = match data.parent() {
+        Some(home) => dunce::canonicalize(home).map_err(|_| "Cannot resolve the account Home")?.join(".hara"),
+        None => data,
+    };
+    create_private_workspace_directory(&data)?;
     let root = data.join("workspaces-v1"); create_private_workspace_directory(&root)?; Ok(root)
 }
 
@@ -1369,7 +1379,7 @@ fn redesign_candidate_preflight(identifier: &str) -> Result<(), String> {
     let root = std::env::var_os("HARA_DESKTOP_WORKSPACE_ROOT").map(PathBuf::from)
         .ok_or("Redesign candidate requires its explicit private Workspace root")?;
     checked_workspace_dev_directory(&root)?;
-    let temporary = std::env::temp_dir().canonicalize().map_err(|_| "Cannot verify candidate temporary root")?;
+    let temporary = dunce::canonicalize(std::env::temp_dir()).map_err(|_| "Cannot verify candidate temporary root")?;
     let home = user_home()?;
     checked_workspace_dev_directory(&home)?;
     if !root.starts_with(&temporary) || !home.starts_with(&temporary) || root == home || root.parent() != home.parent() {
@@ -1386,7 +1396,7 @@ fn legacy_source_home(os_home: &Path, debug: bool, isolated_candidate: bool, req
     if isolated_candidate {
         let source = requested.ok_or("Isolated candidate requires an explicit legacy fixture source")?;
         checked_workspace_dev_directory(&source)?;
-        let temporary = std::env::temp_dir().canonicalize().map_err(|_| "Cannot verify candidate fixture root")?;
+        let temporary = dunce::canonicalize(std::env::temp_dir()).map_err(|_| "Cannot verify candidate fixture root")?;
         if source == os_home || !source.starts_with(&temporary) { return Err("Candidate legacy source must be a private temporary fixture".into()); }
         let marker: serde_json::Value = serde_json::from_str(&read_private_native_document_at(&source.join(".hara/local-inheritance-fixture-v1.json"))?)
             .map_err(|_| "Invalid candidate legacy source fixture marker")?;
@@ -1402,11 +1412,36 @@ fn legacy_source_home(os_home: &Path, debug: bool, isolated_candidate: bool, req
 // Outcome-unknown startup is retained. Retrying attachment must not spawn a second Core.
 static WORKSPACE_START_LOCK: std::sync::Mutex<Option<OwnedWorkspaceStartup>> = std::sync::Mutex::new(None);
 
+// Startup diagnostics (HARA-FB-001698): fixed native failure text, never tokens or renderer input, kept
+// next to the account's .hara data. Core's stderr goes to a file (not a pipe) because the engine may
+// outlive Desktop; it is replaced on each new engine start.
+const MAX_WORKSPACE_STARTUP_LOG_BYTES: u64 = 256 * 1024;
+fn private_log_file(path: &Path, truncate: bool) -> Option<fs::File> {
+    if fs::symlink_metadata(path).is_ok_and(|metadata| !metadata.is_file()) { return None; }
+    let mut options = fs::OpenOptions::new();
+    options.create(true);
+    if truncate { options.write(true).truncate(true); } else { options.append(true); }
+    #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
+    options.open(path).ok()
+}
+fn append_workspace_startup_log_at(data: &Path, message: &str) {
+    if !data.is_dir() { return; }
+    let path = data.join("workspace-startup.log");
+    let rotate = fs::metadata(&path).is_ok_and(|metadata| metadata.len() > MAX_WORKSPACE_STARTUP_LOG_BYTES);
+    let Some(mut file) = private_log_file(&path, rotate) else { return };
+    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|value| value.as_secs()).unwrap_or(0);
+    let _ = writeln!(file, "{time} desktop={} os={} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, message.replace(['\r', '\n'], " "));
+}
+fn append_workspace_startup_log(message: &str) {
+    if let Ok(data) = hara_data_dir() { append_workspace_startup_log_at(&data, message); }
+}
+
 fn observe_owned_workspace_start(pending: &mut Option<OwnedWorkspaceStartup>, wait: std::time::Duration) -> Result<WorkspaceDevConnection, String> {
     let deadline = std::time::Instant::now() + wait;
     loop {
         let owned = pending.as_mut().ok_or("No owned Workspace startup")?;
-        if owned.child.try_wait().map_err(|_| "Cannot inspect owned Workspace startup")?.is_some() {
+        if let Some(status) = owned.child.try_wait().map_err(|_| "Cannot inspect owned Workspace startup")? {
+            if let Some(data) = owned.root.parent() { append_workspace_startup_log_at(data, &format!("engine exited before connecting: {status}")); }
             *pending = None; return Err("Workspace Core startup failed; original data preserved".into());
         }
         if let Ok(value) = workspace_connection_at(&owned.root) {
@@ -1430,6 +1465,84 @@ mod workspace_locale_tests {
         assert_eq!(validated_workspace_locale(None).unwrap(), "en");
         for locale in ["en", "zh-Hans", "zh-Hant", "zh-HK"] { assert_eq!(validated_workspace_locale(Some(locale)).unwrap(), locale); }
         for value in ["zh", "../../secret", "en\nHARA_HOME=/tmp", "en;echo injected", "en-US", ""] { assert!(validated_workspace_locale(Some(value)).is_err()); }
+    }
+}
+
+// HARA-FB-001698: the formal Workspace root lives under %USERPROFILE%, a plain drive path such as
+// C:\Users\name\.hara. These run only on Windows CI (never locally on macOS/Linux).
+#[cfg(all(test, windows))]
+mod windows_workspace_root_tests {
+    use super::*;
+
+    fn profile_base(label: &str) -> PathBuf {
+        let profile = PathBuf::from(std::env::var_os("USERPROFILE").expect("USERPROFILE"));
+        let base = profile.join(format!("hara-win-root-test-{label}-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir(&base).unwrap();
+        base
+    }
+
+    #[test]
+    fn plain_profile_paths_are_accepted_like_workspace_root() {
+        let base = profile_base("plain");
+        let data = base.join(".hara");
+        create_private_workspace_directory(&data).unwrap();
+        let root = data.join("workspaces-v1");
+        create_private_workspace_directory(&root).unwrap();
+        create_private_workspace_directory(&root).unwrap(); // an existing directory on the next launch
+        checked_workspace_dev_directory(&root).unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn junctions_are_still_refused() {
+        let base = profile_base("junction");
+        let target = base.join("target");
+        fs::create_dir(&target).unwrap();
+        let link = base.join("link");
+        assert!(std::process::Command::new("cmd").args(["/C", "mklink", "/J"]).arg(&link).arg(&target).status().unwrap().success());
+        assert!(checked_workspace_dev_directory(&link).is_err());
+        assert!(create_private_workspace_directory(&link).is_err());
+        fs::remove_dir(&link).unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn formal_root_resolves_short_name_homes() {
+        // The hosted runner's %TEMP% uses an 8.3 short name (RUNNER~1), like some real account Homes.
+        let home = std::env::temp_dir().join(format!("hara-win-short-home-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir(&home).unwrap();
+        let root = formal_workspace_root_at(home.join(".hara")).unwrap();
+        assert_eq!(root, dunce::canonicalize(&home).unwrap().join(".hara").join("workspaces-v1"));
+        assert!(!root.to_string_lossy().starts_with(r"\\?\"));
+        checked_workspace_dev_directory(&root).unwrap();
+        assert_eq!(formal_workspace_root_at(home.join(".hara")).unwrap(), root); // next launch
+        fs::remove_dir_all(dunce::canonicalize(&home).unwrap()).unwrap();
+    }
+
+    // prepackage only: Desktop's exact startup path (root -> spawn -> discovery -> connection) with the
+    // real Core sidecar that run just built, under an isolated HOME/USERPROFILE carrying a smoke marker.
+    #[test]
+    #[ignore = "prepackage only: real Core sidecar on PATH and an isolated smoke Home"]
+    fn real_sidecar_workspace_startup() {
+        let home = user_home().unwrap();
+        assert!(home.join("hara-smoke-home.marker").is_file(), "refusing to start an engine outside the isolated smoke Home");
+        let mut result = connect_or_start_workspace(Some("en".into()));
+        for _ in 0..8 {
+            match &result {
+                Err(error) if error.starts_with("Workspace startup is not yet confirmed") => result = connect_or_start_workspace(Some("en".into())),
+                _ => break,
+            }
+        }
+        let connection = result.unwrap();
+        assert_eq!(connection.execution_mode, "workspace");
+        assert!(connection.port > 0 && connection.token.len() == 64);
+        let root = workspace_root().unwrap();
+        assert_eq!(PathBuf::from(&connection.root), root);
+        std::net::TcpStream::connect(("127.0.0.1", connection.port)).unwrap();
+        let (_, record) = read_private_discovery_at(&root.join("home/.hara/workspace-runtime/serve-v2.json")).unwrap();
+        let _ = std::process::Command::new("taskkill").args(["/PID", &record.pid.to_string(), "/T", "/F"]).status();
     }
 }
 
@@ -1478,8 +1591,10 @@ fn connect_or_start_workspace(client_locale: Option<String>) -> Result<Workspace
     if let Some(shell) = shell { command.env("HARA_WORKSPACE_HOST_SHELL", shell); }
     if let Some(value) = search_path { command.env("PATH", value); }
     if let Some(value) = system_root { command.env("SystemRoot", value); }
+    let stderr = root.parent().and_then(|data| private_log_file(&data.join("workspace-core-stderr.log"), true))
+        .map(std::process::Stdio::from).unwrap_or_else(std::process::Stdio::null);
     command.args(["workspace", "serve", "--root"]).arg(&root).args(["--port", "0"])
-        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(stderr);
     #[cfg(unix)] { use std::os::unix::process::CommandExt; command.process_group(0); }
     #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
     let child = command.spawn().map_err(|_| "Cannot start Workspace Core")?;
@@ -1489,9 +1604,90 @@ fn connect_or_start_workspace(client_locale: Option<String>) -> Result<Workspace
 
 #[tauri::command]
 async fn workspace_connection(client_locale: Option<String>) -> Result<WorkspaceDevConnection, String> {
-    let connection = tauri::async_runtime::spawn_blocking(move || connect_or_start_workspace(client_locale)).await.map_err(|_| "Workspace startup worker unavailable".to_string())??;
+    let result = tauri::async_runtime::spawn_blocking(move || connect_or_start_workspace(client_locale)).await.map_err(|_| "Workspace startup worker unavailable".to_string())?;
+    let connection = result.inspect_err(|error| append_workspace_startup_log(&format!("connection failed: {error}")))?;
     workspace_media::remember(connection.port, &connection.token);
     Ok(connection)
+}
+
+// The updater may install without the engine's idle lease only when Desktop can show that no Workspace
+// engine is running or starting for the formal root. Any doubt answers false (HARA-FB-001698).
+fn workspace_engine_stopped_at(root: &Path) -> bool {
+    let discovery = root.join("home/.hara/workspace-runtime/serve-v2.json");
+    match fs::symlink_metadata(&discovery) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(_) => false,
+        Ok(_) => matches!(read_private_discovery_at(&discovery), Ok((_, record)) if !process_is_alive(record.pid)),
+    }
+}
+
+#[tauri::command]
+fn workspace_engine_stopped() -> bool {
+    let Ok(pending) = WORKSPACE_START_LOCK.try_lock() else { return false };
+    if pending.is_some() { return false; }
+    // A refused root never reached spawn; still inspect the default location rather than assume.
+    match workspace_root().or_else(|_| hara_data_dir().map(|data| data.join("workspaces-v1"))) {
+        Ok(root) => workspace_engine_stopped_at(&root),
+        Err(_) => false,
+    }
+}
+
+#[cfg(all(test, unix))]
+mod workspace_startup_log_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    #[test]
+    fn startup_log_is_private_single_line_bounded_and_skips_missing_data() {
+        let data = std::env::temp_dir().canonicalize().unwrap().join(format!("hara-startup-log-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        append_workspace_startup_log_at(&data, "not written");
+        assert!(!data.exists(), "logging never creates the data directory");
+        fs::create_dir(&data).unwrap();
+        append_workspace_startup_log_at(&data, "connection failed: Workspace Dev requires canonical non-symlink directories\ninjected");
+        let path = data.join("workspace-startup.log");
+        let text = fs::read_to_string(&path).unwrap();
+        assert_eq!(text.lines().count(), 1); assert!(text.contains("connection failed: Workspace Dev requires") && text.contains("desktop="));
+        assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        fs::write(&path, vec![b'x'; (MAX_WORKSPACE_STARTUP_LOG_BYTES + 1) as usize]).unwrap();
+        append_workspace_startup_log_at(&data, "after rotation");
+        assert!(fs::metadata(&path).unwrap().len() < 1024);
+        fs::remove_dir_all(&data).unwrap();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod workspace_engine_stopped_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn runtime_root() -> PathBuf {
+        let root = std::env::temp_dir().canonicalize().unwrap().join(format!("hara-engine-stopped-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir_all(root.join("home/.hara/workspace-runtime")).unwrap();
+        fs::set_permissions(root.join("home/.hara/workspace-runtime"), fs::Permissions::from_mode(0o700)).unwrap();
+        root
+    }
+    fn discovery(root: &Path, pid: u32) {
+        let path = root.join("home/.hara/workspace-runtime/serve-v2.json");
+        fs::write(&path, serde_json::to_vec(&serde_json::json!({"pid": pid})).unwrap()).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    }
+
+    #[test]
+    fn only_a_missing_or_dead_engine_counts_as_stopped() {
+        let root = runtime_root();
+        assert!(workspace_engine_stopped_at(&root));
+        discovery(&root, std::process::id());
+        assert!(!workspace_engine_stopped_at(&root), "a live engine keeps the idle lease requirement");
+        let mut child = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+        let dead = child.id(); child.wait().unwrap();
+        discovery(&root, dead);
+        assert!(workspace_engine_stopped_at(&root));
+        let path = root.join("home/.hara/workspace-runtime/serve-v2.json");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(!workspace_engine_stopped_at(&root), "an unsafe discovery is never treated as stopped");
+        fs::remove_dir_all(&root).unwrap();
+    }
 }
 
 fn workspace_lab_preflight(
@@ -3789,6 +3985,7 @@ pub fn run() {
             desktop_update_info,
             desktop_check_update,
             desktop_restart_for_update,
+            workspace_engine_stopped,
             classify_attachment_paths,
             write_temp_image,
             read_presentation_image,

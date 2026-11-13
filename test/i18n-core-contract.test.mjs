@@ -13,6 +13,13 @@ test('CI 7/8: every Core code has stable locale keys; all copied resources match
  for(const row of errors.errors){assert.equal(typeof en[row.key],'string');assert.equal(typeof zh[row.key],'string');assert.equal(workspaceCoreMessage(row.key,'en'),en[row.key]);}
  assert.deepEqual(LOCALE_REGISTRY.languages.filter(row=>row.status==='stable').map(row=>row.tag),['en','zh-Hans']);assert.deepEqual(localeDescriptor('zh-Hant').fallback,['en']);
 });
+test('Core i18n provenance names the exact pinned sidecar commit, as the release signer re-syncs it',()=>{
+ // build-mac-signed.sh -> refresh-sidecar.sh rewrites CORE_I18N_SOURCE.json from SIDECAR_COMMIT and then
+ // requires a clean tree; a stale coreCommit stamp failed the v1.2.0 signer after notarization.
+ const manifest=JSON.parse(read('CORE_I18N_SOURCE.json'));
+ const pinned=fs.readFileSync(new URL('../src-tauri/binaries/SIDECAR_COMMIT',import.meta.url),'utf8').trim();
+ assert.match(pinned,/^[0-9a-f]{40}$/);assert.equal(manifest.coreCommit,pinned);
+});
 test('known errors localize while unknown/invalid parameter data stays generic with bounded technical detail',()=>{
  for(const tag of ['en','zh-Hans']){const e=new WorkspacePublicRpcError(-32602,{code:'message_invalid',params:{},technicalDetail:'diagnostic'},'old raw message',tag);assert.equal(String(e),'core.error.message_invalid');assert.equal(workspaceErrorState(e).errorTechnicalDetail,'diagnostic');assert(!e.message.includes('raw message'));}
  for(const data of [{code:'future',params:{}},{code:'message_invalid',params:{credential:'secret'}},{code:'message_invalid',params:[]}]){const e=new WorkspacePublicRpcError(-32602,data,'raw technical','en');assert.equal(e.publicCode,'request_failed');assert.equal(String(e),'core.error.request_failed');assert(e.message.startsWith('The operation failed'));}

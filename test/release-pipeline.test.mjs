@@ -632,13 +632,19 @@ test("release asset transfers retry only bounded GitHub transport failures with 
 
   const script = readFileSync(join(root, "scripts/release-mac-assets.sh"), "utf8");
   assert.match(script, /readonly RELEASE_TRANSFER_ATTEMPTS=3/);
+  assert.match(script, /readonly RELEASE_DOWNLOAD_ATTEMPTS=6/);
+  assert.match(script, /readonly RELEASE_UPLOAD_ATTEMPTS=5/);
+  assert.match(script, /local -a table=\(15 30 60 120 240\)/);
   assert.match(script, /attempt <= RELEASE_TRANSFER_ATTEMPTS/g);
   assert.match(script, /release_view_with_retry\(\)/);
   assert.match(script, /release state read hit a transient GitHub transport failure/);
   assert.match(script, /release_github_transport/);
   assert.match(script, /HARA_GITHUB_RELEASE_PROXY/);
   assert.match(script, /HARA_GITHUB_RELEASE_FALLBACK_PROXY/);
-  assert.match(script, /release_github_proxy_works/);
+  assert.match(script, /HARA_GITHUB_RELEASE_PROXY_CANDIDATES/);
+  assert.match(script, /release-proxy-select\.mjs "\$\{RELEASE_PROXY_CANDIDATES\[@\]\}"/);
+  assert.match(script, /release_failover_github_proxy\(\)/);
+  assert.doesNotMatch(script, /release_github_proxy_works/, "a small 200 is no longer accepted as a usable route");
   assert.match(script, /export NO_PROXY=/);
   assert.match(script, /export no_proxy=/);
   assert.match(script, /export HTTPS_PROXY="\$RELEASE_GITHUB_PROXY"/);
@@ -652,35 +658,30 @@ test("release asset transfers retry only bounded GitHub transport failures with 
   assert.match(script, /mktemp -d "\$WORK\/release-download\.XXXXXX"/);
   assert.match(script, /chmod 600 "\$log"/);
   assert.match(script, /github-release-transfer-retry\.mjs "\$log"/);
-  assert.match(script, /release_download_with_api_fallback\(\)/);
   assert.match(script, /github-release-api-download\.mjs/);
-  assert.match(script, /digest-verified per-asset API downloads/);
-  assert.match(script, /release view "\$TAG" -R "\$REPO" --json assets/);
-  assert.match(script, /release-download-cache\.mjs "\$metadata" "\$stage"/);
-  assert.match(script, /--skip-existing/);
+  assert.match(script, /release-asset-digests\.mjs small "\$metadata"/);
+  assert.match(script, /release-download-cache\.mjs "\$small" "\$stage"/);
   assert.match(script, /--complete/);
-  assert.match(script, /release_download_all "\$ASSET_DIR" "hidden draft download"/);
-  assert.match(script, /release_download_all "\$REMOTE_DIR" "signed draft verification download"/);
-  assert.match(script, /release_download_all "\$PUBLIC_DIR" "public immutable release download"/);
+  assert.match(script, /release_download_small "\$ASSET_DIR" "hidden draft signature download"/);
+  assert.match(script, /release_download_small "\$REMOTE_DIR" "signed draft signature download"/);
+  assert.match(script, /release_download_small "\$PUBLIC_DIR" "public immutable release signature download"/);
+  // 1.2.3: the signer never downloads the draft or the public release in bulk.
+  assert.doesNotMatch(script, /release_download_all|github-release-download\.mjs|gh release download|--skip-existing|--pattern/);
   assert.match(script, /release_upload_signed_assets/);
-  assert.match(script, /release_upload_signed_asset "\$asset_path"/);
+  assert.match(script, /release_upload_signed_asset "\$ASSET_DIR\/\$asset_name"/);
   assert.match(script, /release_remote_asset_matches "\$asset_path"/);
   assert.match(script, /release-asset-digest-match\.mjs "\$metadata" "\$source"/);
-  assert.match(
-    script,
-    /release_gh_download "\$TAG" "\$REPO" "\$stage"[\s\S]*?--pattern "\$asset_name"/,
-  );
-  assert.match(script, /cmp -s "\$source" "\$stage\/\$asset_name"/);
+  assert.match(script, /run-with-deadline\.mjs "\$deadline"[\s\S]*?gh release upload "\$TAG" -R "\$REPO" --clobber "\$asset_path"/);
   assert.match(script, /ReleaseAsset\.name already exists/);
   assert.match(script, /retrying only this --clobber asset/);
-  assert.match(script, /for asset_path in "\$\{assets\[@\]\}"/);
+  assert.match(script, /for asset_name in "\$\{REPLACED_ASSETS\[@\]\}"/);
   assert.match(script, /retrying only this asset/);
   assert.doesNotMatch(
     script,
     /retrying the complete clobber set/,
     "a partial upload must never replay all signed assets",
   );
-  assert.match(script, /retrying with only digest-verified completed assets/);
+  assert.match(script, /resuming verified\/partial files/);
   assert.doesNotMatch(script, /retrying from a fresh private staging directory/);
 });
 
@@ -771,10 +772,11 @@ test("release API fallback accepts only repository-bound assets and exact downlo
           "2",
           "--connect-timeout",
           "20",
+          // timeoutMs 1_000 minus the 30 s margin, floored at 1 s (release-transfer.test.mjs covers sizes)
           "--max-time",
-          "570",
+          "1",
           "--speed-limit",
-          "1024",
+          "32768",
           "--speed-time",
           "60",
           "--continue-at",
@@ -1177,11 +1179,12 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.match(assembleJob, /gh release upload[\s\S]*release-source-archive/);
   assert.match(assembleJob, /sha256sum -c source-packs\.sha256/);
   assert.match(assembleJob, /rm -f "\$SOURCE_ARCHIVE"/);
-  assert.match(signJob, /Materialize exact release sources from the digest-bound Release archive/);
+  assert.match(signJob, /Materialize exact release sources from the local SSH mirror/);
   assert.match(signJob, /source-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.match(signJob, /needs: \[prepare_release, create_draft, assemble_draft, promotion_preflight\]/);
   assert.match(signJob, /"\$@" <&0 &/);
-  assert.doesNotMatch(signJob, /\bgit\b.*\bfetch\b/);
+  // Code is fetched only from the local SSH mirror (test/release-flow-a.test.mjs pins this).
+  assert.doesNotMatch(signJob, /\bgit\b[^\n]*\bfetch\b[^\n]*https?:/);
   assert.doesNotMatch(signJob, /SOURCE_ARTIFACT_ID:/);
   assert.match(signJob, /RELEASE_ID: \$\{\{ needs\.create_draft\.outputs\.release_id \}\}/);
   assert.match(signJob, /SOURCE_ARTIFACT_DIGEST: \$\{\{ needs\.prepare_release\.outputs\.source_artifact_digest \}\}/);
@@ -1198,7 +1201,6 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.doesNotMatch(signJob, /gh release verify "\$RELEASE_TAG"/);
   assert.match(signJob, /public attestation verification is delegated to the read-only hosted job/);
   assert.match(signJob, /\.digest == \$digest/);
-  assert.match(signJob, /releases\/assets\/\$SOURCE_ASSET_ID/);
   assert.match(signJob, /header = "Authorization: Bearer %s"/);
   assert.match(signJob, /GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
   assert.match(signJob, /--http1\.1/);
@@ -1207,20 +1209,15 @@ test("signed builds select pinned Rust and preflight a dedicated unlocked keycha
   assert.doesNotMatch(signJob, /gh run download/);
   assert.match(signJob, /run_with_deadline 120 \/usr\/bin\/env GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
   assert.match(signJob, /--retry-max-time 90/);
-  assert.match(signJob, /run_with_deadline 600 \/usr\/bin\/env GH_TOKEN='' GITHUB_TOKEN='' \/usr\/bin\/curl/);
-  assert.match(signJob, /--retry-max-time 540/);
-  assert.match(signJob, /--continue-at -/);
-  assert.match(signJob, /--output "\$ARTIFACT_PARTIAL"/);
-  assert.match(signJob, /shasum -a 256 "\$ARTIFACT_PARTIAL"/);
-  assert.match(signJob, /shasum -a 256 -c source-packs\.sha256/);
-  assert.match(signJob, /index-pack --stdin < "\$pack_file"/);
-  assert.match(signJob, /printf '%s\\n' "\$commit_sha" > "\$target_dir\/\.git\/shallow"/);
+  assert.doesNotMatch(signJob, /run_with_deadline 600/);
+  assert.match(signJob, /fetch --quiet --no-tags --depth 1 "file:\/\/\$mirror" "\$commit_sha"/);
   assert.match(signJob, /rev-parse "\$commit_sha\^\{tree\}"/);
   assert.match(signJob, /printf '%s\\n' "\$NODE_BIN" "\$BUN_BIN" "\$CARGO_BIN" >> "\$GITHUB_PATH"/);
   assert.match(signJob, /expected_root="\$GITHUB_WORKSPACE\/source-\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT"/);
   assert.match(signJob, /\[ "\$HARA_RELEASE_SOURCE_ROOT" = "\$expected_root" \]/);
   assert.match(promotion, /HARA_RELEASE_SOURCE_ARTIFACT_DIGEST/);
-  assert.match(promotion, /remove_verified_source_archive/);
+  // 1.2.3: the source archive is bound by GitHub's server-side digest instead of a download.
+  assert.match(promotion, /require_source_archive_digest\(\)/);
   assert.match(promotion, /trusted prepare-job digest/);
   assert.match(signJob, /HARA_DEFER_PUBLIC_EDGE_VERIFY: "1"/);
   assert.match(publicJob, /needs: \[prepare_release, sign_and_promote\]/);
@@ -1354,10 +1351,10 @@ test("foreign Intel static validation is limited to the exact protected tag sign
     promotion,
     /if \[ "\$expected_target" = "x86_64-apple-darwin" \]; then[\s\S]*HARA_FOREIGN_MAC_STATIC_VALIDATION=1 node scripts\/mac-dmg-smoke\.mjs[\s\S]*else[\s\S]*node scripts\/mac-dmg-smoke\.mjs "\$dmg_path" "\$expected_target"/,
   );
-  assert.match(promotion, /verify_signed_dmg public .*aarch64-apple-darwin/);
-  assert.match(promotion, /verify_signed_dmg public .*x86_64-apple-darwin/);
-  assert.match(promotion, /verify_signed_dmg remote .*aarch64-apple-darwin/);
-  assert.match(promotion, /verify_signed_dmg remote .*x86_64-apple-darwin/);
+  // 1.2.3: both DMGs are verified as the exact bytes about to be uploaded (then bound by digest);
+  // public DMGs are verified by the hosted verify_public_release job.
+  assert.match(promotion, /verify_signed_dmg upload .*aarch64-apple-darwin/);
+  assert.match(promotion, /verify_signed_dmg upload .*x86_64-apple-darwin/);
   assert.doesNotMatch(promotion, /HARA_ALLOW_ROSETTA_SMOKE/);
 });
 
@@ -1701,7 +1698,7 @@ test("prepare-release installs locked Desktop dependencies before repository reg
     const sourceGate = prepare.indexOf("Verify event source before executing repository code");
     const metadata = prepare.indexOf("run: node scripts/check-release-metadata.mjs");
     const install = prepare.indexOf(installStep);
-    const regressionTests = prepare.indexOf("run: npm test");
+    const regressionTests = prepare.indexOf("'Release prepare original full suite', 'bash', ['-c', 'exec npm test']");
     const sourcePin = prepare.indexOf("Pin exact Desktop and CLI source commits");
     assert.ok(
       sourceGate >= 0 && metadata > sourceGate && install > metadata
@@ -1935,7 +1932,7 @@ test("release CDN reads force HTTP/1.1 and stop zero-byte stalls within bounded 
 
   assert.match(
     workflow,
-    /Materialize exact release sources[\s\S]*?\/usr\/bin\/curl[\s\S]*?--http1\.1[\s\S]*?--connect-timeout 20[\s\S]*?--max-time 570[\s\S]*?--speed-limit 1024[\s\S]*?--speed-time 60/,
+    /Materialize exact release sources[\s\S]*?\/usr\/bin\/curl[\s\S]*?--http1\.1[\s\S]*?--connect-timeout 20[\s\S]*?--max-time 100[\s\S]*?--speed-limit 128[\s\S]*?--speed-time 30/,
   );
   assert.match(promotion, /release_public_curl\(\)/);
   assert.match(
@@ -1976,20 +1973,22 @@ test("a post-publication rerun switches to immutable verification without rewrit
   assert.match(branch, /HARA_DEFER_PUBLIC_EDGE_VERIFY/);
   assert.match(branch, /release_gh release verify/);
   assert.match(branch, /GitHub release attestation verification is delegated/);
-  assert.match(branch, /release_download_all/);
-  assert.match(branch, /updater-manifest\.mjs validate/);
-  assert.match(branch, /verify_signed_dmg public .*aarch64-apple-darwin/);
-  assert.match(branch, /verify_signed_dmg public .*x86_64-apple-darwin/);
+  assert.match(branch, /release-asset-digests\.mjs check-draft "\$WORK\/public-assets\.json" -env/);
+  assert.match(branch, /require_source_archive_digest "\$WORK\/public-assets\.json"/);
+  assert.match(branch, /release_download_small "\$PUBLIC_DIR"/);
+  assert.match(branch, /updater-manifest\.mjs validate "\$PUBLIC_DIR" "\$TAG" --digest-bound -env/);
+  // Public Mac bytes are verified by the hosted verify_public_release job (full public download).
+  assert.doesNotMatch(branch, /release_download_all|verify_signed_dmg public/);
   assert.match(branch, /exit 0/);
   const sourceGate = workflow.slice(
-    workflow.indexOf("Materialize exact release sources from the digest-bound Release archive"),
+    workflow.indexOf("Materialize exact release sources from the local SSH mirror"),
     workflow.indexOf("- name: Install protected signing toolchain"),
   );
   assert.match(sourceGate, /\.draft == false and[\s\S]*?\.immutable == true/);
   assert.doesNotMatch(sourceGate, /gh release verify/);
   const digestGate = sourceGate.indexOf('.digest == $digest');
-  const sourceDownload = sourceGate.indexOf('releases/assets/$SOURCE_ASSET_ID');
-  assert.ok(digestGate >= 0 && sourceDownload > digestGate);
+  const sourceMaterialization = sourceGate.indexOf('materialize_from_mirror \\');
+  assert.ok(digestGate >= 0 && sourceMaterialization > digestGate);
   assert.match(sourceGate, /public attestation verification is delegated to the read-only hosted job/);
 });
 
@@ -2086,6 +2085,61 @@ test("sidecar smoke bounds retries for transient Windows cleanup locks", () => {
     smoke,
     /rmSync\(smokeHome,\s*\{[\s\S]*?recursive:\s*true,[\s\S]*?force:\s*true,[\s\S]*?maxRetries:\s*10,[\s\S]*?retryDelay:\s*200,[\s\S]*?\}\)/,
   );
+});
+
+test("sidecar capability smoke gives Windows a bounded cold-start initialize budget", () => {
+  const smoke = readFileSync(join(root, "scripts/sidecar-smoke.mjs"), "utf8");
+  assert.match(smoke, /SERVE_DISCOVERY_TIMEOUT_MS = WINDOWS_HOST \? 45_000 : 15_000;/);
+  assert.match(smoke, /SERVE_INITIALIZE_TIMEOUT_MS = WINDOWS_HOST \? 45_000 : 10_000;/);
+  assert.match(smoke, /SERVE_CAPABILITY_COMMAND_TIMEOUT_MS = WINDOWS_HOST \? 150_000 : COMMAND_TIMEOUT_MS;/);
+  assert.match(smoke, /rpcCall\(socket, 1, "initialize", \{ token: record\.token \}, SERVE_INITIALIZE_TIMEOUT_MS\)/);
+  assert.match(smoke, /smokeHome,\s*SERVE_CAPABILITY_COMMAND_TIMEOUT_MS,\s*\)/);
+});
+
+test("sidecar capability smoke reports phase and Serve output when initialize gets no reply", {
+  skip: process.platform === "win32" ? "fake Serve is a shebang script" : false,
+}, () => {
+  const temp = mkdtempSync(join(tmpdir(), "hara-serve-capability-"));
+  try {
+    const fake = join(temp, "fake-serve.mjs");
+    // Minimal Serve stand-in: publishes discovery, accepts the WebSocket upgrade, then dies on the
+    // first frame without replying, the way a crashed or wedged initialize looks to the smoke.
+    writeFileSync(fake, `#!${process.execPath}
+import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { join } from "node:path";
+const port = Number(process.argv[process.argv.indexOf("--port") + 1]);
+const server = createServer();
+server.on("upgrade", (req, socket) => {
+  const accept = createHash("sha1").update(req.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
+  socket.write("HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: " + accept + "\\r\\n\\r\\n");
+  socket.once("data", () => {
+    process.stderr.write("FAKE_SERVE_INITIALIZE_WEDGED\\n", () => setTimeout(() => socket.destroy(), 100));
+  });
+});
+server.listen(port, "127.0.0.1", () => {
+  const dir = join(process.env.HOME, ".hara");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "serve.json"), JSON.stringify({ version: "9.9.9", port, pid: process.pid, token: "t".repeat(32) }));
+});
+`);
+    chmodSync(fake, 0o755);
+    const startedAt = Date.now();
+    const result = spawnSync(process.execPath, [join(root, "scripts/sidecar-smoke.mjs"), "--serve-capabilities", fake, "9.9.9"], {
+      cwd: temp,
+      env: { ...process.env, HOME: temp },
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    assert.notEqual(result.status, 0);
+    assert.ok(Date.now() - startedAt < 9_000, "a closed socket must not wait out the initialize budget");
+    assert.match(result.stderr, /Serve WebSocket closed before initialize response/);
+    assert.match(result.stderr, /phase=initialize elapsedMs=\d+/);
+    assert.match(result.stderr, /FAKE_SERVE_INITIALIZE_WEDGED/);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
 });
 
 test("sidecar refresh accepts both normal repositories and linked Git worktrees", () => {

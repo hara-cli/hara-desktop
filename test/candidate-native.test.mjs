@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { ROOT, INPUT, TARGETS, identity, assertEvent, nativeTarget, receipt, assertReceipt, artifactName, checkArchiveEntries, assertNoRosettaProbe } from '../scripts/candidate-common.mjs';
 import { assertSigner } from '../scripts/candidate-signing.mjs';
-import { testCounts, coreTestCommand, coreTestCoverage, assertStrictNativeCore, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
+import { testCounts, coreTestCommand, coreTestCoverage, coreTestDeadlines, assertStrictNativeCore, packageKinds, bunTarget } from '../scripts/candidate-native.mjs';
 import { updaterTarget, updaterPayload, gateEvidence, upgradeSmoke } from '../scripts/candidate-upgrade.mjs';
 import { validateTar, validateExtractedTree } from '../scripts/candidate-archive.mjs';
 import { lockedSidecarSpecs } from '../scripts/hydrate-locked-sidecar-dependencies.mjs';
@@ -40,10 +40,17 @@ test('evidence binding rejects missing, conflicting and poisoned environment bef
 });
 test('forbidden temp, cache and real-user data roots are lexical negatives, never real probes', () => {
   for (const root of ['/tmp', '/tmp/case', '/private/tmp/case', '/var/folders/case', '/private/var/folders/case',
-    '/account/Library/Caches/case', '/account/.hara/case', '/evidence/run/../other', 'relative']) {
+    '/account/Library/Caches/case', '/account/.hara', '/account/.hara/case', '/evidence/run/../other', 'relative']) {
     const v = virtualEvidence({ root }); assert.throws(() => v.scope(), /forbidden|canonical/);
     assert.equal(v.calls(), 0); assert.deepEqual(v.writes, []);
   }
+});
+test('sibling home directory names like .hara-runners are not false-positive forbidden prefixes', () => {
+  const root = '/account/.hara-runners/hara-desktop-release/_work/hara-desktop/hara-desktop/candidate-evidence/1/1/credential_preflight/controller';
+  const v = virtualEvidence({ root });
+  const scope = v.scope();
+  assert.equal(scope.environment().CANDIDATE_EVIDENCE_ROOT, root);
+  assert.deepEqual(v.writes, []);
 });
 test('realpath aliases, symlink anchors, foreign owners and writable evidence roots fail closed', () => {
   for (const mutate of [v => v.rows.get(v.root).alias = '/outside', v => v.rows.get(v.home).isSymbolicLink = () => true,
@@ -65,13 +72,20 @@ test('environment authority wins over extras, strips credentials and keeps only 
   const v = virtualEvidence(), scope = v.scope(), env = scope.environment({ HOME: '/poison', TMPDIR: '/poison',
     RUSTUP_HOME: '/poison', CARGO_HOME: '/poison', rustup_home: '/poison', cargo_home: '/poison',
     npm_config_cache: '/poison', NPM_CONFIG_CACHE: '/poison', HARA_TEST_API_KEY: 'synthetic-only',
-    NODE_OPTIONS: '--require=/poison', HARA_UPDATE_CHECK: '1', HARA_NPM_CI_ATTEMPTS: '1', PROBE: 'kept' });
+    NODE_OPTIONS: '--require=/poison', HARA_UPDATE_CHECK: '1', HARA_NPM_CI_ATTEMPTS: '1', PROBE: 'kept',
+    HARA_CANDIDATE_SIGNING_KEYCHAIN: '/Users/fixture/Library/Keychains/hara-ci-signing.keychain-db',
+    HARA_CANDIDATE_SIGNING_PASSWORD_FILE: '/Users/fixture/.tauri/hara-codesign-keychain.password',
+    HARA_CANDIDATE_SIGNING_PASSWORD: 'must-strip-secret-value', HARA_OTHER_PASSWORD_FILE: '/tmp/not-allowlisted' });
   scope.assertEnvironment(env); assert.equal(env.HOME, v.home); assert.equal(env.TMPDIR, v.tmp);
   assert.equal(env.NPM_CONFIG_CACHE, undefined); assert.equal(env.HARA_TEST_API_KEY, undefined);
   assert.equal(env.RUSTUP_HOME, path.posix.join(v.accountHome, '.rustup')); assert.equal(env.CARGO_HOME, path.posix.join(v.accountHome, '.cargo'));
   assert.equal(env.rustup_home, undefined); assert.equal(env.cargo_home, undefined);
   assert.equal(env.NODE_OPTIONS, undefined); assert.equal(env.HARA_UPDATE_CHECK, undefined);
   assert.equal(env.HARA_NPM_CI_ATTEMPTS, '1'); assert.equal(env.PROBE, 'kept'); assert(Object.isFrozen(env));
+  assert.equal(env.HARA_CANDIDATE_SIGNING_KEYCHAIN, '/Users/fixture/Library/Keychains/hara-ci-signing.keychain-db');
+  assert.equal(env.HARA_CANDIDATE_SIGNING_PASSWORD_FILE, '/Users/fixture/.tauri/hara-codesign-keychain.password');
+  assert.equal(env.HARA_CANDIDATE_SIGNING_PASSWORD, undefined);
+  assert.equal(env.HARA_OTHER_PASSWORD_FILE, undefined);
   assert.deepEqual(Object.keys(env).slice(-2), ['HOME', 'TMPDIR']);
 });
 test('Windows evidence paths keep drive identity and reject cross-drive and real-home escapes', () => {
@@ -189,14 +203,17 @@ test('complete native batches are aggregated and an earlier success cannot hide 
 });
 test('Mac Core keeps strict full coverage; Windows shares ordinary CI contracts and receipts disclose the gap', () => {
   const core=path.resolve('synthetic-core');
-  assert.deepEqual(coreTestCommand(core,'darwin'),{script:path.join(core,'scripts/native-ci-tests.mjs'),args:['--original-deadlines']});
+  assert.deepEqual(coreTestCommand(core,'darwin','arm64'),{script:path.join(core,'scripts/native-ci-tests.mjs'),args:['--original-deadlines']});
+  assert.deepEqual(coreTestCommand(core,'darwin','x64'),{script:path.join(ROOT,'scripts/candidate-core-native-tests.mjs'),args:[]});
+  assert.equal(coreTestDeadlines('darwin','arm64'),'original');assert.equal(coreTestDeadlines('linux','x64'),'original');
+  assert.equal(coreTestDeadlines('win32','x64'),'original');assert.equal(coreTestDeadlines('darwin','x64'),'intel-slow-file-300s-v1');
   assert.deepEqual(coreTestCommand(core,'win32'),{script:path.join(core,'scripts/windows-ci-tests.mjs'),args:[]});
   assert.equal(coreTestCommand(core,'linux'),null);assert.throws(()=>coreTestCommand(core,'unknown'));
   assert.equal(coreTestCoverage('win32'),'windows-contract-subset-v1');
   assert.equal(coreTestCoverage('darwin'),'full');assert.equal(coreTestCoverage('linux'),'full');
   const source=fs.readFileSync(path.join(ROOT,'scripts/candidate-native.mjs'),'utf8');
   assert(source.includes('runner.strictNativeTestBatches'));assert(!source.includes('HARA_INTEL_TEST_BUDGET ='));
-  assert(source.includes('target: c.target, coverage, counts'));
+  assert(source.includes('target: c.target, coverage, deadlines, counts'));
   const workflow=fs.readFileSync(path.join(ROOT,'.github/workflows/candidate.yml'),'utf8');
   assert(workflow.includes('candidate-test-diagnostics-'));assert(workflow.includes('if: ${{ always() }}'));
   assert(workflow.includes('/*-tests.log.result.json'));assert(!workflow.includes('/private-home/'));

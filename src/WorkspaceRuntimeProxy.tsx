@@ -48,7 +48,7 @@ export function WorkspaceRuntimeProxy({ model, workspaceId, generation, onDirty 
   return <form className="wsd-connection-form" aria-label={t("ws.runtimeProxy.title")} onSubmit={event => { event.preventDefault(); void save(draft); }}>
     <h4>{t("ws.runtimeProxy.title")}</h4><p>{t("ws.runtimeProxy.note")}</p>
     <label>{t("ws.runtimeProxy.address")}<input type="url" value={current ? draft : ""} disabled={disabled} maxLength={2048}
-      placeholder="http://127.0.0.1:18888" autoComplete="off" spellCheck={false} onChange={event => {
+      placeholder={t("ws.runtimeProxy.placeholder")} autoComplete="off" spellCheck={false} onChange={event => {
         setDraft(event.target.value); setNotice(""); onDirty?.(event.target.value !== (current?.proxyUrl ?? ""));
       }} /></label>
     <small>{t("ws.runtimeProxy.inherit")}</small><small>{t("ws.runtimeProxy.route")}</small>

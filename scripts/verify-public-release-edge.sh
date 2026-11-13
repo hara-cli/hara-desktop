@@ -173,4 +173,22 @@ jq -e --arg version "$VERSION" '
   )
 ' "$STABLE_LATEST" >/dev/null
 
-echo "public-edge: $TAG immutable DMGs, Gatekeeper trust, and latest.json are verified"
+# 1.2.3: the protected signer no longer downloads the release (it proves the draft by GitHub's
+# digests), so this independently networked job downloads every public asset, checks each against
+# GitHub's attested size and SHA-256, and validates the complete updater manifest from those bytes.
+FULL_DIR="$WORK_ROOT/full"
+mkdir -p "$FULL_DIR"
+cp "$ARM_DMG" "$FULL_DIR/Hara_${VERSION}_aarch64.dmg"
+cp "$X64_DMG" "$FULL_DIR/Hara_${VERSION}_x64.dmg"
+cp "$IMMUTABLE_LATEST" "$FULL_DIR/latest.json"
+while IFS= read -r asset_name; do
+  [ -e "$FULL_DIR/$asset_name" ] || download_attested_asset "$asset_name" "$FULL_DIR/$asset_name"
+done < "$EXPECTED_NAMES"
+[ "$(find "$FULL_DIR" -type f | wc -l | tr -d ' ')" = "17" ] || {
+  echo "public-edge: the complete public release was not downloaded" >&2
+  exit 1
+}
+rm -f "$FULL_DIR/Hara_${VERSION}_source-packs.zip"
+node scripts/updater-manifest.mjs validate "$FULL_DIR" "$TAG"
+
+echo "public-edge: $TAG immutable DMGs, Gatekeeper trust, latest.json and all 17 public assets are verified"

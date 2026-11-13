@@ -21,6 +21,9 @@
 .wsd-boot h1 { font: 500 30px/1.5 Georgia, serif; margin: 18px 0 6px; }
 .wsd-boot p, .wsd-boot small { max-width: 480px; color: var(--muted, #625d55); overflow-wrap: anywhere; }
 .wsd-boot small { margin-top: 18px; }
+.wsd-boot-update { display: grid; justify-items: center; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line, rgba(0,0,0,.08)); }
+.wsd-boot-update p { margin: 0; }
+.wsd-boot-update .wsd-card-actions { display: flex; gap: 8px; }
 :root[data-theme="dark"] .wsd-boot { background: var(--surface, #1a1917); color: var(--ink, #ece7df); }
 :root[data-theme="dark"] .wsd-boot p, :root[data-theme="dark"] .wsd-boot small { color: var(--muted, #b0a99e); }
 .wsd-boot .hs-btn.sec { background:var(--surface, #fffdf9); color:var(--ink, #272522); border:1px solid var(--input, #cfc8bb); min-height:32px; padding:0 14px; border-radius:var(--r-md, 9px); }

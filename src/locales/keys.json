@@ -172,7 +172,10 @@
     "ws.rf.recoveryUpdatedTitle",
     "ws.rf.recoveryUpdatedBody",
     "ws.rf.recoveryConfirm",
-    "ws.rf.noAutoSwitch"
+    "ws.rf.noAutoSwitch",
+    "ws.rf.formStatus.confirmUpdate",
+    "ws.rf.formStatus.confirmUpdateUnknown",
+    "ws.rf.formStatus.confirmFirstUse"
   ],
   "CONTEXT_COMPACTION_KEYS": [
     "ws.compaction.completed",
@@ -857,7 +860,9 @@
     "ws.workScope.approval.paid",
     "ws.workScope.approval.publish",
     "ws.workScope.approval.credentials",
-    "ws.workScope.approval.expand"
+    "ws.workScope.approval.expand",
+    "ws.runtimeProxy.advanced",
+    "ws.runtimeProxy.placeholder"
   ],
   "VIOLET_KEYS": [
     "vg.workspace",
@@ -1291,7 +1296,10 @@
     "ws.colleagues.idle",
     "ws.channels.empty.title",
     "ws.channels.empty.body",
-    "common.loading"
+    "common.loading",
+    "ws.rf.formStatus.confirmUpdate",
+    "ws.rf.formStatus.confirmUpdateUnknown",
+    "ws.rf.formStatus.confirmFirstUse"
   ],
   "WORKSPACE_EXTRA_KEYS": [
     "ws.channels.new",
@@ -2285,6 +2293,10 @@
     "ws.skills.newVersion",
     "ws.skills.howItWorks",
     "ws.extensions.attentionReviewOwner",
-    "ws.skills.details"
+    "ws.skills.details",
+    "ws.runtimeProxy.advanced",
+    "ws.runtimeProxy.placeholder",
+    "ws.boot.rootRefused",
+    "ws.boot.logHint"
   ]
 }

@@ -10,7 +10,7 @@ import { gateEvidence } from './candidate-upgrade.mjs';
 export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const INPUT = JSON.parse(fs.readFileSync(path.join(ROOT, 'candidate-inputs.json')));
 export const TARGETS = ['aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'];
-export const realHome = os.homedir();
+export const realHome = os.userInfo().homedir;
 export const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const fileHash = file => hash(fs.readFileSync(file));
 export const readJson = file => JSON.parse(fs.readFileSync(file));
@@ -43,6 +43,70 @@ export function save(file, value) {
     scope.checked(next); scope.checked(file, { missing: true });
     fs.renameSync(next, file);
   });
+}
+// Cross-job retained notary intent lives under runnerDirectory/_candidate-notary (not evidence).
+// Public app-notary.json / dmg-notary.json still use save() inside the evidence whitelist.
+function assertRetainedNotaryPath(file, runnerDirectory) {
+  assert(typeof runnerDirectory === 'string' && path.isAbsolute(runnerDirectory) && path.normalize(runnerDirectory) === runnerDirectory
+    && !runnerDirectory.includes('\0') && !runnerDirectory.split(/[\\/]/).includes('..'), 'absolute canonical runnerDirectory required');
+  assert(typeof file === 'string' && path.isAbsolute(file) && path.normalize(file) === file
+    && !file.includes('\0') && !file.split(/[\\/]/).includes('..'), 'absolute canonical retained notary path required');
+  const runner = fs.realpathSync(runnerDirectory);
+  assert.equal(runner, runnerDirectory, 'runnerDirectory must be a realpath-canonical directory');
+  const runnerStat = fs.lstatSync(runner);
+  assert(runnerStat.isDirectory() && !runnerStat.isSymbolicLink(), 'runnerDirectory must be a real directory');
+  if (process.getuid) {
+    assert.equal(Number(runnerStat.uid), process.getuid());
+    assert((Number(runnerStat.mode) & 0o022) === 0, 'runnerDirectory must not be group/other-writable');
+  }
+  const retainedRoot = path.join(runner, '_candidate-notary');
+  const relative = path.relative(retainedRoot, file);
+  assert(relative !== '' && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep),
+    'retained notary path must stay under runnerDirectory/_candidate-notary');
+  return { runner, retainedRoot };
+}
+function ensureRetainedNotaryDirectory(directory, retainedRoot) {
+  if (fs.existsSync(directory)) {
+    const st = fs.lstatSync(directory);
+    assert(st.isDirectory() && !st.isSymbolicLink(), 'retained notary parent must be a directory');
+    if (process.getuid) {
+      assert.equal(Number(st.uid), process.getuid());
+      assert((Number(st.mode) & 0o022) === 0, 'retained notary directory must not be group/other-writable');
+    }
+    assert.equal(fs.realpathSync(directory), directory, 'retained notary path alias refused');
+    const relative = path.relative(retainedRoot, directory);
+    assert(relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep)),
+      'retained notary directory escaped _candidate-notary');
+    return directory;
+  }
+  assert(directory.startsWith(retainedRoot + path.sep) || directory === retainedRoot, 'retained notary mkdir escaped root');
+  ensureRetainedNotaryDirectory(path.dirname(directory), retainedRoot);
+  fs.mkdirSync(directory, { mode: 0o700 });
+  return ensureRetainedNotaryDirectory(directory, retainedRoot);
+}
+export function saveRetainedNotary(file, value, runnerDirectory) {
+  const { retainedRoot } = assertRetainedNotaryPath(file, runnerDirectory);
+  if (!fs.existsSync(retainedRoot)) {
+    fs.mkdirSync(retainedRoot, { mode: 0o700 });
+  }
+  ensureRetainedNotaryDirectory(path.dirname(file), retainedRoot);
+  if (fs.existsSync(file)) {
+    const existing = fs.lstatSync(file);
+    assert(existing.isFile() && !existing.isSymbolicLink() && Number(existing.nlink) === 1, 'retained notary state must be a unique regular file');
+    assert.equal(fs.realpathSync(file), file, 'retained notary path alias refused');
+  }
+  const next = file + '.next';
+  assert(!fs.existsSync(next), 'retained notary staging file already exists');
+  const fd = fs.openSync(next, 'wx', 0o600);
+  try { fs.writeFileSync(fd, JSON.stringify(value, null, 2) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  const staged = fs.lstatSync(next);
+  assert(staged.isFile() && !staged.isSymbolicLink() && Number(staged.nlink) === 1, 'retained notary staging must be a unique regular file');
+  assert.equal(fs.realpathSync(next), next, 'retained notary staging alias refused');
+  fs.renameSync(next, file);
+  const finalStat = fs.lstatSync(file);
+  assert(finalStat.isFile() && !finalStat.isSymbolicLink() && Number(finalStat.nlink) === 1, 'retained notary state must be a unique regular file');
+  assert.equal(fs.realpathSync(file), file, 'retained notary path alias refused');
+  return file;
 }
 export function sync(command, args, { cwd = ROOT, env = process.env, timeout = 120000 } = {}) {
   const checked = commandEvidence(env);
@@ -220,9 +284,29 @@ export function artifactName(phase, target, e = { runId: process.env.GITHUB_RUN_
   assert(/^[a-z][a-z-]{0,40}$/.test(phase)); assert(target === 'all' || TARGETS.includes(target));
   return `candidate-${phase}-${target}-${e.runId}-${e.attempt}`;
 }
+// This capability is only for fixed read-only GitHub GETs (Actions api/downloadArtifact, admission policyGet).
+// Generic sync/run/upgrade children keep the globally stripped environment.
+export function githubReadEnvironment(parentEnv = process.env, label = 'candidate Actions') {
+  const scope = candidateEvidence(parentEnv), clean = { ...scope.environment() };
+  const token = parentEnv.GH_TOKEN || parentEnv.GITHUB_TOKEN;
+  assert(typeof token === 'string' && token.length > 0 && token.length <= 4096 && !/[\s\0]/.test(token),
+    `${label} GitHub token required`);
+  // Caller gh routing/config must not redirect this credential outside GitHub/private HOME.
+  for (const key of Object.keys(clean)) if (/^GH_(?:HOST|CONFIG_DIR)$/i.test(key)) delete clean[key];
+  const env = Object.freeze({ ...clean, GH_TOKEN: token, GH_HOST: 'github.com',
+    GH_CONFIG_DIR: path.join(clean.XDG_CONFIG_HOME, 'gh') });
+  scope.assertEnvironment(env);
+  return env;
+}
 export function api(endpoint) {
-  assert(/^repos\/hara-cli\/hara-desktop\/actions\/(?:runs|artifacts)\//.test(endpoint), 'candidate API is read-only and Actions-scoped');
-  return JSON.parse(sync('gh', ['api', '--method', 'GET', endpoint]));
+  assert(typeof endpoint === 'string' && /^repos\/hara-cli\/hara-desktop\/actions\/(?:runs|artifacts)\/[^\s]+$/.test(endpoint), 'candidate API is read-only and Actions-scoped');
+  const scope = candidateEvidence(process.env), env = githubReadEnvironment(process.env);
+  return scope.guardSync(env, () => {
+    const r = spawnSync('gh', ['api', '--method', 'GET', endpoint], { cwd: ROOT, env, encoding: 'utf8', timeout: 120000, maxBuffer: 32 * 1024 * 1024 });
+    assert(r.status === 0 && !r.error && !r.signal, `candidate command failed: gh (${r.status ?? 'unknown'})`);
+    try { return JSON.parse(r.stdout); }
+    catch { throw Error('candidate Actions API: invalid GitHub response'); }
+  });
 }
 export async function downloadArtifact(phase, target, directory, e = { runId: Number(process.env.GITHUB_RUN_ID), attempt: Number(process.env.GITHUB_RUN_ATTEMPT), orchestration: process.env.GITHUB_SHA }) {
   const { scope, env } = commandEvidence(process.env);
@@ -241,8 +325,9 @@ export async function downloadArtifact(phase, target, directory, e = { runId: Nu
   const zip = directory + '.zip', fd = fs.openSync(zip, 'wx', 0o600);
   const output = fs.createWriteStream(zip, { fd, autoClose: true });
   const sha = createHash('sha256'); let size = 0;
-  scope.assertEnvironment(env);
-  const child = spawn('gh', ['api', '--method', 'GET', `repos/hara-cli/hara-desktop/actions/artifacts/${a.id}/zip`], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  assert(Number.isSafeInteger(a.id) && a.id > 0); const ghEnv = githubReadEnvironment(process.env);
+  scope.assertEnvironment(env); scope.assertEnvironment(ghEnv);
+  const child = spawn('gh', ['api', '--method', 'GET', `repos/hara-cli/hara-desktop/actions/artifacts/${a.id}/zip`], { cwd: ROOT, env: ghEnv, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', b => { sha.update(b); size += b.length; }); child.stdout.pipe(output); child.stderr.resume();
   const closed = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', code => code === 0 ? resolve() : reject(new Error('artifact download failed'))); });
   const finished = new Promise((resolve, reject) => { output.once('finish', resolve); output.once('error', reject); });

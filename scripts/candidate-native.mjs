@@ -32,7 +32,9 @@ export function testCounts(output) {
   }
   return total;
 }
-export function coreTestCommand(core, platform = process.platform) {
+export function coreTestCommand(core, platform = process.platform, arch = process.arch) {
+  // Intel keeps Core's strict batches/case deadlines; see candidate-core-native-tests.mjs for its file budget.
+  if (platform === 'darwin' && arch === 'x64') return { script: path.join(ROOT, 'scripts/candidate-core-native-tests.mjs'), args: [] };
   if (platform === 'darwin') return { script: path.join(core, 'scripts/native-ci-tests.mjs'), args: ['--original-deadlines'] };
   if (platform === 'win32') return { script: path.join(core, 'scripts/windows-ci-tests.mjs'), args: [] };
   assert.equal(platform, 'linux', 'unsupported candidate Core platform');
@@ -41,8 +43,11 @@ export function coreTestCommand(core, platform = process.platform) {
 export function coreTestCoverage(platform = process.platform) {
   return platform === 'win32' ? 'windows-contract-subset-v1' : 'full';
 }
+export function coreTestDeadlines(platform = process.platform, arch = process.arch) {
+  return platform === 'darwin' && arch === 'x64' ? 'intel-slow-file-300s-v1' : 'original';
+}
 export async function assertStrictNativeCore(c) {
-  const command = coreTestCommand(c.core, 'darwin');
+  const command = coreTestCommand(c.core, 'darwin', 'arm64');
   // Application code must not run in the credential-bearing orchestration process.
   await run('Verify pinned Core strict native test capability', process.execPath, ['--input-type=module', '-e',
     'const runner=await import(process.argv[1]);if(typeof runner.strictNativeTestBatches!=="function")throw Error("pinned Core must support strict original-deadline native full tests");console.log("strict native capability confirmed");',
@@ -56,6 +61,7 @@ async function archive(c, phase, inputDirectory, extra = {}) {
   const out = path.join(c.base, phase + '-output'); assert(!fs.existsSync(out)); fs.mkdirSync(out, { mode: 0o700 });
   const file = path.join(out, 'bundle.tar.gz');
   await runLocalTar('Archive immutable native payload', 'create', file, inputDirectory, ['bundle'], { env: c.env });
+  await validateTar(file); // fail where the archive is made, not in a later consumer
   save(path.join(out, 'receipt.json'), receipt({ phase, target: c.target, archive: { name: 'bundle.tar.gz', size: fs.statSync(file).size, sha256: fileHash(file) }, ...extra }));
   console.log(`CANDIDATE_OUTPUT=${out}`); return out;
 }
@@ -89,11 +95,11 @@ export async function tests(c) {
     const options = { cwd, env: c.env, capture: true, logFile:path.join(c.base, `${name.toLowerCase()}-tests.log`) };
     const command = name === 'Core' ? coreTestCommand(c.core) : null;
     if (command && process.platform === 'darwin') await assertStrictNativeCore(c);
-    const coverage = name === 'Core' ? coreTestCoverage() : 'full';
-    const output = command ? await node(`${name} ${coverage} at original deadlines`, command.script, command.args, options)
+    const coverage = name === 'Core' ? coreTestCoverage() : 'full', deadlines = name === 'Core' ? coreTestDeadlines() : 'original';
+    const output = command ? await node(`${name} ${coverage} at ${deadlines} deadlines`, command.script, command.args, options)
       : await npm(`${name} original full suite`, ['test'], options);
     const counts = testCounts(output); console.log(`${name} tests ${JSON.stringify(counts)}`);
-    save(path.join(c.base, `${name.toLowerCase()}-tests.json`), receipt({ target: c.target, coverage, counts }));
+    save(path.join(c.base, `${name.toLowerCase()}-tests.json`), receipt({ target: c.target, coverage, deadlines, counts }));
   }
   await npm('Validate application release metadata', ['run', 'check:release'], { cwd: c.desktop, env: c.env });
   await npm('Build exact production renderer', ['run', 'build'], { cwd: c.desktop, env: c.env });

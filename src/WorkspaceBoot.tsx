@@ -1,13 +1,14 @@
+import type { ReactNode } from "react";
 import HaraLogo from "./mark";
 import type { makeT, Key } from "./i18n";
 import type { WorkspaceStartupView } from "./workspace-startup";
 const DIAGNOSTIC_COPY: Record<string, Key> = {
   CORE_SIDECAR_UNAVAILABLE: "ws.boot.sidecarUnavailable", CORE_START_FAILED: "ws.boot.startFailed", CORE_EXITED: "ws.boot.coreExited",
   CORE_START_PENDING: "ws.boot.startPending", CORE_DISCOVERY_REFUSED: "ws.boot.attachmentRefused", CORE_ATTACHMENT_REFUSED: "ws.boot.attachmentRefused",
-  CORE_HANDSHAKE_FAILED: "ws.boot.handshakeFailed", WORKSPACE_LOAD_FAILED: "ws.boot.loadFailed",
+  CORE_HANDSHAKE_FAILED: "ws.boot.handshakeFailed", WORKSPACE_LOAD_FAILED: "ws.boot.loadFailed", CORE_ROOT_REFUSED: "ws.boot.rootRefused",
 };
 
-export function WorkspaceBoot({ view, t, mode, onReconnect }: { view: WorkspaceStartupView; t: ReturnType<typeof makeT>; mode: "workspace" | "lab"; onReconnect(): void }) {
+export function WorkspaceBoot({ view, t, mode, onReconnect, update }: { view: WorkspaceStartupView; t: ReturnType<typeof makeT>; mode: "workspace" | "lab"; onReconnect(): void; update?: ReactNode }) {
   const busy = ["connecting", "handshake", "loading"].includes(view.phase);
   const stage = view.phase === "handshake" ? "ws.boot.handshake" : view.phase === "loading" ? "ws.boot.opening" : busy ? "ws.boot.connecting"
     : mode === "lab" ? "ws.boot.labFailed" : DIAGNOSTIC_COPY[view.diagnostic ?? ""] ?? "ws.boot.failed";
@@ -17,5 +18,6 @@ export function WorkspaceBoot({ view, t, mode, onReconnect }: { view: WorkspaceS
     <p className="wsd-boot-attempt">{t("ws.boot.attempt", { n: view.attempt })}{view.diagnostic ? <> · <code>{view.diagnostic}</code></> : null}</p>
     <button type="button" className="hs-btn sec" disabled={busy} aria-busy={busy} onClick={onReconnect}>{t(busy ? "ws.boot.reconnecting" : "ws.reconnect")}</button>
     <small>{t(mode === "lab" ? "ws.lab.note" : "ws.boot.retained")}</small>
+    {mode === "workspace" && view.phase === "failed" ? <><small className="wsd-boot-log">{t("ws.boot.logHint")}</small>{update ?? null}</> : null}
   </div>;
 }
