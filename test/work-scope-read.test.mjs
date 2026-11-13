@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createWorkspaceWorkScopeSource, bindWorkspaceWorkScopeSource, workScopeSource, workScopeVersion, subscribeWorkScope } from "../src/workspace-work-scope.ts";
+import { createWorkspaceWorkScopeSource, bindWorkspaceWorkScopeSource, workScopeSource, workScopeVersion, subscribeWorkScope, visibleWorkScope } from "../src/workspace-work-scope.ts";
 const docs = JSON.parse(readFileSync(new URL("./fixtures/agent-boundaries-v1.json", import.meta.url), "utf8")).valid;
 const originalDuty = docs.find(row => row.document.kind === "duty-profile").document;
 const originalBoundary = docs.find(row => row.document.kind === "execution-boundary").document;
@@ -115,4 +115,22 @@ test("C5 a different human, device or node cannot replay a current policy projec
     if (patch.nodeId) context.localGrant = { ...context.localGrant, nodeId: patch.nodeId };
     f.setReply({ ...f.state, context }); await assert.rejects(f.source.read(capture), unavailable);
   }
+});
+
+test("C5 M1 changed capture key excludes prior ready/error before any effect runs", async () => {
+  const f = fixture(), view = await f.source.read(f.source.capture(f.target));
+  const ready = Object.freeze({ key: "1:1", state: "ready", view });
+  const error = Object.freeze({ key: "1:1", state: "error" });
+  for (const nextKey of ["1:2", "2:1", "2:2"]) {
+    for (const previous of [ready, error]) {
+      const shown = visibleWorkScope(previous, nextKey);
+      assert.deepEqual(shown, { key: nextKey, state: "loading" }, "M1 mismatched snapshot must not render previous ready/error");
+      assert.equal("view" in shown, false);
+      assert.equal(JSON.stringify(shown).includes(view.profile.title), false);
+    }
+  }
+  assert.equal(visibleWorkScope(ready, "1:1"), ready, "Only the current capture may reuse its ready projection");
+  assert.equal(visibleWorkScope(error, "1:1"), error);
+  assert.deepEqual(visibleWorkScope(null, "1:1"), { key: "1:1", state: "loading" });
+  assert.equal(f.calls, 1, "Visibility selection performs no additional read or effect");
 });

@@ -27,6 +27,12 @@ export interface SavedWorkScope {
   readonly limits: { modelCalls: number; toolEffects: number };
 }
 export type WorkScopeView = SavedWorkScope | Readonly<{ state: "unconfirmed" }>;
+export type WorkScopeReadState = Readonly<{ key: string; state: "loading" | "error" }>
+  | Readonly<{ key: string; state: "ready"; view: WorkScopeView }>;
+/** Paint filter, not authority: never render a previous capture while the new effect is pending. */
+export function visibleWorkScope(state: WorkScopeReadState | null, key: string): WorkScopeReadState {
+  return state?.key === key ? state : { key, state: "loading" };
+}
 declare const sourceBrand: unique symbol;
 export interface WorkspaceWorkScopeSource {
   readonly [sourceBrand]: true;
