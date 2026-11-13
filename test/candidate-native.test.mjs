@@ -263,25 +263,28 @@ for(const [name,rows] of Object.entries({ traversal:[{name:'bundle/../../outside
 test('truncated archive fails closed', t=>fixture(t,[{name:'bundle/file',body:'data'}],async(file)=>{const b=fs.readFileSync(file);fs.writeFileSync(file,b.subarray(0,-12));await assert.rejects(()=>validateTar(file));}));
 test('post-extraction link validation is scoped to a private root', t=>fixture(t,[{name:'bundle/file'}],async(_file,dir)=>{const root=path.join(dir,'root'),outside=path.join(dir,'outside');fs.mkdirSync(root,{mode:0o700});fs.mkdirSync(outside,{mode:0o700});fs.writeFileSync(path.join(root,'file'),'ok');validateExtractedTree(root);fs.symlinkSync(outside,path.join(root,'bad'));assert.throws(()=>validateExtractedTree(root));}));
 test('outer artifact archive rejects traversal',()=>{for(const text of ['/absolute','a/../b','a\\b',''])assert.throws(()=>checkArchiveEntries(text));});
-test('candidate workflow has exact non-main input and no publishing authority', () => {
+// Candidate execution is retired; preserve its approved historical Core checkout.
+// The live Core pin is checked against SIDECAR_* in candidate-input-locks.test.mjs.
+const RETIRED_CORE_COMMIT = 'a1921ccab59248e83afcf18289084e531f9021dc';
+test('retired candidate workflow has exact historical input and no publishing authority', () => {
   const w=fs.readFileSync(path.join(ROOT,'.github/workflows/candidate.yml'),'utf8');
-  assert(w.includes(INPUT.controlledRef.replace('refs/heads/',''))); assert(w.includes(INPUT.desktop.commit)); assert(w.includes(INPUT.core.commit));
+  assert(w.includes(INPUT.controlledRef.replace('refs/heads/',''))); assert(w.includes(INPUT.desktop.commit)); assert(w.includes(RETIRED_CORE_COMMIT));
   assert.equal((w.match(/os: macos-15-intel/g)??[]).length,3); assert(!/contents: write|packages: write|id-token: write|secrets\.|gh release|git push|ossutil|stable\/latest/.test(w));
   assert(w.includes('environment: hara-desktop-candidate')); assert(!w.includes('hara-desktop-production')); assert(w.includes('GIT_CONFIG_KEY_0: core.autocrlf'));
 });
 
-test('every candidate checkout phase pins the exact application and Core inputs', () => {
+test('every retired candidate checkout phase pins the historical application and Core inputs', () => {
   const workflow=fs.readFileSync(path.join(ROOT,'.github/workflows/candidate.yml'),'utf8');
   function check(text) {
     const checkouts=text.split(/^      - uses: /m).filter(step=>step.startsWith('actions/checkout@'));
-    for(const [dir,commit] of [['app',INPUT.desktop.commit],['core',INPUT.core.commit]]) {
+    for(const [dir,commit] of [['app',INPUT.desktop.commit],['core',RETIRED_CORE_COMMIT]]) {
       const steps=checkouts.filter(step=>new RegExp(`\\bpath: ${dir}(?:[,\\s}])`).test(step));
       assert.equal(steps.length,6,`${dir}: all six candidate phases must be pinned`);
       for(const step of steps) assert.equal(step.match(/\bref: ([a-f0-9]{40})\b/)?.[1],commit,`${dir}: stale or indirect source ref`);
     }
   }
   check(workflow);
-  for(const commit of [INPUT.desktop.commit,INPUT.core.commit]) {
+  for(const commit of [INPUT.desktop.commit,RETIRED_CORE_COMMIT]) {
     const occurrences=[...workflow.matchAll(new RegExp(`ref: ${commit}`,'g'))];
     assert.equal(occurrences.length,6);
     for(const {index} of occurrences) {
