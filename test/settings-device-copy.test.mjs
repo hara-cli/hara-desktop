@@ -40,3 +40,34 @@ for(const locale of ["en","zh-Hans","zh-Hant"])test(`actual form default stays u
   const update=renderToStaticMarkup(createElement(module.exports.WorkspaceSoftwareUpdate,{controller,info:null}));assert.ok(update.includes(esc(t("ws.updates.archMismatch"))));assert.ok(!update.includes(esc(raw("ws.updates.archMismatch"))));
  }finally{if(storage)Object.defineProperty(globalThis,"localStorage",storage);else delete globalThis.localStorage;if(nav)Object.defineProperty(globalThis,"navigator",nav);else delete globalThis.navigator;}
 });
+
+const permission = {
+ en: "Your system may ask for permission the first time you save.",
+ "zh-Hans": "首次保存时，系统可能请求授权。",
+ "zh-Hant": "首次儲存時，系統可能要求授權。",
+};
+const privacy = {
+ en: "Hara does not write saved keys to settings or logs.",
+ "zh-Hans": "Hara不会将保存的Key写入设置或日志。",
+ "zh-Hant": "Hara不會將儲存的Key寫入設定或日誌。",
+};
+for (const locale of ["en", "zh-Hans", "zh-Hant"]) for (const platform of ["mac", "windows", "other"]) test(`first-save authorization is explained without repeating it on edit or later saves (${locale}/${platform})`, () => {
+ const t = settingsTranslator(makeT(locale), platform), sentence = permission[locale];
+ assert.ok(t("ws.connections.keyNoteFirst").includes(sentence), "first save keeps the system permission notice");
+ assert.ok(t("ws.connections.keyNote").includes(sentence), "Advanced retains the permission explanation");
+ assert.ok(!t("ws.connections.keyNoteShort").includes(sentence), "the short note for later saves has no first-save warning");
+ const model = {}, existing = { id: "c1", label: "Synthetic", provider: "openai", baseURL: "https://fixture.example.invalid/v1", defaultModel: "model-fixture", credentialRequired: false };
+ const first = renderToStaticMarkup(createElement(module.exports.WorkspaceConnectionForm, { model, firstKey: true, keyNote: t("ws.connections.keyNoteFirst") }));
+ assert.ok(first.includes(esc(sentence)), "actual Settings form displays the first-save permission notice");
+ for (const props of [{ firstKey: false }, { firstKey: true, existing }]) {
+  const html = renderToStaticMarkup(createElement(module.exports.WorkspaceConnectionForm, { model, ...props, keyNote: t("ws.connections.keyNoteShort") }));
+  assert.ok(!html.includes(esc(sentence)), "edit and non-first-save forms don't repeat the first-save notice");
+ }
+});
+for (const locale of ["en", "zh-Hans", "zh-Hant"]) test(`Settings retains the platform-independent settings/log privacy statement (${locale})`, () => {
+ for (const platform of ["mac", "windows", "other"]) assert.ok(settingsTranslator(makeT(locale), platform)("ws.connections.keyNote").includes(privacy[locale]));
+});
+test("Simplified Chinese saved-record copy uses 保存 rather than 儲存 terminology", () => {
+ const t = settingsTranslator(makeT("zh-Hans"), "windows");
+ for (const key of ["ws.connections.keyNote", "ws.connections.savedKey"]) { assert.doesNotMatch(t(key), /储存/); assert.match(t(key), /保存/); }
+});

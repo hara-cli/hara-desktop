@@ -1754,9 +1754,9 @@
   "ws.settings.deviceCopy.confirmMigrate": "Store {n} connection credentials for “{workspace}”",
   "ws.settings.deviceCopy.deleteNote": "Revokes this connection and its old task binding, then tries to remove its saved key. If cleanup cannot be confirmed, Hara keeps a cleanup notice. Deleting the current connection selects the oldest remaining connection in this workspace, or clears it if none remain. It never falls back to another workspace.",
   "ws.settings.deviceCopy.importNote": "After confirmation, the local engine stores a copy of the old credentials for this workspace. The complete key is never displayed.",
-  "ws.settings.deviceCopy.keyNote": "The local workspace engine holds saved credentials and never displays a complete key. A saved record does not guarantee that this device can read it or use the model. Leave the field blank when editing to keep the saved key. You can replace the key. Removing the connection revokes its binding; unconfirmed physical cleanup keeps its notice.",
+  "ws.settings.deviceCopy.keyNote": "The local workspace engine holds saved credentials and never displays a complete key. A saved record does not guarantee that this device can read it or use the model. Leave the field blank when editing to keep the saved key. You can replace the key. Removing the connection revokes its binding; unconfirmed physical cleanup keeps its notice. Hara does not write saved keys to settings or logs. Your system may ask for permission the first time you save.",
   "ws.settings.deviceCopy.migrationPending": "Connection upgrade pending. Confirm before the local engine stores these legacy credentials. Original settings are retained; history and other workspace features remain available.",
   "ws.settings.deviceCopy.savedKey": "Saved record",
   "ws.settings.deviceCopy.keyShort": "Saved keys stay on this device and are not displayed in full.",
-  "ws.settings.deviceCopy.keyFirst": "Saved keys stay on this device and are not displayed in full. Save results appear here."
+  "ws.settings.deviceCopy.keyFirst": "Saved keys stay on this device and are not displayed in full. Save results appear here. Your system may ask for permission the first time you save."
 }

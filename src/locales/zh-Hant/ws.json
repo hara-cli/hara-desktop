@@ -1754,9 +1754,9 @@
   "ws.settings.deviceCopy.confirmMigrate": "為「{workspace}」儲存{n}條連線的憑據",
   "ws.settings.deviceCopy.deleteNote": "會撤銷這條連線及舊任務的綁定，並嘗試清理已儲存的Key；未能確認清理時會保留提示。刪除目前連線後，會選取此空間最早建立的其他連線，沒有就清空；不會改用其他空間的Key。",
   "ws.settings.deviceCopy.importNote": "確認後，本機引擎會為此空間儲存一份舊憑據，完整Key不會顯示。",
-  "ws.settings.deviceCopy.keyNote": "憑據由本機工作空間引擎保管，介面不顯示完整Key。已有儲存記錄不代表這台裝置已驗證可讀或模型可用；編輯時留空會保留已有Key。可更換Key；刪除連線會撤銷綁定，實際清理未確認時會保留提示。",
+  "ws.settings.deviceCopy.keyNote": "憑據由本機工作空間引擎保管，介面不顯示完整Key。已有儲存記錄不代表這台裝置已驗證可讀或模型可用；編輯時留空會保留已有Key。可更換Key；刪除連線會撤銷綁定，實際清理未確認時會保留提示。Hara不會將儲存的Key寫入設定或日誌。首次儲存時，系統可能要求授權。",
   "ws.settings.deviceCopy.migrationPending": "連線升級待確認。確認後，本機引擎才會儲存這些舊憑據；原始設定保留，歷史記錄與其他空間功能可繼續使用。",
   "ws.settings.deviceCopy.savedKey": "已有儲存記錄",
   "ws.settings.deviceCopy.keyShort": "Key保存在這台裝置，儲存後不顯示完整內容。",
-  "ws.settings.deviceCopy.keyFirst": "Key保存在這台裝置，儲存後不顯示完整內容；儲存結果會顯示在這裡。"
+  "ws.settings.deviceCopy.keyFirst": "Key保存在這台裝置，儲存後不顯示完整內容；儲存結果會顯示在這裡。首次儲存時，系統可能要求授權。"
 }
