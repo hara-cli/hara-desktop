@@ -51,7 +51,7 @@ for (const locale of ["zh-Hans", "en", "zh-Hant"]) test(`overview: «Getting sta
   if (deviceKey(platform) !== "ws.settings.device") {
     // Preserve a real native-runner negative control for the original Mac-only assertion.
     assert.throws(() => assert.ok(html.indexOf("wss-onboarding-rerun") < html.indexOf(`<h3>${esc(t("ws.settings.device"))} ·`)), { code: "ERR_ASSERTION" });
-    context.diagnostic(`Legacy Mac-only assertion reproduced on ${platform || "unknown"}: overview: «Getting started · Run again» only when the guide is available; read-only viewers cannot rerun (${locale})`);
+    context.diagnostic(`Expected negative control (Mac-only heading absent on ${platform || "unknown"}): overview: «Getting started · Run again» only when the guide is available; read-only viewers cannot rerun (${locale})`);
   }
   const member = overview(locale, { workspaceId: "A", readOnly: true, rerun: async () => "started" });
   assert.ok(member.includes(esc(t("ws.onboarding.rerun.readOnly"))) && member.includes(`<button type="button" disabled="">${esc(t("ws.onboarding.rerun.action"))}</button>`));
