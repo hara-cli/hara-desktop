@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, existsSync, unlinkSync, rmdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createWorkspaceWorkScopeSource, bindWorkspaceWorkScopeSource } from "../src/workspace-work-scope.ts";
 import { createWorkspaceWorkScopeWriter, bindWorkspaceWorkScopeWriter, workScopeWriter } from "../src/work-scope-writer.ts";
 import { createWorkScopeReferenceStore, workScopeReferenceNamespace } from "../src/work-scope-references.ts";
-import { parseAgentBoundaryDocument } from "../src/agent-boundary-contract.ts";
+import { AgentBoundaryContractError, parseAgentBoundaryDocument } from "../src/agent-boundary-contract.ts";
 import { createAgentDutyDraft } from "../src/agent-duty-draft.ts";
 import { workScopeCommandDigest, workScopeProposalDigest } from "../src/work-scope-proposal.ts";
 import { parseWorkScopeEditCatalog } from "../src/work-scope-catalog.ts";
@@ -278,4 +281,58 @@ test("C5 M1 known UNKNOWN/accepted receipts are retained after expiry and malfor
       assert.equal((await f.writer.refresh(f.capture(), pending.reference)).state, "unknown"); assert.equal(f.stored.size, 1);
     }
   }
+});
+
+test("C5 M1 real process exit after durable put restores only original reference and never sends before expiry", async t => {
+  const folder = mkdtempSync(join(tmpdir(), "hara-c5-process-cut-")), durable = join(folder, "reference.json"), submitted = join(folder, "unexpected-submit");
+  t.after(() => { for (const file of [durable, submitted]) if (existsSync(file)) unlinkSync(file); rmdirSync(folder); });
+  const childSource = [
+    "import assert from 'node:assert/strict';",
+    "import {openSync,writeFileSync,fsyncSync,closeSync} from 'node:fs';",
+    `import {createWorkspaceWorkScopeSource} from ${JSON.stringify(new URL("../src/workspace-work-scope.ts", import.meta.url).href)};`,
+    `import {createWorkspaceWorkScopeWriter} from ${JSON.stringify(new URL("../src/work-scope-writer.ts", import.meta.url).href)};`,
+    `import {createWorkScopeReferenceStore} from ${JSON.stringify(new URL("../src/work-scope-references.ts", import.meta.url).href)};`,
+    `import {parseAgentBoundaryDocument} from ${JSON.stringify(new URL("../src/agent-boundary-contract.ts", import.meta.url).href)};`,
+    `import {createAgentDutyDraft} from ${JSON.stringify(new URL("../src/agent-duty-draft.ts", import.meta.url).href)};`,
+    `import {workScopeCommandDigest} from ${JSON.stringify(new URL("../src/work-scope-proposal.ts", import.meta.url).href)};`,
+    `const vectors = ${JSON.stringify(vectors)};`, fixture.toString(),
+    `const durable = ${JSON.stringify(durable)}, submitted = ${JSON.stringify(submitted)};`,
+    "const f = fixture();",
+    "f.setSubmit(() => { writeFileSync(submitted, 'unexpected'); process.exit(43); });",
+    "f.storage.setItem = (key, value) => { const fd = openSync(durable, 'wx', 0o600); writeFileSync(fd, JSON.stringify({key,value})); fsyncSync(fd); closeSync(fd); process.exit(42); };",
+    "const preview = await f.writer.preview(await f.writer.load(f.capture()), {action:'duty.update',draft:f.draft()});",
+    "await f.writer.submit(preview); process.exit(44);",
+  ].join("\n");
+  const child = spawnSync(process.execPath, ["--input-type=module", "--eval", childSource], { env: process.env, encoding: "utf8", timeout: 10000 });
+  assert.equal(child.error, undefined); assert.equal(child.signal, null);
+  assert.equal(child.status, 42, child.stderr.slice(-1500));
+  assert.equal(existsSync(submitted), false, "the abrupt exit preceded the actual submit port");
+  const persisted = JSON.parse(readFileSync(durable, "utf8")), reference = JSON.parse(persisted.value), f = missingReceiptFixture();
+  f.storage.setItem(persisted.key, persisted.value);
+  const restored = createWorkspaceWorkScopeWriter(f.source, f.port, createWorkScopeReferenceStore(f.storage)), capture = restored.capture(f.target);
+  f.observeAt(Date.parse(reference.notAfter) - 1);
+  const early = await restored.load(capture);
+  assert.equal(early.pending[0].state, "unknown"); assert.equal(f.stored.size, 1);
+  await assert.rejects(restored.preview(early, {action:"duty.update",draft:f.draft()}), errorCode("CONTROL_HELD"));
+  assert.equal(f.calls.submit, 0); assert.equal(f.calls.draft, 0);
+  f.observeAt(Date.parse(reference.notAfter) + 1001);
+  const recovered = await restored.load(capture);
+  assert.equal(recovered.pending[0].state, "not_applied"); assert.equal(recovered.pending[0].receipt, null); assert.equal(f.stored.size, 0);
+  const next = await restored.preview(recovered, {action:"duty.update",draft:f.draft()});
+  assert.notEqual(next.commandId, reference.commandId); assert.equal(f.calls.submit, 0); restored.cancel(next);
+});
+
+test("C5 M1 genuine AUTHORIZATION_DENIED after expiry retains the reference until an explicit successful reread", async () => {
+  const f = missingReceiptFixture(); f.setSubmit(() => { throw Error("disconnected before sending"); });
+  const preview = await previewDuty(f), unknown = await f.writer.submit(preview), lookup = f.port.lookupReceipt;
+  f.observeAt(Date.parse(preview.expiresAt) + 1001);
+  f.port.lookupReceipt = async () => { throw new AgentBoundaryContractError("AUTHORIZATION_DENIED", "control.receipt"); };
+  const restored = createWorkspaceWorkScopeWriter(f.source, f.port, createWorkScopeReferenceStore(f.storage)), capture = restored.capture(f.target);
+  const denied = await restored.load(capture);
+  assert.equal(denied.pending[0].state, "unknown"); assert.equal(denied.pending[0].reference.commandId, unknown.reference.commandId); assert.equal(f.stored.size, 1);
+  await assert.rejects(restored.preview(denied, {action:"duty.update",draft:f.draft()}), errorCode("CONTROL_HELD"));
+  assert.equal(f.calls.submit, 1); assert.equal(f.calls.draft, 1);
+  f.port.lookupReceipt = lookup;
+  const reread = await restored.refresh(capture, unknown.reference);
+  assert.equal(reread.state, "not_applied"); assert.equal(f.stored.size, 0); assert.equal(f.calls.submit, 1); assert.equal(f.calls.draft, 1);
 });
