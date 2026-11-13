@@ -104,7 +104,10 @@ test("the colleague composer pastes images through the import, says every outcom
   assert.match(source, /catch \(error\) \{ tell\(pasteFailureNotice\(error, selectedScope !== model\.mediaScope\)\); \}/);
   assert.match(source, /const \{ path \} = await model\.importPastedImage\([\s\S]{0,400}model\.setDraft\(next\); input\.current\?\.focus\(\); tell\("pastedImage"\);/, "the path joins the draft like a chosen file");
   assert.match(source, /<span className="sr-only" aria-live="polite" data-paste-status>\{pasteStatus\}<\/span>/, "progress and outcome reach screen readers through a line that is always there");
-  assert.match(source, /const tell = \(key: PasteNoticeKey\) => \{ const text = r\(key\); setPasteStatus\(text\); setUndoNotice/);
+  assert.match(source, /setPasteStatus\(""\); setTimeout\(\(\) => setPasteStatus\(text\), 60\); setUndoNotice\(\{ id: \+\+toastCounter\.current, scope, text, quiet: true \}\);/, "cleared before each write so a repeat is read again; the toast is quiet so nothing is read twice (N2)");
+  const toast = readFileSync(new URL("../src/WorkspaceUndoToast.tsx", import.meta.url), "utf8");
+  assert.match(toast, /role=\{notice\.quiet \? undefined : "status"\}/, "other toasts keep role=status");
+  for (const locale of ["zh-Hans", "en", "zh-Hant"]) assert.doesNotMatch(redesignText(locale, "pasteInterrupted"), /切换了|切換了|switched/i, "a generation change in the same workspace is not called a switch (N1)");
   for (const locale of ["zh-Hans", "en", "zh-Hant"]) for (const key of ["pasteUnsupported", "pasteTooLarge", "pasteType", "pasteFailed", "pasteBusy", "pasteDraftFull", "pasteInterrupted", "pastingImage", "pastedImage"]) {
     const text = redesignText(locale, key); assert.ok(text && text !== key, `${locale} ${key}`);
     if (key === "pasteTooLarge") assert.match(text, /3\.6 ?MB/);

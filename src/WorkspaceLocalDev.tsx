@@ -566,8 +566,10 @@ export function WorkspaceScreen({ model, disconnected, onReconnect, root, mode, 
     finally { setAttaching(false); }
   };
   const pasteImage = async (file: File) => {
-    // Every outcome is shown (toast) and said (the composer's always-present live line), never dropped silently.
-    const tell = (key: PasteNoticeKey) => { const text = r(key); setPasteStatus(text); setUndoNotice({ id: ++toastCounter.current, scope, text }); };
+    // Every outcome is shown (a quiet toast) and said once (the composer's always-present live line), never dropped silently.
+    const tell = (key: PasteNoticeKey) => { const text = r(key);
+      // Clear, then write, so a repeated message is read again; the toast is quiet so it is not read twice.
+      setPasteStatus(""); setTimeout(() => setPasteStatus(text), 60); setUndoNotice({ id: ++toastCounter.current, scope, text, quiet: true }); };
     if (!model.supportsMediaImport()) { tell("pasteUnsupported"); return; }
     if (!PASTE_IMAGE_TYPES.includes(file.type)) { tell("pasteType"); return; }
     if (file.size > MAX_PASTE_IMAGE_BYTES) { tell("pasteTooLarge"); return; }

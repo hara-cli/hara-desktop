@@ -34,7 +34,7 @@ const copy = {
   pasteFailed: ["图片没有粘贴上，请重试，或用附件按钮选择文件。", "The image wasn’t pasted. Try again, or use the attach button to choose the file.", "圖片沒有貼上，請重試，或用附件按鈕選擇檔案。"],
   pasteBusy: ["上一张图片还在添加，请等它完成后再粘贴。", "The previous image is still being added. Paste again when it’s done.", "上一張圖片還在加入，請等它完成後再貼上。"],
   pasteDraftFull: ["消息已经太长，放不下图片了，请先删减一些文字。", "The message is too long to add an image. Shorten it first.", "訊息已經太長，放不下圖片了，請先刪減一些文字。"],
-  pasteInterrupted: ["切换了工作空间，图片没有添加，请在当前空间重新粘贴。", "The workspace changed, so the image wasn’t added. Paste it again here.", "切換了工作空間，圖片沒有加入，請在目前空間重新貼上。"],
+  pasteInterrupted: ["工作空间有变化，图片没有添加，请重新粘贴。", "The workspace changed while adding the image, so it wasn’t added. Paste it again.", "工作空間有變化，圖片沒有加入，請重新貼上。"],
   pastingImage: ["正在添加图片…", "Adding image…", "正在加入圖片…"],
   pastedImage: ["图片已添加到消息。", "Image added to the message.", "圖片已加入訊息。"],
   fileRefFailed: ["文件未添加，请检查允许范围后重试。", "File wasn’t added. Check its allowed location and retry.", "尚未加入檔案，請確認允許範圍後再試。"],
