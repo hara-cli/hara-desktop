@@ -127,7 +127,13 @@ try {
     cases.push({ case: "missing-reader-writer-capabilities-empty-entry", screenshot: await screenshot("read-only-no-write-entry") });
     step = "duty-edit"; await mounted(); await openDuty(); cases.push({case:"duty-form",screenshot:await screenshot("write-duty-form")}); await input('input[name="duty-title"]', "Reviewed real C3 duty");
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
-    await ready(`!!document.querySelector('${dialog} [role=alert]')`, "Discard confirmation"); await click(`${dialog} [role=alert] button:first-child`); assert.equal(host.counters.drafts, 0); assert.equal(host.counters.submits, 0);
+    await ready(`!!document.querySelector('${dialog} [role=alert]')`, "Discard confirmation");
+    step = "double-Escape-discard";
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await ready(`document.querySelector('${dialog}')?.open && !!document.querySelector('${dialog} [role=alert] button')`, "Second Escape must preserve the dirty discard confirmation");
+    assert.equal(await evaluate(`!!document.activeElement?.closest('${dialog}')`), true);
+    cases.push({ case: "native-double-Escape-preserves-discard-confirmation", screenshot: await screenshot("write-double-escape-discard") });
+    await click(`${dialog} [role=alert] button:first-child`); assert.equal(host.counters.drafts, 0); assert.equal(host.counters.submits, 0);
     await review(); assert.equal(host.counters.submits, 0); assert.equal(await evaluate(`document.querySelector('${dialog} .hd-work-scope-differences').textContent.includes('Reviewed real C3 duty')`), true);
     for (const theme of ["violet-glass", "obsidian", "daylight"]) for (const locale of ["zh-Hans", "en", "zh-Hant"]) {
       await evaluate(`document.documentElement.dataset.visualTheme=${JSON.stringify(theme)};document.documentElement.dataset.theme=${JSON.stringify(theme === "daylight" ? "light" : "dark")};window.__C5W.locale(${JSON.stringify(locale)})`); await waitForLayout(evaluate, { label: theme + locale });
@@ -161,7 +167,23 @@ try {
     cases.push({case:"actual-30s-unsubmitted-expiry-requires-explicit-new-review",submissions:0});
     await evaluate("void(window.__C5W_LIVE=document.querySelector('.hd-work-scope-card > [role=status]'))");
     const before = (await host.bootstrap()).view.policy;
-    await evaluate(`(()=>{const button=document.querySelector('${dialog} > .hd-work-scope-actions button.pri');button.click();button.click()})()`); await ready(`!!document.querySelector('${dialog} .hd-work-scope-result')`, "Actual C3 result");
+    const originalSubmit = host.submit; let responseCommitted = false, releaseResponse;
+    const responseGate = new Promise(resolve => { releaseResponse = resolve; });
+    host.submit = async (...args) => { const value = await originalSubmit(...args); responseCommitted = true; await responseGate; return value; };
+    try {
+      await evaluate(`(()=>{const button=document.querySelector('${dialog} > .hd-work-scope-actions button.pri');button.click();button.click()})()`);
+      await ready(`document.querySelector('${dialog} > .hd-work-scope-actions button.pri')?.disabled`, "Submitting UI visible");
+      const committedDeadline = Date.now() + 15000; while (!responseCommitted && Date.now() < committedDeadline) await pause(20);
+      assert(responseCommitted, "The response barrier follows real C3 commit, never a fake receipt");
+      for (let n = 0; n < 2; n++) {
+        await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+        await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+      }
+      await ready(`document.querySelector('${dialog}')?.open && !!document.querySelector('${dialog} > .hd-work-scope-actions button.pri')?.disabled`, "Second Escape cannot hide an in-flight submission");
+      assert.equal(await evaluate(`!!document.activeElement?.closest('${dialog}')`), true);
+      cases.push({ case: "native-double-Escape-preserves-real-C3-submitting", submissions: host.counters.submits });
+    } finally { releaseResponse(); host.submit = originalSubmit; }
+    await ready(`!!document.querySelector('${dialog} .hd-work-scope-result')`, "Actual C3 result");
     assert.equal(host.counters.submits, 1); const after = (await host.bootstrap()).view.policy; assert.equal(after.duty.publicProfile.title, "Reviewed real C3 duty"); assert.deepEqual(after.boundary, before.boundary); assert.deepEqual(after.rights, before.rights);
     cases.push({ case: "real-DOM-double-confirm-one-C3-submit", operation: host.records().at(-1), models: host.counters.providers, screenshot: await screenshot("write-duty-applied") });
     await evaluate("window.__C5W.deferRead()"); await click(`${dialog} > .hd-work-scope-actions button:last-child`); await ready(`!document.querySelector('${dialog}')&&!!document.querySelector('.hd-work-scope-card > .hd-work-scope-notice')`,"Deferred read loading");

@@ -1786,5 +1786,6 @@
   "ws.workScope.tool.other": "Other tool",
   "ws.workScope.toolRef": "Tool reference",
   "ws.workScope.write.expired": "This review has expired. Return to editing, read the current scope and review again.",
-  "ws.workScope.write.drained": "Earlier actions have ended. The current scope still needs to be confirmed."
+  "ws.workScope.write.drained": "Earlier actions have ended. The current scope still needs to be confirmed.",
+  "ws.workScope.write.notApplied": "This change expired without being applied. You can edit again."
 }

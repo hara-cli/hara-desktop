@@ -14,6 +14,7 @@ function statusKey(value: WorkScopeOutcome): Key {
   if (value.state === "applied") return "ws.workScope.write.applied";
   if (value.state === "superseded") return "ws.workScope.write.superseded";
   if (value.state === "rejected") return "ws.workScope.write.rejected";
+  if (value.state === "not_applied") return "ws.workScope.write.notApplied";
   if (value.state === "unknown") return "ws.workScope.write.unknown";
   return `ws.workScope.write.${value.receipt?.status === "queued" ? "queued" : value.receipt?.status === "applying" ? "applying" : value.receipt?.status === "drained" ? "drained" : value.receipt?.status === "draining" ? "draining" : "accepted"}` as Key;
 }

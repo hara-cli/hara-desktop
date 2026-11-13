@@ -17,6 +17,7 @@ export interface WorkScopeCommandPort {
   draft(target: WorkScopeTarget, input: { commandId: string; rootRequestId: string; operation: AgentBoundaryCommand["operation"]; lifetimeMs: number }, signal?: AbortSignal): Promise<unknown>;
   submit(target: WorkScopeTarget, command: AgentBoundaryCommand, proposal: WorkScopeProposal): Promise<unknown>;
   receipt(target: WorkScopeTarget, commandId: string, signal?: AbortSignal): Promise<unknown>;
+  lookupReceipt?(target: WorkScopeTarget, commandId: string, signal?: AbortSignal): Promise<unknown>;
   catalog?(target: WorkScopeTarget, policy: WorkScopePolicySnapshot, signal?: AbortSignal): Promise<unknown>;
 }
 declare const captureBrand: unique symbol;
@@ -35,7 +36,7 @@ export interface WorkScopePreview {
 /** Transport uncertainty is a local UI observation, never a fabricated C0 receipt. */
 export interface WorkScopeOutcome {
   readonly reference: WorkScopeReference; readonly receipt: AgentBoundaryReceipt | null;
-  readonly state: "pending" | "applied" | "superseded" | "rejected" | "unknown";
+  readonly state: "pending" | "applied" | "superseded" | "rejected" | "unknown" | "not_applied";
 }
 export interface WorkspaceWorkScopeWriter {
   capture(target: WorkScopeTarget): WorkScopeWriteCapture | null;
@@ -73,7 +74,7 @@ let writerSequence = 0;
 /** No default clock, transport or persistence authority can be obtained from a model's RPC method. */
 export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSource, port: WorkScopeCommandPort, references: WorkScopeReferenceStore): WorkspaceWorkScopeWriter {
   if (!isWorkspaceWorkScopeSource(readSource)) return fail();
-  const methods = fields(port, ["assertCurrent", "inspect", "draft", "submit", "receipt"], ["catalog"]);
+  const methods = fields(port, ["assertCurrent", "inspect", "draft", "submit", "receipt"], ["catalog", "lookupReceipt"]);
   if (Object.values(methods).some(value => typeof value !== "function")) return fail();
   const refMethods = fields(references, ["list", "put", "remove"]);
   if (Object.values(refMethods).some(value => typeof value !== "function")) return fail();
@@ -125,9 +126,40 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
     if (["applied", "superseded", "rejected"].includes(state)) references.remove(saved.namespace, reference);
     return Object.freeze({ reference, receipt, state });
   }
+  // Walk the trusted context's shape with descriptors; a getter/extra key cannot impersonate its scope.
+  function sameContext(raw: unknown, expected: unknown): boolean {
+    if (expected === null || typeof expected !== "object") return raw === expected;
+    if (Array.isArray(expected)) {
+      if (!Array.isArray(raw) || Object.getPrototypeOf(raw) !== Array.prototype || raw.length !== expected.length) return false;
+      const own = Object.getOwnPropertyDescriptors(raw);
+      return Reflect.ownKeys(own).length === expected.length + 1 && expected.every((value, index) => own[String(index)]
+        && Object.prototype.hasOwnProperty.call(own[String(index)], "value") && sameContext(own[String(index)]!.value, value));
+    }
+    const row = fields(raw, Object.keys(expected));
+    return Object.entries(expected).every(([key, value]) => sameContext(row[key], value));
+  }
+  async function lookupOutcome(capture: WorkScopeWriteCapture, reference: WorkScopeReference, raw: unknown, signal?: AbortSignal): Promise<WorkScopeOutcome> {
+    const { saved } = await referenceCheck(capture, reference, signal);
+    const row = fields(raw, ["schemaVersion", "kind", "state", "context", "agentId", "commandId", "observedAt", "receipt"]);
+    if (row.schemaVersion !== 1 || row.kind !== "command-receipt-lookup" || !["seen", "not_seen"].includes(row.state as string)
+      || row.agentId !== reference.agentId || row.commandId !== reference.commandId || !sameContext(row.context, saved.identity.context)
+      || typeof row.observedAt !== "string" || !Number.isFinite(Date.parse(row.observedAt)) || new Date(Date.parse(row.observedAt)).toISOString() !== row.observedAt) return fail();
+    if (row.state === "seen") return outcome(capture, reference, row.receipt, signal);
+    if (row.receipt !== null) return fail();
+    // An authenticated Core-time observation, not a local timer/exception, proves an unseen intent cannot still be admitted.
+    if (reference.schemaVersion === 2 && reference.notAfter && Date.parse(row.observedAt) > Date.parse(reference.notAfter) + 1000) {
+      check(capture, signal); references.remove(saved.namespace, reference);
+      return Object.freeze({ reference, receipt: null, state: "not_applied" });
+    }
+    return Object.freeze({ reference, receipt: null, state: "unknown" });
+  }
   async function query(capture: WorkScopeWriteCapture, reference: WorkScopeReference, signal?: AbortSignal): Promise<WorkScopeOutcome> {
     const { saved } = await referenceCheck(capture, reference, signal);
     try {
+      if (port.lookupReceipt && readSource.identity(saved.read).capabilities.includes("workspace.agent-command-receipt-lookup.v1")) {
+        const raw = await port.lookupReceipt(saved.identity.target, reference.commandId, signal); check(capture, signal);
+        return await lookupOutcome(capture, reference, raw, signal);
+      }
       const raw = await port.receipt(saved.identity.target, reference.commandId, signal); check(capture, signal);
       return await outcome(capture, reference, raw, signal);
     } catch {
@@ -205,7 +237,7 @@ export function createWorkspaceWorkScopeWriter(readSource: WorkspaceWorkScopeSou
       if (issued > now + 1000 || now >= expires || expires - issued > 30000) return fail("STALE_REVISION");
       await unchanged(session, signal, input.action === "boundary.update");
       if (session.consumed || references.list(saved.namespace).length || active.has(saved.namespace)) return fail("CONTROL_HELD");
-      const reference = parseWorkScopeReference({ schemaVersion: 1, workspaceId: saved.identity.target.workspaceId, generation: saved.identity.target.generation,
+      const reference = parseWorkScopeReference({ schemaVersion: 2, issuedAt: command.issuedAt, notAfter: command.notAfter, workspaceId: saved.identity.target.workspaceId, generation: saved.identity.target.generation,
         scopeKey: saved.identity.context.resourceBinding.scopeKey, agentId: command.agentId, contextDigest: await workScopeSha256(canonical(command.context)),
         commandId, rootRequestId, intentDigest: command.intentDigest, proposalDigest: digest, action: input.action });
       check(session.capture, signal); session.consumed = true;

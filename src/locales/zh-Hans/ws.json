@@ -1786,5 +1786,6 @@
   "ws.workScope.tool.other": "其他工具",
   "ws.workScope.toolRef": "工具参考",
   "ws.workScope.write.expired": "本次核对已过期。请返回修改，重新读取当前工作范围并核对。",
-  "ws.workScope.write.drained": "先前操作已经结束，仍需确认当前工作范围。"
+  "ws.workScope.write.drained": "先前操作已经结束，仍需确认当前工作范围。",
+  "ws.workScope.write.notApplied": "这次更改已过期，确认没有生效。现在可以重新编辑。"
 }
