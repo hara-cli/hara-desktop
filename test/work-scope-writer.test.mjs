@@ -336,7 +336,7 @@ test("C5 M1 real process exit after durable put restores only original reference
     "const preview = await f.writer.preview(await f.writer.load(f.capture()), {action:'duty.update',draft:f.draft()});",
     "await f.writer.submit(preview); process.exit(44);",
   ].join("\n");
-  const child = spawnSync(process.execPath, ["--input-type=module", "--eval", childSource], { env: process.env, encoding: "utf8", timeout: 10000 });
+  const child = spawnSync(process.execPath, ["--input-type=module"], { input: childSource, env: process.env, encoding: "utf8", timeout: 10000 });
   assert.equal(child.error, undefined); assert.equal(child.signal, null);
   assert.equal(child.status, 42, child.stderr.slice(-1500));
   assert.equal(existsSync(submitted), false, "the abrupt exit preceded the actual submit port");
