@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 // Native dialog visibility and focus are exercised by the browser interaction regression.
 const modules = new Map();
 export function sharedSettingsUi(name) {
-  if (!["./SettingsActionDialog", "./SettingsChrome"].includes(name)) throw new Error("Unknown shared settings UI module");
+  if (!["./SettingsActionDialog", "./SettingsChrome", "./SettingsConnectionModelField"].includes(name)) throw new Error("Unknown shared settings UI module");
   if (!modules.has(name)) {
     const url = new URL(`../../src/${name.slice(2)}.tsx`, import.meta.url);
     const output = buildSync({ entryPoints: [fileURLToPath(url)], bundle: true, platform: "node", format: "cjs", jsx: "automatic", external: ["react"], loader: { ".css": "empty", ".svg": "dataurl" }, write: false });

@@ -20,7 +20,7 @@ const ADDED = {
   saveDefaultRuntime: "S1b/G1: save it with the optimistic lock (value.revision)",
   supportsConnectionModels: "#98: Pi can be checked only when Core lists connection models",
   listRuntimeModels: "#98 (DESIGN 2.1.2 §11.4): the user-pressed «Check» on an enabled engine",
-  listConnectionModels: "#98: the user-pressed «Check» on Pi, through the workspace connection",
+  listConnectionModels: "#98 Pi Check; Settings explicit model-catalog read for a saved connection, no write or extra request fields",
 };
 const method = call => call.match(/^[\w.]+?\.(\w+)\(/)[1];
 

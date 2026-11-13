@@ -122,7 +122,7 @@ export function WorkspaceConnections({ model, workspace, onDirty }: { model: Wor
     <button disabled={pending || readOnly} onClick={() => { setNotice(""); setAdding(current => !current); setEditing(null); }}>{t("ws.connections.add")}</button>
     {!readOnly && (adding || editing) ? <SettingsActionDialog key={editing?.id ?? "new"} label={t(editing ? "ws.connections.edit" : "ws.connections.add")} pending={pending} initialFocus="field" onClose={() => { if (!pending && !fence.current) { setEditing(null); setAdding(false); } }}>
       <h3>{t(editing ? "ws.connections.edit" : "ws.connections.add")}</h3>
-      <WorkspaceConnectionForm model={model} existing={editing ?? undefined} firstKey={!workspace.connections.connections.some(connection => connection.keySaved)} onDirty={onDirty} onPending={value => { fence.current = value; setPending(value); }}
+      <WorkspaceConnectionForm model={model} existing={editing ?? undefined} settingsModels={workspace} firstKey={!workspace.connections.connections.some(connection => connection.keySaved)} onDirty={onDirty} onPending={value => { fence.current = value; setPending(value); }}
         onCancel={() => { fence.current = false; setEditing(null); setAdding(false); setPending(false); }} onSaved={() => { fence.current = false; setEditing(null); setAdding(false); setPending(false); setNotice("ws.connections.updated"); }} />
     </SettingsActionDialog> : null}
     {legacy.length ? <details className="wsd-legacy-import" open={active.length === 0}><summary>{t("ws.connections.legacyFound")}</summary><p>{t("ws.connections.importNote")}</p>

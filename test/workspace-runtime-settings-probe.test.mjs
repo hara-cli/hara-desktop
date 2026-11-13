@@ -33,7 +33,7 @@ function mount(locale, initialState) {
     },
   };
   const exports = {}, t = makeT(locale);
-  new Function("require", "exports", outputText)(name => name === "./SettingsActionDialog" ? sharedSettingsUi(name) : name === "react" ? { ...React, ...hooks }
+  new Function("require", "exports", outputText)(name => ["./SettingsActionDialog", "./SettingsConnectionModelField"].includes(name) ? sharedSettingsUi(name) : name === "react" ? { ...React, ...hooks }
     : name === "./SettingsChrome" ? settingsChrome.exports
     : name === "./runtime-expansion" ? expansion : name === "./WorkspaceRuntimeProxy" ? { WorkspaceRuntimeProxy: () => null }
     : name === "./workspace-shell-hooks" ? { useWorkspaceLocale: () => ({ t, locale }) }
