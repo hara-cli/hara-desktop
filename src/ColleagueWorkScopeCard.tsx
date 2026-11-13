@@ -3,7 +3,7 @@ import { makeT, type Locale } from "./i18n";
 import type { WorkspaceDevAgent, WorkspaceDevModel, WorkspaceDevSnapshot } from "./workspace-dev-state";
 import { useColleagueWorkScope } from "./use-colleague-work-scope";
 import { ColleagueWorkScopeEditor } from "./ColleagueWorkScopeEditor";
-import { workScopeToolLabelKey } from "./work-scope-labels";
+import { workScopeDirectoryName, workScopeToolLabelKey } from "./work-scope-labels";
 import "./colleague-work-scope.css";
 export function ColleagueWorkScopeCard({ model, agent, workspace, locale }: { model?: WorkspaceDevModel; agent: WorkspaceDevAgent; workspace: WorkspaceDevSnapshot; locale: Locale }) {
   const id = useId(), t = makeT(locale), result = useColleagueWorkScope(model, { workspaceId: workspace.workspaceId, generation: workspace.resourceGeneration,
@@ -41,13 +41,14 @@ export function ColleagueWorkScopeCard({ model, agent, workspace, locale }: { mo
           <dl><dt>{t("ws.workScope.availableTools")}</dt><dd>{saved.tools.allow.length > 0 ? saved.tools.allow.map(ref => toolLabel(ref.toolId)).join(" · ") : t("ws.workScope.noTools")}</dd>
             {saved.tools.deny.length > 0 ? <><dt>{t("ws.workScope.excludedTools")}</dt><dd>{saved.tools.deny.map(ref => toolLabel(ref.toolId)).join(" · ")}</dd></> : null}
             {saved.tools.readOnly ? <><dt>{t("ws.workScope.toolMode")}</dt><dd>{t("ws.workScope.onlyRead")}</dd></> : null}</dl>
-          {saved.resources.length > 0 ? <ul className="hd-work-scope-directories">{saved.resources.map(resource => <li key={resource.resourceId}><strong>{resource.label ?? t("ws.workScope.unnamedDirectory")}</strong>
-            {resource.path ? <span className="hd-work-scope-path">{resource.path}</span> : null}<span>{resource.access.map(accessLabel).join(" · ") || t("ws.workScope.noAccess")}</span></li>)}</ul> : <p className="hd-work-scope-muted">{t("ws.workScope.noDirectories")}</p>}</div>
+          {saved.resources.length > 0 ? <ul className="hd-work-scope-directories">{saved.resources.map(resource => <li key={resource.resourceId}><strong>{workScopeDirectoryName(resource.label, resource.path) ?? t("ws.workScope.unnamedDirectory")}</strong>
+            <span>{resource.access.map(accessLabel).join(" · ") || t("ws.workScope.noAccess")}</span></li>)}</ul> : <p className="hd-work-scope-muted">{t("ws.workScope.noDirectories")}</p>}</div>
         <div className="hd-work-scope-section"><h4>{t("ws.workScope.approvals")}</h4>{saved.approvals.length > 0 ? <ul>{saved.approvals.map(value => <li key={value}>{approvalLabel(value)}</li>)}</ul> : <p className="hd-work-scope-muted">{t("ws.workScope.noApprovals")}</p>}</div>
         <details className="hd-work-scope-advanced"><summary>{t("ws.workScope.advanced")}</summary><dl><dt>{t("ws.workScope.dutyVersion")}</dt><dd>{saved.revisions.duty}</dd><dt>{t("ws.workScope.scopeVersion")}</dt><dd>{saved.revisions.boundary}</dd>
           <dt>{t("ws.workScope.modelLimit")}</dt><dd>{saved.limits.modelCalls}</dd><dt>{t("ws.workScope.effectLimit")}</dt><dd>{saved.limits.toolEffects}</dd></dl>
           {[...saved.tools.allow, ...saved.tools.deny].map((tool, i) => <p key={`tool-${i}`}>{t("ws.workScope.toolRef")} <code>{tool.toolId} · {tool.connectorId ?? "—"} · {tool.catalogRevision}</code></p>)}
-          {saved.resources.map(resource => <p key={resource.resourceId}>{t("ws.workScope.directoryRef")} <code>{resource.resourceId}</code></p>)}</details>
+          {saved.resources.map(resource => <p key={resource.resourceId}>{t("ws.workScope.directoryRef")} <code>{resource.resourceId}</code>
+            {resource.path ? <span className="hd-work-scope-path">{resource.path}</span> : null}</p>)}</details>
         <ColleagueWorkScopeEditor model={model} target={{ workspaceId: workspace.workspaceId, generation: workspace.resourceGeneration, agentId: agent.agentId, agentEpoch: agent.agentEpoch ?? 0, configRevision: agent.configRevision ?? 0 }} locale={locale} onApplied={() => { retryFocus.current = true; result.retry(); }} />
         <footer>{t("ws.workScope.savedOnly")}</footer>
       </>}

@@ -31,6 +31,13 @@ const source = createWorkspaceWorkScopeSource({
     lastCompleted = requestNo;
     return failure ? { ...value, policy: { approved: true } } : value;
   },
+  describeResources(_target, refs) {
+    return refs.map(ref => {
+      const description = bootstrap.resourceDescriptions.find((row: any) => row.resourceId === ref.resourceId && row.revision === ref.revision);
+      if (!description) throw Error("No current Host registry description");
+      return description;
+    });
+  },
   subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
 });
 function ObservedInspector(props: any) {

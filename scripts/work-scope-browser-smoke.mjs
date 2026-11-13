@@ -52,7 +52,9 @@ let owner, guest, initialized, target, snapshot, agent, connectionId;
 async function bootstrap(mode) {
   if (mode !== "owner") return { snapshot, agent, target, capabilities: mode === "guest" ? initialized.capabilities : [], connectionId: "untrusted", view: null };
   const view = await owner.request("workspace.boundaries.get", { workspaceId: target.workspaceId, agentId: target.agentId }); counters.ownerReads++;
-  return { snapshot, agent, target, capabilities: initialized.capabilities, connectionId, view };
+  assert.equal(typeof snapshot.colleagueHome.path, "string");
+  const resourceDescriptions = view.policy.resources.map(ref => ({ ...ref, label: "Accounts", path: snapshot.colleagueHome.path }));
+  return { snapshot, agent, target, capabilities: initialized.capabilities, connectionId, view, resourceDescriptions };
 }
 function send(method, params = {}, scoped = true) { return requestCdp(socket, pending, { id: ++serial, method, params, sessionId: scoped ? sessionId : undefined, step, timeoutMs: method === "Page.navigate" ? 30000 : 15000 }); }
 async function evaluate(expression) { const row = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (row.exceptionDetails) throw Error(row.exceptionDetails.exception?.description ?? row.exceptionDetails.text); return row.result?.value; }
@@ -140,7 +142,12 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('${card} .hd-work-scope-section').length`), 4);
   assert.equal(await evaluate(`!!document.querySelector('${card} img') || !!window.__C5_XSS`), false);
   assert.equal(await evaluate(`document.querySelector('${card} details').open`), false);
-  assert.equal(await evaluate(`document.querySelector('${card}').textContent.includes(${JSON.stringify(root)})`), false, "No inferred directory path");
+  const directoryPath = snapshot.colleagueHome.path;
+  assert.equal(await evaluate(`document.querySelector('${card} .hd-work-scope-directories strong').textContent`), "Accounts");
+  assert.equal(await evaluate(`document.querySelector('${card} .hd-work-scope-directories').textContent.includes(${JSON.stringify(directoryPath)})`), false);
+  assert.equal(await evaluate(`document.querySelector('${card}').innerText.includes(${JSON.stringify(directoryPath)})`), false, "The collapsed default card must not disclose the full path");
+  assert.equal(await evaluate(`document.querySelector('${card} .hd-work-scope-advanced .hd-work-scope-path').textContent`), directoryPath, "The exact Host path stays under Advanced");
+  receipts.push({ directoryDisclosure: "default", friendlyName: "Accounts", fullPathVisible: false });
   const noLeak = async () => { assert.equal(await evaluate(`!!document.querySelector('${card}')`), false); assert.equal(await evaluate(`document.getElementById('root').outerHTML.includes('Synthetic work scope')`), false); };
   step = "scope-fences";
   for (const patch of [{ workspaceId: "other-private-space" }, { generation: "replaced-generation" }, { agentId: "other-colleague" }, { agentEpoch: target.agentEpoch + 1 }, { configRevision: target.configRevision + 1 }]) {
@@ -192,6 +199,9 @@ try {
   step = "keyboard-and-withdrawal"; await evaluate(`document.querySelector('${card} summary').scrollIntoView({block:"center"});document.querySelector('${card} summary').focus()`);
   await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r", unmodifiedText: "\r" }); await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
   await ready(`document.querySelector('${card} details').open`, "Keyboard Enter opens Advanced");
+  assert.equal(await evaluate(`document.querySelector('${card}').innerText.includes(${JSON.stringify(directoryPath)})`), true, "Keyboard disclosure reveals the exact registered path");
+  assert.equal(await evaluate(`document.querySelector('${card}').scrollWidth<=document.querySelector('${card}').clientWidth+1`), true);
+  receipts.push({ directoryDisclosure: "advanced", fullPathVisible: true, keyboard: "Enter", capture: await capture("directory-details-expanded") });
   await evaluate("window.__C5.withdraw()"); await ready(`!document.querySelector('${card}')`, "Withdrawal removes focused card");
   assert.equal(await evaluate("document.activeElement.getAttribute('role')"), "tabpanel");
   step = "real-Host-revocation"; await evaluate("window.__C5.reconnect()"); await ready(loaded, "Read after fresh real socket"); await evaluate("window.__C5.revoke()"); await ready(`!document.querySelector('${card}')`, "Actual revoked Host is withdrawn");

@@ -22,6 +22,7 @@
 .hd-work-scope-warning button { min-height: 36px; padding: var(--hara-space-1) var(--hara-space-3); border: 1px solid var(--hara-border-default); border-radius: var(--hara-radius-row); background: var(--hara-bg-surface); color: var(--hara-text-primary); font: inherit; cursor: pointer; }
 .hd-work-scope-warning p { margin: 0 0 var(--hara-space-2); }
 .hd-work-scope-advanced { margin-top: var(--hara-space-4); color: var(--hara-text-secondary); }
+.hd-work-scope-card > .hd-work-scope-advanced .hd-work-scope-path { display: block; }
 .hd-work-scope-advanced summary { padding: var(--hara-space-2) 0; cursor: pointer; }
 .hd-work-scope-advanced p { margin: var(--hara-space-2) 0 0; font-size: var(--hara-font-size-small); }
 .hd-work-scope-card code { font-family: var(--hara-font-mono); }
