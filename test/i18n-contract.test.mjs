@@ -157,6 +157,7 @@ test('<html lang> is driven by the chosen locale, not a static attribute', () =>
 });
 
 const FORMAL_FILES = [
+  'ColleagueWorkScopeCard.tsx', 'ColleagueWorkScopeEditor.tsx',
   'WorkspaceColleagueInspector.tsx', 'WorkspaceLocalDev.tsx', 'AgentProfileEditor.tsx', 'AgentRuntimePicker.tsx',
   'WorkspaceRosterMenu.tsx', 'WorkspaceGroupInspector.tsx', 'WorkspaceRuntimeAccess.tsx', 'WorkspaceUserQuestion.tsx',
   'workspace-account-usage.ts', 'workspace-dev-rpc.ts', 'CrashReportPrompt.tsx', 'RendererRecovery.tsx',
