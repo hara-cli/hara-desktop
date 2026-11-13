@@ -15,6 +15,7 @@ import { parseRuntimeDiagnosticReceipt, parseRuntimeStageReports, sameRuntimeSta
 import { runtimeProxyView, type WorkspaceRuntimeProxyView } from "./workspace-runtime-proxy.ts";
 import { ONBOARDING_CAPABILITY, ONBOARDING_STEPS_READY, onboardingView, type OnboardingFields, type OnboardingProgress } from "./workspace-onboarding-state.ts";
 import { WorkspaceRpcWaitError, WorkspaceViewError } from "./workspace-dev-errors.ts";
+import { CREATE_BATCH_CAPABILITY, CREATE_BATCH_LIMIT, createBatchView, type CreateBatchRow, type CreateBatchView } from "./workspace-create-batch.ts";
 import { connectionRecoveryReason, workspaceRecoveryIdentity } from "./workspace-resume.ts";
 import type { UpdatePreferences } from "./workspace-updater-state";
 import type { AgentRuntimeId, AgentRuntimeOption } from "./client";
@@ -24,7 +25,7 @@ export interface WorkspaceInheritanceView { state: "not_needed" | "pending" | "v
 export interface WorkspaceDevDirectory { revision: number; activeWorkspaceId: string | null;
   workspaces: { workspaceId: string; label: string; labelSource?: "default"; labelKey?: "core.name.workspace"; role: string; active: boolean; kind?: "personal" | "team" }[]; syntheticOnly: boolean; executionMode?: "synthetic" | "ark-real-key" | "workspace" }
 export type RuntimePermissionTier = "full-protected" | "controlled";
-export interface WorkspaceDevAgent { titleSource?: "default"; titleKey?: "core.name.orchestrator"; agentId: string; kind: "main" | "colleague"; state: string;
+export interface WorkspaceDevAgent { titleSource?: "default"; titleKey?: "core.name.orchestrator"; agentId: string; username?: string; kind: "main" | "colleague"; state: string;
   configRevision?: number; agentEpoch?: number; description?: string; permissionTier?: RuntimePermissionTier;
   /** Core decision B: the stored tier cannot run on this Host platform until the user switches it. */
   permissionTierUnavailable?: true;
@@ -61,7 +62,9 @@ export type WorkspaceDevAsyncAsk = Extract<WorkspaceDevInteraction, { kind: "ask
 export function workspaceAsyncAsks(conversation: { pendingInteractions?: WorkspaceDevInteraction[] } | null | undefined): WorkspaceDevAsyncAsk[] {
   return (conversation?.pendingInteractions ?? []).filter((row): row is WorkspaceDevAsyncAsk => row.kind === "ask_user_question" && row.delivery === "async");
 }
-export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string; label: string; labelSource?: "default"; labelKey?: "core.name.workspace"; selectedAgentId: string;
+export interface WorkspaceDevSnapshot { workspaceId: string; resourceGeneration: string;
+  /** Agent catalog revision (Core snapshot), the G2 `expectedCatalogRevision`. */
+  agentRevision?: number; label: string; labelSource?: "default"; labelKey?: "core.name.workspace"; selectedAgentId: string;
   runtimeOptions?: AgentRuntimeOption[];
   colleagueHome?: { path: string; legacyPath: string; created: boolean; available: boolean; memoryScope: "private"; codexMigrationPending: boolean };
   colleagueLimit?: number;
@@ -816,6 +819,20 @@ export class WorkspaceDevModel {
     this.assertRuntimeProxyScope(workspaceId, generation);
     if (!this.supportsDefaultRuntime()) throw new WorkspaceViewError("ws.notice.invalidView");
     return defaultRuntimeView(await this.workspaceRequest<unknown>("workspace.defaultRuntime.set", { expectedRevision, defaultRuntimeId }), workspaceId);
+  }
+  /** Core G2. The guide's «Create» appears only when Core advertises batch creation; old Cores keep the draft savable only. */
+  supportsCreateBatch(): boolean { return this.rpc.supportsCapability?.(CREATE_BATCH_CAPABILITY) === true; }
+  /**
+   * Explicit, user-pressed creation of up to eight colleagues. `expectedCatalogRevision` is the snapshot's Agent catalog
+   * revision; a retry of failed rows passes the revision the previous reply returned. Refreshes afterwards so the new
+   * colleagues appear in the list.
+   */
+  async createColleagues(runId: string, rows: CreateBatchRow[], expectedCatalogRevision: number, workspaceId: string, generation: string): Promise<CreateBatchView> {
+    this.assertRuntimeProxyScope(workspaceId, generation);
+    if (!this.supportsCreateBatch() || !rows.length || rows.length > CREATE_BATCH_LIMIT) throw new WorkspaceViewError("ws.notice.invalidView");
+    const view = createBatchView(await this.workspaceRequest<unknown>("workspace.agents.createBatch", { expectedCatalogRevision, runId, rows }), runId, rows);
+    await this.refresh().catch(() => undefined);
+    return view;
   }
   async saveDisplayPreference(executionDetails: "brief" | "detailed", collapseDetails: boolean): Promise<WorkspacePreferenceView> {
     const current = await this.preferences(); return this.rpc.request("workspace.preferences.set", { theme: current.theme, expectedRevision: current.revision, executionDetails, collapseDetails });

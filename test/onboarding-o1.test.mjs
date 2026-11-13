@@ -76,13 +76,13 @@ test("G4 RPCs carry the workspace scope and exactly the six progress fields; not
   assert.equal(f.calls.filter(call => call.method.startsWith("workspace.onboarding.")).length, 2);
 });
 
-test("no Core capability → no request; with the capability the entry is still off until all three steps ship", async () => {
+test("no Core capability → no request; with the capability the entry is still off until Jeff has seen all three steps", async () => {
   const without = modelFixture([]); await without.model.selectWorkspace("A");
   await assert.rejects(() => without.model.onboarding("A", "generation-A"));
   assert.equal(without.calls.some(call => call.method.startsWith("workspace.onboarding.")), false);
-  assert.equal(ONBOARDING_STEPS_READY, false, "step 3 waits for C5, so the guide has no entry yet");
+  assert.equal(ONBOARDING_STEPS_READY, false, "the entry opens only after Jeff has seen the full guide in the real app");
   assert.equal(modelFixture(["workspace.onboarding.v1"]).model.supportsOnboarding(), false);
-  assert.match(read("../src/onboarding-steps.ts"), /ONBOARDING_STEP_VIEWS: OnboardingStepViews = \{ 1: OnboardingEngineStep, 2: OnboardingThirdPartyStep \};/, "steps 1 and 2 have shipped; step 3 waits for C5");
+  assert.match(read("../src/onboarding-steps.ts"), /ONBOARDING_STEP_VIEWS: OnboardingStepViews = \{ 1: OnboardingEngineStep, 2: OnboardingThirdPartyStep, 3: OnboardingColleaguesStep \};/, "all three steps exist");
 });
 
 const common = (patch = {}) => ({ step: 1, readOnly: false, busy: false, notice: "", onLater() {}, ...patch });
@@ -150,7 +150,7 @@ test("review of #82 — G-1: Tab stays inside the sheet, shortcuts are held, foc
 
 test("review of #82 — G-2: no shipped view for the current step → no modal, no inert workspace", () => {
   const source = read("../src/WorkspaceOnboarding.tsx");
-  assert.match(source, /const surface = !hasView \|\| hidden \? "none" : open \? "sheet"/, "no view → neither sheet nor a resume card whose Continue would do nothing (#83 L1)");
+  assert.match(source, /const surface = !hasView \|\| hidden \|\| finished \? "none" : open \? "sheet"/, "no view → neither sheet nor a resume card whose Continue would do nothing (#83 L1)");
   assert.match(source, /open: \(\) => \{ if \(progress && workspaceId && hasView\)/);
   const state = { surface: "sheet", progress: progress({ step: 2 }), busy: false, notice: "", later() {}, back() {}, next() {} };
   assert.equal(render(createElement(module.exports.WorkspaceOnboarding, { state, steps: { 1: () => null } })), "");

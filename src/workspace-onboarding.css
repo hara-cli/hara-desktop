@@ -68,3 +68,21 @@
 .wob-warn{margin:0;padding:var(--hara-space-2) var(--hara-space-3);border-radius:var(--hara-radius-md);background:var(--hara-warning-soft);font-size:var(--hara-font-size-small);line-height:1.5}
 /* The full mascot has a 128px floor (DESIGN.md); narrow windows drop it rather than shrink it. */
 @media (max-width:600px){.wob-scrim{padding:var(--hara-space-2)}.wob-mascot{display:none}.wob-top{padding:var(--hara-space-3) var(--hara-space-4)}.wob-steps,.wob-body,.wob-foot{padding-left:var(--hara-space-4);padding-right:var(--hara-space-4)}.wob-steps li{flex-direction:column;align-items:flex-start;gap:var(--hara-space-1)}}
+/* Step 3 · colleagues (hd-ob-ask / hd-ob-draft / hd-ob-result). */
+.wob-ask{margin:0;padding:0;border:0;display:grid;gap:var(--hara-space-2)}
+.wob-ask legend{padding:0;margin-bottom:var(--hara-space-2)}
+.wob-options{display:flex;flex-wrap:wrap;gap:var(--hara-space-2)}
+.wob-option{display:inline-flex;align-items:center;gap:var(--hara-space-2);min-height:var(--hara-hit-min-desktop);padding:0 var(--hara-space-3);border:1px solid var(--wsd-line);border-radius:var(--hara-radius-pill);font-size:var(--hara-font-size-small);cursor:pointer}
+.wob-option.is-selected{border-color:var(--hara-brand-primary);background:var(--hara-bg-selected)}
+.wob-option input{margin:0;accent-color:var(--hara-brand-primary)}
+.wob-custom{display:grid;gap:var(--hara-space-1);max-width:420px;font-size:var(--hara-font-size-small)}
+.wob-custom input,.wob-team-engine select{min-height:var(--hara-input-md);padding:0 var(--hara-space-3);border:1px solid var(--wsd-line);border-radius:var(--hara-radius-md);background:var(--wsd-surface);color:var(--wsd-ink);font:inherit}
+.wob-team-card{align-items:flex-start;padding-top:var(--hara-space-3);padding-bottom:var(--hara-space-3)}
+.wob-team-card input[type=checkbox]{flex-shrink:0;margin:var(--hara-space-1) 0 0;width:16px;height:16px;accent-color:var(--hara-brand-primary)}
+.wob-team-face{flex-shrink:0;width:32px;height:32px;display:inline-grid;place-items:center;border-radius:var(--hara-radius-pill);background:var(--hara-bg-hover);font-size:18px}
+.wob-team-title{color:var(--wsd-muted);font-size:var(--hara-font-size-small)}
+.wob-duty{display:grid;gap:2px;margin-top:var(--hara-space-1);font-size:var(--hara-font-size-caption);color:var(--wsd-ink);line-height:1.5}
+.wob-duty em{font-style:normal;font-weight:var(--hara-font-weight-semibold);color:var(--wsd-muted);margin-right:var(--hara-space-2)}
+.wob-team-engine{display:grid;gap:2px;flex:0 1 200px;min-width:0;font-size:var(--hara-font-size-caption);color:var(--wsd-muted)}
+.wob-team-engine select{width:100%;font-size:var(--hara-font-size-small)}
+.wob-team-card.is-selected{background:none}

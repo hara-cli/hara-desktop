@@ -1,9 +1,10 @@
 import type { OnboardingStepViews } from "./WorkspaceOnboarding";
 import { OnboardingEngineStep } from "./OnboardingEngineStep";
 import { OnboardingThirdPartyStep } from "./OnboardingThirdPartyStep";
+import { OnboardingColleaguesStep } from "./OnboardingColleaguesStep";
 
 /**
- * Shipped onboarding step bodies. Step 3 (colleagues, after C5) is still missing, so the
- * guide stays gated off (ONBOARDING_STEPS_READY) and a run sitting on a missing step never opens the sheet (#82 G-2).
+ * Onboarding step bodies. All three exist; the guide's entry still follows ONBOARDING_STEPS_READY, which is turned on
+ * only after Jeff has seen the full guide in the real app (coordinator, 2026-11-13).
  */
-export const ONBOARDING_STEP_VIEWS: OnboardingStepViews = { 1: OnboardingEngineStep, 2: OnboardingThirdPartyStep };
+export const ONBOARDING_STEP_VIEWS: OnboardingStepViews = { 1: OnboardingEngineStep, 2: OnboardingThirdPartyStep, 3: OnboardingColleaguesStep };

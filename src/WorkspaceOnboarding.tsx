@@ -105,7 +105,9 @@ export function useWorkspaceOnboarding(model: WorkspaceDevModel, workspace: Work
   // A step without a shipped view never becomes a modal: otherwise the workspace would be inert with nothing on top (review of #82, G-2).
   const hasView = !!progress && !!steps[progress.step];
   // …and no resume card either, since its Continue could not open anything (review of #83, L1).
-  const surface = !hasView || hidden ? "none" : open ? "sheet" : onboardingSurface(progress, { seen: true, colleagues: colleagues.current });
+  // A finished or dismissed run closes the sheet too, e.g. step 3's «Go to the workspace» while it is open.
+  const finished = onboardingSurface(progress, { seen: true, colleagues: 0 }) === "none";
+  const surface = !hasView || hidden || finished ? "none" : open ? "sheet" : onboardingSurface(progress, { seen: true, colleagues: colleagues.current });
   return {
     progress, surface, busy, notice, available: supported, workspaceId,
     open: () => { if (progress && workspaceId && hasView) { markOnboardingSeen(workspaceId, progress.runId); setNotice(""); setOpen(true); } },
