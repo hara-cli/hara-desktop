@@ -1787,6 +1787,7 @@
   "ws.workScope.write.keepEditing": "Keep editing",
   "ws.workScope.write.limits": "Limits and checks",
   "ws.workScope.write.no": "No",
+  "ws.workScope.write.notApplied": "This change expired without being applied. You can edit again.",
   "ws.workScope.write.notSelected": "Not selected",
   "ws.workScope.write.notSubmitted": "Nothing has been submitted yet. Confirm only if these exact changes are what you want.",
   "ws.workScope.write.onePerLine": "One item per line",

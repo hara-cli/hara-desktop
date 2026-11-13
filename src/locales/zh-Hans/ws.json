@@ -1787,6 +1787,7 @@
   "ws.workScope.write.keepEditing": "继续编辑",
   "ws.workScope.write.limits": "额度与检查",
   "ws.workScope.write.no": "否",
+  "ws.workScope.write.notApplied": "这次更改已过期，确认没有生效。现在可以重新编辑。",
   "ws.workScope.write.notSelected": "未选用",
   "ws.workScope.write.notSubmitted": "尚未提交。请确认下面这些具体变更符合你的意图后，再继续。",
   "ws.workScope.write.onePerLine": "每行一项",
