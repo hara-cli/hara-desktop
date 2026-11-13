@@ -1,4 +1,4 @@
-import { useLayoutEffect, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useLayoutEffect, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type SyntheticEvent } from "react";
 import { makeT, type Key, type Locale } from "./i18n";
 import type { WorkspaceDevModel } from "./workspace-dev-state";
 import type { WorkScopeTarget } from "./workspace-work-scope";
@@ -108,7 +108,7 @@ function EditDialog({ writer, capture, session, action, locale, onClose }: { wri
   }, [dirty, busy, result]);
   const requestDiscard = () => { discardRef.current = true; setDiscard(true); };
   function close() { if (busyRef.current) return; if (result) { onClose(result.state === "applied" || result.state === "superseded"); return; } if (dirty || preview) requestDiscard(); else onClose(false); }
-  function nativeClose(event: React.SyntheticEvent<HTMLDialogElement>) {
+  function nativeClose(event: SyntheticEvent<HTMLDialogElement>) {
     event.stopPropagation(); const panel = event.currentTarget;
     // Chromium/WebView2 may force-close on a second non-cancelable Escape. Cleanup/StrictMode close events do not reopen.
     if (!alive.current || panel.open || !panel.isConnected) return;

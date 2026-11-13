@@ -15,7 +15,7 @@ export async function createWorkScopeWriteHost(core, root) {
   const records = new Map(); let handle, owner, initialized, common, target, siblingId, snapshot, agent, storage, prepared;
   let connected = true, connectionEpoch = 1, proof, dropNext = false, allowProbe = false, paused = false, releaseMain, releaseSibling;
   const mainWait = new Promise(resolve => { releaseMain = resolve; }), siblingWait = new Promise(resolve => { releaseSibling = resolve; });
-  let connectionId = randomUUID();
+  let connectionId = randomUUID(), dropBeforeSend = false;
   async function connect() {
     const ws = new WebSocket(`ws://127.0.0.1:${handle.port}`), pending = new Map(); let serial = 0; ws.addEventListener("error", () => {});
     ws.addEventListener("message", ({ data }) => { const value = JSON.parse(data), row = pending.get(value.id); if (!row) return; pending.delete(value.id); clearTimeout(row.timer);
@@ -88,10 +88,14 @@ export async function createWorkScopeWriteHost(core, root) {
       async inspect(value) { checkTarget(value); return scoped("workspace.boundaries.control.inspect"); },
       async draft(value, input) { checkTarget(value); assert.deepEqual(Object.keys(input).sort(), ["commandId", "rootRequestId", "operation", "lifetimeMs"].sort()); assert(["duty.update", "boundary.update"].includes(input.operation?.action));
         counters.drafts++; return owner.request("workspace.boundaries.draft", { ...params, commandId: input.commandId, rootRequestId: input.rootRequestId, operation: input.operation, lifetimeMs: input.lifetimeMs }); },
-      async submit(value, command, proposal) { checkTarget(value); assert(["duty.update", "boundary.update"].includes(command.operation?.action)); counters.submits++; const result = await owner.request("workspace.boundaries.control.submit", { ...params, command, proposal });
+      async submit(value, command, proposal) { checkTarget(value); assert(["duty.update", "boundary.update"].includes(command.operation?.action));
+        if (dropBeforeSend) { dropBeforeSend = false; throw Error("Synthetic bridge stopped BEFORE sending the original command to Core"); }
+        counters.submits++; const result = await owner.request("workspace.boundaries.control.submit", { ...params, command, proposal });
         records.set(command.commandId, { commandId: command.commandId, rootRequestId: command.rootRequestId, intentDigest: command.intentDigest, proposalDigest: command.operation.proposedDutyDigest ?? command.operation.proposedBoundaryDigest, status: result.status });
         if (dropNext) { dropNext = false; throw Error("Fixture intentionally dropped the response AFTER real C3 submission"); } return result; },
+      async lookupReceipt(value, commandId) { checkTarget(value); counters.receipts.push(commandId); return owner.request("workspace.boundaries.control.lookup", { ...params, commandId }); },
       async receipt(value, commandId) { checkTarget(value); counters.receipts.push(commandId); return owner.request("workspace.boundaries.control.receipt", { ...params, commandId }); },
+      dropBeforeSendNext() { dropBeforeSend = true; },
       dropNext() { dropNext = true; }, records: () => [...records.values()], facts,
       async reconnect() {
         const before = await get(), oldId = connectionId; await owner.close(); owner = await connect();
