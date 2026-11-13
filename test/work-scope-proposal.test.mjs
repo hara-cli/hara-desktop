@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createAgentDutyDraft } from "../src/agent-duty-draft.ts";
 import { parseWorkScopeProposal, dutyWorkScopeProposal, boundaryWorkScopeProposal, workScopeProposalDigest, workScopeChanges, workScopeEqual } from "../src/work-scope-proposal.ts";
@@ -65,12 +66,12 @@ test("C5 proposal data rejects accessors, extra fields, duplicate resources and 
   assert.throws(() => boundaryWorkScopeProposal(before, overlap), invalid);
 });
 test("C5 proposal canonical mirror/fixture checks reject drift without mutating the repository", () => {
-  const script = new URL("../scripts/sync-work-scope-proposal.mjs", import.meta.url);
-  execFileSync(process.execPath, [script.pathname, "--check"], { encoding: "utf8" });
+  const script = fileURLToPath(new URL("../scripts/sync-work-scope-proposal.mjs", import.meta.url));
+  execFileSync(process.execPath, [script, "--check"], { encoding: "utf8" });
   const temporary = mkdtempSync(join(tmpdir(), "c5-proposal-lock-"));
   const files = ["src/contracts/agent-policy-canonical-v1.ts", "docs/contracts/agent-policy-proposal-core.json", "docs/contracts/agent-policy-proposal.lock.json", "test/fixtures/agent-policy-proposal-v1.json", "test/fixtures/agent-boundaries-v1.json"];
   for (const name of files) { mkdirSync(join(temporary, name, ".."), { recursive: true }); copyFileSync(new URL(name, root), join(temporary, name)); }
-  const run = () => spawnSync(process.execPath, [script.pathname, "--check", "--fixture-root", temporary], { encoding: "utf8" });
+  const run = () => spawnSync(process.execPath, [script, "--check", "--fixture-root", temporary], { encoding: "utf8" });
   assert.equal(run().status, 0);
   const mirror = join(temporary, files[0]), original = readFileSync(mirror); writeFileSync(mirror, Buffer.concat([original, Buffer.from("\n// drift\n")])); assert.notEqual(run().status, 0); writeFileSync(mirror, original);
   const fixture = join(temporary, files[3]), originalFixture = readFileSync(fixture), data = JSON.parse(originalFixture); data.vectors[0].digest = "0".repeat(64); writeFileSync(fixture, JSON.stringify(data)); assert.notEqual(run().status, 0); writeFileSync(fixture, originalFixture);
