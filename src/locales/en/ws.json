@@ -927,7 +927,7 @@
   "ws.runtimes.approve": "Approve this download and installation",
   "ws.runtimes.bindLead": "Enable this installed engine in this workspace.",
   "ws.runtimes.boundBanner": "{name} is enabled in this workspace.",
-  "ws.runtimes.builtIn": "Built into Hara · Available",
+  "ws.runtimes.builtIn": "Built into Hara",
   "ws.runtimes.cancelInstall": "Cancel installation",
   "ws.runtimes.cancelled": "Installation cancelled",
   "ws.runtimes.cancelledNotice": "Cancelled. Nothing was downloaded.",
@@ -1652,5 +1652,8 @@
   "ws.onboarding.team.summaryFailed": "{n} not created",
   "ws.onboarding.team.summarySep": ", ",
   "ws.onboarding.team.summaryEnd": ".",
-  "ws.onboarding.team.summaryRetry": " Created colleagues won't be created again; Retry only handles the ones that failed."
+  "ws.onboarding.team.summaryRetry": " Created colleagues won't be created again; Retry only handles the ones that failed.",
+  "ws.runtimes.check.failed": "Check didn't pass: no models were listed. Make sure this engine is signed in, then retry.",
+  "ws.runtimes.check.network": "Check didn't pass: couldn't reach the model service (network). Make sure this Mac is online. If your network needs a proxy, set it in “{proxy}” on this page.",
+  "ws.runtimes.check.piFailed": "Check didn't pass: this workspace's model connection listed no models. Check its address and key in Settings › {connections}."
 }

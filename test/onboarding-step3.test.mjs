@@ -207,7 +207,7 @@ test("the draft is kept per workspace and run; another run starts from the quest
 test("the step creates only through createBatch with the run's G4 runId, and finishing records completion", () => {
   assert.match(source, /model\.createColleagues\(progress\.runId, rows, expected, wsId, workspace\.resourceGeneration\)/);
   assert.doesNotMatch(source, /agents\.create\b|agent_create|duty\.update|saveDefaultRuntime|proposeExtensions/);
-  assert.match(source, /const finish = \(\) => \{ clearTeamDraft\(wsId\); next\(\{ completedAt: new Date\(\)\.toISOString\(\) \}\); \};/);
+  assert.match(source, /const finish = \(\) => \{ void Promise\.resolve\(next\(\{ completedAt: new Date\(\)\.toISOString\(\) \}\)\)\.then\(saved => \{ if \(saved\) clearTeamDraft\(wsId\); \}\); \};/, "clear only after completion saved");
   assert.match(source, /row\.reason === "username_taken" \? \{ status: "taken" \}/);
 });
 

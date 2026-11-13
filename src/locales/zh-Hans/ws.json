@@ -927,7 +927,7 @@
   "ws.runtimes.approve": "批准本次下载与安装",
   "ws.runtimes.bindLead": "在这个空间启用已安装的引擎。",
   "ws.runtimes.boundBanner": "{name} 已在当前空间启用。",
-  "ws.runtimes.builtIn": "Hara 已内置 · 可用",
+  "ws.runtimes.builtIn": "Hara 已内置",
   "ws.runtimes.cancelInstall": "取消安装",
   "ws.runtimes.cancelled": "安装已取消",
   "ws.runtimes.cancelledNotice": "已取消，没有下载。",
@@ -1652,5 +1652,8 @@
   "ws.onboarding.team.summaryFailed": "{n} 位没建成",
   "ws.onboarding.team.summarySep": "，",
   "ws.onboarding.team.summaryEnd": "。",
-  "ws.onboarding.team.summaryRetry": "已建好的不会重复建，重试只会处理没建成的。"
+  "ws.onboarding.team.summaryRetry": "已建好的不会重复建，重试只会处理没建成的。",
+  "ws.runtimes.check.failed": "检查没通过：没有列出模型。请确认这个引擎已经登录，然后重试。",
+  "ws.runtimes.check.network": "检查没通过：连不上模型服务（网络问题）。先确认这台 Mac 能上网；如果网络必须经过代理，在本页的「{proxy}」里填写。",
+  "ws.runtimes.check.piFailed": "检查没通过：这个空间的模型连接没有列出模型。请到「设置 › {connections}」里检查地址和 Key。"
 }

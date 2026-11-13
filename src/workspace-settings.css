@@ -150,3 +150,7 @@
 .wsd-skill-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--hara-space-2)}.wsd-skill-head strong{flex:1 1 120px;min-width:0;overflow-wrap:anywhere}
 .wsd-skill-new{padding:1px var(--hara-space-2);border-radius:var(--hara-radius-pill);background:var(--hara-info-soft);font-size:var(--hara-font-size-caption)}
 .wsd-skill-summary{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hs.wss-app .wsd-runtime-row .wsd-runtime-check-warn{color:var(--wsd-ink);background:var(--hara-warning-soft);border-radius:var(--hara-radius-sm);padding:2px var(--hara-space-2);width:fit-content;max-width:100%;line-height:1.5}
+.hs.wss-app .wsd-runtime-ready-note{color:var(--muted);font-size:var(--hara-font-size-caption)}
+.hs.wss-app .wsd-runtime-row .wsd-runtime-actions{display:flex;align-items:center;gap:var(--hara-space-2);justify-self:end}
+@media (max-width:700px){.hs.wss-app .wsd-runtime-row .wsd-runtime-actions{justify-self:start}}

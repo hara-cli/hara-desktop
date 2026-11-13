@@ -58,7 +58,7 @@ export function OnboardingSheet({ step, readOnly, busy, notice, onLater, onBack,
   </div>;
 }
 
-export interface OnboardingStepProps { progress: OnboardingProgress; sheet: OnboardingSheetCommon; next: (patch?: Partial<OnboardingFields>) => void; model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot }
+export interface OnboardingStepProps { progress: OnboardingProgress; sheet: OnboardingSheetCommon; next: (patch?: Partial<OnboardingFields>) => Promise<boolean> | void; model: WorkspaceDevModel; workspace: WorkspaceDevSnapshot }
 export type OnboardingStepViews = Partial<Record<OnboardingStep, ComponentType<OnboardingStepProps>>>;
 
 export function OnboardingResumeCard({ progress, notice = "", onContinue, onStop }: { progress: OnboardingProgress; notice?: "" | Key; onContinue: () => void; onStop: () => void }) {
@@ -131,7 +131,8 @@ export function useWorkspaceOnboarding(model: WorkspaceDevModel, workspace: Work
       } catch { void model.onboarding(workspaceId, generation).then(setProgress).catch(() => {}); return "failed"; }
       finally { setBusy(false); }
     },
-    next: (patch: Partial<OnboardingFields> = {}) => { if (progress) void save({ ...patch, step: Math.min(3, progress.step + 1) as OnboardingStep }); },
+    /** Resolves true once the progress is saved, so a step can tidy up only after a successful write. */
+    next: (patch: Partial<OnboardingFields> = {}): Promise<boolean> => progress ? save({ ...patch, step: Math.min(3, progress.step + 1) as OnboardingStep }) : Promise.resolve(false),
     back: () => { if (progress && progress.step > 1) void save({ step: (progress.step - 1) as OnboardingStep }); },
   };
 }

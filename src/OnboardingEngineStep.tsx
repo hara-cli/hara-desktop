@@ -3,7 +3,7 @@ import type { Key } from "./i18n";
 import { SettingsAdvanced } from "./SettingsChrome";
 import { useWorkspaceLocale } from "./workspace-shell-hooks";
 import { manualRuntimeInstallUrl } from "./runtime-expansion";
-import { manualRuntimeGuide, WorkspaceConnectionForm } from "./WorkspaceRuntimeSettings";
+import { manualRuntimeGuide, NETWORK_ERROR, runEngineCheck, WorkspaceConnectionForm, type EngineCheck } from "./WorkspaceRuntimeSettings";
 import { WorkspaceRuntimeProxy } from "./WorkspaceRuntimeProxy";
 import { OnboardingSheet, type OnboardingStepProps } from "./WorkspaceOnboarding";
 import type { WorkspaceDevSnapshot } from "./workspace-dev-state";
@@ -16,11 +16,11 @@ import type { WorkspaceDevSnapshot } from "./workspace-dev-state";
  * a colleague is created. «Use X, next» writes the per-workspace G1 default (shared with Settings › Engines; Pi is saved
  * as null, i.e. Pi-first) when Core advertises it, then saves G4 `engineChoice`. A failed G1 write stays on this step.
  */
-type Check = { state: "checking" } | { state: "ok"; models: number } | { state: "failed"; network: boolean };
+type Check = EngineCheck;
 type Tone = "ok" | "warn" | "fail" | "draft" | "";
 interface Row { id: string; name: string; status: Key; tone: Tone; detail?: string; detailTone?: "warn"; selectable: boolean; dim?: boolean; check?: boolean; link?: string }
 
-export const NETWORK_ERROR = /network|timed? ?out|timeout|ECONN|ENOTFOUND|EAI_AGAIN|ENETUNREACH|fetch failed|socket|proxy|TLS|certificate/i;
+export { NETWORK_ERROR };
 type Runtime = NonNullable<WorkspaceDevSnapshot["runtimes"]>["options"][number];
 
 /** Rows in display order: Pi first, then engines that can drive colleagues; not-installed ones last. */
@@ -65,11 +65,7 @@ export function OnboardingEngineStep({ progress, sheet, next, model, workspace }
   const connected = workspace.connections.connections.filter(row => row.status !== "deleted");
   const check = (id: string) => {
     setChecks(current => ({ ...current, [id]: { state: "checking" } }));
-    const main = workspace.agents.find(agent => agent.kind === "main"), connection = workspace.connections.defaultConnectionId ?? connected[0]?.id;
-    const request = id === "pi" ? main && connection && model.supportsConnectionModels() ? model.listConnectionModels(main.agentId, connection) : Promise.reject(new Error("unsupported"))
-      : model.listRuntimeModels(id);
-    void request.then(result => { if (live.current === scope) setChecks(current => ({ ...current, [id]: result.models.length ? { state: "ok", models: result.models.length } : { state: "failed", network: false } })); })
-      .catch(error => { if (live.current === scope) setChecks(current => ({ ...current, [id]: { state: "failed", network: NETWORK_ERROR.test(String(error instanceof Error ? error.message : error)) } })); });
+    void runEngineCheck(model, workspace, id).then(result => { if (live.current === scope) setChecks(current => ({ ...current, [id]: result })); });
   };
   const selectable = rows.filter(row => row.selectable);
   const initial = progress.engineChoice && selectable.some(row => row.id === progress.engineChoice) ? progress.engineChoice

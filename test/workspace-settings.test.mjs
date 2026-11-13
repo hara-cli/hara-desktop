@@ -70,7 +70,10 @@ test("detected runtimes offer workspace binding and missing runtimes alone offer
  const failed=render("Runtime",{model:{},workspace:{...workspace,runtimes:{options:[{runtimeId:"codex",label:"Codex",registered:false,state:"integrity_failed"}],operations:[]}}});
  assert.doesNotMatch(failed,/>按需安裝<\/button>|>啟用<\/button>/);
  const source=read("src/WorkspaceRuntimeSettings.tsx");assert.match(source,/model\.registerLocalRuntime\(local\.runtimeId/);
- assert.doesNotMatch(source,/model\.listRuntimeModels|model\.selectRuntimeModel|wsd-runtime-model-step/);
+ // DESIGN.md 2.1.2 §11.4: models are listed only by the explicit «Check» (runEngineCheck from a button), never on open or to pick a model.
+ assert.doesNotMatch(source,/model\.selectRuntimeModel|wsd-runtime-model-step/);
+ assert.equal((source.match(/model\.listRuntimeModels\(/g)??[]).length,1);assert.equal((source.match(/runEngineCheck\(model, workspace, id\)/g)??[]).length,1);
+ assert.match(source,/disabled=\{checks\[id\]\?\.state === "checking" \|\| pending\} onClick=\{\(\) => check\(id\)\}/);
  assert.doesNotMatch(source,/model\.changeConnection|selectedConnection|runtime-model-connection/);
 });
 test("host-login Codex hides isolated sign-in guidance",()=>{

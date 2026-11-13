@@ -51,7 +51,8 @@ export function OnboardingColleaguesStep({ progress, sheet, next, model, workspa
   // Step 1 «Skip for now» leaves no engine choice: the draft can be kept but not created (design §2 branches).
   const blocked: "" | Key = !supported ? "ws.onboarding.team.unsupported" : progress.engineChoice === null ? "ws.onboarding.team.noEngine" : "";
   const pending = draft.rows.filter(row => row.checked && !existing.has(row.username) && !done(draft.results[row.draftKey]));
-  const finish = () => { clearTeamDraft(wsId); next({ completedAt: new Date().toISOString() }); };
+  // The draft is cleared only after completion was saved; a failed write keeps it for the next try (review of #97, L).
+  const finish = () => { void Promise.resolve(next({ completedAt: new Date().toISOString() })).then(saved => { if (saved) clearTeamDraft(wsId); }); };
 
   const create = async () => {
     const rows = batchRows(draft, locale, existing), expected = revision ?? workspace.agentRevision;

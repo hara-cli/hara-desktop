@@ -44,7 +44,7 @@ test("no engine reads «Ready» until a check just listed its models; unchecked 
   assert.ok(t("ws.onboarding.engine.networkShort").length && t("ws.onboarding.engine.failedShort").length);
   assert.equal(byId(engineRows(connected, { codex: { state: "failed", network: false } }, false, t)).codex.detail, t("ws.onboarding.engine.failedShort"));
   assert.equal(checked.pi.selectable, true, "a failed engine can still be chosen; the detail says so (L3)");
-  assert.match(source, /result\.models\.length \? \{ state: "ok", models: result\.models\.length \} : \{ state: "failed", network: false \}/);
+  assert.match(source, /void runEngineCheck\(model, workspace, id\)\.then\(result => \{ if \(live\.current === scope\) setChecks/, "the shared check (WorkspaceRuntimeSettings.tsx runEngineCheck, tested in settings-engines-check) decides Ready");
 });
 
 test("rows follow the design's states, Pi first, engines that cannot drive colleagues left out, not-installed last", () => {
@@ -84,7 +84,7 @@ test("step 1 never installs, registers, approves or creates anything; it writes 
   assert.match(source, /\} catch \{ if \(live\.current === scope\) setDefaultFailed\(true\); return; \}/, "a failed G1 write stays on step 1");
   assert.match(source, /if \(model\.supportsDefaultRuntime\?\.\(\)\) \{/, "old Cores: only G4 engineChoice is saved");
   assert.match(source, /onClick=\{\(\) => next\(\{ engineChoice: null \}\)\}/, "skip keeps no choice");
-  assert.equal((source.match(/listRuntimeModels|listConnectionModels/g) ?? []).length, 2, "models are listed only from the explicit Check");
+  assert.equal((source.match(/listRuntimeModels|listConnectionModels|runEngineCheck\(/g) ?? []).length, 1, "models are listed only from the explicit Check");
   assert.match(source, /<SettingsAdvanced page="onboarding\.engine" persist=\{false\} forceOpen=\{networkFailed\}/, "Advanced opens itself only after a network failure");
 });
 
