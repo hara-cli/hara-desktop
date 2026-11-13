@@ -1,3 +1,4 @@
+import { settingsTranslator } from "./settings-device-copy";
 import { SettingsActionResult } from "./SettingsActionDialog";
 import { WorkspaceRpcErrorNotice } from "./WorkspaceRpcErrorNotice.tsx";
 import { localizedWorkspaceView } from "./workspace-default-labels.ts";
@@ -76,7 +77,7 @@ export default function WorkspaceSettings(props: WorkspaceSettingsProps) {
     : <div className="hs wsd-app wss-app" lang={locale} data-platform={workspacePlatform()}><aside className="wss-nav"><button className="wss-close" aria-label={t("vg.closeSettings")} onClick={props.onClose}><XMarkIcon className="hico" /></button><h1>{t("ws.settings")}</h1></aside><main className="wss-main"><p role="status">{t(error || "ws.settings.opening")}</p></main></div>}</SettingsOverlay>;
 }
 export function SettingsContent({ model, initialPage, root, production, theme, updater, versionInfo, onClose, onCreateSkill, onboarding }: WorkspaceSettingsProps & { model: WorkspaceDevModel }) {
-  const { locale, preference, t, changeLocale } = useWorkspaceLocale();
+  const { locale, preference, t: baseT, changeLocale } = useWorkspaceLocale(); const t = settingsTranslator(baseT);
   const rawView = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot), view = localizedWorkspaceView(rawView, locale), updates = useSyncExternalStore(updater.subscribe, updater.getSnapshot, updater.getSnapshot);
   const [page, setPage] = useState<SettingsPage>(initialPage), [scopeOpen, setScopeOpen] = useState(false), [leaveNotice, setLeaveNotice] = useState<"" | Key>("");
   const scopeTrigger = useRef<HTMLButtonElement>(null), scopeMenu = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null);
